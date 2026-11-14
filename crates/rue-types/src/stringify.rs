@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
@@ -126,6 +128,20 @@ pub(crate) fn stringify_impl(
             .map(|(_, name)| name)
             .collect::<Vec<_>>()
             .join(" | "),
+        Type::Intersection(intersection) => intersection
+            .types
+            .iter()
+            .map(|&id| {
+                let name = stringify_impl(arena, id, stack);
+
+                if needs_parentheses(arena, id) {
+                    format!("({name})")
+                } else {
+                    name
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" & "),
     };
 
     let recursed = stack.pop().unwrap().1;
@@ -232,6 +248,26 @@ fn narrowed_fields(
         }
         _ => None,
     }
+}
+
+/// Whether a member of an intersection needs parentheses, since it's displayed with a `|` or `->`
+/// outside of any brackets, such as `T & (Int | nil)`.
+fn needs_parentheses(arena: &Arena<Type>, mut id: TypeId) -> bool {
+    let mut visited = HashSet::new();
+
+    while visited.insert(id) {
+        match &arena[id] {
+            Type::Ref(inner) => id = *inner,
+            Type::Union(_) => return union_variants(arena, id).len() > 1,
+            Type::Function(_) => return true,
+            Type::Struct(ty) if ty.name.is_none() => id = ty.inner,
+            Type::Struct(ty) => return ty.narrowed,
+            Type::Alias(alias) if alias.name.is_none() => id = alias.inner,
+            _ => return false,
+        }
+    }
+
+    false
 }
 
 /// The variants of a union, including those of directly nested unions.

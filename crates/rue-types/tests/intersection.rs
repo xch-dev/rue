@@ -1,0 +1,502 @@
+//! Tests for intersection types, which are produced by narrowing a generic type with a type guard
+//! (such as `T & Atom` for a value of type `T` that has been checked to be an atom).
+
+use std::collections::HashMap;
+
+use id_arena::Arena;
+use indexmap::IndexSet;
+use rue_diagnostic::Name;
+use rue_types::{
+    Alias, BuiltinTypes, CheckError, Comparison, FunctionParameter, FunctionType, Generic,
+    Inference, Intersection, Pair, Struct, Type, TypeId, Union, check, compare,
+    compare_with_inference, infer_from_expected, intersect, resolve_inference, stringify,
+    substitute_with_mappings, subtract,
+};
+
+struct Types {
+    arena: Arena<Type>,
+    builtins: BuiltinTypes,
+}
+
+impl Types {
+    fn new() -> Self {
+        let mut arena = Arena::new();
+        let builtins = BuiltinTypes::new(&mut arena);
+        Self { arena, builtins }
+    }
+
+    fn alloc(&mut self, ty: Type) -> TypeId {
+        self.arena.alloc(ty)
+    }
+
+    fn generic(&mut self, name: &str) -> TypeId {
+        self.alloc(Type::Generic(Generic {
+            name: Some(Name::new(name, None)),
+        }))
+    }
+
+    fn pair(&mut self, first: TypeId, rest: TypeId) -> TypeId {
+        self.alloc(Type::Pair(Pair::new(first, rest)))
+    }
+
+    fn union(&mut self, types: Vec<TypeId>) -> TypeId {
+        self.alloc(Type::Union(Union::new(types)))
+    }
+
+    fn any_pair(&mut self) -> TypeId {
+        let any = self.builtins.permissive_any;
+        self.pair(any, any)
+    }
+
+    fn intersect(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+        intersect(&mut self.arena, &self.builtins, lhs, rhs)
+    }
+
+    fn subtract(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+        subtract(&mut self.arena, &self.builtins, lhs, rhs)
+    }
+
+    fn compare(&mut self, lhs: TypeId, rhs: TypeId) -> Comparison {
+        compare(&mut self.arena, &self.builtins, lhs, rhs)
+    }
+
+    fn name(&mut self, id: TypeId) -> String {
+        stringify(&mut self.arena, id)
+    }
+}
+
+#[test]
+fn test_compare_from_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let other = t.generic("U");
+    let t_atom = t.intersect(generic, b.atom);
+
+    // It's a value of each of its members
+    assert_eq!(t.compare(t_atom, generic), Comparison::Assign);
+    assert_eq!(t.compare(t_atom, b.atom), Comparison::Assign);
+
+    // And of anything that one of them is assignable to
+    let optional = t.union(vec![generic, b.nil]);
+    assert_eq!(t.compare(t_atom, optional), Comparison::Assign);
+    let atom_or_nil = t.union(vec![b.atom, b.nil]);
+    assert_eq!(t.compare(t_atom, atom_or_nil), Comparison::Assign);
+    assert_eq!(t.compare(t_atom, b.recursive_any), Comparison::Assign);
+
+    // But not otherwise
+    assert_eq!(t.compare(t_atom, b.int), Comparison::Cast);
+    assert_eq!(t.compare(t_atom, other), Comparison::Invalid);
+    let pair = t.any_pair();
+    assert_eq!(t.compare(t_atom, pair), Comparison::Invalid);
+}
+
+#[test]
+fn test_compare_to_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let t_atom = t.intersect(generic, b.atom);
+    let t_int = t.intersect(generic, b.int);
+
+    // A value has to be in every member
+    assert_eq!(t.compare(generic, t_atom), Comparison::Invalid);
+    assert_eq!(t.compare(b.atom, t_atom), Comparison::Invalid);
+    assert_eq!(t.compare(b.never, t_atom), Comparison::Assign);
+
+    // Including another intersection
+    let copy = t.alloc(Type::Intersection(Intersection::new(vec![generic, b.atom])));
+    assert_eq!(t.compare(t_atom, copy), Comparison::Assign);
+    assert_eq!(t.compare(t_int, t_atom), Comparison::Assign);
+    assert_eq!(t.compare(t_atom, t_int), Comparison::Cast);
+}
+
+#[test]
+fn test_infer_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let inferred = t.generic("U");
+    let t_atom = t.intersect(generic, b.atom);
+
+    // A narrowed generic is inferred as a whole, rather than as its members, including through an
+    // alias of a union
+    let optional = t.union(vec![inferred, b.nil]);
+    let alias = t.alloc(Type::Alias(Alias {
+        name: None,
+        inner: optional,
+        generics: vec![],
+    }));
+
+    for target in [inferred, optional, alias] {
+        let mut infer = Inference::new([inferred]);
+        let result =
+            compare_with_inference(&mut t.arena, &t.builtins, t_atom, target, Some(&mut infer));
+        assert_eq!(result, Comparison::Assign);
+
+        let lower = infer.candidates(inferred).unwrap().lower.clone();
+        assert_eq!(lower.len(), 1);
+        assert_eq!(t.name(lower[0]), "T & Atom");
+    }
+
+    // But it's inferred from its structure if that's what matches, without the generic adding
+    // `Any` as a candidate
+    let int_pair = t.pair(b.int, b.int);
+    let t_int_pair = t.intersect(generic, int_pair);
+    let target = t.pair(inferred, inferred);
+    let mut infer = Inference::new([inferred]);
+    let result = compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        t_int_pair,
+        target,
+        Some(&mut infer),
+    );
+    assert_eq!(result, Comparison::Assign);
+
+    let lower = infer.candidates(inferred).unwrap().lower.clone();
+    let names: Vec<String> = lower.into_iter().map(|id| t.name(id)).collect();
+    assert_eq!(names, ["Int", "Int"]);
+
+    // A structure that's a union is split over the union's members, so `nil` is held by `nil`
+    let int_or_nil = t.union(vec![b.int, b.nil]);
+    let t_int_or_nil = t.intersect(generic, int_or_nil);
+    let mut infer = Inference::new([inferred]);
+    let result = compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        t_int_or_nil,
+        optional,
+        Some(&mut infer),
+    );
+    assert_eq!(result, Comparison::Assign);
+
+    let lower = infer.candidates(inferred).unwrap().lower.clone();
+    let names: Vec<String> = lower.into_iter().map(|id| t.name(id)).collect();
+    assert_eq!(names, ["Int"]);
+}
+
+#[test]
+fn test_resolve_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let inferred = t.generic("U");
+    let t_int = t.intersect(generic, b.int);
+
+    // A narrowed generic is widened to its structure, like a literal
+    let mut infer = Inference::new([inferred]);
+    for lower in [t_int, b.int] {
+        compare_with_inference(&mut t.arena, &t.builtins, lower, inferred, Some(&mut infer));
+    }
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "Int");
+
+    // Including within the type
+    let t_int_pair = t.pair(t_int, b.nil);
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        t_int_pair,
+        inferred,
+        Some(&mut infer),
+    );
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "(Int, nil)");
+
+    let expected = t.pair(generic, b.nil);
+    infer_from_expected(&mut t.arena, &t.builtins, inferred, expected, &mut infer);
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "(T & Int, nil)");
+
+    // Unless an upper bound needs the generic
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(&mut t.arena, &t.builtins, t_int, inferred, Some(&mut infer));
+    infer_from_expected(&mut t.arena, &t.builtins, inferred, generic, &mut infer);
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "T & Int");
+}
+
+/// Resolves the generic from a single lower candidate, and returns the name of what it resolves to.
+fn resolve_from(t: &mut Types, candidate: TypeId) -> String {
+    let inferred = t.generic("U");
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        candidate,
+        inferred,
+        Some(&mut infer),
+    );
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    t.name(mappings[&inferred])
+}
+
+#[test]
+fn test_resolve_widens_covariant_positions() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let t_int = t.intersect(generic, b.int);
+
+    // A function's return type is widened
+    let returns = t.alloc(Type::Function(FunctionType {
+        generics: vec![],
+        params: vec![],
+        nil_terminated: true,
+        ret: t_int,
+    }));
+    assert_eq!(resolve_from(&mut t, returns), "fn() -> Int");
+
+    // But its parameters aren't, since widening them would give a subtype
+    let takes = t.alloc(Type::Function(FunctionType {
+        generics: vec![],
+        params: vec![FunctionParameter::new("x", t_int)],
+        nil_terminated: true,
+        ret: b.nil,
+    }));
+    assert_eq!(resolve_from(&mut t, takes), "fn(x: T & Int) -> nil");
+
+    // The inner types of aliases and structs are widened, along with the generic arguments that
+    // they're displayed with
+    let optional = t.union(vec![t_int, b.nil]);
+    let alias = t.alloc(Type::Alias(Alias {
+        name: Some(Name::new("Option", None)),
+        inner: optional,
+        generics: vec![t_int],
+    }));
+    assert_eq!(resolve_from(&mut t, alias), "Option<Int>");
+    let ty = t.alloc(Type::Alias(Alias {
+        name: None,
+        inner: optional,
+        generics: vec![],
+    }));
+    assert_eq!(resolve_from(&mut t, ty), "Int | nil");
+
+    let inner = t.pair(t_int, b.nil);
+    let semantic = t.alloc(Type::Unresolved);
+    t.arena[semantic] = Type::Struct(Struct {
+        name: None,
+        semantic,
+        inner,
+        generics: vec![t_int],
+        fields: IndexSet::from(["value".to_string()]),
+        nil_terminated: true,
+        narrowed: false,
+    });
+    assert_eq!(resolve_from(&mut t, semantic), "(Int, nil)");
+}
+
+#[test]
+fn test_resolve_shared_subtrees() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+
+    // Each level refers to the level below it twice, so widening every reference separately
+    // would take exponentially many types
+    let mut ty = t.intersect(generic, b.int);
+    for _ in 0..20 {
+        ty = t.pair(ty, ty);
+    }
+
+    let inferred = t.generic("U");
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(&mut t.arena, &t.builtins, ty, inferred, Some(&mut infer));
+
+    let before = t.arena.len();
+    let mut resolved = resolve_inference(&mut t.arena, &t.builtins, &infer)[&inferred];
+
+    // Displaying the type would also take exponential time, so its first leaf is checked instead
+    loop {
+        match &t.arena[resolved] {
+            Type::Ref(inner) => resolved = *inner,
+            Type::Pair(pair) => resolved = pair.first,
+            _ => break,
+        }
+    }
+
+    assert_eq!(resolved, b.int);
+    assert!(
+        t.arena.len() - before < 1_000,
+        "allocated {} types",
+        t.arena.len() - before
+    );
+}
+
+#[test]
+fn test_check_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let t_atom = t.intersect(generic, b.atom);
+    let pair = t.any_pair();
+    let t_pair = t.intersect(generic, pair);
+
+    // It's checked the same as its structure
+    for target in [b.bytes32, b.nil, b.int] {
+        let expected = check(&mut t.arena, &t.builtins, b.atom, target);
+        let actual = check(&mut t.arena, &t.builtins, t_atom, target);
+        assert_eq!(actual, expected);
+    }
+
+    let int_pair = t.pair(b.int, b.int);
+    let expected = check(&mut t.arena, &t.builtins, pair, int_pair);
+    let actual = check(&mut t.arena, &t.builtins, t_pair, int_pair);
+    assert_eq!(actual, expected);
+
+    // It doesn't overlap a type that its structure doesn't, so the rest of a pair whose first
+    // element can't match isn't checked
+    let first_atom = t.pair(t_atom, b.int);
+    let first_pair = t.pair(int_pair, b.nil);
+    let from = t.union(vec![first_atom, first_pair]);
+    let target = t.pair(pair, b.nil);
+    let atom_first = t.pair(b.atom, b.int);
+    let structural = t.union(vec![atom_first, first_pair]);
+    let expected = check(&mut t.arena, &t.builtins, structural, target);
+    let actual = check(&mut t.arena, &t.builtins, from, target);
+    assert_eq!(actual, expected);
+
+    // The same holds for the atoms and pairs that it's known to contain, when it's nested
+    for (narrowed, structure) in [(t_pair, pair), (t_atom, b.atom)] {
+        for target in [b.atom, pair, int_pair, b.nil] {
+            let lhs = t.pair(narrowed, b.int);
+            let other = t.pair(b.nil, b.nil);
+            let from = t.union(vec![lhs, other]);
+            let lhs = t.pair(structure, b.int);
+            let structural = t.union(vec![lhs, other]);
+            let target = t.pair(target, b.int);
+            let expected = check(&mut t.arena, &t.builtins, structural, target);
+            let actual = check(&mut t.arena, &t.builtins, from, target);
+            assert_eq!(actual, expected);
+        }
+    }
+
+    // A pair is never an atom
+    let impossible = check(&mut t.arena, &t.builtins, t_pair, b.atom);
+    assert_eq!(impossible, Ok(rue_types::Check::Impossible));
+
+    // But it can't be checked against, since it's partly generic
+    let result = check(&mut t.arena, &t.builtins, b.int, t_atom);
+    assert_eq!(result, Err(CheckError::GenericType));
+}
+
+#[test]
+fn test_guard_branches() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let pair = t.any_pair();
+
+    // Both branches of a guard on a generic keep it
+    let then_atom = t.intersect(generic, b.atom);
+    assert_eq!(t.name(then_atom), "T & Atom");
+    let else_atom = t.subtract(generic, b.atom);
+    assert_eq!(t.name(else_atom), "T & (Any, Any)");
+
+    let then_pair = t.intersect(generic, pair);
+    assert_eq!(t.name(then_pair), "T & (Any, Any)");
+    let else_pair = t.subtract(generic, pair);
+    assert_eq!(t.name(else_pair), "T & Atom");
+
+    // The compiler narrows the else branch by intersecting the original type with it
+    let narrowed = t.intersect(generic, else_pair);
+    assert_eq!(t.name(narrowed), "T & Atom");
+
+    // Narrowing `T | nil` to `nil` doesn't keep `T`, since it's already a `nil`
+    let optional = t.union(vec![generic, b.nil]);
+    let then_nil = t.intersect(optional, b.nil);
+    assert_eq!(t.name(then_nil), "nil");
+    let else_nil = t.subtract(optional, b.nil);
+    assert_eq!(t.name(else_nil), "T");
+}
+
+#[test]
+fn test_substitute_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let t_atom = t.intersect(generic, b.atom);
+
+    // Substituting the generic leaves the same values, even if the members aren't compared
+    let ty = substitute_with_mappings(&mut t.arena, t_atom, &HashMap::from([(generic, b.int)]));
+    assert_eq!(t.name(ty), "Int & Atom");
+    assert_eq!(t.compare(ty, b.int), Comparison::Assign);
+    assert_eq!(t.compare(b.int, ty), Comparison::Assign);
+
+    // And it's simplified the next time it's intersected
+    let ty = t.intersect(ty, b.atom);
+    assert_eq!(t.name(ty), "Int");
+
+    // An impossible or unconstrained member is simplified away
+    let ty = substitute_with_mappings(&mut t.arena, t_atom, &HashMap::from([(generic, b.never)]));
+    assert_eq!(t.name(ty), "Never");
+    let any = b.permissive_any;
+    let ty = substitute_with_mappings(&mut t.arena, t_atom, &HashMap::from([(generic, any)]));
+    assert_eq!(t.name(ty), "Atom");
+
+    // Substituting several generics can leave several structures, which are intersected the
+    // next time the intersection is
+    let u = t.generic("U");
+    let v = t.generic("V");
+    let pair = t.any_pair();
+    let three = t.alloc(Type::Intersection(Intersection::new(vec![generic, u, v])));
+    let ty = substitute_with_mappings(
+        &mut t.arena,
+        three,
+        &HashMap::from([(u, b.atom), (v, pair)]),
+    );
+    assert_eq!(t.name(ty), "T & Atom & (Any, Any)");
+    let ty = t.intersect(ty, any);
+    assert_eq!(t.name(ty), "Never");
+
+    // And a structure that the generics are already assignable to is dropped
+    let atom_or_pair = t.union(vec![b.atom, pair]);
+    let ty = substitute_with_mappings(
+        &mut t.arena,
+        three,
+        &HashMap::from([(u, atom_or_pair), (v, b.recursive_any)]),
+    );
+    assert_eq!(
+        t.name(ty),
+        "T & (Atom | (Any, Any)) & (1 @ (Atom | (<1>, <1>)))"
+    );
+    let ty = t.intersect(ty, any);
+    assert_eq!(t.name(ty), "T");
+
+    // Nested intersections are flattened
+    let other = t.generic("U");
+    let u_atom = t.intersect(other, b.atom);
+    let ty = substitute_with_mappings(&mut t.arena, t_atom, &HashMap::from([(generic, u_atom)]));
+    assert_eq!(t.name(ty), "U & Atom");
+}
+
+#[test]
+fn test_stringify_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+
+    // Members that contain a `|` or `->` are parenthesized
+    let int_or_nil = t.union(vec![b.int, b.nil]);
+    let ty = t.intersect(generic, int_or_nil);
+    assert_eq!(t.name(ty), "T & (Int | nil)");
+
+    let function = t.alloc(Type::Function(FunctionType {
+        generics: vec![],
+        params: vec![],
+        nil_terminated: true,
+        ret: b.int,
+    }));
+    let ty = t.alloc(Type::Intersection(Intersection::new(vec![
+        generic, function,
+    ])));
+    assert_eq!(t.name(ty), "T & (fn() -> Int)");
+
+    // But an intersection within a union isn't
+    let t_atom = t.intersect(generic, b.atom);
+    let pair = t.any_pair();
+    let ty = t.union(vec![t_atom, pair]);
+    assert_eq!(t.name(ty), "T & Atom | (Any, Any)");
+}

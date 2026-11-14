@@ -3,8 +3,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, Type, TypeId, Union, compare, reaches_non_contractive_cycle,
-    step, stringify_impl, substitute,
+    Alias, BuiltinTypes, Comparison, Pair, Type, TypeId, Union, compare, intersect,
+    reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 pub fn subtract(
@@ -54,6 +54,31 @@ fn subtract_impl(
 
     lhs_variants
         .retain(|variant| compare(arena, builtins, variant.type_id, rhs_id) > Comparison::Cast);
+
+    // A generic can't be split into narrower variants, so what's left of it is narrowed to the
+    // values that its structure (or `Atom | (Any, Any)`, if it has none) has left, such as
+    // `T & Atom` for `T` without `(Any, Any)`
+    let mut any = None;
+
+    for variant in &mut lhs_variants {
+        let structure = match &arena[variant.type_id] {
+            Type::Generic(_) => None,
+            Type::Intersection(intersection) => intersection.structure(arena),
+            _ => continue,
+        };
+
+        // This is the same as `Any`, but it's displayed as `(Any, Any)` if it's narrowed to a pair
+        let structure = structure.unwrap_or_else(|| {
+            *any.get_or_insert_with(|| {
+                let any = builtins.permissive_any;
+                let pair = arena.alloc(Type::Pair(Pair::new(any, any)));
+                arena.alloc(Type::Union(Union::new(vec![builtins.atom, pair])))
+            })
+        });
+
+        let remainder = subtract_impl(arena, builtins, structure, rhs_id);
+        variant.type_id = intersect(arena, builtins, variant.type_id, remainder);
+    }
 
     repackage(arena, builtins, lhs_variants)
 }
@@ -130,7 +155,11 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
         Type::Ref(id) => variants_of(arena, builtins, id),
         // Nothing is known about the values of a generic type, so it can't be split into narrower
         // variants. It's kept as is, and only removed if the target covers every possible value.
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => vec![Variant {
+        Type::Unresolved
+        | Type::Atom(_)
+        | Type::Pair(_)
+        | Type::Generic(_)
+        | Type::Intersection(_) => vec![Variant {
             semantic_type_ids: vec![],
             type_id: id,
         }],

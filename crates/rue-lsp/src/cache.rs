@@ -357,7 +357,16 @@ impl Cache<Compiler> {
             specified_fields,
         } = context.clone()
         {
-            let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+            let mut ty = ty;
+            let mut semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+
+            // The fields of a generic narrowed to a pair or struct are those of its structure
+            if let Type::Intersection(intersection) = self.ctx.ty(semantic).clone()
+                && let Some(structure) = intersection.structure(self.ctx.types_mut())
+            {
+                ty = structure;
+                semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+            }
 
             let mut fields = IndexMap::new();
 

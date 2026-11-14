@@ -1,0 +1,102 @@
+// Narrowing by a guard keeps `T`, but the narrowed type isn't wider than it
+fn atom_is_not_int<T>(value: T) -> Int {
+    if value is Atom {
+        return value;
+    }
+
+    raise;
+}
+
+// A pair is never an atom, so the narrowed value can't be assigned to one
+fn pair_is_not_atom<T>(value: T) -> Atom {
+    if value is (Any, Any) {
+        return value;
+    }
+
+    raise;
+}
+
+// The else branch of an atom check isn't an atom
+fn else_is_not_atom<T>(value: T) -> Atom {
+    if value is Atom {
+        raise;
+    }
+
+    value
+}
+
+// A value narrowed to `nil` is not a `T`
+fn nil_is_not_t<T>(value: T | nil) -> T {
+    if value is nil {
+        return value;
+    }
+
+    raise;
+}
+
+// A narrowed generic isn't assignable to another generic
+fn not_other<T, U>(value: T) -> U {
+    if value is Atom {
+        return value;
+    }
+
+    raise;
+}
+
+// Guards on a narrowed generic are checked against its structure
+fn redundant_guard<T>(value: T) -> Bool {
+    if value is Atom {
+        return value is Atom;
+    }
+
+    false
+}
+
+fn impossible_guard<T>(value: T) -> Bool {
+    if value is (Any, Any) {
+        return value is Int;
+    }
+
+    false
+}
+
+// A lambda's parameter is inferred before the type expected of the call is known, so it's widened
+// to the structure and can't be returned as `T` (the same happens to literals)
+fn call_after<U>(value: U, f: fn(value: U) -> U) -> U {
+    f(value)
+}
+
+fn identity_lambda<T>(value: T) -> T {
+    if value is Atom {
+        return call_after(value, fn(item) => item);
+    }
+
+    value
+}
+
+// Without an expected type, a narrowed generic is widened when it's inferred, so binding the
+// result first loses `T` (returning `identity(value)` directly works)
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn bound_first<T>(value: T) -> T {
+    if value is Atom {
+        let result = identity(value);
+        return result;
+    }
+
+    value
+}
+
+fn main() -> Int {
+    assert redundant_guard(1) && impossible_guard(1);
+    assert identity_lambda(1) == 1;
+    assert bound_first(1) == 1;
+
+    atom_is_not_int(1)
+        + pair_is_not_atom(1) as Int
+        + else_is_not_atom(1) as Int
+        + nil_is_not_t(1)
+        + not_other::<Int, Int>(1)
+}

@@ -325,6 +325,11 @@ fn reached_names(
                 walk(ty, reached);
             }
         }
+        Type::Intersection(intersection) => {
+            for &ty in &intersection.types {
+                walk(ty, reached);
+            }
+        }
         Type::Apply(apply) => {
             walk(apply.inner, reached);
 

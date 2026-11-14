@@ -351,6 +351,11 @@ fn collect_structs(
                 collect_structs(db, ty, keys, visited);
             }
         }
+        Type::Intersection(intersection) => {
+            for &ty in &intersection.types {
+                collect_structs(db, ty, keys, visited);
+            }
+        }
         Type::Apply(apply) => {
             collect_structs(db, apply.inner, keys, visited);
 

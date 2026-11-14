@@ -6,8 +6,8 @@ use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Memo, Pair, Type, TypeId,
-    compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Intersection, Memo, Pair,
+    Type, TypeId, compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -472,6 +472,12 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
         Type::Alias(alias) => variants_of(arena, builtins, alias.inner),
         Type::Struct(ty) => variants_of(arena, builtins, ty.inner),
         Type::Function(_) | Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
+        // Every value of an intersection is a value of its structure, so a check from it is
+        // valid for the intersection. Without one, it's checked like a generic.
+        Type::Intersection(ty) => match ty.structure(arena) {
+            Some(structure) => variants_of(arena, builtins, structure),
+            None => vec![id],
+        },
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
@@ -504,6 +510,10 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atom
         Type::Alias(alias) => atoms_of(arena, alias.inner, target)?,
         Type::Struct(ty) => atoms_of(arena, ty.inner, target)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
+        Type::Intersection(ty) => match intersection_member(arena, &ty, target) {
+            Some(id) => atoms_of(arena, id, target)?,
+            None => Some(Atoms::Unrestricted),
+        },
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
@@ -543,6 +553,18 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atom
     })
 }
 
+/// The member of an intersection that it's checked as. A value can't be checked against a generic
+/// at runtime, so if it's the target, a generic member is returned to be rejected.
+fn intersection_member(arena: &Arena<Type>, ty: &Intersection, target: bool) -> Option<TypeId> {
+    let generic = ty.generic(arena);
+
+    if target && generic.is_some() {
+        return generic;
+    }
+
+    ty.structure(arena).or(generic)
+}
+
 /// Returns the pairs that a type can contain. See [`atoms_of`] for the meaning of `target`.
 fn pairs_of(
     arena: &Arena<Type>,
@@ -562,6 +584,10 @@ fn pairs_of(
         Type::Alias(alias) => pairs_of(arena, builtins, alias.inner, target)?,
         Type::Struct(ty) => pairs_of(arena, builtins, ty.inner, target)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
+        Type::Intersection(ty) => match intersection_member(arena, &ty, target) {
+            Some(id) => pairs_of(arena, builtins, id, target)?,
+            None => vec![Pair::new(builtins.recursive_any, builtins.recursive_any)],
+        },
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 

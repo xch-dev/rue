@@ -1,0 +1,483 @@
+// The then branch narrows `T` to `T & Atom`, which is still a `T`
+fn atom_or_raise<T>(value: T) -> T {
+    if value is Atom {
+        return value;
+    }
+
+    raise;
+}
+
+// It's also usable as the narrowed type
+fn plus_one<T>(value: T) -> (T, Int) {
+    if value is Int {
+        return (value, value + 1);
+    }
+
+    raise;
+}
+
+// Fields can be read from a generic narrowed to a pair
+fn first_of<T>(value: T) -> (T, Any) {
+    if value is (Any, Any) {
+        return (value, value.first);
+    }
+
+    raise;
+}
+
+// The else branch of a pair check keeps both `T` and `Atom`
+fn atom_else<T>(value: T, fallback: (T, Atom)) -> (T, Atom) {
+    if value is (Any, Any) {
+        return fallback;
+    }
+
+    (value, value)
+}
+
+// And the else branch of an atom check keeps both `T` and the pair
+fn pair_else<T>(value: T, fallback: (T, Any)) -> (T, Any) {
+    if value is Atom {
+        return fallback;
+    }
+
+    (value, value.rest)
+}
+
+// Nested guards narrow the structure further
+fn nested<T>(value: T) -> (T, Bytes32) {
+    if value is Atom {
+        if value is Bytes32 {
+            return (value, value);
+        }
+
+        raise;
+    }
+
+    raise;
+}
+
+// Both sides of `&&` narrow the same value
+fn both<T>(value: T) -> (T, Bytes32) {
+    if value is Atom && value is Bytes32 {
+        return (value, value);
+    }
+
+    raise;
+}
+
+// A union with a generic keeps the generic in the narrowed variant
+fn union_atom<T>(value: T | (Int, Int)) -> (T, Atom) {
+    if value is Atom {
+        return (value, value);
+    }
+
+    raise;
+}
+
+// Narrowing a generic to a struct gives access to its fields
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn point_x<T>(value: T) -> (T, Int) {
+    if value is Point {
+        return (value, value.x);
+    }
+
+    raise;
+}
+
+// A field of a narrowed generic can be narrowed further
+fn first_int<T>(value: T) -> (T, Int) {
+    if value is (Any, Any) {
+        if value.first is Int {
+            return (value, value.first);
+        }
+
+        raise;
+    }
+
+    raise;
+}
+
+// The structure is narrowed in the else branch of a guard on a narrowed generic
+fn not_nil<T>(value: T) -> (T, Int) {
+    if value is Int | nil {
+        if value is nil {
+            return (value, 0);
+        }
+
+        return (value, value);
+    }
+
+    raise;
+}
+
+// The narrowed value can be passed to another generic function
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn pass_through<T>(value: T) -> T {
+    if value is Atom {
+        return identity(value);
+    }
+
+    raise;
+}
+
+// The generic function's type is inferred from the structure
+fn first<U>(value: (U, U)) -> U {
+    value.first
+}
+
+fn infer_from_structure<T>(value: T) -> Int {
+    if value is (Int, Int) {
+        return first(value);
+    }
+
+    raise;
+}
+
+// Or from the whole narrowed value, including through an alias
+type Optional<U> = U | nil;
+
+fn unwrap<U>(value: Optional<U>) -> U {
+    assert !(value is nil);
+    value
+}
+
+fn infer_through_alias<T>(value: T) -> T {
+    if value is Atom {
+        return unwrap(value);
+    }
+
+    raise;
+}
+
+// A narrowed value that another member of the union holds isn't used to infer the generic, if
+// something else constrains it
+fn or_default<U>(value: U | nil, default: U) -> U {
+    if value is nil {
+        return default;
+    }
+
+    value
+}
+
+// A generic that's only inferred from other arguments isn't widened by the narrowed generic
+fn pick<U, V>(_value: U | (V, nil), other: V) -> V {
+    other
+}
+
+fn pick_list<U, V>(_value: U | List<V>, other: V) -> V {
+    other
+}
+
+fn infer_other<T>(value: T) -> Int {
+    if value is Atom {
+        return pick(value, 5) + pick_list(value, 6);
+    }
+
+    0
+}
+
+// The whole narrowed value is inferred through an alias of a generic
+type Same<U> = U;
+
+fn same<U>(value: Same<U>) -> U {
+    value
+}
+
+fn infer_through_generic_alias<T>(value: T) -> T {
+    if value is Atom {
+        return same(value);
+    }
+
+    value
+}
+
+fn infer_held<T>(value: T, default: Bytes32) -> Bytes32 {
+    if value is nil {
+        return or_default(value, default);
+    }
+
+    default
+}
+
+// A narrowed generic is widened to its structure when it's inferred, so that it doesn't make a
+// lambda's parameter require a `T`
+fn fold<U, A>(list: List<U>, acc: A, f: fn(acc: A, item: U) -> A) -> A {
+    if list is nil {
+        return acc;
+    }
+
+    fold(list.rest, f(acc, list.first), f)
+}
+
+fn sum_from<T>(value: T) -> Int {
+    if value is Int {
+        return fold([1, 2], value, fn(acc, item) => acc + item);
+    }
+
+    0
+}
+
+fn call<U>(f: fn(value: U) -> U, value: U) -> U {
+    f(value)
+}
+
+fn increment<T>(value: T) -> Int {
+    if value is Int {
+        return call(fn(value) => value + 1, value);
+    }
+
+    0
+}
+
+// The same applies to a narrowed generic within the inferred type
+fn sum_and_last<T>(value: T, list: List<Int>) -> (Int, Int) {
+    if value is Int {
+        return fold(list, (value, value), fn(acc, item) => (acc.first + item, item));
+    }
+
+    (0, 0)
+}
+
+fn call_after<U>(value: U, f: fn(value: U) -> U) -> U {
+    f(value)
+}
+
+fn bump<T>(value: T) -> Int {
+    if value is Int {
+        let result = call_after((value, nil), fn(pair) => (pair.first + 1, nil));
+        return result.first;
+    }
+
+    0
+}
+
+// And to one in a function's return type
+fn zero() -> Int {
+    0
+}
+
+fn return_lambda<T>(value: T) -> Int {
+    if value is Int {
+        let f: fn() -> Int = call_after(fn() => value, fn(_f) => zero);
+        return f();
+    }
+
+    0
+}
+
+fn fold_lambdas<T>(value: T, list: List<Int>) -> Int {
+    if value is Int {
+        let _f = fold(list, fn() => value, fn(_acc, item) => fn() => item);
+        return 1;
+    }
+
+    0
+}
+
+// A structure that's a union is split over the members of a union it's passed to, so that `nil`
+// is held by the `nil` member
+fn unwrap_or_raise<U>(value: U | nil) -> U {
+    assert !(value is nil);
+    value
+}
+
+fn int_or_raise<T>(value: T) -> Int {
+    if value is Int | nil {
+        let int: Int = unwrap_or_raise(value);
+        return int;
+    }
+
+    0
+}
+
+fn int_or_default<T>(value: T | nil) -> Int {
+    if value is Int | nil {
+        return or_default(value, 5);
+    }
+
+    0
+}
+
+// The fields of a narrowed generic are found within a union too
+fn mixed<T>(value: T | (Int, Int)) -> Any {
+    if value is (Any, Any) {
+        return value.first;
+    }
+
+    nil
+}
+
+fn firsts<T, U>(value: T | U) -> Any {
+    if value is (Any, Any) {
+        return value.first;
+    }
+
+    nil
+}
+
+fn xs<T, U>(value: T | U) -> Int {
+    if value is Point {
+        return value.x;
+    }
+
+    0
+}
+
+fn main() -> Int {
+    atom_or_raise(5)
+}
+
+test fn atom_or_raise_atom() -> Int {
+    atom_or_raise(5)
+}
+
+test fn atom_or_raise_pair() -> (Int, Int) {
+    atom_or_raise((1, 2))
+}
+
+test fn plus_one_int() -> (Int, Int) {
+    plus_one(41)
+}
+
+test fn first_of_pair() -> ((Int, Int), Any) {
+    first_of((1, 2))
+}
+
+test fn first_of_atom() -> (Int, Any) {
+    first_of(1)
+}
+
+test fn atom_else_atom() -> (Int, Atom) {
+    atom_else(1, (0, 0))
+}
+
+test fn atom_else_pair() -> ((Int, Int), Atom) {
+    atom_else((1, 2), ((0, 0), 0))
+}
+
+test fn pair_else_pair() -> ((Int, Int), Any) {
+    pair_else((1, 2), ((0, 0), 0))
+}
+
+test fn pair_else_atom() -> (Int, Any) {
+    pair_else(1, (0, 0))
+}
+
+test fn nested_bytes32() -> (Bytes32, Bytes32) {
+    nested(0x0000000000000000000000000000000000000000000000000000000000000001)
+}
+
+test fn nested_int() -> (Int, Bytes32) {
+    nested(1)
+}
+
+test fn both_bytes32() -> (Bytes32, Bytes32) {
+    both(0x0000000000000000000000000000000000000000000000000000000000000001)
+}
+
+test fn union_atom_atom() -> (Int, Atom) {
+    union_atom(5)
+}
+
+test fn union_atom_pair() -> (Int, Atom) {
+    union_atom::<Int>((1, 2))
+}
+
+test fn point_x_point() -> (Point, Int) {
+    point_x(Point { x: 1, y: 2 })
+}
+
+test fn first_int_pair() -> ((Int, Int), Int) {
+    first_int((1, 2))
+}
+
+test fn not_nil_int() -> (Int, Int) {
+    not_nil(3)
+}
+
+test fn not_nil_nil() -> (nil, Int) {
+    not_nil(nil)
+}
+
+test fn infer_from_structure_pair() -> Int {
+    infer_from_structure((1, 2))
+}
+
+test fn infer_through_alias_atom() -> Int {
+    infer_through_alias(4)
+}
+
+test fn infer_other_atom() -> Int {
+    infer_other(1)
+}
+
+test fn infer_through_generic_alias_atom() -> Int {
+    infer_through_generic_alias(7)
+}
+
+test fn infer_held_nil() -> Bytes32 {
+    infer_held(nil, 0x0000000000000000000000000000000000000000000000000000000000000001)
+}
+
+test fn sum_from_int() -> Int {
+    sum_from(4)
+}
+
+test fn increment_int() -> Int {
+    increment(2)
+}
+
+test fn sum_and_last_int() -> (Int, Int) {
+    sum_and_last(1, [2, 3])
+}
+
+test fn bump_int() -> Int {
+    bump(1)
+}
+
+test fn return_lambda_int() -> Int {
+    return_lambda(5)
+}
+
+test fn fold_lambdas_int() -> Int {
+    fold_lambdas(5, [1, 2])
+}
+
+test fn int_or_raise_int() -> Int {
+    int_or_raise(3)
+}
+
+test fn int_or_raise_nil() -> Int {
+    int_or_raise(nil)
+}
+
+test fn int_or_default_nil() -> Int {
+    int_or_default::<Int>(nil)
+}
+
+test fn int_or_default_int() -> Int {
+    int_or_default(8)
+}
+
+test fn mixed_pair() -> Any {
+    mixed::<Int>((1, 2))
+}
+
+test fn firsts_pair() -> Any {
+    firsts::<(Int, Int), Int>((3, 4))
+}
+
+test fn xs_point() -> Int {
+    xs::<Point, Int>(Point { x: 5, y: 6 })
+}
+
+test fn pass_through_atom() -> Int {
+    pass_through(3)
+}

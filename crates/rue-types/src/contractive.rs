@@ -102,6 +102,7 @@ fn unguarded_edges(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
         Type::Alias(alias) => vec![alias.inner],
         Type::Struct(ty) => vec![ty.inner],
         Type::Union(ty) => ty.types.clone(),
+        Type::Intersection(ty) => ty.types.clone(),
         Type::Apply(apply) => vec![apply.inner],
         Type::Unresolved
         | Type::Generic(_)

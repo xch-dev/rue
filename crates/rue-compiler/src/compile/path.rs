@@ -365,6 +365,7 @@ where
                     | Type::Function(..)
                     | Type::Generic(_)
                     | Type::Union(..)
+                    | Type::Intersection(..)
                     | Type::Never
                     | Type::Any => {
                         vec![]

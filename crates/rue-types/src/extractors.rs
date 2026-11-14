@@ -39,6 +39,9 @@ fn extract_atoms_impl(
             }),
         Type::Struct(ty) => extract_atoms_impl(arena, ty.inner, strict, stack),
         Type::Alias(alias) => extract_atoms_impl(arena, alias.inner, strict, stack),
+        Type::Intersection(ty) => ty
+            .structure(arena)
+            .and_then(|id| extract_atoms_impl(arena, id, strict, stack)),
         Type::Union(ty) => {
             let mut result = None;
 
@@ -98,6 +101,9 @@ fn extract_pairs_impl(
         Type::Pair(pair) => Some(vec![pair]),
         Type::Struct(ty) => extract_pairs_impl(arena, ty.inner, strict, stack),
         Type::Alias(alias) => extract_pairs_impl(arena, alias.inner, strict, stack),
+        Type::Intersection(ty) => ty
+            .structure(arena)
+            .and_then(|id| extract_pairs_impl(arena, id, strict, stack)),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
@@ -144,6 +150,9 @@ fn extract_functions_impl(
         Type::Function(function) => Some(vec![function]),
         Type::Struct(ty) => extract_functions_impl(arena, ty.inner, strict, stack),
         Type::Alias(alias) => extract_functions_impl(arena, alias.inner, strict, stack),
+        Type::Intersection(ty) => ty
+            .structure(arena)
+            .and_then(|id| extract_functions_impl(arena, id, strict, stack)),
         Type::Union(ty) => {
             let mut functions = Vec::new();
 
@@ -215,6 +224,9 @@ fn extract_structs_impl(
             true
         }
         Type::Alias(alias) => extract_structs_impl(arena, alias.inner, structs, stack),
+        Type::Intersection(ty) => ty
+            .structure(arena)
+            .is_some_and(|id| extract_structs_impl(arena, id, structs, stack)),
         Type::Union(ty) => ty
             .types
             .into_iter()
