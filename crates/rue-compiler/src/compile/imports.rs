@@ -611,14 +611,19 @@ fn resolve_import(
                 let public_symbol = symbol.filter(|s| base.is_symbol_exported(*s));
                 let public_ty = ty.filter(|t| base.is_type_exported(*t));
 
-                // Private items are reported, but still imported, like they are in other paths.
                 // If the other namespace has a public item with the name, only it's imported and
-                // nothing is reported. Symbols are only declared after the first pass, so a
-                // private type can be imported then and stay imported, without an error, if a
-                // public symbol with its name is declared later.
+                // nothing is reported. Private items are reported, but never imported: symbols
+                // are only declared after the first pass, and an import can't be undone, so a
+                // private item imported then would stay imported if a public item with its name
+                // is declared later.
                 let (symbol, ty) = if public_symbol.is_some() || public_ty.is_some() {
                     (public_symbol, public_ty)
                 } else {
+                    // The name is reported as private rather than unresolved
+                    if symbol.is_some() || ty.is_some() {
+                        missing_imports.shift_remove(name);
+                    }
+
                     if diagnostics {
                         let module = import.path.last().unwrap().text();
 
@@ -653,7 +658,7 @@ fn resolve_import(
                         }
                     }
 
-                    (symbol, ty)
+                    (None, None)
                 };
 
                 (

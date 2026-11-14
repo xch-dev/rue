@@ -70,18 +70,18 @@ fn private_items_cannot_be_imported() {
         ",
     );
 
-    // The errors are the same as for a path to the items, and the imports still resolve, so
-    // the uses aren't also reported
+    // The errors are the same as for a path to the items. The items aren't imported, so their
+    // uses are reported too
     assert_eq!(
         compiled.errors(),
         [
             "2:23 PrivateSymbol(\"secret\", \"inner\")",
             "3:23 PrivateType(\"Secret\", \"inner\")",
             "4:24 PrivateSymbol(\"hidden\", \"inner\")",
+            "15:22 UndeclaredType(\"Secret\")",
+            "16:13 UndeclaredSymbol(\"secret\")",
         ]
     );
-    assert_eq!(compiled.symbol_origin("secret"), "inner");
-    assert_eq!(compiled.type_origin("Secret"), "inner");
 }
 
 #[test]
@@ -109,13 +109,17 @@ fn private_items_are_not_reported_when_a_public_item_has_the_same_name() {
         ",
     );
 
-    // Types are declared and imported before symbols, so the private type `Value` is imported
-    // before the public constant is declared, and it stays imported without an error. The
-    // private constant `Other` is declared when the public type is already known, so only the
-    // type is imported
-    assert_eq!(compiled.errors(), ["18:13 ExpectedSymbol(\"Other\")"]);
+    // Only the public item with each name is imported, so the private type `Value` and the
+    // private constant `Other` can't be used. Types are declared and imported before symbols, so
+    // this checks that the private type isn't imported before the public constant is declared.
+    assert_eq!(
+        compiled.errors(),
+        [
+            "13:22 UndeclaredType(\"Value\")",
+            "18:13 ExpectedSymbol(\"Other\")",
+        ]
+    );
     assert_eq!(compiled.symbol_origin("Value"), "inner");
-    assert_eq!(compiled.type_origin("Value"), "inner");
     assert_eq!(compiled.type_origin("Other"), "inner");
 }
 
@@ -171,7 +175,7 @@ fn items_cannot_be_imported_through_a_private_module() {
 
     // Each import through the private module is reported, including those that share the
     // resolved path, and the imports still resolve. Importing the module itself is reported
-    // like any other private item.
+    // like any other private item, and like one it isn't imported, so its use is reported too.
     assert_eq!(
         compiled.errors(),
         [
@@ -180,6 +184,7 @@ fn items_cannot_be_imported_through_a_private_module() {
             "4:23 PrivateSymbol(\"hidden\", \"outer\")",
             "5:23 PrivateSymbol(\"hidden\", \"outer\")",
             "6:24 PrivateSymbol(\"hidden\", \"outer\")",
+            "21:44 UndeclaredSymbol(\"hidden\")",
         ]
     );
     assert_eq!(compiled.symbol_origin("VALUE"), "outer::hidden");
