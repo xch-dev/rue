@@ -1542,6 +1542,49 @@ mod inference {
     }
 
     #[test]
+    fn resolves_held_candidates_through_other_generics() {
+        let mut db = Db::new();
+        let (int, nil, recursive_any) =
+            (db.builtins.int, db.builtins.nil, db.builtins.recursive_any);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `Int` to `B` and `(B, nil)` to `A | Any`, which already holds it
+        assert_eq!(db.infer(int, b, &mut infer), Comparison::Assign);
+        let pair = db.pair(b, nil);
+        let param = db.union(&[a, recursive_any]);
+        assert_eq!(db.infer(pair, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, a).held.len(), 1);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&a]), "(Int, nil)");
+    }
+
+    #[test]
+    fn compound_candidates_in_cycles_are_left_as_is() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        // `Int` to `A`, `B` to `A` and `(A, nil)` to `B`, with the generics in either order.
+        // Resolving `B` through `A` would make it an infinite type.
+        let mut results = Vec::new();
+
+        for generics in [[a, b], [b, a]] {
+            let mut infer = Inference::new(generics);
+            assert_eq!(db.infer(int, a, &mut infer), Comparison::Assign);
+            assert_eq!(db.infer(b, a, &mut infer), Comparison::Assign);
+            let pair = db.pair(a, nil);
+            assert_eq!(db.infer(pair, b, &mut infer), Comparison::Assign);
+            results.push(resolve_inference(&mut db.arena, &db.builtins, &infer));
+        }
+
+        for result in &results {
+            assert_eq!(db.name(result[&b]), "(A, nil)");
+        }
+    }
+
+    #[test]
     fn resolves_through_fallback_types() {
         let mut db = Db::new();
         let int = db.builtins.int;

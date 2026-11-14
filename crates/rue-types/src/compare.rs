@@ -753,36 +753,72 @@ impl InferenceResolver<'_> {
             }
         }
 
-        // Such a generic is resolved through the ones it's bounded by that were resolved, or else
-        // falls back like a generic that nothing constrains. If neither is possible, there's
-        // nothing to resolve it to, so its candidates are used as they are.
-        let resolved: HashMap<TypeId, TypeId> = component
-            .iter()
-            .filter_map(|generic| Some((*generic, *self.mappings.get(generic)?)))
-            .collect();
+        // Such a generic is resolved through the ones it's bounded by that were resolved, which can
+        // be others like it, so this is repeated until nothing more resolves. Then the remaining
+        // ones fall back like a generic that nothing constrains, and the ones they bound are
+        // resolved through them in turn. If neither is possible, there's nothing to resolve them
+        // to, so their candidates are used as they are.
+        let mut pending = bounded_by_component;
 
-        for generic in bounded_by_component {
-            let raw = &self.infer.generics[&generic];
-            let through = |types: &Vec<TypeId>| -> Vec<TypeId> {
-                types
-                    .iter()
-                    .filter_map(|ty| resolved.get(ty).copied())
-                    .collect()
-            };
-            let candidates = InferenceCandidates {
-                lower: through(&raw.lower),
-                upper: through(&raw.upper),
-                held: through(&raw.held),
-            };
+        while !pending.is_empty() {
+            let resolved = self.resolve_through_component(arena, builtins, &pending);
 
-            let ty = pick_inferred_type(arena, builtins, &candidates)
-                .or_else(|| self.fallback.get(&generic).copied())
-                .or_else(|| pick_inferred_type(arena, builtins, raw));
+            if !resolved.is_empty() {
+                pending.retain(|generic| !resolved.contains_key(generic));
+                self.mappings.extend(resolved);
+                continue;
+            }
 
-            if let Some(ty) = ty {
-                self.mappings.insert(generic, ty);
+            let fallbacks: HashMap<TypeId, TypeId> = pending
+                .iter()
+                .filter_map(|generic| Some((*generic, *self.fallback.get(generic)?)))
+                .collect();
+
+            if !fallbacks.is_empty() {
+                pending.retain(|generic| !fallbacks.contains_key(generic));
+                self.mappings.extend(fallbacks);
+                continue;
+            }
+
+            for generic in pending.drain(..) {
+                if let Some(ty) =
+                    pick_inferred_type(arena, builtins, &self.infer.generics[&generic])
+                {
+                    self.mappings.insert(generic, ty);
+                }
             }
         }
+    }
+
+    /// Picks a type for each of the generics, which are only bounded by others in their component,
+    /// from the types that those were resolved to. They all read the same mappings, so the order
+    /// of the generics doesn't matter. The ones not bounded by any that were resolved are left out.
+    fn resolve_through_component(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        pending: &[TypeId],
+    ) -> HashMap<TypeId, TypeId> {
+        // Their candidates are all generics in the component, since they're only bounded by it
+        let resolved = |types: &Vec<TypeId>| -> Vec<TypeId> {
+            types
+                .iter()
+                .filter_map(|ty| self.mappings.get(ty).copied())
+                .collect()
+        };
+
+        pending
+            .iter()
+            .filter_map(|&generic| {
+                let raw = &self.infer.generics[&generic];
+                let candidates = InferenceCandidates {
+                    lower: resolved(&raw.lower),
+                    upper: resolved(&raw.upper),
+                    held: resolved(&raw.held),
+                };
+                Some((generic, pick_inferred_type(arena, builtins, &candidates)?))
+            })
+            .collect()
     }
 
     /// Collects the generic's candidates of one kind, with those of the generics in its component

@@ -76,6 +76,46 @@ test fn cycle_resolved_from_expected_type() -> Int {
     function(42) + 1
 }
 
+fn cycle3_bounded<A, B, C>(
+    forward: fn(a: A) -> B,
+    _middle: fn(b: B) -> C,
+    _backward: fn(c: C) -> A,
+    _bound: fn(b: B) -> Int,
+) -> fn(a: A) -> B {
+    forward
+}
+
+test fn cycle_resolved_through_other_generics_in_turn() -> Int {
+    // Only `B` has a bound of its own, `C` is resolved through it, and then `A` through `C`
+    let function = cycle3_bounded(identity, identity, identity, increment);
+    function(42) + 1
+}
+
+fn cycle4<A, B, C, D>(
+    first: fn(a: A) -> B,
+    second: fn(b: B) -> C,
+    third: fn(c: C) -> D,
+    _fourth: fn(d: D) -> A,
+    value: A,
+) -> D {
+    third(second(first(value)))
+}
+
+test fn cycle_of_four() -> Int {
+    let result = cycle4(identity, identity, identity, identity, 42);
+    result + 1
+}
+
+fn pure_cycle_returning_b<A, B>(_forward: fn(a: A) -> B, _backward: fn(b: B) -> A) -> B {
+    unchecked_cast(42)
+}
+
+test fn cycle_resolved_from_expected_type_of_one_generic() -> Int {
+    // Only `B` is given a type by the expected type, and `A` is resolved through it
+    let result: Int = pure_cycle_returning_b(identity, identity);
+    result + 1
+}
+
 fn compose<A, B>(function: fn(a: A) -> B) -> fn(a: A) -> B {
     function
 }
@@ -90,7 +130,9 @@ fn swap<A, B>(depth: Int, first: A, second: B) -> (A, B) {
     if depth == 0 {
         (first, second)
     } else {
-        // `A` and `B` are inferred as each other, which here are the caller's own generics
+        // `A` and `B` are inferred as each other, which here are the caller's own generics. Both
+        // only being bounded by the other, they're left as they are either way, so the generics
+        // in scope are covered by `shift` below
         let (b, a) = swap(depth - 1, second, first);
         (a, b)
     }
