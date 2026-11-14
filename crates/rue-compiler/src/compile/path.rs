@@ -256,30 +256,22 @@ where
             );
         }
 
-        let ambiguous = match initial {
-            PathResult::Symbol(symbol, _, import) => {
-                ctx.is_ambiguous_import(import, Declaration::Symbol(symbol))
-            }
-            PathResult::Type(ty, import) => ctx.is_ambiguous_import(import, Declaration::Type(ty)),
-            PathResult::Unresolved => false,
+        let declaration = match initial {
+            PathResult::Symbol(symbol, _, import) => Some((Declaration::Symbol(symbol), import)),
+            PathResult::Type(ty, import) => Some((Declaration::Type(ty), import)),
+            PathResult::Unresolved => None,
         };
 
-        if ambiguous {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::AmbiguousImport(name.text().to_string()),
-            );
-        }
+        if let Some((declaration, import)) = declaration {
+            if ctx.is_ambiguous_import(import, declaration) {
+                ctx.diagnostic(
+                    &name,
+                    DiagnosticKind::AmbiguousImport(name.text().to_string()),
+                );
+            }
 
-        // The standard library can't reference the modules being linted
-        if qualified && ctx.source().kind.check_unused() {
-            let declaration = match initial {
-                PathResult::Symbol(symbol, _, _) => Some(Declaration::Symbol(symbol)),
-                PathResult::Type(ty, _) => Some(Declaration::Type(ty)),
-                PathResult::Unresolved => None,
-            };
-
-            if let Some(declaration) = declaration {
+            // The standard library can't reference the modules being linted
+            if qualified && ctx.source().kind.check_unused() {
                 let srcloc = ctx.srcloc(&name);
 
                 ctx.lint_sites_mut()

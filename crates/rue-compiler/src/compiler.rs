@@ -748,9 +748,11 @@ impl Compiler {
     }
 
     /// Records that a glob import brought a declaration into a scope that another glob import
-    /// brings a different declaration with the same name into, so using it is ambiguous.
-    pub fn add_ambiguous_import(&mut self, import: ImportId, declaration: Declaration) {
-        self.ambiguous_imports.insert((import, declaration));
+    /// brings a different declaration with the same name into, or that it brought in a
+    /// declaration that was already ambiguous, so using it is ambiguous. Returns whether it
+    /// wasn't already recorded.
+    pub fn add_ambiguous_import(&mut self, import: ImportId, declaration: Declaration) -> bool {
+        self.ambiguous_imports.insert((import, declaration))
     }
 
     /// Whether a name that refers to a declaration through this import is ambiguous.

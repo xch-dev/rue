@@ -89,20 +89,34 @@ fn private_items_are_not_reported_when_a_public_item_has_the_same_name() {
     let compiled = compile(
         "
         import inner::Value;
+        import inner::Other;
 
         mod inner {
             type Value = Int;
             export const Value: Int = 1;
+
+            const Other: Int = 2;
+            export type Other = Int;
         }
 
-        fn main() -> Int {
+        fn main() -> Value {
             Value
+        }
+
+        fn other() -> Other {
+            Other
         }
         ",
     );
 
-    compiled.assert_no_errors();
+    // Types are declared and imported before symbols, so the private type `Value` is imported
+    // before the public constant is declared, and it stays imported without an error. The
+    // private constant `Other` is declared when the public type is already known, so only the
+    // type is imported
+    assert_eq!(compiled.errors(), ["18:13 ExpectedSymbol(\"Other\")"]);
     assert_eq!(compiled.symbol_origin("Value"), "inner");
+    assert_eq!(compiled.type_origin("Value"), "inner");
+    assert_eq!(compiled.type_origin("Other"), "inner");
 }
 
 #[test]
@@ -454,6 +468,76 @@ fn ambiguous_glob_imports_are_reported_through_paths_and_imports() {
 }
 
 #[test]
+fn ambiguous_glob_imports_are_reported_through_chains_of_globs() {
+    let compiled = compile(
+        "
+        mod alpha {
+            export const VALUE: Int = 1;
+        }
+
+        mod beta {
+            export const VALUE: Int = 2;
+        }
+
+        mod both {
+            export alpha::*;
+            export beta::*;
+        }
+
+        mod chained {
+            export both::*;
+        }
+
+        mod user {
+            import chained::*;
+
+            export fn result() -> Int {
+                VALUE
+            }
+        }
+
+        fn main() -> Int {
+            user::result() + chained::VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "23:17 AmbiguousImport(\"VALUE\")",
+            "28:39 AmbiguousImport(\"VALUE\")",
+        ]
+    );
+}
+
+#[test]
+fn named_imports_take_precedence_over_ambiguous_glob_imports() {
+    let compiled = compile(
+        "
+        mod alpha {
+            export const VALUE: Int = 1;
+        }
+
+        mod beta {
+            export const VALUE: Int = 2;
+        }
+
+        import alpha::*;
+        import beta::*;
+        import beta::VALUE;
+
+        fn main() -> Int {
+            VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("VALUE"), "beta");
+}
+
+#[test]
 fn glob_imports_of_the_same_item_are_not_ambiguous() {
     let compiled = compile(
         "
@@ -542,6 +626,29 @@ fn named_imports_of_a_declared_name_are_duplicates() {
         "{:?}",
         compiled.warnings()
     );
+}
+
+#[test]
+fn named_imports_of_a_name_declared_in_the_other_namespace_are_not_duplicates() {
+    let compiled = compile(
+        "
+        import inner::Value;
+
+        mod inner {
+            export const Value: Int = 1;
+        }
+
+        type Value = Int;
+
+        fn main() -> Value {
+            Value
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("Value"), "inner");
+    assert_eq!(compiled.type_origin("Value"), "(root)");
 }
 
 #[test]

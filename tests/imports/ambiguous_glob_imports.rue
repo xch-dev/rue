@@ -17,6 +17,10 @@ mod both {
     export beta::*;
 }
 
+mod chained {
+    export both::*;
+}
+
 mod user {
     import alpha::*;
     import beta::*;
@@ -42,5 +46,10 @@ mod shadowed {
 }
 
 fn main() -> Int {
-    user::ambiguous(1) + user::same_item() + shadowed::local() + both::VALUE + VALUE
+    user::ambiguous(1)
+        + user::same_item()
+        + shadowed::local()
+        + both::VALUE
+        + chained::VALUE
+        + VALUE
 }

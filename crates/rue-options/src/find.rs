@@ -45,15 +45,11 @@ pub struct Project {
 /// Otherwise the nearest directory with a `main.rue` is the project, and otherwise a `.rue` file
 /// is a project by itself.
 pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> {
-    let manifest_path = path.ancestors().find_map(|ancestor| {
-        if ancestor.is_file() && ancestor.file_name().is_some_and(|name| name == "Rue.toml") {
-            Some(ancestor.to_path_buf())
-        } else if ancestor.is_dir() && ancestor.join("Rue.toml").exists() {
-            Some(ancestor.join("Rue.toml"))
-        } else {
-            None
-        }
-    });
+    // A path to a `Rue.toml` file is found as the manifest of its parent directory
+    let manifest_path = path
+        .ancestors()
+        .map(|ancestor| ancestor.join("Rue.toml"))
+        .find(|manifest| manifest.is_file());
 
     if let Some(path) = manifest_path {
         let manifest: Manifest =
