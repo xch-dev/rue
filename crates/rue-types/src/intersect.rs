@@ -1,11 +1,11 @@
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    BuiltinTypes, Comparison, ComparisonContext, Memo, OverlapMemo, Pair, Struct, Type, TypeId,
-    Union, compare, compare_impl, grow_stack, reaches_non_contractive_cycle, step, stringify_impl,
-    substitute, types_may_overlap, unwrap_semantic_without_substitution,
+    BuiltinTypes, Comparison, ComparisonContext, FxIndexSet, Memo, OverlapMemo, Pair, Struct, Type,
+    TypeId, Union, compare, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
+    stringify_impl, substitute, types_may_overlap, unwrap_semantic_without_substitution,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -57,7 +57,7 @@ pub fn intersect(
 
 #[derive(Debug, Default)]
 struct IntersectContext {
-    stack: IndexSet<(TypeId, TypeId)>,
+    stack: FxIndexSet<(TypeId, TypeId)>,
     /// Completed intersections, keyed by the types and the depth (since the result falls back to
     /// `rhs` past a certain depth). The same intersections are reached through every reference to
     /// a type, which is exponential in the depth of the type.

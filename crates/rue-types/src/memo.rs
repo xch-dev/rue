@@ -1,10 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    mem,
-};
+use std::{hash::Hash, mem};
 
-use indexmap::IndexSet;
+use crate::{FxHashMap, FxHashSet, FxIndexSet};
 
 /// Caches the results of a recursive computation over types, which keeps the items in progress on
 /// a stack and returns early when it reaches one of them again (to handle recursive types).
@@ -27,13 +23,13 @@ pub(crate) struct Memo<S, K, V> {
     low: usize,
     /// The items that relied on an item outside of themselves since the current item started.
     open: Vec<S>,
-    done: HashMap<K, Done<S, V>>,
+    done: FxHashMap<K, Done<S, V>>,
 }
 
 #[derive(Debug)]
 struct Done<S, V> {
     value: V,
-    open: HashSet<S>,
+    open: FxHashSet<S>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -48,7 +44,7 @@ impl<S, K, V> Default for Memo<S, K, V> {
         Self {
             low: usize::MAX,
             open: Vec::new(),
-            done: HashMap::new(),
+            done: FxHashMap::default(),
         }
     }
 }
@@ -91,7 +87,7 @@ where
         if self.low < frame.index {
             self.open.push(item);
         } else if let Some(key) = key {
-            let open: HashSet<S> = self.open.drain(frame.open..).collect();
+            let open: FxHashSet<S> = self.open.drain(frame.open..).collect();
             self.open.extend(&open);
             self.done.insert(key, Done { value, open });
         }
@@ -133,7 +129,7 @@ pub(crate) struct FixpointMemo<K, V> {
     /// finished.
     reached: Vec<usize>,
     /// Each result, along with the items in progress that it relied on.
-    done: HashMap<K, (V, Vec<K>)>,
+    done: FxHashMap<K, (V, Vec<K>)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -146,7 +142,7 @@ impl<K, V> Default for FixpointMemo<K, V> {
     fn default() -> Self {
         Self {
             reached: Vec::new(),
-            done: HashMap::new(),
+            done: FxHashMap::default(),
         }
     }
 }
@@ -162,7 +158,7 @@ where
     }
 
     /// Returns the previous result for the key, if the items it relied on are still in progress.
-    pub fn get(&mut self, key: &K, stack: &IndexSet<K>) -> Option<V> {
+    pub fn get(&mut self, key: &K, stack: &FxIndexSet<K>) -> Option<V> {
         let (value, dependencies) = self.done.get(key)?;
 
         let indices = dependencies
@@ -185,7 +181,7 @@ where
 
     /// Finishes computing the item (which has been removed from the stack), and caches the result
     /// under the key, along with the items below it that it relied on.
-    pub fn exit(&mut self, frame: FixpointFrame, key: Option<K>, value: V, stack: &IndexSet<K>) {
+    pub fn exit(&mut self, frame: FixpointFrame, key: Option<K>, value: V, stack: &FxIndexSet<K>) {
         let mut dependencies: Vec<usize> = self
             .reached
             .drain(frame.reached..)

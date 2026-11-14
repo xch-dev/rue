@@ -5,8 +5,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, FunctionParameter, FunctionType, Pair, Struct, Type, TypeId, Union, grow_stack, step,
-    stringify_impl,
+    Alias, FunctionParameter, FunctionType, FxHashMap, FxIndexMap, Pair, Struct, Type, TypeId,
+    Union, grow_stack, step, stringify_impl,
 };
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
@@ -70,12 +70,12 @@ struct SubstitutionContext {
     /// `scopes`), along with the placeholders for their results. The same type can be substituted
     /// under different mappings at the same time (for example, the inner `Alt<B, A>` in
     /// `type Alt<A, B> = nil | (A, Alt<B, A>)`), so it isn't keyed by the type alone.
-    stack: IndexMap<(TypeId, usize), TypeId>,
+    stack: FxIndexMap<(TypeId, usize), TypeId>,
     /// The generic mappings that have been in effect, keyed by their bindings. Mappings with the
     /// same bindings substitute to the same types, so the ones that were inserted first are used.
     scopes: IndexMap<BTreeMap<TypeId, Binding>, HashMap<TypeId, TypeId>>,
     /// Completed substitutions, keyed by the type and the index of the mappings in `scopes`.
-    memo: HashMap<(TypeId, usize), TypeId>,
+    memo: FxHashMap<(TypeId, usize), TypeId>,
     /// Copies of function generics, which they're renamed to when they would capture a mapped
     /// type. The first copy that isn't referenced is reused, so that there are finitely many
     /// distinct mappings and recursive types still reach the substitutions that are in progress.
