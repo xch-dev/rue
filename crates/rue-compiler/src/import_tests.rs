@@ -124,6 +124,33 @@ fn private_items_are_not_reported_when_a_public_item_has_the_same_name() {
 }
 
 #[test]
+fn private_items_are_not_imported_before_a_reexported_public_item_with_the_same_name() {
+    let compiled = compile(
+        "
+        import inner::Value;
+
+        mod inner {
+            type Value = Int;
+            export nested::*;
+
+            mod nested {
+                export const Value: Int = 1;
+            }
+        }
+
+        fn main() -> Value {
+            Value
+        }
+        ",
+    );
+
+    // The public constant only reaches `inner` once the glob import is resolved, after the
+    // private type has been seen, which still isn't imported
+    assert_eq!(compiled.errors(), ["13:22 UndeclaredType(\"Value\")"]);
+    assert_eq!(compiled.symbol_origin("Value"), "inner::nested");
+}
+
+#[test]
 fn missing_items_and_modules_are_reported() {
     let compiled = compile(
         "
