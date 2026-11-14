@@ -742,15 +742,47 @@ fn compact_groups_depend_on_the_formatted_items() {
 }
 
 #[test]
-#[ignore = "known bug found by the property tests: the space after a comment before a trailing \
-            comma is kept when the comma is removed, so a flat braced list gets two spaces before \
-            its closing brace, which the next format reduces to one"]
 fn comments_before_a_removed_trailing_comma_format_idempotently() {
     check(
         "fn f() {\n    S {\n        a: 1,\n        b: 2 /* c */ ,\n    }\n}",
         expect![[r#"
             fn f() {
                 S { a: 1, b: 2 /* c */ }
+            }
+        "#]],
+    );
+    // In a call, the comment is followed by a space, as it is before a closing parenthesis
+    // without a comma
+    check(
+        "fn f() {\n    g(\n        1,\n        2 /* c */ ,\n    );\n}",
+        expect![[r#"
+            fn f() {
+                g(1, 2 /* c */ );
+            }
+        "#]],
+    );
+    // When the list is broken, the comma comes right after the comment
+    check(
+        "fn f() {\n    S {\n        a: first_long_value_name,\n        b: second_long_value_name /* a much longer comment that wraps the struct */ ,\n    }\n}",
+        expect![[r#"
+            fn f() {
+                S {
+                    a: first_long_value_name,
+                    b: second_long_value_name /* a much longer comment that wraps the struct */,
+                }
+            }
+        "#]],
+    );
+    // A line comment before the comma still ends its line
+    check(
+        "fn f() {\n    S {\n        a: 1,\n        b: 2 // c\n        ,\n    }\n}",
+        expect![[r#"
+            fn f() {
+                S {
+                    a: 1,
+                    b: 2 // c
+                    ,
+                }
             }
         "#]],
     );

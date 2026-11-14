@@ -160,14 +160,6 @@ fn check_formatter(text: &str, options: &FormatOptions) {
             // `comments_inside_attributes_can_be_formatted` in the unit tests.
             return;
         }
-        Err(FormatError::Internal(message))
-            if message.starts_with("formatting was not idempotent")
-                && has_comment_before_trailing_comma(&input.node) =>
-        {
-            // A known bug: see `comments_before_a_removed_trailing_comma_format_idempotently` in
-            // the unit tests
-            return;
-        }
         Err(error) => panic!("the formatter failed on source that parses: {error}"),
     };
     assert!(
@@ -190,21 +182,6 @@ fn check_formatter(text: &str, options: &FormatOptions) {
         Signature::new(&reparsed.node),
         "formatting changed the program\n{formatted}"
     );
-}
-
-/// Whether a block comment comes just before a trailing comma, which is followed by a closing
-/// delimiter.
-fn has_comment_before_trailing_comma(root: &SyntaxNode) -> bool {
-    let tokens = root
-        .descendants_with_tokens()
-        .filter_map(rowan::NodeOrToken::into_token)
-        .filter(|token| token.kind() != SyntaxKind::Whitespace)
-        .collect::<Vec<_>>();
-    tokens.windows(3).any(|window| {
-        window[0].kind() == SyntaxKind::BlockComment
-            && window[1].kind() == T![,]
-            && matches!(window[2].kind(), T![')'] | T![']'] | T!['}'] | T![>])
-    })
 }
 
 /// Whether there's a comment between the tokens of an import or an attribute.

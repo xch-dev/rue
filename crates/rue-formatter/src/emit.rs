@@ -392,15 +392,33 @@ impl<'a> Formatter<'a> {
             self.stream.boundary_before(close)
         };
         let inner = self.span(self.stream.span(inner_start, inner_end)?)?;
+        let delimiter_separator = match style {
+            DelimiterStyle::Block => Separator::Hard,
+            DelimiterStyle::Braced | DelimiterStyle::ConditionalBraced => Separator::Soft,
+            DelimiterStyle::Group
+            | DelimiterStyle::Fill
+            | DelimiterStyle::FillBraced
+            | DelimiterStyle::Hug
+            | DelimiterStyle::Vertical => Separator::None,
+        };
         let comma = if source_trailing_comma {
-            let leading = self.gap_doc(self.stream.gap(inner_end), Separator::None);
+            let gap = self.stream.gap(inner_end);
+            let comment_ends_line = gap.comments.is_empty() || gap.ends_line();
+            // An inline comment before the comma is followed by the comma when the list is broken,
+            // and otherwise by what follows a comment before the closing delimiter
+            let leading = self.gap_doc_with_final_line(gap, Separator::None, comment_ends_line);
+            let without_comma = if !comment_ends_line && delimiter_separator == Separator::None {
+                Doc::space()
+            } else {
+                Doc::Nil
+            };
             self.consumed_tokens += 1;
             Doc::concat([
                 leading,
                 if suppress_broken_comma {
-                    Doc::Nil
+                    without_comma
                 } else {
-                    Doc::if_break(Doc::text(","), Doc::Nil)
+                    Doc::if_break(Doc::text(","), without_comma)
                 },
             ])
         } else if supports_trailing_comma && !suppress_broken_comma {
@@ -419,15 +437,6 @@ impl<'a> Formatter<'a> {
                 || comment.multiline
                 || trailing_gap.newlines > 0
         });
-        let delimiter_separator = match style {
-            DelimiterStyle::Block => Separator::Hard,
-            DelimiterStyle::Braced | DelimiterStyle::ConditionalBraced => Separator::Soft,
-            DelimiterStyle::Group
-            | DelimiterStyle::Fill
-            | DelimiterStyle::FillBraced
-            | DelimiterStyle::Hug
-            | DelimiterStyle::Vertical => Separator::None,
-        };
         let leading = if leading_gap.comments.is_empty() {
             separator_doc(delimiter_separator)
         } else {
