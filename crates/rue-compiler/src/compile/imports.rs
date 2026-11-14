@@ -600,12 +600,14 @@ fn resolve_import(
 
             let name = item.text();
 
+            // Each item is resolved along with the import it was brought into its scope by, if any
             let (symbol, ty) = if let Some(base) = base {
                 let base = ctx.scope(base);
                 let symbol = base.symbol(name);
                 let ty = base.ty(name);
                 let public_symbol = symbol.filter(|s| base.is_symbol_exported(*s));
                 let public_ty = ty.filter(|t| base.is_type_exported(*t));
+
                 // Private items are reported, but still imported, like they are in other paths.
                 // If the other namespace has a public item with the name, only it's imported and
                 // nothing is reported. Symbols are only declared after the first pass, so a
@@ -647,37 +649,42 @@ fn resolve_import(
                             );
                         }
                     }
-
-                    let imported = [
-                        symbol.and_then(|s| Some((Declaration::Symbol(s), base.symbol_import(s)?))),
-                        ty.and_then(|t| Some((Declaration::Type(t), base.type_import(t)?))),
-                    ];
-
-                    for (declaration, via) in imported.into_iter().flatten() {
-                        cache
-                            .imported_names
-                            .insert((import_id, declaration), (item.clone(), via));
-                    }
                 }
 
-                (symbol, ty)
+                (
+                    symbol.map(|s| (s, base.symbol_import(s))),
+                    ty.map(|t| (t, base.type_import(t))),
+                )
             } else {
-                let symbol = ctx
-                    .resolve_symbol_in(import.base_scope, name)
-                    .filter(|s| {
-                        import.base_scope == import_scope
-                            || ctx.scope(import.base_scope).is_symbol_exported(s.0)
-                    })
-                    .map(|(s, _)| s);
-                let ty = ctx
-                    .resolve_type_in(import.base_scope, name)
-                    .filter(|t| {
-                        import.base_scope == import_scope
-                            || ctx.scope(import.base_scope).is_type_exported(t.0)
-                    })
-                    .map(|(t, _)| t);
+                let symbol = ctx.resolve_symbol_in(import.base_scope, name).filter(|s| {
+                    import.base_scope == import_scope
+                        || ctx.scope(import.base_scope).is_symbol_exported(s.0)
+                });
+                let ty = ctx.resolve_type_in(import.base_scope, name).filter(|t| {
+                    import.base_scope == import_scope
+                        || ctx.scope(import.base_scope).is_type_exported(t.0)
+                });
                 (symbol, ty)
             };
+
+            // This is recorded in every pass, since an import of a name from an enclosing scope
+            // finds its own binding once it has been resolved
+            let imported = [
+                symbol.and_then(|(s, via)| Some((Declaration::Symbol(s), via?))),
+                ty.and_then(|(t, via)| Some((Declaration::Type(t), via?))),
+            ];
+
+            for (declaration, via) in imported.into_iter().flatten() {
+                if via != import_id {
+                    cache
+                        .imported_names
+                        .entry((import_id, declaration))
+                        .or_insert_with(|| (item.clone(), via));
+                }
+            }
+
+            let symbol = symbol.map(|(s, _)| s);
+            let ty = ty.map(|(t, _)| t);
 
             if let Some(symbol) = symbol {
                 if diagnostics && let Some(srcloc) = item.srcloc() {

@@ -148,11 +148,14 @@ fn items_cannot_be_imported_through_a_private_module() {
         import outer::hidden::VALUE;
         import outer::hidden::OTHER;
         import outer::hidden::deeper::*;
+        import outer::hidden;
+        import outer::{hidden::THIRD};
 
         mod outer {
             mod hidden {
                 export const VALUE: Int = 1;
                 export const OTHER: Int = 2;
+                export const THIRD: Int = 4;
 
                 export mod deeper {
                     export const DEEP: Int = 3;
@@ -161,19 +164,22 @@ fn items_cannot_be_imported_through_a_private_module() {
         }
 
         fn main() -> Int {
-            VALUE + OTHER + DEEP
+            VALUE + OTHER + DEEP + THIRD + hidden::VALUE
         }
         ",
     );
 
     // Each import through the private module is reported, including those that share the
-    // resolved path, and the imports still resolve
+    // resolved path, and the imports still resolve. Importing the module itself is reported
+    // like any other private item.
     assert_eq!(
         compiled.errors(),
         [
             "2:23 PrivateSymbol(\"hidden\", \"outer\")",
             "3:23 PrivateSymbol(\"hidden\", \"outer\")",
             "4:23 PrivateSymbol(\"hidden\", \"outer\")",
+            "5:23 PrivateSymbol(\"hidden\", \"outer\")",
+            "6:24 PrivateSymbol(\"hidden\", \"outer\")",
         ]
     );
     assert_eq!(compiled.symbol_origin("VALUE"), "outer::hidden");
@@ -509,6 +515,101 @@ fn ambiguous_glob_imports_are_reported_through_chains_of_globs() {
             "28:39 AmbiguousImport(\"VALUE\")",
         ]
     );
+}
+
+#[test]
+fn ambiguous_glob_imports_are_reported_through_mutual_glob_exports() {
+    let compiled = compile(
+        "
+        mod alpha {
+            export const VALUE: Int = 1;
+        }
+
+        mod beta {
+            export const VALUE: Int = 2;
+        }
+
+        mod first {
+            export alpha::*;
+            export beta::*;
+            export second::*;
+        }
+
+        mod second {
+            export first::*;
+        }
+
+        fn main() -> Int {
+            first::VALUE + second::VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "21:20 AmbiguousImport(\"VALUE\")",
+            "21:36 AmbiguousImport(\"VALUE\")",
+        ]
+    );
+}
+
+#[test]
+fn named_imports_from_an_enclosing_scope_are_checked_for_ambiguity() {
+    let compiled = compile(
+        "
+        import alpha::*;
+        import beta::*;
+
+        mod alpha {
+            export const VALUE: Int = 1;
+        }
+
+        mod beta {
+            export const VALUE: Int = 2;
+        }
+
+        mod inner {
+            import VALUE;
+
+            export fn result() -> Int {
+                VALUE
+            }
+        }
+
+        fn main() -> Int {
+            inner::result()
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["14:20 AmbiguousImport(\"VALUE\")"]);
+}
+
+#[test]
+fn glob_imports_of_a_symbol_and_a_type_with_the_same_name_are_not_ambiguous() {
+    let compiled = compile(
+        "
+        import alpha::*;
+        import beta::*;
+
+        mod alpha {
+            export const Value: Int = 1;
+        }
+
+        mod beta {
+            export type Value = Int;
+        }
+
+        fn main() -> Value {
+            Value
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("Value"), "alpha");
+    assert_eq!(compiled.type_origin("Value"), "beta");
 }
 
 #[test]
