@@ -80,7 +80,12 @@ pub fn split_group_opening(gap: &Gap) -> (Gap, Gap) {
     } else {
         gap.comments.len() - 1
     };
-    while attached_start > trailing_count && gap.comments[attached_start].newlines_before <= 1 {
+    // Nothing is attached if `attached_start` is past the end, since there's a blank line before
+    // the first path
+    while attached_start > trailing_count
+        && attached_start < gap.comments.len()
+        && gap.comments[attached_start].newlines_before <= 1
+    {
         attached_start -= 1;
     }
 

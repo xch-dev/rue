@@ -14,6 +14,8 @@ pub struct DocumentItem {
     pub span: TokenSpan,
     pub import_group: Option<usize>,
     pub compact_group: Option<CompactGroup>,
+    /// The first token after the item's attributes.
+    pub body_start: TokenId,
     pub leading: Gap,
     pub trailing: Gap,
     pub identity_key: String,
@@ -76,6 +78,7 @@ pub fn plan_document(
             span: stream.span_through(start, last)?,
             import_group: None,
             compact_group: None,
+            body_start: start,
             leading: Gap::default(),
             trailing: Gap::default(),
             identity_key: inner_attributes
@@ -104,9 +107,11 @@ pub fn plan_document(
         });
         previous_was_import = is_import;
 
+        // Constants and type aliases are only kept in a compact group if they're formatted on one
+        // line, which the formatter checks once it has formatted them
         let compact_group = match item.syntax().kind() {
-            SyntaxKind::ConstantItem if is_single_line(&item) => Some(CompactGroup::Constant),
-            SyntaxKind::TypeAliasItem if is_single_line(&item) => Some(CompactGroup::TypeAlias),
+            SyntaxKind::ConstantItem => Some(CompactGroup::Constant),
+            SyntaxKind::TypeAliasItem => Some(CompactGroup::TypeAlias),
             SyntaxKind::FunctionItem
                 if AstFunctionItem::cast(item.syntax().clone()).is_some_and(|function| {
                     function.extern_kw().is_some() && function.body().is_none()
@@ -117,28 +122,35 @@ pub fn plan_document(
             _ => None,
         };
         // Attributes don't affect the order of items, so they're left out of the sort key
-        let key_tokens = item
+        let body_token = item
             .syntax()
             .descendants_with_tokens()
             .filter_map(rowan::NodeOrToken::into_token)
-            .filter(|token| {
+            .find(|token| {
                 !token.kind().is_trivia()
                     && !token
                         .parent_ancestors()
                         .any(|node| node.kind() == SyntaxKind::Attribute)
-            })
-            .collect::<Vec<_>>();
-        let path_key = key_tokens
-            .iter()
-            .filter(|token| !matches!(token.kind(), T![import] | T![export] | T![;]))
-            .map(rue_parser::SyntaxToken::text)
+            });
+        let body_start = match &body_token {
+            Some(token) => stream.token_id_at_offset(usize::from(token.text_range().start()))?,
+            None => span.start(),
+        };
+        let keyword_key = body_token
+            .map(|token| token.text().to_string())
+            .unwrap_or_default();
+        let path_key = item
+            .syntax()
+            .children()
+            .filter(|child| child.kind() == SyntaxKind::ImportPath)
+            .map(|path| sorted_path_text(&path))
             .collect::<String>();
-        let keyword_key = key_tokens.first().map_or("", rue_parser::SyntaxToken::text);
 
         items.push(DocumentItem {
             span,
             import_group,
             compact_group,
+            body_start,
             leading: Gap::default(),
             trailing: Gap::default(),
             identity_key: canonical_node_key(item.syntax()),
@@ -223,11 +235,7 @@ pub fn plan_import_groups(
             let comma = stream
                 .token_at(span.end())
                 .filter(|id| stream.token(*id).kind == T![,]);
-            let sort_key = stream
-                .tokens_in(span)
-                .iter()
-                .map(|token| token.text.as_str())
-                .collect();
+            let sort_key = sorted_path_text(path);
             let before_comma = comma
                 .map(|comma| stream.gap_before(comma).clone())
                 .unwrap_or_default();
@@ -298,22 +306,43 @@ fn node_span(node: &SyntaxNode, stream: &TokenStream) -> Result<TokenSpan, Forma
     stream.span_through(start, last)
 }
 
-/// Whether an item is on a single line, not counting its attributes, which are always formatted
-/// on their own lines.
-fn is_single_line(item: &AstItem) -> bool {
-    !item
-        .syntax()
-        .children_with_tokens()
-        .skip_while(|element| element.kind().is_trivia() || element.kind() == SyntaxKind::Attribute)
-        .any(|element| element.to_string().contains('\n'))
-}
-
 fn gap_has_blank_line(gap: &crate::token_stream::Gap) -> bool {
     gap.newlines > 1
         || gap
             .comments
             .iter()
             .any(|comment| comment.newlines_before > 1)
+}
+
+/// The text of an import path without trivia, with the paths in each group sorted and joined by
+/// commas, which is the same before and after formatting. Sorting by the source text instead
+/// would put `a::{c, b}` after `a::{bb}`, and then before it once the group is sorted.
+fn sorted_path_text(node: &SyntaxNode) -> String {
+    let mut paths = node
+        .children()
+        .filter(|child| child.kind() == SyntaxKind::ImportPath)
+        .map(|path| sorted_path_text(&path))
+        .collect::<Vec<_>>();
+    paths.sort();
+
+    let mut text = String::new();
+    for element in node.children_with_tokens() {
+        match element {
+            rowan::NodeOrToken::Node(child) if child.kind() == SyntaxKind::ImportPath => {}
+            rowan::NodeOrToken::Node(child) => text.push_str(&sorted_path_text(&child)),
+            rowan::NodeOrToken::Token(token) if token.kind() == T!['}'] => {
+                text.push_str(&paths.join(","));
+                text.push('}');
+            }
+            rowan::NodeOrToken::Token(token)
+                if !token.kind().is_trivia() && token.kind() != T![,] =>
+            {
+                text.push_str(token.text());
+            }
+            rowan::NodeOrToken::Token(_) => {}
+        }
+    }
+    text
 }
 
 fn canonical_node_key(node: &SyntaxNode) -> String {

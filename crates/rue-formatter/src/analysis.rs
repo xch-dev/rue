@@ -332,7 +332,12 @@ fn analyze_nodes(
                         // The `!` of an inner attribute is attached to the brackets like a
                         // prefix operator, as in `#![allow(unused_import)]`
                         T![!] => facts[id.index()].flags.insert(TokenFlags::PREFIX_OPERATOR),
-                        T!['['] => facts[id.index()].delimiter_style = Some(DelimiterStyle::Fill),
+                        // With comments directly inside, the brackets are broken like any other
+                        // group, since a fill only checks whether its first line fits, and doesn't
+                        // indent the lines after it when it stays flat
+                        T!['['] if !delimiter_directly_contains_comments(id, stream, facts) => {
+                            facts[id.index()].delimiter_style = Some(DelimiterStyle::Fill);
+                        }
                         T![']'] => facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END),
                         _ => {}
                     }
@@ -459,6 +464,29 @@ fn delimiter_contains_comments(open: TokenId, stream: &TokenStream, facts: &[Tok
             .boundary(index)
             .is_ok_and(|boundary| !stream.gap(boundary).comments.is_empty())
     })
+}
+
+/// Whether there are comments between a delimiter's tokens, not counting those inside nested
+/// delimiters.
+fn delimiter_directly_contains_comments(
+    open: TokenId,
+    stream: &TokenStream,
+    facts: &[TokenFacts],
+) -> bool {
+    let Some(close) = facts[open.index()].pair else {
+        return false;
+    };
+    let mut index = open.index() + 1;
+    while index <= close.index() {
+        if stream
+            .boundary(index)
+            .is_ok_and(|boundary| !stream.gap(boundary).comments.is_empty())
+        {
+            return true;
+        }
+        index = facts[index].pair.map_or(index, TokenId::index) + 1;
+    }
+    false
 }
 
 fn analyze_boundaries(

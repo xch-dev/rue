@@ -1,10 +1,11 @@
 use rue_parser::{SyntaxKind, T};
 
 use crate::{
-    FormatError,
+    FormatError, FormatOptions,
     analysis::{DelimiterStyle, ItemBoundary, Layout},
     document::Doc,
-    ordering::ImportGroupPlan,
+    ordering::{CompactGroup, DocumentItem, ImportGroupPlan},
+    renderer::render,
     token_stream::{Comment, CommentPlacement, Gap, TokenId, TokenSpan, TokenStream},
     trivia::split_between,
 };
@@ -19,12 +20,15 @@ enum Separator {
 }
 
 impl Separator {
+    /// The separator that's still needed after the comments in `gap`, which end with a line break
+    /// or a blank line of their own.
     fn after(self, gap: &Gap) -> Self {
         if !gap.ends_line() {
             return self;
         }
         match self {
-            Self::Empty => Self::Hard,
+            // A gap whose comments are followed by a blank line already provides it
+            Self::Empty if gap.newlines <= 1 => Self::Hard,
             _ => Self::None,
         }
     }
@@ -33,15 +37,17 @@ impl Separator {
 pub struct Formatter<'a> {
     stream: &'a TokenStream,
     layout: Layout,
+    options: &'a FormatOptions,
     consumed_tokens: usize,
     consumed_comments: usize,
 }
 
 impl<'a> Formatter<'a> {
-    pub fn new(stream: &'a TokenStream, layout: Layout) -> Self {
+    pub fn new(stream: &'a TokenStream, layout: Layout, options: &'a FormatOptions) -> Self {
         Self {
             stream,
             layout,
+            options,
             consumed_tokens: 0,
             consumed_comments: 0,
         }
@@ -50,19 +56,49 @@ impl<'a> Formatter<'a> {
     pub fn format(mut self) -> Result<Doc, FormatError> {
         let items = self.layout.document.items.clone();
         let header = self.layout.document.header.clone();
-        let footer = self.layout.document.footer.clone();
+        let mut footer = self.layout.document.footer.clone();
         let mut docs = vec![self.gap_doc(&header, Separator::None)];
 
-        for (position, item) in items.iter().enumerate() {
+        // Sorting can move the comments around a blank line that ended an import group into the
+        // middle of one, where the blank line would split the group on the next format
+        let same_import_group = |left: &DocumentItem, right: &DocumentItem| {
+            left.import_group.is_some() && left.import_group == right.import_group
+        };
+        let trailing_gaps = items
+            .iter()
+            .enumerate()
+            .map(|(position, item)| {
+                let mut trailing = item.trailing.clone();
+                if items
+                    .get(position + 1)
+                    .is_some_and(|next| same_import_group(item, next))
+                {
+                    remove_blank_lines(&mut trailing);
+                }
+                trailing
+            })
+            .collect::<Vec<_>>();
+
+        let mut formatted_items = Vec::with_capacity(items.len());
+        for (item, trailing) in items.iter().zip(&trailing_gaps) {
+            formatted_items.push(self.document_item(item, trailing)?);
+        }
+        let compact_groups = formatted_items
+            .iter()
+            .map(|formatted| formatted.compact_group)
+            .collect::<Vec<_>>();
+
+        for (position, (item, formatted)) in items.iter().zip(formatted_items).enumerate() {
             let separator = if position == 0 {
                 Separator::None
             } else {
                 let previous = &items[position - 1];
+                let previous_group = compact_groups[position - 1];
                 let requested = match (previous.import_group, item.import_group) {
                     (Some(left), Some(right)) if left == right => Separator::Hard,
                     (None, None)
-                        if previous.compact_group.is_some()
-                            && previous.compact_group == item.compact_group
+                        if previous_group.is_some()
+                            && previous_group == compact_groups[position]
                             && (item.span.start().index() == 0
                                 || self.stream.gap_before(item.span.start()).newlines <= 1) =>
                     {
@@ -70,18 +106,26 @@ impl<'a> Formatter<'a> {
                     }
                     _ => Separator::Empty,
                 };
-                requested.after(&previous.trailing)
+                requested.after(&trailing_gaps[position - 1])
             };
             let mut leading = item.leading.clone();
-            if position == 0
-                && let Some(first) = leading.comments.first_mut()
-            {
-                first.newlines_before = 0;
-                first.placement = CommentPlacement::Leading;
+            if position > 0 && same_import_group(&items[position - 1], item) {
+                remove_blank_lines(&mut leading);
+            }
+            if position == 0 {
+                if let Some(first) = leading.comments.first_mut() {
+                    first.newlines_before = 0;
+                    first.placement = CommentPlacement::Leading;
+                }
+            } else {
+                start_own_line(&mut leading, &trailing_gaps[position - 1]);
             }
             docs.push(self.movable_leading_doc(&leading, separator));
-            docs.push(self.span(item.span)?);
-            docs.push(self.gap_doc(&item.trailing, Separator::None));
+            docs.push(formatted.item);
+            docs.push(formatted.trailing);
+        }
+        if let Some(last) = trailing_gaps.last() {
+            start_own_line(&mut footer, last);
         }
         docs.push(self.gap_doc(&footer, Separator::None));
 
@@ -99,6 +143,55 @@ impl<'a> Formatter<'a> {
             )));
         }
         Ok(Doc::concat(docs))
+    }
+
+    /// Formats a top-level item and the comments after it on the same line, and works out which
+    /// compact group it's in. A constant or type alias is only in one if it's formatted on one
+    /// line, not counting its attributes, which are always on lines of their own. This is decided
+    /// from the formatted item rather than the source, so that formatting it again gives the same
+    /// result.
+    fn document_item(
+        &mut self,
+        item: &DocumentItem,
+        trailing: &Gap,
+    ) -> Result<FormattedItem, FormatError> {
+        if !matches!(
+            item.compact_group,
+            Some(CompactGroup::Constant | CompactGroup::TypeAlias)
+        ) {
+            return Ok(FormattedItem {
+                item: self.span(item.span)?,
+                trailing: self.gap_doc(trailing, Separator::None),
+                compact_group: item.compact_group,
+            });
+        }
+
+        let attributes = if item.body_start == item.span.start() {
+            Doc::Nil
+        } else {
+            let last_attribute_token =
+                self.stream.previous_token(item.body_start).ok_or_else(|| {
+                    FormatError::Internal("item body has no preceding attribute token".to_string())
+                })?;
+            Doc::concat([
+                self.span(
+                    self.stream
+                        .span_through(item.span.start(), last_attribute_token)?,
+                )?,
+                self.gap_between(last_attribute_token, item.body_start),
+            ])
+        };
+        let body = self.span(self.stream.span(item.body_start, item.span.end())?)?;
+        let trailing = self.gap_doc(trailing, Separator::None);
+        // Trailing comments can make the item break, so they're rendered with it
+        let single_line = !render(&Doc::concat([body.clone(), trailing.clone()]), self.options)
+            .trim_end()
+            .contains('\n');
+        Ok(FormattedItem {
+            item: Doc::concat([attributes, body]),
+            trailing,
+            compact_group: item.compact_group.filter(|_| single_line),
+        })
     }
 
     fn span(&mut self, span: TokenSpan) -> Result<Doc, FormatError> {
@@ -189,13 +282,7 @@ impl<'a> Formatter<'a> {
                     )
                 })?;
                 if !emitted_separator {
-                    let separator = self.separator(atom_end, index);
-                    let gap = self.stream.gap_before(index);
-                    if separator == Separator::Empty {
-                        docs.push(self.item_gap_doc(gap));
-                    } else {
-                        docs.push(self.gap_doc(gap, separator));
-                    }
+                    docs.push(self.gap_between(atom_end, index));
                 }
             } else {
                 break;
@@ -309,15 +396,33 @@ impl<'a> Formatter<'a> {
             self.stream.boundary_before(close)
         };
         let inner = self.span(self.stream.span(inner_start, inner_end)?)?;
+        let delimiter_separator = match style {
+            DelimiterStyle::Block => Separator::Hard,
+            DelimiterStyle::Braced | DelimiterStyle::ConditionalBraced => Separator::Soft,
+            DelimiterStyle::Group
+            | DelimiterStyle::Fill
+            | DelimiterStyle::FillBraced
+            | DelimiterStyle::Hug
+            | DelimiterStyle::Vertical => Separator::None,
+        };
         let comma = if source_trailing_comma {
-            let leading = self.gap_doc(self.stream.gap(inner_end), Separator::None);
+            let gap = self.stream.gap(inner_end);
+            let comment_ends_line = gap.comments.is_empty() || gap.ends_line();
+            // An inline comment before the comma is followed by the comma when the list is broken,
+            // and otherwise by what follows a comment before the closing delimiter
+            let leading = self.gap_doc_with_final_line(gap, Separator::None, comment_ends_line);
+            let without_comma = if !comment_ends_line && delimiter_separator == Separator::None {
+                Doc::space()
+            } else {
+                Doc::Nil
+            };
             self.consumed_tokens += 1;
             Doc::concat([
                 leading,
                 if suppress_broken_comma {
-                    Doc::Nil
+                    without_comma
                 } else {
-                    Doc::if_break(Doc::text(","), Doc::Nil)
+                    Doc::if_break(Doc::text(","), without_comma)
                 },
             ])
         } else if supports_trailing_comma && !suppress_broken_comma {
@@ -336,15 +441,6 @@ impl<'a> Formatter<'a> {
                 || comment.multiline
                 || trailing_gap.newlines > 0
         });
-        let delimiter_separator = match style {
-            DelimiterStyle::Block => Separator::Hard,
-            DelimiterStyle::Braced | DelimiterStyle::ConditionalBraced => Separator::Soft,
-            DelimiterStyle::Group
-            | DelimiterStyle::Fill
-            | DelimiterStyle::FillBraced
-            | DelimiterStyle::Hug
-            | DelimiterStyle::Vertical => Separator::None,
-        };
         let leading = if leading_gap.comments.is_empty() {
             separator_doc(delimiter_separator)
         } else {
@@ -428,16 +524,29 @@ impl<'a> Formatter<'a> {
         let opening = self.gap_doc(&plan.opening, Separator::None);
         let before_items = if plan.opening.ends_line() {
             Doc::Nil
+        } else if plan
+            .items
+            .first()
+            .is_some_and(|item| !item.leading.comments.is_empty())
+        {
+            // Comments before the first path would belong to `{` if they followed it on the same
+            // line
+            Doc::hard_line()
         } else {
             Doc::if_break(Doc::hard_line(), Doc::Nil)
         };
         let mut docs = Vec::new();
         for (position, item) in plan.items.iter().enumerate() {
             let mut leading = item.leading.clone();
-            if position == 0
-                && let Some(first) = leading.comments.first_mut()
-            {
-                first.newlines_before = 0;
+            if position == 0 {
+                // Comments before the first path that are separated from it by a blank line belong
+                // to `{`, which they don't if sorting moved the path here
+                remove_blank_lines(&mut leading);
+                if let Some(first) = leading.comments.first_mut() {
+                    first.newlines_before = 0;
+                }
+            } else {
+                start_own_line(&mut leading, &plan.items[position - 1].trailing);
             }
             let separator = if position == 0 {
                 Separator::None
@@ -446,7 +555,12 @@ impl<'a> Formatter<'a> {
             };
             docs.push(self.movable_leading_doc(&leading, separator));
             docs.push(self.span(item.span)?);
-            docs.push(self.gap_doc(&item.before_comma, Separator::None));
+            // The comma follows an inline comment directly, as in other lists
+            docs.push(self.gap_doc_with_final_line(
+                &item.before_comma,
+                Separator::None,
+                item.before_comma.ends_line(),
+            ));
             if item.comma.is_some() {
                 self.consumed_tokens += 1;
             }
@@ -455,20 +569,50 @@ impl<'a> Formatter<'a> {
             } else {
                 docs.push(Doc::if_break(Doc::text(","), Doc::Nil));
             }
-            let suppress_final_line = position + 1 == plan.items.len()
-                && plan.closing.comments.is_empty()
-                && item.trailing.ends_line();
+            let last = position + 1 == plan.items.len();
+            // The separator before the next path already gives the space after an inline comment
+            let suppress_final_line = if last {
+                plan.closing.comments.is_empty() && item.trailing.ends_line()
+            } else {
+                !item.trailing.ends_line()
+            };
+            // A blank line after trailing comments is only kept before leading comments, as in
+            // `split_between`, which sorting can move away
+            let mut trailing = item.trailing.clone();
+            if plan
+                .items
+                .get(position + 1)
+                .is_some_and(|next| next.leading.comments.is_empty())
+            {
+                trailing.newlines = trailing.newlines.min(1);
+            }
             docs.push(self.gap_doc_with_final_line(
-                &item.trailing,
+                &trailing,
                 Separator::None,
                 !suppress_final_line,
             ));
         }
-        docs.push(self.gap_doc_with_final_line(&plan.closing, Separator::None, false));
+        let mut closing = plan.closing.clone();
+        if let Some(last) = plan.items.last() {
+            start_own_line(&mut closing, &last.trailing);
+        }
+        docs.push(self.gap_doc_with_final_line(&closing, Separator::None, false));
+        // The line after a comment that ends the last item's line is left out above, so that it's
+        // emitted here outside the indentation, but it's still needed when the group would
+        // otherwise fit on one line
+        let closing_line = if plan
+            .items
+            .last()
+            .is_some_and(|item| item.trailing.ends_line())
+        {
+            Doc::hard_line()
+        } else {
+            Doc::if_break(Doc::hard_line(), Doc::Nil)
+        };
         Ok(Doc::concat([
             open,
             Doc::concat([opening, before_items, Doc::concat(docs)]).indent(),
-            Doc::if_break(Doc::hard_line(), Doc::Nil),
+            closing_line,
             close,
         ])
         .group())
@@ -526,6 +670,17 @@ impl<'a> Formatter<'a> {
             Separator::None
         } else {
             Separator::Space
+        }
+    }
+
+    /// The separator and comments between two adjacent tokens.
+    fn gap_between(&mut self, previous: TokenId, next: TokenId) -> Doc {
+        let separator = self.separator(previous, next);
+        let gap = self.stream.gap_before(next);
+        if separator == Separator::Empty {
+            self.item_gap_doc(gap)
+        } else {
+            self.gap_doc(gap, separator)
         }
     }
 
@@ -642,6 +797,12 @@ impl<'a> Formatter<'a> {
         }
         Doc::concat(docs)
     }
+}
+
+struct FormattedItem {
+    item: Doc,
+    trailing: Doc,
+    compact_group: Option<CompactGroup>,
 }
 
 trait GroupIf {
@@ -762,6 +923,31 @@ fn indent_levels(mut doc: Doc, levels: usize) -> Doc {
     doc
 }
 
+/// Puts the comments in `gap`, which start on a line of their own, after `previous`, the trailing
+/// comments before them. Sorting can change what those are, so the line breaks between them aren't
+/// all kept from the source: when `previous` already ends its line, the comments need one line
+/// break fewer, or none if `previous` ends with a blank line, and otherwise they need at least one,
+/// or they'd follow what comes before them.
+fn start_own_line(gap: &mut Gap, previous: &Gap) {
+    if let Some(first) = gap.comments.first_mut() {
+        first.newlines_before = if !previous.ends_line() {
+            first.newlines_before.max(1)
+        } else if previous.newlines > 1 {
+            0
+        } else {
+            first.newlines_before.saturating_sub(1)
+        };
+    }
+}
+
+/// Limits the line breaks in a gap to one, so it has no blank lines.
+fn remove_blank_lines(gap: &mut Gap) {
+    gap.newlines = gap.newlines.min(1);
+    for comment in &mut gap.comments {
+        comment.newlines_before = comment.newlines_before.min(1);
+    }
+}
+
 fn separator_doc(separator: Separator) -> Doc {
     match separator {
         Separator::None => Doc::Nil,
@@ -779,7 +965,9 @@ fn comment_separator(comment: &Comment, requested: Separator, ignore_trailing: b
     if comment.newlines_before > 1 {
         return Doc::empty_line();
     }
-    if comment.newlines_before > 0 || comment.multiline {
+    if comment.newlines_before > 0
+        || (comment.multiline && comment.placement == CommentPlacement::Trailing)
+    {
         return Doc::hard_line();
     }
     separator_doc(requested)

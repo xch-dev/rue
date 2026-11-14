@@ -25,3 +25,4 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }
+proptest = { workspace = true }

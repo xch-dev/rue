@@ -408,3 +408,99 @@ fn comments_followed_by_a_blank_line_stay_after_the_previous_item() {
         "#]],
     );
 }
+
+#[test]
+fn comments_after_a_trailing_comment_keep_one_blank_line_before_them() {
+    // Found by the property tests: a second format added another blank line before `// doc`
+    check(
+        "fn f() {} // trailing\n// doc\nfn g() {}\nfn h() {} /* trailing */\n\n/* doc */\nfn i() {}\nconst A: Int = 1; // trailing\n\n// doc\nconst B: Int = 2;",
+        expect![[r#"
+            fn f() {} // trailing
+
+            // doc
+            fn g() {}
+
+            fn h() {} /* trailing */
+
+            /* doc */
+            fn i() {}
+
+            const A: Int = 1; // trailing
+
+            // doc
+            const B: Int = 2;
+        "#]],
+    );
+}
+
+#[test]
+fn multiline_comments_after_a_trailing_comment_keep_one_blank_line_before_them() {
+    // Found by the property tests: the multiline comment added a line break of its own after the
+    // one ending the trailing comment, so each format added another blank line before it
+    check(
+        "fn f() {} /* trailing */\n/* multi\nline */\nfn g() {}\nfn h() {} /* trailing */\n/* multi\nline */\n\nfn i() {} /* trailing */\n/* multi\nline */",
+        expect![[r#"
+            fn f() {} /* trailing */
+
+            /* multi
+            line */
+            fn g() {}
+
+            fn h() {} /* trailing */
+
+            /* multi
+            line */
+
+            fn i() {} /* trailing */
+            /* multi
+            line */
+        "#]],
+    );
+}
+
+#[test]
+fn block_comments_at_the_end_of_the_file_have_no_trailing_space() {
+    // Found in review: sorting moved `/* x */` to the end of the file, and the space after it was
+    // only removed at the end of a line, not at the end of the file
+    check(
+        "import c; /* x */ import b;",
+        expect![[r#"
+            import b;
+            import c; /* x */
+        "#]],
+    );
+}
+
+#[test]
+fn multiline_comments_at_the_start_of_a_line_add_no_blank_lines() {
+    // The same fix stops a multiline comment from adding a blank line at the start of the file,
+    // after a file header, and after an import group's opening comment
+    check(
+        "/* multi\nline */\nfn f() {}",
+        expect![[r#"
+            /* multi
+            line */
+            fn f() {}
+        "#]],
+    );
+    check(
+        "// header\n\n/* multi\nline */\nfn f() {}",
+        expect![[r#"
+            // header
+
+            /* multi
+            line */
+            fn f() {}
+        "#]],
+    );
+    check(
+        "import a::{ /* trailing */\n/* multi\nline */\nb};",
+        expect![[r#"
+            import a::{ /* trailing */
+                /* multi
+            line */
+                b,
+            };
+        "#]],
+    );
+}

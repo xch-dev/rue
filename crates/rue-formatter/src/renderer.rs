@@ -141,6 +141,8 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
         }
     }
 
+    // Spaces at the end of the document are removed like those at the end of any other line
+    output.truncate(content_end);
     normalize_output(&output)
 }
 
@@ -168,16 +170,23 @@ fn fits(
         mode: initial_mode,
         doc,
     });
+    // Spaces only take up width if text follows them on the same line, since `render` removes
+    // them at the end of a line
+    let mut pending_spaces = 0;
 
     while let Some(command) = commands.pop() {
         match command.doc {
             Doc::Nil => {}
+            Doc::Text(text) if text.chars().all(|char| char == ' ') => {
+                pending_spaces += text.len();
+            }
             Doc::Text(text) => {
-                let width = text.chars().count();
+                let width = pending_spaces + text.chars().count();
                 if width > remaining {
                     return false;
                 }
                 remaining -= width;
+                pending_spaces = 0;
             }
             Doc::Concat(docs) => {
                 for doc in docs.iter().rev() {
@@ -189,10 +198,7 @@ fn fits(
                 }
             }
             Doc::Line(LineKind::Soft) if command.mode == Mode::Flat => {
-                if remaining == 0 {
-                    return false;
-                }
-                remaining -= 1;
+                pending_spaces += 1;
             }
             Doc::Fill {
                 flat,
@@ -289,6 +295,28 @@ mod tests {
                 },
             ),
             "long_lhs\n    == rhs\ntail\n"
+        );
+    }
+
+    #[test]
+    fn spaces_before_a_line_break_do_not_count_toward_the_width() {
+        // The group's soft line and the space after it are removed at the end of the line, so the
+        // group fits exactly
+        let doc = Doc::concat([
+            Doc::text("abc"),
+            Doc::concat([Doc::text("de"), Doc::soft_line(), Doc::space()]).group(),
+            Doc::hard_line(),
+            Doc::text("tail"),
+        ]);
+        assert_eq!(
+            render(
+                &doc,
+                &FormatOptions {
+                    max_width: 5,
+                    indent_width: 4,
+                },
+            ),
+            "abcde\ntail\n"
         );
     }
 }

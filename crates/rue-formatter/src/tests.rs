@@ -98,6 +98,27 @@ fn width_breaks_delimited_groups() {
 }
 
 #[test]
+fn spaces_at_the_end_of_a_line_do_not_count_toward_the_width() {
+    // Found by the property tests: the space after `/* block */`, which is removed since `)` goes
+    // on the next line, made the call too wide to fit on the first format but not on the second
+    let options = FormatOptions {
+        max_width: 30,
+        indent_width: 3,
+    };
+    let output =
+        format_source("fn f() {\n    a & (b == c(d) /* block */ );\n}\n", &options).unwrap();
+    expect![[r#"
+        fn f() {
+           a
+              & (
+                 b == c(d) /* block */
+              );
+        }
+    "#]]
+    .assert_eq(&output);
+}
+
+#[test]
 fn malformed_input_is_rejected() {
     let error = format_source("fn main( {", &FormatOptions::default()).unwrap_err();
     assert!(matches!(error, FormatError::Parse { .. }));
@@ -659,6 +680,109 @@ fn bodyless_extern_functions_can_form_compact_groups() {
 
             extern fn with_body() -> Int {
                 1
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn constants_that_wrap_format_idempotently() {
+    check(
+        "const A: Int = 1;\nconst B: Int = first_long_operand + second_long_operand + third_long_operand + fourth_long_operand + fifth;",
+        expect![[r#"
+            const A: Int = 1;
+
+            const B: Int = first_long_operand
+                + second_long_operand
+                + third_long_operand
+                + fourth_long_operand
+                + fifth;
+        "#]],
+    );
+}
+
+#[test]
+fn compact_groups_depend_on_the_formatted_items() {
+    // A type alias that wraps is separated from its neighbours, and its attributes don't count
+    check(
+        "type A = Int;\n#[allow(unused_type_alias)]\ntype B = first_long_type_name | second_long_type_name | third_long_type_name | fourth_type_name | fifth;\ntype C = Int;",
+        expect![[r#"
+            type A = Int;
+
+            #[allow(unused_type_alias)]
+            type B = first_long_type_name
+                | second_long_type_name
+                | third_long_type_name
+                | fourth_type_name
+                | fifth;
+
+            type C = Int;
+        "#]],
+    );
+    // A constant that's on several lines in the source but fits on one joins the group
+    check(
+        "const A: Int = 1;\nconst B: Int =\n    2;\nconst C: Int = 3;",
+        expect![[r#"
+            const A: Int = 1;
+            const B: Int = 2;
+            const C: Int = 3;
+        "#]],
+    );
+    // A trailing comment that makes a constant wrap separates it too
+    check(
+        "const A: Int = 1;\nconst B: Int = first_long_operand + second_long_operand + third_operand; // a much longer trailing comment",
+        expect![[r#"
+            const A: Int = 1;
+
+            const B: Int = first_long_operand
+                + second_long_operand
+                + third_operand; // a much longer trailing comment
+        "#]],
+    );
+}
+
+#[test]
+fn comments_before_a_removed_trailing_comma_format_idempotently() {
+    check(
+        "fn f() {\n    S {\n        a: 1,\n        b: 2 /* c */ ,\n    }\n}",
+        expect![[r#"
+            fn f() {
+                S { a: 1, b: 2 /* c */ }
+            }
+        "#]],
+    );
+    // In a call, the comment is followed by a space, as it is before a closing parenthesis
+    // without a comma
+    check(
+        "fn f() {\n    g(\n        1,\n        2 /* c */ ,\n    );\n}",
+        expect![[r#"
+            fn f() {
+                g(1, 2 /* c */ );
+            }
+        "#]],
+    );
+    // When the list is broken, the comma comes right after the comment
+    check(
+        "fn f() {\n    S {\n        a: first_long_value_name,\n        b: second_long_value_name /* a much longer comment that wraps the struct */ ,\n    }\n}",
+        expect![[r#"
+            fn f() {
+                S {
+                    a: first_long_value_name,
+                    b: second_long_value_name /* a much longer comment that wraps the struct */,
+                }
+            }
+        "#]],
+    );
+    // A line comment before the comma still ends its line
+    check(
+        "fn f() {\n    S {\n        a: 1,\n        b: 2 // c\n        ,\n    }\n}",
+        expect![[r#"
+            fn f() {
+                S {
+                    a: 1,
+                    b: 2 // c
+                    ,
+                }
             }
         "#]],
     );
