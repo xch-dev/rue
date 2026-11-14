@@ -426,16 +426,61 @@ fn local_declarations_take_precedence_over_glob_imports() {
 }
 
 #[test]
-fn local_declarations_take_precedence_over_named_imports() {
+fn named_imports_of_a_declared_name_are_duplicates() {
     let compiled = compile(
         "
         import inner::VALUE;
+        import inner::Number;
 
         mod inner {
             export const VALUE: Int = 1;
+            export type Number = Int;
         }
 
         const VALUE: Int = 2;
+        type Number = Int;
+
+        fn main() -> Number {
+            VALUE
+        }
+        ",
+    );
+
+    // The local declarations are used, and the imports are reported rather than unused
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:23 DuplicateSymbol(\"VALUE\")",
+            "3:23 DuplicateType(\"Number\")",
+        ]
+    );
+    assert_eq!(
+        compiled.reference_origins("main", "VALUE"),
+        ["`VALUE`: (root)"]
+    );
+    assert_eq!(compiled.type_origin("Number"), "(root)");
+    assert!(
+        !compiled.warnings().iter().any(|w| w.ends_with("UnusedImport")),
+        "{:?}",
+        compiled.warnings()
+    );
+}
+
+#[test]
+fn named_imports_of_different_items_with_the_same_name_are_duplicates() {
+    let compiled = compile(
+        "
+        import alpha::VALUE;
+        import beta::VALUE;
+        import alpha::VALUE;
+
+        mod alpha {
+            export const VALUE: Int = 1;
+        }
+
+        mod beta {
+            export const VALUE: Int = 2;
+        }
 
         fn main() -> Int {
             VALUE
@@ -443,17 +488,10 @@ fn local_declarations_take_precedence_over_named_imports() {
         ",
     );
 
-    // The import is silently shadowed rather than reported as a duplicate, so it's unused, and
-    // so is the constant it would have imported
-    compiled.assert_no_errors();
-    assert_eq!(
-        compiled.reference_origins("main", "VALUE"),
-        ["`VALUE`: (root)"]
-    );
-    assert_eq!(
-        compiled.warnings(),
-        ["2:23 UnusedImport", "5:26 UnusedConstant"]
-    );
+    // Imports are resolved in order of their paths, so the first `alpha` import is used and
+    // importing the same item again isn't a duplicate
+    assert_eq!(compiled.errors(), ["3:22 DuplicateSymbol(\"VALUE\")"]);
+    assert_eq!(compiled.symbol_origin("VALUE"), "alpha");
 }
 
 #[test]

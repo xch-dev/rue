@@ -137,10 +137,22 @@ pub struct ImportCache {
     scopes: HashMap<(ScopeId, Vec<String>), CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
-    /// The private items that imports refer to, keyed by the import and the index of the name in
-    /// its path (the length of the path for the imported item, plus one for its type), so that
-    /// each is reported once however many times the import is resolved.
-    private_references: IndexMap<(ImportId, usize), (Name, DiagnosticKind)>,
+    /// The errors in imports, keyed by where they are, so that each is reported once however
+    /// many times the import is resolved.
+    errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
+}
+
+/// An error in an import, which is reported once all imports are resolved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ImportError {
+    /// The segment of the path at this index names a private module.
+    PrivateModule(usize),
+    PrivateSymbol,
+    PrivateType,
+    /// The name is already declared in the scope as a different symbol.
+    DuplicateSymbol,
+    /// The name is already declared in the scope as a different type.
+    DuplicateType,
 }
 
 /// The module that a path resolves to.
@@ -226,7 +238,7 @@ pub fn resolve_imports(
             }
         }
 
-        for (name, kind) in cache.private_references.values() {
+        for (name, kind) in cache.errors.values() {
             ctx.diagnostic_name(name, kind.clone());
         }
 
@@ -402,8 +414,8 @@ fn resolve_import(
     for &index in &private_segments {
         let name = &import.path[index];
 
-        cache.private_references.insert(
-            (import_id, index),
+        cache.errors.insert(
+            (import_id, ImportError::PrivateModule(index)),
             (
                 name.clone(),
                 DiagnosticKind::PrivateSymbol(
@@ -528,20 +540,20 @@ fn resolve_import(
                 let public_symbol = symbol.filter(|s| base.is_symbol_exported(*s));
                 let public_ty = ty.filter(|t| base.is_type_exported(*t));
                 let module = import.path.last().unwrap().text();
-                let symbol_key = (import_id, import.path.len());
-                let type_key = (import_id, import.path.len() + 1);
+                let symbol_key = (import_id, ImportError::PrivateSymbol);
+                let type_key = (import_id, ImportError::PrivateType);
 
                 // Private items are reported, but still imported, like they are in other paths.
                 // If the other namespace has a public item with the name, only it's imported and
                 // nothing is reported. Symbols are declared after the first pass, so a private
                 // type imported then stays imported once a public symbol with its name appears.
                 if public_symbol.is_some() || public_ty.is_some() {
-                    cache.private_references.shift_remove(&symbol_key);
-                    cache.private_references.shift_remove(&type_key);
+                    cache.errors.shift_remove(&symbol_key);
+                    cache.errors.shift_remove(&type_key);
                     (public_symbol, public_ty)
                 } else {
                     if symbol.is_some() {
-                        cache.private_references.insert(
+                        cache.errors.insert(
                             symbol_key,
                             (
                                 item.clone(),
@@ -551,7 +563,7 @@ fn resolve_import(
                     }
 
                     if ty.is_some() {
-                        cache.private_references.insert(
+                        cache.errors.insert(
                             type_key,
                             (
                                 item.clone(),
@@ -612,6 +624,15 @@ fn resolve_import(
                         .push((name.to_string(), Declaration::Symbol(symbol)));
                     updated = true;
                     unused_imports.shift_remove(name);
+                } else if diagnostics && target.symbol(name) != Some(symbol) {
+                    cache.errors.insert(
+                        (import_id, ImportError::DuplicateSymbol),
+                        (
+                            item.clone(),
+                            DiagnosticKind::DuplicateSymbol(name.to_string()),
+                        ),
+                    );
+                    unused_imports.shift_remove(name);
                 }
             }
 
@@ -646,6 +667,15 @@ fn resolve_import(
                         .declarations
                         .push((name.to_string(), Declaration::Type(ty)));
                     updated = true;
+                    unused_imports.shift_remove(name);
+                } else if diagnostics && target.ty(name) != Some(ty) {
+                    cache.errors.insert(
+                        (import_id, ImportError::DuplicateType),
+                        (
+                            item.clone(),
+                            DiagnosticKind::DuplicateType(name.to_string()),
+                        ),
+                    );
                     unused_imports.shift_remove(name);
                 }
             }
