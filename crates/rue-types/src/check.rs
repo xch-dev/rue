@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::HashMap};
+use std::cmp::max;
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
@@ -6,8 +6,9 @@ use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Memo, Pair, Type, TypeId,
-    compare_impl, grow_stack, reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxIndexSet,
+    Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
+    stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,7 +221,7 @@ struct CheckContext {
     comparison: ComparisonContext<'static>,
     /// Completed checks, keyed by the arguments to `check_each`. The same checks are reached
     /// through every reference to a type, which is exponential in the depth of the type.
-    memo: HashMap<(Vec<TypeId>, TypeId, usize), Result<Check, CheckError>>,
+    memo: FxHashMap<(Vec<TypeId>, TypeId, usize), Result<Check, CheckError>>,
 }
 
 fn check_impl(
@@ -435,7 +436,7 @@ fn check_each_impl_inner(
                         builtins,
                         pair.first,
                         target_pair.first,
-                        &mut IndexSet::new(),
+                        &mut FxIndexSet::default(),
                         &mut Memo::default(),
                     )
                 })
@@ -622,7 +623,7 @@ pub(crate) fn types_may_overlap(
     rhs: TypeId,
     memo: &mut OverlapMemo,
 ) -> bool {
-    may_overlap(arena, builtins, lhs, rhs, &mut IndexSet::new(), memo)
+    may_overlap(arena, builtins, lhs, rhs, &mut FxIndexSet::default(), memo)
 }
 
 fn may_overlap(
@@ -630,7 +631,7 @@ fn may_overlap(
     builtins: &BuiltinTypes,
     lhs: TypeId,
     rhs: TypeId,
-    stack: &mut IndexSet<(TypeId, TypeId)>,
+    stack: &mut FxIndexSet<(TypeId, TypeId)>,
     memo: &mut OverlapMemo,
 ) -> bool {
     grow_stack(|| may_overlap_inner(arena, builtins, lhs, rhs, stack, memo))
@@ -641,7 +642,7 @@ fn may_overlap_inner(
     builtins: &BuiltinTypes,
     lhs: TypeId,
     rhs: TypeId,
-    stack: &mut IndexSet<(TypeId, TypeId)>,
+    stack: &mut FxIndexSet<(TypeId, TypeId)>,
     memo: &mut OverlapMemo,
 ) -> bool {
     step();

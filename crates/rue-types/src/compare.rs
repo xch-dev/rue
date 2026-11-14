@@ -10,9 +10,9 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
-    Memo, Type, TypeId, Union, compare_memo_enabled, free_generics, grow_stack,
-    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
-    substitute_with_mappings,
+    FxHashMap, FxIndexSet, Memo, Type, TypeId, Union, compare_memo_enabled, free_generics,
+    grow_stack, has_non_contractive_cycle, reachable, references_generic, step, stringify_impl,
+    substitute, substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -164,7 +164,7 @@ struct Instance {
 #[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
     infer: Option<&'a mut Inference>,
-    stack: IndexSet<ComparisonKey>,
+    stack: FxIndexSet<ComparisonKey>,
     /// The number of binders when each comparison in `stack` was entered, and the binders it
     /// references, in the order they're numbered.
     stack_binders: Vec<(usize, Vec<usize>)>,
@@ -189,16 +189,16 @@ pub(crate) struct ComparisonContext<'a> {
     instantiable_from: usize,
     /// What the generics referenced by the types in each `ComparisonKey` are bound to, for each
     /// side and generic.
-    bindings: IndexSet<Vec<(bool, TypeId, Binding)>>,
+    bindings: FxIndexSet<Vec<(bool, TypeId, Binding)>>,
     /// The generics that each type references, which are cached since the types don't change
     /// while comparing.
-    references: HashMap<TypeId, Vec<TypeId>>,
+    references: FxHashMap<TypeId, Vec<TypeId>>,
     /// The rigid generics of functions in the type that the generics are being inferred from (the
     /// right hand side unless flipped), such as `U` in a parameter of type `fn<U>(x: U) -> T`.
     /// They aren't in scope where the inferred generics are used, so they can't be inferred as
     /// them. They're kept afterward, since they can still reach the bounds of enclosing functions'
     /// generics.
-    rigid: IndexSet<TypeId>,
+    rigid: FxIndexSet<TypeId>,
     /// The number of inference candidates that have been collected.
     candidates: usize,
     /// Whether the value is already held by another member of a union being compared against,
@@ -215,7 +215,7 @@ pub(crate) struct ComparisonContext<'a> {
     /// Completed comparisons, reused while the comparisons they relied on are in progress.
     fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
     /// Whether each type that a comparison started from is monotone (see `is_monotone`).
-    monotone: HashMap<TypeId, bool>,
+    monotone: FxHashMap<TypeId, bool>,
 }
 
 impl ComparisonContext<'_> {
