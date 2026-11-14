@@ -186,14 +186,6 @@ pub fn compile_function_call_expr(
 
         let mut mappings = ctx.resolve_inference(&infer);
 
-        let has_generic_arguments = matches!(
-            call.expr(),
-            Some(AstExpr::PathExpr(path))
-                if path.segments().any(|segment| segment
-                    .generic_arguments()
-                    .is_some_and(|generic_arguments| generic_arguments.types().next().is_some()))
-        );
-
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
@@ -220,8 +212,7 @@ pub fn compile_function_call_expr(
                 ctx.is_unresolved(ty) && contains_generic(ctx.types_mut(), param, generic)
             });
 
-            // If generic arguments were given, a mismatch in their number was already reported
-            if !has_generic_arguments && !from_unresolved_argument {
+            if !from_unresolved_argument {
                 let generic_name = ctx.type_name(generic);
                 let function_name = callee_name(call);
 

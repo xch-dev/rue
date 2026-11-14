@@ -102,6 +102,9 @@ pub enum DiagnosticKind {
     #[error("Undeclared type `{0}`")]
     UndeclaredType(String),
 
+    #[error("The placeholder `_` can only be used as a generic argument of a function")]
+    PlaceholderType,
+
     #[error("Duplicate field `{0}` specified")]
     DuplicateField(String),
 

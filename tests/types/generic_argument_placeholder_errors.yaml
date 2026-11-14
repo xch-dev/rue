@@ -1,0 +1,23 @@
+diagnostics:
+- |-
+  Field `y` of struct `Point` is never read at generic_argument_placeholder_errors.rue:15:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- Unused type alias `Pair` at generic_argument_placeholder_errors.rue:18:6
+- Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at generic_argument_placeholder_errors.rue:25:17
+- Cannot infer generic `B` for `wrap`; specify it explicitly, e.g. `wrap::<...>()` at generic_argument_placeholder_errors.rue:26:16
+- Expected 2 generic arguments, but found 1 at generic_argument_placeholder_errors.rue:31:17
+- Expected 2 generic arguments, but found 3 at generic_argument_placeholder_errors.rue:32:16
+- Cannot assign `"hello"` to `Int` without a cast, since they are semantically different at generic_argument_placeholder_errors.rue:37:31
+- Cannot assign `Bytes | nil` to `Int` without a cast, since they are semantically different at generic_argument_placeholder_errors.rue:38:21
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:42:23
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:42:29
+- Unused binding `list` at generic_argument_placeholder_errors.rue:43:9
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:43:20
+- Unused binding `point` at generic_argument_placeholder_errors.rue:44:9
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:44:22
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:45:31
+- Unused binding `pair` at generic_argument_placeholder_errors.rue:46:9
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:46:20
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:47:22
+- The placeholder `_` can only be used as a generic argument of a function at generic_argument_placeholder_errors.rue:52:28
+- Generic arguments are not permitted on symbol references at generic_argument_placeholder_errors.rue:58:5

@@ -293,6 +293,62 @@ fn identity<T>(value: T) -> T {
 }
 
 #[test]
+fn test_hover_generic_function_with_placeholder() {
+    check(
+        r#"
+fn main() -> Int {
+    wr$0ap::<_, Bytes>(42).first
+}
+
+fn wrap<A, B>(value: A) -> (A, B | nil) {
+    (value, nil)
+}
+"#,
+        expect![[r#"
+            fn wrap<A, B>(value: A) -> (A, B | nil)
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_argument_placeholder() {
+    check(
+        r#"
+fn main() -> Int {
+    let pair = wrap::<$0_, Bytes>(42);
+    pair.first
+}
+
+fn wrap<A, B>(value: A) -> (A, B | nil) {
+    (value, nil)
+}
+"#,
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_binding_with_placeholder() {
+    check(
+        r#"
+fn main() -> Int {
+    let pa$0ir = wrap::<_, Bytes>(42);
+    pair.first
+}
+
+fn wrap<A, B>(value: A) -> (A, B | nil) {
+    (value, nil)
+}
+"#,
+        expect![[r#"
+            let pair: (Int, Bytes | nil)
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_spread_parameter() {
     check(
         r#"

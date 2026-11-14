@@ -8,7 +8,10 @@ use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, FunctionType, Type, TypeId};
 
-use crate::{Compiler, CompletionContext, GetTextRange, SyntaxItemKind, compile_generic_arguments};
+use crate::{
+    Compiler, CompletionContext, GetTextRange, SyntaxItemKind, compile_function_generic_arguments,
+    compile_generic_arguments,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathKind {
@@ -214,6 +217,9 @@ where
                         &name,
                         DiagnosticKind::UndeclaredSymbol(name.text().to_string()),
                     ),
+                    PathKind::Type if name.text() == "_" => {
+                        ctx.diagnostic(&name, DiagnosticKind::PlaceholderType);
+                    }
                     PathKind::Type => ctx.diagnostic(
                         &name,
                         DiagnosticKind::UndeclaredType(name.text().to_string()),
@@ -275,7 +281,7 @@ where
                 ctx.reference_span(Declaration::Symbol(symbol), name.text_range());
 
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
-                    compile_generic_arguments(ctx, &generic_arguments)
+                    compile_function_generic_arguments(ctx, &generic_arguments)
                 } else {
                     vec![]
                 };
@@ -296,12 +302,18 @@ where
 
                         let mut map = HashMap::new();
 
-                        for (i, arg) in args.iter().enumerate() {
-                            if i >= function.vars.len() {
-                                break;
+                        // A `_` leaves its generic to be inferred, and a generic with no argument
+                        // at all is unresolved, since the mismatch was already reported
+                        for (i, &var) in function.vars.iter().enumerate() {
+                            match args.get(i) {
+                                Some(Some(arg)) => {
+                                    map.insert(var, *arg);
+                                }
+                                Some(None) => {}
+                                None => {
+                                    map.insert(var, ctx.builtins().unresolved.ty);
+                                }
                             }
-
-                            map.insert(function.vars[i], *arg);
                         }
 
                         // The instance no longer binds the generics that are given, so that

@@ -1,0 +1,8 @@
+tests:
+- name: declared_placeholder_type
+  program: (a (i (= (f (q 1)) (q . 1)) (q 1 . "hello") (q)) 1)
+  debug_program: (a (q 2 (q 2 (q 2 (i (= 2 (q . 1)) (q . 9) (q)) 1) (c (f 6) 1)) (c (c (q . "hello") (a 2 (q . 1))) 1)) (c (q 4 1 ()) ()))
+  output: '"hello"'
+  runtime_cost: 420
+  byte_cost: 504000
+  total_cost: 504420

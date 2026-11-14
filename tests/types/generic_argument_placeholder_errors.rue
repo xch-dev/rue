@@ -1,0 +1,59 @@
+fn get<T>() -> T {
+    unchecked_cast(nil)
+}
+
+fn wrap<A, B>(value: A) -> (A, B | nil) {
+    (value, nil)
+}
+
+fn both<A, B>(first: A, second: B) -> (A, B) {
+    (first, second)
+}
+
+struct Point<T> {
+    x: T,
+    y: T,
+}
+
+type Pair<T> = (T, T);
+
+fn main() -> Int {
+    uninferred() + arity() + mismatch() + annotations(1) + nested() + non_function()
+}
+
+fn uninferred() -> Int {
+    let value = get::<_>();
+    let pair = wrap::<_, _>(1);
+    value + pair.first
+}
+
+fn arity() -> Int {
+    let short = wrap::<_>(1);
+    let long = wrap::<_, Bytes, _>(1);
+    short.first + long.first
+}
+
+fn mismatch() -> Int {
+    let pair = both::<Int, _>("hello", 1);
+    let rest: Int = wrap::<_, Bytes>(1).rest;
+    pair.rest + rest
+}
+
+fn annotations(value: _) -> _ {
+    let list: List<_> = nil;
+    let point: Point<_> = Point::<Int> { x: 1, y: 2 };
+    let initializer = Point::<_> { x: 1, y: 2 };
+    let pair: Pair<_> = (1, 2);
+    let placeholder: _ = value;
+    placeholder + initializer.x
+}
+
+fn nested() -> Int {
+    let pair = both::<List<_>, _>([1], 2);
+    pair.rest
+}
+
+fn non_function() -> Int {
+    let value = 1;
+    value::<_>
+}

@@ -1,0 +1,64 @@
+tests:
+- name: infer_first
+  program: (a (q 16 4 (a (i 6 (q) (q 1 . 1)) 1)) (c (q 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (f 5) (a (i (= 2 ()) (q 1 . 1) (q)) 1)) (c (r 2) 1)) (c (a 2 (q . 1)) 1)) (c (q 4 1 ()) ()))
+  output: '2'
+  runtime_cost: 1315
+  byte_cost: 540000
+  total_cost: 541315
+- name: infer_second
+  program: (concat (r (q 1 . "hello")) (q . 33))
+  debug_program: (a (q 2 (q 14 (r 2) (q . 33)) (c (a 2 (c (q . 1) (q . "hello"))) 1)) (c (q 4 2 3) ()))
+  output: '"hello!"'
+  runtime_cost: 562
+  byte_cost: 264000
+  total_cost: 264562
+- name: infer_all
+  program: (a (q 16 (f (a 2 (q 1 . 2))) (r (a 2 (q 3 . 4)))) (c (q . 1) ()))
+  debug_program: (a (q 16 (f (a 2 (c (q . 1) (q . 2)))) (r (a 2 (c (q . 3) (q . 4))))) (c (q 4 2 3) ()))
+  output: '5'
+  runtime_cost: 1450
+  byte_cost: 612000
+  total_cost: 613450
+- name: explicit_widens_argument
+  program: (f (q () . 2))
+  debug_program: (a (q 2 (q 5 2) (c (a 2 (c () (q . 2))) 1)) (c (q 4 2 3) ()))
+  output: ()
+  runtime_cost: 51
+  byte_cost: 108000
+  total_cost: 108051
+- name: through_module
+  program: (+ (f (q 5)) (q . 1))
+  debug_program: (a (q 16 (f (a 2 (q . 5))) (q . 1)) (c (q 4 1 ()) ()))
+  output: '6'
+  runtime_cost: 827
+  byte_cost: 204000
+  total_cost: 204827
+- name: infer_from_expected_type
+  program: (q 1)
+  debug_program: (a (q 2 2 (q . 1)) (c (q 4 1 ()) ()))
+  output: (1)
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: function_value
+  program: (a (q 2 (q 16 (f (a 2 (q 1))) (f (a 5 (q 2))) (a (i (r (a 2 (q 1))) (q 1 . 1) (q)) 1)) (c 2 1)) (c (q 4 2 ()) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (f (a 9 (c (q . 1) ()))) (f (a 13 (c (q . 2) ())))) (a (i (= 2 ()) (q) (q 1 . 1)) 1)) (c (r (a 4 (c (q . 1) ()))) 1)) (c (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ())))) 1)) (c (q 4 2 ()) ()))
+  output: '3'
+  runtime_cost: 2812
+  byte_cost: 1284000
+  total_cost: 1286812
+- name: builtin
+  program: (q . 6)
+  debug_program: (a (q 16 2 (q . 1)) (c (q . 5) 1))
+  output: '6'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: recursive
+  program: (a (q 2 2 (c 2 (q 3 . "hello"))) (c (q 2 (i 5 (q 16 (a 2 (c 2 (c (- 5 (q . 1)) 7))) (q . 1)) (q)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 3) (q . "hello")))) (c (q 2 (i (= 5 ()) (q) (q 16 (q . 1) (a 2 (c 2 (c (- 5 (q . 1)) 7))))) 1) ()))
+  output: '3'
+  runtime_cost: 7394
+  byte_cost: 1080000
+  total_cost: 1087394
