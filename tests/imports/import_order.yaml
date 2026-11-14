@@ -27,14 +27,14 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
-- name: glob_collisions_are_canonical_in_first_order
+- name: unused_glob_collisions_are_allowed_in_first_order
   program: (q . 72)
   debug_program: (a (q 2 8 (c (c 12 (c 10 14)) ())) (c (c (c (q 16 (+ 14 10) 4) (q . 2)) (c (q . 30) (q . 40))) ()))
   output: '72'
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
-- name: glob_collisions_are_canonical_in_second_order
+- name: unused_glob_collisions_are_allowed_in_second_order
   program: (q . 72)
   debug_program: (a (q 2 8 (c (c 12 (c 10 14)) ())) (c (c (c (q 16 (+ 14 10) 4) (q . 2)) (c (q . 30) (q . 40))) ()))
   output: '72'

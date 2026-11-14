@@ -79,7 +79,9 @@ fn construct_imports(
     if let Some(name) = last.name()
         && name.text() == "super"
     {
+        // There's nothing to import, so the import isn't also reported as unresolved
         ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
+        return vec![];
     }
 
     let source = ctx.source().clone();
@@ -135,6 +137,26 @@ pub struct ImportCache {
     scopes: HashMap<(ScopeId, Vec<String>), CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
+    /// The errors in imports, keyed by where they are, so that each is reported once however
+    /// many times the import is resolved.
+    errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
+    /// The names in imports that refer to a declaration through another import, which are
+    /// ambiguous if that import is an ambiguous glob import. They're checked once every glob
+    /// import is resolved.
+    imported_names: IndexMap<(ImportId, Declaration), (Name, ImportId)>,
+}
+
+/// An error in an import, which is reported once all imports are resolved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ImportError {
+    /// The segment of the path at this index names a private module.
+    PrivateModule(usize),
+    PrivateSymbol,
+    PrivateType,
+    /// The name is already declared in the scope as a different symbol.
+    DuplicateSymbol,
+    /// The name is already declared in the scope as a different type.
+    DuplicateType,
 }
 
 /// The module that a path resolves to.
@@ -142,9 +164,12 @@ pub struct ImportCache {
 struct CachedPath {
     scope: ScopeId,
     symbol: SymbolId,
-    /// The declarations referenced through other imports while resolving the path, so that
-    /// they're recorded for every import that uses it.
-    references: Vec<(ImportId, Declaration)>,
+    /// The declarations referenced through other imports while resolving the path, with the
+    /// index of the segment that names each, so that they're recorded for every import that uses
+    /// it.
+    references: Vec<(usize, ImportId, Declaration)>,
+    /// The indices of the segments of the path that name a private module.
+    private_segments: Vec<usize>,
 }
 
 fn flatten_imports(
@@ -218,6 +243,19 @@ pub fn resolve_imports(
             }
         }
 
+        for (name, kind) in cache.errors.values() {
+            ctx.diagnostic_name(name, kind.clone());
+        }
+
+        for (&(_, declaration), (name, via)) in &cache.imported_names {
+            if ctx.is_ambiguous_import(Some(*via), declaration) {
+                ctx.diagnostic_name(
+                    name,
+                    DiagnosticKind::AmbiguousImport(name.text().to_string()),
+                );
+            }
+        }
+
         for unused_imports in cache.unused_imports.values() {
             for name in unused_imports.values() {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
@@ -274,6 +312,7 @@ fn resolve_import(
     let mut base = None;
     let mut path_so_far = Vec::new();
     let mut path_references = Vec::new();
+    let mut private_segments = Vec::new();
 
     for i in (1..=import.path.len()).rev() {
         let subpath = import
@@ -287,8 +326,9 @@ fn resolve_import(
             base = Some(cached.scope);
             path_so_far = subpath;
             path_references.clone_from(&cached.references);
+            private_segments.clone_from(&cached.private_segments);
 
-            for &(import, declaration) in &cached.references {
+            for &(_, import, declaration) in &cached.references {
                 ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
             }
 
@@ -309,22 +349,23 @@ fn resolve_import(
         }
     }
 
-    for name in import.path.iter().skip(path_so_far.len()) {
+    for (index, name) in import.path.iter().enumerate().skip(path_so_far.len()) {
+        // A private module is reported, but still resolved, like it is in other paths
         let symbol = if let Some(base) = base {
             let base = ctx.scope(base);
             base.symbol(name.text())
-                .filter(|s| base.is_symbol_exported(*s))
-                .map(|s| (s, base.symbol_import(s)))
+                .map(|s| (s, base.symbol_import(s), base.is_symbol_exported(s)))
         } else if import.base_scope == import_scope {
             ctx.resolve_symbol_in(import.base_scope, name.text())
+                .map(|(s, import)| (s, import, true))
         } else {
             let base = ctx.scope(import.base_scope);
             base.symbol(name.text())
                 .filter(|s| base.is_symbol_exported(*s))
-                .map(|s| (s, base.symbol_import(s)))
+                .map(|s| (s, base.symbol_import(s), true))
         };
 
-        let Some((symbol, import)) = symbol else {
+        let Some((symbol, import, exported)) = symbol else {
             if diagnostics {
                 ctx.diagnostic_name(
                     name,
@@ -340,7 +381,7 @@ fn resolve_import(
                 Declaration::Symbol(symbol),
                 ImportUser::Import(import_id),
             );
-            path_references.push((import, Declaration::Symbol(symbol)));
+            path_references.push((index, import, Declaration::Symbol(symbol)));
         }
 
         if diagnostics && let Some(srcloc) = name.srcloc() {
@@ -367,6 +408,10 @@ fn resolve_import(
         base = Some(module.scope);
         path_so_far.push(name.text().to_string());
 
+        if !exported {
+            private_segments.push(index);
+        }
+
         if !has_super {
             cache.scopes.insert(
                 (import_scope, path_so_far.clone()),
@@ -374,8 +419,36 @@ fn resolve_import(
                     scope: module.scope,
                     symbol,
                     references: path_references.clone(),
+                    private_segments: private_segments.clone(),
                 },
             );
+        }
+    }
+
+    // Errors are only recorded once every declaration is known
+    if diagnostics {
+        for &(index, via, declaration) in &path_references {
+            cache
+                .imported_names
+                .entry((import_id, declaration))
+                .or_insert_with(|| (import.path[index].clone(), via));
+        }
+
+        for &index in &private_segments {
+            cache
+                .errors
+                .entry((import_id, ImportError::PrivateModule(index)))
+                .or_insert_with(|| {
+                    let name = &import.path[index];
+
+                    (
+                        name.clone(),
+                        DiagnosticKind::PrivateSymbol(
+                            name.text().to_string(),
+                            import.path[index - 1].text().to_string(),
+                        ),
+                    )
+                });
         }
     }
 
@@ -389,36 +462,57 @@ fn resolve_import(
                 .or_insert_with(|| (star.clone(), 0))
                 .1;
 
+            // Each item is listed with the import it was brought into the module by, if any
             let symbols = if let Some(base) = base {
-                ctx.scope(base)
-                    .exported_symbols()
-                    .map(|(name, symbol)| (name.to_string(), symbol))
+                let base = ctx.scope(base);
+
+                base.exported_symbols()
+                    .map(|(name, symbol)| (name.to_string(), symbol, base.symbol_import(symbol)))
                     .collect::<Vec<_>>()
             } else {
                 let base = ctx.scope(import.base_scope);
 
                 base.symbol_names()
-                    .map(|name| (name.to_string(), base.symbol(name).unwrap()))
+                    .map(|name| {
+                        let symbol = base.symbol(name).unwrap();
+                        (name.to_string(), symbol, base.symbol_import(symbol))
+                    })
                     .collect::<Vec<_>>()
             };
 
             let types = if let Some(base) = base {
-                ctx.scope(base)
-                    .exported_types()
-                    .map(|(name, ty)| (name.to_string(), ty))
+                let base = ctx.scope(base);
+
+                base.exported_types()
+                    .map(|(name, ty)| (name.to_string(), ty, base.type_import(ty)))
                     .collect::<Vec<_>>()
             } else {
                 let base = ctx.scope(import.base_scope);
 
                 base.type_names()
-                    .map(|name| (name.to_string(), base.ty(name).unwrap()))
+                    .map(|name| {
+                        let ty = base.ty(name).unwrap();
+                        (name.to_string(), ty, base.type_import(ty))
+                    })
                     .collect::<Vec<_>>()
             };
 
-            for (name, symbol) in symbols {
+            for (name, symbol, via) in symbols {
                 if targeted_names.contains(&(import_scope, name.clone())) {
                     continue;
                 }
+
+                // A name that's ambiguous where it's imported from is ambiguous here too. The
+                // imports are resolved again until nothing changes, so this reaches the end of
+                // any chain of glob imports.
+                let declaration = Declaration::Symbol(symbol);
+
+                if ctx.is_ambiguous_import(via, declaration)
+                    && ctx.scope(import_scope).symbol_import(symbol) == Some(import_id)
+                {
+                    updated |= ctx.add_ambiguous_import(import_id, declaration);
+                }
+
                 let target = ctx.scope_mut(import_scope);
 
                 if target.symbol(&name).is_none() {
@@ -439,13 +533,29 @@ fn resolve_import(
                         .push((name, Declaration::Symbol(symbol)));
                     updated = true;
                     *count += 1;
+                } else if let Some(existing) = target.symbol(&name)
+                    && existing != symbol
+                    && let Some(existing_import) = target.symbol_import(existing)
+                    && matches!(ctx.import(existing_import).items, Items::All(_))
+                {
+                    updated |=
+                        ctx.add_ambiguous_import(existing_import, Declaration::Symbol(existing));
                 }
             }
 
-            for (name, ty) in types {
+            for (name, ty, via) in types {
                 if targeted_names.contains(&(import_scope, name.clone())) {
                     continue;
                 }
+
+                let declaration = Declaration::Type(ty);
+
+                if ctx.is_ambiguous_import(via, declaration)
+                    && ctx.scope(import_scope).type_import(ty) == Some(import_id)
+                {
+                    updated |= ctx.add_ambiguous_import(import_id, declaration);
+                }
+
                 let target = ctx.scope_mut(import_scope);
 
                 if target.ty(&name).is_none() {
@@ -466,6 +576,13 @@ fn resolve_import(
                         .push((name, Declaration::Type(ty)));
                     updated = true;
                     *count += 1;
+                } else if let Some(existing) = target.ty(&name)
+                    && existing != ty
+                    && let Some(existing_import) = target.type_import(existing)
+                    && matches!(ctx.import(existing_import).items, Items::All(_))
+                {
+                    updated |=
+                        ctx.add_ambiguous_import(existing_import, Declaration::Type(existing));
                 }
             }
         }
@@ -486,28 +603,98 @@ fn resolve_import(
 
             let name = item.text();
 
+            // Each item is resolved along with the import it was brought into its scope by, if any
             let (symbol, ty) = if let Some(base) = base {
                 let base = ctx.scope(base);
-                let symbol = base.symbol(name).filter(|s| base.is_symbol_exported(*s));
-                let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
-                (symbol, ty)
+                let symbol = base.symbol(name);
+                let ty = base.ty(name);
+                let public_symbol = symbol.filter(|s| base.is_symbol_exported(*s));
+                let public_ty = ty.filter(|t| base.is_type_exported(*t));
+
+                // If the other namespace has a public item with the name, only it's imported and
+                // nothing is reported. Private items are reported, but never imported: symbols
+                // are only declared after the first pass, and an import can't be undone, so a
+                // private item imported then would stay imported if a public item with its name
+                // is declared later.
+                let (symbol, ty) = if public_symbol.is_some() || public_ty.is_some() {
+                    (public_symbol, public_ty)
+                } else {
+                    // The name is reported as private rather than unresolved
+                    if symbol.is_some() || ty.is_some() {
+                        missing_imports.shift_remove(name);
+                    }
+
+                    if diagnostics {
+                        let module = import.path.last().unwrap().text();
+
+                        if symbol.is_some() {
+                            cache
+                                .errors
+                                .entry((import_id, ImportError::PrivateSymbol))
+                                .or_insert_with(|| {
+                                    (
+                                        item.clone(),
+                                        DiagnosticKind::PrivateSymbol(
+                                            name.to_string(),
+                                            module.to_string(),
+                                        ),
+                                    )
+                                });
+                        }
+
+                        if ty.is_some() {
+                            cache
+                                .errors
+                                .entry((import_id, ImportError::PrivateType))
+                                .or_insert_with(|| {
+                                    (
+                                        item.clone(),
+                                        DiagnosticKind::PrivateType(
+                                            name.to_string(),
+                                            module.to_string(),
+                                        ),
+                                    )
+                                });
+                        }
+                    }
+
+                    (None, None)
+                };
+
+                (
+                    symbol.map(|s| (s, base.symbol_import(s))),
+                    ty.map(|t| (t, base.type_import(t))),
+                )
             } else {
-                let symbol = ctx
-                    .resolve_symbol_in(import.base_scope, name)
-                    .filter(|s| {
-                        import.base_scope == import_scope
-                            || ctx.scope(import.base_scope).is_symbol_exported(s.0)
-                    })
-                    .map(|(s, _)| s);
-                let ty = ctx
-                    .resolve_type_in(import.base_scope, name)
-                    .filter(|t| {
-                        import.base_scope == import_scope
-                            || ctx.scope(import.base_scope).is_type_exported(t.0)
-                    })
-                    .map(|(t, _)| t);
+                let symbol = ctx.resolve_symbol_in(import.base_scope, name).filter(|s| {
+                    import.base_scope == import_scope
+                        || ctx.scope(import.base_scope).is_symbol_exported(s.0)
+                });
+                let ty = ctx.resolve_type_in(import.base_scope, name).filter(|t| {
+                    import.base_scope == import_scope
+                        || ctx.scope(import.base_scope).is_type_exported(t.0)
+                });
                 (symbol, ty)
             };
+
+            // This is recorded in every pass, since an import of a name from an enclosing scope
+            // finds its own binding once it has been resolved
+            let imported = [
+                symbol.and_then(|(s, via)| Some((Declaration::Symbol(s), via?))),
+                ty.and_then(|(t, via)| Some((Declaration::Type(t), via?))),
+            ];
+
+            for (declaration, via) in imported.into_iter().flatten() {
+                if via != import_id {
+                    cache
+                        .imported_names
+                        .entry((import_id, declaration))
+                        .or_insert_with(|| (item.clone(), via));
+                }
+            }
+
+            let symbol = symbol.map(|(s, _)| s);
+            let ty = ty.map(|(t, _)| t);
 
             if let Some(symbol) = symbol {
                 if diagnostics && let Some(srcloc) = item.srcloc() {
@@ -540,6 +727,17 @@ fn resolve_import(
                         .declarations
                         .push((name.to_string(), Declaration::Symbol(symbol)));
                     updated = true;
+                    unused_imports.shift_remove(name);
+                } else if diagnostics && target.symbol(name) != Some(symbol) {
+                    cache
+                        .errors
+                        .entry((import_id, ImportError::DuplicateSymbol))
+                        .or_insert_with(|| {
+                            (
+                                item.clone(),
+                                DiagnosticKind::DuplicateSymbol(name.to_string()),
+                            )
+                        });
                     unused_imports.shift_remove(name);
                 }
             }
@@ -575,6 +773,17 @@ fn resolve_import(
                         .declarations
                         .push((name.to_string(), Declaration::Type(ty)));
                     updated = true;
+                    unused_imports.shift_remove(name);
+                } else if diagnostics && target.ty(name) != Some(ty) {
+                    cache
+                        .errors
+                        .entry((import_id, ImportError::DuplicateType))
+                        .or_insert_with(|| {
+                            (
+                                item.clone(),
+                                DiagnosticKind::DuplicateType(name.to_string()),
+                            )
+                        });
                     unused_imports.shift_remove(name);
                 }
             }

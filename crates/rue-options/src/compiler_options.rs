@@ -53,3 +53,38 @@ impl CompilerOptions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_options_optimize_and_use_the_standard_library() {
+        assert_eq!(
+            CompilerOptions::default(),
+            CompilerOptions {
+                std: true,
+                auto_inline: true,
+                optimize_lir: true,
+                debug_symbols: false,
+                optimize_static_pairs: true,
+                const_eval_max_cost: 11_000_000_000,
+                lints: LintLevels::default(),
+            }
+        );
+    }
+
+    #[test]
+    fn debug_options_only_differ_in_optimizations_and_debug_symbols() {
+        assert_eq!(
+            CompilerOptions::debug(),
+            CompilerOptions {
+                auto_inline: false,
+                optimize_lir: false,
+                debug_symbols: true,
+                optimize_static_pairs: false,
+                ..CompilerOptions::default()
+            }
+        );
+    }
+}

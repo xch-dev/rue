@@ -1,0 +1,55 @@
+import both::VALUE;
+
+mod alpha {
+    export const VALUE: Int = 1;
+    export const SHARED: Int = 3;
+    export type Number = Int;
+}
+
+mod beta {
+    export const VALUE: Int = 2;
+    export alpha::SHARED;
+    export type Number = String;
+}
+
+mod both {
+    export alpha::*;
+    export beta::*;
+}
+
+mod chained {
+    export both::*;
+}
+
+mod user {
+    import alpha::*;
+    import beta::*;
+
+    export fn ambiguous(value: Number) -> Int {
+        VALUE + value
+    }
+
+    export fn same_item() -> Int {
+        SHARED
+    }
+}
+
+mod shadowed {
+    import alpha::*;
+    import beta::*;
+
+    const VALUE: Int = 4;
+
+    export fn local() -> Int {
+        VALUE
+    }
+}
+
+fn main() -> Int {
+    user::ambiguous(1)
+        + user::same_item()
+        + shadowed::local()
+        + both::VALUE
+        + chained::VALUE
+        + VALUE
+}
