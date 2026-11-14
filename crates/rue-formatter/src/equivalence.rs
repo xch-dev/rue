@@ -69,9 +69,13 @@ pub fn comment_signature(
         if covered_gaps.contains(&gap_index) {
             continue;
         }
+        // Paths can be nested in other paths through import groups, so the gap belongs to the
+        // innermost path that contains it. Taking the first one instead would depend on the
+        // iteration order of the import groups.
         let (anchor, relative_gap) = path_units
             .iter()
-            .find(|(span, _)| contains_gap(*span, gap_index))
+            .filter(|(span, _)| contains_gap(*span, gap_index))
+            .min_by_key(|(span, _)| span.end().index() - span.start().index())
             .or_else(|| {
                 document_units
                     .iter()

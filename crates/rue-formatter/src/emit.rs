@@ -520,16 +520,37 @@ impl<'a> Formatter<'a> {
         let opening = self.gap_doc(&plan.opening, Separator::None);
         let before_items = if plan.opening.ends_line() {
             Doc::Nil
+        } else if plan
+            .items
+            .first()
+            .is_some_and(|item| !item.leading.comments.is_empty())
+        {
+            // Comments before the first path would belong to `{` if they followed it on the same
+            // line
+            Doc::hard_line()
         } else {
             Doc::if_break(Doc::hard_line(), Doc::Nil)
         };
         let mut docs = Vec::new();
         for (position, item) in plan.items.iter().enumerate() {
             let mut leading = item.leading.clone();
-            if position == 0
-                && let Some(first) = leading.comments.first_mut()
-            {
-                first.newlines_before = 0;
+            if position == 0 {
+                // Comments before the first path that are separated from it by a blank line belong
+                // to `{`, which they don't if sorting moved the path here
+                remove_blank_lines(&mut leading);
+            }
+            if let Some(first) = leading.comments.first_mut() {
+                if position == 0 {
+                    first.newlines_before = 0;
+                } else if plan.items[position - 1].trailing.ends_line() {
+                    // As in a document, the previous path's trailing comments already end its
+                    // line, which sorting can have put before these comments
+                    first.newlines_before = first.newlines_before.saturating_sub(1);
+                } else {
+                    // The comments would belong to the previous path if they followed it on the
+                    // same line, which they can if sorting moved this path from the start
+                    first.newlines_before = first.newlines_before.max(1);
+                }
             }
             let separator = if position == 0 {
                 Separator::None
@@ -566,7 +587,18 @@ impl<'a> Formatter<'a> {
                 !suppress_final_line,
             ));
         }
-        docs.push(self.gap_doc_with_final_line(&plan.closing, Separator::None, false));
+        // Comments before `}` are on lines of their own, which the last path's trailing comments
+        // can already end. Sorting can change which path is last, so the line is worked out here
+        // rather than kept from the source.
+        let mut closing = plan.closing.clone();
+        if let (Some(first), Some(last)) = (closing.comments.first_mut(), plan.items.last()) {
+            first.newlines_before = if last.trailing.ends_line() {
+                first.newlines_before.saturating_sub(1)
+            } else {
+                first.newlines_before.max(1)
+            };
+        }
+        docs.push(self.gap_doc_with_final_line(&closing, Separator::None, false));
         // The line after a comment that ends the last item's line is left out above, so that it's
         // emitted here outside the indentation, but it's still needed when the group would
         // otherwise fit on one line

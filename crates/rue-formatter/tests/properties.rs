@@ -21,8 +21,6 @@
 //! took a few thousand cases to reach, so the 256 cases don't catch every regression of them; the
 //! regression tests in the formatter's unit tests do. Failing cases aren't saved to files; when a
 //! property finds a bug, the shrunk input belongs in an ordinary regression test.
-//!
-//! A few known formatter bugs are skipped in `check_formatter`, each with an ignored unit test.
 
 use std::{
     fs,
@@ -153,13 +151,6 @@ fn check_formatter(text: &str, options: &FormatOptions) {
             );
             return;
         }
-        Err(FormatError::Internal(_)) if has_comment_in_import_or_attribute(&input.node) => {
-            // Known bugs: the formatter can attach a comment inside an import or attribute to a
-            // different token, or format it differently the second time, and then refuses to
-            // format the file. See `comments_inside_imports_can_be_formatted` and
-            // `comments_inside_attributes_can_be_formatted` in the unit tests.
-            return;
-        }
         Err(error) => panic!("the formatter failed on source that parses: {error}"),
     };
     assert!(
@@ -182,20 +173,6 @@ fn check_formatter(text: &str, options: &FormatOptions) {
         Signature::new(&reparsed.node),
         "formatting changed the program\n{formatted}"
     );
-}
-
-/// Whether there's a comment between the tokens of an import or an attribute.
-fn has_comment_in_import_or_attribute(root: &SyntaxNode) -> bool {
-    root.descendants_with_tokens()
-        .filter_map(rowan::NodeOrToken::into_token)
-        .any(|token| {
-            matches!(
-                token.kind(),
-                SyntaxKind::LineComment | SyntaxKind::BlockComment
-            ) && token
-                .parent_ancestors()
-                .any(|node| matches!(node.kind(), SyntaxKind::ImportItem | SyntaxKind::Attribute))
-        })
 }
 
 /// What formatting must preserve, computed independently of the formatter's own check.

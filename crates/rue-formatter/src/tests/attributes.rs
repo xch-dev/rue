@@ -236,14 +236,47 @@ fn attributes_dont_split_compact_groups() {
 }
 
 #[test]
-#[ignore = "known bug found by the property tests: when a narrow width breaks an attribute with \
-            comments inside it, formatting the result again moves the comments, so format_source \
-            rejects it as not idempotent"]
-fn comments_inside_attributes_can_be_formatted() {
+fn comments_inside_attributes_stay_inside_the_brackets() {
+    // Found by the property tests: brackets with comments directly inside them were filled, so the
+    // comments were indented when the first line didn't fit, and not on the next format
     let options = FormatOptions {
         max_width: 10,
         indent_width: 6,
     };
     let source = "#![ // trailing\n// own-line\nwarn(debug_statement) // line comment\n]\n\nfn main(value: Int) -> Int {\n    value\n}";
-    format_source(source, &options).unwrap();
+    let output = format_source(source, &options).unwrap();
+    expect![[r#"
+        #![
+              // trailing
+              // own-line
+              warn(
+                    debug_statement,
+              ) // line comment
+        ]
+
+        fn main(
+              value: Int,
+        ) -> Int {
+              value
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(format_source(&output, &options).unwrap(), output);
+    // Comments inside nested parentheses don't affect the brackets
+    check(
+        "#[allow(unused_function /* why */)] /* after */\nfn f() {}\n#[allow(\n    // reason\n    unused_function,\n)]\nfn g() {}\n#[ /* x */ allow(unused_function)]\nfn h() {}",
+        expect![[r#"
+            #[allow(unused_function /* why */ )] /* after */
+            fn f() {}
+
+            #[allow(
+                // reason
+                unused_function,
+            )]
+            fn g() {}
+
+            #[/* x */ allow(unused_function)]
+            fn h() {}
+        "#]],
+    );
 }

@@ -305,24 +305,127 @@ fn multiline_comments_before_the_closing_brace_after_a_trailing_comment() {
 }
 
 #[test]
-#[ignore = "known bug found by the property tests: the formatter attaches these comments to a \
-            different path than the parser, or moves them on a second format, so its own checks \
-            reject the result and the file can't be formatted"]
-fn comments_inside_imports_can_be_formatted() {
-    let failures = [
+fn comments_before_the_first_path_start_its_line() {
+    // Found by the property tests: on the same line as `{`, the comment would belong to it
+    check(
         "import a::{\n/* block */ b};",
+        expect![[r#"
+            import a::{
+                /* block */ b,
+            };
+        "#]],
+    );
+}
+
+#[test]
+fn comments_before_a_path_sorted_to_the_start_of_a_group() {
+    // Found by the property tests: comments separated from the first path by a blank line belong
+    // to `{`, so the blank lines are removed when sorting makes their path the first one
+    check(
+        "import a::{f,\n// own-line comment\n\ne};\nimport b::{z,\n/* first */\n\n// second\ny};",
+        expect![[r#"
+            import a::{
+                // own-line comment
+                e,
+                f,
+            };
+            import b::{
+                /* first */
+                // second
+                y,
+                z,
+            };
+        "#]],
+    );
+    // And a comment before the first path stays on its own line when sorting moves the path after
+    // another one, where it would otherwise follow that path's comma
+    check(
+        "import m::{\n/* block */lx,endkkh};",
+        expect![[r#"
+            import m::{
+                endkkh,
+                /* block */ lx,
+            };
+        "#]],
+    );
+}
+
+#[test]
+fn comments_inside_paths_in_nested_groups() {
+    // Found by the property tests: a comment inside a path that's inside an unnamed group was
+    // checked against either the path or the group, whichever came first in a hash map
+    check(
+        "import a::{{b/* block */::c}};\nimport d::{{::/* block */e}};\nimport f::{{g// line\n::h}};",
+        expect![[r#"
+            import a::{{b /* block */ ::c}};
+            import d::{{:: /* block */ e}};
+            import f::{
+                {
+                    g // line
+                    ::h,
+                },
+            };
+        "#]],
+    );
+}
+
+#[test]
+fn comments_before_the_closing_brace_after_sorting() {
+    // Found by the property tests: the line break before `// own-line` was kept with `b`'s
+    // trailing comment, so once sorting made `c` the last path, the comment followed it
+    check(
         "import a::{c, b // trailing\n// own-line\n};",
+        expect![[r#"
+            import a::{
+                b, // trailing
+                c,
+                // own-line
+            };
+        "#]],
+    );
+    // The blank line after `c`'s trailing comment and the line before the closing comment were
+    // both kept, giving two blank lines
+    check(
         "import a::{c, // line\n\n// own-line\nb\n/* multi\nline */\n};",
+        expect![[r#"
+            import a::{
+                // own-line
+                b,
+                c, // line
+
+                /* multi
+            line */
+            };
+        "#]],
+    );
+    check(
         "import a::{\n    c, // trailing\n\n    // own-line\n    b,\n    // closing\n};",
-    ]
-    .into_iter()
-    .filter_map(|source| {
-        format_source(source, &FormatOptions::default())
-            .err()
-            .map(|error| format!("{source:?}: {error}"))
-    })
-    .collect::<Vec<_>>();
-    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+        expect![[r#"
+            import a::{
+                // own-line
+                b,
+                c, // trailing
+
+                // closing
+            };
+        "#]],
+    );
+}
+
+#[test]
+fn comments_moved_after_a_trailing_comment_by_sorting_stay_on_the_next_line() {
+    // The line break before `// own` and the one after `// t` were both kept, adding a blank line
+    check(
+        "import a::{a, // t\nz,\n// own\nb};",
+        expect![[r#"
+            import a::{
+                a, // t
+                // own
+                b,
+                z,
+            };
+        "#]],
+    );
 }
 
 #[test]
