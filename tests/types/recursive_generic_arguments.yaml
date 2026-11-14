@@ -28,19 +28,19 @@ tests:
   byte_cost: 252000
   total_cost: 252730
 - name: guard_valid
-  program: (= (strlen (f (r (c (q . 1) (c (sha256 (q . 97)) ()))))) (q . 32))
+  program: (= (strlen (sha256 (q . 97))) (q . 32))
   debug_program: (a (q 2 2 (c (q . 1) (c (sha256 (q . 97)) ()))) (c (q 9 (strlen (f (r 1))) (q . 32)) ()))
   output: '1'
-  runtime_cost: 1148
-  byte_cost: 492000
-  total_cost: 493148
+  runtime_cost: 920
+  byte_cost: 228000
+  total_cost: 228920
 - name: guard_invalid
-  program: (= (strlen (f (r (q 1 2)))) (q . 32))
+  program: ()
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (q 9 (strlen (f (r 1))) (q . 32)) ()))
   output: ()
-  runtime_cost: 407
-  byte_cost: 324000
-  total_cost: 324407
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: nested_generic_call
   program: (a (q 2 2 (c 2 (q 3 . 5))) (c (q 2 (i (= 5 ()) (q) (q 16 (a 2 (c 2 (c (- 5 (q . 1)) (c 7 (q . 1))))) (q . 1))) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (q . 3) (q . 5)))) (c (q 2 (i (= 5 ()) (q) (q 16 (q . 1) (a 2 (c 2 (c (- 5 (q . 1)) (c 7 (q . 1))))))) 1) ()))
@@ -63,26 +63,26 @@ tests:
   byte_cost: 1068000
   total_cost: 1073446
 - name: fixed_guard_valid
-  program: (a (q 2 2 (c (sha256 (q . 97)) (q 1))) (c (q 2 (i (= (strlen 2) (q . 32)) (q 2 (i (l 5) (q) (q 1 . 1)) 1) (q)) 1) ()))
+  program: (a (q 2 2 (c (sha256 (q . 97)) (q 1))) (c (q 2 (i (= (strlen 2) (q . 32)) (q 32 (l 5)) (q)) 1) ()))
   debug_program: (a (q 2 2 (c (sha256 (q . 97)) (c (q . 1) ()))) (c (q 2 (i (= (strlen (f 1)) (q . 32)) (q 2 (i (not (l (f (r 1)))) (q 1 . 1) (q)) 1) (q)) 1) ()))
   output: '1'
-  runtime_cost: 1914
-  byte_cost: 1116000
-  total_cost: 1117914
+  runtime_cost: 1886
+  byte_cost: 924000
+  total_cost: 925886
 - name: fixed_guard_invalid_first
-  program: (a (q 2 2 (q 1 1)) (c (q 2 (i (= (strlen 2) (q . 32)) (q 2 (i (l 5) (q) (q 1 . 1)) 1) (q)) 1) ()))
+  program: (a (q 2 2 (q 1 1)) (c (q 2 (i (= (strlen 2) (q . 32)) (q 32 (l 5)) (q)) 1) ()))
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) ()))) (c (q 2 (i (= (strlen (f 1)) (q . 32)) (q 2 (i (not (l (f (r 1)))) (q 1 . 1) (q)) 1) (q)) 1) ()))
   output: ()
   runtime_cost: 1011
-  byte_cost: 996000
-  total_cost: 997011
+  byte_cost: 804000
+  total_cost: 805011
 - name: fixed_guard_invalid_rest
-  program: (a (q 2 2 (c (sha256 (q . 97)) (q (q . 2)))) (c (q 2 (i (= (strlen 2) (q . 32)) (q 2 (i (l 5) (q) (q 1 . 1)) 1) (q)) 1) ()))
+  program: (a (q 2 2 (c (sha256 (q . 97)) (q (q . 2)))) (c (q 2 (i (= (strlen 2) (q . 32)) (q 32 (l 5)) (q)) 1) ()))
   debug_program: (a (q 2 2 (c (sha256 (q . 97)) (c (c (q . 1) (q . 2)) ()))) (c (q 2 (i (= (strlen (f 1)) (q . 32)) (q 2 (i (not (l (f (r 1)))) (q 1 . 1) (q)) 1) (q)) 1) ()))
   output: ()
-  runtime_cost: 1938
-  byte_cost: 1140000
-  total_cost: 1141938
+  runtime_cost: 1886
+  byte_cost: 948000
+  total_cost: 949886
 - name: mutual_closed
   program: (c (sha256 (q . 97)) (q 1 (a . 3) 4))
   debug_program: (a (q . 2) (c (c (sha256 (q . 97)) (c (q . 1) (c (c (q . 2) (q . 3)) (c (q . 4) ())))) 1))

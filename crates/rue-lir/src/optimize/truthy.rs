@@ -33,6 +33,12 @@ fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
         Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
         // A pair is always truthy, but it can only be discarded if it can't fail
         Lir::Cons(..) if is_pure(arena, value) => Truthiness::Known(true),
+        // `(l x)` of a pair is truthy, and fails exactly when the pair does
+        Lir::Listp(inner) if matches!(arena[inner], Lir::Cons(..)) => opt_truthy(arena, inner),
+        // `all` and `any` of a single value have the same truthiness as it
+        Lir::All(args) | Lir::Any(args) if args.len() == 1 => opt_truthy(arena, args[0]),
+        Lir::All(args) if args.is_empty() => Truthiness::Known(true),
+        Lir::Any(args) if args.is_empty() => Truthiness::Known(false),
         // Since `not` accepts any value, `(not x)` has the opposite truthiness of `x`
         Lir::Not(inner) => opt_negated_truthy(arena, inner, Some(value)),
         // `(= x ())` is `(not x)` if `x` is always an atom, since `=` fails on a pair
@@ -162,6 +168,6 @@ pub fn returns_atom(arena: &Arena<Lir>, value: LirId) -> bool {
     }
 }
 
-fn is_nil(arena: &Arena<Lir>, value: LirId) -> bool {
+pub fn is_nil(arena: &Arena<Lir>, value: LirId) -> bool {
     matches!(&arena[value], Lir::Atom(atom) if atom.is_empty())
 }

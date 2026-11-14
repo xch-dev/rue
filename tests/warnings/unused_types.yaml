@@ -6,12 +6,12 @@ byte_cost: 60000
 total_cost: 60020
 tests:
 - name: alias
-  program: (f (q 42))
+  program: (q . 42)
   debug_program: (a (q 5 (c 2 ())) (c (q . 42) ()))
   output: '42'
-  runtime_cost: 51
-  byte_cost: 108000
-  total_cost: 108051
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: nested
   program: (q (42) 42)
   debug_program: (a (q 4 (c 6 ()) (c 4 ())) (c (c (q . 42) (q . 42)) ()))

@@ -32,13 +32,13 @@ tests:
   byte_cost: 276000
   total_cost: 276325
 - name: if_stmt_else_or
-  program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5)) 1)
+  program: (a (i (a (i (l 2) (q 1 . 1) (q 7 5)) 1) (q) (q 16 2 5)) 1)
   debug_program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5)) 1)
   solution: (3 4)
   output: '7'
-  runtime_cost: 1667
-  byte_cost: 876000
-  total_cost: 877667
+  runtime_cost: 1414
+  byte_cost: 636000
+  total_cost: 637414
 - name: if_stmt_else_any
   program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
   debug_program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)

@@ -7,19 +7,19 @@ tests:
   byte_cost: 828000
   total_cost: 828974
 - name: override_default
-  program: (f (q 5 () 1))
+  program: (q . 5)
   debug_program: (a (q 5 2) (c (c (q . 5) (c () (c (q . 1) ()))) 1))
   output: '5'
-  runtime_cost: 51
-  byte_cost: 156000
-  total_cost: 156051
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: inferred_default
-  program: (+ (f (q 42)) (q . 1))
+  program: (q . 43)
   debug_program: (a (q 16 (f 2) (q . 1)) (c (c (q . 42) ()) 1))
   output: '43'
-  runtime_cost: 827
-  byte_cost: 204000
-  total_cost: 204827
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: generic_with_default
   program: (a (q 16 4 10) (c (q 5 1) 1))
   debug_program: (a (q 16 (f 2) (f (r 2))) (c (c (q . 5) (c (q . 1) ())) 1))
