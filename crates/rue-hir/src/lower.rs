@@ -1,9 +1,11 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
+    cell::RefCell,
     collections::HashMap,
     iter,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 use id_arena::Arena;
@@ -42,6 +44,10 @@ enum Frame {
     Statement(SrcLoc),
 }
 
+/// The symbols that a symbol depends on, which are shared rather than copied each time they're
+/// needed.
+type Dependencies = Rc<IndexSet<SymbolId>>;
+
 #[derive(Debug)]
 pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
@@ -55,6 +61,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     path: Vec<Frame>,
     /// Whether lowering went deeper than [`MAX_LOWERING_DEPTH`].
     too_deep: Option<TooDeep>,
+    /// The dependencies of each symbol, keyed by whether only captures are included. The graph
+    /// doesn't change while lowering, and finding them walks it, so they're only found once per
+    /// symbol rather than each time a symbol is grouped, inlined or captured.
+    dependencies: RefCell<HashMap<(SymbolId, bool), Dependencies>>,
 }
 
 /// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.
@@ -97,7 +107,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             base_path,
             path: Vec::new(),
             too_deep: None,
+            dependencies: RefCell::default(),
         }
+    }
+
+    /// The symbols that the symbol depends on, as given by [`DependencyGraph::dependencies`].
+    fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> Dependencies {
+        let key = (symbol, captures_only);
+
+        if let Some(dependencies) = self.dependencies.borrow().get(&key) {
+            return dependencies.clone();
+        }
+
+        let dependencies = Rc::new(self.graph.dependencies(symbol, captures_only));
+        self.dependencies
+            .borrow_mut()
+            .insert(key, dependencies.clone());
+        dependencies
     }
 
     pub fn base_path(&self) -> &Path {
@@ -133,9 +159,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
         let captures: Vec<SymbolId> = self
-            .graph
             .dependencies(symbol, true)
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|&symbol| self.is_capture(symbol))
             .collect();
 
@@ -196,12 +222,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         if symbol == self.main {
             let mut map = HashMap::new();
 
-            if self
-                .graph
-                .dependencies(symbol, true)
-                .iter()
-                .any(|dependency| *dependency == symbol)
-            {
+            if self.dependencies(symbol, true).contains(&symbol) {
                 map.insert(symbol, self.arena.alloc(Lir::Quote(expr)));
                 let reference = self.lower_symbol_reference(&function_env, symbol);
                 let entire_env = self.arena.alloc(Lir::Path(1u8.into()));
@@ -653,9 +674,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
             } else {
                 let captures: Vec<SymbolId> = self
-                    .graph
                     .dependencies(symbol, true)
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .filter(|&symbol| self.is_capture(symbol))
                     .collect();
 
@@ -735,14 +756,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         mut stmts: Vec<Statement>,
         body: Option<HirId>,
     ) -> LirId {
-        let mut symbols = IndexSet::new();
+        let lets = stmts
+            .iter()
+            .take_while(|stmt| matches!(stmt, Statement::Let(..)))
+            .count();
 
-        while let Some(stmt) = stmts.first()
-            && let Statement::Let(symbol, _) = stmt
-        {
-            symbols.insert(*symbol);
-            stmts.remove(0);
-        }
+        let symbols: IndexSet<SymbolId> = stmts
+            .drain(..lets)
+            .map(|stmt| match stmt {
+                Statement::Let(symbol, _) => symbol,
+                _ => unreachable!(),
+            })
+            .collect();
 
         let binding_groups = self.group_symbols(symbols, false, true);
 
@@ -982,45 +1007,76 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .alloc(Lir::If(condition, verifications, expr, true))
     }
 
+    /// Groups the symbols into rounds, where each symbol is bound in a round after every symbol
+    /// in the set that it depends on. Functions, and symbols captured by reference, can be bound
+    /// in the first round, since they don't need the values of the others yet.
+    ///
+    /// A symbol's round is one after the latest round of its dependencies in the set, which is
+    /// found by visiting each symbol once all of its dependencies have been visited.
     fn group_symbols(
         &mut self,
-        mut symbols: IndexSet<SymbolId>,
+        symbols: IndexSet<SymbolId>,
         by_reference: bool,
         is_tree: bool,
     ) -> Vec<SymbolGroup> {
-        let mut groups = Vec::new();
+        let mut rounds = vec![0; symbols.len()];
+        let mut waiting = vec![0; symbols.len()];
+        let mut dependents = vec![Vec::new(); symbols.len()];
+        let mut ready = Vec::new();
 
-        while !symbols.is_empty() {
-            let mut group = Vec::new();
-
-            let remaining = symbols.clone();
-
-            symbols.retain(|&symbol| {
-                if self
-                    .graph
-                    .dependencies(symbol, true)
-                    .iter()
-                    .all(|symbol| !remaining.contains(symbol))
-                    || matches!(self.db.symbol(symbol), Symbol::Function(_))
-                    || by_reference
-                {
-                    if self.is_capture(symbol) && self.graph.references(symbol) > 0 {
-                        group.push(symbol);
+        for (index, &symbol) in symbols.iter().enumerate() {
+            if !by_reference && !matches!(self.db.symbol(symbol), Symbol::Function(_)) {
+                for dependency in self.dependencies(symbol, true).iter() {
+                    if let Some(dependency) = symbols.get_index_of(dependency) {
+                        waiting[index] += 1;
+                        dependents[dependency].push(index);
                     }
-                    false
-                } else {
-                    true
                 }
-            });
-
-            if group.is_empty() {
-                continue;
             }
 
-            groups.push(self.create_group(group, is_tree));
+            if waiting[index] == 0 {
+                ready.push(index);
+            }
+        }
+
+        while let Some(index) = ready.pop() {
+            for &dependent in &dependents[index] {
+                rounds[dependent] = rounds[dependent].max(rounds[index] + 1);
+                waiting[dependent] -= 1;
+
+                if waiting[dependent] == 0 {
+                    ready.push(dependent);
+                }
+            }
+        }
+
+        // Symbols that depend on each other are never visited, since they can't be bound after
+        // one another, so they're bound in a round after all of the others
+        let mut round_count = rounds.iter().max().map_or(0, |round| round + 1);
+
+        if waiting.iter().any(|&waiting| waiting > 0) {
+            for (round, &waiting) in rounds.iter_mut().zip(&waiting) {
+                if waiting > 0 {
+                    *round = round_count;
+                }
+            }
+
+            round_count += 1;
+        }
+
+        let mut groups = vec![Vec::new(); round_count];
+
+        for (index, &symbol) in symbols.iter().enumerate() {
+            if self.is_capture(symbol) && self.graph.references(symbol) > 0 {
+                groups[rounds[index]].push(symbol);
+            }
         }
 
         groups
+            .into_iter()
+            .filter(|group| !group.is_empty())
+            .map(|group| self.create_group(group, is_tree))
+            .collect()
     }
 
     fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {
@@ -1125,7 +1181,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return false;
                 }
 
-                if self.graph.dependencies(symbol, false).contains(&symbol) {
+                if self.dependencies(symbol, false).contains(&symbol) {
                     return false;
                 }
 

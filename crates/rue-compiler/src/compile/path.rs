@@ -183,13 +183,30 @@ where
                 return PathResult::Unresolved;
             }
         } else if base_scope == ctx.last_scope_id() {
-            let symbol = ctx
-                .resolve_symbol_in(base_scope, name.text())
-                .map(|(symbol, import)| (symbol, true, import));
-            let ty = ctx
-                .resolve_type_in(base_scope, name.text())
-                .map(|(ty, import)| (ty, true, import));
-            (symbol, ty)
+            let resolve_symbol = || {
+                ctx.resolve_symbol_in(base_scope, name.text())
+                    .map(|(symbol, import)| (symbol, true, import))
+            };
+            let resolve_type = || {
+                ctx.resolve_type_in(base_scope, name.text())
+                    .map(|(ty, import)| (ty, true, import))
+            };
+
+            // When a name is both a symbol and a type, the expected kind wins, so the other is only
+            // looked up as a fallback. A lookup that fails walks every enclosing scope, and each
+            // `let` statement opens one.
+            match kind {
+                PathKind::Symbol => {
+                    let symbol = resolve_symbol();
+                    let ty = symbol.is_none().then(resolve_type).flatten();
+                    (symbol, ty)
+                }
+                PathKind::Type => {
+                    let ty = resolve_type();
+                    let symbol = ty.is_none().then(resolve_symbol).flatten();
+                    (symbol, ty)
+                }
+            }
         } else {
             let base = ctx.scope(base_scope);
             let symbol = base

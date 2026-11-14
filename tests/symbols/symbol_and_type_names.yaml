@@ -1,0 +1,3 @@
+diagnostics:
+- Expected symbol, but found type `Int` at symbol_and_type_names.rue:3:16
+- Expected type, but found symbol `main` at symbol_and_type_names.rue:4:12

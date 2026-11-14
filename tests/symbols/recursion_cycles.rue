@@ -1,0 +1,35 @@
+fn main() -> Int {
+    A + B + C + D + E + F + G + p(1) + Y + X
+}
+
+// A cycle of three constants reports each of them
+const A: Int = B;
+const B: Int = C;
+const C: Int = A;
+
+// Two cycles, where one references the other
+const D: Int = E;
+const E: Int = D + F;
+const F: Int = G;
+const G: Int = F;
+
+// Inline functions that call each other
+inline fn p(x: Int) -> Int {
+    q(x)
+}
+
+inline fn q(x: Int) -> Int {
+    p(x)
+}
+
+// A constant that references itself through a function
+const Y: Int = f();
+
+fn f() -> Int {
+    Y
+}
+
+// A constant reached from a cycle more than once is reported once
+const X: Int = W + Z;
+const W: Int = X;
+const Z: Int = X;

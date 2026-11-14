@@ -1,5 +1,5 @@
 fn main() -> Int {
-    factorial(5) + A + B + D
+    factorial(5) + A + B + D + E
 }
 
 inline fn factorial(num: Int) -> Int {
@@ -13,4 +13,7 @@ inline fn factorial(num: Int) -> Int {
 const A: Int = A;
 const B: Int = C;
 const C: Int = B;
+
+// References a cycle without being part of it, so it isn't reported
+const E: Int = C;
 inline const D: Int = D;

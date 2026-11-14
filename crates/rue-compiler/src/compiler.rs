@@ -43,6 +43,9 @@ pub struct Compiler {
     inferred_generics_stack: Vec<Vec<TypeId>>,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
+    /// The symbols whose type is overridden in any scope, so that looking up the type of any other
+    /// symbol doesn't need to walk every enclosing scope (and each `let` statement opens one).
+    overridden_symbols: HashSet<SymbolId>,
     cancel: Option<Cancel>,
     cancelled: bool,
 }
@@ -113,6 +116,7 @@ impl Compiler {
             inferred_generics_stack: Vec::new(),
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
+            overridden_symbols: HashSet::new(),
             cancel: None,
             cancelled: false,
         };
@@ -407,7 +411,7 @@ impl Compiler {
     }
 
     pub fn symbol_type_in(&self, scope: ScopeId, symbol: SymbolId) -> TypeId {
-        let mut current = Some(scope);
+        let mut current = self.overridden_symbols.contains(&symbol).then_some(scope);
 
         while let Some(scope) = current {
             if let Some(ty) = self.scope(scope).symbol_override_type(symbol) {
@@ -447,6 +451,7 @@ impl Compiler {
             }
 
             self.scope_mut(scope).override_symbol_type(symbol, ty);
+            self.overridden_symbols.insert(symbol);
         }
 
         let index = self.scope_stack.len();

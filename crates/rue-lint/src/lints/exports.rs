@@ -184,9 +184,13 @@ fn used_exports(
 
     let mut stack = used.iter().copied().collect::<Vec<_>>();
 
+    // Every name in a type is reached the first time it's visited, and is used from then on, so
+    // the types visited from one signature aren't walked again from another (which would be
+    // quadratic in a chain of exports that each use the next)
+    let mut visited = HashSet::new();
+
     while let Some(declaration) = stack.pop() {
         let mut reached = HashSet::new();
-        let mut visited = HashSet::new();
 
         for ty in signature_types(db, declaration) {
             reached_names(db, ty, &mut reached, &mut visited);

@@ -3,4 +3,4 @@ diagnostics:
 - Constant `A` references itself at invalid_recursion.rue:13:7
 - Constant `B` references itself at invalid_recursion.rue:14:7
 - Constant `C` references itself at invalid_recursion.rue:15:7
-- Constant `D` references itself at invalid_recursion.rue:16:14
+- Constant `D` references itself at invalid_recursion.rue:19:14

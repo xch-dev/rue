@@ -1,0 +1,14 @@
+diagnostics:
+- Constant `A` references itself at recursion_cycles.rue:6:7
+- Constant `B` references itself at recursion_cycles.rue:7:7
+- Constant `C` references itself at recursion_cycles.rue:8:7
+- Constant `D` references itself at recursion_cycles.rue:11:7
+- Constant `E` references itself at recursion_cycles.rue:12:7
+- Constant `F` references itself at recursion_cycles.rue:13:7
+- Constant `G` references itself at recursion_cycles.rue:14:7
+- Function `p` cannot be inline, since it references itself at recursion_cycles.rue:17:11
+- Function `q` cannot be inline, since it references itself at recursion_cycles.rue:21:11
+- Constant `Y` references itself at recursion_cycles.rue:26:7
+- Constant `X` references itself at recursion_cycles.rue:33:7
+- Constant `W` references itself at recursion_cycles.rue:34:7
+- Constant `Z` references itself at recursion_cycles.rue:35:7
