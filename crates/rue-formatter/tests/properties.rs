@@ -477,10 +477,26 @@ fn expression() -> impl Strategy<Value = String> {
             )
                 .prop_map(|(op, operand)| format!("{op}{operand}")),
             inner.clone().prop_map(|inner| format!("({inner})")),
-            ("[a-z]{1,10}", prop::collection::vec(inner.clone(), 0..4))
-                .prop_map(|(name, args)| format!("{name}({})", args.join(", "))),
-            prop::collection::vec(inner.clone(), 0..4)
-                .prop_map(|items| format!("[{}]", items.join(", "))),
+            (
+                "[a-z]{1,10}",
+                prop::collection::vec(inner.clone(), 0..4),
+                any::<bool>()
+            )
+                .prop_map(|(name, args, comma)| format!("{name}({})", list(&args, comma))),
+            (prop::collection::vec(inner.clone(), 0..4), any::<bool>())
+                .prop_map(|(items, comma)| format!("[{}]", list(&items, comma))),
+            // A struct initializer is put in parentheses, which it needs in an `if` condition
+            (
+                prop::collection::vec(("[a-z]{1,8}", inner.clone()), 1..4),
+                any::<bool>()
+            )
+                .prop_map(|(fields, comma)| {
+                    let fields = fields
+                        .into_iter()
+                        .map(|(name, value)| format!("{name}: {value}"))
+                        .collect::<Vec<_>>();
+                    format!("(Point {{ {} }})", list(&fields, comma))
+                }),
             (inner.clone(), inner.clone()).prop_map(|(first, rest)| format!("({first}, {rest})")),
             (inner.clone(), inner.clone(), inner.clone()).prop_map(|(condition, then, other)| {
                 format!("if {condition} {{ {then} }} else {{ {other} }}")
@@ -493,7 +509,16 @@ fn expression() -> impl Strategy<Value = String> {
     })
 }
 
-/// A small program around generated expressions.
+/// Items separated by commas, with a trailing comma if `trailing_comma` is set and there are any.
+fn list(items: &[String], trailing_comma: bool) -> String {
+    let mut text = items.join(", ");
+    if trailing_comma && !items.is_empty() {
+        text.push(',');
+    }
+    text
+}
+
+/// A small program around generated expressions, with an attribute that comments can be put in.
 fn generated_program() -> impl Strategy<Value = String> {
     (
         prop::collection::vec(import_path(), 0..4),
@@ -505,7 +530,9 @@ fn generated_program() -> impl Strategy<Value = String> {
                 .iter()
                 .flat_map(|path| ["import ", path, ";\n"])
                 .collect::<String>();
-            format!("{imports}fn main() -> Int {{\n    let value = {value};\n    {result}\n}}\n")
+            format!(
+                "{imports}#[allow(unused_function, unused_variable)]\nfn main() -> Int {{\n    let value = {value};\n    {result}\n}}\n"
+            )
         })
 }
 

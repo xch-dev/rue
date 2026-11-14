@@ -187,7 +187,21 @@ fn nested_comments_before_commas_move_with_their_paths() {
     check(
         "import root::{zeta /* zeta comma */,alpha /* alpha comma */};",
         expect![[r#"
-            import root::{alpha, /* alpha comma */  zeta /* zeta comma */ ,};
+            import root::{alpha, /* alpha comma */ zeta /* zeta comma */,};
+        "#]],
+    );
+    // An inline comment before a comma is followed by the comma, and one after a comma by a single
+    // space
+    check(
+        "import a::{b, c /* x */,};\nimport x::{a, /* c */ b};\nimport z::{\n    c /* x */,\n    b, /* y */\n    a,\n};",
+        expect![[r#"
+            import a::{b, c /* x */,};
+            import x::{a, /* c */ b};
+            import z::{
+                a,
+                b, /* y */
+                c /* x */,
+            };
         "#]],
     );
 }

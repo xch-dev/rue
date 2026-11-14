@@ -83,18 +83,22 @@ impl<'a> Formatter<'a> {
         for (item, trailing) in items.iter().zip(&trailing_gaps) {
             formatted_items.push(self.document_item(item, trailing)?);
         }
+        let compact_groups = formatted_items
+            .iter()
+            .map(|formatted| formatted.compact_group)
+            .collect::<Vec<_>>();
 
-        for (position, item) in items.iter().enumerate() {
+        for (position, (item, formatted)) in items.iter().zip(formatted_items).enumerate() {
             let separator = if position == 0 {
                 Separator::None
             } else {
                 let previous = &items[position - 1];
-                let previous_group = formatted_items[position - 1].compact_group;
+                let previous_group = compact_groups[position - 1];
                 let requested = match (previous.import_group, item.import_group) {
                     (Some(left), Some(right)) if left == right => Separator::Hard,
                     (None, None)
                         if previous_group.is_some()
-                            && previous_group == formatted_items[position].compact_group
+                            && previous_group == compact_groups[position]
                             && (item.span.start().index() == 0
                                 || self.stream.gap_before(item.span.start()).newlines <= 1) =>
                     {
@@ -117,8 +121,8 @@ impl<'a> Formatter<'a> {
                 start_own_line(&mut leading, &trailing_gaps[position - 1]);
             }
             docs.push(self.movable_leading_doc(&leading, separator));
-            docs.push(formatted_items[position].item.clone());
-            docs.push(formatted_items[position].trailing.clone());
+            docs.push(formatted.item);
+            docs.push(formatted.trailing);
         }
         if let Some(last) = trailing_gaps.last() {
             start_own_line(&mut footer, last);
@@ -170,10 +174,10 @@ impl<'a> Formatter<'a> {
                     FormatError::Internal("item body has no preceding attribute token".to_string())
                 })?;
             Doc::concat([
-                self.span(self.stream.span(
-                    item.span.start(),
-                    self.stream.boundary_before(item.body_start),
-                )?)?,
+                self.span(
+                    self.stream
+                        .span_through(item.span.start(), last_attribute_token)?,
+                )?,
                 self.gap_between(last_attribute_token, item.body_start),
             ])
         };
@@ -538,8 +542,6 @@ impl<'a> Formatter<'a> {
                 // Comments before the first path that are separated from it by a blank line belong
                 // to `{`, which they don't if sorting moved the path here
                 remove_blank_lines(&mut leading);
-            }
-            if position == 0 {
                 if let Some(first) = leading.comments.first_mut() {
                     first.newlines_before = 0;
                 }
@@ -553,7 +555,12 @@ impl<'a> Formatter<'a> {
             };
             docs.push(self.movable_leading_doc(&leading, separator));
             docs.push(self.span(item.span)?);
-            docs.push(self.gap_doc(&item.before_comma, Separator::None));
+            // The comma follows an inline comment directly, as in other lists
+            docs.push(self.gap_doc_with_final_line(
+                &item.before_comma,
+                Separator::None,
+                item.before_comma.ends_line(),
+            ));
             if item.comma.is_some() {
                 self.consumed_tokens += 1;
             }
@@ -562,9 +569,13 @@ impl<'a> Formatter<'a> {
             } else {
                 docs.push(Doc::if_break(Doc::text(","), Doc::Nil));
             }
-            let suppress_final_line = position + 1 == plan.items.len()
-                && plan.closing.comments.is_empty()
-                && item.trailing.ends_line();
+            let last = position + 1 == plan.items.len();
+            // The separator before the next path already gives the space after an inline comment
+            let suppress_final_line = if last {
+                plan.closing.comments.is_empty() && item.trailing.ends_line()
+            } else {
+                !item.trailing.ends_line()
+            };
             // A blank line after trailing comments is only kept before leading comments, as in
             // `split_between`, which sorting can move away
             let mut trailing = item.trailing.clone();
