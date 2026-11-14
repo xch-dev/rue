@@ -56,7 +56,7 @@ impl<'a> Formatter<'a> {
     pub fn format(mut self) -> Result<Doc, FormatError> {
         let items = self.layout.document.items.clone();
         let header = self.layout.document.header.clone();
-        let footer = self.layout.document.footer.clone();
+        let mut footer = self.layout.document.footer.clone();
         let mut docs = vec![self.gap_doc(&header, Separator::None)];
 
         // Sorting can move the comments around a blank line that ended an import group into the
@@ -108,20 +108,20 @@ impl<'a> Formatter<'a> {
             if position > 0 && same_import_group(&items[position - 1], item) {
                 remove_blank_lines(&mut leading);
             }
-            if let Some(first) = leading.comments.first_mut() {
-                if position == 0 {
+            if position == 0 {
+                if let Some(first) = leading.comments.first_mut() {
                     first.newlines_before = 0;
                     first.placement = CommentPlacement::Leading;
-                } else if trailing_gaps[position - 1].ends_line() {
-                    // The previous item's trailing comments already end its line. They're only
-                    // followed by these comments in the source if the items weren't sorted, and
-                    // then the line break between them was already given to the trailing comments.
-                    first.newlines_before = first.newlines_before.saturating_sub(1);
                 }
+            } else {
+                start_own_line(&mut leading, &trailing_gaps[position - 1]);
             }
             docs.push(self.movable_leading_doc(&leading, separator));
             docs.push(formatted_items[position].item.clone());
             docs.push(formatted_items[position].trailing.clone());
+        }
+        if let Some(last) = trailing_gaps.last() {
+            start_own_line(&mut footer, last);
         }
         docs.push(self.gap_doc(&footer, Separator::None));
 
@@ -539,18 +539,12 @@ impl<'a> Formatter<'a> {
                 // to `{`, which they don't if sorting moved the path here
                 remove_blank_lines(&mut leading);
             }
-            if let Some(first) = leading.comments.first_mut() {
-                if position == 0 {
+            if position == 0 {
+                if let Some(first) = leading.comments.first_mut() {
                     first.newlines_before = 0;
-                } else if plan.items[position - 1].trailing.ends_line() {
-                    // As in a document, the previous path's trailing comments already end its
-                    // line, which sorting can have put before these comments
-                    first.newlines_before = first.newlines_before.saturating_sub(1);
-                } else {
-                    // The comments would belong to the previous path if they followed it on the
-                    // same line, which they can if sorting moved this path from the start
-                    first.newlines_before = first.newlines_before.max(1);
                 }
+            } else {
+                start_own_line(&mut leading, &plan.items[position - 1].trailing);
             }
             let separator = if position == 0 {
                 Separator::None
@@ -587,16 +581,9 @@ impl<'a> Formatter<'a> {
                 !suppress_final_line,
             ));
         }
-        // Comments before `}` are on lines of their own, which the last path's trailing comments
-        // can already end. Sorting can change which path is last, so the line is worked out here
-        // rather than kept from the source.
         let mut closing = plan.closing.clone();
-        if let (Some(first), Some(last)) = (closing.comments.first_mut(), plan.items.last()) {
-            first.newlines_before = if last.trailing.ends_line() {
-                first.newlines_before.saturating_sub(1)
-            } else {
-                first.newlines_before.max(1)
-            };
+        if let Some(last) = plan.items.last() {
+            start_own_line(&mut closing, &last.trailing);
         }
         docs.push(self.gap_doc_with_final_line(&closing, Separator::None, false));
         // The line after a comment that ends the last item's line is left out above, so that it's
@@ -923,6 +910,23 @@ fn indent_levels(mut doc: Doc, levels: usize) -> Doc {
         doc = doc.indent();
     }
     doc
+}
+
+/// Puts the comments in `gap`, which start on a line of their own, after `previous`, the trailing
+/// comments before them. Sorting can change what those are, so the line breaks between them aren't
+/// all kept from the source: when `previous` already ends its line, the comments need one line
+/// break fewer, or none if `previous` ends with a blank line, and otherwise they need at least one,
+/// or they'd follow what comes before them.
+fn start_own_line(gap: &mut Gap, previous: &Gap) {
+    if let Some(first) = gap.comments.first_mut() {
+        first.newlines_before = if !previous.ends_line() {
+            first.newlines_before.max(1)
+        } else if previous.newlines > 1 {
+            0
+        } else {
+            first.newlines_before.saturating_sub(1)
+        };
+    }
 }
 
 /// Limits the line breaks in a gap to one, so it has no blank lines.

@@ -520,15 +520,16 @@ fn import_path() -> impl Strategy<Value = String> {
     })
 }
 
-/// A few imports with whitespace and comments between their tokens. These are small, so the
-/// comments are dense, which reaches the sorting of imports and the comments around them.
+/// A few imports with whitespace and comments between their tokens, sometimes at the end of the
+/// file. These are small, so the comments are dense, which reaches the sorting of imports and the
+/// comments around them.
 fn imports_with_comments() -> impl Strategy<Value = String> {
-    prop::collection::vec(import_path(), 1..5)
-        .prop_map(|paths| {
+    (prop::collection::vec(import_path(), 1..5), any::<bool>())
+        .prop_map(|(paths, main)| {
             paths
                 .iter()
                 .flat_map(|path| ["import ", path, ";\n"])
-                .chain(["fn main() {}\n"])
+                .chain(main.then_some("fn main() {}\n"))
                 .collect::<String>()
         })
         .prop_flat_map(with_extra_trivia)

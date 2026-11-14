@@ -527,3 +527,59 @@ fn comments_that_end_a_line_before_the_closing_brace_break_the_group() {
         "#]],
     );
 }
+
+#[test]
+fn sorting_adds_no_blank_line_before_closing_comments() {
+    // The line break after `// t` and the one before `// closing` were both kept once sorting
+    // made `b` the last path, adding a blank line
+    check(
+        "import x::{b, // t\na\n// closing\n};",
+        expect![[r#"
+            import x::{
+                a,
+                b, // t
+                // closing
+            };
+        "#]],
+    );
+    // Found by the property tests: the blank line after `/* block */` and the one before
+    // `// line comment` were both kept, giving two blank lines
+    check(
+        "import a::{{ivar,/* block */  \n\n// own-line comment\nhe\n\n\n // line comment\n}};",
+        expect![[r#"
+            import a::{
+                {
+                    // own-line comment
+                    he,
+                    ivar, /* block */
+
+                    // line comment
+                },
+            };
+        "#]],
+    );
+}
+
+#[test]
+fn sorting_keeps_comments_at_the_end_of_the_file_on_their_own_line() {
+    // The line break after `// t` and the one before `// footer` were both kept, adding a blank
+    // line
+    check(
+        "import b; // t\nimport a;\n// footer",
+        expect![[r#"
+            import a;
+            import b; // t
+            // footer
+        "#]],
+    );
+    // The line break before `// footer` was kept with `// t`, so once sorting moved it away, the
+    // footer followed `import b;` on the same line
+    check(
+        "import b;\nimport a; // t\n// footer",
+        expect![[r#"
+            import a; // t
+            import b;
+            // footer
+        "#]],
+    );
+}
