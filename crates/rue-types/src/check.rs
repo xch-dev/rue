@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Memo, Pair, Type, TypeId,
-    compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    compare_impl, grow_stack, reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +25,10 @@ pub enum Check {
 
 impl Check {
     pub fn simplify(self) -> Check {
+        grow_stack(|| self.simplify_inner())
+    }
+
+    fn simplify_inner(self) -> Check {
         match self {
             Check::None => Check::None,
             Check::Impossible => Check::Impossible,
@@ -266,6 +270,17 @@ fn check_each_impl(
     lhs: &[TypeId],
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
+    grow_stack(|| check_each_impl_inner(arena, builtins, ctx, depth, lhs, rhs))
+}
+
+fn check_each_impl_inner(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut CheckContext,
+    depth: usize,
+    lhs: &[TypeId],
+    rhs: TypeId,
+) -> Result<Check, CheckError> {
     step();
 
     if depth > 25 {
@@ -462,6 +477,10 @@ fn check_each_impl(
 }
 
 fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
+    grow_stack(|| variants_of_inner(arena, builtins, id))
+}
+
+fn variants_of_inner(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => variants_of(arena, builtins, id),
@@ -488,6 +507,14 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
 /// against, so generic types are an error since their values can't be known at runtime. Generic
 /// targets are still allowed if the value is already known to be assignable (see `check_each`).
 fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atoms>, CheckError> {
+    grow_stack(|| atoms_of_inner(arena, id, target))
+}
+
+fn atoms_of_inner(
+    arena: &Arena<Type>,
+    id: TypeId,
+    target: bool,
+) -> Result<Option<Atoms>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => atoms_of(arena, id, target)?,
@@ -550,6 +577,15 @@ fn pairs_of(
     id: TypeId,
     target: bool,
 ) -> Result<Vec<Pair>, CheckError> {
+    grow_stack(|| pairs_of_inner(arena, builtins, id, target))
+}
+
+fn pairs_of_inner(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+    target: bool,
+) -> Result<Vec<Pair>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => pairs_of(arena, builtins, id, target)?,
@@ -590,6 +626,17 @@ pub(crate) fn types_may_overlap(
 }
 
 fn may_overlap(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+    stack: &mut IndexSet<(TypeId, TypeId)>,
+    memo: &mut OverlapMemo,
+) -> bool {
+    grow_stack(|| may_overlap_inner(arena, builtins, lhs, rhs, stack, memo))
+}
+
+fn may_overlap_inner(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     lhs: TypeId,

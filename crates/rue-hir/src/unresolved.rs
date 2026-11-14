@@ -13,22 +13,29 @@ use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
 pub fn has_reachable_unresolved(db: &Database, symbol: SymbolId) -> bool {
     let mut visitor = Visitor {
         db,
-        visited: HashSet::new(),
+        visited: HashSet::from([symbol]),
+        pending: vec![symbol],
     };
-    visitor.visit_symbol(symbol)
+
+    // Referenced symbols are visited from a worklist rather than recursively, so that a long chain
+    // of functions or constants that each reference the next doesn't overflow the stack
+    while let Some(symbol) = visitor.pending.pop() {
+        if visitor.visit_symbol(symbol) {
+            return true;
+        }
+    }
+
+    false
 }
 
 struct Visitor<'a> {
     db: &'a Database,
     visited: HashSet<SymbolId>,
+    pending: Vec<SymbolId>,
 }
 
 impl Visitor<'_> {
     fn visit_symbol(&mut self, symbol: SymbolId) -> bool {
-        if !self.visited.insert(symbol) {
-            return false;
-        }
-
         match self.db.symbol(symbol) {
             Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => true,
             Symbol::Parameter(_) => false,
@@ -52,7 +59,13 @@ impl Visitor<'_> {
             | Hir::Bool(_)
             | Hir::InfinityG1
             | Hir::InfinityG2 => false,
-            Hir::Reference(symbol) | Hir::Lambda(symbol) => self.visit_symbol(symbol),
+            Hir::Reference(symbol) | Hir::Lambda(symbol) => {
+                if self.visited.insert(symbol) {
+                    self.pending.push(symbol);
+                }
+
+                false
+            }
             Hir::Const(expr) => self.visit_hir(expr.result.unwrap_or(expr.value)),
             Hir::List(list) => self.visit_all(list.items),
             Hir::Struct(initializer) => {

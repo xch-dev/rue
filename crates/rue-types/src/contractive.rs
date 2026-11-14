@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use id_arena::Arena;
 
-use crate::{Alias, Struct, Type, TypeId, substitute_with_mappings};
+use crate::{Alias, Struct, Type, TypeId, grow_stack, substitute_with_mappings};
 
 /// Returns `true` if the type can reach itself without passing through a pair or function type.
 ///
@@ -71,6 +71,15 @@ pub(crate) fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> 
 }
 
 fn has_unguarded_cycle(
+    arena: &Arena<Type>,
+    id: TypeId,
+    path: &mut HashSet<TypeId>,
+    done: &mut HashSet<TypeId>,
+) -> bool {
+    grow_stack(|| has_unguarded_cycle_inner(arena, id, path, done))
+}
+
+fn has_unguarded_cycle_inner(
     arena: &Arena<Type>,
     id: TypeId,
     path: &mut HashSet<TypeId>,

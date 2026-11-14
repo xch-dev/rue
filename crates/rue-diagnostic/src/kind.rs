@@ -61,6 +61,9 @@ pub enum DiagnosticKind {
     #[error("Unterminated octal literal")]
     UnterminatedOctal,
 
+    #[error("Nested too deeply, since the limit is {0} levels")]
+    NestingTooDeep(usize),
+
     #[error("Missing function body")]
     MissingFunctionBody,
 
@@ -266,6 +269,9 @@ pub enum DiagnosticKind {
 
     #[error("Const expression depends on itself")]
     RecursiveConstExpr,
+
+    #[error("Generated code is nested too deeply, since the limit is {0} levels")]
+    LoweringTooDeep(usize),
 
     #[error("Unresolved import `{0}`")]
     UnresolvedImport(String),

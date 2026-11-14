@@ -311,58 +311,47 @@ impl HirLintPass for UnusedStructField<'_> {
     }
 }
 
-/// Adds the structs that a value of the type can contain.
+/// Adds the structs that a value of the type can contain. The type is walked from a worklist
+/// rather than recursively, since it can be nested as deeply as a list literal is long.
 fn collect_structs(
     db: &Database,
     ty: TypeId,
     keys: &mut HashSet<NameKey>,
     visited: &mut HashSet<TypeId>,
 ) {
-    if !visited.insert(ty) {
-        return;
-    }
+    let mut pending = vec![ty];
 
-    match db.ty(ty) {
-        Type::Struct(ty) => {
-            if let Some(key) = ty.name.as_ref().and_then(name_key) {
-                keys.insert(key);
-            }
+    while let Some(ty) = pending.pop() {
+        if !visited.insert(ty) {
+            continue;
+        }
 
-            collect_structs(db, ty.inner, keys, visited);
+        match db.ty(ty) {
+            Type::Struct(ty) => {
+                if let Some(key) = ty.name.as_ref().and_then(name_key) {
+                    keys.insert(key);
+                }
 
-            for &generic in &ty.generics {
-                collect_structs(db, generic, keys, visited);
+                pending.push(ty.inner);
+                pending.extend(&ty.generics);
             }
-        }
-        Type::Alias(alias) => {
-            collect_structs(db, alias.inner, keys, visited);
-
-            for &generic in &alias.generics {
-                collect_structs(db, generic, keys, visited);
+            Type::Alias(alias) => {
+                pending.push(alias.inner);
+                pending.extend(&alias.generics);
             }
-        }
-        Type::Ref(inner) => collect_structs(db, *inner, keys, visited),
-        Type::Pair(pair) => {
-            collect_structs(db, pair.first, keys, visited);
-            collect_structs(db, pair.rest, keys, visited);
-        }
-        Type::Union(union) => {
-            for &ty in &union.types {
-                collect_structs(db, ty, keys, visited);
+            Type::Ref(inner) => pending.push(*inner),
+            Type::Pair(pair) => pending.extend([pair.first, pair.rest]),
+            Type::Union(union) => pending.extend(&union.types),
+            Type::Apply(apply) => {
+                pending.push(apply.inner);
+                pending.extend(apply.generics.values());
             }
+            Type::Unresolved
+            | Type::Generic(_)
+            | Type::Any
+            | Type::Never
+            | Type::Atom(_)
+            | Type::Function(_) => {}
         }
-        Type::Apply(apply) => {
-            collect_structs(db, apply.inner, keys, visited);
-
-            for &generic in apply.generics.values() {
-                collect_structs(db, generic, keys, visited);
-            }
-        }
-        Type::Unresolved
-        | Type::Generic(_)
-        | Type::Any
-        | Type::Never
-        | Type::Atom(_)
-        | Type::Function(_) => {}
     }
 }

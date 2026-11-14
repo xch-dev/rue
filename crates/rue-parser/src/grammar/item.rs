@@ -24,6 +24,10 @@ pub fn item(p: &mut Parser) {
 /// item, since it's likely left over from a mistake earlier in the file. Inside of a module, it
 /// ends the module instead.
 fn item_with(p: &mut Parser, top_level: bool) {
+    p.nested(|p| item_with_inner(p, top_level));
+}
+
+fn item_with_inner(p: &mut Parser, top_level: bool) {
     let start = p.pos();
     let cp = p.checkpoint();
 
@@ -179,7 +183,11 @@ fn import_item(p: &mut Parser, cp: Checkpoint, export: bool) {
     p.finish();
 }
 
-fn import_path(p: &mut Parser, mut first: bool) {
+fn import_path(p: &mut Parser, first: bool) {
+    p.nested(|p| import_path_inner(p, first));
+}
+
+fn import_path_inner(p: &mut Parser, mut first: bool) {
     p.start(SyntaxKind::ImportPath);
     let mut required = true;
     while p.at(T![::]) || required {

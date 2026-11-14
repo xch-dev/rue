@@ -8,14 +8,18 @@ use crate::{
 };
 
 pub fn ty(p: &mut Parser) {
-    ty_inner(p, true);
+    ty_with(p, true);
 
     // The tokens that could have continued the type are too noisy to include in diagnostics
     // about what's expected after it
     p.clear_expected();
 }
 
-fn ty_inner(p: &mut Parser, allow_union: bool) {
+fn ty_with(p: &mut Parser, allow_union: bool) {
+    p.nested(|p| ty_with_inner(p, allow_union));
+}
+
+fn ty_with_inner(p: &mut Parser, allow_union: bool) {
     let cp = p.checkpoint();
 
     if p.at_quiet(SyntaxKind::Ident) || p.at_quiet(T![super]) || p.at_quiet(T![::]) {
@@ -84,7 +88,7 @@ fn ty_inner(p: &mut Parser, allow_union: bool) {
         p.start_at(cp, SyntaxKind::UnionType);
         while at_union_separator(p) {
             p.expect(T![|]);
-            ty_inner(p, false);
+            ty_with(p, false);
         }
         p.finish();
     }
