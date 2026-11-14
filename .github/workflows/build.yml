@@ -92,3 +92,17 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm lint
           pnpm build
+
+  # The only check that branch protection needs to require. A skipped job counts as passing, so
+  # this always runs and fails explicitly if anything it depends on didn't succeed.
+  required:
+    name: Required checks
+    if: ${{ always() }}
+    needs: [test, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "One or more required jobs did not succeed"
+          exit 1
