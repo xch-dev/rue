@@ -1,0 +1,37 @@
+// Resolving generics through other generics must still reject invalid calls (#146)
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn bytes_only(value: Bytes) -> Bytes {
+    value
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+fn cycle<A, B>(forward: fn(a: A) -> B, _backward: fn(b: B) -> A) -> B {
+    forward(unchecked_cast(nil))
+}
+
+fn main() -> Bytes {
+    // `B` is inferred as `Int` through `A`, which isn't `Bytes`
+    let wrong_result: Bytes = map(identity, 42);
+
+    // The function can't take the value
+    let wrong_argument = map(bytes_only, 42);
+
+    // `B` is inferred as `Int` through `A`, which the second function can't take
+    let wrong_chain = chain(identity, bytes_only, 42);
+
+    // Nothing gives either generic a type
+    let unconstrained = cycle(identity, identity);
+
+    wrong_result + wrong_argument + wrong_chain + unconstrained
+}

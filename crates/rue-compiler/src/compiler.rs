@@ -660,6 +660,19 @@ impl Compiler {
         rue_types::resolve_inference(self.db.types_mut(), &self.builtins.types, infer)
     }
 
+    pub fn resolve_inference_with_fallback(
+        &mut self,
+        infer: &Inference,
+        fallback: &HashMap<TypeId, TypeId>,
+    ) -> HashMap<TypeId, TypeId> {
+        rue_types::resolve_inference_with_fallback(
+            self.db.types_mut(),
+            &self.builtins.types,
+            infer,
+            fallback,
+        )
+    }
+
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
 

@@ -11,7 +11,8 @@ use crate::{
     FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
     add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
     extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
-    stringify, substitute, substitute_with_mappings, subtract, unwrap_semantic,
+    resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
+    unwrap_semantic,
 };
 
 struct Db {
@@ -1456,6 +1457,176 @@ mod inference {
                 held: vec![nil],
             }
         );
+    }
+
+    /// Infers `A` and `B` from passing `fn<U>(x: U) -> U` to `fn(a: A) -> B` and `Int` to `A`.
+    fn infer_map_identity(db: &mut Db, a: TypeId, b: TypeId, infer: &mut Inference) {
+        let int = db.builtins.int;
+        let u = db.generic("U");
+        let identity = db.function_with(&[u], &[u], true, u);
+        let param = db.function(&[a], b);
+        assert_eq!(db.infer(identity, param, infer), Comparison::Assign);
+        assert_eq!(db.infer(int, a, infer), Comparison::Assign);
+    }
+
+    #[test]
+    fn resolves_through_other_generics() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+        infer_map_identity(&mut db, a, b, &mut infer);
+        assert_eq!(candidates(&infer, b).lower, vec![a]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
+    fn resolves_compound_candidates_through_other_generics() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `(A, nil)` to `B` and `Int` to `A`
+        let pair = db.pair(a, nil);
+        assert_eq!(db.infer(pair, b, &mut infer), Comparison::Assign);
+        assert_eq!(db.infer(int, a, &mut infer), Comparison::Assign);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&b]), "(Int, nil)");
+    }
+
+    #[test]
+    fn resolves_cycles_between_generics() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        // `B` to `A`, `A` to `B` and `Int` to `B`, with the generics in either order
+        let mut results = Vec::new();
+
+        for generics in [[a, b], [b, a]] {
+            let mut infer = Inference::new(generics);
+            assert_eq!(db.infer(b, a, &mut infer), Comparison::Assign);
+            assert_eq!(db.infer(a, b, &mut infer), Comparison::Assign);
+            assert_eq!(db.infer(int, b, &mut infer), Comparison::Assign);
+            results.push(resolve_inference(&mut db.arena, &db.builtins, &infer));
+        }
+
+        assert_eq!(results[0][&a], int);
+        assert_eq!(results[0][&b], int);
+        assert_eq!(results[0], results[1]);
+    }
+
+    #[test]
+    fn resolves_upper_candidates_through_other_generics() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `fn(x: B) -> nil` to `fn(x: A) -> nil` and `fn(x: Int) -> nil` to `fn(x: B) -> nil`
+        let takes_b = db.function(&[b], nil);
+        let takes_a = db.function(&[a], nil);
+        let takes_int = db.function(&[int], nil);
+        assert_eq!(db.infer(takes_b, takes_a, &mut infer), Comparison::Assign);
+        assert_eq!(db.infer(takes_int, takes_b, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, a).upper, vec![b]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
+    fn resolves_held_candidates_through_other_generics() {
+        let mut db = Db::new();
+        let (int, nil, recursive_any) =
+            (db.builtins.int, db.builtins.nil, db.builtins.recursive_any);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `Int` to `B` and `(B, nil)` to `A | Any`, which already holds it
+        assert_eq!(db.infer(int, b, &mut infer), Comparison::Assign);
+        let pair = db.pair(b, nil);
+        let param = db.union(&[a, recursive_any]);
+        assert_eq!(db.infer(pair, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, a).held.len(), 1);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&a]), "(Int, nil)");
+    }
+
+    #[test]
+    fn compound_candidates_in_cycles_are_left_as_is() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        // `Int` to `A`, `B` to `A` and `(A, nil)` to `B`, with the generics in either order.
+        // Resolving `B` through `A` would make it an infinite type.
+        let mut results = Vec::new();
+
+        for generics in [[a, b], [b, a]] {
+            let mut infer = Inference::new(generics);
+            assert_eq!(db.infer(int, a, &mut infer), Comparison::Assign);
+            assert_eq!(db.infer(b, a, &mut infer), Comparison::Assign);
+            let pair = db.pair(a, nil);
+            assert_eq!(db.infer(pair, b, &mut infer), Comparison::Assign);
+            results.push(resolve_inference(&mut db.arena, &db.builtins, &infer));
+        }
+
+        for result in &results {
+            assert_eq!(db.name(result[&b]), "(A, nil)");
+        }
+    }
+
+    #[test]
+    fn resolves_through_fallback_types() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `A` to `B`, where only the fallback gives `A` a type
+        assert_eq!(db.infer(a, b, &mut infer), Comparison::Assign);
+
+        let fallback = HashMap::from([(a, int)]);
+        let mappings =
+            resolve_inference_with_fallback(&mut db.arena, &db.builtins, &infer, &fallback);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
+    fn unconstrained_cycles_are_left_as_is() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+        assert_eq!(db.infer(b, a, &mut infer), Comparison::Assign);
+        assert_eq!(db.infer(a, b, &mut infer), Comparison::Assign);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], b);
+        assert_eq!(mappings[&b], a);
+    }
+
+    #[test]
+    fn generics_in_scope_are_not_resolved_through() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+        infer.set_in_scope(a);
+        infer_map_identity(&mut db, a, b, &mut infer);
+
+        // `A` is the caller's own generic, as in a recursive call
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], a);
     }
 }
 
