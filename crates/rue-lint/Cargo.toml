@@ -1,6 +1,6 @@
 [package]
 name = "rue-lint"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Lints for the Rue programming language, which run as passes after compilation."
