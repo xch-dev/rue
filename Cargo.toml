@@ -56,9 +56,9 @@ rue-lint = { path = "crates/rue-lint", version = "0.11.0" }
 rue-types = { path = "crates/rue-types", version = "0.11.0" }
 rue-clvm = { path = "crates/rue-clvm", version = "0.11.0" }
 anyhow = "1.0.98"
-clvm-traits = "0.51.0"
-clvm-utils = "0.51.0"
-clvmr = "0.21.0"
+clvm-traits = "0.54.0"
+clvm-utils = "0.54.0"
+clvmr = "0.22.0"
 derive_more = "2.0.1"
 expect-test = "1.5.1"
 id-arena = "2.2.1"
@@ -95,5 +95,4 @@ colored = "3.0.0"
 toml = "0.9.8"
 include_dir = "0.7.4"
 getrandom = "0.4.3"
-getrandom_03 = { package = "getrandom", version = "0.3.4" }
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
