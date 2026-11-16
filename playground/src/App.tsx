@@ -41,20 +41,19 @@ const COMPILE_DELAY_MS = 150;
 
 const defaultExample = examples[0];
 
-function initialSource(): string {
-  // The playground used to keep the source under `source`, as JSON
-  const legacy = readStored<string | null>("source", null);
-  return readStored("rue.source", legacy ?? defaultExample.content);
+/** The source to start with if there's none saved. */
+function defaultSource(): string {
+  // The playground used to keep the source under `source`, as JSON. An empty value was saved by
+  // visiting it without typing anything.
+  return readStored<string | null>("source", null) || defaultExample.content;
 }
 
 export default function App() {
-  const [source, setSource] = useStored("rue.source", initialSource);
-  const [solution, setSolution] = useStored("rue.solution", () =>
-    readStored("rue.solution", defaultExample.solution),
-  );
-  const [debug, setDebug] = useStored("rue.debug", () => readStored("rue.debug", false));
-  const [theme, setTheme] = useStored<Theme>("rue.theme", () => readStored("rue.theme", "system"));
-  const [split, setSplit] = useStored("rue.split", () => readStored("rue.split", 0.55));
+  const [source, setSource] = useStored("rue.source", defaultSource);
+  const [solution, setSolution] = useStored("rue.solution", defaultExample.solution);
+  const [debug, setDebug] = useStored("rue.debug", false);
+  const [theme, setTheme] = useStored<Theme>("rue.theme", "system");
+  const [split, setSplit] = useStored("rue.split", 0.55);
 
   const [compilation, setCompilation] = useState<Compilation | null>(null);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
@@ -218,9 +217,11 @@ export default function App() {
     view.current?.dispatch({ changes: suggestion.edits });
   }, []);
 
-  // Global shortcuts: run with Ctrl/Cmd+Enter, format with Shift+Alt+F
+  // Global shortcuts: run with Ctrl/Cmd+Enter, format with Shift+Alt+F. The editor handles its own
+  // Ctrl/Cmd+Enter and marks the event as handled.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         onRun();
@@ -350,6 +351,7 @@ export default function App() {
               value={source}
               onChange={onSourceChange}
               diagnostics={editorDiagnostics}
+              onRun={onRun}
               onView={(editor) => (view.current = editor)}
             />
           )}

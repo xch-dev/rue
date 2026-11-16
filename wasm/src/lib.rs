@@ -8,6 +8,9 @@ mod diagnostics;
 mod examples;
 mod run;
 
+#[cfg(test)]
+mod tests;
+
 use std::{path::PathBuf, sync::Arc};
 
 use clvm_utils::tree_hash;

@@ -10,6 +10,10 @@ pub struct Example {
     pub content: String,
     /// The solution its snapshot runs it with, written as CLVM.
     pub solution: String,
+    /// The snapshot itself, which the tests compare results with.
+    #[cfg(test)]
+    #[wasm_bindgen(skip)]
+    pub snapshot: &'static str,
 }
 
 macro_rules! example {
@@ -20,6 +24,8 @@ macro_rules! example {
             description: $description.to_string(),
             content: include_str!(concat!("../../examples/", $path, ".rue")).to_string(),
             solution: snapshot_solution(include_str!(concat!("../../examples/", $path, ".yaml"))),
+            #[cfg(test)]
+            snapshot: include_str!(concat!("../../examples/", $path, ".yaml")),
         }
     };
 }
@@ -85,23 +91,26 @@ pub fn get_examples() -> Vec<Example> {
     ]
 }
 
-/// The `solution` of a snapshot, which is a plain or single-quoted YAML scalar on one line.
-/// Snapshots without one are run with nil.
+/// The `solution` of a snapshot. Snapshots without one are run with nil.
 fn snapshot_solution(snapshot: &str) -> String {
-    let Some(value) = snapshot
-        .lines()
-        .find_map(|line| line.strip_prefix("solution: "))
-    else {
-        return "()".to_string();
-    };
+    snapshot_value(snapshot, "solution").unwrap_or_else(|| "()".to_string())
+}
 
-    match value
-        .strip_prefix('\'')
-        .and_then(|value| value.strip_suffix('\''))
-    {
-        Some(quoted) => quoted.replace("''", "'"),
-        None => value.to_string(),
-    }
+/// A top-level field of a snapshot, which is a plain or single-quoted YAML scalar on one line.
+pub(crate) fn snapshot_value(snapshot: &str, key: &str) -> Option<String> {
+    let value = snapshot
+        .lines()
+        .find_map(|line| line.strip_prefix(key)?.strip_prefix(": "))?;
+
+    Some(
+        match value
+            .strip_prefix('\'')
+            .and_then(|value| value.strip_suffix('\''))
+        {
+            Some(quoted) => quoted.replace("''", "'"),
+            None => value.to_string(),
+        },
+    )
 }
 
 #[cfg(test)]
@@ -116,17 +125,14 @@ mod tests {
             "('{ \"a\": 1 }')"
         );
         assert_eq!(snapshot_solution("program: ()\n"), "()");
-    }
-
-    #[test]
-    fn examples_have_solutions() {
-        for example in get_examples() {
-            assert!(
-                example.solution.starts_with('('),
-                "{}: {}",
-                example.name,
-                example.solution
-            );
-        }
+        // Only top-level fields count, not those of tests
+        assert_eq!(
+            snapshot_solution("tests:\n- name: a\n  solution: (1)\n"),
+            "()"
+        );
+        assert_eq!(
+            snapshot_value("runtime_cost: 20\n", "runtime_cost").as_deref(),
+            Some("20")
+        );
     }
 }

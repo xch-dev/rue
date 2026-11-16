@@ -58,14 +58,7 @@ pub fn run(program: &str, solution: &str) -> Result<Execution, JsError> {
     let dialect = DebugDialect::new(CLVM_FLAGS, false);
     let result = run_program(&mut allocator, &dialect, program, solution, MAX_COST);
 
-    let prints = dialect
-        .log()
-        .into_iter()
-        .map(|print| Print {
-            location: print.srcloc,
-            value: print.message,
-        })
-        .collect();
+    let prints = prints(&dialect);
 
     let (output, error, runtime_cost) = match result {
         Ok(reduction) => (
@@ -147,18 +140,22 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
         results.push(TestResult {
             name,
             error,
-            prints: dialect
-                .log()
-                .into_iter()
-                .map(|print| Print {
-                    location: print.srcloc,
-                    value: print.message,
-                })
-                .collect(),
+            prints: prints(&dialect),
         });
     }
 
     Ok(results)
+}
+
+fn prints(dialect: &DebugDialect) -> Vec<Print> {
+    dialect
+        .log()
+        .into_iter()
+        .map(|print| Print {
+            location: print.srcloc,
+            value: print.message,
+        })
+        .collect()
 }
 
 fn describe_error(allocator: &Allocator, error: &EvalErr) -> String {

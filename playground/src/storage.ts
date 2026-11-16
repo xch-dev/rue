@@ -18,9 +18,11 @@ function writeStored(key: string, value: unknown) {
   }
 }
 
-/** State that's kept in local storage between visits. */
-export function useStored<T>(key: string, initial: () => T) {
-  const [value, setValue] = useState(initial);
+/** State that's kept in local storage between visits, starting from `fallback` if there's none. */
+export function useStored<T>(key: string, fallback: T | (() => T)) {
+  const [value, setValue] = useState(() =>
+    readStored(key, typeof fallback === "function" ? (fallback as () => T)() : fallback),
+  );
 
   const set = useCallback(
     (next: T) => {

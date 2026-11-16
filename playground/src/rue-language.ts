@@ -52,15 +52,13 @@ function blockComment(stream: StringStream, state: State): string {
   return "comment";
 }
 
+// Strings have no escape sequences, so they end at the next `"`, even after a backslash
 function string(stream: StringStream, state: State): string {
-  while (!stream.eol()) {
-    const char = stream.next();
-    if (char === "\\") {
-      stream.next();
-    } else if (char === '"') {
-      state.inString = false;
-      break;
-    }
+  if (stream.skipTo('"')) {
+    stream.next();
+    state.inString = false;
+  } else {
+    stream.skipToEnd();
   }
   return "string";
 }

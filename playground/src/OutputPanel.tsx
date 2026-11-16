@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import type {
   Compilation,
   Diagnostic,
@@ -103,11 +103,11 @@ export function OutputPanel(props: OutputPanelProps) {
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {compilation?.internalError && (
-          <Callout tone="err" title="The compiler failed">
+          <ErrorCallout title="The compiler failed">
             <pre className="whitespace-pre-wrap font-mono text-xs">
               {compilation.internalError}
             </pre>
-          </Callout>
+          </ErrorCallout>
         )}
         {tab === "program" && <ProgramTab compilation={compilation} />}
         {tab === "run" && <RunTab {...props} />}
@@ -176,25 +176,15 @@ function RunTab({ compilation, solution, onSolution, run, onRun }: OutputPanelPr
           id="solution"
           value={solution}
           onChange={(e) => onSolution(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              onRun();
-            }
-          }}
           spellCheck={false}
           rows={3}
           placeholder="()"
           className="w-full resize-y rounded-md border border-line bg-raised px-3 py-2 font-mono text-xs text-fg outline-none placeholder:text-faint focus:border-accent"
         />
         <div className="mt-2 flex items-center gap-3">
-          <button
-            onClick={onRun}
-            disabled={!canRun}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-contrast transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
+          <PrimaryButton onClick={onRun} disabled={!canRun}>
             <PlayIcon /> Run
-          </button>
+          </PrimaryButton>
           <span className="text-xs text-faint">
             {canRun ? `${modifier}+Enter` : "There's no program to run yet."}
           </span>
@@ -209,11 +199,11 @@ function RunTab({ compilation, solution, onSolution, run, onRun }: OutputPanelPr
             </p>
           )}
           {execution.error !== undefined ? (
-            <Callout tone="err" title="Failed">
+            <ErrorCallout title="Failed">
               <pre className="whitespace-pre-wrap break-all font-mono text-xs">
                 {execution.error}
               </pre>
-            </Callout>
+            </ErrorCallout>
           ) : (
             <Block label="Output" copy={execution.output!}>
               <pre className="whitespace-pre-wrap break-all font-mono text-sm">
@@ -258,15 +248,21 @@ function Prints({ prints, hint }: { prints: Print[]; hint: boolean }) {
 
   return (
     <Block label="Debug output">
-      <ul className="space-y-1 font-mono text-xs">
-        {prints.map((print, index) => (
-          <li key={index} className="flex gap-2">
-            <span className="flex-none text-faint">{print.location}</span>
-            <span className="break-all">{print.value}</span>
-          </li>
-        ))}
-      </ul>
+      <PrintList prints={prints} />
     </Block>
+  );
+}
+
+function PrintList({ prints, className = "" }: { prints: Print[]; className?: string }) {
+  return (
+    <ul className={`space-y-1 font-mono text-xs ${className}`}>
+      {prints.map((print, index) => (
+        <li key={index} className="flex gap-2">
+          <span className="flex-none text-faint">{print.location}</span>
+          <span className="break-all">{print.value}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -278,22 +274,18 @@ function TestsTab({ compilation, tests, onRunTests }: OutputPanelProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <button
-          onClick={onRunTests}
-          disabled={!compilation || hasErrors}
-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-contrast transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
+        <PrimaryButton onClick={onRunTests} disabled={!compilation || hasErrors}>
           <PlayIcon /> Run tests
-        </button>
+        </PrimaryButton>
         <span className="text-xs text-faint">
           {hasErrors ? "Fix the errors to run the tests." : "Runs each `test fn` in a debug build."}
         </span>
       </div>
 
       {typeof results === "string" && (
-        <Callout tone="err" title="The tests couldn't run">
+        <ErrorCallout title="The tests couldn't run">
           <pre className="whitespace-pre-wrap font-mono text-xs">{results}</pre>
-        </Callout>
+        </ErrorCallout>
       )}
 
       {Array.isArray(results) && (
@@ -324,13 +316,7 @@ function TestsTab({ compilation, tests, onRunTests }: OutputPanelProps) {
                       </pre>
                     )}
                     {result.prints.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 pl-6 font-mono text-xs text-muted">
-                        {result.prints.map((print, index) => (
-                          <li key={index}>
-                            <span className="text-faint">{print.location}</span> {print.value}
-                          </li>
-                        ))}
-                      </ul>
+                      <PrintList prints={result.prints} className="mt-1 pl-6 text-muted" />
                     )}
                   </li>
                 ))}
@@ -459,21 +445,18 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function Callout({
-  tone,
-  title,
-  children,
-}: {
-  tone: "err";
-  title: string;
-  children: ReactNode;
-}) {
+function PrimaryButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <div
-      className={`mb-4 rounded-md border px-3 py-2 ${
-        tone === "err" ? "border-err/40 bg-err-soft text-err" : ""
-      }`}
-    >
+    <button
+      {...props}
+      className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-contrast transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+    />
+  );
+}
+
+function ErrorCallout({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mb-4 rounded-md border border-err/40 bg-err-soft px-3 py-2 text-err">
       <div className="mb-1 text-sm font-semibold">{title}</div>
       {children}
     </div>

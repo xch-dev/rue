@@ -103,22 +103,14 @@ function toEditorDiagnostics(
     return {
       from,
       to,
-      severity: diagnostic.severity === "error" ? "error" : "warning",
-      source: diagnostic.lint ?? undefined,
+      severity: diagnostic.severity,
+      source: diagnostic.lint,
       message: [diagnostic.message, ...diagnostic.notes.map((n) => `note: ${n}`)].join(
         "\n",
       ),
       actions: diagnostic.suggestions.map((suggestion) => ({
         name: suggestion.message,
-        apply(view) {
-          view.dispatch({
-            changes: suggestion.edits.map((edit) => ({
-              from: edit.from,
-              to: edit.to,
-              insert: edit.insert,
-            })),
-          });
-        },
+        apply: (view) => view.dispatch({ changes: suggestion.edits }),
       })),
     };
   });
@@ -129,14 +121,18 @@ interface EditorProps {
   onChange: (value: string) => void;
   /** Diagnostics, along with the source they were reported for. */
   diagnostics: { source: string; diagnostics: Diagnostic[] } | null;
+  /** Called for Ctrl/Cmd+Enter, which would otherwise insert a blank line. */
+  onRun: () => void;
   onView?: (view: EditorView | null) => void;
 }
 
-export function Editor({ value, onChange, diagnostics, onView }: EditorProps) {
+export function Editor({ value, onChange, diagnostics, onRun, onView }: EditorProps) {
   const parent = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onRunRef = useRef(onRun);
+  onRunRef.current = onRun;
 
   useEffect(() => {
     const editor = new EditorView({
@@ -163,6 +159,13 @@ export function Editor({ value, onChange, diagnostics, onView }: EditorProps) {
           highlightSelectionMatches(),
           lintGutter(),
           keymap.of([
+            {
+              key: "Mod-Enter",
+              run: () => {
+                onRunRef.current();
+                return true;
+              },
+            },
             ...closeBracketsKeymap,
             ...defaultKeymap,
             ...searchKeymap,
