@@ -6,9 +6,9 @@ use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet,
-    FxIndexSet, Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle,
-    step, stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxIndexSet,
+    Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
+    stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,7 +227,7 @@ struct CheckContext {
     memo: FxHashMap<(Vec<TypeId>, TypeId, usize), Result<Check, CheckError>>,
     /// The arguments to each `check_each` call on the current path, with the types sorted. The
     /// check only depends on these, so reaching the same ones again would repeat forever.
-    path: FxHashSet<(Vec<TypeId>, TypeId)>,
+    path: FxIndexSet<(Vec<TypeId>, TypeId)>,
 }
 
 fn check_impl(
@@ -266,17 +266,15 @@ fn check_each(
 
     let mut types = key.0.clone();
     types.sort_unstable();
-    let state = (types, rhs);
 
     // No finite check exists, such as when checking `Any` against `List<Int>`, so report that
     // rather than continuing until the depth limit is reached
-    if ctx.path.contains(&state) {
+    if !ctx.path.insert((types, rhs)) {
         return Err(CheckError::RecursiveType);
     }
 
-    ctx.path.insert(state.clone());
     let result = check_each_impl(arena, builtins, ctx, depth + 1, &key.0, rhs);
-    ctx.path.remove(&state);
+    ctx.path.pop();
     ctx.memo.insert(key, result.clone());
     result
 }
