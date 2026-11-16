@@ -75,7 +75,8 @@ pub struct TooDeep {
     pub srcloc: Option<SrcLoc>,
 }
 
-/// How deeply HIR can be nested while it's lowered, which bounds the stack used by lowering.
+/// How deeply HIR can be nested while it's lowered, which bounds how deeply the generated code is
+/// nested.
 ///
 /// This is separate from the parser's nesting limit, since lowering can go much deeper than the
 /// source code. The body of an inline function is lowered again at each call, inside of its
@@ -83,9 +84,10 @@ pub struct TooDeep {
 /// it's referenced, so a chain of them that each reference the next nests once per link. Each
 /// statement in a block also nests the rest of the block inside of it.
 ///
-/// The optimizer and code generation don't need this, since they grow the stack as they go.
+/// Lowering grows the stack as it goes, as do the optimizer and code generation, so this doesn't
+/// depend on the size of the thread's stack.
 ///
-/// Real programs stay far below this, and it leaves room for a 2 MiB thread in a release build.
+/// Real programs stay far below this.
 pub const MAX_LOWERING_DEPTH: usize = 512;
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
@@ -291,7 +293,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         self.path.push(frame);
-        let lir = f(self);
+        // Every cycle of recursion in lowering passes through here, and each level can use a lot
+        // of stack in a debug build, so grow it rather than rely on the thread having enough
+        let lir = rue_types::grow_stack(|| f(self));
         self.path.pop();
         lir
     }
@@ -1125,6 +1129,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.
     fn is_static_hir(&self, hir: HirId) -> bool {
+        // This follows references to the values that are inlined, which can go as deep as a chain
+        // of them is long, without passing through [`Self::nested`]
+        rue_types::grow_stack(|| self.is_static_hir_inner(hir))
+    }
+
+    fn is_static_hir_inner(&self, hir: HirId) -> bool {
         match self.db.hir(hir) {
             Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
             Hir::Pair(first, rest) => self.is_static_hir(*first) && self.is_static_hir(*rest),
