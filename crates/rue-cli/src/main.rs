@@ -781,16 +781,15 @@ fn debug(args: DebugArgs) -> Result<String> {
         NodePtr::NIL
     };
 
-    let output = match run_program(
+    let output = run_program(
         &mut allocator,
         &DebugDialect::new(CLVM_FLAGS, true),
         program,
         solution,
         args.cost.max_cost,
-    ) {
-        Ok(output) => output.1,
-        Err(error) => anyhow::bail!(args.cost.describe_error(&error)),
-    };
+    )
+    .map_err(|error| anyhow::anyhow!(args.cost.describe_error(&error)))?
+    .1;
 
     Ok(disassemble_value(&allocator, output))
 }
@@ -1073,7 +1072,7 @@ mod tests {
     #[test]
     fn max_cost_flag() {
         for args in parse_cost_args(&[]) {
-            assert_eq!(args.max_cost, DEFAULT_MAX_COST);
+            assert_eq!(args.max_cost, 11_000_000_000);
         }
         for args in parse_cost_args(&["--max-cost", "1000"]) {
             assert_eq!(args.max_cost, 1000);
@@ -1107,36 +1106,40 @@ mod tests {
         assert!(error.contains("`--max-cost`"), "{error}");
     }
 
-    /// Runs a test program with the `rue test` flags.
-    fn run_test_with(program: &str, args: &[&str]) -> Result<(), String> {
-        let [cost, _] = parse_cost_args(args);
+    /// Runs a test program with the cost limit.
+    fn run_test_with(program: &str, max_cost: u64) -> Result<(), String> {
         let mut allocator = Allocator::new();
         let program = assemble(&mut allocator, program).unwrap();
-        run_test(&mut allocator, program, cost)
+        run_test(&mut allocator, program, CostArgs { max_cost })
     }
 
     #[test]
     fn tests_enforce_the_cost_limit() {
         let program = "(i (= (sha256 (q . 1)) ()) (q . 1) ())";
-        assert_eq!(run_test_with(program, &[]), Ok(()));
-        let error = run_test_with(program, &["--max-cost", "100"]).unwrap_err();
+        assert_eq!(run_test_with(program, DEFAULT_MAX_COST), Ok(()));
+        let error = run_test_with(program, 100).unwrap_err();
         assert!(error.contains("the cost limit is 100"), "{error}");
 
         // A test that never ends fails instead of hanging
         let forever = "(a (q 2 2 1) (q (a 2 1)))";
-        let error = run_test_with(forever, &["--max-cost", "1000000"]).unwrap_err();
+        let error = run_test_with(forever, 1_000_000).unwrap_err();
         assert!(error.contains("`--max-cost`"), "{error}");
     }
 
     #[test]
-    fn tests_fail_on_raise_or_output() {
+    fn other_failures_are_reported_as_before() {
+        let fail = |program| run_test_with(program, DEFAULT_MAX_COST).unwrap_err();
+        assert_eq!(fail("(x (q . 5))"), "raise: 5");
+        assert_eq!(fail("(q . 1)"), "non-nil output");
+
+        // Only running out of cost mentions the limit
         assert_eq!(
-            run_test_with("(x (q . 5))", &[]),
-            Err("raise: 5".to_string())
+            fail("(f (q . 1))"),
+            "error: InvalidOperatorArg: first of non-cons"
         );
         assert_eq!(
-            run_test_with("(q . 1)", &[]),
-            Err("non-nil output".to_string())
+            run_debug(&["(f (q . 1))"]).unwrap_err(),
+            "InvalidOperatorArg: first of non-cons"
         );
     }
 }
