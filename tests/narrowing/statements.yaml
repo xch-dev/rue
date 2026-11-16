@@ -3,7 +3,7 @@ tests:
   program: (a (i (l 2) (q 8) (q . 2)) 1)
   debug_program: (a (i (not (l 2)) (q . 2) (q 8 (q . "assertion failed at statements.rue:2:5"))) 1)
   solution: (5)
-  output: '5'
+  output: "5"
   runtime_cost: 325
   byte_cost: 300000
   total_cost: 300325
@@ -11,7 +11,7 @@ tests:
   program: (a (i (l 2) (q 8) (q . 2)) 1)
   debug_program: (a (i (not (l 2)) (q . 2) (q 8 (q . "assertion failed at statements.rue:7:5"))) 1)
   solution: (5)
-  output: '5'
+  output: "5"
   runtime_cost: 325
   byte_cost: 300000
   total_cost: 300325
@@ -19,7 +19,7 @@ tests:
   program: (a (i (all (not (l 2)) (not (l 5))) (q 16 2 5) (q 8)) 1)
   debug_program: (a (i (all (not (l 2)) (not (l 5))) (q 16 2 5) (q 8 (q . "assertion failed at statements.rue:12:5"))) 1)
   solution: (3 4)
-  output: '7'
+  output: "7"
   runtime_cost: 2408
   byte_cost: 588000
   total_cost: 590408
@@ -27,7 +27,7 @@ tests:
   program: (a (i (l 2) (q) (q . 2)) 1)
   debug_program: (a (i (l 2) (q) (q . 2)) 1)
   solution: (5)
-  output: '5'
+  output: "5"
   runtime_cost: 325
   byte_cost: 276000
   total_cost: 276325
@@ -35,7 +35,7 @@ tests:
   program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5)) 1)
   debug_program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5)) 1)
   solution: (3 4)
-  output: '7'
+  output: "7"
   runtime_cost: 1667
   byte_cost: 876000
   total_cost: 877667
@@ -43,7 +43,7 @@ tests:
   program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
   debug_program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
   solution: (3 4)
-  output: '7'
+  output: "7"
   runtime_cost: 2006
   byte_cost: 468000
   total_cost: 470006
@@ -51,7 +51,7 @@ tests:
   program: (a (i (= 2 (q . 1)) (q . 2) (q 8)) 1)
   debug_program: (a (i (not (= 2 (q . 1))) (q 8 (q . "raise called at statements.rue:39:9")) (q . 2)) 1)
   solution: (1)
-  output: '1'
+  output: "1"
   runtime_cost: 445
   byte_cost: 348000
   total_cost: 348445
@@ -59,7 +59,7 @@ tests:
   program: (a (i (l 2) (q) (q . 2)) 1)
   debug_program: (a (i (not (l 2)) (q . 2) (q)) 1)
   solution: (5)
-  output: '5'
+  output: "5"
   runtime_cost: 325
   byte_cost: 276000
   total_cost: 276325
@@ -67,7 +67,7 @@ tests:
   program: (a (i (l 2) (q) (q . 2)) 1)
   debug_program: (a (i (l 2) (q) (q . 2)) 1)
   solution: (5)
-  output: '5'
+  output: "5"
   runtime_cost: 325
   byte_cost: 276000
   total_cost: 276325

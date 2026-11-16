@@ -40,28 +40,28 @@ tests:
 - name: adder_inline
   program: (a (q 16 2 (q . 10)) (q 20))
   debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 20) ())) (c (a 5 2) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
-  output: '30'
+  output: "30"
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
 - name: adder_non_inline
   program: (a (q 2 (q 2 (q 16 (a 4 (q 20)) (a 6 (q 30)) (a 4 (q 40)) (a 6 (q 50))) (c (c (a 5 (* 2 (q . 2))) (a 5 (* 2 (q . 3)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
   debug_program: (a (q 2 (q 2 (q 16 (+ (+ (a 4 (c (q . 20) ())) (a 6 (c (q . 30) ()))) (a 4 (c (q . 40) ()))) (a 6 (c (q . 50) ()))) (c (c (a 5 (* 2 (q . 2))) (a 5 (* 2 (q . 3)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
-  output: '240'
+  output: "240"
   runtime_cost: 10843
   byte_cost: 2364000
   total_cost: 2374843
 - name: nested_closures
   program: (a (q 2 (q 16 (a (a 2 ()) ()) (a (a 2 ()) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 16 2 (a (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ())))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (q . 10) 1))
   debug_program: (a (q 2 (q 16 (a (a 2 ()) ()) (a (a 2 ()) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 16 2 (a (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ())))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (q . 10) 1))
-  output: '42'
+  output: "42"
   runtime_cost: 10146
   byte_cost: 3060000
   total_cost: 3070146
 - name: auto_extern
   program: (a (q 16 (a 2 (q 1 2 3)) (a 2 (q 4 5 6))) (c (q 16 2 5 11) 1))
   debug_program: (a (q 16 (a 2 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 2 (c (q . 4) (c (q . 5) (c (q . 6) ()))))) (c (c (q . 2) (c (c (q . 1) (q 16 (+ 2 5) 11)) (c (q . 1) ()))) 1))
-  output: '21'
+  output: "21"
   runtime_cost: 3770
   byte_cost: 708000
   total_cost: 711770

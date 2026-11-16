@@ -1,7 +1,7 @@
 diagnostics:
 - Cannot infer generic `T` for `apply2`; specify it explicitly, e.g. `apply2::<...>()` at function_generic_capture_errors.rue:35:14
-- 'Cannot assign `fn<T>(value: T) -> T` to `PolyT<Int>`, since they are incompatible at function_generic_capture_errors.rue:36:28'
+- "Cannot assign `fn<T>(value: T) -> T` to `PolyT<Int>`, since they are incompatible at function_generic_capture_errors.rue:36:28"
 - Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at function_generic_capture_errors.rue:37:14
-- 'Cannot assign `P<Int>` to `fn<V>(x: V) -> (Int, fn<W>(y: W) -> (W, Any))`, since they are incompatible at function_generic_capture_errors.rue:40:61'
+- "Cannot assign `P<Int>` to `fn<V>(x: V) -> (Int, fn<W>(y: W) -> (W, Any))`, since they are incompatible at function_generic_capture_errors.rue:40:61"
 - Cannot assign `((1, 2), P<Int>)` to `Bytes32`, since they are incompatible at function_generic_capture_errors.rue:44:23
-- 'Cannot assign `fn(y: U) -> U` to `fn<U>(x: U) -> U`, since they are incompatible at function_generic_capture_errors.rue:49:28'
+- "Cannot assign `fn(y: U) -> U` to `fn<U>(x: U) -> U`, since they are incompatible at function_generic_capture_errors.rue:49:28"

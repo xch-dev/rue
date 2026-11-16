@@ -73,12 +73,12 @@ tests:
   program: (a (i (= (g1_map (q 1 . 2) (q . "dst")) (point_add)) (q) (q 8)) 1)
   debug_program: (a (q 2 (i (= (g1_map (c (q . 1) (q . 2)) (q . "dst")) 2) (q) (q 8 (q . "assertion failed at builtins.rue:189:5"))) 1) (c (point_add) ()))
   byte_cost: 528000
-  clvm_error: 'InvalidOperatorArg: g1_map used on list'
+  clvm_error: "InvalidOperatorArg: g1_map used on list"
 - name: g2_map_rejects_pair_message
   program: (a (i (= (g2_map (q 1 . 2) (q . "dst")) (g2_add)) (q) (q 8)) 1)
   debug_program: (a (q 2 (i (= (g2_map (c (q . 1) (q . 2)) (q . "dst")) 2) (q) (q 8 (q . "assertion failed at builtins.rue:193:5"))) 1) (c (g2_add) ()))
   byte_cost: 528000
-  clvm_error: 'InvalidOperatorArg: g2_map used on list'
+  clvm_error: "InvalidOperatorArg: g2_map used on list"
 diagnostics:
 - |-
   Unnecessary comparison with `false` at builtins.rue:72:12

@@ -1,2 +1,2 @@
 diagnostics:
-- 'External function contains invalid CLVM: bad encoding at invalid_clvm.rue:1:27'
+- "External function contains invalid CLVM: bad encoding at invalid_clvm.rue:1:27"

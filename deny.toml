@@ -8,10 +8,6 @@ all-features = true
 # Advisories that don't affect what we publish. Each needs a reason, and should be removed once the
 # dependency is replaced or updated.
 ignore = [
-    # serde_yml is unsound and unmaintained (as is libyml, which cargo-deny reports for unsoundness
-    # only in direct dependencies). Only rue-tests, which isn't published, uses it, to read and write
-    # snapshot files the repository controls. Replacing it is the part of #195 that's left.
-    { id = "RUSTSEC-2025-0068", reason = "serde_yml is only used by the unpublished test harness" },
     # paste is unmaintained but complete, and is a build-time proc macro (used by rue-ast, and by malachite-bigint through clvmr).
     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained, with no known vulnerability" },
     # pin-utils is unmaintained, and only reached through futures-util.

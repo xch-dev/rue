@@ -1,6 +1,6 @@
 program: (a (q 16 (a 2 (q . 2)) (a (q 16 2 5) (q 3 1)) (q . 1)) (c (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1) ()))
 debug_program: (a (q 2 (q . 2) (c (+ (+ (a 14 (q . 1)) (a 10 (q . 2))) (a 4 (q . 3))) 1)) (c (c (q 2 (q 2 2 (c 3 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at unreachable_code.rue:15:9") (q . "too large")) (q . 1)) 1) (q . 1))) ()))
-output: '7'
+output: "7"
 runtime_cost: 3291
 byte_cost: 996000
 total_cost: 999291

@@ -1,8 +1,8 @@
 diagnostics:
-- 'Cannot assign `fn<U>(_y: U) -> U` to `fn<U>(x: U) -> U`, since they are incompatible at function_binder_identity_errors.rue:14:22'
-- 'Cannot assign `fn<T>(x: T) -> T` to `fn<U>(y: U) -> U`, since they are incompatible at function_binder_identity_errors.rue:30:40'
+- "Cannot assign `fn<U>(_y: U) -> U` to `fn<U>(x: U) -> U`, since they are incompatible at function_binder_identity_errors.rue:14:22"
+- "Cannot assign `fn<T>(x: T) -> T` to `fn<U>(y: U) -> U`, since they are incompatible at function_binder_identity_errors.rue:30:40"
 - Unused generic type `V` at function_binder_identity_errors.rue:42:25
-- 'Cannot assign `fn<W, U>(_y: U) -> U` to `Id`, since they are incompatible at function_binder_identity_errors.rue:43:26'
+- "Cannot assign `fn<W, U>(_y: U) -> U` to `Id`, since they are incompatible at function_binder_identity_errors.rue:43:26"
 - Unused generic type `W` at function_binder_identity_errors.rue:43:29
-- 'Cannot assign `fn<V>(x: V) -> (V, fn(y: V) -> (V, Int))` to `P<P<Int>>`, since they are incompatible at function_binder_identity_errors.rue:48:25'
+- "Cannot assign `fn<V>(x: V) -> (V, fn(y: V) -> (V, Int))` to `P<P<Int>>`, since they are incompatible at function_binder_identity_errors.rue:48:25"
 - Cannot assign `F` to `G`, since they are incompatible at function_binder_identity_errors.rue:52:17
