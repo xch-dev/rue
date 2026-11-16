@@ -1,12 +1,16 @@
 version: 2
 updates:
   # Rust dependencies, in Cargo.toml and Cargo.lock. Minor and patch updates are grouped into one
-  # pull request a week; major updates get their own.
+  # pull request a week; major updates get their own. Dependabot counts 0.x to 0.y as minor, so the
+  # Chia crates, whose 0.x bumps usually need code changes, get a group of their own.
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
     groups:
+      chia:
+        patterns: ["chia*", "clvm*"]
+        update-types: [minor, patch]
       cargo:
         update-types: [minor, patch]
 

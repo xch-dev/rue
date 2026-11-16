@@ -1,4 +1,4 @@
-# Configuration for `cargo deny check`, which CI runs on every push and pull request.
+# Configuration for `cargo deny check`, which the `deny` job in CI runs.
 # See https://embarkstudios.github.io/cargo-deny/checks/cfg.html
 
 [graph]
@@ -48,8 +48,6 @@ ignore = true
 # `multiple_crate_versions` is allowed for the same reason.
 multiple-versions = "allow"
 wildcards = "deny"
-# Path dependencies within the workspace have no version requirement for unpublished crates.
-allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
