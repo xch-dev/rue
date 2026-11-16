@@ -114,6 +114,13 @@ const CHAINS: &[(&str, Shape)] = &[
             links(n, |i| format!("inline const C{i}: Int = C{} + 1;\n", i + 1))
         )
     }),
+    // A binding that's used once is lowered where it's referenced, inside of the rest of the block
+    ("single-use bindings", |n| {
+        format!(
+            "fn main(a: Int) -> Int {{\nlet x0 = a + 1;\n{}x{n}\n}}",
+            links(n, |i| format!("let x{} = x{i};\n", i + 1))
+        )
+    }),
     ("statements", |n| {
         format!(
             "fn main(a: Int) -> Int {{\n{}a\n}}",
@@ -184,8 +191,8 @@ fn errors(diagnostics: &[Diagnostic]) -> Vec<&Diagnostic> {
         .collect()
 }
 
-/// The limits leave room for a 2 MiB thread, such as the language server's, in a release build.
-/// Frames are much larger in debug builds, which need a bigger stack for the same depth.
+/// The parser's limit leaves room for a 2 MiB thread, such as the language server's, in a release
+/// build. Frames are much larger in debug builds, which need a bigger stack for the same depth.
 fn on_small_stack(f: impl FnOnce() + Send + 'static) {
     on_stack(if cfg!(debug_assertions) { 32 } else { 2 }, f);
 }
@@ -231,9 +238,11 @@ fn nesting_beyond_the_limit_is_an_error() {
     });
 }
 
+/// Lowering grows the stack as it goes, so the chains run on a 2 MiB stack even in a debug build,
+/// where each level of lowering uses enough stack that the limit alone wouldn't prevent an overflow.
 #[test]
 fn chains_within_the_lowering_limit_compile() {
-    on_small_stack(|| {
+    on_stack(2, || {
         for (name, shape) in CHAINS {
             let (diagnostics, result) = compile(&shape(100));
             assert!(result.is_ok(), "{name}: {result:?} {diagnostics:?}");
@@ -243,7 +252,7 @@ fn chains_within_the_lowering_limit_compile() {
 
 #[test]
 fn chains_beyond_the_lowering_limit_are_an_error() {
-    on_small_stack(|| {
+    on_stack(2, || {
         for (name, shape) in CHAINS {
             let (diagnostics, result) = compile(&shape(1_000));
 
@@ -266,7 +275,7 @@ fn chains_beyond_the_lowering_limit_are_an_error() {
 
 #[test]
 fn chains_beyond_the_lowering_limit_in_const_expressions_are_an_error() {
-    on_small_stack(|| {
+    on_stack(2, || {
         let (_, shape) = CHAINS[0];
         let source = shape(1_000).replacen("{ f0() }", "{ const { f0() } }", 1);
         let (diagnostics, result) = compile(&source);
@@ -306,8 +315,7 @@ fn long_chains_of_const_expressions_are_evaluated() {
 }
 
 /// The dependency graph and the check for unresolved code follow the whole chain of constants.
-/// Lowering it would go deeper than this stack has room for in a debug build, so they're run
-/// without generating code.
+/// The chain is longer than the lowering limit allows, so they're run without generating code.
 #[test]
 fn long_chains_of_constants_are_followed() {
     on_stack(2, || {
@@ -377,6 +385,28 @@ fn long_chains_of_bindings_are_followed() {
                 .iter()
                 .any(|diagnostic| diagnostic.lint() == Some(Lint::UnconditionalRecursion)),
             "{diagnostics:?}"
+        );
+    });
+}
+
+/// Whether an inline function's argument can be lowered inside of a closure, rather than captured,
+/// is checked by following the whole chain of constants it references, which goes further than the
+/// lowering limit allows the code itself to nest.
+#[test]
+fn long_chains_of_inline_arguments_are_checked() {
+    const LINKS: usize = LONG_CHAIN * 10;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main() -> Int {{ g(C0)() }}\n\ninline fn g(value: Int) -> fn() -> Int {{ fn() => value }}\n{}const C{LINKS}: Int = 1;",
+            links(LINKS, |i| format!("const C{i}: Int = C{};\n", i + 1))
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(errors(&diagnostics).is_empty(), "{diagnostics:?}");
+        assert!(
+            matches!(result, Err(Error::LoweringTooDeep(_))),
+            "{result:?}"
         );
     });
 }
