@@ -170,12 +170,16 @@ mod tests {
         for text in TEXTS {
             let lines = LineIndex::with_carriage_returns(text);
             let line_count = scan_line_starts(text).count() + 1;
+            let longest = text
+                .split(['\r', '\n'])
+                .map(|line| line.encode_utf16().count())
+                .max()
+                .unwrap_or(0);
 
-            // Every position, including ones past the end of each line and past the last line.
-            // No line is longer than 16 UTF-16 code units.
+            // Every position, including ones past the end of each line and past the last line
             for line in 0..=line_count + 1 {
-                for character in 0..=18 {
-                    let position = Position::new(line as u32, character);
+                for character in 0..=longest + 2 {
+                    let position = Position::new(line as u32, character as u32);
 
                     assert_eq!(
                         position_to_offset(&lines, text, position),

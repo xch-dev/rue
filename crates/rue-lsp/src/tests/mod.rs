@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::executor::block_on;
 use rue_compiler::normalize_path;
+use rue_diagnostic::LineIndex;
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
@@ -32,8 +33,6 @@ use tower_lsp_server::ls_types::{
 };
 
 use crate::paths::{path_to_uri, uri_to_path};
-use rue_diagnostic::LineIndex;
-
 use crate::position::{offset_to_position, position_to_offset};
 use crate::{Backend, code_actions};
 

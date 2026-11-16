@@ -12,9 +12,14 @@ pub struct Source {
     /// it shouldn't be replaced afterwards; create a new `Source` instead.
     pub text: Arc<str>,
     pub kind: SourceKind,
-    /// Shared between clones, so that each is only built once per file.
-    line_index: Arc<OnceLock<LineIndex>>,
-    line_index_with_carriage_returns: Arc<OnceLock<LineIndex>>,
+    /// Shared between clones, so that each index is only built once per file.
+    line_indexes: Arc<LineIndexes>,
+}
+
+#[derive(Debug, Default)]
+struct LineIndexes {
+    lines: OnceLock<LineIndex>,
+    lines_with_carriage_returns: OnceLock<LineIndex>,
 }
 
 impl Source {
@@ -22,19 +27,21 @@ impl Source {
         Self {
             text,
             kind,
-            line_index: Arc::default(),
-            line_index_with_carriage_returns: Arc::default(),
+            line_indexes: Arc::default(),
         }
     }
 
     /// The lines of the text, as [`LineIndex::new`] counts them.
     pub fn line_index(&self) -> &LineIndex {
-        self.line_index.get_or_init(|| LineIndex::new(&self.text))
+        self.line_indexes
+            .lines
+            .get_or_init(|| LineIndex::new(&self.text))
     }
 
     /// The lines of the text, as [`LineIndex::with_carriage_returns`] counts them.
     pub fn line_index_with_carriage_returns(&self) -> &LineIndex {
-        self.line_index_with_carriage_returns
+        self.line_indexes
+            .lines_with_carriage_returns
             .get_or_init(|| LineIndex::with_carriage_returns(&self.text))
     }
 
@@ -94,5 +101,33 @@ impl SrcLoc {
 
     pub fn display(&self, relative_to: &Path) -> String {
         format!("{}:{}", self.source.kind.display(relative_to), self.start())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_line_indexes() {
+        let text = "a\rb\r\nc\n\u{e9}d";
+        let source = Source::new(Arc::from(text), SourceKind::File("main.rue".to_string()));
+
+        // Each index keeps its own line breaks, whichever is built first, and clones share them
+        assert_eq!(
+            *source.line_index_with_carriage_returns(),
+            LineIndex::with_carriage_returns(text)
+        );
+        assert_eq!(*source.line_index(), LineIndex::new(text));
+
+        let clone = source.clone();
+        assert!(std::ptr::eq(clone.line_index(), source.line_index()));
+
+        for offset in 0..=text.len() {
+            assert_eq!(source.line_col(offset), LineCol::new(text, offset));
+        }
+
+        // A `\r` on its own doesn't end a line for `LineCol`
+        assert_eq!(source.line_col(2), LineCol { line: 0, col: 2 });
     }
 }
