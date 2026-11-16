@@ -1,5 +1,5 @@
 diagnostics:
 - Cannot check if value is of function type at runtime at impossible_checks.rue:2:5
-- Recursion depth exceeded while checking type at impossible_checks.rue:6:5
-- Recursion depth exceeded while checking type at impossible_checks.rue:10:5
-- Recursion depth exceeded while checking type at impossible_checks.rue:16:5
+- Cannot check if value is of recursive type at runtime at impossible_checks.rue:6:5
+- Cannot check if value is of recursive type at runtime at impossible_checks.rue:10:5
+- Cannot check if value is of recursive type at runtime at impossible_checks.rue:16:5

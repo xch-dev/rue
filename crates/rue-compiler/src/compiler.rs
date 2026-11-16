@@ -600,6 +600,10 @@ impl Compiler {
                 self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
                 return Constraint::new(Check::Impossible);
             }
+            Err(CheckError::RecursiveType) => {
+                self.diagnostic(node, DiagnosticKind::RecursiveTypeCheck);
+                return Constraint::new(Check::Impossible);
+            }
             Err(CheckError::FunctionType) => {
                 self.diagnostic(node, DiagnosticKind::FunctionTypeCheck);
                 return Constraint::new(Check::Impossible);
@@ -696,6 +700,7 @@ impl Compiler {
                         Ok(check) => check,
                         Err(
                             CheckError::DepthExceeded
+                            | CheckError::RecursiveType
                             | CheckError::FunctionType
                             | CheckError::GenericType,
                         ) => Check::Impossible,
