@@ -3,7 +3,7 @@ tests:
   program: (l 2)
   debug_program: (l 2)
   solution: ((42 42))
-  output: '1'
+  output: "1"
   runtime_cost: 68
   byte_cost: 60000
   total_cost: 60068
@@ -11,7 +11,7 @@ tests:
   program: (a (i (= 4 (q . 42)) (q 2 (i (= 6 (q . 34)) (q 1 . 1) (q)) 1) (q)) 1)
   debug_program: (a (i (= (f 2) (q . 42)) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1) (q)) 1)
   solution: ((42 . 34))
-  output: '1'
+  output: "1"
   runtime_cost: 822
   byte_cost: 660000
   total_cost: 660822
@@ -19,7 +19,7 @@ tests:
   program: (a (i (a (i (= 4 (q . 42)) (q 1 . 1) (q 2 (i (= 4 (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (a (i (= 6 (q . 42)) (q 1 . 1) (q 2 (i (= 6 (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   debug_program: (a (i (a (i (= (f 2) (q . 42)) (q 1 . 1) (q 2 (i (= (f 2) (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (a (i (= (r 2) (q . 42)) (q 1 . 1) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   solution: ((42 . 34))
-  output: '1'
+  output: "1"
   runtime_cost: 1681
   byte_cost: 1812000
   total_cost: 1813681
@@ -27,7 +27,7 @@ tests:
   program: (a (i (l 2) (q 2 (i (a (i (a (i (l 4) (q) (q 2 (i (= 4 (q . 42)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (a (i (l 6) (q) (q 2 (i (= 6 (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   debug_program: (a (i (l 2) (q 2 (i (a (i (a (i (not (l (f 2))) (q 2 (i (= (f 2) (q . 42)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (a (i (not (l (r 2))) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   solution: ((42 . 34))
-  output: '1'
+  output: "1"
   runtime_cost: 2348
   byte_cost: 2172000
   total_cost: 2174348
@@ -35,7 +35,7 @@ tests:
   program: (= 4 ())
   debug_program: (= (f 2) ())
   solution: ((0 . 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855))
-  output: '1'
+  output: "1"
   runtime_cost: 214
   byte_cost: 84000
   total_cost: 84214

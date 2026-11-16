@@ -20,7 +20,7 @@ use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
-use serde_yml::{Mapping, Value};
+use serde_json::{Map, Value};
 
 const USAGE: &str = "\
 Usage: rue-tests [--bless] [FILTER]
@@ -585,8 +585,17 @@ fn match_test_cases(
         .collect()
 }
 
+/// Serializes `value` as snapshot YAML, with each single-line string on one line rather than
+/// folded at 80 columns, so long CLVM programs stay greppable and diffs stay line-sized.
+fn to_yaml<T: Serialize>(value: &T) -> Result<String> {
+    let options = serde_saphyr::ser_options! {
+        folded_wrap_chars: usize::MAX,
+    };
+    Ok(serde_saphyr::to_string_with_options(value, options)?)
+}
+
 fn read_snapshot(yaml_file: &Path) -> Result<TestFile> {
-    serde_yml::from_str(&fs::read_to_string(yaml_file)?)
+    serde_saphyr::from_str(&fs::read_to_string(yaml_file)?)
         .with_context(|| format!("couldn't parse {}", yaml_file.display()))
 }
 
@@ -601,7 +610,7 @@ fn compare_snapshot(
     failed: &mut bool,
 ) -> Result<()> {
     let display = short_path(yaml_file).display();
-    let text = serde_yml::to_string(actual)?;
+    let text = to_yaml(actual)?;
     let existing = yaml_file
         .try_exists()?
         .then(|| fs::read_to_string(yaml_file))
@@ -614,14 +623,14 @@ fn compare_snapshot(
     *failed = true;
 
     let expected = match &existing {
-        Some(existing) => serde_yml::from_str(existing)?,
-        None => Value::Mapping(Mapping::new()),
+        Some(existing) => serde_saphyr::from_str(existing)?,
+        None => Value::Object(Map::new()),
     };
     let mut differences = Vec::new();
     diff_values(
         "",
         Some(&expected),
-        Some(&serde_yml::to_value(actual)?),
+        Some(&serde_json::to_value(actual)?),
         &mut differences,
     );
 
@@ -666,22 +675,21 @@ fn diff_values(
     }
 
     match (expected, actual) {
-        (Some(Value::Mapping(expected)), Some(Value::Mapping(actual))) => {
+        (Some(Value::Object(expected)), Some(Value::Object(actual))) => {
             let keys = expected
                 .keys()
                 .chain(actual.keys().filter(|key| !expected.contains_key(*key)));
 
             for key in keys {
-                let key_name = format_value(key);
                 let path = if path.is_empty() {
-                    key_name
+                    key.clone()
                 } else {
-                    format!("{path}.{key_name}")
+                    format!("{path}.{key}")
                 };
                 diff_values(&path, expected.get(key), actual.get(key), differences);
             }
         }
-        (Some(Value::Sequence(expected)), Some(Value::Sequence(actual))) => {
+        (Some(Value::Array(expected)), Some(Value::Array(actual))) => {
             for i in 0..expected.len().max(actual.len()) {
                 let expected = expected.get(i);
                 let actual = actual.get(i);
@@ -713,8 +721,9 @@ fn diff_values(
 fn format_value(value: &Value) -> String {
     match value {
         Value::String(string) if !string.is_empty() && !string.contains('\n') => string.clone(),
-        _ => serde_yml::to_string(value)
-            .map_or_else(|_| format!("{value:?}"), |yaml| yaml.trim_end().to_string()),
+        _ => {
+            to_yaml(value).map_or_else(|_| format!("{value:?}"), |yaml| yaml.trim_end().to_string())
+        }
     }
 }
 
@@ -935,8 +944,8 @@ mod tests {
         let mut differences = Vec::new();
         diff_values(
             "",
-            Some(&serde_yml::to_value(&expected)?),
-            Some(&serde_yml::to_value(&actual)?),
+            Some(&serde_json::to_value(&expected)?),
+            Some(&serde_json::to_value(&actual)?),
             &mut differences,
         );
 
@@ -955,15 +964,15 @@ mod tests {
 
     #[test]
     fn diffs_null_and_empty_values() -> Result<()> {
-        let expected: Value = serde_yml::from_str("output: ''\nstale: null\n")?;
-        let actual: Value = serde_yml::from_str("output: '1'\n")?;
+        let expected: Value = serde_saphyr::from_str("output: ''\nstale: null\n")?;
+        let actual: Value = serde_saphyr::from_str("output: '1'\n")?;
 
         let mut differences = Vec::new();
         diff_values("", Some(&expected), Some(&actual), &mut differences);
 
         assert_eq!(
             differences,
-            ["  output:\n    - ''\n    + 1", "  stale:\n    - null"]
+            ["  output:\n    - \"\"\n    + 1", "  stale:\n    - null"]
         );
 
         Ok(())
@@ -1148,7 +1157,7 @@ mod tests {
             let message = format!("{} at other.rue:{}", diagnostic.kind, diagnostic.start());
             snapshot.diagnostics.push(message);
         }
-        fs::write(dir.0.join("broken.yaml"), serde_yml::to_string(&snapshot)?)?;
+        fs::write(dir.0.join("broken.yaml"), to_yaml(&snapshot)?)?;
         let mut failed = false;
         check_expected_parse_errors(&unparsed, None, &mut failed)?;
         assert!(failed);

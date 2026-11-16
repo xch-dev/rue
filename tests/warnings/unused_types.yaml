@@ -8,7 +8,7 @@ tests:
 - name: alias
   program: (f (q 42))
   debug_program: (a (q 5 (c 2 ())) (c (q . 42) ()))
-  output: '42'
+  output: "42"
   runtime_cost: 51
   byte_cost: 108000
   total_cost: 108051

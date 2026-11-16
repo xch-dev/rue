@@ -2,21 +2,21 @@ tests:
 - name: forward_const_function
   program: (q . 42)
   debug_program: (q . 42)
-  output: '42'
+  output: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: literal
   program: (q . 3)
   debug_program: (q . 3)
-  output: '3'
+  output: "3"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: block
   program: (q . 42)
   debug_program: (q . 42)
-  output: '42'
+  output: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -37,84 +37,84 @@ tests:
 - name: const_item
   program: (q . 10)
   debug_program: (q . 10)
-  output: '10'
+  output: "10"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: function
   program: (q . 10)
   debug_program: (q . 10)
-  output: '10'
+  output: "10"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: recursive_function
   program: (q . 120)
   debug_program: (q . 120)
-  output: '120'
+  output: "120"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: nested
   program: (q . 6)
   debug_program: (q . 6)
-  output: '6'
+  output: "6"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: debug_effect
   program: (q . 1)
   debug_program: (q . 1)
-  output: '1'
+  output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: forward_const_function_twice
   program: (q . 84)
   debug_program: (q . 84)
-  output: '84'
+  output: "84"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: forward_recursive_const
   program: (q . 240)
   debug_program: (q . 240)
-  output: '240'
+  output: "240"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
 - name: chained_const_functions
   program: (q . 42)
   debug_program: (q . 42)
-  output: '42'
+  output: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: destructured_pair
   program: (q . 7)
   debug_program: (q . 7)
-  output: '7'
+  output: "7"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: destructured_nested
   program: (q . 30)
   debug_program: (q . 30)
-  output: '30'
+  output: "30"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: destructured_closure_capture
   program: (q . 17)
   debug_program: (q . 17)
-  output: '17'
+  output: "17"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: destructured_lambda_parameter
   program: (q . 42)
   debug_program: (q . 42)
-  output: '42'
+  output: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020

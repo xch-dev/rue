@@ -1,2 +1,2 @@
 diagnostics:
-- 'Failed to read external function: ./missing.hex: No such file or directory (os error 2) at missing.rue:1:27'
+- "Failed to read external function: ./missing.hex: No such file or directory (os error 2) at missing.rue:1:27"
