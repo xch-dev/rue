@@ -89,35 +89,28 @@ impl Environment {
     /// Finds how many of the symbols go in the first group, so that the reference counts of the two
     /// groups are as close as possible, picking the smallest such number when there's a tie. Each
     /// group has at least one symbol. This takes the running totals of the reference counts, from
-    /// before the first symbol to after the last one, which never decrease.
+    /// before the first symbol to after the last one.
     fn split(counts_before: &[usize]) -> usize {
-        let total = counts_before[counts_before.len() - 1] - counts_before[0];
-        let difference =
-            |split: usize| (2 * (counts_before[split] - counts_before[0])).abs_diff(total);
+        let start = counts_before[0];
+        let total = counts_before[counts_before.len() - 1] - start;
+        let difference = |split: usize| (2 * (counts_before[split] - start)).abs_diff(total);
 
-        // The splits that are candidates, which leave at least one symbol in each group
-        let candidates = &counts_before[1..counts_before.len() - 1];
+        let mut best = 1;
 
-        // The difference shrinks until the first group has at least half of the references, then
-        // grows, so the closest split is either the first one with at least half, or the first one
-        // with as many references as the split just before that
-        let at_least_half =
-            1 + candidates.partition_point(|&count| 2 * (count - counts_before[0]) < total);
+        for split in 2..counts_before.len() - 1 {
+            // Once the first group has at least half of the references, the difference only grows.
+            // The symbols are sorted by how often they're referenced, so this stops before the
+            // smaller group is passed, and right away for unreferenced symbols.
+            if 2 * (counts_before[split - 1] - start) >= total {
+                break;
+            }
 
-        if at_least_half == 1 {
-            return 1;
+            if difference(split) < difference(best) {
+                best = split;
+            }
         }
 
-        let below_half =
-            1 + candidates.partition_point(|&count| count < counts_before[at_least_half - 1]);
-
-        if at_least_half == counts_before.len() - 1
-            || difference(below_half) <= difference(at_least_half)
-        {
-            below_half
-        } else {
-            at_least_half
-        }
+        best
     }
 
     pub fn path(&self, symbol_id: SymbolId) -> Result<BigUint, PathError> {
@@ -339,6 +332,9 @@ mod tests {
 
         patterns.push(vec![5, 3, 3, 2, 1, 1, 0, 0, 9, 1, 0, 0, 4]);
         patterns.push(vec![64, 32, 16, 8, 4, 2, 1, 1, 0, 0, 0]);
+
+        // Long enough that an unstable sort would reorder symbols with the same count
+        patterns.push((0..100).map(|i| (i * 7) % 3).collect());
 
         for counts in &patterns {
             let symbols: Vec<_> = symbols(counts.len())
