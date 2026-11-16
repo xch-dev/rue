@@ -5,9 +5,10 @@ use num_bigint::BigUint;
 
 use crate::SymbolId;
 
-/// A sequential group is a chain of pairs, with one level for each symbol, so an environment can be
-/// thousands of levels deep. Everything that walks it, including [`Clone`] and [`Drop`], is
-/// iterative rather than recursing once per level.
+/// A sequential group is a chain of pairs, with one level for each symbol, and a tree is as deep as
+/// it has unreferenced symbols, so an environment can be thousands of levels deep. Building it,
+/// finding paths in it, [`Clone`] and [`Drop`] are iterative rather than recursing once per level.
+/// [`Debug`] is derived, since it's only used for debugging.
 #[derive(Debug, Default)]
 #[must_use]
 pub enum Environment {
@@ -38,62 +39,85 @@ impl Environment {
         result
     }
 
+    /// Builds a tree of the symbols, splitting each group so that the reference counts on either
+    /// side are as even as possible, with the most referenced symbols first, so that they have
+    /// shorter paths.
+    ///
+    /// Symbols that aren't referenced don't change the balance, so they're split off one at a time,
+    /// and the tree is as deep as there are unreferenced symbols.
     pub fn tree(referenced_symbols: IndexMap<SymbolId, usize>) -> Self {
-        if referenced_symbols.is_empty() {
+        // The sort is stable, so symbols that are referenced equally often stay in order
+        let mut symbols: Vec<_> = referenced_symbols.into_iter().collect();
+        symbols.sort_by_key(|&(_, count)| Reverse(count));
+
+        if symbols.is_empty() {
             return Self::Nil;
         }
 
-        if referenced_symbols.len() == 1 {
-            return Self::Leaf(*referenced_symbols.keys().next().unwrap());
+        // The total reference count of the symbols before each index
+        let mut counts_before = Vec::with_capacity(symbols.len() + 1);
+        counts_before.push(0);
+
+        for (_, count) in &symbols {
+            counts_before.push(counts_before.last().unwrap() + count);
         }
 
-        // Sort symbols by reference count in descending order
-        let mut symbols: Vec<_> = referenced_symbols.into_iter().collect();
-        symbols.sort_by_key(|b| Reverse(b.1));
+        let mut root = Self::Nil;
 
-        // Split symbols into two groups, trying to balance:
-        // 1. Total reference counts between groups
-        // 2. More frequently referenced symbols in the first group (shorter paths)
-        let mut split_idx = symbols.len().div_ceil(2);
-        let mut min_diff = i64::MAX;
+        // Each range of symbols left to build, and where to put its tree
+        let mut pending = vec![(0, symbols.len(), &mut root)];
 
-        for i in 1..symbols.len() {
-            let mut new_first_sum = 0usize;
-            let mut new_rest_sum = 0usize;
-
-            for (j, (_, count)) in symbols.iter().enumerate() {
-                if j < i {
-                    new_first_sum += *count;
-                } else {
-                    new_rest_sum += *count;
-                }
+        while let Some((start, end, tree)) = pending.pop() {
+            if end - start == 1 {
+                *tree = Self::Leaf(symbols[start].0);
+                continue;
             }
 
-            #[allow(clippy::cast_possible_wrap)]
-            let diff = (new_first_sum as i64 - new_rest_sum as i64).abs();
-            if diff < min_diff {
-                min_diff = diff;
-                split_idx = i;
+            let split = Self::split(&counts_before[start..=end]);
+
+            *tree = Self::Pair(Box::default(), Box::default());
+
+            if let Self::Pair(first, rest) = tree {
+                pending.push((start, start + split, first));
+                pending.push((start + split, end, rest));
             }
         }
 
-        // Create first and rest groups
-        let first_group: IndexMap<_, _> = symbols
-            .iter()
-            .take(split_idx)
-            .map(|(k, v)| (*k, *v))
-            .collect();
-        let rest_group: IndexMap<_, _> = symbols
-            .iter()
-            .skip(split_idx)
-            .map(|(k, v)| (*k, *v))
-            .collect();
+        root
+    }
 
-        // Recursively build the tree
-        Self::Pair(
-            Box::new(Self::tree(first_group)),
-            Box::new(Self::tree(rest_group)),
-        )
+    /// Finds how many of the symbols go in the first group, so that the reference counts of the two
+    /// groups are as close as possible, picking the smallest such number when there's a tie. Each
+    /// group has at least one symbol. This takes the running totals of the reference counts, from
+    /// before the first symbol to after the last one, which never decrease.
+    fn split(counts_before: &[usize]) -> usize {
+        let total = counts_before[counts_before.len() - 1] - counts_before[0];
+        let difference =
+            |split: usize| (2 * (counts_before[split] - counts_before[0])).abs_diff(total);
+
+        // The splits that are candidates, which leave at least one symbol in each group
+        let candidates = &counts_before[1..counts_before.len() - 1];
+
+        // The difference shrinks until the first group has at least half of the references, then
+        // grows, so the closest split is either the first one with at least half, or the first one
+        // with as many references as the split just before that
+        let at_least_half =
+            1 + candidates.partition_point(|&count| 2 * (count - counts_before[0]) < total);
+
+        if at_least_half == 1 {
+            return 1;
+        }
+
+        let below_half =
+            1 + candidates.partition_point(|&count| count < counts_before[at_least_half - 1]);
+
+        if at_least_half == counts_before.len() - 1
+            || difference(below_half) <= difference(at_least_half)
+        {
+            below_half
+        } else {
+            at_least_half
+        }
     }
 
     pub fn path(&self, symbol_id: SymbolId) -> Result<BigUint, PathError> {
@@ -159,34 +183,25 @@ impl Environment {
 
 impl Clone for Environment {
     fn clone(&self) -> Self {
-        enum Step<'a> {
-            Clone(&'a Environment),
-            Pair,
-        }
+        let mut root = Self::Nil;
 
-        let mut steps = vec![Step::Clone(self)];
+        // Each environment left to clone, and where to put its clone
+        let mut pending = vec![(self, &mut root)];
 
-        // The clones of the children of each pair are built before the pair itself
-        let mut cloned = Vec::new();
+        while let Some((env, clone)) = pending.pop() {
+            *clone = match env {
+                Self::Nil => Self::Nil,
+                Self::Leaf(symbol) => Self::Leaf(*symbol),
+                Self::Pair(..) => Self::Pair(Box::default(), Box::default()),
+            };
 
-        while let Some(step) = steps.pop() {
-            match step {
-                Step::Clone(Self::Nil) => cloned.push(Self::Nil),
-                Step::Clone(Self::Leaf(symbol)) => cloned.push(Self::Leaf(*symbol)),
-                Step::Clone(Self::Pair(first, rest)) => {
-                    steps.push(Step::Pair);
-                    steps.push(Step::Clone(rest));
-                    steps.push(Step::Clone(first));
-                }
-                Step::Pair => {
-                    let rest = cloned.pop().expect("rest is cloned");
-                    let first = cloned.pop().expect("first is cloned");
-                    cloned.push(Self::Pair(Box::new(first), Box::new(rest)));
-                }
+            if let (Self::Pair(first, rest), Self::Pair(first_clone, rest_clone)) = (env, clone) {
+                pending.push((first, first_clone));
+                pending.push((rest, rest_clone));
             }
         }
 
-        cloned.pop().expect("environment is cloned")
+        root
     }
 }
 
@@ -259,6 +274,84 @@ mod tests {
         // The first of a pair is searched before the rest
         let shadowed = pair(Environment::Leaf(a), Environment::Leaf(a));
         assert_eq!(path(&shadowed, a), 2);
+
+        for env in [&list, &improper, &tree, &shadowed, &Environment::Nil] {
+            assert_eq!(tree_string(&env.clone()), tree_string(env));
+        }
+    }
+
+    /// The tree that the recursive implementation built, which splits each group at the first index
+    /// that balances the reference counts best.
+    fn reference_tree(symbols: &[(SymbolId, usize)]) -> String {
+        match symbols {
+            [] => "Nil".to_string(),
+            [(symbol, _)] => format!("{symbol:?}"),
+            _ => {
+                let total: usize = symbols.iter().map(|(_, count)| count).sum();
+                let mut first = 0;
+                let mut best = (usize::MAX, 0);
+
+                for (i, (_, count)) in symbols.iter().enumerate().take(symbols.len() - 1) {
+                    first += count;
+                    let difference = (2 * first).abs_diff(total);
+
+                    if difference < best.0 {
+                        best = (difference, i + 1);
+                    }
+                }
+
+                let (first, rest) = symbols.split_at(best.1);
+                format!("({}, {})", reference_tree(first), reference_tree(rest))
+            }
+        }
+    }
+
+    fn tree_string(env: &Environment) -> String {
+        match env {
+            Environment::Nil => "Nil".to_string(),
+            Environment::Leaf(symbol) => format!("{symbol:?}"),
+            Environment::Pair(first, rest) => {
+                format!("({}, {})", tree_string(first), tree_string(rest))
+            }
+        }
+    }
+
+    /// Trees are split the same way as they were by the recursive implementation, so that compiled
+    /// programs don't change.
+    #[test]
+    fn test_tree_splits() {
+        // Every combination of counts from 0 to 3 for up to 6 symbols
+        let mut patterns: Vec<Vec<usize>> = Vec::new();
+
+        for len in 0..=6 {
+            for mut combination in 0..4usize.pow(len) {
+                patterns.push(
+                    (0..len)
+                        .map(|_| {
+                            let count = combination % 4;
+                            combination /= 4;
+                            count
+                        })
+                        .collect(),
+                );
+            }
+        }
+
+        patterns.push(vec![5, 3, 3, 2, 1, 1, 0, 0, 9, 1, 0, 0, 4]);
+        patterns.push(vec![64, 32, 16, 8, 4, 2, 1, 1, 0, 0, 0]);
+
+        for counts in &patterns {
+            let symbols: Vec<_> = symbols(counts.len())
+                .into_iter()
+                .zip(counts.iter().copied())
+                .collect();
+
+            let mut sorted = symbols.clone();
+            sorted.sort_by_key(|&(_, count)| Reverse(count));
+
+            let tree = Environment::tree(symbols.into_iter().collect());
+            assert_eq!(tree_string(&tree), reference_tree(&sorted), "{counts:?}");
+        }
     }
 
     /// Environments that are deep enough to overflow a 2 MiB stack in a debug build if finding a

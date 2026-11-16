@@ -849,23 +849,44 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         by_reference: bool,
         map: Option<&HashMap<SymbolId, LirId>>,
     ) -> LirId {
-        match tree {
-            Environment::Nil => self.arena.alloc(Lir::Atom(vec![])),
-            Environment::Leaf(symbol) => {
-                if let Some(lir) = map.and_then(|map| map.get(symbol)) {
-                    *lir
-                } else if by_reference {
-                    self.lower_symbol_reference(env, *symbol)
-                } else {
-                    self.lower_symbol_value(env, *symbol)
+        enum Step<'a> {
+            Lower(&'a Environment),
+            Cons,
+        }
+
+        // A tree of parameters is as deep as the function has unreferenced parameters, so it's
+        // lowered without recursing
+        let mut steps = vec![Step::Lower(tree)];
+
+        // Both sides of each pair are lowered before the pair itself
+        let mut lowered = Vec::new();
+
+        while let Some(step) = steps.pop() {
+            match step {
+                Step::Lower(Environment::Nil) => lowered.push(self.arena.alloc(Lir::Atom(vec![]))),
+                Step::Lower(Environment::Leaf(symbol)) => {
+                    lowered.push(if let Some(lir) = map.and_then(|map| map.get(symbol)) {
+                        *lir
+                    } else if by_reference {
+                        self.lower_symbol_reference(env, *symbol)
+                    } else {
+                        self.lower_symbol_value(env, *symbol)
+                    });
+                }
+                Step::Lower(Environment::Pair(first, rest)) => {
+                    steps.push(Step::Cons);
+                    steps.push(Step::Lower(rest));
+                    steps.push(Step::Lower(first));
+                }
+                Step::Cons => {
+                    let rest = lowered.pop().expect("rest is lowered");
+                    let first = lowered.pop().expect("first is lowered");
+                    lowered.push(self.arena.alloc(Lir::Cons(first, rest)));
                 }
             }
-            Environment::Pair(first, rest) => {
-                let first = self.lower_tree(env, first, by_reference, map);
-                let rest = self.lower_tree(env, rest, by_reference, map);
-                self.arena.alloc(Lir::Cons(first, rest))
-            }
         }
+
+        lowered.pop().expect("tree is lowered")
     }
 
     fn lower_assert(
