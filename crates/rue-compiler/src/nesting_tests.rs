@@ -357,6 +357,38 @@ fn long_chains_of_calls_are_followed() {
     });
 }
 
+/// Each function in the chain calls the next one twice, so none of them are inlined, and the
+/// generated code doesn't nest once per link. The program is compiled all the way through code
+/// generation, so the dependency graph, the check for unresolved code and lowering all follow the
+/// whole chain from `main`.
+///
+/// When the dependency graph and the unresolved check recursed, this overflowed a 2 MiB stack with
+/// 400 links in a debug build and 1,000 in a release build, though not with 200 and 500. Generating
+/// code for the chain takes time that grows with the cube of its length (#267), so it's no longer
+/// than it needs to be to catch that.
+#[test]
+fn long_chains_of_calls_compile() {
+    const LINKS: usize = if cfg!(debug_assertions) {
+        LONG_CHAIN / 2
+    } else {
+        LONG_CHAIN
+    };
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main(a: Int) -> Int {{ f0(a) }}\n{}fn f{LINKS}(a: Int) -> Int {{ a }}",
+            links(LINKS, |i| format!(
+                "fn f{i}(a: Int) -> Int {{ f{}(a) + f{}(a + 1) }}\n",
+                i + 1,
+                i + 1
+            ))
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
 /// The search for unconditional recursion follows the whole chain of bindings. It used little stack
 /// for each binding when it recursed, so the chain is longer than the others.
 #[test]
