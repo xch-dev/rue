@@ -357,15 +357,16 @@ fn long_chains_of_calls_are_followed() {
     });
 }
 
-/// Each function in the chain calls the next one twice, so none of them are inlined, and the
-/// generated code doesn't nest once per link. The program is compiled all the way through code
-/// generation, so the dependency graph, the check for unresolved code and lowering all follow the
-/// whole chain from `main`.
+/// A long chain of calls compiles all the way through code generation. Each function in the chain
+/// calls the next one twice, so they aren't inlined into each other. Each one is lowered on its own,
+/// so the generated code doesn't nest once per link. The dependency graph
+/// and the check for unresolved code still follow the whole chain from `main`, as they do in
+/// `long_chains_of_constants_are_followed`.
 ///
-/// When the dependency graph and the unresolved check recursed, this overflowed a 2 MiB stack with
-/// 400 links in a debug build and 1,000 in a release build, though not with 200 and 500. Generating
-/// code for the chain takes time that grows with the cube of its length (#267), so it's no longer
-/// than it needs to be to catch that.
+/// When those two passes recursed, this overflowed a 2 MiB stack with 400 links in a debug build
+/// and 1,000 in a release build, though not with 200 and 500. Generating code for the chain takes
+/// time that grows with the cube of its length (#267), so it's no longer than it needs to be to
+/// catch that.
 #[test]
 fn long_chains_of_calls_compile() {
     const LINKS: usize = if cfg!(debug_assertions) {
