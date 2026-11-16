@@ -417,7 +417,7 @@ fn long_chains_of_inline_arguments_are_checked() {
 /// work for each group.
 #[test]
 fn long_runs_of_bindings_are_grouped() {
-    on_small_stack(|| {
+    on_stack(2, || {
         let source = format!(
             "fn main(a: Int) -> Int {{\nlet x0 = a + 1;\n{}x{LONG_CHAIN}\n}}",
             links(LONG_CHAIN, |i| format!("let x{} = x{i} * x{i};\n", i + 1))
