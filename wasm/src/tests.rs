@@ -1,3 +1,5 @@
+use clvm_utils::tree_hash_from_bytes;
+
 use crate::{compile, format, get_examples, run, run_tests, snapshot_value};
 
 /// The text of a UTF-16 range of the source, which is how JavaScript slices it.
@@ -45,15 +47,25 @@ fn examples_match_snapshots() {
         );
 
         if let Some(hex) = &compilation.hex {
+            let bytes = hex::decode(hex).unwrap();
+            assert_eq!(compilation.size, Some(u32::try_from(bytes.len()).unwrap()));
             assert_eq!(
-                compilation.size.map(|size| u64::from(size) * 12_000),
-                snapshot_value(snapshot, "byte_cost").map(|cost| cost.parse().unwrap()),
-                "{name}: size"
+                compilation.tree_hash,
+                Some(tree_hash_from_bytes(&bytes).unwrap().to_string()),
+                "{name}: tree hash"
             );
 
             let execution = run(hex, &example.solution).unwrap();
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let runtime_cost = execution.runtime_cost.map(|cost| cost as u64);
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let byte_cost = execution.byte_cost as u64;
+
+            assert_eq!(
+                Some(byte_cost),
+                snapshot_value(snapshot, "byte_cost").map(|cost| cost.parse().unwrap()),
+                "{name}: byte cost"
+            );
 
             assert_eq!(
                 execution.output,
@@ -187,6 +199,30 @@ fn tests_report_failures_and_prints() {
         Some("raise \"assertion failed at main.rue:11:5\"")
     );
     assert_eq!(results[1].prints[0].value, "6");
+}
+
+#[test]
+fn tests_must_return_nil() {
+    let results = run_tests("test fn returns_value() -> Int {\n    1\n}\n".to_string()).unwrap();
+
+    assert_eq!(
+        results[0].error.as_deref(),
+        Some("returned 1 instead of nil")
+    );
+}
+
+/// Programs run with the same flags as the CLI, which enable `keccak256`.
+#[test]
+fn runs_with_the_cli_flags() {
+    let source = "fn main() -> Bytes32 {\n    keccak256(\"hello\")\n}\n\ntest fn hashes() {\n    assert main() == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;\n}\n";
+    let compilation = compile(source.to_string(), false).unwrap();
+    let execution = run(compilation.hex.as_ref().unwrap(), "()").unwrap();
+
+    assert_eq!(
+        execution.output.as_deref(),
+        Some("0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8")
+    );
+    assert_eq!(run_tests(source.to_string()).unwrap()[0].error, None);
 }
 
 #[test]

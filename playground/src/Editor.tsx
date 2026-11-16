@@ -38,7 +38,7 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 import { useEffect, useRef } from "react";
-import type { Diagnostic } from "./compiler";
+import type { Compilation, Diagnostic } from "./compiler";
 import { rue, rueHighlightStyle } from "./rue-language";
 
 const theme = EditorView.theme({
@@ -89,10 +89,31 @@ const theme = EditorView.theme({
     backgroundColor: "var(--surface-raised)",
     color: "var(--text)",
   },
+  // CodeMirror's base theme colors these for a light background
+  ".cm-textfield": {
+    backgroundColor: "var(--editor-bg)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+  },
+  ".cm-button": {
+    backgroundImage: "none",
+    backgroundColor: "var(--surface)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+  },
+  ".cm-searchMatch": { backgroundColor: "var(--warn-soft)" },
+  ".cm-searchMatch.cm-searchMatch-selected, .cm-selectionMatch": {
+    backgroundColor: "var(--accent-soft)",
+  },
+  ".cm-tooltip-autocomplete ul li[aria-selected]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-contrast)",
+  },
 });
 
 /** Converts the compiler's diagnostics, with a quick fix for each suggestion. */
 function toEditorDiagnostics(
+  source: string,
   diagnostics: Diagnostic[],
   length: number,
 ): EditorDiagnostic[] {
@@ -110,7 +131,12 @@ function toEditorDiagnostics(
       ),
       actions: diagnostic.suggestions.map((suggestion) => ({
         name: suggestion.message,
-        apply: (view) => view.dispatch({ changes: suggestion.edits }),
+        // The edits are only valid for the source they were computed for
+        apply: (view) => {
+          if (view.state.doc.toString() === source) {
+            view.dispatch({ changes: suggestion.edits });
+          }
+        },
       })),
     };
   });
@@ -120,7 +146,7 @@ interface EditorProps {
   value: string;
   onChange: (value: string) => void;
   /** Diagnostics, along with the source they were reported for. */
-  diagnostics: { source: string; diagnostics: Diagnostic[] } | null;
+  diagnostics: Pick<Compilation, "source" | "diagnostics"> | null;
   /** Called for Ctrl/Cmd+Enter, which would otherwise insert a blank line. */
   onRun: () => void;
   onView?: (view: EditorView | null) => void;
@@ -225,6 +251,7 @@ export function Editor({ value, onChange, diagnostics, onRun, onView }: EditorPr
       setDiagnostics(
         editor.state,
         toEditorDiagnostics(
+          diagnostics?.source ?? "",
           diagnostics?.diagnostics ?? [],
           editor.state.doc.length,
         ),

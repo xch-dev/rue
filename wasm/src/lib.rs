@@ -52,7 +52,7 @@ pub fn compile(source: String, debug: bool) -> Result<Compilation, JsError> {
     console_error_panic_hook::set_once();
 
     let mut allocator = Allocator::new();
-    let (mut ctx, tree, kind, source) = check(source, debug);
+    let (mut ctx, tree, source) = check(source, debug);
 
     let has_errors = ctx.has_errors();
     let mut diagnostics = ctx.take_diagnostics();
@@ -60,7 +60,7 @@ pub fn compile(source: String, debug: bool) -> Result<Compilation, JsError> {
     let program = if has_errors {
         None
     } else {
-        let program = tree.main(&mut ctx, &mut allocator, &kind, PathBuf::from("."))?;
+        let program = tree.main(&mut ctx, &mut allocator, &source.kind, PathBuf::from("."))?;
         // Code generation can report diagnostics of its own
         diagnostics.extend(ctx.take_diagnostics());
         program
@@ -86,7 +86,7 @@ pub fn compile(source: String, debug: bool) -> Result<Compilation, JsError> {
 }
 
 /// Parses and checks the source as the playground's only file, along with the standard library.
-fn check(source: String, debug: bool) -> (Compiler, FileTree, SourceKind, Source) {
+fn check(source: String, debug: bool) -> (Compiler, FileTree, Source) {
     let options = if debug {
         CompilerOptions::debug()
     } else {
@@ -94,13 +94,12 @@ fn check(source: String, debug: bool) -> (Compiler, FileTree, SourceKind, Source
     };
 
     let mut ctx = Compiler::new(options);
-    let kind = SourceKind::File(FILE_NAME.to_string());
-    let source = Source::new(Arc::from(source), kind.clone());
+    let source = Source::new(Arc::from(source), SourceKind::File(FILE_NAME.to_string()));
 
     let tree = FileTree::File(File::new(&mut ctx, "main".to_string(), source.clone()));
     tree.compile(&mut ctx);
 
-    (ctx, tree, kind, source)
+    (ctx, tree, source)
 }
 
 /// Formats the source the way `rue fmt` does. Fails if it has syntax errors.

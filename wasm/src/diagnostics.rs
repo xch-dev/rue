@@ -157,7 +157,68 @@ fn to_u32(value: usize) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use rue_diagnostic::{DiagnosticKind, Edit, Note, SourceKind};
+
     use super::*;
+
+    /// Diagnostics, notes and suggestions in other sources (such as the standard library) can't
+    /// point into the playground's file.
+    #[test]
+    fn other_sources() {
+        let main = Source::new(
+            Arc::from("fn main() {}\n"),
+            SourceKind::File("main.rue".to_string()),
+        );
+        let std = Source::new(
+            Arc::from("a\nbc\n"),
+            SourceKind::Std("prelude.rue".to_string()),
+        );
+
+        let mut diagnostic = rue_diagnostic::Diagnostic::new(
+            SrcLoc::new(std.clone(), 2..4),
+            DiagnosticKind::UnterminatedString,
+            DiagnosticSeverity::Error,
+        );
+        diagnostic
+            .notes
+            .push(Note::at(SrcLoc::new(std.clone(), 0..1), "In std"));
+        diagnostic
+            .notes
+            .push(Note::at(SrcLoc::new(main.clone(), 3..7), "In main"));
+        diagnostic.suggestions.push(rue_diagnostic::Suggestion::new(
+            "Edit std",
+            vec![Edit::new(SrcLoc::new(std.clone(), 0..1), "x")],
+            Applicability::MachineApplicable,
+        ));
+        diagnostic.suggestions.push(rue_diagnostic::Suggestion::new(
+            "Edit main",
+            vec![Edit::new(SrcLoc::new(main.clone(), 3..7), "start")],
+            Applicability::MaybeIncorrect,
+        ));
+
+        let [converted] = convert_diagnostics(&main, &[diagnostic])
+            .try_into()
+            .unwrap();
+
+        assert_eq!(converted.severity, "error");
+        assert_eq!((converted.from, converted.to), (0, 0));
+        assert_eq!((converted.line, converted.column), (1, 1));
+        assert_eq!(
+            converted.message,
+            "Unterminated string literal (in std/prelude.rue:2:1)"
+        );
+        assert_eq!(
+            converted.notes,
+            ["In std (std/prelude.rue:1:1)", "In main (1:4)"]
+        );
+
+        let [suggestion] = converted.suggestions.try_into().unwrap();
+        assert_eq!(suggestion.message, "Edit main");
+        assert!(!suggestion.machine_applicable);
+        assert_eq!((suggestion.edits[0].from, suggestion.edits[0].to), (3, 7));
+    }
 
     #[test]
     fn utf16_offsets() {

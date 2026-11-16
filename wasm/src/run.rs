@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use clvmr::{Allocator, NodePtr, SExp, error::EvalErr, run_program, serde::node_from_bytes};
+use clvmr::{
+    Allocator, NodePtr, SExp, error::EvalErr, reduction::Reduction, run_program,
+    serde::node_from_bytes,
+};
 use rue_clvm::{assemble, disassemble_value};
 use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
 use wasm_bindgen::prelude::*;
@@ -55,10 +58,7 @@ pub fn run(program: &str, solution: &str) -> Result<Execution, JsError> {
             .map_err(|error| JsError::new(&format!("Invalid solution: {error}")))?
     };
 
-    let dialect = DebugDialect::new(CLVM_FLAGS, false);
-    let result = run_program(&mut allocator, &dialect, program, solution, MAX_COST);
-
-    let prints = prints(&dialect);
+    let (result, prints) = execute(&mut allocator, program, solution);
 
     let (output, error, runtime_cost) = match result {
         Ok(reduction) => (
@@ -96,7 +96,7 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
     console_error_panic_hook::set_once();
 
     let mut allocator = Allocator::new();
-    let (mut ctx, tree, kind, _) = check(source, true);
+    let (mut ctx, tree, source) = check(source, true);
 
     if ctx.has_errors() {
         return Ok(Vec::new());
@@ -105,7 +105,7 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
     let tests = tree.tests(
         &mut ctx,
         &mut allocator,
-        Some(&kind),
+        Some(&source.kind),
         None,
         Path::new("."),
         false,
@@ -118,8 +118,7 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
             continue;
         };
 
-        let dialect = DebugDialect::new(CLVM_FLAGS, false);
-        let result = run_program(&mut allocator, &dialect, test.ptr, NodePtr::NIL, MAX_COST);
+        let (result, prints) = execute(&mut allocator, test.ptr, NodePtr::NIL);
 
         let error = match result {
             Ok(reduction) => {
@@ -140,22 +139,32 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
         results.push(TestResult {
             name,
             error,
-            prints: prints(&dialect),
+            prints,
         });
     }
 
     Ok(results)
 }
 
-fn prints(dialect: &DebugDialect) -> Vec<Print> {
-    dialect
+/// Runs a program the way the CLI does, along with the values its `debug` statements printed.
+fn execute(
+    allocator: &mut Allocator,
+    program: NodePtr,
+    env: NodePtr,
+) -> (Result<Reduction, EvalErr>, Vec<Print>) {
+    let dialect = DebugDialect::new(CLVM_FLAGS, false);
+    let result = run_program(allocator, &dialect, program, env, MAX_COST);
+
+    let prints = dialect
         .log()
         .into_iter()
         .map(|print| Print {
             location: print.srcloc,
             value: print.message,
         })
-        .collect()
+        .collect();
+
+    (result, prints)
 }
 
 fn describe_error(allocator: &Allocator, error: &EvalErr) -> String {

@@ -3,7 +3,6 @@ import type { EditorView } from "@codemirror/view";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -41,6 +40,13 @@ const COMPILE_DELAY_MS = 150;
 
 const defaultExample = examples[0];
 
+const exampleGroups = [
+  ...examples.reduce((groups, example) => {
+    groups.set(example.group, [...(groups.get(example.group) ?? []), example]);
+    return groups;
+  }, new Map<string, Example[]>()),
+];
+
 /** The source to start with if there's none saved. */
 function defaultSource(): string {
   // The playground used to keep the source under `source`, as JSON. An empty value was saved by
@@ -69,24 +75,31 @@ export default function App() {
   const main = useRef<HTMLElement>(null);
   const sharedHash = useRef<string | null>(null);
 
-  // A shared snippet in the URL replaces whatever was there before
+  // A shared snippet in the URL replaces whatever was there before, including one opened in this
+  // tab later, which only changes the hash
   useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash) return;
+    const load = () => {
+      const hash = window.location.hash;
+      if (!hash.startsWith("#code=") || hash === sharedHash.current) return;
 
-    void decodeSnippet(hash).then((snippet) => {
-      setLoadingShared(false);
-      if (!snippet) {
-        showToast("That link doesn't contain a valid snippet");
-        return;
-      }
-      sharedHash.current = hash;
-      setSource(snippet.source);
-      setSolution(snippet.solution ?? "()");
-      if (snippet.debug !== undefined) setDebug(snippet.debug);
-      setRunResult(null);
-      setTests(null);
-    });
+      void decodeSnippet(hash).then((snippet) => {
+        setLoadingShared(false);
+        if (!snippet) {
+          showToast("That link doesn't contain a valid snippet");
+          return;
+        }
+        sharedHash.current = hash;
+        setSource(snippet.source);
+        setSolution(snippet.solution ?? "()");
+        if (snippet.debug !== undefined) setDebug(snippet.debug);
+        setRunResult(null);
+        setTests(null);
+      });
+    };
+
+    load();
+    window.addEventListener("hashchange", load);
+    return () => window.removeEventListener("hashchange", load);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -213,9 +226,15 @@ export default function App() {
     editor.focus();
   }, []);
 
-  const onFix = useCallback((suggestion: Suggestion) => {
-    view.current?.dispatch({ changes: suggestion.edits });
-  }, []);
+  // A suggestion's edits are only valid for the source it was computed for
+  const onFix = useCallback(
+    (suggestion: Suggestion) => {
+      const editor = view.current;
+      if (!editor || editor.state.doc.toString() !== compilation?.source) return;
+      editor.dispatch({ changes: suggestion.edits });
+    },
+    [compilation],
+  );
 
   // Global shortcuts: run with Ctrl/Cmd+Enter, format with Shift+Alt+F. The editor handles its own
   // Ctrl/Cmd+Enter and marks the event as handled.
@@ -250,12 +269,6 @@ export default function App() {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
-
-  const editorDiagnostics = useMemo(
-    () =>
-      compilation ? { source: compilation.source, diagnostics: compilation.diagnostics } : null,
-    [compilation],
-  );
 
   return (
     <div className="flex h-full flex-col">
@@ -350,7 +363,7 @@ export default function App() {
             <Editor
               value={source}
               onChange={onSourceChange}
-              diagnostics={editorDiagnostics}
+              diagnostics={compilation}
               onRun={onRun}
               onView={(editor) => (view.current = editor)}
             />
@@ -449,14 +462,6 @@ function ExamplePicker({ onPick }: { onPick: (example: Example) => void }) {
     };
   }, [open]);
 
-  const groups = useMemo(() => {
-    const map = new Map<string, Example[]>();
-    for (const example of examples) {
-      map.set(example.group, [...(map.get(example.group) ?? []), example]);
-    }
-    return [...map];
-  }, []);
-
   return (
     <div ref={container} className="relative">
       <ToolbarButton onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu">
@@ -467,7 +472,7 @@ function ExamplePicker({ onPick }: { onPick: (example: Example) => void }) {
           role="menu"
           className="absolute left-0 top-full z-40 mt-1 max-h-[70vh] w-72 overflow-auto rounded-lg border border-line bg-raised p-1 shadow-xl"
         >
-          {groups.map(([group, items]) => (
+          {exampleGroups.map(([group, items]) => (
             <div key={group} className="py-1">
               <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
                 {group}

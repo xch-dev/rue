@@ -12,7 +12,6 @@
   --color-accent-soft: var(--accent-soft);
   --color-accent-contrast: var(--accent-contrast);
   --color-ok: var(--ok);
-  --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-err: var(--err);
@@ -43,7 +42,6 @@
   --selection: light-dark(#f3d3e0, #45253a);
   --active-line: light-dark(#f6f2ec, #1f1e23);
   --ok: light-dark(#1d7a46, #5cc98a);
-  --ok-soft: light-dark(#e1f3e8, #173224);
   --warn: light-dark(#9a6200, #e8b04c);
   --warn-soft: light-dark(#fbf0d9, #3a2d14);
   --err: light-dark(#c0262d, #ff6b6b);
