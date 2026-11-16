@@ -71,6 +71,7 @@ test fn binding_through_binding(x: Int, flag: Bool) -> Int {
     }
 }
 
+// A binding that's used unconditionally is still inlined
 test fn unconditional_binding(x: Int) -> Int {
     let y = check(x);
     y + 1
@@ -123,6 +124,7 @@ test fn binding_into_inline_function(x: Int, flag: Bool) -> Int {
     select(y, flag)
 }
 
+// An inline `if` evaluates both branches, so the binding is still inlined
 test fn binding_in_inline_if(x: Int, flag: Bool) -> Int {
     let y = check(x);
     inline if flag { y } else { 0 }
@@ -146,11 +148,11 @@ test fn closure_in_branch_binding(x: Int, flag: Bool) -> Int {
 }
 
 test fn destructured_binding(x: Int, flag: Bool) -> Int {
-    let (a, b) = (check(x), 1);
+    let (a, _b) = (check(x), 1);
     if flag {
         a
     } else {
-        b
+        0
     }
 }
 
@@ -188,6 +190,7 @@ fn countdown(n: Int, x: Int) -> Int {
     }
 }
 
+// A recursive function isn't inlined, so its arguments are evaluated at the call
 test fn recursive_argument(x: Int) -> Int {
     countdown(0, check(x))
 }
@@ -363,5 +366,171 @@ test fn shift_moved_into_branch(x: Int, shift: Int, flag: Bool) -> Int {
         shifted
     } else {
         0
+    }
+}
+
+test fn binding_in_short_circuit_or(x: Int, flag: Bool) -> Bool {
+    let y = check(x);
+    flag || y == 5
+}
+
+const CHECKED_BASE: Int = check(50);
+const CHECKED_DERIVED: Int = CHECKED_BASE + 1;
+
+test fn constant_through_constant(flag: Bool) -> Int {
+    if flag {
+        CHECKED_DERIVED
+    } else {
+        0
+    }
+}
+
+fn return_early(a: Int, flag: Bool) -> Int {
+    if flag {
+        return 0;
+    }
+    a
+}
+
+test fn argument_after_early_return(x: Int, flag: Bool) -> Int {
+    return_early(check(x), flag)
+}
+
+fn checked_countdown(n: Int) -> Int {
+    assert n < 100;
+    if n == 0 {
+        0
+    } else {
+        checked_countdown(n - 1)
+    }
+}
+
+test fn recursive_function_moved_into_branch(n: Int, flag: Bool) -> Int {
+    let y = checked_countdown(n);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn countdown_safe(n: Int) -> Int {
+    if n == 0 {
+        0
+    } else {
+        countdown_safe(n - 1)
+    }
+}
+
+// A recursive function that can't fail is still moved into the branch
+test fn safe_recursive_function_is_inlined(n: Int, flag: Bool) -> Int {
+    let y = countdown_safe(n);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn bound_lambda_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let f = fn(i: Int) => check(i);
+    let y = f(x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+// A lambda bound to a name that can't fail is still moved into the branch
+test fn safe_bound_lambda_is_inlined(x: Int, flag: Bool) -> Int {
+    let f = fn(i: Int) => i + 1;
+    let y = f(x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+// The closure is always called, so the binding is still inlined into its body
+test fn binding_in_closure_that_is_called(x: Int) -> Int {
+    let y = check(x);
+    let f = fn(i: Int) => i + y;
+    f(1) + f(2)
+}
+
+test fn division_by_zero_moved_into_branch(a: Int, flag: Bool) -> Int {
+    let quotient = a / 0;
+    if flag {
+        quotient
+    } else {
+        0
+    }
+}
+
+test fn remainder_moved_into_branch(a: Int, b: Int, flag: Bool) -> Int {
+    let remainder = a % b;
+    if flag {
+        remainder
+    } else {
+        0
+    }
+}
+
+// A remainder by a constant other than zero can't fail, so it's still moved into the branch
+test fn constant_remainder_is_inlined(a: Int, flag: Bool) -> Int {
+    let remainder = a % 3;
+    if flag {
+        remainder
+    } else {
+        0
+    }
+}
+
+test fn large_constant_shift_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let shifted = x << 70000;
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+// A shift by a constant within the limit can't fail, so it's still moved into the branch
+test fn small_constant_shift_is_inlined(x: Int, flag: Bool) -> Int {
+    let shifted = x << 3;
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn substr_moved_into_branch(value: Bytes, start: Int, flag: Bool) -> Bytes {
+    let part = substr(value, start);
+    if flag {
+        part
+    } else {
+        nil
+    }
+}
+
+test fn modpow_moved_into_branch(base: Int, exponent: Int, modulus: Int, flag: Bool) -> Int {
+    let result = modpow(base, exponent, modulus);
+    if flag {
+        result
+    } else {
+        0
+    }
+}
+
+// Hashing can't fail, so it's still moved into the branch
+test fn hash_is_inlined(value: Bytes, flag: Bool) -> Bytes32 {
+    let hash = sha256(value);
+    if flag {
+        hash
+    } else {
+        sha256(nil)
     }
 }

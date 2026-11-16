@@ -1,36 +1,17 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-};
+//! Finds whether evaluating a value may fail, so that inlining never drops it or moves it
+//! somewhere that's only evaluated some of the time (see [`super::evaluation`]).
+
+use std::collections::{HashMap, HashSet};
 
 use num_bigint::BigInt;
 use rue_lir::{ClvmOp, atom_bigint};
 
 use crate::{BinaryOp, Database, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 
+use super::Lowerer;
+
 /// The largest shift that CLVM allows, in either direction.
 const MAX_SHIFT: u32 = 65535;
-
-/// What [`may_fail`] needs to know about how the HIR is lowered.
-pub trait FailureContext {
-    fn db(&self) -> &Database;
-
-    /// How many times the symbol is referenced. A binding that's never referenced isn't evaluated.
-    fn references(&self, symbol: SymbolId) -> usize;
-
-    /// The value that's evaluated where the symbol is referenced, if it's substituted there rather
-    /// than bound to the environment. This is the value of an inline binding or constant, or of
-    /// one that's inlined automatically, or the argument for a parameter of an inlined function.
-    fn substituted_value(&self, symbol: SymbolId) -> Option<HirId>;
-
-    /// Whether creating a closure for the function (or calling it directly) evaluates a
-    /// substituted argument that may fail, since the arguments it captures are evaluated then.
-    fn captures_may_fail(&self, function: SymbolId) -> bool;
-
-    /// Whether calling each function that has been checked may fail, which only depends on its
-    /// body, so it's shared between checks.
-    fn function_failures(&self) -> &RefCell<HashMap<SymbolId, bool>>;
-}
 
 /// Whether evaluating the HIR may fail for well-typed values, such as a solution that matches the
 /// parameter types of `main`.
@@ -41,33 +22,114 @@ pub trait FailureContext {
 /// resolved. Reading a value doesn't fail, including a field of a parameter, since the solution
 /// is assumed to match the types.
 ///
-/// A substituted value (see [`FailureContext::substituted_value`]) is checked where it's
-/// referenced, since that's where it's evaluated.
-pub fn may_fail(ctx: &impl FailureContext, hir: HirId) -> bool {
-    Visitor::new(ctx).visit(hir, false)
+/// A substituted value (see [`Lowerer::substituted_value`]) is checked where it's referenced,
+/// since that's where it's evaluated.
+pub(super) fn may_fail(lowerer: &Lowerer<'_, '_, '_>, hir: HirId) -> bool {
+    Visitor::new(lowerer).visit(hir, false)
 }
 
-struct Visitor<'a, C> {
-    ctx: &'a C,
+/// The function that's called, if it's known. This follows bindings, so that calling a lambda
+/// that's bound to a name is treated like calling the lambda itself.
+pub(super) fn resolve_function(db: &Database, mut callee: HirId) -> Option<SymbolId> {
+    let mut seen = HashSet::new();
+
+    loop {
+        match db.hir(db.without_casts(callee)) {
+            Hir::Lambda(lambda) => return Some(*lambda),
+            Hir::Reference(symbol) => match db.symbol(*symbol) {
+                Symbol::Function(_) => return Some(*symbol),
+                Symbol::Binding(binding) if seen.insert(*symbol) => {
+                    callee = binding.value.hir;
+                }
+                Symbol::Binding(_)
+                | Symbol::Constant(_)
+                | Symbol::Parameter(_)
+                | Symbol::Unresolved
+                | Symbol::Module(_)
+                | Symbol::Builtin(_) => return None,
+            },
+            _ => return None,
+        }
+    }
+}
+
+impl Lowerer<'_, '_, '_> {
+    /// The value that's evaluated where the symbol is referenced, if it's substituted there rather
+    /// than read from the environment. This is the value of an inline binding or constant, or of
+    /// one that's inlined automatically, or the argument for a parameter of an inlined function.
+    fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
+        if let Some(hir) = self.inline_argument(symbol) {
+            return Some(hir);
+        }
+
+        let (value, inline) = match self.db.symbol(symbol) {
+            Symbol::Binding(binding) => (binding.value.hir, binding.inline),
+            Symbol::Constant(constant) => (constant.value.hir, constant.inline),
+            Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Builtin(_) => return None,
+        };
+
+        // A binding or constant whose single reference hasn't been decided yet might be
+        // substituted, so its value is checked where it's referenced
+        let substituted = inline
+            || (self.options.auto_inline
+                && self.graph.references(symbol) <= 1
+                && self
+                    .substitutions
+                    .borrow()
+                    .get(&symbol)
+                    .copied()
+                    .unwrap_or(true));
+
+        substituted.then_some(value)
+    }
+
+    /// Whether creating a closure for the function, or calling it directly, evaluates an argument
+    /// of an inlined function that may fail, since the arguments it captures are evaluated then.
+    fn captures_may_fail(&self, function: SymbolId) -> bool {
+        if self.inline_symbols.iter().all(HashMap::is_empty) {
+            return false;
+        }
+
+        self.dependencies(function, true).iter().any(|&capture| {
+            self.inline_argument(capture)
+                .is_some_and(|hir| !self.is_static_hir(hir) && may_fail(self, hir))
+        })
+    }
+}
+
+struct Visitor<'a, 'd, 'b, 'g> {
+    lowerer: &'a Lowerer<'d, 'b, 'g>,
     /// The substituted values being checked, so that a value that references itself isn't
     /// checked forever.
     visiting: HashSet<SymbolId>,
-    /// The functions whose bodies are being checked.
-    functions: HashSet<SymbolId>,
-    /// Whether a function that's being checked was called again, in which case it was assumed
-    /// not to fail, and the result of the functions that called it can't be cached until it's
-    /// known.
-    recursed: bool,
+    /// The functions whose bodies are being checked, from the outermost to the innermost.
+    stack: Vec<SymbolId>,
+    /// The outermost function on the stack that was called again while its body was being
+    /// checked. It was assumed not to fail, so the functions above it on the stack can't be
+    /// cached until it's known whether it does.
+    lowest_recursion: usize,
+    /// The functions that didn't fail, but depend on an assumption about a function that's still
+    /// on the stack. They're cached once that function is known not to fail either.
+    deferred: Vec<SymbolId>,
 }
 
-impl<'a, C: FailureContext> Visitor<'a, C> {
-    fn new(ctx: &'a C) -> Self {
+impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
+    fn new(lowerer: &'a Lowerer<'d, 'b, 'g>) -> Self {
         Self {
-            ctx,
+            lowerer,
             visiting: HashSet::new(),
-            functions: HashSet::new(),
-            recursed: false,
+            stack: Vec::new(),
+            lowest_recursion: usize::MAX,
+            deferred: Vec::new(),
         }
+    }
+
+    fn db(&self) -> &'a Database {
+        self.lowerer.db
     }
 
     fn any(&mut self, hirs: impl IntoIterator<Item = HirId>, in_body: bool) -> bool {
@@ -76,14 +138,14 @@ impl<'a, C: FailureContext> Visitor<'a, C> {
 
     /// Checks the HIR. Inside of a function body (`in_body`), the parameters and captures are
     /// read from the environment, so they can't fail. Their arguments are checked where the
-    /// function is called instead.
+    /// function is called or created instead.
     fn visit(&mut self, hir: HirId, in_body: bool) -> bool {
         // This follows chains of values and calls, which can be as deep as the program
         rue_types::grow_stack(|| self.visit_inner(hir, in_body))
     }
 
     fn visit_inner(&mut self, hir: HirId, in_body: bool) -> bool {
-        let db = self.ctx.db();
+        let db = self.db();
 
         match db.hir(hir).clone() {
             Hir::Unresolved
@@ -96,7 +158,7 @@ impl<'a, C: FailureContext> Visitor<'a, C> {
             | Hir::InfinityG2
             // Constant expressions are evaluated at compile time
             | Hir::Const(_) => false,
-            Hir::Lambda(lambda) => !in_body && self.ctx.captures_may_fail(lambda),
+            Hir::Lambda(lambda) => !in_body && self.lowerer.captures_may_fail(lambda),
             Hir::Reference(symbol) => self.visit_reference(symbol, in_body),
             Hir::Block(block) => {
                 self.visit_statements(&block.statements, in_body)
@@ -136,7 +198,7 @@ impl<'a, C: FailureContext> Visitor<'a, C> {
     }
 
     fn visit_statements(&mut self, statements: &[Statement], in_body: bool) -> bool {
-        let db = self.ctx.db();
+        let db = self.db();
 
         for statement in crate::reachable_statements(statements) {
             let fails = match *statement {
@@ -145,7 +207,7 @@ impl<'a, C: FailureContext> Visitor<'a, C> {
                 // if they can't fail, unless they're never referenced
                 Statement::Let(symbol, _) => match db.symbol(symbol) {
                     Symbol::Binding(binding)
-                        if !binding.inline && self.ctx.references(symbol) > 0 =>
+                        if !binding.inline && self.lowerer.graph.references(symbol) > 0 =>
                     {
                         self.visit(binding.value.hir, in_body)
                     }
@@ -170,11 +232,11 @@ impl<'a, C: FailureContext> Visitor<'a, C> {
     }
 
     fn visit_reference(&mut self, symbol: SymbolId, in_body: bool) -> bool {
-        match self.ctx.db().symbol(symbol) {
-            Symbol::Function(_) => !in_body && self.ctx.captures_may_fail(symbol),
+        match self.db().symbol(symbol) {
+            Symbol::Function(_) => !in_body && self.lowerer.captures_may_fail(symbol),
             Symbol::Parameter(_) if in_body => false,
             Symbol::Parameter(_) | Symbol::Binding(_) | Symbol::Constant(_) => {
-                let Some(value) = self.ctx.substituted_value(symbol) else {
+                let Some(value) = self.lowerer.substituted_value(symbol) else {
                     return false;
                 };
 
@@ -192,67 +254,70 @@ impl<'a, C: FailureContext> Visitor<'a, C> {
 
     /// Whether calling the function may fail, other than in evaluating its arguments.
     fn visit_callee(&mut self, callee: HirId, in_body: bool) -> bool {
-        let Some(function) = self.resolve_function(callee) else {
+        let Some(function) = resolve_function(self.db(), callee) else {
             // The function is only known at runtime, so it could do anything
             return true;
         };
 
-        (!in_body && self.ctx.captures_may_fail(function)) || self.function_may_fail(function)
+        (!in_body && self.lowerer.captures_may_fail(function)) || self.function_may_fail(function)
     }
 
-    /// The function that's called, if it's known. This follows bindings, so that calling a
-    /// lambda that's bound to a name is checked like calling the lambda itself.
-    fn resolve_function(&self, mut callee: HirId) -> Option<SymbolId> {
-        let db = self.ctx.db();
-        let mut seen = HashSet::new();
-
-        loop {
-            match db.hir(db.without_casts(callee)) {
-                Hir::Lambda(lambda) => return Some(*lambda),
-                Hir::Reference(symbol) => match db.symbol(*symbol) {
-                    Symbol::Function(_) => return Some(*symbol),
-                    Symbol::Binding(binding) if seen.insert(*symbol) => {
-                        callee = binding.value.hir;
-                    }
-                    _ => return None,
-                },
-                _ => return None,
-            }
-        }
-    }
-
+    /// Whether the body of the function may fail. A recursive call is assumed not to fail, since
+    /// the body fails anyway if anything else in it does. The functions that call each other
+    /// are checked together, like the strongly connected components of the call graph, so that
+    /// each function's body is only checked once.
     fn function_may_fail(&mut self, function: SymbolId) -> bool {
-        if let Some(&fails) = self.ctx.function_failures().borrow().get(&function) {
+        if let Some(&fails) = self.lowerer.function_failures.borrow().get(&function) {
             return fails;
         }
 
-        let Symbol::Function(symbol) = self.ctx.db().symbol(function) else {
+        if let Some(depth) = self.stack.iter().position(|&other| other == function) {
+            self.lowest_recursion = self.lowest_recursion.min(depth);
+            return false;
+        }
+
+        let Symbol::Function(symbol) = self.db().symbol(function) else {
             return true;
         };
         let body = symbol.body;
 
-        // A recursive call is assumed not to fail, since the body fails anyway if anything else
-        // in it does
-        if !self.functions.insert(function) {
-            self.recursed = true;
-            return false;
-        }
+        let depth = self.stack.len();
+        let deferred = self.deferred.len();
+        let lowest_recursion = std::mem::replace(&mut self.lowest_recursion, usize::MAX);
 
-        let recursed = std::mem::replace(&mut self.recursed, false);
+        self.stack.push(function);
         let fails = self.visit(body, true);
-        self.functions.remove(&function);
+        self.stack.pop();
 
-        // If a function that's still being checked was assumed not to fail, this function's
-        // result depends on that assumption, unless it fails regardless
-        if fails || !self.recursed || self.functions.is_empty() {
-            self.ctx
-                .function_failures()
-                .borrow_mut()
-                .insert(function, fails);
+        if fails {
+            // Failing doesn't depend on any assumption. The functions that relied on this one
+            // not failing were wrong, and will be checked again.
+            self.deferred.truncate(deferred);
+            self.cache(function, true);
+            self.lowest_recursion = lowest_recursion;
+        } else if self.lowest_recursion >= depth {
+            // Every assumption made while checking the body was about this function or the ones
+            // it calls, and none of them fail
+            for function in self.deferred.split_off(deferred) {
+                self.cache(function, false);
+            }
+
+            self.cache(function, false);
+            self.lowest_recursion = lowest_recursion;
+        } else {
+            // This depends on a function further down the stack not failing
+            self.deferred.push(function);
+            self.lowest_recursion = self.lowest_recursion.min(lowest_recursion);
         }
 
-        self.recursed |= recursed;
         fails
+    }
+
+    fn cache(&self, function: SymbolId, fails: bool) {
+        self.lowerer
+            .function_failures
+            .borrow_mut()
+            .insert(function, fails);
     }
 }
 

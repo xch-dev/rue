@@ -105,8 +105,8 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: destructured_binding
-  program: (a (q 2 (q 2 (i 23 (q . 4) (q . 6)) 1) (c (c (a 2 5) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (i 23 (q 5 2) (q 6 2)) 1) (c (c (a 2 5) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  program: (a (q 2 (q 2 (i 23 (q . 4) (q)) 1) (c (c (a 2 5) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 5 2) (q)) 1) (c (c (a 2 5) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50 ())
   byte_cost: 1092000
   clvm_error: clvm raise ()
@@ -134,11 +134,11 @@ tests:
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: password_checked_on_both_branches
   program: (a (q 2 (q 2 (i 23 (q 13 2) (q 1 . 42)) 1) (c (a 2 5) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q . 1) (q 8)) 1) 1))
-  debug_program: (a (q 2 (q 2 (i 23 (q 2 29 2) (q 1 . 42)) 1) (c (a 4 (c 10 5)) 1)) (c (c (q 2 (i (= (sha256 3) 2) (q . 3) (q 8 (q . "assertion failed at keep_checks.rue:199:5"))) 1) (c (sha256 (q . "hunter2")) (q 13 1))) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 2 29 2) (q 1 . 42)) 1) (c (a 4 (c 10 5)) 1)) (c (c (q 2 (i (= (sha256 3) 2) (q . 3) (q 8 (q . "assertion failed at keep_checks.rue:202:5"))) 1) (c (sha256 (q . "hunter2")) (q 13 1))) 1))
   solution: ("wrong" ())
   byte_cost: 1248000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:199:5"
+  debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:202:5"
 - name: division_moved_into_branch
   program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (/ 2 5) 1))
   debug_program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (/ 2 5) 1))
@@ -192,7 +192,7 @@ tests:
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: binding_used_before_early_return
   program: (a (q 2 (i (> (q . 100) (a 2 5)) (q 2 (i 11 (q) (q 1 . 1)) 1) (q 8)) 1) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (i (> (q . 100) 2) (q 2 (i 23 (q) (q 1 . 1)) 1) (q 8 (q . "assertion failed at keep_checks.rue:277:5"))) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i (> (q . 100) 2) (q 2 (i 23 (q) (q 1 . 1)) 1) (q 8 (q . "assertion failed at keep_checks.rue:280:5"))) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50 1)
   byte_cost: 1188000
   clvm_error: clvm raise ()
@@ -254,3 +254,115 @@ tests:
   solution: (1 70000 ())
   byte_cost: 468000
   clvm_error: Shift too large
+- name: binding_in_short_circuit_or
+  program: (a (q 2 (q 2 (i 23 (q 1 . 1) (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q)) 1)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 1 . 1) (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q)) 1)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 1)
+  byte_cost: 1356000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: constant_through_constant
+  program: (a (q 2 (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (+ 2 (q . 1)) 1)) (c (a 2 (q . 50)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (+ 2 (q . 1)) 1)) (c (a 2 (q . 50)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (())
+  byte_cost: 1284000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: argument_after_early_return
+  program: (a (q 2 (q 2 (i 23 (q) (q . 2)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 6 (c (a 4 5) 11)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) (q 2 (i 3 (q) (q . 2)) 1)) 1))
+  solution: (50 1)
+  byte_cost: 996000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: recursive_function_moved_into_branch
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 5)) 1)) (c (q 2 (i (> (q . 100) 3) (q 2 (i 3 (q 2 2 (c 2 (- 3 (q . 1)))) (q)) 1) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 5)) 1)) (c (q 2 (i (> (q . 100) 3) (q 2 (i (= 3 ()) (q) (q 2 2 (c 2 (- 3 (q . 1))))) 1) (q 8 (q . "assertion failed at keep_checks.rue:400:5"))) 1) 1))
+  solution: (200 ())
+  byte_cost: 1524000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:400:5"
+- name: safe_recursive_function_is_inlined
+  program: (a (q 2 (i 11 (q 2 2 (c 2 5)) (q)) 1) (c (q 2 (i 3 (q 2 2 (c 2 (- 3 (q . 1)))) (q)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 5)) 1)) (c (q 2 (i (= 3 ()) (q) (q 2 2 (c 2 (- 3 (q . 1))))) 1) 1))
+  solution: (3 1)
+  output: ()
+  runtime_cost: 5029
+  byte_cost: 1020000
+  total_cost: 1025029
+- name: bound_lambda_moved_into_branch
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 5 ())) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 47 (q . 2) (q)) 1) (c (a 2 (c 11 ())) 1)) (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 1860000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: safe_bound_lambda_is_inlined
+  program: (a (i 5 (q 2 (q 16 2 (q . 1)) (c 2 ())) (q)) 1)
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 5 ())) 1)) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 1))
+  solution: (3 1)
+  output: "4"
+  runtime_cost: 1339
+  byte_cost: 492000
+  total_cost: 493339
+- name: binding_in_closure_that_is_called
+  program: (a (q 2 (q 16 (a 2 (q 1)) (a 2 (q 2))) (c (c (q . 2) (c (c (q . 1) (q 16 11 (a 5 2))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 23 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50)
+  byte_cost: 2220000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: division_by_zero_moved_into_branch
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (/ 2 ()) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (/ 2 ()) 1))
+  solution: (7 ())
+  byte_cost: 468000
+  clvm_error: Division by zero
+- name: remainder_moved_into_branch
+  program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (% 2 5) 1))
+  debug_program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (% 2 5) 1))
+  solution: (7 0 ())
+  byte_cost: 468000
+  clvm_error: Division by zero
+- name: constant_remainder_is_inlined
+  program: (a (i 5 (q 61 2 (q . 3)) (q)) 1)
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (% 2 (q . 3)) 1))
+  solution: (7 1)
+  output: "1"
+  runtime_cost: 1336
+  byte_cost: 324000
+  total_cost: 325336
+- name: large_constant_shift_moved_into_branch
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 70000)) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 70000)) 1))
+  solution: (1 ())
+  byte_cost: 528000
+  clvm_error: Shift too large
+- name: small_constant_shift_is_inlined
+  program: (a (i 5 (q 22 2 (q . 3)) (q)) 1)
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 3)) 1))
+  solution: (1 1)
+  output: "8"
+  runtime_cost: 942
+  byte_cost: 324000
+  total_cost: 324942
+- name: substr_moved_into_branch
+  program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (substr 2 5) 1))
+  debug_program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (substr 2 5) 1))
+  solution: ("abc" 5 ())
+  byte_cost: 468000
+  clvm_error: "InvalidOperatorArg: Invalid Indices for Substring"
+- name: modpow_moved_into_branch
+  program: (a (q 2 (i 47 (q . 2) (q)) 1) (c (modpow 2 5 11) 1))
+  debug_program: (a (q 2 (i 47 (q . 2) (q)) 1) (c (modpow 2 5 11) 1))
+  solution: (2 3 0 ())
+  byte_cost: 492000
+  clvm_error: Division by zero
+- name: hash_is_inlined
+  program: (a (i 5 (q 11 2) (q 11 ())) 1)
+  debug_program: (a (q 2 (i 11 (q . 2) (q 11 ())) 1) (c (sha256 2) 1))
+  solution: ("abc" 1)
+  output: "0xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  runtime_cost: 857
+  byte_cost: 324000
+  total_cost: 324857

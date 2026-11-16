@@ -1,9 +1,10 @@
 #![allow(clippy::needless_pass_by_value)]
 
 mod evaluation;
+mod may_fail;
 
 use std::{
-    cell::RefCell,
+    cell::{OnceCell, RefCell},
     collections::HashMap,
     iter,
     path::{Path, PathBuf},
@@ -19,8 +20,10 @@ use rue_options::CompilerOptions;
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, ExprStatement,
     FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError,
-    Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir, may_fail,
+    Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
 };
+
+use may_fail::may_fail;
 
 #[derive(Debug, Clone)]
 enum SymbolGroup {
@@ -72,6 +75,8 @@ pub struct Lowerer<'d, 'a, 'g> {
     substitutions: RefCell<HashMap<SymbolId, bool>>,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, bool>>,
+    /// What's always evaluated when the program is run, which constants are checked against.
+    constant_roots: OnceCell<Vec<HirId>>,
 }
 
 /// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.
@@ -119,6 +124,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             dependencies: RefCell::default(),
             substitutions: RefCell::default(),
             function_failures: RefCell::default(),
+            constant_roots: OnceCell::new(),
         }
     }
 
@@ -564,21 +570,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
             let mut args = HashMap::new();
+            let mut arg_iter = call.args.into_iter();
 
-            if function.nil_terminated {
-                for (i, arg) in call.args.into_iter().enumerate() {
-                    args.insert(function.parameters[i], arg);
-                }
-            } else {
-                let mut arg_iter = call.args.into_iter().enumerate();
+            for (&parameter, arg) in fixed_parameters(&function).iter().zip(&mut arg_iter) {
+                args.insert(parameter, arg);
+            }
 
-                for (i, arg) in (&mut arg_iter).take(function.parameters.len() - 1) {
-                    args.insert(function.parameters[i], arg);
-                }
-
+            if !function.nil_terminated {
                 let mut last_arg = self.db.alloc_hir(Hir::Nil);
 
-                for (i, (_, arg)) in arg_iter.rev().enumerate() {
+                for (i, arg) in arg_iter.rev().enumerate() {
                     if i == 0 && !call.nil_terminated {
                         last_arg = arg;
                     } else {
@@ -1328,6 +1329,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
             }
         }
+    }
+}
+
+/// The parameters that each take a single argument, which is all of them unless the last one is a
+/// rest parameter, which takes the remaining arguments as a list.
+fn fixed_parameters(function: &FunctionSymbol) -> &[SymbolId] {
+    if function.nil_terminated {
+        &function.parameters
+    } else {
+        &function.parameters[..function.parameters.len().saturating_sub(1)]
     }
 }
 

@@ -8,68 +8,17 @@
 //! Otherwise, it's bound like it would be if it were referenced more than once, or evaluated for
 //! its effect if it's never referenced.
 
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
-    BinaryOp, Database, FailureContext, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
-    may_fail, reachable_body, reachable_statements,
+    BinaryOp, Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, reachable_body,
+    reachable_statements,
 };
 
-use super::Lowerer;
-
-impl FailureContext for Lowerer<'_, '_, '_> {
-    fn db(&self) -> &Database {
-        self.db
-    }
-
-    fn references(&self, symbol: SymbolId) -> usize {
-        self.graph.references(symbol)
-    }
-
-    fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
-        if let Some(hir) = self.inline_argument(symbol) {
-            return Some(hir);
-        }
-
-        let (value, inline) = match self.db.symbol(symbol) {
-            Symbol::Binding(binding) => (binding.value.hir, binding.inline),
-            Symbol::Constant(constant) => (constant.value.hir, constant.inline),
-            _ => return None,
-        };
-
-        // A binding or constant whose single reference hasn't been decided yet might be
-        // substituted, so its value is checked where it's referenced
-        let substituted = inline
-            || (self.options.auto_inline
-                && self.graph.references(symbol) <= 1
-                && self
-                    .substitutions
-                    .borrow()
-                    .get(&symbol)
-                    .copied()
-                    .unwrap_or(true));
-
-        substituted.then_some(value)
-    }
-
-    fn captures_may_fail(&self, function: SymbolId) -> bool {
-        if self.inline_symbols.iter().all(HashMap::is_empty) {
-            return false;
-        }
-
-        self.dependencies(function, true).iter().any(|&capture| {
-            self.inline_argument(capture)
-                .is_some_and(|hir| !self.is_static_hir(hir) && may_fail(self, hir))
-        })
-    }
-
-    fn function_failures(&self) -> &RefCell<HashMap<SymbolId, bool>> {
-        &self.function_failures
-    }
-}
+use super::{
+    Lowerer, fixed_parameters,
+    may_fail::{may_fail, resolve_function},
+};
 
 impl Lowerer<'_, '_, '_> {
     /// Whether the binding or constant, which is referenced at most once and isn't `inline`, can
@@ -106,7 +55,11 @@ impl Lowerer<'_, '_, '_> {
             Symbol::Constant(constant) => {
                 !may_fail(self, constant.value.hir) || self.constant_always_evaluated(symbol)
             }
-            _ => true,
+            Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Builtin(_) => true,
         }
     }
 
@@ -132,12 +85,22 @@ impl Lowerer<'_, '_, '_> {
     /// fails. Constants that are referenced more than once are evaluated at the start of the
     /// program, so a reference in one of their values counts too.
     fn constant_always_evaluated(&self, symbol: SymbolId) -> bool {
+        let roots = self
+            .constant_roots
+            .get_or_init(|| self.find_constant_roots());
+        let mut evaluation = Evaluation::new(self, symbol);
+        roots.iter().any(|&root| evaluation.hir(root))
+    }
+
+    /// What's always evaluated when the program is run: the body of `main`, and the values of the
+    /// constants that are referenced more than once, since they're bound before it.
+    fn find_constant_roots(&self) -> Vec<HirId> {
         let Symbol::Function(main) = self.db.symbol(self.main) else {
-            return false;
+            return Vec::new();
         };
 
         if main.kind == FunctionKind::External {
-            return false;
+            return Vec::new();
         }
 
         let mut roots = vec![main.body];
@@ -151,8 +114,7 @@ impl Lowerer<'_, '_, '_> {
             }
         }
 
-        let mut evaluation = Evaluation::new(self, symbol);
-        roots.into_iter().any(|root| evaluation.hir(root))
+        roots
     }
 
     /// Whether the body of a function that's being inlined always evaluates the parameter's
@@ -335,34 +297,16 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
     fn call(&mut self, callee: HirId, args: &[HirId]) -> bool {
         let db = self.db();
 
-        let function = match db.hir(db.without_casts(callee)) {
-            Hir::Reference(symbol) if matches!(db.symbol(*symbol), Symbol::Function(_)) => {
-                Some(*symbol)
-            }
-            Hir::Lambda(lambda) => Some(*lambda),
-            _ => None,
-        };
-
-        let Some(function) = function else {
-            return self.hir(callee) || self.any(args.iter().copied());
-        };
-
-        let Symbol::Function(symbol) = db.symbol(function) else {
-            unreachable!();
-        };
-
-        // The arguments of an `inline fn` are evaluated where its parameters are referenced
-        if symbol.kind == FunctionKind::Inline {
-            let parameters = if symbol.nil_terminated {
-                symbol.parameters.len()
-            } else {
-                symbol.parameters.len().saturating_sub(1)
-            };
-
-            let arguments = symbol
-                .parameters
+        // The arguments of an `inline fn` are evaluated where its parameters are referenced. A
+        // rest parameter isn't followed, which only means that an argument passed to it isn't
+        // counted as evaluated.
+        if let Hir::Reference(function) = db.hir(db.without_casts(callee))
+            && let Symbol::Function(symbol) = db.symbol(*function)
+            && symbol.kind == FunctionKind::Inline
+        {
+            let function = *function;
+            let arguments = fixed_parameters(symbol)
                 .iter()
-                .take(parameters)
                 .copied()
                 .zip(args.iter().copied())
                 .collect();
@@ -375,9 +319,15 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
         }
 
         // Otherwise, an argument that references the target may fail, so it's evaluated at the
-        // call, and the body is evaluated whenever the function is called
+        // call, and the body is evaluated whenever the function is called, if it's known
         self.hir(callee)
             || self.any(args.iter().copied())
-            || (self.visited.insert(function) && self.hir(symbol.body))
+            || resolve_function(db, callee).is_some_and(|function| {
+                let Symbol::Function(symbol) = db.symbol(function) else {
+                    return false;
+                };
+
+                self.visited.insert(function) && self.hir(symbol.body)
+            })
     }
 }
