@@ -1,5 +1,5 @@
 diagnostics:
-- 'Cannot assign `fn(value: U) -> T` to `fn<U>(value: U) -> T`, since they are incompatible at function_type_display_errors.rue:9:71'
-- 'Cannot assign `fn(a: Int, ..._b: List<Int>) -> Int` to `fn(a: Int, b: List<Int>) -> Int`, since they are incompatible at function_type_display_errors.rue:16:47'
-- 'Cannot assign `fn(a: Int, _b: List<Int>) -> Int` to `fn(a: Int, ...b: List<Int>) -> Int`, since they are incompatible at function_type_display_errors.rue:17:50'
-- 'Cannot assign `fn<U>(value: U) -> U` to `fn<U>(value: U) -> Int`, since they are incompatible at function_type_display_errors.rue:20:38'
+- "Cannot assign `fn(value: U) -> T` to `fn<U>(value: U) -> T`, since they are incompatible at function_type_display_errors.rue:9:71"
+- "Cannot assign `fn(a: Int, ..._b: List<Int>) -> Int` to `fn(a: Int, b: List<Int>) -> Int`, since they are incompatible at function_type_display_errors.rue:16:47"
+- "Cannot assign `fn(a: Int, _b: List<Int>) -> Int` to `fn(a: Int, ...b: List<Int>) -> Int`, since they are incompatible at function_type_display_errors.rue:17:50"
+- "Cannot assign `fn<U>(value: U) -> U` to `fn<U>(value: U) -> Int`, since they are incompatible at function_type_display_errors.rue:20:38"

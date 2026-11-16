@@ -1,6 +1,6 @@
 program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (l 1) (q) (q 2 (i 1 (q) (q 1 . 1)) 1)) 1) (q 8) (q . 1)) 1) ()))
 debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
-output: '5'
+output: "5"
 runtime_cost: 1208
 byte_cost: 1044000
 total_cost: 1045208
@@ -8,7 +8,7 @@ tests:
 - name: unwrap_int
   program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (l 1) (q) (q 2 (i 1 (q) (q 1 . 1)) 1)) 1) (q 8) (q . 1)) 1) ()))
   debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
-  output: '5'
+  output: "5"
   runtime_cost: 1208
   byte_cost: 1044000
   total_cost: 1045208

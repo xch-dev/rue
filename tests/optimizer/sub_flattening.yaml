@@ -9,21 +9,21 @@ tests:
 - name: const_sub_inside_add_inside_sub
   program: (q . 19)
   debug_program: (q . 19)
-  output: '19'
+  output: "19"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: const_negation_inside_add_inside_sub
   program: (q . 890)
   debug_program: (q . 890)
-  output: '890'
+  output: "890"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
 - name: const_sub_nested_in_negative_position
   program: (q . 9090)
   debug_program: (q . 9090)
-  output: '9090'
+  output: "9090"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020

@@ -1,6 +1,6 @@
 program: (a (q 2 (i (> 2 (q . 100)) (q) (q . 2)) 1) (c (+ (a (q 18 2 (q . 2)) (q 10)) (q . 1)) 1))
 debug_program: (a (q 2 (q 2 (q 2 (i (> 2 (q . 100)) (q) (q . 2)) 1) (c (a 5 (c (a 2 (c (q . 10) ())) (q . 1))) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (c (q 2 (q . 2) (c (+ 2 3) 1)) ()))
-output: '21'
+output: "21"
 runtime_cost: 3009
 byte_cost: 828000
 total_cost: 831009

@@ -7,4 +7,4 @@ diagnostics:
 - Unused function `merge_different` at struct_merging_errors.rue:29:4
 - Unknown field `y` on type `Point | Other` at struct_merging_errors.rue:35:7
 - Unused function `spread_not_field` at struct_merging_errors.rue:39:4
-- 'Cannot assign `Wrapper { ...value: Int }` to `Int` without a cast, since they are semantically different at struct_merging_errors.rue:41:16'
+- "Cannot assign `Wrapper { ...value: Int }` to `Int` without a cast, since they are semantically different at struct_merging_errors.rue:41:16"

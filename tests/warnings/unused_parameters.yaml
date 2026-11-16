@@ -23,7 +23,7 @@ tests:
 - name: used_fn_parameter
   program: (q . 42)
   debug_program: (a (q 2 2 (q . 42)) (c (q . 1) ()))
-  output: '42'
+  output: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -35,10 +35,10 @@ tests:
   byte_cost: 108000
   total_cost: 108166
 - name: used_fn_generic
-  program: '2'
+  program: "2"
   debug_program: (a (q 2 2 5) (c (q . 1) 1))
   solution: (5)
-  output: '5'
+  output: "5"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
