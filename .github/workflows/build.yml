@@ -16,10 +16,8 @@ permissions:
   contents: read
 
 env:
-  # cargo-binstall is installed with its action, pinned to a commit, and the binary to this release,
-  # rather than by running the install script from its main branch. Keep this in step with the tag
-  # in the action's comment when Dependabot bumps it. The tools installed with cargo-binstall are
-  # pinned to exact versions too, and are bumped by hand.
+  # The cargo-binstall binary's version. Keep it in step with the tag on the pinned action, since
+  # Dependabot bumps only the action's commit.
   BINSTALL_VERSION: 1.27.0
 
 jobs:
@@ -30,6 +28,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Every published crate shares one version, and on a tag it must match the tag.
+      - name: Check versions
+        run: |
+          versions=$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '[.packages[] | select(.publish != []) | .version] | unique | join(" ")')
+          if [ "$(echo "$versions" | wc -w)" -ne 1 ]; then
+            echo "The published crates don't share one version: $versions"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$versions" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match the version of the published crates: $versions"
+            exit 1
+          fi
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
@@ -38,6 +50,7 @@ jobs:
         with:
           version: ${{ env.BINSTALL_VERSION }}
 
+      # Pinned to exact versions, and bumped by hand
       - name: Install tools
         run: cargo binstall --no-confirm --locked cargo-nextest@0.9.152 cargo-machete@0.10.1
 
@@ -56,20 +69,6 @@ jobs:
       - name: Rue fmt
         run: cargo run --quiet --package rue-cli -- fmt 'examples/**/*.rue' 'tests/**/*.rue' 'crates/rue-compiler/src/std/**/*.rue' --check
 
-      # Every published crate shares one version, and on a tag it must match the tag.
-      - name: Check versions
-        run: |
-          versions=$(cargo metadata --no-deps --format-version 1 --locked \
-            | jq -r '[.packages[] | select(.publish != []) | .version] | unique | join(" ")')
-          if [ "$(echo "$versions" | wc -w)" -ne 1 ]; then
-            echo "The published crates don't share one version: $versions"
-            exit 1
-          fi
-          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$versions" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME doesn't match the version of the published crates: $versions"
-            exit 1
-          fi
-
       # Packages and builds every published crate, resolving the workspace crates locally, and fails
       # on any error, including uncommitted changes.
       - name: Publish (dry run)
@@ -77,6 +76,7 @@ jobs:
 
   wasm:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -127,6 +127,7 @@ jobs:
         with:
           version: ${{ env.BINSTALL_VERSION }}
 
+      # Pinned to an exact version, and bumped by hand
       - name: Install cargo-deny
         run: cargo binstall --no-confirm --locked cargo-deny@0.21.0
 
@@ -161,13 +162,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      # Publishes the crates in dependency order, waiting for each to be available. If it fails
-      # partway, rerun it locally with `--exclude` for the crates that were already published.
+      # Publishes the crates in dependency order, waiting for each to be available. The dry run in
+      # the test job already built this commit, so this skips building it again with the token in the
+      # environment. If it fails partway, rerun it locally with `--exclude` for the crates that were
+      # already published.
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --workspace --locked
+        run: cargo publish --workspace --locked --no-verify
 
   # The only check that branch protection needs to require. A skipped job counts as passing, so
   # this always runs and fails explicitly if anything it depends on didn't succeed.
