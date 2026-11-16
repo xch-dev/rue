@@ -1,74 +1,57 @@
 //! Conversions between byte offsets into source text and LSP positions, whose characters are
-//! counted in UTF-16 code units.
+//! counted in UTF-16 code units. The protocol counts `\n`, `\r\n` and a `\r` on its own as line
+//! breaks, so the line index is built with [`LineIndex::with_carriage_returns`]. For a [`Source`],
+//! use [`Source::line_index_with_carriage_returns`], so it's only built once per file.
 
+use rue_diagnostic::{LineIndex, Source};
 use tower_lsp_server::ls_types::{Position, Range};
 
-pub fn offset_to_position(text: &str, offset: usize) -> Position {
+pub fn offset_to_position(lines: &LineIndex, text: &str, offset: usize) -> Position {
     let offset = floor_char_boundary(text, offset);
-
-    let mut line = 0usize;
-    let mut line_start = 0;
-
-    for start in line_starts(text).take_while(|&start| start <= offset) {
-        line += 1;
-        line_start = start;
-    }
-
+    let line = lines.line(offset);
+    let line_start = lines.line_range(line).map_or(0, |range| range.start);
     let character = text[line_start..offset].encode_utf16().count();
 
     Position::new(line as u32, character as u32)
 }
 
-pub fn offsets_to_range(text: &str, start: usize, end: usize) -> Range {
+pub fn offsets_to_range(lines: &LineIndex, text: &str, start: usize, end: usize) -> Range {
     Range::new(
-        offset_to_position(text, start),
-        offset_to_position(text, end),
+        offset_to_position(lines, text, start),
+        offset_to_position(lines, text, end),
+    )
+}
+
+/// The range of the byte offsets in the source.
+pub fn source_range(source: &Source, start: usize, end: usize) -> Range {
+    offsets_to_range(
+        source.line_index_with_carriage_returns(),
+        &source.text,
+        start,
+        end,
     )
 }
 
 /// Positions past the end of a line are clamped to the end of that line, and positions past the
 /// end of the text are clamped to the end of the text.
-pub fn position_to_offset(text: &str, position: Position) -> usize {
-    let mut starts = line_starts(text);
-
-    let line_start = match position.line.checked_sub(1) {
-        None => 0,
-        Some(line) => match starts.nth(line as usize) {
-            Some(start) => start,
-            None => return text.len(),
-        },
+pub fn position_to_offset(lines: &LineIndex, text: &str, position: Position) -> usize {
+    // The `\r` of a `\r\n` is treated as part of the line, like the editor does when it counts the
+    // characters of it.
+    let Some(line) = lines.line_range(position.line as usize) else {
+        return text.len();
     };
-
-    // Every line break ends with a one byte character, `\n` or `\r`. The `\r` of a `\r\n` is
-    // treated as part of the line, like the editor does when it counts the characters of it.
-    let line_end = starts.next().map_or(text.len(), |start| start - 1);
 
     let mut remaining = position.character as usize;
 
-    for (i, c) in text[line_start..line_end].char_indices() {
+    for (i, c) in text[line.clone()].char_indices() {
         if remaining == 0 {
-            return line_start + i;
+            return line.start + i;
         }
 
         remaining = remaining.saturating_sub(c.len_utf16());
     }
 
-    line_end
-}
-
-/// The offset at which each line after the first starts. The protocol counts `\n`, `\r\n` and a
-/// `\r` on its own as line breaks.
-fn line_starts(text: &str) -> impl Iterator<Item = usize> + '_ {
-    let bytes = text.as_bytes();
-
-    bytes
-        .iter()
-        .enumerate()
-        .filter_map(move |(i, &byte)| match byte {
-            b'\n' => Some(i + 1),
-            b'\r' if bytes.get(i + 1) != Some(&b'\n') => Some(i + 1),
-            _ => None,
-        })
+    line.end
 }
 
 fn floor_char_boundary(text: &str, offset: usize) -> usize {
@@ -85,55 +68,178 @@ fn floor_char_boundary(text: &str, offset: usize) -> usize {
 mod tests {
     use super::*;
 
+    fn to_position(text: &str, offset: usize) -> Position {
+        offset_to_position(&LineIndex::with_carriage_returns(text), text, offset)
+    }
+
+    fn to_offset(text: &str, position: Position) -> usize {
+        position_to_offset(&LineIndex::with_carriage_returns(text), text, position)
+    }
+
+    /// The implementation of [`offset_to_position`] before the line index, which scans the text.
+    fn scan_offset_to_position(text: &str, offset: usize) -> Position {
+        let offset = floor_char_boundary(text, offset);
+
+        let mut line = 0usize;
+        let mut line_start = 0;
+
+        for start in scan_line_starts(text).take_while(|&start| start <= offset) {
+            line += 1;
+            line_start = start;
+        }
+
+        let character = text[line_start..offset].encode_utf16().count();
+
+        Position::new(line as u32, character as u32)
+    }
+
+    /// The implementation of [`position_to_offset`] before the line index, which scans the text.
+    fn scan_position_to_offset(text: &str, position: Position) -> usize {
+        let mut starts = scan_line_starts(text);
+
+        let line_start = match position.line.checked_sub(1) {
+            None => 0,
+            Some(line) => match starts.nth(line as usize) {
+                Some(start) => start,
+                None => return text.len(),
+            },
+        };
+
+        let line_end = starts.next().map_or(text.len(), |start| start - 1);
+
+        let mut remaining = position.character as usize;
+
+        for (i, c) in text[line_start..line_end].char_indices() {
+            if remaining == 0 {
+                return line_start + i;
+            }
+
+            remaining = remaining.saturating_sub(c.len_utf16());
+        }
+
+        line_end
+    }
+
+    fn scan_line_starts(text: &str) -> impl Iterator<Item = usize> + '_ {
+        let bytes = text.as_bytes();
+
+        bytes
+            .iter()
+            .enumerate()
+            .filter_map(move |(i, &byte)| match byte {
+                b'\n' => Some(i + 1),
+                b'\r' if bytes.get(i + 1) != Some(&b'\n') => Some(i + 1),
+                _ => None,
+            })
+    }
+
+    const TEXTS: &[&str] = &[
+        "",
+        "\n",
+        "\r",
+        "\r\n",
+        "\n\r",
+        "\r\r\n\n\r",
+        "a",
+        "ab\nc\u{e9}d\n\u{1F600}x",
+        "a\r\nb\rc\nd\r",
+        "\u{e9}\r\u{e9}\u{e9}\r\n",
+        "\u{1F600}\u{1F600}\n\u{4E2D}\u{6587}\r\n\u{1F600}",
+        "fn main() {\r\n    \"h\u{e9}llo \u{1F600}\"\n}\r\r",
+        "\u{FEFF}a\u{301}\t\n",
+    ];
+
+    #[test]
+    fn test_offset_to_position_matches_scan() {
+        for text in TEXTS {
+            let lines = LineIndex::with_carriage_returns(text);
+
+            // Every offset, including ones inside a character and past the end
+            for offset in 0..=text.len() + 2 {
+                assert_eq!(
+                    offset_to_position(&lines, text, offset),
+                    scan_offset_to_position(text, offset),
+                    "offset {offset} in {text:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_position_to_offset_matches_scan() {
+        for text in TEXTS {
+            let lines = LineIndex::with_carriage_returns(text);
+            let line_count = scan_line_starts(text).count() + 1;
+            let longest = text
+                .split(['\r', '\n'])
+                .map(|line| line.encode_utf16().count())
+                .max()
+                .unwrap_or(0);
+
+            // Every position, including ones past the end of each line and past the last line
+            for line in 0..=line_count + 1 {
+                for character in 0..=longest + 2 {
+                    let position = Position::new(line as u32, character as u32);
+
+                    assert_eq!(
+                        position_to_offset(&lines, text, position),
+                        scan_position_to_offset(text, position),
+                        "{position:?} in {text:?}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_offset_to_position() {
         let text = "ab\nc\u{e9}d\n\u{1F600}x";
 
-        assert_eq!(offset_to_position(text, 0), Position::new(0, 0));
-        assert_eq!(offset_to_position(text, 2), Position::new(0, 2));
-        assert_eq!(offset_to_position(text, 3), Position::new(1, 0));
+        assert_eq!(to_position(text, 0), Position::new(0, 0));
+        assert_eq!(to_position(text, 2), Position::new(0, 2));
+        assert_eq!(to_position(text, 3), Position::new(1, 0));
         // `é` is two bytes, but one UTF-16 code unit.
-        assert_eq!(offset_to_position(text, 6), Position::new(1, 2));
+        assert_eq!(to_position(text, 6), Position::new(1, 2));
         // The emoji is four bytes, and two UTF-16 code units.
-        assert_eq!(offset_to_position(text, 12), Position::new(2, 2));
-        assert_eq!(offset_to_position(text, 13), Position::new(2, 3));
-        assert_eq!(offset_to_position(text, 100), Position::new(2, 3));
+        assert_eq!(to_position(text, 12), Position::new(2, 2));
+        assert_eq!(to_position(text, 13), Position::new(2, 3));
+        assert_eq!(to_position(text, 100), Position::new(2, 3));
     }
 
     #[test]
     fn test_position_to_offset() {
         let text = "ab\nc\u{e9}d\n\u{1F600}x";
 
-        assert_eq!(position_to_offset(text, Position::new(0, 0)), 0);
-        assert_eq!(position_to_offset(text, Position::new(0, 2)), 2);
-        assert_eq!(position_to_offset(text, Position::new(0, 10)), 2);
-        assert_eq!(position_to_offset(text, Position::new(1, 2)), 6);
-        assert_eq!(position_to_offset(text, Position::new(2, 2)), 12);
-        assert_eq!(position_to_offset(text, Position::new(2, 3)), 13);
-        assert_eq!(position_to_offset(text, Position::new(5, 0)), text.len());
+        assert_eq!(to_offset(text, Position::new(0, 0)), 0);
+        assert_eq!(to_offset(text, Position::new(0, 2)), 2);
+        assert_eq!(to_offset(text, Position::new(0, 10)), 2);
+        assert_eq!(to_offset(text, Position::new(1, 2)), 6);
+        assert_eq!(to_offset(text, Position::new(2, 2)), 12);
+        assert_eq!(to_offset(text, Position::new(2, 3)), 13);
+        assert_eq!(to_offset(text, Position::new(5, 0)), text.len());
     }
 
     #[test]
     fn test_line_breaks() {
         let text = "a\r\nb\rc\nd\r";
 
-        assert_eq!(offset_to_position(text, 1), Position::new(0, 1));
+        assert_eq!(to_position(text, 1), Position::new(0, 1));
         // The `\r` of a `\r\n` is part of the line it ends.
-        assert_eq!(offset_to_position(text, 2), Position::new(0, 2));
-        assert_eq!(offset_to_position(text, 3), Position::new(1, 0));
+        assert_eq!(to_position(text, 2), Position::new(0, 2));
+        assert_eq!(to_position(text, 3), Position::new(1, 0));
         // A `\r` on its own ends a line.
-        assert_eq!(offset_to_position(text, 4), Position::new(1, 1));
-        assert_eq!(offset_to_position(text, 5), Position::new(2, 0));
-        assert_eq!(offset_to_position(text, 7), Position::new(3, 0));
-        assert_eq!(offset_to_position(text, 9), Position::new(4, 0));
+        assert_eq!(to_position(text, 4), Position::new(1, 1));
+        assert_eq!(to_position(text, 5), Position::new(2, 0));
+        assert_eq!(to_position(text, 7), Position::new(3, 0));
+        assert_eq!(to_position(text, 9), Position::new(4, 0));
 
-        assert_eq!(position_to_offset(text, Position::new(0, 10)), 2);
-        assert_eq!(position_to_offset(text, Position::new(1, 0)), 3);
-        assert_eq!(position_to_offset(text, Position::new(1, 10)), 4);
-        assert_eq!(position_to_offset(text, Position::new(2, 0)), 5);
-        assert_eq!(position_to_offset(text, Position::new(3, 1)), 8);
-        assert_eq!(position_to_offset(text, Position::new(4, 0)), 9);
-        assert_eq!(position_to_offset(text, Position::new(5, 0)), 9);
+        assert_eq!(to_offset(text, Position::new(0, 10)), 2);
+        assert_eq!(to_offset(text, Position::new(1, 0)), 3);
+        assert_eq!(to_offset(text, Position::new(1, 10)), 4);
+        assert_eq!(to_offset(text, Position::new(2, 0)), 5);
+        assert_eq!(to_offset(text, Position::new(3, 1)), 8);
+        assert_eq!(to_offset(text, Position::new(4, 0)), 9);
+        assert_eq!(to_offset(text, Position::new(5, 0)), 9);
     }
 
     #[test]
@@ -141,10 +247,7 @@ mod tests {
         let text = "fn main() {\r\n    \"h\u{e9}llo \u{1F600}\"\n}\r\r";
 
         for (offset, _) in text.char_indices() {
-            assert_eq!(
-                position_to_offset(text, offset_to_position(text, offset)),
-                offset
-            );
+            assert_eq!(to_offset(text, to_position(text, offset)), offset);
         }
     }
 }

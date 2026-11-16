@@ -18,7 +18,7 @@ use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticSeverity, ForbiddenBy, LineCol, Lint, LintGroup, LintLevel, LintLevels,
+    Diagnostic, DiagnosticSeverity, ForbiddenBy, LineIndex, Lint, LintGroup, LintLevel, LintLevels,
     LintName, SourceKind,
 };
 use rue_lir::{CLVM_FLAGS, DebugDialect};
@@ -283,9 +283,10 @@ fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
         .as_deref()
         .and_then(|path| fs::read_to_string(path).ok())
         .unwrap_or_default();
+    let lines = LineIndex::new(&manifest);
 
     for lint in &project.forbidden_lints {
-        let location = LineCol::new(&manifest, lint.span.start);
+        let location = lines.line_col(&manifest, lint.span.start);
 
         eprintln!(
             "{}",
@@ -308,7 +309,7 @@ fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
 
     if let Some(severity) = unknown_severity {
         for lint in &project.unknown_lints {
-            let location = LineCol::new(&manifest, lint.span.start);
+            let location = lines.line_col(&manifest, lint.span.start);
             let message = format!(
                 "[{}]: Unknown lint `{}` at Rue.toml:{location}",
                 Lint::UnknownLint,

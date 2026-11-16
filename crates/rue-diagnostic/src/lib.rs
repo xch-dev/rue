@@ -1,6 +1,7 @@
 mod diagnostic;
 mod kind;
 mod line_col;
+mod line_index;
 mod lint;
 mod name;
 mod severity;
@@ -10,6 +11,7 @@ mod suggestion;
 pub use diagnostic::*;
 pub use kind::*;
 pub use line_col::*;
+pub use line_index::*;
 pub use lint::*;
 pub use name::*;
 pub use severity::*;

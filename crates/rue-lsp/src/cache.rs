@@ -15,7 +15,7 @@ use tower_lsp_server::ls_types::{
 };
 
 use crate::paths::path_to_uri;
-use crate::position::{offsets_to_range, position_to_offset};
+use crate::position::{position_to_offset, source_range};
 
 #[derive(Debug, Clone)]
 pub struct Scopes(Vec<ScopeId>);
@@ -146,7 +146,11 @@ impl Cache<Compiler> {
     }
 
     pub fn position(&self, position: Position) -> usize {
-        position_to_offset(&self.source.text, position)
+        position_to_offset(
+            self.source.line_index_with_carriage_returns(),
+            &self.source.text,
+            position,
+        )
     }
 
     /// The scopes that contain the index, innermost first, so that a name that's shadowed
@@ -746,9 +750,8 @@ impl Cache<Compiler> {
                     return None;
                 };
 
-                let text = &self.tree.find(&item.source_kind)?.source.text;
-                let range =
-                    offsets_to_range(text, item.span.start().into(), item.span.end().into());
+                let source = &self.tree.find(&item.source_kind)?.source;
+                let range = source_range(source, item.span.start().into(), item.span.end().into());
 
                 Some(Location::new(path_to_uri(Path::new(path))?, range))
             })
