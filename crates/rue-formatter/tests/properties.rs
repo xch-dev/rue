@@ -388,7 +388,7 @@ fn mutated_corpus() -> impl Strategy<Value = String> {
         (any::<Index>(), fragment()).prop_map(|(at, fragment)| Mutation::Insert(at, fragment)),
     ];
     (any::<Index>(), prop::collection::vec(mutation, 0..6)).prop_map(|(file, mutations)| {
-        let mut tokens = token_texts(file.get(&CORPUS));
+        let mut tokens = token_texts(file.get::<String>(&CORPUS));
         for mutation in mutations {
             if tokens.is_empty() {
                 break;

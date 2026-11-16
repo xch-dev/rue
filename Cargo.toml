@@ -3,6 +3,10 @@ resolver = "3"
 members = ["crates/*", "wasm"]
 
 [workspace.package]
+# The oldest Rust that builds the workspace, set by the dependencies (malachite, through clvmr).
+# The `msrv` job in CI checks it. With resolver 3, `cargo update` prefers dependency versions that
+# support it, so raise it when an update needs a newer Rust.
+rust-version = "1.90"
 readme = "README.md"
 keywords = ["chia", "blockchain", "crypto"]
 categories = ["cryptography::cryptocurrencies", "development-tools"]

@@ -2,6 +2,7 @@
 name = "rue-clvm"
 version = "0.12.0"
 edition = "2024"
+rust-version = { workspace = true }
 license = "Apache-2.0"
 description = "Converts CLVM values to and from their textual representation."
 authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]

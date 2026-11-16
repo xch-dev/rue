@@ -2,6 +2,7 @@
 name = "rue-lir"
 version = "0.12.0"
 edition = "2024"
+rust-version = { workspace = true }
 license = "Apache-2.0"
 description = "Provides a low-level intermediate representation that compiles to CLVM."
 authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]

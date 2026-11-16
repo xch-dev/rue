@@ -2,6 +2,7 @@
 name = "rue-hir"
 version = "0.12.0"
 edition = "2024"
+rust-version = { workspace = true }
 license = "Apache-2.0"
 description = "Provides a high-level intermediate representation of the Rue programming language."
 authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]

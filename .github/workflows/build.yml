@@ -3,12 +3,22 @@ on:
   push:
     branches:
       - main
+    # Only version tags (like 0.12.0) trigger a release, and the test job checks that the tag
+    # matches the version of the published crates.
     tags:
-      - "**"
+      - "[0-9]+.[0-9]+.[0-9]+"
 
   pull_request:
     branches:
       - "**"
+
+permissions:
+  contents: read
+
+env:
+  # The cargo-binstall binary's version. Keep it in step with the tag on the pinned action, since
+  # Dependabot bumps only the action's commit.
+  BINSTALL_VERSION: 1.27.0
 
 jobs:
   test:
@@ -18,14 +28,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Every published crate shares one version, and on a tag it must match the tag.
+      - name: Check versions
+        run: |
+          versions=$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '[.packages[] | select(.publish != []) | .version] | unique | join(" ")')
+          if [ "$(echo "$versions" | wc -w)" -ne 1 ]; then
+            echo "The published crates don't share one version: $versions"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$versions" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match the version of the published crates: $versions"
+            exit 1
+          fi
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: ${{ env.BINSTALL_VERSION }}
 
-      - name: Install cargo-nextest
-        run: cargo binstall cargo-nextest --no-confirm
+      # Pinned to exact versions, and bumped by hand
+      - name: Install tools
+        run: cargo binstall --no-confirm --locked cargo-nextest@0.9.152 cargo-machete@0.10.1
 
       - name: Run tests
         run: cargo nextest run --all-features --workspace --profile ci
@@ -34,9 +61,7 @@ jobs:
         run: cargo clippy --workspace --all-features --all-targets
 
       - name: Unused dependencies
-        run: |
-          cargo binstall cargo-machete --locked
-          cargo machete
+        run: cargo machete
 
       - name: Fmt
         run: cargo fmt --all -- --files-with-diff --check
@@ -44,19 +69,14 @@ jobs:
       - name: Rue fmt
         run: cargo run --quiet --package rue-cli -- fmt 'examples/**/*.rue' 'tests/**/*.rue' 'crates/rue-compiler/src/std/**/*.rue' --check
 
+      # Packages and builds every published crate, resolving the workspace crates locally, and fails
+      # on any error, including uncommitted changes.
       - name: Publish (dry run)
-        run: |
-          cargo binstall cargo-workspaces
-          cargo ws publish --publish-as-is --allow-dirty --dry-run
-
-      - name: Publish
-        if: startsWith(github.event.ref, 'refs/tags')
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo ws publish --publish-as-is --allow-dirty
+        run: cargo publish --workspace --dry-run --locked
 
   wasm:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,10 +92,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: ${{ env.BINSTALL_VERSION }}
 
       - name: Install wasm-pack
-        run: cargo binstall wasm-pack --no-confirm
+        run: cargo binstall --no-confirm --locked wasm-pack@0.15.1
 
       - name: Clippy (wasm32)
         run: cargo clippy --package rue-wasm --target wasm32-unknown-unknown --all-targets
@@ -93,12 +115,71 @@ jobs:
           pnpm lint
           pnpm build
 
+  deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: ${{ env.BINSTALL_VERSION }}
+
+      # Pinned to an exact version, and bumped by hand
+      - name: Install cargo-deny
+        run: cargo binstall --no-confirm --locked cargo-deny@0.21.0
+
+      # Advisories, licenses, bans and sources, as configured in deny.toml
+      - name: Cargo deny
+        run: cargo deny --locked check
+
+  msrv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Overrides rust-toolchain.toml. Keep in step with `rust-version` in Cargo.toml.
+      RUSTUP_TOOLCHAIN: 1.90.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo check --workspace --all-features --all-targets --locked
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [test, wasm, deny, msrv]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Publishes the crates in dependency order, waiting for each to be available. The dry run in
+      # the test job already built this commit, so this skips building it again with the token in the
+      # environment. If it fails partway, rerun it locally with `--exclude` for the crates that were
+      # already published.
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --workspace --locked --no-verify
+
   # The only check that branch protection needs to require. A skipped job counts as passing, so
   # this always runs and fails explicitly if anything it depends on didn't succeed.
   required:
     name: Required checks
     if: ${{ always() }}
-    needs: [test, wasm]
+    needs: [test, wasm, deny, msrv]
     runs-on: ubuntu-latest
     steps:
       - name: Check results

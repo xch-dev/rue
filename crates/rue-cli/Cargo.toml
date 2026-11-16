@@ -2,6 +2,7 @@
 name = "rue-cli"
 version = "0.12.0"
 edition = "2024"
+rust-version = { workspace = true }
 license = "Apache-2.0"
 description = "A CLI tool for invoking the Rue compiler."
 authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]

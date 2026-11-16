@@ -2,6 +2,7 @@
 name = "rue-lint"
 version = "0.12.0"
 edition = "2024"
+rust-version = { workspace = true }
 license = "Apache-2.0"
 description = "Lints for the Rue programming language, which run as passes after compilation."
 authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
