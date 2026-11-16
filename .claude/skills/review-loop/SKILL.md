@@ -94,7 +94,7 @@ Reviewers are sometimes confidently wrong. Before acting on a finding, check it:
 
 Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list and deferred ones to Out of scope (with where they're recorded), so later rounds don't raise them again. Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
 
-Then run the quick checks for what you touched (`cargo test -p <crate>`, and `cargo run -p rue-tests --release -- <filter>` while iterating, which checks the matching tests without changing them), regenerate every snapshot as in section 2, update the Brief, and commit (section 7).
+Then run the quick checks for what you touched (`cargo test -p <crate>`, and `cargo run -p rue-tests --release -- <filter>` while iterating, which checks the matching tests, and always `std_tests.yaml`, without changing them), regenerate every snapshot as in section 2, update the Brief, and commit (section 7).
 
 ## 5. When to stop
 
@@ -120,7 +120,7 @@ cargo nextest run --all-features --workspace   # if `cargo nextest --version` wo
 ```
 
 - A bare `rue fmt --check` fails with "No project found"; use the globbed form.
-- The test suite includes `rue-tests`' `tests` unit test, which compares snapshots without updating them (like running `rue-tests` without `--bless`), so it fails if they weren't regenerated.
+- The test suite includes the `tests` unit test in `rue-tests`, which compares snapshots without updating them (like running `rue-tests` without `--bless`), so it fails if they weren't regenerated.
 - `cargo clippy --package rue-wasm --target wasm32-unknown-unknown --all-targets` if you changed `wasm/` or an API it uses (`rue-compiler`, `rue-diagnostic`).
 - CI also runs `cargo ws publish --publish-as-is --allow-dirty --dry-run` (run it if you changed a `Cargo.toml`) and the `wasm/` and `playground/` pnpm builds (if you changed `wasm/`). Say in the report which of these you didn't run.
 - If these checks led to changes beyond formatting, say so in the report, since no reviewer saw them.

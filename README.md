@@ -208,10 +208,8 @@ Contributions are welcome! The project builds with a stable Rust toolchain (pinn
 # Run the full test suite, which also checks the snapshots without changing them
 cargo test --workspace
 
-# Check the .yaml snapshots in tests/ and examples/ and std_tests.yaml, and the formatting of
-# the .rue files there and in the standard library, printing what differs without changing any
-# files. The optional filter limits the run to tests whose name contains it, and to .rue files
-# whose path contains it
+# Check the .yaml snapshots, std_tests.yaml and the formatting of the .rue files, printing what
+# differs without changing any files (`-- --help` describes what's checked and the filter)
 cargo run -p rue-tests --release -- [filter]
 
 # Rewrite the snapshots, and reformat the .rue files, to match the current output
