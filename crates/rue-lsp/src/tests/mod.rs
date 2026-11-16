@@ -32,6 +32,8 @@ use tower_lsp_server::ls_types::{
 };
 
 use crate::paths::{path_to_uri, uri_to_path};
+use rue_diagnostic::LineIndex;
+
 use crate::position::{offset_to_position, position_to_offset};
 use crate::{Backend, code_actions};
 
@@ -152,7 +154,10 @@ impl TestProject {
 
             let text = if let Some(index) = text.find(CURSOR) {
                 assert!(cursor.is_none(), "only one cursor is allowed");
-                cursor = Some((path_to_uri(&path).unwrap(), offset_to_position(text, index)));
+                cursor = Some((
+                    path_to_uri(&path).unwrap(),
+                    offset_to_position(&LineIndex::with_carriage_returns(text), text, index),
+                ));
                 text.replacen(CURSOR, "", 1)
             } else {
                 (*text).to_string()
@@ -390,10 +395,11 @@ impl TestProject {
                 edits.sort_by_key(|edit| edit.range.start);
 
                 let mut fixed = (*text).to_string();
+                let lines = LineIndex::with_carriage_returns(text);
 
                 for edit in edits.into_iter().rev() {
-                    let start = position_to_offset(text, edit.range.start);
-                    let end = position_to_offset(text, edit.range.end);
+                    let start = position_to_offset(&lines, text, edit.range.start);
+                    let end = position_to_offset(&lines, text, edit.range.end);
                     fixed.replace_range(start..end, &edit.new_text);
                 }
 

@@ -10,7 +10,7 @@ pub use paths::encode_uris;
 
 use cache::Cache;
 use rue_compiler::{Compiler, normalize_path};
-use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};
+use rue_diagnostic::{Applicability, LineIndex, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use serde::{Deserialize, Serialize};
 
@@ -42,7 +42,7 @@ use tower_lsp_server::{Client, LanguageServer};
 
 use crate::cache::{HoverInfo, SymbolHoverKind};
 use crate::paths::{Paths, document, uri_to_path};
-use crate::position::{offset_to_position, offsets_to_range};
+use crate::position::{offset_to_position, offsets_to_range, source_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
 use tokio::sync::oneshot;
 
@@ -595,7 +595,11 @@ fn formatting_edits(
 }
 
 fn document_end(source: &str) -> Position {
-    offset_to_position(source, source.len())
+    offset_to_position(
+        &LineIndex::with_carriage_returns(source),
+        source,
+        source.len(),
+    )
 }
 
 /// A suggestion, which is stored in the `data` of a diagnostic so that a code action can be
@@ -610,7 +614,7 @@ struct SuggestionData {
 fn location(srcloc: &SrcLoc, paths: &Paths) -> Option<Location> {
     Some(Location::new(
         paths.uri(&srcloc.source.kind)?,
-        offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
+        source_range(&srcloc.source, srcloc.span.start, srcloc.span.end),
     ))
 }
 
@@ -717,7 +721,7 @@ fn diagnostic(
         .collect::<Vec<_>>();
 
     Diagnostic {
-        range: offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
+        range: source_range(&srcloc.source, srcloc.span.start, srcloc.span.end),
         message,
         related_information: (!related_information.is_empty()).then_some(related_information),
         data: (!suggestions.is_empty())
@@ -741,6 +745,7 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
     }
 
     let text = fs::read_to_string(path).unwrap_or_default();
+    let lines = LineIndex::with_carriage_returns(&text);
 
     // Unknown names are reported by the `unknown_lint` lint, at the level set by `Rue.toml`
     let severity = project
@@ -758,7 +763,7 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
         .iter()
         .filter(|_| severity.is_some())
         .map(|lint| Diagnostic {
-            range: offsets_to_range(&text, lint.span.start, lint.span.end),
+            range: offsets_to_range(&lines, &text, lint.span.start, lint.span.end),
             message: format!("Unknown lint `{}`", lint.name),
             severity,
             code: Some(NumberOrString::String(Lint::UnknownLint.name().to_string())),
@@ -766,7 +771,7 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
         });
 
     let forbidden = project.forbidden_lints.iter().map(|lint| Diagnostic {
-        range: offsets_to_range(&text, lint.span.start, lint.span.end),
+        range: offsets_to_range(&lines, &text, lint.span.start, lint.span.end),
         message: lint.kind().to_string(),
         severity: Some(DiagnosticSeverity::ERROR),
         ..Diagnostic::default()
@@ -789,11 +794,12 @@ fn invalid_manifest_diagnostics(path: &Path, error: &toml::de::Error) -> Diagnos
 /// Reports why `Rue.toml` couldn't be parsed, such as an invalid lint level.
 fn manifest_error(path: &Path, error: &toml::de::Error) -> Diagnostic {
     let text = fs::read_to_string(path).unwrap_or_default();
+    let lines = LineIndex::with_carriage_returns(&text);
 
     Diagnostic {
         range: error
             .span()
-            .map(|span| offsets_to_range(&text, span.start, span.end))
+            .map(|span| offsets_to_range(&lines, &text, span.start, span.end))
             .unwrap_or_default(),
         message: error.message().to_string(),
         severity: Some(DiagnosticSeverity::ERROR),

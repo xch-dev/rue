@@ -3,8 +3,8 @@ use std::{collections::HashMap, ops::Range};
 use rowan::Direction;
 use rue_ast::{AstAttribute, AstDocument, AstModuleItem, AstNode};
 use rue_diagnostic::{
-    AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint,
-    LintLevel, LintLevels, LintName, Source, SourceKind, SrcLoc,
+    AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, Lint, LintLevel,
+    LintLevels, LintName, Source, SourceKind, SrcLoc,
 };
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
@@ -180,7 +180,7 @@ impl ScopedLintLevels {
                             Some(scope) => (
                                 scope.level,
                                 ForbiddenBy::Attribute {
-                                    line: LineCol::new(&source.text, scope.attribute).line + 1,
+                                    line: source.line_col(scope.attribute).line + 1,
                                 },
                             ),
                             None => (project.get(lint), ForbiddenBy::Project),
