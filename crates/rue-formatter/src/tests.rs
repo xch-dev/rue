@@ -742,6 +742,113 @@ fn compact_groups_depend_on_the_formatted_items() {
 }
 
 #[test]
+fn compact_groups_count_what_comes_before_an_item_on_its_line() {
+    // A block comment before a constant counts toward its width, so a constant that only fits on
+    // one line without the comment wraps and is separated from its neighbours
+    check(
+        "const ALPHA_VALUE: Int = 1;\n/* a longer note here */ const B: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE;\nconst C: Int = 2;",
+        expect![[r#"
+            const ALPHA_VALUE: Int = 1;
+
+            /* a longer note here */ const B: Int = ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE;
+
+            const C: Int = 2;
+        "#]],
+    );
+    // So do attributes followed by an inline comment, which keeps the item on their line
+    check(
+        "const A: Int = 1;\n#[allow(unused_constant)] /* c */ const B: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE;\nconst C: Int = 2;",
+        expect![[r#"
+            const A: Int = 1;
+
+            #[allow(unused_constant)] /* c */ const B: Int = ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE;
+
+            const C: Int = 2;
+        "#]],
+    );
+    // The first item in the file is measured the same way
+    check(
+        "/* a longer note here */ const B: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE;\nconst C: Int = 2;",
+        expect![[r#"
+            /* a longer note here */ const B: Int = ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE;
+
+            const C: Int = 2;
+        "#]],
+    );
+    // The same for type aliases
+    check(
+        "type A = Int;\n/* a longer note here */ type B = first_long_type_name | second_long_type_name | third_long_type_name | fourth;\ntype C = Int;",
+        expect![[r#"
+            type A = Int;
+
+            /* a longer note here */ type B = first_long_type_name
+                | second_long_type_name
+                | third_long_type_name
+                | fourth;
+
+            type C = Int;
+        "#]],
+    );
+}
+
+#[test]
+fn compact_groups_keep_items_that_fit_after_what_comes_before_them() {
+    // Items that still fit on one line after a block comment or attributes stay in the group
+    check(
+        "const A: Int = 1;\n/* note */ const B: Int = 2;\n#[allow(unused_constant)] /* c */ const C: Int = 3;\nconst D: Int = 4;",
+        expect![[r#"
+            const A: Int = 1;
+            /* note */ const B: Int = 2;
+            #[allow(unused_constant)] /* c */ const C: Int = 3;
+            const D: Int = 4;
+        "#]],
+    );
+    // An item that fits exactly after the comment before it stays in the group, and one more
+    // character makes it wrap
+    check(
+        "const A: Int = 1;\n/* nn */ const B: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA;\nconst C: Int = 2;\n/* nnn */ const D: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA;\nconst E: Int = 3;",
+        expect![[r#"
+            const A: Int = 1;
+            /* nn */ const B: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA;
+            const C: Int = 2;
+
+            /* nnn */ const D: Int = ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA_VALUE
+                + ALPHA;
+
+            const E: Int = 3;
+        "#]],
+    );
+    // Comments and attributes on lines of their own don't count, even when the item only just fits
+    check(
+        "const A: Int = 1;\n/* a longer note here */\nconst BBBB: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE;\n// a line comment\n#[allow(unused_constant)]\nconst CCCC: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE;\nconst D: Int = 2;",
+        expect![[r#"
+            const A: Int = 1;
+            /* a longer note here */
+            const BBBB: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE;
+            // a line comment
+            #[allow(unused_constant)]
+            const CCCC: Int = ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE + ALPHA_VALUE;
+            const D: Int = 2;
+        "#]],
+    );
+}
+
+#[test]
 fn comments_before_a_removed_trailing_comma_format_idempotently() {
     check(
         "fn f() {\n    S {\n        a: 1,\n        b: 2 /* c */ ,\n    }\n}",

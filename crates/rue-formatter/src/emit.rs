@@ -79,9 +79,29 @@ impl<'a> Formatter<'a> {
             })
             .collect::<Vec<_>>();
 
+        let leading_gaps = items
+            .iter()
+            .enumerate()
+            .map(|(position, item)| {
+                let mut leading = item.leading.clone();
+                if position > 0 && same_import_group(&items[position - 1], item) {
+                    remove_blank_lines(&mut leading);
+                }
+                if position == 0 {
+                    if let Some(first) = leading.comments.first_mut() {
+                        first.newlines_before = 0;
+                        first.placement = CommentPlacement::Leading;
+                    }
+                } else {
+                    start_own_line(&mut leading, &trailing_gaps[position - 1]);
+                }
+                leading
+            })
+            .collect::<Vec<_>>();
+
         let mut formatted_items = Vec::with_capacity(items.len());
-        for (item, trailing) in items.iter().zip(&trailing_gaps) {
-            formatted_items.push(self.document_item(item, trailing)?);
+        for ((item, leading), trailing) in items.iter().zip(&leading_gaps).zip(&trailing_gaps) {
+            formatted_items.push(self.document_item(item, leading, trailing)?);
         }
         let compact_groups = formatted_items
             .iter()
@@ -108,19 +128,7 @@ impl<'a> Formatter<'a> {
                 };
                 requested.after(&trailing_gaps[position - 1])
             };
-            let mut leading = item.leading.clone();
-            if position > 0 && same_import_group(&items[position - 1], item) {
-                remove_blank_lines(&mut leading);
-            }
-            if position == 0 {
-                if let Some(first) = leading.comments.first_mut() {
-                    first.newlines_before = 0;
-                    first.placement = CommentPlacement::Leading;
-                }
-            } else {
-                start_own_line(&mut leading, &trailing_gaps[position - 1]);
-            }
-            docs.push(self.movable_leading_doc(&leading, separator));
+            docs.push(self.movable_leading_doc(&leading_gaps[position], separator));
             docs.push(formatted.item);
             docs.push(formatted.trailing);
         }
@@ -147,12 +155,13 @@ impl<'a> Formatter<'a> {
 
     /// Formats a top-level item and the comments after it on the same line, and works out which
     /// compact group it's in. A constant or type alias is only in one if it's formatted on one
-    /// line, not counting its attributes, which are always on lines of their own. This is decided
-    /// from the formatted item rather than the source, so that formatting it again gives the same
-    /// result.
+    /// line, measured from the start of that line, so the comments in `leading` and the
+    /// attributes before it on the same line count toward its width. This is decided from the
+    /// formatted item rather than the source, so that formatting it again gives the same result.
     fn document_item(
         &mut self,
         item: &DocumentItem,
+        leading: &Gap,
         trailing: &Gap,
     ) -> Result<FormattedItem, FormatError> {
         if !matches!(
@@ -183,10 +192,23 @@ impl<'a> Formatter<'a> {
         };
         let body = self.span(self.stream.span(item.body_start, item.span.end())?)?;
         let trailing = self.gap_doc(trailing, Separator::None);
-        // Trailing comments can make the item break, so they're rendered with it
-        let single_line = !render(&Doc::concat([body.clone(), trailing.clone()]), self.options)
-            .trim_end()
-            .contains('\n');
+        // What comes before the body on its line takes up width, and trailing comments can make
+        // the item break, so they're all rendered with it. The leading comments are rendered
+        // without the separator before them, which only adds lines above them. The body starts on
+        // the last line of what comes before it, which is found by rendering that with a
+        // placeholder after it.
+        let prefix = Doc::concat([
+            leading_comments_doc(leading, Separator::None),
+            attributes.clone(),
+        ]);
+        let prefix_lines = render(&Doc::concat([prefix.clone(), Doc::text("x")]), self.options)
+            .lines()
+            .count();
+        let rendered = render(
+            &Doc::concat([prefix, body.clone(), trailing.clone()]),
+            self.options,
+        );
+        let single_line = rendered.trim_end().lines().count() == prefix_lines;
         Ok(FormattedItem {
             item: Doc::concat([attributes, body]),
             trailing,
@@ -695,11 +717,8 @@ impl<'a> Formatter<'a> {
     }
 
     fn movable_leading_doc(&mut self, gap: &Gap, requested: Separator) -> Doc {
-        if gap.comments.is_empty() {
-            separator_doc(requested)
-        } else {
-            self.gap_doc(gap, requested)
-        }
+        self.consumed_comments += gap.comments.len();
+        leading_comments_doc(gap, requested)
     }
 
     /// Splits the gap before a closing delimiter into its comments and the line
@@ -747,56 +766,76 @@ impl<'a> Formatter<'a> {
         ignore_trailing: bool,
         suppress_final_line: bool,
     ) -> Doc {
-        if gap.comments.is_empty() {
-            if gap.newlines > 1 && requested != Separator::None {
-                return Doc::empty_line();
-            }
-            return separator_doc(requested);
-        }
-
-        let mut docs = Vec::new();
-        let mut spaced = false;
-        for (index, comment) in gap.comments.iter().enumerate() {
-            self.consumed_comments += 1;
-            let before = if index == 0
-                && requested == Separator::Empty
-                && comment.newlines_before == 1
-                && gap.newlines <= 1
-            {
-                // Comments directly before an item that's separated from the previous one by a
-                // blank line belong to it, so they go after the blank line
-                Doc::empty_line()
-            } else if index == 0 {
-                comment_separator(comment, requested, ignore_trailing)
-            } else if spaced {
-                // The previous comment is already followed by a space on the same line
-                Doc::Nil
-            } else {
-                comment_separator(comment, Separator::Hard, false)
-            };
-            docs.push(before);
-            docs.push(Doc::text(&*comment.text));
-            let followed_inline = match gap.comments.get(index + 1) {
-                Some(next) => next.newlines_before == 0,
-                None => gap.newlines == 0 && !suppress_final_line,
-            };
-            spaced =
-                comment.kind == SyntaxKind::BlockComment && !comment.multiline && followed_inline;
-            if spaced {
-                docs.push(Doc::space());
-            }
-        }
-        let last = gap.comments.last().expect("comments are not empty");
-        if suppress_final_line {
-            // The enclosing delimiter emits the required line at its own
-            // indentation, avoiding spaces before the closing token.
-        } else if gap.newlines > 1 {
-            docs.push(Doc::empty_line());
-        } else if last.kind == SyntaxKind::LineComment || last.multiline || gap.newlines > 0 {
-            docs.push(Doc::hard_line());
-        }
-        Doc::concat(docs)
+        self.consumed_comments += gap.comments.len();
+        comments_doc(gap, requested, ignore_trailing, suppress_final_line)
     }
+}
+
+/// The comments before an item that can move with it, or just the separator if there are none.
+/// This doesn't count the comments as emitted, which `Formatter::movable_leading_doc` does.
+fn leading_comments_doc(gap: &Gap, requested: Separator) -> Doc {
+    if gap.comments.is_empty() {
+        separator_doc(requested)
+    } else {
+        comments_doc(gap, requested, false, false)
+    }
+}
+
+/// The comments in a gap and the separators around them. This doesn't count the comments as
+/// emitted, which `Formatter::gap_doc_with_comments` does.
+fn comments_doc(
+    gap: &Gap,
+    requested: Separator,
+    ignore_trailing: bool,
+    suppress_final_line: bool,
+) -> Doc {
+    if gap.comments.is_empty() {
+        if gap.newlines > 1 && requested != Separator::None {
+            return Doc::empty_line();
+        }
+        return separator_doc(requested);
+    }
+
+    let mut docs = Vec::new();
+    let mut spaced = false;
+    for (index, comment) in gap.comments.iter().enumerate() {
+        let before = if index == 0
+            && requested == Separator::Empty
+            && comment.newlines_before == 1
+            && gap.newlines <= 1
+        {
+            // Comments directly before an item that's separated from the previous one by a
+            // blank line belong to it, so they go after the blank line
+            Doc::empty_line()
+        } else if index == 0 {
+            comment_separator(comment, requested, ignore_trailing)
+        } else if spaced {
+            // The previous comment is already followed by a space on the same line
+            Doc::Nil
+        } else {
+            comment_separator(comment, Separator::Hard, false)
+        };
+        docs.push(before);
+        docs.push(Doc::text(&*comment.text));
+        let followed_inline = match gap.comments.get(index + 1) {
+            Some(next) => next.newlines_before == 0,
+            None => gap.newlines == 0 && !suppress_final_line,
+        };
+        spaced = comment.kind == SyntaxKind::BlockComment && !comment.multiline && followed_inline;
+        if spaced {
+            docs.push(Doc::space());
+        }
+    }
+    let last = gap.comments.last().expect("comments are not empty");
+    if suppress_final_line {
+        // The enclosing delimiter emits the required line at its own
+        // indentation, avoiding spaces before the closing token.
+    } else if gap.newlines > 1 {
+        docs.push(Doc::empty_line());
+    } else if last.kind == SyntaxKind::LineComment || last.multiline || gap.newlines > 0 {
+        docs.push(Doc::hard_line());
+    }
+    Doc::concat(docs)
 }
 
 struct FormattedItem {
