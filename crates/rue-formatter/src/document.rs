@@ -14,6 +14,10 @@ pub enum Doc {
     Indent(Rc<Self>),
     Outdent(Rc<Self>),
     Group(Rc<Self>),
+    /// A group that only breaks as a last resort. It's laid out like any other group, but groups
+    /// before it on the same line measure it flat when deciding whether they fit, so they break
+    /// instead of leaving it to break.
+    ReluctantGroup(Rc<Self>),
     /// A local fill boundary with continuation indentation applied only when
     /// that boundary breaks. Ordinary groups cannot express that conditional
     /// indentation when their surrounding binary chain is already broken.
@@ -103,6 +107,10 @@ impl Doc {
 
     pub fn group(self) -> Self {
         Self::Group(Rc::new(self))
+    }
+
+    pub fn reluctant_group(self) -> Self {
+        Self::ReluctantGroup(Rc::new(self))
     }
 
     pub fn if_break(broken: Self, flat: Self) -> Self {

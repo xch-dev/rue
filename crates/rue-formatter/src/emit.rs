@@ -380,6 +380,7 @@ impl<'a> Formatter<'a> {
         let facts = self.layout.facts(open);
         let style = facts.delimiter_style.unwrap_or(DelimiterStyle::Group);
         let supports_trailing_comma = facts.supports_trailing_comma();
+        let is_generic = facts.is_generic();
         let open_doc = self.token(open);
         let close_doc = self.token(close);
         let inner_start = self.stream.next_token(open).ok_or_else(|| {
@@ -511,7 +512,13 @@ impl<'a> Formatter<'a> {
                 ])
                 .group()
             }
-            DelimiterStyle::Group | DelimiterStyle::Vertical => Doc::concat([
+            // Generic arguments break only when breaking the groups before them isn't enough, such
+            // as the parameters before a function's return type
+            DelimiterStyle::Group | DelimiterStyle::Vertical => (if is_generic {
+                Doc::reluctant_group
+            } else {
+                Doc::group
+            })(Doc::concat([
                 open_doc,
                 Doc::concat([
                     if leading_comment_starts_line {
@@ -532,8 +539,7 @@ impl<'a> Formatter<'a> {
                     Doc::if_break(Doc::hard_line(), Doc::Nil)
                 },
                 close_doc,
-            ])
-            .group(),
+            ])),
         })
     }
 
