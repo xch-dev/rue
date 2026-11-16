@@ -96,21 +96,76 @@ fn snapshot_solution(snapshot: &str) -> String {
     snapshot_value(snapshot, "solution").unwrap_or_else(|| "()".to_string())
 }
 
-/// A top-level field of a snapshot, which is a plain or single-quoted YAML scalar on one line.
+/// A top-level field of a snapshot, which is a YAML scalar on one line: plain, single-quoted or
+/// double-quoted (which `rue-tests` writes for strings that contain quotes).
 pub(crate) fn snapshot_value(snapshot: &str, key: &str) -> Option<String> {
     let value = snapshot
         .lines()
         .find_map(|line| line.strip_prefix(key)?.strip_prefix(": "))?;
 
-    Some(
-        match value
-            .strip_prefix('\'')
-            .and_then(|value| value.strip_suffix('\''))
-        {
-            Some(quoted) => quoted.replace("''", "'"),
-            None => value.to_string(),
-        },
-    )
+    if let Some(quoted) = value
+        .strip_prefix('\'')
+        .and_then(|value| value.strip_suffix('\''))
+    {
+        return Some(quoted.replace("''", "'"));
+    }
+
+    if let Some(quoted) = value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+    {
+        return Some(unescape_double_quoted(quoted));
+    }
+
+    Some(value.to_string())
+}
+
+/// Replaces the escape sequences in a double-quoted YAML scalar.
+fn unescape_double_quoted(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut chars = text.chars();
+
+    while let Some(char) = chars.next() {
+        if char != '\\' {
+            result.push(char);
+            continue;
+        }
+
+        let Some(escape) = chars.next() else {
+            result.push('\\');
+            break;
+        };
+
+        let digits = match escape {
+            'x' => 2,
+            'u' => 4,
+            'U' => 8,
+            _ => {
+                result.push(match escape {
+                    '0' => '\0',
+                    'a' => '\u{7}',
+                    'b' => '\u{8}',
+                    't' => '\t',
+                    'n' => '\n',
+                    'v' => '\u{b}',
+                    'f' => '\u{c}',
+                    'r' => '\r',
+                    'e' => '\u{1b}',
+                    'N' => '\u{85}',
+                    '_' => '\u{a0}',
+                    'L' => '\u{2028}',
+                    'P' => '\u{2029}',
+                    other => other,
+                });
+                continue;
+            }
+        };
+
+        let hex: String = chars.by_ref().take(digits).collect();
+        result.extend(u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32));
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -133,6 +188,10 @@ mod tests {
         assert_eq!(
             snapshot_value("runtime_cost: 20\n", "runtime_cost").as_deref(),
             Some("20")
+        );
+        assert_eq!(
+            snapshot_value("output: \"\\\"a\\\\b\\n\\x41\\u00e9\"\n", "output").as_deref(),
+            Some("\"a\\b\nA\u{e9}")
         );
     }
 }

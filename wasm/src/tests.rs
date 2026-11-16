@@ -24,6 +24,29 @@ fn apply_utf16_edits(source: &str, edits: &[crate::TextEdit]) -> String {
     String::from_utf16(&units).unwrap()
 }
 
+/// The snapshot reader agrees with a YAML parser on every top-level field of every example.
+#[test]
+fn snapshot_values_match_yaml() {
+    for example in get_examples() {
+        let yaml: serde_json::Value = serde_saphyr::from_str(example.snapshot).unwrap();
+
+        for (key, value) in yaml.as_object().unwrap() {
+            let expected = match value {
+                serde_json::Value::String(text) => text.clone(),
+                serde_json::Value::Number(number) => number.to_string(),
+                _ => continue,
+            };
+
+            assert_eq!(
+                snapshot_value(example.snapshot, key).as_deref(),
+                Some(expected.as_str()),
+                "{}: {key}",
+                example.name
+            );
+        }
+    }
+}
+
 /// Each example compiles and runs to the same result as its snapshot, which `rue-tests` checks
 /// against the CLI's compiler.
 #[test]

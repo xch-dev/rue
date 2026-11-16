@@ -1877,6 +1877,8 @@ dependencies = [
  "rue-formatter",
  "rue-lir",
  "rue-options",
+ "serde-saphyr",
+ "serde_json",
  "wasm-bindgen",
 ]
 
