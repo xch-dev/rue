@@ -571,3 +571,50 @@ fn deep_type_checks_are_an_error() {
         ));
     });
 }
+
+/// The parameters of `main` are a list, with a level of its environment for each one. The
+/// environment is cloned for the bindings in its body, and searched for the path to each symbol it
+/// references. The search would overflow a 2 MiB stack in a debug build with this many parameters if
+/// it recursed once per level. Cloning and dropping use less stack for each level, so they're tested
+/// with deeper environments in `rue-hir`.
+#[test]
+fn many_parameters_are_lowered() {
+    const PARAMETERS: usize = 10_000;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main({}) -> Int {{\nlet x = a{} + 1;\nx * x\n}}",
+            links(PARAMETERS, |i| format!("a{i}: Int, ")),
+            PARAMETERS - 1
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
+/// The parameters of other functions are a tree, which is split so that the references on either
+/// side are balanced. Parameters that aren't referenced don't change the balance, so they're split
+/// off one at a time, and the tree is as deep as there are unreferenced parameters. It's built, and
+/// the arguments are lowered into it at each call, without recursing once per level.
+#[test]
+fn many_unreferenced_parameters_are_lowered() {
+    const PARAMETERS: usize = 10_000;
+
+    on_stack(2, || {
+        let arguments = (0..PARAMETERS)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // The function is called twice, so that it isn't inlined
+        let source = format!(
+            "fn main() -> Int {{ f({arguments}) + f({arguments}) }}\n\nfn f({}) -> Int {{ a{} }}",
+            links(PARAMETERS, |i| format!("a{i}: Int, ")),
+            PARAMETERS - 1
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
