@@ -160,6 +160,51 @@ fn absolute_generic_paths_and_shift_expressions_do_not_conflict() {
     );
 }
 
+/// The parameters used to stay flat because the `<` of the return type was a place the line could
+/// break, which left the return type's generic arguments to break instead.
+#[test]
+fn signature_breaks_parameters_before_return_type_generics() {
+    check(
+        "fn main(correct_password: String, password: String, conditions: List<Condition>) -> List<Condition> {\n    assert password == correct_password;\n    conditions\n}\n\nfn other(a_long_parameter_name: Int, another_long_parameter_name: Int, third_param: Int) -> List<Int> {\n    nil\n}",
+        expect![[r#"
+            fn main(
+                correct_password: String,
+                password: String,
+                conditions: List<Condition>,
+            ) -> List<Condition> {
+                assert password == correct_password;
+                conditions
+            }
+
+            fn other(
+                a_long_parameter_name: Int,
+                another_long_parameter_name: Int,
+                third_param: Int,
+            ) -> List<Int> {
+                nil
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn return_type_generics_break_when_breaking_parameters_is_not_enough() {
+    check(
+        "fn main(value: Int) -> Pair<AVeryLongTypeNameThatTakesUpSpace, AnotherVeryLongTypeNameThatTakesUpSpace, YetAnotherType> { nil }",
+        expect![[r#"
+            fn main(
+                value: Int,
+            ) -> Pair<
+                AVeryLongTypeNameThatTakesUpSpace,
+                AnotherVeryLongTypeNameThatTakesUpSpace,
+                YetAnotherType,
+            > {
+                nil
+            }
+        "#]],
+    );
+}
+
 /// Each layout choice holds a flat and a broken variant of its contents, so without sharing
 /// them the document doubled in size with each level of nesting. The depth is low enough that
 /// a regression fails the time check rather than hanging the test.

@@ -110,7 +110,7 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
                 mode: command.mode,
                 doc,
             }),
-            Doc::Group(doc) => {
+            Doc::Group(doc) | Doc::ReluctantGroup(doc) => {
                 let mode = if has_forced_line(doc)
                     || !fits(
                         options.max_width.saturating_sub(column),
@@ -151,7 +151,9 @@ fn has_forced_line(doc: &Doc) -> bool {
         Doc::Nil | Doc::Text(_) | Doc::Line(LineKind::Soft) => false,
         Doc::Line(LineKind::Hard | LineKind::Empty) => true,
         Doc::Concat(docs) => docs.iter().any(has_forced_line),
-        Doc::Indent(doc) | Doc::Outdent(doc) | Doc::Group(doc) => has_forced_line(doc),
+        Doc::Indent(doc) | Doc::Outdent(doc) | Doc::Group(doc) | Doc::ReluctantGroup(doc) => {
+            has_forced_line(doc)
+        }
         Doc::Fill { flat, .. } => has_forced_line(flat),
         Doc::IfBreak { flat, .. } => has_forced_line(flat),
     }
@@ -225,6 +227,19 @@ fn fits(
                     doc,
                 });
             }
+            // Measuring a reluctant group flat, even when it comes after the doc being measured
+            // in a broken parent, keeps its lines from ending the current line early. Otherwise,
+            // a parameter list followed by a return type with generic arguments would look like
+            // it fits, and the generic arguments would break instead.
+            Doc::ReluctantGroup(doc) => commands.push(Command {
+                indent: command.indent,
+                mode: if has_forced_line(doc) {
+                    Mode::Broken
+                } else {
+                    Mode::Flat
+                },
+                doc,
+            }),
             Doc::IfBreak { broken, flat } => commands.push(Command {
                 indent: command.indent,
                 mode: command.mode,
