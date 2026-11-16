@@ -1,1 +1,81 @@
 @import "tailwindcss";
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--surface-raised);
+  --color-line: var(--border);
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-err: var(--err);
+  --color-err-soft: var(--err-soft);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+:root {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* Each color is light-dark(light, dark), which follows the system unless a theme is picked */
+  color-scheme: light dark;
+  --bg: light-dark(#f4f2ef, #131215);
+  --surface: light-dark(#fbfaf8, #1a191d);
+  --surface-raised: light-dark(#ffffff, #232227);
+  --editor-bg: light-dark(#fffefc, #18171b);
+  --border: light-dark(#e3dfd8, #2e2d33);
+  --text: light-dark(#24211d, #e9e6ee);
+  --text-muted: light-dark(#6b655c, #a19dab);
+  --text-faint: light-dark(#a39d93, #66626e);
+  --accent: light-dark(#b4235a, #f0609a);
+  --accent-soft: light-dark(#fbe7ef, #3a1c2a);
+  --accent-contrast: light-dark(#ffffff, #1a0a12);
+  --selection: light-dark(#f3d3e0, #45253a);
+  --active-line: light-dark(#f6f2ec, #1f1e23);
+  --ok: light-dark(#1d7a46, #5cc98a);
+  --warn: light-dark(#9a6200, #e8b04c);
+  --warn-soft: light-dark(#fbf0d9, #3a2d14);
+  --err: light-dark(#c0262d, #ff6b6b);
+  --err-soft: light-dark(#fbe4e4, #3d1a1c);
+  --syntax-keyword: light-dark(#a3195b, #f478b0);
+  --syntax-atom: light-dark(#8a4c00, #f2b46d);
+  --syntax-number: light-dark(#8a4c00, #f2b46d);
+  --syntax-string: light-dark(#2f7a32, #9ad38a);
+  --syntax-comment: light-dark(#9a948a, #6e6a78);
+  --syntax-type: light-dark(#1f6b8f, #73c7ec);
+  --syntax-function: light-dark(#5b3fb0, #b9a3ff);
+  --syntax-meta: light-dark(#7c6f60, #a39bb0);
+  --syntax-operator: light-dark(#6b655c, #a19dab);
+  --syntax-punctuation: light-dark(#6b655c, #8d8997);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

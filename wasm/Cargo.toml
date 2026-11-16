@@ -25,8 +25,16 @@ rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
 rue-clvm = { workspace = true }
+rue-formatter = { workspace = true }
+rue-lir = { workspace = true }
+clvm-utils = { workspace = true }
+hex = { workspace = true }
 wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }
+
+[dev-dependencies]
+serde-saphyr = { workspace = true }
+serde_json = { workspace = true }
 
 # Dependencies of clvmr that need a JS randomness backend on wasm32-unknown-unknown
 [target.'cfg(target_arch = "wasm32")'.dependencies]
