@@ -73,6 +73,37 @@ pub struct TestArgs {
     file: Option<String>,
     #[clap(flatten)]
     lints: LintArgs,
+    #[clap(flatten)]
+    cost: CostArgs,
+}
+
+/// The default cost limit for running a program, which is the same as Chia's block cost limit.
+const DEFAULT_MAX_COST: u64 = 11_000_000_000;
+
+#[derive(Debug, Clone, Copy, Args)]
+pub struct CostArgs {
+    /// The maximum cost of running a program, after which it fails
+    #[clap(
+        long,
+        value_name = "COST",
+        default_value_t = DEFAULT_MAX_COST,
+        // clvmr treats a limit of 0 as no limit at all
+        value_parser = value_parser!(u64).range(1..)
+    )]
+    max_cost: u64,
+}
+
+impl CostArgs {
+    /// Describes why a program failed, and how to raise the limit if it ran out of cost.
+    fn describe_error(self, error: &EvalErr) -> String {
+        match error {
+            EvalErr::CostExceeded => format!(
+                "{error} (the cost limit is {}, which `--max-cost` can change)",
+                self.max_cost
+            ),
+            _ => error.to_string(),
+        }
+    }
 }
 
 /// Overrides for lint levels, which take precedence over the `[lints]` section in `Rue.toml`.
@@ -220,6 +251,8 @@ pub struct DebugArgs {
     solution: Option<String>,
     #[clap(short = 'x', long)]
     hex: bool,
+    #[clap(flatten)]
+    cost: CostArgs,
 }
 
 fn main() -> Result<()> {
@@ -229,7 +262,10 @@ fn main() -> Result<()> {
         Command::Init(args) => init(args),
         Command::Build(args) => build(args),
         Command::Test(args) => test(args),
-        Command::Debug(args) => debug(args),
+        Command::Debug(args) => {
+            println!("{}", debug(args)?);
+            Ok(())
+        }
         Command::Fmt(args) => format(&args),
         Command::Lints => {
             lints();
@@ -685,44 +721,9 @@ fn test(args: TestArgs) -> Result<()> {
                 .bold()
         );
 
-        match run_program(
-            &mut allocator,
-            &DebugDialect::new(CLVM_FLAGS, true),
-            test.ptr,
-            NodePtr::NIL,
-            u64::MAX,
-        ) {
-            Ok(output) => {
-                if let SExp::Atom = allocator.sexp(output.1)
-                    && allocator.atom(output.1).is_empty()
-                {
-                    continue;
-                }
-                eprintln!("{}", "Test failed due to non-nil output".red().bold());
-                failed = true;
-            }
-            Err(error) => {
-                match error {
-                    EvalErr::Raise(error) => {
-                        eprintln!(
-                            "{}",
-                            format!(
-                                "Test failed due to raise: {}",
-                                disassemble_value(&allocator, error)
-                            )
-                            .red()
-                            .bold()
-                        );
-                    }
-                    _ => {
-                        eprintln!(
-                            "{}",
-                            format!("Test failed due to error: {error}").red().bold()
-                        );
-                    }
-                }
-                failed = true;
-            }
+        if let Err(message) = run_test(&mut allocator, test.ptr, args.cost) {
+            eprintln!("{}", format!("Test failed due to {message}").red().bold());
+            failed = true;
         }
     }
 
@@ -733,7 +734,33 @@ fn test(args: TestArgs) -> Result<()> {
     Ok(())
 }
 
-fn debug(args: DebugArgs) -> Result<()> {
+/// Runs a test, which passes if it returns nil, and otherwise returns why it failed.
+fn run_test(allocator: &mut Allocator, program: NodePtr, cost: CostArgs) -> Result<(), String> {
+    match run_program(
+        allocator,
+        &DebugDialect::new(CLVM_FLAGS, true),
+        program,
+        NodePtr::NIL,
+        cost.max_cost,
+    ) {
+        Ok(output) => {
+            if let SExp::Atom = allocator.sexp(output.1)
+                && allocator.atom(output.1).is_empty()
+            {
+                Ok(())
+            } else {
+                Err("non-nil output".to_string())
+            }
+        }
+        Err(EvalErr::Raise(value)) => {
+            Err(format!("raise: {}", disassemble_value(allocator, value)))
+        }
+        Err(error) => Err(format!("error: {}", cost.describe_error(&error))),
+    }
+}
+
+/// Runs the program, and returns its output.
+fn debug(args: DebugArgs) -> Result<String> {
     let mut allocator = Allocator::new();
 
     let program = if args.hex {
@@ -754,26 +781,26 @@ fn debug(args: DebugArgs) -> Result<()> {
         NodePtr::NIL
     };
 
-    let output = run_program(
+    let output = match run_program(
         &mut allocator,
         &DebugDialect::new(CLVM_FLAGS, true),
         program,
         solution,
-        u64::MAX,
-    )?
-    .1;
+        args.cost.max_cost,
+    ) {
+        Ok(output) => output.1,
+        Err(error) => anyhow::bail!(args.cost.describe_error(&error)),
+    };
 
-    let output = disassemble_value(&allocator, output);
-
-    println!("{output}");
-
-    Ok(())
+    Ok(disassemble_value(&allocator, output))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Command;
+    use super::{Command, CostArgs, DEFAULT_MAX_COST, debug, run_test};
     use clap::{CommandFactory, Parser, error::ErrorKind};
+    use clvmr::Allocator;
+    use rue_clvm::assemble;
     use rue_diagnostic::{ForbiddenBy, Lint, LintGroup, LintLevel, LintLevels, LintName};
 
     #[test]
@@ -1027,5 +1054,89 @@ mod tests {
     fn build_long_help() {
         let err = Command::try_parse_from(["rue", "build", "--help"]).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::DisplayHelp);
+    }
+
+    /// Parses the cost flags for both `rue test` and `rue debug`.
+    fn parse_cost_args(args: &[&str]) -> [CostArgs; 2] {
+        let Ok(Command::Test(test)) = Command::try_parse_from(["rue", "test"].iter().chain(args))
+        else {
+            panic!("expected test command");
+        };
+        let Ok(Command::Debug(debug)) =
+            Command::try_parse_from(["rue", "debug", "()"].iter().chain(args))
+        else {
+            panic!("expected debug command");
+        };
+        [test.cost, debug.cost]
+    }
+
+    #[test]
+    fn max_cost_flag() {
+        for args in parse_cost_args(&[]) {
+            assert_eq!(args.max_cost, DEFAULT_MAX_COST);
+        }
+        for args in parse_cost_args(&["--max-cost", "1000"]) {
+            assert_eq!(args.max_cost, 1000);
+        }
+
+        // clvmr treats a cost limit of 0 as no limit at all
+        for command in [&["rue", "test"][..], &["rue", "debug", "()"]] {
+            let args = command.iter().chain(&["--max-cost", "0"]);
+            assert!(Command::try_parse_from(args).is_err());
+        }
+    }
+
+    /// Runs `rue debug` with the arguments, and returns its output or error message.
+    fn run_debug(args: &[&str]) -> Result<String, String> {
+        let Ok(Command::Debug(args)) = Command::try_parse_from(["rue", "debug"].iter().chain(args))
+        else {
+            panic!("expected debug command");
+        };
+        debug(args).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn debug_enforces_the_cost_limit() {
+        let program = "(+ 2 5)";
+        assert_eq!(run_debug(&[program, "(1 2)"]).unwrap(), "3");
+        let error = run_debug(&[program, "(1 2)", "--max-cost", "10"]).unwrap_err();
+        assert!(error.contains("the cost limit is 10"), "{error}");
+
+        // A program that never ends fails instead of hanging
+        let error = run_debug(&["(a 2 1)", "((a 2 1))", "--max-cost", "1000000"]).unwrap_err();
+        assert!(error.contains("`--max-cost`"), "{error}");
+    }
+
+    /// Runs a test program with the `rue test` flags.
+    fn run_test_with(program: &str, args: &[&str]) -> Result<(), String> {
+        let [cost, _] = parse_cost_args(args);
+        let mut allocator = Allocator::new();
+        let program = assemble(&mut allocator, program).unwrap();
+        run_test(&mut allocator, program, cost)
+    }
+
+    #[test]
+    fn tests_enforce_the_cost_limit() {
+        let program = "(i (= (sha256 (q . 1)) ()) (q . 1) ())";
+        assert_eq!(run_test_with(program, &[]), Ok(()));
+        let error = run_test_with(program, &["--max-cost", "100"]).unwrap_err();
+        assert!(error.contains("the cost limit is 100"), "{error}");
+
+        // A test that never ends fails instead of hanging
+        let forever = "(a (q 2 2 1) (q (a 2 1)))";
+        let error = run_test_with(forever, &["--max-cost", "1000000"]).unwrap_err();
+        assert!(error.contains("`--max-cost`"), "{error}");
+    }
+
+    #[test]
+    fn tests_fail_on_raise_or_output() {
+        assert_eq!(
+            run_test_with("(x (q . 5))", &[]),
+            Err("raise: 5".to_string())
+        );
+        assert_eq!(
+            run_test_with("(q . 1)", &[]),
+            Err("non-nil output".to_string())
+        );
     }
 }

@@ -76,6 +76,8 @@ Useful `build` flags:
 - `--debug` - include debug information such as assertion messages
 - `--all` - compile every export in the project and write each one to a file (next to its source, or in `dist_dir` if set in `Rue.toml`)
 
+`test` and `debug` stop a program once its cost passes 11,000,000,000 (the same as Chia's block cost limit), so a program that never ends fails instead of hanging. `--max-cost <cost>` changes the limit.
+
 ## Lints
 
 Warnings such as unused bindings or unnecessary casts are lints, which can be configured to be allowed, reported as warnings, denied (which fails compilation), or forbidden (which is like denied, but can't be changed by attributes or later flags). Run `rue lints` to see every lint and its default level.
