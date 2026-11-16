@@ -208,19 +208,14 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         .transpose()?
         .unwrap_or_default();
 
-    if file.tests.len() > tests.len() {
-        file.tests.truncate(tests.len());
-    }
-
-    for _ in file.tests.len()..tests.len() {
-        file.tests.push(TestCase::default());
-    }
+    file.tests = match_test_cases(
+        std::mem::take(&mut file.tests),
+        tests.iter().map(|test| test.name.clone()),
+    );
 
     assert_eq!(debug_tests.len(), tests.len());
 
     for (i, test_case) in file.tests.iter_mut().enumerate() {
-        test_case.name.clone_from(&tests[i].name);
-
         handle_test_case(
             &mut allocator,
             test_case,
@@ -553,19 +548,14 @@ fn handle_test_file(
         }
     }
 
-    if file.tests.len() > tests.len() {
-        file.tests.truncate(tests.len());
-    }
-
-    for _ in file.tests.len()..tests.len() {
-        file.tests.push(TestCase::default());
-    }
+    file.tests = match_test_cases(
+        std::mem::take(&mut file.tests),
+        tests.iter().map(|test| test.name.clone()),
+    );
 
     assert_eq!(debug_tests.len(), tests.len());
 
     for (i, test_case) in file.tests.iter_mut().enumerate() {
-        test_case.name.clone_from(&tests[i].name);
-
         handle_test_case(
             &mut allocator,
             test_case,
@@ -577,6 +567,29 @@ fn handle_test_file(
     compare_snapshot(&yaml_file, &file, update, failed)?;
 
     Ok(())
+}
+
+/// Lines up the test cases of the old snapshot with the compiled tests, by name, so that a
+/// `solution` set by hand stays with its test when tests are added, removed or reordered. A test
+/// that isn't in the old snapshot gets a default test case.
+fn match_test_cases(
+    mut old: Vec<TestCase>,
+    names: impl IntoIterator<Item = Option<String>>,
+) -> Vec<TestCase> {
+    names
+        .into_iter()
+        .map(|name| {
+            old.iter()
+                .position(|test_case| test_case.name == name)
+                .map_or_else(
+                    || TestCase {
+                        name,
+                        ..TestCase::default()
+                    },
+                    |index| old.remove(index),
+                )
+        })
+        .collect()
 }
 
 fn read_snapshot(yaml_file: &Path) -> Result<TestFile> {
@@ -806,6 +819,37 @@ fn handle_test_case(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_cases_are_matched_by_name() {
+        let test_case = |name: &str, solution: &str| TestCase {
+            name: Some(name.to_string()),
+            solution: Some(solution.to_string()),
+            ..TestCase::default()
+        };
+        let names = ["c", "b", "d"].map(|name| Some(name.to_string()));
+
+        let matched = match_test_cases(
+            vec![
+                test_case("a", "1"),
+                test_case("b", "2"),
+                test_case("c", "3"),
+            ],
+            names.clone(),
+        );
+
+        assert_eq!(
+            matched,
+            [
+                test_case("c", "3"),
+                test_case("b", "2"),
+                TestCase {
+                    name: names[2].clone(),
+                    ..TestCase::default()
+                },
+            ]
+        );
+    }
 
     #[test]
     fn tests() -> Result<()> {
