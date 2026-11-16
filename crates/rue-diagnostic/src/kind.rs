@@ -139,8 +139,11 @@ pub enum DiagnosticKind {
     )]
     UnconstrainableComparison(String, String),
 
-    #[error("Recursion depth exceeded while checking type")]
+    #[error("Cannot check if value is of deeply nested type at runtime")]
     TypeCheckDepthExceeded,
+
+    #[error("Cannot check if value is of recursive type at runtime")]
+    RecursiveTypeCheck,
 
     #[error("Cannot check if value is of function type at runtime")]
     FunctionTypeCheck,

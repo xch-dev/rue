@@ -6,9 +6,9 @@ use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxIndexSet,
-    Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
-    stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet,
+    FxIndexSet, Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle,
+    step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,8 +171,11 @@ impl Check {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum CheckError {
-    #[error("Maximum type check depth reached")]
+    #[error("Cannot check if value is of deeply nested type at runtime")]
     DepthExceeded,
+
+    #[error("Cannot check if value is of recursive type at runtime")]
+    RecursiveType,
 
     #[error("Cannot check if value is of function type at runtime")]
     FunctionType,
@@ -192,7 +195,7 @@ pub fn check(
 
     // These should be rejected before reaching this point, but they would recurse forever
     if reaches_non_contractive_cycle(arena, lhs) || reaches_non_contractive_cycle(arena, rhs) {
-        return Err(CheckError::DepthExceeded);
+        return Err(CheckError::RecursiveType);
     }
 
     let names = log_enabled!(Level::Trace).then(|| {
@@ -222,6 +225,9 @@ struct CheckContext {
     /// Completed checks, keyed by the arguments to `check_each`. The same checks are reached
     /// through every reference to a type, which is exponential in the depth of the type.
     memo: FxHashMap<(Vec<TypeId>, TypeId, usize), Result<Check, CheckError>>,
+    /// The arguments to each `check_each` call on the current path, with the types sorted. The
+    /// check only depends on these, so reaching the same ones again would repeat forever.
+    path: FxHashSet<(Vec<TypeId>, TypeId)>,
 }
 
 fn check_impl(
@@ -258,7 +264,19 @@ fn check_each(
         return result.clone();
     }
 
+    let mut types = key.0.clone();
+    types.sort_unstable();
+    let state = (types, rhs);
+
+    // No finite check exists, such as when checking `Any` against `List<Int>`, so report that
+    // rather than continuing until the depth limit is reached
+    if ctx.path.contains(&state) {
+        return Err(CheckError::RecursiveType);
+    }
+
+    ctx.path.insert(state.clone());
     let result = check_each_impl(arena, builtins, ctx, depth + 1, &key.0, rhs);
+    ctx.path.remove(&state);
     ctx.memo.insert(key, result.clone());
     result
 }

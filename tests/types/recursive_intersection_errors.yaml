@@ -1,2 +1,2 @@
 diagnostics:
-- Recursion depth exceeded while checking type at recursive_intersection_errors.rue:6:8
+- Cannot check if value is of recursive type at runtime at recursive_intersection_errors.rue:6:8

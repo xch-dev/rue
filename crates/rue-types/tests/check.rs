@@ -578,9 +578,10 @@ fn test_mutually_recursive_types() {
         generics: vec![],
     });
 
-    // Each level of the check used to repeat the types of the previous level twice
-    assert_eq!(t.check(n0, n2), Err(CheckError::DepthExceeded));
-    assert_eq!(t.check(n2, n0), Err(CheckError::DepthExceeded));
+    // Each level of the check used to repeat the types of the previous level twice, and the
+    // check recurs on its own path, so no finite check exists
+    assert_eq!(t.check(n0, n2), Err(CheckError::RecursiveType));
+    assert_eq!(t.check(n2, n0), Err(CheckError::RecursiveType));
 }
 
 #[test]
@@ -598,7 +599,7 @@ fn test_check_errors() {
 
     // Checking an arbitrary value against a recursive type would require an infinite check
     let list = t.list(int);
-    assert_eq!(t.check(any, list), Err(CheckError::DepthExceeded));
+    assert_eq!(t.check(any, list), Err(CheckError::RecursiveType));
 }
 
 /// A nil-terminated list of the given types, like `[A, B, C]`.
@@ -645,6 +646,10 @@ fn test_check_depth_bounds_nesting() {
     let ints = tuple(&mut t, &[int; 25]);
     assert_eq!(t.check(any, ints), Err(CheckError::DepthExceeded));
 
+    // The target is finite, so it's still too deep rather than recursive when the value's type is
+    let int_list = t.list(int);
+    assert_eq!(t.check(int_list, ints), Err(CheckError::DepthExceeded));
+
     // `(Coin, (Coin, (Coin, (Coin, nil))))` where `Coin` is `[Bytes32, Bytes32, Int]`
     let inner = tuple(&mut t, &[bytes32, bytes32, int]);
     let coin = t.structure(inner);
@@ -677,9 +682,9 @@ fn test_check_depth_bounds_nesting() {
         inner,
         generics: vec![],
     });
-    assert_eq!(t.check(any, tree), Err(CheckError::DepthExceeded));
+    assert_eq!(t.check(any, tree), Err(CheckError::RecursiveType));
     let coin_list = t.list(coin);
-    assert_eq!(t.check(any, coin_list), Err(CheckError::DepthExceeded));
+    assert_eq!(t.check(any, coin_list), Err(CheckError::RecursiveType));
 }
 
 #[test]

@@ -1,0 +1,110 @@
+// Checking a value against a recursive type would never end
+fn recursive_list(value: Any) -> Bool {
+    value is List<Int>
+}
+
+type Tree = nil | (Tree, Tree);
+
+fn recursive_tree(value: Any) -> Bool {
+    value is Tree
+}
+
+// A finite type can still be nested too deeply to check
+fn deep_list(value: Any) -> Bool {
+    value is [
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+    ]
+}
+
+// Even when the value's type is recursive
+fn deep_list_from_recursive(value: List<Int>) -> Bool {
+    value is [
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+    ]
+}
+
+// One fewer item is within the limit
+fn shallow_list(value: Any) -> Bool {
+    value is [
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+        Int,
+    ]
+}
+
+fn main() -> Bool {
+    recursive_list(nil)
+        && recursive_tree(nil)
+        && deep_list(nil)
+        && deep_list_from_recursive(nil)
+        && shallow_list(nil)
+}
