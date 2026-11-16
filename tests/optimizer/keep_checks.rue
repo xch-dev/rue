@@ -1,0 +1,367 @@
+// Auto-inlining must never drop a value that may fail, or move it somewhere that's only evaluated
+// some of the time. Unless they say otherwise, the tests below must fail for the given solution in
+// both debug and release builds.
+
+fn check(x: Int) -> Int {
+    if x > 10 {
+        raise "too big";
+    }
+    x
+}
+
+fn ignore(_a: Int, b: Int) -> Int {
+    b
+}
+
+fn pick(a: Int, flag: Bool) -> Int {
+    if flag {
+        a
+    } else {
+        0
+    }
+}
+
+test fn unused_argument(x: Int) -> Int {
+    ignore(check(x), 5)
+}
+
+test fn conditional_argument(x: Int, flag: Bool) -> Int {
+    pick(check(x), flag)
+}
+
+test fn conditional_binding(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn binding_after_early_return(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        return 0;
+    }
+    y
+}
+
+test fn binding_in_short_circuit(x: Int, flag: Bool) -> Bool {
+    let y = check(x);
+    flag && y == 5
+}
+
+test fn binding_in_closure(x: Int, n: Int) -> Int {
+    let y = check(x);
+    let f = fn(i: Int) => i + y;
+    if n == 0 {
+        0
+    } else {
+        f(1) + f(2)
+    }
+}
+
+test fn binding_through_binding(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    let z = y + 1;
+    if flag {
+        z
+    } else {
+        0
+    }
+}
+
+test fn unconditional_binding(x: Int) -> Int {
+    let y = check(x);
+    y + 1
+}
+
+inline fn select(a: Int, flag: Bool) -> Int {
+    if flag {
+        a
+    } else {
+        0
+    }
+}
+
+fn count(_first: Int, ..._rest: List<Int>) -> Int {
+    5
+}
+
+fn make_closure(a: Int, flag: Bool) -> Int {
+    if flag {
+        (fn() => a)()
+    } else {
+        0
+    }
+}
+
+const CHECKED: Int = check(50);
+
+fn use_checked(flag: Bool) -> Int {
+    if flag {
+        CHECKED
+    } else {
+        0
+    }
+}
+
+test fn conditional_constant(flag: Bool) -> Int {
+    if flag {
+        CHECKED
+    } else {
+        0
+    }
+}
+
+test fn constant_in_conditional_call(flag: Bool) -> Int {
+    use_checked(flag)
+}
+
+test fn binding_into_inline_function(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    select(y, flag)
+}
+
+test fn binding_in_inline_if(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    inline if flag { y } else { 0 }
+}
+
+test fn unused_rest_argument(x: Int) -> Int {
+    count(1, ...[check(x)])
+}
+
+test fn closure_in_branch_argument(x: Int, flag: Bool) -> Int {
+    make_closure(check(x), flag)
+}
+
+test fn closure_in_branch_binding(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        (fn() => y)()
+    } else {
+        0
+    }
+}
+
+test fn destructured_binding(x: Int, flag: Bool) -> Int {
+    let (a, b) = (check(x), 1);
+    if flag {
+        a
+    } else {
+        b
+    }
+}
+
+test fn nested_closure_binding(x: Int, n: Int) -> Int {
+    let y = check(x);
+    let f = fn(i: Int) => {
+        let g = fn() => i + y;
+        g()
+    };
+    if n == 0 {
+        0
+    } else {
+        f(1) + f(2)
+    }
+}
+
+test fn conditional_closure_argument(x: Int, n: Int) -> Int {
+    let f = make_adder(check(x));
+    if n == 0 {
+        0
+    } else {
+        f(1)
+    }
+}
+
+fn make_adder(a: Int) -> fn(i: Int) -> Int {
+    fn(i: Int) => i + a
+}
+
+fn countdown(n: Int, x: Int) -> Int {
+    if n == 0 {
+        0
+    } else {
+        countdown(n - 1, x) + x
+    }
+}
+
+test fn recursive_argument(x: Int) -> Int {
+    countdown(0, check(x))
+}
+
+// From the issue: a wrong password must not be accepted on the branch that doesn't use the result
+const PASSWORD_HASH: Bytes32 = sha256("hunter2");
+
+fn check_password(password: Bytes) -> Bytes {
+    assert sha256(password) == PASSWORD_HASH;
+    password
+}
+
+fn debug_log_length(value: Bytes) -> Int {
+    value.length
+}
+
+test fn password_checked_on_both_branches(password: Bytes, unlock: Bool) -> Int {
+    let checked = check_password(password);
+    if unlock {
+        debug_log_length(checked)
+    } else {
+        42
+    }
+}
+
+test fn division_moved_into_branch(a: Int, b: Int, flag: Bool) -> Int {
+    let quotient = a / b;
+    if flag {
+        quotient
+    } else {
+        0
+    }
+}
+
+test fn division_argument_unused(a: Int, b: Int) -> Int {
+    ignore(a / b, 5)
+}
+
+// Division by a constant other than zero can't fail, so it's still moved into the branch
+test fn constant_division_is_inlined(a: Int, flag: Bool) -> Int {
+    let half = a / 2;
+    if flag {
+        half
+    } else {
+        0
+    }
+}
+
+// A value that can't fail is still moved into the branch that uses it
+test fn safe_binding_is_inlined(x: Int, flag: Bool) -> Int {
+    let y = x * 2 + 1;
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+// An argument that can't fail is still dropped when the parameter is unused
+test fn safe_argument_is_dropped(x: Int) -> Int {
+    ignore(x * 2, 5)
+}
+
+// Reading a field of a parameter can't fail, since the solution is assumed to match its type
+test fn field_read_is_inlined(pair: (Int, Int), flag: Bool) -> Int {
+    let first = pair.first;
+    if flag {
+        first
+    } else {
+        0
+    }
+}
+
+// A binding that's always evaluated is still inlined, even if it may fail
+test fn checked_binding_used_on_both_branches(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        y + 1
+    } else {
+        y
+    }
+}
+
+// The early return is only taken after the binding is used
+test fn binding_used_before_early_return(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    assert y < 100;
+    if flag {
+        return 0;
+    }
+    1
+}
+
+inline fn ignore_inline(_a: Int, b: Int) -> Int {
+    b
+}
+
+// An `inline fn` substitutes its arguments where they're used, so an unused one is never
+// evaluated, in debug and release builds alike
+test fn inline_function_argument_is_not_evaluated(x: Int) -> Int {
+    ignore_inline(check(x), 5)
+}
+
+fn call_twice(f: fn(x: Int) -> Int, x: Int) -> Int {
+    f(x) + f(x)
+}
+
+// A function value that's only known at runtime may fail when called
+test fn dynamic_call_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let y = call_twice(fn(i: Int) => check(i), x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn unused_argument_through_binding(x: Int) -> Int {
+    let y = check(x);
+    ignore(y, 5)
+}
+
+inline fn guarded(a: Int, flag: Bool) -> Int {
+    let b = a + 1;
+    if flag {
+        b
+    } else {
+        0
+    }
+}
+
+// The argument of an `inline fn` is evaluated where it's used, which is the let statement here
+test fn binding_of_inline_function_argument(x: Int, flag: Bool) -> Int {
+    guarded(check(x), flag)
+}
+
+fn guarded_auto(a: Int, flag: Bool) -> Int {
+    let b = a + 1;
+    if flag {
+        b
+    } else {
+        0
+    }
+}
+
+test fn binding_of_inlined_argument(x: Int, flag: Bool) -> Int {
+    guarded_auto(check(x), flag)
+}
+
+fn add_one(a: Int) -> Int {
+    a + 1
+}
+
+// An argument that's always evaluated is still substituted, even if it may fail
+test fn unconditional_argument(x: Int) -> Int {
+    add_one(check(x))
+}
+
+const ALWAYS_CHECKED: Int = check(5);
+
+fn use_always_checked(x: Int) -> Int {
+    ALWAYS_CHECKED + x
+}
+
+// A constant that's always evaluated is still inlined, even if it may fail
+test fn unconditional_constant(x: Int) -> Int {
+    use_always_checked(x)
+}
+
+test fn shift_moved_into_branch(x: Int, shift: Int, flag: Bool) -> Int {
+    let shifted = x << shift;
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}

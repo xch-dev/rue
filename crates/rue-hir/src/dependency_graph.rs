@@ -40,6 +40,9 @@ pub struct DependencyGraph {
 
     // Keeps track of the symbols that have been visited to avoid infinite loops
     visited: HashSet<SymbolId>,
+
+    // Keeps track of the block and index of the let statement of each binding that has one
+    lets: HashMap<SymbolId, (HirId, usize)>,
 }
 
 impl DependencyGraph {
@@ -55,6 +58,7 @@ impl DependencyGraph {
             pending: vec![main],
             referenced: Vec::new(),
             visited: HashSet::new(),
+            lets: HashMap::new(),
         };
 
         // The symbols are visited depth first, in the order they're referenced, like a recursive
@@ -79,6 +83,11 @@ impl DependencyGraph {
         }
 
         graph
+    }
+
+    /// The block that the binding's let statement is in, and its index in the block's statements.
+    pub fn let_statement(&self, symbol: SymbolId) -> Option<(HirId, usize)> {
+        self.lets.get(&symbol).copied()
     }
 
     pub fn references(&self, symbol: SymbolId) -> usize {
@@ -188,12 +197,14 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         }
         Hir::Block(block) => {
             // Nothing after a `return` or `raise` is lowered, so it doesn't reference anything
-            for stmt in block.reachable_statements() {
+            for (index, stmt) in block.reachable_statements().iter().enumerate() {
                 match stmt {
                     Statement::Let(stmt, _) => {
                         if let Some(current) = graph.current {
                             graph.owners.insert(*stmt, current);
                         }
+
+                        graph.lets.insert(*stmt, (hir, index));
                     }
                     Statement::Assert(stmt, _) => {
                         visit_hir(db, graph, *stmt, false);
