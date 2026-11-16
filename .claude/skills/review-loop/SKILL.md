@@ -120,7 +120,7 @@ cargo nextest run --all-features --workspace   # if `cargo nextest --version` wo
 ```
 
 - A bare `rue fmt --check` fails with "No project found"; use the globbed form.
-- The test suite includes `rue-tests`' own unit test, which compares snapshots without updating them (like running `rue-tests` without `--bless`), so it fails if they weren't regenerated.
+- The test suite includes `rue-tests`' `tests` unit test, which compares snapshots without updating them (like running `rue-tests` without `--bless`), so it fails if they weren't regenerated.
 - `cargo clippy --package rue-wasm --target wasm32-unknown-unknown --all-targets` if you changed `wasm/` or an API it uses (`rue-compiler`, `rue-diagnostic`).
 - CI also runs `cargo ws publish --publish-as-is --allow-dirty --dry-run` (run it if you changed a `Cargo.toml`) and the `wasm/` and `playground/` pnpm builds (if you changed `wasm/`). Say in the report which of these you didn't run.
 - If these checks led to changes beyond formatting, say so in the report, since no reviewer saw them.
