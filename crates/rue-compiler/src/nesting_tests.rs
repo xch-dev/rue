@@ -538,3 +538,22 @@ fn deep_type_checks_are_an_error() {
         ));
     });
 }
+
+/// Each parameter of a function is another level of its environment, which is cloned for the
+/// bindings in its body, and searched for the path to each symbol it references. This many
+/// parameters would overflow a 2 MiB stack in a debug build if those recursed once per level.
+#[test]
+fn many_parameters_are_lowered() {
+    const PARAMETERS: usize = 10_000;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main({}) -> Int {{\nlet x = a{} + 1;\nx * x\n}}",
+            links(PARAMETERS, |i| format!("a{i}: Int, ")),
+            PARAMETERS - 1
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
