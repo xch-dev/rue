@@ -134,6 +134,9 @@ struct Evaluation<'a, 'd, 'b, 'g> {
     arguments: Vec<HashMap<SymbolId, HirId>>,
     /// The symbols whose values or bodies have been followed, so that each is only followed once.
     visited: HashSet<SymbolId>,
+    /// The symbols in `visited`, in the order they were followed, so that the ones followed
+    /// inside a call to an `inline fn` can be followed again for the next call.
+    followed: Vec<SymbolId>,
 }
 
 impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
@@ -143,7 +146,19 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
             target,
             arguments: Vec::new(),
             visited: HashSet::new(),
+            followed: Vec::new(),
         }
+    }
+
+    /// Whether the symbol's value or body hasn't been followed yet, in which case it's followed.
+    fn follow(&mut self, symbol: SymbolId) -> bool {
+        let first = self.visited.insert(symbol);
+
+        if first {
+            self.followed.push(symbol);
+        }
+
+        first
     }
 
     fn db(&self) -> &'a Database {
@@ -269,10 +284,8 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
         match self.db().symbol(symbol) {
             // A binding or constant that references the target may fail, so its value is
             // evaluated either where it's defined (which dominates this reference) or here
-            Symbol::Binding(binding) => self.visited.insert(symbol) && self.hir(binding.value.hir),
-            Symbol::Constant(constant) => {
-                self.visited.insert(symbol) && self.hir(constant.value.hir)
-            }
+            Symbol::Binding(binding) => self.follow(symbol) && self.hir(binding.value.hir),
+            Symbol::Constant(constant) => self.follow(symbol) && self.hir(constant.value.hir),
             Symbol::Function(_) => self.captures_target(symbol),
             Symbol::Parameter(_) | Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => {
                 false
@@ -309,11 +322,15 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
 
             // What's followed inside the body depends on the arguments, so it's followed again
             // for each call
-            let visited = self.visited.clone();
+            let followed = self.followed.len();
             self.arguments.push(arguments);
-            let evaluated = self.visited.insert(function) && self.hir(symbol.body);
+            let evaluated = self.follow(function) && self.hir(symbol.body);
             self.arguments.pop();
-            self.visited = visited;
+
+            for symbol in self.followed.drain(followed..) {
+                self.visited.remove(&symbol);
+            }
+
             return evaluated || self.captures_target(function);
         }
 
@@ -326,7 +343,7 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
                     return false;
                 };
 
-                self.visited.insert(function) && self.hir(symbol.body)
+                self.follow(function) && self.hir(symbol.body)
             })
     }
 }

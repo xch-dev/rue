@@ -401,3 +401,68 @@ tests:
   byte_cost: 900000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: sibling_in_recursive_cycle
+  program: (a (q 2 (q 2 (q 2 (i 95 (q 16 13 2) (q . 2)) 1) (c (a (i 47 (q . 4) (q)) 1) 1)) (c (c (a 8 (c (c (c 12 10) (c 14 8)) 5)) (a 12 (c (c 6 4) 11))) 1)) (c (c (c (q 2 (i 3 (q 16 (a 10 (c (c (c 14 8) (c 12 10)) 3)) (a 8 (c (c (c 12 10) (c 14 8)) 3))) (q 8)) 1) (q 2 8 (c (c (c 12 10) (c 14 8)) 3))) (c (q 2 (i (= 3 (q . 7)) (q 2 8 (c (c (c 12 10) (c 14 8)) ())) (q . 3)) 1) (q 2 (i (= 3 (q . 1)) (q 2 10 (c (c (c 14 8) (c 12 10)) 3)) (q 2 8 (c (c (c 12 10) (c 14 8)) 3))) 1))) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 95 (q 16 13 2) (q . 2)) 1) (c (a (i 47 (q . 4) (q)) 1) 1)) (c (c (a 8 (c (c (c 12 10) (c 14 8)) 5)) (a 12 (c (c (c 10 14) (c 8 12)) 11))) 1)) (c (c (c (q 2 (i (not (= 3 ())) (q 16 (a 10 (c (c (c 14 8) (c 12 10)) 3)) (a 8 (c (c (c 12 10) (c 14 8)) 3))) (q 8 (q . "raise called at keep_checks.rue:649:9") (q . "boom"))) 1) (q 2 8 (c (c (c 12 10) (c 14 8)) 3))) (c (q 2 (i (= 3 (q . 7)) (q 2 8 (c (c (c 12 10) (c 14 8)) ())) (q . 3)) 1) (q 2 (i (= 3 (q . 1)) (q 2 10 (c (c (c 14 8) (c 12 10)) 3)) (q 2 8 (c (c (c 12 10) (c 14 8)) 3))) 1))) 1))
+  solution: (1 7 ())
+  byte_cost: 5076000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:649:9" "boom")
+- name: constant_in_repeated_constant_is_inlined
+  program: (a (q 2 (q 2 (i 11 (q . 2) (q 16 2 (q . 1))) 1) (c (+ (a 2 (q . 5)) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 23 (q . 2) (q 16 2 (q . 1))) 1) (c (+ 2 (q . 1)) 1)) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (1)
+  output: "6"
+  runtime_cost: 2500
+  byte_cost: 1212000
+  total_cost: 1214500
+- name: binding_after_raise_is_inlined
+  program: (a (q 2 (i 11 (q 8) (q 2 2 5)) 1) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 8 (q . "raise called at keep_checks.rue:708:9") (q . "rejected")) (q . 2)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (3 ())
+  output: "3"
+  runtime_cost: 1502
+  byte_cost: 852000
+  total_cost: 853502
+- name: binding_in_left_of_short_circuit_is_inlined
+  program: (a (q 2 (i (= (a 2 5) (q . 5)) (q 2 (i 11 (q 1 . 1) (q)) 1) (q)) 1) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 2 (i 23 (q 1 . 1) (q)) 1) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (5 1)
+  output: "1"
+  runtime_cost: 1871
+  byte_cost: 1164000
+  total_cost: 1165871
+- name: binding_in_expression_statement_is_inlined
+  program: (a (q 3 () (+ (a 2 5) (q . 1)) (a (i 11 (q 1 . 1) (q)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 3 (q . 1) (a (i 23 (q 1 . 1) (q)) 1) (a 13 2)) (c (a 4 5) 1)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) (q 16 1 (q . 1))) 1))
+  solution: (3 1)
+  output: "1"
+  runtime_cost: 2376
+  byte_cost: 1044000
+  total_cost: 1046376
+- name: list_builtins_are_inlined
+  program: (a (i 23 (q 16 (a (c (c (q . 16) ()) (c 2 (c 5 ()))) ()) (strlen (a (c (c (q . 14) ()) (c 11 (c 11 ()))) ()))) (q)) 1)
+  debug_program: (a (q 2 (i 47 (q 16 4 (strlen 6)) (q)) 1) (c (c (a (c (c (q . 16) ()) (c 2 (c 5 ()))) ()) (a (c (c (q . 14) ()) (c 11 (c 11 ()))) ())) 1))
+  solution: (1 2 "ab" 1)
+  output: "7"
+  runtime_cost: 3718
+  byte_cost: 1116000
+  total_cost: 1119718
+- name: const_expression_is_inlined
+  program: (a (i 2 (q 1 . 6) (q)) 1)
+  debug_program: (a (q 2 (i 5 (q . 2) (q)) 1) (c (q . 6) 1))
+  solution: (1)
+  output: "6"
+  runtime_cost: 277
+  byte_cost: 252000
+  total_cost: 252277
+- name: unused_binding_in_function_is_inlined
+  program: (a (i 11 (q . 2) (q)) 1)
+  debug_program: (a (q 2 (q 2 (i 47 (q . 2) (q)) 1) (c (a 2 (c 5 11)) 1)) (c (q . 2) 1))
+  solution: (7 0 1)
+  output: "7"
+  runtime_cost: 313
+  byte_cost: 228000
+  total_cost: 228313
+diagnostics:
+- Value returned by statement is unused at keep_checks.rue:722:5

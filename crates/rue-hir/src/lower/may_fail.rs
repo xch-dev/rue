@@ -3,6 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use indexmap::IndexMap;
+
 use num_bigint::BigInt;
 use rue_lir::{ClvmOp, atom_bigint};
 
@@ -106,19 +108,14 @@ struct Visitor<'a, 'd, 'b, 'g> {
     /// The substituted values being checked, so that a value that references itself isn't
     /// checked forever.
     visiting: HashSet<SymbolId>,
-    /// The functions whose bodies are being checked, from the outermost to the innermost.
-    stack: Vec<SymbolId>,
-    /// The outermost function on the stack that was called again while its body was being
-    /// checked. It was assumed not to fail, so the functions above it on the stack can't be
-    /// cached until it's known whether it does.
-    lowest_recursion: usize,
-    /// The functions that didn't fail, but depend on an assumption about a function that's still
-    /// on the stack, in the order they were checked. They're cached once that function is known
-    /// not to fail either.
-    deferred: Vec<SymbolId>,
-    /// The lowest depth on the stack that each deferred function depends on. Until then, it's
-    /// assumed not to fail like the functions on the stack, so it isn't checked again.
-    provisional: HashMap<SymbolId, usize>,
+    /// The functions that are assumed not to fail while their bodies are checked, in the order
+    /// they were reached. Each is mapped to the earliest of these that it depends on: itself while
+    /// its body is being checked, then the earliest one its body called again, if that one's
+    /// result still isn't known. Entries are only ever removed from the end, so an entry never
+    /// outlives one that it depends on.
+    assumed: IndexMap<SymbolId, usize>,
+    /// The earliest assumed function that the body being checked depends on.
+    lowest_assumption: usize,
 }
 
 impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
@@ -126,10 +123,8 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
         Self {
             lowerer,
             visiting: HashSet::new(),
-            stack: Vec::new(),
-            lowest_recursion: usize::MAX,
-            deferred: Vec::new(),
-            provisional: HashMap::new(),
+            assumed: IndexMap::new(),
+            lowest_assumption: usize::MAX,
         }
     }
 
@@ -268,22 +263,16 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
     }
 
     /// Whether the body of the function may fail. A recursive call is assumed not to fail, since
-    /// the body fails anyway if anything else in it does. The functions that call each other
-    /// are checked together, like the strongly connected components of the call graph, so that
-    /// each function's body is only checked once.
+    /// the body fails anyway if anything else in it does. Functions that call each other are
+    /// resolved together, like the strongly connected components of the call graph, so that each
+    /// function's body is only checked once.
     fn function_may_fail(&mut self, function: SymbolId) -> bool {
         if let Some(&fails) = self.lowerer.function_failures.borrow().get(&function) {
             return fails;
         }
 
-        let assumed = self
-            .stack
-            .iter()
-            .position(|&other| other == function)
-            .or_else(|| self.provisional.get(&function).copied());
-
-        if let Some(depth) = assumed {
-            self.lowest_recursion = self.lowest_recursion.min(depth);
+        if let Some(&assumption) = self.assumed.get(&function) {
+            self.lowest_assumption = self.lowest_assumption.min(assumption);
             return false;
         }
 
@@ -298,39 +287,36 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
         }
 
         let body = symbol.body;
+        let index = self.assumed.len();
+        self.assumed.insert(function, index);
+        let lowest_assumption = std::mem::replace(&mut self.lowest_assumption, usize::MAX);
 
-        let depth = self.stack.len();
-        let deferred = self.deferred.len();
-        let lowest_recursion = std::mem::replace(&mut self.lowest_recursion, usize::MAX);
-
-        self.stack.push(function);
         let fails = self.visit(body, true);
-        self.stack.pop();
 
         if fails {
-            // Failing doesn't depend on any assumption. The functions that relied on this one
-            // not failing were wrong, and will be checked again.
-            for function in self.deferred.split_off(deferred) {
-                self.provisional.remove(&function);
-            }
-
+            // Failing doesn't depend on any assumption. The functions that were assumed not to
+            // fail since this one was reached may have been wrong, so they're checked again
+            // if they're reached again.
+            self.assumed.truncate(index);
             self.cache(function, true);
-            self.lowest_recursion = lowest_recursion;
-        } else if self.lowest_recursion >= depth {
+            self.lowest_assumption = lowest_assumption;
+        } else if self.lowest_assumption >= index {
             // Every assumption made while checking the body was about this function or the ones
-            // it calls, and none of them fail
-            for function in self.deferred.split_off(deferred) {
-                self.provisional.remove(&function);
-                self.cache(function, false);
+            // reached after it, and none of them fail
+            let mut failures = self.lowerer.function_failures.borrow_mut();
+
+            for (function, _) in self.assumed.drain(index..) {
+                failures.insert(function, false);
             }
 
-            self.cache(function, false);
-            self.lowest_recursion = lowest_recursion;
+            drop(failures);
+
+            self.lowest_assumption = lowest_assumption;
         } else {
-            // This depends on a function further down the stack not failing
-            self.deferred.push(function);
-            self.provisional.insert(function, self.lowest_recursion);
-            self.lowest_recursion = self.lowest_recursion.min(lowest_recursion);
+            // This depends on a function that was reached earlier, whose result isn't known yet,
+            // so it stays assumed not to fail until then
+            self.assumed.insert(function, self.lowest_assumption);
+            self.lowest_assumption = self.lowest_assumption.min(lowest_assumption);
         }
 
         fails

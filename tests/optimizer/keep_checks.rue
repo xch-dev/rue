@@ -264,7 +264,7 @@ test fn field_read_is_inlined(pair: (Int, Int), flag: Bool) -> Int {
     }
 }
 
-// A binding that's always evaluated is still inlined, even if it may fail
+// A binding that's referenced on both branches is bound, as before
 test fn checked_binding_used_on_both_branches(x: Int, flag: Bool) -> Int {
     let y = check(x);
     if flag {
@@ -619,7 +619,7 @@ fn calls_checked(n: Int) -> Int {
 }
 
 // While `checked_after_call` is checked, `calls_checked` is assumed not to fail until the rest of
-// its cycle is known, so that assumption mustn't be kept once `checked_after_call` fails
+// its cycle is known, so it mustn't be cached as unable to fail once the cycle turns out to fail
 test fn mutually_recursive_assumption_is_discarded(n: Int, m: Int, flag: Bool) -> Int {
     let y = checked_after_call(n);
     let z = calls_checked(m);
@@ -640,4 +640,127 @@ inline fn double_next(a: Int) -> Int {
 test fn inline_function_called_twice(x: Int) -> Int {
     let y = check(x);
     double_next(5) + double_next(y)
+}
+
+fn cycle_root(n: Int) -> Int {
+    if n != 0 {
+        cycle_member(n) + cycle_sibling(n)
+    } else {
+        raise "boom";
+    }
+}
+
+fn cycle_member(n: Int) -> Int {
+    if n == 1 {
+        cycle_leaf(n)
+    } else {
+        cycle_root(n)
+    }
+}
+
+fn cycle_leaf(n: Int) -> Int {
+    if n == 7 {
+        cycle_member(0)
+    } else {
+        n
+    }
+}
+
+fn cycle_sibling(n: Int) -> Int {
+    cycle_leaf(n)
+}
+
+// `cycle_leaf` is assumed not to fail while `cycle_member` is checked, which only depends on
+// `cycle_root`. `cycle_sibling` is checked afterward, and reaches `cycle_root` through it, so it
+// may fail too.
+test fn sibling_in_recursive_cycle(m: Int, n: Int, flag: Bool) -> Int {
+    let y = cycle_root(m);
+    let z = if flag {
+        y
+    } else {
+        0
+    };
+    let x = cycle_sibling(n);
+    if flag {
+        x + z
+    } else {
+        z
+    }
+}
+
+const ROOT_CHECKED: Int = check(5);
+const ROOT_DERIVED: Int = ROOT_CHECKED + 1;
+
+// A constant that's referenced more than once is evaluated when the program starts, so a constant
+// that's only referenced in its value is still inlined into it
+test fn constant_in_repeated_constant_is_inlined(flag: Bool) -> Int {
+    if flag {
+        ROOT_DERIVED
+    } else {
+        ROOT_DERIVED + 1
+    }
+}
+
+// Raising ends the program, so the binding is still inlined after the `if` that raises
+test fn binding_after_raise_is_inlined(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        raise "rejected";
+    }
+    y
+}
+
+// The left side of `&&` is always evaluated, so the binding is still inlined
+test fn binding_in_left_of_short_circuit_is_inlined(x: Int, flag: Bool) -> Bool {
+    let y = check(x);
+    y == 5 && flag
+}
+
+// An expression statement is always evaluated, so the binding is still inlined
+test fn binding_in_expression_statement_is_inlined(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    add_one(y);
+    if flag {
+        1
+    } else {
+        0
+    }
+}
+
+// Builtins that take a list can't fail for well-typed arguments, so they're still moved into the
+// branch
+test fn list_builtins_are_inlined(a: Int, b: Int, value: Bytes, flag: Bool) -> Int {
+    let total = sum([a, b]);
+    let joined = concat([value, value]);
+    if flag {
+        total + joined.length
+    } else {
+        0
+    }
+}
+
+// A constant expression is evaluated when compiling, so it can't fail at runtime
+test fn const_expression_is_inlined(flag: Bool) -> Int {
+    let value = const { add_one(5) };
+    if flag {
+        value
+    } else {
+        0
+    }
+}
+
+fn unused_division(a: Int, b: Int) -> Int {
+    let _quotient = a / b;
+    a
+}
+
+// A binding that's never referenced isn't evaluated, so a function that only divides in one can't
+// fail
+test fn unused_binding_in_function_is_inlined(a: Int, b: Int, flag: Bool) -> Int {
+    let y = unused_division(a, b);
+    if flag {
+        y
+    } else {
+        0
+    }
 }
