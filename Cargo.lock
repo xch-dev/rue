@@ -1807,12 +1807,16 @@ dependencies = [
 name = "rue-wasm"
 version = "0.12.0"
 dependencies = [
+ "clvm-utils",
  "clvmr",
  "console_error_panic_hook",
  "getrandom",
+ "hex",
  "rue-clvm",
  "rue-compiler",
  "rue-diagnostic",
+ "rue-formatter",
+ "rue-lir",
  "rue-options",
  "wasm-bindgen",
 ]
