@@ -3,8 +3,10 @@ on:
   push:
     branches:
       - main
+    # Only version tags (like 0.12.0) trigger a release, and the `publish` job checks that the tag
+    # matches the version in the manifests.
     tags:
-      - "**"
+      - "[0-9]+.[0-9]+.[0-9]+"
 
   pull_request:
     branches:
@@ -21,11 +23,15 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      # Pinned to a commit, and the binary to a release, rather than running the install script from
+      # the main branch. Keep `version` in step with the tag in the comment when Dependabot bumps it.
       - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: 1.27.0
 
       - name: Install cargo-nextest
-        run: cargo binstall cargo-nextest --no-confirm
+        run: cargo binstall cargo-nextest@0.9.152 --no-confirm
 
       - name: Run tests
         run: cargo nextest run --all-features --workspace --profile ci
@@ -35,7 +41,7 @@ jobs:
 
       - name: Unused dependencies
         run: |
-          cargo binstall cargo-machete --locked
+          cargo binstall cargo-machete@0.10.1 --no-confirm
           cargo machete
 
       - name: Fmt
@@ -46,14 +52,8 @@ jobs:
 
       - name: Publish (dry run)
         run: |
-          cargo binstall cargo-workspaces
-          cargo ws publish --publish-as-is --allow-dirty --dry-run
-
-      - name: Publish
-        if: startsWith(github.event.ref, 'refs/tags')
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo ws publish --publish-as-is --allow-dirty
+          cargo binstall cargo-workspaces@0.4.2 --no-confirm
+          cargo ws publish --publish-as-is --dry-run
 
   wasm:
     runs-on: ubuntu-latest
@@ -71,11 +71,15 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      # Pinned to a commit, and the binary to a release, rather than running the install script from
+      # the main branch. Keep `version` in step with the tag in the comment when Dependabot bumps it.
       - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: 1.27.0
 
       - name: Install wasm-pack
-        run: cargo binstall wasm-pack --no-confirm
+        run: cargo binstall wasm-pack@0.15.1 --no-confirm
 
       - name: Clippy (wasm32)
         run: cargo clippy --package rue-wasm --target wasm32-unknown-unknown --all-targets
@@ -93,12 +97,83 @@ jobs:
           pnpm lint
           pnpm build
 
+  deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: 1.27.0
+
+      - name: Install cargo-deny
+        run: cargo binstall cargo-deny@0.21.0 --no-confirm
+
+      # Advisories, licenses, bans and sources, as configured in deny.toml
+      - name: Cargo deny
+        run: cargo deny --locked check
+
+  msrv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Keep in step with `rust-version` in Cargo.toml
+      - name: Install Rust 1.90
+        run: rustup toolchain install 1.90.0 --profile minimal
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo +1.90.0 check --workspace --all-features --all-targets --locked
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test, wasm, deny, msrv]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check the tag matches the version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          versions=$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '[.packages[] | select(.publish != []) | .version] | unique | join(" ")')
+          if [ "$versions" != "$TAG" ]; then
+            echo "Tag $TAG doesn't match the version of the published crates: $versions"
+            exit 1
+          fi
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: 1.27.0
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo binstall cargo-workspaces@0.4.2 --no-confirm
+          cargo ws publish --publish-as-is
+
   # The only check that branch protection needs to require. A skipped job counts as passing, so
   # this always runs and fails explicitly if anything it depends on didn't succeed.
   required:
     name: Required checks
     if: ${{ always() }}
-    needs: [test, wasm]
+    needs: [test, wasm, deny, msrv]
     runs-on: ubuntu-latest
     steps:
       - name: Check results

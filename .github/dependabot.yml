@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Rust dependencies, in Cargo.toml and Cargo.lock. Minor and patch updates are grouped into one
+  # pull request a week; major updates get their own.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        update-types: [minor, patch]
+
+  # Actions used by the workflows in .github/workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        update-types: [minor, patch]
