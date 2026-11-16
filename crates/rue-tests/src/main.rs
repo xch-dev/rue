@@ -31,7 +31,7 @@ and exits 1 if there are any, without changing files.
 
 Arguments:
   [FILTER]  Only run the tests whose name contains FILTER, and only check the formatting of
-            files whose path contains it
+            files whose path contains it. std_tests.yaml is always checked
 
 Options:
   --bless     Rewrite the snapshots and reformat the .rue files to match the current output
