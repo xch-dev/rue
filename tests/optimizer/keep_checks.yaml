@@ -282,7 +282,7 @@ tests:
   byte_cost: 1524000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:400:5"
-- name: safe_recursive_function_is_inlined
+- name: safe_recursive_call_is_inlined
   program: (a (q 2 (i 11 (q 2 2 (c 2 5)) (q)) 1) (c (q 2 (i 3 (q 2 2 (c 2 (- 3 (q . 1)))) (q)) 1) 1))
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 5)) 1)) (c (q 2 (i (= 3 ()) (q) (q 2 2 (c 2 (- 3 (q . 1))))) 1) 1))
   solution: (3 1)
@@ -297,7 +297,7 @@ tests:
   byte_cost: 1860000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
-- name: safe_bound_lambda_is_inlined
+- name: safe_bound_lambda_call_is_inlined
   program: (a (i 5 (q 2 (q 16 2 (q . 1)) (c 2 ())) (q)) 1)
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 5 ())) 1)) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 1))
   solution: (3 1)
@@ -366,3 +366,38 @@ tests:
   runtime_cost: 857
   byte_cost: 324000
   total_cost: 324857
+- name: external_call_moved_into_branch
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 5 ())) 1)) (c (q 8) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 5 ())) 1)) (c (c (q . 8) ()) 1))
+  solution: (1 ())
+  byte_cost: 756000
+  clvm_error: clvm raise ()
+- name: mutually_recursive_call_moved_into_branch
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 4 (c 2 5)) 1)) (c (c (q 2 (i 3 (q 2 6 (c 2 (- 3 (q . 1)))) (q 1 . 1)) 1) (q 2 (i (> (q . 100) 3) (q 2 (i 3 (q 2 4 (c 2 (- 3 (q . 1)))) (q)) 1) (q 8)) 1)) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 4 (c (c 4 6) 5)) 1)) (c (c (q 2 (i (= 3 ()) (q 1 . 1) (q 2 6 (c (c 4 6) (- 3 (q . 1))))) 1) (q 2 (i (> (q . 100) 3) (q 2 (i (= 3 ()) (q) (q 2 4 (c (c 4 6) (- 3 (q . 1))))) 1) (q 8 (q . "assertion failed at keep_checks.rue:559:5"))) 1)) 1))
+  solution: (200 ())
+  byte_cost: 2100000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:559:5"
+- name: safe_mutually_recursive_call_is_inlined
+  program: (a (q 2 (i 11 (q 2 4 (c 2 5)) (q)) 1) (c (c (q 2 (i 3 (q 2 6 (c 2 (- 3 (q . 1)))) (q 1 . 1)) 1) (q 2 (i 3 (q 2 4 (c 2 (- 3 (q . 1)))) (q)) 1)) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 4 (c (c 4 6) 5)) 1)) (c (c (q 2 (i (= 3 ()) (q 1 . 1) (q 2 6 (c (c 4 6) (- 3 (q . 1))))) 1) (q 2 (i (= 3 ()) (q) (q 2 4 (c (c 4 6) (- 3 (q . 1))))) 1)) 1))
+  solution: (4 1)
+  output: "1"
+  runtime_cost: 6415
+  byte_cost: 1596000
+  total_cost: 1602415
+- name: mutually_recursive_assumption_is_discarded
+  program: (a (q 2 (q 2 (i 47 (q 16 4 6) (q)) 1) (c (c (a 6 (c 2 5)) (a 4 (c (c 6 4) 11))) 1)) (c (c (q 2 (i 3 (q 2 4 (c (c 6 4) (- 3 (q . 1)))) (q)) 1) (q 2 (i (> (q . 100) 3) (q 2 (i 3 (q 2 4 (c (c 6 4) (- 3 (q . 1)))) (q)) 1) (q 8)) 1)) 1))
+  debug_program: (a (q 2 (q 2 (i 47 (q 16 4 6) (q)) 1) (c (c (a 6 (c (c 4 6) 5)) (a 4 (c (c 6 4) 11))) 1)) (c (c (q 2 (i (= 3 ()) (q) (q 2 4 (c (c 6 4) (- 3 (q . 1))))) 1) (q 2 (q 2 (i (> (q . 100) 7) (q . 2) (q 8 (q . "assertion failed at keep_checks.rue:609:5"))) 1) (c (a (i (= 3 ()) (q) (q 2 4 (c (c 6 4) (- 3 (q . 1))))) 1) 1))) 1))
+  solution: (1 200 ())
+  byte_cost: 2580000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:609:5"
+- name: inline_function_called_twice
+  program: (a (q 16 (* (+ (a 2 5) (q . 1)) (q . 2)) (q . 12)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 16 (* (+ (q . 5) (q . 1)) (q . 2)) (* (+ 2 (q . 1)) (q . 2))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50)
+  byte_cost: 900000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")

@@ -1,0 +1,339 @@
+// A cycle of recursive functions where each calls the next twice. Checking whether a call may
+// fail walks each function's body once, rather than once for each path through the cycle.
+
+fn level_0(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_40(n - 1)
+    }
+}
+
+fn level_1(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_0(n - 1) + level_0(n - 2)
+    }
+}
+
+fn level_2(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_1(n - 1) + level_1(n - 2)
+    }
+}
+
+fn level_3(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_2(n - 1) + level_2(n - 2)
+    }
+}
+
+fn level_4(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_3(n - 1) + level_3(n - 2)
+    }
+}
+
+fn level_5(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_4(n - 1) + level_4(n - 2)
+    }
+}
+
+fn level_6(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_5(n - 1) + level_5(n - 2)
+    }
+}
+
+fn level_7(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_6(n - 1) + level_6(n - 2)
+    }
+}
+
+fn level_8(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_7(n - 1) + level_7(n - 2)
+    }
+}
+
+fn level_9(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_8(n - 1) + level_8(n - 2)
+    }
+}
+
+fn level_10(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_9(n - 1) + level_9(n - 2)
+    }
+}
+
+fn level_11(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_10(n - 1) + level_10(n - 2)
+    }
+}
+
+fn level_12(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_11(n - 1) + level_11(n - 2)
+    }
+}
+
+fn level_13(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_12(n - 1) + level_12(n - 2)
+    }
+}
+
+fn level_14(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_13(n - 1) + level_13(n - 2)
+    }
+}
+
+fn level_15(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_14(n - 1) + level_14(n - 2)
+    }
+}
+
+fn level_16(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_15(n - 1) + level_15(n - 2)
+    }
+}
+
+fn level_17(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_16(n - 1) + level_16(n - 2)
+    }
+}
+
+fn level_18(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_17(n - 1) + level_17(n - 2)
+    }
+}
+
+fn level_19(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_18(n - 1) + level_18(n - 2)
+    }
+}
+
+fn level_20(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_19(n - 1) + level_19(n - 2)
+    }
+}
+
+fn level_21(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_20(n - 1) + level_20(n - 2)
+    }
+}
+
+fn level_22(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_21(n - 1) + level_21(n - 2)
+    }
+}
+
+fn level_23(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_22(n - 1) + level_22(n - 2)
+    }
+}
+
+fn level_24(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_23(n - 1) + level_23(n - 2)
+    }
+}
+
+fn level_25(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_24(n - 1) + level_24(n - 2)
+    }
+}
+
+fn level_26(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_25(n - 1) + level_25(n - 2)
+    }
+}
+
+fn level_27(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_26(n - 1) + level_26(n - 2)
+    }
+}
+
+fn level_28(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_27(n - 1) + level_27(n - 2)
+    }
+}
+
+fn level_29(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_28(n - 1) + level_28(n - 2)
+    }
+}
+
+fn level_30(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_29(n - 1) + level_29(n - 2)
+    }
+}
+
+fn level_31(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_30(n - 1) + level_30(n - 2)
+    }
+}
+
+fn level_32(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_31(n - 1) + level_31(n - 2)
+    }
+}
+
+fn level_33(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_32(n - 1) + level_32(n - 2)
+    }
+}
+
+fn level_34(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_33(n - 1) + level_33(n - 2)
+    }
+}
+
+fn level_35(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_34(n - 1) + level_34(n - 2)
+    }
+}
+
+fn level_36(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_35(n - 1) + level_35(n - 2)
+    }
+}
+
+fn level_37(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_36(n - 1) + level_36(n - 2)
+    }
+}
+
+fn level_38(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_37(n - 1) + level_37(n - 2)
+    }
+}
+
+fn level_39(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_38(n - 1) + level_38(n - 2)
+    }
+}
+
+fn level_40(n: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        level_39(n - 1) + level_39(n - 2)
+    }
+}
+
+fn main(n: Int, flag: Bool) -> Int {
+    let result = level_40(n);
+    if flag {
+        result
+    } else {
+        0
+    }
+}

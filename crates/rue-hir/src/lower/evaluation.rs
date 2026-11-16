@@ -10,10 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{
-    BinaryOp, Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, reachable_body,
-    reachable_statements,
-};
+use crate::{BinaryOp, Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId};
 
 use super::{
     Lowerer, fixed_parameters,
@@ -38,13 +35,11 @@ impl Lowerer<'_, '_, '_> {
         substitute
     }
 
-    /// Decides whether the binding can be substituted again, since its let statement is being
-    /// lowered, which might be in a different inline function call than before.
-    pub(super) fn redecide_substitution(&self, symbol: SymbolId) {
-        if self.options.auto_inline && self.graph.references(symbol) == 1 {
-            self.substitutions.borrow_mut().remove(&symbol);
-            self.can_substitute(symbol);
-        }
+    /// Forgets whether the binding can be substituted, since its let statement is being lowered
+    /// again, which might be in a call to an `inline fn` with different arguments than before.
+    /// It's decided again when the statement's bindings are grouped.
+    pub(super) fn forget_substitution(&self, symbol: SymbolId) {
+        self.substitutions.borrow_mut().remove(&symbol);
     }
 
     fn decide_substitution(&self, symbol: SymbolId) -> bool {
@@ -74,11 +69,8 @@ impl Lowerer<'_, '_, '_> {
             return false;
         };
 
-        let statements = reachable_statements(&block.statements);
-        let rest = statements.get(index + 1..).unwrap_or_default();
-        let body = reachable_body(&block.statements, block.body);
-
-        Evaluation::new(self, symbol).block(rest, body)
+        // The walk stops at a `return` or `raise`, so it doesn't reach what isn't lowered
+        Evaluation::new(self, symbol).block(&block.statements[index + 1..], block.body)
     }
 
     /// Whether the constant's single reference is always evaluated when the program is run, or
@@ -168,7 +160,9 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
     }
 
     fn hir_inner(&mut self, hir: HirId) -> bool {
-        match self.db().hir(hir).clone() {
+        let node = self.db().hir(hir);
+
+        match node {
             Hir::Unresolved
             | Hir::Nil
             | Hir::String(_)
@@ -178,35 +172,37 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
             | Hir::InfinityG1
             | Hir::InfinityG2
             | Hir::Const(_) => false,
-            Hir::Reference(symbol) => self.reference(symbol),
-            Hir::Lambda(lambda) => self.captures_target(lambda),
+            Hir::Reference(symbol) => self.reference(*symbol),
+            Hir::Lambda(lambda) => self.captures_target(*lambda),
             Hir::Block(block) => self.block(&block.statements, block.body),
             Hir::If(condition, then, else_, inline) => {
-                if inline {
-                    self.any([condition, then, else_])
+                if *inline {
+                    self.any(node.children())
                 } else {
-                    self.hir(condition) || (self.hir(then) && self.hir(else_))
+                    self.hir(*condition) || (self.hir(*then) && self.hir(*else_))
                 }
             }
             // The right side of `&&` and `||` is only evaluated some of the time
-            Hir::Binary(BinaryOp::And | BinaryOp::Or, left, _) => self.hir(left),
+            Hir::Binary(BinaryOp::And | BinaryOp::Or, left, _) => self.hir(*left),
             Hir::FunctionCall(call) => self.call(call.function, &call.args),
             Hir::Guard(guard) => guard.value_uses() > 0 && self.hir(guard.value),
-            Hir::Cast(hir) | Hir::Unary(_, hir) | Hir::ClvmOp(_, hir) => self.hir(hir),
-            Hir::FieldAccess(access) => self.hir(access.value),
-            Hir::List(list) => self.any(list.items),
-            Hir::Struct(initializer) => {
-                self.any(initializer.fields.into_iter().map(|field| field.value))
-            }
-            Hir::Pair(a, b) | Hir::Binary(_, a, b) => self.any([a, b]),
-            Hir::CoinId(a, b, c)
-            | Hir::Modpow(a, b, c)
-            | Hir::Secp256K1Verify(a, b, c)
-            | Hir::Secp256R1Verify(a, b, c) => self.any([a, b, c]),
-            Hir::Substr(hir, start, end) => self.any([hir, start]) || self.any(end),
-            Hir::G1Map(data, dst) | Hir::G2Map(data, dst) => self.hir(data) || self.any(dst),
-            Hir::BlsPairingIdentity(args) => self.any(args),
-            Hir::BlsVerify(sig, args) => self.hir(sig) || self.any(args),
+            Hir::Cast(_)
+            | Hir::Unary(..)
+            | Hir::ClvmOp(..)
+            | Hir::FieldAccess(_)
+            | Hir::List(_)
+            | Hir::Struct(_)
+            | Hir::Pair(..)
+            | Hir::Binary(..)
+            | Hir::CoinId(..)
+            | Hir::Modpow(..)
+            | Hir::Secp256K1Verify(..)
+            | Hir::Secp256R1Verify(..)
+            | Hir::Substr(..)
+            | Hir::G1Map(..)
+            | Hir::G2Map(..)
+            | Hir::BlsPairingIdentity(_)
+            | Hir::BlsVerify(..) => self.any(node.children()),
         }
     }
 
@@ -311,10 +307,13 @@ impl<'a, 'd, 'b, 'g> Evaluation<'a, 'd, 'b, 'g> {
                 .zip(args.iter().copied())
                 .collect();
 
+            // What's followed inside the body depends on the arguments, so it's followed again
+            // for each call
+            let visited = self.visited.clone();
             self.arguments.push(arguments);
             let evaluated = self.visited.insert(function) && self.hir(symbol.body);
-            self.visited.remove(&function);
             self.arguments.pop();
+            self.visited = visited;
             return evaluated || self.captures_target(function);
         }
 

@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use num_bigint::BigInt;
 use rue_lir::{ClvmOp, atom_bigint};
 
-use crate::{BinaryOp, Database, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
+use crate::{BinaryOp, Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 
 use super::Lowerer;
 
@@ -113,8 +113,12 @@ struct Visitor<'a, 'd, 'b, 'g> {
     /// cached until it's known whether it does.
     lowest_recursion: usize,
     /// The functions that didn't fail, but depend on an assumption about a function that's still
-    /// on the stack. They're cached once that function is known not to fail either.
+    /// on the stack, in the order they were checked. They're cached once that function is known
+    /// not to fail either.
     deferred: Vec<SymbolId>,
+    /// The lowest depth on the stack that each deferred function depends on. Until then, it's
+    /// assumed not to fail like the functions on the stack, so it isn't checked again.
+    provisional: HashMap<SymbolId, usize>,
 }
 
 impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
@@ -125,6 +129,7 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
             stack: Vec::new(),
             lowest_recursion: usize::MAX,
             deferred: Vec::new(),
+            provisional: HashMap::new(),
         }
     }
 
@@ -146,8 +151,9 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
 
     fn visit_inner(&mut self, hir: HirId, in_body: bool) -> bool {
         let db = self.db();
+        let node = db.hir(hir);
 
-        match db.hir(hir).clone() {
+        match node {
             Hir::Unresolved
             | Hir::Nil
             | Hir::String(_)
@@ -158,32 +164,26 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
             | Hir::InfinityG2
             // Constant expressions are evaluated at compile time
             | Hir::Const(_) => false,
-            Hir::Lambda(lambda) => !in_body && self.lowerer.captures_may_fail(lambda),
-            Hir::Reference(symbol) => self.visit_reference(symbol, in_body),
+            Hir::Lambda(lambda) => !in_body && self.lowerer.captures_may_fail(*lambda),
+            Hir::Reference(symbol) => self.visit_reference(*symbol, in_body),
             Hir::Block(block) => {
                 self.visit_statements(&block.statements, in_body)
                     || self.any(block.reachable_body(), in_body)
             }
-            Hir::If(condition, then, else_, _) => self.any([condition, then, else_], in_body),
-            Hir::List(list) => self.any(list.items, in_body),
-            Hir::Struct(initializer) => self.any(
-                initializer.fields.into_iter().map(|field| field.value),
-                in_body,
-            ),
-            Hir::FieldAccess(access) => self.visit(access.value, in_body),
-            Hir::Cast(hir) => self.visit(hir, in_body),
             // The value is only evaluated if the check it's lowered to uses it
             Hir::Guard(guard) => guard.value_uses() > 0 && self.visit(guard.value, in_body),
             Hir::FunctionCall(call) => {
-                self.visit_callee(call.function, in_body) || self.any(call.args, in_body)
+                self.visit_callee(call.function, in_body)
+                    || self.any(call.args.iter().copied(), in_body)
             }
-            Hir::Unary(op, hir) => {
-                matches!(op, UnaryOp::G1Negate | UnaryOp::G2Negate) || self.visit(hir, in_body)
+            Hir::Unary(op, _) => {
+                matches!(op, UnaryOp::G1Negate | UnaryOp::G2Negate)
+                    || self.any(node.children(), in_body)
             }
-            Hir::Binary(op, left, right) => {
-                binary_may_fail(db, op, right) || self.any([left, right], in_body)
+            Hir::Binary(op, _, right) => {
+                binary_may_fail(db, *op, *right) || self.any(node.children(), in_body)
             }
-            Hir::ClvmOp(op, args) => clvm_op_may_fail(op) || self.visit(args, in_body),
+            Hir::ClvmOp(op, _) => clvm_op_may_fail(*op) || self.any(node.children(), in_body),
             Hir::CoinId(..)
             | Hir::Substr(..)
             | Hir::Modpow(..)
@@ -193,7 +193,12 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)
             | Hir::Secp256R1Verify(..) => true,
-            Hir::Pair(first, rest) => self.any([first, rest], in_body),
+            Hir::If(..)
+            | Hir::List(_)
+            | Hir::Struct(_)
+            | Hir::FieldAccess(_)
+            | Hir::Cast(_)
+            | Hir::Pair(..) => self.any(node.children(), in_body),
         }
     }
 
@@ -271,7 +276,13 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
             return fails;
         }
 
-        if let Some(depth) = self.stack.iter().position(|&other| other == function) {
+        let assumed = self
+            .stack
+            .iter()
+            .position(|&other| other == function)
+            .or_else(|| self.provisional.get(&function).copied());
+
+        if let Some(depth) = assumed {
             self.lowest_recursion = self.lowest_recursion.min(depth);
             return false;
         }
@@ -279,6 +290,13 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
         let Symbol::Function(symbol) = self.db().symbol(function) else {
             return true;
         };
+
+        // The body of an external function is compiled CLVM, which could do anything
+        if symbol.kind == FunctionKind::External {
+            self.cache(function, true);
+            return true;
+        }
+
         let body = symbol.body;
 
         let depth = self.stack.len();
@@ -292,13 +310,17 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
         if fails {
             // Failing doesn't depend on any assumption. The functions that relied on this one
             // not failing were wrong, and will be checked again.
-            self.deferred.truncate(deferred);
+            for function in self.deferred.split_off(deferred) {
+                self.provisional.remove(&function);
+            }
+
             self.cache(function, true);
             self.lowest_recursion = lowest_recursion;
         } else if self.lowest_recursion >= depth {
             // Every assumption made while checking the body was about this function or the ones
             // it calls, and none of them fail
             for function in self.deferred.split_off(deferred) {
+                self.provisional.remove(&function);
                 self.cache(function, false);
             }
 
@@ -307,6 +329,7 @@ impl<'a, 'd, 'b, 'g> Visitor<'a, 'd, 'b, 'g> {
         } else {
             // This depends on a function further down the stack not failing
             self.deferred.push(function);
+            self.provisional.insert(function, self.lowest_recursion);
             self.lowest_recursion = self.lowest_recursion.min(lowest_recursion);
         }
 

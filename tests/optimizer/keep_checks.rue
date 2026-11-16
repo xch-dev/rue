@@ -423,7 +423,7 @@ fn countdown_safe(n: Int) -> Int {
 }
 
 // A recursive function that can't fail is still moved into the branch
-test fn safe_recursive_function_is_inlined(n: Int, flag: Bool) -> Int {
+test fn safe_recursive_call_is_inlined(n: Int, flag: Bool) -> Int {
     let y = countdown_safe(n);
     if flag {
         y
@@ -443,7 +443,7 @@ test fn bound_lambda_moved_into_branch(x: Int, flag: Bool) -> Int {
 }
 
 // A lambda bound to a name that can't fail is still moved into the branch
-test fn safe_bound_lambda_is_inlined(x: Int, flag: Bool) -> Int {
+test fn safe_bound_lambda_call_is_inlined(x: Int, flag: Bool) -> Int {
     let f = fn(i: Int) => i + 1;
     let y = f(x);
     if flag {
@@ -533,4 +533,111 @@ test fn hash_is_inlined(value: Bytes, flag: Bool) -> Bytes32 {
     } else {
         sha256(nil)
     }
+}
+
+extern fn external_raise(value: Int) -> Int from "./keep_checks_raise.hex";
+
+// The body of an external function is compiled CLVM, so calling it may fail
+test fn external_call_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let y = external_raise(x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn is_even(n: Int) -> Bool {
+    if n == 0 {
+        true
+    } else {
+        is_odd(n - 1)
+    }
+}
+
+fn is_odd(n: Int) -> Bool {
+    assert n < 100;
+    if n == 0 {
+        false
+    } else {
+        is_even(n - 1)
+    }
+}
+
+// A function that calls one which fails through mutual recursion may fail too
+test fn mutually_recursive_call_moved_into_branch(n: Int, flag: Bool) -> Bool {
+    let y = is_even(n);
+    if flag {
+        y
+    } else {
+        false
+    }
+}
+
+fn is_even_safe(n: Int) -> Bool {
+    if n == 0 {
+        true
+    } else {
+        is_odd_safe(n - 1)
+    }
+}
+
+fn is_odd_safe(n: Int) -> Bool {
+    if n == 0 {
+        false
+    } else {
+        is_even_safe(n - 1)
+    }
+}
+
+// Mutually recursive functions that can't fail are still moved into the branch
+test fn safe_mutually_recursive_call_is_inlined(n: Int, flag: Bool) -> Bool {
+    let y = is_even_safe(n);
+    if flag {
+        y
+    } else {
+        false
+    }
+}
+
+fn checked_after_call(n: Int) -> Int {
+    let result = if n == 0 {
+        0
+    } else {
+        calls_checked(n - 1)
+    };
+    assert n < 100;
+    result
+}
+
+fn calls_checked(n: Int) -> Int {
+    if n == 0 {
+        0
+    } else {
+        checked_after_call(n - 1)
+    }
+}
+
+// While `checked_after_call` is checked, `calls_checked` is assumed not to fail until the rest of
+// its cycle is known, so that assumption mustn't be kept once `checked_after_call` fails
+test fn mutually_recursive_assumption_is_discarded(n: Int, m: Int, flag: Bool) -> Int {
+    let y = checked_after_call(n);
+    let z = calls_checked(m);
+    if flag {
+        y + z
+    } else {
+        0
+    }
+}
+
+inline fn double_next(a: Int) -> Int {
+    inline let b = a + 1;
+    b * 2
+}
+
+// Each call to an `inline fn` is followed separately, so a binding that's used unconditionally
+// through the second call is still inlined
+test fn inline_function_called_twice(x: Int) -> Int {
+    let y = check(x);
+    double_next(5) + double_next(y)
 }

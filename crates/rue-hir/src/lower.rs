@@ -856,7 +856,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .collect();
 
         for &symbol in &symbols {
-            self.redecide_substitution(symbol);
+            self.forget_substitution(symbol);
         }
 
         let binding_groups = self.group_symbols(symbols, false, true);
