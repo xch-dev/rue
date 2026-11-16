@@ -14,7 +14,7 @@ use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use indexmap::IndexMap;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::normalize_path;
-use rue_compiler::{Compiler, FileTree};
+use rue_compiler::{CompiledTest, Compiler, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
@@ -208,26 +208,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         .transpose()?
         .unwrap_or_default();
 
-    if file.tests.len() > tests.len() {
-        file.tests.truncate(tests.len());
-    }
-
-    for _ in file.tests.len()..tests.len() {
-        file.tests.push(TestCase::default());
-    }
-
-    assert_eq!(debug_tests.len(), tests.len());
-
-    for (i, test_case) in file.tests.iter_mut().enumerate() {
-        test_case.name.clone_from(&tests[i].name);
-
-        handle_test_case(
-            &mut allocator,
-            test_case,
-            Some(tests[i].ptr),
-            Some(debug_tests[i].ptr),
-        )?;
-    }
+    handle_tests(&mut allocator, &mut file.tests, &tests, &debug_tests)?;
 
     compare_snapshot(&yaml_file, &file, update, &mut failed)?;
 
@@ -553,30 +534,55 @@ fn handle_test_file(
         }
     }
 
-    if file.tests.len() > tests.len() {
-        file.tests.truncate(tests.len());
-    }
-
-    for _ in file.tests.len()..tests.len() {
-        file.tests.push(TestCase::default());
-    }
-
-    assert_eq!(debug_tests.len(), tests.len());
-
-    for (i, test_case) in file.tests.iter_mut().enumerate() {
-        test_case.name.clone_from(&tests[i].name);
-
-        handle_test_case(
-            &mut allocator,
-            test_case,
-            Some(tests[i].ptr),
-            Some(debug_tests[i].ptr),
-        )?;
-    }
+    handle_tests(&mut allocator, &mut file.tests, &tests, &debug_tests)?;
 
     compare_snapshot(&yaml_file, &file, update, failed)?;
 
     Ok(())
+}
+
+/// Runs each test and its debug build, and records the results in the snapshot's test cases.
+fn handle_tests(
+    allocator: &mut Allocator,
+    test_cases: &mut Vec<TestCase>,
+    tests: &[CompiledTest],
+    debug_tests: &[CompiledTest],
+) -> Result<()> {
+    assert_eq!(debug_tests.len(), tests.len());
+
+    *test_cases = match_test_cases(
+        std::mem::take(test_cases),
+        tests.iter().map(|test| test.name.clone()),
+    );
+
+    for ((test_case, test), debug_test) in test_cases.iter_mut().zip(tests).zip(debug_tests) {
+        handle_test_case(allocator, test_case, Some(test.ptr), Some(debug_test.ptr))?;
+    }
+
+    Ok(())
+}
+
+/// Lines up the test cases of the old snapshot with the compiled tests, by name, so that a
+/// `solution` set by hand stays with its test when tests are added, removed or reordered. A test
+/// that isn't in the old snapshot gets a default test case.
+fn match_test_cases(
+    mut old: Vec<TestCase>,
+    names: impl IntoIterator<Item = Option<String>>,
+) -> Vec<TestCase> {
+    names
+        .into_iter()
+        .map(|name| {
+            old.iter()
+                .position(|test_case| test_case.name == name)
+                .map_or_else(
+                    || TestCase {
+                        name,
+                        ..TestCase::default()
+                    },
+                    |index| old.remove(index),
+                )
+        })
+        .collect()
 }
 
 fn read_snapshot(yaml_file: &Path) -> Result<TestFile> {
@@ -808,6 +814,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_cases_are_matched_by_name() {
+        let test_case = |name: &str, solution: &str| TestCase {
+            name: Some(name.to_string()),
+            solution: Some(solution.to_string()),
+            ..TestCase::default()
+        };
+        let names = ["c", "b", "d"].map(|name| Some(name.to_string()));
+
+        let matched = match_test_cases(
+            vec![
+                test_case("a", "1"),
+                test_case("b", "2"),
+                test_case("c", "3"),
+            ],
+            names.clone(),
+        );
+
+        assert_eq!(
+            matched,
+            [
+                test_case("c", "3"),
+                test_case("b", "2"),
+                TestCase {
+                    name: names[2].clone(),
+                    ..TestCase::default()
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn tests() -> Result<()> {
         let failed = run_tests(None, Path::new("../.."), false)?;
 
@@ -953,6 +990,36 @@ mod tests {
             }
         }
         Ok(files)
+    }
+
+    #[test]
+    fn bless_keeps_solutions_with_reordered_tests() -> Result<()> {
+        let dir = corpus("reordered")?;
+        let tests = dir.0.join("tests");
+        fs::write(
+            tests.join("reordered.rue"),
+            "test fn first() {\n    assert 1 == 1;\n}\n\ntest fn second() {\n    assert 2 == 2;\n}\n",
+        )?;
+        // The snapshot lists the tests in the other order, as if they had been swapped
+        fs::write(
+            tests.join("reordered.yaml"),
+            "tests:\n- name: second\n  solution: (5)\n- name: first\n",
+        )?;
+
+        run_tests(None, &dir.0, true)?;
+
+        let file = read_snapshot(&tests.join("reordered.yaml"))?;
+        let solutions: Vec<_> = file
+            .tests
+            .iter()
+            .map(|test| (test.name.as_deref(), test.solution.as_deref()))
+            .collect();
+        assert_eq!(
+            solutions,
+            [(Some("first"), None), (Some("second"), Some("(5)"))]
+        );
+
+        Ok(())
     }
 
     #[test]
