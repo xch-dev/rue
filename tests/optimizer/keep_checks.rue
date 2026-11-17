@@ -1491,3 +1491,108 @@ test fn unused_binding_reading_referenced_inline_constant_is_evaluated(n: Int) -
     let _u = INLINE_THREE + n;
     1
 }
+
+const ROOT_OF_INLINE: Int = check(50);
+inline const READS_ROOT_TWICE: Int = ROOT_OF_INLINE + 1;
+
+// The inline constant is evaluated where it's referenced, which is only in one branch, so the
+// constant it reads isn't always evaluated there and is bound at the start
+test fn constant_read_by_inline_constant_in_branch_is_kept(flag: Bool) -> Int {
+    if flag {
+        READS_ROOT_TWICE + READS_ROOT_TWICE
+    } else {
+        0
+    }
+}
+
+inline fn binds_parameter_unused(p: Int) -> Int {
+    let _u = p;
+    1
+}
+
+// The binding the parameter is substituted into is never lowered, since it can't fail as written,
+// so `y` isn't evaluated there and is kept
+test fn binding_passed_to_unused_binding_of_inline_parameter_is_kept(x: Int) -> Int {
+    let y = check(x);
+    binds_parameter_unused(y)
+}
+
+fn creates_closure_then_branches(a: Int, flag: Bool) -> Int {
+    let g = fn() => 2;
+    if flag {
+        a + g()
+    } else {
+        g()
+    }
+}
+
+// Creating the closure doesn't evaluate the argument, since it doesn't capture it
+test fn argument_not_captured_by_closure_is_kept(x: Int, flag: Bool) -> Int {
+    creates_closure_then_branches(check(x), flag)
+}
+
+inline fn ignores_first_inline(_a: Int, b: Int) -> Int {
+    b
+}
+
+// The argument is never evaluated (explicit `inline` is call-by-name), so the binding can't fail
+// and is moved into the branch, as before
+test fn binding_with_unused_inline_argument_is_inlined(x: Int, flag: Bool) -> Int {
+    let z = ignores_first_inline(check(x), 5) + x;
+    if flag {
+        z
+    } else {
+        0
+    }
+}
+
+test fn unused_binding_with_unused_inline_argument_is_dropped(x: Int) -> Int {
+    let _u = ignores_first_inline(check(x), 5);
+    x
+}
+
+inline fn returns_parameter_through_inline_binding(p: Int) -> Int {
+    inline let q = p;
+    q
+}
+
+// The argument is evaluated through the inline binding, so the unused binding may fail
+test fn unused_call_through_inline_parameter_binding_is_evaluated(x: Int) -> Int {
+    let _u = returns_parameter_through_inline_binding(check(x));
+    x
+}
+
+inline fn unused_inline_binding_of_parameter(p: Int) -> Int {
+    inline let _q = check(p);
+    1
+}
+
+// The inline binding is never referenced, so neither it nor the argument is evaluated, as before
+test fn unused_call_with_unused_inline_binding_is_dropped(x: Int) -> Int {
+    let _u = unused_inline_binding_of_parameter(check(x));
+    x
+}
+
+inline fn returns_before_using(p: Int) -> Int {
+    return 1;
+    assert p > 0;
+    1
+}
+
+// The parameter is only referenced after a return, so the argument isn't evaluated, as before
+test fn unused_call_using_argument_after_return_is_dropped(x: Int) -> Int {
+    let _v = returns_before_using(check(x));
+    x
+}
+
+fn below_twenty(x: Int) -> Int {
+    assert x < 20;
+    x
+}
+
+// Unused bindings are evaluated in the order they're written, so the first check fails first
+test fn unused_bindings_are_evaluated_in_order(x: Int) -> Int {
+    let _a = check(x);
+    let _b = below_twenty(x);
+    x
+}

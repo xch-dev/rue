@@ -233,6 +233,18 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
     // Warns: only referenced after a return
     let t = only_after_return(check(x));
 
+    // Warns: the callee is cast, but it's still the inline function
+    let u = (pick as fn(value: Int, flag: Bool) -> Int)(check(x), flag);
+
+    // Warns once, where the inline binding is defined, even though it's cast where it's passed
+    inline let cast_checked = check(x);
+    let v = pick(cast_checked as Int, flag);
+
+    // Warns at the argument, but not at the inline binding, since the argument is never evaluated
+    // and nothing else in its value can fail
+    inline let ignored = ignore(check(x), 1);
+    let w = ignored;
+
     // Doesn't warn: allowed or expected
     #[allow(inline_value_may_fail)]
     let m = pick(check(x), flag);
@@ -259,6 +271,9 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
         + r
         + s
         + t
+        + u
+        + v
+        + w
         + CHECKED
         + DOUBLED
         + NOT_INLINE

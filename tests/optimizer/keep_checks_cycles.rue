@@ -3,7 +3,8 @@
 // through their cycles, so whether each check is kept depends on how the cycles are resolved.
 // These were picked because compilers with a bug planted in that (caching a function whose
 // result depends on an earlier assumption, or not recording that dependency) drop a check in
-// each of them. Each test must fail for its solution in both builds.
+// each of them. Each test must fail for its solution in both builds, except the control at the end
+// of the fuzzed cases.
 
 fn check(x: Int) -> Int {
     if x > 10 {
@@ -565,6 +566,7 @@ fn control_f3(n: Int, x: Int) -> Int {
     }
 }
 
+// The control: nothing in this cycle can fail, so it compiles as before and doesn't fail
 test fn cycle_that_cannot_fail(x: Int, flag: Bool) -> Int {
     let y0 = control_f2(2, x);
     let y1 = control_f3(2, x);
