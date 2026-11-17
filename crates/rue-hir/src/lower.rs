@@ -865,7 +865,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let effects: Vec<SymbolId> = symbols
             .iter()
             .copied()
-            .filter(|&symbol| self.graph.is_effect(symbol))
+            .filter(|&symbol| self.is_lowered_effect(symbol))
             .collect();
 
         let binding_groups = self.group_symbols(symbols, false, true);

@@ -31,6 +31,7 @@ impl Symbol {
             Self::Binding(binding) => binding.name.clone(),
         }
     }
+
     /// The value of an `inline` binding or constant, which is evaluated where it's referenced.
     pub fn inline_value(&self) -> Option<HirId> {
         match self {

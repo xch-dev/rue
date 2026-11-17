@@ -271,6 +271,10 @@ fn kept_bindings(db: &Database) -> HashSet<Declaration> {
 /// Whether the declaration is live whenever the function or type that declares it is, because
 /// it's part of its signature, it's a kept binding, or it's a binding whose value may fail, which
 /// is evaluated for its effect even if it isn't referenced.
+///
+/// This counts a binding that only calls the value of a parameter as live, although whether it's
+/// evaluated depends on what's passed for it. That keeps what it references from being reported
+/// as unused when some call would need it, at the cost of not reporting it when none does.
 fn is_live_with_parent(
     db: &Database,
     kept: &HashSet<Declaration>,

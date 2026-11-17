@@ -60,13 +60,13 @@ impl<'a> LintInput<'a> {
         }
     }
 
-    /// The declarations whose code is evaluated, or is needed by code that's kept, starting from
-    /// the entrypoints.
     /// Whether values may fail as written (see [`FailureAnalysis`]).
     pub(crate) fn failures(&self) -> &FailureAnalysis {
         &self.failures
     }
 
+    /// The declarations whose code is evaluated, or is needed by code that's kept, starting from
+    /// the entrypoints.
     pub(crate) fn live_declarations(&self, db: &Database) -> &HashSet<Declaration> {
         self.live
             .get_or_init(|| lints::live_declarations(db, self.entrypoints, &self.failures))

@@ -119,6 +119,19 @@ impl Lowerer<'_, '_, '_> {
     }
 }
 
+impl Lowerer<'_, '_, '_> {
+    /// Whether the binding is evaluated for its effect where it's lowered. The dependency graph
+    /// decides which bindings may need to be from how the code is written, but it can't know the
+    /// arguments of an inlined function, which might make the value unable to fail in this call.
+    pub(super) fn is_lowered_effect(&self, binding: SymbolId) -> bool {
+        let Symbol::Binding(symbol) = self.db.symbol(binding) else {
+            return false;
+        };
+
+        self.graph.is_effect(binding) && may_fail(self, symbol.value.hir)
+    }
+}
+
 impl AnalysisContext for Lowerer<'_, '_, '_> {
     fn db(&self) -> &Database {
         self.db
@@ -171,8 +184,14 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
         self.graph.references(binding) > 0 || self.graph.is_effect(binding)
     }
 
+    // An effect is only lowered if its value may fail where it's lowered (see
+    // [`Lowerer::is_lowered_effect`])
     fn let_evaluates(&self, binding: SymbolId, _rest: &[Statement], _body: Option<HirId>) -> bool {
-        self.is_evaluated(binding)
+        self.graph.references(binding) > 0 || self.is_lowered_effect(binding)
+    }
+
+    fn is_parameter_used(&self, _function: SymbolId, parameter: SymbolId) -> bool {
+        self.graph.references(parameter) > 0
     }
 
     fn captures(&self, function: SymbolId, parameter: SymbolId) -> bool {

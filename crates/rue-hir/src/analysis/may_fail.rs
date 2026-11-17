@@ -135,9 +135,13 @@ struct Visitor<'a, C> {
     /// recursive function that's still being found, or a value that references itself. A value
     /// that can't fail is only cached if this didn't change.
     dependencies: usize,
-    /// The functions that call themselves whose summaries are still being found (see
-    /// [`Self::self_recursive_failure`]), which are cached while they are.
-    unfinished: HashSet<SymbolId>,
+    /// How many functions that call themselves are having their summaries found (see
+    /// [`Self::self_recursive_failure`]). Their summaries are cached while they are, and so are
+    /// those of the functions checked meanwhile, which might depend on them.
+    unfinished: usize,
+    /// The functions whose summaries were cached while a summary was unfinished, which aren't
+    /// final until it is, so nothing that depends on them is cached either.
+    provisional: HashSet<SymbolId>,
 }
 
 impl<'a, C: AnalysisContext> Visitor<'a, C> {
@@ -150,7 +154,8 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             calls: Vec::new(),
             substituted: HashMap::new(),
             dependencies: 0,
-            unfinished: HashSet::new(),
+            unfinished: 0,
+            provisional: HashSet::new(),
         }
     }
 
@@ -195,7 +200,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             Hir::Guard(guard) => guard.value_uses() > 0 && self.visit(guard.value, in_body),
             Hir::FunctionCall(call) => {
                 self.visit_call(call.function, &call.args, in_body)
-                    || self.any(call.args.iter().copied(), in_body)
+                    || self.visit_arguments(call.function, &call.args, in_body)
             }
             Hir::Unary(op, _) => {
                 matches!(op, UnaryOp::G1Negate | UnaryOp::G2Negate)
@@ -352,10 +357,40 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         }
     }
 
+    /// Whether evaluating the arguments of the call may fail. The arguments of an `inline fn` are
+    /// only evaluated where its parameters are referenced, so one whose parameter never is isn't.
+    fn visit_arguments(&mut self, callee: HirId, args: &[HirId], in_body: bool) -> bool {
+        let db = self.db();
+
+        if let Hir::Reference(function) = db.hir(db.without_casts(callee))
+            && let Symbol::Function(symbol) = db.symbol(*function)
+            && symbol.kind == FunctionKind::Inline
+        {
+            let fixed = symbol.fixed_parameters();
+            let rest = symbol.parameters.get(fixed.len()).copied();
+
+            return args.iter().enumerate().any(|(index, &arg)| {
+                fixed
+                    .get(index)
+                    .copied()
+                    .or(rest)
+                    .is_none_or(|parameter| self.cx.is_parameter_used(*function, parameter))
+                    && self.visit(arg, in_body)
+            });
+        }
+
+        self.any(args.iter().copied(), in_body)
+    }
+
     /// Whether calling the value of the parameter may fail. Inside of a function body, the call
     /// is recorded, and checked where the function is called, since that's where the value of the
     /// parameter is known. Otherwise, the value isn't known, so it could do anything.
     fn parameter_call_may_fail(&mut self, parameter: SymbolId, in_body: bool) -> bool {
+        // The argument of an inlined function is substituted for its parameter, so it's called
+        if !in_body && let Some(arg) = self.cx.substituted_value(parameter) {
+            return self.value_call_may_fail(arg, in_body);
+        }
+
         let Some(calls) = self.calls.last_mut().filter(|_| in_body) else {
             return true;
         };
@@ -372,7 +407,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
     /// function's body is only checked once.
     fn function_may_fail(&mut self, function: SymbolId) -> FunctionFailure {
         if let Some(failure) = self.cx.function_failures().borrow().get(&function).cloned() {
-            if self.unfinished.contains(&function) {
+            if self.provisional.contains(&function) {
                 self.dependencies += 1;
             }
 
@@ -440,19 +475,21 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             // Every assumption made while checking the body was about this function or the ones
             // reached after it, and none of them fail. Only a function that didn't depend on any
             // assumption calls the function values it's passed, which is then the only one here.
-            let mut failures = self.cx.function_failures().borrow_mut();
+            let resolved: Vec<SymbolId> = self
+                .assumed
+                .drain(index..)
+                .map(|(assumed, _)| assumed)
+                .collect();
 
-            for (assumed, _) in self.assumed.drain(index..) {
+            for assumed in resolved {
                 let failure = if assumed == function {
                     failure.clone()
                 } else {
                     FunctionFailure::default()
                 };
 
-                failures.insert(assumed, failure);
+                self.cache(assumed, failure);
             }
-
-            drop(failures);
 
             self.lowest_assumption = lowest_assumption;
         } else {
@@ -476,7 +513,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         mut calls: IndexSet<SymbolId>,
     ) -> FunctionFailure {
         self.assumed.truncate(index);
-        self.unfinished.insert(function);
+        self.unfinished += 1;
 
         let failure = loop {
             let failure = FunctionFailure {
@@ -521,7 +558,12 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             }
         };
 
-        self.unfinished.remove(&function);
+        self.unfinished -= 1;
+
+        if self.unfinished == 0 {
+            self.provisional.clear();
+        }
+
         self.cache(function, failure.clone());
         failure
     }
@@ -534,7 +576,11 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         (fails, calls)
     }
 
-    fn cache(&self, function: SymbolId, failure: FunctionFailure) {
+    fn cache(&mut self, function: SymbolId, failure: FunctionFailure) {
+        if self.unfinished > 0 {
+            self.provisional.insert(function);
+        }
+
         self.cx
             .function_failures()
             .borrow_mut()

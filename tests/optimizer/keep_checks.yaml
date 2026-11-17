@@ -612,7 +612,7 @@ tests:
   total_cost: 12048
 - name: constant_read_by_unused_binding
   program: (a (q 3 () (a 2 (q . 50)) 5) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
-  debug_program: (a (q 2 (q 3 () 2 11) (c (a 2 (q . 50)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q . 11) (c (a 2 (q . 50)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (5)
   byte_cost: 732000
   clvm_error: clvm raise ()
@@ -694,6 +694,36 @@ tests:
   solution: (2 ())
   byte_cost: 2628000
   clvm_error: Division by zero
+- name: function_checked_during_recursive_summary_is_not_remembered
+  program: (a (q 16 (a 10 (c 2 (c () (c (c (q . 2) (c (c (q . 1) 4) (c () ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))))) (a 22 (c 30 (c 4 (c 10 (c 22 ())))))) (c (c (q) (c (q 2 (i 5 (q 2 (i (> 5 (q . 100)) (q 16 (a 10 (c 2 (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 30) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 22) (c (c (q . 4) (c (c (q . 1) 30) (c () ()))) ()))) ()))) ()))) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))))) (a 10 (c 2 (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 22) (c (c (q . 4) (c (c (q . 1) 30) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 22) (c () ()))) ()))) ()))) ()))) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ())))))))) (q 2 10 (c 2 (c (- 5 (q . 1)) (c 15 11))))) 1) (q 2 11 ())) 1) (c (q 3 () (a 2 (c 5 (c 11 (c 23 (c 2 ()))))) ()) (q 2 5 (c (c 2 (c 5 (c 11 23))) (c (q . 1) (c (c (q . 2) (c (c (q . 1) 2) (c () ()))) (q 8)))))))) ()))
+  debug_program: (a (q 2 (q 16 2 (a 45 (c 93 (c 125 (c 9 (c 21 (c 45 ()))))))) (c (a 10 (c (c 4 (c 10 (c 22 (c 46 62)))) (c () (c (c (q . 2) (c (c (q . 1) 4) (c () ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))))) 1)) (c (c (q) (c (q 2 (i (= 5 ()) (q 2 11 ()) (q 2 (i (> 5 (q . 100)) (q 16 (a 10 (c (c 4 (c 10 (c 22 (c 46 62)))) (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 46) (c (c (q . 4) (c (c (q . 1) 62) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 22) (c (c (q . 4) (c (c (q . 1) 46) (c () ()))) ()))) ()))) ()))) ()))) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))))) (a 10 (c (c 4 (c 10 (c 22 (c 46 62)))) (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 22) (c (c (q . 4) (c (c (q . 1) 46) (c (c (q . 4) (c (c (q . 1) 62) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 22) (c () ()))) ()))) ()))) ()))) ()))) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ())))))))) (q 2 10 (c (c 4 (c 10 (c 22 (c 46 62)))) (c (- 5 (q . 1)) (c 15 11))))) 1)) 1) (c (q 3 () (a 2 (c 5 (c 11 (c 23 (c 47 (c 2 ())))))) ()) (c (q 2 11 (c (c 5 (c 11 (c 23 (c 47 2)))) (c (q . 1) (c (c (q . 2) (c (c (q . 1) 5) (c () ()))) (c (q . 2) (c (c (q . 1) 2) (c () ()))))))) (q 8 (q . "raise called at keep_checks.rue:1138:5")))))) ()))
+  solution: ()
+  byte_cost: 9108000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "raise called at keep_checks.rue:1138:5"
+- name: unused_call_evaluated_per_inlined_call
+  program: (a (q 16 5 (i () (a 2 (c 11 ())) 11)) (c (q 2 (i (> 2 (q . 1)) (q . 2) (q 8)) 1) 1))
+  debug_program: (a (q 16 5 (i () (a (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c 11 ())) 11)) (c (c (q 2 (i (> 2 (q . 1)) (q . 2) (q 8 (q . "assertion failed at keep_checks.rue:1178:5"))) 1) (q 16 2 (q . 2))) 1))
+  solution: (5 1)
+  byte_cost: 852000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:1178:5"
+- name: unused_call_in_safe_inlined_calls_is_dropped
+  program: (+ 2 5)
+  debug_program: (a (q 16 5 11) (c (c (q 16 2 (q . 1)) (q 16 2 (q . 2))) 1))
+  solution: (5 1)
+  output: "6"
+  runtime_cost: 856
+  byte_cost: 84000
+  total_cost: 84856
+- name: unused_inline_call_with_unused_argument_is_dropped
+  program: "5"
+  debug_program: "5"
+  solution: (5 0)
+  output: ()
+  runtime_cost: 52
+  byte_cost: 12000
+  total_cost: 12052
 diagnostics:
 - |-
   This argument can fail, but `ignore_inline` is an `inline fn` that doesn't always evaluate its parameter `_a`, so its check can be skipped at keep_checks.rue:294:19
@@ -707,3 +737,6 @@ diagnostics:
 - |-
   Binding `divided` is returned directly after it's declared at keep_checks.rue:1120:9
     help: Return the value directly
+- |-
+  This argument can fail, but `uses_second` is an `inline fn` that doesn't always evaluate its parameter `_first`, so its check can be skipped at keep_checks.rue:1204:31
+    note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function

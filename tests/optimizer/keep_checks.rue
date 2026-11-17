@@ -1133,3 +1133,74 @@ test fn recursive_summary_is_not_remembered_early(x: Int, flag: Bool) -> Int {
         0
     }
 }
+
+fn always_raises() -> Int {
+    raise;
+}
+
+fn returns_zero() -> Int {
+    0
+}
+
+fn calls_rotate() -> Int {
+    rotate(returns_zero, always_raises, 1)
+}
+
+fn reads_rotate() -> Int {
+    inline let rotated = calls_rotate();
+    let _unused = rotated;
+    0
+}
+
+fn rotate(a: fn() -> Int, b: fn() -> Int, n: Int) -> Int {
+    if n == 0 {
+        a()
+    } else if n > 100 {
+        rotate(calls_rotate, returns_zero, n - 1) + rotate(reads_rotate, returns_zero, n - 1)
+    } else {
+        rotate(b, a, n - 1)
+    }
+}
+
+// While the function values that `rotate` calls are being found, `calls_rotate` is checked with
+// what's known so far, so neither it nor the unused binding that reads it can be remembered as
+// unable to fail until `rotate` is known
+test fn function_checked_during_recursive_summary_is_not_remembered() -> Int {
+    let z = rotate(returns_zero, returns_zero, 0);
+    z + reads_rotate()
+}
+
+fn add_two(x: Int) -> Int {
+    x + 2
+}
+
+fn assert_above_one(x: Int) -> Int {
+    assert x > 1;
+    x
+}
+
+inline fn apply_ignored(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _ignored = f(x);
+    x
+}
+
+// The unused binding is only evaluated in the inlined call whose function may fail
+test fn unused_call_evaluated_per_inlined_call(x: Int, y: Int) -> Int {
+    apply_ignored(add_two, x) + apply_ignored(assert_above_one, y)
+}
+
+// Only calls whose function values can't fail, so nothing is evaluated, as before
+test fn unused_call_in_safe_inlined_calls_is_dropped(x: Int, y: Int) -> Int {
+    apply_ignored(add_two, x) + apply_ignored(add_one, y)
+}
+
+inline fn uses_second(_first: Int, second: Int) -> Int {
+    second + 1
+}
+
+// The argument that may fail is never evaluated, since the parameter isn't referenced, so the
+// unused binding can't fail and is dropped, as before
+test fn unused_inline_call_with_unused_argument_is_dropped(a: Int, b: Int) -> Int {
+    let _unused = uses_second(a / b, a);
+    b
+}

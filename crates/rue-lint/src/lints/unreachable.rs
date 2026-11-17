@@ -92,7 +92,13 @@ fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
         Statement::Expr(statement) => statement.hir,
         Statement::Let(symbol, _) => match cx.db().symbol(*symbol) {
             Symbol::Binding(binding) if !binding.inline => binding.value.hir,
-            _ => return false,
+            Symbol::Binding(_)
+            | Symbol::Constant(_)
+            | Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Builtin(_) => return false,
         },
         Statement::If(_) | Statement::Assert(..) | Statement::Debug(..) => return false,
     };

@@ -12,11 +12,14 @@ mod may_fail;
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
+    rc::Rc,
 };
 
 use indexmap::IndexSet;
 
-use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{
+    Database, Hir, HirId, Statement, Symbol, SymbolId, reachable_body, reachable_statements,
+};
 
 pub(crate) use evaluation::*;
 pub(crate) use may_fail::*;
@@ -42,6 +45,10 @@ pub(crate) trait AnalysisContext {
     /// Whether creating a closure for the function, or calling it directly, evaluates an argument
     /// of an inlined function that may fail, since the arguments it captures are evaluated then.
     fn captures_may_fail(&self, function: SymbolId) -> bool;
+
+    /// Whether the body of the `inline fn` may reference the parameter, which is the only way its
+    /// argument is evaluated.
+    fn is_parameter_used(&self, function: SymbolId, parameter: SymbolId) -> bool;
 
     /// Whether creating a closure for the function evaluates the parameter, which is the case for
     /// an argument of an inlined function that the closure captures by value.
@@ -71,6 +78,7 @@ pub struct FailureAnalysis {
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     let_evaluations: RefCell<HashMap<SymbolId, bool>>,
+    parameter_uses: RefCell<HashMap<SymbolId, Rc<HashSet<SymbolId>>>>,
 }
 
 impl FailureAnalysis {
@@ -113,20 +121,13 @@ impl FailureAnalysis {
     }
 
     fn context<'a>(&'a self, db: &'a Database) -> WrittenContext<'a> {
-        WrittenContext {
-            db,
-            function_failures: &self.function_failures,
-            substitution_failures: &self.substitution_failures,
-            let_evaluations: &self.let_evaluations,
-        }
+        WrittenContext { db, analysis: self }
     }
 }
 
 struct WrittenContext<'a> {
     db: &'a Database,
-    function_failures: &'a RefCell<HashMap<SymbolId, FunctionFailure>>,
-    substitution_failures: &'a RefCell<HashMap<(SymbolId, bool), bool>>,
-    let_evaluations: &'a RefCell<HashMap<SymbolId, bool>>,
+    analysis: &'a FailureAnalysis,
 }
 
 impl WrittenContext<'_> {
@@ -140,12 +141,7 @@ impl WrittenContext<'_> {
     /// The symbols that evaluating the statements and body may reference, deciding along the way
     /// which of the bindings they declare are evaluated (see [`Uses`]).
     fn block_uses(&self, statements: &[Statement], body: Option<HirId>) -> HashSet<SymbolId> {
-        let mut uses = Uses {
-            cx: self,
-            symbols: HashSet::new(),
-            visited: HashSet::new(),
-        };
-
+        let mut uses = Uses::new(self);
         uses.block(statements, body);
         uses.symbols
     }
@@ -172,7 +168,7 @@ impl AnalysisContext for WrittenContext<'_> {
     // The dependency graph only evaluates a binding that's never referenced if it may fail, which
     // it might not as written, such as one that only references an argument of an `inline fn`
     fn let_evaluates(&self, binding: SymbolId, rest: &[Statement], body: Option<HirId>) -> bool {
-        if let Some(&evaluated) = self.let_evaluations.borrow().get(&binding) {
+        if let Some(&evaluated) = self.analysis.let_evaluations.borrow().get(&binding) {
             return evaluated;
         }
 
@@ -185,7 +181,10 @@ impl AnalysisContext for WrittenContext<'_> {
         let evaluated = self.evaluated_unreferenced(symbol.value.hir)
             || self.block_uses(rest, body).contains(&binding);
 
-        self.let_evaluations.borrow_mut().insert(binding, evaluated);
+        self.analysis
+            .let_evaluations
+            .borrow_mut()
+            .insert(binding, evaluated);
         evaluated
     }
 
@@ -193,27 +192,43 @@ impl AnalysisContext for WrittenContext<'_> {
         false
     }
 
+    fn is_parameter_used(&self, function: SymbolId, parameter: SymbolId) -> bool {
+        if let Some(uses) = self.analysis.parameter_uses.borrow().get(&function) {
+            return uses.contains(&parameter);
+        }
+
+        let Symbol::Function(symbol) = self.db.symbol(function) else {
+            return true;
+        };
+
+        let mut uses = Uses::new(self);
+        uses.hir(symbol.body);
+        let used = uses.symbols.contains(&parameter);
+
+        self.analysis
+            .parameter_uses
+            .borrow_mut()
+            .insert(function, Rc::new(uses.symbols));
+
+        used
+    }
+
     fn captures(&self, function: SymbolId, parameter: SymbolId) -> bool {
         let Symbol::Function(symbol) = self.db.symbol(function) else {
             return false;
         };
 
-        let mut uses = Uses {
-            cx: self,
-            symbols: HashSet::new(),
-            visited: HashSet::new(),
-        };
-
+        let mut uses = Uses::new(self);
         uses.hir(symbol.body);
         uses.symbols.contains(&parameter)
     }
 
     fn function_failures(&self) -> &RefCell<HashMap<SymbolId, FunctionFailure>> {
-        self.function_failures
+        &self.analysis.function_failures
     }
 
     fn substitution_failures(&self) -> &RefCell<HashMap<(SymbolId, bool), bool>> {
-        self.substitution_failures
+        &self.analysis.substitution_failures
     }
 
     // What's substituted as written never changes
@@ -236,7 +251,15 @@ struct Uses<'a, 'c> {
     visited: HashSet<SymbolId>,
 }
 
-impl Uses<'_, '_> {
+impl<'a, 'c> Uses<'a, 'c> {
+    fn new(cx: &'c WrittenContext<'a>) -> Self {
+        Self {
+            cx,
+            symbols: HashSet::new(),
+            visited: HashSet::new(),
+        }
+    }
+
     fn hir(&mut self, hir: HirId) {
         // This follows nested lambdas and inline values, which can be as deep as the program
         rue_types::grow_stack(|| self.hir_inner(hir));
@@ -273,14 +296,18 @@ impl Uses<'_, '_> {
     }
 
     fn block(&mut self, statements: &[Statement], body: Option<HirId>) {
-        if let Some(body) = body {
+        // Nothing after a `return` or `raise` is lowered
+        if let Some(body) = reachable_body(statements, body) {
             self.hir(body);
         }
 
-        for statement in statements.iter().rev() {
+        for statement in reachable_statements(statements).iter().rev() {
             let Statement::Let(symbol, _) = *statement else {
-                for hir in statement.hirs() {
-                    self.hir(hir);
+                // Debug statements aren't lowered in release builds
+                if !matches!(statement, Statement::Debug(..)) {
+                    for hir in statement.hirs() {
+                        self.hir(hir);
+                    }
                 }
 
                 continue;
@@ -299,6 +326,7 @@ impl Uses<'_, '_> {
                 self.symbols.contains(&symbol) || self.cx.evaluated_unreferenced(binding.value.hir);
 
             self.cx
+                .analysis
                 .let_evaluations
                 .borrow_mut()
                 .insert(symbol, evaluated);
