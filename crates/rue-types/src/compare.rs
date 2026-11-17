@@ -103,7 +103,7 @@ impl Inference {
 }
 
 /// Which list of a generic's `InferenceCandidates` a candidate is in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 enum CandidateKind {
     Lower,
     Upper,
@@ -124,6 +124,10 @@ impl InferenceCandidates {
 /// instantiated, such as `(T, T)` for `B` when `fn<T>(x: T) -> (T, T)` is compared to
 /// `fn(a: A) -> B`. Those generics aren't in scope where the candidate is used, so once the
 /// comparison has finished, they're replaced with what they're instantiated as (`A` here).
+///
+/// A lower or held candidate takes the least instantiation, from the instance's lower bounds, and
+/// an upper candidate the greatest, from its upper bounds. An instance without bounds of that kind
+/// is left as is, as it was before these were instantiated.
 #[derive(Debug, Clone, Copy)]
 struct DeferredCandidate {
     generic: TypeId,
@@ -238,9 +242,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// The candidates that reference the generics of a function being instantiated, which are
     /// replaced with what those generics are instantiated as once the comparison has finished.
     deferred: Vec<DeferredCandidate>,
-    /// The bounds of each finished instance that a deferred candidate may reference, by binder.
-    /// An instance is left out if one of its bounds references a generic bound in the comparison,
-    /// since that generic isn't in scope where the candidate is used.
+    /// Once a candidate has been deferred, the bounds of each instance that finishes afterward, by
+    /// binder. An instance is left out if one of its bounds references a generic bound in the
+    /// comparison, since that generic isn't in scope where the candidate is used.
     instantiations: FxHashMap<usize, InferenceCandidates>,
     /// The context for comparisons that leave the generics being inferred rigid, which is kept
     /// so that its results are memoized for the whole comparison.
@@ -280,6 +284,13 @@ impl ComparisonContext<'_> {
             .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
     }
 
+    /// Caches the generics that the type references (see `referenced_generics`) in `references`.
+    fn cache_references(&mut self, arena: &Arena<Type>, ty: TypeId) {
+        self.references
+            .entry(ty)
+            .or_insert_with(|| referenced_generics(arena, ty));
+    }
+
     /// Adds a candidate for a generic being inferred. If it references the generics of a function
     /// being instantiated, it's deferred until they've been instantiated (see `DeferredCandidate`).
     fn add_candidate(
@@ -290,10 +301,12 @@ impl ComparisonContext<'_> {
         ty: TypeId,
         env: Option<usize>,
     ) {
-        let deferred = env.is_some()
-            && referenced_generics(arena, ty)
-                .into_iter()
-                .any(|other| self.is_instance(other, env));
+        let deferred = env.is_some() && {
+            self.cache_references(arena, ty);
+            self.references[&ty]
+                .iter()
+                .any(|&other| self.is_instance(other, env))
+        };
 
         let list = self
             .infer
@@ -315,20 +328,23 @@ impl ComparisonContext<'_> {
         self.candidates += 1;
     }
 
-    /// Records the bounds of a finished instance, if a deferred candidate may reference it and
-    /// none of them reference generics bound in the comparison.
+    /// Records the bounds of a finished instance once a candidate has been deferred, unless one of
+    /// them references a generic bound in the comparison.
     fn record_instantiation(&mut self, arena: &Arena<Type>, binder: usize, instance: &Instance) {
         if self.deferred.is_empty() {
             return;
         }
 
-        let free = |&(ty, env): &Bound| {
-            referenced_generics(arena, ty)
-                .into_iter()
-                .all(|generic| self.resolve(generic, env).is_none())
-        };
+        let mut free = true;
 
-        if instance.lower.iter().chain(&instance.upper).all(free) {
+        for &(ty, env) in instance.lower.iter().chain(&instance.upper) {
+            self.cache_references(arena, ty);
+            free &= self.references[&ty]
+                .iter()
+                .all(|&generic| self.resolve(generic, env).is_none());
+        }
+
+        if free {
             self.instantiations.insert(
                 binder,
                 InferenceCandidates {
@@ -341,8 +357,11 @@ impl ComparisonContext<'_> {
     }
 
     /// Replaces the generics of the instantiated functions that the deferred candidates reference
-    /// with what they're instantiated as. One that nothing constrains is left as is.
+    /// with what they're instantiated as (see `DeferredCandidate`).
     fn resolve_deferred(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
+        // What each binder is instantiated as, for lower (and held) and upper candidates
+        let mut picked: FxHashMap<(usize, bool), Option<TypeId>> = FxHashMap::default();
+
         for DeferredCandidate {
             generic,
             kind,
@@ -352,16 +371,35 @@ impl ComparisonContext<'_> {
         {
             let infer = self.infer.as_mut().unwrap();
             let ty = infer.candidates_mut(generic).list_mut(kind)[index];
+            let upper = matches!(kind, CandidateKind::Upper);
             let mut mappings = HashMap::new();
 
-            for other in referenced_generics(arena, ty) {
-                let Some(instance) = resolve(&self.binders, other, env)
-                    .and_then(|binder| self.instantiations.get(&binder))
-                else {
+            self.cache_references(arena, ty);
+
+            for &other in &self.references[&ty] {
+                let Some(binder) = self.resolve(other, env) else {
                     continue;
                 };
 
-                if let Some(instantiated) = pick_inferred_type(arena, builtins, instance) {
+                let Some(instance) = self.instantiations.get(&binder) else {
+                    continue;
+                };
+
+                let instantiated = *picked.entry((binder, upper)).or_insert_with(|| {
+                    if upper {
+                        let upper = InferenceCandidates {
+                            upper: instance.upper.clone(),
+                            ..Default::default()
+                        };
+                        pick_inferred_type(arena, builtins, &upper)
+                    } else if instance.lower.is_empty() {
+                        None
+                    } else {
+                        pick_inferred_type(arena, builtins, instance)
+                    }
+                });
+
+                if let Some(instantiated) = instantiated {
                     mappings.insert(other, instantiated);
                 }
             }
@@ -573,9 +611,7 @@ impl ComparisonContext<'_> {
                 continue;
             }
 
-            self.references
-                .entry(ty)
-                .or_insert_with(|| referenced_generics(arena, ty));
+            self.cache_references(arena, ty);
 
             for &generic in &self.references[&ty] {
                 let Some(binder) = self.resolve(generic, env) else {

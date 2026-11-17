@@ -77,9 +77,10 @@ test fn union_argument() -> Int {
     }
 }
 
-test fn literal_argument() -> Int {
-    let (first, second) = map(duplicate, 7);
-    first + second
+test fn literal_argument() -> Bool {
+    // `T` is instantiated as `A`, which is inferred as `Bool` from `true`
+    let (first, second) = map(duplicate, true);
+    first && second
 }
 
 test fn expected_type() -> Int {
@@ -98,4 +99,37 @@ fn boxed<T>(value: T) -> Box<T> {
 test fn generic_struct() -> Int {
     let result = map(boxed, 42);
     result.value + 1
+}
+
+fn returning<A>(_function: fn(a: A) -> Int) -> A {
+    unchecked_cast((1, 2))
+}
+
+fn first_of<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+test fn instantiated_from_upper_bound() -> Int {
+    // `A`'s candidate is `(T, T)`, from the parameter, where `T` is instantiated as `Int`
+    let result = returning(first_of);
+    result.first + result.rest
+}
+
+// These are only used by `recursive` below
+#[expect(unused_function)]
+fn sink(_value: Int) -> nil {
+    nil
+}
+
+#[expect(unused_function)]
+fn apply<B>(function: fn(callback: fn(value: Int) -> nil) -> B) -> B {
+    function(sink)
+}
+
+// It's never called, since it would recurse forever, but it must still compile
+#[expect(unused_function)]
+fn recursive<T>(_callback: fn(value: T) -> nil) -> (T, T) {
+    // `T` is only bounded from above here, so `B`'s candidate `(T, T)` is left as is, as it was
+    // before, and names this function's own `T`, which matches the return type
+    apply(recursive)
 }

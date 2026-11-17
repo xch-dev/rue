@@ -1536,6 +1536,43 @@ mod inference {
     }
 
     #[test]
+    fn instantiates_generics_in_candidates_from_expected_type() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `fn(g: fn(x: A) -> B) -> Int` is expected to be `fn(g: fn<T>(x: T) -> (T, T)) -> Int`
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let duplicate = db.function_with(&[t], &[t], true, ret);
+        let expected = db.function(&[duplicate], int);
+        let param = db.function(&[a], b);
+        let ty = db.function(&[param], int);
+        infer_from_expected(&mut db.arena, &db.builtins, ty, expected, &mut infer);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(A, A)");
+    }
+
+    #[test]
+    fn leaves_upper_bounded_instances_in_lower_candidates() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T>(g: fn(x: T) -> nil) -> (T, T)` to `fn(g: fn(x: Int) -> nil) -> B`, where `T` is
+        // only bounded from above, so the least instantiation isn't known
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let callback = db.function(&[t], nil);
+        let function = db.function_with(&[t], &[callback], true, ret);
+        let sink = db.function(&[int], nil);
+        let param = db.function(&[sink], b);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+    }
+
+    #[test]
     fn leaves_unconstrained_instances_in_candidates() {
         let mut db = Db::new();
         let b = db.generic("B");

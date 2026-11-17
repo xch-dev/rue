@@ -49,12 +49,12 @@ tests:
   byte_cost: 1668000
   total_cost: 1671438
 - name: literal_argument
-  program: (a (q 2 (q 16 4 6) (c (a 2 (q 7)) 1)) (c (q 4 2 2) ()))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 7))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
-  output: "14"
-  runtime_cost: 1598
-  byte_cost: 636000
-  total_cost: 637598
+  program: (a (q 2 (q 2 (i 4 (q 3 6 (q . 1) ()) (q)) 1) (c (a 2 (q 1)) 1)) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 (q 2 (i (f 2) (q 2 (i (r 2) (q 1 . 1) (q)) 1) (q)) 1) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
+  output: "1"
+  runtime_cost: 1149
+  byte_cost: 900000
+  total_cost: 901149
 - name: expected_type
   program: (a (q 2 (q 16 4 6) (c (a 2 (q 7)) 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 7))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
@@ -69,3 +69,10 @@ tests:
   runtime_cost: 1081
   byte_cost: 372000
   total_cost: 373081
+- name: instantiated_from_upper_bound
+  program: (a (q 16 4 6) (c (q 1 . 2) 1))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q 5 2) (q 4 (q . 1) (q . 2))) ()))
+  output: "3"
+  runtime_cost: 1086
+  byte_cost: 300000
+  total_cost: 301086
