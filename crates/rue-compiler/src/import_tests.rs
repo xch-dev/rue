@@ -1467,3 +1467,146 @@ fn the_first_of_a_function_and_a_module_with_the_same_name_is_declared() {
         ["`helper`: (root)"]
     );
 }
+
+#[test]
+fn forced_type_imports_that_a_nearer_import_contradicts_are_ambiguous() {
+    let compiled = compile(
+        "
+        mod a {
+            export type V = Int;
+        }
+
+        type V = Bytes;
+
+        mod inner {
+            import deeper::*;
+
+            export mod deeper {
+                export a::V;
+            }
+
+            export mod user {
+                import V;
+
+                export fn f(value: V) -> V {
+                    value
+                }
+            }
+        }
+
+        fn main() -> Int {
+            1
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["16:24 AmbiguousOuterImport(\"V\")"]);
+}
+
+#[test]
+fn glob_imports_do_not_wait_for_themselves() {
+    // `import y::*` could bring in a `q`, but `import q::V` only waits for it, rather than the
+    // glob import also waiting for itself to know where `y` is
+    let compiled = compile(
+        "
+        mod q {
+            export const V: Int = 7;
+        }
+
+        mod y {
+            export mod q {
+                export const V: Int = 1;
+            }
+        }
+
+        mod inner {
+            import q::V;
+            import y::*;
+
+            export fn f() -> Int {
+                V
+            }
+        }
+
+        fn main() -> Int {
+            inner::f() + q::V
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::V"), "y::q");
+}
+
+#[test]
+fn import_paths_use_what_another_import_in_the_scope_brings_in() {
+    // `import m::X` finds the `m` that `import m::m` brings in, as a use of `m::X` there would,
+    // and so does the same import in a nested module
+    let compiled = compile(
+        "
+        mod m {
+            export mod m {
+                export const X: Int = 1;
+            }
+
+            export const X: Int = 2;
+        }
+
+        mod inner {
+            import m::m;
+            import m::X;
+
+            export fn f() -> Int {
+                X + m::X
+            }
+
+            export mod deeper {
+                import m::X;
+
+                export fn g() -> Int {
+                    X
+                }
+            }
+        }
+
+        fn main() -> Int {
+            inner::f() + inner::deeper::g() + m::X
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::X"), "m::m");
+    assert_eq!(compiled.symbol_origin("inner::deeper::X"), "m::m");
+}
+
+#[test]
+fn import_paths_use_what_a_glob_import_in_the_scope_brings_in() {
+    let compiled = compile(
+        "
+        mod m {
+            export mod m {
+                export const Y: Int = 1;
+            }
+
+            export const Y: Int = 2;
+        }
+
+        mod inner {
+            import m::*;
+            import m::Y;
+
+            export fn f() -> Int {
+                Y + m::Y
+            }
+        }
+
+        fn main() -> Int {
+            inner::f() + m::Y
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::Y"), "m::m");
+}

@@ -1,0 +1,12 @@
+diagnostics:
+- Unused constant `V` at ambiguous_outer_imports.rue:2:18
+- Unused type alias `T` at ambiguous_outer_imports.rue:3:17
+- Unused type alias `T` at ambiguous_outer_imports.rue:8:6
+- Unused constant `W` at ambiguous_outer_imports.rue:16:22
+- Unused import `*` at ambiguous_outer_imports.rue:21:20
+- "`V` is ambiguous, since it was imported from an enclosing module, but an import in a nearer one brings in a different item with this name at ambiguous_outer_imports.rue:29:16"
+- "`T` is ambiguous, since it was imported from an enclosing module, but an import in a nearer one brings in a different item with this name at ambiguous_outer_imports.rue:30:16"
+- Unused import `T` at ambiguous_outer_imports.rue:30:16
+- Unused function `f` at ambiguous_outer_imports.rue:32:19
+- Unused import `*` at ambiguous_outer_imports.rue:43:15
+- "`y` is ambiguous, since it was imported from an enclosing module, but an import in a nearer one brings in a different item with this name at ambiguous_outer_imports.rue:44:12"

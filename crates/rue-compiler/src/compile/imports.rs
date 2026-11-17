@@ -134,7 +134,10 @@ fn construct_imports(
 
 #[derive(Debug, Default)]
 pub struct ImportCache {
-    scopes: HashMap<(ScopeId, Vec<String>), CachedPath>,
+    /// The modules that paths resolve to from each scope. A path whose first segment could be
+    /// brought into the scope by the import itself is cached for that import only, since the
+    /// other imports in the scope wait for it to be resolved and then find what it brought in.
+    scopes: HashMap<(ScopeId, Option<ImportId>, Vec<String>), CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
     /// The errors in imports, keyed by where they are, so that each is reported once however
@@ -276,7 +279,7 @@ pub fn resolve_imports(
     // The uses of a name that's reported as private at its import aren't reported again. This is
     // only done once every import is resolved, since a public item with the name could be found
     // in a later pass, and the name isn't blocked if something else brought it in.
-    for (scope, name, symbol, ty) in resolution.private_names {
+    for (scope, name, symbol, ty) in resolution.private_names.drain(..) {
         let scope = ctx.scope_mut(scope);
 
         if symbol && scope.symbol(&name).is_none() {
@@ -304,7 +307,7 @@ pub fn resolve_imports(
 
         for &(import_scope, import) in &imports {
             if cache.forced.contains(&import) {
-                check_forced_import(ctx, cache, import_scope, import);
+                check_forced_import(ctx, cache, &resolution, import_scope, import);
             }
         }
 
@@ -363,57 +366,62 @@ fn import_item_name(items: &Items) -> &str {
 fn check_forced_import(
     ctx: &mut Compiler,
     cache: &ImportCache,
+    resolution: &Resolution,
     import_scope: ScopeId,
     import_id: ImportId,
 ) {
     let import = ctx.import(import_id).clone();
 
-    if import.base_scope != import_scope {
-        return;
-    }
+    // Only lookups from the import's own scope wait, so only they can be forced
+    debug_assert_eq!(import.base_scope, import_scope);
 
     let ambiguous = if let Some(first) = import.path.first() {
         // The first segment of the path, which is cached once it's resolved
+        let owner = path_owner(resolution, &import, import_scope, import_id);
         let Some(cached) = cache
             .scopes
-            .get(&(import_scope, vec![first.text().to_string()]))
+            .get(&(import_scope, owner, vec![first.text().to_string()]))
         else {
             return;
         };
 
-        // A glob import can bring in an item with the same name as the module it imports from,
-        // which doesn't change what its own path refers to
-        let found = ctx.lookup_in(import_scope, |id, scope| {
-            scope.symbol(first.text()).filter(|&symbol| {
-                id != import_scope || scope.symbol_import(symbol) != Some(import_id)
-            })
-        });
-
-        (found != Some(cached.symbol)).then_some(first)
+        (lookup_past(
+            ctx,
+            import_scope,
+            import_id,
+            first.text(),
+            Scope::symbol_with_import,
+        ) != Some(cached.symbol))
+        .then_some(first)
     } else if let Items::Named(name) = &import.items {
-        // The import's own binding is what's being checked, so it's skipped
         let target = ctx.scope(import_scope);
         let bound_symbol = target
-            .symbol(name.text())
-            .filter(|&symbol| target.symbol_import(symbol) == Some(import_id));
+            .symbol_with_import(name.text())
+            .filter(|&(_, via)| via == Some(import_id));
         let bound_type = target
-            .ty(name.text())
-            .filter(|&ty| target.type_import(ty) == Some(import_id));
+            .type_with_import(name.text())
+            .filter(|&(_, via)| via == Some(import_id));
 
-        let symbol = ctx.lookup_in(import_scope, |id, scope| {
-            scope
-                .symbol(name.text())
-                .filter(|&symbol| id != import_scope || Some(symbol) != bound_symbol)
+        let symbol_differs = bound_symbol.is_some_and(|(symbol, _)| {
+            lookup_past(
+                ctx,
+                import_scope,
+                import_id,
+                name.text(),
+                Scope::symbol_with_import,
+            ) != Some(symbol)
         });
-        let ty = ctx.lookup_in(import_scope, |id, scope| {
-            scope
-                .ty(name.text())
-                .filter(|&ty| id != import_scope || Some(ty) != bound_type)
+        let type_differs = bound_type.is_some_and(|(ty, _)| {
+            lookup_past(
+                ctx,
+                import_scope,
+                import_id,
+                name.text(),
+                Scope::type_with_import,
+            ) != Some(ty)
         });
 
-        ((bound_symbol.is_some() && symbol != bound_symbol)
-            || (bound_type.is_some() && ty != bound_type))
-            .then_some(name)
+        (symbol_differs || type_differs).then_some(name)
     } else {
         None
     };
@@ -424,6 +432,38 @@ fn check_forced_import(
             DiagnosticKind::AmbiguousOuterImport(name.text().to_string()),
         );
     }
+}
+
+/// What a use of a name in the importing scope finds, apart from what the import itself brought
+/// in. A glob import can bring in an item with the same name as the module it imports from, which
+/// doesn't change what its own path refers to.
+fn lookup_past<T>(
+    ctx: &Compiler,
+    import_scope: ScopeId,
+    import_id: ImportId,
+    name: &str,
+    find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
+) -> Option<T> {
+    ctx.lookup_in(import_scope, |_, scope| {
+        find(scope, name)
+            .filter(|&(_, via)| via != Some(import_id))
+            .map(|(item, _)| item)
+    })
+}
+
+/// The import that a path is cached for, if its first segment could be brought into the scope by
+/// the import itself (see [`ImportCache::scopes`]).
+fn path_owner(
+    resolution: &Resolution,
+    import: &Import,
+    import_scope: ScopeId,
+    import_id: ImportId,
+) -> Option<ImportId> {
+    let first = import.path.first()?;
+
+    (import.base_scope == import_scope
+        && resolution.may_bring_in_itself(import_scope, first.text(), import_id))
+    .then_some(import_id)
 }
 
 /// The state of one call to [`resolve_imports`].
@@ -454,6 +494,17 @@ impl Resolution {
         match self.named_imports_of(scope, name) {
             Some(imports) => others(imports),
             None => self.glob_imports.get(&scope).is_some_and(others),
+        }
+    }
+
+    /// Whether the import is one of those that could bring the name into the scope.
+    fn may_bring_in_itself(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
+        match self.named_imports_of(scope, name) {
+            Some(imports) => imports.contains(&importer),
+            None => self
+                .glob_imports
+                .get(&scope)
+                .is_some_and(|imports| imports.contains(&importer)),
         }
     }
 
@@ -537,6 +588,7 @@ fn resolve_import(
     let mut path_so_far = Vec::new();
     let mut path_references = Vec::new();
     let mut private_segments = Vec::new();
+    let path_owner = path_owner(resolution, &import, import_scope, import_id);
 
     for i in (1..=import.path.len()).rev() {
         let subpath = import
@@ -546,7 +598,10 @@ fn resolve_import(
             .map(|t| t.text().to_string())
             .collect::<Vec<_>>();
 
-        if let Some(cached) = cache.scopes.get(&(import_scope, subpath.clone())) {
+        if let Some(cached) = cache
+            .scopes
+            .get(&(import_scope, path_owner, subpath.clone()))
+        {
             base = Some(cached.scope);
             path_so_far = subpath;
             path_references.clone_from(&cached.references);
@@ -652,7 +707,7 @@ fn resolve_import(
 
         if !has_super {
             cache.scopes.insert(
-                (import_scope, path_so_far.clone()),
+                (import_scope, path_owner, path_so_far.clone()),
                 CachedPath {
                     scope: module.scope,
                     symbol,
