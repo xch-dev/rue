@@ -1815,3 +1815,216 @@ fn forced_import_paths_are_not_ambiguous_with_their_own_items_imported_back() {
     compiled.assert_no_errors();
     assert_eq!(compiled.symbol_origin("s::Y"), "m");
 }
+
+#[test]
+fn named_imports_bring_in_a_module_and_a_value_with_the_same_name() {
+    let compiled = compile(
+        "
+        import m::helper;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        fn main() -> Int {
+            helper() + helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("helper"), "m");
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "m::helper");
+}
+
+#[test]
+fn reexports_bring_in_a_module_and_a_value_with_the_same_name() {
+    let compiled = compile(
+        "
+        import outer::helper;
+
+        mod inner {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        mod outer {
+            import inner::helper;
+            export helper;
+        }
+
+        fn main() -> Int {
+            helper() + helper::VALUE + outer::helper() + outer::helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("outer::helper"), "inner");
+    assert_eq!(
+        compiled.symbol_origin("outer::helper::VALUE"),
+        "inner::helper"
+    );
+}
+
+#[test]
+fn glob_imports_bring_in_a_module_and_a_value_with_the_same_name() {
+    let compiled = compile(
+        "
+        import m::*;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        fn main() -> Int {
+            helper() + helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("helper"), "m");
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "m::helper");
+}
+
+#[test]
+fn imports_used_only_through_one_namespace_are_used() {
+    // The import brings in both, and using either one uses it
+    let compiled = compile(
+        "
+        import m::helper;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        fn main() -> Int {
+            helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert!(
+        !compiled
+            .warnings()
+            .iter()
+            .any(|w| w.ends_with("UnusedImport")),
+        "{:?}",
+        compiled.warnings()
+    );
+}
+
+#[test]
+fn private_module_imports_hide_modules_with_the_same_name_in_enclosing_scopes() {
+    let compiled = compile(
+        "
+        mod inner {
+            mod secret {
+                export const VALUE: Int = 1;
+            }
+        }
+
+        mod secret {
+            export const VALUE: Int = 2;
+        }
+
+        mod nested {
+            import inner::secret;
+
+            export fn value() -> Int {
+                secret::VALUE
+            }
+        }
+
+        fn main() -> Int {
+            nested::value() + secret::VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        ["13:27 PrivateSymbol(\"secret\", \"inner\")"]
+    );
+    assert_eq!(
+        compiled.reference_origins("nested::value", "VALUE"),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn private_imports_are_not_reported_again_through_another_namespace() {
+    // The private module `x` is blocked, so neither the function `x` further out nor the private
+    // function `y` is reported as the wrong kind of item at the uses
+    let compiled = compile(
+        "
+        mod a {
+            mod x {
+                export const Y: Int = 5;
+            }
+
+            fn y() -> Int {
+                1
+            }
+
+            export fn z() -> Int {
+                x::Y + y()
+            }
+        }
+
+        fn x() -> Int {
+            1
+        }
+
+        mod y {
+            export const Y: Int = 7;
+        }
+
+        mod inner {
+            import a::x;
+            import a::y;
+
+            export fn q() -> Int {
+                x::Y + y()
+            }
+        }
+
+        fn main() -> Int {
+            inner::q() + a::z() + x() + y::Y
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "25:23 PrivateSymbol(\"x\", \"a\")",
+            "26:23 PrivateSymbol(\"y\", \"a\")",
+        ]
+    );
+}

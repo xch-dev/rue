@@ -26,6 +26,33 @@ impl Namespace {
     pub const ALL: [Self; 3] = [Self::Value, Self::Type, Self::Module];
 }
 
+/// An item bound in a scope, along with the namespace it's bound in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Item {
+    Value(SymbolId),
+    Type(TypeId),
+    Module(SymbolId),
+}
+
+impl Item {
+    pub fn namespace(self) -> Namespace {
+        match self {
+            Self::Value(_) => Namespace::Value,
+            Self::Type(_) => Namespace::Type,
+            Self::Module(_) => Namespace::Module,
+        }
+    }
+}
+
+impl From<Item> for Declaration {
+    fn from(item: Item) -> Self {
+        match item {
+            Item::Value(symbol) | Item::Module(symbol) => Self::Symbol(symbol),
+            Item::Type(ty) => Self::Type(ty),
+        }
+    }
+}
+
 /// The names bound in one namespace of a scope.
 #[derive(Debug, Clone)]
 struct Bindings<T> {
@@ -141,18 +168,6 @@ impl Scope {
         self.modules.exported.contains(&module)
     }
 
-    pub fn export_symbol(&mut self, symbol: SymbolId) {
-        self.symbols.exported.insert(symbol);
-    }
-
-    pub fn export_type(&mut self, ty: TypeId) {
-        self.types.exported.insert(ty);
-    }
-
-    pub fn export_module(&mut self, module: SymbolId) {
-        self.modules.exported.insert(module);
-    }
-
     pub fn exported_symbols(&self) -> impl Iterator<Item = (&str, SymbolId)> {
         self.symbols.exported()
     }
@@ -228,36 +243,6 @@ impl Scope {
         self.imports.iter().copied()
     }
 
-    pub fn add_symbol_import(&mut self, symbol: SymbolId, import: ImportId) {
-        self.symbols.imports.insert(symbol, import);
-    }
-
-    pub fn add_type_import(&mut self, ty: TypeId, import: ImportId) {
-        self.types.imports.insert(ty, import);
-    }
-
-    pub fn add_module_import(&mut self, module: SymbolId, import: ImportId) {
-        self.modules.imports.insert(module, import);
-    }
-
-    /// Stops a symbol name from being looked up in enclosing scopes, because an import of it
-    /// into this scope failed and has already been reported.
-    pub fn block_symbol(&mut self, name: String) {
-        self.symbols.blocked.insert(name);
-    }
-
-    /// Stops a type name from being looked up in enclosing scopes, because an import of it into
-    /// this scope failed and has already been reported.
-    pub fn block_type(&mut self, name: String) {
-        self.types.blocked.insert(name);
-    }
-
-    /// Stops a module name from being looked up in enclosing scopes, because an import of it
-    /// into this scope failed and has already been reported.
-    pub fn block_module(&mut self, name: String) {
-        self.modules.blocked.insert(name);
-    }
-
     pub fn is_symbol_blocked(&self, name: &str) -> bool {
         self.symbols.blocked.contains(name)
     }
@@ -270,19 +255,7 @@ impl Scope {
         self.modules.blocked.contains(name)
     }
 
-    pub fn symbol_import(&self, symbol: SymbolId) -> Option<ImportId> {
-        self.symbols.imports.get(&symbol).copied()
-    }
-
-    pub fn type_import(&self, ty: TypeId) -> Option<ImportId> {
-        self.types.imports.get(&ty).copied()
-    }
-
-    pub fn module_import(&self, module: SymbolId) -> Option<ImportId> {
-        self.modules.imports.get(&module).copied()
-    }
-
-    pub fn item(&self, namespace: Namespace, name: &str) -> Option<Declaration> {
+    pub fn item(&self, namespace: Namespace, name: &str) -> Option<Item> {
         self.item_with_import(namespace, name).map(|(item, _)| item)
     }
 
@@ -292,108 +265,96 @@ impl Scope {
         &self,
         namespace: Namespace,
         name: &str,
-    ) -> Option<(Declaration, Option<ImportId>)> {
+    ) -> Option<(Item, Option<ImportId>)> {
         match namespace {
             Namespace::Value => self
                 .symbols
                 .get_with_import(name)
-                .map(|(symbol, via)| (Declaration::Symbol(symbol), via)),
+                .map(|(symbol, via)| (Item::Value(symbol), via)),
             Namespace::Type => self
                 .types
                 .get_with_import(name)
-                .map(|(ty, via)| (Declaration::Type(ty), via)),
+                .map(|(ty, via)| (Item::Type(ty), via)),
             Namespace::Module => self
                 .modules
                 .get_with_import(name)
-                .map(|(module, via)| (Declaration::Symbol(module), via)),
+                .map(|(module, via)| (Item::Module(module), via)),
         }
     }
 
     /// The names and items in a namespace, in the order they were added.
-    pub fn items(&self, namespace: Namespace) -> Vec<(String, Declaration)> {
+    pub fn items(&self, namespace: Namespace) -> Vec<(String, Item)> {
         match namespace {
-            Namespace::Value => collect(&self.symbols.items, Declaration::Symbol),
-            Namespace::Type => collect(&self.types.items, Declaration::Type),
-            Namespace::Module => collect(&self.modules.items, Declaration::Symbol),
+            Namespace::Value => collect(
+                self.symbols.items.iter().map(|(n, &i)| (n.as_str(), i)),
+                Item::Value,
+            ),
+            Namespace::Type => collect(
+                self.types.items.iter().map(|(n, &i)| (n.as_str(), i)),
+                Item::Type,
+            ),
+            Namespace::Module => collect(
+                self.modules.items.iter().map(|(n, &i)| (n.as_str(), i)),
+                Item::Module,
+            ),
         }
     }
 
     /// The names and exported items in a namespace, in the order they were exported.
-    pub fn exported_items(&self, namespace: Namespace) -> Vec<(String, Declaration)> {
+    pub fn exported_items(&self, namespace: Namespace) -> Vec<(String, Item)> {
         match namespace {
-            Namespace::Value => collect_exported(&self.symbols, Declaration::Symbol),
-            Namespace::Type => collect_exported(&self.types, Declaration::Type),
-            Namespace::Module => collect_exported(&self.modules, Declaration::Symbol),
+            Namespace::Value => collect(self.symbols.exported(), Item::Value),
+            Namespace::Type => collect(self.types.exported(), Item::Type),
+            Namespace::Module => collect(self.modules.exported(), Item::Module),
         }
     }
 
-    pub fn insert_item(
-        &mut self,
-        namespace: Namespace,
-        name: String,
-        item: Declaration,
-        exported: bool,
-    ) {
-        match (namespace, item) {
-            (Namespace::Value, Declaration::Symbol(symbol)) => {
-                self.insert_symbol(name, symbol, exported);
-            }
-            (Namespace::Type, Declaration::Type(ty)) => self.insert_type(name, ty, exported),
-            (Namespace::Module, Declaration::Symbol(module)) => {
-                self.insert_module(name, module, exported);
-            }
-            _ => unreachable!("an item is in the namespace for its kind"),
+    pub fn insert_item(&mut self, name: String, item: Item, exported: bool) {
+        match item {
+            Item::Value(symbol) => self.symbols.insert(name, symbol, exported),
+            Item::Type(ty) => self.types.insert(name, ty, exported),
+            Item::Module(module) => self.modules.insert(name, module, exported),
         }
     }
 
-    pub fn is_item_exported(&self, namespace: Namespace, item: Declaration) -> bool {
-        match (namespace, item) {
-            (Namespace::Value, Declaration::Symbol(symbol)) => self.is_symbol_exported(symbol),
-            (Namespace::Type, Declaration::Type(ty)) => self.is_type_exported(ty),
-            (Namespace::Module, Declaration::Symbol(module)) => self.is_module_exported(module),
-            _ => unreachable!("an item is in the namespace for its kind"),
+    pub fn is_item_exported(&self, item: Item) -> bool {
+        match item {
+            Item::Value(symbol) => self.is_symbol_exported(symbol),
+            Item::Type(ty) => self.is_type_exported(ty),
+            Item::Module(module) => self.is_module_exported(module),
         }
     }
 
-    pub fn export_item(&mut self, namespace: Namespace, item: Declaration) {
-        match (namespace, item) {
-            (Namespace::Value, Declaration::Symbol(symbol)) => self.export_symbol(symbol),
-            (Namespace::Type, Declaration::Type(ty)) => self.export_type(ty),
-            (Namespace::Module, Declaration::Symbol(module)) => self.export_module(module),
-            _ => unreachable!("an item is in the namespace for its kind"),
-        }
+    pub fn export_item(&mut self, item: Item) {
+        match item {
+            Item::Value(symbol) => self.symbols.exported.insert(symbol),
+            Item::Type(ty) => self.types.exported.insert(ty),
+            Item::Module(module) => self.modules.exported.insert(module),
+        };
     }
 
-    pub fn item_import(&self, namespace: Namespace, item: Declaration) -> Option<ImportId> {
-        match (namespace, item) {
-            (Namespace::Value, Declaration::Symbol(symbol)) => self.symbol_import(symbol),
-            (Namespace::Type, Declaration::Type(ty)) => self.type_import(ty),
-            (Namespace::Module, Declaration::Symbol(module)) => self.module_import(module),
-            _ => unreachable!("an item is in the namespace for its kind"),
+    /// The import that brought an item into this scope, if any.
+    pub fn item_import(&self, item: Item) -> Option<ImportId> {
+        match item {
+            Item::Value(symbol) => self.symbols.imports.get(&symbol),
+            Item::Type(ty) => self.types.imports.get(&ty),
+            Item::Module(module) => self.modules.imports.get(&module),
         }
+        .copied()
     }
 
-    pub fn add_item_import(&mut self, namespace: Namespace, item: Declaration, import: ImportId) {
-        match (namespace, item) {
-            (Namespace::Value, Declaration::Symbol(symbol)) => {
-                self.add_symbol_import(symbol, import);
-            }
-            (Namespace::Type, Declaration::Type(ty)) => self.add_type_import(ty, import),
-            (Namespace::Module, Declaration::Symbol(module)) => {
-                self.add_module_import(module, import);
-            }
-            _ => unreachable!("an item is in the namespace for its kind"),
-        }
+    pub fn add_item_import(&mut self, item: Item, import: ImportId) {
+        match item {
+            Item::Value(symbol) => self.symbols.imports.insert(symbol, import),
+            Item::Type(ty) => self.types.imports.insert(ty, import),
+            Item::Module(module) => self.modules.imports.insert(module, import),
+        };
     }
 
     /// Stops a name from being looked up in enclosing scopes, because an import of it into this
     /// scope failed and has already been reported.
     pub fn block(&mut self, namespace: Namespace, name: String) {
-        match namespace {
-            Namespace::Value => self.block_symbol(name),
-            Namespace::Type => self.block_type(name),
-            Namespace::Module => self.block_module(name),
-        }
+        self.blocked_names(namespace).insert(name);
     }
 
     pub fn is_blocked(&self, namespace: Namespace, name: &str) -> bool {
@@ -403,24 +364,21 @@ impl Scope {
             Namespace::Module => self.is_module_blocked(name),
         }
     }
+
+    fn blocked_names(&mut self, namespace: Namespace) -> &mut HashSet<String> {
+        match namespace {
+            Namespace::Value => &mut self.symbols.blocked,
+            Namespace::Type => &mut self.types.blocked,
+            Namespace::Module => &mut self.modules.blocked,
+        }
+    }
 }
 
-fn collect<T: Copy>(
-    items: &IndexMap<String, T>,
-    item: fn(T) -> Declaration,
-) -> Vec<(String, Declaration)> {
+fn collect<'a, T>(
+    items: impl Iterator<Item = (&'a str, T)>,
+    item: fn(T) -> Item,
+) -> Vec<(String, Item)> {
     items
-        .iter()
-        .map(|(name, &value)| (name.clone(), item(value)))
-        .collect()
-}
-
-fn collect_exported<T: Copy + Eq + Hash>(
-    bindings: &Bindings<T>,
-    item: fn(T) -> Declaration,
-) -> Vec<(String, Declaration)> {
-    bindings
-        .exported()
         .map(|(name, value)| (name.to_string(), item(value)))
         .collect()
 }

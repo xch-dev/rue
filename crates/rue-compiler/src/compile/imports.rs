@@ -8,7 +8,8 @@ use rowan::TextRange;
 use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::{DiagnosticKind, Name};
 use rue_hir::{
-    Declaration, Import, ImportId, ImportUser, Items, Namespace, Scope, ScopeId, Symbol, SymbolId,
+    Declaration, Import, ImportId, ImportUser, Item, Items, Namespace, Scope, ScopeId, Symbol,
+    SymbolId,
 };
 
 use crate::{Compiler, SyntaxItemKind};
@@ -498,7 +499,7 @@ fn imported_back(
         let Some(cached) = cache.scopes.get(&(scope, owner, path)) else {
             return false;
         };
-        let Some(via) = ctx.scope(cached.scope).module_import(module) else {
+        let Some(via) = ctx.scope(cached.scope).item_import(Item::Module(module)) else {
             return false;
         };
 
@@ -552,7 +553,7 @@ struct Resolution {
     /// The imports with a lookup that's waiting in this pass, and the depth of their scopes.
     deferred: Vec<(usize, ImportId)>,
     /// The names that named imports found only private items for, with the scope they're
-    /// imported into and whether the items include a symbol and a type.
+    /// imported into and the namespaces the private items are in.
     private_names: Vec<(ScopeId, String, Vec<Namespace>)>,
 }
 
@@ -853,15 +854,15 @@ fn resolve_import(
                     }
 
                     // The import the item was brought into the module by, if any
-                    let via = ctx.scope(source_scope).item_import(namespace, item);
+                    let via = ctx.scope(source_scope).item_import(item);
 
                     // A name that's ambiguous where it's imported from is ambiguous here too. The
                     // imports are resolved again until nothing changes, so this reaches the end
                     // of any chain of glob imports.
-                    if ctx.is_ambiguous_import(via, item)
-                        && ctx.scope(import_scope).item_import(namespace, item) == Some(import_id)
+                    if ctx.is_ambiguous_import(via, item.into())
+                        && ctx.scope(import_scope).item_import(item) == Some(import_id)
                     {
-                        updated |= ctx.add_ambiguous_import(import_id, item);
+                        updated |= ctx.add_ambiguous_import(import_id, item.into());
                     }
 
                     let target = ctx.scope_mut(import_scope);
@@ -869,7 +870,7 @@ fn resolve_import(
 
                     if namespace == Namespace::Module
                         && existing == Some(item)
-                        && target.item_import(namespace, item) != Some(import_id)
+                        && target.item_import(item) != Some(import_id)
                     {
                         cache
                             .shared_modules
@@ -879,25 +880,29 @@ fn resolve_import(
                     }
 
                     if existing.is_none() {
-                        target.insert_item(namespace, name.clone(), item, import.exported);
-                        target.add_item_import(namespace, item, import_id);
-                        ctx.import_mut(import_id).declarations.push((name, item));
+                        target.insert_item(name.clone(), item, import.exported);
+                        target.add_item_import(item, import_id);
+                        ctx.import_mut(import_id)
+                            .declarations
+                            .push((name, item.into()));
                         updated = true;
                         *count += 1;
-                    } else if !target.is_item_exported(namespace, item)
+                    } else if !target.is_item_exported(item)
                         && import.exported
                         && existing == Some(item)
                     {
-                        target.export_item(namespace, item);
-                        ctx.import_mut(import_id).declarations.push((name, item));
+                        target.export_item(item);
+                        ctx.import_mut(import_id)
+                            .declarations
+                            .push((name, item.into()));
                         updated = true;
                         *count += 1;
                     } else if let Some(existing) = existing
                         && existing != item
-                        && let Some(existing_import) = target.item_import(namespace, existing)
+                        && let Some(existing_import) = target.item_import(existing)
                         && matches!(ctx.import(existing_import).items, Items::All(_))
                     {
-                        updated |= ctx.add_ambiguous_import(existing_import, existing);
+                        updated |= ctx.add_ambiguous_import(existing_import, existing.into());
                     }
                 }
             }
@@ -921,18 +926,13 @@ fn resolve_import(
 
             // Each item is resolved along with the import it was brought into its scope by, if
             // any, in every namespace that has the name
-            let found: Vec<(Namespace, Declaration, Option<ImportId>)> = if let Some(base) = base {
+            let found: Vec<(Item, Option<ImportId>)> = if let Some(base) = base {
                 let base = ctx.scope(base);
                 let items = Namespace::ALL
                     .into_iter()
                     .filter_map(|namespace| {
                         let (found, via) = base.item_with_import(namespace, name)?;
-                        Some((
-                            namespace,
-                            found,
-                            via,
-                            base.is_item_exported(namespace, found),
-                        ))
+                        Some((found, via, base.is_item_exported(found)))
                     })
                     .collect::<Vec<_>>();
 
@@ -941,11 +941,11 @@ fn resolve_import(
                 // can't be undone, and a public item with the name may only be brought into the
                 // module by an import that's resolved in a later pass, so a private item imported
                 // now would stay imported.
-                if items.iter().any(|&(_, _, _, public)| public) {
+                if items.iter().any(|&(_, _, public)| public) {
                     items
                         .into_iter()
-                        .filter(|&(_, _, _, public)| public)
-                        .map(|(namespace, found, via, _)| (namespace, found, via))
+                        .filter(|&(_, _, public)| public)
+                        .map(|(found, via, _)| (found, via))
                         .collect()
                 } else {
                     // The name is reported as private rather than unresolved
@@ -954,14 +954,15 @@ fn resolve_import(
                         resolution.private_names.push((
                             import_scope,
                             name.to_string(),
-                            items.iter().map(|&(namespace, ..)| namespace).collect(),
+                            items.iter().map(|&(found, ..)| found.namespace()).collect(),
                         ));
                     }
 
                     if diagnostics {
                         let module = import.path.last().unwrap().text();
 
-                        for &(namespace, ..) in &items {
+                        for &(found, ..) in &items {
+                            let namespace = found.namespace();
                             cache
                                 .errors
                                 .entry((import_id, ImportError::private(namespace)))
@@ -1003,7 +1004,7 @@ fn resolve_import(
                             |scope, name| scope.item_with_import(namespace, name),
                         )
                         .found(&mut undetermined)?;
-                        Some((namespace, found, via))
+                        Some((found, via))
                     })
                     .collect();
 
@@ -1019,8 +1020,8 @@ fn resolve_import(
                         let (found, via) =
                             ctx.resolve_item_in(import.base_scope, namespace, name)?;
                         ctx.scope(import.base_scope)
-                            .is_item_exported(namespace, found)
-                            .then_some((namespace, found, via))
+                            .is_item_exported(found)
+                            .then_some((found, via))
                     })
                     .collect()
             };
@@ -1028,10 +1029,11 @@ fn resolve_import(
             // This is recorded in every pass, since an import of a name from an enclosing scope
             // finds its own binding once it has been resolved. The import that it's found through
             // is used by this one, like one in its path.
-            for &(_, declaration, via) in &found {
+            for &(found, via) in &found {
                 if let Some(via) = via
                     && via != import_id
                 {
+                    let declaration = found.into();
                     ctx.add_import_reference(via, declaration, ImportUser::Import(import_id));
                     cache
                         .imported_names
@@ -1040,12 +1042,15 @@ fn resolve_import(
                 }
             }
 
-            for &(namespace, found, _) in &found {
+            for &(found, _) in &found {
+                let namespace = found.namespace();
                 if diagnostics && let Some(srcloc) = item.srcloc() {
                     ctx.add_syntax_for_source(
                         match found {
-                            Declaration::Symbol(symbol) => SyntaxItemKind::SymbolReference(symbol),
-                            Declaration::Type(ty) => SyntaxItemKind::TypeReference(ty),
+                            Item::Value(symbol) | Item::Module(symbol) => {
+                                SyntaxItemKind::SymbolReference(symbol)
+                            }
+                            Item::Type(ty) => SyntaxItemKind::TypeReference(ty),
                         },
                         TextRange::new(
                             srcloc.span.start.try_into().unwrap(),
@@ -1060,7 +1065,7 @@ fn resolve_import(
 
                 if namespace == Namespace::Module
                     && existing == Some(found)
-                    && target.item_import(namespace, found) != Some(import_id)
+                    && target.item_import(found) != Some(import_id)
                 {
                     cache
                         .shared_modules
@@ -1070,21 +1075,21 @@ fn resolve_import(
                 }
 
                 if existing.is_none() {
-                    target.insert_item(namespace, name.to_string(), found, import.exported);
-                    target.add_item_import(namespace, found, import_id);
+                    target.insert_item(name.to_string(), found, import.exported);
+                    target.add_item_import(found, import_id);
                     ctx.import_mut(import_id)
                         .declarations
-                        .push((name.to_string(), found));
+                        .push((name.to_string(), found.into()));
                     updated = true;
                     unused_imports.shift_remove(name);
-                } else if !target.is_item_exported(namespace, found)
+                } else if !target.is_item_exported(found)
                     && import.exported
                     && existing == Some(found)
                 {
-                    target.export_item(namespace, found);
+                    target.export_item(found);
                     ctx.import_mut(import_id)
                         .declarations
-                        .push((name.to_string(), found));
+                        .push((name.to_string(), found.into()));
                     updated = true;
                     unused_imports.shift_remove(name);
                 } else if diagnostics && existing != Some(found) {

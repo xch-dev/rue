@@ -196,6 +196,23 @@ where
         // can only be used if it's exported
         let qualified = value.is_some() || base_scope != ctx.last_scope_id();
 
+        // Only a module can have a path after it, and modules have their own namespace
+        let has_subpath = index + 1 < segments.len();
+
+        // A name whose import failed has already been reported at the import, so it's only looked
+        // up in other namespaces to report it if it isn't blocked
+        let blocked = |ctx: &Compiler| {
+            !qualified
+                && if has_subpath {
+                    ctx.is_module_blocked_in(base_scope, name.text())
+                } else {
+                    match kind {
+                        PathKind::Symbol => ctx.is_symbol_blocked_in(base_scope, name.text()),
+                        PathKind::Type => ctx.is_type_blocked_in(base_scope, name.text()),
+                    }
+                }
+        };
+
         let base = if let Some(value) = value {
             if let PathResult::Symbol(symbol, _, _) = value
                 && let Symbol::Module(module) = ctx.symbol(symbol)
@@ -246,11 +263,13 @@ where
             )
         };
 
-        let (symbol, ty) = if index + 1 < segments.len() {
-            // Modules have their own namespace, and only a module can have a path after it
+        let (symbol, ty) = if has_subpath {
             let module = find_module();
 
-            if module.is_none() && (find_symbol().is_some() || find_type().is_some()) {
+            if module.is_none()
+                && !blocked(ctx)
+                && (find_symbol().is_some() || find_type().is_some())
+            {
                 ctx.diagnostic(
                     &name,
                     DiagnosticKind::SubpathNotSupported(name.text().to_string()),
@@ -276,7 +295,7 @@ where
                 }
             };
 
-            if symbol.is_none() && ty.is_none() {
+            if symbol.is_none() && ty.is_none() && !blocked(ctx) {
                 (find_module(), None)
             } else {
                 (symbol, ty)
@@ -293,16 +312,7 @@ where
             }
             (None, Some((ty, _, type_import))) => PathResult::Type(ty, type_import),
             (None, None) => {
-                // A name whose import failed has already been reported at the import
-                let blocked = !qualified
-                    && if index + 1 < segments.len() {
-                        ctx.is_module_blocked_in(base_scope, name.text())
-                    } else {
-                        match kind {
-                            PathKind::Symbol => ctx.is_symbol_blocked_in(base_scope, name.text()),
-                            PathKind::Type => ctx.is_type_blocked_in(base_scope, name.text()),
-                        }
-                    };
+                let blocked = blocked(ctx);
 
                 match kind {
                     _ if blocked => {}

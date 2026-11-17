@@ -15,7 +15,7 @@ use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind};
 use rue_hir::{
     Declaration, DependencyGraph, Environment, Lowerer, MAX_LOWERING_DEPTH, ModuleDeclarations,
-    ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
+    ModuleSymbol, Namespace, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
 use rue_lir::CodegenOptions;
@@ -361,17 +361,14 @@ impl FileTree {
                         entrypoints.insert(Declaration::Symbol(main));
                     }
 
-                    ctx.scope(scope).exported_symbols().for_each(|(_, symbol)| {
-                        entrypoints.insert(Declaration::Symbol(symbol));
-                    });
-
-                    ctx.scope(scope).exported_types().for_each(|(_, ty)| {
-                        entrypoints.insert(Declaration::Type(ty));
-                    });
-
-                    ctx.scope(scope).exported_modules().for_each(|(_, module)| {
-                        entrypoints.insert(Declaration::Symbol(module));
-                    });
+                    for namespace in Namespace::ALL {
+                        entrypoints.extend(
+                            ctx.scope(scope)
+                                .exported_items(namespace)
+                                .into_iter()
+                                .map(|(_, item)| Declaration::from(item)),
+                        );
+                    }
                 }
                 Self::Directory(directory) => {
                     directory.children.iter().for_each(|child| {

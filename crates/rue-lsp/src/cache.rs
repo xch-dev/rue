@@ -467,8 +467,7 @@ impl Cache<Compiler> {
 
                 if let Some(score) = fuzzy_match(&partial, &name)
                     && (matches!(subcontext, CompletionContext::Expression)
-                        || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
-                            && matches!(subcontext, CompletionContext::Type)))
+                        || (is_module && matches!(subcontext, CompletionContext::Type)))
                 {
                     // A module has no type to show
                     let detail = (!is_module).then(|| {
@@ -560,8 +559,7 @@ impl Cache<Compiler> {
 
                 if let Some(score) = fuzzy_match(&partial, &name)
                     && (matches!(context, CompletionContext::Expression)
-                        || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
-                            && matches!(context, CompletionContext::Type)))
+                        || (is_module && matches!(context, CompletionContext::Type)))
                 {
                     // The type is looked up from the cursor's scopes, like on hover, so that it's
                     // narrowed by the conditions the cursor is inside of

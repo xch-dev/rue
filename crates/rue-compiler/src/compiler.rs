@@ -14,8 +14,8 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Mappings, Namespace, Scope,
-    ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
+    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Item, Mappings, Namespace,
+    Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
 use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
@@ -155,31 +155,10 @@ impl Compiler {
 
             let prelude = ctx.alloc_child_scope();
 
-            for (name, symbol) in ctx
-                .scope(prelude_scope)
-                .exported_symbols()
-                .map(|(name, symbol)| (name.to_string(), symbol))
-                .collect::<Vec<_>>()
-            {
-                ctx.scope_mut(prelude).insert_symbol(name, symbol, false);
-            }
-
-            for (name, ty) in ctx
-                .scope(prelude_scope)
-                .exported_types()
-                .map(|(name, ty)| (name.to_string(), ty))
-                .collect::<Vec<_>>()
-            {
-                ctx.scope_mut(prelude).insert_type(name, ty, false);
-            }
-
-            for (name, module) in ctx
-                .scope(prelude_scope)
-                .exported_modules()
-                .map(|(name, module)| (name.to_string(), module))
-                .collect::<Vec<_>>()
-            {
-                ctx.scope_mut(prelude).insert_module(name, module, false);
+            for namespace in Namespace::ALL {
+                for (name, item) in ctx.scope(prelude_scope).exported_items(namespace) {
+                    ctx.scope_mut(prelude).insert_item(name, item, false);
+                }
             }
 
             ctx.push_scope(prelude, prelude_file.document.syntax().text_range().start());
@@ -389,7 +368,7 @@ impl Compiler {
     }
 
     /// Looks up a symbol in a scope and then each enclosing scope. The lookup stops at a scope
-    /// that blocks the name (see [`Scope::block_symbol`]).
+    /// that blocks the name (see [`Scope::block`]).
     pub fn resolve_symbol_in(
         &self,
         scope: ScopeId,
@@ -404,7 +383,7 @@ impl Compiler {
     }
 
     /// Looks up a type in a scope and then each enclosing scope. The lookup stops at a scope that
-    /// blocks the name (see [`Scope::block_type`]).
+    /// blocks the name (see [`Scope::block`]).
     pub fn resolve_type_in(
         &self,
         scope: ScopeId,
@@ -414,7 +393,7 @@ impl Compiler {
     }
 
     /// Looks up a module in a scope and then each enclosing scope. The lookup stops at a scope
-    /// that blocks the name (see [`Scope::block_module`]).
+    /// that blocks the name (see [`Scope::block`]).
     pub fn resolve_module_in(
         &self,
         scope: ScopeId,
@@ -435,7 +414,7 @@ impl Compiler {
         scope: ScopeId,
         namespace: Namespace,
         name: &str,
-    ) -> Option<(Declaration, Option<ImportId>)> {
+    ) -> Option<(Item, Option<ImportId>)> {
         self.resolve_in(
             scope,
             name,
