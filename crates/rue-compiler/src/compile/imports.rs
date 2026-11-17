@@ -147,8 +147,8 @@ pub struct ImportCache {
     /// which are checked once every import is resolved.
     forced: HashSet<ImportId>,
     /// The names in each scope that more than one import (or a declaration and an import) bring
-    /// the same symbol in for. Only the first is recorded as bringing it in.
-    shared_symbols: HashSet<(ScopeId, String)>,
+    /// the same symbol in for, with the imports other than the one recorded as bringing it in.
+    shared_symbols: HashMap<(ScopeId, String), HashSet<ImportId>>,
     /// The names in imports that refer to a declaration through another import, which are
     /// ambiguous if that import is an ambiguous glob import. They're checked once every glob
     /// import is resolved.
@@ -308,9 +308,14 @@ pub fn resolve_imports(
             ctx.diagnostic_name(name, kind.clone());
         }
 
-        for &(import_scope, import) in &imports {
+        let import_scopes = imports
+            .iter()
+            .map(|&(scope, import)| (import, scope))
+            .collect::<HashMap<_, _>>();
+
+        for &(_, import) in &imports {
             if cache.forced.contains(&import) {
-                check_forced_import(ctx, cache, &resolution, import_scope, import);
+                check_forced_import(ctx, cache, &resolution, &import_scopes, import);
             }
         }
 
@@ -370,9 +375,10 @@ fn check_forced_import(
     ctx: &mut Compiler,
     cache: &ImportCache,
     resolution: &Resolution,
-    import_scope: ScopeId,
+    import_scopes: &HashMap<ImportId, ScopeId>,
     import_id: ImportId,
 ) {
+    let import_scope = import_scopes[&import_id];
     let import = ctx.import(import_id).clone();
 
     // Only lookups from the import's own scope wait, so only they can be forced
@@ -390,10 +396,15 @@ fn check_forced_import(
 
         // A glob import can bring in an item with the same name as the module it imports from,
         // which doesn't change what its own path refers to, unless another import brings in the
-        // same item
-        let skip_own = !cache
+        // same item (other than by importing it back from this scope)
+        let skip_own = cache
             .shared_symbols
-            .contains(&(import_scope, first.text().to_string()));
+            .get(&(import_scope, first.text().to_string()))
+            .is_none_or(|others| {
+                others.iter().all(|&other| {
+                    imported_back(ctx, cache, resolution, import_scopes, other, import_id)
+                })
+            });
 
         (lookup_past(
             ctx,
@@ -442,6 +453,54 @@ fn check_forced_import(
             DiagnosticKind::AmbiguousOuterImport(name.text().to_string()),
         );
     }
+}
+
+/// Whether an import brings in the symbol that `origin` brought into its scope only by importing
+/// it back from there, through a chain of imports with paths. If the chain can't be followed, it's
+/// treated as bringing the symbol in on its own.
+fn imported_back(
+    ctx: &Compiler,
+    cache: &ImportCache,
+    resolution: &Resolution,
+    import_scopes: &HashMap<ImportId, ScopeId>,
+    mut import_id: ImportId,
+    origin: ImportId,
+) -> bool {
+    let origin_scope = import_scopes[&origin];
+    let Some(first) = ctx.import(origin).path.first() else {
+        return false;
+    };
+    let Some(symbol) = ctx.scope(origin_scope).symbol(first.text()) else {
+        return false;
+    };
+    let mut visited = HashSet::new();
+
+    while visited.insert(import_id) {
+        let import = ctx.import(import_id);
+        let scope = import_scopes[&import_id];
+        let path = import
+            .path
+            .iter()
+            .map(|name| name.text().to_string())
+            .collect::<Vec<_>>();
+        let owner = path_owner(resolution, import, scope, import_id);
+
+        // The module the import brought the symbol in from
+        let Some(cached) = cache.scopes.get(&(scope, owner, path)) else {
+            return false;
+        };
+        let Some(via) = ctx.scope(cached.scope).symbol_import(symbol) else {
+            return false;
+        };
+
+        if cached.scope == origin_scope && via == origin {
+            return true;
+        }
+
+        import_id = via;
+    }
+
+    false
 }
 
 /// What a use of a name in the importing scope finds, apart from what an import brought in.
@@ -814,7 +873,11 @@ fn resolve_import(
                 if target.symbol(&name) == Some(symbol)
                     && target.symbol_import(symbol) != Some(import_id)
                 {
-                    cache.shared_symbols.insert((import_scope, name.clone()));
+                    cache
+                        .shared_symbols
+                        .entry((import_scope, name.clone()))
+                        .or_default()
+                        .insert(import_id);
                 }
 
                 if target.symbol(&name).is_none() {
@@ -1053,7 +1116,9 @@ fn resolve_import(
                 {
                     cache
                         .shared_symbols
-                        .insert((import_scope, name.to_string()));
+                        .entry((import_scope, name.to_string()))
+                        .or_default()
+                        .insert(import_id);
                 }
 
                 if target.symbol(name).is_none() {

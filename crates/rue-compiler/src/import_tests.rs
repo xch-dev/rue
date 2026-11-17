@@ -1711,3 +1711,41 @@ fn qualified_uses_of_a_private_import_are_still_reported() {
         ]
     );
 }
+
+#[test]
+fn forced_import_paths_are_not_ambiguous_with_their_own_items_imported_back() {
+    // `n` re-exports the `m` that `s`'s glob import brought in, so `import n::*` bringing it back
+    // into `s` isn't another source of it
+    let compiled = compile(
+        "
+        mod m {
+            export mod m {
+                export const Y: Int = 2;
+            }
+
+            export const Y: Int = 1;
+        }
+
+        mod n {
+            export s::m;
+            export const Z: Int = 3;
+        }
+
+        mod s {
+            export m::*;
+            import n::*;
+
+            export fn f() -> Int {
+                Y + Z
+            }
+        }
+
+        fn main() -> Int {
+            s::f()
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("s::Y"), "m");
+}
