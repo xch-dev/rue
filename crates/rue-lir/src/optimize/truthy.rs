@@ -114,5 +114,10 @@ pub fn is_boolean(arena: &Arena<Lir>, value: LirId) -> bool {
 }
 
 pub fn is_nil(arena: &Arena<Lir>, value: LirId) -> bool {
-    matches!(&arena[value], Lir::Atom(atom) if atom.is_empty())
+    is_atom(arena, value, &[])
+}
+
+/// Whether the value is the given atom.
+pub fn is_atom(arena: &Arena<Lir>, value: LirId, bytes: &[u8]) -> bool {
+    matches!(&arena[value], Lir::Atom(atom) if atom.as_slice() == bytes)
 }

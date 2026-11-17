@@ -157,6 +157,13 @@ fn test_inline_if_drops_pure_branch() {
     let fails = raise(&mut arena);
     let lir = arena.alloc(Lir::If(nil, fails, x, true));
     check(&mut arena, lir, ENVS, expect!["(i () (x) 2)"]);
+
+    // The same applies when the condition is known to be true
+    let lir = arena.alloc(Lir::If(one, x, one, true));
+    check(&mut arena, lir, ENVS, expect!["2"]);
+
+    let lir = arena.alloc(Lir::If(one, x, fails, true));
+    check(&mut arena, lir, ENVS, expect!["(i () (x) 2)"]);
 }
 
 #[test]
@@ -243,12 +250,20 @@ fn test_div_and_mod_of_matching_expressions() {
     check(&mut arena, lir, envs, expect!["(divmod (+ 2 (q . 1)) 5)"]);
 
     // Expressions that differ aren't, even if they're similar
-    let first = arena.alloc(Lir::First(x));
-    let rest = arena.alloc(Lir::Rest(x));
+    // The first and rest are taken of a run, so that they aren't folded into paths
+    let program = path(&mut arena, 5);
+    let run = arena.alloc(Lir::Run(program, x));
+    let first = arena.alloc(Lir::First(run));
+    let rest = arena.alloc(Lir::Rest(run));
     let div = arena.alloc(Lir::Div(first, y));
     let modulo = arena.alloc(Lir::Mod(rest, y));
     let lir = arena.alloc(Lir::Cons(div, modulo));
-    check(&mut arena, lir, envs, expect!["(c (/ 4 5) (% 6 5))"]);
+    check(
+        &mut arena,
+        lir,
+        envs,
+        expect!["(c (/ (f (a 5 2)) 5) (% (r (a 5 2)) 5))"],
+    );
 
     let two_args = arena.alloc(Lir::Concat(vec![x, y]));
     let one_arg = arena.alloc(Lir::Concat(vec![x]));

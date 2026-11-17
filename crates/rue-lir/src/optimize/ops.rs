@@ -7,9 +7,11 @@ use sha3::Keccak256;
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
     optimize::{
-        ArgList, Truthiness, fold_atoms, is_boolean, is_nil, is_pure, opt_truthy, reads_env,
+        ArgList, Truthiness, fold_atoms, is_atom, is_boolean, is_nil, is_pure, opt_truthy,
+        reads_env,
     },
     parent_path, rest_path,
+    stack::grow_stack,
 };
 
 // There's no way to optimize an atom
@@ -469,7 +471,8 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 }
 
 // If the condition is known to be true or false and can't fail, we can return that branch
-// Inline ifs evaluate both branches eagerly, so we keep them but with a nil condition
+// Inline ifs evaluate both branches eagerly, so the other branch is only dropped if it can't fail,
+// and otherwise both are kept with a nil condition
 // Since the condition only matters for its truthiness, we can simplify it
 // If the condition is a not, we can flip the then and else branches
 // If both branches are atoms, they can't fail, so they can be evaluated eagerly instead
@@ -930,10 +933,6 @@ pub fn opt_r1_verify(
     arena.alloc(Lir::R1Verify(public_key, message, signature))
 }
 
-fn is_atom(arena: &Arena<Lir>, value: LirId, bytes: &[u8]) -> bool {
-    matches!(&arena[value], Lir::Atom(atom) if atom.as_slice() == bytes)
-}
-
 /// Whether both values are the same expression, so they evaluate to the same result (or both
 /// fail) in the same environment. This is conservative, so it can return `false` for values
 /// that are the same.
@@ -942,6 +941,10 @@ fn same_value(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
         return true;
     }
 
+    grow_stack(|| same_value_step(arena, left, right))
+}
+
+fn same_value_step(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
     match (&arena[left], &arena[right]) {
         (Lir::Atom(left), Lir::Atom(right)) => left == right,
         (Lir::Path(left), Lir::Path(right)) => left == right,

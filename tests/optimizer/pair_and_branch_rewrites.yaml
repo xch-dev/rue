@@ -56,13 +56,18 @@ tests:
 - name: unused_values_that_fold
   program: "2"
   debug_program: (i () (substr (q . "abc") () (q . 1)) (i () (/ (q . 10) (+ (q . 3) (q . 2))) (i () (ash (q . 1) (+ (q . 2) (q . 1))) 2)))
+  solution: (3)
+  output: "3"
+  runtime_cost: 48
   byte_cost: 12000
-  clvm_error: path into atom
+  total_cost: 12048
 - name: unused_check_that_may_fail
   program: (a (q 3 () (a 2 5) 5) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) 1))
   debug_program: (a (q 3 () (a 2 5) 5) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at pair_and_branch_rewrites.rue:54:5"))) 1) 1))
+  solution: (0)
   byte_cost: 684000
-  clvm_error: path into atom
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at pair_and_branch_rewrites.rue:54:5"
 diagnostics:
 - |-
   Field `y` of struct `Point` is never read at pair_and_branch_rewrites.rue:3:5
