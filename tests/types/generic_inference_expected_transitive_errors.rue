@@ -1,0 +1,24 @@
+// The type expected of a call that reaches generics inferred through other generics must still
+// reject invalid calls (#284)
+
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn main() -> Int {
+    // The value isn't the expected literal
+    let wrong_value: 5 = map(identity, 6);
+
+    // The function returns `Int`, which isn't the expected literal
+    let wrong_function: 5 = map(increment, 5);
+
+    wrong_value + wrong_function
+}

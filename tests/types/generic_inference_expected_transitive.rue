@@ -1,0 +1,85 @@
+// The type expected of a call reaches the generics that are only inferred through other generics,
+// so that a literal isn't widened past it (#284)
+
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+fn forward<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    map(function, value)
+}
+
+test fn map_identity() -> Int {
+    let result: 5 = map(identity, 5);
+    result + 1
+}
+
+test fn map_identity_reversed() -> Int {
+    let result: 5 = map_reversed(5, identity);
+    result + 1
+}
+
+test fn chain_of_three() -> Int {
+    let result: 5 = chain(identity, identity, 5);
+    result + 1
+}
+
+test fn through_several_layers() -> Int {
+    let result: 5 = forward(identity, 5);
+    result + 1
+}
+
+test fn nested_calls() -> Int {
+    let result: 5 = map(identity, map(identity, 5));
+    result + 1
+}
+
+test fn return_type() -> 5 {
+    map(identity, 5)
+}
+
+test fn string_literal() -> Bool {
+    let result: "hello" = map(identity, "hello");
+    result == "hello"
+}
+
+test fn union_with_literal() -> Bool {
+    let result: 5 | nil = map(identity, 5);
+    result is nil
+}
+
+test fn widened_without_literal() -> Int {
+    // The expected type allows `Int`, so the literal is still widened
+    let result: Int = map(identity, 5);
+    result + 1
+}
+
+fn wrap<T>(value: T) -> (T, nil) {
+    (value, nil)
+}
+
+test fn compound_result() -> 5 {
+    let result: (5, nil) = map(wrap, 5);
+    result.first
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+test fn instantiated_generic_function() -> 5 {
+    let result: (5, 5) = map(duplicate, 5);
+    result.rest
+}

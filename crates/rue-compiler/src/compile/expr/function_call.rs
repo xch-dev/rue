@@ -162,8 +162,18 @@ pub fn compile_function_call_expr(
             let expr = &args[i];
             let param = function.params[i].ty;
 
-            // Use what has been inferred from the previous arguments as the expected type
+            // Use what has been inferred from the previous arguments as the expected type, then
+            // what the type expected of the call gives the generics they're inferred through
             let mut mappings = inferred;
+
+            if let Some(expected) = &expected {
+                let mut infer = infer.clone();
+                ctx.add_expected_bounds(&mut infer, expected);
+
+                for (generic, ty) in ctx.resolve_inference(&infer) {
+                    mappings.entry(generic).or_insert(ty);
+                }
+            }
 
             for (&generic, &ty) in &fallback {
                 mappings.entry(generic).or_insert(ty);
