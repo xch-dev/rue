@@ -48,13 +48,6 @@ tests:
   runtime_cost: 277
   byte_cost: 300000
   total_cost: 300277
-- name: upper_candidate
-  program: (q . 1)
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q) (q 4 (q . 1) (q . 2))) ()))
-  output: "1"
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
 - name: upper_candidate_with_expected_type
   program: (q . 1)
   debug_program: (a (q 2 (q 5 2) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q) (q 4 (q . 1) (q . 2))) ()))

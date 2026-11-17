@@ -128,7 +128,10 @@ impl InferenceCandidates {
 /// A lower or held candidate takes the least instantiation, from the instance's lower bounds, and
 /// an upper candidate the greatest, from its upper bounds. An instance without bounds of that kind
 /// is instantiated as `Never` or `Any` respectively, such as `(Never, Never)` for `B` when
-/// `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339).
+/// `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339). That's the least or greatest type for the
+/// generic itself, regardless of where the candidate references it, so a generic that's only a
+/// parameter type in the candidate gives it the greatest function type instead. An instance that's
+/// left out of `ComparisonContext::instantiations` is left as is.
 #[derive(Debug, Clone, Copy)]
 struct DeferredCandidate {
     generic: TypeId,

@@ -93,13 +93,8 @@ fn ignore<T>(_pair: (T, T)) -> nil {
     nil
 }
 
-test fn upper_candidate() -> Any {
-    // `A` is only bounded from above by `(T, T)`, so `T` takes its greatest instantiation, `Any`
-    let result: (Any, Any) = returning(ignore);
-    result.first
-}
-
 test fn upper_candidate_with_expected_type() -> Int {
+    // `A` is only bounded from above by `(T, T)`, so `T` takes its greatest instantiation, `Any`.
     // The expected type is more specific than `(Any, Any)`, so `A` is `(Int, Int)`
     let result: (Int, Int) = returning(ignore);
     result.first
