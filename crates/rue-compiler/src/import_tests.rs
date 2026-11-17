@@ -2028,3 +2028,75 @@ fn private_imports_are_not_reported_again_through_another_namespace() {
         ]
     );
 }
+
+#[test]
+fn forced_module_imports_that_a_nearer_import_contradicts_are_ambiguous() {
+    let compiled = compile(
+        "
+        mod a {
+            export mod V {
+                export const X: Int = 1;
+            }
+        }
+
+        mod V {
+            export const X: Int = 7;
+        }
+
+        mod inner {
+            import deeper::*;
+
+            export mod deeper {
+                export a::V;
+            }
+
+            export mod user {
+                import V;
+
+                export fn f() -> Int {
+                    V::X
+                }
+            }
+
+            export fn g() -> Int {
+                V::X
+            }
+        }
+
+        fn main() -> Int {
+            inner::user::f() + inner::g() + V::X
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["20:24 AmbiguousOuterImport(\"V\")"]);
+}
+
+#[test]
+fn glob_exports_of_items_that_are_already_imported_export_them() {
+    // The glob export finds the items the glob import already brought in, and exports them
+    let compiled = compile(
+        "
+        mod m {
+            export mod helper {
+                export const X: Int = 1;
+            }
+
+            export const VALUE: Int = 2;
+        }
+
+        mod outer {
+            import m::*;
+            export m::*;
+        }
+
+        fn main() -> Int {
+            outer::helper::X + outer::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("outer::helper::X"), "m::helper");
+    assert_eq!(compiled.symbol_origin("outer::VALUE"), "m");
+}

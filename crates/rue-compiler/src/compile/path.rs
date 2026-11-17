@@ -4,7 +4,7 @@ use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, ImportId, Scope, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Namespace, Scope, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, FunctionType, Type, TypeId};
 
@@ -199,18 +199,13 @@ where
         // Only a module can have a path after it, and modules have their own namespace
         let has_subpath = index + 1 < segments.len();
 
-        // A name whose import failed has already been reported at the import, so it's only looked
-        // up in other namespaces to report it if it isn't blocked
+        // A name whose import failed has already been reported at the import. It's checked in
+        // every namespace, since a use of the wrong kind of item would be reported too.
         let blocked = |ctx: &Compiler| {
             !qualified
-                && if has_subpath {
-                    ctx.is_module_blocked_in(base_scope, name.text())
-                } else {
-                    match kind {
-                        PathKind::Symbol => ctx.is_symbol_blocked_in(base_scope, name.text()),
-                        PathKind::Type => ctx.is_type_blocked_in(base_scope, name.text()),
-                    }
-                }
+                && Namespace::ALL
+                    .into_iter()
+                    .any(|namespace| ctx.is_blocked_in(base_scope, namespace, name.text()))
         };
 
         let base = if let Some(value) = value {

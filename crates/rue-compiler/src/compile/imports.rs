@@ -172,20 +172,29 @@ enum ImportError {
 }
 
 impl ImportError {
-    /// The error for a private item in a namespace. Values and modules are both reported as
-    /// symbols, so they're reported once.
-    fn private(namespace: Namespace) -> Self {
+    /// The error for a private item in a namespace, along with its diagnostic. Values and
+    /// modules are both reported as symbols, so a name that's both is reported once.
+    fn private(namespace: Namespace, name: &str, module: &str) -> (Self, DiagnosticKind) {
+        let (name, module) = (name.to_string(), module.to_string());
+
         match namespace {
-            Namespace::Value | Namespace::Module => Self::PrivateSymbol,
-            Namespace::Type => Self::PrivateType,
+            Namespace::Value | Namespace::Module => (
+                Self::PrivateSymbol,
+                DiagnosticKind::PrivateSymbol(name, module),
+            ),
+            Namespace::Type => (Self::PrivateType, DiagnosticKind::PrivateType(name, module)),
         }
     }
 
-    /// The error for a name that's already declared in a namespace.
-    fn duplicate(namespace: Namespace) -> Self {
+    /// The error for a name that's already declared in a namespace, along with its diagnostic.
+    fn duplicate(namespace: Namespace, name: &str) -> (Self, DiagnosticKind) {
+        let name = name.to_string();
+
         match namespace {
-            Namespace::Value | Namespace::Module => Self::DuplicateSymbol,
-            Namespace::Type => Self::DuplicateType,
+            Namespace::Value | Namespace::Module => {
+                (Self::DuplicateSymbol, DiagnosticKind::DuplicateSymbol(name))
+            }
+            Namespace::Type => (Self::DuplicateType, DiagnosticKind::DuplicateType(name)),
         }
     }
 }
@@ -962,26 +971,13 @@ fn resolve_import(
                         let module = import.path.last().unwrap().text();
 
                         for &(found, ..) in &items {
-                            let namespace = found.namespace();
+                            let (error, kind) =
+                                ImportError::private(found.namespace(), name, module);
+
                             cache
                                 .errors
-                                .entry((import_id, ImportError::private(namespace)))
-                                .or_insert_with(|| {
-                                    (
-                                        item.clone(),
-                                        if namespace == Namespace::Type {
-                                            DiagnosticKind::PrivateType(
-                                                name.to_string(),
-                                                module.to_string(),
-                                            )
-                                        } else {
-                                            DiagnosticKind::PrivateSymbol(
-                                                name.to_string(),
-                                                module.to_string(),
-                                            )
-                                        },
-                                    )
-                                });
+                                .entry((import_id, error))
+                                .or_insert_with(|| (item.clone(), kind));
                         }
                     }
 
@@ -1093,19 +1089,12 @@ fn resolve_import(
                     updated = true;
                     unused_imports.shift_remove(name);
                 } else if diagnostics && existing != Some(found) {
+                    let (error, kind) = ImportError::duplicate(namespace, name);
+
                     cache
                         .errors
-                        .entry((import_id, ImportError::duplicate(namespace)))
-                        .or_insert_with(|| {
-                            (
-                                item.clone(),
-                                if namespace == Namespace::Type {
-                                    DiagnosticKind::DuplicateType(name.to_string())
-                                } else {
-                                    DiagnosticKind::DuplicateSymbol(name.to_string())
-                                },
-                            )
-                        });
+                        .entry((import_id, error))
+                        .or_insert_with(|| (item.clone(), kind));
                     unused_imports.shift_remove(name);
                 }
             }

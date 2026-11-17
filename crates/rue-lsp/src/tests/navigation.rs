@@ -547,3 +547,54 @@ fn main() -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_definition_of_a_module_with_the_same_name_as_a_function() {
+    // Modules have their own namespace, so the path goes to the module
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod helper {
+    export const VALUE: Int = 1;
+}
+
+fn helper() -> Int {
+    2
+}
+
+fn main() -> Int {
+    helper() + help$0er::VALUE
+}
+",
+        )],
+        expect![[r#"
+            main.rue:1:4-1:10
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_of_a_function_with_the_same_name_as_a_module() {
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod helper {
+    export const VALUE: Int = 1;
+}
+
+fn helper() -> Int {
+    2
+}
+
+fn main() -> Int {
+    help$0er() + helper::VALUE
+}
+",
+        )],
+        expect![[r#"
+            main.rue:5:3-5:9
+        "#]],
+    );
+}

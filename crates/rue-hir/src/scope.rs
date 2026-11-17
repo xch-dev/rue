@@ -176,10 +176,6 @@ impl Scope {
         self.types.exported()
     }
 
-    pub fn exported_modules(&self) -> impl Iterator<Item = (&str, SymbolId)> {
-        self.modules.exported()
-    }
-
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {
         self.symbols.get(name)
     }
@@ -231,28 +227,12 @@ impl Scope {
         self.types.names()
     }
 
-    pub fn module_names(&self) -> impl Iterator<Item = &str> {
-        self.modules.names()
-    }
-
     pub fn add_import(&mut self, import: ImportId) {
         self.imports.push(import);
     }
 
     pub fn imports(&self) -> impl Iterator<Item = ImportId> {
         self.imports.iter().copied()
-    }
-
-    pub fn is_symbol_blocked(&self, name: &str) -> bool {
-        self.symbols.blocked.contains(name)
-    }
-
-    pub fn is_type_blocked(&self, name: &str) -> bool {
-        self.types.blocked.contains(name)
-    }
-
-    pub fn is_module_blocked(&self, name: &str) -> bool {
-        self.modules.blocked.contains(name)
     }
 
     pub fn item(&self, namespace: Namespace, name: &str) -> Option<Item> {
@@ -359,10 +339,11 @@ impl Scope {
 
     pub fn is_blocked(&self, namespace: Namespace, name: &str) -> bool {
         match namespace {
-            Namespace::Value => self.is_symbol_blocked(name),
-            Namespace::Type => self.is_type_blocked(name),
-            Namespace::Module => self.is_module_blocked(name),
+            Namespace::Value => &self.symbols.blocked,
+            Namespace::Type => &self.types.blocked,
+            Namespace::Module => &self.modules.blocked,
         }
+        .contains(name)
     }
 
     fn blocked_names(&mut self, namespace: Namespace) -> &mut HashSet<String> {

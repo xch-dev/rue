@@ -374,12 +374,7 @@ impl Compiler {
         scope: ScopeId,
         name: &str,
     ) -> Option<(SymbolId, Option<ImportId>)> {
-        self.resolve_in(
-            scope,
-            name,
-            Scope::symbol_with_import,
-            Scope::is_symbol_blocked,
-        )
+        self.resolve_in(scope, Namespace::Value, name, Scope::symbol_with_import)
     }
 
     /// Looks up a type in a scope and then each enclosing scope. The lookup stops at a scope that
@@ -389,7 +384,7 @@ impl Compiler {
         scope: ScopeId,
         name: &str,
     ) -> Option<(TypeId, Option<ImportId>)> {
-        self.resolve_in(scope, name, Scope::type_with_import, Scope::is_type_blocked)
+        self.resolve_in(scope, Namespace::Type, name, Scope::type_with_import)
     }
 
     /// Looks up a module in a scope and then each enclosing scope. The lookup stops at a scope
@@ -399,12 +394,7 @@ impl Compiler {
         scope: ScopeId,
         name: &str,
     ) -> Option<(SymbolId, Option<ImportId>)> {
-        self.resolve_in(
-            scope,
-            name,
-            Scope::module_with_import,
-            Scope::is_module_blocked,
-        )
+        self.resolve_in(scope, Namespace::Module, name, Scope::module_with_import)
     }
 
     /// Looks up a name in one namespace in a scope and then each enclosing scope, like
@@ -415,74 +405,39 @@ impl Compiler {
         namespace: Namespace,
         name: &str,
     ) -> Option<(Item, Option<ImportId>)> {
-        self.resolve_in(
-            scope,
-            name,
-            |scope, name| scope.item_with_import(namespace, name),
-            |scope, name| scope.is_blocked(namespace, name),
-        )
+        self.resolve_in(scope, namespace, name, |scope, name| {
+            scope.item_with_import(namespace, name)
+        })
     }
 
-    /// Whether looking up a symbol from a scope stops at a scope that blocks the name, rather
-    /// than finding it or reaching the outermost scope.
-    pub fn is_symbol_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.is_blocked_in(
-            scope,
-            name,
-            Scope::symbol_with_import,
-            Scope::is_symbol_blocked,
-        )
-    }
-
-    /// Whether looking up a type from a scope stops at a scope that blocks the name, rather than
-    /// finding it or reaching the outermost scope.
-    pub fn is_type_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.is_blocked_in(scope, name, Scope::type_with_import, Scope::is_type_blocked)
-    }
-
-    /// Whether looking up a module from a scope stops at a scope that blocks the name, rather
-    /// than finding it or reaching the outermost scope.
-    pub fn is_module_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.is_blocked_in(
-            scope,
-            name,
-            Scope::module_with_import,
-            Scope::is_module_blocked,
-        )
+    /// Whether looking up a name in a namespace from a scope stops at a scope that blocks the
+    /// name, rather than finding it or reaching the outermost scope.
+    pub fn is_blocked_in(&self, scope: ScopeId, namespace: Namespace, name: &str) -> bool {
+        self.lookup_in(scope, |_, scope| {
+            if scope.item(namespace, name).is_some() {
+                Some(false)
+            } else {
+                scope.is_blocked(namespace, name).then_some(true)
+            }
+        })
+        .unwrap_or(false)
     }
 
     fn resolve_in<T>(
         &self,
         scope: ScopeId,
+        namespace: Namespace,
         name: &str,
         find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
-        blocked: impl Fn(&Scope, &str) -> bool,
     ) -> Option<(T, Option<ImportId>)> {
         self.lookup_in(scope, |_, scope| {
             if let Some(found) = find(scope, name) {
                 Some(Some(found))
             } else {
-                blocked(scope, name).then_some(None)
+                scope.is_blocked(namespace, name).then_some(None)
             }
         })
         .flatten()
-    }
-
-    fn is_blocked_in<T>(
-        &self,
-        scope: ScopeId,
-        name: &str,
-        find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
-        blocked: impl Fn(&Scope, &str) -> bool,
-    ) -> bool {
-        self.lookup_in(scope, |_, scope| {
-            if find(scope, name).is_some() {
-                Some(false)
-            } else {
-                blocked(scope, name).then_some(true)
-            }
-        })
-        .unwrap_or(false)
     }
 
     /// The first result of `find` in a scope and then each enclosing scope.

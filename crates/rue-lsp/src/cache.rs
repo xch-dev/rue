@@ -6,7 +6,7 @@ use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::AstNode;
 use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{Source, SourceKind};
-use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
+use rue_hir::{FunctionKind, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind};
 use rue_parser::{SyntaxKind, SyntaxToken, T};
 use rue_types::{Type, TypeId, Union};
@@ -451,16 +451,13 @@ impl Cache<Compiler> {
 
             let scope = self.ctx.module(module).scope;
 
-            let exported = self.ctx.scope(scope);
-            let exported = exported
-                .exported_symbols()
-                .chain(exported.exported_modules())
-                .map(|(name, symbol)| (name.to_string(), symbol))
+            let exported = [Namespace::Value, Namespace::Module]
+                .into_iter()
+                .flat_map(|namespace| self.ctx.scope(scope).exported_items(namespace))
+                .filter_map(|(name, item)| symbol_item(name, item))
                 .collect::<Vec<_>>();
 
-            for (name, symbol) in exported {
-                let is_module = matches!(self.ctx.symbol(symbol), Symbol::Module(_));
-
+            for (name, symbol, is_module) in exported {
                 if !symbol_names.insert((name.clone(), is_module)) {
                     continue;
                 }
@@ -535,14 +532,10 @@ impl Cache<Compiler> {
         for scope in &scopes.0 {
             let scope = self.ctx.scope(*scope);
 
-            let symbols = scope
-                .symbol_names()
-                .filter_map(|name| Some((name.to_string(), scope.symbol(name)?)))
-                .chain(
-                    scope
-                        .module_names()
-                        .filter_map(|name| Some((name.to_string(), scope.module(name)?))),
-                )
+            let symbols = [Namespace::Value, Namespace::Module]
+                .into_iter()
+                .flat_map(|namespace| scope.items(namespace))
+                .filter_map(|(name, item)| symbol_item(name, item))
                 .collect::<Vec<_>>();
 
             let types = scope
@@ -550,9 +543,7 @@ impl Cache<Compiler> {
                 .filter_map(|name| Some((name.to_string(), scope.ty(name)?)))
                 .collect::<Vec<_>>();
 
-            for (name, symbol) in symbols {
-                let is_module = matches!(self.ctx.symbol(symbol), Symbol::Module(_));
-
+            for (name, symbol, is_module) in symbols {
                 if !symbol_names.insert((name.clone(), is_module)) {
                     continue;
                 }
@@ -1099,6 +1090,16 @@ fn symbol_kind(symbol: &Symbol) -> Option<CompletionItemKind> {
         Symbol::Module(_) => Some(CompletionItemKind::MODULE),
         Symbol::Builtin(_) => Some(CompletionItemKind::FUNCTION),
         Symbol::Unresolved => None,
+    }
+}
+
+/// A value or module completion, with whether it's a module. Values and modules are both
+/// symbols, but are in different namespaces, so a value and a module can have the same name.
+fn symbol_item(name: String, item: Item) -> Option<(String, SymbolId, bool)> {
+    match item {
+        Item::Value(symbol) => Some((name, symbol, false)),
+        Item::Module(module) => Some((name, module, true)),
+        Item::Type(_) => None,
     }
 }
 
