@@ -83,7 +83,7 @@ test fn literal_argument() -> Bool {
     first && second
 }
 
-test fn expected_type() -> Int {
+test fn annotated_result() -> Int {
     let result: (Int, Int) = map(duplicate, 7);
     result.first + result.rest
 }

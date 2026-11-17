@@ -55,7 +55,7 @@ tests:
   runtime_cost: 1149
   byte_cost: 900000
   total_cost: 901149
-- name: expected_type
+- name: annotated_result
   program: (a (q 2 (q 16 4 6) (c (a 2 (q 7)) 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 7))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: "14"

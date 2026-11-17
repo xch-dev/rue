@@ -1573,6 +1573,23 @@ mod inference {
     }
 
     #[test]
+    fn leaves_lower_bounded_instances_in_upper_candidates() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let a = db.generic("A");
+        let mut infer = Inference::new([a]);
+
+        // `fn<T>(x: (T, T), y: T) -> nil` to `fn(a: A, b: Int) -> nil`, where `T` is only bounded
+        // from below, so the greatest instantiation isn't known
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let function = db.function_with(&[t], &[pair, t], true, nil);
+        let param = db.function(&[a, int], nil);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(T, T)");
+    }
+
+    #[test]
     fn leaves_unconstrained_instances_in_candidates() {
         let mut db = Db::new();
         let b = db.generic("B");
