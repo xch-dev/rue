@@ -178,11 +178,13 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             // that call (such as the `inline fn` itself) can be followed again in it
             let start = self.arguments[frame].followed;
             let inner = self.arguments.split_off(frame);
-            let hidden = self.followed[start..].to_vec();
-
-            for symbol in &hidden {
-                self.visited.remove(symbol);
-            }
+            // Only what's still followed is set aside, since a walk of an argument further out
+            // may have set some of it aside already
+            let hidden: Vec<SymbolId> = self.followed[start..]
+                .iter()
+                .copied()
+                .filter(|symbol| self.visited.remove(symbol))
+                .collect();
 
             let followed = self.followed.len();
             let evaluated = self.hir(hir);

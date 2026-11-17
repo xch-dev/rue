@@ -1437,3 +1437,57 @@ fn reads_evaluated_constant(x: Int) -> Int {
 test fn unused_binding_reading_evaluated_constant_is_dropped(n: Int, m: Int) -> Int {
     EVALUATED * EVALUATED + reads_evaluated_constant(n) + reads_evaluated_constant(m)
 }
+
+inline fn wraps_add(p: Int, q: Int) -> Int {
+    add_inline(p + add_inline(q, 0), 1)
+}
+
+// Walking `p` sets aside the outer calls of `add_inline`, and walking `q` inside it mustn't put
+// them back, so `x` is always evaluated and inlined, as before
+test fn argument_walked_inside_another_argument_is_inlined(n: Int) -> Int {
+    let x = 100 / n;
+    wraps_add(n, x)
+}
+
+const FOLLOWED_TWICE: Int = not_three_constant(2);
+inline const READS_FOLLOWED_TWICE: Int = FOLLOWED_TWICE + 1;
+
+inline fn picks_or_doubles(c: Bool, a: Int) -> Int {
+    if c {
+        a
+    } else {
+        READS_FOLLOWED_TWICE * 2
+    }
+}
+
+// The inline constant is followed while walking the argument, and again in the other branch, so
+// the constant it reads is evaluated on both paths and inlined, as before
+test fn constant_followed_in_argument_and_branch_is_inlined(n: Int) -> Int {
+    picks_or_doubles(n > 5, READS_FOLLOWED_TWICE)
+}
+
+const READ_BY_EFFECTS: Int = not_three_constant(2);
+
+fn reads_constant_in_effect(x: Int) -> Int {
+    let _b = READ_BY_EFFECTS + x;
+    x * 2
+}
+
+// The constant is first referenced by an effect, which is only visited after the first round, so
+// the later round must count it as evaluated, and `_b` isn't evaluated for it
+test fn effect_reading_constant_referenced_by_earlier_effect(n: Int) -> Int {
+    let _a = READ_BY_EFFECTS + reads_constant_in_effect(n);
+    n
+}
+
+inline const INLINE_THREE: Int = not_three_constant(3);
+
+// An inline constant is evaluated where it's referenced, so being referenced on another path
+// doesn't mean it's evaluated, and the unused binding is evaluated for it
+test fn unused_binding_reading_referenced_inline_constant_is_evaluated(n: Int) -> Int {
+    if n == 0 {
+        return INLINE_THREE;
+    }
+    let _u = INLINE_THREE + n;
+    1
+}

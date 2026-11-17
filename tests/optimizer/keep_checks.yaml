@@ -845,6 +845,37 @@ tests:
   runtime_cost: 5816
   byte_cost: 1308000
   total_cost: 1313816
+- name: argument_walked_inside_another_argument_is_inlined
+  program: (+ 2 (/ (q . 100) 2) (q . 1))
+  debug_program: (a (q 16 (+ 5 (+ 2 ())) (q . 1)) (c (/ (q . 100) 2) 1))
+  solution: (5)
+  output: "26"
+  runtime_cost: 2222
+  byte_cost: 228000
+  total_cost: 230222
+- name: constant_followed_in_argument_and_branch_is_inlined
+  program: (a (q 2 (i (> 5 (q . 5)) (q 16 (a 2 (q . 2)) (q . 1)) (q 18 (+ (a 2 (q . 2)) (q . 1)) (q . 2))) 1) (c (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i (> 11 (q . 5)) (q 16 2 (q . 1)) (q 18 (+ 2 (q . 1)) (q . 2))) 1) (c (a 2 (q . 2)) 1)) (c (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1424:5"))) 1) 1))
+  solution: (1)
+  output: "6"
+  runtime_cost: 3402
+  byte_cost: 1332000
+  total_cost: 1335402
+- name: effect_reading_constant_referenced_by_earlier_effect
+  program: (a (q 3 () (+ (a 2 (q . 2)) (* 5 (q . 2))) 5) (c (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q . 11) (c (a 6 (q . 2)) 1)) (c (c (q 18 1 (q . 2)) (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1424:5"))) 1)) 1))
+  solution: (5)
+  output: "5"
+  runtime_cost: 2780
+  byte_cost: 900000
+  total_cost: 902780
+- name: unused_binding_reading_referenced_inline_constant_is_evaluated
+  program: (a (q 2 (i 5 (q 3 () (+ (a 2 (q . 3)) 5) (q . 1)) (q 2 2 (q . 3))) 1) (c (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (i (= 5 ()) (q 2 2 (q . 3)) (q 3 () (+ (a 2 (q . 3)) 5) (q . 1))) 1) (c (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1424:5"))) 1) 1))
+  solution: (1)
+  byte_cost: 1140000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:1424:5"
 diagnostics:
 - |-
   This argument can fail, but `ignore_inline` is an `inline fn` that doesn't always evaluate its parameter `_a`, so its check can be skipped at keep_checks.rue:294:19
@@ -864,3 +895,9 @@ diagnostics:
 - |-
   This argument can fail, but `uses_second` is an `inline fn` that doesn't always evaluate its parameter `_first`, so its check can be skipped at keep_checks.rue:1235:31
     note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function
+- |-
+  This `inline const` can fail, but it's only evaluated where it's referenced, so its check is skipped wherever it isn't at keep_checks.rue:1453:14
+    note: Remove `inline` to evaluate it whenever the program references it
+- |-
+  This `inline const` can fail, but it's only evaluated where it's referenced, so its check is skipped wherever it isn't at keep_checks.rue:1483:14
+    note: Remove `inline` to evaluate it whenever the program references it
