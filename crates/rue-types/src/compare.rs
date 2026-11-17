@@ -805,6 +805,66 @@ pub fn add_expected_bounds(
     infer: &mut Inference,
     expected: &Inference,
 ) {
+    let bounds = infer
+        .generics
+        .keys()
+        .filter_map(|&generic| Some((generic, expected.candidates(generic)?)))
+        .flat_map(|(generic, expected)| expected.upper.iter().map(move |&upper| (generic, upper)))
+        .collect();
+
+    pass_upper_bounds(arena, builtins, infer, bounds, Vec::new(), |_| true);
+}
+
+/// Passes each generic's upper bounds on to the generics in its lower bounds, which must satisfy
+/// them too: in `feed(identity, inc)`, `identity` gives `B` the lower bound `A` and `inc` gives it
+/// the upper bound `Int`, so `A` is bounded by `Int` as well (#285). A generic is only given a bound
+/// that its lower bounds satisfy (see `add_expected_bounds`).
+///
+/// A generic without lower bounds of its own that's in `fallback` (such as one inferred from the
+/// type expected of the call) isn't given any, so it still falls back to that type. Since this only
+/// adds upper bounds, it otherwise only affects a generic that nothing bounds from below, or whose
+/// lower bounds would have been widened past one of them.
+pub fn add_bounds_through_generics(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &mut Inference,
+    fallback: &HashMap<TypeId, TypeId>,
+) {
+    let bounds = infer
+        .generics
+        .iter()
+        .flat_map(|(&generic, candidates)| {
+            candidates.upper.iter().map(move |&upper| (generic, upper))
+        })
+        .collect();
+
+    let held: Vec<TypeId> = infer
+        .generics
+        .iter()
+        .filter(|(generic, candidates)| {
+            candidates.lower.is_empty() && fallback.contains_key(generic)
+        })
+        .map(|(&generic, _)| generic)
+        .collect();
+
+    pass_upper_bounds(arena, builtins, infer, Vec::new(), bounds, |generic| {
+        !held.contains(&generic)
+    });
+}
+
+/// Adds each of the `added` bounds to its generic if the generic's lower bounds satisfy it, and
+/// passes each bound that's added, as well as each of the `existing` ones (which the generics
+/// already have), on to the generics in the generic's lower bounds that `accepts` allows, in the
+/// same way. A lower bound that's a generic gets the bound directly, and one that references
+/// generics in a compound type passes on what comparing it to the bound infers for them.
+fn pass_upper_bounds(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &mut Inference,
+    added: Vec<(TypeId, TypeId)>,
+    existing: Vec<(TypeId, TypeId)>,
+    accepts: impl Fn(TypeId) -> bool,
+) {
     let targets: Vec<TypeId> = infer
         .generics
         .keys()
@@ -812,18 +872,16 @@ pub fn add_expected_bounds(
         .filter(|&generic| infer.is_resolved_through(generic))
         .collect();
 
-    // Each bound is a type expected of the call, or one passed on from a generic to one in its
-    // lower bounds (which is part of it)
-    let mut stack: Vec<(TypeId, TypeId, bool)> = infer
-        .generics
-        .keys()
-        .filter_map(|&generic| Some((generic, expected.candidates(generic)?)))
-        .flat_map(|(generic, expected)| {
-            expected
-                .upper
-                .iter()
-                .map(move |&upper| (generic, upper, false))
-        })
+    // Each entry is a bound and whether it still has to be added to its generic. A bound passed on
+    // is part of the one it was passed on from
+    let mut stack: Vec<(TypeId, TypeId, bool)> = existing
+        .into_iter()
+        .map(|(generic, upper)| (generic, upper, false))
+        .chain(
+            added
+                .into_iter()
+                .map(|(generic, upper)| (generic, upper, true)),
+        )
         .collect();
     stack.reverse();
 
@@ -832,36 +890,44 @@ pub fn add_expected_bounds(
     // being substituted), which would otherwise go around a cycle of generics forever.
     let mut given: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
 
+    for (generic, upper, add) in &stack {
+        if !add {
+            given.entry(*generic).or_default().push(*upper);
+        }
+    }
+
     // A generic's lower bounds don't change here, so they're only expanded once
     let expanded = expanded_lower_bounds(arena, infer);
 
-    while let Some((generic, upper, passed_on)) = stack.pop() {
-        let given = given.entry(generic).or_default();
+    while let Some((generic, upper, add)) = stack.pop() {
+        if add {
+            let given = given.entry(generic).or_default();
 
-        if given.contains(&upper)
-            || (passed_on
-                && given.iter().any(|&other| {
-                    compare(arena, builtins, other, upper) == Comparison::Assign
-                        && compare(arena, builtins, upper, other) == Comparison::Assign
-                }))
-        {
-            continue;
+            if given.iter().any(|&other| {
+                other == upper
+                    || (compare(arena, builtins, other, upper) == Comparison::Assign
+                        && compare(arena, builtins, upper, other) == Comparison::Assign)
+            }) {
+                continue;
+            }
+
+            given.push(upper);
+
+            if expanded[&generic]
+                .is_some_and(|lower| compare(arena, builtins, lower, upper) != Comparison::Assign)
+            {
+                continue;
+            }
+
+            infer.candidates_mut(generic).upper.push(upper);
         }
-
-        given.push(upper);
-
-        let lower = expanded[&generic];
-
-        if lower.is_some_and(|lower| compare(arena, builtins, lower, upper) != Comparison::Assign) {
-            continue;
-        }
-
-        infer.candidates_mut(generic).upper.push(upper);
 
         // The generics that flow into this one through its lower bounds must satisfy it too
         for ty in infer.generics[&generic].lower.clone() {
             if infer.is_resolved_through(ty) {
-                stack.push((ty, upper, true));
+                if accepts(ty) {
+                    stack.push((ty, upper, true));
+                }
                 continue;
             }
 
@@ -876,7 +942,9 @@ pub fn add_expected_bounds(
             infer_from_expected(arena, builtins, ty, upper, &mut inner);
 
             for (&other, candidates) in &inner.generics {
-                stack.extend(candidates.upper.iter().map(|&upper| (other, upper, true)));
+                if accepts(other) {
+                    stack.extend(candidates.upper.iter().map(|&upper| (other, upper, true)));
+                }
             }
         }
     }

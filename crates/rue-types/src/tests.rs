@@ -9,10 +9,10 @@ use rue_diagnostic::Name;
 use crate::{
     Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
     FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
-    add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
-    extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
-    resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
-    unwrap_semantic,
+    add_bounds_through_generics, add_expected_bounds, check, compare, compare_with_inference,
+    extract_atoms, extract_functions, extract_pairs, extract_structs, infer_from_expected,
+    is_non_contractive, resolve_inference, resolve_inference_with_fallback, stringify, substitute,
+    substitute_with_mappings, subtract, unwrap_semantic,
 };
 
 struct Db {
@@ -1523,6 +1523,58 @@ mod inference {
         let expected = db.union(&[five, five_nil]);
         add_expected(&mut db, &[a, b, t, u], b, expected, &mut infer);
         assert_eq!(candidates(&infer, b).upper.len(), 1);
+    }
+
+    #[test]
+    fn passes_upper_bounds_through_other_generics() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        // `feed(identity, inc)`: `A` flows into `B`, which is bounded by `Int`
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, int, &mut infer);
+        add_bounds_through_generics(&mut db.arena, &db.builtins, &mut infer, &HashMap::new());
+        assert_eq!(candidates(&infer, a).upper, vec![int]);
+        assert_eq!(candidates(&infer, b).upper, vec![int]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
+    fn keeps_fallback_of_generics_without_lower_bounds() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `A` only has a fallback, so it isn't given `B`'s bound and still falls back to it
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, int, &mut infer);
+        let fallback = HashMap::from([(a, five)]);
+        add_bounds_through_generics(&mut db.arena, &db.builtins, &mut infer, &fallback);
+        assert_eq!(candidates(&infer, a).upper, vec![]);
+
+        // With a lower bound of its own, it's given the bound, which keeps `5` from widening
+        let six = db.literal(AtomSemantic::Int, &[6]);
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        db.infer(five, a, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut infer);
+        add_bounds_through_generics(&mut db.arena, &db.builtins, &mut infer, &fallback);
+        assert_eq!(candidates(&infer, a).upper, vec![five]);
+
+        // A bound its lower bounds don't satisfy isn't given
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        db.infer(six, a, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut infer);
+        add_bounds_through_generics(&mut db.arena, &db.builtins, &mut infer, &fallback);
+        assert_eq!(candidates(&infer, a).upper, vec![]);
     }
 
     #[test]

@@ -1,0 +1,4 @@
+diagnostics:
+- Cannot assign `"hello"` to `Int` without a cast, since they are semantically different at generic_inference_upper_transitive_errors.rue:30:35
+- Cannot assign `1` to `Bytes` without a cast, since they are semantically different at generic_inference_upper_transitive_errors.rue:34:28
+- "Cannot assign `fn(value: 5) -> Int` to `fn(b: Int) -> Int`, since they are incompatible at generic_inference_upper_transitive_errors.rue:37:39"
