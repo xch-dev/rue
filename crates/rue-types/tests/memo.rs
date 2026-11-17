@@ -255,7 +255,7 @@ fn test_permuted_generic_alias_arguments() {
 
         // Each comparison relied on others in progress, so the fixpoint memo could only reuse it
         // while they were still on the stack, and these never finished (#286). The single pass
-        // now gives up after about 90,000 steps, and iterating takes about 120,000 more.
+        // now gives up after about 30,000 steps, and iterating takes about 120,000 more.
         for (lhs, rhs) in [(n0, n1), (n1, n0)] {
             let (result, steps) = count_steps(|| {
                 with_step_limit(STEP_BOUND, || {
@@ -263,7 +263,7 @@ fn test_permuted_generic_alias_arguments() {
                 })
             });
             assert_eq!(result, Comparison::Invalid);
-            assert!(steps < 400_000, "took {steps} steps");
+            assert!(steps < 300_000, "took {steps} steps");
         }
     });
 }

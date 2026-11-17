@@ -182,9 +182,10 @@ pub(crate) struct FixpointMemo<K, V> {
 }
 
 /// A computation that starts from an empty stack is abandoned in favour of iterating once it has
-/// computed more than this many items for each distinct item, plus `BASE_STEPS`. Comparing the
-/// examples and tests computes at most about 25 per item, so they never iterate.
-const STEPS_PER_ITEM: usize = 64;
+/// computed more than this many items for each new item it cached, plus `BASE_STEPS`. Outside of
+/// the tests for this, no single pass in the examples or tests computes more than about 15,000
+/// items, so they never iterate.
+const STEPS_PER_ITEM: usize = 8;
 const BASE_STEPS: usize = 16_384;
 
 #[derive(Debug, Clone, Copy)]
