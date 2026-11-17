@@ -629,3 +629,151 @@ test fn unused_value_checked_before_its_recursive_function(n: Int) -> Int {
         calls_unused_divides(n)
     }
 }
+
+// A pass over `late_x`'s component reaches `late_y`, which reads the unfinished `late_r`, so the
+// component joins `late_r`'s instead of finishing without it
+fn late_r(n: Int) -> Int {
+    let v = late_x(fn(i: Int) => i, n);
+    assert n < 100;
+    v
+}
+
+fn late_y(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        late_r(n - 1)
+    }
+}
+
+fn late_x(g: fn(n: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        g(n)
+    } else {
+        late_x(late_y, n - 1)
+    }
+}
+
+test fn component_found_in_a_later_pass(n: Int, flag: Bool) -> Int {
+    let w = late_r(5);
+    let z = late_y(n);
+    if flag {
+        w + z
+    } else {
+        0
+    }
+}
+
+// `finished_a` is finished before `swaps_values` reads it, and doesn't stop `swaps_values` from
+// finding the second function value it calls
+fn finished_a(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        finished_a(n - 1)
+    }
+}
+
+fn swaps_values(g: fn(i: Int) -> Int, h: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        g(1) + finished_a(1)
+    } else {
+        swaps_values(h, g, n - 1)
+    }
+}
+
+test fn finished_component_before_swapped_values(x: Int) -> Int {
+    let y = finished_a(1) + swaps_values(fn(i: Int) => i, fn(i: Int) => 100 / (i - 1), 1);
+    if x > 0 {
+        y
+    } else {
+        0
+    }
+}
+
+// `grows_m2` grows after `grows_m1` read it, and then `grows_b` is resolved before the pass ends,
+// which mustn't lose that something grew
+fn grows_b(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        grows_r(n - 1)
+    }
+}
+
+fn grows_r(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        grows_m2(fn(i: Int) => i, n - 1) + grows_b(n)
+    }
+}
+
+fn grows_m2(p: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        grows_m1(p, n - 1) + p(n)
+    }
+}
+
+fn grows_m1(q: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        grows_r(n)
+    } else {
+        grows_m2(q, n - 1)
+    }
+}
+
+test fn growth_kept_across_nested_component(n: Int, flag: Bool) -> Int {
+    let w = grows_r(n);
+    let z = grows_m1(fn(i: Int) => 100 / (i - 2), 3);
+    if flag {
+        w + z
+    } else {
+        0
+    }
+}
+
+// The same, where the nested component is finished on its own
+fn own_b(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        own_b(n - 1)
+    }
+}
+
+fn own_r(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        own_m2(fn(i: Int) => i, n - 1) + own_b(n)
+    }
+}
+
+fn own_m2(p: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        own_m1(p, n - 1) + p(n)
+    }
+}
+
+fn own_m1(q: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        own_r(n)
+    } else {
+        own_m2(q, n - 1)
+    }
+}
+
+test fn growth_kept_across_finished_component(n: Int, flag: Bool) -> Int {
+    let w = own_r(n);
+    let z = own_m1(fn(i: Int) => 100 / (i - 2), 3);
+    if flag {
+        w + z
+    } else {
+        0
+    }
+}

@@ -89,6 +89,31 @@ tests:
   solution: (1)
   byte_cost: 2220000
   clvm_error: Division by zero
+- name: component_found_in_a_later_pass
+  program: (a (q 2 (q 2 (i 23 (q 16 4 6) (q)) 1) (c (c (a 10 (c (c 14 (c 4 10)) (q . 5))) (a 4 (c 10 (c 14 (c 4 (c 5 ())))))) 1)) (c (c (q 2 (i (> 23 ()) (q 2 2 (c (c 5 (c 11 2)) (- 23 (q . 1)))) (q)) 1) (c (q 2 (i (> (q . 100) 3) (q 2 4 (c (c 10 (c 14 4)) (c 3 (q . 2)))) (q 8)) 1) (q 2 (i (> 5 ()) (q 2 14 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 14) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ())))))) (q 2 7 (c 5 ()))) 1))) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 16 4 6) (q)) 1) (c (c (a 10 (c (c 14 (c 4 10)) (q . 5))) (a 4 (c 10 (c 14 (c 4 (c 5 ())))))) 1)) (c (c (q 2 (i (not (> 23 ())) (q) (q 2 2 (c (c 5 (c 11 2)) (- 23 (q . 1))))) 1) (c (q 2 (q 2 (i (> (q . 100) 7) (q . 2) (q 8 (q . "assertion failed at keep_checks_cycles.rue:637:5"))) 1) (c (a 4 (c (c 10 (c 14 4)) (c 3 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) 1)) (q 2 (i (not (> 5 ())) (q 2 7 (c 5 ())) (q 2 14 (c (c 4 (c 10 14)) (c (- 5 (q . 1)) (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 14) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))))))) 1))) 1))
+  solution: (200 ())
+  byte_cost: 5100000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at keep_checks_cycles.rue:637:5"
+- name: finished_component_before_swapped_values
+  program: (a (q 2 (q 2 (i (> 11 ()) (q . 2) (q)) 1) (c (+ (a 4 (c 4 (q . 1))) (a 6 (c 2 (c (q . 2) (c (q . 1) (q 19 (q . 100) (- 2 (q . 1)))))))) 1)) (c (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q)) 1) (q 2 (i (> 11 ()) (q 2 6 (c 2 (c 15 (c (- 11 (q . 1)) 5)))) (q 16 (a 5 (q 1)) (a 4 (c 4 (q . 1))))) 1)) 1))
+  debug_program: (a (q 2 (q 2 (i (> 11 ()) (q . 2) (q)) 1) (c (+ (a 4 (c 4 (q . 1))) (a 6 (c (c 4 6) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c (c (q . 1) (q 19 (q . 100) (- 2 (q . 1)))) (c (q . 1) ())))))))) 1)) (c (c (q 2 (i (not (> 3 ())) (q) (q 2 2 (c 2 (- 3 (q . 1))))) 1) (q 2 (i (not (> 11 ())) (q 16 (a 5 (c (q . 1) ())) (a 4 (c 4 (q . 1)))) (q 2 6 (c (c 4 6) (c 15 (c (- 11 (q . 1)) 5))))) 1)) 1))
+  solution: (0)
+  byte_cost: 3108000
+  clvm_error: Division by zero
+- name: growth_kept_across_nested_component
+  program: (a (q 2 (q 2 (i 23 (q 16 (a 9 (c (c 9 (c 45 (c 21 61))) 11)) 2) (q)) 1) (c (a 10 (c (c 4 (c 22 (c 10 30))) (c (q . 3) (q 19 (q . 100) (- 2 (q . 2)))))) 1)) (c (c (q 2 (i (> 3 ()) (q 16 (a 10 (c (c 4 (c 22 (c 10 30))) (c (- 3 (q . 1)) (q . 2)))) (a 30 1)) (q)) 1) (c (q 2 (i (> 5 ()) (q 2 10 (c (c 4 (c 22 (c 10 30))) (c (- 5 (q . 1)) 7))) (q 2 4 (c 2 5))) 1) (c (q 2 (i (> 5 ()) (q 16 (a 10 (c (c 4 (c 22 (c 10 30))) (c (- 5 (q . 1)) 7))) (a 7 (c 5 ()))) (q)) 1) (q 2 (i (> 3 ()) (q 2 4 (c 2 (- 3 (q . 1)))) (q)) 1)))) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 16 4 6) (q)) 1) (c (c (a 4 (c (c 4 (c 22 (c 10 30))) 5)) (a 10 (c (c 4 (c 22 (c 10 30))) (c (q . 3) (c (q . 2) (c (c (q . 1) (q 19 (q . 100) (- 2 (q . 2)))) (c (q . 1) ()))))))) 1)) (c (c (q 2 (i (not (> 3 ())) (q) (q 16 (a 10 (c (c 4 (c 22 (c 10 30))) (c (- 3 (q . 1)) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) (a 30 (c (c 4 (c 10 (c 22 30))) 3)))) 1) (c (q 2 (i (not (> 5 ())) (q 2 4 (c (c 4 (c 10 (c 22 30))) 5)) (q 2 10 (c (c 4 (c 22 (c 10 30))) (c (- 5 (q . 1)) 7)))) 1) (c (q 2 (i (not (> 5 ())) (q) (q 16 (a 10 (c (c 4 (c 22 (c 10 30))) (c (- 5 (q . 1)) 7))) (a 7 (c 5 ())))) 1) (q 2 (i (not (> 3 ())) (q) (q 2 4 (c (c 4 (c 10 (c 22 30))) (- 3 (q . 1))))) 1)))) 1))
+  solution: (5 ())
+  byte_cost: 5484000
+  clvm_error: Division by zero
+- name: growth_kept_across_finished_component
+  program: (a (q 2 (q 2 (i 23 (q 16 (a 21 (c (c (c 29 25) (c 17 21)) 11)) 2) (q)) 1) (c (a 8 (c (c (c 12 8) 6) (c (q . 3) (q 19 (q . 100) (- 2 (q . 2)))))) 1)) (c (c (c (q 2 (i (> 5 ()) (q 2 8 (c (c (c 12 8) 6) (c (- 5 (q . 1)) 7))) (q 2 10 (c (c (c 14 8) (c 12 10)) 5))) 1) (q 2 (i (> 5 ()) (q 16 (a 8 (c (c (c 12 8) 6) (c (- 5 (q . 1)) 7))) (a 7 (c 5 ()))) (q)) 1)) (c (q 2 (i (> 3 ()) (q 16 (a 12 (c (c (c 10 12) (c 14 8)) (c (- 3 (q . 1)) (q . 2)))) (a 8 (c 8 3))) (q)) 1) (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q)) 1))) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 16 4 6) (q)) 1) (c (c (a 10 (c (c (c 14 12) (c 8 10)) 5)) (a 8 (c (c (c 12 8) (c 10 14)) (c (q . 3) (c (q . 2) (c (c (q . 1) (q 19 (q . 100) (- 2 (q . 2)))) (c (q . 1) ()))))))) 1)) (c (c (c (q 2 (i (not (> 5 ())) (q 2 10 (c (c (c 14 8) (c 12 10)) 5)) (q 2 8 (c (c (c 12 8) (c 10 14)) (c (- 5 (q . 1)) 7)))) 1) (q 2 (i (not (> 5 ())) (q) (q 16 (a 8 (c (c (c 12 8) (c 10 14)) (c (- 5 (q . 1)) 7))) (a 7 (c 5 ())))) 1)) (c (q 2 (i (not (> 3 ())) (q) (q 16 (a 12 (c (c (c 10 12) (c 14 8)) (c (- 3 (q . 1)) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) (a 8 (c 8 3)))) 1) (q 2 (i (not (> 3 ())) (q) (q 2 2 (c 2 (- 3 (q . 1))))) 1))) 1))
+  solution: (5 ())
+  byte_cost: 5556000
+  clvm_error: Division by zero
 diagnostics:
 - |-
   This `if` statement only raises, so it can be written as an `assert` at keep_checks_cycles.rue:9:5

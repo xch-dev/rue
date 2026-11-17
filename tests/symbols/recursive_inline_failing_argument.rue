@@ -1,0 +1,34 @@
+// An `inline fn` that calls itself is reported, even when an argument that may fail is passed to
+// it, which the lints check before the recursion is reported
+inline fn passes_argument(a: Int, b: Int) -> Int {
+    if a > 0 {
+        passes_argument(a - 1, b)
+    } else {
+        b
+    }
+}
+
+inline fn binds_value(a: Int) -> Int {
+    inline let x = 100 / a;
+    if a > 1 {
+        binds_value(a - 1)
+    } else {
+        x
+    }
+}
+
+inline fn calls_other(a: Int, b: Int) -> Int {
+    if a > 0 {
+        calls_back(a - 1, b / 2)
+    } else {
+        b
+    }
+}
+
+inline fn calls_back(a: Int, b: Int) -> Int {
+    calls_other(a - 1, b) + calls_other(a, a / 2)
+}
+
+fn main(n: Int) -> Int {
+    passes_argument(n, 100 / n) + binds_value(n) + calls_other(n, n)
+}

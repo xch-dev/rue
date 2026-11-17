@@ -164,13 +164,13 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             return true;
         }
 
-        if let Some(hir) = self
-            .arguments
-            .iter()
-            .rev()
-            .find_map(|arguments| arguments.get(&symbol).copied())
-        {
-            return self.hir(hir);
+        if let Some((frame, hir)) = self.argument(symbol, self.arguments.len()) {
+            // The argument is written outside of the call it's passed to, so the parameters it
+            // references are those of the calls around that one
+            let inner = self.arguments.split_off(frame);
+            let evaluated = self.hir(hir);
+            self.arguments.extend(inner);
+            return evaluated;
         }
 
         match self.db().symbol(symbol) {
@@ -179,6 +179,71 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             Symbol::Binding(binding) => self.follow(symbol) && self.hir(binding.value.hir),
             Symbol::Constant(constant) => self.follow(symbol) && self.hir(constant.value.hir),
             Symbol::Function(_) => self.captures_target(symbol),
+            Symbol::Parameter(_) | Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => {
+                false
+            }
+        }
+    }
+
+    /// The innermost of the first `frames` frames of arguments that has one for the parameter,
+    /// and that argument.
+    fn argument(&self, parameter: SymbolId, frames: usize) -> Option<(usize, HirId)> {
+        self.arguments[..frames]
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(frame, arguments)| Some((frame, *arguments.get(&parameter)?)))
+    }
+
+    /// Whether the HIR could reference the target at all, following the values and bodies it
+    /// references, with the first `frames` frames of arguments in scope.
+    fn mentions(&self, hir: HirId, frames: usize, visited: &mut HashSet<SymbolId>) -> bool {
+        rue_types::grow_stack(|| {
+            let node = self.db().hir(hir);
+
+            match node {
+                Hir::Reference(symbol) | Hir::Lambda(symbol) => {
+                    self.mentions_symbol(*symbol, frames, visited)
+                }
+                Hir::Block(block) => {
+                    block.statements.iter().any(|statement| match *statement {
+                        Statement::Let(symbol, _) => self.mentions_symbol(symbol, frames, visited),
+                        _ => statement
+                            .hirs()
+                            .any(|hir| self.mentions(hir, frames, visited)),
+                    }) || block
+                        .body
+                        .is_some_and(|body| self.mentions(body, frames, visited))
+                }
+                _ => node
+                    .children()
+                    .any(|child| self.mentions(child, frames, visited)),
+            }
+        })
+    }
+
+    fn mentions_symbol(
+        &self,
+        symbol: SymbolId,
+        frames: usize,
+        visited: &mut HashSet<SymbolId>,
+    ) -> bool {
+        if symbol == self.target {
+            return true;
+        }
+
+        if let Some((frame, hir)) = self.argument(symbol, frames) {
+            return self.mentions(hir, frame, visited);
+        }
+
+        if !visited.insert(symbol) {
+            return false;
+        }
+
+        match self.db().symbol(symbol) {
+            Symbol::Binding(binding) => self.mentions(binding.value.hir, frames, visited),
+            Symbol::Constant(constant) => self.mentions(constant.value.hir, frames, visited),
+            Symbol::Function(function) => self.mentions(function.body, frames, visited),
             Symbol::Parameter(_) | Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => {
                 false
             }
@@ -203,6 +268,24 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             && symbol.kind == FunctionKind::Inline
         {
             let function = *function;
+
+            // Unless the target is a constant, which any function can reference, an `inline fn`
+            // can only reach it through what it's passed. Otherwise the body could still fail
+            // anyway, but treating it as not evaluating the target is only conservative, and it
+            // saves walking each call again for every target.
+            if !matches!(db.symbol(self.target), Symbol::Constant(_)) {
+                let mut visited = HashSet::new();
+                let frames = self.arguments.len();
+
+                if !args
+                    .iter()
+                    .chain([&callee])
+                    .any(|&hir| self.mentions(hir, frames, &mut visited))
+                {
+                    return false;
+                }
+            }
+
             let arguments = symbol
                 .fixed_parameters()
                 .iter()
