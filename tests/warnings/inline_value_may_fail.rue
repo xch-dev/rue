@@ -182,7 +182,7 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
     // Warns: never evaluated
     let b = ignore(check(x), 1);
 
-    // Warns: never evaluated by the function it's forwarded to
+    // Warns: only evaluated in one branch of the function it's forwarded to
     let c = forward(check(x), flag);
 
     // Warns: a rest parameter that's never evaluated

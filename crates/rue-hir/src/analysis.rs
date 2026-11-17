@@ -54,8 +54,6 @@ use std::{
     rc::Rc,
 };
 
-use indexmap::IndexSet;
-
 use crate::{
     Database, Hir, HirId, Statement, Symbol, SymbolId, reachable_body, reachable_statements,
 };
@@ -172,20 +170,21 @@ impl FailureAnalysis {
     }
 
     /// Whether the symbol is a binding that may be evaluated for its effect even if nothing
-    /// references it, because it isn't `inline` and its value may fail. This counts a binding
-    /// whose value only fails by calling the function value of a parameter, which isn't evaluated
-    /// if the functions passed for that parameter can't fail, so it's conservative.
+    /// references it (see [`Self::effect`]). A binding whose value only fails by calling the
+    /// function values of parameters counts, so this is conservative.
     pub fn may_be_effect(&self, db: &Database, symbol: SymbolId) -> bool {
-        matches!(
-            db.symbol(symbol),
-            Symbol::Binding(binding) if !binding.inline && self.may_fail(db, binding.value.hir)
-        )
+        !matches!(self.effect(db, symbol), Effect::Never)
     }
 
-    /// Whether evaluating the HIR, which is in a function body, may fail other than by calling the
-    /// function values of parameters, and if not, which parameters' values it calls.
-    pub(crate) fn body_calls(&self, db: &Database, hir: HirId) -> Option<IndexSet<SymbolId>> {
-        body_calls(&self.context(db), hir)
+    /// Whether the binding is evaluated for its effect if nothing references it. This is the one
+    /// rule that the dependency graph, the lints and the recursion check all decide effects by.
+    pub(crate) fn effect(&self, db: &Database, symbol: SymbolId) -> Effect {
+        match db.symbol(symbol) {
+            Symbol::Binding(binding) if !binding.inline => {
+                effect(&self.context(db), binding.value.hir)
+            }
+            _ => Effect::Never,
+        }
     }
 
     /// Whether calling the function value with arguments that aren't known may fail.
@@ -204,11 +203,11 @@ struct WrittenContext<'a> {
 }
 
 impl WrittenContext<'_> {
-    /// Whether a binding that's never referenced is evaluated for its effect. The dependency graph
-    /// only does that if its value may fail, other than by calling the value of a parameter,
-    /// which depends on what the calls of the function pass (so it's treated as not evaluated).
+    /// Whether a binding that's never referenced is evaluated for its effect. One that only
+    /// fails by calling the value of a parameter depends on what the calls of the function pass,
+    /// so it's treated as not evaluated.
     fn evaluated_unreferenced(&self, value: HirId) -> bool {
-        body_calls(self, value).is_none()
+        matches!(effect(self, value), Effect::Always)
     }
 
     /// The symbols that evaluating the statements and body may reference, deciding along the way

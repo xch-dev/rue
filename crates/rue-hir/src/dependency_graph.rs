@@ -8,7 +8,7 @@ use rue_options::CompilerOptions;
 
 use crate::{
     Database, FailureAnalysis, Hir, HirId, Statement, Symbol, SymbolId,
-    analysis::{Callee, resolve_callee},
+    analysis::{Callee, Effect, resolve_callee},
 };
 
 #[derive(Debug, Clone)]
@@ -51,9 +51,9 @@ pub struct DependencyGraph {
     // since their values may fail, if they're never referenced
     effects: HashSet<SymbolId>,
 
-    // Keeps track of the bindings whose values may fail that haven't been visited yet, along with
-    // the symbol whose body their let statement is in, and the parameters whose function values
-    // they call, if that's the only way they can fail
+    // Keeps track of the non-inline bindings that haven't been decided yet, along with the symbol
+    // whose body their let statement is in. Whether each one is evaluated for its effect is
+    // decided in `visit_effects`, once the rest of the program has been visited
     unvisited_effects: Vec<(Option<SymbolId>, SymbolId)>,
 
     // Keeps track of the direct calls to each function, so that a binding that calls the value of
@@ -496,12 +496,11 @@ fn assign_destructured_owner(db: &Database, graph: &mut DependencyGraph, symbol:
     }
 }
 
-/// A binding whose value may fail is evaluated even if it's never referenced, so that the check
-/// isn't dropped. Whether it's referenced isn't known until the rest of the program has been
-/// visited, so it's only recorded here (see [`visit_effects`]).
-///
-/// A reference to another binding can't fail here (see [`FailureAnalysis`]), so whether another
-/// binding is referenced doesn't change which values may fail.
+/// Records a non-inline binding, which is evaluated for its effect if it's never referenced and its
+/// value may fail, so that the check isn't dropped. Whether it's referenced isn't known until the
+/// rest of the program has been visited, so that's decided in [`visit_effects`]. A reference to
+/// another non-inline binding can't fail there (see [`FailureAnalysis`]), so the order the
+/// bindings are decided in doesn't matter.
 fn visit_let(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     let Symbol::Binding(binding) = db.symbol(symbol) else {
         return;
@@ -547,20 +546,15 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) {
             continue;
         }
 
-        let Symbol::Binding(binding) = db.symbol(symbol) else {
-            continue;
-        };
-
         // A value that only fails if a function value that a parameter is passed fails is decided
         // once the calls that pass them have been visited
-        match graph.failures.body_calls(db, binding.value.hir) {
-            None => {}
-            Some(calls) if calls.is_empty() => continue,
-            Some(calls) if !graph.calls_may_fail(db, &calls) => {
+        match graph.failures.effect(db, symbol) {
+            Effect::Never => continue,
+            Effect::IfCallsMayFail(calls) if !graph.calls_may_fail(db, &calls) => {
                 graph.unvisited_effects.push((current, symbol));
                 continue;
             }
-            Some(_) => {}
+            Effect::Always | Effect::IfCallsMayFail(_) => {}
         }
 
         graph.effects.insert(symbol);

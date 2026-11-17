@@ -1,9 +1,9 @@
 // Functions that call each other in cycles, found by a fuzzer that compared release and debug
 // builds. In each, exactly one function can fail, and `main` calls others that only reach it
 // through their cycles, so whether each check is kept depends on how the cycles are resolved.
-// These were picked because compilers with a bug planted in that (caching a function whose
-// result depends on an earlier assumption, or not recording that dependency) drop a check in
-// each of them. Each test must fail for its solution in both builds, except the control at the end
+// These were picked because compilers with a bug planted in that (remembering a function's
+// result before its strongly connected component is finished, or not noticing that it read an
+// unfinished one) drop a check in each of them. Each test must fail for its solution in both builds, except the control at the end
 // of the fuzzed cases.
 
 fn check(x: Int) -> Int {

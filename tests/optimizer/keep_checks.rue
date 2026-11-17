@@ -298,7 +298,8 @@ fn call_twice(f: fn(x: Int) -> Int, x: Int) -> Int {
     f(x) + f(x)
 }
 
-// A function value that's only known at runtime may fail when called
+// The lambda passed to `call_twice` may fail, so calling it may fail too, and the binding isn't
+// moved into the branch
 test fn dynamic_call_moved_into_branch(x: Int, flag: Bool) -> Int {
     let y = call_twice(fn(i: Int) => check(i), x);
     if flag {
@@ -618,9 +619,10 @@ fn calls_checked(n: Int) -> Int {
     }
 }
 
-// While `checked_after_call` is checked, `calls_checked` is assumed not to fail until the rest of
-// its cycle is known, so it mustn't be cached as unable to fail once the cycle turns out to fail
-test fn mutually_recursive_assumption_is_discarded(n: Int, m: Int, flag: Bool) -> Int {
+// While `checked_after_call` is checked, `calls_checked` starts from not failing until the rest of
+// its cycle is known, so it mustn't be remembered as unable to fail once the cycle turns out to
+// fail
+test fn mutually_recursive_result_is_not_remembered_early(n: Int, m: Int, flag: Bool) -> Int {
     let y = checked_after_call(n);
     let z = calls_checked(m);
     if flag {
@@ -670,9 +672,10 @@ fn cycle_sibling(n: Int) -> Int {
     cycle_leaf(n)
 }
 
-// `cycle_leaf` is assumed not to fail while `cycle_member` is checked, which only depends on
-// `cycle_root`. `cycle_sibling` is checked afterward, and reaches `cycle_root` through it, so it
-// may fail too.
+// `cycle_root`, `cycle_member`, `cycle_leaf` and `cycle_sibling` all reach each other, so they're
+// found together. Each starts from not failing, and only once `cycle_root`'s failure reaches the
+// others does `cycle_sibling` turn out to fail too, so none of them may be remembered before the
+// component is finished.
 test fn sibling_in_recursive_cycle(m: Int, n: Int, flag: Bool) -> Int {
     let y = cycle_root(m);
     let z = if flag {

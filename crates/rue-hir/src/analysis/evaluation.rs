@@ -19,22 +19,22 @@ use super::{AnalysisContext, resolve_function};
 pub(crate) struct Evaluation<'a, C> {
     cx: &'a C,
     target: SymbolId,
-    /// The calls to `inline fn`s being followed, whose arguments are evaluated where the
-    /// parameters are referenced.
-    arguments: Vec<Frame>,
-    /// The symbols whose values or bodies have been followed, so that each is only followed once.
-    visited: HashSet<SymbolId>,
-    /// The symbols in `visited`, in the order they were followed, so that the ones followed
-    /// inside a call to an `inline fn` can be followed again for the next call.
-    followed: Vec<SymbolId>,
+    /// The symbols whose values or bodies have been followed outside of any scope, so that each
+    /// is only followed once.
+    followed: HashSet<SymbolId>,
+    /// The calls to `inline fn`s being followed, and the walks of their arguments, innermost
+    /// last. What's followed inside a scope is forgotten when it ends, since it depends on the
+    /// arguments, and is out of reach while an argument of an outer call is walked.
+    scopes: Vec<Scope>,
 }
 
-/// A call to an `inline fn` being followed.
-struct Frame {
+/// A call to an `inline fn` being followed, whose arguments are evaluated where the parameters
+/// are referenced, or the walk of an argument, which has none.
+#[derive(Default)]
+struct Scope {
     arguments: HashMap<SymbolId, HirId>,
-    /// The length of [`Evaluation::followed`] when the call was reached, so that what's followed
-    /// inside it is known.
-    followed: usize,
+    /// The symbols whose values or bodies have been followed inside of the scope.
+    followed: HashSet<SymbolId>,
 }
 
 impl<'a, C: AnalysisContext> Evaluation<'a, C> {
@@ -42,21 +42,27 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
         Self {
             cx,
             target,
-            arguments: Vec::new(),
-            visited: HashSet::new(),
-            followed: Vec::new(),
+            followed: HashSet::new(),
+            scopes: Vec::new(),
         }
     }
 
-    /// Whether the symbol's value or body hasn't been followed yet, in which case it's followed.
+    /// Whether the symbol's value or body hasn't been followed in a scope that's in reach, in
+    /// which case it's followed in the innermost one.
     fn follow(&mut self, symbol: SymbolId) -> bool {
-        let first = self.visited.insert(symbol);
-
-        if first {
-            self.followed.push(symbol);
+        if self.followed.contains(&symbol)
+            || self
+                .scopes
+                .iter()
+                .any(|scope| scope.followed.contains(&symbol))
+        {
+            return false;
         }
 
-        first
+        match self.scopes.last_mut() {
+            Some(scope) => scope.followed.insert(symbol),
+            None => self.followed.insert(symbol),
+        }
     }
 
     fn db(&self) -> &'a Database {
@@ -172,29 +178,15 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             return true;
         }
 
-        if let Some((frame, hir)) = self.argument(symbol, self.arguments.len()) {
+        if let Some((frame, hir)) = self.argument(symbol, self.scopes.len()) {
             // The argument is written outside of the call it's passed to, so the parameters it
             // references are those of the calls around that one, and what was followed inside
             // that call (such as the `inline fn` itself) can be followed again in it
-            let start = self.arguments[frame].followed;
-            let inner = self.arguments.split_off(frame);
-            // Only what's still followed is set aside, since a walk of an argument further out
-            // may have set some of it aside already
-            let hidden: Vec<SymbolId> = self.followed[start..]
-                .iter()
-                .copied()
-                .filter(|symbol| self.visited.remove(symbol))
-                .collect();
-
-            let followed = self.followed.len();
+            let inner = self.scopes.split_off(frame);
+            self.scopes.push(Scope::default());
             let evaluated = self.hir(hir);
-
-            for symbol in self.followed.drain(followed..) {
-                self.visited.remove(&symbol);
-            }
-
-            self.visited.extend(hidden);
-            self.arguments.extend(inner);
+            self.scopes.pop();
+            self.scopes.extend(inner);
             return evaluated;
         }
 
@@ -213,11 +205,11 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
     /// The innermost of the first `frames` frames of arguments that has one for the parameter,
     /// and that argument.
     fn argument(&self, parameter: SymbolId, frames: usize) -> Option<(usize, HirId)> {
-        self.arguments[..frames]
+        self.scopes[..frames]
             .iter()
             .enumerate()
             .rev()
-            .find_map(|(index, frame)| Some((index, *frame.arguments.get(&parameter)?)))
+            .find_map(|(index, scope)| Some((index, *scope.arguments.get(&parameter)?)))
     }
 
     /// Whether the HIR could reference the target at all, following the values and bodies it
@@ -300,7 +292,7 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             // saves walking each call again for every target.
             if !matches!(db.symbol(self.target), Symbol::Constant(_)) {
                 let mut visited = HashSet::new();
-                let frames = self.arguments.len();
+                let frames = self.scopes.len();
 
                 if !args
                     .iter()
@@ -320,17 +312,12 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
 
             // What's followed inside the body depends on the arguments, so it's followed again
             // for each call
-            let followed = self.followed.len();
-            self.arguments.push(Frame {
+            self.scopes.push(Scope {
                 arguments,
-                followed,
+                followed: HashSet::new(),
             });
             let evaluated = self.follow(function) && self.hir(symbol.body);
-            self.arguments.pop();
-
-            for symbol in self.followed.drain(followed..) {
-                self.visited.remove(&symbol);
-            }
+            self.scopes.pop();
 
             return evaluated || self.captures_target(function);
         }

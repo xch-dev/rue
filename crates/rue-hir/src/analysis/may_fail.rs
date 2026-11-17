@@ -36,9 +36,30 @@ pub(crate) fn may_fail(cx: &impl AnalysisContext, hir: HirId) -> bool {
 /// Whether evaluating the HIR, which is in a function body, may fail other than by calling the
 /// function values of parameters. If it can't, these are the parameters whose values it calls,
 /// which are only known where the function they belong to is called.
-pub(crate) fn body_calls(cx: &impl AnalysisContext, hir: HirId) -> Option<IndexSet<SymbolId>> {
+fn body_calls(cx: &impl AnalysisContext, hir: HirId) -> Option<IndexSet<SymbolId>> {
     let (fails, calls) = Visitor::new(cx).visit_body(hir);
     (!fails).then_some(calls)
+}
+
+/// Whether a binding whose value is the HIR is evaluated for its effect if nothing references it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Effect {
+    /// Its value can't fail.
+    Never,
+    /// Its value may fail other than by calling the function values of parameters.
+    Always,
+    /// Its value only fails if calling the function value of one of these parameters does, which
+    /// depends on what's passed for them wherever their functions are called.
+    IfCallsMayFail(IndexSet<SymbolId>),
+}
+
+/// Whether a binding whose value is the HIR is evaluated for its effect (see [`Effect`]).
+pub(crate) fn effect(cx: &impl AnalysisContext, hir: HirId) -> Effect {
+    match body_calls(cx, hir) {
+        None => Effect::Always,
+        Some(calls) if calls.is_empty() => Effect::Never,
+        Some(calls) => Effect::IfCallsMayFail(calls),
+    }
 }
 
 /// Whether calling the function value with arguments that aren't known may fail, outside of a
@@ -382,8 +403,8 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 
     /// Whether calling the function may fail, other than in calling the function values it's
     /// passed (see [`FunctionFailure`]). A call to a function whose summary is still being found
-    /// uses the summary so far, which starts from not failing, since the body fails anyway if
-    /// anything else in it does.
+    /// uses the summary so far, which starts from not failing and grows until its component is
+    /// finished (see [`Self::resolve`]).
     fn function_may_fail(&mut self, function: SymbolId) -> FunctionFailure {
         if let Some(failure) = self.cx.function_failures().borrow().get(&function).cloned() {
             return failure;
