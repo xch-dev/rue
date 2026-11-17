@@ -12,3 +12,10 @@ diagnostics:
 - Constant `X` references itself at recursion_cycles.rue:33:7
 - Constant `W` references itself at recursion_cycles.rue:34:7
 - Constant `Z` references itself at recursion_cycles.rue:35:7
+- Constant `V` references itself at recursion_cycles.rue:39:7
+- Unused constant `V` at recursion_cycles.rue:39:7
+- Unused function `checked_with` at recursion_cycles.rue:41:4
+- Function `checks_itself` cannot be inline, since it references itself at recursion_cycles.rue:47:11
+- Unused function `checks_itself` at recursion_cycles.rue:47:11
+- Unused constant `U` at recursion_cycles.rue:54:7
+- Unused function `unchecked_with` at recursion_cycles.rue:56:4

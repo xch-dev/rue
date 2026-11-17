@@ -201,6 +201,13 @@ impl AnalysisContext for WrittenContext<'_> {
             return true;
         };
 
+        // An `inline fn` that calls itself is an error, but it's checked before that's reported,
+        // so every parameter counts as used while its body is walked
+        self.analysis.parameter_uses.borrow_mut().insert(
+            function,
+            Rc::new(symbol.parameters.iter().copied().collect()),
+        );
+
         let mut uses = Uses::new(self);
         uses.hir(symbol.body);
         let used = uses.symbols.contains(&parameter);
