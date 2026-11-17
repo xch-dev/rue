@@ -5,10 +5,10 @@ mod a {
 type T = Bytes;
 
 mod inner {
-    import a::T;
+    import super::a::T;
 
     export mod deeper {
-        import T;
+        import super::T;
 
         export fn value() -> T {
             1

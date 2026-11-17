@@ -8,22 +8,22 @@ mod alpha {
 
 mod beta {
     export const VALUE: Int = 2;
-    export alpha::SHARED;
+    export super::alpha::SHARED;
     export type Number = String;
 }
 
 mod both {
-    export alpha::*;
-    export beta::*;
+    export super::alpha::*;
+    export super::beta::*;
 }
 
 mod chained {
-    export both::*;
+    export super::both::*;
 }
 
 mod user {
-    import alpha::*;
-    import beta::*;
+    import super::alpha::*;
+    import super::beta::*;
 
     export fn ambiguous(value: Number) -> Int {
         VALUE + value
@@ -35,8 +35,8 @@ mod user {
 }
 
 mod shadowed {
-    import alpha::*;
-    import beta::*;
+    import super::alpha::*;
+    import super::beta::*;
 
     const VALUE: Int = 4;
 

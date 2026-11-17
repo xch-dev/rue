@@ -4,7 +4,7 @@ use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, ImportId, Namespace, Scope, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, FunctionType, Type, TypeId};
 
@@ -77,34 +77,47 @@ enum SegmentBase {
     Module(ScopeId),
     /// From the scope the path is written in, and then each enclosing scope.
     Local(ScopeId),
-    /// In the module that `super` names, where only exported items can be found.
+    /// In the module that `super` names. It contains the code with the path, so its private items
+    /// can be used, and a file's sibling modules can be too.
     Parent(ScopeId),
 }
 
 /// Looks up a segment of a path in one namespace. The item is returned with whether it can be
 /// used from where the path is written, and the import that brought it into the scope it was
 /// found in, if any.
-fn lookup_segment<T: Copy>(
+fn lookup_segment(
     ctx: &Compiler,
     base: SegmentBase,
+    namespace: Namespace,
     name: &str,
-    find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
-    is_exported: impl Fn(&Scope, T) -> bool,
-    resolve: impl Fn(&Compiler, ScopeId, &str) -> Option<(T, Option<ImportId>)>,
-) -> Option<(T, bool, Option<ImportId>)> {
+) -> Option<(Item, bool, Option<ImportId>)> {
     match base {
         SegmentBase::Module(scope) => {
             let scope = ctx.scope(scope);
-            find(scope, name).map(|(item, via)| (item, is_exported(scope, item), via))
+            scope
+                .item_with_import(namespace, name)
+                .map(|(item, via)| (item, scope.is_item_exported(item), via))
         }
-        SegmentBase::Local(scope) => resolve(ctx, scope, name).map(|(item, via)| (item, true, via)),
-        SegmentBase::Parent(scope) => {
-            let scope = ctx.scope(scope);
-            find(scope, name)
-                .filter(|&(item, _)| is_exported(scope, item))
-                .map(|(item, via)| (item, true, via))
-        }
+        SegmentBase::Local(scope) => ctx
+            .resolve_item_in(scope, namespace, name)
+            .map(|(item, via)| (item, true, via)),
+        SegmentBase::Parent(scope) => ctx
+            .module_member(scope, namespace, name)
+            .map(|(item, via)| (item, true, via)),
     }
+}
+
+/// Looks up a segment of a path in one namespace, like [`lookup_segment`], as the kind of ID that
+/// the namespace has.
+fn lookup_as<T>(
+    ctx: &Compiler,
+    base: SegmentBase,
+    namespace: Namespace,
+    name: &str,
+    id: fn(Item) -> Option<T>,
+) -> Option<(T, bool, Option<ImportId>)> {
+    let (item, exported, via) = lookup_segment(ctx, base, namespace, name)?;
+    Some((id(item)?, exported, via))
 }
 
 pub fn compile_path<S>(
@@ -119,7 +132,7 @@ where
 {
     let mut segments = segments.collect::<Vec<_>>();
     let mut base_scope = ctx.last_scope_id();
-    let mut module_stack = ctx.parent_module_stack().to_vec();
+    let mut module_stack = ctx.parent_module_stack();
     let mut path_completion_module = None;
 
     let length = segments.len();
@@ -192,21 +205,12 @@ where
             return PathResult::Unresolved;
         };
 
-        // A name that's resolved through a module (rather than from the scope it's written in)
-        // can only be used if it's exported
-        let qualified = value.is_some() || base_scope != ctx.last_scope_id();
+        // A name that's resolved through a module (rather than from the scope it's written in, or
+        // a module that `super` names, which contains it) can only be used if it's exported
+        let qualified = value.is_some();
 
         // Only a module can have a path after it, and modules have their own namespace
         let has_subpath = index + 1 < segments.len();
-
-        // A name whose import failed has already been reported at the import. It's checked in
-        // every namespace, since a use of the wrong kind of item would be reported too.
-        let blocked = |ctx: &Compiler| {
-            !qualified
-                && Namespace::ALL
-                    .into_iter()
-                    .any(|namespace| ctx.is_blocked_in(base_scope, namespace, name.text()))
-        };
 
         let base = if let Some(value) = value {
             if let PathResult::Symbol(symbol, _, _) = value
@@ -227,36 +231,19 @@ where
             SegmentBase::Parent(base_scope)
         };
 
-        let find_symbol = || {
-            lookup_segment(
-                ctx,
-                base,
-                name.text(),
-                Scope::symbol_with_import,
-                Scope::is_symbol_exported,
-                Compiler::resolve_symbol_in,
-            )
+        // A name whose import failed has already been reported at the import. It's checked in
+        // every namespace, since a use of the wrong kind of item would be reported too.
+        let blocked = |ctx: &Compiler| {
+            Namespace::ALL.into_iter().any(|namespace| match base {
+                SegmentBase::Local(scope) => ctx.is_blocked_in(scope, namespace, name.text()),
+                SegmentBase::Parent(scope) => ctx.scope(scope).is_blocked(namespace, name.text()),
+                SegmentBase::Module(_) => false,
+            })
         };
-        let find_type = || {
-            lookup_segment(
-                ctx,
-                base,
-                name.text(),
-                Scope::type_with_import,
-                Scope::is_type_exported,
-                Compiler::resolve_type_in,
-            )
-        };
-        let find_module = || {
-            lookup_segment(
-                ctx,
-                base,
-                name.text(),
-                Scope::module_with_import,
-                Scope::is_module_exported,
-                Compiler::resolve_module_in,
-            )
-        };
+
+        let find_symbol = || lookup_as(ctx, base, Namespace::Value, name.text(), Item::symbol);
+        let find_type = || lookup_as(ctx, base, Namespace::Type, name.text(), Item::ty);
+        let find_module = || lookup_as(ctx, base, Namespace::Module, name.text(), Item::symbol);
 
         let (symbol, ty) = if has_subpath {
             let module = find_module();

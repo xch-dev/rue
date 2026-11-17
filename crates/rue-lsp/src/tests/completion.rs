@@ -486,3 +486,28 @@ fn main() -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_complete_in_an_inline_module() {
+    // An inline module doesn't see the items of the file it's in, only its own and the prelude
+    check(
+        r#"
+fn outer_helper() -> Int {
+    1
+}
+
+mod inner {
+    fn inner_helper() -> Int {
+        2
+    }
+
+    fn main() -> Int {
+        _helper$0
+    }
+}
+"#,
+        expect![[r#"
+            inner_helper [Function] fn() -> Int
+        "#]],
+    );
+}

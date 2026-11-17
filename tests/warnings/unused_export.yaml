@@ -12,23 +12,26 @@ diagnostics:
   `CONSTANT` is exported, but is never used outside of module `helpers` at unused_export.rue:12:18
     help: Remove `export`
 - |-
-  `only_by_name` is exported, but is never used outside of module `lexical` at unused_export.rue:58:15
+  `used_by_nested` is exported, but is never used outside of module `outer` at unused_export.rue:37:15
     help: Remove `export`
 - |-
-  `Temporary` is exported, but is never used outside of module `signature` at unused_export.rue:91:19
+  `only_by_name` is exported, but is never used outside of module `lexical` at unused_export.rue:59:15
     help: Remove `export`
 - |-
-  `Node` is exported, but is never used outside of module `recursive` at unused_export.rue:102:19
+  `Temporary` is exported, but is never used outside of module `signature` at unused_export.rue:92:19
     help: Remove `export`
 - |-
-  Field `next` of struct `Node` is never read at unused_export.rue:104:9
+  `Node` is exported, but is never used outside of module `recursive` at unused_export.rue:103:19
+    help: Remove `export`
+- |-
+  Field `next` of struct `Node` is never read at unused_export.rue:105:9
     note: If it's only needed for the layout of the struct, prefix its name with `_`
 - |-
-  `Result` is exported, but is never used outside of module `chain` at unused_export.rue:128:19
+  `Result` is exported, but is never used outside of module `chain` at unused_export.rue:129:19
     help: Remove `export`
 - |-
-  `make` is exported, but is never used outside of module `chain` at unused_export.rue:132:15
+  `make` is exported, but is never used outside of module `chain` at unused_export.rue:133:15
     help: Remove `export`
 - |-
-  `Value` is exported, but is never used outside of module `internal` at unused_export.rue:144:19
+  `Value` is exported, but is never used outside of module `internal` at unused_export.rue:145:19
     help: Remove `export`

@@ -211,7 +211,7 @@ fn used_exports(
 /// Whether the module can be used by anything that imports the file it's in, because it's
 /// exported from the file, or from another module that is.
 fn is_public(db: &Database, scopes: &HashMap<ScopeId, SymbolId>, module: SymbolId) -> bool {
-    let Some(parent) = db.scope(db.module(module).scope).parent() else {
+    let Some(parent) = db.module(module).parent else {
         return false;
     };
 

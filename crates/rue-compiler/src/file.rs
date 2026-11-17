@@ -97,6 +97,7 @@ impl FileTree {
         let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
             name: Some(Name::new(name.as_str(), None)),
             scope,
+            parent: None,
             declarations: ModuleDeclarations::default(),
         }));
 
@@ -220,6 +221,7 @@ impl FileTree {
             let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
                 name: Some(Name::new(file_name.as_str(), None)),
                 scope,
+                parent: None,
                 declarations: ModuleDeclarations::default(),
             }));
 
@@ -583,10 +585,12 @@ impl File {
 
         let sibling_scope = ctx.alloc_child_scope();
         let scope = ctx.alloc_scope(Scope::new(Some(sibling_scope)));
+        ctx.add_sibling_scope(scope, sibling_scope);
 
         let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
             name: Some(Name::new(name.as_str(), None)),
             scope,
+            parent: None,
             declarations: ModuleDeclarations::default(),
         }));
 
@@ -627,12 +631,18 @@ impl File {
             self.document.syntax().text_range().start(),
         );
         ctx.push_scope(scope, self.document.syntax().text_range().start());
-        // ctx.push_module(self.module);
+
+        let outer_scope = ctx
+            .scope(self.sibling_scope)
+            .parent()
+            .expect("a file's sibling scope is in another scope");
+        ctx.enter_file(self.module, outer_scope);
+
         self.module(ctx).declarations.clone()
     }
 
     fn end(&self, ctx: &mut Compiler, declarations: ModuleDeclarations) {
-        // ctx.pop_module();
+        ctx.exit_file();
         ctx.pop_scope(self.document.syntax().text_range().end());
         ctx.pop_scope(self.document.syntax().text_range().end());
         self.module_mut(ctx).declarations = declarations;

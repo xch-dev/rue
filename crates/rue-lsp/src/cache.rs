@@ -179,7 +179,17 @@ impl Cache<Compiler> {
         // which they were exited.
         scopes.sort_by_key(|(span, _)| span.len());
 
-        Scopes(scopes.into_iter().map(|(_, scope)| scope).collect())
+        // An inline module doesn't see the scopes of the module it's in, even though it's inside
+        // of them, so only the innermost scope's enclosing scopes are visible from it
+        let mut visible = Vec::new();
+        let mut current = scopes.first().map(|&(_, scope)| scope);
+
+        while let Some(scope) = current {
+            visible.push(scope);
+            current = self.ctx.scope(scope).parent();
+        }
+
+        Scopes(visible)
     }
 
     fn completion_context(&self, index: usize) -> (CompletionContext, CompletionContext) {

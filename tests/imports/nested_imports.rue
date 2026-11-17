@@ -15,12 +15,12 @@ mod m {
 }
 
 mod inner {
-    import a::V;
-    import z::m;
+    import super::a::V;
+    import super::z::m;
 
     export mod deeper {
-        import V;
-        import m::W;
+        import super::V;
+        import super::m::W;
 
         export fn value() -> Int {
             V
@@ -33,10 +33,10 @@ mod inner {
 }
 
 mod globbed {
-    import a::*;
+    import super::a::*;
 
     export mod deeper {
-        import V;
+        import super::V;
 
         export fn value() -> Int {
             V
@@ -44,14 +44,14 @@ mod globbed {
     }
 }
 
-test fn name_only_imports_use_an_enclosing_named_import() -> Int {
+test fn parent_imports_use_the_parent_named_import() -> Int {
     inner::deeper::value() + V
 }
 
-test fn import_paths_use_an_enclosing_named_import() -> Int {
+test fn parent_import_paths_use_the_parent_named_import() -> Int {
     inner::deeper::path() + m::W
 }
 
-test fn name_only_imports_use_an_enclosing_glob_import() -> Int {
+test fn parent_imports_use_the_parent_glob_import() -> Int {
     globbed::deeper::value() + V
 }

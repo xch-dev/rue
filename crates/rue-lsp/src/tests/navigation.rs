@@ -486,7 +486,7 @@ export fn greet(name: String) -> String {
 }
 
 #[test]
-fn test_definition_through_an_import_from_an_enclosing_module() {
+fn test_definition_through_an_import_from_a_parent_module() {
     // `deeper` imports `V` from `inner`, which imports it from `a`, rather than the top level
     check_definitions(
         &[(
@@ -499,10 +499,10 @@ mod a {
 const V: Int = 7;
 
 mod inner {
-    import a::V;
+    import super::a::V;
 
     export mod deeper {
-        import V;
+        import super::V;
 
         export fn f() -> Int {
             V$0

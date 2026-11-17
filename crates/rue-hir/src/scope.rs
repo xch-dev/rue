@@ -35,6 +35,22 @@ pub enum Item {
 }
 
 impl Item {
+    /// The symbol, if it's a value or a module.
+    pub fn symbol(self) -> Option<SymbolId> {
+        match self {
+            Self::Value(symbol) | Self::Module(symbol) => Some(symbol),
+            Self::Type(_) => None,
+        }
+    }
+
+    /// The type, if it's a type.
+    pub fn ty(self) -> Option<TypeId> {
+        match self {
+            Self::Type(ty) => Some(ty),
+            Self::Value(_) | Self::Module(_) => None,
+        }
+    }
+
     pub fn namespace(self) -> Namespace {
         match self {
             Self::Value(_) => Namespace::Value,

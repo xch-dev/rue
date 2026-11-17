@@ -32,7 +32,15 @@ pub struct Compiler {
     db: Database,
     syntax_map: SyntaxMap,
     scope_stack: Vec<(TextSize, ScopeId)>,
+    /// The directory modules that the file being compiled is in.
     module_stack: Vec<SymbolId>,
+    /// The module of the file being compiled, and the scope outside of it (with the prelude), if
+    /// a file is being compiled.
+    file: Option<(SymbolId, ScopeId)>,
+    /// The inline modules that the code being compiled is in, in the file being compiled.
+    inline_modules: Vec<SymbolId>,
+    /// The scope with the sibling modules of each file, keyed by the scope of the file.
+    sibling_scopes: HashMap<ScopeId, ScopeId>,
     builtins: Builtins,
     field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
@@ -128,6 +136,9 @@ impl Compiler {
             syntax_map: SyntaxMap::new(),
             scope_stack: vec![(TextSize::from(0), builtins.scope)],
             module_stack: Vec::new(),
+            file: None,
+            inline_modules: Vec::new(),
+            sibling_scopes: HashMap::new(),
             builtins,
             field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
@@ -359,12 +370,81 @@ impl Compiler {
         self.module_stack.pop().unwrap();
     }
 
-    pub fn parent_module_stack(&self) -> &[SymbolId] {
-        if self.module_stack.is_empty() {
-            return &[];
+    /// The modules that `super` refers to from the code being compiled, from the outermost to the
+    /// innermost, so that each `super` pops one. In an inline module, `super` is the module it's
+    /// in. In a file, it's the parent of the file's directory, since the file can already refer to
+    /// the other files in its directory by name.
+    pub fn parent_module_stack(&self) -> Vec<SymbolId> {
+        let mut stack = self.module_stack[..self.module_stack.len().saturating_sub(1)].to_vec();
+
+        if let Some((_, parents)) = self.inline_modules.split_last() {
+            stack.extend(self.file.map(|(module, _)| module));
+            stack.extend_from_slice(parents);
         }
 
-        &self.module_stack[..self.module_stack.len() - 1]
+        stack
+    }
+
+    /// Starts compiling a file, whose module is in the given scope.
+    pub fn enter_file(&mut self, module: SymbolId, outer_scope: ScopeId) {
+        self.file = Some((module, outer_scope));
+    }
+
+    pub fn exit_file(&mut self) {
+        self.file = None;
+    }
+
+    pub fn push_inline_module(&mut self, module: SymbolId) {
+        self.inline_modules.push(module);
+    }
+
+    pub fn pop_inline_module(&mut self) {
+        self.inline_modules.pop().unwrap();
+    }
+
+    /// The scope that an inline module's scope is in. An inline module only sees its own items and
+    /// imports, and the prelude, like a file, so its scope is in the one outside of the file.
+    pub fn inline_module_parent_scope(&self) -> ScopeId {
+        self.file
+            .map_or_else(|| self.last_scope_id(), |(_, outer_scope)| outer_scope)
+    }
+
+    /// Records the scope with a file's sibling modules, which are found through `super` from an
+    /// inline module in the file like the file's own items.
+    pub fn add_sibling_scope(&mut self, file_scope: ScopeId, sibling_scope: ScopeId) {
+        self.sibling_scopes.insert(file_scope, sibling_scope);
+    }
+
+    /// The item with a name that a module (by its scope) has, including a file's sibling modules,
+    /// and the import that brought it into the module, if any. This is what `super::name` finds.
+    pub fn module_member(
+        &self,
+        scope: ScopeId,
+        namespace: Namespace,
+        name: &str,
+    ) -> Option<(Item, Option<ImportId>)> {
+        self.scope(scope)
+            .item_with_import(namespace, name)
+            .or_else(|| {
+                let siblings = self.sibling_scopes.get(&scope)?;
+                self.scope(*siblings).item_with_import(namespace, name)
+            })
+    }
+
+    /// The names and items that a module (by its scope) has in a namespace, including a file's
+    /// sibling modules, which its own items shadow. This is what `super::*` brings in.
+    pub fn module_members(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
+        let mut members = self.scope(scope).items(namespace);
+
+        if let Some(&siblings) = self.sibling_scopes.get(&scope) {
+            for (name, item) in self.scope(siblings).items(namespace) {
+                if self.scope(scope).item(namespace, &name).is_none() {
+                    members.push((name, item));
+                }
+            }
+        }
+
+        members
     }
 
     /// Looks up a symbol in a scope and then each enclosing scope. The lookup stops at a scope

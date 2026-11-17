@@ -3,5 +3,5 @@ import super::super;
 import super::x;
 
 mod a {
-    import super::a;
+    import super::super::a;
 }

@@ -2379,7 +2379,7 @@ mod module {
 }
 
 mod live {
-    import module::helper;
+    import super::module::helper;
 
     export fn run() -> Int {
         helper()
@@ -2387,7 +2387,7 @@ mod live {
 }
 
 mod dead {
-    import module::helper;
+    import super::module::helper;
 
     export fn unused() -> Int {
         helper()

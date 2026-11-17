@@ -20,7 +20,7 @@ pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
     };
 
     let base_scope = ctx.last_scope_id();
-    let module_stack = ctx.parent_module_stack().to_vec();
+    let module_stack = ctx.parent_module_stack();
 
     let imports = construct_imports(
         ctx,
@@ -674,7 +674,9 @@ fn resolve_import(
     let mut private_segments = Vec::new();
     let owner = path_owner(resolution, &import, import_scope, import_id);
 
-    for i in (1..=import.path.len()).rev() {
+    // A path that starts with `super` is resolved from another module's scope, so it isn't
+    // cached under the names in it, which other imports in the scope would share
+    for i in (1..=import.path.len()).rev().filter(|_| !has_super) {
         let subpath = import
             .path
             .iter()
@@ -733,10 +735,9 @@ fn resolve_import(
                 Lookup::NotFound => None,
             }
         } else {
-            let base = ctx.scope(import.base_scope);
-            base.module_with_import(name.text())
-                .filter(|&(m, _)| base.is_module_exported(m))
-                .map(|(m, via)| (m, via, true))
+            // The module that `super` names contains the import, so its private items can be used
+            ctx.module_member(import.base_scope, Namespace::Module, name.text())
+                .and_then(|(module, via)| Some((module.symbol()?, via, true)))
         };
 
         let Some((symbol, via, exported)) = module else {
@@ -747,8 +748,11 @@ fn resolve_import(
                     .any(|namespace| {
                         if let Some(base) = base {
                             ctx.scope(base).item(namespace, name.text()).is_some()
-                        } else {
+                        } else if import.base_scope == import_scope {
                             ctx.resolve_item_in(import.base_scope, namespace, name.text())
+                                .is_some()
+                        } else {
+                            ctx.module_member(import.base_scope, namespace, name.text())
                                 .is_some()
                         }
                     });
@@ -854,7 +858,7 @@ fn resolve_import(
                 let items = if base.is_some() {
                     ctx.scope(source_scope).exported_items(namespace)
                 } else {
-                    ctx.scope(source_scope).items(namespace)
+                    ctx.module_members(source_scope, namespace)
                 };
 
                 for (name, item) in items {
@@ -1013,11 +1017,9 @@ fn resolve_import(
                 Namespace::ALL
                     .into_iter()
                     .filter_map(|namespace| {
-                        let (found, via) =
-                            ctx.resolve_item_in(import.base_scope, namespace, name)?;
-                        ctx.scope(import.base_scope)
-                            .is_item_exported(found)
-                            .then_some((found, via))
+                        // The module that `super` names contains the import, so its private items
+                        // can be imported
+                        ctx.module_member(import.base_scope, namespace, name)
                     })
                     .collect()
             };

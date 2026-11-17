@@ -31,7 +31,8 @@ export mod public {
     }
 }
 
-// A nested module can only use the items of the module it's in if they're exported
+// A nested module can use the items of the modules it's in through `super`, even private ones, so
+// an item that's only used there doesn't need to be exported
 mod outer {
     export fn used_by_nested() -> Int {
         1
@@ -39,20 +40,20 @@ mod outer {
 
     export mod nested {
         export fn uses_outer() -> Int {
-            outer::used_by_nested()
+            super::used_by_nested()
         }
     }
 }
 
-// A nested module can use the items of the module it's in by name, which doesn't need them to be
-// exported, but referencing an item through its module (even from inside of it) does
+// A nested module can use the items of the module it's in through `super`, which doesn't need
+// them to be exported, but referencing an item through its module (even from inside of it) does
 mod lexical {
     export fn by_name() -> Int {
         1
     }
 
     export fn by_path() -> Int {
-        lexical::by_name() + 1
+        super::lexical::by_name() + 1
     }
 
     export fn only_by_name() -> Int {
@@ -61,7 +62,7 @@ mod lexical {
 
     export mod nested {
         export fn uses_parent() -> Int {
-            by_name() + only_by_name()
+            super::by_name() + super::only_by_name()
         }
     }
 }
@@ -116,8 +117,8 @@ mod parent {
     }
 
     export mod child {
-        export fn make() -> Item {
-            Item { value: 1 }
+        export fn make() -> super::Item {
+            super::Item { value: 1 }
         }
     }
 }
@@ -146,8 +147,8 @@ mod internal {
     }
 
     export mod inner {
-        export fn make() -> Value {
-            Value { value: 1 }
+        export fn make() -> super::Value {
+            super::Value { value: 1 }
         }
     }
 
@@ -163,8 +164,8 @@ mod reexporting {
     }
 
     mod inner {
-        export fn make() -> Item {
-            Item { value: 1 }
+        export fn make() -> super::Item {
+            super::Item { value: 1 }
         }
     }
 

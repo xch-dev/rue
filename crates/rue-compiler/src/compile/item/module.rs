@@ -1,5 +1,5 @@
 use rue_ast::{AstModuleItem, AstNode};
-use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Symbol, SymbolId};
+use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Scope, Symbol, SymbolId};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItemKind, compile_default_items, compile_symbol_items,
@@ -13,13 +13,17 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
         module.syntax().text_range(),
     );
 
-    let scope = ctx.alloc_child_scope();
+    // An inline module doesn't see the items of the module it's in, only its own and the prelude
+    let outer = ctx.inline_module_parent_scope();
+    let scope = ctx.alloc_scope(Scope::new(Some(outer)));
+    let parent = ctx.last_scope_id();
 
     let name = module.name().map(|name| ctx.local_name(&name));
 
     let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
         name,
         scope,
+        parent: Some(parent),
         declarations: ModuleDeclarations::default(),
     }));
 
@@ -27,9 +31,9 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    // ctx.push_module(symbol);
+    ctx.push_inline_module(symbol);
     declare_module_items(ctx, module.items(), &mut declarations);
-    // ctx.pop_module();
+    ctx.pop_inline_module();
     ctx.pop_scope(range.end());
 
     ctx.module_mut(symbol).declarations = declarations;
@@ -61,9 +65,9 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    // ctx.push_module(symbol);
+    ctx.push_inline_module(symbol);
     declare_type_items(ctx, module.items(), &mut declarations);
-    // ctx.pop_module();
+    ctx.pop_inline_module();
     ctx.pop_scope(range.end());
 
     let Symbol::Module(ModuleSymbol {
@@ -91,9 +95,9 @@ pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    // ctx.push_module(symbol);
+    ctx.push_inline_module(symbol);
     declare_symbol_items(ctx, module.items(), &declarations);
-    // ctx.pop_module();
+    ctx.pop_inline_module();
     ctx.pop_scope(range.end());
 }
 
@@ -111,9 +115,9 @@ pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    // ctx.push_module(symbol);
+    ctx.push_inline_module(symbol);
     compile_type_items(ctx, module.items(), &declarations);
-    // ctx.pop_module();
+    ctx.pop_inline_module();
     ctx.pop_scope(range.end());
 }
 
@@ -131,7 +135,9 @@ pub fn compile_module_defaults(ctx: &mut Compiler, module: &AstModuleItem, symbo
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
+    ctx.push_inline_module(symbol);
     compile_default_items(ctx, module.items(), &declarations);
+    ctx.pop_inline_module();
     ctx.pop_scope(range.end());
 }
 
@@ -149,8 +155,8 @@ pub fn compile_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    // ctx.push_module(symbol);
+    ctx.push_inline_module(symbol);
     compile_symbol_items(ctx, module.items(), &declarations);
-    // ctx.pop_module();
+    ctx.pop_inline_module();
     ctx.pop_scope(range.end());
 }

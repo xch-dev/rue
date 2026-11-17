@@ -1,0 +1,8 @@
+tests:
+- name: inline_modules_use_sibling_files_through_super
+  program: (q . "Hello, world!")
+  debug_program: (a (q 2 4 (c (c 10 14) ())) (c (c (q 2 6 4) (c (q . "world") (q 14 (concat (q . "Hello, ") 1) (q . 33)))) ()))
+  output: "\"Hello, world!\""
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020

@@ -1,0 +1,15 @@
+// An inline module doesn't see the other files in the directory by name, but reaches them through
+// `super`, like the items of the file it's in
+mod greetings {
+    import super::utils::greet;
+
+    export fn world() -> String {
+        greet(super::NAME)
+    }
+}
+
+const NAME: String = "world";
+
+test fn inline_modules_use_sibling_files_through_super() -> String {
+    greetings::world()
+}

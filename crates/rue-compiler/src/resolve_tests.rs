@@ -314,27 +314,32 @@ fn private_modules_cannot_be_referenced_through_a_path() {
 }
 
 #[test]
-fn modules_can_use_the_items_of_their_parents() {
+fn modules_use_the_items_of_their_parents_through_super() {
+    // An inline module doesn't see its parent's items by name, but can use them through `super`
     let compiled = compile(
         "
         const TOP: Int = 1;
 
         mod inner {
-            export fn value() -> Int {
+            export fn by_name() -> Int {
                 TOP
+            }
+
+            export fn by_path() -> Int {
+                super::TOP
             }
         }
 
         fn main() -> Int {
-            inner::value()
+            inner::by_name() + inner::by_path()
         }
         ",
     );
 
-    compiled.assert_no_errors();
+    assert_eq!(compiled.errors(), ["6:17 UndeclaredSymbol(\"TOP\")"]);
     assert_eq!(
-        compiled.reference_origins("inner::value", "TOP"),
-        ["`TOP`: (root)"]
+        compiled.reference_origins("inner::by_path", "TOP"),
+        ["`super::TOP`: (root)"]
     );
 }
 

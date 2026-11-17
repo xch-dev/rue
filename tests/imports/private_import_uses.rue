@@ -11,7 +11,7 @@ mod inner {
 
 mod nested {
     export fn twice() -> Int {
-        secret() + secret()
+        super::secret() + super::secret()
     }
 }
 
