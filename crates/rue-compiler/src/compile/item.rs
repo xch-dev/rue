@@ -13,6 +13,7 @@ pub use type_alias::*;
 use rue_ast::AstNode;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{ScopeId, Symbol, SymbolId};
+use rue_parser::SyntaxToken;
 use rue_types::{Alias, Struct, Type, TypeId};
 
 use crate::Compiler;
@@ -40,18 +41,29 @@ pub fn reserve_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem) -> SymbolId
     };
 
     if let Some(name) = name {
-        if ctx.last_scope().symbol(name.text()).is_some() {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::DuplicateSymbol(name.text().to_string()),
-            );
-        } else {
-            ctx.last_scope_mut()
-                .insert_symbol(name.text().to_string(), symbol, exported);
-        }
+        insert_local_symbol(ctx, &name, symbol, exported);
     }
 
     symbol
+}
+
+/// Adds a symbol that's declared in the current scope, unless the name is already taken, in
+/// which case it's reported as a duplicate.
+pub fn insert_local_symbol(
+    ctx: &mut Compiler,
+    name: &SyntaxToken,
+    symbol: SymbolId,
+    exported: bool,
+) {
+    if ctx.last_scope().symbol(name.text()).is_some() {
+        ctx.diagnostic(
+            name,
+            DiagnosticKind::DuplicateSymbol(name.text().to_string()),
+        );
+    } else {
+        ctx.last_scope_mut()
+            .insert_symbol(name.text().to_string(), symbol, exported);
+    }
 }
 
 pub fn declare_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem, symbol: SymbolId) {

@@ -113,12 +113,24 @@ impl Scope {
         self.symbols.get(name).copied()
     }
 
+    /// The symbol with a name, and the import that brought it into this scope, if any.
+    pub fn symbol_with_import(&self, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
+        let symbol = self.symbol(name)?;
+        Some((symbol, self.symbol_import(symbol)))
+    }
+
     pub fn symbol_name(&self, symbol: SymbolId) -> Option<&str> {
         self.symbol_names.get(&symbol).map(String::as_str)
     }
 
     pub fn ty(&self, name: &str) -> Option<TypeId> {
         self.types.get(name).copied()
+    }
+
+    /// The type with a name, and the import that brought it into this scope, if any.
+    pub fn type_with_import(&self, name: &str) -> Option<(TypeId, Option<ImportId>)> {
+        let ty = self.ty(name)?;
+        Some((ty, self.type_import(ty)))
     }
 
     pub fn type_name(&self, ty: TypeId) -> Option<&str> {

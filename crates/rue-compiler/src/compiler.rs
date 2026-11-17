@@ -354,9 +354,9 @@ impl Compiler {
         scope: ScopeId,
         name: &str,
     ) -> Option<(SymbolId, Option<ImportId>)> {
-        self.lookup_in(scope, |scope| {
-            if let Some(symbol) = scope.symbol(name) {
-                Some(Some((symbol, scope.symbol_import(symbol))))
+        self.lookup_in(scope, |_, scope| {
+            if let Some(found) = scope.symbol_with_import(name) {
+                Some(Some(found))
             } else {
                 scope.is_symbol_blocked(name).then_some(None)
             }
@@ -371,9 +371,9 @@ impl Compiler {
         scope: ScopeId,
         name: &str,
     ) -> Option<(TypeId, Option<ImportId>)> {
-        self.lookup_in(scope, |scope| {
-            if let Some(ty) = scope.ty(name) {
-                Some(Some((ty, scope.type_import(ty))))
+        self.lookup_in(scope, |_, scope| {
+            if let Some(found) = scope.type_with_import(name) {
+                Some(Some(found))
             } else {
                 scope.is_type_blocked(name).then_some(None)
             }
@@ -384,7 +384,7 @@ impl Compiler {
     /// Whether looking up a symbol from a scope stops at a scope that blocks the name, rather
     /// than finding it or reaching the outermost scope.
     pub fn is_symbol_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.lookup_in(scope, |scope| {
+        self.lookup_in(scope, |_, scope| {
             if scope.symbol(name).is_some() {
                 Some(false)
             } else {
@@ -397,7 +397,7 @@ impl Compiler {
     /// Whether looking up a type from a scope stops at a scope that blocks the name, rather than
     /// finding it or reaching the outermost scope.
     pub fn is_type_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.lookup_in(scope, |scope| {
+        self.lookup_in(scope, |_, scope| {
             if scope.ty(name).is_some() {
                 Some(false)
             } else {
@@ -408,11 +408,15 @@ impl Compiler {
     }
 
     /// The first result of `find` in a scope and then each enclosing scope.
-    fn lookup_in<T>(&self, scope: ScopeId, find: impl Fn(&Scope) -> Option<T>) -> Option<T> {
+    pub(crate) fn lookup_in<T>(
+        &self,
+        scope: ScopeId,
+        mut find: impl FnMut(ScopeId, &Scope) -> Option<T>,
+    ) -> Option<T> {
         let mut current = Some(scope);
 
         while let Some(scope) = current {
-            if let Some(found) = find(self.scope(scope)) {
+            if let Some(found) = find(scope, self.scope(scope)) {
                 return Some(found);
             }
             current = self.scope(scope).parent();

@@ -1247,3 +1247,223 @@ fn private_imports_do_not_hide_a_declaration_with_the_same_name() {
         ["`secret`: (root)"]
     );
 }
+
+#[test]
+fn imports_from_an_enclosing_scope_wait_for_outer_forced_imports() {
+    // `third` waits for `second`'s import of `V`, which only resolves once `first`'s glob import
+    // (which never brings in `V`) has been skipped
+    let compiled = compile(
+        "
+        mod a {
+            export const OTHER: Int = 1;
+        }
+
+        mod m {
+            export const V: Int = 5;
+        }
+
+        const V: Int = 2;
+
+        mod first {
+            import a::*;
+
+            export mod second {
+                import m::V;
+
+                export mod third {
+                    import V;
+
+                    export fn value() -> Int {
+                        V + OTHER
+                    }
+                }
+            }
+        }
+
+        fn main() -> Int {
+            first::second::third::value() + V + m::V
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("first::second::third::V"), "m");
+}
+
+#[test]
+fn forced_imports_that_a_nearer_import_contradicts_are_ambiguous() {
+    // `inner` gets `V` from `deeper`, whose import of `a` waits for `inner`'s glob import, which
+    // waits for `deeper`. The imports in `user` and `deeper` are resolved without waiting, so
+    // `user` finds the top-level `V`, and a use of `V` in `inner` would find `a::V`.
+    let compiled = compile(
+        "
+        mod a {
+            export const V: Int = 1;
+        }
+
+        const V: Int = 7;
+
+        mod inner {
+            import deeper::*;
+
+            export mod deeper {
+                export a::V;
+            }
+
+            export mod user {
+                import V;
+
+                export fn f() -> Int {
+                    V
+                }
+            }
+
+            export fn g() -> Int {
+                V
+            }
+        }
+
+        fn main() -> Int {
+            inner::user::f() + inner::g() + V
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["16:24 AmbiguousOuterImport(\"V\")"]);
+}
+
+#[test]
+fn forced_import_paths_that_a_nearer_import_contradicts_are_ambiguous() {
+    // Both glob imports in `inner` wait for each other to know whether they bring in `y`. The
+    // import of `y::*` goes first, and finds the top-level `y`, but `z::*` brings in `z::y`.
+    let compiled = compile(
+        "
+        mod y {
+            export const V: Int = 7;
+        }
+
+        mod z {
+            export mod y {
+                export const V: Int = 1;
+            }
+        }
+
+        mod inner {
+            import z::*;
+            import y::*;
+
+            export fn f() -> Int {
+                V
+            }
+        }
+
+        fn main() -> Int {
+            inner::f() + y::V
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["14:20 AmbiguousOuterImport(\"y\")"]);
+}
+
+#[test]
+fn glob_imports_that_bring_in_their_own_module_name_are_not_ambiguous() {
+    // Like the prelude's `export tree_hash::*;`: the glob import brings in a function with the
+    // name of the module it imports from, after the waiting glob imports have been forced
+    let compiled = compile(
+        "
+        mod helpers {
+            export fn helpers() -> Int {
+                1
+            }
+        }
+
+        mod other {
+            export fn other() -> Int {
+                2
+            }
+        }
+
+        mod inner {
+            import helpers::*;
+            import other::*;
+
+            export fn f() -> Int {
+                helpers() + other()
+            }
+        }
+
+        fn main() -> Int {
+            inner::f()
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::helpers"), "helpers");
+}
+
+#[test]
+fn private_imports_hide_items_with_the_same_name_in_enclosing_scopes() {
+    // The use in `nested` would otherwise find the top-level function, rather than the import
+    // that was reported
+    let compiled = compile(
+        "
+        mod inner {
+            fn secret() -> Int {
+                42
+            }
+        }
+
+        fn secret() -> Int {
+            1
+        }
+
+        mod nested {
+            import inner::secret;
+
+            export fn value() -> Int {
+                secret()
+            }
+        }
+
+        fn main() -> Int {
+            nested::value() + secret()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        ["13:27 PrivateSymbol(\"secret\", \"inner\")"]
+    );
+    assert_eq!(
+        compiled.reference_origins("nested::value", "secret"),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_first_of_a_function_and_a_module_with_the_same_name_is_declared() {
+    // Functions and constants are added to the scope along with modules, in the order they're
+    // written, so the later one is the duplicate
+    let compiled = compile(
+        "
+        fn helper() -> Int {
+            1
+        }
+
+        mod helper {}
+
+        fn main() -> Int {
+            helper()
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["6:13 DuplicateSymbol(\"helper\")"]);
+    assert_eq!(
+        compiled.reference_origins("main", "helper"),
+        ["`helper`: (root)"]
+    );
+}
