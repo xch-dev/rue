@@ -1540,7 +1540,7 @@ mod inference {
         assert_eq!(mappings[&a], int);
         assert_eq!(mappings[&b], int);
 
-        // In a cycle, where `B` already has the bound, it's only added to `A` once
+        // In a cycle, where `B` already has the bound, it still ends
         let mut infer = Inference::new([a, b]);
         db.infer(a, b, &mut infer);
         db.infer(b, a, &mut infer);
@@ -1559,8 +1559,10 @@ mod inference {
         let five = db.literal(AtomSemantic::Int, &[5]);
 
         // `A` is inferred as `Int` from `5`, so `B`'s bound `5` isn't passed on to it, since it
-        // might be left over from a union member that didn't match
-        let mut infer = Inference::new([a, b]);
+        // might be left over from a union member that didn't match. `C` isn't inferred, so the
+        // bounds are passed on for it, which mustn't change the others
+        let c = db.generic("C");
+        let mut infer = Inference::new([a, b, c]);
         db.infer(a, b, &mut infer);
         db.infer(five, a, &mut infer);
         infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut infer);

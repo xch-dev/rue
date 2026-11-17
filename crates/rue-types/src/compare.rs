@@ -820,8 +820,9 @@ pub fn add_expected_bounds(
 /// `feed(identity, inc)`, `identity` gives `B` the lower bound `A` and `inc` gives it the upper
 /// bound `Int`, so `A` is bounded by `Int` as well, and both are inferred as `Int` (#285).
 ///
-/// This only replaces the mappings of the generics that weren't inferred, or were inferred as one
-/// of the generics being resolved through that wasn't, since those are reported as errors. Every
+/// This only replaces the mappings of the generics that weren't inferred, or were inferred as a type
+/// that references one of the generics being resolved through that wasn't, since those are reported
+/// as errors. Every
 /// other mapping is kept, since upper bounds that nothing enforces can be left over from a union
 /// member that didn't match, and passing those on would change what's inferred.
 pub fn resolve_inference_with_bounds(
