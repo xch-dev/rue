@@ -1,0 +1,4 @@
+diagnostics:
+- "Cannot assign `fn<A>(a: A) -> ((A, A), nil)` to `fn<T>(a: T) -> ((T, T), Int)` without a cast, since they are semantically different at generic_inference_expected_generic_function_errors.rue:19:54"
+- "Cannot assign `fn<T>(a: Int) -> (T, T)` to `fn<T>(a: T) -> (T, T)`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:22:43"
+- "Cannot assign `fn<A>(a: A) -> (T, T)` to `fn<T>(a: T) -> (T, T)`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:26:48"

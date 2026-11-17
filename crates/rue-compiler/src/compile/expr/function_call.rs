@@ -246,25 +246,15 @@ pub fn compile_function_call_expr(
             mappings.insert(generic, ctx.builtins().unresolved.ty);
         }
 
-        // A generic that's only inferred as one of the generics of the function type expected of
-        // the call stays generic (as a copy, so that it doesn't capture anything), since the
-        // function that's returned works for any of them (as long as no parameter depends on it)
+        // The function that's returned can stay generic over the generics of a function type
+        // expected of the call
         let ret = rue_types::unwrap_semantic(ctx.types_mut(), function.ret, true);
 
         if matches!(ctx.ty(ret), Type::Function(_)) {
-            for &generic in &function.generics {
-                if mappings
-                    .get(&generic)
-                    .is_some_and(|&ty| is_expected_generic(ctx, expected_type, ty))
-                    && !function
-                        .param_types()
-                        .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
-                {
-                    let copy = ctx.ty(generic).clone();
-                    let copy = ctx.alloc_type(copy);
-                    mappings.insert(generic, copy);
-                    generalized.push(copy);
-                }
+            let expected_generics = expected_generics(ctx, expected_type);
+
+            if !expected_generics.is_empty() {
+                generalized = generalize(ctx, function, &expected_generics, &mut mappings);
             }
         }
 
@@ -350,13 +340,89 @@ fn has_uninferred_parameters(
         })
 }
 
-/// Whether the type is one of the generics of a function type expected of the call, including the
-/// function members of a union such as `Id | nil`.
-fn is_expected_generic(ctx: &mut Compiler, expected_type: Option<TypeId>, ty: TypeId) -> bool {
-    expected_type.is_some_and(|expected_type| {
-        rue_types::extract_functions(ctx.types_mut(), expected_type, false)
+/// Generalizes the function returned by a call over the generics of the function type expected
+/// of it, and returns the generics it's generalized over. This only applies to the generics that
+/// no parameter depends on, since the function works for any of them.
+///
+/// A generic that's inferred as one of the expected generics stays generic, as a copy so that it
+/// doesn't capture anything. A generic that's inferred as a type that references them, such as
+/// `(T, T)` for `B` in `let f: fn<T>(a: T) -> (T, T) = make();` with
+/// `fn make<A, B>() -> fn(a: A) -> B`, references the copy of the first generic inferred as each
+/// one instead, so it doesn't leak them (#340). `A` is inferred as `T`, so `B` is `(A, A)`. If no
+/// generic is inferred as one of them, it's copied as well.
+fn generalize(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    expected_generics: &[TypeId],
+    mappings: &mut HashMap<TypeId, TypeId>,
+) -> Vec<TypeId> {
+    let mut generalized = Vec::new();
+
+    let free: Vec<TypeId> = function
+        .generics
+        .iter()
+        .copied()
+        .filter(|&generic| {
+            !function
+                .param_types()
+                .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+        })
+        .collect();
+
+    // The copy that each of the expected generics is generalized as
+    let mut copies = HashMap::new();
+
+    for &generic in &free {
+        if let Some(&ty) = mappings.get(&generic)
+            && expected_generics.contains(&ty)
+        {
+            let copy = ctx.ty(generic).clone();
+            let copy = ctx.alloc_type(copy);
+            mappings.insert(generic, copy);
+            generalized.push(copy);
+            copies.entry(ty).or_insert(copy);
+        }
+    }
+
+    for &generic in &free {
+        let Some(&ty) = mappings.get(&generic) else {
+            continue;
+        };
+
+        let referenced: Vec<TypeId> = expected_generics
             .iter()
-            .any(|function| function.generics.contains(&ty))
+            .copied()
+            .filter(|&other| contains_generic(ctx.types_mut(), ty, other))
+            .collect();
+
+        if referenced.is_empty() {
+            continue;
+        }
+
+        for other in referenced {
+            copies.entry(other).or_insert_with(|| {
+                let copy = ctx.ty(other).clone();
+                let copy = ctx.alloc_type(copy);
+                generalized.push(copy);
+                copy
+            });
+        }
+
+        let ty = substitute_with_mappings(ctx.types_mut(), ty, &copies);
+        mappings.insert(generic, ty);
+    }
+
+    generalized
+}
+
+/// The generics of the function types expected of the call, including the function members of a
+/// union such as `Id | nil`.
+fn expected_generics(ctx: &mut Compiler, expected_type: Option<TypeId>) -> Vec<TypeId> {
+    expected_type.map_or_else(Vec::new, |expected_type| {
+        rue_types::extract_functions(ctx.types_mut(), expected_type, false)
+            .into_iter()
+            .flat_map(|function| function.generics)
+            .collect()
     })
 }
 
