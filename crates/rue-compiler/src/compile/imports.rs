@@ -146,6 +146,9 @@ pub struct ImportCache {
     /// The imports whose lookups through enclosing scopes stopped waiting for nearer scopes,
     /// which are checked once every import is resolved.
     forced: HashSet<ImportId>,
+    /// The names in each scope that more than one import (or a declaration and an import) bring
+    /// the same symbol in for. Only the first is recorded as bringing it in.
+    shared_symbols: HashSet<(ScopeId, String)>,
     /// The names in imports that refer to a declaration through another import, which are
     /// ambiguous if that import is an ambiguous glob import. They're checked once every glob
     /// import is resolved.
@@ -385,10 +388,17 @@ fn check_forced_import(
             return;
         };
 
+        // A glob import can bring in an item with the same name as the module it imports from,
+        // which doesn't change what its own path refers to, unless another import brings in the
+        // same item
+        let skip_own = !cache
+            .shared_symbols
+            .contains(&(import_scope, first.text().to_string()));
+
         (lookup_past(
             ctx,
             import_scope,
-            import_id,
+            skip_own.then_some(import_id),
             first.text(),
             Scope::symbol_with_import,
         ) != Some(cached.symbol))
@@ -406,7 +416,7 @@ fn check_forced_import(
             lookup_past(
                 ctx,
                 import_scope,
-                import_id,
+                Some(import_id),
                 name.text(),
                 Scope::symbol_with_import,
             ) != Some(symbol)
@@ -415,7 +425,7 @@ fn check_forced_import(
             lookup_past(
                 ctx,
                 import_scope,
-                import_id,
+                Some(import_id),
                 name.text(),
                 Scope::type_with_import,
             ) != Some(ty)
@@ -434,19 +444,17 @@ fn check_forced_import(
     }
 }
 
-/// What a use of a name in the importing scope finds, apart from what the import itself brought
-/// in. A glob import can bring in an item with the same name as the module it imports from, which
-/// doesn't change what its own path refers to.
+/// What a use of a name in the importing scope finds, apart from what an import brought in.
 fn lookup_past<T>(
     ctx: &Compiler,
     import_scope: ScopeId,
-    import_id: ImportId,
+    import_id: Option<ImportId>,
     name: &str,
     find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
 ) -> Option<T> {
     ctx.lookup_in(import_scope, |_, scope| {
         find(scope, name)
-            .filter(|&(_, via)| via != Some(import_id))
+            .filter(|&(_, via)| import_id.is_none() || via != import_id)
             .map(|(item, _)| item)
     })
 }
@@ -485,27 +493,25 @@ impl Resolution {
         self.named_imports.get(&scope)?.get(name)
     }
 
-    /// Whether a scope that doesn't have the name yet could still bring it in through one of its
-    /// imports, other than the import that's looking it up. Glob imports don't bring in a name
-    /// that the scope has a named import of.
-    fn may_bring_in(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
-        let others = |imports: &Vec<ImportId>| imports.iter().any(|&import| import != importer);
+    /// The imports that could bring a name into a scope: its named imports of the name, or if it
+    /// has none, its glob imports, since they don't bring in a name that has a named import.
+    fn imports_of(&self, scope: ScopeId, name: &str) -> &[ImportId] {
+        self.named_imports_of(scope, name)
+            .or_else(|| self.glob_imports.get(&scope))
+            .map_or(&[], Vec::as_slice)
+    }
 
-        match self.named_imports_of(scope, name) {
-            Some(imports) => others(imports),
-            None => self.glob_imports.get(&scope).is_some_and(others),
-        }
+    /// Whether a scope that doesn't have the name yet could still bring it in through one of its
+    /// imports, other than the import that's looking it up.
+    fn may_bring_in(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
+        self.imports_of(scope, name)
+            .iter()
+            .any(|&import| import != importer)
     }
 
     /// Whether the import is one of those that could bring the name into the scope.
     fn may_bring_in_itself(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
-        match self.named_imports_of(scope, name) {
-            Some(imports) => imports.contains(&importer),
-            None => self
-                .glob_imports
-                .get(&scope)
-                .is_some_and(|imports| imports.contains(&importer)),
-        }
+        self.imports_of(scope, name).contains(&importer)
     }
 
     fn defer(&mut self, ctx: &Compiler, scope: ScopeId, import: ImportId) {
@@ -588,7 +594,7 @@ fn resolve_import(
     let mut path_so_far = Vec::new();
     let mut path_references = Vec::new();
     let mut private_segments = Vec::new();
-    let path_owner = path_owner(resolution, &import, import_scope, import_id);
+    let owner = path_owner(resolution, &import, import_scope, import_id);
 
     for i in (1..=import.path.len()).rev() {
         let subpath = import
@@ -598,10 +604,7 @@ fn resolve_import(
             .map(|t| t.text().to_string())
             .collect::<Vec<_>>();
 
-        if let Some(cached) = cache
-            .scopes
-            .get(&(import_scope, path_owner, subpath.clone()))
-        {
+        if let Some(cached) = cache.scopes.get(&(import_scope, owner, subpath.clone())) {
             base = Some(cached.scope);
             path_so_far = subpath;
             path_references.clone_from(&cached.references);
@@ -707,7 +710,7 @@ fn resolve_import(
 
         if !has_super {
             cache.scopes.insert(
-                (import_scope, path_owner, path_so_far.clone()),
+                (import_scope, owner, path_so_far.clone()),
                 CachedPath {
                     scope: module.scope,
                     symbol,
@@ -807,6 +810,12 @@ fn resolve_import(
                 }
 
                 let target = ctx.scope_mut(import_scope);
+
+                if target.symbol(&name) == Some(symbol)
+                    && target.symbol_import(symbol) != Some(import_id)
+                {
+                    cache.shared_symbols.insert((import_scope, name.clone()));
+                }
 
                 if target.symbol(&name).is_none() {
                     target.insert_symbol(name.clone(), symbol, import.exported);
@@ -1038,6 +1047,14 @@ fn resolve_import(
                 }
 
                 let target = ctx.scope_mut(import_scope);
+
+                if target.symbol(name) == Some(symbol)
+                    && target.symbol_import(symbol) != Some(import_id)
+                {
+                    cache
+                        .shared_symbols
+                        .insert((import_scope, name.to_string()));
+                }
 
                 if target.symbol(name).is_none() {
                     target.insert_symbol(name.to_string(), symbol, import.exported);

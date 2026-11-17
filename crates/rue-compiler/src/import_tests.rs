@@ -1610,3 +1610,104 @@ fn import_paths_use_what_a_glob_import_in_the_scope_brings_in() {
     compiled.assert_no_errors();
     assert_eq!(compiled.symbol_origin("inner::Y"), "m::m");
 }
+
+#[test]
+fn forced_import_paths_are_ambiguous_when_another_import_brings_in_the_same_item() {
+    // Both glob imports bring in `inner::m` as `m`, which only the first is recorded as doing.
+    // `import m::*` found the top-level `m`, but a use of `m` here finds `inner::m`, so it's
+    // still ambiguous even though `import m::*` brought `inner::m` in too.
+    let compiled = compile(
+        "
+        mod inner {
+            export mod m {
+                export const Y: Int = 2;
+            }
+        }
+
+        mod m {
+            export inner::m;
+            export const Y: Int = 1;
+        }
+
+        mod n {
+            export inner::m;
+        }
+
+        mod s {
+            import m::*;
+            import n::*;
+
+            export fn f() -> Int {
+                Y + m::Y
+            }
+        }
+
+        fn main() -> Int {
+            s::f()
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["18:20 AmbiguousOuterImport(\"m\")"]);
+}
+
+#[test]
+fn private_type_imports_hide_types_with_the_same_name_in_enclosing_scopes() {
+    let compiled = compile(
+        "
+        mod inner {
+            type Secret = Int;
+        }
+
+        type Secret = Bytes;
+
+        mod nested {
+            import inner::Secret;
+
+            export fn value() -> Secret {
+                1
+            }
+        }
+
+        fn main() -> Int {
+            nested::value()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        ["9:27 PrivateType(\"Secret\", \"inner\")"]
+    );
+}
+
+#[test]
+fn qualified_uses_of_a_private_import_are_still_reported() {
+    // Only a name looked up from the scope stops at the blocked name, so `other::secret` is
+    // reported as missing from `other`
+    let compiled = compile(
+        "
+        import inner::secret;
+
+        mod inner {
+            fn secret() -> Int {
+                42
+            }
+        }
+
+        mod other {}
+
+        fn main() -> Int {
+            other::secret()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:23 PrivateSymbol(\"secret\", \"inner\")",
+            "13:20 UndeclaredSymbol(\"secret\")",
+        ]
+    );
+}
