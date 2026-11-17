@@ -129,12 +129,7 @@ fn test_eq_nil_condition() {
     let one = atom(&mut arena, &[1]);
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(eq, one, two, false));
-    check(
-        &mut arena,
-        lir,
-        ATOM_ENVS,
-        expect!["(a (i 2 (q 1 . 2) (q 1 . 1)) 1)"],
-    );
+    check(&mut arena, lir, ATOM_ENVS, expect!["(i 2 (q . 2) (q . 1))"]);
 }
 
 #[test]
@@ -146,12 +141,237 @@ fn test_listp_condition() {
     let one = atom(&mut arena, &[1]);
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(listp, one, two, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(i 2 (q . 1) (q . 2))"]);
+}
+
+#[test]
+fn test_inline_if_drops_pure_branch() {
+    // Both branches of an inline if are evaluated, so the other one is only dropped if it can't fail
+    let mut arena = Arena::new();
+    let nil = atom(&mut arena, &[]);
+    let x = path(&mut arena, 2);
+    let one = atom(&mut arena, &[1]);
+    let lir = arena.alloc(Lir::If(nil, one, x, true));
+    check(&mut arena, lir, ENVS, expect!["2"]);
+
+    let fails = raise(&mut arena);
+    let lir = arena.alloc(Lir::If(nil, fails, x, true));
+    check(&mut arena, lir, ENVS, expect!["(i () (x) 2)"]);
+
+    // The same applies when the condition is known to be true
+    let lir = arena.alloc(Lir::If(one, x, one, true));
+    check(&mut arena, lir, ENVS, expect!["2"]);
+
+    let lir = arena.alloc(Lir::If(one, x, fails, true));
+    check(&mut arena, lir, ENVS, expect!["(i () (x) 2)"]);
+}
+
+#[test]
+fn test_first_and_rest_of_pair() {
+    // The other side of the pair is only dropped if it can't fail
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let one = atom(&mut arena, &[1]);
+    let pair = arena.alloc(Lir::Cons(x, one));
+    let lir = arena.alloc(Lir::First(pair));
+    check(&mut arena, lir, ENVS, expect!["2"]);
+
+    let pair = arena.alloc(Lir::Cons(one, x));
+    let lir = arena.alloc(Lir::Rest(pair));
+    check(&mut arena, lir, ENVS, expect!["2"]);
+
+    let fails = raise(&mut arena);
+    let pair = arena.alloc(Lir::Cons(x, fails));
+    let lir = arena.alloc(Lir::First(pair));
+    check(&mut arena, lir, ENVS, expect!["(f (c 2 (x)))"]);
+
+    let pair = arena.alloc(Lir::Cons(fails, x));
+    let lir = arena.alloc(Lir::Rest(pair));
+    check(&mut arena, lir, ENVS, expect!["(r (c (x) 2))"]);
+}
+
+#[test]
+fn test_div_and_mod_pair() {
+    // A pair of the quotient and remainder of the same operands is a divmod
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let y = path(&mut arena, 5);
+    let div = arena.alloc(Lir::Div(x, y));
+    let other_x = path(&mut arena, 2);
+    let modulo = arena.alloc(Lir::Mod(other_x, y));
+    let lir = arena.alloc(Lir::Cons(div, modulo));
     check(
         &mut arena,
         lir,
-        LIST_ENVS,
-        expect!["(a (i 2 (q 1 . 1) (q 1 . 2)) 1)"],
+        &[
+            "(7 2)",
+            "(-7 2)",
+            "(7 0)",
+            "(7 (1 . 2))",
+            "((1 . 2) 2)",
+            "(7)",
+        ],
+        expect!["(divmod 2 5)"],
     );
+
+    // Different operands aren't combined
+    let z = path(&mut arena, 11);
+    let modulo = arena.alloc(Lir::Mod(x, z));
+    let lir = arena.alloc(Lir::Cons(div, modulo));
+    check(
+        &mut arena,
+        lir,
+        &["(7 2 3)"],
+        expect!["(c (/ 2 5) (% 2 11))"],
+    );
+}
+
+#[test]
+fn test_div_and_mod_of_matching_expressions() {
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let y = path(&mut arena, 5);
+    let one = atom(&mut arena, &[1]);
+    let envs = &[
+        "(7 2)",
+        "(-7 2)",
+        "(7 0)",
+        "((1 . 2) 2)",
+        "((7 . 8) 2)",
+        "(7)",
+    ];
+
+    // Separately built expressions with the same structure are combined
+    let left = arena.alloc(Lir::Add(vec![x, one]));
+    let div = arena.alloc(Lir::Div(left, y));
+    let left = arena.alloc(Lir::Add(vec![x, one]));
+    let modulo = arena.alloc(Lir::Mod(left, y));
+    let lir = arena.alloc(Lir::Cons(div, modulo));
+    check(&mut arena, lir, envs, expect!["(divmod (+ 2 (q . 1)) 5)"]);
+
+    // Expressions that differ aren't, even if they're similar
+    // The first and rest are taken of a run, so that they aren't folded into paths
+    let program = path(&mut arena, 5);
+    let run = arena.alloc(Lir::Run(program, x));
+    let first = arena.alloc(Lir::First(run));
+    let rest = arena.alloc(Lir::Rest(run));
+    let div = arena.alloc(Lir::Div(first, y));
+    let modulo = arena.alloc(Lir::Mod(rest, y));
+    let lir = arena.alloc(Lir::Cons(div, modulo));
+    check(
+        &mut arena,
+        lir,
+        envs,
+        expect!["(c (/ (f (a 5 2)) 5) (% (r (a 5 2)) 5))"],
+    );
+
+    let two_args = arena.alloc(Lir::Concat(vec![x, y]));
+    let one_arg = arena.alloc(Lir::Concat(vec![x]));
+    let div = arena.alloc(Lir::Div(two_args, y));
+    let modulo = arena.alloc(Lir::Mod(one_arg, y));
+    let lir = arena.alloc(Lir::Cons(div, modulo));
+    check(
+        &mut arena,
+        lir,
+        envs,
+        expect!["(c (/ (concat 2 5) 5) (% (concat 2) 5))"],
+    );
+}
+
+#[test]
+fn test_listp_of_pair() {
+    let mut arena = Arena::new();
+    let one = atom(&mut arena, &[1]);
+    let nil = atom(&mut arena, &[]);
+    let pair = arena.alloc(Lir::Cons(one, nil));
+    let lir = arena.alloc(Lir::Listp(pair, true));
+    check(&mut arena, lir, ENVS, expect!["(q . 1)"]);
+
+    // In a condition, a pair that may fail is still evaluated
+    let x = path(&mut arena, 2);
+    let pair = arena.alloc(Lir::Cons(x, nil));
+    let listp = arena.alloc(Lir::Listp(pair, true));
+    let two = atom(&mut arena, &[2]);
+    let lir = arena.alloc(Lir::If(listp, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(i (c 2 ()) (q . 1) (q . 2))"],
+    );
+}
+
+#[test]
+fn test_nested_all_and_any() {
+    let mut arena = Arena::new();
+    let a = path(&mut arena, 2);
+    let b = path(&mut arena, 5);
+    let c = path(&mut arena, 11);
+    let inner = arena.alloc(Lir::All(vec![b, c]));
+    let lir = arena.alloc(Lir::All(vec![a, inner]));
+    check(&mut arena, lir, ENVS, expect!["(all 2 5 11)"]);
+
+    let inner = arena.alloc(Lir::Any(vec![b, c]));
+    let lir = arena.alloc(Lir::Any(vec![a, inner]));
+    check(&mut arena, lir, ENVS, expect!["(any 2 5 11)"]);
+
+    // An any inside of an all isn't flattened
+    let inner = arena.alloc(Lir::Any(vec![b, c]));
+    let lir = arena.alloc(Lir::All(vec![a, inner]));
+    check(&mut arena, lir, ENVS, expect!["(all 2 (any 5 11))"]);
+
+    // A nested false value is only kept once
+    let nil = atom(&mut arena, &[]);
+    let inner = arena.alloc(Lir::All(vec![a, nil]));
+    let lir = arena.alloc(Lir::All(vec![nil, inner]));
+    check(&mut arena, lir, ENVS, expect!["(all () 2)"]);
+
+    // A single value in a condition is used directly
+    let single = arena.alloc(Lir::All(vec![a]));
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let lir = arena.alloc(Lir::If(single, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 1) (q . 2))"]);
+
+    let single = arena.alloc(Lir::Any(vec![a]));
+    let lir = arena.alloc(Lir::If(single, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 1) (q . 2))"]);
+
+    // An empty any is false
+    let empty = arena.alloc(Lir::Any(vec![]));
+    let lir = arena.alloc(Lir::If(empty, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 2)"]);
+}
+
+#[test]
+fn test_if_boolean_branches() {
+    // (i c 1 ()) is c if c is always () or 1
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let y = path(&mut arena, 5);
+    let gt = arena.alloc(Lir::Gt(x, y));
+    let one = atom(&mut arena, &[1]);
+    let nil = atom(&mut arena, &[]);
+    let lir = arena.alloc(Lir::If(gt, one, nil, false));
+    check(
+        &mut arena,
+        lir,
+        &["(1 2)", "(2 1)", "((1 . 2) 1)"],
+        expect!["(> 2 5)"],
+    );
+
+    // Otherwise it isn't, since the value isn't a boolean
+    let lir = arena.alloc(Lir::If(x, one, nil, false));
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 1) ())"]);
+
+    // A condition that's known is folded instead
+    let empty = arena.alloc(Lir::All(vec![]));
+    let lir = arena.alloc(Lir::If(empty, one, nil, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 1)"]);
+
+    // (i c () 1) is always (not c)
+    let lir = arena.alloc(Lir::If(x, nil, one, false));
+    check(&mut arena, lir, ENVS, expect!["(not 2)"]);
 }
 
 #[test]
@@ -195,7 +415,7 @@ fn test_if_impure_pair() {
         &mut arena,
         lir,
         ENVS,
-        expect!["(a (i (c (x) ()) (q 1 . 1) (q 1 . 2)) 1)"],
+        expect!["(i (c (x) ()) (q . 1) (q . 2))"],
     );
 
     let a = atom(&mut arena, &[1]);
@@ -215,12 +435,7 @@ fn test_if_not_flips() {
     let one = atom(&mut arena, &[1]);
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(cond, one, two, false));
-    check(
-        &mut arena,
-        lir,
-        ENVS,
-        expect!["(a (i 2 (q 1 . 2) (q 1 . 1)) 1)"],
-    );
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 2) (q . 1))"]);
 
     // A double not in a condition only matters for its truthiness
     let x = path(&mut arena, 2);
@@ -229,12 +444,7 @@ fn test_if_not_flips() {
     let one = atom(&mut arena, &[1]);
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(cond, one, two, false));
-    check(
-        &mut arena,
-        lir,
-        ENVS,
-        expect!["(a (i 2 (q 1 . 1) (q 1 . 2)) 1)"],
-    );
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 1) (q . 2))"]);
 }
 
 #[test]
@@ -356,7 +566,7 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     let mut args = gen_args(arena, rng, 3);
     let mut next = || args.pop().unwrap();
 
-    let lir = match rng.below(19) {
+    let lir = match rng.below(21) {
         0 => Lir::Not(next()),
         1 => eq(arena, next(), next()),
         2 => {
@@ -417,9 +627,55 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
             };
             Lir::Run(program, env)
         }
+        // The quotient and remainder of the same operands, or of operands that are copies of each
+        // other, or of operands that are different (but may happen to have the same structure)
+        19 => {
+            let left = next();
+            let right = next();
+            let div = arena.alloc(Lir::Div(left, right));
+            let (mod_left, mod_right) = match rng.below(3) {
+                0 => (left, right),
+                1 => (copy(arena, left), copy(arena, right)),
+                _ => (
+                    generate(arena, rng, depth - 1),
+                    generate(arena, rng, depth - 1),
+                ),
+            };
+            let modulo = arena.alloc(Lir::Mod(mod_left, mod_right));
+            Lir::Cons(div, modulo)
+        }
+        // A boolean (or other value) chosen by a condition
+        20 => {
+            let one = atom(arena, &[1]);
+            let nil = atom(arena, &[]);
+            let (then, otherwise) = if rng.below(2) == 0 {
+                (one, nil)
+            } else {
+                (nil, one)
+            };
+            Lir::If(next(), then, otherwise, rng.below(2) == 0)
+        }
         _ => unreachable!(),
     };
 
+    arena.alloc(lir)
+}
+
+// Allocates a copy of the value, so that it has the same structure but different ids
+fn copy(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+    let lir = match arena[value].clone() {
+        Lir::Quote(value) => Lir::Quote(copy(arena, value)),
+        Lir::First(value) => Lir::First(copy(arena, value)),
+        Lir::Rest(value) => Lir::Rest(copy(arena, value)),
+        Lir::Not(value) => Lir::Not(copy(arena, value)),
+        Lir::Cons(a, b) => Lir::Cons(copy(arena, a), copy(arena, b)),
+        Lir::Div(a, b) => Lir::Div(copy(arena, a), copy(arena, b)),
+        Lir::Mod(a, b) => Lir::Mod(copy(arena, a), copy(arena, b)),
+        Lir::Run(a, b) => Lir::Run(copy(arena, a), copy(arena, b)),
+        Lir::Add(args) => Lir::Add(args.into_iter().map(|arg| copy(arena, arg)).collect()),
+        Lir::Sub(args) => Lir::Sub(args.into_iter().map(|arg| copy(arena, arg)).collect()),
+        lir => lir,
+    };
     arena.alloc(lir)
 }
 
