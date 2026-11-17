@@ -36,5 +36,9 @@ fn main() -> Int {
     // `6` isn't `5`
     let wrong_literal = run(identity, five_only, 6);
 
-    wrong_argument + wrong_type + wrong_literal
+    // `A` is inferred as `Int` from `5` without the bound `5` from `five_only` through `B`, as
+    // before, so the value is widened past it
+    let widened = run(identity, five_only, 5);
+
+    wrong_argument + wrong_type + wrong_literal + widened
 }

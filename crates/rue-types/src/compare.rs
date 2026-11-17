@@ -815,21 +815,42 @@ pub fn add_expected_bounds(
     pass_upper_bounds(arena, builtins, infer, bounds, Vec::new(), |_| true);
 }
 
-/// Passes each generic's upper bounds on to the generics in its lower bounds, which must satisfy
-/// them too: in `feed(identity, inc)`, `identity` gives `B` the lower bound `A` and `inc` gives it
-/// the upper bound `Int`, so `A` is bounded by `Int` as well (#285). A generic is only given a bound
-/// that its lower bounds satisfy (see `add_expected_bounds`).
+/// Like `resolve_inference_with_fallback`, but a generic that it can't infer is also given the
+/// upper bounds of the generics it's inferred through, which it must satisfy too. In
+/// `feed(identity, inc)`, `identity` gives `B` the lower bound `A` and `inc` gives it the upper
+/// bound `Int`, so `A` is bounded by `Int` as well, and both are inferred as `Int` (#285).
 ///
-/// A generic without lower bounds of its own that's in `fallback` (such as one inferred from the
-/// type expected of the call) isn't given any, so it still falls back to that type. Since this only
-/// adds upper bounds, it otherwise only affects a generic that nothing bounds from below, or whose
-/// lower bounds would have been widened past one of them.
-pub fn add_bounds_through_generics(
+/// This only replaces the mappings of the generics that weren't inferred, or were inferred as one
+/// of the generics being resolved through that wasn't, since those are reported as errors. Every
+/// other mapping is kept, since upper bounds that nothing enforces can be left over from a union
+/// member that didn't match, and passing those on would change what's inferred.
+pub fn resolve_inference_with_bounds(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    infer: &mut Inference,
+    infer: &Inference,
     fallback: &HashMap<TypeId, TypeId>,
-) {
+) -> HashMap<TypeId, TypeId> {
+    let mut mappings = resolve_inference_with_fallback(arena, builtins, infer, fallback);
+
+    let uninferred: HashSet<TypeId> = infer
+        .generics
+        .keys()
+        .copied()
+        .filter(|generic| {
+            mappings.get(generic).is_none_or(|&ty| {
+                free_generics(arena, ty)
+                    .into_iter()
+                    .any(|other| infer.is_resolved_through(other) && !mappings.contains_key(&other))
+            })
+        })
+        .collect();
+
+    if uninferred.is_empty() {
+        return mappings;
+    }
+
+    let mut bounded = infer.clone();
+
     let bounds = infer
         .generics
         .iter()
@@ -838,18 +859,24 @@ pub fn add_bounds_through_generics(
         })
         .collect();
 
-    let held: Vec<TypeId> = infer
-        .generics
-        .iter()
-        .filter(|(generic, candidates)| {
-            candidates.lower.is_empty() && fallback.contains_key(generic)
-        })
-        .map(|(&generic, _)| generic)
-        .collect();
+    pass_upper_bounds(
+        arena,
+        builtins,
+        &mut bounded,
+        Vec::new(),
+        bounds,
+        |generic| uninferred.contains(&generic),
+    );
 
-    pass_upper_bounds(arena, builtins, infer, Vec::new(), bounds, |generic| {
-        !held.contains(&generic)
-    });
+    let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
+
+    for generic in uninferred {
+        if let Some(&ty) = resolved.get(&generic) {
+            mappings.insert(generic, ty);
+        }
+    }
+
+    mappings
 }
 
 /// Adds each of the `added` bounds to its generic if the generic's lower bounds satisfy it, and
@@ -885,9 +912,10 @@ fn pass_upper_bounds(
         .collect();
     stack.reverse();
 
-    // The bounds each generic has been given. A bound passed on that's the same as one of them is
-    // skipped, since passing it on again can create the same type with a new id (such as a union
-    // being substituted), which would otherwise go around a cycle of generics forever.
+    // The bounds each generic has been given, including the ones it already had. A bound that's the
+    // same as one of them (or equivalent, assignable both ways) is skipped, since passing it on
+    // again can create the same type with a new id (such as a union being substituted), which
+    // would otherwise go around a cycle of generics forever.
     let mut given: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
 
     for (generic, upper, add) in &stack {
@@ -903,11 +931,12 @@ fn pass_upper_bounds(
         if add {
             let given = given.entry(generic).or_default();
 
-            if given.iter().any(|&other| {
-                other == upper
-                    || (compare(arena, builtins, other, upper) == Comparison::Assign
-                        && compare(arena, builtins, upper, other) == Comparison::Assign)
-            }) {
+            if given.contains(&upper)
+                || given.iter().any(|&other| {
+                    compare(arena, builtins, other, upper) == Comparison::Assign
+                        && compare(arena, builtins, upper, other) == Comparison::Assign
+                })
+            {
                 continue;
             }
 

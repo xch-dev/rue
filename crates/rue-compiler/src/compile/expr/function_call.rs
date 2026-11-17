@@ -206,13 +206,11 @@ pub fn compile_function_call_expr(
             ctx.add_expected_bounds(&mut infer, expected);
         }
 
-        // A generic inferred through another must satisfy what that one is bounded by, so that
-        // `feed(identity, inc)` infers `A` from `inc` through `B`
-        ctx.add_bounds_through_generics(&mut infer, &fallback);
-
         // A generic that the arguments don't constrain falls back to the type expected of the call,
-        // and the generics inferred from it are resolved through that
-        let mut mappings = ctx.resolve_inference_with_fallback(&infer, &fallback);
+        // and the generics inferred from it are resolved through that. One that still isn't
+        // inferred must satisfy the upper bounds of the generics it's inferred through, so that
+        // `feed(identity, inc)` infers `A` from `inc` through `B`
+        let mut mappings = ctx.resolve_inference_with_bounds(&infer, &fallback);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {

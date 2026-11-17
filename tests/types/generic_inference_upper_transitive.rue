@@ -38,19 +38,6 @@ test fn through_several_layers() -> Int {
     function(1)
 }
 
-fn run<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A) -> Int {
-    second(first(value))
-}
-
-fn five_only(value: 5) -> Int {
-    value
-}
-
-test fn literal_upper_bound() -> Int {
-    // `A` isn't widened from `5` to `Int`, since it must be assignable to `5` through `B`
-    run(identity, five_only, 5)
-}
-
 fn optional(value: Int | nil) -> Int {
     if value is nil {
         0
@@ -95,4 +82,70 @@ test fn expected_type_still_used() -> Int {
     // `A` falls back to `5` from the expected type, as before
     let function: fn(a: 5) -> Int = feed(identity, increment);
     function(5)
+}
+
+test fn nested_calls() -> Int {
+    let inner = feed(identity, feed(identity, increment));
+    let outer = feed(feed(identity, increment), identity);
+    inner(1) + outer(1)
+}
+
+test fn nested_call_with_expected_type() -> Int {
+    // The inner call has no expected type of its own to fall back to
+    let function: fn(a: 5) -> Int = feed(identity, feed(identity, increment));
+    function(5)
+}
+
+test fn typed_lambda() -> Int {
+    let function = feed(identity, fn(b: Int) => b + 1);
+    function(1)
+}
+
+fn one_or_two(value: 1 | 2) -> Int {
+    value
+}
+
+test fn literal_union_upper_bound() -> Int {
+    // Nothing bounds `A` from below, so it's inferred as the literal union
+    let function = feed(identity, one_or_two);
+    function(2)
+}
+
+fn five_only(value: 5) -> Int {
+    value
+}
+
+test fn literal_upper_bound() -> Int {
+    let function = feed(identity, five_only);
+    function(5)
+}
+
+fn optional_input<L, G>(value: L | nil, first: fn(a: L) -> G, _second: fn(b: G) -> Int) -> G | nil {
+    if value is nil {
+        nil
+    } else {
+        first(value)
+    }
+}
+
+test fn held_candidate_kept() -> (nil, Int) {
+    // `L` is inferred as `nil`, held by the union, as before, rather than given `G`'s bound
+    let result = optional_input(nil, identity, optional);
+    let checked: nil = result;
+    (checked, 1)
+}
+
+fn either<A, B>(
+    first: fn(a: A) -> B,
+    _second: (fn(b: B) -> nil) | (fn(b: 5) -> Int),
+    _value: A,
+) -> fn(a: A) -> B {
+    first
+}
+
+test fn bound_from_unmatched_union_member_ignored() -> Int {
+    // `five_only` leaves `B` bounded by `5` while it's compared to `fn(b: B) -> nil`, which it
+    // doesn't match, so that isn't passed on to `A`, which is inferred as `Int` from `5` as before
+    let function: fn(a: Int) -> Int = either(identity, five_only, 5);
+    function(1)
 }

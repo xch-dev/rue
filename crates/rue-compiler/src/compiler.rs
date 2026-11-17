@@ -665,17 +665,17 @@ impl Compiler {
         rue_types::add_expected_bounds(self.db.types_mut(), &self.builtins.types, infer, expected);
     }
 
-    pub fn add_bounds_through_generics(
+    pub fn resolve_inference_with_bounds(
         &mut self,
-        infer: &mut Inference,
+        infer: &Inference,
         fallback: &HashMap<TypeId, TypeId>,
-    ) {
-        rue_types::add_bounds_through_generics(
+    ) -> HashMap<TypeId, TypeId> {
+        rue_types::resolve_inference_with_bounds(
             self.db.types_mut(),
             &self.builtins.types,
             infer,
             fallback,
-        );
+        )
     }
 
     pub fn resolve_inference(&mut self, infer: &Inference) -> HashMap<TypeId, TypeId> {
