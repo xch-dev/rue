@@ -1,0 +1,47 @@
+// The checks are only kept when values have the shapes their types say (see the docs of
+// `rue_hir::analysis`). The compiler can't check that for the solution, the results of calling a
+// function value from the solution or an `extern fn`, or `unchecked_cast`, so it trusts it. These
+// tests break that trust, so release builds return a value where debug builds fail, which is
+// expected. Checking solutions against `main`'s types is part 2 of #142.
+
+// The solution passes a function that returns a pair of pairs, although its type says it returns
+// a pair of integers, so adding to its first element fails. That's moved into a branch that isn't
+// taken in release builds.
+test fn solution_function_returns_the_wrong_shape(f: fn(x: Int) -> (Int, Int), flag: Bool) -> Int {
+    let pair = f(1);
+    let incremented = pair.first + 1;
+    let rest = pair.rest;
+    if flag {
+        incremented
+    } else {
+        rest
+    }
+}
+
+// The same, through a cast that isn't checked
+test fn unchecked_cast_to_the_wrong_shape(value: Any, flag: Bool) -> Int {
+    let pair = unchecked_cast::<(Int, Int)>(value);
+    let incremented = pair.first + 1;
+    let rest = pair.rest;
+    if flag {
+        incremented
+    } else {
+        rest
+    }
+}
+
+// A type guard checks the whole shape it narrows to, so a solution of the wrong shape fails the
+// guard instead, in both builds
+test fn type_guard_checks_the_whole_shape(value: Any, flag: Bool) -> Int {
+    if value is (Int, Int) {
+        let incremented = value.first + 1;
+        let rest = value.rest;
+        if flag {
+            incremented
+        } else {
+            rest
+        }
+    } else {
+        0
+    }
+}

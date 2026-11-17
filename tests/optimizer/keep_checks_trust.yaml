@@ -1,0 +1,27 @@
+tests:
+- name: solution_function_returns_the_wrong_shape
+  program: (a (q 2 (i 11 (q 16 4 (q . 1)) (q . 6)) 1) (c (a 2 (q 1)) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 4) (q . 6)) 1) (c (c (+ (f 2) (q . 1)) (r 2)) 1)) (c (a 2 (c (q . 1) ())) 1))
+  solution: ((q (1 2) . 3) ())
+  output: "3"
+  runtime_cost: 702
+  byte_cost: 612000
+  total_cost: 612702
+  debug_clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
+- name: unchecked_cast_to_the_wrong_shape
+  program: (a (q 2 (i 11 (q 16 4 (q . 1)) (q . 6)) 1) (c 2 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 4) (q . 6)) 1) (c (c (+ (f 2) (q . 1)) (r 2)) 1)) (c 2 1))
+  solution: (((1 2) . 3) ())
+  output: "3"
+  runtime_cost: 571
+  byte_cost: 492000
+  total_cost: 492571
+  debug_clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
+- name: type_guard_checks_the_whole_shape
+  program: (a (i (a (i (l 2) (q 2 (i (a (i (l 4) (q) (q 2 (i (l 6) (q) (q 1 . 1)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 5 (q 16 4 (q . 1)) (q . 6)) 1) (q)) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (a (i (not (l (f 2))) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q 2 (i 11 (q . 4) (q . 6)) 1) (c (c (+ (f 2) (q . 1)) (r 2)) 1)) (q)) 1)
+  solution: (((1 2) . 3) ())
+  output: ()
+  runtime_cost: 1108
+  byte_cost: 1596000
+  total_cost: 1597108

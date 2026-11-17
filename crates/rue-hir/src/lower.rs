@@ -75,7 +75,7 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// Whether the value of each constant may fail, for the ones that can't (see
-    /// [`AnalysisContext::shares_substitution`]).
+    /// [`crate::analysis::AnalysisContext::shares_substitution`]).
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     /// What's always evaluated when the program is run, which constants are checked against.
     constant_roots: OnceCell<Vec<HirId>>,

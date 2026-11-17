@@ -5,6 +5,44 @@
 //! The same checks are used while lowering, where they depend on what's inlined, and by the
 //! dependency graph and lints, which only know what's written in the source (see
 //! [`FailureAnalysis`]).
+//!
+//! # What this guarantees, and what it trusts
+//!
+//! Automatic inlining, and evaluating unused bindings for their effect, never skip a check that a
+//! build without them would run, as long as every value has the shape its type says it has. A
+//! value has the wrong shape if it's an atom where its type says a pair, or a pair where its type
+//! says an atom, at any depth. The compiler can't check that for these values, so it trusts it:
+//!
+//! - The solution, which must match the parameter types of `main`, including every element of a
+//!   list and every field of a struct.
+//! - The result of calling a function value that comes from the solution (or from anywhere else
+//!   the compiler can't see the body of), which must match the function type's return type. The
+//!   call itself is treated as able to fail, but what it returns isn't checked.
+//! - The result of an `extern fn`, which must match its declared return type. Calling it is
+//!   treated as able to fail.
+//! - The result of `unchecked_cast`, which must really have the type it's cast to.
+//!
+//! Everything else follows from type checking: `as` can't change a value's shape, type guards
+//! check the whole shape they narrow to, and `==` only compiles for atoms. Given those shapes,
+//! the operations treated as unable to fail (reading a field, arithmetic, comparisons, `==`,
+//! hashing, `concat`, `strlen`, the bitwise and logical operators, and shifts and division by
+//! suitable constants) can't fail in CLVM. Nothing relies on narrower facts about atoms, such as a
+//! `Bytes32` having 32 bytes, a `Bool` being 0 or 1, or a `PublicKey` being a valid point, since
+//! the operations that need those (`coinid`, the BLS and secp operations, and so on) are treated
+//! as able to fail.
+//!
+//! If one of the trusted values has the wrong shape, a release build can return a value where a
+//! debug build fails, such as when reading a field of it was moved into a branch that isn't taken.
+//! Checking solutions against `main`'s types is part 2 of
+//! [#142](https://github.com/xch-dev/rue/issues/142).
+//!
+//! This is only about where the compiler decides to evaluate values. Checks can still be skipped,
+//! in debug and release alike, where the language says a value isn't evaluated: an argument of an
+//! `inline fn` whose parameter isn't referenced (or an `inline let` or `inline const` that isn't),
+//! which the `inline_value_may_fail` lint reports; a type guard with nothing to check at runtime,
+//! which doesn't evaluate its value; and a constant that's never referenced. `debug` statements
+//! are only evaluated in debug builds. Running out of cost isn't counted as failing, since
+//! evaluating a value in a different place changes how much the program costs.
 
 mod evaluation;
 mod may_fail;
@@ -73,6 +111,13 @@ pub(crate) trait AnalysisContext {
 /// can't fail. A constant is checked where it's referenced, since it's only evaluated if it's
 /// referenced. The parameters of a function can't fail either, since a check in an argument is
 /// kept at the call.
+///
+/// Like the checks used while lowering, this trusts that values have the shapes their types say
+/// (atoms where atoms are expected, and pairs where pairs are) wherever the compiler can't check
+/// it: the solution passed to `main`, the results of calling a function value from the solution
+/// or an `extern fn`, and the results of `unchecked_cast`. Reading a field of one of these, or
+/// doing arithmetic on it, is treated as unable to fail. If a value breaks that trust, a check
+/// can be moved or skipped.
 #[derive(Debug, Default, Clone)]
 pub struct FailureAnalysis {
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
@@ -86,7 +131,7 @@ impl FailureAnalysis {
         Self::default()
     }
 
-    /// Whether evaluating the HIR may fail for well-typed values (see [`may_fail`]).
+    /// Whether evaluating the HIR may fail for values that have the shapes their types say.
     pub fn may_fail(&self, db: &Database, hir: HirId) -> bool {
         may_fail(&self.context(db), hir)
     }

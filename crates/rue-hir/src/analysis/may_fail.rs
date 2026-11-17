@@ -17,14 +17,15 @@ use super::AnalysisContext;
 /// The largest shift that CLVM allows, in either direction.
 const MAX_SHIFT: u32 = 65535;
 
-/// Whether evaluating the HIR may fail for well-typed values, such as a solution that matches the
-/// parameter types of `main`.
+/// Whether evaluating the HIR may fail for values that have the shapes their types say, which the
+/// compiler trusts for the solution, the results of calls it can't see into, and `unchecked_cast`
+/// (see the [module docs](super) for exactly what's trusted).
 ///
 /// This is conservative, so it's `true` for anything that might fail: `raise` and `assert`,
 /// operations that fail for some well-typed operands (such as division by zero, `substr` out of
 /// range, or an invalid BLS point), and calls to functions whose bodies may fail, or that can't be
-/// resolved. Reading a value doesn't fail, including a field of a parameter, since the solution
-/// is assumed to match the types.
+/// resolved. Reading a value doesn't fail, including a field of a parameter or of a value
+/// returned by a call that can't be resolved, since its shape is trusted to match its type.
 ///
 /// A substituted value (see [`AnalysisContext::substituted_value`]) is checked where it's
 /// referenced, since that's where it's evaluated.
