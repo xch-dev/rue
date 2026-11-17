@@ -918,15 +918,15 @@ fn expanded_lower_bounds(
         let mut result = IndexSet::new();
 
         for &generic in &component {
+            let mappings: HashMap<TypeId, TypeId> = edges[&generic]
+                .iter()
+                .filter_map(|&other| Some((other, (*expanded.get(&other)?)?)))
+                .collect();
+
             for &ty in &infer.generics[&generic].lower {
                 if component.contains(&ty) {
                     continue;
                 }
-
-                let mappings: HashMap<TypeId, TypeId> = edges[&generic]
-                    .iter()
-                    .filter_map(|&other| Some((other, (*expanded.get(&other)?)?)))
-                    .collect();
 
                 if infer.is_resolved_through(ty) {
                     // A generic without lower bounds doesn't add any yet
