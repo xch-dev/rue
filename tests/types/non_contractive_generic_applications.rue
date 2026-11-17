@@ -47,6 +47,10 @@ type Second = Later<First>;
 // A generic alias that is only part of the cycle through its own application
 type Fwd<T> = Later<Fwd<Int>> | T;
 
+// The alias is first reached through a pair, so only the second reference to it is on the cycle
+type Repeated = Later<Repeats<Int>>;
+type Repeats<A> = (Repeated, nil) | Repeated | A;
+
 type Later<T> = T;
 
 // These are fine, since the recursion passes through a pair
@@ -67,6 +71,7 @@ fn main(
     first: First,
     second: Second,
     fwd: Fwd<Int>,
+    repeated: Repeated,
     guarded: Guarded,
     guarded_forward: GuardedForward,
 ) -> (Guarded, GuardedForward) {
@@ -81,5 +86,6 @@ fn main(
     let _first: First = first;
     let _second: Second = second;
     let _fwd: Fwd<Int> = fwd;
+    let _repeated: Repeated = repeated;
     (guarded, guarded_forward)
 }

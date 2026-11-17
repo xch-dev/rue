@@ -18,8 +18,14 @@ pub fn is_non_contractive(arena: &mut Arena<Type>, id: TypeId) -> bool {
     !non_contractive_types(arena, &[id]).is_empty()
 }
 
-/// Returns the types that [`is_non_contractive`] is `true` for, in the order they're given. The
-/// types are substituted together, so this takes about as long as substituting all of them once.
+/// Returns the types that [`is_non_contractive`] may be `true` for, in the order they're given.
+/// The types are substituted together, so this takes about as long as substituting all of them
+/// once, rather than once each.
+///
+/// This includes every type that it's `true` for, but it may include others, since an application
+/// of one of the types may be created while substituting another, and only be part of that one's
+/// cycle (such as `Id<Forward>` in `type Forward = Id<Forward>; type Id<T> = T;`, which makes this
+/// return `Id` as well).
 pub fn non_contractive_types(arena: &mut Arena<Type>, ids: &[TypeId]) -> Vec<TypeId> {
     // Substitution expands generic applications, so a cycle that is only created once the
     // generic arguments are filled in (e.g. `type A<T> = T; type B = A<B>;`) is visible.
@@ -121,6 +127,8 @@ impl Tarjan {
             }
         }
 
+        // A single type is only part of a cycle if it refers to itself (such as a placeholder for
+        // a type that's still being substituted, which is resolved to a reference to itself)
         if component.len() > 1 || edges.contains(&id) {
             self.cyclic.extend(component);
         }

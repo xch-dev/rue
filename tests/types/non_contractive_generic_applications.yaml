@@ -9,3 +9,4 @@ diagnostics:
 - Type `Applied` refers to itself without passing through a pair at non_contractive_generic_applications.rue:39:8
 - Type `First` refers to itself without passing through a pair at non_contractive_generic_applications.rue:44:6
 - Type `Fwd` refers to itself without passing through a pair at non_contractive_generic_applications.rue:48:6
+- Type `Repeated` refers to itself without passing through a pair at non_contractive_generic_applications.rue:51:6

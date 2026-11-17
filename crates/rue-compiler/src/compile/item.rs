@@ -140,14 +140,17 @@ fn check_contractive(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) -> bool
 /// that can reach itself without passing through a pair. This must run before anything compares
 /// the types, which is after every type item has been compiled but before struct defaults.
 pub fn recheck_contractive_types(ctx: &mut Compiler) {
-    let items = ctx.take_unchecked_type_items();
-
     // The items are checked together first, since checking each one separately would substitute
-    // the types they share again for every item
-    for ty in rue_types::non_contractive_types(ctx.types_mut(), &items) {
-        // Breaking the cycle of an earlier item may have broken this one's as well, in which case
-        // it's only reported once (for example, `type A = Id<B>; type B = Id<A>;` followed by
-        // `type Id<T> = T;`)
+    // the types they share again for every item. That over-approximates, since an application of
+    // an item may only be part of another item's cycle (such as `Id<Forward>` in
+    // `type Forward = Id<Forward>;`), so each candidate is confirmed separately.
+    let items = ctx.take_unchecked_type_items();
+    let mut candidates = rue_types::non_contractive_types(ctx.types_mut(), &items);
+    let mut index = 0;
+
+    while let Some(&ty) = candidates.get(index) {
+        index += 1;
+
         if !rue_types::is_non_contractive(ctx.types_mut(), ty) {
             continue;
         }
@@ -157,14 +160,21 @@ pub fn recheck_contractive_types(ctx: &mut Compiler) {
             unreachable!()
         };
 
-        // An item without a name can't be referred to, so it can't be part of a cycle and this
-        // is always reported
+        // An item without a name can't be referred to, so it can't be part of a cycle. Its cycle
+        // would still be broken, without a diagnostic.
         if let Some(name) = name.clone() {
             let text = name.text().to_string();
             ctx.diagnostic_name(&name, DiagnosticKind::NonContractiveType(text));
         }
 
         break_cycle(ctx, ty);
+
+        // Breaking the cycle may have broken those of the remaining candidates as well, in which
+        // case they're only reported once (for example, `type A = Id<B>; type B = Id<A>;` followed
+        // by `type Id<T> = T;`). Checking them together again avoids confirming each of them
+        // separately when many items are part of the cycle that was broken.
+        candidates = rue_types::non_contractive_types(ctx.types_mut(), &candidates[index..]);
+        index = 0;
     }
 }
 

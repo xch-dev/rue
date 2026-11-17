@@ -7,7 +7,7 @@ use id_arena::Arena;
 use rue_diagnostic::Name;
 use rue_types::{
     Alias, Apply, BuiltinTypes, Comparison, Generic, Pair, Type, TypeId, Union, compare,
-    is_non_contractive, is_non_regular, stringify, substitute_with_mappings,
+    is_non_contractive, is_non_regular, non_contractive_types, stringify, substitute_with_mappings,
 };
 
 struct Types {
@@ -427,4 +427,35 @@ fn single_application_is_non_contractive() {
     let user = db.declare_alias("U", &[]);
     db.define(user, g_int);
     assert!(!is_non_contractive(&mut db.arena, user));
+}
+
+#[test]
+fn reference_after_guarded_reference_is_non_contractive() {
+    let mut db = Types::new();
+    let BuiltinTypes { int, nil, .. } = db.builtins;
+
+    // type T0 = Id<T1<Int>>; type T1<A> = (T0, nil) | T0 | A; type Id<T> = T;
+    let a = db.generic("A");
+    let t = db.generic("T");
+    let t0 = db.declare_alias("T0", &[]);
+    let t1 = db.declare_alias("T1", &[a]);
+    let id = db.declare_alias("Id", &[t]);
+    let t1_int = db.apply(t1, &[(a, int)]);
+    let id_t1 = db.apply(id, &[(t, t1_int)]);
+    db.define(t0, id_t1);
+    let guarded = db.pair(t0, nil);
+    let inner = db.union(&[guarded, t0, a]);
+    db.define(t1, inner);
+    db.define(id, t);
+
+    // `T0` is substituted inside the pair first, so the cycle only passes through the copy that
+    // the unguarded reference to it is substituted into
+    assert!(is_non_contractive(&mut db.arena, t0));
+    assert!(!is_non_contractive(&mut db.arena, id));
+
+    // Checking them together also returns `Id`, since `Id<T1<Int>>` is part of the cycle
+    assert_eq!(
+        non_contractive_types(&mut db.arena, &[t0, id]),
+        vec![t0, id]
+    );
 }
