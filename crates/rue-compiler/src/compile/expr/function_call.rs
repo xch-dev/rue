@@ -43,7 +43,7 @@ pub fn compile_function_call_expr(
 
     let is_unresolved = ctx.is_unresolved(expr.ty);
 
-    let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty, true);
+    let mut expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty, true);
 
     if expected_functions.len() > 1 {
         let name = ctx.type_name(expr.ty);
@@ -55,6 +55,13 @@ pub fn compile_function_call_expr(
         let name = ctx.type_name(expr.ty);
         ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidFunctionCall(name));
     }
+
+    // The callee's generics that are also in scope, as in a recursive call, are renamed to fresh
+    // ones, so that they aren't confused with the caller's generics with the same ids (#334)
+    let renamed = expected_functions
+        .first_mut()
+        .map(|function| rename_generics_in_scope(ctx, function))
+        .unwrap_or_default();
 
     let expected_function = expected_functions.first();
 
@@ -94,12 +101,6 @@ pub fn compile_function_call_expr(
 
         let mut infer = Inference::new(function.generics.iter().copied());
 
-        for &generic in &function.generics {
-            if is_type_in_scope(ctx, generic) {
-                infer.set_in_scope(generic);
-            }
-        }
-
         // The type expected of the call is used for the generics that the arguments don't
         // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
         // ones they do from being widened past it
@@ -111,10 +112,9 @@ pub fn compile_function_call_expr(
             // from this call, so they're no help in inferring its generics either
             let enclosing = ctx.inferred_generics();
             expected.retain_bounds(|ty| {
-                !enclosing.iter().any(|&generic| {
-                    !is_type_in_scope(ctx, generic)
-                        && contains_generic(ctx.types_mut(), ty, generic)
-                })
+                !enclosing
+                    .iter()
+                    .any(|&generic| contains_generic(ctx.types_mut(), ty, generic))
             });
 
             expected
@@ -185,6 +185,8 @@ pub fn compile_function_call_expr(
                 }
             }
 
+            restore_renamed(ctx, &mut mappings, &renamed);
+
             let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
             let value = compile_expr(ctx, expr, Some(expected));
@@ -211,17 +213,16 @@ pub fn compile_function_call_expr(
         // inferred must satisfy the upper bounds of the generics it's inferred through, so that
         // `feed(identity, inc)` infers `A` from `inc` through `B`
         let mut mappings = ctx.resolve_inference_with_bounds(&infer, &fallback);
+        restore_renamed(ctx, &mut mappings, &renamed);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
             }
 
-            // A generic that's in scope is being passed through a recursive call, so it's
-            // fine for it to stay as is. Otherwise, the callee's generic would leak out, unless
-            // the function's type doesn't reference it at all.
-            if is_type_in_scope(ctx, generic)
-                || !std::iter::once(function.ret)
+            // The callee's generic would leak out, unless the function's type doesn't reference
+            // it at all
+            if !std::iter::once(function.ret)
                     .chain(function.param_types())
                     .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
             {
@@ -435,6 +436,69 @@ fn expected_generics(ctx: &mut Compiler, expected_type: Option<TypeId>) -> Vec<T
             .flat_map(|function| function.generics)
             .collect()
     })
+}
+
+/// Renames the function's generics that are in scope to fresh copies of them, and returns the
+/// generics that each copy was renamed from.
+fn rename_generics_in_scope(
+    ctx: &mut Compiler,
+    function: &mut FunctionType,
+) -> HashMap<TypeId, TypeId> {
+    let mut renaming = HashMap::new();
+
+    for generic in &mut function.generics {
+        if is_type_in_scope(ctx, *generic) {
+            let copy = ctx.ty(*generic).clone();
+            let copy = ctx.alloc_type(copy);
+            renaming.insert(*generic, copy);
+            *generic = copy;
+        }
+    }
+
+    if renaming.is_empty() {
+        return renaming;
+    }
+
+    for param in &mut function.params {
+        param.ty = substitute_with_mappings(ctx.types_mut(), param.ty, &renaming);
+    }
+
+    function.ret = substitute_with_mappings(ctx.types_mut(), function.ret, &renaming);
+
+    renaming
+        .into_iter()
+        .map(|(generic, copy)| (copy, generic))
+        .collect()
+}
+
+/// Maps the renamed generics that haven't been inferred back to the caller's generics they were
+/// renamed from (see `rename_generics_in_scope`), including where the others are inferred as types
+/// that reference them, since that's what they referred to before they were renamed.
+fn restore_renamed(
+    ctx: &mut Compiler,
+    mappings: &mut HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
+) {
+    let restored: HashMap<TypeId, TypeId> = renamed
+        .iter()
+        .filter(|(copy, _)| !mappings.contains_key(copy))
+        .map(|(&copy, &generic)| (copy, generic))
+        .collect();
+
+    if restored.is_empty() {
+        return;
+    }
+
+    for ty in mappings.values_mut() {
+        if restored
+            .keys()
+            .any(|&copy| contains_generic(ctx.types_mut(), *ty, copy))
+        {
+            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &restored);
+        }
+    }
+
+    mappings.extend(restored);
 }
 
 fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {

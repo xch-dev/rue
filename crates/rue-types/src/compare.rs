@@ -46,11 +46,6 @@ pub struct InferenceCandidates {
 #[derive(Debug, Default, Clone)]
 pub struct Inference {
     generics: IndexMap<TypeId, InferenceCandidates>,
-    /// The generics being inferred that are also in scope where they're inferred, such as the
-    /// generics of a function in a recursive call to it. A candidate that references one of them
-    /// refers to the caller's generic with the same id, so it isn't resolved through what the
-    /// generic is inferred as.
-    in_scope: HashSet<TypeId>,
 }
 
 impl Inference {
@@ -60,13 +55,7 @@ impl Inference {
                 .into_iter()
                 .map(|generic| (generic, InferenceCandidates::default()))
                 .collect(),
-            in_scope: HashSet::new(),
         }
-    }
-
-    /// Marks a generic being inferred as in scope where it's inferred (see `Inference::in_scope`).
-    pub fn set_in_scope(&mut self, generic: TypeId) {
-        self.in_scope.insert(generic);
     }
 
     pub fn candidates(&self, generic: TypeId) -> Option<&InferenceCandidates> {
@@ -90,11 +79,6 @@ impl Inference {
 
     fn is_target(&self, generic: TypeId) -> bool {
         self.generics.contains_key(&generic)
-    }
-
-    /// Whether a candidate that references the generic is resolved through what it's inferred as.
-    fn is_resolved_through(&self, generic: TypeId) -> bool {
-        self.is_target(generic) && !self.in_scope.contains(&generic)
     }
 
     fn candidates_mut(&mut self, generic: TypeId) -> &mut InferenceCandidates {
@@ -826,10 +810,9 @@ pub fn add_expected_bounds(
 /// bound `Int`, so `A` is bounded by `Int` as well, and both are inferred as `Int` (#285).
 ///
 /// This only replaces the mappings of the generics that weren't inferred, or were inferred as a type
-/// that references one of the generics being resolved through that wasn't, since those are reported
-/// as errors. Every
-/// other mapping is kept, since upper bounds that nothing enforces can be left over from a union
-/// member that didn't match, and passing those on would change what's inferred.
+/// that references another generic being inferred that wasn't, since those are reported as errors.
+/// Every other mapping is kept, since upper bounds that nothing enforces can be left over from a
+/// union member that didn't match, and passing those on would change what's inferred.
 pub fn resolve_inference_with_bounds(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -846,7 +829,7 @@ pub fn resolve_inference_with_bounds(
             mappings.get(generic).is_none_or(|&ty| {
                 free_generics(arena, ty)
                     .into_iter()
-                    .any(|other| infer.is_resolved_through(other) && !mappings.contains_key(&other))
+                    .any(|other| infer.is_target(other) && !mappings.contains_key(&other))
             })
         })
         .collect();
@@ -902,7 +885,7 @@ fn pass_upper_bounds(
         .generics
         .keys()
         .copied()
-        .filter(|&generic| infer.is_resolved_through(generic))
+        .filter(|&generic| infer.is_target(generic))
         .collect();
 
     // Each entry is a bound and whether it still has to be added to its generic. A bound passed on
@@ -959,7 +942,7 @@ fn pass_upper_bounds(
 
         // The generics that flow into this one through its lower bounds must satisfy it too
         for ty in infer.generics[&generic].lower.clone() {
-            if infer.is_resolved_through(ty) {
+            if infer.is_target(ty) {
                 if accepts(ty) {
                     stack.push((ty, upper, true));
                 }
@@ -968,7 +951,7 @@ fn pass_upper_bounds(
 
             if !free_generics(arena, ty)
                 .iter()
-                .any(|&other| infer.is_resolved_through(other))
+                .any(|&other| infer.is_target(other))
             {
                 continue;
             }
@@ -985,9 +968,9 @@ fn pass_upper_bounds(
     }
 }
 
-/// Returns the union of each generic's lower bounds, with each generic they reference that's
-/// resolved through replaced by the union of that generic's own expanded lower bounds (if it has
-/// any), so that they can be checked against a bound, or `None` if there are none. A lower bound
+/// Returns the union of each generic's lower bounds, with each generic being inferred that they
+/// reference replaced by the union of that generic's own expanded lower bounds (if it has any), so
+/// that they can be checked against a bound, or `None` if there are none. A lower bound
 /// that's just such a generic adds nothing if that generic has none, and one that only references
 /// it is left as is.
 ///
@@ -1007,7 +990,7 @@ fn expanded_lower_bounds(
                 .lower
                 .iter()
                 .flat_map(|&ty| free_generics(arena, ty))
-                .filter(|&other| infer.is_resolved_through(other))
+                .filter(|&other| infer.is_target(other))
                 .collect();
             (generic, edges)
         })
@@ -1031,7 +1014,7 @@ fn expanded_lower_bounds(
                     continue;
                 }
 
-                if infer.is_resolved_through(ty) {
+                if infer.is_target(ty) {
                     // A generic without lower bounds doesn't add any yet
                     if let Some(&union) = mappings.get(&ty) {
                         result.insert(union);
@@ -1169,7 +1152,7 @@ pub fn resolve_inference_with_fallback(
                 .chain(&candidates.upper)
                 .chain(&candidates.held)
                 .flat_map(|&ty| free_generics(arena, ty))
-                .filter(|&other| infer.is_resolved_through(other))
+                .filter(|&other| infer.is_target(other))
                 .collect();
             (generic, references)
         })
@@ -1212,8 +1195,8 @@ pub fn resolve_inference_with_fallback(
 struct InferenceResolver<'a> {
     infer: &'a Inference,
     fallback: &'a HashMap<TypeId, TypeId>,
-    /// The generics that each generic's candidates reference, directly or through other
-    /// generics, and are resolved through.
+    /// The generics being inferred that each generic's candidates reference, directly or through
+    /// other generics.
     reachable: HashMap<TypeId, HashSet<TypeId>>,
     resolved: HashSet<TypeId>,
     mappings: HashMap<TypeId, TypeId>,
@@ -1372,7 +1355,7 @@ impl InferenceResolver<'_> {
 
                 let mappings: HashMap<TypeId, TypeId> = free
                     .into_iter()
-                    .filter(|&other| self.infer.is_resolved_through(other))
+                    .filter(|&other| self.infer.is_target(other))
                     .filter_map(|other| Some((other, *self.mappings.get(&other)?)))
                     .collect();
 

@@ -1601,22 +1601,6 @@ mod inference {
     }
 
     #[test]
-    fn doesnt_expand_lower_bounds_through_generics_in_scope() {
-        let mut db = Db::new();
-        let (a, b) = (db.generic("A"), db.generic("B"));
-        let five = db.literal(AtomSemantic::Int, &[5]);
-
-        // `A` is the caller's own generic, so `B`'s candidate `A` isn't expanded through it and
-        // doesn't satisfy the bound
-        let mut infer = Inference::new([a, b]);
-        infer.set_in_scope(a);
-        db.infer(a, b, &mut infer);
-        add_expected(&mut db, &[a, b], b, five, &mut infer);
-        assert_eq!(candidates(&infer, a).upper, vec![]);
-        assert_eq!(candidates(&infer, b).upper, vec![]);
-    }
-
-    #[test]
     fn skips_union_members_held_by_others() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);
@@ -1993,20 +1977,6 @@ mod inference {
         assert_eq!(mappings[&b], a);
     }
 
-    #[test]
-    fn generics_in_scope_are_not_resolved_through() {
-        let mut db = Db::new();
-        let int = db.builtins.int;
-        let (a, b) = (db.generic("A"), db.generic("B"));
-        let mut infer = Inference::new([a, b]);
-        infer.set_in_scope(a);
-        infer_map_identity(&mut db, a, b, &mut infer);
-
-        // `A` is the caller's own generic, as in a recursive call
-        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
-        assert_eq!(mappings[&a], int);
-        assert_eq!(mappings[&b], a);
-    }
 }
 
 mod substitution {

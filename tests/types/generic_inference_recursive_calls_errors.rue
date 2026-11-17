@@ -1,0 +1,26 @@
+// Renaming the callee's generics in a recursive call must still reject invalid calls (#334)
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    // `B` is inferred as `(Int, Int)`, which isn't `(Int, Bytes)`
+    let _wrong_result: (Int, Bytes) = map(duplicate, 1);
+
+    // A function that isn't generic still can't take the value
+    let _wrong_argument = map(bytes_pair, 1);
+
+    // The callee's `A` is inferred as the caller's `A`, which `Int` can't be assigned to
+    let _mismatched = map(fn(_x: A) => 1, 2);
+
+    function(value)
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+fn bytes_pair(value: Bytes) -> (Bytes, Bytes) {
+    (value, value)
+}
+
+fn main() -> (Int, Int) {
+    map(duplicate, 42)
+}
