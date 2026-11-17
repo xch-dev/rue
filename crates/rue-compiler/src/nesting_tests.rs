@@ -461,6 +461,25 @@ fn long_runs_of_bindings_are_grouped() {
     });
 }
 
+/// Each binding also captures the parameter, which each one could reach through every binding
+/// before it, so grouping them is quadratic in the length of the chain if it follows each
+/// binding's transitive dependencies rather than its direct ones (#296).
+#[test]
+fn long_runs_of_bindings_that_share_a_parameter_are_grouped() {
+    on_stack(2, || {
+        let source = format!(
+            "fn main(a: Int) -> Int {{\nlet x0 = a + 1;\n{}x{LONG_CHAIN}\n}}",
+            links(LONG_CHAIN, |i| format!(
+                "let x{} = x{i} * x{i} + a;\n",
+                i + 1
+            ))
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
 /// Programs whose types nest once per item or link, even though the source doesn't nest, along with
 /// how many items or links to test them with. Each one type checks without errors. The sizes are
 /// enough to overflow a 2 MiB stack in a debug build if the operations on types didn't grow the

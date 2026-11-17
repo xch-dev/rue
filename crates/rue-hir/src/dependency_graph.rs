@@ -255,6 +255,252 @@ impl DependencyGraph {
 
         result
     }
+
+    /// The round that each of the symbols is bound in, where a symbol is bound in a round after
+    /// every symbol in the set that it depends on, as given by [`Self::dependencies`] with only
+    /// captures. Its round is one after the latest round of those symbols, or the first round if
+    /// there are none. Symbols that aren't `bound_after` are bound in the first round, without
+    /// waiting for any of the others.
+    ///
+    /// A symbol that depends on itself, or on a symbol in the set that does, can't be bound after
+    /// its dependencies, so its round is `None`.
+    pub fn rounds(
+        &self,
+        symbols: &IndexSet<SymbolId>,
+        bound_after: impl Fn(SymbolId) -> bool,
+    ) -> Vec<Option<usize>> {
+        let owner = symbols
+            .first()
+            .and_then(|symbol| self.owners.get(symbol).copied());
+
+        // A run of let statements is in the body of one symbol, and the symbols that main captures
+        // aren't defined in any, so this is the case whenever symbols are grouped
+        if symbols
+            .iter()
+            .all(|symbol| self.owners.get(symbol).copied() == owner)
+        {
+            self.rounds_from_edges(symbols, &bound_after, owner)
+        } else {
+            self.rounds_from_dependencies(symbols, &bound_after)
+        }
+    }
+
+    /// Finds the rounds from the direct dependencies, when each of the symbols is defined in the
+    /// same scope, `owner`. A symbol then depends on another in the set if it can reach it without
+    /// passing through the owner, since that enters the scope the other is defined in (see
+    /// [`Self::dependencies`]). If the symbols aren't defined in a scope, any path counts.
+    ///
+    /// A symbol's round only depends on the symbols in the set that it can reach, so it's the same
+    /// for every symbol in a strongly connected component. The components are found with Tarjan's
+    /// algorithm, which finishes each one after every component that it can reach, and visits each
+    /// symbol that the set can reach once. It's iterative, so that a long chain of bindings
+    /// doesn't overflow the stack.
+    fn rounds_from_edges(
+        &self,
+        symbols: &IndexSet<SymbolId>,
+        bound_after: &impl Fn(SymbolId) -> bool,
+        owner: Option<SymbolId>,
+    ) -> Vec<Option<usize>> {
+        // Paths stop at the owner, since anything they reach from there isn't a dependency
+        let edge = |symbol: SymbolId, index: usize| {
+            if Some(symbol) == owner {
+                return None;
+            }
+
+            self.dependencies.get(&symbol)?.get_index(index).copied()
+        };
+        let edges = |symbol| (0..).map_while(move |index| edge(symbol, index));
+
+        let mut components = Components::default();
+
+        for &root in symbols {
+            if !bound_after(root) || components.indices.contains_key(&root) {
+                continue;
+            }
+
+            // Each symbol being visited, along with how many of its edges have been followed
+            let mut visits = vec![(components.enter(root), 0)];
+
+            while let Some((index, next)) = visits.last_mut() {
+                let index = *index;
+                let symbol = components.symbols[index];
+
+                if let Some(dependency) = edge(symbol, *next) {
+                    *next += 1;
+
+                    if let Some(&dependency_index) = components.indices.get(&dependency) {
+                        if components.on_stack[dependency_index] {
+                            components.low[index] = components.low[index].min(dependency_index);
+                        }
+                    } else {
+                        visits.push((components.enter(dependency), 0));
+                    }
+
+                    continue;
+                }
+
+                visits.pop();
+
+                if let Some(&(outer, _)) = visits.last() {
+                    components.low[outer] = components.low[outer].min(components.low[index]);
+                }
+
+                if components.low[index] != index {
+                    continue;
+                }
+
+                // The symbol is the first one visited in its component, so the rest of the
+                // component is above it on the stack
+                let position = components.stack.iter().rposition(|&i| i == index).unwrap();
+                let members = components.stack.split_off(position);
+                let component = components.reaches.len();
+
+                for &member in &members {
+                    components.on_stack[member] = false;
+                    components.component[member] = component;
+                }
+
+                let cyclic = members.len() > 1 || edges(symbol).any(|edge| edge == symbol);
+                let mut reach = Reach::default();
+
+                for &member in &members {
+                    let member = components.symbols[member];
+
+                    // Every symbol in a cycle can reach every symbol in it, including itself
+                    if cyclic && symbols.contains(&member) {
+                        if bound_after(member) {
+                            reach.waiting = true;
+                        } else {
+                            reach.round = reach.round.max(1);
+                        }
+                    }
+
+                    for dependency in edges(member) {
+                        let other = components.component[components.indices[&dependency]];
+
+                        if other == component {
+                            continue;
+                        }
+
+                        let other = components.reaches[other];
+                        reach.waiting |= other.waiting;
+
+                        // A symbol in the set is bound after what it reaches, unless it's bound in
+                        // the first round
+                        let round = if !symbols.contains(&dependency) {
+                            other.round
+                        } else if bound_after(dependency) {
+                            other.round + 1
+                        } else {
+                            other.round.max(1)
+                        };
+
+                        reach.round = reach.round.max(round);
+                    }
+                }
+
+                components.reaches.push(reach);
+            }
+        }
+
+        symbols
+            .iter()
+            .map(|&symbol| {
+                if !bound_after(symbol) {
+                    return Some(0);
+                }
+
+                let reach = components.reaches[components.component[components.indices[&symbol]]];
+                (!reach.waiting).then_some(reach.round)
+            })
+            .collect()
+    }
+
+    /// Finds the rounds from the dependencies of each symbol, which works for any set of symbols,
+    /// but walks everything each symbol can reach. A symbol is visited once all of its
+    /// dependencies in the set have been.
+    fn rounds_from_dependencies(
+        &self,
+        symbols: &IndexSet<SymbolId>,
+        bound_after: &impl Fn(SymbolId) -> bool,
+    ) -> Vec<Option<usize>> {
+        let mut rounds = vec![0; symbols.len()];
+        let mut waiting = vec![0; symbols.len()];
+        let mut dependents = vec![Vec::new(); symbols.len()];
+        let mut ready = Vec::new();
+
+        for (index, &symbol) in symbols.iter().enumerate() {
+            if bound_after(symbol) {
+                for dependency in &self.dependencies(symbol, true) {
+                    if let Some(dependency) = symbols.get_index_of(dependency) {
+                        waiting[index] += 1;
+                        dependents[dependency].push(index);
+                    }
+                }
+            }
+
+            if waiting[index] == 0 {
+                ready.push(index);
+            }
+        }
+
+        while let Some(index) = ready.pop() {
+            for &dependent in &dependents[index] {
+                rounds[dependent] = rounds[dependent].max(rounds[index] + 1);
+                waiting[dependent] -= 1;
+
+                if waiting[dependent] == 0 {
+                    ready.push(dependent);
+                }
+            }
+        }
+
+        // Symbols that are still waiting depend on a cycle, so they're never visited
+        rounds
+            .into_iter()
+            .zip(waiting)
+            .map(|(round, waiting)| (waiting == 0).then_some(round))
+            .collect()
+    }
+}
+
+/// The state of Tarjan's algorithm, over the dependency graph, in [`DependencyGraph::rounds`].
+#[derive(Debug, Default)]
+struct Components {
+    /// The order in which each symbol was first visited.
+    indices: HashMap<SymbolId, usize>,
+    /// The symbol visited at each index.
+    symbols: Vec<SymbolId>,
+    /// The lowest index reachable from each symbol through the ones still on the stack.
+    low: Vec<usize>,
+    on_stack: Vec<bool>,
+    stack: Vec<usize>,
+    /// The component that each symbol is in, once it's finished.
+    component: Vec<usize>,
+    /// What each finished component can reach.
+    reaches: Vec<Reach>,
+}
+
+impl Components {
+    fn enter(&mut self, symbol: SymbolId) -> usize {
+        let index = self.symbols.len();
+        self.indices.insert(symbol, index);
+        self.symbols.push(symbol);
+        self.low.push(index);
+        self.on_stack.push(true);
+        self.stack.push(index);
+        self.component.push(usize::MAX);
+        index
+    }
+}
+
+/// What a strongly connected component of the dependency graph can reach in a set of symbols.
+#[derive(Debug, Default, Clone, Copy)]
+struct Reach {
+    /// The round after every symbol in the set that it can reach.
+    round: usize,
+    /// Whether it can reach a symbol in the set that depends on itself.
+    waiting: bool,
 }
 
 fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bool) {
@@ -587,5 +833,83 @@ fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId) {
 
     if !graph.visited.contains(&symbol) {
         graph.referenced.push(symbol);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A small pseudorandom number generator (xorshift), so that the graphs are the same each run.
+    struct Random(u64);
+
+    impl Random {
+        fn below(&mut self, n: usize) -> usize {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            (self.0 % n as u64) as usize
+        }
+
+        fn chance(&mut self, percent: usize) -> bool {
+            self.below(100) < percent
+        }
+    }
+
+    /// Checks that the rounds found from the direct dependencies are the same as the ones found
+    /// from each symbol's dependencies, on random graphs with cycles, nested scopes and paths that
+    /// pass through the scope that the symbols are defined in.
+    #[test]
+    fn rounds_from_edges_match_dependencies() {
+        let mut random = Random(0x9e37_79b9_7f4a_7c15);
+        let mut db = Database::new();
+        let main = db.alloc_symbol(Symbol::Unresolved);
+
+        for _ in 0..20_000 {
+            let mut graph = DependencyGraph::build(&db, main, CompilerOptions::default());
+            let count = 1 + random.below(14);
+            let nodes: Vec<SymbolId> = (0..count)
+                .map(|_| db.alloc_symbol(Symbol::Unresolved))
+                .collect();
+
+            // Each symbol is defined in an earlier one, if any, so that scopes don't nest forever
+            for (index, &node) in nodes.iter().enumerate() {
+                if index > 0 && random.chance(60) {
+                    graph.owners.insert(node, nodes[random.below(index)]);
+                }
+            }
+
+            let edges = random.below(count * 3);
+
+            for _ in 0..edges {
+                let from = nodes[random.below(count)];
+                let to = nodes[random.below(count)];
+                graph.dependencies.entry(from).or_default().insert(to);
+            }
+
+            // The symbols being grouped are defined in the same scope, as in a run of let
+            // statements
+            let owner = graph.owners.get(&nodes[random.below(count)]).copied();
+
+            let symbols: IndexSet<SymbolId> = nodes
+                .iter()
+                .copied()
+                .filter(|node| graph.owners.get(node).copied() == owner && random.chance(70))
+                .collect();
+
+            let bound_after: HashSet<SymbolId> = symbols
+                .iter()
+                .copied()
+                .filter(|_| random.chance(80))
+                .collect();
+            let bound_after = |symbol| bound_after.contains(&symbol);
+
+            assert_eq!(
+                graph.rounds_from_edges(&symbols, &bound_after, owner),
+                graph.rounds_from_dependencies(&symbols, &bound_after),
+                "{:?} owned by {owner:?}, grouping {symbols:?}",
+                graph.dependencies,
+            );
+        }
     }
 }
