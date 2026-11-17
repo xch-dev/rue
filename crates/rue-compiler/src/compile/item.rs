@@ -140,27 +140,31 @@ fn check_contractive(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) -> bool
 /// that can reach itself without passing through a pair. This must run before anything compares
 /// the types, which is after every type item has been compiled but before struct defaults.
 pub fn recheck_contractive_types(ctx: &mut Compiler) {
-    for ty in ctx.take_unchecked_type_items() {
+    let items = ctx.take_unchecked_type_items();
+
+    // The items are checked together first, since checking each one separately would substitute
+    // the types they share again for every item
+    for ty in rue_types::non_contractive_types(ctx.types_mut(), &items) {
+        // Breaking the cycle of an earlier item may have broken this one's as well, in which case
+        // it's only reported once (for example, `type A = Id<B>; type B = Id<A>;` followed by
+        // `type Id<T> = T;`)
         if !rue_types::is_non_contractive(ctx.types_mut(), ty) {
             continue;
         }
 
-        let (Type::Alias(Alias { name, inner, .. }) | Type::Struct(Struct { name, inner, .. })) =
-            ctx.ty(ty).clone()
+        let (Type::Alias(Alias { name, .. }) | Type::Struct(Struct { name, .. })) = ctx.ty(ty)
         else {
             unreachable!()
         };
 
-        // An item without a name already has a syntax error, so only the cycle is broken
-        if let Some(name) = name {
-            ctx.diagnostic_name(
-                &name,
-                DiagnosticKind::NonContractiveType(name.text().to_string()),
-            );
+        // An item without a name can't be referred to, so it can't be part of a cycle and this
+        // is always reported
+        if let Some(name) = name.clone() {
+            let text = name.text().to_string();
+            ctx.diagnostic_name(&name, DiagnosticKind::NonContractiveType(text));
         }
 
-        let unresolved = ctx.builtins().unresolved.ty;
-        *ctx.ty_mut(inner) = Type::Ref(unresolved);
+        break_cycle(ctx, ty);
     }
 }
 
@@ -185,6 +189,12 @@ fn report_and_break_cycle(
         ctx.diagnostic(item.syntax(), kind(text));
     }
 
+    break_cycle(ctx, ty);
+}
+
+/// Replaces the inner type of the type item with an unresolved type, so that nothing can reach a
+/// cycle through it after it has been reported.
+fn break_cycle(ctx: &mut Compiler, ty: TypeId) {
     let (Type::Alias(Alias { inner, .. }) | Type::Struct(Struct { inner, .. })) = ctx.ty(ty) else {
         unreachable!()
     };

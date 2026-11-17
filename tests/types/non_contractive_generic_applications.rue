@@ -28,11 +28,32 @@ struct Wrapper<T> {
     ...inner: T,
 }
 
+// A struct that's only part of the cycle through an alias that's compiled later
+struct Struct {
+    ..._inner: Later<Struct>,
+}
+
+// A struct whose application is part of the cycle
+type StructUser = Applied<Int>;
+
+struct Applied<X> {
+    ..._inner: X | (nil, X) | StructUser,
+}
+
+// Both are part of the same cycle, but only the first is reported, since that breaks it
+type First = Later<Second>;
+type Second = Later<First>;
+
+// A generic alias that is only part of the cycle through its own application
+type Fwd<T> = Later<Fwd<Int>> | T;
+
+type Later<T> = T;
+
 // These are fine, since the recursion passes through a pair
 type Guarded = Pair<Int>;
 type Pair<A> = A | (nil, Guarded);
 
-type GuardedForward = Id<(Int, GuardedForward)> | nil;
+type GuardedForward = Later<(Int, GuardedForward)> | nil;
 
 fn main(
     t0: T0,
@@ -41,8 +62,24 @@ fn main(
     outer: Outer,
     module: Module,
     wrapped: Wrapped,
+    structure: Struct,
+    struct_user: StructUser,
+    first: First,
+    second: Second,
+    fwd: Fwd<Int>,
     guarded: Guarded,
     guarded_forward: GuardedForward,
-) -> (T0, (Forward, (ForwardUnion, (Outer, (Module, (Wrapped, (Guarded, GuardedForward))))))) {
-    (t0, (forward, (forward_union, (outer, (module, (wrapped, (guarded, guarded_forward)))))))
+) -> (Guarded, GuardedForward) {
+    let _t0: T0 = t0;
+    let _forward: Forward = forward;
+    let _forward_union: ForwardUnion = forward_union;
+    let _outer: Outer = outer;
+    let _module: Module = module;
+    let _wrapped: Wrapped = wrapped;
+    let _structure: Struct = structure;
+    let _struct_user: StructUser = struct_user;
+    let _first: First = first;
+    let _second: Second = second;
+    let _fwd: Fwd<Int> = fwd;
+    (guarded, guarded_forward)
 }

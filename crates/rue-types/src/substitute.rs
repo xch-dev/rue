@@ -18,44 +18,47 @@ pub fn substitute_with_mappings(
     id: TypeId,
     mappings: &HashMap<TypeId, TypeId>,
 ) -> TypeId {
-    substitute_tracking(arena, id, mappings, None).0
+    substitute_in(arena, &mut SubstitutionContext::default(), id, mappings)
 }
 
-/// Substitutes the type like [`substitute_with_mappings`], and also returns every type that it was
-/// substituted into along the way, under any mappings. For an alias, these are the root and every
-/// application of the alias that the root can reach (such as `T1<Int>` in
-/// `type T1<A> = A | T0; type T0 = T1<Int>;`).
+/// Substitutes each of the types with its mappings, sharing the work between them, and returns
+/// every type that each of them was substituted into along the way, under any mappings. For an
+/// alias, these are its substitution and every application of it that is substituted (such as
+/// `T1<Int>` in `type T1<A> = A | T0; type T0 = T1<Int>;`).
 pub(crate) fn substitute_instances(
     arena: &mut Arena<Type>,
-    id: TypeId,
-    mappings: &HashMap<TypeId, TypeId>,
-) -> (TypeId, HashSet<TypeId>) {
-    substitute_tracking(arena, id, mappings, Some(id))
+    types: &[(TypeId, HashMap<TypeId, TypeId>)],
+) -> FxHashMap<TypeId, Vec<TypeId>> {
+    let mut ctx = SubstitutionContext {
+        instances: types.iter().map(|&(id, _)| (id, Vec::new())).collect(),
+        ..SubstitutionContext::default()
+    };
+
+    for (id, mappings) in types {
+        substitute_in(arena, &mut ctx, *id, mappings);
+    }
+
+    ctx.instances
 }
 
-fn substitute_tracking(
+fn substitute_in(
     arena: &mut Arena<Type>,
+    ctx: &mut SubstitutionContext,
     id: TypeId,
     mappings: &HashMap<TypeId, TypeId>,
-    tracked: Option<TypeId>,
-) -> (TypeId, HashSet<TypeId>) {
+) -> TypeId {
     let name = log_enabled!(Level::Trace).then(|| stringify_impl(arena, id, &mut IndexMap::new()));
 
     if let Some(name) = &name {
         trace!("Substituting {name}");
     }
 
-    let mut ctx = SubstitutionContext {
-        tracked,
-        ..SubstitutionContext::default()
-    };
-
     // The mapped types belong to the caller's scope, so they're substituted without the mappings
     let (empty_scope, empty) = ctx.scope(BTreeMap::new(), HashMap::new());
     let mappings: HashMap<TypeId, TypeId> = mappings
         .iter()
         .map(|(&generic, &ty)| {
-            let ty = substitute_impl(arena, ty, &empty, empty_scope, &mut ctx);
+            let ty = substitute_impl(arena, ty, &empty, empty_scope, ctx);
             (generic, ty)
         })
         .collect();
@@ -65,14 +68,14 @@ fn substitute_tracking(
         .map(|(&generic, &ty)| (generic, Binding::Type(ty)))
         .collect();
     let (scope, mappings) = ctx.scope(bindings, mappings);
-    let result = substitute_impl(arena, id, &mappings, scope, &mut ctx);
+    let result = substitute_impl(arena, id, &mappings, scope, ctx);
 
     if let Some(name) = &name {
         let new_name = stringify_impl(arena, result, &mut IndexMap::new());
         trace!("Substitution from {name} yielded {new_name}");
     }
 
-    (result, ctx.instances)
+    result
 }
 
 /// Identifies what a generic is mapped to, so that substitutions can be keyed by it.
@@ -104,10 +107,9 @@ struct SubstitutionContext {
     /// type. The first copy that isn't referenced is reused, so that there are finitely many
     /// distinct mappings and recursive types still reach the substitutions that are in progress.
     renames: FxHashMap<TypeId, Vec<TypeId>>,
-    /// The type whose substitutions are collected in `instances`, if any.
-    tracked: Option<TypeId>,
-    /// Every type that `tracked` was substituted into.
-    instances: HashSet<TypeId>,
+    /// Every type that each of the types it's keyed by was substituted into, for
+    /// `substitute_instances`.
+    instances: FxHashMap<TypeId, Vec<TypeId>>,
 }
 
 impl SubstitutionContext {
@@ -177,8 +179,10 @@ fn substitute_impl_inner(
             _ => result,
         };
 
-        if ctx.tracked == Some(old_id) {
-            ctx.instances.insert(result);
+        if !ctx.instances.is_empty()
+            && let Some(instances) = ctx.instances.get_mut(&old_id)
+        {
+            instances.push(result);
         }
 
         return result;
@@ -317,8 +321,10 @@ fn substitute_impl_inner(
 
     ctx.memo.insert((old_id, scope), result);
 
-    if ctx.tracked == Some(old_id) {
-        ctx.instances.insert(result);
+    if !ctx.instances.is_empty()
+        && let Some(instances) = ctx.instances.get_mut(&old_id)
+    {
+        instances.push(result);
     }
 
     result
