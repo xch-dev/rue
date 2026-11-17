@@ -25,7 +25,7 @@ fn main() -> Int {
     // `B` is inferred as `(Int, Int)`, which isn't `(Int, Bytes)`
     let wrong_result: (Int, Bytes) = map(duplicate, 42);
 
-    // Nothing constrains `T`, so it's left as is, as it was before
+    // Nothing constrains `T`, so it's instantiated as `Never`, and a pair still isn't an `Int`
     let unconstrained: Int = call(pairs);
 
     // A function that isn't generic still can't take the value

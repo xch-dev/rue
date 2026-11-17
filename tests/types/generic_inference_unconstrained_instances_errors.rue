@@ -1,0 +1,28 @@
+// A passed generic function's unconstrained generic is instantiated rather than leaking, so the
+// errors name what it's instantiated as (#339)
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+fn pairs<T>() -> (T, T) {
+    unchecked_cast(nil)
+}
+
+fn returning<A>(_function: fn(a: A) -> nil) -> A {
+    unchecked_cast((1, 2))
+}
+
+fn ignore<T>(_pair: (T, T)) -> nil {
+    nil
+}
+
+fn main() -> Int {
+    // The issue's case: a pair still isn't an `Int`
+    let result: Int = call(pairs);
+
+    // `A` is at most `(Any, Any)`, which isn't an `Int` either
+    let upper: Int = returning(ignore);
+
+    result + upper
+}

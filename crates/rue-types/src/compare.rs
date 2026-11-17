@@ -127,7 +127,8 @@ impl InferenceCandidates {
 ///
 /// A lower or held candidate takes the least instantiation, from the instance's lower bounds, and
 /// an upper candidate the greatest, from its upper bounds. An instance without bounds of that kind
-/// is left as is, as it was before these were instantiated.
+/// is instantiated as `Never` or `Any` respectively, such as `(Never, Never)` for `B` when
+/// `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339).
 #[derive(Debug, Clone, Copy)]
 struct DeferredCandidate {
     generic: TypeId,
@@ -360,7 +361,7 @@ impl ComparisonContext<'_> {
     /// with what they're instantiated as (see `DeferredCandidate`).
     fn resolve_deferred(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
         // What each binder is instantiated as, for lower (and held) and upper candidates
-        let mut picked: FxHashMap<(usize, bool), Option<TypeId>> = FxHashMap::default();
+        let mut picked: FxHashMap<(usize, bool), TypeId> = FxHashMap::default();
 
         for DeferredCandidate {
             generic,
@@ -386,22 +387,23 @@ impl ComparisonContext<'_> {
                 };
 
                 let instantiated = *picked.entry((binder, upper)).or_insert_with(|| {
+                    // Without bounds of the candidate's kind, the least instantiation is `Never`
+                    // and the greatest is `Any`
                     if upper {
                         let upper = InferenceCandidates {
                             upper: instance.upper.clone(),
                             ..Default::default()
                         };
                         pick_inferred_type(arena, builtins, &upper)
+                            .unwrap_or(builtins.permissive_any)
                     } else if instance.lower.is_empty() {
-                        None
+                        builtins.never
                     } else {
-                        pick_inferred_type(arena, builtins, instance)
+                        pick_inferred_type(arena, builtins, instance).unwrap()
                     }
                 });
 
-                if let Some(instantiated) = instantiated {
-                    mappings.insert(other, instantiated);
-                }
+                mappings.insert(other, instantiated);
             }
 
             if !mappings.is_empty() {

@@ -1,0 +1,119 @@
+// A passed generic function's generic that nothing constrains from the side a candidate needs is
+// instantiated as `Never` in a lower candidate and as `Any` in an upper one, rather than leaking
+// into the inferred type (#339)
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+fn pairs<T>() -> (T, T) {
+    unchecked_cast((1, 2))
+}
+
+test fn issue_case() -> Int {
+    // `B` is `(Never, Never)`, which fits any pair
+    let result: (Int, Int) = call(pairs);
+    result.first + result.rest
+}
+
+test fn unannotated() -> Int {
+    // `result.first` is `Never`, which is assignable to `Int`
+    let result = call(pairs);
+    result.first
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+test fn nested_calls() -> Int {
+    let result: ((Int, Int), (Int, Int)) = map(duplicate, call(pairs));
+    result.first.first
+}
+
+fn call_through<B>(function: fn() -> B) -> B {
+    call(function)
+}
+
+test fn through_several_layers() -> Int {
+    let result: (Int, Int) = call_through(pairs);
+    result.rest
+}
+
+fn maybe_pairs<T>() -> (T, T) | nil {
+    unchecked_cast((1, 2))
+}
+
+test fn union_return_type() -> Int {
+    let result: (Int, Int) | nil = call(maybe_pairs);
+
+    if result is nil {
+        0
+    } else {
+        result.first
+    }
+}
+
+fn with_literal<T>() -> (T, 5) {
+    unchecked_cast((1, 5))
+}
+
+test fn literal_member() -> Int {
+    let result: (Bytes, 5) = call(with_literal);
+    result.rest
+}
+
+fn take<T>(_callback: fn(value: T) -> nil) -> (T, T) {
+    unchecked_cast((1, 2))
+}
+
+fn sink(_value: Int) -> nil {
+    nil
+}
+
+fn apply<B>(function: fn(callback: fn(value: Int) -> nil) -> B) -> B {
+    function(sink)
+}
+
+test fn only_bounded_from_above() -> Int {
+    // `T` is only bounded from above, by `Int`, so the least instantiation is still `Never`
+    let result: (Int, Int) = apply(take);
+    result.first
+}
+
+fn returning<A>(_function: fn(a: A) -> nil) -> A {
+    unchecked_cast((1, 2))
+}
+
+fn ignore<T>(_pair: (T, T)) -> nil {
+    nil
+}
+
+test fn upper_candidate() -> Any {
+    // `A` is only bounded from above by `(T, T)`, so `T` takes its greatest instantiation, `Any`
+    let result: (Any, Any) = returning(ignore);
+    result.first
+}
+
+test fn upper_candidate_with_expected_type() -> Int {
+    // The expected type is more specific than `(Any, Any)`, so `A` is `(Int, Int)`
+    let result: (Int, Int) = returning(ignore);
+    result.first
+}
+
+// It's never called, since it would recurse forever, but it must still compile
+#[expect(unused_function)]
+fn recursive_pairs<T>() -> (T, T) {
+    // The instance of this function's own `T` is unconstrained, so `B` is `(Never, Never)`
+    call(recursive_pairs)
+}
+
+test fn guard_constrained_instance() -> Int {
+    // An instance with lower bounds still takes them, as before
+    let (first, second) = map(duplicate, 21);
+    first + second
+}

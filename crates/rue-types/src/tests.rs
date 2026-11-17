@@ -1797,14 +1797,14 @@ mod inference {
     }
 
     #[test]
-    fn leaves_upper_bounded_instances_in_lower_candidates() {
+    fn instantiates_upper_bounded_instances_in_lower_candidates_as_never() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);
         let b = db.generic("B");
         let mut infer = Inference::new([b]);
 
         // `fn<T>(g: fn(x: T) -> nil) -> (T, T)` to `fn(g: fn(x: Int) -> nil) -> B`, where `T` is
-        // only bounded from above, so the least instantiation isn't known
+        // only bounded from above, so its least instantiation is `Never` (#339)
         let t = db.generic("T");
         let ret = db.pair(t, t);
         let callback = db.function(&[t], nil);
@@ -1812,39 +1812,55 @@ mod inference {
         let sink = db.function(&[int], nil);
         let param = db.function(&[sink], b);
         assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
-        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(Never, Never)");
     }
 
     #[test]
-    fn leaves_lower_bounded_instances_in_upper_candidates() {
+    fn instantiates_lower_bounded_instances_in_upper_candidates_as_any() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);
         let a = db.generic("A");
         let mut infer = Inference::new([a]);
 
         // `fn<T>(x: (T, T), y: T) -> nil` to `fn(a: A, b: Int) -> nil`, where `T` is only bounded
-        // from below, so the greatest instantiation isn't known
+        // from below, so its greatest instantiation is `Any` (#339)
         let t = db.generic("T");
         let pair = db.pair(t, t);
         let function = db.function_with(&[t], &[pair, t], true, nil);
         let param = db.function(&[a, int], nil);
         assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
-        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(T, T)");
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(Any, Any)");
     }
 
     #[test]
-    fn leaves_unconstrained_instances_in_candidates() {
+    fn instantiates_unconstrained_instances_in_lower_candidates_as_never() {
         let mut db = Db::new();
         let b = db.generic("B");
         let mut infer = Inference::new([b]);
 
-        // `fn<T>() -> (T, T)` to `fn() -> B`, where nothing constrains `T`
+        // `fn<T>() -> (T, T)` to `fn() -> B`, where nothing constrains `T` (#339)
         let t = db.generic("T");
         let ret = db.pair(t, t);
         let pairs = db.function_with(&[t], &[], true, ret);
         let param = db.function(&[], b);
         assert_eq!(db.infer(pairs, param, &mut infer), Comparison::Assign);
-        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(Never, Never)");
+    }
+
+    #[test]
+    fn instantiates_unconstrained_instances_in_upper_candidates_as_any() {
+        let mut db = Db::new();
+        let nil = db.builtins.nil;
+        let a = db.generic("A");
+        let mut infer = Inference::new([a]);
+
+        // `fn<T>(x: (T, T)) -> nil` to `fn(a: A) -> nil`, where nothing constrains `T` (#339)
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let ignore = db.function_with(&[t], &[pair], true, nil);
+        let param = db.function(&[a], nil);
+        assert_eq!(db.infer(ignore, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(Any, Any)");
     }
 
     #[test]
