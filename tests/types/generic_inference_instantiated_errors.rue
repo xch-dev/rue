@@ -1,0 +1,35 @@
+// Instantiating a generic function passed to another generic function must still reject invalid
+// calls (#283)
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+fn pairs<T>() -> (T, T) {
+    unchecked_cast(nil)
+}
+
+fn bytes_pair(value: Bytes) -> (Bytes, Bytes) {
+    (value, value)
+}
+
+fn main() -> Int {
+    // `B` is inferred as `(Int, Int)`, which isn't `(Int, Bytes)`
+    let wrong_result: (Int, Bytes) = map(duplicate, 42);
+
+    // Nothing constrains `T`, so it's left as is, as it was before
+    let unconstrained: Int = call(pairs);
+
+    // A function that isn't generic still can't take the value
+    let wrong_argument = map(bytes_pair, 42);
+
+    wrong_result.first + unconstrained + wrong_argument.first
+}

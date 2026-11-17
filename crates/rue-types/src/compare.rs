@@ -102,6 +102,37 @@ impl Inference {
     }
 }
 
+/// Which list of a generic's `InferenceCandidates` a candidate is in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CandidateKind {
+    Lower,
+    Upper,
+    Held,
+}
+
+impl InferenceCandidates {
+    fn list_mut(&mut self, kind: CandidateKind) -> &mut Vec<TypeId> {
+        match kind {
+            CandidateKind::Lower => &mut self.lower,
+            CandidateKind::Upper => &mut self.upper,
+            CandidateKind::Held => &mut self.held,
+        }
+    }
+}
+
+/// A candidate that references the generics of a generic function on the other side that's being
+/// instantiated, such as `(T, T)` for `B` when `fn<T>(x: T) -> (T, T)` is compared to
+/// `fn(a: A) -> B`. Those generics aren't in scope where the candidate is used, so once the
+/// comparison has finished, they're replaced with what they're instantiated as (`A` here).
+#[derive(Debug, Clone, Copy)]
+struct DeferredCandidate {
+    generic: TypeId,
+    kind: CandidateKind,
+    index: usize,
+    /// The environment that the candidate's generics are resolved in.
+    env: Option<usize>,
+}
+
 /// The types being compared, whether the comparison is flipped, what the generics they reference
 /// are bound to (interned in `ComparisonContext::bindings`), and the semantics passed down to it.
 /// This is everything that the result depends on other than the stack, so that a comparison is
@@ -204,6 +235,13 @@ pub(crate) struct ComparisonContext<'a> {
     /// Whether the value is already held by another member of a union being compared against,
     /// so the generics being inferred only collect it as a last resort.
     holding: bool,
+    /// The candidates that reference the generics of a function being instantiated, which are
+    /// replaced with what those generics are instantiated as once the comparison has finished.
+    deferred: Vec<DeferredCandidate>,
+    /// The bounds of each finished instance that a deferred candidate may reference, by binder.
+    /// An instance is left out if one of its bounds references a generic bound in the comparison,
+    /// since that generic isn't in scope where the candidate is used.
+    instantiations: FxHashMap<usize, InferenceCandidates>,
     /// The context for comparisons that leave the generics being inferred rigid, which is kept
     /// so that its results are memoized for the whole comparison.
     uninferred: Option<Box<ComparisonContext<'static>>>,
@@ -240,6 +278,100 @@ impl ComparisonContext<'_> {
         self.rigid
             .iter()
             .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
+    }
+
+    /// Adds a candidate for a generic being inferred. If it references the generics of a function
+    /// being instantiated, it's deferred until they've been instantiated (see `DeferredCandidate`).
+    fn add_candidate(
+        &mut self,
+        arena: &Arena<Type>,
+        generic: TypeId,
+        kind: CandidateKind,
+        ty: TypeId,
+        env: Option<usize>,
+    ) {
+        let deferred = env.is_some()
+            && referenced_generics(arena, ty)
+                .into_iter()
+                .any(|other| self.is_instance(other, env));
+
+        let list = self
+            .infer
+            .as_mut()
+            .unwrap()
+            .candidates_mut(generic)
+            .list_mut(kind);
+
+        if deferred {
+            self.deferred.push(DeferredCandidate {
+                generic,
+                kind,
+                index: list.len(),
+                env,
+            });
+        }
+
+        list.push(ty);
+        self.candidates += 1;
+    }
+
+    /// Records the bounds of a finished instance, if a deferred candidate may reference it and
+    /// none of them reference generics bound in the comparison.
+    fn record_instantiation(&mut self, arena: &Arena<Type>, binder: usize, instance: &Instance) {
+        if self.deferred.is_empty() {
+            return;
+        }
+
+        let free = |&(ty, env): &Bound| {
+            referenced_generics(arena, ty)
+                .into_iter()
+                .all(|generic| self.resolve(generic, env).is_none())
+        };
+
+        if instance.lower.iter().chain(&instance.upper).all(free) {
+            self.instantiations.insert(
+                binder,
+                InferenceCandidates {
+                    lower: instance.lower.iter().map(|&(ty, _)| ty).collect(),
+                    upper: instance.upper.iter().map(|&(ty, _)| ty).collect(),
+                    held: Vec::new(),
+                },
+            );
+        }
+    }
+
+    /// Replaces the generics of the instantiated functions that the deferred candidates reference
+    /// with what they're instantiated as. One that nothing constrains is left as is.
+    fn resolve_deferred(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
+        for DeferredCandidate {
+            generic,
+            kind,
+            index,
+            env,
+        } in mem::take(&mut self.deferred)
+        {
+            let infer = self.infer.as_mut().unwrap();
+            let ty = infer.candidates_mut(generic).list_mut(kind)[index];
+            let mut mappings = HashMap::new();
+
+            for other in referenced_generics(arena, ty) {
+                let Some(instance) = resolve(&self.binders, other, env)
+                    .and_then(|binder| self.instantiations.get(&binder))
+                else {
+                    continue;
+                };
+
+                if let Some(instantiated) = pick_inferred_type(arena, builtins, instance) {
+                    mappings.insert(other, instantiated);
+                }
+            }
+
+            if !mappings.is_empty() {
+                let ty = substitute_with_mappings(arena, ty, &mappings);
+                let infer = self.infer.as_mut().unwrap();
+                infer.candidates_mut(generic).list_mut(kind)[index] = ty;
+            }
+        }
     }
 
     /// Pushes binders for a function's generics onto the environment, and returns the new one.
@@ -587,18 +719,12 @@ pub fn compare_with_inference(
         trace!("Comparing {lhs_name} to {rhs_name}");
     }
 
-    let result = compare_impl(
-        arena,
-        builtins,
-        &mut ComparisonContext {
-            infer,
-            ..Default::default()
-        },
-        lhs,
-        rhs,
-        None,
-        None,
-    );
+    let mut ctx = ComparisonContext {
+        infer,
+        ..Default::default()
+    };
+    let result = compare_impl(arena, builtins, &mut ctx, lhs, rhs, None, None);
+    ctx.resolve_deferred(arena, builtins);
 
     if let Some((lhs_name, rhs_name)) = &names {
         trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
@@ -620,19 +746,13 @@ pub fn infer_from_expected(
     let expected = substitute(arena, expected);
 
     // The generics being inferred are on the left hand side, so the comparison starts flipped
-    compare_impl(
-        arena,
-        builtins,
-        &mut ComparisonContext {
-            infer: Some(infer),
-            flipped: true,
-            ..Default::default()
-        },
-        ty,
-        expected,
-        None,
-        None,
-    );
+    let mut ctx = ComparisonContext {
+        infer: Some(infer),
+        flipped: true,
+        ..Default::default()
+    };
+    compare_impl(arena, builtins, &mut ctx, ty, expected, None, None);
+    ctx.resolve_deferred(arena, builtins);
 }
 
 /// Adds the upper bounds that were inferred from the type expected of a call to the generics whose
@@ -1253,9 +1373,13 @@ fn compare_impl_inner(
                 // The instances that were merged into another are checked along with it
                 let mut bounds = Vec::new();
 
-                for binder in &ctx.binders[first..first + lhs.generics.len()] {
+                for index in first..first + lhs.generics.len() {
+                    let binder = &ctx.binders[index];
+
                     if binder.merged.is_none() {
-                        bounds.push(mem::take(&mut ctx.instances[binder.instance.unwrap()]));
+                        let instance = mem::take(&mut ctx.instances[binder.instance.unwrap()]);
+                        ctx.record_instantiation(arena, index, &instance);
+                        bounds.push(instance);
                     }
                 }
 
@@ -1312,9 +1436,7 @@ fn compare_impl_inner(
                 stringify_impl(arena, lhs, &mut IndexMap::new()),
                 stringify_impl(arena, rhs, &mut IndexMap::new())
             );
-            let infer = ctx.infer.as_mut().unwrap();
-            infer.candidates_mut(lhs).upper.push(rhs);
-            ctx.candidates += 1;
+            ctx.add_candidate(arena, lhs, CandidateKind::Upper, rhs, ctx.rhs_env);
             Comparison::Assign
         }
         (_, Type::Generic(_))
@@ -1327,16 +1449,13 @@ fn compare_impl_inner(
                 stringify_impl(arena, rhs, &mut IndexMap::new()),
                 stringify_impl(arena, lhs, &mut IndexMap::new())
             );
-            let infer = ctx.infer.as_mut().unwrap();
-            let candidates = infer.candidates_mut(rhs);
-
-            if ctx.holding {
-                candidates.held.push(lhs);
+            let kind = if ctx.holding {
+                CandidateKind::Held
             } else {
-                candidates.lower.push(lhs);
-            }
+                CandidateKind::Lower
+            };
 
-            ctx.candidates += 1;
+            ctx.add_candidate(arena, rhs, kind, lhs, ctx.lhs_env);
             Comparison::Assign
         }
         (_, Type::Generic(_)) => match arena[lhs].clone() {

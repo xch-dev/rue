@@ -1500,6 +1500,72 @@ mod inference {
     }
 
     #[test]
+    fn instantiates_generics_in_candidates() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `fn<T>(x: T) -> (T, T)` to `fn(a: A) -> B`, where `T` is instantiated as `A`
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let duplicate = db.function_with(&[t], &[t], true, ret);
+        let param = db.function(&[a], b);
+        assert_eq!(db.infer(duplicate, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(A, A)");
+
+        assert_eq!(db.infer(int, a, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&b]), "(Int, Int)");
+    }
+
+    #[test]
+    fn instantiates_generics_in_upper_candidates() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let a = db.generic("A");
+        let mut infer = Inference::new([a]);
+
+        // `fn<T>(x: (T, T)) -> T` to `fn(a: A) -> Int`, where `T` is instantiated as `Int`
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let first = db.function_with(&[t], &[pair], true, t);
+        let param = db.function(&[a], int);
+        assert_eq!(db.infer(first, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(Int, Int)");
+    }
+
+    #[test]
+    fn leaves_unconstrained_instances_in_candidates() {
+        let mut db = Db::new();
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T>() -> (T, T)` to `fn() -> B`, where nothing constrains `T`
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let pairs = db.function_with(&[t], &[], true, ret);
+        let param = db.function(&[], b);
+        assert_eq!(db.infer(pairs, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+    }
+
+    #[test]
+    fn leaves_instances_bounded_by_rigid_generics_in_candidates() {
+        let mut db = Db::new();
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T>(x: T) -> (T, T)` to `fn<U>(a: U) -> B`, where `T` is bounded by the rigid `U`
+        let (t, u) = (db.generic("T"), db.generic("U"));
+        let ret = db.pair(t, t);
+        let duplicate = db.function_with(&[t], &[t], true, ret);
+        let param = db.function_with(&[u], &[u], true, b);
+        db.infer(duplicate, param, &mut infer);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+    }
+
+    #[test]
     fn resolves_cycles_between_generics() {
         let mut db = Db::new();
         let int = db.builtins.int;
