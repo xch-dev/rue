@@ -20,10 +20,10 @@ use indexmap::IndexSet;
 use rue_diagnostic::Name;
 use rue_types::{
     Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
-    FunctionType, Generic, Inference, Pair, Struct, Type, TypeId, Union, always_iterating_compare,
-    check, compare, compare_with_inference, count_steps, intersect, is_non_contractive,
-    is_non_regular, reaches_non_contractive_cycle, stringify, substitute, with_step_limit,
-    without_compare_memo,
+    FunctionType, Generic, Inference, Pair, Struct, Type, TypeId, Union, check, compare,
+    compare_with_inference, count_abandoned_passes, count_steps, intersect, is_non_contractive,
+    is_non_regular, reaches_non_contractive_cycle, stringify, substitute, with_fixpoint_budget,
+    with_step_limit, without_compare_memo,
 };
 
 struct Types {
@@ -159,15 +159,19 @@ fn test_rotating_generic_function() {
         let rhs = rotating_function(&mut db);
 
         // This never finished, since nearly every comparison relied on one in progress, and
-        // memoizing was turned off while the function's generic was being instantiated. It takes
-        // about 97,000 steps now.
-        let (result, steps) = count_steps(|| {
-            with_step_limit(STEP_BOUND, || {
-                compare(&mut db.arena, &db.builtins, lhs, rhs)
+        // memoizing was turned off while the function's generic was being instantiated. A single
+        // pass takes about 97,000 steps, so it's abandoned for iterating, and it takes about
+        // 44,000 steps in all.
+        let ((result, steps), abandoned) = count_abandoned_passes(|| {
+            count_steps(|| {
+                with_step_limit(STEP_BOUND, || {
+                    compare(&mut db.arena, &db.builtins, lhs, rhs)
+                })
             })
         });
         assert_eq!(result, Comparison::Assign);
-        assert!(steps < 300_000, "took {steps} steps");
+        assert!(steps < 150_000, "took {steps} steps");
+        assert_eq!(abandoned, 1);
     });
 }
 
@@ -215,8 +219,12 @@ fn test_mutually_recursive_intersection() {
     });
     assert!(steps < 20_000, "took {steps} steps");
 
-    let (_, steps) = count_steps(|| compare(&mut db.arena, &db.builtins, n0, target));
+    let ((_, steps), abandoned) =
+        count_abandoned_passes(|| count_steps(|| compare(&mut db.arena, &db.builtins, n0, target)));
     assert!(steps < 20_000, "took {steps} steps");
+
+    // Recursive comparisons like these finish in a single pass, without iterating
+    assert_eq!(abandoned, 0);
 }
 
 /// `type N0 = N1<(Bool, N1<Bytes, 2, 1>), N0, Bytes>;`
@@ -257,13 +265,16 @@ fn test_permuted_generic_alias_arguments() {
         // while they were still on the stack, and these never finished (#286). The single pass
         // now gives up after about 30,000 steps, and iterating takes about 120,000 more.
         for (lhs, rhs) in [(n0, n1), (n1, n0)] {
-            let (result, steps) = count_steps(|| {
-                with_step_limit(STEP_BOUND, || {
-                    compare(&mut db.arena, &db.builtins, lhs, rhs)
+            let ((result, steps), abandoned) = count_abandoned_passes(|| {
+                count_steps(|| {
+                    with_step_limit(STEP_BOUND, || {
+                        compare(&mut db.arena, &db.builtins, lhs, rhs)
+                    })
                 })
             });
             assert_eq!(result, Comparison::Invalid);
             assert!(steps < 300_000, "took {steps} steps");
+            assert_eq!(abandoned, 1);
         }
     });
 }
@@ -521,7 +532,7 @@ struct Summary {
     gave_up_with_memo: usize,
     gave_up_without_memo: usize,
     gave_up_both: usize,
-    /// Cases that only finished with the memo in a single pass, but not iterating from the start.
+    /// Cases that only finished with the memo in a single pass, but not with a smaller budget.
     gave_up_iterating: usize,
     steps_with_memo: usize,
     steps_iterating: usize,
@@ -620,27 +631,31 @@ fn differential(
 
             let name = |db: &mut Types, id| stringify(&mut db.arena, id);
 
-            // Iterating from the start must give the same results as a single pass, which is what
-            // a comparison does once a single pass takes too long
+            // Iterating from the start (with no budget), or after abandoning a single pass partway
+            // (with a small one), must give the same results as a single pass
             if let Some((with_memo, _)) = &with_memo {
-                let iterating = give_up_after(|| {
-                    count_steps(|| {
-                        always_iterating_compare(|| results(&mut db, lhs, rhs, target, generic))
-                    })
-                });
+                for (per_item, base) in [(0, 0), (1, 64)] {
+                    let iterating = give_up_after(|| {
+                        count_steps(|| {
+                            with_fixpoint_budget(per_item, base, || {
+                                results(&mut db, lhs, rhs, target, generic)
+                            })
+                        })
+                    });
 
-                if let Some((iterating, steps)) = iterating {
-                    assert_eq!(
-                        with_memo,
-                        &iterating,
-                        "seed {seed} (iterating): {} and {} (target {})",
-                        name(&mut db, lhs),
-                        name(&mut db, rhs),
-                        name(&mut db, target),
-                    );
-                    summary.steps_iterating += steps;
-                } else {
-                    summary.gave_up_iterating += 1;
+                    if let Some((iterating, steps)) = iterating {
+                        assert_eq!(
+                            with_memo,
+                            &iterating,
+                            "seed {seed} (budget {per_item}, {base}): {} and {} (target {})",
+                            name(&mut db, lhs),
+                            name(&mut db, rhs),
+                            name(&mut db, target),
+                        );
+                        summary.steps_iterating += steps;
+                    } else {
+                        summary.gave_up_iterating += 1;
+                    }
                 }
             }
 

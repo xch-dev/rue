@@ -10,9 +10,9 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
-    FxHashMap, FxIndexSet, Memo, Type, TypeId, Union, always_iterate, compare_memo_enabled,
-    free_generics, grow_stack, has_non_contractive_cycle, reachable, references_generic, step,
-    stringify_impl, substitute, substitute_with_mappings,
+    FxHashMap, FxIndexSet, Memo, Type, TypeId, Union, compare_memo_enabled, free_generics,
+    grow_stack, has_non_contractive_cycle, reachable, references_generic, step, stringify_impl,
+    substitute, substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1500,14 +1500,12 @@ pub(crate) fn compare_impl(
         if ctx.fixpoint {
             ctx.fixpoint_memo.start();
 
-            if !always_iterate() {
-                let result = grow_stack(|| {
-                    compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
-                });
+            let result = grow_stack(|| {
+                compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+            });
 
-                if !ctx.fixpoint_memo.abandoned() {
-                    return result;
-                }
+            if !ctx.fixpoint_memo.abandoned() {
+                return result;
             }
 
             // The single pass took too long, so it's repeated until the approximations it reaches
@@ -1557,9 +1555,15 @@ fn compare_impl_inner(
             .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
-        if !ctx.fixpoint {
+        // In fixpoint mode, it's the least value in a single pass, or its approximation from the
+        // previous round while iterating
+        let value = if ctx.fixpoint {
+            let key = memoize.then_some(&key);
+            ctx.fixpoint_memo.reached(index, key, Comparison::Assign)
+        } else {
             ctx.memo.reached(index);
-        }
+            Comparison::Assign
+        };
 
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
         // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
@@ -1604,14 +1608,7 @@ fn compare_impl_inner(
             }
         }
 
-        // In fixpoint mode, it's the least value in a single pass, or its approximation from the
-        // previous round while iterating
-        if ctx.fixpoint {
-            let key = memoize.then_some(&key);
-            return ctx.fixpoint_memo.reached(index, key, Comparison::Assign);
-        }
-
-        return Comparison::Assign;
+        return value;
     }
 
     if memoize {

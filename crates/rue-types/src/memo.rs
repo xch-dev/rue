@@ -1,6 +1,8 @@
 use std::{hash::Hash, mem};
 
-use crate::{FxHashMap, FxHashSet, FxIndexSet};
+use crate::{
+    FxHashMap, FxHashSet, FxIndexSet, abandoned_pass, compare_memo_enabled, fixpoint_budget,
+};
 
 /// Caches the results of a recursive computation over types, which keeps the items in progress on
 /// a stack and returns early when it reaches one of them again (to handle recursive types).
@@ -166,6 +168,8 @@ pub(crate) struct FixpointMemo<K, V> {
     /// it started, which bound how long it may take before it's abandoned.
     steps: usize,
     cached: usize,
+    /// How many items it may compute for each new result it caches, and how many more.
+    budget: (usize, usize),
     abandoned: bool,
     /// Whether the computation is iterating rather than running in a single pass.
     iterating: bool,
@@ -182,9 +186,9 @@ pub(crate) struct FixpointMemo<K, V> {
 }
 
 /// A computation that starts from an empty stack is abandoned in favour of iterating once it has
-/// computed more than this many items for each new item it cached, plus `BASE_STEPS`. Outside of
-/// the tests for this, no single pass in the examples or tests computes more than about 15,000
-/// items, so they never iterate.
+/// computed more than this many items for each new result it cached, plus `BASE_STEPS`. In the
+/// examples and tests (other than those for this), a single pass never gets more than about 2,200
+/// items past that allowance per result, so they never iterate.
 const STEPS_PER_ITEM: usize = 8;
 const BASE_STEPS: usize = 16_384;
 
@@ -201,6 +205,7 @@ impl<K, V> Default for FixpointMemo<K, V> {
             reached: Vec::new(),
             steps: 0,
             cached: 0,
+            budget: (STEPS_PER_ITEM, BASE_STEPS),
             abandoned: false,
             iterating: false,
             approximations: FxHashMap::default(),
@@ -220,6 +225,7 @@ where
     pub fn start(&mut self) {
         self.steps = 0;
         self.cached = self.done.len();
+        self.budget = fixpoint_budget((STEPS_PER_ITEM, BASE_STEPS));
         self.abandoned = false;
         self.iterating = false;
     }
@@ -312,13 +318,16 @@ where
     pub fn enter(&mut self, index: usize) -> FixpointFrame {
         if self.iterating {
             self.given.push(None);
-        } else {
+        } else if !self.abandoned {
             self.steps += 1;
 
+            let (per_item, base) = self.budget;
             let items = self.done.len() - self.cached;
 
-            if self.steps > STEPS_PER_ITEM * items + BASE_STEPS {
+            // Without the memo, iterating wouldn't reuse anything either
+            if self.steps > per_item * items + base && compare_memo_enabled() {
                 self.abandoned = true;
+                abandoned_pass();
             }
         }
 
