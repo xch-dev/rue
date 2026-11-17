@@ -3,7 +3,8 @@
 //! The step counter lets tests assert how the work grows with the size of the types. A regression
 //! that makes the work exponential then fails quickly, rather than leaving the test running until
 //! it times out. Turning off the comparison memo lets tests check that it doesn't change results,
-//! with a step limit since the work can then be exponential.
+//! with a step limit since the work can then be exponential, and making it iterate from the start
+//! lets them check that iterating doesn't either.
 //!
 //! These only exist with the `step-counter` feature, so they're free otherwise.
 
@@ -12,6 +13,7 @@ std::thread_local! {
     static STEPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static STEP_LIMIT: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
     static COMPARE_MEMO_OFF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ALWAYS_ITERATE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Records a step. Called once per call of each recursive operation.
@@ -63,6 +65,25 @@ pub(crate) fn compare_memo_enabled() -> bool {
 #[cfg(feature = "step-counter")]
 pub fn without_compare_memo<T>(f: impl FnOnce() -> T) -> T {
     let _restore = Restore::new(&COMPARE_MEMO_OFF, true);
+    f()
+}
+
+/// Whether comparisons in fixpoint mode iterate from the start, rather than only once a single pass
+/// takes too long (see `FixpointMemo`).
+#[inline]
+pub(crate) fn always_iterate() -> bool {
+    #[cfg(feature = "step-counter")]
+    return ALWAYS_ITERATE.with(std::cell::Cell::get);
+
+    #[cfg(not(feature = "step-counter"))]
+    false
+}
+
+/// Runs the given function on this thread with comparisons in fixpoint mode iterating from the
+/// start, so that tests can check that iterating gives the same results as a single pass.
+#[cfg(feature = "step-counter")]
+pub fn always_iterating_compare<T>(f: impl FnOnce() -> T) -> T {
+    let _restore = Restore::new(&ALWAYS_ITERATE, true);
     f()
 }
 

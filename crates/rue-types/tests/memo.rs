@@ -20,9 +20,10 @@ use indexmap::IndexSet;
 use rue_diagnostic::Name;
 use rue_types::{
     Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
-    FunctionType, Generic, Inference, Pair, Struct, Type, TypeId, Union, check, compare,
-    compare_with_inference, count_steps, intersect, is_non_contractive, is_non_regular,
-    reaches_non_contractive_cycle, stringify, substitute, with_step_limit, without_compare_memo,
+    FunctionType, Generic, Inference, Pair, Struct, Type, TypeId, Union, always_iterating_compare,
+    check, compare, compare_with_inference, count_steps, intersect, is_non_contractive,
+    is_non_regular, reaches_non_contractive_cycle, stringify, substitute, with_step_limit,
+    without_compare_memo,
 };
 
 struct Types {
@@ -253,8 +254,8 @@ fn test_permuted_generic_alias_arguments() {
         let (n1, n0) = permuted_arguments(&mut db);
 
         // Each comparison relied on others in progress, so the fixpoint memo could only reuse it
-        // while they were still on the stack, and these never finished (#286). They take about
-        // 60,000 steps each now, in three rounds.
+        // while they were still on the stack, and these never finished (#286). The single pass
+        // now gives up after about 90,000 steps, and iterating takes about 120,000 more.
         for (lhs, rhs) in [(n0, n1), (n1, n0)] {
             let (result, steps) = count_steps(|| {
                 with_step_limit(STEP_BOUND, || {
@@ -262,7 +263,7 @@ fn test_permuted_generic_alias_arguments() {
                 })
             });
             assert_eq!(result, Comparison::Invalid);
-            assert!(steps < 200_000, "took {steps} steps");
+            assert!(steps < 400_000, "took {steps} steps");
         }
     });
 }
@@ -520,7 +521,10 @@ struct Summary {
     gave_up_with_memo: usize,
     gave_up_without_memo: usize,
     gave_up_both: usize,
+    /// Cases that only finished with the memo in a single pass, but not iterating from the start.
+    gave_up_iterating: usize,
     steps_with_memo: usize,
+    steps_iterating: usize,
     steps_without_memo: usize,
 }
 
@@ -614,6 +618,32 @@ fn differential(
                 count_steps(|| without_compare_memo(|| results(&mut db, lhs, rhs, target, generic)))
             });
 
+            let name = |db: &mut Types, id| stringify(&mut db.arena, id);
+
+            // Iterating from the start must give the same results as a single pass, which is what
+            // a comparison does once a single pass takes too long
+            if let Some((with_memo, _)) = &with_memo {
+                let iterating = give_up_after(|| {
+                    count_steps(|| {
+                        always_iterating_compare(|| results(&mut db, lhs, rhs, target, generic))
+                    })
+                });
+
+                if let Some((iterating, steps)) = iterating {
+                    assert_eq!(
+                        with_memo,
+                        &iterating,
+                        "seed {seed} (iterating): {} and {} (target {})",
+                        name(&mut db, lhs),
+                        name(&mut db, rhs),
+                        name(&mut db, target),
+                    );
+                    summary.steps_iterating += steps;
+                } else {
+                    summary.gave_up_iterating += 1;
+                }
+            }
+
             let (with_memo, steps, without_memo, steps_without) = match (with_memo, without_memo) {
                 (Some((with_memo, steps)), Some((without_memo, steps_without))) => {
                     (with_memo, steps, without_memo, steps_without)
@@ -632,7 +662,6 @@ fn differential(
                 }
             };
 
-            let name = |db: &mut Types, id| stringify(&mut db.arena, id);
             assert_eq!(
                 with_memo,
                 without_memo,
@@ -659,6 +688,7 @@ fn test_memo_differential() {
     // Most modules should be usable, and most cases should finish
     assert!(summary.cases > 800, "{summary:?}");
     assert!(summary.gave_up_with_memo <= 2, "{summary:?}");
+    assert!(summary.gave_up_iterating <= 2, "{summary:?}");
 
     // This gave different results with the memo when it cached comparisons that refer to a generic
     // being instantiated

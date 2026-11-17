@@ -9,10 +9,10 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, FixpointMemo, Frame as MemoFrame, FxHashMap,
-    FxIndexSet, Memo, Type, TypeId, Union, compare_memo_enabled, free_generics, grow_stack,
-    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
-    substitute_with_mappings,
+    AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
+    FxHashMap, FxIndexSet, Memo, Type, TypeId, Union, always_iterate, compare_memo_enabled,
+    free_generics, grow_stack, has_non_contractive_cycle, reachable, references_generic, step,
+    stringify_impl, substitute, substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -146,7 +146,7 @@ type ComparisonKey = (TypeId, TypeId, bool, usize, Option<TypeId>, Option<TypeId
 /// The memo that a comparison in progress will be cached in (see `ComparisonContext::fixpoint`).
 enum Frame {
     Exact(MemoFrame),
-    Fixpoint,
+    Fixpoint(FixpointFrame),
 }
 
 /// A bound of a generic being instantiated, along with the environment it's resolved in.
@@ -254,8 +254,8 @@ pub(crate) struct ComparisonContext<'a> {
     /// Whether the comparison that started from an empty stack is the least fixed point of
     /// monotone equations (see `is_monotone`), so `fixpoint_memo` is used instead of `memo`.
     fixpoint: bool,
-    /// Approximations of the comparisons reached in fixpoint mode, which are computed again until
-    /// they stop changing, and the exact results once they have.
+    /// Completed comparisons, reused while the comparisons they relied on are in progress, or
+    /// approximations of them while iterating (see `FixpointMemo`).
     fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
     /// Whether each type that a comparison started from is monotone (see `is_monotone`).
     monotone: FxHashMap<TypeId, bool>,
@@ -579,7 +579,7 @@ impl ComparisonContext<'_> {
     /// built from `max`, `min` and constants (the fallbacks that are only compared when a union
     /// doesn't hold are a `min` whose result doesn't depend on them otherwise), and returning
     /// early at a comparison in progress gives `Assign` (the least value), or its approximation
-    /// with `FixpointMemo`, as long as:
+    /// while `FixpointMemo` is iterating, as long as:
     ///
     /// - The type is contractive, since a cycle that doesn't pass through a pair or function gives
     ///   `Invalid` instead.
@@ -1497,9 +1497,21 @@ pub(crate) fn compare_impl(
             && ctx.is_monotone(arena, lhs)
             && ctx.is_monotone(arena, rhs);
 
-        // The comparison is repeated until the approximations it reached stop changing (see
-        // `FixpointMemo`)
         if ctx.fixpoint {
+            ctx.fixpoint_memo.start();
+
+            if !always_iterate() {
+                let result = grow_stack(|| {
+                    compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+                });
+
+                if !ctx.fixpoint_memo.abandoned() {
+                    return result;
+                }
+            }
+
+            // The single pass took too long, so it's repeated until the approximations it reaches
+            // stop changing instead (see `FixpointMemo`)
             loop {
                 ctx.fixpoint_memo.start_round();
 
@@ -1527,6 +1539,11 @@ fn compare_impl_inner(
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
     step();
+
+    // The comparison that started from an empty stack is unwinding, to iterate instead
+    if ctx.fixpoint && ctx.fixpoint_memo.abandoned() {
+        return Comparison::Assign;
+    }
 
     let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
     let key = (lhs, rhs, ctx.flipped, bindings, lhs_semantic, rhs_semantic);
@@ -1587,8 +1604,8 @@ fn compare_impl_inner(
             }
         }
 
-        // In fixpoint mode, it's assumed to be its approximation from the previous round, which
-        // starts out as the least value
+        // In fixpoint mode, it's the least value in a single pass, or its approximation from the
+        // previous round while iterating
         if ctx.fixpoint {
             let key = memoize.then_some(&key);
             return ctx.fixpoint_memo.reached(index, key, Comparison::Assign);
@@ -1599,7 +1616,7 @@ fn compare_impl_inner(
 
     if memoize {
         let result = if ctx.fixpoint {
-            ctx.fixpoint_memo.get(&key)
+            ctx.fixpoint_memo.get(&key, &ctx.stack)
         } else {
             ctx.memo.get(&key, ctx.stack.iter().copied())
         };
@@ -1610,8 +1627,7 @@ fn compare_impl_inner(
     }
 
     let frame = if ctx.fixpoint {
-        ctx.fixpoint_memo.enter();
-        Frame::Fixpoint
+        Frame::Fixpoint(ctx.fixpoint_memo.enter(ctx.stack.len()))
     } else {
         Frame::Exact(ctx.memo.enter(ctx.stack.len()))
     };
@@ -2054,7 +2070,7 @@ fn compare_impl_inner(
 
     match frame {
         Frame::Exact(frame) => ctx.memo.exit(frame, key, memo_key, result),
-        Frame::Fixpoint => ctx.fixpoint_memo.exit(memo_key, result),
+        Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
     }
 
     result
