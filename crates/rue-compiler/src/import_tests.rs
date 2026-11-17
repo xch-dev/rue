@@ -2100,3 +2100,37 @@ fn glob_exports_of_items_that_are_already_imported_export_them() {
     assert_eq!(compiled.symbol_origin("outer::helper::X"), "m::helper");
     assert_eq!(compiled.symbol_origin("outer::VALUE"), "m");
 }
+
+#[test]
+fn private_imports_are_not_reported_again_at_a_use_of_the_wrong_kind() {
+    // `m` is a private module and `f` a private function, so these uses would be errors even if
+    // the imports had worked, but the imports have already been reported
+    let compiled = compile(
+        "
+        mod a {
+            mod m {
+                export const X: Int = 1;
+            }
+
+            fn f() -> Int {
+                2
+            }
+        }
+
+        import a::m;
+        import a::f;
+
+        fn main() -> Int {
+            m() + f::Y
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "12:19 PrivateSymbol(\"m\", \"a\")",
+            "13:19 PrivateSymbol(\"f\", \"a\")",
+        ]
+    );
+}
