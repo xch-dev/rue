@@ -6,8 +6,10 @@ The Rue puzzles in [`puzzles`](puzzles) are copied from the `rue-puzzles` direct
 They have been reformatted with `rue fmt` and are included here as a regression test with the author's permission. All
 credit for them goes to the original author.
 
-[`puzzles.yaml`](puzzles.yaml) records the tree hash of every puzzle that has a `main` function. These match the hashes
-committed to slot-machine, so a change to any of them means the compiler's output for real-world puzzles has changed.
+[`puzzles.yaml`](puzzles.yaml) records the tree hash of every puzzle that has a `main` function, so a change to any of
+them shows that the compiler's output for real-world puzzles has changed. These puzzles are here to catch bugs and
+performance regressions, so the hashes are expected to change as the compiler does, and don't need to match the ones
+committed to slot-machine. A changed hash is a prompt to check that the new output is correct and no more expensive.
 
 To update the puzzles, copy the latest `rue-puzzles` directory from slot-machine (without the `.hex` and `.hash` files),
-format them with `rue fmt`, update the commit above, and check that the new hashes match the ones committed upstream.
+format them with `rue fmt`, and update the commit above.
