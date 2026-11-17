@@ -107,6 +107,7 @@ pub fn compile_function_call_expr(
         let expected = expected_type.map(|expected_type| {
             let mut expected = infer.clone();
             ctx.infer_from_expected(function.ret, expected_type, &mut expected);
+            forget_renamed_candidates(&mut expected, &renamed);
 
             // The generics of an enclosing call that are still being inferred can't be inferred
             // from this call, so they're no help in inferring its generics either
@@ -195,6 +196,7 @@ pub fn compile_function_call_expr(
             // Candidates are collected against the unsubstituted parameter type, so that every
             // argument contributes to the generics rather than only the first one to mention them
             ctx.infer_type(value.ty, param, &mut infer);
+            forget_renamed_candidates(&mut infer, &renamed);
             checks.push((expr.clone(), value.ty, param));
         }
 
@@ -223,8 +225,8 @@ pub fn compile_function_call_expr(
             // The callee's generic would leak out, unless the function's type doesn't reference
             // it at all
             if !std::iter::once(function.ret)
-                    .chain(function.param_types())
-                    .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+                .chain(function.param_types())
+                .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
             {
                 continue;
             }
@@ -390,8 +392,7 @@ fn generalize(
         };
 
         if expected_generics.contains(&ty) {
-            let copy = ctx.ty(generic).clone();
-            let copy = ctx.alloc_type(copy);
+            let copy = copy_generic(ctx, generic);
             mappings.insert(generic, copy);
             generalized.push(copy);
             copies.entry(ty).or_insert(copy);
@@ -411,8 +412,7 @@ fn generalize(
             references = true;
 
             if !copies.contains_key(&other) && !leaked.contains(&other) {
-                let copy = ctx.ty(other).clone();
-                let copy = ctx.alloc_type(copy);
+                let copy = copy_generic(ctx, other);
                 generalized.push(copy);
                 copies.insert(other, copy);
             }
@@ -448,8 +448,7 @@ fn rename_generics_in_scope(
 
     for generic in &mut function.generics {
         if is_type_in_scope(ctx, *generic) {
-            let copy = ctx.ty(*generic).clone();
-            let copy = ctx.alloc_type(copy);
+            let copy = copy_generic(ctx, *generic);
             renaming.insert(*generic, copy);
             *generic = copy;
         }
@@ -469,6 +468,16 @@ fn rename_generics_in_scope(
         .into_iter()
         .map(|(generic, copy)| (copy, generic))
         .collect()
+}
+
+/// Removes the renamed generics' candidates that are the caller's generics they were renamed from.
+/// Before they were renamed, they were the same generic, so comparing one to the other held without
+/// collecting a candidate, and keeping it can change what's inferred, such as `Any | A` rather than
+/// `Any` for `f(any, a)` in `fn f<A>(x: A, y: A) -> A`, or a literal no longer being widened.
+fn forget_renamed_candidates(infer: &mut Inference, renamed: &HashMap<TypeId, TypeId>) {
+    for (&copy, &generic) in renamed {
+        infer.remove_candidates(copy, generic);
+    }
 }
 
 /// Maps the renamed generics that haven't been inferred back to the caller's generics they were
@@ -499,6 +508,12 @@ fn restore_renamed(
     }
 
     mappings.extend(restored);
+}
+
+/// A new generic like the given one, which can be bound separately from it.
+fn copy_generic(ctx: &mut Compiler, generic: TypeId) -> TypeId {
+    let copy = ctx.ty(generic).clone();
+    ctx.alloc_type(copy)
 }
 
 fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {

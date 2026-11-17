@@ -7,7 +7,8 @@ fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
     // A function that isn't generic still can't take the value
     let _wrong_argument = map(bytes_pair, 1);
 
-    // The callee's `A` is inferred as the caller's `A`, which `Int` can't be assigned to
+    // The callee's `A` is inferred as `Int`, as before, which the lambda can't take. The caller's
+    // `A` was its own generic before it was renamed, so it doesn't keep `2` from being widened
     let _mismatched = map(fn(_x: A) => 1, 2);
 
     function(value)
@@ -22,5 +23,17 @@ fn bytes_pair(value: Bytes) -> (Bytes, Bytes) {
 }
 
 fn main() -> (Int, Int) {
-    map(duplicate, 42)
+    map(duplicate, with_any(42, 0, 1))
+}
+
+fn with_any<A>(value: A, _other: A, depth: Int) -> A {
+    if depth == 0 {
+        return value;
+    }
+
+    // The callee's `A` is inferred as `Any`, as before, which `+` can't take. The caller's `A` was
+    // its own generic before it was renamed, so passing `value` doesn't make it `Any | A`
+    let any: Any = 1;
+    let result = with_any(any, value, depth - 1);
+    unchecked_cast(result + 1)
 }

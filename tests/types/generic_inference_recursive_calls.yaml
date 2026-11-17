@@ -13,13 +13,6 @@ tests:
   runtime_cost: 532
   byte_cost: 396000
   total_cost: 396532
-- name: instantiated_as_the_callers_generic
-  program: (a (q 16 2 (q . 1)) (q 41))
-  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 41))) (c (q 2 2 (c 3 ())) ()))
-  output: "42"
-  runtime_cost: 955
-  byte_cost: 252000
-  total_cost: 252955
 - name: union_return_type
   program: (a (q 18 2 (q . 2)) (q 21))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) (q . 21))) (c (q 2 2 (c 3 ())) ()))
@@ -83,3 +76,24 @@ tests:
   runtime_cost: 2697
   byte_cost: 1236000
   total_cost: 1238697
+- name: guard_instantiated_as_the_callers_generic
+  program: (a (q 16 2 (q . 1)) (q 41))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 41))) (c (q 2 2 (c 3 ())) ()))
+  output: "42"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: guard_uninferred_inside_another_mapping
+  program: (a (q 2 (q 16 4 6) (c (a 6 (c 2 (c (q . 1) 4))) 1)) (c (c (q 4 2 2) (q 2 (i 5 (q 2 6 (c 2 (c (- 5 (q . 1)) 4))) (q 1 1 . 1)) 1)) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c (c 4 6) (c (q . 1) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q 4 2 2) (q 2 (i (= 5 ()) (q 4 (q . 1) (q . 1)) (q 2 (q . 2) (c (a 6 (c (c 4 6) (c (- 5 (q . 1)) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1))) 1)) ()))
+  output: "2"
+  runtime_cost: 3433
+  byte_cost: 1428000
+  total_cost: 1431433
+- name: guard_argument_expected_type
+  program: (a (q 2 2 (c 2 (c (q 18 2 (q . 3)) (q 5 . 1)))) (c (q 2 (i 15 (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) (c 11 (- 15 (q . 1)))))) (q 2 5 (c 11 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 3))) (c (q . 1) ()))) (c (q . 5) (q . 1))))) (c (q 2 (i (= 15 ()) (q 2 5 (c 11 ())) (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) (c 11 (- 15 (q . 1))))))) 1) ()))
+  output: "15"
+  runtime_cost: 4845
+  byte_cost: 2196000
+  total_cost: 2200845

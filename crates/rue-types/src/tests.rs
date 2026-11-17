@@ -1976,7 +1976,6 @@ mod inference {
         assert_eq!(mappings[&a], b);
         assert_eq!(mappings[&b], a);
     }
-
 }
 
 mod substitution {

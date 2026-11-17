@@ -62,6 +62,19 @@ impl Inference {
         self.generics.get(&generic)
     }
 
+    /// Removes the generic's candidates that are exactly the type.
+    pub fn remove_candidates(&mut self, generic: TypeId, ty: TypeId) {
+        if let Some(candidates) = self.generics.get_mut(&generic) {
+            for list in [
+                &mut candidates.lower,
+                &mut candidates.upper,
+                &mut candidates.held,
+            ] {
+                list.retain(|&other| other != ty);
+            }
+        }
+    }
+
     /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
     /// if nothing else constrains the generic, they're dropped along with any bound.
     pub fn retain_bounds(&mut self, mut f: impl FnMut(TypeId) -> bool) {
