@@ -1,0 +1,35 @@
+import std::tree_hash::tree_hash_atom;
+
+test fn std_modules_are_modules() -> Bytes32 {
+    std::tree_hash::tree_hash_atom("hi")
+}
+
+test fn std_items_are_imported_through_modules() -> Bytes32 {
+    tree_hash_atom("hi")
+}
+
+test fn std_curry_tree_hash_is_a_module() -> Bytes32 {
+    std::curry_tree_hash::curry_tree_hash(tree_hash_atom("hi"), [])
+}
+
+test fn every_std_module_is_exported() -> Int {
+    let payment: std::offer::Payment = std::offer::Payment {
+        puzzle_hash: tree_hash_atom("hi"),
+        amount: 1,
+        memos: nil,
+    };
+    let proof: std::singleton::Proof = std::singleton::EveProof {
+        parent_parent_coin_info: tree_hash_atom("hi"),
+        parent_amount: 1,
+    };
+    let merged = std::utils::merge_list([1], [2]);
+    let root = std::merkle::simplify_merkle_proof(
+        tree_hash_atom("hi"),
+        std::merkle::MerkleProof { path: 0, hashes: [] },
+    );
+    assert payment.amount == 1;
+    assert proof is std::singleton::EveProof;
+    assert root != tree_hash_atom("hi");
+    assert std::utils::deep_equal(merged, [1, 2]);
+    std::conditions::opcodes::CREATE_COIN
+}

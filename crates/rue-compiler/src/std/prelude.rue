@@ -6,12 +6,4 @@ export merkle::*;
 export tree_hash::*;
 export utils::*;
 
-export mod std {
-    export conditions;
-    export curry_tree_hash;
-    export tree_hash;
-    export utils;
-    export merkle;
-    export offer;
-    export singleton;
-}
+export std;

@@ -15,13 +15,11 @@ use crate::{
     compile_generic_parameters, compile_type, const_eval::decode_node, create_binding,
 };
 
-pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
+pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: SymbolId) {
     ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         function.syntax().text_range(),
     );
-
-    let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 
     if function.test().is_some() {
         let path = ctx.source().kind.clone();
@@ -137,25 +135,10 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
     });
 
     if let Some(name) = function.name() {
-        if ctx.last_scope().symbol(name.text()).is_some() {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::DuplicateSymbol(name.text().to_string()),
-            );
-        } else {
-            ctx.last_scope_mut().insert_symbol(
-                name.text().to_string(),
-                symbol,
-                function.export().is_some(),
-            );
-        }
-
         ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
 
     ctx.pop_declaration();
-
-    symbol
 }
 
 pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: SymbolId) {

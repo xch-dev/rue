@@ -1,0 +1,57 @@
+mod a {
+    export const V: Int = 1;
+}
+
+mod z {
+    export mod m {
+        export const W: Int = 20;
+    }
+}
+
+const V: Int = 7;
+
+mod m {
+    export const W: Int = 30;
+}
+
+mod inner {
+    import a::V;
+    import z::m;
+
+    export mod deeper {
+        import V;
+        import m::W;
+
+        export fn value() -> Int {
+            V
+        }
+
+        export fn path() -> Int {
+            W
+        }
+    }
+}
+
+mod globbed {
+    import a::*;
+
+    export mod deeper {
+        import V;
+
+        export fn value() -> Int {
+            V
+        }
+    }
+}
+
+test fn name_only_imports_use_an_enclosing_named_import() -> Int {
+    inner::deeper::value() + V
+}
+
+test fn import_paths_use_an_enclosing_named_import() -> Int {
+    inner::deeper::path() + m::W
+}
+
+test fn name_only_imports_use_an_enclosing_glob_import() -> Int {
+    globbed::deeper::value() + V
+}

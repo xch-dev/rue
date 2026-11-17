@@ -299,12 +299,14 @@ impl FileTree {
         self.declare_modules(ctx);
         self.declare_types(ctx);
 
+        // Every name that a module declares is in its scope by now (functions and constants are
+        // only filled in later), so the imports can be resolved before the signatures that use
+        // the types they import, and nothing that's declared later can change what they bind.
         resolve_imports(ctx, modules.clone(), &mut cache, false);
 
         self.declare_symbols(ctx);
 
-        resolve_imports(ctx, modules.clone(), &mut cache, false);
-        resolve_imports(ctx, modules.clone(), &mut cache, true);
+        resolve_imports(ctx, modules, &mut cache, true);
 
         if ctx.is_cancelled() {
             return;
@@ -646,8 +648,8 @@ impl File {
     }
 
     fn declare_symbols(&self, ctx: &mut Compiler) {
-        let mut declarations = self.begin(ctx);
-        declare_symbol_items(ctx, self.document.items(), &mut declarations);
+        let declarations = self.begin(ctx);
+        declare_symbol_items(ctx, self.document.items(), &declarations);
         self.end(ctx, declarations);
     }
 

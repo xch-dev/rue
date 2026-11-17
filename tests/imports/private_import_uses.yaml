@@ -1,0 +1,5 @@
+diagnostics:
+- Cannot reference private type `Secret` in module `inner` at private_import_uses.rue:1:15
+- Cannot reference private symbol `secret` in module `inner` at private_import_uses.rue:2:15
+- Unused function `secret` at private_import_uses.rue:5:8
+- Unused type alias `Secret` at private_import_uses.rue:9:10

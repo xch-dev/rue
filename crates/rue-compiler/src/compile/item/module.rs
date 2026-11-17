@@ -1,10 +1,10 @@
 use rue_ast::{AstModuleItem, AstNode};
-use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Symbol, SymbolId};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItemKind, compile_default_items, compile_symbol_items,
     compile_type_items, declare_module_items, declare_symbol_items, declare_type_items,
+    insert_local_symbol,
 };
 
 pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
@@ -40,19 +40,7 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
     }
 
     if let Some(name) = module.name() {
-        if ctx.last_scope().symbol(name.text()).is_some() {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::DuplicateSymbol(name.text().to_string()),
-            );
-        } else {
-            ctx.last_scope_mut().insert_symbol(
-                name.text().to_string(),
-                symbol,
-                module.export().is_some(),
-            );
-        }
-
+        insert_local_symbol(ctx, &name, symbol, module.export().is_some());
         ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
 
@@ -90,7 +78,7 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 }
 
 pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
-    let (scope, mut declarations) = if let Symbol::Module(ModuleSymbol {
+    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
         scope,
         declarations,
         ..
@@ -104,19 +92,9 @@ pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
     // ctx.push_module(symbol);
-    declare_symbol_items(ctx, module.items(), &mut declarations);
+    declare_symbol_items(ctx, module.items(), &declarations);
     // ctx.pop_module();
     ctx.pop_scope(range.end());
-
-    let Symbol::Module(ModuleSymbol {
-        declarations: updated,
-        ..
-    }) = ctx.symbol_mut(symbol)
-    else {
-        unreachable!();
-    };
-
-    *updated = declarations;
 }
 
 pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {

@@ -1,0 +1,3 @@
+diagnostics:
+- Duplicate symbol `helper` found in scope at module_import_named_like_a_local.rue:1:11
+- Unused constant `X` at module_import_named_like_a_local.rue:5:22

@@ -1,0 +1,8 @@
+program: (q . 1)
+debug_program: (a (q 2 2 ()) (c (q 1 . 1) ()))
+output: "1"
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020
+diagnostics:
+- Unused type alias `T` at nested_type_imports.rue:5:6

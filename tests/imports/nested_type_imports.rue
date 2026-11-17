@@ -1,0 +1,21 @@
+mod a {
+    export type T = Int;
+}
+
+type T = Bytes;
+
+mod inner {
+    import a::T;
+
+    export mod deeper {
+        import T;
+
+        export fn value() -> T {
+            1
+        }
+    }
+}
+
+fn main() -> Int {
+    inner::deeper::value()
+}

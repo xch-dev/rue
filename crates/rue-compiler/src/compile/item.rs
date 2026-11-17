@@ -12,7 +12,8 @@ pub use type_alias::*;
 
 use rue_ast::AstNode;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{ScopeId, SymbolId};
+use rue_hir::{ScopeId, Symbol, SymbolId};
+use rue_parser::SyntaxToken;
 use rue_types::{Alias, Struct, Type, TypeId};
 
 use crate::Compiler;
@@ -26,11 +27,50 @@ pub fn declare_type_item(ctx: &mut Compiler, item: &AstTypeItem) -> (TypeId, Sco
     }
 }
 
-pub fn declare_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem) -> SymbolId {
+/// Adds a function or constant's name to the scope before any imports are resolved, so that an
+/// import can never take a name that's declared locally, whatever order they're resolved in. The
+/// symbol is filled in by [`declare_symbol_item`] once the types its signature can refer to have
+/// been imported.
+pub fn reserve_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem) -> SymbolId {
+    let symbol = ctx.alloc_symbol(Symbol::Unresolved);
+
+    let (name, exported) = match item {
+        AstSymbolItem::ModuleItem(_) => unreachable!(), // This is handled externally
+        AstSymbolItem::FunctionItem(function) => (function.name(), function.export().is_some()),
+        AstSymbolItem::ConstantItem(constant) => (constant.name(), constant.export().is_some()),
+    };
+
+    if let Some(name) = name {
+        insert_local_symbol(ctx, &name, symbol, exported);
+    }
+
+    symbol
+}
+
+/// Adds a symbol that's declared in the current scope, unless the name is already taken, in
+/// which case it's reported as a duplicate.
+pub fn insert_local_symbol(
+    ctx: &mut Compiler,
+    name: &SyntaxToken,
+    symbol: SymbolId,
+    exported: bool,
+) {
+    if ctx.last_scope().symbol(name.text()).is_some() {
+        ctx.diagnostic(
+            name,
+            DiagnosticKind::DuplicateSymbol(name.text().to_string()),
+        );
+    } else {
+        ctx.last_scope_mut()
+            .insert_symbol(name.text().to_string(), symbol, exported);
+    }
+}
+
+pub fn declare_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem, symbol: SymbolId) {
     match item {
         AstSymbolItem::ModuleItem(_) => unreachable!(), // This is handled externally
-        AstSymbolItem::FunctionItem(function) => declare_function(ctx, function),
-        AstSymbolItem::ConstantItem(constant) => declare_constant(ctx, constant),
+        AstSymbolItem::FunctionItem(function) => declare_function(ctx, function, symbol),
+        AstSymbolItem::ConstantItem(constant) => declare_constant(ctx, constant, symbol),
     }
 }
 

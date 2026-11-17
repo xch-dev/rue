@@ -5,7 +5,7 @@ use crate::{
     Compiler, compile_module_defaults, compile_module_symbols, compile_module_types,
     compile_symbol_item, compile_type_item, compile_type_item_defaults, declare_import_item,
     declare_module, declare_module_symbols, declare_module_types, declare_symbol_item,
-    declare_type_item,
+    declare_type_item, reserve_symbol_item,
 };
 
 pub fn declare_module_items(
@@ -18,10 +18,13 @@ pub fn declare_module_items(
             AstItem::SymbolItem(AstSymbolItem::ModuleItem(item)) => {
                 declarations.modules.push(declare_module(ctx, &item));
             }
+            AstItem::SymbolItem(item) => {
+                declarations.symbols.push(reserve_symbol_item(ctx, &item));
+            }
             AstItem::ImportItem(import) => {
                 declare_import_item(ctx, &import);
             }
-            _ => {}
+            AstItem::TypeItem(_) => {}
         }
     }
 }
@@ -50,8 +53,9 @@ pub fn declare_type_items(
 pub fn declare_symbol_items(
     ctx: &mut Compiler,
     items: impl Iterator<Item = AstItem>,
-    declarations: &mut ModuleDeclarations,
+    declarations: &ModuleDeclarations,
 ) {
+    let mut index = 0;
     let mut module = 0;
 
     for item in items {
@@ -62,7 +66,8 @@ pub fn declare_symbol_items(
                     declare_module_symbols(ctx, &item, declarations.modules[module]);
                     module += 1;
                 } else {
-                    declarations.symbols.push(declare_symbol_item(ctx, &item));
+                    declare_symbol_item(ctx, &item, declarations.symbols[index]);
+                    index += 1;
                 }
             }
             AstItem::ImportItem(_) => {}
