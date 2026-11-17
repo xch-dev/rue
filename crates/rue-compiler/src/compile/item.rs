@@ -84,7 +84,9 @@ pub fn compile_type_item(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId, sco
         return;
     }
 
-    check_contractive(ctx, item, ty);
+    if check_contractive(ctx, item, ty) {
+        ctx.push_unchecked_type_item(ty);
+    }
 }
 
 pub fn compile_type_item_defaults(
@@ -116,16 +118,50 @@ fn check_regular(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) -> bool {
 /// Rejects a type item that can reach itself without passing through a pair, such as
 /// `type A = B; type B = A;`. Without this, the type comparison logic would treat the cycle as
 /// assignable to anything (or overflow the stack), so the cycle is broken after reporting it.
+/// Returns `false` if the type was rejected.
 ///
 /// Every type item is checked as soon as it's compiled, and types that haven't been compiled yet
-/// are unresolved, so the item that closes a cycle is always the one that gets reported. This
-/// keeps non-contractive types from ever reaching code that uses previously compiled types.
-fn check_contractive(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) {
+/// are unresolved, so the item that closes a cycle is reported if the cycle passes through it (or
+/// through an application of it). A cycle that only passes through an earlier item, such as
+/// `type T0 = Id<T0>;` followed by `type Id<T> = T;`, is caught by
+/// [`recheck_contractive_types`] once every type item has been compiled.
+fn check_contractive(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) -> bool {
     if !rue_types::is_non_contractive(ctx.types_mut(), ty) {
-        return;
+        return true;
     }
 
     report_and_break_cycle(ctx, item, ty, DiagnosticKind::NonContractiveType);
+
+    false
+}
+
+/// Checks the contractiveness of every type item compiled since the last call again, now that
+/// the types they refer to have been compiled, and reports (and breaks the cycle of) each one
+/// that can reach itself without passing through a pair. This must run before anything compares
+/// the types, which is after every type item has been compiled but before struct defaults.
+pub fn recheck_contractive_types(ctx: &mut Compiler) {
+    for ty in ctx.take_unchecked_type_items() {
+        if !rue_types::is_non_contractive(ctx.types_mut(), ty) {
+            continue;
+        }
+
+        let (Type::Alias(Alias { name, inner, .. }) | Type::Struct(Struct { name, inner, .. })) =
+            ctx.ty(ty).clone()
+        else {
+            unreachable!()
+        };
+
+        // An item without a name already has a syntax error, so only the cycle is broken
+        if let Some(name) = name {
+            ctx.diagnostic_name(
+                &name,
+                DiagnosticKind::NonContractiveType(name.text().to_string()),
+            );
+        }
+
+        let unresolved = ctx.builtins().unresolved.ty;
+        *ctx.ty_mut(inner) = Type::Ref(unresolved);
+    }
 }
 
 fn report_and_break_cycle(

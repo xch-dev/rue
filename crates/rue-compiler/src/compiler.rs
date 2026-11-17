@@ -46,6 +46,9 @@ pub struct Compiler {
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
     /// symbol doesn't need to walk every enclosing scope (and each `let` statement opens one).
     overridden_symbols: HashSet<SymbolId>,
+    /// The type items compiled since their contractiveness was last rechecked, which happens once
+    /// every type item in a tree has been compiled (see `recheck_contractive_types`).
+    unchecked_type_items: Vec<TypeId>,
     cancel: Option<Cancel>,
     cancelled: bool,
 }
@@ -117,6 +120,7 @@ impl Compiler {
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
+            unchecked_type_items: Vec::new(),
             cancel: None,
             cancelled: false,
         };
@@ -257,6 +261,14 @@ impl Compiler {
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
         let srcloc = self.srcloc(node);
         self.diagnostic_at(srcloc, kind);
+    }
+
+    pub(crate) fn push_unchecked_type_item(&mut self, ty: TypeId) {
+        self.unchecked_type_items.push(ty);
+    }
+
+    pub(crate) fn take_unchecked_type_items(&mut self) -> Vec<TypeId> {
+        std::mem::take(&mut self.unchecked_type_items)
     }
 
     pub fn diagnostic_name(&mut self, name: &Name, kind: DiagnosticKind) {

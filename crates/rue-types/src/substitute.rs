@@ -18,13 +18,37 @@ pub fn substitute_with_mappings(
     id: TypeId,
     mappings: &HashMap<TypeId, TypeId>,
 ) -> TypeId {
+    substitute_tracking(arena, id, mappings, None).0
+}
+
+/// Substitutes the type like [`substitute_with_mappings`], and also returns every type that it was
+/// substituted into along the way, under any mappings. For an alias, these are the root and every
+/// application of the alias that the root can reach (such as `T1<Int>` in
+/// `type T1<A> = A | T0; type T0 = T1<Int>;`).
+pub(crate) fn substitute_instances(
+    arena: &mut Arena<Type>,
+    id: TypeId,
+    mappings: &HashMap<TypeId, TypeId>,
+) -> (TypeId, HashSet<TypeId>) {
+    substitute_tracking(arena, id, mappings, Some(id))
+}
+
+fn substitute_tracking(
+    arena: &mut Arena<Type>,
+    id: TypeId,
+    mappings: &HashMap<TypeId, TypeId>,
+    tracked: Option<TypeId>,
+) -> (TypeId, HashSet<TypeId>) {
     let name = log_enabled!(Level::Trace).then(|| stringify_impl(arena, id, &mut IndexMap::new()));
 
     if let Some(name) = &name {
         trace!("Substituting {name}");
     }
 
-    let mut ctx = SubstitutionContext::default();
+    let mut ctx = SubstitutionContext {
+        tracked,
+        ..SubstitutionContext::default()
+    };
 
     // The mapped types belong to the caller's scope, so they're substituted without the mappings
     let (empty_scope, empty) = ctx.scope(BTreeMap::new(), HashMap::new());
@@ -48,7 +72,7 @@ pub fn substitute_with_mappings(
         trace!("Substitution from {name} yielded {new_name}");
     }
 
-    result
+    (result, ctx.instances)
 }
 
 /// Identifies what a generic is mapped to, so that substitutions can be keyed by it.
@@ -80,6 +104,10 @@ struct SubstitutionContext {
     /// type. The first copy that isn't referenced is reused, so that there are finitely many
     /// distinct mappings and recursive types still reach the substitutions that are in progress.
     renames: FxHashMap<TypeId, Vec<TypeId>>,
+    /// The type whose substitutions are collected in `instances`, if any.
+    tracked: Option<TypeId>,
+    /// Every type that `tracked` was substituted into.
+    instances: HashSet<TypeId>,
 }
 
 impl SubstitutionContext {
@@ -144,10 +172,16 @@ fn substitute_impl_inner(
         // Each reference to an alias or struct is substituted into a distinct type, since their
         // ids are used to tell apart the variants that came from them (for example, when
         // subtracting from a union). The inner type can still be shared between them.
-        return match arena[result] {
+        let result = match arena[result] {
             Type::Alias(_) | Type::Struct(_) => arena.alloc(arena[result].clone()),
             _ => result,
         };
+
+        if ctx.tracked == Some(old_id) {
+            ctx.instances.insert(result);
+        }
+
+        return result;
     }
 
     let new_id = arena.alloc(Type::Unresolved);
@@ -282,6 +316,10 @@ fn substitute_impl_inner(
     *arena.get_mut(new_id).unwrap() = Type::Ref(result);
 
     ctx.memo.insert((old_id, scope), result);
+
+    if ctx.tracked == Some(old_id) {
+        ctx.instances.insert(result);
+    }
 
     result
 }

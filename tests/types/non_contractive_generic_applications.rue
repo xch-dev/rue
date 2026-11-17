@@ -1,0 +1,48 @@
+// The cycle passes through an application of the alias that closes it (#282)
+type T0 = T1<Int>;
+type T1<A> = A | (nil, A) | T0;
+
+// The alias that closes the cycle is only part of it through an earlier alias
+type Forward = Id<Forward>;
+type Id<T> = T;
+
+type ForwardUnion = Either<ForwardUnion> | nil;
+type Either<T> = T | Int;
+
+// Only one application of the generic aliases is part of the cycle
+type Outer = Middle<Int>;
+type Middle<T> = Inner<T, Int>;
+type Inner<A, B> = Middle<B> | A;
+
+// The cycle passes through a module that's compiled later
+type Module = nested::Id<Module>;
+
+mod nested {
+    export type Id<T> = T;
+}
+
+// The cycle passes through a struct that's compiled later
+type Wrapped = Wrapper<Wrapped>;
+
+struct Wrapper<T> {
+    ...inner: T,
+}
+
+// These are fine, since the recursion passes through a pair
+type Guarded = Pair<Int>;
+type Pair<A> = A | (nil, Guarded);
+
+type GuardedForward = Id<(Int, GuardedForward)> | nil;
+
+fn main(
+    t0: T0,
+    forward: Forward,
+    forward_union: ForwardUnion,
+    outer: Outer,
+    module: Module,
+    wrapped: Wrapped,
+    guarded: Guarded,
+    guarded_forward: GuardedForward,
+) -> (T0, (Forward, (ForwardUnion, (Outer, (Module, (Wrapped, (Guarded, GuardedForward))))))) {
+    (t0, (forward, (forward_union, (outer, (module, (wrapped, (guarded, guarded_forward)))))))
+}

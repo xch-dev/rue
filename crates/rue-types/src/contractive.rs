@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use id_arena::Arena;
 
-use crate::{Alias, Struct, Type, TypeId, grow_stack, substitute_with_mappings};
+use crate::{Alias, Struct, Type, TypeId, grow_stack, substitute_instances};
 
 /// Returns `true` if the type can reach itself without passing through a pair or function type.
 ///
@@ -10,6 +10,10 @@ use crate::{Alias, Struct, Type, TypeId, grow_stack, substitute_with_mappings};
 /// structure that bounds its recursion, so it cannot be meaningfully compared or checked and
 /// must be rejected. Recursion through a pair (such as `List<T>`) is fine, since each level
 /// of recursion corresponds to a level of the CLVM tree.
+///
+/// For a generic type, this includes any application of it that the type can reach, even if
+/// the type with its own generic parameters isn't part of the cycle. For example, in
+/// `type T1<A> = A | (nil, A) | T0; type T0 = T1<Int>;`, `T1<Int>` reaches itself through `T0`.
 pub fn is_non_contractive(arena: &mut Arena<Type>, id: TypeId) -> bool {
     // Substitution expands generic applications, so a cycle that is only created once the
     // generic arguments are filled in (e.g. `type A<T> = T; type B = A<B>;`) is visible.
@@ -23,8 +27,18 @@ pub fn is_non_contractive(arena: &mut Arena<Type>, id: TypeId) -> bool {
         _ => HashMap::new(),
     };
 
-    let root = substitute_with_mappings(arena, id, &generics);
+    let (root, instances) = substitute_instances(arena, id, &generics);
+    let reachable = reachable(arena, root);
 
+    instances
+        .into_iter()
+        .filter(|instance| reachable.contains(instance))
+        .any(|instance| reaches_itself(arena, instance))
+}
+
+/// Returns `true` if the type can reach itself without passing through a pair or function type.
+/// The type must already be substituted.
+fn reaches_itself(arena: &Arena<Type>, root: TypeId) -> bool {
     let mut visited = HashSet::new();
     let mut stack = unguarded_edges(arena, root);
 
@@ -44,7 +58,7 @@ pub fn is_non_contractive(arena: &mut Arena<Type>, id: TypeId) -> bool {
 /// Returns `true` if a non-contractive cycle can be reached from the type (including through
 /// pairs and functions), even if the type itself isn't part of the cycle. The type must already
 /// be substituted.
-pub(crate) fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> bool {
+pub fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> bool {
     has_non_contractive_cycle(arena, &reachable(arena, id))
 }
 

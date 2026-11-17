@@ -1,0 +1,7 @@
+diagnostics:
+- Type `T1` refers to itself without passing through a pair at non_contractive_generic_applications.rue:3:6
+- Type `Forward` refers to itself without passing through a pair at non_contractive_generic_applications.rue:6:6
+- Type `ForwardUnion` refers to itself without passing through a pair at non_contractive_generic_applications.rue:9:6
+- Type `Inner` refers to itself without passing through a pair at non_contractive_generic_applications.rue:15:6
+- Type `Module` refers to itself without passing through a pair at non_contractive_generic_applications.rue:18:6
+- Type `Wrapped` refers to itself without passing through a pair at non_contractive_generic_applications.rue:25:6

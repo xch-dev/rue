@@ -21,8 +21,8 @@ use rue_diagnostic::Name;
 use rue_types::{
     Alias, Apply, BuiltinTypes, Comparison, FunctionParameter, FunctionType, Generic, Inference,
     Pair, Struct, Type, TypeId, Union, check, compare, compare_with_inference, count_steps,
-    intersect, is_non_contractive, is_non_regular, stringify, with_step_limit,
-    without_compare_memo,
+    intersect, is_non_contractive, is_non_regular, reaches_non_contractive_cycle, stringify,
+    substitute, with_step_limit, without_compare_memo,
 };
 
 struct Types {
@@ -248,6 +248,8 @@ struct Generator<'a> {
     rng: Rng,
     aliases: Vec<Declared>,
     structs: Vec<TypeId>,
+    /// Whether modules with a non-contractive alias are skipped, as the compiler rejects them.
+    contractive_only: bool,
 }
 
 impl Generator<'_> {
@@ -359,7 +361,8 @@ impl Generator<'_> {
     }
 
     /// Declares a few mutually recursive aliases, some of which have generics. Returns `None` if
-    /// any of them isn't regular or contractive, since the compiler rejects those.
+    /// any of them isn't regular, or (if `contractive_only` is set) isn't contractive, since the
+    /// compiler rejects those.
     fn module(&mut self) -> Option<()> {
         let count = 1 + self.rng.below(3);
 
@@ -378,7 +381,7 @@ impl Generator<'_> {
         // so that's checked first
         for declared in self.aliases.clone() {
             if is_non_regular(&self.db.arena, declared.alias)
-                || is_non_contractive(&mut self.db.arena, declared.alias)
+                || (self.contractive_only && is_non_contractive(&mut self.db.arena, declared.alias))
             {
                 return None;
             }
@@ -506,7 +509,11 @@ fn is_step_limit(payload: &(dyn Any + Send)) -> bool {
 const STEP_LIMIT: usize = 20_000;
 
 /// Compares random types with the memo on and off, and panics if any result differs.
-fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary {
+fn differential(
+    seeds: impl IntoIterator<Item = u64>,
+    queries: usize,
+    contractive_only: bool,
+) -> Summary {
     let mut summary = Summary::default();
 
     for seed in seeds {
@@ -516,6 +523,7 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
             rng: Rng(seed),
             aliases: Vec::new(),
             structs: Vec::new(),
+            contractive_only,
         };
 
         // Substituting some generic aliases takes exponential work (since each application copies
@@ -589,17 +597,23 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
 
 #[test]
 fn test_memo_differential() {
-    let summary = with_large_stack(|| differential(0..400, 4));
+    let summary = with_large_stack(|| differential(0..400, 4, true));
     println!("{summary:?}");
 
     // Most modules should be usable, and most cases should finish
     assert!(summary.cases > 800, "{summary:?}");
     assert!(summary.gave_up_with_memo <= 2, "{summary:?}");
 
-    // These gave different results with the memo when it wasn't limited to contractive types
-    // (4706), or when it cached comparisons that refer to a generic being instantiated (1978)
-    let summary = with_large_stack(|| differential([1978, 4706], 8));
-    assert_eq!(summary.cases, 13, "{summary:?}");
+    // This gave different results with the memo when it cached comparisons that refer to a generic
+    // being instantiated
+    let summary = with_large_stack(|| differential([1978], 8, true));
+    assert_eq!(summary.cases, 8, "{summary:?}");
+
+    // This gave different results with the memo when it wasn't limited to contractive types. Its
+    // module has a cycle through an application of another alias (#282), which the compiler now
+    // rejects, so the comparisons must keep working when they're given such a type directly.
+    let summary = with_large_stack(|| differential([4706], 8, false));
+    assert_eq!(summary.cases, 5, "{summary:?}");
 }
 
 /// A larger run of `test_memo_differential`, which takes a few minutes in release builds:
@@ -607,6 +621,59 @@ fn test_memo_differential() {
 #[test]
 #[ignore = "slow"]
 fn test_memo_differential_large() {
-    let summary = with_large_stack(|| differential(1_000..21_000, 8));
+    let summary = with_large_stack(|| differential(1_000..21_000, 8, true));
     println!("{summary:?}");
+}
+
+/// Checks that if no alias in a random module is non-contractive, no type built from them can
+/// reach a non-contractive cycle either, which is what comparisons rely on. This missed cycles
+/// that only pass through an application of an alias other than the root, such as
+/// `type T0 = T1<Int>; type T1<A> = A | (nil, A) | T0;` (#282).
+fn contractiveness(seeds: impl IntoIterator<Item = u64>) {
+    for seed in seeds {
+        let mut db = Types::new();
+        let mut generator = Generator {
+            db: &mut db,
+            rng: Rng(seed),
+            aliases: Vec::new(),
+            structs: Vec::new(),
+            contractive_only: true,
+        };
+
+        let Some(Some(())) = give_up_after(|| generator.module()) else {
+            continue;
+        };
+
+        let mut types: Vec<TypeId> = generator
+            .aliases
+            .iter()
+            .map(|declared| declared.alias)
+            .collect();
+        types.extend((0..4).map(|_| generator.query()));
+
+        for ty in types {
+            let Some(substituted) = give_up_after(|| substitute(&mut db.arena, ty)) else {
+                continue;
+            };
+
+            assert!(
+                !reaches_non_contractive_cycle(&db.arena, substituted),
+                "seed {seed}: {}",
+                stringify(&mut db.arena, ty)
+            );
+        }
+    }
+}
+
+#[test]
+fn test_contractiveness() {
+    with_large_stack(|| contractiveness(0..500));
+}
+
+/// A larger run of `test_contractiveness`, which takes about two minutes in release builds:
+/// `cargo test --release -p rue-types --test memo -- --ignored`
+#[test]
+#[ignore = "slow"]
+fn test_contractiveness_large() {
+    with_large_stack(|| contractiveness(0..200_000));
 }
