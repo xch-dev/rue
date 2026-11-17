@@ -22,7 +22,7 @@ use std::{cell::OnceCell, collections::HashSet};
 
 use rue_ast::AstDocument;
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
-use rue_hir::{Database, Declaration};
+use rue_hir::{Database, Declaration, FailureAnalysis};
 use rue_types::BuiltinTypes;
 
 /// Everything the lint passes need beyond the database.
@@ -39,6 +39,8 @@ pub struct LintInput<'a> {
     pub has_errors: bool,
     /// The declarations that are live, which are computed the first time a pass needs them.
     live: OnceCell<HashSet<Declaration>>,
+    /// Whether values may fail as written, which is shared between the passes that check it.
+    failures: FailureAnalysis,
 }
 
 impl<'a> LintInput<'a> {
@@ -54,14 +56,20 @@ impl<'a> LintInput<'a> {
             entrypoints,
             has_errors,
             live: OnceCell::new(),
+            failures: FailureAnalysis::new(),
         }
+    }
+
+    /// Whether values may fail as written (see [`FailureAnalysis`]).
+    pub(crate) fn failures(&self) -> &FailureAnalysis {
+        &self.failures
     }
 
     /// The declarations whose code is evaluated, or is needed by code that's kept, starting from
     /// the entrypoints.
     pub(crate) fn live_declarations(&self, db: &Database) -> &HashSet<Declaration> {
         self.live
-            .get_or_init(|| lints::live_declarations(db, self.entrypoints))
+            .get_or_init(|| lints::live_declarations(db, self.entrypoints, &self.failures))
     }
 }
 

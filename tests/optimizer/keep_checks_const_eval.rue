@@ -1,0 +1,17 @@
+// Const evaluation always inlines automatically, so it must still evaluate (and fail on) an unused
+// argument.
+
+fn check(x: Int) -> Int {
+    if x > 10 {
+        raise "too big";
+    }
+    x
+}
+
+fn ignore(_a: Int, b: Int) -> Int {
+    b
+}
+
+fn main() -> Int {
+    const { ignore(check(50), 5) }
+}

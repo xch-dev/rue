@@ -1,0 +1,2 @@
+diagnostics:
+- "Const expression failed to evaluate: clvm raise at keep_checks_const_eval.rue:16:5"

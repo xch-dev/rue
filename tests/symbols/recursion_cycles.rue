@@ -33,3 +33,36 @@ fn f() -> Int {
 const X: Int = W + Z;
 const W: Int = X;
 const Z: Int = X;
+
+// A binding whose value may fail is evaluated even if it's never referenced, so a cycle through
+// one is a cycle
+const V: Int = checked_with(1);
+
+fn checked_with(x: Int) -> Int {
+    let _v = V;
+    assert x > 0;
+    x
+}
+
+inline fn checks_itself(x: Int) -> Int {
+    let _u = checks_itself(x - 1);
+    assert x > 0;
+    x
+}
+
+// A binding that can't fail isn't evaluated if it's never referenced, so this isn't a cycle
+const U: Int = unchecked_with(1);
+
+fn unchecked_with(x: Int) -> Int {
+    let _u = U + 1;
+    x
+}
+
+// An inline binding isn't evaluated if it's never referenced, so this isn't a cycle either
+const T: Int = inline_unused_with(1);
+
+fn inline_unused_with(x: Int) -> Int {
+    inline let _t = T;
+    assert x > 0;
+    x
+}

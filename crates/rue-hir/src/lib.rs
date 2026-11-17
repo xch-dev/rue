@@ -1,3 +1,4 @@
+mod analysis;
 mod builtins;
 mod database;
 mod dependency_graph;
@@ -13,6 +14,7 @@ mod types;
 mod unresolved;
 mod value;
 
+pub use analysis::FailureAnalysis;
 pub use builtins::*;
 pub use database::*;
 pub use dependency_graph::*;

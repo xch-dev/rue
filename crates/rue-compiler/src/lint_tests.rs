@@ -1763,8 +1763,8 @@ fn unused() -> Int {
 
     let (reports, has_errors) = reports(source, |_| {});
 
-    // The block inside the unreachable code isn't reported separately, and an unused binding is
-    // never evaluated, so the code after it is reachable
+    // The block inside the unreachable code isn't reported separately, and an unused binding that
+    // may fail is still evaluated, so the code after one that never finishes is unreachable
     assert_eq!(
         reports,
         vec![
@@ -1772,6 +1772,7 @@ fn unused() -> Int {
             "Warning 14: Binding `a` is returned directly after it's declared",
             "Warning 21: Unreachable code",
             "Warning 21: Binding `a` is returned directly after it's declared",
+            "Warning 32: Unreachable code",
         ]
     );
     assert!(!has_errors);

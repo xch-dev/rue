@@ -1,0 +1,781 @@
+// Functions that call each other in cycles, found by a fuzzer that compared release and debug
+// builds. In each, exactly one function can fail, and `main` calls others that only reach it
+// through their cycles, so whether each check is kept depends on how the cycles are resolved.
+// These were picked because compilers with a bug planted in that (remembering a function's
+// result before its strongly connected component is finished, or not noticing that it read an
+// unfinished one) drop a check in each of them. Each test must fail for its solution in both builds, except the control at the end
+// of the fuzzed cases.
+
+fn check(x: Int) -> Int {
+    if x > 10 {
+        raise;
+    }
+    x
+}
+
+fn cycle0_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle0_f3(n - 1, x)
+    }
+}
+
+fn cycle0_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle0_f3(n - 1, x)
+    }
+}
+
+fn cycle0_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle0_f0(n - 1, x)
+    }
+}
+
+fn cycle0_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle0_f1(n - 1, x) + cycle0_f2(n - 1, x)
+    }
+}
+
+test fn cycle_0(x: Int, flag: Bool) -> Int {
+    let y0 = cycle0_f2(2, x);
+    let y1 = cycle0_f3(2, x);
+    let y2 = cycle0_f1(2, x);
+    if flag {
+        y0 + y1 + y2
+    } else {
+        0
+    }
+}
+
+fn cycle1_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle1_f1(n - 1, x) + cycle1_f2(n - 1, x)
+    }
+}
+
+fn cycle1_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle1_f1(n - 1, x) + cycle1_f3(n - 1, x)
+    }
+}
+
+fn cycle1_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle1_f1(n - 1, x) + cycle1_f3(n - 1, x)
+    }
+}
+
+fn cycle1_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle1_f0(n - 1, x)
+    }
+}
+
+test fn cycle_1(x: Int, flag: Bool) -> Int {
+    let y0 = cycle1_f0(2, x);
+    let y1 = cycle1_f3(2, x);
+    if flag {
+        y0 + y1
+    } else {
+        0
+    }
+}
+
+fn cycle2_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle2_f1(n - 1, x) + cycle2_f2(n - 1, x)
+    }
+}
+
+fn cycle2_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle2_f0(n - 1, x)
+    }
+}
+
+fn cycle2_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle2_f0(n - 1, x) + cycle2_f1(n - 1, x) + cycle2_f3(n - 1, x)
+    }
+}
+
+fn cycle2_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle2_f0(n - 1, x) + cycle2_f1(n - 1, x)
+    }
+}
+
+test fn cycle_2(x: Int, flag: Bool) -> Int {
+    let y0 = cycle2_f2(2, x);
+    let y1 = cycle2_f0(2, x);
+    if flag {
+        y0 + y1
+    } else {
+        0
+    }
+}
+
+fn cycle3_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle3_f1(n - 1, x) + cycle3_f2(n - 1, x) + cycle3_f3(n - 1, x)
+    }
+}
+
+fn cycle3_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle3_f0(n - 1, x) + cycle3_f2(n - 1, x)
+    }
+}
+
+fn cycle3_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle3_f0(n - 1, x)
+    }
+}
+
+fn cycle3_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle3_f2(n - 1, x)
+    }
+}
+
+test fn cycle_3(x: Int, flag: Bool) -> Int {
+    let y0 = cycle3_f0(2, x);
+    let y1 = cycle3_f1(2, x);
+    let y2 = cycle3_f2(2, x);
+    if flag {
+        y0 + y1 + y2
+    } else {
+        0
+    }
+}
+
+fn cycle4_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle4_f0(n - 1, x) + cycle4_f2(n - 1, x)
+    }
+}
+
+fn cycle4_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle4_f2(n - 1, x) + cycle4_f3(n - 1, x)
+    }
+}
+
+fn cycle4_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle4_f1(n - 1, x)
+    }
+}
+
+fn cycle4_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle4_f4(n - 1, x)
+    }
+}
+
+fn cycle4_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle4_f1(n - 1, x) + cycle4_f4(n - 1, x)
+    }
+}
+
+test fn cycle_4(x: Int, flag: Bool) -> Int {
+    let y0 = cycle4_f1(2, x);
+    let y1 = cycle4_f2(2, x);
+    let y2 = cycle4_f0(2, x);
+    if flag {
+        y0 + y1 + y2
+    } else {
+        0
+    }
+}
+
+fn cycle5_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f3(n - 1, x) + cycle5_f4(n - 1, x)
+    }
+}
+
+fn cycle5_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f1(n - 1, x) + cycle5_f2(n - 1, x)
+    }
+}
+
+fn cycle5_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f0(n - 1, x) + cycle5_f4(n - 1, x)
+    }
+}
+
+fn cycle5_f3(n: Int, x: Int) -> Int {
+    let r = if n < 1 {
+        x
+    } else {
+        cycle5_f4(n - 1, x)
+    };
+    assert x < 10;
+    r
+}
+
+fn cycle5_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f0(n - 1, x) + cycle5_f2(n - 1, x) + cycle5_f3(n - 1, x)
+    }
+}
+
+test fn cycle_5(x: Int, flag: Bool) -> Int {
+    let y0 = cycle5_f1(2, x);
+    let y1 = cycle5_f4(2, x);
+    if flag {
+        y0 + y1
+    } else {
+        0
+    }
+}
+
+fn cycle6_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle6_f0(n - 1, x) + cycle6_f2(n - 1, x)
+    }
+}
+
+fn cycle6_f1(n: Int, x: Int) -> Int {
+    let r = if n < 1 {
+        x
+    } else {
+        cycle6_f3(n - 1, x) + cycle6_f4(n - 1, x) + cycle6_f5(n - 1, x)
+    };
+    assert x < 10;
+    r
+}
+
+fn cycle6_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle6_f3(n - 1, x)
+    }
+}
+
+fn cycle6_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle6_f1(n - 1, x) + cycle6_f5(n - 1, x)
+    }
+}
+
+fn cycle6_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle6_f0(n - 1, x) + cycle6_f3(n - 1, x)
+    }
+}
+
+fn cycle6_f5(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle6_f0(n - 1, x)
+    }
+}
+
+test fn cycle_6(x: Int, flag: Bool) -> Int {
+    let y0 = cycle6_f5(2, x);
+    let y1 = cycle6_f4(2, x);
+    if flag {
+        y0 + y1
+    } else {
+        0
+    }
+}
+
+fn cycle7_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle7_f1(n - 1, x) + cycle7_f3(n - 1, x)
+    }
+}
+
+fn cycle7_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle7_f1(n - 1, x) + cycle7_f3(n - 1, x) + cycle7_f4(n - 1, x)
+    }
+}
+
+fn cycle7_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle7_f5(n - 1, x)
+    }
+}
+
+fn cycle7_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle7_f5(n - 1, x)
+    }
+}
+
+fn cycle7_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle7_f1(n - 1, x) + cycle7_f4(n - 1, x) + cycle7_f5(n - 1, x)
+    }
+}
+
+fn cycle7_f5(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle7_f0(n - 1, x) + cycle7_f2(n - 1, x) + cycle7_f3(n - 1, x)
+    }
+}
+
+test fn cycle_7(x: Int, flag: Bool) -> Int {
+    let y0 = cycle7_f5(2, x);
+    let y1 = cycle7_f3(2, x);
+    if flag {
+        y0 + y1
+    } else {
+        0
+    }
+}
+
+fn cycle8_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f0(n - 1, x)
+    }
+}
+
+fn cycle8_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f6(n - 1, x)
+    }
+}
+
+fn cycle8_f2(n: Int, x: Int) -> Int {
+    let r = if n < 1 {
+        x
+    } else {
+        cycle8_f4(n - 1, x) + cycle8_f5(n - 1, x)
+    };
+    assert x < 10;
+    r
+}
+
+fn cycle8_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f2(n - 1, x) + cycle8_f6(n - 1, x)
+    }
+}
+
+fn cycle8_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f0(n - 1, x) + cycle8_f3(n - 1, x)
+    }
+}
+
+fn cycle8_f5(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f5(n - 1, x)
+    }
+}
+
+fn cycle8_f6(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f3(n - 1, x)
+    }
+}
+
+test fn cycle_8(x: Int, flag: Bool) -> Int {
+    let y0 = cycle8_f1(2, x);
+    let y1 = cycle8_f4(2, x);
+    if flag {
+        y0 + y1
+    } else {
+        0
+    }
+}
+
+fn cycle9_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle9_f4(n - 1, x)
+    }
+}
+
+fn cycle9_f1(n: Int, x: Int) -> Int {
+    let r = if n < 1 {
+        x
+    } else {
+        cycle9_f0(n - 1, x) + cycle9_f3(n - 1, x) + cycle9_f4(n - 1, x)
+    };
+    assert x < 10;
+    r
+}
+
+fn cycle9_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle9_f2(n - 1, x) + cycle9_f3(n - 1, x) + cycle9_f4(n - 1, x)
+    }
+}
+
+fn cycle9_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle9_f1(n - 1, x)
+    }
+}
+
+fn cycle9_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle9_f4(n - 1, x) + cycle9_f5(n - 1, x)
+    }
+}
+
+fn cycle9_f5(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle9_f1(n - 1, x) + cycle9_f2(n - 1, x) + cycle9_f4(n - 1, x)
+    }
+}
+
+test fn cycle_9(x: Int, flag: Bool) -> Int {
+    let y0 = cycle9_f0(2, x);
+    let y1 = cycle9_f3(2, x);
+    if flag {
+        y0 + y1
+    } else {
+        0
+    }
+}
+
+// The same shape as the first, where nothing can fail, compiles as before
+
+fn control_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        control_f3(n - 1, x)
+    }
+}
+
+fn control_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        control_f3(n - 1, x)
+    }
+}
+
+fn control_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        control_f0(n - 1, x)
+    }
+}
+
+fn control_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        control_f1(n - 1, x) + control_f2(n - 1, x)
+    }
+}
+
+// The control: nothing in this cycle can fail, so it compiles as before and doesn't fail
+test fn cycle_that_cannot_fail(x: Int, flag: Bool) -> Int {
+    let y0 = control_f2(2, x);
+    let y1 = control_f3(2, x);
+    let y2 = control_f1(2, x);
+    if flag {
+        y0 + y1 + y2
+    } else {
+        0
+    }
+}
+
+// The value of `x` calls `divides_through_value`, whose body references `x` again. Checking `x`
+// first (to decide `y`) mustn't remember the function as unable to fail before `x` is known.
+fn divides_through_value(n: Int) -> Int {
+    if n == 0 {
+        return 0;
+    }
+    inline let x = divides_through_value(n - 1) + 100 / (n - 1);
+    let y = x;
+    if n > 10 {
+        y
+    } else {
+        1
+    }
+}
+
+fn calls_divides_in_branch(n: Int) -> Int {
+    let z = divides_through_value(n);
+    if n > 100 {
+        z
+    } else {
+        7
+    }
+}
+
+test fn value_checked_before_its_recursive_function(n: Int) -> Int {
+    if n == 5 {
+        divides_through_value(n) * 0 + calls_divides_in_branch(n)
+    } else {
+        calls_divides_in_branch(n)
+    }
+}
+
+fn unused_divides_through_value(n: Int) -> Int {
+    if n == 0 {
+        return 0;
+    }
+    inline let x = unused_divides_through_value(n - 1) + 100 / (n - 1);
+    let _y = x;
+    1
+}
+
+fn calls_unused_divides(n: Int) -> Int {
+    let _z = unused_divides_through_value(n);
+    7
+}
+
+test fn unused_value_checked_before_its_recursive_function(n: Int) -> Int {
+    if n == 5 {
+        unused_divides_through_value(n) * 0 + calls_unused_divides(n)
+    } else {
+        calls_unused_divides(n)
+    }
+}
+
+// A pass over `late_x`'s component reaches `late_y`, which reads the unfinished `late_r`, so the
+// component joins `late_r`'s instead of finishing without it
+fn late_r(n: Int) -> Int {
+    let v = late_x(fn(i: Int) => i, n);
+    assert n < 100;
+    v
+}
+
+fn late_y(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        late_r(n - 1)
+    }
+}
+
+fn late_x(g: fn(n: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        g(n)
+    } else {
+        late_x(late_y, n - 1)
+    }
+}
+
+test fn component_found_in_a_later_pass(n: Int, flag: Bool) -> Int {
+    let w = late_r(5);
+    let z = late_y(n);
+    if flag {
+        w + z
+    } else {
+        0
+    }
+}
+
+// `finished_a` is finished before `swaps_values` reads it, and doesn't stop `swaps_values` from
+// finding the second function value it calls
+fn finished_a(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        finished_a(n - 1)
+    }
+}
+
+fn swaps_values(g: fn(i: Int) -> Int, h: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        g(1) + finished_a(1)
+    } else {
+        swaps_values(h, g, n - 1)
+    }
+}
+
+test fn finished_component_before_swapped_values(x: Int) -> Int {
+    let y = finished_a(1) + swaps_values(fn(i: Int) => i, fn(i: Int) => 100 / (i - 1), 1);
+    if x > 0 {
+        y
+    } else {
+        0
+    }
+}
+
+// `grows_m2` grows after `grows_m1` read it, and then `grows_b` is resolved before the pass ends,
+// which mustn't lose that something grew
+fn grows_b(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        grows_r(n - 1)
+    }
+}
+
+fn grows_r(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        grows_m2(fn(i: Int) => i, n - 1) + grows_b(n)
+    }
+}
+
+fn grows_m2(p: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        grows_m1(p, n - 1) + p(n)
+    }
+}
+
+fn grows_m1(q: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        grows_r(n)
+    } else {
+        grows_m2(q, n - 1)
+    }
+}
+
+test fn growth_kept_across_nested_component(n: Int, flag: Bool) -> Int {
+    let w = grows_r(n);
+    let z = grows_m1(fn(i: Int) => 100 / (i - 2), 3);
+    if flag {
+        w + z
+    } else {
+        0
+    }
+}
+
+// The same, where the nested component is finished on its own
+fn own_b(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        own_b(n - 1)
+    }
+}
+
+fn own_r(n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        own_m2(fn(i: Int) => i, n - 1) + own_b(n)
+    }
+}
+
+fn own_m2(p: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        0
+    } else {
+        own_m1(p, n - 1) + p(n)
+    }
+}
+
+fn own_m1(q: fn(i: Int) -> Int, n: Int) -> Int {
+    if n <= 0 {
+        own_r(n)
+    } else {
+        own_m2(q, n - 1)
+    }
+}
+
+test fn growth_kept_across_finished_component(n: Int, flag: Bool) -> Int {
+    let w = own_r(n);
+    let z = own_m1(fn(i: Int) => 100 / (i - 2), 3);
+    if flag {
+        w + z
+    } else {
+        0
+    }
+}

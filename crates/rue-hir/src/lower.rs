@@ -1,7 +1,9 @@
 #![allow(clippy::needless_pass_by_value)]
 
+mod substitution;
+
 use std::{
-    cell::RefCell,
+    cell::{OnceCell, RefCell},
     collections::HashMap,
     iter,
     path::{Path, PathBuf},
@@ -19,6 +21,8 @@ use crate::{
     FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError,
     Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
 };
+
+use crate::analysis::{FunctionFailure, may_fail};
 
 #[derive(Debug, Clone)]
 enum SymbolGroup {
@@ -65,6 +69,16 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// doesn't change while lowering, and finding them walks it, so they're only found once per
     /// symbol rather than each time a symbol is grouped, inlined or captured.
     dependencies: RefCell<HashMap<(SymbolId, bool), Dependencies>>,
+    /// Whether each binding or constant that's referenced once can be evaluated where it's
+    /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
+    substitutions: RefCell<HashMap<SymbolId, bool>>,
+    /// Whether calling each function may fail, which is shared between checks.
+    function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
+    /// Whether the value of each constant may fail, for the ones that can't (see
+    /// [`crate::analysis::AnalysisContext::shares_substitution`]).
+    substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
+    /// What's always evaluated when the program is run, which constants are checked against.
+    constant_roots: OnceCell<Vec<HirId>>,
 }
 
 /// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.
@@ -110,6 +124,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             path: Vec::new(),
             too_deep: None,
             dependencies: RefCell::default(),
+            substitutions: RefCell::default(),
+            function_failures: RefCell::default(),
+            substitution_failures: RefCell::default(),
+            constant_roots: OnceCell::new(),
         }
     }
 
@@ -555,21 +573,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
             let mut args = HashMap::new();
+            let mut arg_iter = call.args.into_iter();
 
-            if function.nil_terminated {
-                for (i, arg) in call.args.into_iter().enumerate() {
-                    args.insert(function.parameters[i], arg);
-                }
-            } else {
-                let mut arg_iter = call.args.into_iter().enumerate();
+            for (&parameter, arg) in function.fixed_parameters().iter().zip(&mut arg_iter) {
+                args.insert(parameter, arg);
+            }
 
-                for (i, arg) in (&mut arg_iter).take(function.parameters.len() - 1) {
-                    args.insert(function.parameters[i], arg);
-                }
-
+            if !function.nil_terminated {
                 let mut last_arg = self.db.alloc_hir(Hir::Nil);
 
-                for (i, (_, arg)) in arg_iter.rev().enumerate() {
+                for (i, arg) in arg_iter.rev().enumerate() {
                     if i == 0 && !call.nil_terminated {
                         last_arg = arg;
                     } else {
@@ -583,10 +596,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
 
             if self.should_inline(symbol) {
-                self.inline_symbols.push(args);
-                let result = self.lower_hir(env, function.body);
-                self.inline_symbols.pop().unwrap();
-                return result;
+                return self.lower_inline_call(env, &function, args);
             }
 
             let (capture_groups, param_group) = self.function_groups(symbol, &function);
@@ -636,6 +646,81 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         self.arena.alloc(Lir::Run(function, env))
+    }
+
+    /// Lowers a call to a function that's inlined, by substituting the arguments for its
+    /// parameters.
+    ///
+    /// The arguments of an `inline fn` are always substituted, so they're evaluated where they're
+    /// used. Otherwise, an argument that may fail is only substituted if the body always
+    /// evaluates its parameter. If the parameter is never referenced, the argument is evaluated
+    /// for its effect instead, and if it's only referenced some of the time, it's bound before
+    /// the body like a let statement, so that it's still evaluated at the call.
+    fn lower_inline_call(
+        &mut self,
+        env: &Environment,
+        function: &FunctionSymbol,
+        mut args: HashMap<SymbolId, HirId>,
+    ) -> LirId {
+        let mut effects = Vec::new();
+        let mut bound = Vec::new();
+
+        if function.kind != FunctionKind::Inline {
+            for &parameter in &function.parameters {
+                let Some(&arg) = args.get(&parameter) else {
+                    continue;
+                };
+
+                if !may_fail(self, arg) || self.parameter_always_evaluated(function.body, parameter)
+                {
+                    continue;
+                }
+
+                args.remove(&parameter);
+
+                if self.graph.references(parameter) == 0 {
+                    effects.push(arg);
+                } else {
+                    bound.push((parameter, arg));
+                }
+            }
+        }
+
+        let group = SymbolGroup::Sequential(bound.iter().map(|&(symbol, _)| symbol).collect());
+        let body_env = Self::apply_group(env.clone(), &group, true);
+
+        self.inline_symbols.push(args);
+        let mut result = self.lower_hir(&body_env, function.body);
+        self.inline_symbols.pop().unwrap();
+
+        // The arguments that are referenced some of the time are bound like a let statement
+        if !bound.is_empty() {
+            let bound_args = bound
+                .iter()
+                .map(|&(parameter, arg)| (parameter, self.lower_hir(env, arg)))
+                .collect();
+
+            let body = self.arena.alloc(Lir::Quote(result));
+            let rest = self.arena.alloc(Lir::Path(1u8.into()));
+            let group_env =
+                self.lower_group_environment(env, &group, rest, false, Some(&bound_args), true);
+
+            result = self.arena.alloc(Lir::Run(body, group_env));
+        }
+
+        for arg in effects.into_iter().rev() {
+            let value = self.lower_hir(env, arg);
+            result = self.effect(value, result);
+        }
+
+        result
+    }
+
+    /// Evaluates the value for its effect, before returning the result. This is the form that
+    /// expression statements are lowered to, since an inline `if` evaluates both branches.
+    fn effect(&mut self, value: LirId, result: LirId) -> LirId {
+        let nil = self.arena.alloc(Lir::Atom(vec![]));
+        self.arena.alloc(Lir::If(nil, value, result, true))
     }
 
     fn lower_symbol_reference(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
@@ -773,6 +858,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             })
             .collect();
 
+        let saved = self.forget_substitutions(&symbols);
+
+        let effects: Vec<SymbolId> = symbols
+            .iter()
+            .copied()
+            .filter(|&symbol| self.is_lowered_effect(symbol))
+            .collect();
+
         let binding_groups = self.group_symbols(symbols, false, true);
 
         let mut body_env = env.clone();
@@ -782,6 +875,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let mut expr = self.lower_block(&body_env, stmts, body);
+
+        // The bindings that are never referenced, but may fail, are evaluated for their effect.
+        // Nothing references them, so they're evaluated after the others are bound.
+        for &symbol in effects.iter().rev() {
+            let value = self.lower_symbol_value(&body_env, symbol);
+            expr = self.effect(value, expr);
+        }
 
         for (i, group) in binding_groups.iter().enumerate().rev() {
             expr = self.arena.alloc(Lir::Quote(expr));
@@ -797,6 +897,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
             expr = self.arena.alloc(Lir::Run(expr, group_env));
         }
+
+        self.restore_substitutions(saved);
 
         expr
     }
@@ -1233,14 +1335,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
             }
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
             }
         }
     }

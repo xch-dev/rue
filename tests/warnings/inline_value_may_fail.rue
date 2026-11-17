@@ -1,0 +1,326 @@
+fn check(x: Int) -> Int {
+    assert x < 100;
+    x
+}
+
+// Inline bindings
+
+// Warns: only evaluated in one branch
+fn conditional_inline_binding(x: Int, flag: Bool) -> Int {
+    inline let checked = check(x);
+    if flag {
+        checked
+    } else {
+        0
+    }
+}
+
+// Warns: never evaluated
+fn unused_inline_binding(x: Int) -> Int {
+    inline let _checked = check(x);
+    x
+}
+
+// Warns: not evaluated if the function returns early
+fn inline_binding_after_early_return(x: Int, flag: Bool) -> Int {
+    inline let checked = check(x);
+    if flag {
+        return 0;
+    }
+    checked
+}
+
+// Warns: a lambda's body might not be called
+fn inline_binding_in_lambda(x: Int) -> fn() -> Int {
+    inline let checked = check(x);
+    fn() => checked
+}
+
+// Doesn't warn: always evaluated
+fn unconditional_inline_binding(x: Int) -> Int {
+    inline let checked = check(x);
+    checked + 1
+}
+
+// Doesn't warn: always evaluated through another binding
+fn inline_binding_through_binding(x: Int, flag: Bool) -> Int {
+    inline let checked = check(x);
+    let doubled = checked * 2;
+    if flag {
+        doubled
+    } else {
+        0
+    }
+}
+
+// Doesn't warn: can't fail
+fn safe_inline_binding(x: Int, flag: Bool) -> Int {
+    inline let doubled = x * 2;
+    if flag {
+        doubled
+    } else {
+        0
+    }
+}
+
+// Doesn't warn: the program fails before it would matter
+fn inline_binding_before_raise(x: Int) -> Int {
+    inline let _checked = check(x);
+    raise "failed";
+}
+
+// Inline constants
+
+// Warns: may fail
+inline const CHECKED: Int = check(5);
+
+// Doesn't warn: can't fail
+inline const DOUBLED: Int = 5 * 2;
+
+// Doesn't warn: isn't inline
+const NOT_INLINE: Int = check(5);
+
+// Arguments of inline functions
+
+inline fn pick(value: Int, flag: Bool) -> Int {
+    if flag {
+        value
+    } else {
+        0
+    }
+}
+
+inline fn ignore(_value: Int, other: Int) -> Int {
+    other
+}
+
+inline fn double(value: Int) -> Int {
+    value * 2
+}
+
+inline fn capture(value: Int) -> fn() -> Int {
+    fn() => value
+}
+
+inline fn forward(value: Int, flag: Bool) -> Int {
+    pick(value, flag)
+}
+
+inline fn sum(...values: List<Int>) -> Int {
+    if values is (Int, Any) {
+        values.first
+    } else {
+        0
+    }
+}
+
+inline fn count(..._values: List<Int>) -> Int {
+    0
+}
+
+inline fn unused_binding_of_parameter(value: Int) -> Int {
+    let _unused = value;
+    1
+}
+
+inline fn unused_closure_of_parameter(value: Int) -> Int {
+    let _unused = fn() => value;
+    1
+}
+
+inline fn unused_call_with_parameter(h: fn(x: Int) -> Int, value: Int) -> Int {
+    let _unused = h(value);
+    5
+}
+
+inline fn unused_closure_of_binding(value: Int) -> Int {
+    let incremented = value + 1;
+    let _unused = fn() => incremented;
+    5
+}
+
+inline fn closure_of_binding_chain(value: Int) -> fn() -> Int {
+    let doubled = value * 2;
+    let incremented = doubled + 1;
+    let closure = fn() => incremented;
+    closure
+}
+
+inline fn closure_in_nested_block(value: Int) -> fn() -> Int {
+    let incremented = value + 1;
+    {
+        let closure = fn() => incremented;
+        closure
+    }
+}
+
+inline fn only_debugged(value: Int) -> Int {
+    let copied = value;
+    debug copied;
+    1
+}
+
+inline fn only_after_return(value: Int) -> Int {
+    let copied = value;
+    return 1;
+    copied
+}
+
+// Doesn't warn: always evaluated through a chain of bindings and a closure that's returned
+fn inline_binding_through_closure_chain(x: Int) -> fn() -> Int {
+    inline let checked = check(x);
+    let doubled = checked * 2;
+    let incremented = doubled + 1;
+    let closure = fn() => incremented;
+    closure
+}
+
+fn inline_arguments(x: Int, flag: Bool) -> Int {
+    // Warns: only evaluated in one branch
+    let a = pick(check(x), flag);
+
+    // Warns: never evaluated
+    let b = ignore(check(x), 1);
+
+    // Warns: only evaluated in one branch of the function it's forwarded to
+    let c = forward(check(x), flag);
+
+    // Warns: a rest parameter that's never evaluated
+    let d = count(...[check(x), 1]);
+
+    // Doesn't warn: always evaluated
+    let e = double(check(x));
+
+    // Doesn't warn: captured by value, so evaluated when the closure is created
+    let f = capture(check(x));
+
+    // Doesn't warn: a rest parameter that's always evaluated
+    let g = sum(...[check(x), 1]);
+
+    // Doesn't warn: can't fail
+    let h = pick(x * 2, flag);
+
+    // Doesn't warn: bound with `let`, so it's evaluated before the call
+    let checked = check(x);
+    let i = pick(checked, flag);
+
+    // Warns: only referenced by an unused binding, which isn't evaluated since the parameter
+    // can't fail as written
+    let j = unused_binding_of_parameter(check(x));
+
+    // Warns: only captured by a closure that's never created
+    let k = unused_closure_of_parameter(check(x));
+
+    // Warns once, where the inline binding is defined, rather than again at the argument
+    inline let inline_checked = check(x);
+    let l = pick(inline_checked, flag);
+
+    // Warns: only used by an unused binding whose call depends on what's passed for `h`
+    let o = unused_call_with_parameter(fn(i: Int) => i + 1, check(x));
+
+    // Warns: only used by a binding that's only captured by a closure that's never created
+    let p = unused_closure_of_binding(check(x));
+
+    // Doesn't warn: evaluated through a chain of bindings into a closure that's returned
+    let q = closure_of_binding_chain(check(x))();
+
+    // Doesn't warn: the same, with the closure in a nested block
+    let r = closure_in_nested_block(check(x))();
+
+    // Warns: only referenced by a debug statement, which isn't lowered in release builds
+    let s = only_debugged(check(x));
+
+    // Warns: only referenced after a return
+    let t = only_after_return(check(x));
+
+    // Warns: the callee is cast, but it's still the inline function
+    let u = (pick as fn(value: Int, flag: Bool) -> Int)(check(x), flag);
+
+    // Warns once, where the inline binding is defined, even though it's cast where it's passed
+    inline let cast_checked = check(x);
+    let v = pick(cast_checked as Int, flag);
+
+    // Warns at the argument, but not at the inline binding, since the argument is never evaluated
+    // and nothing else in its value can fail
+    inline let ignored = ignore(check(x), 1);
+    let w = ignored;
+
+    // Doesn't warn: allowed or expected
+    #[allow(inline_value_may_fail)]
+    let m = pick(check(x), flag);
+    #[expect(inline_value_may_fail)]
+    let n = pick(check(x), flag);
+
+    a
+        + b
+        + c
+        + d
+        + e
+        + f()
+        + g
+        + h
+        + i
+        + j
+        + k
+        + l
+        + m
+        + n
+        + o
+        + p
+        + q
+        + r
+        + s
+        + t
+        + u
+        + v
+        + w
+        + CHECKED
+        + DOUBLED
+        + NOT_INLINE
+        + allowed_inline_binding(x, flag)
+        + expected_inline_binding(x, flag)
+        + inline_binding_through_closure_chain(x)()
+        + ALLOWED
+        + EXPECTED
+}
+
+fn allowed_inline_binding(x: Int, flag: Bool) -> Int {
+    #[allow(inline_value_may_fail)]
+    inline let checked = check(x);
+    if flag {
+        checked
+    } else {
+        0
+    }
+}
+
+fn expected_inline_binding(x: Int, flag: Bool) -> Int {
+    #[expect(inline_value_may_fail)]
+    inline let checked = check(x);
+    if flag {
+        checked
+    } else {
+        0
+    }
+}
+
+#[allow(inline_value_may_fail)]
+inline const ALLOWED: Int = check(5);
+
+#[expect(inline_value_may_fail)]
+inline const EXPECTED: Int = check(5);
+
+test fn tests() -> Int {
+    conditional_inline_binding(1, true)
+        + unused_inline_binding(1)
+        + inline_binding_after_early_return(1, false)
+        + inline_binding_in_lambda(1)()
+        + unconditional_inline_binding(1)
+        + inline_binding_through_binding(1, true)
+        + safe_inline_binding(1, true)
+        + inline_arguments(1, true)
+}
+
+test fn raises() -> Int {
+    inline_binding_before_raise(1)
+}

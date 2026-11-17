@@ -31,6 +31,21 @@ impl Symbol {
             Self::Binding(binding) => binding.name.clone(),
         }
     }
+
+    /// The value of an `inline` binding or constant, which is evaluated where it's referenced.
+    pub fn inline_value(&self) -> Option<HirId> {
+        match self {
+            Self::Binding(binding) if binding.inline => Some(binding.value.hir),
+            Self::Constant(constant) if constant.inline => Some(constant.value.hir),
+            Self::Binding(_)
+            | Self::Constant(_)
+            | Self::Unresolved
+            | Self::Module(_)
+            | Self::Function(_)
+            | Self::Builtin(_)
+            | Self::Parameter(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +73,18 @@ pub struct FunctionSymbol {
     pub return_type: TypeId,
     pub body: HirId,
     pub kind: FunctionKind,
+}
+
+impl FunctionSymbol {
+    /// The parameters that each take a single argument, which is all of them unless the last one
+    /// is a rest parameter, which takes the remaining arguments as a list.
+    pub fn fixed_parameters(&self) -> &[SymbolId] {
+        if self.nil_terminated {
+            &self.parameters
+        } else {
+            &self.parameters[..self.parameters.len().saturating_sub(1)]
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

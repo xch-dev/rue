@@ -9,6 +9,7 @@ mod conditions;
 mod exports;
 mod guards;
 mod inline_ifs;
+mod inline_values;
 mod naming;
 mod operators;
 mod recursion;
@@ -62,6 +63,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(conditions::ConstantCondition),
         Box::new(statements::UnusedValue),
         Box::new(inline_ifs::InlineIfMayRaise),
+        Box::new(inline_values::InlineValueMayFail::new(input)),
         Box::new(returns::UnnecessaryReturn),
         Box::new(unreachable::UnreachableCode::default()),
         Box::new(comparisons::SelfComparison),

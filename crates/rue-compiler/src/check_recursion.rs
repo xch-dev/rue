@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{ConstantSymbol, Declaration, FunctionKind, FunctionSymbol, Symbol};
+use rue_hir::{ConstantSymbol, Declaration, FailureAnalysis, FunctionKind, FunctionSymbol, Symbol};
 
 use crate::Compiler;
 
@@ -63,6 +63,7 @@ struct Visit {
 /// The state of Tarjan's algorithm, over the graph of declarations and the ones that reference them.
 struct Components<'a> {
     ctx: &'a Compiler,
+    failures: FailureAnalysis,
     /// The order in which each declaration was first visited.
     indices: HashMap<Declaration, usize>,
     /// The lowest index reachable from each declaration through the ones still on the stack.
@@ -79,10 +80,20 @@ impl Components<'_> {
         self.on_stack.push(true);
         self.stack.push(declaration);
 
+        let mut parents = self.ctx.reference_parents(declaration);
+
+        // A binding whose value may fail is evaluated for its effect even if nothing references
+        // it, so the declaration it's in depends on it
+        if let Declaration::Symbol(symbol) = declaration
+            && self.failures.may_be_effect(self.ctx, symbol)
+        {
+            parents.extend(self.ctx.declaration_parents(declaration));
+        }
+
         Visit {
             declaration,
             index,
-            parents: self.ctx.reference_parents(declaration),
+            parents,
             next: 0,
         }
     }
@@ -97,6 +108,7 @@ impl Components<'_> {
 fn cyclic_declarations(ctx: &Compiler, roots: &[Declaration]) -> HashSet<Declaration> {
     let mut components = Components {
         ctx,
+        failures: FailureAnalysis::new(),
         indices: HashMap::new(),
         low: Vec::new(),
         on_stack: Vec::new(),

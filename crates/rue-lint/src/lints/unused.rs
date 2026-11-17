@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use rue_diagnostic::{Lint, Name};
 use rue_hir::{
-    BindingSymbol, ConstantSymbol, Database, Declaration, FunctionSymbol, ImportId, ImportUser,
-    Items, ParameterSymbol, Symbol,
+    BindingSymbol, ConstantSymbol, Database, Declaration, FailureAnalysis, FunctionSymbol,
+    ImportId, ImportUser, Items, ParameterSymbol, Symbol,
 };
 use rue_types::{Alias, Generic, Struct, Type};
 
@@ -171,12 +171,14 @@ fn unused_declarations(
 
 /// The declarations whose code is evaluated, or is needed by code that's kept. A declaration is
 /// live if it's an entrypoint, or something live references it. The parameters and generic types
-/// of a live function or type are live, since its signature needs their types, but a binding is
-/// only evaluated if something live references it. Declarations whose names start with `_` aren't
-/// reported, so they're kept (along with what they need) as if they were used.
+/// of a live function or type are live, since its signature needs their types. A binding is only
+/// evaluated if something live references it, or if its value may fail, in which case it's
+/// evaluated for its effect. Declarations whose names start with `_` aren't reported, so they're
+/// kept (along with what they need) as if they were used.
 pub(crate) fn live_declarations(
     db: &Database,
     entrypoints: &HashSet<Declaration>,
+    failures: &FailureAnalysis,
 ) -> HashSet<Declaration> {
     let kept = kept_bindings(db);
 
@@ -204,7 +206,7 @@ pub(crate) fn live_declarations(
             stack.push(parent);
         }
 
-        if is_live_with_parent(db, &kept, declaration) {
+        if is_live_with_parent(db, &kept, failures, declaration) {
             for parent in db.declaration_parents(declaration) {
                 children.entry(parent).or_default().push(declaration);
                 stack.push(parent);
@@ -267,16 +269,22 @@ fn kept_bindings(db: &Database) -> HashSet<Declaration> {
 }
 
 /// Whether the declaration is live whenever the function or type that declares it is, because
-/// it's part of its signature, or it's a kept binding.
+/// it's part of its signature, it's a kept binding, or it's a binding whose value may fail, which
+/// is evaluated for its effect even if it isn't referenced.
+///
+/// This counts a binding that only calls the value of a parameter as live, although whether it's
+/// evaluated depends on what's passed for it. That keeps what it references from being reported
+/// as unused when some call would need it, at the cost of not reporting it when none does.
 fn is_live_with_parent(
     db: &Database,
     kept: &HashSet<Declaration>,
+    failures: &FailureAnalysis,
     declaration: Declaration,
 ) -> bool {
     match declaration {
         Declaration::Symbol(symbol) => match db.symbol(symbol) {
             Symbol::Parameter(_) => true,
-            Symbol::Binding(_) => kept.contains(&declaration),
+            Symbol::Binding(_) => kept.contains(&declaration) || failures.may_be_effect(db, symbol),
             _ => false,
         },
         Declaration::Type(ty) => matches!(db.ty(ty), Type::Generic(_)),

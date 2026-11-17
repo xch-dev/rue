@@ -1,0 +1,8 @@
+diagnostics:
+- Function `passes_argument` cannot be inline, since it references itself at recursive_inline_failing_argument.rue:3:11
+- Function `binds_value` cannot be inline, since it references itself at recursive_inline_failing_argument.rue:11:11
+- |-
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at recursive_inline_failing_argument.rue:12:5
+    note: Remove `inline` to always evaluate it here
+- Function `calls_other` cannot be inline, since it references itself at recursive_inline_failing_argument.rue:20:11
+- Function `calls_back` cannot be inline, since it references itself at recursive_inline_failing_argument.rue:28:11

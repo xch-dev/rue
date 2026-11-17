@@ -65,10 +65,8 @@ impl<'a> Visitor<'a> {
     }
 
     fn queue_inline_value(&mut self, symbol: SymbolId) {
-        let value = match self.db.symbol(symbol) {
-            Symbol::Binding(binding) if binding.inline => binding.value.hir,
-            Symbol::Constant(constant) if constant.inline => constant.value.hir,
-            _ => return,
+        let Some(value) = self.db.symbol(symbol).inline_value() else {
+            return;
         };
 
         if self.visited.insert(symbol) {
