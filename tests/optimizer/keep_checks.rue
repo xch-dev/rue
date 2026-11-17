@@ -1590,8 +1590,9 @@ fn below_twenty(x: Int) -> Int {
     x
 }
 
-// Unused bindings are evaluated in the order they're written, so the first check fails first
-test fn unused_bindings_are_evaluated_in_order(x: Int) -> Int {
+// Unused bindings are evaluated in the same order as bindings that are used, where the later
+// one's check runs first, so its error is the one that's reported
+test fn unused_bindings_are_evaluated_like_used_bindings(x: Int) -> Int {
     let _a = check(x);
     let _b = below_twenty(x);
     x

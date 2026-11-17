@@ -936,7 +936,7 @@ tests:
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
-- name: unused_bindings_are_evaluated_in_order
+- name: unused_bindings_are_evaluated_like_used_bindings
   program: (a (q 3 () (a 4 5) (i () (a 6 5) 5)) (c (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) (q 2 (i (> (q . 20) 1) (q . 1) (q 8)) 1)) 1))
   debug_program: (a (q 3 () (a 4 5) (i () (a 6 5) 5)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) (q 2 (i (> (q . 20) 1) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1589:5"))) 1)) 1))
   solution: (50)
