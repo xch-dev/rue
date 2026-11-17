@@ -1120,25 +1120,32 @@ fn chains_of_imports_from_enclosing_scopes_resolve_from_the_outside_in() {
 }
 
 #[test]
-fn local_declarations_take_precedence_over_imported_modules() {
+fn local_modules_take_precedence_over_imported_modules() {
     let compiled = compile(
         "
         import m::helper;
         import m::*;
 
         mod m {
-            export mod helper {}
-            export mod value {}
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export mod other {
+                export const VALUE: Int = 2;
+            }
         }
 
-        fn helper() -> Int {
-            1
+        mod helper {
+            export const VALUE: Int = 3;
         }
 
-        const value: Int = 2;
+        mod other {
+            export const VALUE: Int = 4;
+        }
 
         fn main() -> Int {
-            helper() + value
+            helper::VALUE + other::VALUE
         }
         ",
     );
@@ -1146,6 +1153,42 @@ fn local_declarations_take_precedence_over_imported_modules() {
     // Like any named import of a declared name, the import of `helper` is the duplicate. The
     // glob import is shadowed.
     assert_eq!(compiled.errors(), ["2:19 DuplicateSymbol(\"helper\")"]);
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "helper");
+    assert_eq!(compiled.symbol_origin("other::VALUE"), "other");
+}
+
+#[test]
+fn imported_modules_and_local_values_with_the_same_name_are_both_bound() {
+    // Modules have their own namespace, so an imported module doesn't clash with a local
+    // function or constant
+    let compiled = compile(
+        "
+        import m::helper;
+        import m::*;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export mod value {
+                export const VALUE: Int = 2;
+            }
+        }
+
+        fn helper() -> Int {
+            3
+        }
+
+        const value: Int = 4;
+
+        fn main() -> Int {
+            helper() + value + helper::VALUE + value::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
     assert_eq!(
         compiled.reference_origins("main", "helper"),
         ["`helper`: (root)"]
@@ -1154,6 +1197,8 @@ fn local_declarations_take_precedence_over_imported_modules() {
         compiled.reference_origins("main", "value"),
         ["`value`: (root)"]
     );
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "m::helper");
+    assert_eq!(compiled.symbol_origin("value::VALUE"), "m::value");
 }
 
 #[test]
@@ -1444,28 +1489,49 @@ fn private_imports_hide_items_with_the_same_name_in_enclosing_scopes() {
 }
 
 #[test]
-fn the_first_of_a_function_and_a_module_with_the_same_name_is_declared() {
-    // Functions and constants are added to the scope along with modules, in the order they're
-    // written, so the later one is the duplicate
+fn functions_and_modules_can_have_the_same_name() {
+    // Modules have their own namespace, so neither is a duplicate, whichever is written first
     let compiled = compile(
         "
         fn helper() -> Int {
-            1
+            helper::VALUE
         }
 
-        mod helper {}
+        mod helper {
+            export const VALUE: Int = 1;
+        }
+
+        mod other {
+            export const VALUE: Int = 2;
+        }
+
+        const other: Int = other::VALUE;
 
         fn main() -> Int {
-            helper()
+            helper() + other
         }
         ",
     );
 
-    assert_eq!(compiled.errors(), ["6:13 DuplicateSymbol(\"helper\")"]);
+    compiled.assert_no_errors();
     assert_eq!(
         compiled.reference_origins("main", "helper"),
         ["`helper`: (root)"]
     );
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "helper");
+}
+
+#[test]
+fn modules_with_the_same_name_are_duplicates() {
+    let compiled = compile(
+        "
+        mod helper {}
+
+        mod helper {}
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["4:13 DuplicateSymbol(\"helper\")"]);
 }
 
 #[test]

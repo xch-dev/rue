@@ -14,8 +14,8 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Mappings, Scope, ScopeId,
-    Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
+    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Mappings, Namespace, Scope,
+    ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
 use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
@@ -171,6 +171,15 @@ impl Compiler {
                 .collect::<Vec<_>>()
             {
                 ctx.scope_mut(prelude).insert_type(name, ty, false);
+            }
+
+            for (name, module) in ctx
+                .scope(prelude_scope)
+                .exported_modules()
+                .map(|(name, module)| (name.to_string(), module))
+                .collect::<Vec<_>>()
+            {
+                ctx.scope_mut(prelude).insert_module(name, module, false);
             }
 
             ctx.push_scope(prelude, prelude_file.document.syntax().text_range().start());
@@ -386,14 +395,12 @@ impl Compiler {
         scope: ScopeId,
         name: &str,
     ) -> Option<(SymbolId, Option<ImportId>)> {
-        self.lookup_in(scope, |_, scope| {
-            if let Some(found) = scope.symbol_with_import(name) {
-                Some(Some(found))
-            } else {
-                scope.is_symbol_blocked(name).then_some(None)
-            }
-        })
-        .flatten()
+        self.resolve_in(
+            scope,
+            name,
+            Scope::symbol_with_import,
+            Scope::is_symbol_blocked,
+        )
     }
 
     /// Looks up a type in a scope and then each enclosing scope. The lookup stops at a scope that
@@ -403,37 +410,97 @@ impl Compiler {
         scope: ScopeId,
         name: &str,
     ) -> Option<(TypeId, Option<ImportId>)> {
-        self.lookup_in(scope, |_, scope| {
-            if let Some(found) = scope.type_with_import(name) {
-                Some(Some(found))
-            } else {
-                scope.is_type_blocked(name).then_some(None)
-            }
-        })
-        .flatten()
+        self.resolve_in(scope, name, Scope::type_with_import, Scope::is_type_blocked)
+    }
+
+    /// Looks up a module in a scope and then each enclosing scope. The lookup stops at a scope
+    /// that blocks the name (see [`Scope::block_module`]).
+    pub fn resolve_module_in(
+        &self,
+        scope: ScopeId,
+        name: &str,
+    ) -> Option<(SymbolId, Option<ImportId>)> {
+        self.resolve_in(
+            scope,
+            name,
+            Scope::module_with_import,
+            Scope::is_module_blocked,
+        )
+    }
+
+    /// Looks up a name in one namespace in a scope and then each enclosing scope, like
+    /// [`resolve_symbol_in`](Self::resolve_symbol_in).
+    pub fn resolve_item_in(
+        &self,
+        scope: ScopeId,
+        namespace: Namespace,
+        name: &str,
+    ) -> Option<(Declaration, Option<ImportId>)> {
+        self.resolve_in(
+            scope,
+            name,
+            |scope, name| scope.item_with_import(namespace, name),
+            |scope, name| scope.is_blocked(namespace, name),
+        )
     }
 
     /// Whether looking up a symbol from a scope stops at a scope that blocks the name, rather
     /// than finding it or reaching the outermost scope.
     pub fn is_symbol_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.lookup_in(scope, |_, scope| {
-            if scope.symbol(name).is_some() {
-                Some(false)
-            } else {
-                scope.is_symbol_blocked(name).then_some(true)
-            }
-        })
-        .unwrap_or(false)
+        self.is_blocked_in(
+            scope,
+            name,
+            Scope::symbol_with_import,
+            Scope::is_symbol_blocked,
+        )
     }
 
     /// Whether looking up a type from a scope stops at a scope that blocks the name, rather than
     /// finding it or reaching the outermost scope.
     pub fn is_type_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
+        self.is_blocked_in(scope, name, Scope::type_with_import, Scope::is_type_blocked)
+    }
+
+    /// Whether looking up a module from a scope stops at a scope that blocks the name, rather
+    /// than finding it or reaching the outermost scope.
+    pub fn is_module_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
+        self.is_blocked_in(
+            scope,
+            name,
+            Scope::module_with_import,
+            Scope::is_module_blocked,
+        )
+    }
+
+    fn resolve_in<T>(
+        &self,
+        scope: ScopeId,
+        name: &str,
+        find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
+        blocked: impl Fn(&Scope, &str) -> bool,
+    ) -> Option<(T, Option<ImportId>)> {
         self.lookup_in(scope, |_, scope| {
-            if scope.ty(name).is_some() {
+            if let Some(found) = find(scope, name) {
+                Some(Some(found))
+            } else {
+                blocked(scope, name).then_some(None)
+            }
+        })
+        .flatten()
+    }
+
+    fn is_blocked_in<T>(
+        &self,
+        scope: ScopeId,
+        name: &str,
+        find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
+        blocked: impl Fn(&Scope, &str) -> bool,
+    ) -> bool {
+        self.lookup_in(scope, |_, scope| {
+            if find(scope, name).is_some() {
                 Some(false)
             } else {
-                scope.is_type_blocked(name).then_some(true)
+                blocked(scope, name).then_some(true)
             }
         })
         .unwrap_or(false)

@@ -1,3 +1,6 @@
-diagnostics:
-- Duplicate symbol `helper` found in scope at module_import_named_like_a_local.rue:1:11
-- Unused constant `X` at module_import_named_like_a_local.rue:5:22
+program: (q . 6)
+debug_program: (a (q 16 (a 6 ()) 4) (c (c (q . 1) (q 1 . 5)) ()))
+output: "6"
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020

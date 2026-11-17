@@ -7,7 +7,9 @@ use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::{DiagnosticKind, Name};
-use rue_hir::{Declaration, Import, ImportId, ImportUser, Items, Scope, ScopeId, Symbol, SymbolId};
+use rue_hir::{
+    Declaration, Import, ImportId, ImportUser, Items, Namespace, Scope, ScopeId, Symbol, SymbolId,
+};
 
 use crate::{Compiler, SyntaxItemKind};
 
@@ -147,8 +149,8 @@ pub struct ImportCache {
     /// which are checked once every import is resolved.
     forced: HashSet<ImportId>,
     /// The names in each scope that more than one import (or a declaration and an import) bring
-    /// the same symbol in for, with the imports other than the one recorded as bringing it in.
-    shared_symbols: HashMap<(ScopeId, String), HashSet<ImportId>>,
+    /// the same module in for, with the imports other than the one recorded as bringing it in.
+    shared_modules: HashMap<(ScopeId, String), HashSet<ImportId>>,
     /// The names in imports that refer to a declaration through another import, which are
     /// ambiguous if that import is an ambiguous glob import. They're checked once every glob
     /// import is resolved.
@@ -166,6 +168,25 @@ enum ImportError {
     DuplicateSymbol,
     /// The name is already declared in the scope as a different type.
     DuplicateType,
+}
+
+impl ImportError {
+    /// The error for a private item in a namespace. Values and modules are both reported as
+    /// symbols, so they're reported once.
+    fn private(namespace: Namespace) -> Self {
+        match namespace {
+            Namespace::Value | Namespace::Module => Self::PrivateSymbol,
+            Namespace::Type => Self::PrivateType,
+        }
+    }
+
+    /// The error for a name that's already declared in a namespace.
+    fn duplicate(namespace: Namespace) -> Self {
+        match namespace {
+            Namespace::Value | Namespace::Module => Self::DuplicateSymbol,
+            Namespace::Type => Self::DuplicateType,
+        }
+    }
 }
 
 /// The module that a path resolves to.
@@ -282,15 +303,13 @@ pub fn resolve_imports(
     // The uses of a name that's reported as private at its import aren't reported again. This is
     // only done once every import is resolved, since a public item with the name could be found
     // in a later pass, and the name isn't blocked if something else brought it in.
-    for (scope, name, symbol, ty) in resolution.private_names.drain(..) {
+    for (scope, name, namespaces) in resolution.private_names.drain(..) {
         let scope = ctx.scope_mut(scope);
 
-        if symbol && scope.symbol(&name).is_none() {
-            scope.block_symbol(name.clone());
-        }
-
-        if ty && scope.ty(&name).is_none() {
-            scope.block_type(name);
+        for namespace in namespaces {
+            if scope.item(namespace, &name).is_none() {
+                scope.block(namespace, name.clone());
+            }
         }
     }
 
@@ -398,7 +417,7 @@ fn check_forced_import(
         // which doesn't change what its own path refers to, unless another import brings in the
         // same item (other than by importing it back from this scope)
         let skip_own = cache
-            .shared_symbols
+            .shared_modules
             .get(&(import_scope, first.text().to_string()))
             .is_none_or(|others| {
                 others.iter().all(|&other| {
@@ -411,38 +430,28 @@ fn check_forced_import(
             import_scope,
             skip_own.then_some(import_id),
             first.text(),
-            Scope::symbol_with_import,
+            Scope::module_with_import,
         ) != Some(cached.symbol))
         .then_some(first)
     } else if let Items::Named(name) = &import.items {
-        let target = ctx.scope(import_scope);
-        let bound_symbol = target
-            .symbol_with_import(name.text())
-            .filter(|&(_, via)| via == Some(import_id));
-        let bound_type = target
-            .type_with_import(name.text())
-            .filter(|&(_, via)| via == Some(import_id));
-
-        let symbol_differs = bound_symbol.is_some_and(|(symbol, _)| {
-            lookup_past(
-                ctx,
-                import_scope,
-                Some(import_id),
-                name.text(),
-                Scope::symbol_with_import,
-            ) != Some(symbol)
-        });
-        let type_differs = bound_type.is_some_and(|(ty, _)| {
-            lookup_past(
-                ctx,
-                import_scope,
-                Some(import_id),
-                name.text(),
-                Scope::type_with_import,
-            ) != Some(ty)
-        });
-
-        (symbol_differs || type_differs).then_some(name)
+        // Each namespace the import bound the name in is checked
+        Namespace::ALL
+            .into_iter()
+            .any(|namespace| {
+                ctx.scope(import_scope)
+                    .item_with_import(namespace, name.text())
+                    .filter(|&(_, via)| via == Some(import_id))
+                    .is_some_and(|(bound, _)| {
+                        lookup_past(
+                            ctx,
+                            import_scope,
+                            Some(import_id),
+                            name.text(),
+                            |scope, name| scope.item_with_import(namespace, name),
+                        ) != Some(bound)
+                    })
+            })
+            .then_some(name)
     } else {
         None
     };
@@ -455,7 +464,7 @@ fn check_forced_import(
     }
 }
 
-/// Whether an import brings in the symbol that `origin` brought into its scope only by importing
+/// Whether an import brings in the module that `origin` brought into its scope only by importing
 /// it back from there, through a chain of imports with paths. If the chain can't be followed, it's
 /// treated as bringing the symbol in on its own.
 fn imported_back(
@@ -470,7 +479,7 @@ fn imported_back(
     let Some(first) = ctx.import(origin).path.first() else {
         return false;
     };
-    let Some(symbol) = ctx.scope(origin_scope).symbol(first.text()) else {
+    let Some(module) = ctx.scope(origin_scope).module(first.text()) else {
         return false;
     };
     let mut visited = HashSet::new();
@@ -489,7 +498,7 @@ fn imported_back(
         let Some(cached) = cache.scopes.get(&(scope, owner, path)) else {
             return false;
         };
-        let Some(via) = ctx.scope(cached.scope).symbol_import(symbol) else {
+        let Some(via) = ctx.scope(cached.scope).module_import(module) else {
             return false;
         };
 
@@ -544,7 +553,7 @@ struct Resolution {
     deferred: Vec<(usize, ImportId)>,
     /// The names that named imports found only private items for, with the scope they're
     /// imported into and whether the items include a symbol and a type.
-    private_names: Vec<(ScopeId, String, bool, bool)>,
+    private_names: Vec<(ScopeId, String, Vec<Namespace>)>,
 }
 
 impl Resolution {
@@ -692,10 +701,10 @@ fn resolve_import(
 
     for (index, name) in import.path.iter().enumerate().skip(path_so_far.len()) {
         // A private module is reported, but still resolved, like it is in other paths
-        let symbol = if let Some(base) = base {
+        let module = if let Some(base) = base {
             let base = ctx.scope(base);
-            base.symbol(name.text())
-                .map(|s| (s, base.symbol_import(s), base.is_symbol_exported(s)))
+            base.module_with_import(name.text())
+                .map(|(m, via)| (m, via, base.is_module_exported(m)))
         } else if import.base_scope == import_scope {
             match lookup_in_scopes(
                 ctx,
@@ -704,9 +713,9 @@ fn resolve_import(
                 import_scope,
                 name.text(),
                 import_id,
-                Scope::symbol_with_import,
+                Scope::module_with_import,
             ) {
-                Lookup::Found(symbol, import) => Some((symbol, import, true)),
+                Lookup::Found(module, via) => Some((module, via, true)),
                 Lookup::Undetermined => {
                     resolution.defer(ctx, import_scope, import_id);
                     return false;
@@ -715,28 +724,44 @@ fn resolve_import(
             }
         } else {
             let base = ctx.scope(import.base_scope);
-            base.symbol(name.text())
-                .filter(|s| base.is_symbol_exported(*s))
-                .map(|s| (s, base.symbol_import(s), true))
+            base.module_with_import(name.text())
+                .filter(|&(m, _)| base.is_module_exported(m))
+                .map(|(m, via)| (m, via, true))
         };
 
-        let Some((symbol, import, exported)) = symbol else {
+        let Some((symbol, via, exported)) = module else {
             if diagnostics {
+                // Only a module can have a path after it, so a value or type is reported as such
+                let other = [Namespace::Value, Namespace::Type]
+                    .into_iter()
+                    .any(|namespace| {
+                        if let Some(base) = base {
+                            ctx.scope(base).item(namespace, name.text()).is_some()
+                        } else {
+                            ctx.resolve_item_in(import.base_scope, namespace, name.text())
+                                .is_some()
+                        }
+                    });
+
                 ctx.diagnostic_name(
                     name,
-                    DiagnosticKind::UndeclaredSymbol(name.text().to_string()),
+                    if other {
+                        DiagnosticKind::SubpathNotSupported(name.text().to_string())
+                    } else {
+                        DiagnosticKind::UndeclaredSymbol(name.text().to_string())
+                    },
                 );
             }
             return false;
         };
 
-        if let Some(import) = import {
+        if let Some(via) = via {
             ctx.add_import_reference(
-                import,
+                via,
                 Declaration::Symbol(symbol),
                 ImportUser::Import(import_id),
             );
-            path_references.push((index, import, Declaration::Symbol(symbol)));
+            path_references.push((index, via, Declaration::Symbol(symbol)));
         }
 
         if diagnostics && let Some(srcloc) = name.srcloc() {
@@ -751,13 +776,7 @@ fn resolve_import(
         }
 
         let Symbol::Module(module) = ctx.symbol(symbol) else {
-            if diagnostics {
-                ctx.diagnostic_name(
-                    name,
-                    DiagnosticKind::SubpathNotSupported(name.text().to_string()),
-                );
-            }
-            return false;
+            unreachable!("the module namespace only has modules");
         };
 
         base = Some(module.scope);
@@ -817,137 +836,69 @@ fn resolve_import(
                 .or_insert_with(|| (star.clone(), 0))
                 .1;
 
-            // Each item is listed with the import it was brought into the module by, if any
-            let symbols = if let Some(base) = base {
-                let base = ctx.scope(base);
+            // Glob imports bring in every exported item of a module. A glob import of a parent
+            // module (through `super`) brings in its private items too.
+            let source_scope = base.unwrap_or(import.base_scope);
 
-                base.exported_symbols()
-                    .map(|(name, symbol)| (name.to_string(), symbol, base.symbol_import(symbol)))
-                    .collect::<Vec<_>>()
-            } else {
-                let base = ctx.scope(import.base_scope);
+            for namespace in Namespace::ALL {
+                let items = if base.is_some() {
+                    ctx.scope(source_scope).exported_items(namespace)
+                } else {
+                    ctx.scope(source_scope).items(namespace)
+                };
 
-                base.symbol_names()
-                    .map(|name| {
-                        let symbol = base.symbol(name).unwrap();
-                        (name.to_string(), symbol, base.symbol_import(symbol))
-                    })
-                    .collect::<Vec<_>>()
-            };
+                for (name, item) in items {
+                    if resolution.named_imports_of(import_scope, &name).is_some() {
+                        continue;
+                    }
 
-            let types = if let Some(base) = base {
-                let base = ctx.scope(base);
+                    // The import the item was brought into the module by, if any
+                    let via = ctx.scope(source_scope).item_import(namespace, item);
 
-                base.exported_types()
-                    .map(|(name, ty)| (name.to_string(), ty, base.type_import(ty)))
-                    .collect::<Vec<_>>()
-            } else {
-                let base = ctx.scope(import.base_scope);
+                    // A name that's ambiguous where it's imported from is ambiguous here too. The
+                    // imports are resolved again until nothing changes, so this reaches the end
+                    // of any chain of glob imports.
+                    if ctx.is_ambiguous_import(via, item)
+                        && ctx.scope(import_scope).item_import(namespace, item) == Some(import_id)
+                    {
+                        updated |= ctx.add_ambiguous_import(import_id, item);
+                    }
 
-                base.type_names()
-                    .map(|name| {
-                        let ty = base.ty(name).unwrap();
-                        (name.to_string(), ty, base.type_import(ty))
-                    })
-                    .collect::<Vec<_>>()
-            };
+                    let target = ctx.scope_mut(import_scope);
+                    let existing = target.item(namespace, &name);
 
-            for (name, symbol, via) in symbols {
-                if resolution.named_imports_of(import_scope, &name).is_some() {
-                    continue;
-                }
+                    if namespace == Namespace::Module
+                        && existing == Some(item)
+                        && target.item_import(namespace, item) != Some(import_id)
+                    {
+                        cache
+                            .shared_modules
+                            .entry((import_scope, name.clone()))
+                            .or_default()
+                            .insert(import_id);
+                    }
 
-                // A name that's ambiguous where it's imported from is ambiguous here too. The
-                // imports are resolved again until nothing changes, so this reaches the end of
-                // any chain of glob imports.
-                let declaration = Declaration::Symbol(symbol);
-
-                if ctx.is_ambiguous_import(via, declaration)
-                    && ctx.scope(import_scope).symbol_import(symbol) == Some(import_id)
-                {
-                    updated |= ctx.add_ambiguous_import(import_id, declaration);
-                }
-
-                let target = ctx.scope_mut(import_scope);
-
-                if target.symbol(&name) == Some(symbol)
-                    && target.symbol_import(symbol) != Some(import_id)
-                {
-                    cache
-                        .shared_symbols
-                        .entry((import_scope, name.clone()))
-                        .or_default()
-                        .insert(import_id);
-                }
-
-                if target.symbol(&name).is_none() {
-                    target.insert_symbol(name.clone(), symbol, import.exported);
-                    target.add_symbol_import(symbol, import_id);
-                    ctx.import_mut(import_id)
-                        .declarations
-                        .push((name, Declaration::Symbol(symbol)));
-                    updated = true;
-                    *count += 1;
-                } else if !target.is_symbol_exported(symbol)
-                    && import.exported
-                    && target.symbol(&name) == Some(symbol)
-                {
-                    target.export_symbol(symbol);
-                    ctx.import_mut(import_id)
-                        .declarations
-                        .push((name, Declaration::Symbol(symbol)));
-                    updated = true;
-                    *count += 1;
-                } else if let Some(existing) = target.symbol(&name)
-                    && existing != symbol
-                    && let Some(existing_import) = target.symbol_import(existing)
-                    && matches!(ctx.import(existing_import).items, Items::All(_))
-                {
-                    updated |=
-                        ctx.add_ambiguous_import(existing_import, Declaration::Symbol(existing));
-                }
-            }
-
-            for (name, ty, via) in types {
-                if resolution.named_imports_of(import_scope, &name).is_some() {
-                    continue;
-                }
-
-                let declaration = Declaration::Type(ty);
-
-                if ctx.is_ambiguous_import(via, declaration)
-                    && ctx.scope(import_scope).type_import(ty) == Some(import_id)
-                {
-                    updated |= ctx.add_ambiguous_import(import_id, declaration);
-                }
-
-                let target = ctx.scope_mut(import_scope);
-
-                if target.ty(&name).is_none() {
-                    target.insert_type(name.clone(), ty, import.exported);
-                    target.add_type_import(ty, import_id);
-                    ctx.import_mut(import_id)
-                        .declarations
-                        .push((name, Declaration::Type(ty)));
-                    updated = true;
-                    *count += 1;
-                } else if !target.is_type_exported(ty)
-                    && import.exported
-                    && target.ty(&name) == Some(ty)
-                {
-                    target.export_type(ty);
-                    ctx.import_mut(import_id)
-                        .declarations
-                        .push((name, Declaration::Type(ty)));
-                    updated = true;
-                    *count += 1;
-                } else if let Some(existing) = target.ty(&name)
-                    && existing != ty
-                    && let Some(existing_import) = target.type_import(existing)
-                    && matches!(ctx.import(existing_import).items, Items::All(_))
-                {
-                    updated |=
-                        ctx.add_ambiguous_import(existing_import, Declaration::Type(existing));
+                    if existing.is_none() {
+                        target.insert_item(namespace, name.clone(), item, import.exported);
+                        target.add_item_import(namespace, item, import_id);
+                        ctx.import_mut(import_id).declarations.push((name, item));
+                        updated = true;
+                        *count += 1;
+                    } else if !target.is_item_exported(namespace, item)
+                        && import.exported
+                        && existing == Some(item)
+                    {
+                        target.export_item(namespace, item);
+                        ctx.import_mut(import_id).declarations.push((name, item));
+                        updated = true;
+                        *count += 1;
+                    } else if let Some(existing) = existing
+                        && existing != item
+                        && let Some(existing_import) = target.item_import(namespace, existing)
+                        && matches!(ctx.import(existing_import).items, Items::All(_))
+                    {
+                        updated |= ctx.add_ambiguous_import(existing_import, existing);
+                    }
                 }
             }
         }
@@ -968,124 +919,119 @@ fn resolve_import(
 
             let name = item.text();
 
-            // Each item is resolved along with the import it was brought into its scope by, if any
-            let (symbol, ty) = if let Some(base) = base {
+            // Each item is resolved along with the import it was brought into its scope by, if
+            // any, in every namespace that has the name
+            let found: Vec<(Namespace, Declaration, Option<ImportId>)> = if let Some(base) = base {
                 let base = ctx.scope(base);
-                let symbol = base.symbol(name);
-                let ty = base.ty(name);
-                let public_symbol = symbol.filter(|s| base.is_symbol_exported(*s));
-                let public_ty = ty.filter(|t| base.is_type_exported(*t));
+                let items = Namespace::ALL
+                    .into_iter()
+                    .filter_map(|namespace| {
+                        let (found, via) = base.item_with_import(namespace, name)?;
+                        Some((
+                            namespace,
+                            found,
+                            via,
+                            base.is_item_exported(namespace, found),
+                        ))
+                    })
+                    .collect::<Vec<_>>();
 
-                // If the other namespace has a public item with the name, only it's imported and
+                // If another namespace has a public item with the name, only it's imported and
                 // nothing is reported. Private items are reported, but never imported: an import
                 // can't be undone, and a public item with the name may only be brought into the
                 // module by an import that's resolved in a later pass, so a private item imported
                 // now would stay imported.
-                let (symbol, ty) = if public_symbol.is_some() || public_ty.is_some() {
-                    (public_symbol, public_ty)
+                if items.iter().any(|&(_, _, _, public)| public) {
+                    items
+                        .into_iter()
+                        .filter(|&(_, _, _, public)| public)
+                        .map(|(namespace, found, via, _)| (namespace, found, via))
+                        .collect()
                 } else {
                     // The name is reported as private rather than unresolved
-                    if symbol.is_some() || ty.is_some() {
+                    if !items.is_empty() {
                         missing_imports.shift_remove(name);
                         resolution.private_names.push((
                             import_scope,
                             name.to_string(),
-                            symbol.is_some(),
-                            ty.is_some(),
+                            items.iter().map(|&(namespace, ..)| namespace).collect(),
                         ));
                     }
 
                     if diagnostics {
                         let module = import.path.last().unwrap().text();
 
-                        if symbol.is_some() {
+                        for &(namespace, ..) in &items {
                             cache
                                 .errors
-                                .entry((import_id, ImportError::PrivateSymbol))
+                                .entry((import_id, ImportError::private(namespace)))
                                 .or_insert_with(|| {
                                     (
                                         item.clone(),
-                                        DiagnosticKind::PrivateSymbol(
-                                            name.to_string(),
-                                            module.to_string(),
-                                        ),
-                                    )
-                                });
-                        }
-
-                        if ty.is_some() {
-                            cache
-                                .errors
-                                .entry((import_id, ImportError::PrivateType))
-                                .or_insert_with(|| {
-                                    (
-                                        item.clone(),
-                                        DiagnosticKind::PrivateType(
-                                            name.to_string(),
-                                            module.to_string(),
-                                        ),
+                                        if namespace == Namespace::Type {
+                                            DiagnosticKind::PrivateType(
+                                                name.to_string(),
+                                                module.to_string(),
+                                            )
+                                        } else {
+                                            DiagnosticKind::PrivateSymbol(
+                                                name.to_string(),
+                                                module.to_string(),
+                                            )
+                                        },
                                     )
                                 });
                         }
                     }
 
-                    (None, None)
-                };
-
-                (
-                    symbol.map(|s| (s, base.symbol_import(s))),
-                    ty.map(|t| (t, base.type_import(t))),
-                )
+                    Vec::new()
+                }
             } else if import.base_scope == import_scope {
                 // A namespace that isn't known yet is looked up again in a later pass
                 let mut undetermined = false;
 
-                let symbol = lookup_in_scopes(
-                    ctx,
-                    resolution,
-                    force,
-                    import_scope,
-                    name,
-                    import_id,
-                    Scope::symbol_with_import,
-                )
-                .found(&mut undetermined);
-                let ty = lookup_in_scopes(
-                    ctx,
-                    resolution,
-                    force,
-                    import_scope,
-                    name,
-                    import_id,
-                    Scope::type_with_import,
-                )
-                .found(&mut undetermined);
+                let found = Namespace::ALL
+                    .into_iter()
+                    .filter_map(|namespace| {
+                        let (found, via) = lookup_in_scopes(
+                            ctx,
+                            resolution,
+                            force,
+                            import_scope,
+                            name,
+                            import_id,
+                            |scope, name| scope.item_with_import(namespace, name),
+                        )
+                        .found(&mut undetermined)?;
+                        Some((namespace, found, via))
+                    })
+                    .collect();
 
                 if undetermined {
                     resolution.defer(ctx, import_scope, import_id);
                 }
 
-                (symbol, ty)
+                found
             } else {
-                let symbol = ctx
-                    .resolve_symbol_in(import.base_scope, name)
-                    .filter(|s| ctx.scope(import.base_scope).is_symbol_exported(s.0));
-                let ty = ctx
-                    .resolve_type_in(import.base_scope, name)
-                    .filter(|t| ctx.scope(import.base_scope).is_type_exported(t.0));
-                (symbol, ty)
+                Namespace::ALL
+                    .into_iter()
+                    .filter_map(|namespace| {
+                        let (found, via) =
+                            ctx.resolve_item_in(import.base_scope, namespace, name)?;
+                        ctx.scope(import.base_scope)
+                            .is_item_exported(namespace, found)
+                            .then_some((namespace, found, via))
+                    })
+                    .collect()
             };
 
             // This is recorded in every pass, since an import of a name from an enclosing scope
             // finds its own binding once it has been resolved. The import that it's found through
             // is used by this one, like one in its path.
-            let imported = [
-                symbol.and_then(|(s, via)| Some((Declaration::Symbol(s), via?))),
-                ty.and_then(|(t, via)| Some((Declaration::Type(t), via?))),
-            ];
-
-            for (declaration, via) in imported.into_iter().flatten() {
-                if via != import_id {
+            for &(_, declaration, via) in &found {
+                if let Some(via) = via
+                    && via != import_id
+                {
                     ctx.add_import_reference(via, declaration, ImportUser::Import(import_id));
                     cache
                         .imported_names
@@ -1094,13 +1040,13 @@ fn resolve_import(
                 }
             }
 
-            let symbol = symbol.map(|(s, _)| s);
-            let ty = ty.map(|(t, _)| t);
-
-            if let Some(symbol) = symbol {
+            for &(namespace, found, _) in &found {
                 if diagnostics && let Some(srcloc) = item.srcloc() {
                     ctx.add_syntax_for_source(
-                        SyntaxItemKind::SymbolReference(symbol),
+                        match found {
+                            Declaration::Symbol(symbol) => SyntaxItemKind::SymbolReference(symbol),
+                            Declaration::Type(ty) => SyntaxItemKind::TypeReference(ty),
+                        },
                         TextRange::new(
                             srcloc.span.start.try_into().unwrap(),
                             srcloc.span.end.try_into().unwrap(),
@@ -1110,96 +1056,56 @@ fn resolve_import(
                 }
 
                 let target = ctx.scope_mut(import_scope);
+                let existing = target.item(namespace, name);
 
-                if target.symbol(name) == Some(symbol)
-                    && target.symbol_import(symbol) != Some(import_id)
+                if namespace == Namespace::Module
+                    && existing == Some(found)
+                    && target.item_import(namespace, found) != Some(import_id)
                 {
                     cache
-                        .shared_symbols
+                        .shared_modules
                         .entry((import_scope, name.to_string()))
                         .or_default()
                         .insert(import_id);
                 }
 
-                if target.symbol(name).is_none() {
-                    target.insert_symbol(name.to_string(), symbol, import.exported);
-                    target.add_symbol_import(symbol, import_id);
+                if existing.is_none() {
+                    target.insert_item(namespace, name.to_string(), found, import.exported);
+                    target.add_item_import(namespace, found, import_id);
                     ctx.import_mut(import_id)
                         .declarations
-                        .push((name.to_string(), Declaration::Symbol(symbol)));
+                        .push((name.to_string(), found));
                     updated = true;
                     unused_imports.shift_remove(name);
-                } else if !target.is_symbol_exported(symbol)
+                } else if !target.is_item_exported(namespace, found)
                     && import.exported
-                    && target.symbol(name) == Some(symbol)
+                    && existing == Some(found)
                 {
-                    target.export_symbol(symbol);
+                    target.export_item(namespace, found);
                     ctx.import_mut(import_id)
                         .declarations
-                        .push((name.to_string(), Declaration::Symbol(symbol)));
+                        .push((name.to_string(), found));
                     updated = true;
                     unused_imports.shift_remove(name);
-                } else if diagnostics && target.symbol(name) != Some(symbol) {
+                } else if diagnostics && existing != Some(found) {
                     cache
                         .errors
-                        .entry((import_id, ImportError::DuplicateSymbol))
+                        .entry((import_id, ImportError::duplicate(namespace)))
                         .or_insert_with(|| {
                             (
                                 item.clone(),
-                                DiagnosticKind::DuplicateSymbol(name.to_string()),
+                                if namespace == Namespace::Type {
+                                    DiagnosticKind::DuplicateType(name.to_string())
+                                } else {
+                                    DiagnosticKind::DuplicateSymbol(name.to_string())
+                                },
                             )
                         });
                     unused_imports.shift_remove(name);
                 }
             }
 
-            if let Some(ty) = ty {
-                if diagnostics && let Some(srcloc) = item.srcloc() {
-                    ctx.add_syntax_for_source(
-                        SyntaxItemKind::TypeReference(ty),
-                        TextRange::new(
-                            srcloc.span.start.try_into().unwrap(),
-                            srcloc.span.end.try_into().unwrap(),
-                        ),
-                        source.kind.clone(),
-                    );
-                }
-
-                let target = ctx.scope_mut(import_scope);
-
-                if target.ty(name).is_none() {
-                    target.insert_type(name.to_string(), ty, import.exported);
-                    target.add_type_import(ty, import_id);
-                    ctx.import_mut(import_id)
-                        .declarations
-                        .push((name.to_string(), Declaration::Type(ty)));
-                    updated = true;
-                    unused_imports.shift_remove(name);
-                } else if !target.is_type_exported(ty)
-                    && import.exported
-                    && target.ty(name) == Some(ty)
-                {
-                    target.export_type(ty);
-                    ctx.import_mut(import_id)
-                        .declarations
-                        .push((name.to_string(), Declaration::Type(ty)));
-                    updated = true;
-                    unused_imports.shift_remove(name);
-                } else if diagnostics && target.ty(name) != Some(ty) {
-                    cache
-                        .errors
-                        .entry((import_id, ImportError::DuplicateType))
-                        .or_insert_with(|| {
-                            (
-                                item.clone(),
-                                DiagnosticKind::DuplicateType(name.to_string()),
-                            )
-                        });
-                    unused_imports.shift_remove(name);
-                }
-            }
-
-            if symbol.is_some() || ty.is_some() {
+            if !found.is_empty() {
                 missing_imports.shift_remove(name);
             } else if diagnostics {
                 unused_imports.shift_remove(name);

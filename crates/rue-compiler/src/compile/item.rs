@@ -47,8 +47,8 @@ pub fn reserve_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem) -> SymbolId
     symbol
 }
 
-/// Adds a symbol that's declared in the current scope, unless the name is already taken, in
-/// which case it's reported as a duplicate.
+/// Adds a function or constant that's declared in the current scope, unless the name is already
+/// taken by another value, in which case it's reported as a duplicate.
 pub fn insert_local_symbol(
     ctx: &mut Compiler,
     name: &SyntaxToken,
@@ -63,6 +63,26 @@ pub fn insert_local_symbol(
     } else {
         ctx.last_scope_mut()
             .insert_symbol(name.text().to_string(), symbol, exported);
+    }
+}
+
+/// Adds a module that's declared in the current scope, unless the name is already taken by
+/// another module, in which case it's reported as a duplicate. Modules have their own namespace,
+/// so a value or type can have the same name.
+pub fn insert_local_module(
+    ctx: &mut Compiler,
+    name: &SyntaxToken,
+    module: SymbolId,
+    exported: bool,
+) {
+    if ctx.last_scope().module(name.text()).is_some() {
+        ctx.diagnostic(
+            name,
+            DiagnosticKind::DuplicateSymbol(name.text().to_string()),
+        );
+    } else {
+        ctx.last_scope_mut()
+            .insert_module(name.text().to_string(), module, exported);
     }
 }
 

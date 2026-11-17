@@ -439,3 +439,50 @@ fn convert<T>(flag: Bool, value: T, amount: Amount) -> T {
         "#]],
     );
 }
+
+#[test]
+fn test_complete_a_module_and_a_function_with_the_same_name() {
+    // Modules have their own namespace, so both are offered
+    check(
+        r#"
+mod helper {
+    export const NUM: Int = 1;
+}
+
+fn helper() -> Int {
+    helper::NUM
+}
+
+fn main() -> Int {
+    help$0
+}
+"#,
+        expect![[r#"
+            helper [Function] fn() -> Int
+            helper [Module]
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_module_exports_with_a_module_and_a_function_with_the_same_name() {
+    check(
+        r#"
+mod outer {
+    export mod helper {}
+
+    export fn helper() -> Int {
+        1
+    }
+}
+
+fn main() -> Int {
+    outer::$0
+}
+"#,
+        expect![[r#"
+            helper [Function] fn() -> Int
+            helper [Module]
+        "#]],
+    );
+}

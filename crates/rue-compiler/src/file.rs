@@ -368,6 +368,10 @@ impl FileTree {
                     ctx.scope(scope).exported_types().for_each(|(_, ty)| {
                         entrypoints.insert(Declaration::Type(ty));
                     });
+
+                    ctx.scope(scope).exported_modules().for_each(|(_, module)| {
+                        entrypoints.insert(Declaration::Symbol(module));
+                    });
                 }
                 Self::Directory(directory) => {
                     directory.children.iter().for_each(|child| {
@@ -706,7 +710,7 @@ impl Directory {
             let name = child.name().to_string();
             let module = child.module();
             child_modules.insert(name.clone(), module);
-            ctx.scope_mut(scope).insert_symbol(name, module, true);
+            ctx.scope_mut(scope).insert_module(name, module, true);
         }
 
         for child in &children {
@@ -717,7 +721,7 @@ impl Directory {
             for (name, module) in child_modules {
                 if let FileTree::File(file) = child {
                     ctx.scope_mut(file.sibling_scope)
-                        .insert_symbol(name, module, false);
+                        .insert_module(name, module, false);
                 }
             }
         }

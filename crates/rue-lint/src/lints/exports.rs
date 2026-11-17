@@ -135,9 +135,7 @@ fn collect_exports(
 
     let exported = scope
         .exported_symbols()
-        .map(|(_, symbol)| symbol)
-        .filter(|&symbol| !matches!(db.symbol(symbol), Symbol::Module(_)))
-        .map(Declaration::Symbol)
+        .map(|(_, symbol)| Declaration::Symbol(symbol))
         .chain(scope.exported_types().map(|(_, ty)| Declaration::Type(ty)))
         .collect::<Vec<_>>();
 
@@ -155,7 +153,7 @@ fn collect_exports(
     }
 
     for &nested in &declarations.modules {
-        if scope.is_symbol_exported(nested) {
+        if scope.is_module_exported(nested) {
             collect_exports(db, nested, false, exports, seen);
         }
     }
@@ -217,7 +215,7 @@ fn is_public(db: &Database, scopes: &HashMap<ScopeId, SymbolId>, module: SymbolI
         return false;
     };
 
-    if !db.scope(parent).is_symbol_exported(module) {
+    if !db.scope(parent).is_module_exported(module) {
         return false;
     }
 

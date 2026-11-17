@@ -11,5 +11,5 @@ fn helper() -> Int {
 }
 
 fn main() -> Int {
-    helper()
+    helper() + helper::X
 }

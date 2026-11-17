@@ -4,7 +4,7 @@ use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Scope, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, FunctionType, Type, TypeId};
 
@@ -66,6 +66,44 @@ impl PathSegment for SyntaxToken {
 
     fn generic_arguments(&self) -> Option<AstGenericArguments> {
         None
+    }
+}
+
+/// Where a segment of a path is looked up.
+#[derive(Debug, Clone, Copy)]
+enum SegmentBase {
+    /// In the module that the previous segment names, where private items can be found so that
+    /// they're reported.
+    Module(ScopeId),
+    /// From the scope the path is written in, and then each enclosing scope.
+    Local(ScopeId),
+    /// In the module that `super` names, where only exported items can be found.
+    Parent(ScopeId),
+}
+
+/// Looks up a segment of a path in one namespace. The item is returned with whether it can be
+/// used from where the path is written, and the import that brought it into the scope it was
+/// found in, if any.
+fn lookup_segment<T: Copy>(
+    ctx: &Compiler,
+    base: SegmentBase,
+    name: &str,
+    find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
+    is_exported: impl Fn(&Scope, T) -> bool,
+    resolve: impl Fn(&Compiler, ScopeId, &str) -> Option<(T, Option<ImportId>)>,
+) -> Option<(T, bool, Option<ImportId>)> {
+    match base {
+        SegmentBase::Module(scope) => {
+            let scope = ctx.scope(scope);
+            find(scope, name).map(|(item, via)| (item, is_exported(scope, item), via))
+        }
+        SegmentBase::Local(scope) => resolve(ctx, scope, name).map(|(item, via)| (item, true, via)),
+        SegmentBase::Parent(scope) => {
+            let scope = ctx.scope(scope);
+            find(scope, name)
+                .filter(|&(item, _)| is_exported(scope, item))
+                .map(|(item, via)| (item, true, via))
+        }
     }
 }
 
@@ -158,22 +196,11 @@ where
         // can only be used if it's exported
         let qualified = value.is_some() || base_scope != ctx.last_scope_id();
 
-        let (symbol, ty) = if let Some(value) = value {
+        let base = if let Some(value) = value {
             if let PathResult::Symbol(symbol, _, _) = value
                 && let Symbol::Module(module) = ctx.symbol(symbol)
             {
-                let scope = ctx.scope(module.scope);
-                let symbol = scope.symbol(name.text()).map(|symbol| {
-                    (
-                        symbol,
-                        scope.is_symbol_exported(symbol),
-                        scope.symbol_import(symbol),
-                    )
-                });
-                let ty = scope
-                    .ty(name.text())
-                    .map(|ty| (ty, scope.is_type_exported(ty), scope.type_import(ty)));
-                (symbol, ty)
+                SegmentBase::Module(module.scope)
             } else {
                 let previous = previous.unwrap();
                 ctx.diagnostic(
@@ -183,41 +210,77 @@ where
                 return PathResult::Unresolved;
             }
         } else if base_scope == ctx.last_scope_id() {
-            let resolve_symbol = || {
-                ctx.resolve_symbol_in(base_scope, name.text())
-                    .map(|(symbol, import)| (symbol, true, import))
-            };
-            let resolve_type = || {
-                ctx.resolve_type_in(base_scope, name.text())
-                    .map(|(ty, import)| (ty, true, import))
-            };
+            SegmentBase::Local(base_scope)
+        } else {
+            SegmentBase::Parent(base_scope)
+        };
 
+        let find_symbol = || {
+            lookup_segment(
+                ctx,
+                base,
+                name.text(),
+                Scope::symbol_with_import,
+                Scope::is_symbol_exported,
+                Compiler::resolve_symbol_in,
+            )
+        };
+        let find_type = || {
+            lookup_segment(
+                ctx,
+                base,
+                name.text(),
+                Scope::type_with_import,
+                Scope::is_type_exported,
+                Compiler::resolve_type_in,
+            )
+        };
+        let find_module = || {
+            lookup_segment(
+                ctx,
+                base,
+                name.text(),
+                Scope::module_with_import,
+                Scope::is_module_exported,
+                Compiler::resolve_module_in,
+            )
+        };
+
+        let (symbol, ty) = if index + 1 < segments.len() {
+            // Modules have their own namespace, and only a module can have a path after it
+            let module = find_module();
+
+            if module.is_none() && (find_symbol().is_some() || find_type().is_some()) {
+                ctx.diagnostic(
+                    &name,
+                    DiagnosticKind::SubpathNotSupported(name.text().to_string()),
+                );
+                return PathResult::Unresolved;
+            }
+
+            (module, None)
+        } else {
             // When a name is both a symbol and a type, the expected kind wins, so the other is only
             // looked up as a fallback. A lookup that fails walks every enclosing scope, and each
-            // `let` statement opens one.
-            match kind {
+            // `let` statement opens one. A module is only found so that it can be reported.
+            let (symbol, ty) = match kind {
                 PathKind::Symbol => {
-                    let symbol = resolve_symbol();
-                    let ty = symbol.is_none().then(resolve_type).flatten();
+                    let symbol = find_symbol();
+                    let ty = symbol.is_none().then(find_type).flatten();
                     (symbol, ty)
                 }
                 PathKind::Type => {
-                    let ty = resolve_type();
-                    let symbol = ty.is_none().then(resolve_symbol).flatten();
+                    let ty = find_type();
+                    let symbol = ty.is_none().then(find_symbol).flatten();
                     (symbol, ty)
                 }
+            };
+
+            if symbol.is_none() && ty.is_none() {
+                (find_module(), None)
+            } else {
+                (symbol, ty)
             }
-        } else {
-            let base = ctx.scope(base_scope);
-            let symbol = base
-                .symbol(name.text())
-                .filter(|s| base.is_symbol_exported(*s))
-                .map(|s| (s, true, base.symbol_import(s)));
-            let ty = base
-                .ty(name.text())
-                .filter(|t| base.is_type_exported(*t))
-                .map(|t| (t, true, base.type_import(t)));
-            (symbol, ty)
         };
 
         let initial = match (symbol, ty) {
@@ -232,9 +295,13 @@ where
             (None, None) => {
                 // A name whose import failed has already been reported at the import
                 let blocked = !qualified
-                    && match kind {
-                        PathKind::Symbol => ctx.is_symbol_blocked_in(base_scope, name.text()),
-                        PathKind::Type => ctx.is_type_blocked_in(base_scope, name.text()),
+                    && if index + 1 < segments.len() {
+                        ctx.is_module_blocked_in(base_scope, name.text())
+                    } else {
+                        match kind {
+                            PathKind::Symbol => ctx.is_symbol_blocked_in(base_scope, name.text()),
+                            PathKind::Type => ctx.is_type_blocked_in(base_scope, name.text()),
+                        }
                     };
 
                 match kind {

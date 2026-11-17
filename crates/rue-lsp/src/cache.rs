@@ -353,6 +353,8 @@ impl Cache<Compiler> {
         let partial = self.partial_identifier(index).unwrap_or_default();
 
         let mut scored_items = Vec::new();
+        // Values and modules are both symbols, but are in different namespaces, so a value and
+        // a module can have the same name
         let mut symbol_names = HashSet::new();
         let mut type_names = HashSet::new();
 
@@ -449,14 +451,17 @@ impl Cache<Compiler> {
 
             let scope = self.ctx.module(module).scope;
 
-            for (name, symbol) in self
-                .ctx
-                .scope(scope)
+            let exported = self.ctx.scope(scope);
+            let exported = exported
                 .exported_symbols()
+                .chain(exported.exported_modules())
                 .map(|(name, symbol)| (name.to_string(), symbol))
-                .collect::<Vec<_>>()
-            {
-                if !symbol_names.insert(name.clone()) {
+                .collect::<Vec<_>>();
+
+            for (name, symbol) in exported {
+                let is_module = matches!(self.ctx.symbol(symbol), Symbol::Module(_));
+
+                if !symbol_names.insert((name.clone(), is_module)) {
                     continue;
                 }
 
@@ -465,10 +470,13 @@ impl Cache<Compiler> {
                         || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
                             && matches!(subcontext, CompletionContext::Type)))
                 {
-                    let ty = self.ctx.symbol_type_in(scope, symbol);
-                    let detail = self.symbol_detail(scopes, symbol, ty);
+                    // A module has no type to show
+                    let detail = (!is_module).then(|| {
+                        let ty = self.ctx.symbol_type_in(scope, symbol);
+                        self.symbol_detail(scopes, symbol, ty)
+                    });
                     let kind = symbol_kind(self.ctx.symbol(symbol));
-                    scored_items.push((score, create_completion_item(name, kind, Some(detail))));
+                    scored_items.push((score, create_completion_item(name, kind, detail)));
                 }
             }
 
@@ -531,6 +539,11 @@ impl Cache<Compiler> {
             let symbols = scope
                 .symbol_names()
                 .filter_map(|name| Some((name.to_string(), scope.symbol(name)?)))
+                .chain(
+                    scope
+                        .module_names()
+                        .filter_map(|name| Some((name.to_string(), scope.module(name)?))),
+                )
                 .collect::<Vec<_>>();
 
             let types = scope
@@ -539,7 +552,9 @@ impl Cache<Compiler> {
                 .collect::<Vec<_>>();
 
             for (name, symbol) in symbols {
-                if !symbol_names.insert(name.clone()) {
+                let is_module = matches!(self.ctx.symbol(symbol), Symbol::Module(_));
+
+                if !symbol_names.insert((name.clone(), is_module)) {
                     continue;
                 }
 
@@ -550,10 +565,12 @@ impl Cache<Compiler> {
                 {
                     // The type is looked up from the cursor's scopes, like on hover, so that it's
                     // narrowed by the conditions the cursor is inside of
-                    let ty = self.symbol_type(scopes, symbol);
-                    let detail = self.symbol_detail(scopes, symbol, ty);
+                    let detail = (!is_module).then(|| {
+                        let ty = self.symbol_type(scopes, symbol);
+                        self.symbol_detail(scopes, symbol, ty)
+                    });
                     let kind = symbol_kind(self.ctx.symbol(symbol));
-                    scored_items.push((score, create_completion_item(name, kind, Some(detail))));
+                    scored_items.push((score, create_completion_item(name, kind, detail)));
                 }
             }
 
@@ -909,7 +926,12 @@ impl Cache<Compiler> {
 
     fn symbol_name(&self, scopes: &Scopes, symbol: SymbolId) -> Option<String> {
         for &scope in &scopes.0 {
-            if let Some(name) = self.ctx.scope(scope).symbol_name(symbol) {
+            let scope = self.ctx.scope(scope);
+
+            if let Some(name) = scope
+                .symbol_name(symbol)
+                .or_else(|| scope.module_name(symbol))
+            {
                 return Some(name.to_string());
             }
         }
