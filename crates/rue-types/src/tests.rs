@@ -1451,6 +1451,63 @@ mod inference {
     }
 
     #[test]
+    fn passes_union_bounds_through_cycles() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `A` and `B` are inferred from each other and `5`, and expected to be `Int | nil`. Passing
+        // the union around the cycle must end
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        db.infer(b, a, &mut infer);
+        db.infer(five, a, &mut infer);
+        let expected = db.union(&[int, nil]);
+        add_expected(&mut db, &[a, b], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, a).upper.len(), 1);
+        assert_eq!(candidates(&infer, b).upper.len(), 1);
+
+        let pair = db.pair(a, nil);
+        let mut infer = Inference::new([a, b]);
+        db.infer(pair, b, &mut infer);
+        db.infer(b, a, &mut infer);
+        db.infer(five, a, &mut infer);
+        let expected = db.pair(expected, nil);
+        let expected = db.union(&[expected, nil]);
+        add_expected(&mut db, &[a, b], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, b).upper.len(), 1);
+    }
+
+    #[test]
+    fn expands_lower_bounds_regardless_of_order() {
+        let mut db = Db::new();
+        let (a, b, t, u) = (
+            db.generic("A"),
+            db.generic("B"),
+            db.generic("T"),
+            db.generic("U"),
+        );
+        let nil = db.builtins.nil;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `B: [U, (T, nil)]`, `U: [A]`, `A: [T, 5]` and `T: [A]`, so `B`'s lower bounds expand to
+        // `5 | (5, nil)` whichever of `U` and `T` is expanded first
+        let mut infer = Inference::new([a, b, t, u]);
+        db.infer(u, b, &mut infer);
+        let pair = db.pair(t, nil);
+        db.infer(pair, b, &mut infer);
+        db.infer(a, u, &mut infer);
+        db.infer(t, a, &mut infer);
+        db.infer(five, a, &mut infer);
+        db.infer(a, t, &mut infer);
+        let five_nil = db.pair(five, nil);
+        let expected = db.union(&[five, five_nil]);
+        add_expected(&mut db, &[a, b, t, u], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, b).upper.len(), 1);
+    }
+
+    #[test]
     fn keeps_compound_lower_bounds_with_unconstrained_generics() {
         let mut db = Db::new();
         let (a, b) = (db.generic("A"), db.generic("B"));

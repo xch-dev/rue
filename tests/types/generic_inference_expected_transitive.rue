@@ -102,3 +102,28 @@ test fn lambda_from_expected_lower_bound() -> Int | nil {
     // lambda's parameter is `Int`, as before
     takes(make(fn(value) => value * 2))
 }
+
+fn cycle<A, B>(forward: fn(a: A) -> B, _backward: fn(b: B) -> A, value: A) -> B {
+    forward(value)
+}
+
+test fn cycle_with_union() -> Bool {
+    // The union is passed around the cycle between `A` and `B` only once
+    let result: Int | nil = cycle(identity, identity, 5);
+    result is nil
+}
+
+test fn cycle_with_literal_union() -> Bool {
+    let result: 5 | 6 = cycle(identity, identity, 5);
+    result == 5
+}
+
+fn map_twice<A, B>(function: fn(a: A) -> B, value: A) -> (B, B) {
+    (function(value), function(value))
+}
+
+test fn second_member_of_union() -> Int {
+    // `B` can't be `6`, but it can still be `5`
+    let result: (6, 6) | (5, 5) = map_twice(identity, 5);
+    result.first
+}

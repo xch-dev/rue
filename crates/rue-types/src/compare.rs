@@ -812,29 +812,45 @@ pub fn add_expected_bounds(
         .filter(|&generic| infer.is_resolved_through(generic))
         .collect();
 
-    let mut stack: Vec<(TypeId, TypeId)> = infer
+    // Each bound is a type expected of the call, or one passed on from a generic to one in its
+    // lower bounds (which is part of it)
+    let mut stack: Vec<(TypeId, TypeId, bool)> = infer
         .generics
         .keys()
         .filter_map(|&generic| Some((generic, expected.candidates(generic)?)))
-        .flat_map(|(generic, expected)| expected.upper.iter().map(move |&upper| (generic, upper)))
+        .flat_map(|(generic, expected)| {
+            expected
+                .upper
+                .iter()
+                .map(move |&upper| (generic, upper, false))
+        })
         .collect();
     stack.reverse();
 
-    // Each generic is given each bound at most once, and the bounds passed on are parts of the
-    // expected ones, so this is finite. A generic's lower bounds don't change here, so they're
-    // only expanded once.
-    let mut visited = HashSet::new();
-    let mut lower_bounds: HashMap<TypeId, Option<TypeId>> = HashMap::new();
+    // The bounds each generic has been given. A bound passed on that's the same as one of them is
+    // skipped, since passing it on again can create the same type with a new id (such as a union
+    // being substituted), which would otherwise go around a cycle of generics forever.
+    let mut given: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
 
-    while let Some((generic, upper)) = stack.pop() {
-        if !visited.insert((generic, upper)) {
+    // A generic's lower bounds don't change here, so they're only expanded once
+    let mut expanded = HashMap::new();
+
+    while let Some((generic, upper, passed_on)) = stack.pop() {
+        let given = given.entry(generic).or_default();
+
+        if given.contains(&upper)
+            || (passed_on
+                && given.iter().any(|&other| {
+                    compare(arena, builtins, other, upper) == Comparison::Assign
+                        && compare(arena, builtins, upper, other) == Comparison::Assign
+                }))
+        {
             continue;
         }
 
-        let lower = *lower_bounds.entry(generic).or_insert_with(|| {
-            let lower = expanded_lower(arena, infer, generic);
-            (!lower.is_empty()).then(|| union_of(arena, lower))
-        });
+        given.push(upper);
+
+        let lower = expanded_lower(arena, infer, generic, &mut expanded);
 
         if lower.is_some_and(|lower| compare(arena, builtins, lower, upper) != Comparison::Assign) {
             continue;
@@ -844,6 +860,11 @@ pub fn add_expected_bounds(
 
         // The generics that flow into this one through its lower bounds must satisfy it too
         for ty in infer.generics[&generic].lower.clone() {
+            if infer.is_resolved_through(ty) {
+                stack.push((ty, upper, true));
+                continue;
+            }
+
             if !free_generics(arena, ty)
                 .iter()
                 .any(|&other| infer.is_resolved_through(other))
@@ -855,29 +876,46 @@ pub fn add_expected_bounds(
             infer_from_expected(arena, builtins, ty, upper, &mut inner);
 
             for (&other, candidates) in &inner.generics {
-                stack.extend(candidates.upper.iter().map(|&upper| (other, upper)));
+                stack.extend(candidates.upper.iter().map(|&upper| (other, upper, true)));
             }
         }
     }
 }
 
-/// Returns the generic's lower bounds, with each generic they reference that's resolved through
-/// replaced by the union of that generic's own expanded lower bounds (if it has any), so that they
-/// can be checked against a bound. A lower bound that's just such a generic adds nothing if that
-/// generic has none yet (including through a cycle), and one that only references it is left as is.
-fn expanded_lower(arena: &mut Arena<Type>, infer: &Inference, generic: TypeId) -> Vec<TypeId> {
-    let mut expanded = HashMap::new();
-    expanded_lower_impl(arena, infer, generic, &mut expanded)
-}
-
-fn expanded_lower_impl(
+/// Returns the union of the generic's lower bounds, with each generic they reference that's
+/// resolved through replaced by the union of that generic's own expanded lower bounds (if it has
+/// any), so that they can be checked against a bound. A lower bound that's just such a generic adds
+/// nothing if that generic has none, and one that only references it is left as is. Returns `None`
+/// if there are no lower bounds.
+///
+/// A generic reached again through a cycle adds nothing, since the bounds it would add are already
+/// being collected. So a generic's expansion is only cached in `expanded` if it didn't reach one
+/// that was still being expanded (other than itself), since it would be missing that one's bounds.
+fn expanded_lower(
     arena: &mut Arena<Type>,
     infer: &Inference,
     generic: TypeId,
     expanded: &mut HashMap<TypeId, Option<TypeId>>,
-) -> Vec<TypeId> {
-    // A generic that's being expanded is a cycle, which adds nothing to the lower bounds
-    expanded.insert(generic, None);
+) -> Option<TypeId> {
+    if let Some(&union) = expanded.get(&generic) {
+        return union;
+    }
+
+    expanded_lower_impl(arena, infer, generic, &mut Vec::new(), expanded).0
+}
+
+/// Returns the expansion (see `expanded_lower`) and the lowest index in `path` of a generic being
+/// expanded that it reached through a cycle.
+fn expanded_lower_impl(
+    arena: &mut Arena<Type>,
+    infer: &Inference,
+    generic: TypeId,
+    path: &mut Vec<TypeId>,
+    expanded: &mut HashMap<TypeId, Option<TypeId>>,
+) -> (Option<TypeId>, usize) {
+    let depth = path.len();
+    let mut reached = usize::MAX;
+    path.push(generic);
 
     let mut result = IndexSet::new();
 
@@ -889,14 +927,20 @@ fn expanded_lower_impl(
                 continue;
             }
 
-            if !expanded.contains_key(&other) {
-                let lower = expanded_lower_impl(arena, infer, other, expanded);
-                let union = (!lower.is_empty()).then(|| union_of(arena, lower));
-                expanded.insert(other, union);
-            }
+            let union = if let Some(index) = path.iter().position(|&ancestor| ancestor == other) {
+                reached = reached.min(index);
+                None
+            } else if let Some(&union) = expanded.get(&other) {
+                union
+            } else {
+                let (union, other_reached) =
+                    expanded_lower_impl(arena, infer, other, path, expanded);
+                reached = reached.min(other_reached);
+                union
+            };
 
-            if let Some(Some(union)) = expanded.get(&other) {
-                mappings.insert(other, *union);
+            if let Some(union) = union {
+                mappings.insert(other, union);
             }
         }
 
@@ -912,7 +956,15 @@ fn expanded_lower_impl(
         }
     }
 
-    result.into_iter().collect()
+    path.pop();
+
+    let union = (!result.is_empty()).then(|| union_of(arena, result));
+
+    if reached >= depth {
+        expanded.insert(generic, union);
+    }
+
+    (union, reached)
 }
 
 pub fn compare(
