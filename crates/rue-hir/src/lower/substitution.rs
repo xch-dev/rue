@@ -14,7 +14,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
-    Database, FunctionKind, Hir, HirId, Symbol, SymbolId,
+    Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
     analysis::{AnalysisContext, Evaluation, FunctionFailure, may_fail},
 };
 
@@ -171,11 +171,27 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
         self.graph.references(binding) > 0 || self.graph.is_effect(binding)
     }
 
+    fn let_evaluates(&self, binding: SymbolId, _rest: &[Statement], _body: Option<HirId>) -> bool {
+        self.is_evaluated(binding)
+    }
+
     fn captures(&self, function: SymbolId, parameter: SymbolId) -> bool {
         self.dependencies(function, true).contains(&parameter)
     }
 
     fn function_failures(&self) -> &RefCell<HashMap<SymbolId, FunctionFailure>> {
         &self.function_failures
+    }
+
+    fn substitution_failures(&self) -> &RefCell<HashMap<(SymbolId, bool), bool>> {
+        &self.substitution_failures
+    }
+
+    // A constant's value can't reference the arguments of an inlined function, so whether it may
+    // fail only depends on which of the bindings and constants it references are substituted.
+    // Those are only ever decided not to be, which can't make it fail, so a constant that can't
+    // fail never will. Bindings are decided again in each call to an `inline fn`.
+    fn shares_substitution(&self, symbol: SymbolId, fails: bool) -> bool {
+        !fails && matches!(self.db.symbol(symbol), Symbol::Constant(_))
     }
 }

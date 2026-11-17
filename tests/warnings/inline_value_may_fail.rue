@@ -118,6 +118,16 @@ inline fn count(..._values: List<Int>) -> Int {
     0
 }
 
+inline fn unused_binding_of_parameter(value: Int) -> Int {
+    let _unused = value;
+    1
+}
+
+inline fn unused_closure_of_parameter(value: Int) -> Int {
+    let _unused = fn() => value;
+    1
+}
+
 fn inline_arguments(x: Int, flag: Bool) -> Int {
     // Warns: only evaluated in one branch
     let a = pick(check(x), flag);
@@ -147,8 +157,71 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
     let checked = check(x);
     let i = pick(checked, flag);
 
-    a + b + c + d + e + f() + g + h + i + CHECKED + DOUBLED + NOT_INLINE
+    // Warns: only referenced by an unused binding, which isn't evaluated since the parameter
+    // can't fail as written
+    let j = unused_binding_of_parameter(check(x));
+
+    // Warns: only captured by a closure that's never created
+    let k = unused_closure_of_parameter(check(x));
+
+    // Warns once, where the inline binding is defined, rather than again at the argument
+    inline let inline_checked = check(x);
+    let l = pick(inline_checked, flag);
+
+    // Doesn't warn: allowed or expected
+    #[allow(inline_value_may_fail)]
+    let m = pick(check(x), flag);
+    #[expect(inline_value_may_fail)]
+    let n = pick(check(x), flag);
+
+    a
+        + b
+        + c
+        + d
+        + e
+        + f()
+        + g
+        + h
+        + i
+        + j
+        + k
+        + l
+        + m
+        + n
+        + CHECKED
+        + DOUBLED
+        + NOT_INLINE
+        + allowed_inline_binding(x, flag)
+        + expected_inline_binding(x, flag)
+        + ALLOWED
+        + EXPECTED
 }
+
+fn allowed_inline_binding(x: Int, flag: Bool) -> Int {
+    #[allow(inline_value_may_fail)]
+    inline let checked = check(x);
+    if flag {
+        checked
+    } else {
+        0
+    }
+}
+
+fn expected_inline_binding(x: Int, flag: Bool) -> Int {
+    #[expect(inline_value_may_fail)]
+    inline let checked = check(x);
+    if flag {
+        checked
+    } else {
+        0
+    }
+}
+
+#[allow(inline_value_may_fail)]
+inline const ALLOWED: Int = check(5);
+
+#[expect(inline_value_may_fail)]
+inline const EXPECTED: Int = check(5);
 
 test fn tests() -> Int {
     conditional_inline_binding(1, true)

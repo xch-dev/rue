@@ -44,13 +44,22 @@ pub struct DependencyGraph {
     // Keeps track of the block and index of the let statement of each binding that has one
     lets: HashMap<SymbolId, (HirId, usize)>,
 
-    // Keeps track of the bindings whose values may fail, which are evaluated for their effect at
-    // their let statements if they're never referenced
+    // Keeps track of the bindings that are evaluated for their effect at their let statements,
+    // since their values may fail, if they're never referenced
     effects: HashSet<SymbolId>,
 
     // Keeps track of the bindings whose values may fail that haven't been visited yet, along with
-    // the symbol whose body their let statement is in
-    unvisited_effects: Vec<(Option<SymbolId>, SymbolId)>,
+    // the symbol whose body their let statement is in, and the parameters whose function values
+    // they call, if that's the only way they can fail
+    unvisited_effects: Vec<(Option<SymbolId>, SymbolId, IndexSet<SymbolId>)>,
+
+    // Keeps track of the arguments of each direct call to a function, and whether the last one is
+    // spread, so that a binding that calls the value of one of its parameters can find the
+    // function values it's passed
+    calls: HashMap<SymbolId, Vec<(Vec<HirId>, bool)>>,
+
+    // The entrypoint, whose parameters come from the solution
+    main: SymbolId,
 
     // Finds whether the values of let statements may fail
     failures: FailureAnalysis,
@@ -72,6 +81,8 @@ impl DependencyGraph {
             lets: HashMap::new(),
             effects: HashSet::new(),
             unvisited_effects: Vec::new(),
+            calls: HashMap::new(),
+            main,
             failures: FailureAnalysis::new(),
         };
 
@@ -92,7 +103,7 @@ impl DependencyGraph {
                 graph.pending.extend(referenced.into_iter().rev());
             }
 
-            visit_effects(&mut graph);
+            visit_effects(db, &mut graph);
         }
 
         // This happens once everything has been visited, since the symbol a binding destructures
@@ -113,6 +124,45 @@ impl DependencyGraph {
     /// effect at its let statement. Unreferenced bindings are otherwise not evaluated at all.
     pub fn is_effect(&self, symbol: SymbolId) -> bool {
         self.effects.contains(&symbol) && self.references(symbol) == 0
+    }
+
+    /// Whether calling the function values of any of the parameters may fail, given the calls
+    /// that have been visited so far. The parameters of `main` come from the solution, and a
+    /// function that's used as a value, such as a lambda, could be called from anywhere, so
+    /// calling their values may fail.
+    fn calls_may_fail(&self, db: &Database, parameters: &IndexSet<SymbolId>) -> bool {
+        parameters.iter().any(|&parameter| {
+            let Some(&function) = self.owners.get(&parameter) else {
+                return true;
+            };
+
+            if function == self.main || self.closures.contains(&function) {
+                return true;
+            }
+
+            let Symbol::Function(symbol) = db.symbol(function) else {
+                return true;
+            };
+
+            let Some(index) = symbol
+                .fixed_parameters()
+                .iter()
+                .position(|&fixed| fixed == parameter)
+            else {
+                return true;
+            };
+
+            self.calls
+                .get(&function)
+                .into_iter()
+                .flatten()
+                .any(|(args, spread)| {
+                    args.get(index).is_none_or(|&arg| {
+                        (*spread && index + 1 == args.len())
+                            || self.failures.value_call_may_fail(db, arg)
+                    })
+                })
+        })
     }
 
     pub fn references(&self, symbol: SymbolId) -> usize {
@@ -280,6 +330,16 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *else_, false);
         }
         Hir::FunctionCall(call) => {
+            if let Hir::Reference(function) = db.hir(db.without_casts(call.function))
+                && let Symbol::Function(_) = db.symbol(*function)
+            {
+                graph
+                    .calls
+                    .entry(*function)
+                    .or_default()
+                    .push((call.args.clone(), !call.nil_terminated));
+            }
+
             visit_hir(db, graph, call.function, true);
             for &arg in &call.args {
                 visit_hir(db, graph, arg, false);
@@ -407,19 +467,26 @@ fn assign_destructured_owner(db: &Database, graph: &mut DependencyGraph, symbol:
 /// isn't dropped. Whether it's referenced isn't known until the rest of the program has been
 /// visited, so it's only recorded here (see [`visit_effects`]).
 ///
-/// A reference to another binding or constant can't fail here (see [`FailureAnalysis`]), so
-/// whether another binding is referenced doesn't change which values may fail.
+/// A reference to another binding can't fail here (see [`FailureAnalysis`]), so whether another
+/// binding is referenced doesn't change which values may fail.
 fn visit_let(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     let Symbol::Binding(binding) = db.symbol(symbol) else {
         return;
     };
 
-    if binding.inline || !graph.failures.may_fail(db, binding.value.hir) {
+    if binding.inline {
         return;
     }
 
-    graph.effects.insert(symbol);
-    graph.unvisited_effects.push((graph.current, symbol));
+    // A value that only fails if a function value that a parameter is passed fails is decided
+    // once the calls that pass them have been visited
+    let calls = match graph.failures.body_calls(db, binding.value.hir) {
+        None => IndexSet::new(),
+        Some(calls) if calls.is_empty() => return,
+        Some(calls) => calls,
+    };
+
+    graph.unvisited_effects.push((graph.current, symbol, calls));
 }
 
 /// Once everything that's referenced has been visited, the bindings whose values may fail but
@@ -427,15 +494,25 @@ fn visit_let(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
 /// count as references, but the enclosing function still depends on them, so that it captures what
 /// their values need. Visiting them can reach more of these, so this repeats until there are none.
 ///
+/// A binding that only calls the function values of parameters waits until a call passes one that
+/// may fail. Visiting more of the program can find more calls, so it's checked again each time.
+///
 /// These are only added at the end, so that the dependencies of a program without any are in the
 /// same order as if they didn't exist.
-fn visit_effects(graph: &mut DependencyGraph) {
+fn visit_effects(db: &Database, graph: &mut DependencyGraph) {
     let effects = std::mem::take(&mut graph.unvisited_effects);
 
-    for (current, symbol) in effects.into_iter().rev() {
+    for (current, symbol, calls) in effects.into_iter().rev() {
         if graph.visited.contains(&symbol) || graph.references(symbol) > 0 {
             continue;
         }
+
+        if !calls.is_empty() && !graph.calls_may_fail(db, &calls) {
+            graph.unvisited_effects.push((current, symbol, calls));
+            continue;
+        }
+
+        graph.effects.insert(symbol);
 
         if let Some(current) = current {
             graph
@@ -447,6 +524,9 @@ fn visit_effects(graph: &mut DependencyGraph) {
 
         graph.pending.push(symbol);
     }
+
+    // The ones that are still waiting are kept in the order they were found
+    graph.unvisited_effects.reverse();
 }
 
 fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId) {

@@ -10,6 +10,7 @@ mod used_module {
 fn main() -> Int {
     let used = 1;
     let unused = 2;
+    let unused_check = used_by_unused_binding(used);
     used_by_main();
     used_by_both();
     USED_BY_MAIN + USED_BY_BOTH + used + used_module::USED_IN_MODULE
@@ -36,3 +37,9 @@ fn used_by_tests() {}
 fn used_by_both() {}
 
 fn unused() {}
+
+// An unused binding whose value may fail is still evaluated, so the function it calls is used
+fn used_by_unused_binding(value: Int) -> Int {
+    assert value > 0;
+    value
+}

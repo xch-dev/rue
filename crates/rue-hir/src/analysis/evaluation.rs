@@ -120,7 +120,10 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
                     };
 
                     // An inline binding is evaluated where it's referenced instead
-                    let evaluated = !binding.inline && self.cx.is_evaluated(symbol);
+                    let evaluated = !binding.inline
+                        && self
+                            .cx
+                            .let_evaluates(symbol, &statements[index + 1..], body);
 
                     if evaluated && self.hir(binding.value.hir) {
                         return true;

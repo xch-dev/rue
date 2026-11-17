@@ -965,3 +965,76 @@ test fn mutually_recursive_call_of_argument_is_kept(x: Int, flag: Bool) -> Int {
         0
     }
 }
+
+fn apply_unused(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _unused = f(x);
+    x
+}
+
+// An unused binding that calls a parameter's function value is only evaluated if some call passes
+// a value that may fail, so it's dropped here, as before
+test fn unused_call_of_safe_argument_is_dropped(x: Int) -> Int {
+    apply_unused(fn(y: Int) => y + 1, x)
+}
+
+fn apply_unused_checked(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _unused = f(x);
+    x
+}
+
+test fn unused_call_of_failing_argument(x: Int) -> Int {
+    apply_unused_checked(fn(y: Int) => check(y), x)
+}
+
+const ADD_ONE: fn(x: Int) -> Int = fn(x: Int) => x + 1;
+
+// A function value stored in a constant is followed like one in a binding, so an unused call of
+// one that can't fail is dropped, as before
+test fn unused_call_of_constant_function_is_dropped(x: Int) -> Int {
+    let _unused = ADD_ONE(x);
+    x
+}
+
+const FAILING_CONSTANT: Int = check(50);
+
+// A constant that may fail and is only read by an unused binding is evaluated through it
+test fn constant_read_by_unused_binding(x: Int) -> Int {
+    let _value = FAILING_CONSTANT;
+    x
+}
+
+// A named function passed as a value is checked like a lambda
+test fn named_function_argument_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let y = call_twice(check, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn safe_named_function_argument_is_inlined(x: Int, flag: Bool) -> Int {
+    let y = call_twice(add_one, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn failing_mutually_recursive_call_of_argument(x: Int, flag: Bool) -> Int {
+    let y = apply_even(fn(i: Int) => check(x + i), 4);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+// The first unused binding is referenced by the second, which is only found once the second is
+// visited, so the first is substituted into it
+test fn unused_binding_used_by_unused_binding(x: Int, y: Int) -> Int {
+    let a = check(x);
+    let _b = check(a + y);
+    5
+}

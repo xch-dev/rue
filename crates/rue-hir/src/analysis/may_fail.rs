@@ -1,6 +1,9 @@
 //! Finds whether evaluating a value may fail.
 
-use std::{collections::HashSet, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -27,6 +30,23 @@ const MAX_SHIFT: u32 = 65535;
 /// referenced, since that's where it's evaluated.
 pub(crate) fn may_fail(cx: &impl AnalysisContext, hir: HirId) -> bool {
     Visitor::new(cx).visit(hir, false)
+}
+
+/// Whether evaluating the HIR, which is in a function body, may fail other than by calling the
+/// function values of parameters. If it can't, these are the parameters whose values it calls,
+/// which are only known where the function they belong to is called.
+pub(crate) fn body_calls(cx: &impl AnalysisContext, hir: HirId) -> Option<IndexSet<SymbolId>> {
+    let mut visitor = Visitor::new(cx);
+    visitor.calls.push(IndexSet::new());
+    let fails = visitor.visit(hir, true);
+    let calls = visitor.calls.pop().unwrap_or_default();
+    (!fails).then_some(calls)
+}
+
+/// Whether calling the function value with arguments that aren't known may fail, outside of a
+/// function body.
+pub(crate) fn value_call_may_fail(cx: &impl AnalysisContext, hir: HirId) -> bool {
+    Visitor::new(cx).value_call_may_fail(hir, false)
 }
 
 /// Whether calling a function may fail, and the parameters whose function values it calls, which
@@ -72,6 +92,9 @@ pub(crate) fn resolve_callee(db: &Database, mut callee: HirId) -> Callee {
                 Symbol::Binding(binding) if seen.insert(*symbol) => {
                     callee = binding.value.hir;
                 }
+                Symbol::Constant(constant) if seen.insert(*symbol) => {
+                    callee = constant.value.hir;
+                }
                 Symbol::Binding(_)
                 | Symbol::Constant(_)
                 | Symbol::Unresolved
@@ -106,6 +129,14 @@ struct Visitor<'a, C> {
     lowest_assumption: usize,
     /// The parameters whose function values are called by each function body being checked.
     calls: Vec<IndexSet<SymbolId>>,
+    /// Whether each substituted value may fail, by whether it's in a function body, so that a
+    /// value referenced many times (such as through a chain of inline bindings) is only checked
+    /// once.
+    substituted: HashMap<(SymbolId, bool), bool>,
+    /// How many times a result depended on something other than the value being checked, which
+    /// is a call to a parameter's value, an assumption about a recursive call, or a value that
+    /// references itself. A value that can't fail is only cached if this didn't change.
+    dependencies: usize,
 }
 
 impl<'a, C: AnalysisContext> Visitor<'a, C> {
@@ -116,6 +147,8 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             assumed: IndexMap::new(),
             lowest_assumption: usize::MAX,
             calls: Vec::new(),
+            substituted: HashMap::new(),
+            dependencies: 0,
         }
     }
 
@@ -229,12 +262,37 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
                     return false;
                 };
 
+                let key = (symbol, in_body);
+
+                let cached = self.substituted.get(&key).copied().or_else(|| {
+                    let shared = self.cx.substitution_failures().borrow();
+                    shared.get(&key).copied()
+                });
+
+                if let Some(fails) = cached {
+                    return fails;
+                }
+
                 if !self.visiting.insert(symbol) {
+                    self.dependencies += 1;
                     return false;
                 }
 
+                let dependencies = self.dependencies;
                 let fails = self.visit(value, in_body);
                 self.visiting.remove(&symbol);
+
+                if fails || self.dependencies == dependencies {
+                    self.substituted.insert(key, fails);
+
+                    if self.cx.shares_substitution(symbol, fails) {
+                        self.cx
+                            .substitution_failures()
+                            .borrow_mut()
+                            .insert(key, fails);
+                    }
+                }
+
                 fails
             }
             Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => false,
@@ -243,15 +301,12 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 
     /// Whether the call may fail, other than in evaluating its arguments.
     fn visit_call(&mut self, callee: HirId, args: &[HirId], in_body: bool) -> bool {
-        match resolve_callee(self.db(), callee) {
-            Callee::Function(function) => {
-                (!in_body && self.cx.captures_may_fail(function))
-                    || self.call_may_fail(function, args, in_body)
-            }
-            Callee::Parameter(parameter) => self.parameter_call_may_fail(parameter, in_body),
-            // The function is only known at runtime, so it could do anything
-            Callee::Unknown => true,
-        }
+        let Callee::Function(function) = resolve_callee(self.db(), callee) else {
+            return self.value_call_may_fail(callee, in_body);
+        };
+
+        (!in_body && self.cx.captures_may_fail(function))
+            || self.call_may_fail(function, args, in_body)
     }
 
     /// Whether calling the function with the arguments may fail, including the calls it makes to
@@ -288,24 +343,9 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
     /// Whether calling the function value with arguments that aren't known may fail.
     fn value_call_may_fail(&mut self, value: HirId, in_body: bool) -> bool {
         match resolve_callee(self.db(), value) {
-            Callee::Function(function) => {
-                let failure = self.function_may_fail(function);
-
-                if failure.fails {
-                    return true;
-                }
-
-                let Symbol::Function(symbol) = self.db().symbol(function) else {
-                    return true;
-                };
-
-                // The values of its own parameters aren't known, but those it captured are
-                failure.calls.iter().any(|&parameter| {
-                    symbol.parameters.contains(&parameter)
-                        || self.parameter_call_may_fail(parameter, in_body)
-                })
-            }
+            Callee::Function(function) => self.call_may_fail(function, &[], in_body),
             Callee::Parameter(parameter) => self.parameter_call_may_fail(parameter, in_body),
+            // The function is only known at runtime, so it could do anything
             Callee::Unknown => true,
         }
     }
@@ -319,6 +359,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         };
 
         calls.insert(parameter);
+        self.dependencies += 1;
         false
     }
 
@@ -334,6 +375,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 
         if let Some(&assumption) = self.assumed.get(&function) {
             self.lowest_assumption = self.lowest_assumption.min(assumption);
+            self.dependencies += 1;
             return FunctionFailure::default();
         }
 

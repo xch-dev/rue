@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use rue_diagnostic::{Lint, Note, SrcLoc};
 use rue_hir::{
-    Block, Declaration, FailureAnalysis, FunctionCall, FunctionKind, Hir, HirId, Statement, Symbol,
-    SymbolId,
+    Block, Database, Declaration, FailureAnalysis, FunctionCall, FunctionKind, Hir, HirId,
+    Statement, Symbol, SymbolId,
 };
 
 use crate::{HirLintPass, LintContext};
@@ -18,8 +18,8 @@ use crate::{HirLintPass, LintContext};
 #[derive(Debug, Default)]
 pub(crate) struct InlineValueMayFail {
     failures: FailureAnalysis,
-    /// Whether the body of each `inline fn` always evaluates each of its parameters.
-    evaluated_parameters: HashMap<(SymbolId, SymbolId), bool>,
+    /// Whether the body of the `inline fn` that each parameter belongs to always evaluates it.
+    evaluated_parameters: HashMap<SymbolId, bool>,
 }
 
 impl HirLintPass for InlineValueMayFail {
@@ -27,46 +27,9 @@ impl HirLintPass for InlineValueMayFail {
         &[Lint::InlineValueMayFail]
     }
 
-    fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
+    fn check_hir(&mut self, cx: &mut LintContext<'_>, _hir: HirId, node: &Hir) {
         if let Hir::FunctionCall(call) = node {
             self.check_call(cx, call);
-        }
-
-        // The value of an inline constant is the root of the walk over its declaration
-        if cx.parent().is_some() {
-            return;
-        }
-
-        let Some(Declaration::Symbol(symbol)) = cx.enclosing_declaration() else {
-            return;
-        };
-
-        let Symbol::Constant(constant) = cx.db().symbol(symbol) else {
-            return;
-        };
-
-        if !constant.inline || constant.value.hir != hir {
-            return;
-        }
-
-        let Some(srcloc) = constant
-            .name
-            .as_ref()
-            .and_then(|name| name.srcloc())
-            .cloned()
-        else {
-            return;
-        };
-
-        // There's no single place that a constant is evaluated, so any reference to it might be
-        // somewhere that isn't always evaluated
-        if self.failures.may_fail(cx.db(), hir) {
-            report(
-                cx,
-                srcloc,
-                "This `inline const` can fail, but it's only evaluated where it's referenced, so its check is skipped wherever it isn't",
-                "Remove `inline` to evaluate it whenever the program references it",
-            );
         }
     }
 
@@ -99,6 +62,40 @@ impl HirLintPass for InlineValueMayFail {
             "Remove `inline` to always evaluate it here",
         );
     }
+
+    // There's no single place that a constant is evaluated, so any reference to an inline
+    // constant might be somewhere that isn't always evaluated
+    fn finish(&mut self, cx: &mut LintContext<'_>) {
+        let db = cx.db();
+        let mut reports = Vec::new();
+
+        for declaration in db.relevant_declarations() {
+            let Declaration::Symbol(symbol) = declaration else {
+                continue;
+            };
+
+            let Symbol::Constant(constant) = db.symbol(symbol) else {
+                continue;
+            };
+
+            if !constant.inline || !self.failures.may_fail(db, constant.value.hir) {
+                continue;
+            }
+
+            if let Some(srcloc) = constant.name.as_ref().and_then(|name| name.srcloc()) {
+                reports.push(srcloc.clone());
+            }
+        }
+
+        for srcloc in reports {
+            report(
+                cx,
+                srcloc,
+                "This `inline const` can fail, but it's only evaluated where it's referenced, so its check is skipped wherever it isn't",
+                "Remove `inline` to evaluate it whenever the program references it",
+            );
+        }
+    }
 }
 
 impl InlineValueMayFail {
@@ -120,19 +117,22 @@ impl InlineValueMayFail {
         }
 
         let fixed = symbol.fixed_parameters();
-        let rest = (!symbol.nil_terminated)
-            .then(|| symbol.parameters.last().copied())
-            .flatten();
+
+        // The arguments after the fixed parameters are passed to the rest parameter as a list
+        let rest = symbol.parameters.get(fixed.len()).copied();
 
         let mut skipped = Vec::new();
 
         for (index, &arg) in call.args.iter().enumerate() {
-            // The arguments after the fixed parameters are passed to the rest parameter as a list
             let Some(parameter) = fixed.get(index).copied().or(rest) else {
                 continue;
             };
 
-            if !self.failures.may_fail(db, arg) || self.always_evaluated(cx, function, parameter) {
+            // An inline binding or constant is reported where it's defined instead
+            if is_inline_value(db, arg)
+                || !self.failures.may_fail(db, arg)
+                || self.always_evaluated(db, symbol.body, parameter)
+            {
                 continue;
             }
 
@@ -157,39 +157,38 @@ impl InlineValueMayFail {
         }
     }
 
-    fn always_evaluated(
-        &mut self,
-        cx: &LintContext<'_>,
-        function: SymbolId,
-        parameter: SymbolId,
-    ) -> bool {
-        if let Some(&evaluated) = self.evaluated_parameters.get(&(function, parameter)) {
+    fn always_evaluated(&mut self, db: &Database, body: HirId, parameter: SymbolId) -> bool {
+        if let Some(&evaluated) = self.evaluated_parameters.get(&parameter) {
             return evaluated;
         }
 
-        let Symbol::Function(symbol) = cx.db().symbol(function) else {
-            return true;
-        };
-
-        let evaluated = self
-            .failures
-            .always_evaluated(cx.db(), parameter, symbol.body);
-
-        self.evaluated_parameters
-            .insert((function, parameter), evaluated);
-
+        let evaluated = self.failures.always_evaluated(db, parameter, body);
+        self.evaluated_parameters.insert(parameter, evaluated);
         evaluated
     }
 }
 
-fn symbol_name(db: &rue_hir::Database, symbol: SymbolId) -> String {
-    let name = match db.symbol(symbol) {
-        Symbol::Function(function) => function.name.as_ref(),
-        Symbol::Parameter(parameter) => parameter.name.as_ref(),
-        _ => None,
+/// Whether the HIR is a reference to an inline binding or constant.
+fn is_inline_value(db: &Database, hir: HirId) -> bool {
+    let Hir::Reference(symbol) = db.hir(db.without_casts(hir)) else {
+        return false;
     };
 
-    name.map_or_else(String::new, |name| name.text().to_string())
+    match db.symbol(*symbol) {
+        Symbol::Binding(binding) => binding.inline,
+        Symbol::Constant(constant) => constant.inline,
+        Symbol::Function(_)
+        | Symbol::Parameter(_)
+        | Symbol::Unresolved
+        | Symbol::Module(_)
+        | Symbol::Builtin(_) => false,
+    }
+}
+
+fn symbol_name(db: &Database, symbol: SymbolId) -> String {
+    db.symbol(symbol)
+        .name()
+        .map_or_else(String::new, |name| name.text().to_string())
 }
 
 fn report(cx: &mut LintContext<'_>, srcloc: SrcLoc, message: &str, note: &str) {

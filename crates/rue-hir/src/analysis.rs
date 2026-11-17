@@ -14,6 +14,8 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
+use indexmap::IndexSet;
+
 use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
 
 pub(crate) use evaluation::*;
@@ -27,9 +29,15 @@ pub(crate) trait AnalysisContext {
     /// than read from the environment.
     fn substituted_value(&self, symbol: SymbolId) -> Option<HirId>;
 
-    /// Whether the value of the binding, which isn't `inline`, is evaluated, either at its let
-    /// statement or where it's referenced.
+    /// Whether the value of the binding, which isn't `inline`, may be evaluated, either at its
+    /// let statement or where it's referenced. This is used to check whether the value may fail,
+    /// so it can include bindings whose values can't fail.
     fn is_evaluated(&self, binding: SymbolId) -> bool;
+
+    /// Whether the value of the binding, which isn't `inline`, is evaluated whenever its let
+    /// statement is, given that it references a value that may fail. The statements and body are
+    /// the rest of the block after the let statement.
+    fn let_evaluates(&self, binding: SymbolId, rest: &[Statement], body: Option<HirId>) -> bool;
 
     /// Whether creating a closure for the function, or calling it directly, evaluates an argument
     /// of an inlined function that may fail, since the arguments it captures are evaluated then.
@@ -41,17 +49,27 @@ pub(crate) trait AnalysisContext {
 
     /// Whether calling each function may fail, which is shared between checks.
     fn function_failures(&self) -> &RefCell<HashMap<SymbolId, FunctionFailure>>;
+
+    /// Whether the value substituted for each symbol may fail, inside of a function body or not,
+    /// for the values whose result doesn't depend on where they're referenced, which is shared
+    /// between checks.
+    fn substitution_failures(&self) -> &RefCell<HashMap<(SymbolId, bool), bool>>;
+
+    /// Whether the result for the value substituted for the symbol can be shared between checks.
+    fn shares_substitution(&self, symbol: SymbolId, fails: bool) -> bool;
 }
 
 /// The checks for code as it's written, without knowing what's inlined automatically.
 ///
-/// An `inline` binding or constant is evaluated where it's referenced. Any other binding or
-/// constant whose value may fail is always evaluated when its let statement is reached, or when
-/// the program starts, so a reference to it can't fail. The parameters of a function can't fail
-/// either, since a check in an argument is kept at the call.
+/// An `inline` binding or constant is evaluated where it's referenced. Any other binding whose
+/// value may fail is always evaluated when its let statement is reached, so a reference to it
+/// can't fail. A constant is checked where it's referenced, since it's only evaluated if it's
+/// referenced. The parameters of a function can't fail either, since a check in an argument is
+/// kept at the call.
 #[derive(Debug, Default, Clone)]
 pub struct FailureAnalysis {
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
+    substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
 }
 
 impl FailureAnalysis {
@@ -82,10 +100,22 @@ impl FailureAnalysis {
         Evaluation::new(&self.context(db), target).hir(hir)
     }
 
+    /// Whether evaluating the HIR, which is in a function body, may fail other than by calling the
+    /// function values of parameters, and if not, which parameters' values it calls.
+    pub(crate) fn body_calls(&self, db: &Database, hir: HirId) -> Option<IndexSet<SymbolId>> {
+        body_calls(&self.context(db), hir)
+    }
+
+    /// Whether calling the function value with arguments that aren't known may fail.
+    pub(crate) fn value_call_may_fail(&self, db: &Database, hir: HirId) -> bool {
+        value_call_may_fail(&self.context(db), hir)
+    }
+
     fn context<'a>(&'a self, db: &'a Database) -> WrittenContext<'a> {
         WrittenContext {
             db,
             function_failures: &self.function_failures,
+            substitution_failures: &self.substitution_failures,
         }
     }
 }
@@ -93,6 +123,7 @@ impl FailureAnalysis {
 struct WrittenContext<'a> {
     db: &'a Database,
     function_failures: &'a RefCell<HashMap<SymbolId, FunctionFailure>>,
+    substitution_failures: &'a RefCell<HashMap<(SymbolId, bool), bool>>,
 }
 
 impl AnalysisContext for WrittenContext<'_> {
@@ -102,15 +133,8 @@ impl AnalysisContext for WrittenContext<'_> {
 
     fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
         match self.db.symbol(symbol) {
-            Symbol::Binding(binding) if binding.inline => Some(binding.value.hir),
-            Symbol::Constant(constant) if constant.inline => Some(constant.value.hir),
-            Symbol::Binding(_)
-            | Symbol::Constant(_)
-            | Symbol::Function(_)
-            | Symbol::Parameter(_)
-            | Symbol::Unresolved
-            | Symbol::Module(_)
-            | Symbol::Builtin(_) => None,
+            Symbol::Constant(constant) => Some(constant.value.hir),
+            _ => inline_value(self.db, symbol),
         }
     }
 
@@ -118,6 +142,26 @@ impl AnalysisContext for WrittenContext<'_> {
     // it may fail, so it's evaluated whenever that matters
     fn is_evaluated(&self, _binding: SymbolId) -> bool {
         true
+    }
+
+    // The dependency graph only evaluates a binding that's never referenced if it may fail, which
+    // it might not as written, such as one that only references an argument of an `inline fn`
+    fn let_evaluates(&self, binding: SymbolId, rest: &[Statement], body: Option<HirId>) -> bool {
+        let Symbol::Binding(symbol) = self.db.symbol(binding) else {
+            return false;
+        };
+
+        if may_fail(self, symbol.value.hir) {
+            return true;
+        }
+
+        let mut search = References {
+            db: self.db,
+            target: binding,
+            visited: HashSet::new(),
+        };
+
+        search.block(rest, body)
     }
 
     fn captures_may_fail(&self, _function: SymbolId) -> bool {
@@ -140,6 +184,30 @@ impl AnalysisContext for WrittenContext<'_> {
 
     fn function_failures(&self) -> &RefCell<HashMap<SymbolId, FunctionFailure>> {
         self.function_failures
+    }
+
+    fn substitution_failures(&self) -> &RefCell<HashMap<(SymbolId, bool), bool>> {
+        self.substitution_failures
+    }
+
+    // What's substituted as written never changes
+    fn shares_substitution(&self, _symbol: SymbolId, _fails: bool) -> bool {
+        true
+    }
+}
+
+/// The value of an `inline` binding or constant, which is evaluated where it's referenced.
+fn inline_value(db: &Database, symbol: SymbolId) -> Option<HirId> {
+    match db.symbol(symbol) {
+        Symbol::Binding(binding) if binding.inline => Some(binding.value.hir),
+        Symbol::Constant(constant) if constant.inline => Some(constant.value.hir),
+        Symbol::Binding(_)
+        | Symbol::Constant(_)
+        | Symbol::Function(_)
+        | Symbol::Parameter(_)
+        | Symbol::Unresolved
+        | Symbol::Module(_)
+        | Symbol::Builtin(_) => None,
     }
 }
 
@@ -168,13 +236,8 @@ impl References<'_> {
                     return true;
                 }
 
-                let value = match db.symbol(*symbol) {
-                    Symbol::Binding(binding) if binding.inline => binding.value.hir,
-                    Symbol::Constant(constant) if constant.inline => constant.value.hir,
-                    _ => return false,
-                };
-
-                self.visited.insert(*symbol) && self.hir(value)
+                inline_value(db, *symbol)
+                    .is_some_and(|value| self.visited.insert(*symbol) && self.hir(value))
             }
             Hir::Lambda(lambda) => {
                 let Symbol::Function(function) = db.symbol(*lambda) else {
@@ -183,16 +246,23 @@ impl References<'_> {
 
                 self.visited.insert(*lambda) && self.hir(function.body)
             }
-            Hir::Block(block) => {
-                block.statements.iter().any(|statement| match statement {
-                    Statement::Let(symbol, _) => match db.symbol(*symbol) {
-                        Symbol::Binding(binding) => self.hir(binding.value.hir),
-                        _ => false,
-                    },
-                    _ => statement.hirs().any(|hir| self.hir(hir)),
-                }) || block.body.is_some_and(|body| self.hir(body))
-            }
+            Hir::Block(block) => self.block(&block.statements, block.body),
             _ => node.children().any(|child| self.hir(child)),
         }
+    }
+
+    fn block(&mut self, statements: &[Statement], body: Option<HirId>) -> bool {
+        statements.iter().any(|statement| match *statement {
+            Statement::Let(symbol, _) => match self.db.symbol(symbol) {
+                Symbol::Binding(binding) => self.hir(binding.value.hir),
+                Symbol::Constant(_)
+                | Symbol::Function(_)
+                | Symbol::Parameter(_)
+                | Symbol::Unresolved
+                | Symbol::Module(_)
+                | Symbol::Builtin(_) => false,
+            },
+            _ => statement.hirs().any(|hir| self.hir(hir)),
+        }) || body.is_some_and(|body| self.hir(body))
     }
 }

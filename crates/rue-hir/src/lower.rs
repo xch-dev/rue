@@ -74,6 +74,9 @@ pub struct Lowerer<'d, 'a, 'g> {
     substitutions: RefCell<HashMap<SymbolId, bool>>,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
+    /// Whether the value of each constant may fail, for the ones that can't (see
+    /// [`AnalysisContext::shares_substitution`]).
+    substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     /// What's always evaluated when the program is run, which constants are checked against.
     constant_roots: OnceCell<Vec<HirId>>,
 }
@@ -123,6 +126,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             dependencies: RefCell::default(),
             substitutions: RefCell::default(),
             function_failures: RefCell::default(),
+            substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
         }
     }
