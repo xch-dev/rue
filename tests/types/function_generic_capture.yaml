@@ -14,12 +14,13 @@ tests:
   byte_cost: 2196000
   total_cost: 2202191
 - name: recursive_function_type_without_mappings
-  program: (q . 42)
-  debug_program: (q . 42)
+  program: (i () (a (a 2 (q (q . 2))) (q 3)) (q . 42))
+  debug_program: (a (q 3 () (a 2 (c (q . 3) ())) (q . 42)) (c (a 2 (c (c (q . 1) (q . 2)) ())) 1))
+  solution: ((q . 1))
   output: "42"
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
+  runtime_cost: 432
+  byte_cost: 396000
+  total_cost: 396432
 - name: generic_function_result_is_inferred
   program: (a (q 1 . 5) (q (q . 2)))
   debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))

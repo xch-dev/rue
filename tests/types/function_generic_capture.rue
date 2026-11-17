@@ -44,6 +44,8 @@ test fn recursive_function_type_is_renamed() -> Int {
     n + q.first
 }
 
+// The unused call is evaluated, since a call to a function value may fail, so the solution passes
+// `(q . 1)` as `f`, which returns the program `1`, which returns its arguments when called
 test fn recursive_function_type_without_mappings(f: F<Int>) -> Int {
     let g = f((1, 2));
     let _h = g(3);

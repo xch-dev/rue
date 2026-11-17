@@ -60,6 +60,18 @@ pub struct FunctionSymbol {
     pub kind: FunctionKind,
 }
 
+impl FunctionSymbol {
+    /// The parameters that each take a single argument, which is all of them unless the last one
+    /// is a rest parameter, which takes the remaining arguments as a list.
+    pub fn fixed_parameters(&self) -> &[SymbolId] {
+        if self.nil_terminated {
+            &self.parameters
+        } else {
+            &self.parameters[..self.parameters.len().saturating_sub(1)]
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FunctionKind {
     BinaryTree,

@@ -1,0 +1,181 @@
+//! Decides when a value that may fail can be inlined, so that inlining never drops a check, or
+//! moves it somewhere that's only evaluated some of the time.
+//!
+//! A binding, constant or argument that's referenced once is normally evaluated where it's
+//! referenced. That's only done for a value that may fail (see [`may_fail`]) if the reference is
+//! always evaluated whenever the value would have been, which is at the let statement for a
+//! binding, at the start of the program for a constant, and at the call for an argument.
+//! Otherwise, it's bound like it would be if it were referenced more than once, or evaluated for
+//! its effect if it's never referenced.
+//!
+//! A binding that's never referenced is evaluated for its effect if it may fail, which the
+//! dependency graph decides (see [`crate::DependencyGraph::is_effect`]).
+
+use std::{cell::RefCell, collections::HashMap};
+
+use crate::{
+    Database, FunctionKind, Hir, HirId, Symbol, SymbolId,
+    analysis::{AnalysisContext, Evaluation, FunctionFailure, may_fail},
+};
+
+use super::Lowerer;
+
+impl Lowerer<'_, '_, '_> {
+    /// Whether the binding or constant, which is referenced at most once and isn't `inline`, can
+    /// be evaluated where it's referenced rather than bound. This is cached, since it's needed
+    /// each time the symbol is grouped, captured or referenced.
+    pub(super) fn can_substitute(&self, symbol: SymbolId) -> bool {
+        if self.graph.references(symbol) == 0 {
+            return true;
+        }
+
+        if let Some(&substitute) = self.substitutions.borrow().get(&symbol) {
+            return substitute;
+        }
+
+        let substitute = self.decide_substitution(symbol);
+        self.substitutions.borrow_mut().insert(symbol, substitute);
+        substitute
+    }
+
+    /// Forgets whether the binding can be substituted, since its let statement is being lowered
+    /// again, which might be in a call to an `inline fn` with different arguments than before.
+    /// It's decided again when the statement's bindings are grouped.
+    pub(super) fn forget_substitution(&self, symbol: SymbolId) {
+        self.substitutions.borrow_mut().remove(&symbol);
+    }
+
+    fn decide_substitution(&self, symbol: SymbolId) -> bool {
+        match self.db.symbol(symbol) {
+            Symbol::Binding(binding) => {
+                !may_fail(self, binding.value.hir) || self.binding_always_evaluated(symbol)
+            }
+            Symbol::Constant(constant) => {
+                !may_fail(self, constant.value.hir) || self.constant_always_evaluated(symbol)
+            }
+            Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Builtin(_) => true,
+        }
+    }
+
+    /// Whether the rest of the block after the binding's let statement always evaluates its
+    /// single reference, or fails.
+    fn binding_always_evaluated(&self, symbol: SymbolId) -> bool {
+        let Some((block, index)) = self.graph.let_statement(symbol) else {
+            return false;
+        };
+
+        let Hir::Block(block) = self.db.hir(block) else {
+            return false;
+        };
+
+        // The walk stops at a `return` or `raise`, so it doesn't reach what isn't lowered
+        Evaluation::new(self, symbol).block(&block.statements[index + 1..], block.body)
+    }
+
+    /// Whether the constant's single reference is always evaluated when the program is run, or
+    /// fails. Constants that are referenced more than once are evaluated at the start of the
+    /// program, so a reference in one of their values counts too.
+    fn constant_always_evaluated(&self, symbol: SymbolId) -> bool {
+        let roots = self
+            .constant_roots
+            .get_or_init(|| self.find_constant_roots());
+        let mut evaluation = Evaluation::new(self, symbol);
+        roots.iter().any(|&root| evaluation.hir(root))
+    }
+
+    /// What's always evaluated when the program is run: the body of `main`, and the values of the
+    /// constants that are referenced more than once, since they're bound before it.
+    fn find_constant_roots(&self) -> Vec<HirId> {
+        let Symbol::Function(main) = self.db.symbol(self.main) else {
+            return Vec::new();
+        };
+
+        if main.kind == FunctionKind::External {
+            return Vec::new();
+        }
+
+        let mut roots = vec![main.body];
+
+        for &dependency in self.dependencies(self.main, false).iter() {
+            if let Symbol::Constant(constant) = self.db.symbol(dependency)
+                && !constant.inline
+                && self.graph.references(dependency) > 1
+            {
+                roots.push(constant.value.hir);
+            }
+        }
+
+        roots
+    }
+
+    /// Whether the body of a function that's being inlined always evaluates the parameter's
+    /// single reference, or fails, so the argument can be substituted for it.
+    pub(super) fn parameter_always_evaluated(&self, body: HirId, parameter: SymbolId) -> bool {
+        self.graph.references(parameter) == 1 && Evaluation::new(self, parameter).hir(body)
+    }
+}
+
+impl AnalysisContext for Lowerer<'_, '_, '_> {
+    fn db(&self) -> &Database {
+        self.db
+    }
+
+    /// This is the value of an inline binding or constant, or of one that's inlined automatically,
+    /// or the argument for a parameter of an inlined function.
+    fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
+        if let Some(hir) = self.inline_argument(symbol) {
+            return Some(hir);
+        }
+
+        let (value, inline) = match self.db.symbol(symbol) {
+            Symbol::Binding(binding) => (binding.value.hir, binding.inline),
+            Symbol::Constant(constant) => (constant.value.hir, constant.inline),
+            Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Builtin(_) => return None,
+        };
+
+        // A binding or constant whose single reference hasn't been decided yet might be
+        // substituted, so its value is checked where it's referenced
+        let substituted = inline
+            || (self.options.auto_inline
+                && self.graph.references(symbol) <= 1
+                && self
+                    .substitutions
+                    .borrow()
+                    .get(&symbol)
+                    .copied()
+                    .unwrap_or(true));
+
+        substituted.then_some(value)
+    }
+
+    fn captures_may_fail(&self, function: SymbolId) -> bool {
+        if self.inline_symbols.iter().all(HashMap::is_empty) {
+            return false;
+        }
+
+        self.dependencies(function, true).iter().any(|&capture| {
+            self.inline_argument(capture)
+                .is_some_and(|hir| !self.is_static_hir(hir) && may_fail(self, hir))
+        })
+    }
+
+    fn is_evaluated(&self, binding: SymbolId) -> bool {
+        self.graph.references(binding) > 0 || self.graph.is_effect(binding)
+    }
+
+    fn captures(&self, function: SymbolId, parameter: SymbolId) -> bool {
+        self.dependencies(function, true).contains(&parameter)
+    }
+
+    fn function_failures(&self) -> &RefCell<HashMap<SymbolId, FunctionFailure>> {
+        &self.function_failures
+    }
+}

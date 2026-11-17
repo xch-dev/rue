@@ -754,10 +754,211 @@ fn unused_division(a: Int, b: Int) -> Int {
     a
 }
 
-// A binding that's never referenced isn't evaluated, so a function that only divides in one can't
-// fail
-test fn unused_binding_in_function_is_inlined(a: Int, b: Int, flag: Bool) -> Int {
+// A binding that's never referenced is still evaluated if it may fail, so a function that only
+// divides in one may fail too
+test fn unused_binding_in_function_is_evaluated(a: Int, b: Int, flag: Bool) -> Int {
     let y = unused_division(a, b);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+// A binding whose value may fail is evaluated for its effect, even if it's never referenced
+test fn unused_checked_binding(password: Bytes) -> Int {
+    let _checked = check_password(password);
+    42
+}
+
+// A binding that can't fail isn't evaluated if it's never referenced, as before
+test fn unused_safe_binding_is_dropped(x: Int) -> Int {
+    let _y = x * 2;
+    5
+}
+
+// The value of a binding that's only referenced by an unused binding that may fail is substituted
+// into it, rather than bound
+test fn binding_used_by_unused_binding(x: Int) -> Int {
+    let doubled = x * 2;
+    let _checked = check(doubled);
+    5
+}
+
+// An unused binding whose value contains another unused binding that may fail is evaluated, since
+// the inner one is evaluated whenever the outer one is
+test fn nested_unused_bindings(x: Int) -> Int {
+    let _outer = {
+        let _inner = check(x);
+        1
+    };
+    5
+}
+
+// An unused binding in a lambda is evaluated when the lambda is called, so the lambda captures
+// what it needs
+test fn unused_binding_in_lambda(x: Int) -> Int {
+    let f = fn(i: Int) => {
+        let _checked = check(x);
+        i
+    };
+    f(1) + f(2)
+}
+
+inline fn unused_check(a: Int) -> Int {
+    let _checked = check(a);
+    1
+}
+
+// The argument of an `inline fn` is evaluated where it's used, which is the unused binding here
+test fn unused_binding_of_inline_function_argument(x: Int) -> Int {
+    unused_check(x)
+}
+
+// An unused binding that's only reached after an early return isn't evaluated
+test fn unused_binding_after_early_return(x: Int) -> Int {
+    return 5;
+    let _checked = check(x);
+    0
+}
+
+// An unused binding that's only evaluated in one branch only fails when that branch is taken, and
+// is the cheapest way to keep the check, as an effect rather than a binding
+test fn unused_binding_in_branch(x: Int, flag: Bool) -> Int {
+    if flag {
+        let _checked = check(x);
+        1
+    } else {
+        0
+    }
+}
+
+// A function value that's passed to a function is checked where it's passed, since that's where
+// it's known, so one that can't fail is still inlined, as before
+test fn safe_dynamic_call_is_inlined(x: Int, flag: Bool) -> Int {
+    let y = call_twice(fn(i: Int) => i + 1, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn call_bound(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let g = f;
+    g(x) + 1
+}
+
+test fn call_through_binding_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let y = call_bound(fn(i: Int) => check(i), x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn forward_call(f: fn(x: Int) -> Int, x: Int) -> Int {
+    call_twice(f, x)
+}
+
+test fn forwarded_call_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let y = forward_call(fn(i: Int) => check(i), x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn safe_forwarded_call_is_inlined(x: Int, flag: Bool) -> Int {
+    let y = forward_call(fn(i: Int) => i + 1, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn call_captured(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let g = fn(i: Int) => f(i) + 1;
+    g(x) + g(x)
+}
+
+test fn captured_call_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let y = call_captured(fn(i: Int) => check(i), x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn apply_each(f: fn(x: Int) -> Int, n: Int) -> Int {
+    if n > 0 {
+        f(n) + apply_each(f, n - 1)
+    } else {
+        0
+    }
+}
+
+test fn recursive_call_of_argument_moved_into_branch(x: Int, flag: Bool) -> Int {
+    let y = apply_each(fn(i: Int) => check(x + i), 3);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn safe_recursive_call_of_argument_is_inlined(x: Int, flag: Bool) -> Int {
+    let y = apply_each(fn(i: Int) => x + i, 3);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn apply_swapped(f: fn(x: Int) -> Int, g: fn(x: Int) -> Int, n: Int) -> Int {
+    if n > 0 {
+        f(n) + apply_swapped(g, f, n - 1)
+    } else {
+        0
+    }
+}
+
+// The second function is only called by the recursive call, which swaps the arguments
+test fn recursive_call_swaps_arguments(x: Int, flag: Bool) -> Int {
+    let y = apply_swapped(fn(i: Int) => i, fn(i: Int) => check(x + i), 3);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn apply_even(f: fn(x: Int) -> Int, n: Int) -> Int {
+    if n > 0 {
+        apply_odd(f, n - 1)
+    } else {
+        f(n)
+    }
+}
+
+fn apply_odd(f: fn(x: Int) -> Int, n: Int) -> Int {
+    if n > 0 {
+        apply_even(f, n - 1)
+    } else {
+        0
+    }
+}
+
+// Functions that call each other and call a function value they're passed are treated as if they
+// may fail, even if the value can't, since what the cycle calls isn't known until it's resolved.
+// This binding is kept, unlike before.
+test fn mutually_recursive_call_of_argument_is_kept(x: Int, flag: Bool) -> Int {
+    let y = apply_even(fn(i: Int) => x + i, 4);
     if flag {
         y
     } else {

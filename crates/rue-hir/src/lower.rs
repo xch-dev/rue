@@ -1,7 +1,6 @@
 #![allow(clippy::needless_pass_by_value)]
 
-mod evaluation;
-mod may_fail;
+mod substitution;
 
 use std::{
     cell::{OnceCell, RefCell},
@@ -23,7 +22,7 @@ use crate::{
     Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
 };
 
-use may_fail::may_fail;
+use crate::analysis::{FunctionFailure, may_fail};
 
 #[derive(Debug, Clone)]
 enum SymbolGroup {
@@ -74,7 +73,7 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
     /// Whether calling each function may fail, which is shared between checks.
-    function_failures: RefCell<HashMap<SymbolId, bool>>,
+    function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// What's always evaluated when the program is run, which constants are checked against.
     constant_roots: OnceCell<Vec<HirId>>,
 }
@@ -572,7 +571,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             let mut args = HashMap::new();
             let mut arg_iter = call.args.into_iter();
 
-            for (&parameter, arg) in fixed_parameters(&function).iter().zip(&mut arg_iter) {
+            for (&parameter, arg) in function.fixed_parameters().iter().zip(&mut arg_iter) {
                 args.insert(parameter, arg);
             }
 
@@ -859,6 +858,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             self.forget_substitution(symbol);
         }
 
+        let effects: Vec<SymbolId> = symbols
+            .iter()
+            .copied()
+            .filter(|&symbol| self.graph.is_effect(symbol))
+            .collect();
+
         let binding_groups = self.group_symbols(symbols, false, true);
 
         let mut body_env = env.clone();
@@ -868,6 +873,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let mut expr = self.lower_block(&body_env, stmts, body);
+
+        // The bindings that are never referenced, but may fail, are evaluated for their effect.
+        // Nothing references them, so they're evaluated after the others are bound.
+        for &symbol in effects.iter().rev() {
+            let value = self.lower_symbol_value(&body_env, symbol);
+            expr = self.effect(value, expr);
+        }
 
         for (i, group) in binding_groups.iter().enumerate().rev() {
             expr = self.arena.alloc(Lir::Quote(expr));
@@ -1329,16 +1341,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
             }
         }
-    }
-}
-
-/// The parameters that each take a single argument, which is all of them unless the last one is a
-/// rest parameter, which takes the remaining arguments as a list.
-fn fixed_parameters(function: &FunctionSymbol) -> &[SymbolId] {
-    if function.nil_terminated {
-        &function.parameters
-    } else {
-        &function.parameters[..function.parameters.len().saturating_sub(1)]
     }
 }
 

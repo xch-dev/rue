@@ -6,7 +6,7 @@ use std::{
 use indexmap::IndexSet;
 use rue_options::CompilerOptions;
 
-use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{Database, FailureAnalysis, Hir, HirId, Statement, Symbol, SymbolId};
 
 #[derive(Debug, Clone)]
 pub struct DependencyGraph {
@@ -43,6 +43,17 @@ pub struct DependencyGraph {
 
     // Keeps track of the block and index of the let statement of each binding that has one
     lets: HashMap<SymbolId, (HirId, usize)>,
+
+    // Keeps track of the bindings whose values may fail, which are evaluated for their effect at
+    // their let statements if they're never referenced
+    effects: HashSet<SymbolId>,
+
+    // Keeps track of the bindings whose values may fail that haven't been visited yet, along with
+    // the symbol whose body their let statement is in
+    unvisited_effects: Vec<(Option<SymbolId>, SymbolId)>,
+
+    // Finds whether the values of let statements may fail
+    failures: FailureAnalysis,
 }
 
 impl DependencyGraph {
@@ -59,21 +70,29 @@ impl DependencyGraph {
             referenced: Vec::new(),
             visited: HashSet::new(),
             lets: HashMap::new(),
+            effects: HashSet::new(),
+            unvisited_effects: Vec::new(),
+            failures: FailureAnalysis::new(),
         };
 
         // The symbols are visited depth first, in the order they're referenced, like a recursive
         // traversal would, except that each symbol's whole body is visited before the symbols it
-        // references
-        while let Some(symbol) = graph.pending.pop() {
-            // We've already visited this symbol, so we don't need to track its dependencies again
-            if !graph.visited.insert(symbol) {
-                continue;
+        // references. The bindings that are only evaluated for their effect are visited last.
+        while !graph.pending.is_empty() {
+            while let Some(symbol) = graph.pending.pop() {
+                // We've already visited this symbol, so we don't need to track its dependencies
+                // again
+                if !graph.visited.insert(symbol) {
+                    continue;
+                }
+
+                visit_symbol(db, &mut graph, symbol);
+
+                let referenced = std::mem::take(&mut graph.referenced);
+                graph.pending.extend(referenced.into_iter().rev());
             }
 
-            visit_symbol(db, &mut graph, symbol);
-
-            let referenced = std::mem::take(&mut graph.referenced);
-            graph.pending.extend(referenced.into_iter().rev());
+            visit_effects(&mut graph);
         }
 
         // This happens once everything has been visited, since the symbol a binding destructures
@@ -88,6 +107,12 @@ impl DependencyGraph {
     /// The block that the binding's let statement is in, and its index in the block's statements.
     pub fn let_statement(&self, symbol: SymbolId) -> Option<(HirId, usize)> {
         self.lets.get(&symbol).copied()
+    }
+
+    /// Whether the binding is never referenced, but its value may fail, so it's evaluated for its
+    /// effect at its let statement. Unreferenced bindings are otherwise not evaluated at all.
+    pub fn is_effect(&self, symbol: SymbolId) -> bool {
+        self.effects.contains(&symbol) && self.references(symbol) == 0
     }
 
     pub fn references(&self, symbol: SymbolId) -> usize {
@@ -205,6 +230,8 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                         }
 
                         graph.lets.insert(*stmt, (hir, index));
+
+                        visit_let(db, graph, *stmt);
                     }
                     Statement::Assert(stmt, _) => {
                         visit_hir(db, graph, *stmt, false);
@@ -373,6 +400,52 @@ fn assign_destructured_owner(db: &Database, graph: &mut DependencyGraph, symbol:
 
     for symbol in chain {
         graph.owners.insert(symbol, owner);
+    }
+}
+
+/// A binding whose value may fail is evaluated even if it's never referenced, so that the check
+/// isn't dropped. Whether it's referenced isn't known until the rest of the program has been
+/// visited, so it's only recorded here (see [`visit_effects`]).
+///
+/// A reference to another binding or constant can't fail here (see [`FailureAnalysis`]), so
+/// whether another binding is referenced doesn't change which values may fail.
+fn visit_let(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
+    let Symbol::Binding(binding) = db.symbol(symbol) else {
+        return;
+    };
+
+    if binding.inline || !graph.failures.may_fail(db, binding.value.hir) {
+        return;
+    }
+
+    graph.effects.insert(symbol);
+    graph.unvisited_effects.push((graph.current, symbol));
+}
+
+/// Once everything that's referenced has been visited, the bindings whose values may fail but
+/// that were never referenced are visited, since they're evaluated for their effect. They don't
+/// count as references, but the enclosing function still depends on them, so that it captures what
+/// their values need. Visiting them can reach more of these, so this repeats until there are none.
+///
+/// These are only added at the end, so that the dependencies of a program without any are in the
+/// same order as if they didn't exist.
+fn visit_effects(graph: &mut DependencyGraph) {
+    let effects = std::mem::take(&mut graph.unvisited_effects);
+
+    for (current, symbol) in effects.into_iter().rev() {
+        if graph.visited.contains(&symbol) || graph.references(symbol) > 0 {
+            continue;
+        }
+
+        if let Some(current) = current {
+            graph
+                .dependencies
+                .entry(current)
+                .or_default()
+                .insert(symbol);
+        }
+
+        graph.pending.push(symbol);
     }
 }
 
