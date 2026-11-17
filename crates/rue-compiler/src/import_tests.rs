@@ -70,16 +70,14 @@ fn private_items_cannot_be_imported() {
         ",
     );
 
-    // The errors are the same as for a path to the items. The items aren't imported, so their
-    // uses are reported too
+    // The errors are the same as for a path to the items. The items aren't imported, but their
+    // uses aren't reported again
     assert_eq!(
         compiled.errors(),
         [
             "2:23 PrivateSymbol(\"secret\", \"inner\")",
             "3:23 PrivateType(\"Secret\", \"inner\")",
             "4:24 PrivateSymbol(\"hidden\", \"inner\")",
-            "15:22 UndeclaredType(\"Secret\")",
-            "16:13 UndeclaredSymbol(\"secret\")",
         ]
     );
 }
@@ -110,12 +108,12 @@ fn private_items_are_not_reported_when_a_public_item_has_the_same_name() {
     );
 
     // Only the public item with each name is imported, so the private type `Value` and the
-    // private constant `Other` can't be used. Types are declared and imported before symbols, so
-    // this checks that the private type isn't imported before the public constant is declared.
+    // private constant `Other` can't be used. Types are declared before symbols are filled in,
+    // so this checks that the private type isn't imported before the public constant is.
     assert_eq!(
         compiled.errors(),
         [
-            "13:22 UndeclaredType(\"Value\")",
+            "13:22 ExpectedType(\"Value\")",
             "18:13 ExpectedSymbol(\"Other\")",
         ]
     );
@@ -146,7 +144,7 @@ fn private_items_are_not_imported_before_a_reexported_public_item_with_the_same_
 
     // The public constant only reaches `inner` once the glob import is resolved, after the
     // private type has been seen, which still isn't imported
-    assert_eq!(compiled.errors(), ["13:22 UndeclaredType(\"Value\")"]);
+    assert_eq!(compiled.errors(), ["13:22 ExpectedType(\"Value\")"]);
     assert_eq!(compiled.symbol_origin("Value"), "inner::nested");
 }
 
@@ -202,7 +200,8 @@ fn items_cannot_be_imported_through_a_private_module() {
 
     // Each import through the private module is reported, including those that share the
     // resolved path, and the imports still resolve. Importing the module itself is reported
-    // like any other private item, and like one it isn't imported, so its use is reported too.
+    // like any other private item, and like one it isn't imported, but its use isn't reported
+    // again.
     assert_eq!(
         compiled.errors(),
         [
@@ -211,7 +210,6 @@ fn items_cannot_be_imported_through_a_private_module() {
             "4:23 PrivateSymbol(\"hidden\", \"outer\")",
             "5:23 PrivateSymbol(\"hidden\", \"outer\")",
             "6:24 PrivateSymbol(\"hidden\", \"outer\")",
-            "21:44 UndeclaredSymbol(\"hidden\")",
         ]
     );
     assert_eq!(compiled.symbol_origin("VALUE"), "outer::hidden");
@@ -962,4 +960,290 @@ fn glob_imports_that_bring_in_nothing_are_unused() {
 
     compiled.assert_no_errors();
     assert_eq!(compiled.warnings(), ["2:23 UnusedImport"]);
+}
+
+#[test]
+fn imports_from_an_enclosing_scope_wait_for_its_imports() {
+    // `import V;` and the first segment of `import m::W` are looked up like a use in `deeper`
+    // would be, so they find what `inner` imports rather than the items at the top level, even
+    // though they're resolved first
+    let compiled = compile(
+        "
+        mod a {
+            export const V: Int = 1;
+            export type T = Int;
+        }
+
+        mod z {
+            export mod m {
+                export const W: Int = 2;
+            }
+        }
+
+        const V: Int = 3;
+        type T = Bytes;
+
+        mod m {
+            export const W: Int = 4;
+        }
+
+        mod inner {
+            import a::V;
+            import a::T;
+            import z::m;
+
+            export mod deeper {
+                import V;
+                import T;
+                import m::W;
+
+                export fn value(value: T) -> Int {
+                    V + W + value
+                }
+            }
+        }
+
+        fn main() -> Int {
+            inner::deeper::value(0) + V + m::W
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::deeper::V"), "a");
+    assert_eq!(compiled.type_origin("inner::deeper::T"), "a");
+    assert_eq!(compiled.symbol_origin("inner::deeper::W"), "z::m");
+    // The imports in `inner` are used through the ones in `deeper`
+    assert_eq!(compiled.warnings(), ["14:14 UnusedTypeAlias"]);
+}
+
+#[test]
+fn imports_from_an_enclosing_scope_wait_for_its_glob_imports() {
+    let compiled = compile(
+        "
+        mod a {
+            export const V: Int = 1;
+        }
+
+        const V: Int = 2;
+
+        mod inner {
+            import a::*;
+
+            export mod deeper {
+                export V;
+            }
+        }
+
+        fn main() -> Int {
+            inner::deeper::V + V
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::deeper::V"), "a");
+    assert_eq!(compiled.warnings(), Vec::<String>::new());
+}
+
+#[test]
+fn imports_from_an_enclosing_scope_skip_imports_that_bring_in_nothing() {
+    // `inner`'s glob import never brings in `V`, and its named import only brings in a type, so
+    // once nothing else can be resolved the lookups go past them
+    let compiled = compile(
+        "
+        mod a {
+            export const OTHER: Int = 1;
+            export type V = Int;
+        }
+
+        const V: Int = 2;
+
+        mod inner {
+            import a::*;
+            import a::V;
+
+            export mod deeper {
+                import V;
+
+                export fn value(value: V) -> Int {
+                    V + value + OTHER
+                }
+            }
+        }
+
+        fn main() -> Int {
+            inner::deeper::value(0)
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::deeper::V"), "(root)");
+    assert_eq!(compiled.type_origin("inner::deeper::V"), "a");
+}
+
+#[test]
+fn chains_of_imports_from_enclosing_scopes_resolve_from_the_outside_in() {
+    let compiled = compile(
+        "
+        mod a {
+            export const V: Int = 1;
+        }
+
+        const V: Int = 2;
+
+        mod first {
+            import a::*;
+
+            export mod second {
+                import V;
+
+                export mod third {
+                    import V;
+
+                    export fn value() -> Int {
+                        V
+                    }
+                }
+            }
+        }
+
+        fn main() -> Int {
+            first::second::third::value() + V
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("first::second::third::V"), "a");
+}
+
+#[test]
+fn local_declarations_take_precedence_over_imported_modules() {
+    let compiled = compile(
+        "
+        import m::helper;
+        import m::*;
+
+        mod m {
+            export mod helper {}
+            export mod value {}
+        }
+
+        fn helper() -> Int {
+            1
+        }
+
+        const value: Int = 2;
+
+        fn main() -> Int {
+            helper() + value
+        }
+        ",
+    );
+
+    // Like any named import of a declared name, the import of `helper` is the duplicate. The
+    // glob import is shadowed.
+    assert_eq!(compiled.errors(), ["2:19 DuplicateSymbol(\"helper\")"]);
+    assert_eq!(
+        compiled.reference_origins("main", "helper"),
+        ["`helper`: (root)"]
+    );
+    assert_eq!(
+        compiled.reference_origins("main", "value"),
+        ["`value`: (root)"]
+    );
+}
+
+#[test]
+fn reexports_of_a_local_declaration_ignore_enclosing_modules_with_the_name() {
+    let compiled = compile(
+        "
+        mod thing {}
+
+        mod inner {
+            export thing;
+
+            fn thing() -> Int {
+                1
+            }
+        }
+
+        fn main() -> Int {
+            inner::thing()
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::thing"), "inner");
+}
+
+#[test]
+fn uses_of_a_private_import_are_not_reported_again() {
+    let compiled = compile(
+        "
+        import inner::secret;
+        import inner::Secret;
+
+        mod inner {
+            fn secret() -> Int {
+                1
+            }
+
+            type Secret = Int;
+        }
+
+        mod nested {
+            export fn value() -> Int {
+                secret()
+            }
+        }
+
+        fn main() -> Secret {
+            secret() + nested::value()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:23 PrivateSymbol(\"secret\", \"inner\")",
+            "3:23 PrivateType(\"Secret\", \"inner\")",
+        ]
+    );
+}
+
+#[test]
+fn private_imports_do_not_hide_a_declaration_with_the_same_name() {
+    let compiled = compile(
+        "
+        import inner::secret;
+
+        mod inner {
+            fn secret() -> Int {
+                1
+            }
+        }
+
+        fn secret() -> Int {
+            2
+        }
+
+        fn main() -> Int {
+            secret()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        ["2:23 PrivateSymbol(\"secret\", \"inner\")"]
+    );
+    assert_eq!(
+        compiled.reference_origins("main", "secret"),
+        ["`secret`: (root)"]
+    );
 }

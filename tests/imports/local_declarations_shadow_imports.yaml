@@ -1,7 +1,17 @@
+tests:
+- name: local_declarations_shadow_glob_imports_of_modules
+  program: (q . 2)
+  debug_program: (a (q 2 2 ()) (c (q 1 . 2) ()))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: reexports_use_the_local_declaration
+  program: (q . 3)
+  debug_program: (a (q 2 2 ()) (c (q 1 . 3) ()))
+  output: "3"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
-- Duplicate symbol `value` found in scope at local_declarations_shadow_imports.rue:7:4
-- Unused function `value` at local_declarations_shadow_imports.rue:7:4
-- Duplicate symbol `thing` found in scope at local_declarations_shadow_imports.rue:16:8
-- Unused function `thing` at local_declarations_shadow_imports.rue:16:8
-- Cannot reference module `value` at local_declarations_shadow_imports.rue:22:5
-- Cannot reference module `thing` at local_declarations_shadow_imports.rue:26:5
+- Unused import `*` at local_declarations_shadow_imports.rue:1:11

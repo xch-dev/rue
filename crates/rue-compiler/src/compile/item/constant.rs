@@ -1,17 +1,14 @@
 use log::debug;
 use rue_ast::{AstConstantItem, AstNode};
-use rue_diagnostic::DiagnosticKind;
 use rue_hir::{ConstantSymbol, Declaration, Symbol, SymbolId, Value};
 
 use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type};
 
-pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> SymbolId {
+pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: SymbolId) {
     ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         constant.syntax().text_range(),
     );
-
-    let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 
     ctx.push_declaration(Declaration::Symbol(symbol));
 
@@ -33,25 +30,10 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
     });
 
     if let Some(name) = constant.name() {
-        if ctx.last_scope().symbol(name.text()).is_some() {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::DuplicateSymbol(name.text().to_string()),
-            );
-        } else {
-            ctx.last_scope_mut().insert_symbol(
-                name.text().to_string(),
-                symbol,
-                constant.export().is_some(),
-            );
-        }
-
         ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
 
     ctx.pop_declaration();
-
-    symbol
 }
 
 pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: SymbolId) {

@@ -90,7 +90,7 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 }
 
 pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
-    let (scope, mut declarations) = if let Symbol::Module(ModuleSymbol {
+    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
         scope,
         declarations,
         ..
@@ -104,19 +104,9 @@ pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
     // ctx.push_module(symbol);
-    declare_symbol_items(ctx, module.items(), &mut declarations);
+    declare_symbol_items(ctx, module.items(), &declarations);
     // ctx.pop_module();
     ctx.pop_scope(range.end());
-
-    let Symbol::Module(ModuleSymbol {
-        declarations: updated,
-        ..
-    }) = ctx.symbol_mut(symbol)
-    else {
-        unreachable!();
-    };
-
-    *updated = declarations;
 }
 
 pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {

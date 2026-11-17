@@ -347,33 +347,73 @@ impl Compiler {
         &self.module_stack[..self.module_stack.len() - 1]
     }
 
+    /// Looks up a symbol in a scope and then each enclosing scope. The lookup stops at a scope
+    /// that blocks the name (see [`Scope::block_symbol`]).
     pub fn resolve_symbol_in(
         &self,
         scope: ScopeId,
         name: &str,
     ) -> Option<(SymbolId, Option<ImportId>)> {
-        let mut current = Some(scope);
-
-        while let Some(scope) = current {
-            if let Some(symbol) = self.scope(scope).symbol(name) {
-                return Some((symbol, self.scope(scope).symbol_import(symbol)));
+        self.lookup_in(scope, |scope| {
+            if let Some(symbol) = scope.symbol(name) {
+                Some(Some((symbol, scope.symbol_import(symbol))))
+            } else {
+                scope.is_symbol_blocked(name).then_some(None)
             }
-            current = self.scope(scope).parent();
-        }
-
-        None
+        })
+        .flatten()
     }
 
+    /// Looks up a type in a scope and then each enclosing scope. The lookup stops at a scope that
+    /// blocks the name (see [`Scope::block_type`]).
     pub fn resolve_type_in(
         &self,
         scope: ScopeId,
         name: &str,
     ) -> Option<(TypeId, Option<ImportId>)> {
+        self.lookup_in(scope, |scope| {
+            if let Some(ty) = scope.ty(name) {
+                Some(Some((ty, scope.type_import(ty))))
+            } else {
+                scope.is_type_blocked(name).then_some(None)
+            }
+        })
+        .flatten()
+    }
+
+    /// Whether looking up a symbol from a scope stops at a scope that blocks the name, rather
+    /// than finding it or reaching the outermost scope.
+    pub fn is_symbol_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
+        self.lookup_in(scope, |scope| {
+            if scope.symbol(name).is_some() {
+                Some(false)
+            } else {
+                scope.is_symbol_blocked(name).then_some(true)
+            }
+        })
+        .unwrap_or(false)
+    }
+
+    /// Whether looking up a type from a scope stops at a scope that blocks the name, rather than
+    /// finding it or reaching the outermost scope.
+    pub fn is_type_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
+        self.lookup_in(scope, |scope| {
+            if scope.ty(name).is_some() {
+                Some(false)
+            } else {
+                scope.is_type_blocked(name).then_some(true)
+            }
+        })
+        .unwrap_or(false)
+    }
+
+    /// The first result of `find` in a scope and then each enclosing scope.
+    fn lookup_in<T>(&self, scope: ScopeId, find: impl Fn(&Scope) -> Option<T>) -> Option<T> {
         let mut current = Some(scope);
 
         while let Some(scope) = current {
-            if let Some(ty) = self.scope(scope).ty(name) {
-                return Some((ty, self.scope(scope).type_import(ty)));
+            if let Some(found) = find(self.scope(scope)) {
+                return Some(found);
             }
             current = self.scope(scope).parent();
         }

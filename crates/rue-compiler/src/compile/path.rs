@@ -230,7 +230,15 @@ where
             }
             (None, Some((ty, _, type_import))) => PathResult::Type(ty, type_import),
             (None, None) => {
+                // A name whose import failed has already been reported at the import
+                let blocked = !qualified
+                    && match kind {
+                        PathKind::Symbol => ctx.is_symbol_blocked_in(base_scope, name.text()),
+                        PathKind::Type => ctx.is_type_blocked_in(base_scope, name.text()),
+                    };
+
                 match kind {
+                    _ if blocked => {}
                     PathKind::Symbol => ctx.diagnostic(
                         &name,
                         DiagnosticKind::UndeclaredSymbol(name.text().to_string()),

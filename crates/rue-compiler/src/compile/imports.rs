@@ -7,7 +7,8 @@ use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::{DiagnosticKind, Name};
-use rue_hir::{Declaration, Import, ImportId, ImportUser, Items, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, Import, ImportId, ImportUser, Items, Scope, ScopeId, Symbol, SymbolId};
+use rue_types::TypeId;
 
 use crate::{Compiler, SyntaxItemKind};
 
@@ -206,30 +207,78 @@ pub fn resolve_imports(
 ) {
     let mut imports = flatten_imports(ctx, all_modules);
     imports.sort_by(|(_, left), (_, right)| compare_imports(ctx.import(*left), ctx.import(*right)));
-    let targeted_names = imports
-        .iter()
-        .filter_map(|(scope, import)| match &ctx.import(*import).items {
-            Items::Named(name) => Some((*scope, name.text().to_string())),
-            Items::All(_) => None,
-        })
-        .collect::<HashSet<_>>();
-
-    let mut updated = true;
+    let mut resolution = Resolution {
+        diagnostics,
+        named_imports: HashMap::new(),
+        glob_scopes: HashSet::new(),
+        forced: HashSet::new(),
+        deferred: Vec::new(),
+        private_names: Vec::new(),
+    };
     let mut missing_imports = IndexMap::new();
 
-    while updated {
-        updated = false;
+    for &(scope, import) in &imports {
+        match &ctx.import(import).items {
+            Items::Named(name) => resolution
+                .named_imports
+                .entry((scope, name.text().to_string()))
+                .or_default()
+                .push(import),
+            Items::All(_) => {
+                resolution.glob_scopes.insert(scope);
+            }
+        }
+    }
+
+    loop {
+        let mut updated = false;
+        resolution.deferred.clear();
+        resolution.private_names.clear();
 
         for &(import_scope, import) in &imports {
             updated |= resolve_import(
                 ctx,
                 import_scope,
                 import,
-                diagnostics,
                 cache,
+                &mut resolution,
                 &mut missing_imports,
-                &targeted_names,
             );
+        }
+
+        if updated {
+            continue;
+        }
+
+        // Nothing else can be resolved, so the lookups that are waiting for a nearer scope to
+        // bring in a name are made without waiting. The outermost go first, since the imports
+        // that a lookup waits for are in its own scope or an enclosing one.
+        let Some(depth) = resolution.deferred.iter().map(|&(depth, _)| depth).min() else {
+            break;
+        };
+
+        let forced = resolution
+            .deferred
+            .iter()
+            .filter(|&&(d, _)| d == depth)
+            .map(|&(_, import)| import)
+            .collect::<Vec<_>>();
+
+        resolution.forced.extend(forced);
+    }
+
+    // The uses of a name that's reported as private at its import aren't reported again. This is
+    // only done once every import is resolved, since a public item with the name could be found
+    // in a later pass, and the name isn't blocked if something else brought it in.
+    for (scope, name, symbol, ty) in resolution.private_names {
+        let scope = ctx.scope_mut(scope);
+
+        if symbol && scope.symbol(&name).is_none() {
+            scope.block_symbol(name.clone());
+        }
+
+        if ty && scope.ty(&name).is_none() {
+            scope.block_type(name);
         }
     }
 
@@ -296,15 +345,119 @@ fn import_item_name(items: &Items) -> &str {
     }
 }
 
+/// The state of one call to [`resolve_imports`].
+struct Resolution {
+    diagnostics: bool,
+    /// The named imports of each name into each scope.
+    named_imports: HashMap<(ScopeId, String), Vec<ImportId>>,
+    /// The scopes with glob imports.
+    glob_scopes: HashSet<ScopeId>,
+    /// The imports whose lookups through enclosing scopes no longer wait for nearer scopes.
+    forced: HashSet<ImportId>,
+    /// The imports with a lookup that's waiting in this pass, and the depth of their scopes.
+    deferred: Vec<(usize, ImportId)>,
+    /// The names that named imports found only private items for, with the scope they're
+    /// imported into and whether the items include a symbol and a type.
+    private_names: Vec<(ScopeId, String, bool, bool)>,
+}
+
+impl Resolution {
+    /// Whether a scope that doesn't have the name yet could still bring it in through one of its
+    /// imports, other than the import that's looking it up. Glob imports don't bring in a name
+    /// that the scope has a named import of.
+    fn may_bring_in(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
+        match self.named_imports.get(&(scope, name.to_string())) {
+            Some(imports) => imports.iter().any(|&import| import != importer),
+            None => self.glob_scopes.contains(&scope),
+        }
+    }
+
+    fn defer(&mut self, ctx: &Compiler, scope: ScopeId, import: ImportId) {
+        let mut depth = 0;
+        let mut current = ctx.scope(scope).parent();
+
+        while let Some(scope) = current {
+            depth += 1;
+            current = ctx.scope(scope).parent();
+        }
+
+        self.deferred.push((depth, import));
+    }
+}
+
+/// What a name refers to, when it's looked up from a scope.
+enum Lookup<T> {
+    /// The item, and the import that brought it into the scope it was found in, if any.
+    Found(T, Option<ImportId>),
+    /// A scope nearer than the item could still bring the name in, so it isn't known yet.
+    Undetermined,
+    NotFound,
+}
+
+impl<T> Lookup<T> {
+    /// The item, if it's known. If it isn't known yet, `undetermined` is set.
+    fn found(self, undetermined: &mut bool) -> Option<(T, Option<ImportId>)> {
+        match self {
+            Self::Found(item, via) => Some((item, via)),
+            Self::Undetermined => {
+                *undetermined = true;
+                None
+            }
+            Self::NotFound => None,
+        }
+    }
+}
+
+/// Looks up a name from a scope and then each enclosing scope, the way that a use of the name in
+/// that scope would be resolved once every import is. Imports are resolved in passes, so a scope
+/// that could still bring the name in through an unresolved import has to be waited for, or a
+/// nearer item would be missed. Once nothing else can be resolved, the lookup is forced and those
+/// scopes are skipped.
+fn lookup_in_scopes<T>(
+    ctx: &Compiler,
+    resolution: &Resolution,
+    scope: ScopeId,
+    name: &str,
+    importer: ImportId,
+    find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
+) -> Lookup<T> {
+    let force = resolution.diagnostics || resolution.forced.contains(&importer);
+    let mut current = Some(scope);
+
+    while let Some(scope) = current {
+        if let Some((item, via)) = find(ctx.scope(scope), name) {
+            return Lookup::Found(item, via);
+        }
+
+        if !force && resolution.may_bring_in(scope, name, importer) {
+            return Lookup::Undetermined;
+        }
+
+        current = ctx.scope(scope).parent();
+    }
+
+    Lookup::NotFound
+}
+
+fn find_symbol(scope: &Scope, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
+    let symbol = scope.symbol(name)?;
+    Some((symbol, scope.symbol_import(symbol)))
+}
+
+fn find_type(scope: &Scope, name: &str) -> Option<(TypeId, Option<ImportId>)> {
+    let ty = scope.ty(name)?;
+    Some((ty, scope.type_import(ty)))
+}
+
 fn resolve_import(
     ctx: &mut Compiler,
     import_scope: ScopeId,
     import_id: ImportId,
-    diagnostics: bool,
     cache: &mut ImportCache,
+    resolution: &mut Resolution,
     missing_imports: &mut IndexMap<ImportId, IndexMap<String, Name>>,
-    targeted_names: &HashSet<(ScopeId, String)>,
 ) -> bool {
+    let diagnostics = resolution.diagnostics;
     let import = ctx.import(import_id).clone();
     let has_super = import.has_super;
     let source = import.source.clone();
@@ -356,8 +509,21 @@ fn resolve_import(
             base.symbol(name.text())
                 .map(|s| (s, base.symbol_import(s), base.is_symbol_exported(s)))
         } else if import.base_scope == import_scope {
-            ctx.resolve_symbol_in(import.base_scope, name.text())
-                .map(|(s, import)| (s, import, true))
+            match lookup_in_scopes(
+                ctx,
+                resolution,
+                import_scope,
+                name.text(),
+                import_id,
+                find_symbol,
+            ) {
+                Lookup::Found(symbol, import) => Some((symbol, import, true)),
+                Lookup::Undetermined => {
+                    resolution.defer(ctx, import_scope, import_id);
+                    return false;
+                }
+                Lookup::NotFound => None,
+            }
         } else {
             let base = ctx.scope(import.base_scope);
             base.symbol(name.text())
@@ -498,7 +664,10 @@ fn resolve_import(
             };
 
             for (name, symbol, via) in symbols {
-                if targeted_names.contains(&(import_scope, name.clone())) {
+                if resolution
+                    .named_imports
+                    .contains_key(&(import_scope, name.clone()))
+                {
                     continue;
                 }
 
@@ -544,7 +713,10 @@ fn resolve_import(
             }
 
             for (name, ty, via) in types {
-                if targeted_names.contains(&(import_scope, name.clone())) {
+                if resolution
+                    .named_imports
+                    .contains_key(&(import_scope, name.clone()))
+                {
                     continue;
                 }
 
@@ -622,6 +794,12 @@ fn resolve_import(
                     // The name is reported as private rather than unresolved
                     if symbol.is_some() || ty.is_some() {
                         missing_imports.shift_remove(name);
+                        resolution.private_names.push((
+                            import_scope,
+                            name.to_string(),
+                            symbol.is_some(),
+                            ty.is_some(),
+                        ));
                     }
 
                     if diagnostics {
@@ -665,20 +843,35 @@ fn resolve_import(
                     symbol.map(|s| (s, base.symbol_import(s))),
                     ty.map(|t| (t, base.type_import(t))),
                 )
+            } else if import.base_scope == import_scope {
+                // A namespace that isn't known yet is looked up again in a later pass
+                let mut undetermined = false;
+
+                let symbol =
+                    lookup_in_scopes(ctx, resolution, import_scope, name, import_id, find_symbol)
+                        .found(&mut undetermined);
+                let ty =
+                    lookup_in_scopes(ctx, resolution, import_scope, name, import_id, find_type)
+                        .found(&mut undetermined);
+
+                if undetermined {
+                    resolution.defer(ctx, import_scope, import_id);
+                }
+
+                (symbol, ty)
             } else {
-                let symbol = ctx.resolve_symbol_in(import.base_scope, name).filter(|s| {
-                    import.base_scope == import_scope
-                        || ctx.scope(import.base_scope).is_symbol_exported(s.0)
-                });
-                let ty = ctx.resolve_type_in(import.base_scope, name).filter(|t| {
-                    import.base_scope == import_scope
-                        || ctx.scope(import.base_scope).is_type_exported(t.0)
-                });
+                let symbol = ctx
+                    .resolve_symbol_in(import.base_scope, name)
+                    .filter(|s| ctx.scope(import.base_scope).is_symbol_exported(s.0));
+                let ty = ctx
+                    .resolve_type_in(import.base_scope, name)
+                    .filter(|t| ctx.scope(import.base_scope).is_type_exported(t.0));
                 (symbol, ty)
             };
 
             // This is recorded in every pass, since an import of a name from an enclosing scope
-            // finds its own binding once it has been resolved
+            // finds its own binding once it has been resolved. The import that it's found through
+            // is used by this one, like one in its path.
             let imported = [
                 symbol.and_then(|(s, via)| Some((Declaration::Symbol(s), via?))),
                 ty.and_then(|(t, via)| Some((Declaration::Type(t), via?))),
@@ -686,6 +879,7 @@ fn resolve_import(
 
             for (declaration, via) in imported.into_iter().flatten() {
                 if via != import_id {
+                    ctx.add_import_reference(via, declaration, ImportUser::Import(import_id));
                     cache
                         .imported_names
                         .entry((import_id, declaration))

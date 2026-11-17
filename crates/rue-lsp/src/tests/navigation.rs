@@ -484,3 +484,66 @@ export fn greet(name: String) -> String {
         "#]],
     );
 }
+
+#[test]
+fn test_definition_through_an_import_from_an_enclosing_module() {
+    // `deeper` imports `V` from `inner`, which imports it from `a`, rather than the top level
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod a {
+    export const V: Int = 1;
+}
+
+const V: Int = 7;
+
+mod inner {
+    import a::V;
+
+    export mod deeper {
+        import V;
+
+        export fn f() -> Int {
+            V$0
+        }
+    }
+}
+
+fn main() -> Int {
+    inner::deeper::f() + V
+}
+",
+        )],
+        expect![[r#"
+            main.rue:2:17-2:18
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_of_a_local_function_named_like_an_imported_module() {
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod m {
+    export mod helper {}
+}
+
+import m::helper;
+
+fn helper() -> Int {
+    5
+}
+
+fn main() -> Int {
+    helper$0()
+}
+",
+        )],
+        expect![[r#"
+            main.rue:7:3-7:9
+        "#]],
+    );
+}

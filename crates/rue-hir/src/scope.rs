@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use id_arena::Id;
 use indexmap::{IndexMap, IndexSet};
@@ -22,6 +22,8 @@ pub struct Scope {
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
     imports: Vec<ImportId>,
+    blocked_symbols: HashSet<String>,
+    blocked_types: HashSet<String>,
 }
 
 impl Scope {
@@ -38,6 +40,8 @@ impl Scope {
             exported_symbols: IndexSet::new(),
             exported_types: IndexSet::new(),
             imports: Vec::new(),
+            blocked_symbols: HashSet::new(),
+            blocked_types: HashSet::new(),
         }
     }
 
@@ -147,6 +151,26 @@ impl Scope {
 
     pub fn add_type_import(&mut self, ty: TypeId, import: ImportId) {
         self.type_imports.insert(ty, import);
+    }
+
+    /// Stops a symbol name from being looked up in enclosing scopes, because an import of it
+    /// into this scope failed and has already been reported.
+    pub fn block_symbol(&mut self, name: String) {
+        self.blocked_symbols.insert(name);
+    }
+
+    /// Stops a type name from being looked up in enclosing scopes, because an import of it into
+    /// this scope failed and has already been reported.
+    pub fn block_type(&mut self, name: String) {
+        self.blocked_types.insert(name);
+    }
+
+    pub fn is_symbol_blocked(&self, name: &str) -> bool {
+        self.blocked_symbols.contains(name)
+    }
+
+    pub fn is_type_blocked(&self, name: &str) -> bool {
+        self.blocked_types.contains(name)
     }
 
     pub fn symbol_import(&self, symbol: SymbolId) -> Option<ImportId> {
