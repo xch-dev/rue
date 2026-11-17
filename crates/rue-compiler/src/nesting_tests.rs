@@ -618,3 +618,36 @@ fn many_unreferenced_parameters_are_lowered() {
         assert!(result.is_ok(), "{result:?} {diagnostics:?}");
     });
 }
+
+/// The error for code that's nested too deeply points to the first thing lowered past the limit,
+/// which has to be the same on every run (#325). Each call's arguments used to be lowered in the
+/// order of a `HashMap`, which is random for each map, so the error pointed to either argument of
+/// the call that went past the limit. Each compilation here makes new maps, so it would very
+/// likely differ between them if the order still depended on one.
+#[test]
+fn lowering_too_deep_reports_the_same_location_every_time() {
+    let source = format!(
+        "fn add(a: Int, b: Int) -> Int {{\n    a + b\n}}\n\nfn main(n: Int) -> Int {{\n{}    n\n}}\n",
+        "    assert add(n, n) > 0;\n".repeat(MAX_LOWERING_DEPTH + 8)
+    );
+
+    on_stack(2, move || {
+        for _ in 0..20 {
+            let (diagnostics, result) = compile(&source);
+            assert_eq!(errors(&diagnostics).len(), 0, "{diagnostics:?}");
+
+            let Err(Error::LoweringTooDeep(message)) = result else {
+                panic!("{result:?}");
+            };
+
+            // The first argument of the call on line 514 is lowered first
+            assert_eq!(
+                message,
+                format!(
+                    "Generated code is nested too deeply, since the limit is {MAX_LOWERING_DEPTH} \
+                     levels at main.rue:514:16"
+                )
+            );
+        }
+    });
+}

@@ -605,10 +605,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
             let rest = self.arena.alloc(Lir::Atom(vec![]));
 
+            // The arguments are lowered in the order of the parameters, rather than the map's,
+            // which changes from run to run, since it decides where lowering first goes too deep
             let mut lir_args = HashMap::new();
 
-            for (symbol, hir) in &args {
-                lir_args.insert(*symbol, self.lower_hir(env, *hir));
+            for parameter in &function.parameters {
+                if let Some(&hir) = args.get(parameter) {
+                    lir_args.insert(*parameter, self.lower_hir(env, hir));
+                }
             }
 
             let mut arg_env = self.lower_group_environment(

@@ -14,7 +14,7 @@ use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use indexmap::IndexMap;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::normalize_path;
-use rue_compiler::{CompiledTest, Compiler, FileTree};
+use rue_compiler::{CompiledTest, Compiler, Error, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
@@ -471,15 +471,12 @@ fn handle_test_file(
     let main = kind
         .as_ref()
         .filter(|_| codegen)
-        .map(|kind| unit.main(&mut ctx, &mut allocator, kind, base_path.clone()))
-        .transpose()?
-        .flatten();
+        .map(|kind| unit.main(&mut ctx, &mut allocator, kind, base_path.clone()));
     let debug_main = kind
         .as_ref()
         .filter(|_| codegen)
-        .map(|kind| debug_unit.main(&mut debug_ctx, &mut allocator, kind, base_path.clone()))
-        .transpose()?
-        .flatten();
+        .map(|kind| debug_unit.main(&mut debug_ctx, &mut allocator, kind, base_path.clone()));
+    let (main, debug_main) = main_programs(main, debug_main, &mut file.diagnostics)?;
 
     let tests = codegen
         .then(|| unit.tests(&mut ctx, &mut allocator, None, None, &base_path, false))
@@ -539,6 +536,36 @@ fn handle_test_file(
     compare_snapshot(&yaml_file, &file, update, failed)?;
 
     Ok(())
+}
+
+/// The programs for `main` and its debug build. Generated code that's nested too deeply is an
+/// error that's only found once code is generated, so it's recorded with the diagnostics (the
+/// debug build's too, if its message differs), and then neither build has a program.
+fn main_programs(
+    main: Option<Result<Option<NodePtr>, Error>>,
+    debug_main: Option<Result<Option<NodePtr>, Error>>,
+    diagnostics: &mut Vec<String>,
+) -> Result<(Option<NodePtr>, Option<NodePtr>)> {
+    let mut programs = [None, None];
+    let mut too_deep = false;
+
+    for (program, result) in programs.iter_mut().zip([main, debug_main]) {
+        match result.transpose() {
+            Ok(ptr) => *program = ptr.flatten(),
+            Err(Error::LoweringTooDeep(message)) => {
+                too_deep = true;
+
+                if !diagnostics.contains(&message) {
+                    diagnostics.push(message);
+                }
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    let [main, debug_main] = if too_deep { [None, None] } else { programs };
+
+    Ok((main, debug_main))
 }
 
 /// Runs each test and its debug build, and records the results in the snapshot's test cases.

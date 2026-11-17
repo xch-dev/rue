@@ -1,0 +1,2 @@
+diagnostics:
+- Generated code is nested too deeply, since the limit is 512 levels at lowering_too_deep.rue:516:16
