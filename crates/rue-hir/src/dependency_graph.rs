@@ -6,7 +6,10 @@ use std::{
 use indexmap::IndexSet;
 use rue_options::CompilerOptions;
 
-use crate::{Database, FailureAnalysis, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{
+    Database, FailureAnalysis, Hir, HirId, Statement, Symbol, SymbolId,
+    analysis::{Callee, resolve_callee},
+};
 
 #[derive(Debug, Clone)]
 pub struct DependencyGraph {
@@ -136,46 +139,67 @@ impl DependencyGraph {
     /// function that's used as a value, such as a lambda, could be called from anywhere, so
     /// calling their values may fail.
     fn calls_may_fail(&self, db: &Database, parameters: &IndexSet<SymbolId>) -> bool {
-        parameters.iter().any(|&parameter| {
-            let Some(&function) = self.owners.get(&parameter) else {
-                return true;
-            };
+        let mut visited = HashSet::new();
 
-            if function == self.main || self.closures.contains(&function) {
-                return true;
-            }
+        parameters
+            .iter()
+            .any(|&parameter| self.parameter_calls_may_fail(db, parameter, &mut visited))
+    }
 
-            let Symbol::Function(symbol) = db.symbol(function) else {
-                return true;
-            };
+    fn parameter_calls_may_fail(
+        &self,
+        db: &Database,
+        parameter: SymbolId,
+        visited: &mut HashSet<SymbolId>,
+    ) -> bool {
+        // A parameter that's already being checked only passes on the values that are passed to
+        // it elsewhere, which are checked there
+        if !visited.insert(parameter) {
+            return false;
+        }
 
-            let Some(index) = symbol
-                .fixed_parameters()
-                .iter()
-                .position(|&fixed| fixed == parameter)
-            else {
-                return true;
-            };
+        let Some(&function) = self.owners.get(&parameter) else {
+            return true;
+        };
 
-            self.calls
-                .get(&function)
-                .into_iter()
-                .flatten()
-                .any(|&call| {
-                    let Hir::FunctionCall(call) = db.hir(call) else {
-                        return true;
-                    };
+        if function == self.main || self.closures.contains(&function) {
+            return true;
+        }
 
-                    // A spread argument is a list of the rest of the arguments
-                    let spread = !call.nil_terminated && index + 1 >= call.args.len();
+        let Symbol::Function(symbol) = db.symbol(function) else {
+            return true;
+        };
 
-                    spread
-                        || call
-                            .args
-                            .get(index)
-                            .is_none_or(|&arg| self.failures.value_call_may_fail(db, arg))
-                })
-        })
+        let Some(index) = symbol
+            .fixed_parameters()
+            .iter()
+            .position(|&fixed| fixed == parameter)
+        else {
+            return true;
+        };
+
+        self.calls
+            .get(&function)
+            .into_iter()
+            .flatten()
+            .any(|&call| {
+                let Hir::FunctionCall(call) = db.hir(call) else {
+                    return true;
+                };
+
+                // A spread argument is a list of the rest of the arguments
+                let spread = !call.nil_terminated && index + 1 >= call.args.len();
+
+                spread
+                    || call.args.get(index).is_none_or(|&arg| {
+                        // A parameter that's passed on is called with what's passed for it
+                        if let Callee::Parameter(forwarded) = resolve_callee(db, arg) {
+                            self.parameter_calls_may_fail(db, forwarded, visited)
+                        } else {
+                            self.failures.value_call_may_fail(db, arg)
+                        }
+                    })
+            })
     }
 
     pub fn references(&self, symbol: SymbolId) -> usize {

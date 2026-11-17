@@ -1108,10 +1108,23 @@ fn forward_to_apply_unused(f: fn(x: Int) -> Int, x: Int) -> Int {
     apply_unused_forwarded(f, x)
 }
 
-// A function value that's forwarded through another function's parameter isn't followed, so the
-// unused call is evaluated, even though this one can't fail. This is more expensive than before.
-test fn unused_call_of_forwarded_argument_is_kept(x: Int) -> Int {
+// A function value that's forwarded through another function's parameter is followed to the calls
+// that pass it, so the unused call is dropped, as before
+test fn unused_call_of_forwarded_safe_argument_is_dropped(x: Int) -> Int {
     forward_to_apply_unused(fn(y: Int) => y + 1, x)
+}
+
+fn apply_unused_forwarded_checked(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _unused = f(x);
+    x
+}
+
+fn forward_to_apply_unused_checked(f: fn(x: Int) -> Int, x: Int) -> Int {
+    apply_unused_forwarded_checked(f, x)
+}
+
+test fn unused_call_of_forwarded_failing_argument_is_kept(x: Int) -> Int {
+    forward_to_apply_unused_checked(fn(y: Int) => 100 / y, x)
 }
 
 inline fn pick_incremented(a: Int, flag: Bool) -> Int {
@@ -1289,4 +1302,61 @@ fn conditionally_applies_checked(k: fn(x: Int) -> Int, p0: Int) -> Int {
 test fn conditional_call_of_failing_parameter_is_kept(n: Int) -> Int {
     conditionally_applies_checked(add_one, n)
         + conditionally_applies_checked(fn(x: Int) => 100 / x, n)
+}
+
+fn doubled(x: Int) -> Int {
+    x * 2
+}
+
+fn map_positive(list: List<Int>, f: fn(x: Int) -> Int) -> List<Int> {
+    if list is nil {
+        return nil;
+    }
+    let (first, rest) = list;
+    let mapped = f(first);
+    if first > 0 {
+        [mapped, ...map_positive(rest, f)]
+    } else {
+        map_positive(rest, f)
+    }
+}
+
+// The recursive call passes `f` on, so only the call from here decides whether calling it may
+// fail, and the call of `f` is moved into the branch, as before
+test fn recursive_map_of_safe_function_is_inlined(list: List<Int>) -> List<Int> {
+    map_positive(list, doubled)
+}
+
+fn map_positive_checked(list: List<Int>, f: fn(x: Int) -> Int) -> List<Int> {
+    if list is nil {
+        return nil;
+    }
+    let (first, rest) = list;
+    let mapped = f(first);
+    if first > 0 {
+        [mapped, ...map_positive_checked(rest, f)]
+    } else {
+        map_positive_checked(rest, f)
+    }
+}
+
+test fn recursive_map_of_failing_function_is_kept(list: List<Int>) -> List<Int> {
+    map_positive_checked(list, fn(x: Int) => 100 / x)
+}
+
+fn applies_if_positive(k: fn(x: Int) -> Int, p0: Int) -> Int {
+    let y = k(p0);
+    if p0 > 0 {
+        y
+    } else {
+        0
+    }
+}
+
+fn forwards_to_applies(k: fn(x: Int) -> Int, p0: Int) -> Int {
+    applies_if_positive(k, p0) + 1
+}
+
+test fn forwarded_safe_function_is_inlined(n: Int) -> Int {
+    forwards_to_applies(add_one, n)
 }
