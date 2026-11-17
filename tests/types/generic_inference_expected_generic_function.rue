@@ -48,6 +48,35 @@ test fn no_generic_inferred_as_it() -> Int {
     result.first + result.rest
 }
 
+fn first_twice<T>(first: T, _second: T) -> (T, T) {
+    (first, first)
+}
+
+fn make_binary<A, B, C>() -> fn(a: A, b: B) -> C {
+    unchecked_cast(first_twice)
+}
+
+test fn several_generics_inferred_as_it() -> Int {
+    // `A` and `B` are both inferred as `T`, and `C` is `(A, A)`, using the first one's copy
+    let function: fn<T>(a: T, b: T) -> (T, T) = make_binary();
+    function(9, 10).rest
+}
+
+test fn inferred_as_it_and_copied() -> Int {
+    // `A` is inferred as `T`, and nothing is inferred as `U`, so `B` is `(A, U)` over a copy of it
+    let function: fn<T, U>(a: T) -> (T, U) = make();
+    let result: (Int, Int) = function(11);
+    result.first
+}
+
+fn take(function: fn<T>(a: T) -> (T, T)) -> Int {
+    function(12).first
+}
+
+test fn expected_from_a_parameter() -> Int {
+    take(make())
+}
+
 fn optional<T>(value: T) -> T | nil {
     value
 }

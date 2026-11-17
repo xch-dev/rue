@@ -349,7 +349,7 @@ fn has_uninferred_parameters(
 /// `(T, T)` for `B` in `let f: fn<T>(a: T) -> (T, T) = make();` with
 /// `fn make<A, B>() -> fn(a: A) -> B`, references the copy of the first generic inferred as each
 /// one instead, so it doesn't leak them (#340). `A` is inferred as `T`, so `B` is `(A, A)`. If no
-/// generic is inferred as one of them, it's copied as well.
+/// generic is inferred as one of them, it's copied as well, unless it leaks through a parameter.
 fn generalize(
     ctx: &mut Compiler,
     function: &FunctionType,
@@ -358,58 +358,69 @@ fn generalize(
 ) -> Vec<TypeId> {
     let mut generalized = Vec::new();
 
-    let free: Vec<TypeId> = function
-        .generics
-        .iter()
-        .copied()
-        .filter(|&generic| {
+    let (free, fixed): (Vec<TypeId>, Vec<TypeId>) =
+        function.generics.iter().copied().partition(|&generic| {
             !function
                 .param_types()
                 .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+        });
+
+    // An expected generic that a generic which a parameter depends on references leaks regardless,
+    // so it isn't copied, since the error would then name the same type on both sides
+    let leaked: Vec<TypeId> = expected_generics
+        .iter()
+        .copied()
+        .filter(|&other| {
+            fixed.iter().any(|generic| {
+                mappings
+                    .get(generic)
+                    .is_some_and(|&ty| contains_generic(ctx.types_mut(), ty, other))
+            })
         })
         .collect();
 
     // The copy that each of the expected generics is generalized as
     let mut copies = HashMap::new();
+    let mut compound = Vec::new();
 
-    for &generic in &free {
-        if let Some(&ty) = mappings.get(&generic)
-            && expected_generics.contains(&ty)
-        {
+    for generic in free {
+        let Some(&ty) = mappings.get(&generic) else {
+            continue;
+        };
+
+        if expected_generics.contains(&ty) {
             let copy = ctx.ty(generic).clone();
             let copy = ctx.alloc_type(copy);
             mappings.insert(generic, copy);
             generalized.push(copy);
             copies.entry(ty).or_insert(copy);
+        } else {
+            compound.push((generic, ty));
         }
     }
 
-    for &generic in &free {
-        let Some(&ty) = mappings.get(&generic) else {
-            continue;
-        };
+    for (generic, ty) in compound {
+        let mut references = false;
 
-        let referenced: Vec<TypeId> = expected_generics
-            .iter()
-            .copied()
-            .filter(|&other| contains_generic(ctx.types_mut(), ty, other))
-            .collect();
+        for &other in expected_generics {
+            if !contains_generic(ctx.types_mut(), ty, other) {
+                continue;
+            }
 
-        if referenced.is_empty() {
-            continue;
-        }
+            references = true;
 
-        for other in referenced {
-            copies.entry(other).or_insert_with(|| {
+            if !copies.contains_key(&other) && !leaked.contains(&other) {
                 let copy = ctx.ty(other).clone();
                 let copy = ctx.alloc_type(copy);
                 generalized.push(copy);
-                copy
-            });
+                copies.insert(other, copy);
+            }
         }
 
-        let ty = substitute_with_mappings(ctx.types_mut(), ty, &copies);
-        mappings.insert(generic, ty);
+        if references {
+            let ty = substitute_with_mappings(ctx.types_mut(), ty, &copies);
+            mappings.insert(generic, ty);
+        }
     }
 
     generalized

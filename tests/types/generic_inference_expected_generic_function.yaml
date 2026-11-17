@@ -27,6 +27,27 @@ tests:
   runtime_cost: 1598
   byte_cost: 636000
   total_cost: 637598
+- name: several_generics_inferred_as_it
+  program: (a (q 6 (a 2 (q 9 10))) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 (q 6 (a 2 (c (q . 9) (c (q . 10) ())))) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
+  output: "9"
+  runtime_cost: 563
+  byte_cost: 468000
+  total_cost: 468563
+- name: inferred_as_it_and_copied
+  program: (a (q 5 (a 2 (q 11))) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 (q 2 (q 5 2) (c (a 2 (c (q . 11) ())) 1)) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
+  output: "11"
+  runtime_cost: 563
+  byte_cost: 444000
+  total_cost: 444563
+- name: expected_from_a_parameter
+  program: (a (q 5 (a 2 (q 12))) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 14 (a 4 (c 10 ()))) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (c (q 4 2 2) (q 5 (a 1 (c (q . 12) ()))))) ()))
+  output: "12"
+  runtime_cost: 563
+  byte_cost: 444000
+  total_cost: 444563
 - name: union_return_type
   program: (a (q 2 (i 2 (q . 2) (q)) 1) (c (a (q . 2) (q 42)) 1))
   debug_program: (a (q 2 (q 2 (q 2 (i (= 2 ()) (q) (q . 2)) 1) (c (a 2 (c (q . 42) ())) 1)) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q . 2)) ()))
