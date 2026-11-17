@@ -83,3 +83,22 @@ test fn instantiated_generic_function() -> 5 {
     let result: (5, 5) = map(duplicate, 5);
     result.rest
 }
+
+test fn generic_lambda() -> Int {
+    let result: 5 = map(fn<V>(value: V) => value, 5);
+    result + 1
+}
+
+fn make<T>(function: fn(value: T) -> T) -> fn(value: T) -> T {
+    function
+}
+
+fn takes(function: fn(value: Int) -> Int | nil) -> Int | nil {
+    function(5)
+}
+
+test fn lambda_from_expected_lower_bound() -> Int | nil {
+    // The expected type gives `T` the lower bound `Int` and the upper bound `Int | nil`, and the
+    // lambda's parameter is `Int`, as before
+    takes(make(fn(value) => value * 2))
+}

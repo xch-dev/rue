@@ -1451,12 +1451,33 @@ mod inference {
     }
 
     #[test]
-    fn doesnt_pass_expected_bounds_through_generics_in_scope() {
+    fn keeps_compound_lower_bounds_with_unconstrained_generics() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let (five, six) = (
+            db.literal(AtomSemantic::Int, &[5]),
+            db.literal(AtomSemantic::Int, &[6]),
+        );
+
+        // `B` is inferred from `(A, 6)`, where nothing bounds `A` from below, so `(A, 6)` is
+        // checked as is against `(5, 5)` and doesn't satisfy it
+        let mut infer = Inference::new([a, b]);
+        let pair = db.pair(a, six);
+        db.infer(pair, b, &mut infer);
+        let expected = db.pair(five, five);
+        add_expected(&mut db, &[a, b], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, a).upper, vec![]);
+        assert_eq!(candidates(&infer, b).upper, vec![]);
+    }
+
+    #[test]
+    fn doesnt_expand_lower_bounds_through_generics_in_scope() {
         let mut db = Db::new();
         let (a, b) = (db.generic("A"), db.generic("B"));
         let five = db.literal(AtomSemantic::Int, &[5]);
 
-        // `A` is the caller's own generic, so `B`'s candidate isn't resolved through it
+        // `A` is the caller's own generic, so `B`'s candidate `A` isn't expanded through it and
+        // doesn't satisfy the bound
         let mut infer = Inference::new([a, b]);
         infer.set_in_scope(a);
         db.infer(a, b, &mut infer);

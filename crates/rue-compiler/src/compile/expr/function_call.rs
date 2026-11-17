@@ -162,21 +162,27 @@ pub fn compile_function_call_expr(
             let expr = &args[i];
             let param = function.params[i].ty;
 
-            // Use what has been inferred from the previous arguments as the expected type, then
-            // what the type expected of the call gives the generics they're inferred through
+            // Use what has been inferred from the previous arguments as the expected type
             let mut mappings = inferred;
-
-            if let Some(expected) = &expected {
-                let mut infer = infer.clone();
-                ctx.add_expected_bounds(&mut infer, expected);
-
-                for (generic, ty) in ctx.resolve_inference(&infer) {
-                    mappings.entry(generic).or_insert(ty);
-                }
-            }
 
             for (&generic, &ty) in &fallback {
                 mappings.entry(generic).or_insert(ty);
+            }
+
+            // A generic that's still unmapped may be inferred through others that the type
+            // expected of the call bounds, such as `A` in `let x: 5 = map(identity, map(...));`
+            if let Some(expected) = &expected
+                && function
+                    .generics
+                    .iter()
+                    .any(|generic| !mappings.contains_key(generic))
+            {
+                let mut bounded = infer.clone();
+                ctx.add_expected_bounds(&mut bounded, expected);
+
+                for (generic, ty) in ctx.resolve_inference(&bounded) {
+                    mappings.entry(generic).or_insert(ty);
+                }
             }
 
             let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);

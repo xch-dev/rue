@@ -20,5 +20,8 @@ fn main() -> Int {
     // The function returns `Int`, which isn't the expected literal
     let wrong_function: 5 = map(increment, 5);
 
-    wrong_value + wrong_function
+    // A lambda's parameter type is inferred from the other arguments alone, so it's `Int` here
+    let lambda: 5 = map(fn(value) => value, 5);
+
+    wrong_value + wrong_function + lambda
 }
