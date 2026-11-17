@@ -447,26 +447,9 @@ fn long_chains_of_inline_arguments_are_checked() {
 /// The bindings of consecutive `let` statements are grouped so that each one is bound after the ones
 /// it depends on. Each binding here is used twice, so it isn't inlined, and depends on the one
 /// before it, so there's a group for each of them, which is slow unless grouping avoids redoing
-/// work for each group.
+/// work for each group. Each one also captures the parameter, as in the reproduction from #296.
 #[test]
 fn long_runs_of_bindings_are_grouped() {
-    on_stack(2, || {
-        let source = format!(
-            "fn main(a: Int) -> Int {{\nlet x0 = a + 1;\n{}x{LONG_CHAIN}\n}}",
-            links(LONG_CHAIN, |i| format!("let x{} = x{i} * x{i};\n", i + 1))
-        );
-
-        let (diagnostics, result) = compile(&source);
-        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
-    });
-}
-
-/// The reproduction from #296, where each binding also captures the parameter directly. Grouping
-/// them is linear in the length of the chain, which `long_chains_are_grouped_in_linear_time` in
-/// `rue-hir` checks at a length where anything quadratic wouldn't finish; this checks that the
-/// whole program compiles on a small stack.
-#[test]
-fn long_runs_of_bindings_that_share_a_parameter_are_grouped() {
     on_stack(2, || {
         let source = format!(
             "fn main(a: Int) -> Int {{\nlet x0 = a + 1;\n{}x{LONG_CHAIN}\n}}",

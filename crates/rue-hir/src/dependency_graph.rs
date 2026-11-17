@@ -339,7 +339,7 @@ impl DependencyGraph {
                     *next += 1;
 
                     if let Some(&dependency_index) = components.indices.get(&dependency) {
-                        if components.on_stack[dependency_index] {
+                        if components.component[dependency_index].is_none() {
                             components.low[index] = components.low[index].min(dependency_index);
                         }
                     } else {
@@ -367,8 +367,7 @@ impl DependencyGraph {
                 let component = components.reaches.len();
 
                 for &member in &members {
-                    components.on_stack[member] = false;
-                    components.component[member] = component;
+                    components.component[member] = Some(component);
                 }
 
                 let symbol = components.symbols[index];
@@ -385,7 +384,7 @@ impl DependencyGraph {
 
                     for dependency in edges(components.symbols[member]) {
                         let dependency = components.indices[dependency];
-                        let other = components.component[dependency];
+                        let other = components.component[dependency].unwrap();
 
                         if other == component {
                             continue;
@@ -417,7 +416,8 @@ impl DependencyGraph {
                     return Some(0);
                 }
 
-                let reach = components.reaches[components.component[components.indices[&symbol]]];
+                let component = components.component[components.indices[&symbol]].unwrap();
+                let reach = components.reaches[component];
                 (!reach.waiting).then_some(reach.round)
             })
             .collect()
@@ -483,10 +483,10 @@ struct Components {
     waits: Vec<Option<bool>>,
     /// The lowest index reachable from each symbol through the ones still on the stack.
     low: Vec<usize>,
-    on_stack: Vec<bool>,
     stack: Vec<usize>,
-    /// The component that each symbol is in, once it's finished.
-    component: Vec<usize>,
+    /// The component that each symbol is in, once it's finished, or `None` while it's still on
+    /// the stack.
+    component: Vec<Option<usize>>,
     /// What each finished component can reach.
     reaches: Vec<Reach>,
 }
@@ -498,9 +498,8 @@ impl Components {
         self.symbols.push(symbol);
         self.waits.push(waits);
         self.low.push(index);
-        self.on_stack.push(true);
         self.stack.push(index);
-        self.component.push(usize::MAX);
+        self.component.push(None);
         index
     }
 }
@@ -867,10 +866,11 @@ mod tests {
         }
     }
 
-    /// Groups a long chain of bindings, which each depend on the one before and on a parameter of
+    /// Groups a long chain of bindings, which each depend on the one after and on a parameter of
     /// the function they're in, on a 2 MiB stack. Following each binding's dependencies would
     /// take time quadratic in the length of the chain, which wouldn't finish in any reasonable
-    /// time at this length, and walking the graph recursively would overflow the stack.
+    /// time at this length. The walk from the first binding goes through the whole chain, so
+    /// walking the graph recursively would overflow the stack.
     #[test]
     fn long_chains_are_grouped_in_linear_time() {
         const LENGTH: usize = 100_000;
@@ -895,13 +895,13 @@ mod tests {
                     let dependencies = graph.dependencies.entry(binding).or_default();
                     dependencies.insert(parameter);
 
-                    if index > 0 {
-                        dependencies.insert(bindings[index - 1]);
+                    if let Some(&next) = bindings.get_index(index + 1) {
+                        dependencies.insert(next);
                     }
                 }
 
                 let rounds = graph.rounds(&bindings, |_| true);
-                assert!(rounds.into_iter().eq((0..LENGTH).map(Some)));
+                assert!(rounds.into_iter().eq((0..LENGTH).rev().map(Some)));
             })
             .unwrap()
             .join()

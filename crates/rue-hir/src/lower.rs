@@ -11,7 +11,7 @@ use std::{
 };
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::{IndexMap, IndexSet, set::Slice};
 use rue_diagnostic::SrcLoc;
 use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
@@ -72,7 +72,7 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// The round that each run of symbols grouped by value is bound in. A run of let statements is
     /// lowered again each time the function it's in is inlined, and finding the rounds walks
     /// everything the run can reach, so they're only found once per run.
-    rounds: HashMap<Vec<SymbolId>, Rc<Vec<Option<usize>>>>,
+    rounds: HashMap<Box<Slice<SymbolId>>, Rc<Vec<Option<usize>>>>,
     /// Whether each binding or constant that's referenced once can be evaluated where it's
     /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
@@ -1181,9 +1181,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// The rounds that the symbols are bound in when they're grouped by value, as given by
     /// [`DependencyGraph::rounds`]. Functions don't need the values of the others yet.
     fn rounds(&mut self, symbols: &IndexSet<SymbolId>) -> Rc<Vec<Option<usize>>> {
-        let key: Vec<SymbolId> = symbols.iter().copied().collect();
-
-        if let Some(rounds) = self.rounds.get(&key) {
+        if let Some(rounds) = self.rounds.get(symbols.as_slice()) {
             return rounds.clone();
         }
 
@@ -1191,7 +1189,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             !matches!(self.db.symbol(symbol), Symbol::Function(_))
         }));
 
-        self.rounds.insert(key, rounds.clone());
+        self.rounds
+            .insert(symbols.as_slice().into(), rounds.clone());
         rounds
     }
 
