@@ -19,3 +19,8 @@ diagnostics:
 - Unused function `checks_itself` at recursion_cycles.rue:47:11
 - Unused constant `U` at recursion_cycles.rue:54:7
 - Unused function `unchecked_with` at recursion_cycles.rue:56:4
+- Unused constant `T` at recursion_cycles.rue:62:7
+- Unused function `inline_unused_with` at recursion_cycles.rue:64:4
+- |-
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at recursion_cycles.rue:65:5
+    note: Remove `inline` to always evaluate it here

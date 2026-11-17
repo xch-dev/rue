@@ -112,37 +112,38 @@ pub(crate) fn resolve_function(db: &Database, callee: HirId) -> Option<SymbolId>
     }
 }
 
+/// The result of checking a substituted value, which is reused wherever it's referenced again.
+#[derive(Debug, Clone)]
+struct Substituted {
+    fails: bool,
+    /// The parameters whose values it calls, which are recorded again where it's reused.
+    calls: Rc<[SymbolId]>,
+    /// The lowest index in [`Visitor::working`] whose summary it read, or `usize::MAX`.
+    low: usize,
+}
+
 struct Visitor<'a, C> {
     cx: &'a C,
     /// The substituted values being checked, so that a value that references itself isn't
     /// checked forever.
     visiting: HashSet<SymbolId>,
-    /// The functions that are assumed not to fail while their bodies are checked, in the order
-    /// they were reached. Each is mapped to the earliest of these that it depends on: itself while
-    /// its body is being checked, then the earliest one its body called again, if that one's
-    /// result still isn't known. Entries are only ever removed from the end, so an entry never
-    /// outlives one that it depends on.
-    assumed: IndexMap<SymbolId, usize>,
-    /// The earliest assumed function that the body being checked depends on.
-    lowest_assumption: usize,
+    /// The functions whose summaries are still being found, with their summaries so far. This is
+    /// the stack of Tarjan's algorithm over the call graph: a function stays here until the
+    /// strongly connected component it's in is finished, and the summaries of that component are
+    /// found together, starting from not failing and growing until none of them changes. Only
+    /// then are they cached.
+    working: IndexMap<SymbolId, FunctionFailure>,
+    /// The lowest index in `working` whose summary the value being checked read, or `usize::MAX`
+    /// if it only read finished summaries.
+    low: usize,
+    /// Whether a summary in `working` grew since the current pass over its component started.
+    changed: bool,
     /// The parameters whose function values are called by each function body being checked.
     calls: Vec<IndexSet<SymbolId>>,
-    /// Whether each substituted value may fail, by whether it's in a function body, so that a
-    /// value referenced many times (such as through a chain of inline bindings) is only checked
-    /// once.
-    substituted: HashMap<(SymbolId, bool), bool>,
-    /// How many times a result depended on something other than the value being checked, which
-    /// is a call to a parameter's value, an assumption about a recursive call, the summary of a
-    /// recursive function that's still being found, or a value that references itself. A value
-    /// that can't fail is only cached if this didn't change.
-    dependencies: usize,
-    /// How many functions that call themselves are having their summaries found (see
-    /// [`Self::self_recursive_failure`]). Their summaries are cached while they are, and so are
-    /// those of the functions checked meanwhile, which might depend on them.
-    unfinished: usize,
-    /// The functions whose summaries were cached while a summary was unfinished, which aren't
-    /// final until it is, so nothing that depends on them is cached either.
-    provisional: HashSet<SymbolId>,
+    /// The substituted values that have been checked, by whether they're in a function body, so
+    /// that a value referenced many times (such as through a chain of inline bindings) is only
+    /// checked once.
+    substituted: HashMap<(SymbolId, bool), Substituted>,
 }
 
 impl<'a, C: AnalysisContext> Visitor<'a, C> {
@@ -150,13 +151,11 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         Self {
             cx,
             visiting: HashSet::new(),
-            assumed: IndexMap::new(),
-            lowest_assumption: usize::MAX,
+            working: IndexMap::new(),
+            low: usize::MAX,
+            changed: false,
             calls: Vec::new(),
             substituted: HashMap::new(),
-            dependencies: 0,
-            unfinished: 0,
-            provisional: HashSet::new(),
         }
     }
 
@@ -272,34 +271,60 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 
                 let key = (symbol, in_body);
 
-                let cached = self.substituted.get(&key).copied().or_else(|| {
-                    let shared = self.cx.substitution_failures().borrow();
-                    shared.get(&key).copied()
-                });
+                if let Some(entry) = self.substituted.get(&key).cloned() {
+                    self.low = self.low.min(entry.low);
 
-                if let Some(fails) = cached {
+                    if let Some(calls) = self.calls.last_mut().filter(|_| in_body) {
+                        calls.extend(entry.calls.iter().copied());
+                    }
+
+                    return entry.fails;
+                }
+
+                if let Some(&fails) = self.cx.substitution_failures().borrow().get(&key) {
                     return fails;
                 }
 
+                // A value that references itself is a recursion error, which is reported
+                // elsewhere
                 if !self.visiting.insert(symbol) {
-                    self.dependencies += 1;
                     return false;
                 }
 
-                let dependencies = self.dependencies;
-                let fails = self.visit(value, in_body);
+                let outer_low = std::mem::replace(&mut self.low, usize::MAX);
+                let (fails, calls) = if in_body {
+                    self.visit_body(value)
+                } else {
+                    (self.visit(value, false), IndexSet::new())
+                };
                 self.visiting.remove(&symbol);
 
-                if fails || self.dependencies == dependencies {
-                    self.substituted.insert(key, fails);
+                // Summaries only grow, so a value that fails with them still will
+                let low = if fails { usize::MAX } else { self.low };
+                self.low = outer_low.min(low);
 
-                    if self.cx.shares_substitution(symbol, fails) {
-                        self.cx
-                            .substitution_failures()
-                            .borrow_mut()
-                            .insert(key, fails);
-                    }
+                if let Some(outer) = self.calls.last_mut().filter(|_| in_body) {
+                    outer.extend(calls.iter().copied());
                 }
+
+                if low == usize::MAX
+                    && calls.is_empty()
+                    && self.cx.shares_substitution(symbol, fails)
+                {
+                    self.cx
+                        .substitution_failures()
+                        .borrow_mut()
+                        .insert(key, fails);
+                }
+
+                self.substituted.insert(
+                    key,
+                    Substituted {
+                        fails,
+                        calls: calls.into_iter().collect(),
+                        low,
+                    },
+                );
 
                 fails
             }
@@ -397,28 +422,21 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         };
 
         calls.insert(parameter);
-        self.dependencies += 1;
         false
     }
 
     /// Whether calling the function may fail, other than in calling the function values it's
-    /// passed (see [`FunctionFailure`]). A recursive call is assumed not to fail, since the body
-    /// fails anyway if anything else in it does. Functions that call each other are resolved
-    /// together, like the strongly connected components of the call graph, so that each
-    /// function's body is only checked once.
+    /// passed (see [`FunctionFailure`]). A call to a function whose summary is still being found
+    /// uses the summary so far, which starts from not failing, since the body fails anyway if
+    /// anything else in it does.
     fn function_may_fail(&mut self, function: SymbolId) -> FunctionFailure {
         if let Some(failure) = self.cx.function_failures().borrow().get(&function).cloned() {
-            if self.provisional.contains(&function) {
-                self.dependencies += 1;
-            }
-
             return failure;
         }
 
-        if let Some(&assumption) = self.assumed.get(&function) {
-            self.lowest_assumption = self.lowest_assumption.min(assumption);
-            self.dependencies += 1;
-            return FunctionFailure::default();
+        if let Some(index) = self.working.get_index_of(&function) {
+            self.low = self.low.min(index);
+            return self.working[index].clone();
         }
 
         let Symbol::Function(symbol) = self.db().symbol(function) else {
@@ -431,142 +449,89 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             return FunctionFailure::fails();
         }
 
-        let body = symbol.body;
-        let index = self.assumed.len();
-        self.assumed.insert(function, index);
-        let lowest_assumption = std::mem::replace(&mut self.lowest_assumption, usize::MAX);
+        let index = self.working.len();
+        self.working.insert(function, FunctionFailure::default());
+        let outer_low = std::mem::replace(&mut self.low, usize::MAX);
+        let outer_changed = std::mem::take(&mut self.changed);
 
-        let (mut fails, calls) = self.visit_body(body);
+        self.summarize(index);
+        let mut low = self.low;
+        let mut grew = false;
 
-        // A function that only calls itself, such as one that maps a function over a list
-        if !fails
-            && !calls.is_empty()
-            && self.lowest_assumption == index
-            && self.assumed.len() == index + 1
-        {
-            let failure = self.self_recursive_failure(function, body, index, calls);
-            self.lowest_assumption = lowest_assumption;
-            return failure;
+        // This is the first function reached in its component, so the component is finished
+        // once a pass over it doesn't change any summary. A pass can reach new functions, which
+        // join the component if they call back into it.
+        if low >= index {
+            while std::mem::take(&mut self.changed) {
+                grew = true;
+                self.forget_unfinished();
+
+                let mut member = index;
+
+                while member < self.working.len() {
+                    self.low = usize::MAX;
+                    self.summarize(member);
+                    low = low.min(self.low);
+                    member += 1;
+                }
+            }
         }
 
-        // Otherwise, the function values that a recursive call calls aren't known until the
-        // functions in the cycle are resolved, so a function in a cycle that calls any is treated
-        // as failing
-        if !calls.is_empty() && self.lowest_assumption != usize::MAX {
-            fails = true;
-        }
+        let failure = self.working[index].clone();
 
-        let failure = if fails {
-            FunctionFailure::fails()
-        } else {
-            FunctionFailure {
-                fails: false,
-                calls: calls.into_iter().collect(),
-            }
-        };
-
-        if fails {
-            // Failing doesn't depend on any assumption. The functions that were assumed not to
-            // fail since this one was reached may have been wrong, so they're checked again
-            // if they're reached again.
-            self.assumed.truncate(index);
-            self.cache(function, failure.clone());
-            self.lowest_assumption = lowest_assumption;
-        } else if self.lowest_assumption >= index {
-            // Every assumption made while checking the body was about this function or the ones
-            // reached after it, and none of them fail. Only a function that didn't depend on any
-            // assumption calls the function values it's passed, which is then the only one here.
-            let resolved: Vec<SymbolId> = self
-                .assumed
-                .drain(index..)
-                .map(|(assumed, _)| assumed)
-                .collect();
-
-            for assumed in resolved {
-                let failure = if assumed == function {
-                    failure.clone()
-                } else {
-                    FunctionFailure::default()
-                };
-
-                self.cache(assumed, failure);
+        if low >= index {
+            for (finished, failure) in self.working.drain(index..).collect::<Vec<_>>() {
+                self.cache(finished, failure);
             }
 
-            self.lowest_assumption = lowest_assumption;
+            self.forget_unfinished();
+            self.low = outer_low;
+            self.changed = outer_changed;
         } else {
-            // This depends on a function that was reached earlier, whose result isn't known yet,
-            // so it stays assumed not to fail until then
-            self.assumed.insert(function, self.lowest_assumption);
-            self.lowest_assumption = self.lowest_assumption.min(lowest_assumption);
+            // It calls a function reached earlier whose summary isn't finished, so it's found
+            // along with that one. If a pass above found that late, the summaries it grew are
+            // checked again with that one's component.
+            self.low = outer_low.min(low);
+            self.changed |= outer_changed || grew;
         }
 
         failure
     }
 
-    /// Checks a function that calls itself, and calls the function values it's passed, again with
-    /// the values that it calls known, so that the values its recursive calls pass are checked
-    /// too. Each check can only find more of them, so this stops once it doesn't.
-    fn self_recursive_failure(
-        &mut self,
-        function: SymbolId,
-        body: HirId,
-        index: usize,
-        mut calls: IndexSet<SymbolId>,
-    ) -> FunctionFailure {
-        self.assumed.truncate(index);
-        self.unfinished += 1;
+    /// Forgets the substituted values that read a summary that wasn't finished. One that read an
+    /// earlier function's summary may also have read a later one that has grown since, and `low`
+    /// only records the earliest, so all of them are forgotten.
+    fn forget_unfinished(&mut self) {
+        self.substituted.retain(|_, entry| entry.low == usize::MAX);
+    }
 
-        let failure = loop {
-            let failure = FunctionFailure {
+    /// Checks the body of the function at the index in `working` again, with the summaries found
+    /// so far, and grows its summary if needed.
+    fn summarize(&mut self, index: usize) {
+        let (&function, old) = self.working.get_index(index).expect("working function");
+        let old = old.clone();
+
+        let Symbol::Function(symbol) = self.db().symbol(function) else {
+            return;
+        };
+
+        let (fails, calls) = self.visit_body(symbol.body);
+
+        let failure = if fails || old.fails {
+            FunctionFailure::fails()
+        } else {
+            let mut all: IndexSet<SymbolId> = old.calls.iter().copied().collect();
+            all.extend(calls);
+            FunctionFailure {
                 fails: false,
-                calls: calls.iter().copied().collect(),
-            };
-
-            self.cache(function, failure.clone());
-            self.lowest_assumption = usize::MAX;
-
-            let cached: HashSet<SymbolId> = self
-                .cx
-                .function_failures()
-                .borrow()
-                .keys()
-                .copied()
-                .collect();
-
-            let (fails, more) = self.visit_body(body);
-
-            let known = calls.len();
-            calls.extend(more);
-
-            // Reaching a function whose result isn't known yet would make this depend on it, so
-            // it's treated as failing instead
-            let failed = fails || self.lowest_assumption != usize::MAX;
-
-            if !failed && calls.len() == known {
-                break failure;
-            }
-
-            // What was found during this check depended on calls that weren't all known yet, or
-            // on this function not failing
-            self.cx
-                .function_failures()
-                .borrow_mut()
-                .retain(|symbol, _| cached.contains(symbol));
-
-            if failed {
-                self.assumed.truncate(index);
-                break FunctionFailure::fails();
+                calls: all.into_iter().collect(),
             }
         };
 
-        self.unfinished -= 1;
-
-        if self.unfinished == 0 {
-            self.provisional.clear();
+        if failure.fails != old.fails || failure.calls.len() != old.calls.len() {
+            self.working[index] = failure;
+            self.changed = true;
         }
-
-        self.cache(function, failure.clone());
-        failure
     }
 
     /// Checks a function body, and finds the parameters whose values it calls.
@@ -578,10 +543,6 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
     }
 
     fn cache(&mut self, function: SymbolId, failure: FunctionFailure) {
-        if self.unfinished > 0 {
-            self.provisional.insert(function);
-        }
-
         self.cx
             .function_failures()
             .borrow_mut()

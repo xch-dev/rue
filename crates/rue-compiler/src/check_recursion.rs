@@ -83,12 +83,9 @@ impl Components<'_> {
         let mut parents = self.ctx.reference_parents(declaration);
 
         // A binding whose value may fail is evaluated for its effect even if nothing references
-        // it, so the declaration it's in depends on it. This counts every such binding, like the
-        // unused lints do, even though one that only calls the value of a parameter might not be.
+        // it, so the declaration it's in depends on it
         if let Declaration::Symbol(symbol) = declaration
-            && let Symbol::Binding(binding) = self.ctx.symbol(symbol)
-            && !binding.inline
-            && self.failures.may_fail(self.ctx, binding.value.hir)
+            && self.failures.may_be_effect(self.ctx, symbol)
         {
             parents.extend(self.ctx.declaration_parents(declaration));
         }

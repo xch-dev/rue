@@ -57,3 +57,12 @@ fn unchecked_with(x: Int) -> Int {
     let _u = U + 1;
     x
 }
+
+// An inline binding isn't evaluated if it's never referenced, so this isn't a cycle either
+const T: Int = inline_unused_with(1);
+
+fn inline_unused_with(x: Int) -> Int {
+    inline let _t = T;
+    assert x > 0;
+    x
+}

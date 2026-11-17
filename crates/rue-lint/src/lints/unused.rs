@@ -284,10 +284,7 @@ fn is_live_with_parent(
     match declaration {
         Declaration::Symbol(symbol) => match db.symbol(symbol) {
             Symbol::Parameter(_) => true,
-            Symbol::Binding(binding) => {
-                kept.contains(&declaration)
-                    || (!binding.inline && failures.may_fail(db, binding.value.hir))
-            }
+            Symbol::Binding(_) => kept.contains(&declaration) || failures.may_be_effect(db, symbol),
             _ => false,
         },
         Declaration::Type(ty) => matches!(db.ty(ty), Type::Generic(_)),

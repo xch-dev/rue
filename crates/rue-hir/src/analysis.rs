@@ -22,8 +22,9 @@
 //!   treated as able to fail.
 //! - The result of `unchecked_cast`, which must really have the type it's cast to.
 //!
-//! Everything else follows from type checking: `as` can't change a value's shape, type guards
-//! check the whole shape they narrow to, and `==` only compiles for atoms. Given those shapes,
+//! Everything else follows from type checking: `as` can't change a value's shape, a type guard
+//! checks enough of the shape to rule out every other type its value could have (so a guard from
+//! `Any` checks the whole shape), and `==` only compiles for atoms. Given those shapes,
 //! the operations treated as unable to fail (reading a field, arithmetic, comparisons, `==`,
 //! hashing, `concat`, `strlen`, the bitwise and logical operators, and shifts and division by
 //! suitable constants) can't fail in CLVM. Nothing relies on narrower facts about atoms, such as a
@@ -123,7 +124,7 @@ pub struct FailureAnalysis {
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     let_evaluations: RefCell<HashMap<SymbolId, bool>>,
-    parameter_uses: RefCell<HashMap<SymbolId, Rc<HashSet<SymbolId>>>>,
+    body_uses: RefCell<HashMap<SymbolId, Rc<HashSet<SymbolId>>>>,
 }
 
 impl FailureAnalysis {
@@ -152,6 +153,17 @@ impl FailureAnalysis {
     /// first.
     pub fn always_evaluated(&self, db: &Database, target: SymbolId, hir: HirId) -> bool {
         Evaluation::new(&self.context(db), target).hir(hir)
+    }
+
+    /// Whether the symbol is a binding that may be evaluated for its effect even if nothing
+    /// references it, because it isn't `inline` and its value may fail. This counts a binding
+    /// whose value only fails by calling the function value of a parameter, which isn't evaluated
+    /// if the functions passed for that parameter can't fail, so it's conservative.
+    pub fn may_be_effect(&self, db: &Database, symbol: SymbolId) -> bool {
+        matches!(
+            db.symbol(symbol),
+            Symbol::Binding(binding) if !binding.inline && self.may_fail(db, binding.value.hir)
+        )
     }
 
     /// Whether evaluating the HIR, which is in a function body, may fail other than by calling the
@@ -189,6 +201,37 @@ impl WrittenContext<'_> {
         let mut uses = Uses::new(self);
         uses.block(statements, body);
         uses.symbols
+    }
+}
+
+impl WrittenContext<'_> {
+    /// The symbols that the body of the function references where it's evaluated.
+    fn body_uses(&self, function: SymbolId) -> Option<Rc<HashSet<SymbolId>>> {
+        if let Some(uses) = self.analysis.body_uses.borrow().get(&function) {
+            return Some(uses.clone());
+        }
+
+        let Symbol::Function(symbol) = self.db.symbol(function) else {
+            return None;
+        };
+
+        // An `inline fn` that calls itself is an error, but it's checked before that's reported,
+        // so every parameter counts as used while its body is walked
+        self.analysis.body_uses.borrow_mut().insert(
+            function,
+            Rc::new(symbol.parameters.iter().copied().collect()),
+        );
+
+        let mut uses = Uses::new(self);
+        uses.hir(symbol.body);
+        let uses = Rc::new(uses.symbols);
+
+        self.analysis
+            .body_uses
+            .borrow_mut()
+            .insert(function, uses.clone());
+
+        Some(uses)
     }
 }
 
@@ -238,41 +281,13 @@ impl AnalysisContext for WrittenContext<'_> {
     }
 
     fn is_parameter_used(&self, function: SymbolId, parameter: SymbolId) -> bool {
-        if let Some(uses) = self.analysis.parameter_uses.borrow().get(&function) {
-            return uses.contains(&parameter);
-        }
-
-        let Symbol::Function(symbol) = self.db.symbol(function) else {
-            return true;
-        };
-
-        // An `inline fn` that calls itself is an error, but it's checked before that's reported,
-        // so every parameter counts as used while its body is walked
-        self.analysis.parameter_uses.borrow_mut().insert(
-            function,
-            Rc::new(symbol.parameters.iter().copied().collect()),
-        );
-
-        let mut uses = Uses::new(self);
-        uses.hir(symbol.body);
-        let used = uses.symbols.contains(&parameter);
-
-        self.analysis
-            .parameter_uses
-            .borrow_mut()
-            .insert(function, Rc::new(uses.symbols));
-
-        used
+        self.body_uses(function)
+            .is_none_or(|uses| uses.contains(&parameter))
     }
 
     fn captures(&self, function: SymbolId, parameter: SymbolId) -> bool {
-        let Symbol::Function(symbol) = self.db.symbol(function) else {
-            return false;
-        };
-
-        let mut uses = Uses::new(self);
-        uses.hir(symbol.body);
-        uses.symbols.contains(&parameter)
+        self.body_uses(function)
+            .is_some_and(|uses| uses.contains(&parameter))
     }
 
     fn function_failures(&self) -> &RefCell<HashMap<SymbolId, FunctionFailure>> {

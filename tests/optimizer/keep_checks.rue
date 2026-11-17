@@ -954,10 +954,10 @@ fn apply_odd(f: fn(x: Int) -> Int, n: Int) -> Int {
     }
 }
 
-// Functions that call each other and call a function value they're passed are treated as if they
-// may fail, even if the value can't, since what the cycle calls isn't known until it's resolved.
-// This binding is kept, unlike before.
-test fn mutually_recursive_call_of_argument_is_kept(x: Int, flag: Bool) -> Int {
+// Functions that call each other and call a function value they're passed are resolved together,
+// so the cycle is known to call only this value, which can't fail, and the binding is inlined as
+// before
+test fn mutually_recursive_call_of_safe_argument_is_inlined(x: Int, flag: Bool) -> Int {
     let y = apply_even(fn(i: Int) => x + i, 4);
     if flag {
         y
@@ -975,6 +975,24 @@ fn apply_unused(f: fn(x: Int) -> Int, x: Int) -> Int {
 // a value that may fail, so it's dropped here, as before
 test fn unused_call_of_safe_argument_is_dropped(x: Int) -> Int {
     apply_unused(fn(y: Int) => y + 1, x)
+}
+
+fn apply_through_inline(f: fn(x: Int) -> Int, x: Int) -> Int {
+    inline let y = f(x);
+    let _u = y;
+    x
+}
+
+// The unused binding calls the parameter's value through an inline binding, so the calls found
+// while checking that binding are remembered along with it
+test fn unused_call_through_inline_binding_is_evaluated() -> Int {
+    let _z = apply_through_inline(fn(i: Int) => check(i), 50);
+    1
+}
+
+test fn unused_safe_call_through_inline_binding_is_dropped() -> Int {
+    let _z = apply_through_inline(fn(i: Int) => i + 1, 50);
+    1
 }
 
 fn apply_unused_checked(f: fn(x: Int) -> Int, x: Int) -> Int {
