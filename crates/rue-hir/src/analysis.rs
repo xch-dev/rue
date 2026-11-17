@@ -170,8 +170,8 @@ impl FailureAnalysis {
     }
 
     /// Whether the symbol is a binding that may be evaluated for its effect even if nothing
-    /// references it (see [`Self::effect`]). A binding whose value only fails by calling the
-    /// function values of parameters counts, so this is conservative.
+    /// references it, because it isn't `inline` and its value may fail. A binding whose value only
+    /// fails by calling the function values of parameters counts, so this is conservative.
     pub fn may_be_effect(&self, db: &Database, symbol: SymbolId) -> bool {
         !matches!(self.effect(db, symbol), Effect::Never)
     }
