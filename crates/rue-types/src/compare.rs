@@ -833,7 +833,7 @@ pub fn add_expected_bounds(
     let mut given: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
 
     // A generic's lower bounds don't change here, so they're only expanded once
-    let mut expanded = HashMap::new();
+    let expanded = expanded_lower_bounds(arena, infer);
 
     while let Some((generic, upper, passed_on)) = stack.pop() {
         let given = given.entry(generic).or_default();
@@ -850,7 +850,7 @@ pub fn add_expected_bounds(
 
         given.push(upper);
 
-        let lower = expanded_lower(arena, infer, generic, &mut expanded);
+        let lower = expanded[&generic];
 
         if lower.is_some_and(|lower| compare(arena, builtins, lower, upper) != Comparison::Assign) {
             continue;
@@ -882,89 +882,142 @@ pub fn add_expected_bounds(
     }
 }
 
-/// Returns the union of the generic's lower bounds, with each generic they reference that's
+/// Returns the union of each generic's lower bounds, with each generic they reference that's
 /// resolved through replaced by the union of that generic's own expanded lower bounds (if it has
-/// any), so that they can be checked against a bound. A lower bound that's just such a generic adds
-/// nothing if that generic has none, and one that only references it is left as is. Returns `None`
-/// if there are no lower bounds.
+/// any), so that they can be checked against a bound, or `None` if there are none. A lower bound
+/// that's just such a generic adds nothing if that generic has none, and one that only references
+/// it is left as is.
 ///
-/// A generic reached again through a cycle adds nothing, since the bounds it would add are already
-/// being collected. So a generic's expansion is only cached in `expanded` if it didn't reach one
-/// that was still being expanded (other than itself), since it would be missing that one's bounds.
-fn expanded_lower(
+/// The generics that reach each other through their lower bounds (a strongly connected component)
+/// have the same expansion, made of what they have other than each other, so they're expanded
+/// together, after the ones they reach. A lower bound that references one of them in a compound
+/// type is left as is, since expanding it would be an infinite type.
+fn expanded_lower_bounds(
     arena: &mut Arena<Type>,
     infer: &Inference,
-    generic: TypeId,
-    expanded: &mut HashMap<TypeId, Option<TypeId>>,
-) -> Option<TypeId> {
-    if let Some(&union) = expanded.get(&generic) {
-        return union;
+) -> HashMap<TypeId, Option<TypeId>> {
+    let edges: IndexMap<TypeId, Vec<TypeId>> = infer
+        .generics
+        .iter()
+        .map(|(&generic, candidates)| {
+            let edges = candidates
+                .lower
+                .iter()
+                .flat_map(|&ty| free_generics(arena, ty))
+                .filter(|&other| infer.is_resolved_through(other))
+                .collect();
+            (generic, edges)
+        })
+        .collect();
+
+    let mut expanded: HashMap<TypeId, Option<TypeId>> = HashMap::new();
+
+    // The components are in reverse topological order, so the ones a component reaches are
+    // expanded before it
+    for component in strongly_connected_components(&edges) {
+        let mut result = IndexSet::new();
+
+        for &generic in &component {
+            for &ty in &infer.generics[&generic].lower {
+                if component.contains(&ty) {
+                    continue;
+                }
+
+                let mappings: HashMap<TypeId, TypeId> = edges[&generic]
+                    .iter()
+                    .filter_map(|&other| Some((other, (*expanded.get(&other)?)?)))
+                    .collect();
+
+                if infer.is_resolved_through(ty) {
+                    // A generic without lower bounds doesn't add any yet
+                    if let Some(&union) = mappings.get(&ty) {
+                        result.insert(union);
+                    }
+                } else if mappings.is_empty() {
+                    result.insert(ty);
+                } else {
+                    result.insert(substitute_with_mappings(arena, ty, &mappings));
+                }
+            }
+        }
+
+        let union = (!result.is_empty()).then(|| union_of(arena, result));
+
+        for generic in component {
+            expanded.insert(generic, union);
+        }
     }
 
-    expanded_lower_impl(arena, infer, generic, &mut Vec::new(), expanded).0
+    expanded
 }
 
-/// Returns the expansion (see `expanded_lower`) and the lowest index in `path` of a generic being
-/// expanded that it reached through a cycle.
-fn expanded_lower_impl(
-    arena: &mut Arena<Type>,
-    infer: &Inference,
-    generic: TypeId,
-    path: &mut Vec<TypeId>,
-    expanded: &mut HashMap<TypeId, Option<TypeId>>,
-) -> (Option<TypeId>, usize) {
-    let depth = path.len();
-    let mut reached = usize::MAX;
-    path.push(generic);
+/// Returns the strongly connected components of the graph with Tarjan's algorithm, each one after
+/// the components it has edges to. An edge to a node that isn't in the graph is ignored.
+fn strongly_connected_components(edges: &IndexMap<TypeId, Vec<TypeId>>) -> Vec<Vec<TypeId>> {
+    struct State<'a> {
+        edges: &'a IndexMap<TypeId, Vec<TypeId>>,
+        index: HashMap<TypeId, usize>,
+        low: HashMap<TypeId, usize>,
+        stack: Vec<TypeId>,
+        on_stack: HashSet<TypeId>,
+        components: Vec<Vec<TypeId>>,
+    }
 
-    let mut result = IndexSet::new();
+    fn visit(state: &mut State<'_>, node: TypeId) {
+        let index = state.index.len();
+        state.index.insert(node, index);
+        state.low.insert(node, index);
+        state.stack.push(node);
+        state.on_stack.insert(node);
 
-    for &ty in &infer.generics[&generic].lower {
-        let mut mappings = HashMap::new();
-
-        for other in free_generics(arena, ty) {
-            if !infer.is_resolved_through(other) {
+        for &next in &state.edges[&node] {
+            if !state.edges.contains_key(&next) {
                 continue;
             }
 
-            let union = if let Some(index) = path.iter().position(|&ancestor| ancestor == other) {
-                reached = reached.min(index);
-                None
-            } else if let Some(&union) = expanded.get(&other) {
-                union
-            } else {
-                let (union, other_reached) =
-                    expanded_lower_impl(arena, infer, other, path, expanded);
-                reached = reached.min(other_reached);
-                union
-            };
-
-            if let Some(union) = union {
-                mappings.insert(other, union);
+            if !state.index.contains_key(&next) {
+                visit(state, next);
+                let low = state.low[&node].min(state.low[&next]);
+                state.low.insert(node, low);
+            } else if state.on_stack.contains(&next) {
+                let low = state.low[&node].min(state.index[&next]);
+                state.low.insert(node, low);
             }
         }
 
-        if infer.is_resolved_through(ty) {
-            // A generic without lower bounds doesn't add any yet
-            if let Some(&union) = mappings.get(&ty) {
-                result.insert(union);
+        if state.low[&node] == index {
+            let mut component = Vec::new();
+
+            loop {
+                let member = state.stack.pop().unwrap();
+                state.on_stack.remove(&member);
+                component.push(member);
+
+                if member == node {
+                    break;
+                }
             }
-        } else if mappings.is_empty() {
-            result.insert(ty);
-        } else {
-            result.insert(substitute_with_mappings(arena, ty, &mappings));
+
+            state.components.push(component);
         }
     }
 
-    path.pop();
+    let mut state = State {
+        edges,
+        index: HashMap::new(),
+        low: HashMap::new(),
+        stack: Vec::new(),
+        on_stack: HashSet::new(),
+        components: Vec::new(),
+    };
 
-    let union = (!result.is_empty()).then(|| union_of(arena, result));
-
-    if reached >= depth {
-        expanded.insert(generic, union);
+    for &node in edges.keys() {
+        if !state.index.contains_key(&node) {
+            visit(&mut state, node);
+        }
     }
 
-    (union, reached)
+    state.components
 }
 
 pub fn compare(

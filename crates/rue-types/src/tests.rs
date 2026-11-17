@@ -1468,15 +1468,33 @@ mod inference {
         assert_eq!(candidates(&infer, a).upper.len(), 1);
         assert_eq!(candidates(&infer, b).upper.len(), 1);
 
+        // `B` is inferred from `(A, nil)`, where `A` and `C` are inferred from each other and `5`,
+        // so the union inside the expected pair goes around that cycle
+        let c = db.generic("C");
         let pair = db.pair(a, nil);
-        let mut infer = Inference::new([a, b]);
+        let mut infer = Inference::new([a, b, c]);
         db.infer(pair, b, &mut infer);
-        db.infer(b, a, &mut infer);
+        db.infer(c, a, &mut infer);
+        db.infer(a, c, &mut infer);
         db.infer(five, a, &mut infer);
-        let expected = db.pair(expected, nil);
-        let expected = db.union(&[expected, nil]);
-        add_expected(&mut db, &[a, b], b, expected, &mut infer);
+        let expected_pair = db.pair(expected, nil);
+        let expected_pair = db.union(&[expected_pair, nil]);
+        add_expected(&mut db, &[a, b, c], b, expected_pair, &mut infer);
         assert_eq!(candidates(&infer, b).upper.len(), 1);
+        assert_eq!(candidates(&infer, a).upper.len(), 1);
+        assert_eq!(candidates(&infer, c).upper.len(), 1);
+
+        // If `A` is also inferred from `B`, it's an infinite type (`A` holds `(A, nil)`), whose
+        // values aren't all `(Int | nil, nil)`, so the bound isn't added
+        let mut infer = {
+            let mut infer = Inference::new([a, b]);
+            db.infer(pair, b, &mut infer);
+            db.infer(b, a, &mut infer);
+            db.infer(five, a, &mut infer);
+            infer
+        };
+        add_expected(&mut db, &[a, b], b, expected_pair, &mut infer);
+        assert_eq!(candidates(&infer, b).upper.len(), 0);
     }
 
     #[test]
