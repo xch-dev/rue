@@ -1360,3 +1360,80 @@ fn forwards_to_applies(k: fn(x: Int) -> Int, p0: Int) -> Int {
 test fn forwarded_safe_function_is_inlined(n: Int) -> Int {
     forwards_to_applies(add_one, n)
 }
+
+inline fn add_inline(a: Int, b: Int) -> Int {
+    a + b
+}
+
+// The argument calls the same `inline fn` as the call it's passed to, which is followed again
+// there, so `x` is always evaluated and inlined, as before
+test fn nested_call_of_same_inline_function_is_inlined(n: Int, m: Int) -> Int {
+    let x = 100 / n;
+    add_inline(add_inline(x, m), 2)
+}
+
+test fn inline_binding_in_nested_call_of_same_inline_function(n: Int, m: Int) -> Int {
+    inline let x = 100 / n;
+    add_inline(add_inline(x, m), 2)
+}
+
+inline fn passes_to_identity(a: Int) -> Int {
+    identity_inline(a)
+}
+
+inline fn identity_inline(b: Int) -> Int {
+    b
+}
+
+// The argument of the outer call reaches the inner call through its parameter
+test fn argument_passed_through_inline_functions_is_inlined(n: Int) -> Int {
+    let x = 100 / n;
+    passes_to_identity(x) + 1
+}
+
+// The inline binding passed to the call references `x`
+test fn binding_reached_through_inline_binding_argument_is_inlined(n: Int) -> Int {
+    let x = 100 / n;
+    inline let y = x + 1;
+    identity_inline(y)
+}
+
+inline fn calls_closure(f: fn() -> Int) -> Int {
+    f()
+}
+
+fn wraps_parameter(p: Int) -> Int {
+    calls_closure(fn() => p) + 1
+}
+
+// The closure passed to the call captures `p`, which is substituted into it
+test fn argument_captured_by_closure_argument_is_inlined(n: Int) -> Int {
+    wraps_parameter(100 / n)
+}
+
+// The block passed to the call reads `x` in an unused binding, which is evaluated
+test fn binding_read_by_unused_binding_in_argument_is_evaluated(n: Int) -> Int {
+    let x = 100 / n;
+    identity_inline({
+        let _y = 100 / x;
+        0
+    })
+}
+
+fn not_three_constant(x: Int) -> Int {
+    assert x != 3;
+    x
+}
+
+const EVALUATED: Int = not_three_constant(2);
+
+fn reads_evaluated_constant(x: Int) -> Int {
+    let _unused = EVALUATED + x;
+    x * 2
+}
+
+// The constant is evaluated in the body anyway, so reading it again in an unused binding can't
+// fail, and the binding is dropped, as before
+test fn unused_binding_reading_evaluated_constant_is_dropped(n: Int, m: Int) -> Int {
+    EVALUATED * EVALUATED + reads_evaluated_constant(n) + reads_evaluated_constant(m)
+}

@@ -129,11 +129,23 @@ pub struct FailureAnalysis {
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     let_evaluations: RefCell<HashMap<SymbolId, bool>>,
     body_uses: RefCell<HashMap<SymbolId, Rc<HashSet<SymbolId>>>>,
+    /// The constants that are known to be evaluated whenever the program runs, so that reading
+    /// them again can't fail.
+    evaluated_constants: HashSet<SymbolId>,
 }
 
 impl FailureAnalysis {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// An analysis that treats reading any of the constants as unable to fail, since they're
+    /// evaluated whenever the program runs anyway.
+    pub(crate) fn with_evaluated_constants(evaluated_constants: HashSet<SymbolId>) -> Self {
+        Self {
+            evaluated_constants,
+            ..Self::default()
+        }
     }
 
     /// Whether evaluating the HIR may fail for values that have the shapes their types say.
@@ -246,6 +258,7 @@ impl AnalysisContext for WrittenContext<'_> {
 
     fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
         match self.db.symbol(symbol) {
+            Symbol::Constant(_) if self.analysis.evaluated_constants.contains(&symbol) => None,
             Symbol::Constant(constant) => Some(constant.value.hir),
             symbol => symbol.inline_value(),
         }

@@ -54,7 +54,7 @@ pub struct DependencyGraph {
     // Keeps track of the bindings whose values may fail that haven't been visited yet, along with
     // the symbol whose body their let statement is in, and the parameters whose function values
     // they call, if that's the only way they can fail
-    unvisited_effects: Vec<(Option<SymbolId>, SymbolId, IndexSet<SymbolId>)>,
+    unvisited_effects: Vec<(Option<SymbolId>, SymbolId)>,
 
     // Keeps track of the direct calls to each function, so that a binding that calls the value of
     // one of its parameters can find the function values it's passed
@@ -507,19 +507,10 @@ fn visit_let(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
         return;
     };
 
-    if binding.inline {
-        return;
+    // Whether it's an effect is decided once everything that's referenced has been visited
+    if !binding.inline {
+        graph.unvisited_effects.push((graph.current, symbol));
     }
-
-    // A value that only fails if a function value that a parameter is passed fails is decided
-    // once the calls that pass them have been visited
-    let calls = match graph.failures.body_calls(db, binding.value.hir) {
-        None => IndexSet::new(),
-        Some(calls) if calls.is_empty() => return,
-        Some(calls) => calls,
-    };
-
-    graph.unvisited_effects.push((graph.current, symbol, calls));
 }
 
 /// Once everything that's referenced has been visited, the bindings whose values may fail but
@@ -527,22 +518,49 @@ fn visit_let(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
 /// count as references, but the enclosing function still depends on them, so that it captures what
 /// their values need. Visiting them can reach more of these, so this repeats until there are none.
 ///
+/// A constant that's referenced is evaluated whenever the program runs, either at the start or
+/// where it's referenced, so reading it again can't fail. That's decided again each time, since
+/// visiting effects can reference more constants.
+///
 /// A binding that only calls the function values of parameters waits until a call passes one that
 /// may fail. Visiting more of the program can find more calls, so it's checked again each time.
 ///
 /// These are only added at the end, so that the dependencies of a program without any are in the
 /// same order as if they didn't exist.
 fn visit_effects(db: &Database, graph: &mut DependencyGraph) {
+    let evaluated_constants = graph
+        .references
+        .iter()
+        .filter(|&(&symbol, &references)| {
+            references > 0
+                && matches!(db.symbol(symbol), Symbol::Constant(constant) if !constant.inline)
+        })
+        .map(|(&symbol, _)| symbol)
+        .collect();
+
+    graph.failures = FailureAnalysis::with_evaluated_constants(evaluated_constants);
+
     let effects = std::mem::take(&mut graph.unvisited_effects);
 
-    for (current, symbol, calls) in effects.into_iter().rev() {
+    for (current, symbol) in effects.into_iter().rev() {
         if graph.visited.contains(&symbol) || graph.references(symbol) > 0 {
             continue;
         }
 
-        if !calls.is_empty() && !graph.calls_may_fail(db, &calls) {
-            graph.unvisited_effects.push((current, symbol, calls));
+        let Symbol::Binding(binding) = db.symbol(symbol) else {
             continue;
+        };
+
+        // A value that only fails if a function value that a parameter is passed fails is decided
+        // once the calls that pass them have been visited
+        match graph.failures.body_calls(db, binding.value.hir) {
+            None => {}
+            Some(calls) if calls.is_empty() => continue,
+            Some(calls) if !graph.calls_may_fail(db, &calls) => {
+                graph.unvisited_effects.push((current, symbol));
+                continue;
+            }
+            Some(_) => {}
         }
 
         graph.effects.insert(symbol);

@@ -19,14 +19,22 @@ use super::{AnalysisContext, resolve_function};
 pub(crate) struct Evaluation<'a, C> {
     cx: &'a C,
     target: SymbolId,
-    /// The arguments of the calls to `inline fn`s being followed, which are evaluated where the
+    /// The calls to `inline fn`s being followed, whose arguments are evaluated where the
     /// parameters are referenced.
-    arguments: Vec<HashMap<SymbolId, HirId>>,
+    arguments: Vec<Frame>,
     /// The symbols whose values or bodies have been followed, so that each is only followed once.
     visited: HashSet<SymbolId>,
     /// The symbols in `visited`, in the order they were followed, so that the ones followed
     /// inside a call to an `inline fn` can be followed again for the next call.
     followed: Vec<SymbolId>,
+}
+
+/// A call to an `inline fn` being followed.
+struct Frame {
+    arguments: HashMap<SymbolId, HirId>,
+    /// The length of [`Evaluation::followed`] when the call was reached, so that what's followed
+    /// inside it is known.
+    followed: usize,
 }
 
 impl<'a, C: AnalysisContext> Evaluation<'a, C> {
@@ -166,9 +174,24 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
 
         if let Some((frame, hir)) = self.argument(symbol, self.arguments.len()) {
             // The argument is written outside of the call it's passed to, so the parameters it
-            // references are those of the calls around that one
+            // references are those of the calls around that one, and what was followed inside
+            // that call (such as the `inline fn` itself) can be followed again in it
+            let start = self.arguments[frame].followed;
             let inner = self.arguments.split_off(frame);
+            let hidden = self.followed[start..].to_vec();
+
+            for symbol in &hidden {
+                self.visited.remove(symbol);
+            }
+
+            let followed = self.followed.len();
             let evaluated = self.hir(hir);
+
+            for symbol in self.followed.drain(followed..) {
+                self.visited.remove(&symbol);
+            }
+
+            self.visited.extend(hidden);
             self.arguments.extend(inner);
             return evaluated;
         }
@@ -192,7 +215,7 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             .iter()
             .enumerate()
             .rev()
-            .find_map(|(frame, arguments)| Some((frame, *arguments.get(&parameter)?)))
+            .find_map(|(index, frame)| Some((index, *frame.arguments.get(&parameter)?)))
     }
 
     /// Whether the HIR could reference the target at all, following the values and bodies it
@@ -296,7 +319,10 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             // What's followed inside the body depends on the arguments, so it's followed again
             // for each call
             let followed = self.followed.len();
-            self.arguments.push(arguments);
+            self.arguments.push(Frame {
+                arguments,
+                followed,
+            });
             let evaluated = self.follow(function) && self.hir(symbol.body);
             self.arguments.pop();
 

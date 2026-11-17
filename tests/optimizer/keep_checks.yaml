@@ -791,6 +791,60 @@ tests:
   runtime_cost: 3172
   byte_cost: 996000
   total_cost: 999172
+- name: nested_call_of_same_inline_function_is_inlined
+  program: (+ (/ (q . 100) 2) 5 (q . 2))
+  debug_program: (a (q 16 (+ 2 11) (q . 2)) (c (/ (q . 100) 2) 1))
+  solution: (5 1)
+  output: "23"
+  runtime_cost: 2226
+  byte_cost: 228000
+  total_cost: 230226
+- name: inline_binding_in_nested_call_of_same_inline_function
+  program: (+ (/ (q . 100) 2) 5 (q . 2))
+  debug_program: (+ (+ (/ (q . 100) 2) 5) (q . 2))
+  solution: (5 1)
+  output: "23"
+  runtime_cost: 2226
+  byte_cost: 228000
+  total_cost: 230226
+- name: argument_passed_through_inline_functions_is_inlined
+  program: (+ (/ (q . 100) 2) (q . 1))
+  debug_program: (a (q 16 2 (q . 1)) (c (/ (q . 100) 2) 1))
+  solution: (5)
+  output: "21"
+  runtime_cost: 1851
+  byte_cost: 204000
+  total_cost: 205851
+- name: binding_reached_through_inline_binding_argument_is_inlined
+  program: (+ (/ (q . 100) 2) (q . 1))
+  debug_program: (a (q 16 2 (q . 1)) (c (/ (q . 100) 2) 1))
+  solution: (5)
+  output: "21"
+  runtime_cost: 1851
+  byte_cost: 204000
+  total_cost: 205851
+- name: argument_captured_by_closure_argument_is_inlined
+  program: (+ (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (/ (q . 100) 2)) (c () ()))) ()))) ()) (q . 1))
+  debug_program: (a (q 2 2 (/ (q . 100) 5)) (c (q 16 (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) ()) (q . 1)) 1))
+  solution: (5)
+  output: "21"
+  runtime_cost: 2900
+  byte_cost: 972000
+  total_cost: 974900
+- name: binding_read_by_unused_binding_in_argument_is_evaluated
+  program: (i () (/ (q . 100) (/ (q . 100) 2)) ())
+  debug_program: (a (q 3 () (/ (q . 100) 2) ()) (c (/ (q . 100) 2) 1))
+  solution: (200)
+  byte_cost: 300000
+  clvm_error: Division by zero
+- name: unused_binding_reading_evaluated_constant_is_dropped
+  program: (a (q 2 (q 16 (* 2 2) (a 9 11) (a 9 23)) (c (a 6 (q . 2)) 1)) (c (c (q 18 1 (q . 2)) (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1)) 1))
+  debug_program: (a (q 2 (q 16 (+ (* 2 2) (a 9 11)) (a 9 23)) (c (a 6 (q . 2)) 1)) (c (c (q 18 1 (q . 2)) (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1424:5"))) 1)) 1))
+  solution: (1 2)
+  output: "10"
+  runtime_cost: 5816
+  byte_cost: 1308000
+  total_cost: 1313816
 diagnostics:
 - |-
   This argument can fail, but `ignore_inline` is an `inline fn` that doesn't always evaluate its parameter `_a`, so its check can be skipped at keep_checks.rue:294:19
