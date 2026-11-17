@@ -1,0 +1,28 @@
+tests:
+- name: name_only_imports_use_an_enclosing_named_import
+  program: (a (q 16 2 2) (q 7))
+  debug_program: (a (q 16 (a 6 (c 4 ())) 4) (c (c (q . 7) (q . 2)) ()))
+  output: "14"
+  runtime_cost: 983
+  byte_cost: 228000
+  total_cost: 228983
+- name: import_paths_use_an_enclosing_named_import
+  program: (a (q 16 2 2) (q 30))
+  debug_program: (a (q 16 (a 6 (c 4 ())) 4) (c (c (q . 30) (q . 2)) ()))
+  output: "60"
+  runtime_cost: 983
+  byte_cost: 228000
+  total_cost: 228983
+- name: name_only_imports_use_an_enclosing_glob_import
+  program: (a (q 16 2 2) (q 7))
+  debug_program: (a (q 16 (a 6 (c 4 ())) 4) (c (c (q . 7) (q . 2)) ()))
+  output: "14"
+  runtime_cost: 983
+  byte_cost: 228000
+  total_cost: 228983
+diagnostics:
+- Unused constant `V` at nested_imports.rue:2:18
+- Unused constant `W` at nested_imports.rue:7:22
+- Unused import `V` at nested_imports.rue:18:15
+- Unused import `m` at nested_imports.rue:19:15
+- Unused import `*` at nested_imports.rue:36:15

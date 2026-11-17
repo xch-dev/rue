@@ -1,0 +1,15 @@
+import m::helper;
+
+mod m {
+    export mod helper {
+        export const X: Int = 1;
+    }
+}
+
+fn helper() -> Int {
+    5
+}
+
+fn main() -> Int {
+    helper()
+}

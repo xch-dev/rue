@@ -1,0 +1,7 @@
+diagnostics:
+- Duplicate symbol `value` found in scope at local_declarations_shadow_imports.rue:7:4
+- Unused function `value` at local_declarations_shadow_imports.rue:7:4
+- Duplicate symbol `thing` found in scope at local_declarations_shadow_imports.rue:16:8
+- Unused function `thing` at local_declarations_shadow_imports.rue:16:8
+- Cannot reference module `value` at local_declarations_shadow_imports.rue:22:5
+- Cannot reference module `thing` at local_declarations_shadow_imports.rue:26:5

@@ -1,0 +1,5 @@
+diagnostics:
+- Unused type alias `T` at nested_type_imports.rue:2:17
+- Unused import `T` at nested_type_imports.rue:8:15
+- Cannot assign `1` to `T` without a cast, since they are semantically different at nested_type_imports.rue:13:32
+- Cannot assign `T` to `Int` without a cast, since they are semantically different at nested_type_imports.rue:19:18
