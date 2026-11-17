@@ -150,8 +150,8 @@ where
 ///   equations, which is at least `μ`.
 ///
 /// So the values in the last round are exactly `μ`, and they're cached for later computations,
-/// while the approximations from earlier rounds are discarded. Each round takes time proportional
-/// to the number of items it reaches.
+/// while the approximations from earlier rounds are discarded. Each round computes each item with
+/// a key at most once (an item without one is computed every time it's reached).
 ///
 /// An item without a key isn't cached or iterated. It's given the least value when it's reached
 /// again, as in a single pass, which is only exact if such an item never relies on itself.

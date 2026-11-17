@@ -626,7 +626,15 @@ fn differential(
                 give_up_after(|| count_steps(|| results(&mut db, lhs, rhs, target, generic)));
 
             let without_memo = give_up_after(|| {
-                count_steps(|| without_compare_memo(|| results(&mut db, lhs, rhs, target, generic)))
+                let ((results, steps), abandoned) = count_abandoned_passes(|| {
+                    count_steps(|| {
+                        without_compare_memo(|| results(&mut db, lhs, rhs, target, generic))
+                    })
+                });
+
+                // Without the memo, iterating couldn't reuse anything, so it never does
+                assert_eq!(abandoned, 0, "seed {seed}");
+                (results, steps)
             });
 
             let name = |db: &mut Types, id| stringify(&mut db.arena, id);
