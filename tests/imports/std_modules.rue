@@ -1,0 +1,13 @@
+import std::tree_hash::tree_hash_atom;
+
+test fn std_modules_are_modules() -> Bytes32 {
+    std::tree_hash::tree_hash_atom("hi")
+}
+
+test fn std_items_are_imported_through_modules() -> Bytes32 {
+    tree_hash_atom("hi")
+}
+
+test fn std_curry_tree_hash_is_a_module() -> Bytes32 {
+    std::curry_tree_hash::curry_tree_hash(tree_hash_atom("hi"), [])
+}

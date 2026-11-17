@@ -1,0 +1,22 @@
+tests:
+- name: std_modules_are_modules
+  program: (sha256 (q . 92265))
+  debug_program: (sha256 (concat (q . 1) (q . 26729)))
+  output: "0x5fab12722a8ba5aaef0c2b6e7c041834fdbb22b136ad50913b6a2e6ac3b974aa"
+  runtime_cost: 568
+  byte_cost: 120000
+  total_cost: 120568
+- name: std_items_are_imported_through_modules
+  program: (sha256 (q . 92265))
+  debug_program: (sha256 (concat (q . 1) (q . 26729)))
+  output: "0x5fab12722a8ba5aaef0c2b6e7c041834fdbb22b136ad50913b6a2e6ac3b974aa"
+  runtime_cost: 568
+  byte_cost: 120000
+  total_cost: 120568
+- name: std_curry_tree_hash_is_a_module
+  program: (a (q 11 (q . 2) (sha256 (q . 258)) (sha256 (q . 2) (sha256 (q . 2) (sha256 (q . 257)) (sha256 (q . 92265))) (sha256 (q . 2) (a 2 (c 2 ())) (sha256 (q . 1))))) (c (q 2 (i 3 (q 11 (q . 2) (sha256 (q . 260)) (sha256 (q . 2) (sha256 (q . 2) (sha256 (q . 257)) 5) (sha256 (q . 2) (a 2 (c 2 7)) (sha256 (q . 1))))) (q 11 (q . 257))) 1) ()))
+  debug_program: (a (q 2 10 (c (c 4 (c 22 30)) (c (sha256 (concat (q . 1) (q . 26729))) ()))) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) (q . 1))) (q 2 6 (c (f 3) (a 4 (c (c 4 6) (r 3)))))) 1) (c (q 2 14 (c 5 (a 4 (c (c 4 10) 7)))) (c (q 11 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 4)))) (sha256 (concat (concat (q . 2) (sha256 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 1)))) 2))) (sha256 (concat (concat (q . 2) 3) (sha256 (concat (q . 1) ())))))))) (q 11 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 2)))) (sha256 (concat (concat (q . 2) (sha256 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 1)))) 2))) (sha256 (concat (concat (q . 2) 3) (sha256 (concat (q . 1) ()))))))))))) ()))
+  output: "0x2873c46136042a17682794038e1123605d3acf3ed966ab2a2fe9643d155b43d5"
+  runtime_cost: 7435
+  byte_cost: 2400000
+  total_cost: 2407435
