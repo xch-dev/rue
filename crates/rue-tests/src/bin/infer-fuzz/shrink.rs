@@ -10,7 +10,7 @@ use std::cell::Cell;
 use std::collections::BTreeSet;
 
 use crate::generate::legalize;
-use crate::program::{Expr, ExprKind, Function, Program, Strip, Ty, Variant};
+use crate::program::{Expr, ExprKind, Function, Program, Root, Strip, Ty, Variant};
 
 /// Shrinks the program and variant, keeping each change for which `fails` is still true. Gives
 /// up after `budget` calls of `fails`.
@@ -141,17 +141,24 @@ fn still_removable(program: &Program, variant: &Variant) -> bool {
     legalize(program, variant) == *variant
 }
 
+/// Whether the expression is as simple as what [`simple`] would replace it with. Pairs and typed
+/// lambdas count when their parts are simple, since `simple` builds those for pair and function
+/// types, and replacing one with an identical copy would never end.
 fn is_simple(expr: &Expr) -> bool {
-    matches!(
-        expr.kind,
+    match &expr.kind {
         ExprKind::Var(_)
-            | ExprKind::Decrement(_)
-            | ExprKind::Int(_)
-            | ExprKind::Bytes
-            | ExprKind::Bool
-            | ExprKind::Nil
-            | ExprKind::Unchecked
-    )
+        | ExprKind::Decrement(_)
+        | ExprKind::Int(_)
+        | ExprKind::Bytes
+        | ExprKind::Bool
+        | ExprKind::Nil
+        | ExprKind::Unchecked => true,
+        ExprKind::Pair(first, rest) => is_simple(first) && is_simple(rest),
+        ExprKind::Lambda {
+            typed: true, body, ..
+        } => is_simple(body),
+        _ => false,
+    }
 }
 
 /// The simplest expression of a type that doesn't take generic arguments.
@@ -218,23 +225,14 @@ pub fn shape(program: &Program, variant: &Variant) -> String {
     let mut shapes = BTreeSet::new();
     for function in program.functions_and_main() {
         let recursive = function.recursion.is_some();
-        let mut contexts: Vec<(&Expr, String)> = Vec::new();
-        if let Some(recursion) = &function.recursion {
-            if let Some(inner) = &recursion.inner {
-                contexts.push((inner, "unannotated let in recursion guard".to_string()));
-            }
-            contexts.push((&recursion.returned, "return in recursion guard".to_string()));
-        }
-        for binding in &function.lets {
-            let context = match &binding.annotation {
-                Some(ty) => format!("let: {}", ty_kind(ty)),
-                None => "unannotated let".to_string(),
+        for (expr, root) in function.roots() {
+            let context = match root {
+                Root::GuardLet => "unannotated let in recursion guard".to_string(),
+                Root::GuardReturn => "return in recursion guard".to_string(),
+                Root::Let(Some(ty)) => format!("let: {}", ty_kind(ty)),
+                Root::Let(None) => "unannotated let".to_string(),
+                Root::Return => "return".to_string(),
             };
-            contexts.push((&binding.value, context));
-        }
-        contexts.push((&function.body, "return".to_string()));
-
-        for (expr, context) in contexts {
             describe_sites(
                 program,
                 expr,
@@ -314,11 +312,7 @@ fn callee_name(program: &Program, name: &str) -> String {
 }
 
 fn describe(program: &Program, expr: &Expr, variant: &Variant) -> String {
-    let stripped = |expr: &Expr| {
-        expr.site()
-            .is_some_and(|site| variant.stripped.contains_key(&site))
-    };
-    let mark = |expr: &Expr| if stripped(expr) { "!" } else { "" };
+    let mark = |expr: &Expr| if variant.strips(expr) { "!" } else { "" };
 
     match &expr.kind {
         ExprKind::Var(_) | ExprKind::Decrement(_) => "var".to_string(),
@@ -377,27 +371,20 @@ fn ty_kind(ty: &Ty) -> &'static str {
 /// bare generic`. Shrunk failures with the same diagnostic are grouped by these.
 pub fn tags(program: &Program, variant: &Variant) -> BTreeSet<&'static str> {
     let mut tags = BTreeSet::new();
-    let stripped = |expr: &Expr| {
-        expr.site()
-            .is_some_and(|site| variant.stripped.contains_key(&site))
-    };
+    let stripped = |expr: &Expr| variant.strips(expr);
 
     for function in program.functions_and_main() {
-        for binding in &function.lets {
-            if stripped(&binding.value) {
-                match &binding.annotation {
-                    Some(ty) if ty.contains_lit() => {
-                        tags.insert("expected literal");
-                    }
-                    Some(ty) if ty.contains_union() => {
-                        tags.insert("expected union");
-                    }
-                    _ => {}
+        for (expr, root) in function.roots() {
+            if let Root::Let(Some(ty)) = root
+                && stripped(expr)
+            {
+                if ty.contains_lit() {
+                    tags.insert("expected literal");
+                } else if ty.contains_union() {
+                    tags.insert("expected union");
                 }
             }
-        }
 
-        for expr in function.exprs() {
             expr.walk(&mut |expr| {
                 if !stripped(expr) {
                     return;

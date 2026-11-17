@@ -4,7 +4,6 @@
 //! struct literal) is a [`Site`] with an id. The explicit program writes out every site's
 //! arguments. A [`Variant`] says which sites have them removed, or replaced with `_`.
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
@@ -80,65 +79,58 @@ impl Ty {
         }
     }
 
+    /// The direct parts of the type.
+    fn children(&self) -> Vec<&Ty> {
+        match self {
+            Ty::Pair(first, rest) => vec![first, rest],
+            Ty::Opt(inner) | Ty::List(inner) | Ty::Boxed(inner) => vec![inner],
+            Ty::Fn(params, ret) => params.iter().chain([&**ret]).collect(),
+            _ => vec![],
+        }
+    }
+
+    /// Whether `f` holds for the type or any type inside of it.
+    pub fn any(&self, f: &impl Fn(&Ty) -> bool) -> bool {
+        f(self) || self.children().into_iter().any(|child| child.any(f))
+    }
+
     /// The generics `Var(i)` in the type.
     pub fn vars(&self) -> BTreeSet<usize> {
-        let vars = RefCell::new(BTreeSet::new());
-        self.map_vars(&|index| {
-            vars.borrow_mut().insert(index);
-            Ty::Var(index)
-        });
-        vars.into_inner()
+        let mut vars = BTreeSet::new();
+        let mut stack = vec![self];
+        while let Some(ty) = stack.pop() {
+            if let Ty::Var(index) = ty {
+                vars.insert(*index);
+            }
+            stack.extend(ty.children());
+        }
+        vars
     }
 
     pub fn contains_var(&self, index: usize) -> bool {
-        match self {
-            Ty::Var(other) => *other == index,
-            Ty::Pair(first, rest) => first.contains_var(index) || rest.contains_var(index),
-            Ty::Opt(inner) | Ty::List(inner) | Ty::Boxed(inner) => inner.contains_var(index),
-            Ty::Fn(params, ret) => {
-                params.iter().any(|param| param.contains_var(index)) || ret.contains_var(index)
-            }
-            _ => false,
-        }
+        self.any(&|ty| *ty == Ty::Var(index))
     }
 
     pub fn contains_boxed(&self) -> bool {
-        match self {
-            Ty::Boxed(_) => true,
-            Ty::Pair(first, rest) => first.contains_boxed() || rest.contains_boxed(),
-            Ty::Opt(inner) | Ty::List(inner) => inner.contains_boxed(),
-            Ty::Fn(params, ret) => params.iter().any(Ty::contains_boxed) || ret.contains_boxed(),
-            _ => false,
-        }
+        self.any(&|ty| matches!(ty, Ty::Boxed(_)))
     }
 
     pub fn contains_fn(&self) -> bool {
-        match self {
-            Ty::Fn(..) => true,
-            Ty::Pair(first, rest) => first.contains_fn() || rest.contains_fn(),
-            Ty::Opt(inner) | Ty::List(inner) | Ty::Boxed(inner) => inner.contains_fn(),
-            _ => false,
-        }
+        self.any(&|ty| matches!(ty, Ty::Fn(..)))
     }
 
     pub fn contains_lit(&self) -> bool {
-        match self {
-            Ty::Lit(_) => true,
-            Ty::Pair(first, rest) => first.contains_lit() || rest.contains_lit(),
-            Ty::Opt(inner) | Ty::List(inner) | Ty::Boxed(inner) => inner.contains_lit(),
-            Ty::Fn(params, ret) => params.iter().any(Ty::contains_lit) || ret.contains_lit(),
-            _ => false,
-        }
+        self.any(&|ty| matches!(ty, Ty::Lit(_)))
     }
 
     pub fn contains_union(&self) -> bool {
-        match self {
-            Ty::Opt(_) | Ty::List(_) => true,
-            Ty::Pair(first, rest) => first.contains_union() || rest.contains_union(),
-            Ty::Boxed(inner) => inner.contains_union(),
-            Ty::Fn(params, ret) => params.iter().any(Ty::contains_union) || ret.contains_union(),
-            _ => false,
-        }
+        self.any(&|ty| matches!(ty, Ty::Opt(_) | Ty::List(_)))
+    }
+
+    /// Whether this is a union with a function type in it, such as `F | nil` or `List<F>`,
+    /// which doesn't give a lambda the types of its parameters.
+    pub fn is_function_union(&self) -> bool {
+        matches!(self, Ty::Opt(inner) | Ty::List(inner) if matches!(**inner, Ty::Fn(..)))
     }
 
     /// The type as Rue source, naming the generics of the function it belongs to.
@@ -364,7 +356,47 @@ pub struct Function {
     pub body: Expr,
 }
 
+/// Where a function's top-level expression is, which says whether it has an expected type.
+#[derive(Debug, Clone, Copy)]
+pub enum Root<'a> {
+    /// `let _inner = ...;` in the recursion guard, which has no expected type.
+    GuardLet,
+    /// `return ...;` in the recursion guard.
+    GuardReturn,
+    /// A binding, with its annotation if it has one.
+    Let(Option<&'a Ty>),
+    /// The function's result.
+    Return,
+}
+
+impl Root<'_> {
+    pub fn has_expected_type(self) -> bool {
+        match self {
+            Root::GuardLet => false,
+            Root::GuardReturn | Root::Return => true,
+            Root::Let(annotation) => annotation.is_some(),
+        }
+    }
+}
+
 impl Function {
+    /// The function's top-level expressions, with where each one is, in the order they're
+    /// printed.
+    pub fn roots(&self) -> Vec<(&Expr, Root<'_>)> {
+        let mut roots = Vec::new();
+        if let Some(recursion) = &self.recursion {
+            if let Some(inner) = &recursion.inner {
+                roots.push((inner, Root::GuardLet));
+            }
+            roots.push((&recursion.returned, Root::GuardReturn));
+        }
+        for binding in &self.lets {
+            roots.push((&binding.value, Root::Let(binding.annotation.as_ref())));
+        }
+        roots.push((&self.body, Root::Return));
+        roots
+    }
+
     /// The function's type, with its generics as `Ty::Var`.
     pub fn ty(&self) -> Ty {
         Ty::func(
@@ -374,16 +406,10 @@ impl Function {
     }
 
     pub fn exprs(&self) -> Vec<&Expr> {
-        let mut exprs = Vec::new();
-        if let Some(recursion) = &self.recursion {
-            exprs.extend(&recursion.inner);
-            exprs.push(&recursion.returned);
-        }
-        exprs.extend(self.lets.iter().map(|binding| &binding.value));
-        exprs.push(&self.body);
-        exprs
+        self.roots().into_iter().map(|(expr, _)| expr).collect()
     }
 
+    /// The same expressions as [`exprs`](Self::exprs), in the same order.
     pub fn exprs_mut(&mut self) -> Vec<&mut Expr> {
         let mut exprs = Vec::new();
         if let Some(recursion) = &mut self.recursion {
@@ -416,6 +442,14 @@ pub enum Strip {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Variant {
     pub stripped: BTreeMap<SiteId, Strip>,
+}
+
+impl Variant {
+    /// Whether the expression is a site whose generic arguments this variant removes.
+    pub fn strips(&self, expr: &Expr) -> bool {
+        expr.site()
+            .is_some_and(|site| self.stripped.contains_key(&site))
+    }
 }
 
 impl Program {

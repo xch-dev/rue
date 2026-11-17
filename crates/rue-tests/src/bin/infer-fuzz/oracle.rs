@@ -44,6 +44,25 @@ impl Diag {
         }
         out
     }
+
+    /// The key that groups failures: the template and the kind, such as
+    /// ``Cannot infer generic `_` for `_`; ... (CannotInferGeneric)``.
+    pub fn key(&self) -> String {
+        format!("{} ({})", self.template(), self.kind)
+    }
+
+    /// Whether a shrunk program fails in the same way. The types in a message change as a
+    /// program shrinks, so they're compared by template. A `CannotInferGeneric` names a generic
+    /// and a function, which shrinking never renames, so it must name the same ones, or shrinking
+    /// could swap one failing call for another.
+    pub fn same_failure(&self, other: &Diag) -> bool {
+        self.kind == other.kind
+            && if self.kind == "CannotInferGeneric" {
+                self.message == other.message
+            } else {
+                self.template() == other.template()
+            }
+    }
 }
 
 /// The result of running `main`.
@@ -209,6 +228,19 @@ pub struct Outcome {
     /// The outputs, the panic message, or the times, depending on the category.
     pub detail: Option<String>,
     pub time_ms: f64,
+}
+
+impl Outcome {
+    /// A variant that hung or killed the worker, which the driver records.
+    pub fn failed(category: Category, detail: String, time_ms: f64) -> Self {
+        Self {
+            category,
+            diag: None,
+            same_clvm: false,
+            detail: Some(detail),
+            time_ms,
+        }
+    }
 }
 
 pub fn millis(time: Duration) -> f64 {

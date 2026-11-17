@@ -166,7 +166,7 @@ const CATALOG: &[Template] = &[
     template(
         "same",
         &["T"],
-        &[("function", "fn(value: T) -> T"), ("make", "fn() -> T")],
+        &[("function", "fn(value: T) -> T"), ("produce", "fn() -> T")],
         "T",
     ),
     template(
@@ -720,8 +720,7 @@ impl Generator {
                 if self.rng.chance(30) {
                     ExprKind::Nil
                 } else {
-                    // Lambdas don't get parameter types from a union such as `F | nil`
-                    let expected = expected && !matches!(**inner, Ty::Fn(..));
+                    let expected = expected && !goal.is_function_union();
                     return Expr {
                         ty: goal.clone(),
                         ..self.expr(inner, scope, depth, expected)
@@ -729,7 +728,7 @@ impl Generator {
                 }
             }
             Ty::List(inner) => {
-                let expected = expected && !matches!(**inner, Ty::Fn(..));
+                let expected = expected && !goal.is_function_union();
                 match self.rng.below(3) {
                     0 => ExprKind::Nil,
                     count => ExprKind::List(
@@ -1003,16 +1002,9 @@ pub fn removable_sites(program: &Program, variant: &Variant) -> BTreeMap<SiteId,
         removable: BTreeMap::new(),
     };
     for function in program.functions_and_main() {
-        if let Some(recursion) = &function.recursion {
-            if let Some(inner) = &recursion.inner {
-                walk.expr(inner, false);
-            }
-            walk.expr(&recursion.returned, true);
+        for (expr, root) in function.roots() {
+            walk.expr(expr, root.has_expected_type());
         }
-        for binding in &function.lets {
-            walk.expr(&binding.value, binding.annotation.is_some());
-        }
-        walk.expr(&function.body, true);
     }
     walk.removable
 }
@@ -1063,67 +1055,62 @@ struct Removable<'a> {
     removable: BTreeMap<SiteId, Vec<bool>>,
 }
 
-/// Whether the position of an expression has an expected type follows how `Generator::expr`
-/// builds it: arguments and fields have one, lambda bodies don't, and lambdas get no parameter
-/// types from a union.
 impl Removable<'_> {
+    /// Whether the position of an expression has an expected type follows how
+    /// `Generator::expr` builds it: arguments and fields have one, lambda bodies don't, and a
+    /// union with a function type in it (`F | nil`, whose value is the `F` expression itself, or
+    /// `List<F>`'s items) gives a lambda no parameter types.
     fn expr(&mut self, expr: &Expr, expected: bool) {
-        let program = self.program;
-        let is_fn_union = |ty: &Ty| matches!(ty, Ty::Opt(inner) | Ty::List(inner) if matches!(**inner, Ty::Fn(..)));
         let expected =
-            expected && !(is_fn_union(&expr.ty) && !matches!(expr.kind, ExprKind::List(_)));
+            expected && !(expr.ty.is_function_union() && !matches!(expr.kind, ExprKind::List(_)));
 
-        match &expr.kind {
-            ExprKind::Call {
-                site: Some(site),
-                function,
-                args,
-                ..
-            } => {
-                // A shrunk program can call a function it no longer declares, and won't compile
-                let Some(function) = program.function(function) else {
-                    return;
-                };
-                let witnessed = witnessed_by_args(program, self.variant, function, args);
-                let mask = (0..function.generics.len())
-                    .map(|generic| {
-                        witnessed.contains(&generic)
-                            || (expected && function.ret.contains_var(generic))
-                    })
-                    .collect();
-                self.removable.insert(*site, mask);
+        if let Some(site) = expr.site() {
+            // A shrunk program can call a function it no longer declares. It doesn't compile,
+            // so its sites don't matter.
+            if let Some(mask) = self.mask(expr, expected) {
+                self.removable.insert(site, mask);
             }
-            ExprKind::FnRef {
-                site: Some(site),
-                function,
-                ..
-            } => {
-                let Some(function) = program.function(function) else {
-                    return;
-                };
-                let mut solution = vec![None; function.generics.len()];
-                unify(&function.ty(), &expr.ty, &mut solution);
-                let mask = solution
-                    .iter()
-                    .map(|arg| expected && arg.is_some())
-                    .collect();
-                self.removable.insert(*site, mask);
-            }
-            // A struct literal's generic arguments can't be inferred, so they're kept
-            ExprKind::BoxLit { site, .. } => {
-                self.removable.insert(*site, vec![false]);
-            }
-            _ => {}
         }
 
         let child_expected = match &expr.kind {
             ExprKind::Call { .. } | ExprKind::CallLocal { .. } | ExprKind::BoxLit { .. } => true,
             ExprKind::Lambda { .. } => false,
-            ExprKind::List(_) => expected && !is_fn_union(&expr.ty),
+            ExprKind::List(_) => expected && !expr.ty.is_function_union(),
             _ => expected,
         };
         for child in expr.children() {
             self.expr(child, child_expected);
+        }
+    }
+
+    fn mask(&self, expr: &Expr, expected: bool) -> Option<Vec<bool>> {
+        match &expr.kind {
+            ExprKind::Call { function, args, .. } => {
+                let function = self.program.function(function)?;
+                let witnessed = witnessed_by_args(self.program, self.variant, function, args);
+                Some(
+                    (0..function.generics.len())
+                        .map(|generic| {
+                            witnessed.contains(&generic)
+                                || (expected && function.ret.contains_var(generic))
+                        })
+                        .collect(),
+                )
+            }
+            ExprKind::FnRef { function, .. } => {
+                let function = self.program.function(function)?;
+                let mut solution = vec![None; function.generics.len()];
+                unify(&function.ty(), &expr.ty, &mut solution);
+                Some(
+                    solution
+                        .iter()
+                        .map(|arg| expected && arg.is_some())
+                        .collect(),
+                )
+            }
+            // A struct literal's generic arguments can't be inferred, so they're kept
+            ExprKind::BoxLit { .. } => Some(vec![false]),
+            _ => None,
         }
     }
 }
