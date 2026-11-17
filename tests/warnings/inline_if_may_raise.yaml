@@ -134,7 +134,13 @@ diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:81:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:105:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:113:5
+- |-
+  This `inline const` can fail, but it's only evaluated where it's referenced, so its check is skipped wherever it isn't at inline_if_may_raise.rue:116:14
+    note: Remove `inline` to evaluate it whenever the program references it
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:124:5
 - |-
   This `if` statement only raises, so it can be written as an `assert` at inline_if_may_raise.rue:200:5
     help: Replace it with an `assert`
+- |-
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_if_may_raise.rue:225:5
+    note: Remove `inline` to always evaluate it here

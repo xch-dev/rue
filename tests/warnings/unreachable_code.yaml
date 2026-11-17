@@ -44,6 +44,9 @@ diagnostics:
 - |-
   Unreachable code at unreachable_code.rue:38:9
     note: Any code after this is never evaluated at unreachable_code.rue:35:9
+- |-
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at unreachable_code.rue:47:9
+    note: Remove `inline` to always evaluate it here
 - Unused binding `never` at unreachable_code.rue:47:20
 - Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:60:5
 - |-
