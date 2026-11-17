@@ -6,7 +6,9 @@ use sha3::Keccak256;
 
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
-    optimize::{ArgList, Truthiness, fold_atoms, is_boolean, opt_truthy, reads_env},
+    optimize::{
+        ArgList, Truthiness, fold_atoms, is_boolean, is_nil, is_pure, opt_truthy, reads_env,
+    },
     parent_path, rest_path,
 };
 
@@ -69,11 +71,12 @@ pub fn opt_closure(
 
 // If the value is a path, we can optimize it to a first path, since both fail if it's an atom
 // Path 0 is excluded, since it evaluates to nil rather than reading the environment
-// If the value is a cons, we can extract the first element out of it
+// If the value is a cons, we can extract the first element out of it, as long as the rest can't fail
 // If the value is a divmod, we can optimize it to a div since that's the first output
 pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(first_path(&path))),
+        Lir::Cons(first, rest) if is_pure(arena, rest) => first,
         Lir::Divmod(left, right) => opt_div(arena, left, right),
         _ => arena.alloc(Lir::First(value)),
     }
@@ -81,23 +84,33 @@ pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 
 // If the value is a path, we can optimize it to a rest path, since both fail if it's an atom
 // Path 0 is excluded, since it evaluates to nil rather than reading the environment
-// If the value is a cons, we can extract the rest element out of it
+// If the value is a cons, we can extract the rest element out of it, as long as the first can't fail
 // If the value is a divmod, we can optimize it to a remainder since that's the rest output
 pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(rest_path(&path))),
+        Lir::Cons(first, rest) if is_pure(arena, first) => rest,
         Lir::Divmod(left, right) => opt_mod(arena, left, right),
         _ => arena.alloc(Lir::Rest(value)),
     }
 }
 
-// TODO: Optimize pair of div and mod into divmod
+// A pair of the quotient and remainder of the same operands is a divmod, which fails in the same
+// cases (division by zero, or an operand that's a pair)
 // If the first and rest are paths to the first and rest of the same parent, we can use the parent path
 // This assumes that the value at the parent path is a pair, as its type says it is. If it's actually
 // an atom (e.g. from a solution which doesn't match the declared types), the original would fail,
 // but the parent path wouldn't. Rue doesn't check values against their types at runtime anyway,
 // so this doesn't give the spender anything that a wrongly shaped pair couldn't.
 pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
+    if let Lir::Div(div_left, div_right) = arena[first].clone()
+        && let Lir::Mod(mod_left, mod_right) = arena[rest].clone()
+        && same_value(arena, div_left, mod_left)
+        && same_value(arena, div_right, mod_right)
+    {
+        return arena.alloc(Lir::Divmod(div_left, div_right));
+    }
+
     if let Lir::Path(f_path) = arena[first].clone()
         && let Lir::Path(r_path) = arena[rest].clone()
         && let Some(parent) = parent_path(&f_path)
@@ -112,9 +125,11 @@ pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
 }
 
 // If the value is an atom, we know the result
+// If the value is a pair that can't fail, we know the result too
 pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> LirId {
     match arena[value].clone() {
         Lir::Atom(_) => arena.alloc(Lir::Atom(vec![])),
+        Lir::Cons(..) if is_pure(arena, value) => arena.alloc(Lir::Atom(vec![1])),
         _ => arena.alloc(Lir::Listp(value, can_be_truthy)),
     }
 }
@@ -393,12 +408,13 @@ pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // If one of the arguments is known to be false, we know the result is false,
 // but the other arguments must still be evaluated in case they fail
 // Since all only looks at the truthiness of its arguments, we can simplify them
-// TODO: Collapse nested alls
+// A nested all evaluates all of its arguments too, so they can be added to this one
 pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    let mut args = ArgList::new(args);
     let mut result = Vec::new();
     let mut has_false = false;
 
-    for arg in args {
+    while let Some(arg) = args.next() {
         match opt_truthy(arena, arg) {
             Truthiness::Known(true) => {}
             Truthiness::Known(false) => {
@@ -408,7 +424,11 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Truthiness::Unknown(arg) => {
-                result.push(arg);
+                if let Lir::All(items) = arena[arg].clone() {
+                    args.prepend(items);
+                } else {
+                    result.push(arg);
+                }
             }
         }
     }
@@ -420,12 +440,13 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // If one of the arguments is known to be true, we know the result is true,
 // but the other arguments must still be evaluated in case they fail
 // Since any only looks at the truthiness of its arguments, we can simplify them
-// TODO: Collapse nested anys
+// A nested any evaluates all of its arguments too, so they can be added to this one
 pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    let mut args = ArgList::new(args);
     let mut result = Vec::new();
     let mut has_true = false;
 
-    for arg in args {
+    while let Some(arg) = args.next() {
         match opt_truthy(arena, arg) {
             Truthiness::Known(false) => {}
             Truthiness::Known(true) => {
@@ -435,7 +456,11 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Truthiness::Unknown(arg) => {
-                result.push(arg);
+                if let Lir::Any(items) = arena[arg].clone() {
+                    args.prepend(items);
+                } else {
+                    result.push(arg);
+                }
             }
         }
     }
@@ -447,6 +472,8 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // Inline ifs evaluate both branches eagerly, so we keep them but with a nil condition
 // Since the condition only matters for its truthiness, we can simplify it
 // If the condition is a not, we can flip the then and else branches
+// If both branches are atoms, they can't fail, so they can be evaluated eagerly instead
+// `(i c 1 ())` is `c` if `c` is always `()` or `1`, and `(i c () 1)` is always `(not c)`
 pub fn opt_if(
     arena: &mut Arena<Lir>,
     condition: LirId,
@@ -455,8 +482,8 @@ pub fn opt_if(
     inline: bool,
 ) -> LirId {
     match opt_truthy(arena, condition) {
-        Truthiness::Known(true) if !inline => then,
-        Truthiness::Known(false) if !inline => otherwise,
+        Truthiness::Known(true) if !inline || is_pure(arena, otherwise) => then,
+        Truthiness::Known(false) if !inline || is_pure(arena, then) => otherwise,
         Truthiness::Known(condition) => {
             let nil = arena.alloc(Lir::Atom(vec![]));
 
@@ -466,13 +493,29 @@ pub fn opt_if(
                 arena.alloc(Lir::If(nil, then, otherwise, inline))
             }
         }
-        Truthiness::Unknown(condition) => {
-            let (condition, then, otherwise) = if let Lir::Not(opposite) = arena[condition].clone()
+        Truthiness::Unknown(replacement) => {
+            // The replacement only has the same truthiness, so the original is used as a value
+            if is_atom(arena, then, &[1])
+                && is_nil(arena, otherwise)
+                && is_boolean(arena, condition)
             {
-                (opposite, otherwise, then)
-            } else {
-                (condition, then, otherwise)
-            };
+                return condition;
+            }
+
+            if is_nil(arena, then) && is_atom(arena, otherwise, &[1]) {
+                return opt_not(arena, condition);
+            }
+
+            let (condition, then, otherwise) =
+                if let Lir::Not(opposite) = arena[replacement].clone() {
+                    (opposite, otherwise, then)
+                } else {
+                    (replacement, then, otherwise)
+                };
+
+            let inline = inline
+                || (matches!(arena[then], Lir::Atom(_))
+                    && matches!(arena[otherwise], Lir::Atom(_)));
 
             arena.alloc(Lir::If(condition, then, otherwise, inline))
         }
@@ -885,6 +928,49 @@ pub fn opt_r1_verify(
     }
 
     arena.alloc(Lir::R1Verify(public_key, message, signature))
+}
+
+fn is_atom(arena: &Arena<Lir>, value: LirId, bytes: &[u8]) -> bool {
+    matches!(&arena[value], Lir::Atom(atom) if atom.as_slice() == bytes)
+}
+
+/// Whether both values are the same expression, so they evaluate to the same result (or both
+/// fail) in the same environment. This is conservative, so it can return `false` for values
+/// that are the same.
+fn same_value(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
+    if left == right {
+        return true;
+    }
+
+    match (&arena[left], &arena[right]) {
+        (Lir::Atom(left), Lir::Atom(right)) => left == right,
+        (Lir::Path(left), Lir::Path(right)) => left == right,
+        (Lir::Quote(left), Lir::Quote(right))
+        | (Lir::First(left), Lir::First(right))
+        | (Lir::Rest(left), Lir::Rest(right))
+        | (Lir::Strlen(left), Lir::Strlen(right))
+        | (Lir::Lognot(left), Lir::Lognot(right))
+        | (Lir::Not(left), Lir::Not(right)) => same_value(arena, *left, *right),
+        (Lir::Cons(a, b), Lir::Cons(c, d))
+        | (Lir::Div(a, b), Lir::Div(c, d))
+        | (Lir::Mod(a, b), Lir::Mod(c, d))
+        | (Lir::Divmod(a, b), Lir::Divmod(c, d))
+        | (Lir::Run(a, b), Lir::Run(c, d)) => {
+            same_value(arena, *a, *c) && same_value(arena, *b, *d)
+        }
+        (Lir::Add(left), Lir::Add(right))
+        | (Lir::Sub(left), Lir::Sub(right))
+        | (Lir::Mul(left), Lir::Mul(right))
+        | (Lir::Concat(left), Lir::Concat(right))
+        | (Lir::Sha256(left), Lir::Sha256(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| same_value(arena, *left, *right))
+        }
+        _ => false,
+    }
 }
 
 pub fn opt_op(arena: &mut Arena<Lir>, op: ClvmOp, arg: LirId) -> LirId {
