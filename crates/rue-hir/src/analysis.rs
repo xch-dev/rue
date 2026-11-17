@@ -70,6 +70,7 @@ pub(crate) trait AnalysisContext {
 pub struct FailureAnalysis {
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
+    let_evaluations: RefCell<HashMap<SymbolId, bool>>,
 }
 
 impl FailureAnalysis {
@@ -116,6 +117,7 @@ impl FailureAnalysis {
             db,
             function_failures: &self.function_failures,
             substitution_failures: &self.substitution_failures,
+            let_evaluations: &self.let_evaluations,
         }
     }
 }
@@ -124,6 +126,29 @@ struct WrittenContext<'a> {
     db: &'a Database,
     function_failures: &'a RefCell<HashMap<SymbolId, FunctionFailure>>,
     substitution_failures: &'a RefCell<HashMap<(SymbolId, bool), bool>>,
+    let_evaluations: &'a RefCell<HashMap<SymbolId, bool>>,
+}
+
+impl WrittenContext<'_> {
+    /// Whether a binding that's never referenced is evaluated for its effect. The dependency graph
+    /// only does that if its value may fail, other than by calling the value of a parameter,
+    /// which depends on what the calls of the function pass (so it's treated as not evaluated).
+    fn evaluated_unreferenced(&self, value: HirId) -> bool {
+        body_calls(self, value).is_none()
+    }
+
+    /// The symbols that evaluating the statements and body may reference, deciding along the way
+    /// which of the bindings they declare are evaluated (see [`Uses`]).
+    fn block_uses(&self, statements: &[Statement], body: Option<HirId>) -> HashSet<SymbolId> {
+        let mut uses = Uses {
+            cx: self,
+            symbols: HashSet::new(),
+            visited: HashSet::new(),
+        };
+
+        uses.block(statements, body);
+        uses.symbols
+    }
 }
 
 impl AnalysisContext for WrittenContext<'_> {
@@ -134,7 +159,7 @@ impl AnalysisContext for WrittenContext<'_> {
     fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
         match self.db.symbol(symbol) {
             Symbol::Constant(constant) => Some(constant.value.hir),
-            _ => inline_value(self.db, symbol),
+            symbol => symbol.inline_value(),
         }
     }
 
@@ -147,21 +172,21 @@ impl AnalysisContext for WrittenContext<'_> {
     // The dependency graph only evaluates a binding that's never referenced if it may fail, which
     // it might not as written, such as one that only references an argument of an `inline fn`
     fn let_evaluates(&self, binding: SymbolId, rest: &[Statement], body: Option<HirId>) -> bool {
+        if let Some(&evaluated) = self.let_evaluations.borrow().get(&binding) {
+            return evaluated;
+        }
+
         let Symbol::Binding(symbol) = self.db.symbol(binding) else {
             return false;
         };
 
-        if may_fail(self, symbol.value.hir) {
-            return true;
-        }
+        // This also decides the bindings in the rest of the block, so each block is only walked
+        // once
+        let evaluated = self.evaluated_unreferenced(symbol.value.hir)
+            || self.block_uses(rest, body).contains(&binding);
 
-        let mut search = References {
-            db: self.db,
-            target: binding,
-            visited: HashSet::new(),
-        };
-
-        search.block(rest, body)
+        self.let_evaluations.borrow_mut().insert(binding, evaluated);
+        evaluated
     }
 
     fn captures_may_fail(&self, _function: SymbolId) -> bool {
@@ -173,13 +198,14 @@ impl AnalysisContext for WrittenContext<'_> {
             return false;
         };
 
-        let mut search = References {
-            db: self.db,
-            target: parameter,
+        let mut uses = Uses {
+            cx: self,
+            symbols: HashSet::new(),
             visited: HashSet::new(),
         };
 
-        search.hir(symbol.body)
+        uses.hir(symbol.body);
+        uses.symbols.contains(&parameter)
     }
 
     fn function_failures(&self) -> &RefCell<HashMap<SymbolId, FunctionFailure>> {
@@ -196,73 +222,90 @@ impl AnalysisContext for WrittenContext<'_> {
     }
 }
 
-/// The value of an `inline` binding or constant, which is evaluated where it's referenced.
-fn inline_value(db: &Database, symbol: SymbolId) -> Option<HirId> {
-    match db.symbol(symbol) {
-        Symbol::Binding(binding) if binding.inline => Some(binding.value.hir),
-        Symbol::Constant(constant) if constant.inline => Some(constant.value.hir),
-        Symbol::Binding(_)
-        | Symbol::Constant(_)
-        | Symbol::Function(_)
-        | Symbol::Parameter(_)
-        | Symbol::Unresolved
-        | Symbol::Module(_)
-        | Symbol::Builtin(_) => None,
-    }
-}
-
-/// Finds whether some HIR references the target, including in the lambdas it creates and the
-/// values of the inline bindings and constants it references, which are evaluated there. Other
-/// bindings are evaluated where they're defined, so a closure captures their values instead.
-struct References<'a> {
-    db: &'a Database,
-    target: SymbolId,
+/// Finds the symbols that evaluating some HIR may reference, including in the lambdas it creates
+/// and the values of the inline bindings and constants it references, which are evaluated there.
+/// Other bindings are evaluated where they're defined, so a closure captures their values instead,
+/// and only the values of the ones that are evaluated count.
+///
+/// The statements of a block are walked from the end, so that whether each binding is referenced
+/// by what's evaluated after it is known when its let statement is reached. That's cached for
+/// [`WrittenContext::let_evaluates`].
+struct Uses<'a, 'c> {
+    cx: &'c WrittenContext<'a>,
+    symbols: HashSet<SymbolId>,
     visited: HashSet<SymbolId>,
 }
 
-impl References<'_> {
-    fn hir(&mut self, hir: HirId) -> bool {
+impl Uses<'_, '_> {
+    fn hir(&mut self, hir: HirId) {
         // This follows nested lambdas and inline values, which can be as deep as the program
-        rue_types::grow_stack(|| self.hir_inner(hir))
+        rue_types::grow_stack(|| self.hir_inner(hir));
     }
 
-    fn hir_inner(&mut self, hir: HirId) -> bool {
-        let db = self.db;
+    fn hir_inner(&mut self, hir: HirId) {
+        let db = self.cx.db;
         let node = db.hir(hir);
 
         match node {
             Hir::Reference(symbol) => {
-                if *symbol == self.target {
-                    return true;
-                }
+                self.symbols.insert(*symbol);
 
-                inline_value(db, *symbol)
-                    .is_some_and(|value| self.visited.insert(*symbol) && self.hir(value))
+                if let Some(value) = db.symbol(*symbol).inline_value()
+                    && self.visited.insert(*symbol)
+                {
+                    self.hir(value);
+                }
             }
             Hir::Lambda(lambda) => {
-                let Symbol::Function(function) = db.symbol(*lambda) else {
-                    return false;
-                };
-
-                self.visited.insert(*lambda) && self.hir(function.body)
+                if let Symbol::Function(function) = db.symbol(*lambda)
+                    && self.visited.insert(*lambda)
+                {
+                    self.hir(function.body);
+                }
             }
             Hir::Block(block) => self.block(&block.statements, block.body),
-            _ => node.children().any(|child| self.hir(child)),
+            _ => {
+                for child in node.children() {
+                    self.hir(child);
+                }
+            }
         }
     }
 
-    fn block(&mut self, statements: &[Statement], body: Option<HirId>) -> bool {
-        statements.iter().any(|statement| match *statement {
-            Statement::Let(symbol, _) => match self.db.symbol(symbol) {
-                Symbol::Binding(binding) => self.hir(binding.value.hir),
-                Symbol::Constant(_)
-                | Symbol::Function(_)
-                | Symbol::Parameter(_)
-                | Symbol::Unresolved
-                | Symbol::Module(_)
-                | Symbol::Builtin(_) => false,
-            },
-            _ => statement.hirs().any(|hir| self.hir(hir)),
-        }) || body.is_some_and(|body| self.hir(body))
+    fn block(&mut self, statements: &[Statement], body: Option<HirId>) {
+        if let Some(body) = body {
+            self.hir(body);
+        }
+
+        for statement in statements.iter().rev() {
+            let Statement::Let(symbol, _) = *statement else {
+                for hir in statement.hirs() {
+                    self.hir(hir);
+                }
+
+                continue;
+            };
+
+            let Symbol::Binding(binding) = self.cx.db.symbol(symbol) else {
+                continue;
+            };
+
+            // An inline binding's value is followed where it's referenced instead
+            if binding.inline {
+                continue;
+            }
+
+            let evaluated =
+                self.symbols.contains(&symbol) || self.cx.evaluated_unreferenced(binding.value.hir);
+
+            self.cx
+                .let_evaluations
+                .borrow_mut()
+                .insert(symbol, evaluated);
+
+            if evaluated {
+                self.hir(binding.value.hir);
+            }
+        }
     }
 }

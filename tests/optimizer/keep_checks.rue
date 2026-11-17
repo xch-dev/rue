@@ -1038,3 +1038,98 @@ test fn unused_binding_used_by_unused_binding(x: Int, y: Int) -> Int {
     let _b = check(a + y);
     5
 }
+
+// The parameters of `main` come from the solution, so an unused call of one is evaluated
+test fn unused_call_of_main_parameter(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _unused = f(x);
+    x
+}
+
+// A lambda can be called from anywhere, so an unused call of its parameter is evaluated
+test fn unused_call_of_lambda_parameter(x: Int) -> Int {
+    let g = fn(h: fn(x: Int) -> Int) => {
+        let _unused = h(1);
+        0
+    };
+    g(fn(i: Int) => check(x + i))
+}
+
+fn apply_unused_as_value(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _unused = f(x);
+    x
+}
+
+// A function that's used as a value can be called from anywhere too
+test fn unused_call_in_function_used_as_value(x: Int) -> Int {
+    let g = apply_unused_as_value;
+    g(fn(y: Int) => check(y), x)
+}
+
+fn apply_unused_later(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _unused = f(x);
+    x
+}
+
+fn calls_apply_unused_later(x: Int) -> Int {
+    apply_unused_later(fn(y: Int) => check(y), x)
+}
+
+// The only call that passes a function value that may fail is reached through an unused binding,
+// so it's only found once that binding is visited
+test fn failing_call_found_through_unused_binding(x: Int) -> Int {
+    let _checked = calls_apply_unused_later(x);
+    apply_unused_later(fn(y: Int) => y + 1, x)
+}
+
+fn apply_unused_forwarded(f: fn(x: Int) -> Int, x: Int) -> Int {
+    let _unused = f(x);
+    x
+}
+
+fn forward_to_apply_unused(f: fn(x: Int) -> Int, x: Int) -> Int {
+    apply_unused_forwarded(f, x)
+}
+
+// A function value that's forwarded through another function's parameter isn't followed, so the
+// unused call is evaluated, even though this one can't fail. This is more expensive than before.
+test fn unused_call_of_forwarded_argument_is_kept(x: Int) -> Int {
+    forward_to_apply_unused(fn(y: Int) => y + 1, x)
+}
+
+inline fn pick_incremented(a: Int, flag: Bool) -> Int {
+    let incremented = a + 1;
+    if flag {
+        incremented
+    } else {
+        0
+    }
+}
+
+// Whether a binding in an `inline fn` may fail is decided again for each call, since it depends on
+// the arguments, so the first call can't decide it for the second
+test fn inline_function_binding_decided_per_call(x: Int, flag: Bool) -> Int {
+    pick_incremented(1, flag) + pick_incremented(check(x), flag)
+}
+
+fn swap_and_divide(h: fn(x: Int) -> Int, k: fn(x: Int) -> Int, n: Int, flag: Bool) -> Int {
+    if n == 0 {
+        h(0)
+    } else if flag {
+        swap_and_divide(k, h, n - 1, false)
+    } else {
+        inline let divided = swap_and_divide(fn(i: Int) => i, fn(i: Int) => 10 / i, n - 1, true);
+        divided
+    }
+}
+
+// While the function values that `swap_and_divide` calls are being found, the inline binding is
+// checked with what's known so far, which doesn't include the division yet, so that mustn't be
+// remembered
+test fn recursive_summary_is_not_remembered_early(x: Int, flag: Bool) -> Int {
+    let y = swap_and_divide(fn(i: Int) => i, fn(i: Int) => i, x, false);
+    if flag {
+        y
+    } else {
+        0
+    }
+}

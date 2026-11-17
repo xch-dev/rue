@@ -6,7 +6,7 @@ use rue_hir::{
     Statement, Symbol, SymbolId,
 };
 
-use crate::{HirLintPass, LintContext};
+use crate::{HirLintPass, LintContext, LintInput};
 
 /// An `inline` value is evaluated where it's referenced, rather than where it's defined, so a
 /// value that can fail (such as one that calls a function with an `assert`) is skipped wherever
@@ -15,14 +15,23 @@ use crate::{HirLintPass, LintContext};
 ///
 /// The arguments of an `inline fn` are substituted for its parameters in the same way, so an
 /// argument that can fail is skipped if the function doesn't always evaluate its parameter.
-#[derive(Debug, Default)]
-pub(crate) struct InlineValueMayFail {
-    failures: FailureAnalysis,
+#[derive(Debug)]
+pub(crate) struct InlineValueMayFail<'a> {
+    failures: &'a FailureAnalysis,
     /// Whether the body of the `inline fn` that each parameter belongs to always evaluates it.
     evaluated_parameters: HashMap<SymbolId, bool>,
 }
 
-impl HirLintPass for InlineValueMayFail {
+impl<'a> InlineValueMayFail<'a> {
+    pub(crate) fn new(input: &'a LintInput<'a>) -> Self {
+        Self {
+            failures: input.failures(),
+            evaluated_parameters: HashMap::new(),
+        }
+    }
+}
+
+impl HirLintPass for InlineValueMayFail<'_> {
     fn lints(&self) -> &'static [Lint] {
         &[Lint::InlineValueMayFail]
     }
@@ -98,7 +107,7 @@ impl HirLintPass for InlineValueMayFail {
     }
 }
 
-impl InlineValueMayFail {
+impl InlineValueMayFail<'_> {
     fn check_call(&mut self, cx: &mut LintContext<'_>, call: &FunctionCall) {
         let db = cx.db();
 
@@ -170,19 +179,10 @@ impl InlineValueMayFail {
 
 /// Whether the HIR is a reference to an inline binding or constant.
 fn is_inline_value(db: &Database, hir: HirId) -> bool {
-    let Hir::Reference(symbol) = db.hir(db.without_casts(hir)) else {
-        return false;
-    };
-
-    match db.symbol(*symbol) {
-        Symbol::Binding(binding) => binding.inline,
-        Symbol::Constant(constant) => constant.inline,
-        Symbol::Function(_)
-        | Symbol::Parameter(_)
-        | Symbol::Unresolved
-        | Symbol::Module(_)
-        | Symbol::Builtin(_) => false,
-    }
+    matches!(
+        db.hir(db.without_casts(hir)),
+        Hir::Reference(symbol) if db.symbol(*symbol).inline_value().is_some()
+    )
 }
 
 fn symbol_name(db: &Database, symbol: SymbolId) -> String {

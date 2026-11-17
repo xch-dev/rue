@@ -53,10 +53,9 @@ pub struct DependencyGraph {
     // they call, if that's the only way they can fail
     unvisited_effects: Vec<(Option<SymbolId>, SymbolId, IndexSet<SymbolId>)>,
 
-    // Keeps track of the arguments of each direct call to a function, and whether the last one is
-    // spread, so that a binding that calls the value of one of its parameters can find the
-    // function values it's passed
-    calls: HashMap<SymbolId, Vec<(Vec<HirId>, bool)>>,
+    // Keeps track of the direct calls to each function, so that a binding that calls the value of
+    // one of its parameters can find the function values it's passed
+    calls: HashMap<SymbolId, Vec<HirId>>,
 
     // The entrypoint, whose parameters come from the solution
     main: SymbolId,
@@ -156,11 +155,19 @@ impl DependencyGraph {
                 .get(&function)
                 .into_iter()
                 .flatten()
-                .any(|(args, spread)| {
-                    args.get(index).is_none_or(|&arg| {
-                        (*spread && index + 1 == args.len())
-                            || self.failures.value_call_may_fail(db, arg)
-                    })
+                .any(|&call| {
+                    let Hir::FunctionCall(call) = db.hir(call) else {
+                        return true;
+                    };
+
+                    // A spread argument is a list of the rest of the arguments
+                    let spread = !call.nil_terminated && index + 1 >= call.args.len();
+
+                    spread
+                        || call
+                            .args
+                            .get(index)
+                            .is_none_or(|&arg| self.failures.value_call_may_fail(db, arg))
                 })
         })
     }
@@ -333,11 +340,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if let Hir::Reference(function) = db.hir(db.without_casts(call.function))
                 && let Symbol::Function(_) = db.symbol(*function)
             {
-                graph
-                    .calls
-                    .entry(*function)
-                    .or_default()
-                    .push((call.args.clone(), !call.nil_terminated));
+                graph.calls.entry(*function).or_default().push(hir);
             }
 
             visit_hir(db, graph, call.function, true);

@@ -128,6 +128,17 @@ inline fn unused_closure_of_parameter(value: Int) -> Int {
     1
 }
 
+inline fn unused_call_with_parameter(h: fn(x: Int) -> Int, value: Int) -> Int {
+    let _unused = h(value);
+    5
+}
+
+inline fn unused_closure_of_binding(value: Int) -> Int {
+    let incremented = value + 1;
+    let _unused = fn() => incremented;
+    5
+}
+
 fn inline_arguments(x: Int, flag: Bool) -> Int {
     // Warns: only evaluated in one branch
     let a = pick(check(x), flag);
@@ -168,6 +179,12 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
     inline let inline_checked = check(x);
     let l = pick(inline_checked, flag);
 
+    // Warns: only used by an unused binding whose call depends on what's passed for `h`
+    let o = unused_call_with_parameter(fn(i: Int) => i + 1, check(x));
+
+    // Warns: only used by a binding that's only captured by a closure that's never created
+    let p = unused_closure_of_binding(check(x));
+
     // Doesn't warn: allowed or expected
     #[allow(inline_value_may_fail)]
     let m = pick(check(x), flag);
@@ -188,6 +205,8 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
         + l
         + m
         + n
+        + o
+        + p
         + CHECKED
         + DOUBLED
         + NOT_INLINE

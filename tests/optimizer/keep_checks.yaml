@@ -646,6 +646,54 @@ tests:
   byte_cost: 876000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: unused_call_of_main_parameter
+  program: (i () (a 2 (c 5 ())) 5)
+  debug_program: (i () (a 2 (c 5 ())) 5)
+  solution: ((8) 5)
+  byte_cost: 252000
+  clvm_error: clvm raise ()
+- name: unused_call_of_lambda_parameter
+  program: (a (q 2 (q 3 () (a 2 (q 1)) ()) (c (c (q . 2) (c (c (q . 1) (q 2 5 (+ 2 11))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) ())) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 5 (+ 2 11))) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ())) (c (c (q . 2) (c (c (q . 1) (q 3 () (a 2 (c (q . 1) ())) ())) (c (q . 1) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50)
+  byte_cost: 2124000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: unused_call_in_function_used_as_value
+  program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c 5 ()))) (c (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) (q 3 () (a 2 (c 5 ())) 5)) 1))
+  debug_program: (a (q 2 (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 9) (c (q . 1) ()))) ()))) (c 11 ()))) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) 1)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) (q 3 () (a 2 (c 5 ())) 5)) 1))
+  solution: (50)
+  byte_cost: 1884000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: failing_call_found_through_unused_binding
+  program: (a (q 3 () (a 4 (c 5 (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))))) (a 4 (c 5 (q 16 2 (q . 1))))) (c (c (q 3 () (a 3 (c 2 ())) 2) (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1)) 1))
+  debug_program: (a (q 3 () (a 10 (c (c 4 14) 5)) (a 4 (c 5 (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))))) (c (c (q 3 () (a 3 (c 2 ())) 2) (c (q 2 4 (c 3 (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))))) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1))) 1))
+  solution: (50)
+  byte_cost: 2172000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: unused_call_of_forwarded_argument_is_kept
+  program: (a (q 2 2 (c 5 (q 16 2 (q . 1)))) (c (q 3 () (a 3 (c 2 ())) 2) 1))
+  debug_program: (a (q 2 4 (c 6 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 5))) (c (c (q 2 2 (c 7 5)) (q 3 () (a 3 (c 2 ())) 2)) 1))
+  solution: (50)
+  output: "50"
+  runtime_cost: 1720
+  byte_cost: 708000
+  total_cost: 709720
+- name: inline_function_binding_decided_per_call
+  program: (a (q 16 (a (i 11 (q 1 . 2) (q)) 1) (a (q 2 (i 23 (q . 2) (q)) 1) (c (+ (a 2 5) (q . 1)) 1))) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 16 (a (q 2 (i 23 (q . 2) (q)) 1) (c (+ (q . 1) (q . 1)) 1)) (a (q 2 (i 23 (q . 2) (q)) 1) (c (+ (a 2 5) (q . 1)) 1))) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 1404000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
+- name: recursive_summary_is_not_remembered_early
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 (c 5 (c (q . 2) (c (q . 2) ()))))) 1)) (c (q 2 (i 5 (q 2 (i 31 (q 2 2 (c 2 (c (- 5 (q . 1)) (c 23 (c 11 ()))))) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c (q 19 (q . 10) 2) (q . 1))))))) 1) (q 2 11 (q ()))) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 (c 5 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))))) 1)) (c (q 2 (i (= 5 ()) (q 2 11 (c () ())) (q 2 (i 31 (q 2 2 (c 2 (c (- 5 (q . 1)) (c 23 (c 11 ()))))) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 19 (q . 10) 2)) (c (q . 1) ()))) (q . 1))))))) 1)) 1) 1))
+  solution: (2 ())
+  byte_cost: 2628000
+  clvm_error: Division by zero
 diagnostics:
 - |-
   This argument can fail, but `ignore_inline` is an `inline fn` that doesn't always evaluate its parameter `_a`, so its check can be skipped at keep_checks.rue:294:19
@@ -656,3 +704,6 @@ diagnostics:
   Unreachable code at keep_checks.rue:821:5
     note: Any code after this is never evaluated at keep_checks.rue:820:5
     help: Remove the unreachable code
+- |-
+  Binding `divided` is returned directly after it's declared at keep_checks.rue:1120:9
+    help: Return the value directly

@@ -36,10 +36,7 @@ pub(crate) fn may_fail(cx: &impl AnalysisContext, hir: HirId) -> bool {
 /// function values of parameters. If it can't, these are the parameters whose values it calls,
 /// which are only known where the function they belong to is called.
 pub(crate) fn body_calls(cx: &impl AnalysisContext, hir: HirId) -> Option<IndexSet<SymbolId>> {
-    let mut visitor = Visitor::new(cx);
-    visitor.calls.push(IndexSet::new());
-    let fails = visitor.visit(hir, true);
-    let calls = visitor.calls.pop().unwrap_or_default();
+    let (fails, calls) = Visitor::new(cx).visit_body(hir);
     (!fails).then_some(calls)
 }
 
@@ -134,9 +131,13 @@ struct Visitor<'a, C> {
     /// once.
     substituted: HashMap<(SymbolId, bool), bool>,
     /// How many times a result depended on something other than the value being checked, which
-    /// is a call to a parameter's value, an assumption about a recursive call, or a value that
-    /// references itself. A value that can't fail is only cached if this didn't change.
+    /// is a call to a parameter's value, an assumption about a recursive call, the summary of a
+    /// recursive function that's still being found, or a value that references itself. A value
+    /// that can't fail is only cached if this didn't change.
     dependencies: usize,
+    /// The functions that call themselves whose summaries are still being found (see
+    /// [`Self::self_recursive_failure`]), which are cached while they are.
+    unfinished: HashSet<SymbolId>,
 }
 
 impl<'a, C: AnalysisContext> Visitor<'a, C> {
@@ -149,6 +150,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             calls: Vec::new(),
             substituted: HashMap::new(),
             dependencies: 0,
+            unfinished: HashSet::new(),
         }
     }
 
@@ -369,8 +371,12 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
     /// together, like the strongly connected components of the call graph, so that each
     /// function's body is only checked once.
     fn function_may_fail(&mut self, function: SymbolId) -> FunctionFailure {
-        if let Some(failure) = self.cx.function_failures().borrow().get(&function) {
-            return failure.clone();
+        if let Some(failure) = self.cx.function_failures().borrow().get(&function).cloned() {
+            if self.unfinished.contains(&function) {
+                self.dependencies += 1;
+            }
+
+            return failure;
         }
 
         if let Some(&assumption) = self.assumed.get(&function) {
@@ -394,9 +400,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         self.assumed.insert(function, index);
         let lowest_assumption = std::mem::replace(&mut self.lowest_assumption, usize::MAX);
 
-        self.calls.push(IndexSet::new());
-        let mut fails = self.visit(body, true);
-        let calls = self.calls.pop().unwrap_or_default();
+        let (mut fails, calls) = self.visit_body(body);
 
         // A function that only calls itself, such as one that maps a function over a list
         if !fails
@@ -472,6 +476,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         mut calls: IndexSet<SymbolId>,
     ) -> FunctionFailure {
         self.assumed.truncate(index);
+        self.unfinished.insert(function);
 
         let failure = loop {
             let failure = FunctionFailure {
@@ -490,9 +495,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
                 .copied()
                 .collect();
 
-            self.calls.push(IndexSet::new());
-            let fails = self.visit(body, true);
-            let more = self.calls.pop().unwrap_or_default();
+            let (fails, more) = self.visit_body(body);
 
             let known = calls.len();
             calls.extend(more);
@@ -518,8 +521,17 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             }
         };
 
+        self.unfinished.remove(&function);
         self.cache(function, failure.clone());
         failure
+    }
+
+    /// Checks a function body, and finds the parameters whose values it calls.
+    fn visit_body(&mut self, body: HirId) -> (bool, IndexSet<SymbolId>) {
+        self.calls.push(IndexSet::new());
+        let fails = self.visit(body, true);
+        let calls = self.calls.pop().unwrap_or_default();
+        (fails, calls)
     }
 
     fn cache(&self, function: SymbolId, failure: FunctionFailure) {

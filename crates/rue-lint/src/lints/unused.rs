@@ -178,9 +178,9 @@ fn unused_declarations(
 pub(crate) fn live_declarations(
     db: &Database,
     entrypoints: &HashSet<Declaration>,
+    failures: &FailureAnalysis,
 ) -> HashSet<Declaration> {
     let kept = kept_bindings(db);
-    let failures = FailureAnalysis::new();
 
     // The database only stores the edges from a declaration to the ones that reference or
     // declare it, so the edges in the other direction are collected first. Every declaration on
@@ -206,7 +206,7 @@ pub(crate) fn live_declarations(
             stack.push(parent);
         }
 
-        if is_live_with_parent(db, &kept, &failures, declaration) {
+        if is_live_with_parent(db, &kept, failures, declaration) {
             for parent in db.declaration_parents(declaration) {
                 children.entry(parent).or_default().push(declaration);
                 stack.push(parent);
