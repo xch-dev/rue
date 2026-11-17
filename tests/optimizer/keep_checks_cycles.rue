@@ -1,0 +1,565 @@
+// Functions that call each other in cycles, found by a fuzzer that compared release and debug
+// builds. In each, a check is only reached through the cycle, and origin/main dropped it in
+// release builds. Each test must fail for its solution in both builds.
+
+fn check(x: Int) -> Int {
+    if x > 10 {
+        raise;
+    }
+    x
+}
+
+fn cycle0_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        cycle0_f5(n - 1, x) + cycle0_f1(n - 1, x)
+    }
+}
+
+fn cycle0_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle0_f2(n - 1, x)
+    }
+}
+
+fn cycle0_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle0_f0(n - 1, x)
+    }
+}
+
+fn cycle0_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle0_f4(n - 1, x) + cycle0_f1(n - 1, x)
+    }
+}
+
+fn cycle0_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        let c = check(x);
+        (
+            if n > 1 {
+                c
+            } else {
+                0
+            }
+        )
+            + cycle0_f2(n - 1, x)
+    }
+}
+
+fn cycle0_f5(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle0_f3(n - 1, x)
+    }
+}
+
+test fn cycle_of_6_0(x: Int, flag: Bool) -> Int {
+    let y = cycle0_f0(3, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn cycle1_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        let c = check(x);
+        (
+            if n > 1 {
+                c
+            } else {
+                0
+            }
+        )
+            + cycle1_f1(n - 1, x)
+    }
+}
+
+fn cycle1_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        cycle1_f2(n - 1, x) + cycle1_f2(n - 1, x)
+    }
+}
+
+fn cycle1_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        let c = check(x);
+        (
+            if n > 1 {
+                c
+            } else {
+                0
+            }
+        )
+            + cycle1_f4(n - 1, x)
+    }
+}
+
+fn cycle1_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        assert x < 100;
+        cycle1_f4(n - 1, x) + cycle1_f4(n - 1, x)
+    }
+}
+
+fn cycle1_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        assert x < 100;
+        cycle1_f0(n - 1, x) + cycle1_f5(n - 1, x)
+    }
+}
+
+fn cycle1_f5(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle1_f3(n - 1, x)
+    }
+}
+
+test fn cycle_of_6_1(x: Int, flag: Bool) -> Int {
+    let y = cycle1_f1(3, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn cycle2_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle2_f1(n - 1, x) + cycle2_f2(n - 1, x)
+    }
+}
+
+fn cycle2_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle2_f3(n - 1, x)
+    }
+}
+
+fn cycle2_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        assert x < 100;
+        cycle2_f4(n - 1, x) + cycle2_f2(n - 1, x)
+    }
+}
+
+fn cycle2_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle2_f0(n - 1, x) + cycle2_f0(n - 1, x)
+    }
+}
+
+fn cycle2_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle2_f1(n - 1, x)
+    }
+}
+
+test fn cycle_of_5_2(x: Int, flag: Bool) -> Bool {
+    let y = cycle2_f0(3, x);
+    flag && y == 5
+}
+
+fn cycle3_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle3_f4(n - 1, x) + cycle3_f3(n - 1, x)
+    }
+}
+
+fn cycle3_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        cycle3_f2(n - 1, x)
+    }
+}
+
+fn cycle3_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle3_f4(n - 1, x) + cycle3_f1(n - 1, x)
+    }
+}
+
+fn cycle3_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle3_f1(n - 1, x)
+    }
+}
+
+fn cycle3_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle3_f0(n - 1, x) + cycle3_f0(n - 1, x)
+    }
+}
+
+test fn cycle_of_5_3(x: Int, flag: Bool) -> Int {
+    let y = cycle3_f3(3, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn cycle4_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        assert x < 100;
+        cycle4_f2(n - 1, x)
+    }
+}
+
+fn cycle4_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle4_f2(n - 1, x)
+    }
+}
+
+fn cycle4_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        cycle4_f3(n - 1, x) + cycle4_f0(n - 1, x)
+    }
+}
+
+fn cycle4_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        assert x < 100;
+        cycle4_f4(n - 1, x) + cycle4_f1(n - 1, x)
+    }
+}
+
+fn cycle4_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        assert x < 100;
+        cycle4_f2(n - 1, x) + cycle4_f1(n - 1, x)
+    }
+}
+
+test fn cycle_of_5_4(x: Int, flag: Bool) -> Bool {
+    let y = cycle4_f2(3, x);
+    flag && y == 5
+}
+
+fn cycle5_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f0(n - 1, x) + cycle5_f4(n - 1, x)
+    }
+}
+
+fn cycle5_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f1(n - 1, x)
+    }
+}
+
+fn cycle5_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f0(n - 1, x)
+    }
+}
+
+fn cycle5_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        let c = check(x);
+        (
+            if n > 1 {
+                c
+            } else {
+                0
+            }
+        )
+            + cycle5_f2(n - 1, x)
+    }
+}
+
+fn cycle5_f4(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle5_f3(n - 1, x) + cycle5_f5(n - 1, x)
+    }
+}
+
+fn cycle5_f5(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle5_f3(n - 1, x)
+    }
+}
+
+test fn cycle_of_5_5(x: Int, flag: Bool) -> Bool {
+    let y = cycle5_f0(3, x);
+    flag && y == 5
+}
+
+fn cycle6_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        assert x < 100;
+        cycle6_f1(n - 1, x)
+    }
+}
+
+fn cycle6_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle6_f2(n - 1, x)
+    }
+}
+
+fn cycle6_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle6_f0(n - 1, x) + cycle6_f3(n - 1, x)
+    }
+}
+
+fn cycle6_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle6_f0(n - 1, x)
+    }
+}
+
+test fn cycle_of_4_6(x: Int, flag: Bool) -> Bool {
+    let y = cycle6_f2(3, x);
+    flag && y == 5
+}
+
+fn cycle7_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle7_f2(n - 1, x) + cycle7_f0(n - 1, x)
+    }
+}
+
+fn cycle7_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle7_f3(n - 1, x)
+    }
+}
+
+fn cycle7_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle7_f1(n - 1, x)
+    }
+}
+
+fn cycle7_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle7_f0(n - 1, x)
+    }
+}
+
+test fn cycle_of_4_7(x: Int, flag: Bool) -> Int {
+    let y = cycle7_f2(3, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn cycle8_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f2(n - 1, x)
+    }
+}
+
+fn cycle8_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        cycle8_f0(n - 1, x)
+    }
+}
+
+fn cycle8_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        assert x < 100;
+        cycle8_f2(n - 1, x) + cycle8_f3(n - 1, x)
+    }
+}
+
+fn cycle8_f3(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle8_f1(n - 1, x)
+    }
+}
+
+test fn cycle_of_4_8(x: Int, flag: Bool) -> Int {
+    let y = cycle8_f3(3, x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+fn cycle9_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        assert x < 100;
+        cycle9_f1(n - 1, x) + cycle9_f0(n - 1, x)
+    }
+}
+
+fn cycle9_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle9_f1(n - 1, x) + cycle9_f2(n - 1, x)
+    }
+}
+
+fn cycle9_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle9_f0(n - 1, x)
+    }
+}
+
+test fn cycle_of_3_9(x: Int, flag: Bool) -> Bool {
+    let y = cycle9_f1(3, x);
+    flag && y == 5
+}
+
+fn cycle10_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        assert x < 100;
+        cycle10_f2(n - 1, x)
+    }
+}
+
+fn cycle10_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        x
+    } else {
+        cycle10_f2(n - 1, x) + cycle10_f0(n - 1, x)
+    }
+}
+
+fn cycle10_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle10_f0(n - 1, x) + cycle10_f1(n - 1, x)
+    }
+}
+
+test fn cycle_of_3_10(x: Int, flag: Bool) -> Bool {
+    let y = cycle10_f2(3, x);
+    flag && y == 5
+}
+
+fn cycle11_f0(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        cycle11_f1(n - 1, x) + cycle11_f0(n - 1, x)
+    }
+}
+
+fn cycle11_f1(n: Int, x: Int) -> Int {
+    if n < 1 {
+        check(x)
+    } else {
+        cycle11_f2(n - 1, x) + cycle11_f0(n - 1, x)
+    }
+}
+
+fn cycle11_f2(n: Int, x: Int) -> Int {
+    if n < 1 {
+        0
+    } else {
+        assert x < 100;
+        cycle11_f1(n - 1, x) + cycle11_f1(n - 1, x)
+    }
+}
+
+test fn cycle_of_3_11(x: Int, flag: Bool) -> Bool {
+    let y = cycle11_f0(3, x);
+    flag && y == 5
+}
