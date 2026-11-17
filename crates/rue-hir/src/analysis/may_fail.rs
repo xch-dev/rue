@@ -48,7 +48,8 @@ pub(crate) fn value_call_may_fail(cx: &impl AnalysisContext, hir: HirId) -> bool
 }
 
 /// Whether calling a function may fail, and the parameters whose function values it calls, which
-/// are checked where it's called, since that's where their values are known.
+/// are checked where it's called, since that's where their values are known. The same is found for
+/// a substituted value in a function body, whose calls are recorded wherever it's referenced.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FunctionFailure {
     fails: bool,
@@ -112,45 +113,40 @@ pub(crate) fn resolve_function(db: &Database, callee: HirId) -> Option<SymbolId>
     }
 }
 
-/// The result of checking a substituted value, which is reused wherever it's referenced again.
-#[derive(Debug, Clone)]
-struct Substituted {
-    fails: bool,
-    /// The parameters whose values it calls, which are recorded again where it's reused.
-    calls: Rc<[SymbolId]>,
-    /// The lowest index in [`Visitor::working`] whose summary it read, or `usize::MAX`.
-    low: usize,
+/// Something whose result is found by checking it, and can depend on its own result while it's
+/// checked: a function, whose body can call itself, or a substituted value (by whether it's in a
+/// function body), whose value can call a function whose body references it again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Node {
+    Function(SymbolId),
+    Value(SymbolId, bool),
 }
 
 struct Visitor<'a, C> {
     cx: &'a C,
-    /// The substituted values being checked, so that a value that references itself isn't
-    /// checked forever.
-    visiting: HashSet<SymbolId>,
-    /// The functions whose summaries are still being found, with their summaries so far. This is
-    /// the stack of Tarjan's algorithm over the call graph: a function stays here until the
-    /// strongly connected component it's in is finished, and the summaries of that component are
-    /// found together, starting from not failing and growing until none of them changes. Only
-    /// then are they cached.
-    working: IndexMap<SymbolId, FunctionFailure>,
-    /// The lowest index in `working` whose summary the value being checked read, or `usize::MAX`
-    /// if it only read finished summaries.
+    /// The nodes whose results are still being found, with their results so far. This is the
+    /// stack of Tarjan's algorithm: a node stays here until the strongly connected component it's
+    /// in is finished, and the results of that component are found together, starting from not
+    /// failing and calling nothing, and growing until none of them changes. Only then are they
+    /// remembered.
+    working: IndexMap<Node, FunctionFailure>,
+    /// The lowest index in `working` whose result the node being checked read, or `usize::MAX`
+    /// if it only read finished results.
     low: usize,
-    /// Whether a summary in `working` grew since the current pass over its component started.
+    /// Whether a result in `working` grew since the current pass over its component started.
     changed: bool,
     /// The parameters whose function values are called by each function body being checked.
     calls: Vec<IndexSet<SymbolId>>,
-    /// The substituted values that have been checked, by whether they're in a function body, so
+    /// The finished results of substituted values, by whether they're in a function body, so
     /// that a value referenced many times (such as through a chain of inline bindings) is only
     /// checked once.
-    substituted: HashMap<(SymbolId, bool), Substituted>,
+    substituted: HashMap<(SymbolId, bool), FunctionFailure>,
 }
 
 impl<'a, C: AnalysisContext> Visitor<'a, C> {
     fn new(cx: &'a C) -> Self {
         Self {
             cx,
-            visiting: HashSet::new(),
             working: IndexMap::new(),
             low: usize::MAX,
             changed: false,
@@ -265,68 +261,25 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             Symbol::Function(_) => !in_body && self.cx.captures_may_fail(symbol),
             Symbol::Parameter(_) if in_body => false,
             Symbol::Parameter(_) | Symbol::Binding(_) | Symbol::Constant(_) => {
-                let Some(value) = self.cx.substituted_value(symbol) else {
+                if self.cx.substituted_value(symbol).is_none() {
                     return false;
-                };
+                }
 
                 let key = (symbol, in_body);
 
-                if let Some(entry) = self.substituted.get(&key).cloned() {
-                    self.low = self.low.min(entry.low);
-
-                    if let Some(calls) = self.calls.last_mut().filter(|_| in_body) {
-                        calls.extend(entry.calls.iter().copied());
-                    }
-
-                    return entry.fails;
-                }
-
-                if let Some(&fails) = self.cx.substitution_failures().borrow().get(&key) {
+                let failure = if let Some(failure) = self.substituted.get(&key).cloned() {
+                    failure
+                } else if let Some(&fails) = self.cx.substitution_failures().borrow().get(&key) {
                     return fails;
-                }
-
-                // A value that references itself is a recursion error, which is reported
-                // elsewhere
-                if !self.visiting.insert(symbol) {
-                    return false;
-                }
-
-                let outer_low = std::mem::replace(&mut self.low, usize::MAX);
-                let (fails, calls) = if in_body {
-                    self.visit_body(value)
                 } else {
-                    (self.visit(value, false), IndexSet::new())
+                    self.resolve(Node::Value(symbol, in_body))
                 };
-                self.visiting.remove(&symbol);
 
-                // Summaries only grow, so a value that fails with them still will
-                let low = if fails { usize::MAX } else { self.low };
-                self.low = outer_low.min(low);
-
-                if let Some(outer) = self.calls.last_mut().filter(|_| in_body) {
-                    outer.extend(calls.iter().copied());
+                if let Some(calls) = self.calls.last_mut().filter(|_| in_body) {
+                    calls.extend(failure.calls.iter().copied());
                 }
 
-                if low == usize::MAX
-                    && calls.is_empty()
-                    && self.cx.shares_substitution(symbol, fails)
-                {
-                    self.cx
-                        .substitution_failures()
-                        .borrow_mut()
-                        .insert(key, fails);
-                }
-
-                self.substituted.insert(
-                    key,
-                    Substituted {
-                        fails,
-                        calls: calls.into_iter().collect(),
-                        low,
-                    },
-                );
-
-                fails
+                failure.fails
             }
             Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => false,
         }
@@ -434,11 +387,6 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             return failure;
         }
 
-        if let Some(index) = self.working.get_index_of(&function) {
-            self.low = self.low.min(index);
-            return self.working[index].clone();
-        }
-
         let Symbol::Function(symbol) = self.db().symbol(function) else {
             return FunctionFailure::fails();
         };
@@ -449,28 +397,38 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             return FunctionFailure::fails();
         }
 
+        self.resolve(Node::Function(function))
+    }
+
+    /// Finds the result of the node, or its result so far if it's still being found.
+    fn resolve(&mut self, node: Node) -> FunctionFailure {
+        if let Some(index) = self.working.get_index_of(&node) {
+            self.low = self.low.min(index);
+            return self.working[index].clone();
+        }
+
         let index = self.working.len();
-        self.working.insert(function, FunctionFailure::default());
+        self.working.insert(node, FunctionFailure::default());
         let outer_low = std::mem::replace(&mut self.low, usize::MAX);
         let outer_changed = std::mem::take(&mut self.changed);
 
-        self.summarize(index);
+        self.check(index);
         let mut low = self.low;
         let mut grew = false;
 
-        // This is the first function reached in its component, so the component is finished
-        // once a pass over it doesn't change any summary. A pass can reach new functions, which
-        // join the component if they call back into it.
-        if low >= index {
+        // The node read its own result, so it's the first node reached in its component, which
+        // is finished once a pass over it doesn't change any result. A pass can reach new nodes,
+        // which join the component if they read one in it. If the node only read finished
+        // results, its result is already final.
+        if low == index {
             while std::mem::take(&mut self.changed) {
                 grew = true;
-                self.forget_unfinished();
 
                 let mut member = index;
 
                 while member < self.working.len() {
                     self.low = usize::MAX;
-                    self.summarize(member);
+                    self.check(member);
                     low = low.min(self.low);
                     member += 1;
                 }
@@ -481,16 +439,15 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 
         if low >= index {
             for (finished, failure) in self.working.drain(index..).collect::<Vec<_>>() {
-                self.cache(finished, failure);
+                self.finish(finished, failure);
             }
 
-            self.forget_unfinished();
             self.low = outer_low;
             self.changed = outer_changed;
         } else {
-            // It calls a function reached earlier whose summary isn't finished, so it's found
-            // along with that one. If a pass above found that late, the summaries it grew are
-            // checked again with that one's component.
+            // It read a node reached earlier whose result isn't finished, so it's found along
+            // with that one. If a pass above found that late, the results it grew are checked
+            // again with that one's component.
             self.low = outer_low.min(low);
             self.changed |= outer_changed || grew;
         }
@@ -498,24 +455,31 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         failure
     }
 
-    /// Forgets the substituted values that read a summary that wasn't finished. One that read an
-    /// earlier function's summary may also have read a later one that has grown since, and `low`
-    /// only records the earliest, so all of them are forgotten.
-    fn forget_unfinished(&mut self) {
-        self.substituted.retain(|_, entry| entry.low == usize::MAX);
-    }
-
-    /// Checks the body of the function at the index in `working` again, with the summaries found
-    /// so far, and grows its summary if needed.
-    fn summarize(&mut self, index: usize) {
-        let (&function, old) = self.working.get_index(index).expect("working function");
+    /// Checks the node at the index in `working` again, with the results found so far, and grows
+    /// its result if needed.
+    fn check(&mut self, index: usize) {
+        let (&node, old) = self.working.get_index(index).expect("working node");
         let old = old.clone();
 
-        let Symbol::Function(symbol) = self.db().symbol(function) else {
-            return;
-        };
+        let (fails, calls) = match node {
+            Node::Function(function) => {
+                let Symbol::Function(symbol) = self.db().symbol(function) else {
+                    return;
+                };
+                self.visit_body(symbol.body)
+            }
+            Node::Value(symbol, in_body) => {
+                let Some(value) = self.cx.substituted_value(symbol) else {
+                    return;
+                };
 
-        let (fails, calls) = self.visit_body(symbol.body);
+                if in_body {
+                    self.visit_body(value)
+                } else {
+                    (self.visit(value, false), IndexSet::new())
+                }
+            }
+        };
 
         let failure = if fails || old.fails {
             FunctionFailure::fails()
@@ -531,6 +495,27 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
         if failure.fails != old.fails || failure.calls.len() != old.calls.len() {
             self.working[index] = failure;
             self.changed = true;
+        }
+    }
+
+    /// Remembers the finished result of a node.
+    fn finish(&mut self, node: Node, failure: FunctionFailure) {
+        match node {
+            Node::Function(function) => self.cache(function, failure),
+            Node::Value(symbol, in_body) => {
+                let key = (symbol, in_body);
+
+                // The shared results don't record the parameters whose values a value calls, so
+                // only one that calls none is shared
+                if failure.calls.is_empty() && self.cx.shares_substitution(symbol, failure.fails) {
+                    self.cx
+                        .substitution_failures()
+                        .borrow_mut()
+                        .insert(key, failure.fails);
+                }
+
+                self.substituted.insert(key, failure);
+            }
         }
     }
 

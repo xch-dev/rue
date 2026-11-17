@@ -575,3 +575,57 @@ test fn cycle_that_cannot_fail(x: Int, flag: Bool) -> Int {
         0
     }
 }
+
+// The value of `x` calls `divides_through_value`, whose body references `x` again. Checking `x`
+// first (to decide `y`) mustn't remember the function as unable to fail before `x` is known.
+fn divides_through_value(n: Int) -> Int {
+    if n == 0 {
+        return 0;
+    }
+    inline let x = divides_through_value(n - 1) + 100 / (n - 1);
+    let y = x;
+    if n > 10 {
+        y
+    } else {
+        1
+    }
+}
+
+fn calls_divides_in_branch(n: Int) -> Int {
+    let z = divides_through_value(n);
+    if n > 100 {
+        z
+    } else {
+        7
+    }
+}
+
+test fn value_checked_before_its_recursive_function(n: Int) -> Int {
+    if n == 5 {
+        divides_through_value(n) * 0 + calls_divides_in_branch(n)
+    } else {
+        calls_divides_in_branch(n)
+    }
+}
+
+fn unused_divides_through_value(n: Int) -> Int {
+    if n == 0 {
+        return 0;
+    }
+    inline let x = unused_divides_through_value(n - 1) + 100 / (n - 1);
+    let _y = x;
+    1
+}
+
+fn calls_unused_divides(n: Int) -> Int {
+    let _z = unused_divides_through_value(n);
+    7
+}
+
+test fn unused_value_checked_before_its_recursive_function(n: Int) -> Int {
+    if n == 5 {
+        unused_divides_through_value(n) * 0 + calls_unused_divides(n)
+    } else {
+        calls_unused_divides(n)
+    }
+}

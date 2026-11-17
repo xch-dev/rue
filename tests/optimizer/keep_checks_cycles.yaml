@@ -77,6 +77,18 @@ tests:
   runtime_cost: 25606
   byte_cost: 5052000
   total_cost: 5077606
+- name: value_checked_before_its_recursive_function
+  program: (a (q 2 (i (= 5 (q . 5)) (q 16 (* (a 4 (c 4 5)) ()) (a 6 (c 4 5))) (q 2 6 (c 4 5))) 1) (c (c (q 2 (i 3 (q 2 (q 2 (i (> 7 (q . 10)) (q . 2) (q 1 . 1)) 1) (c (+ (a 2 (c 2 (- 3 (q . 1)))) (/ (q . 100) (- 3 (q . 1)))) 1)) (q)) 1) (q 2 (q 2 (i (> 7 (q . 100)) (q . 2) (q 1 . 7)) 1) (c (a 2 1) 1))) 1))
+  debug_program: (a (q 2 (i (= 5 (q . 5)) (q 16 (* (a 4 (c 4 5)) ()) (a 6 (c 4 5))) (q 2 6 (c 4 5))) 1) (c (c (q 2 (i (= 3 ()) (q) (q 2 (q 2 (i (> 7 (q . 10)) (q . 2) (q 1 . 1)) 1) (c (+ (a 2 (c 2 (- 3 (q . 1)))) (/ (q . 100) (- 3 (q . 1)))) 1))) 1) (q 2 (q 2 (i (> 7 (q . 100)) (q . 2) (q 1 . 7)) 1) (c (a 2 (c 2 3)) 1))) 1))
+  solution: (1)
+  byte_cost: 2988000
+  clvm_error: Division by zero
+- name: unused_value_checked_before_its_recursive_function
+  program: (a (q 2 (i (= 5 (q . 5)) (q 16 (* (a 4 (c 4 5)) ()) (a 6 (c 4 5))) (q 2 6 (c 4 5))) 1) (c (c (q 2 (i 3 (q 3 () (+ (a 2 (c 2 (- 3 (q . 1)))) (/ (q . 100) (- 3 (q . 1)))) (q . 1)) (q)) 1) (q 3 () (a 2 1) (q . 7))) 1))
+  debug_program: (a (q 2 (i (= 5 (q . 5)) (q 16 (* (a 4 (c 4 5)) ()) (a 6 (c 4 5))) (q 2 6 (c 4 5))) 1) (c (c (q 2 (i (= 3 ()) (q) (q 3 () (+ (a 2 (c 2 (- 3 (q . 1)))) (/ (q . 100) (- 3 (q . 1)))) (q . 1))) 1) (q 3 () (a 2 (c 2 3)) (q . 7))) 1))
+  solution: (1)
+  byte_cost: 2220000
+  clvm_error: Division by zero
 diagnostics:
 - |-
   This `if` statement only raises, so it can be written as an `assert` at keep_checks_cycles.rue:9:5
