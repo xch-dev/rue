@@ -85,6 +85,10 @@ pub(crate) trait AnalysisContext {
     /// of an inlined function that may fail, since the arguments it captures are evaluated then.
     fn captures_may_fail(&self, function: SymbolId) -> bool;
 
+    /// Whether calling the function value of the parameter may fail, where it isn't substituted,
+    /// given what's passed for it wherever its function is called.
+    fn parameter_values_may_fail(&self, parameter: SymbolId) -> bool;
+
     /// Whether the body of the `inline fn` may reference the parameter, which is the only way its
     /// argument is evaluated.
     fn is_parameter_used(&self, function: SymbolId, parameter: SymbolId) -> bool;
@@ -278,6 +282,11 @@ impl AnalysisContext for WrittenContext<'_> {
 
     fn captures_may_fail(&self, _function: SymbolId) -> bool {
         false
+    }
+
+    // The calls of a function aren't known from the code around one value
+    fn parameter_values_may_fail(&self, _parameter: SymbolId) -> bool {
+        true
     }
 
     fn is_parameter_used(&self, function: SymbolId, parameter: SymbolId) -> bool {

@@ -16,6 +16,8 @@
 
 use std::{cell::RefCell, collections::HashMap};
 
+use indexmap::IndexSet;
+
 use crate::{
     Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
     analysis::{AnalysisContext, Evaluation, FunctionFailure, may_fail},
@@ -41,11 +43,33 @@ impl Lowerer<'_, '_, '_> {
         substitute
     }
 
-    /// Forgets whether the binding can be substituted, since its let statement is being lowered
-    /// again, which might be in a call to an `inline fn` with different arguments than before.
-    /// It's decided again when the statement's bindings are grouped.
-    pub(super) fn forget_substitution(&self, symbol: SymbolId) {
-        self.substitutions.borrow_mut().remove(&symbol);
+    /// Forgets whether the bindings can be substituted, since their let statements are being
+    /// lowered again, which might be in a call to an `inline fn` with different arguments than
+    /// before. They're decided again when the bindings are grouped. Returns what was decided
+    /// before, which is restored with [`Self::restore_substitutions`] once the statements are
+    /// lowered, since a call to the same `inline fn` can be lowered inside another one.
+    pub(super) fn forget_substitutions(
+        &self,
+        symbols: &IndexSet<SymbolId>,
+    ) -> Vec<(SymbolId, Option<bool>)> {
+        let mut substitutions = self.substitutions.borrow_mut();
+
+        symbols
+            .iter()
+            .map(|&symbol| (symbol, substitutions.remove(&symbol)))
+            .collect()
+    }
+
+    /// Restores what was decided before [`Self::forget_substitutions`].
+    pub(super) fn restore_substitutions(&self, saved: Vec<(SymbolId, Option<bool>)>) {
+        let mut substitutions = self.substitutions.borrow_mut();
+
+        for (symbol, substitute) in saved {
+            match substitute {
+                Some(substitute) => substitutions.insert(symbol, substitute),
+                None => substitutions.remove(&symbol),
+            };
+        }
     }
 
     fn decide_substitution(&self, symbol: SymbolId) -> bool {
@@ -181,6 +205,10 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
             self.inline_argument(capture)
                 .is_some_and(|hir| !self.is_static_hir(hir) && may_fail(self, hir))
         })
+    }
+
+    fn parameter_values_may_fail(&self, parameter: SymbolId) -> bool {
+        self.graph.parameter_values_may_fail(self.db, parameter)
     }
 
     fn is_evaluated(&self, binding: SymbolId) -> bool {

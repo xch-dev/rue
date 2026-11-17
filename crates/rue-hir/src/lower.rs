@@ -858,9 +858,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             })
             .collect();
 
-        for &symbol in &symbols {
-            self.forget_substitution(symbol);
-        }
+        let saved = self.forget_substitutions(&symbols);
 
         let effects: Vec<SymbolId> = symbols
             .iter()
@@ -899,6 +897,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
             expr = self.arena.alloc(Lir::Run(expr, group_env));
         }
+
+        self.restore_substitutions(saved);
 
         expr
     }

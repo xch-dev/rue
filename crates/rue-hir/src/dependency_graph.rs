@@ -125,6 +125,12 @@ impl DependencyGraph {
         self.effects.contains(&symbol) && self.references(symbol) == 0
     }
 
+    /// Whether calling the function value of the parameter may fail, given every call of its
+    /// function (see [`Self::calls_may_fail`]).
+    pub(crate) fn parameter_values_may_fail(&self, db: &Database, parameter: SymbolId) -> bool {
+        self.calls_may_fail(db, &IndexSet::from([parameter]))
+    }
+
     /// Whether calling the function values of any of the parameters may fail, given the calls
     /// that have been visited so far. The parameters of `main` come from the solution, and a
     /// function that's used as a value, such as a lambda, could be called from anywhere, so

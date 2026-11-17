@@ -370,8 +370,10 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             return self.value_call_may_fail(arg, in_body);
         }
 
+        // Inside of a function body, the call is checked where the function is called. Otherwise,
+        // it's checked against what's passed wherever the function is called, if that's known.
         let Some(calls) = self.calls.last_mut().filter(|_| in_body) else {
-            return true;
+            return self.cx.parameter_values_may_fail(parameter);
         };
 
         calls.insert(parameter);

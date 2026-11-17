@@ -1222,3 +1222,71 @@ test fn unused_inline_call_with_unused_argument_is_dropped(a: Int, b: Int) -> In
     let _unused = uses_second(a / b, a);
     b
 }
+
+fn not_three(x: Int) -> Int {
+    assert x != 3;
+    x
+}
+
+inline fn adds_capture(p0: Int, p1: Int) -> Int {
+    let l2 = fn(z: Int) => z + not_three(p0);
+    p1
+        + (
+            if p0 > 3 {
+                1
+            } else {
+                l2(p0)
+            }
+        )
+}
+
+// The inner call decides differently whether `l2` is inlined, since its capture may fail, and the
+// outer call's decision must still hold after the inner call is lowered
+test fn same_inline_function_in_its_own_argument(n: Int) -> Int {
+    adds_capture(5, adds_capture(100 / (n - 1), 4))
+}
+
+inline fn evaluates_capture(p0: Int, p1: Int) -> Int {
+    let l2 = fn(z: Int) => z + not_three(p0);
+    let _a3 = if p1 > 3 {
+        1
+    } else {
+        l2(p0)
+    };
+    p1
+}
+
+test fn same_inline_function_with_unused_binding_in_its_own_argument(n: Int) -> Int {
+    evaluates_capture(5, evaluates_capture(100 / (n - 1), 4))
+}
+
+fn conditionally_applies(k: fn(x: Int) -> Int, p0: Int) -> Int {
+    let y = k(p0);
+    if p0 > 0 {
+        y
+    } else {
+        0
+    }
+}
+
+// Every call passes a function that can't fail, so the call of `k` is moved into the branch, as
+// before
+test fn conditional_call_of_safe_parameter_is_inlined(n: Int, m: Int) -> Int {
+    conditionally_applies(add_one, m) + conditionally_applies(add_one, n)
+}
+
+fn conditionally_applies_checked(k: fn(x: Int) -> Int, p0: Int) -> Int {
+    let y = k(p0);
+    if p0 > 0 {
+        y
+    } else {
+        0
+    }
+}
+
+// Some call passes a function that may fail, so the call of `k` is kept where it was, and fails
+// although the branch isn't taken
+test fn conditional_call_of_failing_parameter_is_kept(n: Int) -> Int {
+    conditionally_applies_checked(add_one, n)
+        + conditionally_applies_checked(fn(x: Int) => 100 / x, n)
+}

@@ -737,6 +737,32 @@ tests:
   runtime_cost: 52
   byte_cost: 12000
   total_cost: 12052
+- name: same_inline_function_in_its_own_argument
+  program: (a (q 16 (a (q 16 (a (i (> (/ (q . 100) (- 11 (q . 1))) (q . 3)) (q 1 . 1) (q 2 2 (c (/ (q . 100) (- 11 (q . 1))) ()))) 1) (q . 4)) (c (c (q . 2) (c (c (q . 1) (q 16 11 (a 5 2))) (c (c (q . 4) (c (c (q . 1) (/ (q . 100) (- 5 (q . 1)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) 1)) (q . 1)) (c (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 16 (a (q 16 (q . 4) (a (i (> (/ (q . 100) (- 23 (q . 1))) (q . 3)) (q 1 . 1) (q 2 2 (c (/ (q . 100) (- 23 (q . 1))) ()))) 1)) (c (c (q . 2) (c (c (q . 1) (q 16 11 (a 5 2))) (c (c (q . 4) (c (c (q . 1) (/ (q . 100) (- 11 (q . 1)))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (a (i (> (q . 5) (q . 3)) (q 1 . 1) (q 2 2 (c (q . 5) ()))) 1)) (c (c (q . 2) (c (c (q . 1) (q 16 5 (a 2 (q . 5)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1227:5"))) 1) 1))
+  solution: (1)
+  byte_cost: 3156000
+  clvm_error: Division by zero
+- name: same_inline_function_with_unused_binding_in_its_own_argument
+  program: (a (q 3 () (a (i (> (a (q 3 () (q . 1) (q . 4)) (c (c (q . 2) (c (c (q . 1) (q 16 11 (a 5 2))) (c (c (q . 4) (c (c (q . 1) (/ (q . 100) (- 5 (q . 1)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) 1)) (q . 3)) (q 1 . 1) (q 2 (c (q . 2) (c (c (q . 1) (q 16 5 (a 2 (q . 5)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 5))) 1) (a (q 3 () (q . 1) (q . 4)) (c (c (q . 2) (c (c (q . 1) (q 16 11 (a 5 2))) (c (c (q . 4) (c (c (q . 1) (/ (q . 100) (- 5 (q . 1)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) 1))) (c (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 3 () (a (i (> (a (q 3 () (a (i (> (q . 4) (q . 3)) (q 1 . 1) (q 2 2 (c (/ (q . 100) (- 23 (q . 1))) ()))) 1) (q . 4)) (c (c (q . 2) (c (c (q . 1) (q 16 11 (a 5 2))) (c (c (q . 4) (c (c (q . 1) (/ (q . 100) (- 11 (q . 1)))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (q . 3)) (q 1 . 1) (q 2 2 (c (q . 5) ()))) 1) (a (q 3 () (a (i (> (q . 4) (q . 3)) (q 1 . 1) (q 2 2 (c (/ (q . 100) (- 23 (q . 1))) ()))) 1) (q . 4)) (c (c (q . 2) (c (c (q . 1) (q 16 11 (a 5 2))) (c (c (q . 4) (c (c (q . 1) (/ (q . 100) (- 11 (q . 1)))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1))) (c (c (q . 2) (c (c (q . 1) (q 16 5 (a 2 (q . 5)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1227:5"))) 1) 1))
+  solution: (1)
+  byte_cost: 5388000
+  clvm_error: Division by zero
+- name: conditional_call_of_safe_parameter_is_inlined
+  program: (a (q 16 (a 6 (c 11 4)) (a 6 (c 5 4))) (c (c (q 16 2 (q . 1)) (q 2 (i (> 2 ()) (q 2 3 (c 2 ())) (q)) 1)) 1))
+  debug_program: (a (q 16 (a 6 (c 11 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (a 6 (c 5 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) (c (c (q 16 2 (q . 1)) (q 2 (q 2 (i (> 5 ()) (q . 2) (q)) 1) (c (a 3 (c 2 ())) 1))) 1))
+  solution: (1 2)
+  output: "5"
+  runtime_cost: 5469
+  byte_cost: 1188000
+  total_cost: 1193469
+- name: conditional_call_of_failing_parameter_is_kept
+  program: (a (q 16 (a 2 (c 5 (q 16 2 (q . 1)))) (a 2 (c 5 (q 19 (q . 100) 2)))) (c (q 2 (q 2 (i (> 5 ()) (q . 2) (q)) 1) (c (a 3 (c 2 ())) 1)) 1))
+  debug_program: (a (q 16 (a 4 (c 5 (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))))) (a 4 (c 5 (c (q . 2) (c (c (q . 1) (q 19 (q . 100) 2)) (c (q . 1) ())))))) (c (c (q 2 (q 2 (i (> 5 ()) (q . 2) (q)) 1) (c (a 3 (c 2 ())) 1)) (q 16 2 (q . 1))) 1))
+  solution: (0)
+  byte_cost: 1404000
+  clvm_error: Division by zero
 diagnostics:
 - |-
   This argument can fail, but `ignore_inline` is an `inline fn` that doesn't always evaluate its parameter `_a`, so its check can be skipped at keep_checks.rue:294:19
