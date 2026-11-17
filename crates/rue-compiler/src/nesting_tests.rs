@@ -461,9 +461,10 @@ fn long_runs_of_bindings_are_grouped() {
     });
 }
 
-/// Each binding also captures the parameter, which each one could reach through every binding
-/// before it, so grouping them is quadratic in the length of the chain if it follows each
-/// binding's transitive dependencies rather than its direct ones (#296).
+/// The reproduction from #296, where each binding also captures the parameter directly. Grouping
+/// them is linear in the length of the chain, which `long_chains_are_grouped_in_linear_time` in
+/// `rue-hir` checks at a length where anything quadratic wouldn't finish; this checks that the
+/// whole program compiles on a small stack.
 #[test]
 fn long_runs_of_bindings_that_share_a_parameter_are_grouped() {
     on_stack(2, || {

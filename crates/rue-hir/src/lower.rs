@@ -69,6 +69,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// doesn't change while lowering, and finding them walks it, so they're only found once per
     /// symbol rather than each time a symbol is inlined or captured.
     dependencies: RefCell<HashMap<(SymbolId, bool), Dependencies>>,
+    /// The round that each run of symbols grouped by value is bound in. A run of let statements is
+    /// lowered again each time the function it's in is inlined, and finding the rounds walks
+    /// everything the run can reach, so they're only found once per run.
+    rounds: HashMap<Vec<SymbolId>, Rc<Vec<Option<usize>>>>,
     /// Whether each binding or constant that's referenced once can be evaluated where it's
     /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
@@ -124,6 +128,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             path: Vec::new(),
             too_deep: None,
             dependencies: RefCell::default(),
+            rounds: HashMap::new(),
             substitutions: RefCell::default(),
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
@@ -1148,9 +1153,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         by_reference: bool,
         is_tree: bool,
     ) -> Vec<SymbolGroup> {
-        let rounds = self.graph.rounds(&symbols, |symbol| {
-            !by_reference && !matches!(self.db.symbol(symbol), Symbol::Function(_))
-        });
+        let rounds = if by_reference {
+            Rc::new(vec![Some(0); symbols.len()])
+        } else {
+            self.rounds(&symbols)
+        };
 
         // Symbols that depend on each other can't be bound after one another, so they're bound in
         // a round after all of the others
@@ -1158,7 +1165,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         let mut groups = vec![Vec::new(); last_round + 1];
 
-        for (&symbol, round) in symbols.iter().zip(rounds) {
+        for (&symbol, round) in symbols.iter().zip(rounds.iter()) {
             if self.is_capture(symbol) && self.graph.references(symbol) > 0 {
                 groups[round.unwrap_or(last_round)].push(symbol);
             }
@@ -1169,6 +1176,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|group| !group.is_empty())
             .map(|group| self.create_group(group, is_tree))
             .collect()
+    }
+
+    /// The rounds that the symbols are bound in when they're grouped by value, as given by
+    /// [`DependencyGraph::rounds`]. Functions don't need the values of the others yet.
+    fn rounds(&mut self, symbols: &IndexSet<SymbolId>) -> Rc<Vec<Option<usize>>> {
+        let key: Vec<SymbolId> = symbols.iter().copied().collect();
+
+        if let Some(rounds) = self.rounds.get(&key) {
+            return rounds.clone();
+        }
+
+        let rounds = Rc::new(self.graph.rounds(symbols, |symbol| {
+            !matches!(self.db.symbol(symbol), Symbol::Function(_))
+        }));
+
+        self.rounds.insert(key, rounds.clone());
+        rounds
     }
 
     fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {

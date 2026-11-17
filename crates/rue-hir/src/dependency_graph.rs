@@ -3,7 +3,7 @@ use std::{
     iter,
 };
 
-use indexmap::IndexSet;
+use indexmap::{IndexSet, set::Slice};
 use rue_options::CompilerOptions;
 
 use crate::{
@@ -264,6 +264,10 @@ impl DependencyGraph {
     ///
     /// A symbol that depends on itself, or on a symbol in the set that does, can't be bound after
     /// its dependencies, so its round is `None`.
+    ///
+    /// The symbols are expected to be defined in the same scope, as a run of let statements is, or
+    /// in none, as the symbols that main captures are. Then this takes time linear in what they can
+    /// reach. Otherwise, it falls back to following the dependencies of each symbol.
     pub fn rounds(
         &self,
         symbols: &IndexSet<SymbolId>,
@@ -273,12 +277,16 @@ impl DependencyGraph {
             .first()
             .and_then(|symbol| self.owners.get(symbol).copied());
 
-        // A run of let statements is in the body of one symbol, and the symbols that main captures
-        // aren't defined in any, so this is the case whenever symbols are grouped
-        if symbols
+        let same_owner = symbols
             .iter()
-            .all(|symbol| self.owners.get(symbol).copied() == owner)
-        {
+            .all(|symbol| self.owners.get(symbol).copied() == owner);
+
+        debug_assert!(
+            same_owner,
+            "grouped symbols are defined in different scopes"
+        );
+
+        if same_owner {
             self.rounds_from_edges(symbols, &bound_after, owner)
         } else {
             self.rounds_from_dependencies(symbols, &bound_after)
@@ -302,14 +310,17 @@ impl DependencyGraph {
         owner: Option<SymbolId>,
     ) -> Vec<Option<usize>> {
         // Paths stop at the owner, since anything they reach from there isn't a dependency
-        let edge = |symbol: SymbolId, index: usize| {
+        let edges = |symbol: SymbolId| {
             if Some(symbol) == owner {
-                return None;
+                return Slice::new();
             }
 
-            self.dependencies.get(&symbol)?.get_index(index).copied()
+            self.dependencies
+                .get(&symbol)
+                .map_or(Slice::new(), IndexSet::as_slice)
         };
-        let edges = |symbol| (0..).map_while(move |index| edge(symbol, index));
+
+        let waits = |symbol| symbols.contains(&symbol).then(|| bound_after(symbol));
 
         let mut components = Components::default();
 
@@ -318,14 +329,13 @@ impl DependencyGraph {
                 continue;
             }
 
-            // Each symbol being visited, along with how many of its edges have been followed
-            let mut visits = vec![(components.enter(root), 0)];
+            // Each symbol being visited, along with its edges and how many have been followed
+            let mut visits = vec![(components.enter(root, Some(true)), edges(root), 0)];
 
-            while let Some((index, next)) = visits.last_mut() {
+            while let Some((index, dependencies, next)) = visits.last_mut() {
                 let index = *index;
-                let symbol = components.symbols[index];
 
-                if let Some(dependency) = edge(symbol, *next) {
+                if let Some(&dependency) = dependencies.get_index(*next) {
                     *next += 1;
 
                     if let Some(&dependency_index) = components.indices.get(&dependency) {
@@ -333,7 +343,8 @@ impl DependencyGraph {
                             components.low[index] = components.low[index].min(dependency_index);
                         }
                     } else {
-                        visits.push((components.enter(dependency), 0));
+                        let entered = components.enter(dependency, waits(dependency));
+                        visits.push((entered, edges(dependency), 0));
                     }
 
                     continue;
@@ -341,7 +352,7 @@ impl DependencyGraph {
 
                 visits.pop();
 
-                if let Some(&(outer, _)) = visits.last() {
+                if let Some(&(outer, ..)) = visits.last() {
                     components.low[outer] = components.low[outer].min(components.low[index]);
                 }
 
@@ -360,23 +371,21 @@ impl DependencyGraph {
                     components.component[member] = component;
                 }
 
-                let cyclic = members.len() > 1 || edges(symbol).any(|edge| edge == symbol);
+                let symbol = components.symbols[index];
+                let cyclic = members.len() > 1 || edges(symbol).iter().any(|&edge| edge == symbol);
                 let mut reach = Reach::default();
 
                 for &member in &members {
-                    let member = components.symbols[member];
-
                     // Every symbol in a cycle can reach every symbol in it, including itself
-                    if cyclic && symbols.contains(&member) {
-                        if bound_after(member) {
-                            reach.waiting = true;
-                        } else {
-                            reach.round = reach.round.max(1);
-                        }
+                    match components.waits[member] {
+                        Some(true) if cyclic => reach.waiting = true,
+                        Some(false) if cyclic => reach.round = reach.round.max(1),
+                        _ => {}
                     }
 
-                    for dependency in edges(member) {
-                        let other = components.component[components.indices[&dependency]];
+                    for dependency in edges(components.symbols[member]) {
+                        let dependency = components.indices[dependency];
+                        let other = components.component[dependency];
 
                         if other == component {
                             continue;
@@ -387,12 +396,10 @@ impl DependencyGraph {
 
                         // A symbol in the set is bound after what it reaches, unless it's bound in
                         // the first round
-                        let round = if !symbols.contains(&dependency) {
-                            other.round
-                        } else if bound_after(dependency) {
-                            other.round + 1
-                        } else {
-                            other.round.max(1)
+                        let round = match components.waits[dependency] {
+                            None => other.round,
+                            Some(true) => other.round + 1,
+                            Some(false) => other.round.max(1),
                         };
 
                         reach.round = reach.round.max(round);
@@ -471,6 +478,9 @@ struct Components {
     indices: HashMap<SymbolId, usize>,
     /// The symbol visited at each index.
     symbols: Vec<SymbolId>,
+    /// Whether each symbol in the set waits for the ones it depends on, or `None` if it isn't in
+    /// the set.
+    waits: Vec<Option<bool>>,
     /// The lowest index reachable from each symbol through the ones still on the stack.
     low: Vec<usize>,
     on_stack: Vec<bool>,
@@ -482,10 +492,11 @@ struct Components {
 }
 
 impl Components {
-    fn enter(&mut self, symbol: SymbolId) -> usize {
+    fn enter(&mut self, symbol: SymbolId, waits: Option<bool>) -> usize {
         let index = self.symbols.len();
         self.indices.insert(symbol, index);
         self.symbols.push(symbol);
+        self.waits.push(waits);
         self.low.push(index);
         self.on_stack.push(true);
         self.stack.push(index);
@@ -854,6 +865,47 @@ mod tests {
         fn chance(&mut self, percent: usize) -> bool {
             self.below(100) < percent
         }
+    }
+
+    /// Groups a long chain of bindings, which each depend on the one before and on a parameter of
+    /// the function they're in, on a 2 MiB stack. Following each binding's dependencies would
+    /// take time quadratic in the length of the chain, which wouldn't finish in any reasonable
+    /// time at this length, and walking the graph recursively would overflow the stack.
+    #[test]
+    fn long_chains_are_grouped_in_linear_time() {
+        const LENGTH: usize = 100_000;
+
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let mut db = Database::new();
+                let main = db.alloc_symbol(Symbol::Unresolved);
+                let parameter = db.alloc_symbol(Symbol::Unresolved);
+                let mut graph = DependencyGraph::build(&db, main, CompilerOptions::default());
+
+                graph.owners.insert(parameter, main);
+
+                let bindings: IndexSet<SymbolId> = (0..LENGTH)
+                    .map(|_| db.alloc_symbol(Symbol::Unresolved))
+                    .collect();
+
+                for (index, &binding) in bindings.iter().enumerate() {
+                    graph.owners.insert(binding, main);
+
+                    let dependencies = graph.dependencies.entry(binding).or_default();
+                    dependencies.insert(parameter);
+
+                    if index > 0 {
+                        dependencies.insert(bindings[index - 1]);
+                    }
+                }
+
+                let rounds = graph.rounds(&bindings, |_| true);
+                assert!(rounds.into_iter().eq((0..LENGTH).map(Some)));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     /// Checks that the rounds found from the direct dependencies are the same as the ones found
