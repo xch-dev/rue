@@ -9,10 +9,10 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
-    FxHashMap, FxIndexSet, Memo, Type, TypeId, Union, compare_memo_enabled, free_generics,
-    grow_stack, has_non_contractive_cycle, reachable, references_generic, step, stringify_impl,
-    substitute, substitute_with_mappings,
+    AtomRestriction, AtomSemantic, BuiltinTypes, FixpointMemo, Frame as MemoFrame, FxHashMap,
+    FxIndexSet, Memo, Type, TypeId, Union, compare_memo_enabled, free_generics, grow_stack,
+    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
+    substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -146,7 +146,7 @@ type ComparisonKey = (TypeId, TypeId, bool, usize, Option<TypeId>, Option<TypeId
 /// The memo that a comparison in progress will be cached in (see `ComparisonContext::fixpoint`).
 enum Frame {
     Exact(MemoFrame),
-    Fixpoint(FixpointFrame),
+    Fixpoint,
 }
 
 /// A bound of a generic being instantiated, along with the environment it's resolved in.
@@ -254,7 +254,8 @@ pub(crate) struct ComparisonContext<'a> {
     /// Whether the comparison that started from an empty stack is the least fixed point of
     /// monotone equations (see `is_monotone`), so `fixpoint_memo` is used instead of `memo`.
     fixpoint: bool,
-    /// Completed comparisons, reused while the comparisons they relied on are in progress.
+    /// Approximations of the comparisons reached in fixpoint mode, which are computed again until
+    /// they stop changing, and the exact results once they have.
     fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
     /// Whether each type that a comparison started from is monotone (see `is_monotone`).
     monotone: FxHashMap<TypeId, bool>,
@@ -577,7 +578,8 @@ impl ComparisonContext<'_> {
     /// equations over the comparisons it reaches, which is what `FixpointMemo` needs. Comparing is
     /// built from `max`, `min` and constants (the fallbacks that are only compared when a union
     /// doesn't hold are a `min` whose result doesn't depend on them otherwise), and returning
-    /// early at a comparison in progress gives `Assign` (the least value), as long as:
+    /// early at a comparison in progress gives `Assign` (the least value), or its approximation
+    /// with `FixpointMemo`, as long as:
     ///
     /// - The type is contractive, since a cycle that doesn't pass through a pair or function gives
     ///   `Invalid` instead.
@@ -1488,6 +1490,30 @@ pub(crate) fn compare_impl(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
+    if ctx.stack.is_empty() {
+        ctx.fixpoint = ctx.infer.is_none()
+            && ctx.lhs_env.is_none()
+            && ctx.rhs_env.is_none()
+            && ctx.is_monotone(arena, lhs)
+            && ctx.is_monotone(arena, rhs);
+
+        // The comparison is repeated until the approximations it reached stop changing (see
+        // `FixpointMemo`)
+        if ctx.fixpoint {
+            loop {
+                ctx.fixpoint_memo.start_round();
+
+                let result = grow_stack(|| {
+                    compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+                });
+
+                if ctx.fixpoint_memo.finish_round() {
+                    return result;
+                }
+            }
+        }
+    }
+
     grow_stack(|| compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic))
 }
 
@@ -1505,10 +1531,16 @@ fn compare_impl_inner(
     let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
     let key = (lhs, rhs, ctx.flipped, bindings, lhs_semantic, rhs_semantic);
 
+    // Generics that are being instantiated outside of the comparison collect bounds from it as a
+    // side effect, so it's only memoized if it doesn't refer to any. The ones bound inside of it
+    // are checked before it finishes.
+    let memoize = compare_memo_enabled()
+        && !ctx.bindings[bindings]
+            .iter()
+            .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
+
     if let Some(index) = ctx.stack.get_index_of(&key) {
-        if ctx.fixpoint {
-            ctx.fixpoint_memo.reached(index);
-        } else {
+        if !ctx.fixpoint {
             ctx.memo.reached(index);
         }
 
@@ -1555,28 +1587,19 @@ fn compare_impl_inner(
             }
         }
 
+        // In fixpoint mode, it's assumed to be its approximation from the previous round, which
+        // starts out as the least value
+        if ctx.fixpoint {
+            let key = memoize.then_some(&key);
+            return ctx.fixpoint_memo.reached(index, key, Comparison::Assign);
+        }
+
         return Comparison::Assign;
     }
 
-    if ctx.stack.is_empty() {
-        ctx.fixpoint = ctx.infer.is_none()
-            && ctx.lhs_env.is_none()
-            && ctx.rhs_env.is_none()
-            && ctx.is_monotone(arena, lhs)
-            && ctx.is_monotone(arena, rhs);
-    }
-
-    // Generics that are being instantiated outside of the comparison collect bounds from it as a
-    // side effect, so it's only memoized if it doesn't refer to any. The ones bound inside of it
-    // are checked before it finishes.
-    let memoize = compare_memo_enabled()
-        && !ctx.bindings[bindings]
-            .iter()
-            .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
-
     if memoize {
         let result = if ctx.fixpoint {
-            ctx.fixpoint_memo.get(&key, &ctx.stack)
+            ctx.fixpoint_memo.get(&key)
         } else {
             ctx.memo.get(&key, ctx.stack.iter().copied())
         };
@@ -1587,7 +1610,8 @@ fn compare_impl_inner(
     }
 
     let frame = if ctx.fixpoint {
-        Frame::Fixpoint(ctx.fixpoint_memo.enter(ctx.stack.len()))
+        ctx.fixpoint_memo.enter();
+        Frame::Fixpoint
     } else {
         Frame::Exact(ctx.memo.enter(ctx.stack.len()))
     };
@@ -2030,7 +2054,7 @@ fn compare_impl_inner(
 
     match frame {
         Frame::Exact(frame) => ctx.memo.exit(frame, key, memo_key, result),
-        Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
+        Frame::Fixpoint => ctx.fixpoint_memo.exit(memo_key, result),
     }
 
     result

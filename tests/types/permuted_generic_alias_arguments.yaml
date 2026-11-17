@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot assign `N0` to `N1<1, 1, 2>`, since they are incompatible at permuted_generic_alias_arguments.rue:11:27
+- Cannot assign `N1<1, 1, 2>` to `N0`, since they are incompatible at permuted_generic_alias_arguments.rue:12:18

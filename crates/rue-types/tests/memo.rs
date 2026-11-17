@@ -19,10 +19,10 @@ use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_diagnostic::Name;
 use rue_types::{
-    Alias, Apply, BuiltinTypes, Comparison, FunctionParameter, FunctionType, Generic, Inference,
-    Pair, Struct, Type, TypeId, Union, check, compare, compare_with_inference, count_steps,
-    intersect, is_non_contractive, is_non_regular, reaches_non_contractive_cycle, stringify,
-    substitute, with_step_limit, without_compare_memo,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
+    FunctionType, Generic, Inference, Pair, Struct, Type, TypeId, Union, check, compare,
+    compare_with_inference, count_steps, intersect, is_non_contractive, is_non_regular,
+    reaches_non_contractive_cycle, stringify, substitute, with_step_limit, without_compare_memo,
 };
 
 struct Types {
@@ -95,6 +95,13 @@ impl Types {
             panic!("expected an alias");
         };
         self.arena[inner] = Type::Ref(resolved);
+    }
+
+    fn int_literal(&mut self, value: u8) -> TypeId {
+        self.alloc(Type::Atom(Atom::new(
+            AtomSemantic::Int,
+            Some(AtomRestriction::Value(vec![value].into())),
+        )))
     }
 
     fn apply(&mut self, inner: TypeId, generics: HashMap<TypeId, TypeId>) -> TypeId {
@@ -209,6 +216,55 @@ fn test_mutually_recursive_intersection() {
 
     let (_, steps) = count_steps(|| compare(&mut db.arena, &db.builtins, n0, target));
     assert!(steps < 20_000, "took {steps} steps");
+}
+
+/// `type N0 = N1<(Bool, N1<Bytes, 2, 1>), N0, Bytes>;`
+/// `type N1<A, B, C> = ((C, N1<A, 2, B> | N1<C, Bool, A>), N0);`
+fn permuted_arguments(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes { bool, bytes, .. } = db.builtins;
+    let [a, b, c] = [db.generic(), db.generic(), db.generic()];
+    let n0 = db.declare_alias("N0", vec![]);
+    let n1 = db.declare_alias("N1", vec![a, b, c]);
+    let one = db.int_literal(1);
+    let two = db.int_literal(2);
+
+    let apply =
+        |db: &mut Types, args: [TypeId; 3]| db.apply(n1, [a, b, c].into_iter().zip(args).collect());
+
+    let inner_n1 = apply(db, [bytes, two, one]);
+    let first = db.pair(bool, inner_n1);
+    let n0_inner = apply(db, [first, n0, bytes]);
+    db.define(n0, n0_inner);
+
+    let left = apply(db, [a, two, b]);
+    let right = apply(db, [c, bool, a]);
+    let either = db.union(vec![left, right]);
+    let pair = db.pair(c, either);
+    let n1_inner = db.pair(pair, n0);
+    db.define(n1, n1_inner);
+
+    (apply(db, [one, one, two]), n0)
+}
+
+#[test]
+fn test_permuted_generic_alias_arguments() {
+    with_large_stack(|| {
+        let mut db = Types::new();
+        let (n1, n0) = permuted_arguments(&mut db);
+
+        // Each comparison relied on others in progress, so the fixpoint memo could only reuse it
+        // while they were still on the stack, and these never finished (#286). They take about
+        // 60,000 steps each now, in three rounds.
+        for (lhs, rhs) in [(n0, n1), (n1, n0)] {
+            let (result, steps) = count_steps(|| {
+                with_step_limit(STEP_BOUND, || {
+                    compare(&mut db.arena, &db.builtins, lhs, rhs)
+                })
+            });
+            assert_eq!(result, Comparison::Invalid);
+            assert!(steps < 200_000, "took {steps} steps");
+        }
+    });
 }
 
 /// A small deterministic PRNG (`SplitMix64`), to avoid a dependency.

@@ -1,0 +1,17 @@
+// Comparing these took exponential time, since the generic arguments are permuted at each level
+// (#286)
+type N0 = N1<(Bool, N1<Bytes, 2, 1>), N0, Bytes>;
+type N1<A, B, C> = ((C, N1<A, 2, B> | N1<C, Bool, A>), N0);
+
+// The same shape, with arguments that make the types assignable to each other
+type R0 = R1<Int, Int, Int>;
+type R1<A, B, C> = ((C, R1<A, B, C> | R1<C, B, A>), R0) | nil;
+
+fn main(x: N1<1, 1, 2>, y: N0, r0: R0, r1: R1<Int, Int, Int>) -> Int {
+    let _z: N1<1, 1, 2> = y;
+    let _w: N0 = x;
+    let _same: N0 = y;
+    let _r0: R0 = r1;
+    let _r1: R1<Int, Int, Int> = r0;
+    0
+}

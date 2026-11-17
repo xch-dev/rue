@@ -1,6 +1,6 @@
 use std::{hash::Hash, mem};
 
-use crate::{FxHashMap, FxHashSet, FxIndexSet};
+use crate::{FxHashMap, FxHashSet};
 
 /// Caches the results of a recursive computation over types, which keeps the items in progress on
 /// a stack and returns early when it reaches one of them again (to handle recursive types).
@@ -96,53 +96,58 @@ where
     }
 }
 
-/// Caches the results of a comparison whose result is the least fixed point of monotone equations
-/// over a finite set of items, built from `max`, `min` and constants over a chain of values, where
-/// returning early at an item in progress gives the least value. Unlike [`Memo`], a result is
-/// cached even if it relied on items in progress, and it's reused while they're still in progress.
+/// Computes the least fixed point of monotone equations over a finite set of items, built from
+/// `max`, `min` and constants over a chain of values (such as comparisons between recursive
+/// types), where the computation recurses into the items an item's equation refers to, and an item
+/// that's reached again while it's in progress is given its current approximation.
 ///
-/// The results inside a cycle depend on where it was entered, so a reused result can differ from
-/// what computing it again would give. But the result of the computation as a whole (which starts
-/// from an empty stack) doesn't. Write `μ` for the least fixed point, and `μ[D]` for the least fixed
-/// point with the items in `D` fixed to the least value instead of their equation:
+/// This is chaotic iteration. The computation as a whole (which starts from an empty stack) runs
+/// in rounds, and each item is computed at most once per round. Within a round, an item that's
+/// already been computed is given its value from this round, and an item in progress is given
+/// its value from the previous round, or the least value if it has none. A round in which every
+/// item that was reached again while in progress finished with the value it was given is the last
+/// one, and its values are exact.
 ///
-/// - Every value computed is at most `μ`, since returning early gives the least value, reused
-///   results are at most `μ` (by induction), and the equations are monotone with `μ` as a fixed
-///   point.
-/// - Every value computed for an item, given the items on the stack below it that it returned early
-///   at or reused a result that relied on (`D`), is at least `μ[D]`. Its equation's inputs are at
-///   least `μ[D ∪ {item}]` (by induction), and fixing only the item gives a unary function `h` of
-///   the value it's fixed to, so the value is at least `h(least)`. That's `μ[D]` (which is the least
-///   fixed point of `h`), since `h` is built from `max`, `min` and constants, so `h(h(least))` is
-///   `h(least)` (it's `h(least) ∨ (y ∧ h(greatest))` at `y`).
-/// - A cached result is reused while `D` is on the stack, where computing it again would give
-///   `μ[S]` for the stack `S`. That's at most `μ[D]`, since fixing more items to the least value
-///   can only make the fixed point smaller. So it's at least what computing it again would give.
+/// Write `μ` for the least fixed point.
 ///
-/// So the result of a computation that starts from an empty stack (where `D` is empty) is exactly
-/// `μ`, with or without reusing results, and since every value is at least what computing it would
-/// give and the equations are monotone, so is the result.
+/// - Every value is at most `μ`, since the approximations start at the least value, and the
+///   equations are monotone with `μ` as a fixed point.
+/// - The approximations only increase from one round to the next, since an item's inputs in a
+///   round are at least what they were in the previous one (by induction). So each round that
+///   doesn't end the computation increases at least one item, and there are at most twice as many
+///   rounds as items for a chain of three values (and nearly always two or fewer).
+/// - In the last round, every item's value is its equation applied to the values of the items it
+///   refers to in that round, since the ones that were in progress finished with the values they
+///   were given. The items reached in that round only refer to each other (a fallback that isn't
+///   compared is a `min` that doesn't depend on it), so their values are a fixed point of their
+///   equations, which is at least `μ`.
+///
+/// So the values in the last round are exactly `μ`, and they're kept for later computations, while
+/// the approximations from earlier rounds are discarded.
 #[derive(Debug)]
 pub(crate) struct FixpointMemo<K, V> {
-    /// The indices on the stack of the items that were reached again (or that a reused result
-    /// relied on) since the current item started, which haven't been filtered out by an item that
-    /// finished.
-    reached: Vec<usize>,
-    /// Each result, along with the items in progress that it relied on.
-    done: FxHashMap<K, (V, Vec<K>)>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FixpointFrame {
-    index: usize,
-    reached: usize,
+    /// Exact values, from computations that have finished.
+    exact: FxHashMap<K, V>,
+    /// The approximation of each item reached by the computation in progress, along with the
+    /// round it was last computed in.
+    approximations: FxHashMap<K, (V, usize)>,
+    round: usize,
+    /// For each item in progress, the approximation it was given when it was reached again, if it
+    /// was.
+    reached: Vec<Option<V>>,
+    /// Whether an item in progress finished with another value than it was given when it was
+    /// reached again, during this round.
+    changed: bool,
 }
 
 impl<K, V> Default for FixpointMemo<K, V> {
     fn default() -> Self {
         Self {
+            exact: FxHashMap::default(),
+            approximations: FxHashMap::default(),
+            round: 0,
             reached: Vec::new(),
-            done: FxHashMap::default(),
+            changed: false,
         }
     }
 }
@@ -150,51 +155,87 @@ impl<K, V> Default for FixpointMemo<K, V> {
 impl<K, V> FixpointMemo<K, V>
 where
     K: Copy + Eq + Hash,
-    V: Copy,
+    V: Copy + Ord,
 {
-    /// Records that the item at the given index on the stack was reached again.
-    pub fn reached(&mut self, index: usize) {
-        self.reached.push(index);
+    /// Starts a round of the computation.
+    pub fn start_round(&mut self) {
+        self.round += 1;
+        self.changed = false;
     }
 
-    /// Returns the previous result for the key, if the items it relied on are still in progress.
-    pub fn get(&mut self, key: &K, stack: &FxIndexSet<K>) -> Option<V> {
-        let (value, dependencies) = self.done.get(key)?;
-
-        let indices = dependencies
-            .iter()
-            .map(|item| stack.get_index_of(item))
-            .collect::<Option<Vec<usize>>>()?;
-
-        self.reached.extend(indices);
-
-        Some(*value)
-    }
-
-    /// Starts computing the item that will be at the given index on the stack.
-    pub fn enter(&self, index: usize) -> FixpointFrame {
-        FixpointFrame {
-            index,
-            reached: self.reached.len(),
-        }
-    }
-
-    /// Finishes computing the item (which has been removed from the stack), and caches the result
-    /// under the key, along with the items below it that it relied on.
-    pub fn exit(&mut self, frame: FixpointFrame, key: Option<K>, value: V, stack: &FxIndexSet<K>) {
-        let mut dependencies: Vec<usize> = self
-            .reached
-            .drain(frame.reached..)
-            .filter(|&index| index < frame.index)
-            .collect();
-        dependencies.sort_unstable();
-        dependencies.dedup();
-
-        if let Some(key) = key {
-            let items = dependencies.iter().map(|&index| stack[index]).collect();
-            self.done.insert(key, (value, items));
+    /// Finishes a round of the computation, and returns `true` if its values are exact. Otherwise,
+    /// another round is needed.
+    pub fn finish_round(&mut self) -> bool {
+        if self.changed {
+            return false;
         }
 
-        self.reached.extend(dependencies);
+        let round = self.round;
+
+        self.exact.extend(
+            self.approximations
+                .drain()
+                .filter(|&(_, (_, computed))| computed == round)
+                .map(|(key, (value, _))| (key, value)),
+        );
+
+        true
+    }
+
+    /// Returns the value of the item for an item in progress at the given index on the stack that
+    /// was reached again, which is its approximation from the previous round (or the least value,
+    /// if it has none).
+    pub fn reached(&mut self, index: usize, key: Option<&K>, least: V) -> V {
+        let value = key
+            .and_then(|key| self.approximations.get(key))
+            .map_or(least, |&(value, _)| value);
+
+        let reached = &mut self.reached[index];
+        debug_assert!(reached.is_none_or(|reached| reached == value));
+        *reached = Some(value);
+
+        value
+    }
+
+    /// Returns the item's value, if it's exact or has already been computed in this round.
+    pub fn get(&self, key: &K) -> Option<V> {
+        if let Some(&value) = self.exact.get(key) {
+            return Some(value);
+        }
+
+        self.approximations
+            .get(key)
+            .filter(|&&(_, round)| round == self.round)
+            .map(|&(value, _)| value)
+    }
+
+    /// Starts computing an item, which will be at the next index on the stack.
+    pub fn enter(&mut self) {
+        self.reached.push(None);
+    }
+
+    /// Finishes computing the item, and records its approximation under the key.
+    pub fn exit(&mut self, key: Option<K>, value: V) {
+        let reached = self.reached.pop().unwrap();
+
+        let Some(key) = key else {
+            return;
+        };
+
+        // The approximations only increase, since the equations are monotone, but this keeps the
+        // computation finite even if they weren't
+        let value = match self.approximations.get(&key) {
+            Some(&(previous, _)) => {
+                debug_assert!(previous <= value);
+                previous.max(value)
+            }
+            None => value,
+        };
+
+        if reached.is_some_and(|reached| reached != value) {
+            self.changed = true;
+        }
+
+        self.approximations.insert(key, (value, self.round));
     }
 }
