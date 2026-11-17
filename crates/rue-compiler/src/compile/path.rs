@@ -132,7 +132,8 @@ where
 {
     let mut segments = segments.collect::<Vec<_>>();
     let mut base_scope = ctx.last_scope_id();
-    let mut module_stack = ctx.parent_module_stack();
+    // The modules that `super` can refer to, which are only needed if the path starts with it
+    let mut module_stack = None;
     let mut path_completion_module = None;
 
     let length = segments.len();
@@ -142,6 +143,9 @@ where
     {
         ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
     }
+
+    // The last `super`, and whether it named a module
+    let mut last_super = None;
 
     while let Some(segment) = segments.first()
         && let Some(name) = segment.name()
@@ -162,15 +166,31 @@ where
 
         segments.remove(0);
 
-        if let Some(module) = module_stack.pop() {
+        if let Some(module) = module_stack
+            .get_or_insert_with(|| ctx.parent_module_stack())
+            .pop()
+        {
             base_scope = ctx.module(module).scope;
             path_completion_module = Some(module);
 
             ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
+            last_super = Some((name, true));
         } else {
             ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
             completions = false;
+            last_super = Some((name, false));
         }
+    }
+
+    // A path that's only `super` names a module, which can't be used as a value or a type
+    if segments.is_empty()
+        && let Some((name, resolved)) = last_super
+    {
+        if resolved {
+            ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
+        }
+
+        return PathResult::Unresolved;
     }
 
     let mut value = None;

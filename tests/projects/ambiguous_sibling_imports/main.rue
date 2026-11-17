@@ -1,0 +1,10 @@
+// `z::*` could bring in a module named `y`, so the two glob imports wait for each other, and
+// `y::*` is resolved before knowing that it does. A use of `y` here finds `z::y`, so it's
+// ambiguous.
+
+import y::*;
+import z::*;
+
+fn main() -> Int {
+    W
+}

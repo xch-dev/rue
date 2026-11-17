@@ -5,3 +5,14 @@ import super::x;
 mod a {
     import super::super::a;
 }
+
+// A path that's only `super` names a module, which isn't a value or a type
+mod b {
+    export fn value() -> Int {
+        super
+    }
+
+    export fn ty() -> super {
+        1
+    }
+}

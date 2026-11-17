@@ -511,3 +511,27 @@ mod inner {
         "#]],
     );
 }
+
+#[test]
+fn test_complete_super_members() {
+    // `super` names the module that contains the code, so its private items are offered too
+    check(
+        r#"
+const PRIVATE: Int = 1;
+
+export const PUBLIC: Int = 2;
+
+mod inner {
+    fn main() -> Int {
+        super::$0
+    }
+}
+"#,
+        expect![[r#"
+            super [Module]
+            PRIVATE [Constant] Int
+            PUBLIC [Constant] Int
+            inner [Module]
+        "#]],
+    );
+}

@@ -8,8 +8,38 @@ mod greetings {
     }
 }
 
+// A glob import of `super` brings in the file's sibling files too
+mod everything {
+    import super::*;
+
+    export fn world() -> String {
+        utils::greet(NAME)
+    }
+}
+
+// `super` in a struct field's default is the module the struct is in
+mod defaults {
+    export struct Greeting {
+        name: String = super::NAME,
+    }
+}
+
 const NAME: String = "world";
+
+export const BASE: Int = 100;
 
 test fn inline_modules_use_sibling_files_through_super() -> String {
     greetings::world()
+}
+
+test fn glob_imports_of_super_bring_in_sibling_files() -> String {
+    everything::world()
+}
+
+test fn struct_defaults_use_super() -> String {
+    defaults::Greeting {}.name
+}
+
+test fn inline_modules_in_subdirectories_use_super() -> Int {
+    a::helper::inner::total()
 }

@@ -6,3 +6,24 @@ tests:
   runtime_cost: 20
   byte_cost: 192000
   total_cost: 192020
+- name: glob_imports_of_super_bring_in_sibling_files
+  program: (q . "Hello, world!")
+  debug_program: (a (q 2 4 (c (c 10 14) ())) (c (c (q 2 6 4) (c (q . "world") (q 14 (concat (q . "Hello, ") 1) (q . 33)))) ()))
+  output: "\"Hello, world!\""
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020
+- name: struct_defaults_use_super
+  program: (q . "world")
+  debug_program: (a (q 5 (c 2 ())) (c (q . "world") ()))
+  output: "\"world\""
+  runtime_cost: 20
+  byte_cost: 96000
+  total_cost: 96020
+- name: inline_modules_in_subdirectories_use_super
+  program: (q . 111)
+  debug_program: (a (q 2 8 (c (c 12 (c 10 14)) ())) (c (c (c (q 16 (+ 14 10) 4) (q . 100)) (c (q . 10) (q . 1))) ()))
+  output: "111"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

@@ -1,0 +1,5 @@
+export mod utils {
+    export fn f() -> Int {
+        2
+    }
+}

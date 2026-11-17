@@ -1,0 +1,15 @@
+// `lib::*` brings in a `utils` that shadows the sibling file `utils.rue` in this file, so
+// `super::utils` in `a` waits for it rather than finding the sibling file first
+import lib::*;
+
+mod a {
+    import super::utils::f;
+
+    export fn g() -> Int {
+        f()
+    }
+}
+
+test fn super_imports_wait_for_the_imports_of_the_module() -> Int {
+    a::g() + utils::f() * 10
+}

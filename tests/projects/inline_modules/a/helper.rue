@@ -1,0 +1,9 @@
+const ONE: Int = 1;
+
+// `super` in an inline module is the file it's in, and the next `super` is the parent of the
+// file's directory, as it is from the file
+export mod inner {
+    export fn total() -> Int {
+        super::ONE + super::other::TEN + super::super::main::BASE
+    }
+}

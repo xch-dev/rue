@@ -153,36 +153,27 @@ impl Cache<Compiler> {
         )
     }
 
-    /// The scopes that contain the index, innermost first, so that a name that's shadowed
-    /// resolves to the innermost declaration.
+    /// The scopes that are visible at the index, innermost first, so that a name that's shadowed
+    /// resolves to the innermost declaration: the innermost scope that contains it, and the scopes
+    /// it's in. An inline module doesn't see the scopes of the module it's in, though its text is
+    /// inside of them.
     pub fn scopes(&self, index: usize) -> Scopes {
-        let mut scopes = Vec::new();
-
-        for item in self.syntax_map.items() {
-            if item.source_kind != self.source.kind {
-                continue;
-            }
-
-            let SyntaxItemKind::Scope(scope) = item.kind else {
-                continue;
-            };
-
-            if contains(item.span, index) {
-                scopes.push((item.span, scope));
-            }
-        }
-
-        // Scopes are added to the syntax map when they're exited, which is innermost first within
-        // a function body, but the file's scopes are added before any of the bodies are compiled.
         // Every scope that contains the index is nested in or equal to the others, so the narrower
-        // one is the inner one. The sort is stable, so scopes with the same span keep the order in
-        // which they were exited.
-        scopes.sort_by_key(|(span, _)| span.len());
+        // one is the inner one. Of scopes with the same span, the first one exited (which is added
+        // to the syntax map first) is the innermost.
+        let innermost = self
+            .syntax_map
+            .items()
+            .filter(|item| item.source_kind == self.source.kind && contains(item.span, index))
+            .filter_map(|item| match item.kind {
+                SyntaxItemKind::Scope(scope) => Some((item.span.len(), scope)),
+                _ => None,
+            })
+            .min_by_key(|&(len, _)| len)
+            .map(|(_, scope)| scope);
 
-        // An inline module doesn't see the scopes of the module it's in, even though it's inside
-        // of them, so only the innermost scope's enclosing scopes are visible from it
         let mut visible = Vec::new();
-        let mut current = scopes.first().map(|&(_, scope)| scope);
+        let mut current = innermost;
 
         while let Some(scope) = current {
             visible.push(scope);
@@ -461,10 +452,27 @@ impl Cache<Compiler> {
 
             let scope = self.ctx.module(module).scope;
 
+            // Only a module that `super` names can be followed by `super`. It contains the code,
+            // so its private items and a file's sibling modules can be used too.
+            let members = |namespace| {
+                if allow_super {
+                    let mut items = self.ctx.scope(scope).items(namespace);
+                    items.extend(self.ctx.sibling_items(scope, namespace));
+                    items
+                } else {
+                    self.ctx.scope(scope).exported_items(namespace)
+                }
+            };
+
             let exported = [Namespace::Value, Namespace::Module]
                 .into_iter()
-                .flat_map(|namespace| self.ctx.scope(scope).exported_items(namespace))
+                .flat_map(members)
                 .filter_map(|(name, item)| symbol_item(name, item))
+                .collect::<Vec<_>>();
+
+            let types = members(Namespace::Type)
+                .into_iter()
+                .filter_map(|(name, item)| Some((name, item.ty()?)))
                 .collect::<Vec<_>>();
 
             for (name, symbol, is_module) in exported {
@@ -486,13 +494,7 @@ impl Cache<Compiler> {
                 }
             }
 
-            for (name, ty) in self
-                .ctx
-                .scope(scope)
-                .exported_types()
-                .map(|(name, ty)| (name.to_string(), ty))
-                .collect::<Vec<_>>()
-            {
+            for (name, ty) in types {
                 if !type_names.insert(name.clone()) {
                     continue;
                 }

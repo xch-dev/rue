@@ -1595,9 +1595,9 @@ fn type_imports_from_a_parent_module_find_what_it_imports_from_a_child() {
 }
 
 #[test]
-fn glob_imports_do_not_wait_for_themselves() {
-    // `import super::y::*` could bring in a `q`, but `import q::V` only waits for it, rather than
-    // the glob import also waiting for itself
+fn import_paths_wait_for_a_glob_import_that_brings_in_their_first_segment() {
+    // `import q::V` waits for `import super::y::*`, which brings in `y`'s `q`, so it doesn't find
+    // the top-level `q`, which isn't visible in `inner` anyway
     let compiled = compile(
         "
         mod q {
@@ -2282,4 +2282,31 @@ fn named_imports_of_super_reach_the_private_items_of_the_file() {
 
     compiled.assert_no_errors();
     assert_eq!(compiled.symbol_origin("inner::helper"), "(root)");
+}
+
+#[test]
+fn super_imports_of_a_blocked_name_are_not_reported_again() {
+    let compiled = compile(
+        "
+        mod m {
+            const X: Int = 1;
+        }
+
+        import m::X;
+
+        mod a {
+            import super::X;
+
+            export fn f() -> Int {
+                super::X + X
+            }
+        }
+
+        fn main() -> Int {
+            a::f() + X
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["6:19 PrivateSymbol(\"X\", \"m\")"]);
 }

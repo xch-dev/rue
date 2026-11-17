@@ -1,0 +1,4 @@
+diagnostics:
+- "`y` is ambiguous, since it was imported from an enclosing module, but an import in a nearer one brings in a different item with this name at main.rue:5:8"
+- Unused import `*` at main.rue:6:11
+- Unused constant `W` at z.rue:2:18

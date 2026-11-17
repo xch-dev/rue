@@ -13,7 +13,6 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
         module.syntax().text_range(),
     );
 
-    // An inline module doesn't see the items of the module it's in, only its own and the prelude
     let outer = ctx.inline_module_parent_scope();
     let scope = ctx.alloc_scope(Scope::new(Some(outer)));
     let parent = ctx.last_scope_id();
@@ -52,111 +51,52 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
 }
 
 pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
-    let (scope, mut declarations) = if let Symbol::Module(ModuleSymbol {
-        scope,
-        declarations,
-        ..
-    }) = ctx.symbol(symbol)
-    {
-        (*scope, declarations.clone())
-    } else {
-        unreachable!();
-    };
-
-    let range = module.syntax().text_range();
-    ctx.push_scope(scope, range.start());
-    ctx.push_inline_module(symbol);
-    declare_type_items(ctx, module.items(), &mut declarations);
-    ctx.pop_inline_module();
-    ctx.pop_scope(range.end());
-
-    let Symbol::Module(ModuleSymbol {
-        declarations: updated,
-        ..
-    }) = ctx.symbol_mut(symbol)
-    else {
-        unreachable!();
-    };
-
-    *updated = declarations;
+    in_module(ctx, module, symbol, |ctx, declarations| {
+        declare_type_items(ctx, module.items(), declarations);
+    });
 }
 
 pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
-    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
-        scope,
-        declarations,
-        ..
-    }) = ctx.symbol(symbol)
-    {
-        (*scope, declarations.clone())
-    } else {
-        unreachable!();
-    };
-
-    let range = module.syntax().text_range();
-    ctx.push_scope(scope, range.start());
-    ctx.push_inline_module(symbol);
-    declare_symbol_items(ctx, module.items(), &declarations);
-    ctx.pop_inline_module();
-    ctx.pop_scope(range.end());
+    in_module(ctx, module, symbol, |ctx, declarations| {
+        declare_symbol_items(ctx, module.items(), declarations);
+    });
 }
 
 pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
-    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
-        scope,
-        declarations,
-        ..
-    }) = ctx.symbol(symbol)
-    {
-        (*scope, declarations.clone())
-    } else {
-        unreachable!();
-    };
-
-    let range = module.syntax().text_range();
-    ctx.push_scope(scope, range.start());
-    ctx.push_inline_module(symbol);
-    compile_type_items(ctx, module.items(), &declarations);
-    ctx.pop_inline_module();
-    ctx.pop_scope(range.end());
+    in_module(ctx, module, symbol, |ctx, declarations| {
+        compile_type_items(ctx, module.items(), declarations);
+    });
 }
 
 pub fn compile_module_defaults(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
-    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
-        scope,
-        declarations,
-        ..
-    }) = ctx.symbol(symbol)
-    {
-        (*scope, declarations.clone())
-    } else {
-        unreachable!();
-    };
-
-    let range = module.syntax().text_range();
-    ctx.push_scope(scope, range.start());
-    ctx.push_inline_module(symbol);
-    compile_default_items(ctx, module.items(), &declarations);
-    ctx.pop_inline_module();
-    ctx.pop_scope(range.end());
+    in_module(ctx, module, symbol, |ctx, declarations| {
+        compile_default_items(ctx, module.items(), declarations);
+    });
 }
 
 pub fn compile_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
-    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
-        scope,
-        declarations,
-        ..
-    }) = ctx.symbol(symbol)
-    {
-        (*scope, declarations.clone())
-    } else {
-        unreachable!();
-    };
+    in_module(ctx, module, symbol, |ctx, declarations| {
+        compile_symbol_items(ctx, module.items(), declarations);
+    });
+}
+
+/// Runs a pass over the items of an inline module, in its scope and with its declarations, which
+/// the pass can add to.
+fn in_module(
+    ctx: &mut Compiler,
+    module: &AstModuleItem,
+    symbol: SymbolId,
+    pass: impl FnOnce(&mut Compiler, &mut ModuleDeclarations),
+) {
+    let scope = ctx.module(symbol).scope;
+    let mut declarations = ctx.module(symbol).declarations.clone();
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
     ctx.push_inline_module(symbol);
-    compile_symbol_items(ctx, module.items(), &declarations);
+    pass(ctx, &mut declarations);
     ctx.pop_inline_module();
     ctx.pop_scope(range.end());
+
+    ctx.module_mut(symbol).declarations = declarations;
 }

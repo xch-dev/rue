@@ -1,4 +1,0 @@
-diagnostics:
-- Undeclared symbol `utils` at main.rue:4:19
-- Undeclared symbol `greet` at main.rue:7:9
-- Unused constant `NAME` at main.rue:11:7

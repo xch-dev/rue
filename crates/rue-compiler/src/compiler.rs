@@ -405,8 +405,8 @@ impl Compiler {
     /// The scope that an inline module's scope is in. An inline module only sees its own items and
     /// imports, and the prelude, like a file, so its scope is in the one outside of the file.
     pub fn inline_module_parent_scope(&self) -> ScopeId {
-        self.file
-            .map_or_else(|| self.last_scope_id(), |(_, outer_scope)| outer_scope)
+        let (_, outer_scope) = self.file.expect("inline modules are declared in a file");
+        outer_scope
     }
 
     /// Records the scope with a file's sibling modules, which are found through `super` from an
@@ -431,20 +431,12 @@ impl Compiler {
             })
     }
 
-    /// The names and items that a module (by its scope) has in a namespace, including a file's
-    /// sibling modules, which its own items shadow. This is what `super::*` brings in.
-    pub fn module_members(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
-        let mut members = self.scope(scope).items(namespace);
-
-        if let Some(&siblings) = self.sibling_scopes.get(&scope) {
-            for (name, item) in self.scope(siblings).items(namespace) {
-                if self.scope(scope).item(namespace, &name).is_none() {
-                    members.push((name, item));
-                }
-            }
-        }
-
-        members
+    /// The names and items of a file's sibling modules in a namespace, if a scope is a file's.
+    pub fn sibling_items(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
+        self.sibling_scopes
+            .get(&scope)
+            .map(|&siblings| self.scope(siblings).items(namespace))
+            .unwrap_or_default()
     }
 
     /// Looks up a symbol in a scope and then each enclosing scope. The lookup stops at a scope

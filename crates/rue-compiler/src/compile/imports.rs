@@ -410,8 +410,10 @@ fn check_forced_import(
     let import_scope = import_scopes[&import_id];
     let import = ctx.import(import_id).clone();
 
-    // Only lookups from the import's own scope wait, so only they can be forced
-    debug_assert_eq!(import.base_scope, import_scope);
+    // A lookup through `super` can be forced too, but its path isn't cached, so it isn't checked
+    if import.base_scope != import_scope {
+        return;
+    }
 
     let ambiguous = if let Some(first) = import.path.first() {
         // The first segment of the path, which is cached once it's resolved
@@ -654,6 +656,33 @@ fn lookup_in_scopes<T>(
     .unwrap_or(Lookup::NotFound)
 }
 
+/// Looks up a name in the module that `super` names. It contains the import, so its private items
+/// can be used, and a file's sibling modules can be too. The module's own items shadow its
+/// siblings, so a sibling is only found once the module can't bring in the name through one of
+/// its imports.
+fn lookup_member(
+    ctx: &Compiler,
+    resolution: &Resolution,
+    force: bool,
+    scope: ScopeId,
+    namespace: Namespace,
+    name: &str,
+    importer: ImportId,
+) -> Lookup<Item> {
+    if let Some((item, via)) = ctx.scope(scope).item_with_import(namespace, name) {
+        return Lookup::Found(item, via);
+    }
+
+    if !force && resolution.may_bring_in(scope, name, importer) {
+        return Lookup::Undetermined;
+    }
+
+    match ctx.module_member(scope, namespace, name) {
+        Some((item, via)) => Lookup::Found(item, via),
+        None => Lookup::NotFound,
+    }
+}
+
 fn resolve_import(
     ctx: &mut Compiler,
     import_scope: ScopeId,
@@ -735,9 +764,22 @@ fn resolve_import(
                 Lookup::NotFound => None,
             }
         } else {
-            // The module that `super` names contains the import, so its private items can be used
-            ctx.module_member(import.base_scope, Namespace::Module, name.text())
-                .and_then(|(module, via)| Some((module.symbol()?, via, true)))
+            match lookup_member(
+                ctx,
+                resolution,
+                force,
+                import.base_scope,
+                Namespace::Module,
+                name.text(),
+                import_id,
+            ) {
+                Lookup::Found(module, via) => module.symbol().map(|module| (module, via, true)),
+                Lookup::Undetermined => {
+                    resolution.defer(ctx, import_scope, import_id);
+                    return false;
+                }
+                Lookup::NotFound => None,
+            }
         };
 
         let Some((symbol, via, exported)) = module else {
@@ -858,7 +900,24 @@ fn resolve_import(
                 let items = if base.is_some() {
                     ctx.scope(source_scope).exported_items(namespace)
                 } else {
-                    ctx.module_members(source_scope, namespace)
+                    // A file's sibling modules are brought in too, unless the file has an item
+                    // with the name, or could still bring one in through its imports
+                    let mut items = ctx.scope(source_scope).items(namespace);
+
+                    for (name, item) in ctx.sibling_items(source_scope, namespace) {
+                        if ctx.scope(source_scope).item(namespace, &name).is_some() {
+                            continue;
+                        }
+
+                        if !force && resolution.may_bring_in(source_scope, &name, import_id) {
+                            resolution.defer(ctx, import_scope, import_id);
+                            continue;
+                        }
+
+                        items.push((name, item));
+                    }
+
+                    items
                 };
 
                 for (name, item) in items {
@@ -1014,14 +1073,42 @@ fn resolve_import(
 
                 found
             } else {
-                Namespace::ALL
+                let mut undetermined = false;
+
+                let found = Namespace::ALL
                     .into_iter()
                     .filter_map(|namespace| {
-                        // The module that `super` names contains the import, so its private items
-                        // can be imported
-                        ctx.module_member(import.base_scope, namespace, name)
+                        lookup_member(
+                            ctx,
+                            resolution,
+                            force,
+                            import.base_scope,
+                            namespace,
+                            name,
+                            import_id,
+                        )
+                        .found(&mut undetermined)
                     })
-                    .collect()
+                    .collect::<Vec<_>>();
+
+                if undetermined {
+                    resolution.defer(ctx, import_scope, import_id);
+                }
+
+                // A name that a failed import blocked in that module has already been reported
+                let blocked = Namespace::ALL
+                    .into_iter()
+                    .filter(|&namespace| ctx.scope(import.base_scope).is_blocked(namespace, name))
+                    .collect::<Vec<_>>();
+
+                if found.is_empty() && !blocked.is_empty() {
+                    missing_imports.shift_remove(name);
+                    resolution
+                        .private_names
+                        .push((import_scope, name.to_string(), blocked));
+                }
+
+                found
             };
 
             // This is recorded in every pass, since an import of a name from an enclosing scope
