@@ -1,0 +1,129 @@
+// The type expected of a call reaches the generics that are only inferred through other generics,
+// so that a literal isn't widened past it (#284)
+
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+fn forward<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    map(function, value)
+}
+
+test fn map_identity() -> Int {
+    let result: 5 = map(identity, 5);
+    result + 1
+}
+
+test fn map_identity_reversed() -> Int {
+    let result: 5 = map_reversed(5, identity);
+    result + 1
+}
+
+test fn chain_of_three() -> Int {
+    let result: 5 = chain(identity, identity, 5);
+    result + 1
+}
+
+test fn through_several_layers() -> Int {
+    let result: 5 = forward(identity, 5);
+    result + 1
+}
+
+test fn nested_calls() -> Int {
+    let result: 5 = map(identity, map(identity, 5));
+    result + 1
+}
+
+test fn return_type() -> 5 {
+    map(identity, 5)
+}
+
+test fn string_literal() -> Bool {
+    let result: "hello" = map(identity, "hello");
+    result == "hello"
+}
+
+test fn union_with_literal() -> Bool {
+    let result: 5 | nil = map(identity, 5);
+    result is nil
+}
+
+test fn widened_without_literal() -> Int {
+    // The expected type allows `Int`, so the literal is still widened
+    let result: Int = map(identity, 5);
+    result + 1
+}
+
+fn wrap<T>(value: T) -> (T, nil) {
+    (value, nil)
+}
+
+test fn compound_result() -> 5 {
+    let result: (5, nil) = map(wrap, 5);
+    result.first
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+test fn instantiated_generic_function() -> 5 {
+    let result: (5, 5) = map(duplicate, 5);
+    result.rest
+}
+
+test fn generic_lambda() -> Int {
+    let result: 5 = map(fn<V>(value: V) => value, 5);
+    result + 1
+}
+
+fn make<T>(function: fn(value: T) -> T) -> fn(value: T) -> T {
+    function
+}
+
+fn takes(function: fn(value: Int) -> Int | nil) -> Int | nil {
+    function(5)
+}
+
+test fn lambda_from_expected_lower_bound() -> Int | nil {
+    // The expected type gives `T` the lower bound `Int` and the upper bound `Int | nil`, and the
+    // lambda's parameter is `Int`, as before
+    takes(make(fn(value) => value * 2))
+}
+
+fn cycle<A, B>(forward: fn(a: A) -> B, _backward: fn(b: B) -> A, value: A) -> B {
+    forward(value)
+}
+
+test fn cycle_with_union() -> Bool {
+    // The union is passed around the cycle between `A` and `B` only once
+    let result: Int | nil = cycle(identity, identity, 5);
+    result is nil
+}
+
+test fn cycle_with_literal_union() -> Bool {
+    let result: 5 | 6 = cycle(identity, identity, 5);
+    result == 5
+}
+
+fn map_twice<A, B>(function: fn(a: A) -> B, value: A) -> (B, B) {
+    (function(value), function(value))
+}
+
+test fn second_member_of_union() -> Int {
+    // `B` can't be `6`, but it can still be `5`
+    let result: (6, 6) | (5, 5) = map_twice(identity, 5);
+    result.first
+}

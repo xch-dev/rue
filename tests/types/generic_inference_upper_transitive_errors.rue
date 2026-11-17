@@ -1,0 +1,44 @@
+// Bounding generics from above through other generics must still reject invalid calls (#285)
+
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn bytes_only(value: Bytes) -> Int {
+    value as Int
+}
+
+fn feed<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int) -> fn(a: A) -> Int {
+    fn(a: A) => second(first(a))
+}
+
+fn run<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A) -> Int {
+    second(first(value))
+}
+
+fn five_only(value: 5) -> Int {
+    value
+}
+
+fn main() -> Int {
+    // `A` is inferred as `Int`, so it can't take `Bytes`
+    let function = feed(identity, increment);
+    let wrong_argument = function("hello");
+
+    // `A` is inferred as `Bytes`, so it can't take `Int`
+    let bytes = feed(identity, bytes_only);
+    let wrong_type = bytes(1);
+
+    // `6` isn't `5`
+    let wrong_literal = run(identity, five_only, 6);
+
+    // `A` is inferred as `Int` from `5` without the bound `5` from `five_only` through `B`, as
+    // before, so the value is widened past it
+    let widened = run(identity, five_only, 5);
+
+    wrong_argument + wrong_type + wrong_literal + widened
+}

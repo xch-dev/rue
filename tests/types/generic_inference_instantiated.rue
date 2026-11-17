@@ -1,0 +1,135 @@
+// A generic function passed to another generic function is instantiated, and the candidates that
+// reference its generics use what they're instantiated as (#283)
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+test fn map_duplicate() -> (Int, Int) {
+    map(duplicate, 42)
+}
+
+test fn map_duplicate_reversed() -> Int {
+    let (first, second) = map_reversed(42, duplicate);
+    first + second
+}
+
+test fn nested_calls() -> Int {
+    let ((a, b), (c, d)) = map(duplicate, map(duplicate, 1));
+    a + b + c + d
+}
+
+fn forward<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    map(function, value)
+}
+
+test fn through_several_layers() -> Int {
+    let (first, second) = forward(duplicate, 21);
+    first + second
+}
+
+fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+test fn chained_instantiations() -> Int {
+    let ((a, b), (c, d)) = chain(duplicate, duplicate, 3);
+    a * b + c * d
+}
+
+fn optional<T>(value: T) -> T | nil {
+    value
+}
+
+test fn union_return_type() -> Int {
+    let result = map(optional, 42);
+
+    if result is nil {
+        0
+    } else {
+        result + 1
+    }
+}
+
+fn maybe(value: Int) -> Int | nil {
+    if value > 0 {
+        value
+    } else {
+        nil
+    }
+}
+
+test fn union_argument() -> Int {
+    let (first, second) = map(duplicate, maybe(5));
+
+    if first is nil || second is nil {
+        0
+    } else {
+        first + second
+    }
+}
+
+test fn literal_argument() -> Bool {
+    // `T` is instantiated as `A`, which is inferred as `Bool` from `true`
+    let (first, second) = map(duplicate, true);
+    first && second
+}
+
+test fn annotated_result() -> Int {
+    let result: (Int, Int) = map(duplicate, 7);
+    result.first + result.rest
+}
+
+struct Box<T> {
+    value: T,
+}
+
+fn boxed<T>(value: T) -> Box<T> {
+    Box::<T> { value }
+}
+
+test fn generic_struct() -> Int {
+    let result = map(boxed, 42);
+    result.value + 1
+}
+
+fn returning<A>(_function: fn(a: A) -> Int) -> A {
+    unchecked_cast((1, 2))
+}
+
+fn first_of<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+test fn instantiated_from_upper_bound() -> Int {
+    // `A`'s candidate is `(T, T)`, from the parameter, where `T` is instantiated as `Int`
+    let result = returning(first_of);
+    result.first + result.rest
+}
+
+// These are only used by `recursive` below
+#[expect(unused_function)]
+fn sink(_value: Int) -> nil {
+    nil
+}
+
+#[expect(unused_function)]
+fn apply<B>(function: fn(callback: fn(value: Int) -> nil) -> B) -> B {
+    function(sink)
+}
+
+// It's never called, since it would recurse forever, but it must still compile
+#[expect(unused_function)]
+fn recursive<T>(_callback: fn(value: T) -> nil) -> (T, T) {
+    // `T` is only bounded from above here, so `B`'s candidate `(T, T)` is left as is, as it was
+    // before, and names this function's own `T`, which matches the return type
+    apply(recursive)
+}

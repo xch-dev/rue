@@ -11,8 +11,8 @@ use crate::{
     FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
     add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
     extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
-    resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
-    unwrap_semantic,
+    resolve_inference_with_bounds, resolve_inference_with_fallback, stringify, substitute,
+    substitute_with_mappings, subtract, unwrap_semantic,
 };
 
 struct Db {
@@ -1373,6 +1373,249 @@ mod inference {
         assert_eq!(mappings[&t], db.builtins.int);
     }
 
+    /// Collects the bounds that `B` is expected to satisfy, as in `let x: <expected> = ...` for a
+    /// call returning `B`, and adds them to the inference.
+    fn add_expected(
+        db: &mut Db,
+        generics: &[TypeId],
+        b: TypeId,
+        ty: TypeId,
+        infer: &mut Inference,
+    ) {
+        let mut expected = Inference::new(generics.iter().copied());
+        infer_from_expected(&mut db.arena, &db.builtins, b, ty, &mut expected);
+        add_expected_bounds(&mut db.arena, &db.builtins, infer, &expected);
+    }
+
+    #[test]
+    fn passes_expected_bounds_through_other_generics() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let (five, six) = (
+            db.literal(AtomSemantic::Int, &[5]),
+            db.literal(AtomSemantic::Int, &[6]),
+        );
+
+        // `let x: 5 = map(identity, 5);` gives `A` the bound through `B`
+        let mut infer = Inference::new([a, b]);
+        assert_eq!(db.infer(a, b, &mut infer), Comparison::Assign);
+        assert_eq!(db.infer(five, a, &mut infer), Comparison::Assign);
+        add_expected(&mut db, &[a, b], b, five, &mut infer);
+        assert_eq!(candidates(&infer, a).upper, vec![five]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], five);
+        assert_eq!(mappings[&b], five);
+
+        // `let x: 5 = map(identity, 6);` doesn't satisfy it, through `A`
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        db.infer(six, a, &mut infer);
+        add_expected(&mut db, &[a, b], b, five, &mut infer);
+        assert_eq!(candidates(&infer, a).upper, vec![]);
+        assert_eq!(candidates(&infer, b).upper, vec![]);
+    }
+
+    #[test]
+    fn passes_expected_bounds_into_compound_candidates() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `B` is inferred from `(A, A)`, and expected to be `(5, 5)`
+        let mut infer = Inference::new([a, b]);
+        let pair = db.pair(a, a);
+        db.infer(pair, b, &mut infer);
+        db.infer(five, a, &mut infer);
+        let expected = db.pair(five, five);
+        add_expected(&mut db, &[a, b], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, a).upper, vec![five]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], five);
+    }
+
+    #[test]
+    fn passes_expected_bounds_through_cycles() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `A` and `B` are inferred from each other, and only the expected type bounds them
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        db.infer(b, a, &mut infer);
+        add_expected(&mut db, &[a, b], b, five, &mut infer);
+        assert_eq!(candidates(&infer, a).upper, vec![five]);
+        assert_eq!(candidates(&infer, b).upper, vec![five]);
+    }
+
+    #[test]
+    fn passes_union_bounds_through_cycles() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `A` and `B` are inferred from each other and `5`, and expected to be `Int | nil`. Passing
+        // the union around the cycle must end
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        db.infer(b, a, &mut infer);
+        db.infer(five, a, &mut infer);
+        let expected = db.union(&[int, nil]);
+        add_expected(&mut db, &[a, b], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, a).upper.len(), 1);
+        assert_eq!(candidates(&infer, b).upper.len(), 1);
+
+        // `B` is inferred from `(A, nil)`, where `A` and `C` are inferred from each other and `5`,
+        // so the union inside the expected pair goes around that cycle
+        let c = db.generic("C");
+        let pair = db.pair(a, nil);
+        let mut infer = Inference::new([a, b, c]);
+        db.infer(pair, b, &mut infer);
+        db.infer(c, a, &mut infer);
+        db.infer(a, c, &mut infer);
+        db.infer(five, a, &mut infer);
+        let expected_pair = db.pair(expected, nil);
+        let expected_pair = db.union(&[expected_pair, nil]);
+        add_expected(&mut db, &[a, b, c], b, expected_pair, &mut infer);
+        assert_eq!(candidates(&infer, b).upper.len(), 1);
+        assert_eq!(candidates(&infer, a).upper.len(), 1);
+        assert_eq!(candidates(&infer, c).upper.len(), 1);
+
+        // If `A` is also inferred from `B`, it's an infinite type (`A` holds `(A, nil)`), whose
+        // values aren't all `(Int | nil, nil)`, so the bound isn't added
+        let mut infer = {
+            let mut infer = Inference::new([a, b]);
+            db.infer(pair, b, &mut infer);
+            db.infer(b, a, &mut infer);
+            db.infer(five, a, &mut infer);
+            infer
+        };
+        add_expected(&mut db, &[a, b], b, expected_pair, &mut infer);
+        assert_eq!(candidates(&infer, b).upper.len(), 0);
+    }
+
+    #[test]
+    fn expands_lower_bounds_regardless_of_order() {
+        let mut db = Db::new();
+        let (a, b, t, u) = (
+            db.generic("A"),
+            db.generic("B"),
+            db.generic("T"),
+            db.generic("U"),
+        );
+        let nil = db.builtins.nil;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `B: [U, (T, nil)]`, `U: [A]`, `A: [T, 5]` and `T: [A]`, so `B`'s lower bounds expand to
+        // `5 | (5, nil)` whichever of `U` and `T` is expanded first
+        let mut infer = Inference::new([a, b, t, u]);
+        db.infer(u, b, &mut infer);
+        let pair = db.pair(t, nil);
+        db.infer(pair, b, &mut infer);
+        db.infer(a, u, &mut infer);
+        db.infer(t, a, &mut infer);
+        db.infer(five, a, &mut infer);
+        db.infer(a, t, &mut infer);
+        let five_nil = db.pair(five, nil);
+        let expected = db.union(&[five, five_nil]);
+        add_expected(&mut db, &[a, b, t, u], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, b).upper.len(), 1);
+    }
+
+    #[test]
+    fn passes_upper_bounds_through_other_generics() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        // `feed(identity, inc)`: `A` flows into `B`, which is bounded by `Int`
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, int, &mut infer);
+        let mappings =
+            resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &HashMap::new());
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+
+        // In a cycle, where `B` already has the bound, it still ends
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        db.infer(b, a, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, int, &mut infer);
+        let mappings =
+            resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &HashMap::new());
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
+    fn keeps_inferred_generics_when_passing_upper_bounds() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `A` is inferred as `Int` from `5`, so `B`'s bound `5` isn't passed on to it, since it
+        // might be left over from a union member that didn't match. `C` isn't inferred, so the
+        // bounds are passed on for it, which mustn't change the others
+        let c = db.generic("C");
+        let mut infer = Inference::new([a, b, c]);
+        db.infer(a, b, &mut infer);
+        db.infer(five, a, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut infer);
+        let mappings =
+            resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &HashMap::new());
+        assert_eq!(mappings[&a], int);
+
+        // `A` falls back to `5`, so it isn't given `B`'s bound `Int` either
+        let mut infer = Inference::new([a, b]);
+        db.infer(a, b, &mut infer);
+        infer_from_expected(&mut db.arena, &db.builtins, b, int, &mut infer);
+        let fallback = HashMap::from([(a, five)]);
+        let mappings =
+            resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &fallback);
+        assert_eq!(mappings[&a], five);
+    }
+
+    #[test]
+    fn keeps_compound_lower_bounds_with_unconstrained_generics() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let (five, six) = (
+            db.literal(AtomSemantic::Int, &[5]),
+            db.literal(AtomSemantic::Int, &[6]),
+        );
+
+        // `B` is inferred from `(A, 6)`, where nothing bounds `A` from below, so `(A, 6)` is
+        // checked as is against `(5, 5)` and doesn't satisfy it
+        let mut infer = Inference::new([a, b]);
+        let pair = db.pair(a, six);
+        db.infer(pair, b, &mut infer);
+        let expected = db.pair(five, five);
+        add_expected(&mut db, &[a, b], b, expected, &mut infer);
+        assert_eq!(candidates(&infer, a).upper, vec![]);
+        assert_eq!(candidates(&infer, b).upper, vec![]);
+    }
+
+    #[test]
+    fn doesnt_expand_lower_bounds_through_generics_in_scope() {
+        let mut db = Db::new();
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `A` is the caller's own generic, so `B`'s candidate `A` isn't expanded through it and
+        // doesn't satisfy the bound
+        let mut infer = Inference::new([a, b]);
+        infer.set_in_scope(a);
+        db.infer(a, b, &mut infer);
+        add_expected(&mut db, &[a, b], b, five, &mut infer);
+        assert_eq!(candidates(&infer, a).upper, vec![]);
+        assert_eq!(candidates(&infer, b).upper, vec![]);
+    }
+
     #[test]
     fn skips_union_members_held_by_others() {
         let mut db = Db::new();
@@ -1497,6 +1740,126 @@ mod inference {
 
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(db.name(mappings[&b]), "(Int, nil)");
+    }
+
+    #[test]
+    fn instantiates_generics_in_candidates() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `fn<T>(x: T) -> (T, T)` to `fn(a: A) -> B`, where `T` is instantiated as `A`
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let duplicate = db.function_with(&[t], &[t], true, ret);
+        let param = db.function(&[a], b);
+        assert_eq!(db.infer(duplicate, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(A, A)");
+
+        assert_eq!(db.infer(int, a, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&b]), "(Int, Int)");
+    }
+
+    #[test]
+    fn instantiates_generics_in_upper_candidates() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let a = db.generic("A");
+        let mut infer = Inference::new([a]);
+
+        // `fn<T>(x: (T, T)) -> T` to `fn(a: A) -> Int`, where `T` is instantiated as `Int`
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let first = db.function_with(&[t], &[pair], true, t);
+        let param = db.function(&[a], int);
+        assert_eq!(db.infer(first, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(Int, Int)");
+    }
+
+    #[test]
+    fn instantiates_generics_in_candidates_from_expected_type() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `fn(g: fn(x: A) -> B) -> Int` is expected to be `fn(g: fn<T>(x: T) -> (T, T)) -> Int`
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let duplicate = db.function_with(&[t], &[t], true, ret);
+        let expected = db.function(&[duplicate], int);
+        let param = db.function(&[a], b);
+        let ty = db.function(&[param], int);
+        infer_from_expected(&mut db.arena, &db.builtins, ty, expected, &mut infer);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(A, A)");
+    }
+
+    #[test]
+    fn leaves_upper_bounded_instances_in_lower_candidates() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T>(g: fn(x: T) -> nil) -> (T, T)` to `fn(g: fn(x: Int) -> nil) -> B`, where `T` is
+        // only bounded from above, so the least instantiation isn't known
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let callback = db.function(&[t], nil);
+        let function = db.function_with(&[t], &[callback], true, ret);
+        let sink = db.function(&[int], nil);
+        let param = db.function(&[sink], b);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+    }
+
+    #[test]
+    fn leaves_lower_bounded_instances_in_upper_candidates() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let a = db.generic("A");
+        let mut infer = Inference::new([a]);
+
+        // `fn<T>(x: (T, T), y: T) -> nil` to `fn(a: A, b: Int) -> nil`, where `T` is only bounded
+        // from below, so the greatest instantiation isn't known
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let function = db.function_with(&[t], &[pair, t], true, nil);
+        let param = db.function(&[a, int], nil);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(T, T)");
+    }
+
+    #[test]
+    fn leaves_unconstrained_instances_in_candidates() {
+        let mut db = Db::new();
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T>() -> (T, T)` to `fn() -> B`, where nothing constrains `T`
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let pairs = db.function_with(&[t], &[], true, ret);
+        let param = db.function(&[], b);
+        assert_eq!(db.infer(pairs, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+    }
+
+    #[test]
+    fn leaves_instances_bounded_by_rigid_generics_in_candidates() {
+        let mut db = Db::new();
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T>(x: T) -> (T, T)` to `fn<U>(a: U) -> B`, where `T` is bounded by the rigid `U`
+        let (t, u) = (db.generic("T"), db.generic("U"));
+        let ret = db.pair(t, t);
+        let duplicate = db.function_with(&[t], &[t], true, ret);
+        let param = db.function_with(&[u], &[u], true, b);
+        db.infer(duplicate, param, &mut infer);
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
     }
 
     #[test]

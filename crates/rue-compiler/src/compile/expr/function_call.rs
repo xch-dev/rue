@@ -169,6 +169,22 @@ pub fn compile_function_call_expr(
                 mappings.entry(generic).or_insert(ty);
             }
 
+            // A generic that's still unmapped may be inferred through others that the type
+            // expected of the call bounds, such as `A` in `let x: 5 = map(identity, map(...));`
+            if let Some(expected) = &expected
+                && function
+                    .generics
+                    .iter()
+                    .any(|generic| !mappings.contains_key(generic))
+            {
+                let mut bounded = infer.clone();
+                ctx.add_expected_bounds(&mut bounded, expected);
+
+                for (generic, ty) in ctx.resolve_inference(&bounded) {
+                    mappings.entry(generic).or_insert(ty);
+                }
+            }
+
             let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
             let value = compile_expr(ctx, expr, Some(expected));
@@ -191,8 +207,10 @@ pub fn compile_function_call_expr(
         }
 
         // A generic that the arguments don't constrain falls back to the type expected of the call,
-        // and the generics inferred from it are resolved through that
-        let mut mappings = ctx.resolve_inference_with_fallback(&infer, &fallback);
+        // and the generics inferred from it are resolved through that. One that still isn't
+        // inferred must satisfy the upper bounds of the generics it's inferred through, so that
+        // `feed(identity, inc)` infers `A` from `inc` through `B`
+        let mut mappings = ctx.resolve_inference_with_bounds(&infer, &fallback);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {

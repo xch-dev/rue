@@ -1,0 +1,4 @@
+diagnostics:
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_expected_transitive_errors.rue:18:26
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_expected_transitive_errors.rue:21:29
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_expected_transitive_errors.rue:24:21
