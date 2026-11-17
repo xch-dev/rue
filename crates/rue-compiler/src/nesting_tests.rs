@@ -447,13 +447,16 @@ fn long_chains_of_inline_arguments_are_checked() {
 /// The bindings of consecutive `let` statements are grouped so that each one is bound after the ones
 /// it depends on. Each binding here is used twice, so it isn't inlined, and depends on the one
 /// before it, so there's a group for each of them, which is slow unless grouping avoids redoing
-/// work for each group.
+/// work for each group. Each one also captures the parameter, as in the reproduction from #296.
 #[test]
 fn long_runs_of_bindings_are_grouped() {
     on_stack(2, || {
         let source = format!(
             "fn main(a: Int) -> Int {{\nlet x0 = a + 1;\n{}x{LONG_CHAIN}\n}}",
-            links(LONG_CHAIN, |i| format!("let x{} = x{i} * x{i};\n", i + 1))
+            links(LONG_CHAIN, |i| format!(
+                "let x{} = x{i} * x{i} + a;\n",
+                i + 1
+            ))
         );
 
         let (diagnostics, result) = compile(&source);

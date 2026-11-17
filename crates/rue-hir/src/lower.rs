@@ -11,7 +11,7 @@ use std::{
 };
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::{IndexMap, IndexSet, set::Slice};
 use rue_diagnostic::SrcLoc;
 use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
@@ -67,8 +67,12 @@ pub struct Lowerer<'d, 'a, 'g> {
     too_deep: Option<TooDeep>,
     /// The dependencies of each symbol, keyed by whether only captures are included. The graph
     /// doesn't change while lowering, and finding them walks it, so they're only found once per
-    /// symbol rather than each time a symbol is grouped, inlined or captured.
+    /// symbol rather than each time a symbol is inlined or captured.
     dependencies: RefCell<HashMap<(SymbolId, bool), Dependencies>>,
+    /// The round that each run of symbols grouped by value is bound in. A run of let statements is
+    /// lowered again each time the function it's in is inlined, and finding the rounds walks
+    /// everything the run can reach, so they're only found once per run.
+    rounds: HashMap<Box<Slice<SymbolId>>, Rc<Vec<Option<usize>>>>,
     /// Whether each binding or constant that's referenced once can be evaluated where it's
     /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
@@ -124,6 +128,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             path: Vec::new(),
             too_deep: None,
             dependencies: RefCell::default(),
+            rounds: HashMap::new(),
             substitutions: RefCell::default(),
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
@@ -1139,67 +1144,30 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     /// Groups the symbols into rounds, where each symbol is bound in a round after every symbol
-    /// in the set that it depends on. Functions, and symbols captured by reference, can be bound
-    /// in the first round, since they don't need the values of the others yet.
-    ///
-    /// A symbol's round is one after the latest round of its dependencies in the set, which is
-    /// found by visiting each symbol once all of its dependencies have been visited.
+    /// in the set that it depends on (see [`DependencyGraph::rounds`]). Functions, and symbols
+    /// captured by reference, can be bound in the first round, since they don't need the values of
+    /// the others yet.
     fn group_symbols(
         &mut self,
         symbols: IndexSet<SymbolId>,
         by_reference: bool,
         is_tree: bool,
     ) -> Vec<SymbolGroup> {
-        let mut rounds = vec![0; symbols.len()];
-        let mut waiting = vec![0; symbols.len()];
-        let mut dependents = vec![Vec::new(); symbols.len()];
-        let mut ready = Vec::new();
+        let rounds = if by_reference {
+            Rc::new(vec![Some(0); symbols.len()])
+        } else {
+            self.rounds(&symbols)
+        };
 
-        for (index, &symbol) in symbols.iter().enumerate() {
-            if !by_reference && !matches!(self.db.symbol(symbol), Symbol::Function(_)) {
-                for dependency in self.dependencies(symbol, true).iter() {
-                    if let Some(dependency) = symbols.get_index_of(dependency) {
-                        waiting[index] += 1;
-                        dependents[dependency].push(index);
-                    }
-                }
-            }
+        // Symbols that depend on each other can't be bound after one another, so they're bound in
+        // a round after all of the others
+        let last_round = rounds.iter().flatten().max().map_or(0, |round| round + 1);
 
-            if waiting[index] == 0 {
-                ready.push(index);
-            }
-        }
+        let mut groups = vec![Vec::new(); last_round + 1];
 
-        while let Some(index) = ready.pop() {
-            for &dependent in &dependents[index] {
-                rounds[dependent] = rounds[dependent].max(rounds[index] + 1);
-                waiting[dependent] -= 1;
-
-                if waiting[dependent] == 0 {
-                    ready.push(dependent);
-                }
-            }
-        }
-
-        // Symbols that depend on each other are never visited, since they can't be bound after
-        // one another, so they're bound in a round after all of the others
-        let mut round_count = rounds.iter().max().map_or(0, |round| round + 1);
-
-        if waiting.iter().any(|&waiting| waiting > 0) {
-            for (round, &waiting) in rounds.iter_mut().zip(&waiting) {
-                if waiting > 0 {
-                    *round = round_count;
-                }
-            }
-
-            round_count += 1;
-        }
-
-        let mut groups = vec![Vec::new(); round_count];
-
-        for (index, &symbol) in symbols.iter().enumerate() {
+        for (&symbol, round) in symbols.iter().zip(rounds.iter()) {
             if self.is_capture(symbol) && self.graph.references(symbol) > 0 {
-                groups[rounds[index]].push(symbol);
+                groups[round.unwrap_or(last_round)].push(symbol);
             }
         }
 
@@ -1208,6 +1176,22 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|group| !group.is_empty())
             .map(|group| self.create_group(group, is_tree))
             .collect()
+    }
+
+    /// The rounds that the symbols are bound in when they're grouped by value, as given by
+    /// [`DependencyGraph::rounds`]. Functions don't need the values of the others yet.
+    fn rounds(&mut self, symbols: &IndexSet<SymbolId>) -> Rc<Vec<Option<usize>>> {
+        if let Some(rounds) = self.rounds.get(symbols.as_slice()) {
+            return rounds.clone();
+        }
+
+        let rounds = Rc::new(self.graph.rounds(symbols, |symbol| {
+            !matches!(self.db.symbol(symbol), Symbol::Function(_))
+        }));
+
+        self.rounds
+            .insert(symbols.as_slice().into(), rounds.clone());
+        rounds
     }
 
     fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {
