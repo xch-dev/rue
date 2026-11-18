@@ -12,7 +12,7 @@ use crate::{
 /// argument, to order the lambdas and to give the argument its expected type, and once at the end
 /// for the mappings the call is checked with. Every rule for how the expected type is used lives
 /// here, so that the compiler only decides the order the arguments are compiled in.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CallSolver {
     /// The candidates inferred from the type expected of the call, if it has one.
     expected: Option<Inference>,
@@ -90,17 +90,18 @@ impl CallSolver {
     /// type's bounds are added to the generics whose lower bounds satisfy them, a generic that the
     /// arguments don't constrain falls back to the expected type, and one that still isn't
     /// inferred takes the upper bounds of the generics it's inferred through, so that
-    /// `feed(identity, inc)` infers `A` from `inc` through `B` (#285).
+    /// `feed(identity, inc)` infers `A` from `inc` through `B` (#285). It takes the arguments'
+    /// inference, since the expected type's bounds are added to it.
     pub fn solve(
         &self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
-        infer: &mut Inference,
+        mut infer: Inference,
     ) -> HashMap<TypeId, TypeId> {
         if let Some(expected) = &self.expected {
-            add_expected_bounds(arena, builtins, infer, expected);
+            add_expected_bounds(arena, builtins, &mut infer, expected);
         }
 
-        resolve_inference_with_bounds(arena, builtins, infer, &self.fallback)
+        resolve_inference_with_bounds(arena, builtins, &infer, &self.fallback)
     }
 }

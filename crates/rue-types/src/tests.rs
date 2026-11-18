@@ -1414,7 +1414,7 @@ mod inference {
         assert_eq!(mappings[&b], int);
 
         // The final solve adds the expected bounds to `A`, so the literal isn't widened
-        let mappings = solver.solve(&mut db.arena, &db.builtins, &mut infer);
+        let mappings = solver.solve(&mut db.arena, &db.builtins, infer.clone());
         assert_eq!(mappings[&a], five);
         assert_eq!(mappings[&b], int);
 
@@ -1426,7 +1426,7 @@ mod inference {
         let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
         assert_eq!(mappings[&t], int);
         assert_eq!(
-            solver.solve(&mut db.arena, &db.builtins, &mut infer)[&t],
+            solver.solve(&mut db.arena, &db.builtins, infer.clone())[&t],
             int
         );
     }

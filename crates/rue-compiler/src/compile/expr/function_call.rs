@@ -190,7 +190,7 @@ pub fn compile_function_call_expr(
             debug!("Unresolved function call argument");
         }
 
-        let mut mappings = ctx.solve_call(&solver, &mut infer);
+        let mut mappings = ctx.solve_call(&solver, infer);
         restore_renamed(ctx, &mut mappings, &renamed);
 
         for &generic in &function.generics {

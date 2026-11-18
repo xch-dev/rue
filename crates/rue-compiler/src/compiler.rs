@@ -743,11 +743,7 @@ impl Compiler {
 
     /// The mappings a call is checked with, once its arguments have been compiled (see
     /// `CallSolver::solve`).
-    pub fn solve_call(
-        &mut self,
-        solver: &CallSolver,
-        infer: &mut Inference,
-    ) -> HashMap<TypeId, TypeId> {
+    pub fn solve_call(&mut self, solver: &CallSolver, infer: Inference) -> HashMap<TypeId, TypeId> {
         solver.solve(self.db.types_mut(), &self.builtins.types, infer)
     }
 
