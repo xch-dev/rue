@@ -1115,26 +1115,26 @@ fn test_contractiveness_large() {
 fn test_comparison_step_limit() {
     with_large_stack(|| {
         let mut db = Types::new();
-        let (r, rq) = merged_into_outer_function(&mut db);
+        let (r, _) = merged_into_outer_function(&mut db);
 
-        let (result, steps) = count_steps(|| compare_limited(&mut db.arena, &db.builtins, r, rq));
-        assert_eq!(result, Ok(Comparison::Invalid));
+        let (result, steps) = count_steps(|| compare_limited(&mut db.arena, &db.builtins, r, r));
+        assert_eq!(result, Ok(Comparison::Assign));
 
         // With a limit below what it takes, the comparison gives up, which `compare` treats as
         // `Invalid`
         let limit = steps / 2;
         let limited = with_comparison_step_limit(limit, || {
-            compare_limited(&mut db.arena, &db.builtins, r, rq)
+            compare_limited(&mut db.arena, &db.builtins, r, r)
         });
         assert_eq!(limited, Err(TooComplex));
 
         let limited =
-            with_comparison_step_limit(limit, || compare(&mut db.arena, &db.builtins, rq, r));
+            with_comparison_step_limit(limit, || compare(&mut db.arena, &db.builtins, r, r));
         assert_eq!(limited, Comparison::Invalid);
 
         // Comparing again afterwards isn't affected
-        let result = compare_limited(&mut db.arena, &db.builtins, r, rq);
-        assert_eq!(result, Ok(Comparison::Invalid));
+        let result = compare_limited(&mut db.arena, &db.builtins, r, r);
+        assert_eq!(result, Ok(Comparison::Assign));
     });
 }
 

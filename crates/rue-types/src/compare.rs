@@ -767,8 +767,7 @@ fn holds_without_inference(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TooComplex;
 
-/// Compares the types like `compare_with_inference`, but gives up with `Invalid` if it takes too
-/// many steps (see `compare_with_inference_limited`).
+/// Like `compare_with_inference_limited`, but a comparison that gives up is `Invalid`.
 pub fn compare_with_inference(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -956,7 +955,8 @@ fn compare_from_empty_stack(
                 compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
             });
 
-            // A round that was cut short isn't the last one, even if nothing changed in it
+            // A round that was cut short stops iterating without finishing the round, so its
+            // approximations aren't kept, and the result is discarded as `Invalid`
             if ctx.budget == Budget::GivingUp || ctx.fixpoint_memo.finish_round() {
                 return result;
             }

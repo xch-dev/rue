@@ -643,6 +643,13 @@ impl Compiler {
         Ok(comparison == Comparison::Assign)
     }
 
+    /// Reports that comparing the types took too many steps (see `rue_types::compare_limited`).
+    pub fn too_complex(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
+        let from = self.type_name(from);
+        let to = self.type_name(to);
+        self.diagnostic(node, DiagnosticKind::TypeComparisonTooComplex(from, to));
+    }
+
     pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
         matches!(comparison, Comparison::Assign | Comparison::Cast)
@@ -676,9 +683,7 @@ impl Compiler {
                 return Constraint::new(Check::Impossible);
             }
             Err(CheckError::TooComplex) => {
-                let from = self.type_name(from);
-                let to = self.type_name(to);
-                self.diagnostic(node, DiagnosticKind::TypeComparisonTooComplex(from, to));
+                self.too_complex(node, from, to);
                 return Constraint::new(Check::Impossible);
             }
         };
@@ -764,9 +769,7 @@ impl Compiler {
         let Ok(comparison) =
             rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)
         else {
-            let from = self.type_name(from);
-            let to = self.type_name(to);
-            self.diagnostic(node, DiagnosticKind::TypeComparisonTooComplex(from, to));
+            self.too_complex(node, from, to);
             return;
         };
 
