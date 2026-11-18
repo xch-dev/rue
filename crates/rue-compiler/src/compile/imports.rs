@@ -1298,13 +1298,19 @@ fn resolve_import(
                     // imports are resolved again until nothing changes, so this reaches the end
                     // of any chain of glob imports. When several glob imports bring in the same
                     // item, it's ambiguous if any of them does, whichever one recorded it, so the
-                    // ambiguity is recorded on that one.
-                    if ctx.is_ambiguous_import(via, item.into())
-                        && ctx.scope(import_scope).item(namespace, &name) == Some(item)
+                    // ambiguity is recorded on that one. What else the name could refer to is
+                    // recorded the same way, even if a named import passed it on, which isn't
+                    // reported again.
+                    if ctx.scope(import_scope).item(namespace, &name) == Some(item)
                         && let Some(recorded) = ctx.scope(import_scope).item_import(item)
                         && matches!(ctx.import(recorded).items, Items::All(_))
                     {
-                        updated |= ctx.add_ambiguous_import(recorded, item.into());
+                        if ctx.is_ambiguous_import(via, item.into()) {
+                            updated |= ctx.add_ambiguous_import(recorded, item.into());
+                        }
+
+                        updated |=
+                            ctx.add_ambiguous_alternatives(recorded, item.into(), via, item.into());
                     }
 
                     let existing = ctx.scope(import_scope).item(namespace, &name);
@@ -1354,8 +1360,17 @@ fn resolve_import(
                             updated = true;
                         }
 
+                        // The name could refer to the item this import brings in, or to what
+                        // that could refer to if it's ambiguous where it's imported from
                         if existing != item {
                             updated |= ctx.add_ambiguous_import(bound_by, existing.into());
+
+                            updated |= ctx.add_ambiguous_alternatives(
+                                bound_by,
+                                existing.into(),
+                                via,
+                                item.into(),
+                            );
                         }
                     } else if !target.is_item_exported(item)
                         && import.exported
@@ -1509,6 +1524,15 @@ fn resolve_import(
                 {
                     let declaration = found.into();
                     ctx.add_import_reference(via, declaration, ImportUser::Import(import_id));
+
+                    // What else the name could refer to is passed on, so that it's used and
+                    // exported wherever this import's binding is
+                    updated |= ctx.add_ambiguous_alternatives(
+                        import_id,
+                        declaration,
+                        Some(via),
+                        declaration,
+                    );
                     cache
                         .imported_names
                         .entry((import_id, declaration))

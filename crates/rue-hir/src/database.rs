@@ -43,6 +43,10 @@ pub struct Database {
     /// The bindings each glob import shares with the glob import that bound the name, as that
     /// import, the declaration it bound, and the declaration this one brings in under the name.
     shared_glob_bindings: HashMap<ImportId, IndexSet<(ImportId, Declaration, Declaration)>>,
+    /// The other declarations that a name could refer to, because glob imports bring in different
+    /// declarations with it, keyed by the import that the name refers to a declaration through and
+    /// that declaration.
+    ambiguous_alternatives: IndexMap<(ImportId, Declaration), IndexSet<Declaration>>,
     tests: Vec<Test>,
 }
 
@@ -313,6 +317,21 @@ impl Database {
             .insert(user);
     }
 
+    /// Where a declaration was referenced through the import itself, not including the references
+    /// through a binding it shares.
+    pub fn import_users(
+        &self,
+        import: ImportId,
+        declaration: Declaration,
+    ) -> impl Iterator<Item = ImportUser> + '_ {
+        self.import_references
+            .get(&import)
+            .and_then(|references| references.get(&declaration))
+            .into_iter()
+            .flatten()
+            .copied()
+    }
+
     /// Records that a glob import brings a declaration in under a name that another glob import
     /// bound, so that a reference through the binding is a reference through both of them,
     /// whichever bound the name. Returns whether it wasn't already recorded.
@@ -358,15 +377,65 @@ impl Database {
             .into_iter()
             .flatten()
             .flat_map(|&(bound_by, bound, declaration)| {
-                self.import_references
-                    .get(&bound_by)
-                    .and_then(|references| references.get(&bound))
-                    .into_iter()
-                    .flatten()
-                    .map(move |&user| (declaration, user))
+                self.import_users(bound_by, bound)
+                    .map(move |user| (declaration, user))
             });
 
         own.chain(shared)
+    }
+
+    /// Records that a name that refers to the declaration through the import could also refer to
+    /// what a name that refers to another declaration through another import could: that
+    /// declaration, and its own alternatives. This is because glob imports bring in different
+    /// declarations with the name, here or where it's imported from. Returns whether any of them
+    /// weren't already recorded.
+    pub fn add_ambiguous_alternatives(
+        &mut self,
+        import: ImportId,
+        declaration: Declaration,
+        from: Option<ImportId>,
+        from_declaration: Declaration,
+    ) -> bool {
+        let others = std::iter::once(from_declaration)
+            .chain(self.ambiguous_alternatives(from, from_declaration))
+            .filter(|&other| other != declaration)
+            .collect::<Vec<_>>();
+
+        let mut added = false;
+
+        for other in others {
+            added |= self
+                .ambiguous_alternatives
+                .entry((import, declaration))
+                .or_default()
+                .insert(other);
+        }
+
+        added
+    }
+
+    /// The other declarations that a name could refer to, when it refers to the declaration
+    /// through the import.
+    pub fn ambiguous_alternatives(
+        &self,
+        import: Option<ImportId>,
+        declaration: Declaration,
+    ) -> impl Iterator<Item = Declaration> + '_ {
+        import
+            .and_then(|import| self.ambiguous_alternatives.get(&(import, declaration)))
+            .into_iter()
+            .flatten()
+            .copied()
+    }
+
+    /// Every name that could refer to other declarations, as the import it refers to a
+    /// declaration through and that declaration, along with the other declarations.
+    pub fn ambiguous_bindings(
+        &self,
+    ) -> impl Iterator<Item = (ImportId, Declaration, &IndexSet<Declaration>)> {
+        self.ambiguous_alternatives
+            .iter()
+            .map(|(&(import, declaration), others)| (import, declaration, others))
     }
 
     pub fn add_test(&mut self, test: Test) {

@@ -364,12 +364,14 @@ impl FileTree {
                     }
 
                     for namespace in Namespace::ALL {
-                        entrypoints.extend(
-                            ctx.scope(scope)
-                                .exported_items(namespace)
-                                .into_iter()
-                                .map(|(_, item)| Declaration::from(item)),
-                        );
+                        for (_, item) in ctx.scope(scope).exported_items(namespace) {
+                            entrypoints.insert(item.into());
+
+                            // A name that's ambiguous is exported along with everything it could
+                            // refer to, whichever glob import bound it
+                            let import = ctx.scope(scope).item_import(item);
+                            entrypoints.extend(ctx.ambiguous_alternatives(import, item.into()));
+                        }
                     }
                 }
                 Self::Directory(directory) => {

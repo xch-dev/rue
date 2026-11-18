@@ -187,6 +187,7 @@ pub(crate) fn live_declarations(
     // a path from an entrypoint to a relevant or imported declaration is an ancestor of it.
     let mut children = HashMap::<Declaration, Vec<Declaration>>::new();
     let mut visited = HashSet::new();
+    let ambiguous_parents = ambiguous_parents(db);
 
     let mut stack = db
         .relevant_declarations()
@@ -201,7 +202,13 @@ pub(crate) fn live_declarations(
             continue;
         }
 
-        for parent in db.reference_parents(declaration) {
+        let ambiguous = ambiguous_parents.get(&declaration).into_iter().flatten();
+
+        for parent in db
+            .reference_parents(declaration)
+            .into_iter()
+            .chain(ambiguous.copied())
+        {
             children.entry(parent).or_default().push(declaration);
             stack.push(parent);
         }
@@ -235,6 +242,34 @@ pub(crate) fn live_declarations(
     }
 
     live
+}
+
+/// The declarations that use an ambiguous name, for each of the other declarations it could
+/// refer to. A use counts as a use of all of them, whichever one the glob import that bound the
+/// name brought in, so that which is reported as unused doesn't depend on the order imports are
+/// resolved in. The database only has a reference to the one the name is bound to, which is what's
+/// compiled, and the recursion check reads those references, so these are only added here.
+fn ambiguous_parents(db: &Database) -> HashMap<Declaration, Vec<Declaration>> {
+    let mut parents = HashMap::<Declaration, Vec<Declaration>>::new();
+
+    for (import, declaration, others) in db.ambiguous_bindings() {
+        let users = db
+            .import_users(import, declaration)
+            .filter_map(|user| match user {
+                ImportUser::Declaration(user) => Some(user),
+                ImportUser::Import(_) | ImportUser::Other => None,
+            })
+            .collect::<Vec<_>>();
+
+        for &other in others {
+            parents
+                .entry(other)
+                .or_default()
+                .extend(users.iter().copied());
+        }
+    }
+
+    parents
 }
 
 /// The bindings that are kept whenever the function they're in is live, which are the bindings
