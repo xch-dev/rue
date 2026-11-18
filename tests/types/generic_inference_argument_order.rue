@@ -1,0 +1,215 @@
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+fn cycle<A, B>(forward: fn(a: A) -> B, backward: fn(b: B) -> A, value: A) -> B {
+    forward(value)
+}
+
+fn make<A, B>() -> fn(a: A) -> B {
+    unchecked_cast(fn(value: Any) => value)
+}
+
+fn head_or<T>(list: List<T>, default: T) -> T {
+    default
+}
+
+// An untyped lambda passed for a bare generic waits for the argument that infers it (#350)
+test fn lambda_for_a_bare_generic_waits() -> Int {
+    map_reversed(fn(x) => x + 1, fn(f: fn(a: Int) -> Int) => f(1))
+}
+
+// A lambda waits for a later lambda that adds to the generic its parameter has, even though an
+// earlier argument already maps it (#351)
+test fn lambda_waits_for_a_later_lambda() -> Int {
+    cycle(fn(x) => 5, fn(y: Int) => nil, 1)
+}
+
+// A nested call whose expected type needs a generic that a later argument infers waits for it
+// (#352)
+test fn nested_call_waits_for_its_expected_type() -> Int {
+    map::<_, Int>(make(), 5)
+}
+
+// And so it isn't widened before a later typed lambda bounds it (#352)
+test fn nested_call_waits_for_a_typed_lambda() -> Int {
+    map_reversed(head_or(nil, 5), fn(x: 5) => x)
+}
+
+fn feed<A, B>(first: fn(a: A) -> B, second: fn(a: B) -> Int) -> fn(a: A) -> Int {
+    fn(a: A) => second(first(a))
+}
+
+// A lambda whose body is a call is compiled against its expected return type (#354), so it also
+// waits for the generics in it, here `B`, which the second lambda bounds by `5`
+test fn lambda_body_waits_for_its_return_type() -> Int {
+    let function: fn(a: Int) -> Int = feed(fn(x) => head_or(nil, 5), fn(y: 5) => 1);
+    function(1)
+}
+
+// Guards: these compile on main, and must keep compiling. Each fails if the rule it's named for
+// is removed.
+
+fn pick<A, B>(first: A, second: ((B, A), B), third: B) -> B {
+    third
+}
+
+// The pair waits for `A`, which the first argument infers. The `7` can't go ahead of it, since
+// the pair already sees `B` mapped to `7` from the expected type, which `7` would widen to `Int`
+test fn argument_doesnt_widen_an_earlier_ones_expected_type() -> Int {
+    let value: 7 = pick(unchecked_cast::<Int>(nil), ((7, 4), map(fn(x: 5) => 7, 5)), 7);
+    value
+}
+
+fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(a: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+fn same<T>(function: fn(a: T) -> T, produce: fn() -> T) -> T {
+    function(produce())
+}
+
+// A generic lambda doesn't hold up the lambda before it, since it only gives `A` its own
+// instance, bounded by `B`, so `x7` is compiled with `A` inferred from `5`
+test fn generic_lambda_doesnt_hold_others_up() -> Int {
+    same::<Int>(
+        chain::<_, nil, _>(
+            fn(s0: Int | nil) => nil,
+            fn(s1: nil) => fn(s2: Int) => 1,
+            cycle(fn(x7) => x7, fn<V>(value: V) => value, 5),
+        ),
+        fn() => 1,
+    )
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+// `fn(x3) => "a"` reads `B`, which is mapped to `(A, A)` while `A` waits for the third argument,
+// so it waits for `A` too
+fn recursive_cycle<A, B>(
+    forward: fn(a: A) -> B,
+    backward: fn(b: B) -> A,
+    value: A,
+    depth: Int,
+) -> B {
+    if depth > 0 {
+        let _inner = recursive_cycle(
+            duplicate,
+            fn(x3) => "a",
+            unchecked_cast::<Bytes>(nil),
+            depth - 1,
+        );
+        return forward(value);
+    }
+
+    forward(value)
+}
+
+test fn lambda_waits_for_what_its_generics_are_mapped_to() -> Int {
+    recursive_cycle(fn(x: Int) => x, fn(y: Int) => y, 1, 1)
+}
+
+fn bare<A, B, C>(first: B, second: fn(b: B) -> B, third: fn(c: C | nil) -> (B | nil)) -> B {
+    first
+}
+
+// `fn(x8) => 7` is passed for the bare `B`, which the type expected of the call maps to a
+// function, so it's compiled against that rather than waiting for the last lambda's `nil`
+test fn lambda_for_a_mapped_bare_generic_doesnt_wait() -> Int {
+    let function = bare::<(nil, 5), fn(a: (Bytes, Int) | nil) -> (Int | nil), 5 | nil>(
+        bare::<Int, _, fn(a: Int) -> Int>(
+            fn(x8) => 7,
+            fn(x9: fn(a: (Bytes, Int) | nil) -> (Int | nil)) => fn(x10: (Bytes, Int) | nil) => 9,
+            fn(s0: (fn(a: Int) -> Int) | nil) => nil,
+        ),
+        fn(s1: fn(a: (Bytes, Int) | nil) -> (Int | nil)) => fn(s2: (Bytes, Int) | nil) => nil,
+        fn(s3: (5 | nil) | nil) => nil,
+    );
+    let _result = function(nil);
+    0
+}
+
+type Maybe<T> = T | nil;
+
+fn optional<T>(value: T) -> T | nil {
+    value
+}
+
+fn unwrap_maybe<T>(value: Maybe<T>, default: T) -> T {
+    default
+}
+
+fn cycle3<A, B, C>(
+    first: fn(a: A) -> B,
+    second: fn(b: B) -> C,
+    third: fn(c: C) -> A,
+    value: A,
+    depth: Int,
+) -> C {
+    if depth > 0 {
+        // `fn(x4) => 5` reads `B`, which is inferred through `A`, so it waits for
+        // `unwrap_maybe(5, 5)` to give `A` a type
+        let _inner = cycle3(
+            optional,
+            fn(x4) => 5,
+            same(fn(x5) => x5, fn() => fn<V>(value: V) => value),
+            unwrap_maybe(5, 5),
+            depth - 1,
+        );
+        return second(first(value));
+    }
+
+    second(first(value))
+}
+
+test fn lambda_waits_for_the_generics_its_own_are_inferred_through() -> Int {
+    cycle3(fn(x: Int) => x, fn(y: Int) => y, fn(z: Int) => z, 1, 1)
+}
+
+fn or_else<T>(value: T | nil, default: T) -> T {
+    default
+}
+
+fn five_only(value: 5) -> Int {
+    value
+}
+
+// `feed(...)` doesn't wait for `fn(x8: 5) => 8`, which only gives `T` a lower bound. With it,
+// `feed`'s expected type would give its `A` the literal `5`, widened to `Int`, which `five_only`
+// can't take
+test fn nested_call_doesnt_wait_for_a_lower_bound() -> Int {
+    let function = or_else(feed(fn<V>(value: V) => value, five_only), fn(x8: 5) => 8);
+    function(5)
+}
+
+// The `5` doesn't go ahead of `or_else(...)`, which waits for it, since `or_else` infers what it
+// needs from its own arguments, and the widened `A` from `5` would make `five_only` the wrong
+// type for it
+test fn argument_doesnt_go_ahead_of_an_earlier_one() -> Int {
+    let value: Int = cycle(
+        or_else(feed(fn<V>(value: V) => value, five_only), fn(x8: 5) => 8),
+        fn(y: Int) => 5,
+        5,
+    );
+    value
+}
+
+fn run<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A) -> Int {
+    second(first(value))
+}
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+// Once `call` is compiled, `A` is mapped to a type that references `B`, so `same(...)`, which reads
+// `A`, waits for the typed lambda that bounds `B` too, and `make()` is compiled against it
+test fn nested_call_waits_for_what_its_generics_are_mapped_to() -> Int {
+    run(call, fn(x3: (5, Int)) => 5, same(make(), fn() => fn() => (5, 9)))
+}

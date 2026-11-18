@@ -192,6 +192,45 @@ impl Inference {
         }
     }
 
+    /// Adds another inference's candidates, for the same generics, after this one's, along with the
+    /// union members they were collected under. A call's arguments each collect their candidates
+    /// separately, so that they can be put in the order the arguments come in, whatever order
+    /// they're compiled in.
+    pub fn append(&mut self, other: &Inference) {
+        let offset = self.choices.len();
+        let shift = |branch: &BranchId| BranchId {
+            choice: branch.choice + offset,
+            member: branch.member,
+        };
+
+        self.choices
+            .extend(other.choices.iter().map(|choice| Choice {
+                parent: choice.parent.as_ref().map(shift),
+                members: choice.members.clone(),
+                fallback: choice.fallback,
+            }));
+
+        for (&generic, candidates) in &other.generics {
+            let branches = &other.branches[&generic];
+
+            for kind in [
+                CandidateKind::Lower,
+                CandidateKind::Upper,
+                CandidateKind::Held,
+            ] {
+                let list = match kind {
+                    CandidateKind::Lower => &candidates.lower,
+                    CandidateKind::Upper => &candidates.upper,
+                    CandidateKind::Held => &candidates.held,
+                };
+
+                for (&ty, branches) in list.iter().zip(branches.list(kind)) {
+                    self.push(generic, kind, ty, branches.iter().map(shift).collect());
+                }
+            }
+        }
+    }
+
     /// Adds a candidate for a generic being inferred, collected under the given union members, and
     /// returns its index in the list.
     pub(crate) fn push(

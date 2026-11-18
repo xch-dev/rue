@@ -1,0 +1,4 @@
+diagnostics:
+- Unused function `apply` at generic_inference_argument_order_errors.rue:1:4
+- Unused function `lambda_in_a_pair` at generic_inference_argument_order_errors.rue:7:4
+- "Cannot assign `(1, fn(x: T) -> T)` to `(Int, fn(value: Int) -> Int)`, since they are incompatible at generic_inference_argument_order_errors.rue:8:11"

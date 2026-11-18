@@ -1,0 +1,9 @@
+fn apply<T>(pair: (T, fn(value: T) -> Int)) -> Int {
+    pair.rest(pair.first)
+}
+
+// A lambda inside another argument is compiled with that argument, so it still gets the raw
+// generic (#350, left to the next step of #362)
+fn lambda_in_a_pair() -> Int {
+    apply((1, fn(x) => x))
+}
