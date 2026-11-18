@@ -70,15 +70,11 @@ pub(crate) fn infer_call(
     let mut candidates: Vec<Option<Inference>> = vec![None; function.params.len()];
     let mut checks: Vec<Option<(AstExpr, TypeId, TypeId)>> = vec![None; function.params.len()];
 
-    let mut order = ArgumentOrder::new(
-        ctx,
-        function,
-        &args[..function.params.len().min(args.len())],
-    );
+    let mut order = ArgumentOrder::new(ctx, function, args);
 
     ctx.push_inferred_generics(function.generics.clone());
 
-    loop {
+    while !order.is_done() {
         let infer = order.merge(&base, &candidates);
         let inferred = ctx.solve_arguments(&solver, &infer);
 
@@ -86,9 +82,7 @@ pub(crate) fn infer_call(
         // with what the type expected of the call implies for the generics they don't map
         let mut mappings = ctx.argument_mappings(&solver, &infer, inferred.clone());
 
-        let Some(i) = order.next(ctx, function, &inferred, &mappings, renamed) else {
-            break;
-        };
+        let i = order.next(ctx, function, &inferred, &mappings, renamed);
 
         let expr = &args[i];
         let param = function.params[i].ty;
@@ -313,9 +307,14 @@ impl ArgumentOrder {
             && !self.would_go_ahead_of_others(i)
     }
 
+    /// Whether every argument has been compiled.
+    fn is_done(&self) -> bool {
+        self.pending.is_empty()
+    }
+
     /// The next argument to compile, given what the arguments compiled so far infer on their own
-    /// (`inferred`) and what the next argument's expected type is substituted with (`mappings`), or
-    /// `None` once they've all been compiled.
+    /// (`inferred`) and what the next argument's expected type is substituted with (`mappings`).
+    /// There must be one left (see `ArgumentOrder::is_done`).
     fn next(
         &mut self,
         ctx: &mut Compiler,
@@ -323,11 +322,7 @@ impl ArgumentOrder {
         inferred: &HashMap<TypeId, TypeId>,
         mappings: &HashMap<TypeId, TypeId>,
         renamed: &HashMap<TypeId, TypeId>,
-    ) -> Option<usize> {
-        if self.pending.is_empty() {
-            return None;
-        }
-
+    ) -> usize {
         let depends: HashMap<TypeId, IndexSet<TypeId>> = mappings
             .iter()
             .map(|(&generic, &ty)| {
@@ -378,7 +373,7 @@ impl ArgumentOrder {
             self.compiled_others.push(i);
         }
 
-        Some(i)
+        i
     }
 
     /// The order the compiled arguments' candidates are put together in: the other arguments in
@@ -408,7 +403,9 @@ impl ArgumentOrder {
 
 /// What deciding which argument goes next depends on.
 struct State<'a> {
-    /// What the next argument's expected type is substituted with.
+    /// What the next argument's expected type is substituted with, before renamed generics are
+    /// restored (see `restore_renamed`), so a renamed generic that isn't inferred yet counts as
+    /// unmapped.
     mappings: &'a HashMap<TypeId, TypeId>,
     /// What compiling each argument depends on now (see `ArgumentOrder::reads_now`).
     reads: Vec<IndexSet<TypeId>>,
@@ -422,8 +419,11 @@ fn has_call_or_lambda(expr: &AstExpr) -> bool {
     })
 }
 
-/// The callee's generics that are the type, or members of it if it's a union.
-fn bare_generics(ctx: &Compiler, function: &FunctionType, ty: TypeId) -> IndexSet<TypeId> {
+/// The callee's generics that are the type, or members of it if it's a union, looking through
+/// aliases such as `type Same<T> = T` and `type Maybe<T> = T | nil`.
+fn bare_generics(ctx: &mut Compiler, function: &FunctionType, ty: TypeId) -> IndexSet<TypeId> {
+    let ty = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+
     let members = match ctx.ty(ty) {
         Type::Union(union) => union.types.clone(),
         _ => vec![ty],
@@ -431,6 +431,7 @@ fn bare_generics(ctx: &Compiler, function: &FunctionType, ty: TypeId) -> IndexSe
 
     members
         .into_iter()
+        .map(|member| rue_types::unwrap_semantic(ctx.types_mut(), member, true))
         .filter(|member| function.generics.contains(member))
         .collect()
 }

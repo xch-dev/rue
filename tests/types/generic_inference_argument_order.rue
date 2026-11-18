@@ -101,8 +101,8 @@ test fn lambda_for_an_aliased_generic_waits() -> Int {
     value
 }
 
-// Guards: these compile on main, and must keep compiling. Each fails if the rule it's named for
-// is removed.
+// Guards: these compile on main, and must keep compiling. Each fails if the rule its comment
+// names is removed, or, where it names two, if both are.
 
 fn pick<A, B>(first: A, second: ((B, A), B), third: B) -> B {
     third
