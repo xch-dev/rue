@@ -95,3 +95,17 @@ test fn member_bounds_dont_depend_on_the_memo() -> Int {
     let _before: fn(b: Other, a: Other) -> Int = take_before;
     1
 }
+
+type Recursive = fn<A>(x: A) -> (A, Recursive);
+type Rest = (Int, Again) | (Bytes, nil);
+type Again = fn(x: Int) -> Rest;
+
+// Comparing `(A, Recursive)` with `Rest` gives `A ≤ Int` from the member that matches, and
+// `A ≤ Bytes` from the one that doesn't. The inner `Recursive` revisits that comparison with its
+// own `A`, which gets both bounds from its summary, but the one from the member that didn't match
+// doesn't decide whether it holds there either (#362's step 13b.1)
+test fn bounds_from_unmatched_members_dont_decide_revisits() -> Int {
+    let function: Recursive = unchecked_cast(nil);
+    let _inline: fn(x: Int) -> Rest = function;
+    1
+}

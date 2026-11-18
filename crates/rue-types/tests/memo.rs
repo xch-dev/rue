@@ -328,10 +328,11 @@ fn test_merged_into_outer_function() {
         let mut db = Types::new();
         let (r, rq) = merged_into_outer_function(&mut db);
 
-        // Comparing `(Qf, Pf)` merges `T` into the outer function's `T` when `(Qx, Px)` is reached
-        // again, and `(Qf, Pf)` is then reached again itself. Iterating that change gave it the
-        // least value every round, since the comparison whose `T` it changed was a different one in
-        // each round, so it never finished.
+        // Comparing `(Qf, Pf)` used to merge `T` into the outer function's `T` when `(Qx, Px)` is
+        // reached again, and `(Qf, Pf)` is then reached again itself. Iterating that change gave it
+        // the least value every round, since the comparison whose `T` it changed was a different
+        // one in each round, so it never finished. It's `Invalid` either way, since that comes
+        // from comparing `(Int, Int)` with `Int`.
         let mut compare_with = |budget: Option<(usize, usize)>| {
             count_steps(|| {
                 with_step_limit(STEP_BOUND, || match budget {
@@ -433,7 +434,7 @@ fn test_same_key_other_function() {
         // callbacks' functions, whose first parameters have the same key but their own `U`. Each
         // `U` is its own instance now, so the outer one is `Bytes32` and the callback's is `last`,
         // which holds whether that's `Bytes32` or `Int`
-        for (bytes32, expected) in [(false, Comparison::Assign), (true, Comparison::Assign)] {
+        for bytes32 in [false, true] {
             let run = |mode: u8| {
                 let mut db = Types::new();
                 let last = if bytes32 {
@@ -454,9 +455,9 @@ fn test_same_key_other_function() {
 
             // Each is compared in a new arena, since the order of the types can change which
             // comparisons are revisited with which binders
-            assert_eq!(run(2), expected);
-            assert_eq!(run(0), expected);
-            assert_eq!(run(1), expected);
+            assert_eq!(run(2), Comparison::Assign);
+            assert_eq!(run(0), Comparison::Assign);
+            assert_eq!(run(1), Comparison::Assign);
         }
     });
 }
@@ -1135,10 +1136,13 @@ fn nested_baseline(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Stri
     text
 }
 
-/// A baseline of the results of comparing generic functions that nest their generics, which
-/// #362's step 13b changes: instead of merging the instances of each occurrence of a generic
-/// function that's reached again, it instantiates each one on its own. Every result it changes
-/// then shows in the diff of `nested_baseline.txt`, which `UPDATE_EXPECT=1` rewrites.
+/// A baseline of the results of comparing generic functions that nest their generics, so that
+/// every result that a change to how they're compared changes shows in the diff of
+/// `nested_baseline.txt`, which `UPDATE_EXPECT=1` rewrites. It was added for #362's step 13b, whose
+/// first step (instantiating each occurrence of a generic function on its own, rather than merging
+/// the instances of one that's reached again) changed none of these: no case here revisits a
+/// comparison whose bounds on an instance differ from the original's. The steps after it change
+/// how the results are reused, and this checks they don't change any.
 #[test]
 fn test_nested_baseline() {
     // The cases of `test_memo_differential_nested`, including the seeds that merging instances

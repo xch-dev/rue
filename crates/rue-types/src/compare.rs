@@ -164,11 +164,13 @@ struct StackFrame {
     /// until that adds nothing (see `compare_impl_inner`).
     ///
     /// It starts out empty, or as what the rounds stopped at the last time the same comparison was
-    /// computed (`ComparisonContext::approximations`). That's sound and exact: every summary
-    /// computed this way is at most the comparison's own (the least fixed point, which only
-    /// depends on its key), since it starts from at most that and the equations are monotone. So
-    /// starting from one still ends at it. Otherwise, a comparison nested in many others that are
-    /// revisited would be computed in a round of its own for each round of each of them.
+    /// computed (`ComparisonContext::approximations`). Otherwise, a comparison nested in many
+    /// others that are revisited would be computed in a round of its own for each round of each of
+    /// them. Every summary computed this way is at most the comparison's own (the least fixed
+    /// point, which only depends on its key), since it starts from at most that and adding bounds
+    /// only adds bounds, so starting from one still ends at it. The exception is a bound collected
+    /// under a union member that matches with fewer bounds and not with more: the summary keeps it
+    /// as a bound that matched, which can only make a revisit's result worse, never better.
     approximation: Summary,
     /// Whether it was revisited during the current round.
     revisited: bool,
@@ -803,28 +805,41 @@ impl ComparisonContext<'_> {
                 env = Some(self.binders.len() - 1);
             }
 
-            // A member of a choice that's only there to not match
-            let local = if constraint.unmatched {
-                Some(*unmatched.get_or_insert_with(|| {
-                    let choice = self.choices.open(self.local_branch, 2);
-                    let [missed, matched] = [0, 1].map(|member| BranchId { choice, member });
-                    self.choices.record(missed, Comparison::Invalid);
-                    self.choices.record(matched, Comparison::Assign);
-                    missed
-                }))
+            // A bound that didn't match goes under a member of a choice that's only there to not
+            // match, in `choices` and in the inference, so that it doesn't decide the result, and
+            // the candidates that checking it collects are left out like the original's
+            let branches = if constraint.unmatched {
+                *unmatched.get_or_insert_with(|| self.unmatched_branches())
             } else {
-                self.local_branch
+                self.bound_branches()
             };
 
-            let bound = (
-                constraint.ty,
-                env,
-                BoundBranches {
-                    local,
-                    infer: self.branch,
-                },
-            );
+            let bound = (constraint.ty, env, branches);
             self.push_bound(root(&self.binders, args[position]), bound, constraint.upper);
+        }
+    }
+
+    /// Opens a choice with two members under the current ones, the first of which didn't match,
+    /// and returns it (see `ComparisonContext::apply_summary`).
+    fn unmatched_branches(&mut self) -> BoundBranches {
+        let missed = |choice| BranchId { choice, member: 0 };
+        let matched = |choice| BranchId { choice, member: 1 };
+
+        let choice = self.choices.open(self.local_branch, 2);
+        self.choices.record(missed(choice), Comparison::Invalid);
+        self.choices.record(matched(choice), Comparison::Assign);
+
+        let parent = self.branch;
+        let infer = self.infer.as_mut().map(|infer| {
+            let choice = infer.open_choice(parent, 2);
+            infer.record(missed(choice), Comparison::Invalid);
+            infer.record(matched(choice), Comparison::Assign);
+            missed(choice)
+        });
+
+        BoundBranches {
+            local: Some(missed(choice)),
+            infer,
         }
     }
 
@@ -858,7 +873,8 @@ impl ComparisonContext<'_> {
     ///   don't reference them. The generics being instantiated then only collect bounds directly,
     ///   from the same comparisons whenever the function is compared, so the bounds that are
     ///   checked against each other are always the same. Otherwise, which bounds they collect
-    ///   would depend on what's in progress (and they would be merged when revisited).
+    ///   would depend on what's in progress (and a revisit would be given a summary that's still
+    ///   being computed).
     ///
     /// Inference also collects candidates as a side effect, so it isn't used then.
     fn is_monotone(&mut self, arena: &Arena<Type>, id: TypeId) -> bool {
@@ -1306,11 +1322,11 @@ fn compare_impl_inner(
     ctx.frames.push(StackFrame {
         entered: ctx.binders.len(),
         binders,
-        approximation: ctx
-            .approximations
-            .get(&key)
-            .cloned()
-            .unwrap_or_default(),
+        approximation: if instances {
+            ctx.approximations.get(&key).cloned().unwrap_or_default()
+        } else {
+            Summary::default()
+        },
         revisited: false,
     });
 

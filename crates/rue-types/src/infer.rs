@@ -639,25 +639,7 @@ impl Choices {
     /// which are checked once the function comparison that bound it finishes, which can be in the
     /// middle of comparing an enclosing union's member.
     pub(crate) fn matched_so_far(&self, branch: BranchId) -> bool {
-        let choice = &self.0[branch.choice];
-
-        let result = if branch.member == FALLBACK {
-            choice.fallback
-        } else {
-            choice.members[branch.member]
-        };
-
-        let Some(result) = result else {
-            return true;
-        };
-
-        let best = best_of(choice);
-
-        result == best
-            && !self.is_held(branch, best)
-            && choice
-                .parent
-                .is_none_or(|parent| self.matched_so_far(parent))
+        self.matched_since(branch, 0)
     }
 
     /// The result of each choice, the best that any member or the fallback gave, or `None` if the

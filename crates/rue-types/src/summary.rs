@@ -1,12 +1,13 @@
 //! Summaries of the bounds that a comparison puts on generics being instantiated (#362's step 13b).
 //!
-//! A comparison with a binding to a generic being instantiated currently collects bounds into it
-//! as a side effect, and merges two instances when it's revisited. What it does then depends on
-//! which comparisons are in progress, so its result can't be reused exactly (#344). A summary
-//! records those bounds as data instead, in the comparison's own coordinates: the binders that its
-//! key numbers (see `Binding`), and the ones bound inside of it. A comparison's result is then its
-//! value and its summary, which only depend on its key. Reusing it, or reaching it again while
-//! it's in progress, applies the summary to the binders it's reached with.
+//! A comparison with a binding to a generic being instantiated collects bounds into it. They used
+//! to be a side effect: revisiting the comparison merged the two instances, so what it did depended
+//! on which comparisons were in progress, and its result couldn't be reused exactly (#344). A
+//! summary records those bounds as data instead, in the comparison's own coordinates: the binders
+//! that its key numbers (see `Binding`), and the ones bound inside of it. A comparison's result is
+//! then its value and its summary, which only depend on its key. Reaching it again while it's in
+//! progress applies the summary to the binders it's reached with (see `StackFrame` in
+//! `compare.rs`).
 
 use std::mem;
 

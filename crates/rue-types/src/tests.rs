@@ -2067,6 +2067,38 @@ mod inference {
         assert!(choices.matched_since(outer_member, inner));
     }
 
+    /// A comparison that's revisited is computed again in rounds, until what it puts on the
+    /// instances its key refers to stops changing, and each round undoes the candidates the one
+    /// before collected, so that they're collected once.
+    #[test]
+    fn rounds_collect_candidates_once() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let t = db.generic("T");
+
+        // type Rec = fn<A>(x: A) -> (A, (Int, Rec));
+        let rec = db.declare_alias("Rec", &[]);
+        let a = db.generic("A");
+        let rest = db.pair(int, rec);
+        let ret = db.pair(a, rest);
+        let function = db.function_with(&[a], &[a], true, ret);
+        db.define(rec, function);
+
+        // type R2 = (Int, (T, Again)); type Again = fn(x: Int) -> R2;
+        let r2 = db.declare_alias("R2", &[]);
+        let again = db.declare_alias("Again", &[]);
+        let rest = db.pair(t, again);
+        let inner = db.pair(int, rest);
+        db.define(r2, inner);
+        let function = db.function(&[int], r2);
+        db.define(again, function);
+        let target = db.function(&[int], r2);
+
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(rec, target, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower, vec![int]);
+    }
+
     /// Restoring a snapshot removes the candidates and choices collected since, so that a
     /// comparison computed again collects them once.
     #[test]
@@ -3033,7 +3065,7 @@ mod substitution {
     }
 
     #[test]
-    fn recursive_rigid_generics_are_not_merged() {
+    fn recursive_rigid_generics_get_the_summary() {
         let mut db = Db::new();
         let int = db.builtins.int;
         let any = db.alloc(Type::Any);
@@ -3080,7 +3112,7 @@ mod substitution {
     }
 
     #[test]
-    fn recursive_shared_instances_are_checked_against_fresh_generics() {
+    fn recursive_shared_instances_get_the_summary() {
         let mut db = Db::new();
         let int = db.builtins.int;
         let any = db.alloc(Type::Any);
