@@ -97,3 +97,17 @@ tests:
   runtime_cost: 4845
   byte_cost: 2196000
   total_cost: 2200845
+- name: guard_held_by_a_union_member
+  program: (a (q 2 2 (c 2 (q 2 2 . 1))) (c (q 2 (i 11 (q 16 (a 2 (c 2 (c (q . 5) (c (- 11 (q . 1)) 5)))) (q . 1)) (q . 5)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 2) (c (q . 2) (q . 1))))) (c (q 2 (i (= 11 ()) (q . 5) (q 2 (q 2 (q 16 2 (q . 1)) (c (a 5 (c 5 (c (q . 5) (c (- 23 (q . 1)) 2)))) 1)) (c 5 1))) 1) ()))
+  output: "7"
+  runtime_cost: 5361
+  byte_cost: 1140000
+  total_cost: 1145361
+- name: guard_held_by_a_union_member_nil
+  program: (a (q 2 2 (c 2 (q 2 2 . 1))) (c (q 2 (i 11 (q 2 (q 2 (i 2 (q . 2) (q . 11)) 1) (c (a 2 (c 2 (c () (c (- 11 (q . 1)) 5)))) 1)) (q . 5)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 2) (c (q . 2) (q . 1))))) (c (q 2 (i (= 11 ()) (q . 5) (q 2 (q 2 (q 2 (i (= 2 ()) (q . 23) (q . 2)) 1) (c (a 5 (c 5 (c () (c (- 23 (q . 1)) 2)))) 1)) (c 5 1))) 1) ()))
+  output: "2"
+  runtime_cost: 4895
+  byte_cost: 1404000
+  total_cost: 1408895

@@ -23,6 +23,8 @@ fn bytes_pair(value: Bytes) -> (Bytes, Bytes) {
 }
 
 fn main() -> (Int, Int) {
+    let _ = from_expected_type::<Int>(1);
+    let _ = through_identity(identity, 1, 1);
     map(duplicate, with_any(42, 0, 1))
 }
 
@@ -36,4 +38,30 @@ fn with_any<A>(value: A, _other: A, depth: Int) -> A {
     let any: Any = 1;
     let result = with_any(any, value, depth - 1);
     unchecked_cast(result + 1)
+}
+
+fn from_expected_type<A>(depth: Int) -> (A, A) {
+    if depth == 0 {
+        return unchecked_cast((1, 1));
+    }
+
+    // The caller's `A` in the expected type was the callee's own generic before it was renamed, so
+    // it doesn't make the callee's `A` the caller's `A`, and the result is still `(Int, Int)`
+    let result: (A, Int) = from_expected_type(depth - 1);
+    unchecked_cast(result)
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn through_identity<A, B>(function: fn(b: B) -> A, value: B, depth: Int) -> A {
+    if depth == 0 {
+        return function(value);
+    }
+
+    // Likewise, the expected type `A` isn't passed on to the callee's `B` through `identity`, so
+    // the mismatch is still reported at the call, rather than at `value`
+    let result: A = through_identity(identity, value, depth - 1);
+    unchecked_cast(result)
 }

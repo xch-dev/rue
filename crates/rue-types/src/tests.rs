@@ -1965,6 +1965,34 @@ mod inference {
     }
 
     #[test]
+    fn renamed_generics_compare_as_the_original() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, renamed, b) = (db.generic("A"), db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([renamed, b]);
+        infer.rename(renamed, a);
+
+        // `A` to the generic renamed from it, as in a recursive call, holds without a candidate
+        assert_eq!(db.infer(a, renamed, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, renamed), InferenceCandidates::default());
+
+        // `(A, Int)` already fits the union's `(A, Int)` member, so it's only held for `B`
+        let pair = db.pair(a, int);
+        let member = db.pair(renamed, int);
+        let param = db.union(&[member, b]);
+        assert_eq!(db.infer(pair, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, b).lower, vec![]);
+        let held = &candidates(&infer, b).held;
+        assert_eq!(held.len(), 1);
+        assert_eq!(db.name(held[0]), "(A, Int)");
+
+        // A generic that wasn't renamed from `A` is still inferred from it
+        let mut infer = Inference::new([renamed]);
+        assert_eq!(db.infer(a, renamed, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, renamed).lower, vec![a]);
+    }
+
+    #[test]
     fn unconstrained_cycles_are_left_as_is() {
         let mut db = Db::new();
         let (a, b) = (db.generic("A"), db.generic("B"));

@@ -46,6 +46,10 @@ pub struct InferenceCandidates {
 #[derive(Debug, Default, Clone)]
 pub struct Inference {
     generics: IndexMap<TypeId, InferenceCandidates>,
+    /// The generics being inferred that were renamed from another generic, such as the generics of
+    /// a function in a recursive call to it, which are renamed from the caller's (see
+    /// `Inference::rename`).
+    renamed: FxHashMap<TypeId, TypeId>,
 }
 
 impl Inference {
@@ -55,24 +59,19 @@ impl Inference {
                 .into_iter()
                 .map(|generic| (generic, InferenceCandidates::default()))
                 .collect(),
+            renamed: FxHashMap::default(),
         }
+    }
+
+    /// Records that a generic being inferred was renamed from another generic. They're compared as
+    /// the same type where neither is bound, since they were the same generic before, but a
+    /// candidate that references the other one isn't resolved through what this one is inferred as.
+    pub fn rename(&mut self, generic: TypeId, from: TypeId) {
+        self.renamed.insert(generic, from);
     }
 
     pub fn candidates(&self, generic: TypeId) -> Option<&InferenceCandidates> {
         self.generics.get(&generic)
-    }
-
-    /// Removes the generic's candidates that are exactly the type.
-    pub fn remove_candidates(&mut self, generic: TypeId, ty: TypeId) {
-        if let Some(candidates) = self.generics.get_mut(&generic) {
-            for list in [
-                &mut candidates.lower,
-                &mut candidates.upper,
-                &mut candidates.held,
-            ] {
-                list.retain(|&other| other != ty);
-            }
-        }
     }
 
     /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
@@ -247,6 +246,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// binder. An instance is left out if one of its bounds references a generic bound in the
     /// comparison, since that generic isn't in scope where the candidate is used.
     instantiations: FxHashMap<usize, InferenceCandidates>,
+    /// The generics being inferred that were renamed from another generic (see `Inference::rename`),
+    /// kept here so that comparisons without the inference see them too.
+    renamed: FxHashMap<TypeId, TypeId>,
     /// The context for comparisons that leave the generics being inferred rigid, which is kept
     /// so that its results are memoized for the whole comparison.
     uninferred: Option<Box<ComparisonContext<'static>>>,
@@ -268,6 +270,12 @@ impl ComparisonContext<'_> {
             .as_ref()
             .is_some_and(|infer| infer.is_target(generic))
             && self.resolve(generic, env).is_none()
+    }
+
+    /// Whether the generics are the same generic before one of them was renamed (see
+    /// `Inference::rename`).
+    fn is_renaming(&self, lhs: TypeId, rhs: TypeId) -> bool {
+        self.renamed.get(&lhs) == Some(&rhs) || self.renamed.get(&rhs) == Some(&lhs)
     }
 
     /// Whether the generics being inferred are on the right hand side.
@@ -719,6 +727,7 @@ fn holds_without_inference(
     mem::swap(&mut uninferred.binders, &mut ctx.binders);
     mem::swap(&mut uninferred.instances, &mut ctx.instances);
     uninferred.lhs_env = ctx.lhs_env;
+    uninferred.renamed.clone_from(&ctx.renamed);
     uninferred.rhs_env = ctx.rhs_env;
     uninferred.instantiable_from = uninferred.instances.len();
 
@@ -758,6 +767,10 @@ pub fn compare_with_inference(
     }
 
     let mut ctx = ComparisonContext {
+        renamed: infer
+            .as_ref()
+            .map(|infer| infer.renamed.clone())
+            .unwrap_or_default(),
         infer,
         ..Default::default()
     };
@@ -785,6 +798,7 @@ pub fn infer_from_expected(
 
     // The generics being inferred are on the left hand side, so the comparison starts flipped
     let mut ctx = ComparisonContext {
+        renamed: infer.renamed.clone(),
         infer: Some(infer),
         flipped: true,
         ..Default::default()
@@ -970,6 +984,7 @@ fn pass_upper_bounds(
             }
 
             let mut inner = Inference::new(targets.iter().copied());
+            inner.renamed.clone_from(&infer.renamed);
             infer_from_expected(arena, builtins, ty, upper, &mut inner);
 
             for (&other, candidates) in &inner.generics {
@@ -1758,7 +1773,10 @@ fn compare_impl_inner(
             }
         }
         (Type::Generic(_), Type::Generic(_))
-            if lhs == rhs && ctx.resolve(lhs, ctx.lhs_env) == ctx.resolve(rhs, ctx.rhs_env) =>
+            if (lhs == rhs && ctx.resolve(lhs, ctx.lhs_env) == ctx.resolve(rhs, ctx.rhs_env))
+                || (ctx.is_renaming(lhs, rhs)
+                    && ctx.resolve(lhs, ctx.lhs_env).is_none()
+                    && ctx.resolve(rhs, ctx.rhs_env).is_none()) =>
         {
             Comparison::Assign
         }

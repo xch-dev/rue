@@ -38,7 +38,7 @@ test fn union_return_type() -> Int {
 }
 
 fn map_literal<A, B>(function: fn(a: A) -> B, value: A) -> B {
-    // The literal is widened to `Int`, as it is outside of `map_literal`
+    // The callee's `A` is inferred from the literal (the errors snapshot checks that it's widened)
     let (first, second) = map_literal(duplicate, 5);
     let _sum: Int = first + second;
     function(value)
@@ -181,4 +181,40 @@ fn lambda_first<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
 
 test fn guard_argument_expected_type() -> Int {
     lambda_first(fn(value: Int) => value * 3, 5, 1)
+}
+
+fn held<A, B>(_value: (A, Int) | B, other: B, depth: Int) -> B {
+    if depth == 0 {
+        return other;
+    }
+
+    // Guard: the caller's `(A, Int)` already fits the union's `(A, Int)` member, since the callee's
+    // `A` was the caller's before it was renamed, so `B` is only inferred from `5`, as before
+    let pair: (A, Int) = unchecked_cast(other);
+    let result = held(pair, 5, depth - 1);
+    unchecked_cast(result + 1)
+}
+
+test fn guard_held_by_a_union_member() -> Int {
+    held::<Int, Int>(1, 2, 2)
+}
+
+fn held_nil<A, B>(_value: (A, Int) | B, other: B, depth: Int) -> B {
+    if depth == 0 {
+        return other;
+    }
+
+    // Guard: as above, `B` is only inferred from `nil`, so the result can be compared to it
+    let pair: (A, Int) = unchecked_cast(other);
+    let result = held_nil(pair, nil, depth - 1);
+
+    if result == nil {
+        other
+    } else {
+        unchecked_cast(result)
+    }
+}
+
+test fn guard_held_by_a_union_member_nil() -> Int {
+    held_nil::<Int, Int>(1, 2, 2)
 }

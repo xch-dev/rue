@@ -2,4 +2,6 @@ diagnostics:
 - Cannot assign `(Int, Int)` to `(Int, Bytes)` without a cast, since they are semantically different at generic_inference_recursive_calls_errors.rue:5:39
 - "Cannot assign `fn(value: Bytes) -> (Bytes, Bytes)` to `fn(a: 1) -> (Bytes, Bytes)` without a cast, since they are semantically different at generic_inference_recursive_calls_errors.rue:8:31"
 - "Cannot assign `fn(_x: A) -> 1` to `fn(a: Int) -> Int`, since they are incompatible at generic_inference_recursive_calls_errors.rue:12:27"
-- Cannot use `+` operator with `Any` and `1` at generic_inference_recursive_calls_errors.rue:38:20
+- Cannot use `+` operator with `Any` and `1` at generic_inference_recursive_calls_errors.rue:40:20
+- Cannot assign `(Int, Int)` to `(A, Int)`, since they are incompatible at generic_inference_recursive_calls_errors.rue:50:28
+- Cannot assign `B` to `A`, since they are incompatible at generic_inference_recursive_calls_errors.rue:65:21

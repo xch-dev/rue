@@ -101,13 +101,16 @@ pub fn compile_function_call_expr(
 
         let mut infer = Inference::new(function.generics.iter().copied());
 
+        for (&copy, &generic) in &renamed {
+            infer.rename(copy, generic);
+        }
+
         // The type expected of the call is used for the generics that the arguments don't
         // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
         // ones they do from being widened past it
         let expected = expected_type.map(|expected_type| {
             let mut expected = infer.clone();
             ctx.infer_from_expected(function.ret, expected_type, &mut expected);
-            forget_renamed_candidates(&mut expected, &renamed);
 
             // The generics of an enclosing call that are still being inferred can't be inferred
             // from this call, so they're no help in inferring its generics either
@@ -196,7 +199,6 @@ pub fn compile_function_call_expr(
             // Candidates are collected against the unsubstituted parameter type, so that every
             // argument contributes to the generics rather than only the first one to mention them
             ctx.infer_type(value.ty, param, &mut infer);
-            forget_renamed_candidates(&mut infer, &renamed);
             checks.push((expr.clone(), value.ty, param));
         }
 
@@ -468,16 +470,6 @@ fn rename_generics_in_scope(
         .into_iter()
         .map(|(generic, copy)| (copy, generic))
         .collect()
-}
-
-/// Removes the renamed generics' candidates that are the caller's generics they were renamed from.
-/// Before they were renamed, they were the same generic, so comparing one to the other held without
-/// collecting a candidate, and keeping it can change what's inferred, such as `Any | A` rather than
-/// `Any` for `f(any, a)` in `fn f<A>(x: A, y: A) -> A`, or a literal no longer being widened.
-fn forget_renamed_candidates(infer: &mut Inference, renamed: &HashMap<TypeId, TypeId>) {
-    for (&copy, &generic) in renamed {
-        infer.remove_candidates(copy, generic);
-    }
 }
 
 /// Maps the renamed generics that haven't been inferred back to the caller's generics they were
