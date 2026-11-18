@@ -1077,8 +1077,15 @@ impl Removable<'_> {
                 ..
             } => {
                 if let Some(function) = self.program.function(function) {
-                    let witnessed =
-                        Witnessed::new(self.program, self.variant, function, *site, args, expected);
+                    let witnessed = Witnessed::new(
+                        self.program,
+                        self.variant,
+                        function,
+                        *site,
+                        args,
+                        expected,
+                        true,
+                    );
                     self.masks.insert(*site, witnessed.generics);
                     // The generics of a function passed to the call get a type through it
                     self.masks.extend(witnessed.references);
@@ -1155,10 +1162,24 @@ struct Lambda<'a> {
 }
 
 /// What an argument gives a type to through the call, rather than directly.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct Facts<'a> {
     links: Vec<Link>,
     lambdas: Vec<Lambda<'a>>,
+    /// Whether a typed lambda's parameter annotations give generics a type. They're only upper
+    /// bounds, so a nested call such as `cycle(fn(a: 5) => nil, fn(b: (5, 5) | nil) => 5, 5)`
+    /// infers its `B` as `nil` from the body, and its type only passes `nil` on.
+    annotations: bool,
+}
+
+impl Facts<'_> {
+    fn new(annotations: bool) -> Self {
+        Self {
+            links: Vec::new(),
+            lambdas: Vec::new(),
+            annotations,
+        }
+    }
 }
 
 impl Witnessed {
@@ -1169,6 +1190,7 @@ impl Witnessed {
         site: SiteId,
         args: &[Expr],
         expected: bool,
+        annotations: bool,
     ) -> Self {
         let count = function.generics.len();
         let removed = variant
@@ -1181,7 +1203,7 @@ impl Witnessed {
         if expected {
             direct.extend(function.ret.vars());
         }
-        let mut facts = Facts::default();
+        let mut facts = Facts::new(annotations);
         for ((_, param), arg) in function.params.iter().zip(args) {
             witness(program, variant, param, arg, &mut direct, &mut facts);
         }
@@ -1253,7 +1275,7 @@ fn solve(
         facts.lambdas = waiting;
         for lambda in ready {
             changed = true;
-            let mut found = Facts::default();
+            let mut found = Facts::new(facts.annotations);
             witness(
                 program,
                 variant,
@@ -1330,7 +1352,9 @@ fn witness<'a>(
             // lambda's parameters get theirs from the call, so its body is only looked at once
             // they have one.
             if *typed {
-                witnessed.extend(params.iter().flat_map(Ty::vars));
+                if facts.annotations {
+                    witnessed.extend(params.iter().flat_map(Ty::vars));
+                }
                 witness(program, variant, ret, body, witnessed, facts);
             } else {
                 facts.lambdas.push(Lambda {
@@ -1391,7 +1415,7 @@ fn witness<'a>(
 
 /// Whether an expression's type is known without inferring it from where it's used: not `nil` or
 /// an untyped lambda, and not a call whose removed generic arguments its own arguments don't give
-/// a type to (as in `first_of(pairs())`).
+/// a type to (as in `first_of(pairs())`), not counting typed lambdas' parameter annotations.
 fn known(program: &Program, variant: &Variant, expr: &Expr) -> bool {
     if expr.ty == Ty::Nil {
         return false;
@@ -1429,7 +1453,7 @@ fn known(program: &Program, variant: &Variant, expr: &Expr) -> bool {
             // Its type is only known if its removed generics are inferred from its arguments,
             // rather than from the expected type
             let removed = removed_mask(&variant.stripped[&site], function.generics.len());
-            let inner = Witnessed::new(program, variant, function, site, args, false);
+            let inner = Witnessed::new(program, variant, function, site, args, false, false);
             function
                 .ret
                 .vars()

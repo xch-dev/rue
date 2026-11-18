@@ -292,6 +292,29 @@ fn lambdas_give_their_return_type_only_what_their_body_does() {
     );
 }
 
+/// `pick(fn(x: Int | nil) => nil)` infers `T` as `nil` from the body, despite the annotation,
+/// so it gives `identity`'s `T` nothing. On its own, the annotation gives `pick`'s `T` a type.
+#[test]
+fn annotations_give_nested_calls_no_type() {
+    let pick = function("pick", &["T"], &[("function", "fn(a: T) -> T")], "T");
+    let identity = function("identity", &["T"], &[("value", "T")], "T");
+    let opt = Ty::opt(Ty::Int);
+    let typed = lambda(
+        &[("x", opt.clone())],
+        true,
+        nil(opt.clone()),
+        Ty::func(vec![opt.clone()], opt.clone()),
+    );
+    let picked = call(1, "pick", vec![opt.clone()], vec![typed], opt.clone());
+
+    let alone = program(vec![pick.clone()], None, picked.clone());
+    assert_eq!(masks(&alone), [[true]]);
+
+    let nested = call(0, "identity", vec![opt.clone()], vec![picked], opt);
+    let nested = program(vec![pick, identity], None, nested);
+    assert_eq!(legalize(&nested, &strip_all(&[0, 1])), strip_all(&[1]));
+}
+
 #[test]
 fn lambdas_give_a_bare_generic_no_type() {
     let identity = function("identity", &["T"], &[("value", "T")], "T");
