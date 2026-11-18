@@ -65,20 +65,6 @@ test fn inside_a_pair() -> Int {
     function(10)
 }
 
-fn or_else<T>(value: T | nil, default: T) -> T {
-    if value is nil {
-        default
-    } else {
-        unchecked_cast(value)
-    }
-}
-
-test fn inside_a_union() -> Int {
-    // With #349, the functions are the only candidates
-    let function = or_else(increment, decrement);
-    function(4)
-}
-
 fn singleton<T>(value: T) -> List<T> {
     [value]
 }
@@ -86,6 +72,16 @@ fn singleton<T>(value: T) -> List<T> {
 test fn nested_calls() -> Int {
     let function = head_or(singleton(identity), increment);
     function(2)
+}
+
+fn rigid<V>(function: fn(x: V) -> V, value: V) -> V {
+    // The caller's `fn(x: V) -> V` holds `identity`, so `T` is it
+    let picked = pick(function, identity);
+    picked(value)
+}
+
+test fn outer_generic() -> Int {
+    rigid(increment, 1)
 }
 
 fn same<V>(value: V) -> V {

@@ -12,7 +12,7 @@ use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
     FxHashMap, FxIndexSet, Memo, Type, TypeId, Union, compare_memo_enabled, free_generics,
     grow_stack, has_non_contractive_cycle, reachable, references_generic, step, stringify_impl,
-    substitute, substitute_with_mappings,
+    substitute, substitute_with_mappings, unwrap_semantic_without_substitution,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1506,7 +1506,13 @@ fn without_subsumed_functions(
     renamed: &FxHashMap<TypeId, TypeId>,
     types: &[TypeId],
 ) -> Vec<TypeId> {
-    let functions: Vec<bool> = types.iter().map(|&ty| is_function(arena, ty)).collect();
+    let functions: Vec<bool> = types
+        .iter()
+        .map(|&ty| {
+            let ty = unwrap_semantic_without_substitution(arena, ty, true);
+            matches!(arena[ty], Type::Function(_))
+        })
+        .collect();
 
     if functions.iter().filter(|&&function| function).count() < 2 {
         return types.to_vec();
@@ -1531,18 +1537,6 @@ fn without_subsumed_functions(
     }
 
     result
-}
-
-/// Whether the type is a function type, through any aliases.
-fn is_function(arena: &Arena<Type>, mut ty: TypeId) -> bool {
-    loop {
-        match &arena[ty] {
-            Type::Ref(inner) => ty = *inner,
-            Type::Alias(alias) => ty = alias.inner,
-            Type::Function(_) => return true,
-            _ => return false,
-        }
-    }
 }
 
 fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) -> TypeId {
