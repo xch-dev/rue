@@ -142,6 +142,9 @@ pub enum DiagnosticKind {
     #[error("Cannot check if value is of deeply nested type at runtime")]
     TypeCheckDepthExceeded,
 
+    #[error("Comparing `{0}` to `{1}` is too complex")]
+    TypeComparisonTooComplex(String, String),
+
     #[error("Cannot check if value is of recursive type at runtime")]
     RecursiveTypeCheck,
 

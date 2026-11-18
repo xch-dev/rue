@@ -668,6 +668,12 @@ impl Compiler {
                 self.diagnostic(node, DiagnosticKind::GenericTypeCheck);
                 return Constraint::new(Check::Impossible);
             }
+            Err(CheckError::TooComplex) => {
+                let from = self.type_name(from);
+                let to = self.type_name(to);
+                self.diagnostic(node, DiagnosticKind::TypeComparisonTooComplex(from, to));
+                return Constraint::new(Check::Impossible);
+            }
         };
 
         if check == Check::Impossible {
@@ -748,7 +754,14 @@ impl Compiler {
     }
 
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
-        let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
+        let Ok(comparison) =
+            rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)
+        else {
+            let from = self.type_name(from);
+            let to = self.type_name(to);
+            self.diagnostic(node, DiagnosticKind::TypeComparisonTooComplex(from, to));
+            return;
+        };
 
         match comparison {
             Comparison::Assign => {}
@@ -767,7 +780,8 @@ impl Compiler {
                             CheckError::DepthExceeded
                             | CheckError::RecursiveType
                             | CheckError::FunctionType
-                            | CheckError::GenericType,
+                            | CheckError::GenericType
+                            | CheckError::TooComplex,
                         ) => Check::Impossible,
                     };
 

@@ -1,0 +1,4 @@
+diagnostics:
+- Unused generic type `U31` at comparison_too_complex.rue:14:14
+- Unused parameter `y` at comparison_too_complex.rue:23:16
+- Comparing `Q1` to `Q2` is too complex at comparison_too_complex.rue:24:8

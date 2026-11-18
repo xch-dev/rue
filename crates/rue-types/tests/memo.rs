@@ -279,6 +279,290 @@ fn test_permuted_generic_alias_arguments() {
     });
 }
 
+// The tests below are cases where a change to comparing generic functions whose generics are
+// nested inside of their parameters (which are compared in exact mode) gave a different result
+// than without the memo, by reusing a comparison that would have merged the generics instantiated
+// by another one, found while working on #344. Most compare the types in a new arena in every
+// mode, since the order of the types can change which comparisons are reached again with which
+// binders.
+
+/// `type R = fn<T>(x: Px) -> nil; type Px = (Pf, T); type Pf = fn(g: R, h: fn(k: Pf) -> nil) -> Int;`
+/// and `type Rq = fn(x: Qx) -> nil; type Qx = (Qf, Int);`
+/// `type Qf = fn(g: Rg, h: fn(k: Qf) -> nil) -> (Int, Int); type Rg = fn(x: Qx) -> Int;`
+fn merged_into_outer_function(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes { nil, int, .. } = db.builtins;
+    let [r, px, pf, rq, qx, qf, rg] =
+        ["R", "Px", "Pf", "Rq", "Qx", "Qf", "Rg"].map(|name| db.declare_alias(name, vec![]));
+
+    let t = db.generic();
+    let function = db.function(vec![t], vec![px], nil);
+    db.define(r, function);
+    let pair = db.pair(pf, t);
+    db.define(px, pair);
+    let callback = db.function(vec![], vec![pf], nil);
+    let function = db.function(vec![], vec![r, callback], int);
+    db.define(pf, function);
+
+    let function = db.function(vec![], vec![qx], nil);
+    db.define(rq, function);
+    let pair = db.pair(qf, int);
+    db.define(qx, pair);
+    let callback = db.function(vec![], vec![qf], nil);
+    let ints = db.pair(int, int);
+    let function = db.function(vec![], vec![rg, callback], ints);
+    db.define(qf, function);
+    let function = db.function(vec![], vec![qx], int);
+    db.define(rg, function);
+
+    (r, rq)
+}
+
+#[test]
+fn test_merged_into_outer_function() {
+    with_large_stack(|| {
+        let mut db = Types::new();
+        let (r, rq) = merged_into_outer_function(&mut db);
+
+        // Comparing `(Qf, Pf)` merges `T` into the outer function's `T` when `(Qx, Px)` is reached
+        // again, and `(Qf, Pf)` is then reached again itself. Iterating that change gave it the
+        // least value every round, since the comparison whose `T` it changed was a different one in
+        // each round, so it never finished.
+        let mut compare_with = |budget: Option<(usize, usize)>| {
+            count_steps(|| {
+                with_step_limit(STEP_BOUND, || match budget {
+                    Some((per_item, base)) => with_fixpoint_budget(per_item, base, || {
+                        compare(&mut db.arena, &db.builtins, r, rq)
+                    }),
+                    None => compare(&mut db.arena, &db.builtins, r, rq),
+                })
+            })
+        };
+
+        let (single, _) = compare_with(None);
+        let (iterating, steps) = compare_with(Some((0, 0)));
+        let without_memo = without_compare_memo(|| compare(&mut db.arena, &db.builtins, r, rq));
+
+        assert_eq!(single, Comparison::Invalid);
+        assert_eq!(iterating, single);
+        assert_eq!(without_memo, single);
+        assert!(steps < 10_000, "took {steps} steps");
+    });
+}
+
+/// `type S1 = fn<U>(p: (U, fn(k: S1) -> nil), q: U) -> U;`
+/// `type S2 = fn(p: (Never, fn(k: S2) -> nil), q: Bytes32) -> Bytes32;`
+/// Returns `(S1, S1's body)` and `(S2, H)`, where `H` is
+/// `fn(p: (Never, fn(k: S2) -> nil), q: Int) -> Int`.
+fn reused_across_functions(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        nil,
+        int,
+        bytes32,
+        never,
+        ..
+    } = db.builtins;
+    let s1 = db.declare_alias("S1", vec![]);
+    let s2 = db.declare_alias("S2", vec![]);
+    let u = db.generic();
+    let k1 = db.function(vec![], vec![s1], nil);
+    let k2 = db.function(vec![], vec![s2], nil);
+    let left = db.pair(u, k1);
+    let right = db.pair(never, k2);
+    let g = db.function(vec![u], vec![left, u], u);
+    let f = db.function(vec![], vec![right, bytes32], bytes32);
+    db.define(s1, g);
+    db.define(s2, f);
+    let h = db.function(vec![], vec![right, int], int);
+    (db.pair(s1, g), db.pair(s2, h))
+}
+
+#[test]
+fn test_reused_across_functions() {
+    with_large_stack(|| {
+        // Comparing `S1` to `S2` caches the comparison of `fn(k: S1) -> nil` to `fn(k: S2) -> nil`,
+        // whose computation reaches `(U, ...)` against `(Never, ...)` again, which merges the
+        // generic of the function it's in. Reusing it while comparing `S1`'s body to `H` skipped
+        // the merge into `H`'s `U`, so its bounds weren't checked against each other, and this gave
+        // `Assign` rather than `Invalid`.
+        let results = in_every_mode(reused_across_functions);
+        assert_eq!(results, [Comparison::Invalid; 3]);
+    });
+}
+
+/// `fn<U>(p0: (U, fn(k: S1) -> nil), p1: fn(cb: fn<U>(p: (U, fn(k: S1) -> nil), q: U) -> U) -> nil) -> U`
+/// against `fn(p0: (Never, fn(k: S2) -> nil), p1: fn(cb: S3) -> nil) -> Bytes32`, where `S1` and
+/// `S2` are as in `reused_across_functions`, and `S3` is `S2` with `last` in place of `Bytes32`.
+fn same_key_other_function(db: &mut Types, last: TypeId) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        nil,
+        bytes32,
+        never,
+        ..
+    } = db.builtins;
+    let s1 = db.declare_alias("S1", vec![]);
+    let s2 = db.declare_alias("S2", vec![]);
+    let u = db.generic();
+    let k1 = db.function(vec![], vec![s1], nil);
+    let k2 = db.function(vec![], vec![s2], nil);
+    let left = db.pair(u, k1);
+    let right = db.pair(never, k2);
+    let g = db.function(vec![u], vec![left, u], u);
+    let f2 = db.function(vec![], vec![right, bytes32], bytes32);
+    let f3 = db.function(vec![], vec![right, last], last);
+    db.define(s1, g);
+    db.define(s2, f2);
+    let inner = db.function(vec![u], vec![left, u], u);
+    let lhs_callback = db.function(vec![], vec![inner], nil);
+    let rhs_callback = db.function(vec![], vec![f3], nil);
+    let lhs = db.function(vec![u], vec![left, lhs_callback], u);
+    let rhs = db.function(vec![], vec![right, rhs_callback], bytes32);
+    (lhs, rhs)
+}
+
+#[test]
+fn test_same_key_other_function() {
+    with_large_stack(|| {
+        // Comparing `(k2, k1)` revisits the comparison of the first parameters, which merges into
+        // the outer function's `U`. It was then reused under the comparison of the callbacks'
+        // functions, whose first parameters have the same key but their own `U`, so their bounds
+        // (`Bytes32` and `Int`) weren't checked against each other, and this was `Assign`
+        for (bytes32, expected) in [(false, Comparison::Invalid), (true, Comparison::Assign)] {
+            let run = |mode: u8| {
+                let mut db = Types::new();
+                let last = if bytes32 {
+                    db.builtins.bytes32
+                } else {
+                    db.builtins.int
+                };
+                let (lhs, rhs) = same_key_other_function(&mut db, last);
+
+                match mode {
+                    0 => compare(&mut db.arena, &db.builtins, lhs, rhs),
+                    1 => with_fixpoint_budget(0, 0, || {
+                        compare(&mut db.arena, &db.builtins, lhs, rhs)
+                    }),
+                    _ => without_compare_memo(|| compare(&mut db.arena, &db.builtins, lhs, rhs)),
+                }
+            };
+
+            // Each is compared in a new arena, since the order of the types can change which
+            // comparisons are revisited with which binders
+            assert_eq!(run(2), expected);
+            assert_eq!(run(0), expected);
+            assert_eq!(run(1), expected);
+        }
+    });
+}
+
+/// `type K1 = fn(k: S1) -> nil; type S1 = fn<U>(p: (U, (K1, K1)), q: U) -> U;`
+/// `type K2 = fn(k: S2) -> nil; type S2 = fn<W>(p: (Never, (K2, K2)), q: W) -> W;`
+/// Returns `fn<U>(p: (U, (K1, K1))) -> nil` and `fn(p: (Never, (K2, K2))) -> nil`.
+fn merged_twice(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes { nil, never, .. } = db.builtins;
+    let s1 = db.declare_alias("S1", vec![]);
+    let s2 = db.declare_alias("S2", vec![]);
+    let u = db.generic();
+    let w = db.generic();
+    let k1 = db.function(vec![], vec![s1], nil);
+    let k2 = db.function(vec![], vec![s2], nil);
+    let both_k1 = db.pair(k1, k1);
+    let both_k2 = db.pair(k2, k2);
+    let left = db.pair(u, both_k1);
+    let right = db.pair(never, both_k2);
+    let f1 = db.function(vec![u], vec![left, u], u);
+    let f2 = db.function(vec![w], vec![right, w], w);
+    db.define(s1, f1);
+    db.define(s2, f2);
+    let lhs = db.function(vec![u], vec![left], nil);
+    let rhs = db.function(vec![], vec![right], nil);
+    (lhs, rhs)
+}
+
+#[test]
+fn test_merged_twice() {
+    with_large_stack(|| {
+        let run = |mode: u8| {
+            let mut db = Types::new();
+            let (lhs, rhs) = merged_twice(&mut db);
+
+            match mode {
+                0 => compare(&mut db.arena, &db.builtins, lhs, rhs),
+                1 => with_fixpoint_budget(0, 0, || compare(&mut db.arena, &db.builtins, lhs, rhs)),
+                _ => without_compare_memo(|| compare(&mut db.arena, &db.builtins, lhs, rhs)),
+            }
+        };
+
+        // `(K2, K1)` is compared twice, and each time, comparing `S1` to `S2` binds a new `U` and
+        // `W`, and merges that `U` into the outer one when the parameters are reached again. Reusing
+        // the second one skipped its copy of the bounds, so the two `W`s weren't checked against
+        // each other, and this gave `Assign`. Computing a result again doesn't have the same side
+        // effects as the first time, even within the same comparisons.
+        assert_eq!(run(2), Comparison::Invalid);
+        assert_eq!(run(0), Comparison::Invalid);
+        assert_eq!(run(1), Comparison::Invalid);
+    });
+}
+
+/// `type AL = (KL, fn<U>() -> (U, (U, KL))); type KL = (AL, nil);`
+/// `type AR = (KR, fn() -> (Bytes32, (Int, KR))); type KR = (AR, nil);`
+/// Returns `(AL, fn<U>(p: U) -> (U, KL))` and `(AR, fn(p: Int) -> (Int, KR))`.
+fn reached_through_dependency(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        nil, int, bytes32, ..
+    } = db.builtins;
+    let [al, ar, kl, kr] = ["AL", "AR", "KL", "KR"].map(|name| db.declare_alias(name, vec![]));
+    let u = db.generic();
+
+    let inner_lhs = db.pair(u, kl);
+    let inner_rhs = db.pair(int, kr);
+    let ret_lhs = db.pair(u, inner_lhs);
+    let ret_rhs = db.pair(bytes32, inner_rhs);
+    let thunk_lhs = db.function(vec![u], vec![], ret_lhs);
+    let thunk_rhs = db.function(vec![], vec![], ret_rhs);
+
+    let pair = db.pair(kl, thunk_lhs);
+    db.define(al, pair);
+    let pair = db.pair(kr, thunk_rhs);
+    db.define(ar, pair);
+    let pair = db.pair(al, nil);
+    db.define(kl, pair);
+    let pair = db.pair(ar, nil);
+    db.define(kr, pair);
+
+    let lhs = db.function(vec![u], vec![u], inner_lhs);
+    let rhs = db.function(vec![], vec![int], inner_rhs);
+    (db.pair(al, lhs), db.pair(ar, rhs))
+}
+
+#[test]
+fn test_reached_through_dependency() {
+    with_large_stack(|| {
+        // Comparing `(AL, AR)` caches `(KL, KR)`, which relies on `(AL, AR)`. Iterating reused it
+        // while comparing the second functions' return types, where computing it again would reach
+        // `(AL, AR)`, then the first functions, whose return types revisit those of the second ones
+        // and merge `U` (with its `Bytes32` bound) into theirs. Skipping that gave `Assign`.
+        let results = in_every_mode(reached_through_dependency);
+        assert_eq!(results, [Comparison::Invalid; 3]);
+    });
+}
+
+/// Compares the types without the memo, in a single pass, and iterating from the start, each in a
+/// new arena.
+fn in_every_mode(types: impl Fn(&mut Types) -> (TypeId, TypeId)) -> [Comparison; 3] {
+    let compare_in = |mode: usize| {
+        let mut db = Types::new();
+        let (lhs, rhs) = types(&mut db);
+
+        match mode {
+            0 => without_compare_memo(|| compare(&mut db.arena, &db.builtins, lhs, rhs)),
+            1 => compare(&mut db.arena, &db.builtins, lhs, rhs),
+            _ => with_fixpoint_budget(0, 0, || compare(&mut db.arena, &db.builtins, lhs, rhs)),
+        }
+    };
+
+    [compare_in(0), compare_in(1), compare_in(2)]
+}
+
 /// A small deterministic PRNG (`SplitMix64`), to avoid a dependency.
 struct Rng(u64);
 
@@ -318,6 +602,9 @@ struct Generator<'a> {
     structs: Vec<TypeId>,
     /// Whether modules with a non-contractive alias are skipped, as the compiler rejects them.
     contractive_only: bool,
+    /// The percentage of a generic function type's parameters and return types that may nest its
+    /// own generics inside of them, rather than being one of them or not referencing them.
+    nesting: usize,
 }
 
 impl Generator<'_> {
@@ -416,7 +703,7 @@ impl Generator<'_> {
         let component = |this: &mut Self| {
             if !own.is_empty() && this.rng.chance(45) {
                 this.rng.pick(&own)
-            } else if this.rng.chance(15) {
+            } else if this.rng.chance(this.nesting) {
                 this.random_type(depth + 1, &scope)
             } else {
                 this.random_type(depth + 1, generics)
@@ -584,6 +871,7 @@ fn differential(
     seeds: impl IntoIterator<Item = u64>,
     queries: usize,
     contractive_only: bool,
+    nesting: usize,
 ) -> Summary {
     let mut summary = Summary::default();
 
@@ -595,6 +883,7 @@ fn differential(
             aliases: Vec::new(),
             structs: Vec::new(),
             contractive_only,
+            nesting,
         };
 
         // Substituting some generic aliases takes exponential work (since each application copies
@@ -705,7 +994,7 @@ fn differential(
 
 #[test]
 fn test_memo_differential() {
-    let summary = with_large_stack(|| differential(0..400, 4, true));
+    let summary = with_large_stack(|| differential(0..400, 4, true, NESTING));
     println!("{summary:?}");
 
     // Most modules should be usable, and most cases should finish
@@ -715,14 +1004,45 @@ fn test_memo_differential() {
 
     // This gave different results with the memo when it cached comparisons that refer to a generic
     // being instantiated
-    let summary = with_large_stack(|| differential([1978], 8, true));
+    let summary = with_large_stack(|| differential([1978], 8, true, NESTING));
     assert_eq!(summary.cases, 8, "{summary:?}");
 
     // This gave different results with the memo when it wasn't limited to contractive types. Its
     // module has a cycle through an application of another alias (#282), which the compiler now
     // rejects, so the comparisons must keep working when they're given such a type directly.
-    let summary = with_large_stack(|| differential([4706], 8, false));
+    let summary = with_large_stack(|| differential([4706], 8, false, NESTING));
     assert_eq!(summary.cases, 5, "{summary:?}");
+}
+
+/// The usual percentage of generic function types' parameters and return types that nest their
+/// own generics, and a higher one for the tests of generic functions that do (#344).
+const NESTING: usize = 15;
+const HEAVY_NESTING: usize = 70;
+
+#[test]
+fn test_memo_differential_nested() {
+    let summary = with_large_stack(|| differential(0..150, 4, true, HEAVY_NESTING));
+    println!("{summary:?}");
+    assert!(summary.cases > 250, "{summary:?}");
+    assert!(summary.gave_up_with_memo <= 2, "{summary:?}");
+    assert!(summary.gave_up_iterating <= 2, "{summary:?}");
+
+    // These gave different results when generic functions that nest their generics were compared
+    // in fixpoint mode while working on #344: iterating reused a comparison that merged a generic
+    // into one instantiated outside of it (31451), and such a comparison's approximation decreased
+    // from one round to the next, since its value depends on where it's compared (35565)
+    let summary = with_large_stack(|| differential([31_451], 8, true, HEAVY_NESTING));
+    assert_eq!(summary.cases, 5, "{summary:?}");
+    let summary = with_large_stack(|| differential([35_565], 8, true, HEAVY_NESTING));
+    assert!(summary.cases > 0, "{summary:?}");
+}
+
+/// A larger run of `test_memo_differential_nested`, which takes a few minutes in release builds.
+#[test]
+#[ignore = "slow"]
+fn test_memo_differential_nested_large() {
+    let summary = with_large_stack(|| differential(30_000..45_000, 8, true, HEAVY_NESTING));
+    println!("{summary:?}");
 }
 
 /// A larger run of `test_memo_differential`, which takes a few minutes in release builds:
@@ -730,7 +1050,7 @@ fn test_memo_differential() {
 #[test]
 #[ignore = "slow"]
 fn test_memo_differential_large() {
-    let summary = with_large_stack(|| differential(1_000..21_000, 8, true));
+    let summary = with_large_stack(|| differential(1_000..21_000, 8, true, NESTING));
     println!("{summary:?}");
 }
 
@@ -747,6 +1067,7 @@ fn contractiveness(seeds: impl IntoIterator<Item = u64>) {
             aliases: Vec::new(),
             structs: Vec::new(),
             contractive_only: true,
+            nesting: NESTING,
         };
 
         let Some(Some(())) = give_up_after(|| generator.module()) else {

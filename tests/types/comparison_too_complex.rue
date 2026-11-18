@@ -1,0 +1,29 @@
+// Comparing these takes exponential time, since generic functions nest their generics inside of
+// recursive types (#344), so the comparison gives up rather than running for as long as it takes
+type N0 = Bytes
+    | (((1, Bytes32), N0 | N1<2, Bytes32>))
+    | (((N1<Bytes32, Bytes>, N1<1, nil>), N2 | N1<Bytes32, Bytes>));
+
+type N1<A, B> = fn(
+    p0: N1<A, B> | (Bytes32 | A) | B,
+    p1: fn<U10, U11>(p0: fn<U20>(p0: U20, p1: N0) -> 1, p1: (Bytes, Bytes32), p2: U11) -> U10,
+    p2: N2,
+) -> B;
+
+type N2 = (
+    (fn<U30, U31>(p0: N1<Bytes, 2>, p1: U30, p2: N1<1, U30>) -> U30)
+        | (N2 | N1<nil, Bytes> | N0)
+        | N1<Bytes, 1>,
+    (Bytes32, N2),
+);
+
+type Q1 = N0;
+type Q2 = N0;
+
+fn main(x: Q1, y: Q2) -> Int {
+    if x is Q2 {
+        1
+    } else {
+        0
+    }
+}
