@@ -1,0 +1,90 @@
+// In a recursive call, the argument's expected type has the callee's generics that aren't inferred
+// yet restored to the caller's generics they were renamed from. A lambda in a pair or list in the
+// argument still gets what the elements before it infer for the callee's generic, as in any other
+// call (#350)
+
+fn recursive<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // The lambda gets `Int`, which the `1` before it infers, not the caller's `T`
+        return recursive((1, fn(x) => x), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn lambda_after_a_value_in_a_recursive_call() -> Int {
+    recursive((2, fn(x) => x), 1)
+}
+
+fn recursive_list<T>(items: (T, (fn(value: T) -> Int, nil)), depth: Int) -> Int {
+    if depth > 0 {
+        return recursive_list([1, fn(x) => x + 1], depth - 1);
+    }
+
+    items.rest.first(items.first)
+}
+
+test fn lambda_item_after_a_value_in_a_recursive_call() -> Int {
+    recursive_list([2, fn(x) => x], 1)
+}
+
+fn recursive_unused<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        return recursive_unused((1, fn(_x) => 0), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn lambda_that_ignores_its_parameter_in_a_recursive_call() -> Int {
+    recursive_unused((2, fn(x) => x), 1)
+}
+
+fn recursive_nil<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // `x` is `nil`, which the element before it infers
+        return recursive_nil(
+            (
+                nil,
+                fn(x) => {
+                    let _nil: nil = x;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn lambda_after_nil_in_a_recursive_call() -> Int {
+    recursive_nil((2, fn(x) => x), 1)
+}
+
+fn recursive_value<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: the element before the lambda is the caller's `T`, so the lambda gets `T`, as
+        // before
+        return recursive_value((pair.first, fn(x) => pair.rest(x)), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn guard_lambda_after_the_callers_generic() -> Int {
+    recursive_value((2, fn(x) => x), 1)
+}
+
+fn recursive_argument<T>(value: T, pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: an argument before the pair infers the callee's `T`, so it isn't restored, as before
+        return recursive_argument(5, (1, fn(x) => x), depth - 1);
+    }
+
+    pair.rest(value)
+}
+
+test fn guard_generic_inferred_by_an_earlier_argument() -> Int {
+    recursive_argument(2, (3, fn(x) => x), 1)
+}

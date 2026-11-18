@@ -1,0 +1,43 @@
+tests:
+- name: lambda_after_a_value_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 2)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 1) (q . 2)) (- 7 (q . 1))))) (q 2 13 (c 9 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (- 7 (q . 1))))) (q 2 (r 5) (c (f 5) ()))) 1) ()))
+  output: "1"
+  runtime_cost: 3780
+  byte_cost: 1428000
+  total_cost: 1431780
+- name: lambda_item_after_a_value_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (c (q . 2) ())) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 1) (c (q 16 2 (q . 1)) ())) (- 7 (q . 1))))) (q 2 21 (c 9 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ())) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ())) (- 7 (q . 1))))) (q 2 (f (r 5)) (c (f 5) ()))) 1) ()))
+  output: "2"
+  runtime_cost: 4750
+  byte_cost: 1668000
+  total_cost: 1672750
+- name: lambda_that_ignores_its_parameter_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 2)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 1) (q)) (- 7 (q . 1))))) (q 2 13 (c 9 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))) (- 7 (q . 1))))) (q 2 (r 5) (c (f 5) ()))) 1) ()))
+  output: ()
+  runtime_cost: 3776
+  byte_cost: 1428000
+  total_cost: 1431776
+- name: lambda_after_nil_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 2)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c () (q)) (- 7 (q . 1))))) (q 2 13 (c 9 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c () (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))) (- 7 (q . 1))))) (q 2 (r 5) (c (f 5) ()))) 1) ()))
+  output: ()
+  runtime_cost: 3800
+  byte_cost: 1404000
+  total_cost: 1407800
+- name: guard_lambda_after_the_callers_generic
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 2)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c 9 (c (q . 2) (c (c (q . 1) (q 2 6 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))) (- 7 (q . 1))))) (q 2 13 (c 9 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (f 5) (c (q . 2) (c (c (q . 1) (q 2 (r 2) (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))) (- 7 (q . 1))))) (q 2 (r 5) (c (f 5) ()))) 1) ()))
+  output: "2"
+  runtime_cost: 4980
+  byte_cost: 2244000
+  total_cost: 2248980
+- name: guard_generic_inferred_by_an_earlier_argument
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 2)))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 5) (c (q . 1) (q . 2)))))) (q 2 31 (c 11 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 5) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (q 2 (r 15) (c 11 ()))) 1) ()))
+  output: "5"
+  runtime_cost: 3926
+  byte_cost: 1620000
+  total_cost: 1623926

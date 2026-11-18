@@ -97,6 +97,14 @@ pub struct ArgumentFrame {
     /// The candidates of the arguments compiled before this one, and of this one's elements so far.
     pub infer: Inference,
     pub solver: Rc<CallSolver>,
+    /// The callee's renamed generics (see `rename_generics_in_scope`), and the caller's generics
+    /// they were renamed from.
+    pub renamed: HashMap<TypeId, TypeId>,
+    /// The caller's generics that the argument's expected type has in place of the callee's
+    /// renamed generics that weren't inferred yet (see `restore_renamed`), mapped back to them.
+    /// It's only those that nothing else in the expected type gave, so each one stands for the
+    /// callee's generic.
+    pub restored: HashMap<TypeId, TypeId>,
 }
 
 /// The function or lambda body that a `return` statement exits from.
