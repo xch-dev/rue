@@ -6,9 +6,10 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BinaryOp, Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
 use rue_types::{
-    FunctionType, Inference, Pair, Type, TypeId, Union, contains_generic, substitute_with_mappings,
+    FunctionType, Pair, Type, TypeId, Union, contains_generic, substitute_with_mappings,
 };
 
+use super::call_inference::{InferredCall, infer_call};
 use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_path_value};
 
 pub fn compile_function_call_expr(
@@ -99,99 +100,11 @@ pub fn compile_function_call_expr(
             );
         }
 
-        let mut infer = Inference::new(function.generics.iter().copied());
-
-        for (&copy, &generic) in &renamed {
-            infer.rename(copy, generic);
-        }
-
-        // The type expected of the call is used for the generics that the arguments don't
-        // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
-        // ones they do from being widened past it
-        let expected = expected_type.map(|expected_type| {
-            let mut expected = infer.clone();
-            ctx.infer_from_expected(function.ret, expected_type, &mut expected);
-
-            // The generics of an enclosing call that are still being inferred can't be inferred
-            // from this call, so they're no help in inferring its generics either
-            let enclosing = ctx.inferred_generics();
-            expected.retain_bounds(|ty| {
-                !enclosing
-                    .iter()
-                    .any(|&generic| contains_generic(ctx.types_mut(), ty, generic))
-            });
-
-            expected
-        });
-
-        let solver = ctx.call_solver(expected);
-
-        let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
-        let mut checks = Vec::new();
-
-        // Lambdas are compiled after the other arguments, since their parameter types may
-        // need to be inferred from what the other arguments have contributed
-        let (mut lambdas, others): (Vec<_>, Vec<_>) = (0..function.params.len())
-            .filter(|&i| i < args.len())
-            .partition(|&i| matches!(args[i], AstExpr::LambdaExpr(_)));
-
-        let mut others = others.into_iter();
-
-        ctx.push_inferred_generics(function.generics.clone());
-
-        loop {
-            let inferred = ctx.solve_arguments(&solver, &infer);
-
-            let i = if let Some(i) = others.next() {
-                i
-            } else if lambdas.is_empty() {
-                break;
-            } else {
-                // A lambda's parameter types may only be inferred from a later lambda, so the
-                // first one whose parameter types have been inferred is compiled next
-                let index = lambdas
-                    .iter()
-                    .position(|&i| {
-                        !has_uninferred_parameters(
-                            ctx,
-                            function.params[i].ty,
-                            function,
-                            &inferred,
-                            &renamed,
-                        )
-                    })
-                    .unwrap_or(0);
-
-                lambdas.remove(index)
-            };
-
-            let expr = &args[i];
-            let param = function.params[i].ty;
-
-            // Use what has been inferred from the previous arguments as the expected type, along
-            // with what the type expected of the call implies for the generics they don't map
-            let mut mappings = ctx.argument_mappings(&solver, &infer, inferred);
-            restore_renamed(ctx, &mut mappings, &renamed);
-
-            let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
-
-            let value = compile_expr(ctx, expr, Some(expected));
-            results[i] = value.hir;
-
-            // Candidates are collected against the unsubstituted parameter type, so that every
-            // argument contributes to the generics rather than only the first one to mention them
-            ctx.infer_type(value.ty, param, &mut infer);
-            checks.push((expr.clone(), value.ty, param));
-        }
-
-        ctx.pop_inferred_generics();
-
-        if args.len() < function.params.len() {
-            debug!("Unresolved function call argument");
-        }
-
-        let mut mappings = ctx.solve_call(&solver, infer);
-        restore_renamed(ctx, &mut mappings, &renamed);
+        let InferredCall {
+            results,
+            checks,
+            mut mappings,
+        } = infer_call(ctx, function, &args, expected_type, &renamed);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
@@ -286,32 +199,6 @@ fn callee_name(call: &AstFunctionCallExpr) -> String {
         Some(expr) => expr.syntax().text().to_string(),
         None => String::new(),
     }
-}
-
-/// Whether the parameters of the function type expected of a lambda reference any of the
-/// callee's generics that haven't been inferred yet. A renamed one (see `rename_generics_in_scope`)
-/// also counts where they reference the caller's generic it was renamed from, as it did when the
-/// two were the same generic, so that lambdas are compiled in the same order.
-fn has_uninferred_parameters(
-    ctx: &mut Compiler,
-    param: TypeId,
-    callee: &FunctionType,
-    mappings: &HashMap<TypeId, TypeId>,
-    renamed: &HashMap<TypeId, TypeId>,
-) -> bool {
-    let expected = substitute_with_mappings(ctx.types_mut(), param, mappings);
-
-    rue_types::extract_functions(ctx.types_mut(), expected, true)
-        .into_iter()
-        .flat_map(|function| function.params)
-        .any(|param| {
-            callee.generics.iter().any(|&generic| {
-                !mappings.contains_key(&generic)
-                    && std::iter::once(generic)
-                        .chain(renamed.get(&generic).copied())
-                        .any(|generic| contains_generic(ctx.types_mut(), param.ty, generic))
-            })
-        })
 }
 
 /// Generalizes the functions returned by a call over the generics of the function types expected
@@ -545,36 +432,6 @@ fn rename_generics_in_scope(
         .into_iter()
         .map(|(generic, copy)| (copy, generic))
         .collect()
-}
-
-/// Maps the renamed generics that haven't been inferred back to the caller's generics they were
-/// renamed from (see `rename_generics_in_scope`), including where the others are inferred as types
-/// that reference them, since that's what they referred to before they were renamed.
-fn restore_renamed(
-    ctx: &mut Compiler,
-    mappings: &mut HashMap<TypeId, TypeId>,
-    renamed: &HashMap<TypeId, TypeId>,
-) {
-    let restored: HashMap<TypeId, TypeId> = renamed
-        .iter()
-        .filter(|(copy, _)| !mappings.contains_key(copy))
-        .map(|(&copy, &generic)| (copy, generic))
-        .collect();
-
-    if restored.is_empty() {
-        return;
-    }
-
-    for ty in mappings.values_mut() {
-        if restored
-            .keys()
-            .any(|&copy| contains_generic(ctx.types_mut(), *ty, copy))
-        {
-            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &restored);
-        }
-    }
-
-    mappings.extend(restored);
 }
 
 /// A new generic like the given one, which can be bound separately from it.
