@@ -4,10 +4,9 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, InferenceCandidates, Type,
-    TypeId, compare_renamed, compare_with_inference, free_generics, infer_from_expected,
-    resolve_inference_with_fallback, strongly_connected_components, substitute_with_mappings,
-    union_of,
+    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
+    compare_with_inference, free_generics, infer_from_expected, resolve_inference_with_fallback,
+    strongly_connected_components, substitute_with_mappings, union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -372,6 +371,12 @@ pub(crate) fn pass_upper_bounds(
         .collect();
     let renamed = infer.renamed.clone();
 
+    // The bounds given to each generic directly, rather than passed on from another
+    let given_directly: HashSet<(TypeId, TypeId)> = added
+        .iter()
+        .map(|&(generic, upper, _)| (generic, upper))
+        .collect();
+
     // Each entry is a bound and whether it still has to be added to its generic. A bound passed on
     // is part of the one it was passed on from
     let mut stack: Vec<(Bound, bool)> = existing
@@ -427,12 +432,14 @@ pub(crate) fn pass_upper_bounds(
                 continue;
             }
 
-            // A renamed generic with no candidates of its own is the generic it was renamed from
-            // (see `Inference::rename`), so it isn't given a bound that holds for that one, and its
-            // type stays what it was (#361)
-            let held_by_original = infer
-                .candidates(generic)
-                .is_some_and(|candidates| *candidates == InferenceCandidates::default())
+            // A renamed generic with no lower candidates is either the generic it was renamed from
+            // (see `Inference::rename`) or what its held candidates are, as before bounds were passed
+            // on to it, so it isn't passed one that the generic it was renamed from already
+            // satisfies, which would otherwise decide its type (#361)
+            let held_by_original = !given_directly.contains(&(generic, upper))
+                && infer
+                    .candidates(generic)
+                    .is_some_and(|candidates| candidates.lower.is_empty())
                 && renamed.get(&generic).is_some_and(|&original| {
                     compare_renamed(arena, builtins, &renamed, original, upper)
                         == Comparison::Assign

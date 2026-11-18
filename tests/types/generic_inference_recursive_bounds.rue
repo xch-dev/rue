@@ -103,3 +103,51 @@ fn lambda_through<A, B>(_first: fn(a: A) -> B, _second: fn(a: A) -> Int, depth: 
 test fn guard_lambda_through_another_generic() -> Int {
     lambda_through(fn(a: Int) => a, fn(a: Int) => a, 1)
 }
+
+fn held_only<A, B>(first: fn(a: A) -> B, value: A | nil, third: fn(a: A) -> Int, depth: Int) -> B {
+    if depth > 0 {
+        // Guard: the callee's `A` only holds `nil`, and the expected `A | nil` passed on to it
+        // through `B` is one that the caller's `A` satisfies, so it isn't given that, and the
+        // lambda's parameter is `nil`, as before
+        let result: A | nil = held_only(
+            identity,
+            nil,
+            fn(x) => {
+                let _nothing: nil = x;
+                1
+            },
+            depth - 1,
+        );
+        return unchecked_cast(result);
+    }
+
+    let _ = third(unchecked_cast(value));
+    first(unchecked_cast(value))
+}
+
+test fn guard_held_only() -> Int {
+    held_only(fn(a: Int) => a, 1, fn(a: Int) => a, 1)
+}
+
+fn given_directly<A>(value: A | nil, third: fn(a: A) -> Int, depth: Int) -> A | nil {
+    if depth > 0 {
+        // Guard: the expected `A | nil` is given to the callee's `A` directly, which it was before
+        // too, so the lambda's parameter is `A | nil` and its guard isn't unnecessary
+        return given_directly(
+            nil,
+            fn(x) => if x is nil {
+                1
+            } else {
+                2
+            },
+            depth - 1,
+        );
+    }
+
+    let _ = third(unchecked_cast(value));
+    value
+}
+
+test fn guard_given_directly() -> Int | nil {
+    given_directly(5, fn(a: Int) => a, 1)
+}
