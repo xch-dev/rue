@@ -2,6 +2,7 @@
 //! compiled in, and what each one is compiled against. How the generics are solved is up to
 //! `CallSolver` in `rue-types`.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
@@ -65,22 +66,20 @@ pub(crate) fn infer_call(
 
     let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
 
-    // Each argument's candidates and check, by parameter, which are put together in the order
-    // the arguments come in (see `ArgumentOrder::candidate_order`)
-    let mut candidates: Vec<Option<Inference>> = vec![None; function.params.len()];
+    // Each argument's check, by parameter, which are made in the order the arguments come in (see
+    // `ArgumentOrder::candidate_order`)
     let mut checks: Vec<Option<(AstExpr, TypeId, TypeId)>> = vec![None; function.params.len()];
 
-    let mut order = ArgumentOrder::new(ctx, function, args);
+    let mut order = ArgumentOrder::new(ctx, function, args, base.clone());
 
     ctx.push_inferred_generics(function.generics.clone());
 
     while !order.is_done() {
-        let infer = order.merge(&base, &candidates);
-        let inferred = ctx.solve_arguments(&solver, &infer);
+        let inferred = ctx.solve_arguments(&solver, order.merged());
 
         // Use what has been inferred from the previous arguments as the expected type, along
         // with what the type expected of the call implies for the generics they don't map
-        let mut mappings = ctx.argument_mappings(&solver, &infer, inferred.clone());
+        let mut mappings = ctx.argument_mappings(&solver, order.merged(), inferred.clone());
 
         let i = order.next(ctx, function, &inferred, &mappings, renamed);
 
@@ -98,7 +97,7 @@ pub(crate) fn infer_call(
         // argument contributes to the generics rather than only the first one to mention them
         let mut infer = base.clone();
         ctx.infer_type(value.ty, param, &mut infer);
-        candidates[i] = Some(infer);
+        order.add_candidates(i, infer);
         checks[i] = Some((expr.clone(), value.ty, param));
     }
 
@@ -108,8 +107,7 @@ pub(crate) fn infer_call(
         debug!("Unresolved function call argument");
     }
 
-    let infer = order.merge(&base, &candidates);
-    let mut mappings = ctx.solve_call(&solver, infer);
+    let mut mappings = ctx.solve_call(&solver, order.merged().clone());
     restore_renamed(ctx, &mut mappings, renamed);
 
     let checks = order
@@ -148,6 +146,12 @@ struct ArgumentOrder {
     compiled_lambdas: Vec<usize>,
     /// The other arguments that were compiled.
     compiled_others: Vec<usize>,
+    /// The candidates of each argument that was compiled, collected on their own.
+    candidates: Vec<Option<Inference>>,
+    /// The candidates of the compiled arguments, put together in `candidate_order`, starting from
+    /// an inference with none.
+    base: Inference,
+    merged: Inference,
 }
 
 /// What `ArgumentOrder` knows about an argument.
@@ -174,7 +178,7 @@ struct Argument {
 }
 
 impl ArgumentOrder {
-    fn new(ctx: &mut Compiler, function: &FunctionType, args: &[AstExpr]) -> Self {
+    fn new(ctx: &mut Compiler, function: &FunctionType, args: &[AstExpr], base: Inference) -> Self {
         let arguments: Vec<Argument> = args
             .iter()
             .zip(&function.params)
@@ -209,28 +213,36 @@ impl ArgumentOrder {
         pending.extend((0..arguments.len()).filter(|&i| arguments[i].is_lambda));
 
         Self {
+            candidates: vec![None; arguments.len()],
             arguments,
             pending,
             compiled_lambdas: Vec::new(),
             compiled_others: Vec::new(),
+            merged: base.clone(),
+            base,
         }
     }
 
     /// The generics that compiling the argument depends on now: its reads, and the generics that
     /// their mappings reference, which they're still waiting on, such as `A` when `B` is mapped to
-    /// `(A, A)`.
-    fn reads_now(&self, i: usize, depends: &HashMap<TypeId, IndexSet<TypeId>>) -> IndexSet<TypeId> {
+    /// `(A, A)`. It's worked out once per step, when it's first needed.
+    fn reads_now(&self, i: usize, state: &State<'_>) -> IndexSet<TypeId> {
+        if let Some(reads) = state.reads.borrow().get(&i) {
+            return reads.clone();
+        }
+
         let mut reads = self.arguments[i].reads.clone();
         let mut index = 0;
 
         while let Some(&generic) = reads.get_index(index) {
-            if let Some(others) = depends.get(&generic) {
+            if let Some(others) = state.depends.get(&generic) {
                 reads.extend(others);
             }
 
             index += 1;
         }
 
+        state.reads.borrow_mut().insert(i, reads.clone());
         reads
     }
 
@@ -260,7 +272,7 @@ impl ArgumentOrder {
     /// otherwise, as it was before, since another argument could replace a mapping that comes from
     /// the type expected of the call with one that only holds a value.
     fn is_ready(&self, i: usize, state: &State<'_>) -> bool {
-        state.reads[i].iter().all(|&generic| {
+        self.reads_now(i, state).iter().all(|&generic| {
             (state.mappings.contains_key(&generic) && self.arguments[i].bare.contains(&generic))
                 || !self.is_written(i, generic)
         })
@@ -273,7 +285,7 @@ impl ArgumentOrder {
     /// expected type keeps.
     fn would_change_earlier(&self, i: usize, state: &State<'_>) -> bool {
         self.earlier_others(i).any(|other| {
-            state.reads[other].iter().any(|generic| {
+            self.reads_now(other, state).iter().any(|generic| {
                 state.mappings.contains_key(generic) && self.arguments[i].writes.contains(generic)
             })
         })
@@ -334,9 +346,8 @@ impl ArgumentOrder {
 
         let state = State {
             mappings,
-            reads: (0..self.arguments.len())
-                .map(|i| self.reads_now(i, &depends))
-                .collect(),
+            depends,
+            reads: RefCell::new(HashMap::new()),
         };
 
         // A lambda's parameter types may only be inferred from a later lambda, so the first
@@ -347,17 +358,13 @@ impl ArgumentOrder {
 
         // The pending arguments are the others and then the lambdas, so the first that can go is
         // a lambda only if none of the others can
-        let can_go: Vec<bool> = self
-            .pending
-            .iter()
-            .map(|&i| self.can_go(i, &state))
-            .collect();
+        let can_go = |position: usize| self.can_go(self.pending[position], &state);
 
         let first = self.pending[0];
-        let position = match can_go.iter().position(|&can_go| can_go) {
+        let position = match (0..self.pending.len()).find(|&position| can_go(position)) {
             Some(position) if !self.arguments[self.pending[position]].is_lambda => position,
             Some(position) => (position..self.pending.len())
-                .find(|&q| can_go[q] && inferred_parameters(self.pending[q]))
+                .find(|&q| can_go(q) && inferred_parameters(self.pending[q]))
                 .unwrap_or(position),
             None if !self.arguments[first].is_lambda => 0,
             None => (0..self.pending.len())
@@ -388,27 +395,49 @@ impl ArgumentOrder {
     }
 
     /// The candidates of the compiled arguments, put together in `candidate_order`.
-    fn merge(&self, base: &Inference, candidates: &[Option<Inference>]) -> Inference {
-        let mut infer = base.clone();
+    fn merged(&self) -> &Inference {
+        &self.merged
+    }
 
-        for i in self.candidate_order() {
-            if let Some(candidates) = &candidates[i] {
-                infer.append(candidates);
-            }
+    /// Records the candidates of an argument that was compiled (the last one `next` gave). They're
+    /// added to the end of the merged candidates when that's where `candidate_order` puts them,
+    /// as it does unless an argument that isn't a lambda was compiled after one, or after a later
+    /// argument. Otherwise they're all put together again.
+    fn add_candidates(&mut self, i: usize, candidates: Inference) {
+        let last = if self.arguments[i].is_lambda {
+            true
+        } else {
+            self.compiled_lambdas.is_empty() && self.compiled_others.iter().all(|&other| other <= i)
+        };
+
+        if last {
+            self.merged.append(&candidates);
+            self.candidates[i] = Some(candidates);
+            return;
         }
 
-        infer
+        self.candidates[i] = Some(candidates);
+        self.merged = self.base.clone();
+
+        for other in self.candidate_order() {
+            if let Some(candidates) = &self.candidates[other] {
+                self.merged.append(candidates);
+            }
+        }
     }
 }
 
 /// What deciding which argument goes next depends on.
 struct State<'a> {
+    /// The other callee generics that each mapping references.
+    depends: HashMap<TypeId, IndexSet<TypeId>>,
     /// What the next argument's expected type is substituted with, before renamed generics are
     /// restored (see `restore_renamed`), so a renamed generic that isn't inferred yet counts as
     /// unmapped.
     mappings: &'a HashMap<TypeId, TypeId>,
-    /// What compiling each argument depends on now (see `ArgumentOrder::reads_now`).
-    reads: Vec<IndexSet<TypeId>>,
+    /// What compiling each argument that's been asked about depends on now (see
+    /// `ArgumentOrder::reads_now`).
+    reads: RefCell<HashMap<usize, IndexSet<TypeId>>>,
 }
 
 /// Whether the expression is, or has in it, a call or a lambda, whose types can depend on the type
