@@ -37,3 +37,4 @@ rustc-hash = { workspace = true }
 # Enables the step counter for this crate's tests. Path-only dev-dependencies are removed when
 # publishing.
 rue-types = { path = ".", features = ["step-counter"] }
+expect-test = { workspace = true }

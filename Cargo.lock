@@ -1850,6 +1850,7 @@ version = "0.12.0"
 dependencies = [
  "clvmr",
  "derive_more",
+ "expect-test",
  "hex",
  "id-arena",
  "indexmap",
