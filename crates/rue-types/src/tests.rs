@@ -1860,6 +1860,37 @@ mod inference {
     }
 
     #[test]
+    fn bounds_passed_through_compound_lower_bounds_keep_their_members() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, c) = (db.generic("A"), db.generic("C"));
+        let mut infer = Inference::new([a, c]);
+
+        // `(C, Int) ≤ A` was collected under a member that didn't match, so what `A ≤ (Int, Int)`
+        // gives `C` through it only holds under that member
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        let compound = db.pair(c, int);
+        infer.push(a, CandidateKind::Lower, compound, vec![unmatched]);
+
+        let int_pair = db.pair(int, int);
+        let existing = vec![(a, int_pair, Vec::new())];
+        pass_upper_bounds(
+            &mut db.arena,
+            &db.builtins,
+            &mut infer,
+            Vec::new(),
+            existing,
+            |_| true,
+        );
+
+        assert_eq!(candidates(&infer, c).upper, vec![int]);
+        assert_eq!(infer.matched_candidates(c).unwrap().upper, vec![]);
+    }
+
+    #[test]
     fn upper_bounds_passed_through_other_generics_keep_their_members() {
         let mut db = Db::new();
         let int = db.builtins.int;
