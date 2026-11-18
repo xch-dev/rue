@@ -149,7 +149,7 @@ pub struct ImportCache {
     imported_names: IndexMap<(ImportId, Declaration), (Name, ImportId)>,
 
     /// The imports that failed at a name that's blocked where they looked it up (a segment of the
-    /// path, or the name imported through `super`), with the origins of the block (see
+    /// path, or the name imported by an import without a path), with the origins of the block (see
     /// [`Scope::block`]). Whether their errors are reported depends on whether those imports'
     /// failures are (see [`failure_is_reported`]).
     blocked_imports: HashMap<ImportId, HashSet<ImportId>>,
@@ -415,6 +415,22 @@ impl FailedName {
             origin,
         })
     }
+
+    /// A name blocked with some origins in another scope, which an import through `super` passes
+    /// on to its own scope in a namespace.
+    fn passed_on(
+        scope: ScopeId,
+        namespace: Namespace,
+        name: &str,
+        origins: &[ImportId],
+    ) -> impl Iterator<Item = Self> {
+        origins.iter().map(move |&origin| Self {
+            scope,
+            namespace,
+            name: name.to_string(),
+            origin,
+        })
+    }
 }
 
 /// Blocks a failed name, unless the scope has an item with it. Returns whether the block or its
@@ -654,7 +670,7 @@ struct Resolution {
     bases: HashMap<ImportId, (ScopeId, bool)>,
     /// The named imports that have brought in what they import.
     bound: HashSet<ImportId>,
-    /// The imports whose paths don't resolve, whose names will be blocked.
+    /// The imports whose paths don't resolve, which block the names they import.
     failed_paths: HashSet<ImportId>,
     /// The lookups that are waiting for a module to settle in this pass.
     waiting: Vec<WaitingLookup>,
@@ -748,8 +764,8 @@ fn may_bind(
 
 /// Whether a module blocks a name in a namespace (see [`Scope::block`]), or will once its imports
 /// are resolved, because a named import of the name into it only found a private item or its path
-/// doesn't resolve. Lookups past
-/// the module's own items don't find the name, like they don't once it's blocked.
+/// doesn't resolve. Lookups past the module's own items don't find the name, like they don't once
+/// it's blocked.
 fn blocks(
     ctx: &Compiler,
     resolution: &Resolution,
@@ -1083,8 +1099,8 @@ fn resolve_import(
 
                 // A name that a failed import blocked where it's looked up has already been
                 // reported there, unless that import only failed because of this one. The name
-                // may only be blocked in a later pass, through `super`, so the error is recorded
-                // and only reported once the imports are resolved.
+                // may only be blocked in a later pass, once the imports are resolved, so the error
+                // is recorded and only reported then.
                 record_blocked_import(
                     ctx,
                     &mut cache.blocked_imports,
@@ -1242,14 +1258,12 @@ fn resolve_import(
                     // A name that a failed import blocked in the module has already been
                     // reported, so it's blocked here too, unless something else brings it in
                     for (name, origins) in ctx.scope(source_scope).blocked(namespace) {
-                        for &origin in origins {
-                            resolution.failed_names.push(FailedName {
-                                scope: import_scope,
-                                namespace,
-                                name: name.to_string(),
-                                origin,
-                            });
-                        }
+                        resolution.failed_names.extend(FailedName::passed_on(
+                            import_scope,
+                            namespace,
+                            name,
+                            origins,
+                        ));
                     }
 
                     items
@@ -1460,14 +1474,13 @@ fn resolve_import(
                             continue;
                         }
 
-                        for &origin in ctx.scope(scope).block_origins(namespace, name) {
-                            resolution.failed_names.push(FailedName {
-                                scope: import_scope,
-                                namespace,
-                                name: name.to_string(),
-                                origin,
-                            });
-                        }
+                        let origins = ctx.scope(scope).block_origins(namespace, name);
+                        resolution.failed_names.extend(FailedName::passed_on(
+                            import_scope,
+                            namespace,
+                            name,
+                            origins,
+                        ));
                     }
                 }
 

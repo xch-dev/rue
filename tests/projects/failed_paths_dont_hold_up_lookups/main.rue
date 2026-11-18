@@ -2,7 +2,8 @@ export b::*;
 import nope::u;
 
 // The lookup of `u` doesn't wait for `import nope::u` to bring it in, so it isn't forced past it to
-// the sibling file once nothing else can be resolved
+// the sibling file once nothing else can be resolved. The glob import of `b` keeps the lookup
+// waiting in the pass that the path fails in, so the failed path has to count as progress.
 mod a {
     import super::u;
 

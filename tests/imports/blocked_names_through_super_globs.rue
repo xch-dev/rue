@@ -10,7 +10,8 @@ mod m {
     }
 }
 
-// A name that a failed import blocks is blocked through every level of `super::*` below it
+// A name that a failed import blocks is blocked through every level of `super::*` below it, for
+// uses, named imports through `super`, paths in imports and code, and signatures
 mod a {
     import super::*;
 
