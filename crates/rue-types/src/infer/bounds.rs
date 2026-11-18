@@ -409,6 +409,25 @@ pub(crate) fn pass_upper_bounds(
 
     while let Some(((generic, upper, branches), add)) = stack.pop() {
         if add {
+            // A renamed generic with no lower candidates is either the generic it was renamed from
+            // (see `Inference::rename`) or what its held candidates are, as before bounds were passed
+            // on to it, so it isn't passed one that the generic it was renamed from already
+            // satisfies, which would otherwise decide its type (#361)
+            let held_by_original = !given_directly.contains(&(generic, upper))
+                && infer
+                    .candidates(generic)
+                    .is_some_and(|candidates| candidates.lower.is_empty())
+                && renamed.get(&generic).is_some_and(|&original| {
+                    compare_renamed(arena, builtins, &renamed, original, upper)
+                        == Comparison::Assign
+                });
+
+            // It isn't recorded as given either, so that an equivalent bound given directly still
+            // is. It has no lower candidates, so there's nothing to pass it on to
+            if held_by_original {
+                continue;
+            }
+
             let given = given.entry(generic).or_default();
 
             let holds = infer.holds(&results, &branches);
@@ -432,22 +451,7 @@ pub(crate) fn pass_upper_bounds(
                 continue;
             }
 
-            // A renamed generic with no lower candidates is either the generic it was renamed from
-            // (see `Inference::rename`) or what its held candidates are, as before bounds were passed
-            // on to it, so it isn't passed one that the generic it was renamed from already
-            // satisfies, which would otherwise decide its type (#361)
-            let held_by_original = !given_directly.contains(&(generic, upper))
-                && infer
-                    .candidates(generic)
-                    .is_some_and(|candidates| candidates.lower.is_empty())
-                && renamed.get(&generic).is_some_and(|&original| {
-                    compare_renamed(arena, builtins, &renamed, original, upper)
-                        == Comparison::Assign
-                });
-
-            if !held_by_original {
-                infer.push(generic, CandidateKind::Upper, upper, branches.clone());
-            }
+            infer.push(generic, CandidateKind::Upper, upper, branches.clone());
         }
 
         // The generics that flow into this one through its lower bounds must satisfy it too

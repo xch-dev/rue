@@ -151,3 +151,35 @@ fn given_directly<A>(value: A | nil, third: fn(a: A) -> Int, depth: Int) -> A | 
 test fn guard_given_directly() -> Int | nil {
     given_directly(5, fn(a: Int) => a, 1)
 }
+
+fn given_after_passed<B, A>(
+    first: fn(x: A) -> B,
+    value: A | nil,
+    third: fn(a: A) -> Int,
+    depth: Int,
+) -> (B, A) {
+    if depth == 0 {
+        let _ = third(unchecked_cast(value));
+        return unchecked_cast(first);
+    }
+
+    // Guard: `B` is declared first, so the expected `A | nil` passed on to the callee's `A` through
+    // `B` is skipped before its own `A | nil` is given to it directly. The skipped one doesn't keep
+    // the given one out, so the lambda's parameter is `A | nil` and its guard isn't unnecessary
+    let result: (A | nil, A | nil) = given_after_passed(
+        identity,
+        nil,
+        fn(x) => if x is nil {
+            1
+        } else {
+            2
+        },
+        depth - 1,
+    );
+    unchecked_cast(result)
+}
+
+test fn guard_given_after_passed() -> Int {
+    let _ = given_after_passed(fn(x: Int) => x, 1, fn(a: Int) => a, 1);
+    1
+}

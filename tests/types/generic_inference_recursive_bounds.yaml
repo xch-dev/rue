@@ -55,3 +55,10 @@ tests:
   runtime_cost: 3514
   byte_cost: 1740000
   total_cost: 1743514
+- name: guard_given_after_passed
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
