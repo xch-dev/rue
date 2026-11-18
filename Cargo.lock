@@ -1832,6 +1832,7 @@ dependencies = [
  "clvm-utils",
  "clvmr",
  "env_logger",
+ "expect-test",
  "indexmap",
  "rue-clvm",
  "rue-compiler",
