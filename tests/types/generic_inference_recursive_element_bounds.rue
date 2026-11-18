@@ -62,6 +62,31 @@ test fn lambda_after_nil_in_a_recursive_call() -> Int {
     recursive_nil((2, fn(x) => x), 1)
 }
 
+fn recursive_typed<T>(pair: (T, fn(first: Int, second: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // The untyped parameter comes after a typed one
+        return recursive_typed((1, fn(first: Int, second) => first + second), depth - 1);
+    }
+
+    pair.rest(0, pair.first)
+}
+
+test fn lambda_with_a_typed_parameter_in_a_recursive_call() -> Int {
+    recursive_typed((2, fn(_first: Int, second) => second), 1)
+}
+
+fn recursive_nested<T>(pair: (T, (Int, fn(value: T) -> Int)), depth: Int) -> Int {
+    if depth > 0 {
+        return recursive_nested((1, (2, fn(x) => x + 1)), depth - 1);
+    }
+
+    pair.rest.rest(pair.first)
+}
+
+test fn lambda_in_a_nested_pair_in_a_recursive_call() -> Int {
+    recursive_nested((2, (3, fn(x) => x)), 1)
+}
+
 fn recursive_value<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
     if depth > 0 {
         // Guard: the element before the lambda is the caller's `T`, so the lambda gets `T`, as
@@ -87,4 +112,79 @@ fn recursive_argument<T>(value: T, pair: (T, fn(value: T) -> Int), depth: Int) -
 
 test fn guard_generic_inferred_by_an_earlier_argument() -> Int {
     recursive_argument(2, (3, fn(x) => x), 1)
+}
+
+fn recursive_upper<T>(pair: (fn(value: T) -> Int, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: the first lambda bounds the callee's `T` by `T | Int` from above, which `T` is
+        // assignable to, so the second lambda still gets `T`, as before
+        return recursive_upper(
+            (
+                fn(_value: T | Int) => 1,
+                fn(value) => {
+                    let _same: T = value;
+                    1
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_lambda_after_an_upper_bound_the_callers_generic_satisfies() -> Int {
+    recursive_upper((fn(value: Int) => value, fn(value: Int) => value), 1)
+}
+
+fn recursive_local<T>(function: fn(value: T) -> Int, depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: a pair in a lambda's body isn't part of the argument, so the `T` written in its
+        // annotation is the caller's own, and the second lambda gets `T`, as before
+        return recursive_local(
+            fn(_value) => {
+                let _local: (fn(value: T) -> Int, fn(value: T) -> Int) = (
+                    fn(_value: T | Int) => 1,
+                    fn(value) => {
+                        let _same: T = value;
+                        1
+                    },
+                );
+                1
+            },
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_pair_in_a_lambda_body_in_a_recursive_call() -> Int {
+    recursive_local(fn(value: Int) => value, 1)
+}
+
+fn recursive_block<T>(pair: (Int, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: neither does a pair in a block that's an element, so what its annotation bounds
+        // isn't the callee's `T`
+        return recursive_block(
+            (
+                {
+                    let _local: (fn(value: T) -> Int, Int) = (fn(_value: T | Int) => 1, 1);
+                    1
+                },
+                fn(value) => {
+                    let _same: T = value;
+                    1
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_pair_in_a_block_in_a_recursive_call() -> Int {
+    recursive_block((1, fn(value: Int) => value), 1)
 }

@@ -101,9 +101,9 @@ pub struct ArgumentFrame {
     /// they were renamed from.
     pub renamed: HashMap<TypeId, TypeId>,
     /// The caller's generics that the argument's expected type has in place of the callee's
-    /// renamed generics that weren't inferred yet (see `restore_renamed`), mapped back to them.
-    /// It's only those that nothing else in the expected type gave, so each one stands for the
-    /// callee's generic.
+    /// renamed generics that weren't inferred yet (see `restore_renamed`), each with the generic it
+    /// stands for. It's only those that nothing else in the expected type gave, and only while the
+    /// pairs and lists the argument is made of are compiled (see `compile_element`).
     pub restored: HashMap<TypeId, TypeId>,
 }
 
@@ -768,6 +768,11 @@ impl Compiler {
     /// one, to be put back with `Compiler::set_argument_frame`.
     pub fn take_argument_frame(&mut self) -> Option<ArgumentFrame> {
         self.call_frames.last_mut()?.argument.take()
+    }
+
+    /// The argument of the innermost call being inferred that's being compiled, if there is one.
+    pub fn argument_frame_mut(&mut self) -> Option<&mut ArgumentFrame> {
+        self.call_frames.last_mut()?.argument.as_mut()
     }
 
     pub fn return_target_mut(&mut self) -> Option<&mut ReturnTarget> {
