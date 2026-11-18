@@ -26,16 +26,9 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
         declarations: ModuleDeclarations::default(),
     }));
 
-    let mut declarations = ModuleDeclarations::default();
-
-    let range = module.syntax().text_range();
-    ctx.push_scope(scope, range.start());
-    ctx.push_inline_module(symbol);
-    declare_module_items(ctx, module.items(), &mut declarations);
-    ctx.pop_inline_module();
-    ctx.pop_scope(range.end());
-
-    ctx.module_mut(symbol).declarations = declarations;
+    in_module(ctx, module, symbol, |ctx, declarations| {
+        declare_module_items(ctx, module.items(), declarations);
+    });
 
     if ctx.source().kind.check_unused() {
         let srcloc = ctx.srcloc(module.syntax());

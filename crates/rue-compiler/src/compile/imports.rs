@@ -304,12 +304,11 @@ pub fn resolve_imports(
             continue;
         }
 
-        // Nothing else can be resolved, so the lookups that are waiting for a nearer scope to
-        // bring in a name are made without waiting. The outermost modules' go first, since the
-        // imports that a lookup waits for are in its own module or one that it's in (through
-        // `super`). A forced lookup can
-        // still be wrong if the scopes wait on each other, which is checked once they're all
-        // resolved.
+        // Nothing else can be resolved, so the lookups that are waiting for a module to bring in a
+        // name are made without waiting. The outermost modules' go first, since the imports that
+        // a lookup waits for are in its own module or one that it's in (through `super`). A
+        // forced lookup can still be wrong if the modules wait on each other, which is checked
+        // once they're all resolved.
         let Some(depth) = resolution.deferred.iter().map(|&(depth, _)| depth).min() else {
             break;
         };
