@@ -370,7 +370,7 @@ fn compile(rue: &Path, dir: &Path, seed: u64, timeout: Duration) -> Result<Recor
     let mut bytes = out.join().unwrap()?;
     bytes.extend(err.join().unwrap()?);
     let text = String::from_utf8_lossy(&bytes);
-    let error = text
+    let mut error = text
         .lines()
         .find(|line| line.starts_with("Error"))
         .map(ToString::to_string);
@@ -378,6 +378,12 @@ fn compile(rue: &Path, dir: &Path, seed: u64, timeout: Duration) -> Result<Recor
     let (status, output) = match status {
         None => (Status::Timeout, None),
         Some(status) if status.code().is_none() || text.contains("panicked") => {
+            (Status::Crashed, None)
+        }
+        // Without an error it reports, it didn't run as expected, such as a `rue` binary without
+        // a `build` command, so it's kept as a crash with the first thing it printed
+        Some(status) if !status.success() && error.is_none() => {
+            error = text.lines().next().map(ToString::to_string);
             (Status::Crashed, None)
         }
         Some(_) => {
