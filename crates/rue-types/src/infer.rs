@@ -206,8 +206,7 @@ impl Inference {
         self.choices
             .extend(other.choices.iter().map(|choice| Choice {
                 parent: choice.parent.as_ref().map(shift),
-                members: choice.members.clone(),
-                fallback: choice.fallback,
+                ..choice.clone()
             }));
 
         for (&generic, candidates) in &other.generics {
@@ -218,13 +217,7 @@ impl Inference {
                 CandidateKind::Upper,
                 CandidateKind::Held,
             ] {
-                let list = match kind {
-                    CandidateKind::Lower => &candidates.lower,
-                    CandidateKind::Upper => &candidates.upper,
-                    CandidateKind::Held => &candidates.held,
-                };
-
-                for (&ty, branches) in list.iter().zip(branches.list(kind)) {
+                for (&ty, branches) in candidates.list(kind).iter().zip(branches.list(kind)) {
                     self.push(generic, kind, ty, branches.iter().map(shift).collect());
                 }
             }
@@ -360,6 +353,14 @@ pub(crate) enum CandidateKind {
 }
 
 impl InferenceCandidates {
+    pub(crate) fn list(&self, kind: CandidateKind) -> &Vec<TypeId> {
+        match kind {
+            CandidateKind::Lower => &self.lower,
+            CandidateKind::Upper => &self.upper,
+            CandidateKind::Held => &self.held,
+        }
+    }
+
     pub(crate) fn list_mut(&mut self, kind: CandidateKind) -> &mut Vec<TypeId> {
         match kind {
             CandidateKind::Lower => &mut self.lower,

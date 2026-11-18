@@ -14,6 +14,10 @@ fn make<A, B>() -> fn(a: A) -> B {
     unchecked_cast(fn(value: Any) => value)
 }
 
+fn identity<T>(value: T) -> T {
+    value
+}
+
 fn head_or<T>(list: List<T>, default: T) -> T {
     default
 }
@@ -51,6 +55,52 @@ test fn lambda_body_waits_for_its_return_type() -> Int {
     function(1)
 }
 
+fn run<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A) -> Int {
+    second(first(value))
+}
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+// Once `call` is compiled, `A` is mapped to a type that references `B`, so `same(...)`, which reads
+// `A`, waits for the typed lambda that bounds `B` too, and `make()` is compiled against it
+test fn nested_call_waits_for_what_its_generics_are_mapped_to() -> Int {
+    run(call, fn(x3: (5, Int)) => 5, same(make(), fn() => fn() => (5, 9)))
+}
+
+fn tw<A>(value: (A, Int), function: fn(a: A) -> A) -> A {
+    function(value.first)
+}
+
+// A pair with a call in it waits like the call would (#352)
+test fn pair_with_a_call_waits_for_a_typed_lambda() -> Int {
+    let value = tw((head_or(nil, 5), 1), fn(x: 5) => x);
+    value
+}
+
+fn take_function<T>(value: T, other: fn(f: T) -> Int) -> T {
+    value
+}
+
+// So does a `const` block
+test fn const_block_waits_for_a_typed_lambda() -> Int {
+    let value = take_function(const { identity(5) }, fn(f: 5) => 1);
+    value
+}
+
+type Same<T> = T;
+
+fn through_alias<T>(value: Same<T>, other: fn(f: T) -> Int) -> Int {
+    other(value)
+}
+
+// A lambda passed for a generic behind an alias waits for the argument that infers it
+test fn lambda_for_an_aliased_generic_waits() -> Int {
+    let value = through_alias(fn(x) => x + 1, fn(f: fn(a: Int) -> Int) => f(1));
+    value
+}
+
 // Guards: these compile on main, and must keep compiling. Each fails if the rule it's named for
 // is removed.
 
@@ -58,8 +108,9 @@ fn pick<A, B>(first: A, second: ((B, A), B), third: B) -> B {
     third
 }
 
-// The pair waits for `A`, which the first argument infers. The `7` can't go ahead of it, since
-// the pair already sees `B` mapped to `7` from the expected type, which `7` would widen to `Int`
+// The pair waits for `A`, which the first argument infers. The `7` doesn't go ahead of it: it
+// would widen `B`, which the pair already sees mapped to `7` from the expected type, and it isn't
+// a lambda. Either rule keeps it from going first
 test fn argument_doesnt_widen_an_earlier_ones_expected_type() -> Int {
     let value: 7 = pick(unchecked_cast::<Int>(nil), ((7, 4), map(fn(x: 5) => 7, 5)), 7);
     value
@@ -90,8 +141,9 @@ fn duplicate<T>(value: T) -> (T, T) {
     (value, value)
 }
 
-// `fn(x3) => "a"` reads `B`, which is mapped to `(A, A)` while `A` waits for the third argument,
-// so it waits for `A` too
+// `fn(x3) => "a"` reads `B`, which is mapped to `(A, A)` while `A` waits for the third argument.
+// It waits for `A` too, both through what `B` is mapped to and because the third argument doesn't
+// wait for it in turn, since the lambda only gives `A` a lower bound
 fn recursive_cycle<A, B>(
     forward: fn(a: A) -> B,
     backward: fn(b: B) -> A,
@@ -188,9 +240,10 @@ test fn nested_call_doesnt_wait_for_a_lower_bound() -> Int {
     function(5)
 }
 
-// The `5` doesn't go ahead of `or_else(...)`, which waits for it, since `or_else` infers what it
-// needs from its own arguments, and the widened `A` from `5` would make `five_only` the wrong
-// type for it
+// Neither the `5` nor the typed lambda goes ahead of `or_else(...)`, which waits for both. The `5`
+// would widen `A`, which `or_else` infers from its own arguments, and the lambda would add to
+// `B`, which `or_else` already sees mapped to `Int` from the expected type. Either way `five_only`
+// would be the wrong type for it
 test fn argument_doesnt_go_ahead_of_an_earlier_one() -> Int {
     let value: Int = cycle(
         or_else(feed(fn<V>(value: V) => value, five_only), fn(x8: 5) => 8),
@@ -198,18 +251,4 @@ test fn argument_doesnt_go_ahead_of_an_earlier_one() -> Int {
         5,
     );
     value
-}
-
-fn run<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A) -> Int {
-    second(first(value))
-}
-
-fn call<B>(function: fn() -> B) -> B {
-    function()
-}
-
-// Once `call` is compiled, `A` is mapped to a type that references `B`, so `same(...)`, which reads
-// `A`, waits for the typed lambda that bounds `B` too, and `make()` is compiled against it
-test fn nested_call_waits_for_what_its_generics_are_mapped_to() -> Int {
-    run(call, fn(x3: (5, Int)) => 5, same(make(), fn() => fn() => (5, 9)))
 }

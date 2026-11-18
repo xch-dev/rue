@@ -1982,6 +1982,65 @@ mod inference {
     }
 
     #[test]
+    fn appended_inferences_match_one_inference() {
+        let mut db = Db::new();
+        let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);
+        let t = db.generic("T");
+
+        // Two arguments compared against params with nested unions, as if into one inference
+        let optional = db.union(&[t, nil]);
+        let first_param = db.pair(optional, int);
+        let other = db.pair(int, t);
+        let first_param = db.union(&[first_param, other]);
+        let first_value = db.pair(int, bytes);
+        let second_param = db.union(&[t, nil]);
+        let second_value = db.union(&[bytes, nil]);
+
+        // The one with a nested union goes second, so that its choices' parents need shifting
+        let mut together = Inference::new([t]);
+        db.infer(second_value, second_param, &mut together);
+        db.infer(first_value, first_param, &mut together);
+
+        let mut first = Inference::new([t]);
+        db.infer(second_value, second_param, &mut first);
+        let mut second = Inference::new([t]);
+        db.infer(first_value, first_param, &mut second);
+
+        // Appending to an empty inference, and appending one with no unions, change nothing else
+        let mut appended = Inference::new([t]);
+        appended.append(&first);
+        appended.append(&second);
+        appended.append(&Inference::new([t]));
+
+        assert_eq!(candidates(&appended, t), candidates(&together, t));
+        assert_eq!(
+            appended.matched_candidates(t),
+            together.matched_candidates(t)
+        );
+
+        // Each candidate holds under the same members as in the one inference
+        let all = candidates(&together, t);
+        for (kind, len) in [
+            (CandidateKind::Lower, all.lower.len()),
+            (CandidateKind::Upper, all.upper.len()),
+            (CandidateKind::Held, all.held.len()),
+        ] {
+            for index in 0..len {
+                assert_eq!(
+                    appended.branches(t, kind, index),
+                    together.branches(t, kind, index)
+                );
+            }
+        }
+
+        // The comparison with the nested union has a member whose candidate doesn't hold, in either
+        assert_ne!(
+            candidates(&together, t),
+            together.matched_candidates(t).unwrap()
+        );
+    }
+
+    #[test]
     fn retained_bounds_keep_the_members_they_were_collected_under() {
         let mut db = Db::new();
         let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);

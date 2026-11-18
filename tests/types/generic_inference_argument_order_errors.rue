@@ -7,3 +7,30 @@ fn apply<T>(pair: (T, fn(value: T) -> Int)) -> Int {
 fn lambda_in_a_pair() -> Int {
     apply((1, fn(x) => x))
 }
+
+fn head_or<T>(list: List<T>, default: T) -> T {
+    default
+}
+
+fn take<T>(value: T, function: fn(a: T) -> T) -> T {
+    value
+}
+
+// `head_or(...)` waits for the typed lambda, but its candidates still come first, so the union's
+// members are in the order the arguments come in, as they were before
+fn candidates_keep_the_argument_order() -> nil {
+    let value = take(head_or(nil, "hi"), fn(x: 5 | "hi") => 5);
+    let shown: nil = value;
+    shown
+}
+
+fn either<A, T>(first: fn(a: A) -> T, second: fn(b: Int) -> T) -> T {
+    second(1)
+}
+
+// The typed lambda goes first, as #265 ordered them, so its `String` comes before `Int`
+fn typed_lambda_goes_first() -> nil {
+    let value = either(fn(x: Int) => "a", fn(y) => 5);
+    let shown: nil = value;
+    shown
+}
