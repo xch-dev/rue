@@ -28,3 +28,18 @@ fn apply_all<T>(pairs: List<(T, fn(value: T) -> Int)>) -> Int {
 test fn lambdas_in_a_list() -> Int {
     apply_all([(1, fn(x) => x), (2, fn(y) => y * 2)])
 }
+
+fn apply_list<T>(items: (T, (fn(value: T) -> Int, nil))) -> Int {
+    items.rest.first(items.first)
+}
+
+// A list item that's a lambda gets the generic's solution from the items before it
+test fn lambda_item_after_a_value_in_a_list() -> Int {
+    apply_list([1, fn(x) => x])
+}
+
+// A call inside the argument infers its own generics, with its own elements, and its lambda is
+// compiled with what the outer pair's first element inferred
+test fn call_inside_the_argument() -> Int {
+    apply((1, fn(x) => apply((x, fn(y) => y))))
+}

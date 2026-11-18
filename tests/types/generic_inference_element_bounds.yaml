@@ -20,3 +20,17 @@ tests:
   runtime_cost: 5408
   byte_cost: 1404000
   total_cost: 1409408
+- name: lambda_item_after_a_value_in_a_list
+  program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (q 2 5 (c 2 ())) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) (c (q 2 (f (r 1)) (c (f 1) ())) ()))
+  output: "1"
+  runtime_cost: 885
+  byte_cost: 612000
+  total_cost: 612885
+- name: call_inside_the_argument
+  program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 (q . 2)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))))) (c (q 2 3 (c 2 ())) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))))) (c (q 2 (r 1) (c (f 1) ())) ()))
+  output: "1"
+  runtime_cost: 2200
+  byte_cost: 1404000
+  total_cost: 1406200

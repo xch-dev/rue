@@ -94,7 +94,6 @@ pub(crate) fn infer_call(
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
             solver: solver.clone(),
-            renamed: renamed.clone(),
         }));
         let value = compile_expr(ctx, expr, Some(expected));
         ctx.set_argument_frame(None);
@@ -642,6 +641,10 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
 /// would otherwise get the generic itself as a parameter type, as in `apply((1, fn(x) => x))`
 /// (#350). Only an element with a lambda in it is compiled against this, so that other elements
 /// are compiled as they were.
+///
+/// In a recursive call, the callee's generics are renamed, and the argument's expected type has
+/// them restored to the caller's generics before it's compiled (see `restore_renamed`), so it
+/// doesn't reference the call's generics and this doesn't apply.
 pub(crate) fn refine_element_expected(
     ctx: &mut Compiler,
     expected: TypeId,
@@ -656,8 +659,7 @@ pub(crate) fn refine_element_expected(
     };
 
     let inferred = ctx.solve_arguments(&argument.solver, &argument.infer);
-    let mut mappings = ctx.argument_mappings(&argument.solver, &argument.infer, inferred);
-    restore_renamed(ctx, &mut mappings, &argument.renamed);
+    let mappings = ctx.argument_mappings(&argument.solver, &argument.infer, inferred);
     ctx.set_argument_frame(Some(argument));
 
     substitute_with_mappings(ctx.types_mut(), expected, &mappings)

@@ -89,8 +89,6 @@ pub struct ArgumentFrame {
     /// The candidates of the arguments compiled before this one, and of this one's elements so far.
     pub infer: Inference,
     pub solver: Rc<CallSolver>,
-    /// The callee's generics that were renamed, and the generics they were renamed from.
-    pub renamed: HashMap<TypeId, TypeId>,
 }
 
 /// The function or lambda body that a `return` statement exits from.
