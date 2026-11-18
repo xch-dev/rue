@@ -869,6 +869,47 @@ fn is_step_limit(payload: &(dyn Any + Send)) -> bool {
 /// with it, for generic functions that reference their generics inside recursive types).
 const STEP_LIMIT: usize = 20_000;
 
+/// Generates a random module from the seed, and the cases to compare in it: two types, and a target
+/// with a generic being inferred, such as a parameter of type `(T, rhs)`. Returns `None` if the
+/// module is skipped (see `Generator::module`).
+fn cases(
+    seed: u64,
+    queries: usize,
+    contractive_only: bool,
+    nesting: usize,
+) -> Option<(Types, Vec<[TypeId; 4]>)> {
+    let mut db = Types::new();
+    let mut generator = Generator {
+        db: &mut db,
+        rng: Rng(seed),
+        aliases: Vec::new(),
+        structs: Vec::new(),
+        contractive_only,
+        nesting,
+    };
+
+    // Substituting some generic aliases takes exponential work (since each application copies its
+    // arguments), so the checks give up as well
+    give_up_after(|| generator.module()).flatten()?;
+
+    let cases = (0..queries)
+        .map(|_| {
+            let lhs = generator.query();
+            let rhs = generator.query();
+            let generic = generator.db.generic();
+            let target = if generator.rng.chance(50) {
+                generator.db.pair(generic, rhs)
+            } else {
+                generator.db.union(vec![generic, rhs])
+            };
+
+            [lhs, rhs, target, generic]
+        })
+        .collect();
+
+    Some((db, cases))
+}
+
 /// Compares random types with the memo on and off, and panics if any result differs.
 fn differential(
     seeds: impl IntoIterator<Item = u64>,
@@ -879,39 +920,10 @@ fn differential(
     let mut summary = Summary::default();
 
     for seed in seeds {
-        let mut db = Types::new();
-        let mut generator = Generator {
-            db: &mut db,
-            rng: Rng(seed),
-            aliases: Vec::new(),
-            structs: Vec::new(),
-            contractive_only,
-            nesting,
-        };
-
-        // Substituting some generic aliases takes exponential work (since each application copies
-        // its arguments), so the checks give up as well
-        if give_up_after(|| generator.module()).flatten().is_none() {
+        let Some((mut db, cases)) = cases(seed, queries, contractive_only, nesting) else {
             summary.skipped_modules += 1;
             continue;
-        }
-
-        let cases: Vec<[TypeId; 4]> = (0..queries)
-            .map(|_| {
-                let lhs = generator.query();
-                let rhs = generator.query();
-
-                // A target with a generic being inferred, such as a parameter of type `(T, rhs)`
-                let generic = generator.db.generic();
-                let target = if generator.rng.chance(50) {
-                    generator.db.pair(generic, rhs)
-                } else {
-                    generator.db.union(vec![generic, rhs])
-                };
-
-                [lhs, rhs, target, generic]
-            })
-            .collect();
+        };
 
         for [lhs, rhs, target, generic] in cases {
             let with_memo =
@@ -1038,6 +1050,42 @@ fn test_memo_differential_nested() {
     assert_eq!(summary.cases, 5, "{summary:?}");
     let summary = with_large_stack(|| differential([35_565], 8, true, HEAVY_NESTING));
     assert!(summary.cases > 0, "{summary:?}");
+}
+
+/// The results of `test_memo_differential_nested`'s cases with the memo, one line each, or `gave
+/// up` for a case that takes more than `STEP_LIMIT` steps.
+fn nested_baseline(seeds: impl IntoIterator<Item = u64>, queries: usize) -> String {
+    let mut text = String::new();
+
+    for seed in seeds {
+        let Some((mut db, cases)) = cases(seed, queries, true, HEAVY_NESTING) else {
+            writeln!(text, "{seed}: skipped").unwrap();
+            continue;
+        };
+
+        for (index, [lhs, rhs, target, generic]) in cases.into_iter().enumerate() {
+            let names = [lhs, rhs, target].map(|id| stringify(&mut db.arena, id));
+            let results = give_up_after(|| results(&mut db, lhs, rhs, target, generic))
+                .unwrap_or_else(|| "gave up".to_string());
+            let line = format!(
+                "{seed}.{index}: {} to {}, target {}\n    {results}",
+                names[0], names[1], names[2]
+            );
+            writeln!(text, "{}", renumber_generics(&line)).unwrap();
+        }
+    }
+
+    text
+}
+
+/// A baseline of the results of comparing generic functions that nest their generics, which
+/// #362's step 13b changes: instead of merging the instances of each occurrence of a generic
+/// function that's reached again, it instantiates each one on its own. Every result it changes
+/// then shows in the diff of `nested_baseline.txt`, which `UPDATE_EXPECT=1` rewrites.
+#[test]
+fn test_nested_baseline() {
+    let text = with_large_stack(|| nested_baseline(0..150, 4));
+    expect_test::expect_file!["nested_baseline.txt"].assert_eq(&text);
 }
 
 /// A larger run of `test_memo_differential_nested`, which takes a few minutes in release builds.
