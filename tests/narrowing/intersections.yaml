@@ -4,6 +4,7 @@ tests:
   debug_program: (a (i (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (f 2) (r 2)) (q)) 1)
   solution: ((3 . 4))
   output: "7"
+  value: "7"
   runtime_cost: 2101
   byte_cost: 972000
   total_cost: 974101
@@ -12,6 +13,7 @@ tests:
   debug_program: (a (i (all (a (i (l 2) (q 2 (i (not (l (f 2))) (q 1 . 1) (q)) 1) (q)) 1) (a (i (l 2) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1)) (q 16 (f 2) (r 2)) (q)) 1)
   solution: ((3 . 4))
   output: "7"
+  value: "7"
   runtime_cost: 2970
   byte_cost: 1092000
   total_cost: 1094970
@@ -20,6 +22,7 @@ tests:
   debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 6 2) (q)) 1)
   solution: ((0x0000000000000000000000000000000000000000000000000000000000000000 . 5))
   output: "5"
+  value: "5"
   runtime_cost: 791
   byte_cost: 540000
   total_cost: 540791
@@ -28,6 +31,7 @@ tests:
   debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f (r 2)))) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (f 2) (f (r 2))) (q)) 1)
   solution: ((3 4))
   output: "7"
+  value: "7"
   runtime_cost: 1607
   byte_cost: 612000
   total_cost: 613607
@@ -36,6 +40,7 @@ tests:
   debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q 5 2) (c 2 1)) (q)) 1)
   solution: ((7))
   output: "7"
+  value: "7"
   runtime_cost: 771
   byte_cost: 492000
   total_cost: 492771

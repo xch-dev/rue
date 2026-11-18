@@ -156,6 +156,7 @@ tests:
   debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (/ 2 (q . 2)) 1))
   solution: (7 1)
   output: "3"
+  value: "3"
   runtime_cost: 1336
   byte_cost: 324000
   total_cost: 325336
@@ -164,6 +165,7 @@ tests:
   debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (+ (* 2 (q . 2)) (q . 1)) 1))
   solution: (3 1)
   output: "7"
+  value: "7"
   runtime_cost: 2105
   byte_cost: 420000
   total_cost: 422105
@@ -172,6 +174,7 @@ tests:
   debug_program: (a (q 2 2 (c (q . 5) (* 5 (q . 2)))) (c (q . 2) 1))
   solution: (3)
   output: "5"
+  value: "5"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -180,6 +183,7 @@ tests:
   debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (f 2) 1))
   solution: ((4 . 5) 1)
   output: "4"
+  value: "4"
   runtime_cost: 313
   byte_cost: 228000
   total_cost: 228313
@@ -202,6 +206,7 @@ tests:
   debug_program: (a (q 1 . 5) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   output: "5"
+  value: "5"
   runtime_cost: 246
   byte_cost: 564000
   total_cost: 564246
@@ -245,6 +250,7 @@ tests:
   debug_program: (a (q 2 (q 2 9 (c (c 2 13) 11)) (c (a 6 (q . 5)) 1)) (c (c (q 16 4 3) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1)) 1))
   solution: (3)
   output: "8"
+  value: "8"
   runtime_cost: 2013
   byte_cost: 708000
   total_cost: 710013
@@ -287,6 +293,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 5)) 1)) (c (q 2 (i (= 3 ()) (q) (q 2 2 (c 2 (- 3 (q . 1))))) 1) 1))
   solution: (3 1)
   output: ()
+  value: "0"
   runtime_cost: 5029
   byte_cost: 1020000
   total_cost: 1025029
@@ -302,6 +309,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 5 ())) 1)) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 1))
   solution: (3 1)
   output: "4"
+  value: "4"
   runtime_cost: 1339
   byte_cost: 492000
   total_cost: 493339
@@ -329,6 +337,7 @@ tests:
   debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (% 2 (q . 3)) 1))
   solution: (7 1)
   output: "1"
+  value: "1"
   runtime_cost: 1336
   byte_cost: 324000
   total_cost: 325336
@@ -343,6 +352,7 @@ tests:
   debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 3)) 1))
   solution: (1 1)
   output: "8"
+  value: "8"
   runtime_cost: 942
   byte_cost: 324000
   total_cost: 324942
@@ -363,6 +373,7 @@ tests:
   debug_program: (a (q 2 (i 11 (q . 2) (q 11 ())) 1) (c (sha256 2) 1))
   solution: ("abc" 1)
   output: "0xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  value: "0xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
   runtime_cost: 857
   byte_cost: 324000
   total_cost: 324857
@@ -384,6 +395,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 4 (c (c 4 6) 5)) 1)) (c (c (q 2 (i (= 3 ()) (q 1 . 1) (q 2 6 (c (c 4 6) (- 3 (q . 1))))) 1) (q 2 (i (= 3 ()) (q) (q 2 4 (c (c 4 6) (- 3 (q . 1))))) 1)) 1))
   solution: (4 1)
   output: "1"
+  value: "true"
   runtime_cost: 6415
   byte_cost: 1596000
   total_cost: 1602415
@@ -413,6 +425,7 @@ tests:
   debug_program: (a (q 2 (q 2 (q 2 (i 23 (q . 2) (q 16 2 (q . 1))) 1) (c (+ 2 (q . 1)) 1)) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (1)
   output: "6"
+  value: "6"
   runtime_cost: 2500
   byte_cost: 1212000
   total_cost: 1214500
@@ -421,6 +434,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q 8 (q . "raise called at keep_checks.rue:711:9") (q . "rejected")) (q . 2)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (3 ())
   output: "3"
+  value: "3"
   runtime_cost: 1502
   byte_cost: 852000
   total_cost: 853502
@@ -429,6 +443,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 2 (i 23 (q 1 . 1) (q)) 1) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (5 1)
   output: "1"
+  value: "true"
   runtime_cost: 1740
   byte_cost: 1044000
   total_cost: 1045740
@@ -437,6 +452,7 @@ tests:
   debug_program: (a (q 2 (q 3 (q . 1) (a (i 23 (q 1 . 1) (q)) 1) (a 13 2)) (c (a 4 5) 1)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) (q 16 1 (q . 1))) 1))
   solution: (3 1)
   output: "1"
+  value: "1"
   runtime_cost: 2245
   byte_cost: 924000
   total_cost: 926245
@@ -445,6 +461,7 @@ tests:
   debug_program: (a (q 2 (i 47 (q 16 4 (strlen 6)) (q)) 1) (c (c (a (c (c (q . 16) ()) (c 2 (c 5 ()))) ()) (a (c (c (q . 14) ()) (c 11 (c 11 ()))) ())) 1))
   solution: (1 2 "ab" 1)
   output: "7"
+  value: "7"
   runtime_cost: 3718
   byte_cost: 1116000
   total_cost: 1119718
@@ -453,6 +470,7 @@ tests:
   debug_program: (a (q 2 (i 5 (q . 2) (q)) 1) (c (q . 6) 1))
   solution: (1)
   output: "6"
+  value: "6"
   runtime_cost: 146
   byte_cost: 132000
   total_cost: 132146
@@ -474,6 +492,7 @@ tests:
   debug_program: (q . 5)
   solution: (50)
   output: "5"
+  value: "5"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -510,6 +529,7 @@ tests:
   debug_program: (q . 5)
   solution: (50)
   output: "5"
+  value: "5"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -525,6 +545,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 5)) 1)) (c (q 16 (a 2 (c 3 ())) (a 2 (c 3 ()))) 1))
   solution: (50 ())
   output: ()
+  value: "0"
   runtime_cost: 535
   byte_cost: 1044000
   total_cost: 1044535
@@ -547,6 +568,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 4 (c 6 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 5))) 1)) (c (c (q 2 2 (c 5 7)) (q 16 (a 2 (c 3 ())) (a 2 (c 3 ())))) 1))
   solution: (50 ())
   output: ()
+  value: "0"
   runtime_cost: 535
   byte_cost: 1044000
   total_cost: 1044535
@@ -569,6 +591,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 (c 2 (c (q . 3) (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))))) 1)) (c (q 2 (i (> 5 ()) (q 16 (a 7 (c 5 ())) (a 2 (c 2 (c (- 5 (q . 1)) 7)))) (q)) 1) 1))
   solution: (50 ())
   output: ()
+  value: "0"
   runtime_cost: 535
   byte_cost: 2268000
   total_cost: 2268535
@@ -584,6 +607,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 4 (c (c 4 6) (c (q . 4) (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))))) 1)) (c (c (q 2 (i (> 5 ()) (q 2 6 (c (c 4 6) (c (- 5 (q . 1)) 7))) (q 2 7 (c 5 ()))) 1) (q 2 (i (> 5 ()) (q 2 4 (c (c 4 6) (c (- 5 (q . 1)) 7))) (q)) 1)) 1))
   solution: (50 ())
   output: ()
+  value: "0"
   runtime_cost: 606
   byte_cost: 2892000
   total_cost: 2892606
@@ -592,6 +616,7 @@ tests:
   debug_program: (a (q 2 2 (c 5 (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))))) (c (q . 2) 1))
   solution: (50)
   output: "50"
+  value: "50"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
@@ -605,6 +630,7 @@ tests:
   program: (q . 1)
   debug_program: (q . 1)
   output: "1"
+  value: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -620,6 +646,7 @@ tests:
   debug_program: "2"
   solution: (50)
   output: "50"
+  value: "50"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
@@ -642,6 +669,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 5)) 1)) (c (c (q 16 2 (q . 1)) (q 16 (a 2 (c 3 ())) (a 2 (c 3 ())))) 1))
   solution: (50 ())
   output: ()
+  value: "0"
   runtime_cost: 535
   byte_cost: 1044000
   total_cost: 1044535
@@ -691,6 +719,7 @@ tests:
   debug_program: (a (q 2 4 (c 6 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 5))) (c (c (q 2 2 (c 7 5)) (q . 2)) 1))
   solution: (50)
   output: "50"
+  value: "50"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
@@ -732,6 +761,7 @@ tests:
   debug_program: (a (q 16 5 11) (c (c (q 16 2 (q . 1)) (q 16 2 (q . 2))) 1))
   solution: (5 1)
   output: "6"
+  value: "6"
   runtime_cost: 856
   byte_cost: 84000
   total_cost: 84856
@@ -740,6 +770,7 @@ tests:
   debug_program: "5"
   solution: (5 0)
   output: ()
+  value: "0"
   runtime_cost: 52
   byte_cost: 12000
   total_cost: 12052
@@ -760,6 +791,7 @@ tests:
   debug_program: (a (q 16 (a 6 (c 11 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (a 6 (c 5 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) (c (c (q 16 2 (q . 1)) (q 2 (q 2 (i (> 5 ()) (q . 2) (q)) 1) (c (a 3 (c 2 ())) 1))) 1))
   solution: (1 2)
   output: "5"
+  value: "5"
   runtime_cost: 5469
   byte_cost: 1188000
   total_cost: 1193469
@@ -774,6 +806,7 @@ tests:
   debug_program: (a (q 2 4 (c 4 (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) 5))) (c (c (q 2 (i (not (l 7)) (q) (q 2 (q 2 (q 2 (i (> (f 5) ()) (q 4 2 (a 11 (c 11 (c 23 (r 5))))) (q 2 11 (c 11 (c 23 (r 5))))) 1) (c (a 11 (c (f 2) ())) 1)) (c 7 1))) 1) (q 18 2 (q . 2))) 1))
   solution: ((1 -2 3))
   output: (2 6)
+  value: "[2, 6]"
   runtime_cost: 8908
   byte_cost: 1860000
   total_cost: 1868908
@@ -788,6 +821,7 @@ tests:
   debug_program: (a (q 2 10 (c 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 5))) (c (c (q 16 2 (q . 1)) (c (q 16 (a 2 (c 7 5)) (q . 1)) (q 2 (q 2 (i (> 5 ()) (q . 2) (q)) 1) (c (a 3 (c 2 ())) 1)))) 1))
   solution: (4)
   output: "6"
+  value: "6"
   runtime_cost: 3172
   byte_cost: 996000
   total_cost: 999172
@@ -796,6 +830,7 @@ tests:
   debug_program: (a (q 16 (+ 2 11) (q . 2)) (c (/ (q . 100) 2) 1))
   solution: (5 1)
   output: "23"
+  value: "23"
   runtime_cost: 2226
   byte_cost: 228000
   total_cost: 230226
@@ -804,6 +839,7 @@ tests:
   debug_program: (+ (+ (/ (q . 100) 2) 5) (q . 2))
   solution: (5 1)
   output: "23"
+  value: "23"
   runtime_cost: 2226
   byte_cost: 228000
   total_cost: 230226
@@ -812,6 +848,7 @@ tests:
   debug_program: (a (q 16 2 (q . 1)) (c (/ (q . 100) 2) 1))
   solution: (5)
   output: "21"
+  value: "21"
   runtime_cost: 1851
   byte_cost: 204000
   total_cost: 205851
@@ -820,6 +857,7 @@ tests:
   debug_program: (a (q 16 2 (q . 1)) (c (/ (q . 100) 2) 1))
   solution: (5)
   output: "21"
+  value: "21"
   runtime_cost: 1851
   byte_cost: 204000
   total_cost: 205851
@@ -828,6 +866,7 @@ tests:
   debug_program: (a (q 2 2 (/ (q . 100) 5)) (c (q 16 (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) ()) (q . 1)) 1))
   solution: (5)
   output: "21"
+  value: "21"
   runtime_cost: 2900
   byte_cost: 972000
   total_cost: 974900
@@ -842,6 +881,7 @@ tests:
   debug_program: (a (q 2 (q 16 (+ (* 2 2) (a 9 11)) (a 9 23)) (c (a 6 (q . 2)) 1)) (c (c (q 18 1 (q . 2)) (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1427:5"))) 1)) 1))
   solution: (1 2)
   output: "10"
+  value: "10"
   runtime_cost: 5816
   byte_cost: 1308000
   total_cost: 1313816
@@ -850,6 +890,7 @@ tests:
   debug_program: (a (q 16 (+ 5 (+ 2 ())) (q . 1)) (c (/ (q . 100) 2) 1))
   solution: (5)
   output: "26"
+  value: "26"
   runtime_cost: 2222
   byte_cost: 228000
   total_cost: 230222
@@ -858,6 +899,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i (> 11 (q . 5)) (q 16 2 (q . 1)) (q 18 (+ 2 (q . 1)) (q . 2))) 1) (c (a 2 (q . 2)) 1)) (c (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1427:5"))) 1) 1))
   solution: (1)
   output: "6"
+  value: "6"
   runtime_cost: 3402
   byte_cost: 1332000
   total_cost: 1335402
@@ -866,6 +908,7 @@ tests:
   debug_program: (a (q 2 (q . 11) (c (a 6 (q . 2)) 1)) (c (c (q 18 1 (q . 2)) (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1427:5"))) 1)) 1))
   solution: (5)
   output: "5"
+  value: "5"
   runtime_cost: 2780
   byte_cost: 900000
   total_cost: 902780
@@ -902,6 +945,7 @@ tests:
   debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (+ (q . 5) 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (5 1)
   output: "10"
+  value: "10"
   runtime_cost: 1319
   byte_cost: 852000
   total_cost: 853319
@@ -910,6 +954,7 @@ tests:
   debug_program: "2"
   solution: (50)
   output: "50"
+  value: "50"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
@@ -925,6 +970,7 @@ tests:
   debug_program: "2"
   solution: (50)
   output: "50"
+  value: "50"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
@@ -933,6 +979,7 @@ tests:
   debug_program: "2"
   solution: (50)
   output: "50"
+  value: "50"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048

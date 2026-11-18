@@ -3,6 +3,7 @@ tests:
   program: ()
   debug_program: (a (i ("debug_print" (q . "print.rue:2:5") (q . "Hello, world!")) (q) (q)) 1)
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
@@ -12,6 +13,7 @@ tests:
   program: ()
   debug_program: (a (i ("debug_print" (q . "print.rue:6:5") (q . 1)) (q) (q 2 (i ("debug_print" (q . "print.rue:7:5") (q . 2)) (q) (q 2 (i ("debug_print" (q . "print.rue:8:5") (q . 3)) (q) (q)) 1)) 1)) 1)
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
@@ -23,6 +25,7 @@ tests:
   program: (a (q 3 () (a 2 (c 2 (q 1 2 3))) ()) (c (q 2 (i 3 (q 3 () (a 2 (c 2 7)) ()) (q)) 1) ()))
   debug_program: (a (q 3 (q . 1) () (a 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) (c (q 2 (i (not (l 3)) (q) (q 2 (i ("debug_print" (q . "print.rue:20:5") (f 3)) (q) (q 3 (q . 1) () (a 2 (c 2 (r 3))))) 1)) 1) ()))
   output: ()
+  value: nil
   runtime_cost: 2914
   byte_cost: 996000
   total_cost: 998914
@@ -41,16 +44,16 @@ tests:
   - "\"Asserting value is a pair\""
   - "\"Asserting first is a string\""
   - "\"Asserting rest is nil\""
-  - ("hello")
+  - ("hello", nil)
   - "\"Value is valid\""
   - "\"Second test\""
   - "\"Asserting value is a pair\""
   - "\"Asserting first is a string\""
   - "\"Asserting rest is nil\""
-  - ("goodbye")
+  - ("goodbye", nil)
   - "\"Value is valid\""
   - "\"Third test\""
   - "\"Asserting value is a pair\""
   - "\"Asserting first is a string\""
   - "\"Asserting rest is nil\""
-  - ("hello" . "world")
+  - ("hello", "world")

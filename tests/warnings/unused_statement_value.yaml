@@ -3,6 +3,7 @@ tests:
   program: ()
   debug_program: (i (q . 1) () (q . 42))
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
@@ -10,6 +11,7 @@ tests:
   program: ()
   debug_program: (i (q . 1) () ())
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
@@ -17,6 +19,7 @@ tests:
   program: ()
   debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q) ()))
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
@@ -24,6 +27,7 @@ tests:
   program: ()
   debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q 1 . 42) ()))
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044

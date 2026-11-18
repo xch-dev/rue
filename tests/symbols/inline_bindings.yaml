@@ -3,6 +3,7 @@ tests:
   program: (q . 42)
   debug_program: (a (q . 2) (c (q . 42) 1))
   output: "42"
+  value: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -10,6 +11,7 @@ tests:
   program: (q . 84)
   debug_program: (+ (q . 42) (q . 42))
   output: "84"
+  value: "84"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -17,6 +19,7 @@ tests:
   program: (a (q 16 2 2) (c (q . 42) 1))
   debug_program: (a (q 16 2 2) (c (q . 42) 1))
   output: "84"
+  value: "84"
   runtime_cost: 1078
   byte_cost: 276000
   total_cost: 277078

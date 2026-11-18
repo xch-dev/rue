@@ -1,6 +1,7 @@
 program: ()
 debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q) ()))
 output: ()
+value: Struct {}
 runtime_cost: 44
 byte_cost: 12000
 total_cost: 12044

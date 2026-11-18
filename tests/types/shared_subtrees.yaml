@@ -3,6 +3,7 @@ tests:
   program: ()
   debug_program: (a (q 2 (q 7 (a 5 2)) (c () 1)) (c (q . 1) ()))
   output: ()
+  value: "false"
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
@@ -10,6 +11,7 @@ tests:
   program: (a (q 2 (q 2 (i (l (a 5 2)) (q) (q 9 (a 5 2) ())) 1) (c () 1)) (c (q . 1) ()))
   debug_program: (a (q 2 (q 2 (i (not (l (a 5 2))) (q 2 (i (= (a 5 2) ()) (q 1 . 1) (q)) 1) (q)) 1) (c () 1)) (c (q . 1) ()))
   output: "1"
+  value: "true"
   runtime_cost: 1337
   byte_cost: 852000
   total_cost: 853337

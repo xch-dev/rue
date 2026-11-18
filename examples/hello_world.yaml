@@ -2,6 +2,7 @@ program: (q . "Hello, world!")
 debug_program: (q . "Hello, world!")
 solution: ()
 output: "\"Hello, world!\""
+value: "0x48656c6c6f2c20776f726c6421"
 runtime_cost: 20
 byte_cost: 192000
 total_cost: 192020
@@ -10,6 +11,7 @@ tests:
   program: ()
   debug_program: (a (q 2 (i (= (a 2 ()) (q . "Hello, world!")) (q) (q 8 (q . "assertion failed at hello_world.rue:6:5"))) 1) (c (q 1 . "Hello, world!") ()))
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044

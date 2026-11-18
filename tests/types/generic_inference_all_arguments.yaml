@@ -3,6 +3,7 @@ tests:
   program: (q . 1)
   debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q . 2) ()))
   output: "1"
+  value: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -10,6 +11,7 @@ tests:
   program: ()
   debug_program: (a (q 2 2 (c () (q . 42))) (c (q . 2) ()))
   output: ()
+  value: nil
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
@@ -17,6 +19,7 @@ tests:
   program: (sha256 (q . 97))
   debug_program: (a (q 2 2 (c (sha256 (q . 97)) (q . 0x0000000000000000000000000000000000000000000000000000000000000000))) (c (q . 2) ()))
   output: "0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+  value: "0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
   runtime_cost: 564
   byte_cost: 84000
   total_cost: 84564
@@ -24,6 +27,7 @@ tests:
   program: (q . 1)
   debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q . 2) ()))
   output: "1"
+  value: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -31,6 +35,7 @@ tests:
   program: (a (q 16 2 (q . 1)) (q 5))
   debug_program: (a (q 2 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))))) (c (q 2 3 (c 2 ())) ()))
   output: "6"
+  value: "6"
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
@@ -38,6 +43,7 @@ tests:
   program: (a (q 18 2 (q . 2)) (q 21))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) (q . 21))) (c (q 2 2 (c 3 ())) ()))
   output: "42"
+  value: "42"
   runtime_cost: 1199
   byte_cost: 252000
   total_cost: 253199
@@ -45,6 +51,7 @@ tests:
   program: (a (q . 2) (q 5))
   debug_program: (a (q 2 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))) (c (q 2 3 (c 2 ())) ()))
   output: "5"
+  value: "5"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179

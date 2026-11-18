@@ -4,6 +4,7 @@ tests:
   debug_program: (l 2)
   solution: ((42 42))
   output: "1"
+  value: "true"
   runtime_cost: 68
   byte_cost: 60000
   total_cost: 60068
@@ -12,6 +13,7 @@ tests:
   debug_program: (a (i (= (f 2) (q . 42)) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1) (q)) 1)
   solution: ((42 . 34))
   output: "1"
+  value: "true"
   runtime_cost: 593
   byte_cost: 420000
   total_cost: 420593
@@ -20,6 +22,7 @@ tests:
   debug_program: (a (i (a (i (= (f 2) (q . 42)) (q 1 . 1) (q 2 (i (= (f 2) (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (a (i (= (r 2) (q . 42)) (q 1 . 1) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   solution: ((42 . 34))
   output: "1"
+  value: "true"
   runtime_cost: 1223
   byte_cost: 1092000
   total_cost: 1093223
@@ -28,6 +31,7 @@ tests:
   debug_program: (a (i (l 2) (q 2 (i (a (i (a (i (not (l (f 2))) (q 2 (i (= (f 2) (q . 42)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (a (i (not (l (r 2))) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   solution: ((42 . 34))
   output: "1"
+  value: "true"
   runtime_cost: 1432
   byte_cost: 1212000
   total_cost: 1213432
@@ -36,6 +40,7 @@ tests:
   debug_program: (= (f 2) ())
   solution: ((0 . 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855))
   output: "1"
+  value: "true"
   runtime_cost: 214
   byte_cost: 84000
   total_cost: 84214
@@ -43,6 +48,7 @@ tests:
   program: (a (q 2 (i 4 (q 8) (q 2 (i (a (i 4 (q) (q 9 (strlen 6) (q . 32))) 1) (q 8) (q)) 1)) 1) (c (q ()) 1))
   debug_program: (a (q 2 (i (= (f 2) ()) (q 2 (i (not (a (i (= (f 2) ()) (q 2 (i (= (strlen (r 2)) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1)) (q) (q 8 (q . "assertion failed at pairs.rue:28:5"))) 1) (q 8 (q . "assertion failed at pairs.rue:25:5"))) 1) (c (c () ()) 1))
   output: ()
+  value: nil
   runtime_cost: 1366
   byte_cost: 1068000
   total_cost: 1069366

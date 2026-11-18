@@ -4,6 +4,7 @@ tests:
   debug_program: (i (q . 1) (q . 1) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at expr_statements.rue:42:5"))) 1))
   solution: (1)
   output: "1"
+  value: "1"
   runtime_cost: 944
   byte_cost: 444000
   total_cost: 444944
@@ -12,6 +13,7 @@ tests:
   debug_program: (i (q . 1) () (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at expr_statements.rue:42:5"))) 1))
   solution: (1)
   output: ()
+  value: nil
   runtime_cost: 968
   byte_cost: 420000
   total_cost: 420968
@@ -20,6 +22,7 @@ tests:
   debug_program: (i (q . 1) (i (q . 1) () (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at expr_statements.rue:42:5"))) 1)) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at expr_statements.rue:42:5"))) 1))
   solution: (1)
   output: ()
+  value: nil
   runtime_cost: 1770
   byte_cost: 732000
   total_cost: 733770
@@ -28,6 +31,7 @@ tests:
   debug_program: (i (q . 1) (i (q . 1) (c () ()) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at expr_statements.rue:42:5"))) 1)) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at expr_statements.rue:42:5"))) 1))
   solution: (1)
   output: (())
+  value: (nil, nil)
   runtime_cost: 1746
   byte_cost: 780000
   total_cost: 781746
@@ -36,6 +40,7 @@ tests:
   debug_program: (i (q . 1) (q . 1) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at expr_statements.rue:46:5"))) 1))
   solution: (1)
   output: "1"
+  value: "1"
   runtime_cost: 920
   byte_cost: 468000
   total_cost: 468920
@@ -44,6 +49,7 @@ tests:
   debug_program: (i (q . 1) () (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at expr_statements.rue:46:5"))) 1))
   solution: (1)
   output: ()
+  value: nil
   runtime_cost: 944
   byte_cost: 444000
   total_cost: 444944
@@ -52,6 +58,7 @@ tests:
   debug_program: (i (q . 1) (i (q . 1) () (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at expr_statements.rue:46:5"))) 1)) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at expr_statements.rue:46:5"))) 1))
   solution: (1)
   output: ()
+  value: nil
   runtime_cost: 2567
   byte_cost: 852000
   total_cost: 854567
@@ -60,6 +67,7 @@ tests:
   debug_program: (i (q . 1) (i (q . 1) (c () ()) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at expr_statements.rue:46:5"))) 1)) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at expr_statements.rue:46:5"))) 1))
   solution: (1)
   output: (())
+  value: (nil, nil)
   runtime_cost: 2543
   byte_cost: 900000
   total_cost: 902543

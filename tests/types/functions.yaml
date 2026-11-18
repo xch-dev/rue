@@ -3,6 +3,7 @@ tests:
   program: (q 18 2 2)
   debug_program: (c (q . 2) (c (c (q . 1) (q 18 2 2)) (c (q . 1) ())))
   output: (18 2 2)
+  value: "[18, 2, 2]"
   debug_output: (2 (1 18 2 2) 1)
   runtime_cost: 20
   byte_cost: 108000
@@ -11,6 +12,7 @@ tests:
   program: (q 18 2 2)
   debug_program: (c (q . 2) (c (c (q . 1) (q 18 2 2)) (c (q . 1) ())))
   output: (18 2 2)
+  value: "[18, 2, 2]"
   debug_output: (2 (1 18 2 2) 1)
   runtime_cost: 20
   byte_cost: 108000
@@ -19,6 +21,7 @@ tests:
   program: (q 18 2 2)
   debug_program: (a (q . 2) (c (c (q . 2) (c (c (q . 1) (q 18 2 2)) (c (q . 1) ()))) 1))
   output: (18 2 2)
+  value: "[18, 2, 2]"
   debug_output: (2 (1 18 2 2) 1)
   runtime_cost: 20
   byte_cost: 108000
