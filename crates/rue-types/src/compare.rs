@@ -229,18 +229,21 @@ impl ComparisonContext<'_> {
         };
 
         let branches = self.branch.into_iter().collect();
-        let infer = self.infer.as_mut().unwrap();
+        let index = self
+            .infer
+            .as_mut()
+            .unwrap()
+            .push(generic, kind, ty, branches);
 
         if deferred {
             self.deferred.push(DeferredCandidate {
                 generic,
                 kind,
-                index: infer.candidates_mut(generic).list_mut(kind).len(),
+                index,
                 env,
             });
         }
 
-        infer.push(generic, kind, ty, branches);
         self.candidates += 1;
     }
 
@@ -1220,10 +1223,12 @@ fn compare_impl_inner(
                 inner
             }
         }
-        (Type::Generic(_), Type::Union(rhs_union)) => {
+        (Type::Generic(_) | Type::Function(_), Type::Union(rhs_union)) => {
             // A generic is opaque, so it can only be assigned to a union if it's assignable to
             // one of the members (such as `T` to `T | nil`). Otherwise, fall back to whatever
-            // the generic could be at runtime, as with any other type.
+            // the generic could be at runtime, as with any other type. Likewise, a function's
+            // runtime structure is only a fallback for when no member holds it, so that it
+            // doesn't add to the generics in the union (#349).
             let choice = ctx.open_choice(rhs_union.types.len());
             let mut result = Comparison::Invalid;
 
@@ -1255,7 +1260,7 @@ fn compare_impl_inner(
                 )
             }
         }
-        (Type::Generic(_) | Type::Any, _) => compare_impl(
+        (Type::Generic(_) | Type::Any | Type::Function(_), _) => compare_impl(
             arena,
             builtins,
             ctx,
@@ -1264,44 +1269,6 @@ fn compare_impl_inner(
             lhs_semantic,
             rhs_semantic,
         ),
-        (Type::Function(_), _) => {
-            let members = match &arena[rhs] {
-                Type::Union(rhs) => rhs.types.clone(),
-                _ => Vec::new(),
-            };
-            let choice = ctx.open_choice(members.len());
-            let mut result = Comparison::Invalid;
-
-            for (member, &id) in members.iter().enumerate() {
-                result = min(
-                    result,
-                    ctx.compare_member(choice, member, |ctx| {
-                        compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic)
-                    }),
-                );
-            }
-
-            // As with a generic, the function's runtime structure is only a fallback for when no
-            // member holds it, so that it doesn't add to the generics in the union (#349)
-            if result == Comparison::Assign {
-                result
-            } else {
-                min(
-                    result,
-                    ctx.compare_member(choice, FALLBACK, |ctx| {
-                        compare_impl(
-                            arena,
-                            builtins,
-                            ctx,
-                            builtins.recursive_any,
-                            rhs,
-                            lhs_semantic,
-                            rhs_semantic,
-                        )
-                    }),
-                )
-            }
-        }
         (_, Type::Union(rhs_union)) => {
             // A generic being inferred doesn't need to include a value that a member already
             // holds regardless of the generic, such as `nil` when passing `Int | nil` to

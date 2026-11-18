@@ -8,7 +8,7 @@ mod resolve;
 pub use bounds::*;
 pub use resolve::*;
 
-use std::cmp::min;
+use std::mem;
 
 use indexmap::IndexMap;
 
@@ -144,12 +144,17 @@ impl Inference {
     pub fn matched_candidates(&self, generic: TypeId) -> Option<InferenceCandidates> {
         let candidates = self.generics.get(&generic)?;
         let branches = &self.branches[&generic];
+        let results = self.choice_results();
 
         let matched = |kind: CandidateKind, types: &[TypeId]| -> Vec<TypeId> {
             types
                 .iter()
                 .zip(branches.list(kind))
-                .filter(|(_, branches)| branches.iter().all(|&branch| self.matched(branch)))
+                .filter(|(_, branches)| {
+                    branches
+                        .iter()
+                        .all(|&branch| self.matched_with(&results, branch))
+                })
                 .map(|(&ty, _)| ty)
                 .collect()
         };
@@ -169,15 +174,13 @@ impl Inference {
             let len = candidates.lower.len() + candidates.upper.len();
 
             for kind in [CandidateKind::Lower, CandidateKind::Upper] {
-                let keep: Vec<bool> = candidates.list_mut(kind).iter().map(|&ty| f(ty)).collect();
-                let mut keep_types = keep.iter();
-                candidates
-                    .list_mut(kind)
-                    .retain(|_| *keep_types.next().unwrap());
-                let mut keep_branches = keep.iter();
-                branches
-                    .list_mut(kind)
-                    .retain(|_| *keep_branches.next().unwrap());
+                let types = candidates.list_mut(kind);
+                let lists = branches.list_mut(kind);
+                (*types, *lists) = mem::take(types)
+                    .into_iter()
+                    .zip(mem::take(lists))
+                    .filter(|&(ty, _)| f(ty))
+                    .unzip();
             }
 
             if candidates.lower.len() + candidates.upper.len() < len {
@@ -187,20 +190,24 @@ impl Inference {
         }
     }
 
-    /// Adds a candidate for a generic being inferred, collected under the given union members.
+    /// Adds a candidate for a generic being inferred, collected under the given union members, and
+    /// returns its index in the list.
     pub(crate) fn push(
         &mut self,
         generic: TypeId,
         kind: CandidateKind,
         ty: TypeId,
         branches: Vec<BranchId>,
-    ) {
-        self.candidates_mut(generic).list_mut(kind).push(ty);
+    ) -> usize {
+        let list = self.candidates_mut(generic).list_mut(kind);
+        list.push(ty);
+        let index = list.len() - 1;
         self.branches
             .get_mut(&generic)
             .unwrap()
             .list_mut(kind)
             .push(branches);
+        index
     }
 
     /// The union members that the candidate at the index was collected under.
@@ -235,42 +242,54 @@ impl Inference {
         }
     }
 
-    /// Whether the candidates collected under the union member hold: the member gave the best
-    /// result of any member (or the fallback, which only counts when no member is assignable),
-    /// and the member it's nested in holds too. When nothing is better than `Invalid`, the
-    /// comparison fails regardless, so every member holds, to keep what it reports the same.
+    /// Whether the candidates collected under the union member hold (see `Inference::matched_with`).
+    #[cfg(test)]
     pub(crate) fn matched(&self, branch: BranchId) -> bool {
+        self.matched_with(&self.choice_results(), branch)
+    }
+
+    /// Whether the candidates collected under the union member hold, given `choice_results`: the
+    /// member gave the choice's result, the best that any member or the fallback gave, and the
+    /// member the choice is nested in holds too. (The fallback is only compared when no member is
+    /// `Assign`, so it only gives the best result when none is.) When nothing is better than
+    /// `Invalid`, every member gave `Invalid`, so they all hold, and what a comparison that fails
+    /// reports stays the same.
+    fn matched_with(&self, results: &[Option<Comparison>], branch: BranchId) -> bool {
         let choice = &self.choices[branch.choice];
 
-        if choice.parent.is_some_and(|parent| !self.matched(parent)) {
-            return false;
-        }
-
-        let best = choice
-            .members
-            .iter()
-            .flatten()
-            .copied()
-            .min()
-            .unwrap_or(Comparison::Invalid);
-
-        let result = if best == Comparison::Assign {
-            best
-        } else {
-            min(best, choice.fallback.unwrap_or(Comparison::Invalid))
-        };
-
-        if result == Comparison::Invalid {
-            return true;
-        }
-
-        let branch_result = if branch.member == FALLBACK {
+        let result = if branch.member == FALLBACK {
             choice.fallback
         } else {
             choice.members[branch.member]
         };
 
-        branch_result == Some(result)
+        result.is_some() && result == results[branch.choice]
+    }
+
+    /// The result of each choice, the best that any member or the fallback gave, or `None` if the
+    /// member it's nested in doesn't hold. A choice is opened after the one it's nested in, so they
+    /// can be worked out in order.
+    fn choice_results(&self) -> Vec<Option<Comparison>> {
+        let mut results: Vec<Option<Comparison>> = Vec::with_capacity(self.choices.len());
+
+        for choice in &self.choices {
+            let parent_holds = choice
+                .parent
+                .is_none_or(|parent| self.matched_with(&results, parent));
+
+            let best = choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .flatten()
+                .copied()
+                .min()
+                .unwrap_or(Comparison::Invalid);
+
+            results.push(parent_holds.then_some(best));
+        }
+
+        results
     }
 
     pub(crate) fn is_target(&self, generic: TypeId) -> bool {
@@ -284,15 +303,15 @@ impl Inference {
         self.is_target(generic) && !self.renamed.contains_key(&generic)
     }
 
-    /// The generic's candidates, to replace one in place. A candidate is added with
-    /// `Inference::push`, so that the union members it was collected under are recorded too.
+    /// The generic's candidates. Any change must keep them in step with the union members they
+    /// were collected under, so a candidate is added with `Inference::push`.
     pub(crate) fn candidates_mut(&mut self, generic: TypeId) -> &mut InferenceCandidates {
         self.generics.get_mut(&generic).unwrap()
     }
 }
 
 /// Which list of a generic's `InferenceCandidates` a candidate is in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum CandidateKind {
     Lower,
     Upper,
