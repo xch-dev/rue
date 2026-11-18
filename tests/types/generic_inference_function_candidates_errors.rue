@@ -1,0 +1,29 @@
+// Function types that aren't assignable to each other are still kept as a union (#355)
+
+fn pick<T>(_first: T, second: T) -> T {
+    second
+}
+
+fn head_or<T>(_list: List<T>, default: T) -> T {
+    default
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn reverse(value: Bytes) -> Bytes {
+    value
+}
+
+fn main() -> Int {
+    // Neither function holds the other, so the union can't be called
+    let either = pick(increment, reverse);
+    let first = either(1);
+
+    // `fn<V>(value: V) -> (V, V)` isn't an instance of `fn(x: Int) -> Int`, so the union stays,
+    // and its `V` still leaks into the result
+    let function = head_or([fn(x: Int) => x, fn<V>(value: V) => (value, value)], fn(y) => y);
+
+    first + function(1)
+}

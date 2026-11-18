@@ -1,0 +1,71 @@
+tests:
+- name: issue_case
+  program: (a (q 16 2 (q . 1)) (q 1))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ())))) 1)) (c (q . 2) ()))
+  output: "2"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: generic_function_first
+  program: (a (q 16 2 (q . 1)) (q 4))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q . 2))) ()))
+  output: "5"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: generic_function_second
+  program: (a (q . 2) (q 4))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q 16 2 (q . 1)) (q . 2))) ()))
+  output: "4"
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: equal_function_types
+  program: (a (q 17 2 (q . 1)) (q 4))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q 17 2 (q . 1)) (c (q 16 2 (q . 1)) (q . 2))) ()))
+  output: "3"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: literal_return_types
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 2 ()) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c () ()))) (c (q . 2) (c (c (q . 1) 10) (c () ()))))) 1)) (c (c (q 1 . 5) (c (q 1 . 5) (q . 2))) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: inside_a_pair
+  program: (a (q . 2) (q 10))
+  debug_program: (a (q 2 (q 2 2 (c (q . 10) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q 5 1))) ()))
+  output: "10"
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: inside_a_union
+  program: (a (q 2 (a 2 (c (q 16 2 (q . 1)) (q 17 2 (q . 1)))) (q 4)) (c (q 2 (i (a (i (l 2) (q) (q 9 2 ())) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 17 2 (q . 1)) (c (q 16 2 (q . 1)) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1))) ()))
+  output: "5"
+  runtime_cost: 1969
+  byte_cost: 1260000
+  total_cost: 1261969
+- name: nested_calls
+  program: (a (q 16 2 (q . 1)) (q 2))
+  debug_program: (a (q 2 (q 2 2 (c (q . 2) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ()))) (a 10 (c (q . 2) (c (c (q . 1) 12) (c (q . 1) ())))))) 1)) (c (c (c (q 16 2 (q . 1)) (q . 2)) (c (q 4 1 ()) (q . 2))) ()))
+  output: "3"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: equivalent_generic_functions
+  program: (a (q 2 (q 2 (i (a 5 (q 1)) (q 9 2 (q . 1)) (q)) 1) (c (a 2 (q 1)) 1)) (c (q . 2) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 6 (q 2 (i (= 4 (q . 1)) (q 1 . 1) (q)) 1) (q)) 1) (c (c (a 2 (c (q . 1) ())) (a 2 (c (q . 1) ()))) 1)) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q . 2))) ()))
+  output: "1"
+  runtime_cost: 1247
+  byte_cost: 924000
+  total_cost: 925247
+- name: guard_other_candidates
+  program: (a (q 2 (i (l 2) (q) (q 9 2 ())) 1) (c () 1))
+  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (c (a 6 (c () (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q . 2)) ()))
+  output: "1"
+  runtime_cost: 737
+  byte_cost: 516000
+  total_cost: 516737

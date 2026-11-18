@@ -35,9 +35,8 @@ fn decrement(value: Int) -> Int {
 }
 
 test fn passed_directly() -> Int {
-    // `T` is the union of the two function types, which are the same type but not deduplicated, so
-    // the call needs the annotation to pick one
-    let function: fn(value: Int) -> Int = or_else(increment, decrement);
+    // The two function types are the same, so `T` is one of them (#355)
+    let function = or_else(increment, decrement);
     function(4)
 }
 

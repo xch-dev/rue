@@ -1455,6 +1455,7 @@ fn pick_inferred_type(
     } else {
         &candidates.lower
     };
+    let lower = &without_subsumed_functions(arena, builtins, renamed, lower);
 
     if !lower.is_empty() {
         // Literals are widened to their base type, so that `pick(1, 2)` infers `Int` and a
@@ -1491,6 +1492,56 @@ fn pick_inferred_type(
     } else {
         // Nothing constrains the generic, so leave it as is
         None
+    }
+}
+
+/// Leaves out the function types that are assignable to another of the types, such as
+/// `fn<V>(value: V) -> V` next to `fn(x: Int) -> Int`, since that one already holds them, so their
+/// union is just the other (#355). Of function types that are assignable to each other, the first
+/// is kept. Otherwise a generic function's own generics would be in the parameter types of the
+/// union, where they aren't bound, and a union of function types can't be called.
+fn without_subsumed_functions(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    renamed: &FxHashMap<TypeId, TypeId>,
+    types: &[TypeId],
+) -> Vec<TypeId> {
+    let functions: Vec<bool> = types.iter().map(|&ty| is_function(arena, ty)).collect();
+
+    if functions.iter().filter(|&&function| function).count() < 2 {
+        return types.to_vec();
+    }
+
+    let mut result = Vec::new();
+
+    for (i, &ty) in types.iter().enumerate() {
+        let subsumed = functions[i]
+            && types.iter().enumerate().any(|(j, &other)| {
+                j != i
+                    && functions[j]
+                    && compare_renamed(arena, builtins, renamed, ty, other) == Comparison::Assign
+                    && (j < i
+                        || compare_renamed(arena, builtins, renamed, other, ty)
+                            != Comparison::Assign)
+            });
+
+        if !subsumed {
+            result.push(ty);
+        }
+    }
+
+    result
+}
+
+/// Whether the type is a function type, through any aliases.
+fn is_function(arena: &Arena<Type>, mut ty: TypeId) -> bool {
+    loop {
+        match &arena[ty] {
+            Type::Ref(inner) => ty = *inner,
+            Type::Alias(alias) => ty = alias.inner,
+            Type::Function(_) => return true,
+            _ => return false,
+        }
     }
 }
 
