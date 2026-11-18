@@ -315,7 +315,7 @@ pub fn resolve_imports(
         // The other waiting lookups are retried once those are resolved.
         if resolution.waiting.is_empty() {
             // A reported re-export exports what it found, which changes what other imports find,
-            // so the imports are resolved again before the names of failed imports are blocked
+            // so the imports are resolved again
             if diagnostics && report_private_reexports(ctx, cache) {
                 continue;
             }
@@ -355,8 +355,26 @@ pub fn resolve_imports(
     }
 
     if diagnostics {
+        // The imports that still fail. One that only failed in an earlier pass, such as before a
+        // reported re-export exported what it found (see `report_private_reexports`), doesn't
+        // explain the failures at the blocks it made.
+        let failing = missing_imports
+            .iter()
+            .filter(|(_, names)| !names.is_empty())
+            .map(|(&import, _)| import)
+            .chain(cache.errors.keys().filter_map(|&(import, error)| {
+                matches!(
+                    error,
+                    ImportError::UnresolvedPath(_)
+                        | ImportError::PrivateSymbol
+                        | ImportError::PrivateType
+                )
+                .then_some(import)
+            }))
+            .collect::<HashSet<_>>();
+
         for (import, missing_imports) in missing_imports {
-            if !failure_is_reported(cache, import) {
+            if !failure_is_reported(cache, &failing, import) {
                 continue;
             }
 
@@ -370,7 +388,7 @@ pub fn resolve_imports(
 
         for (&(import, error), (name, kind)) in &cache.errors {
             if matches!(error, ImportError::UnresolvedPath(_))
-                && !failure_is_reported(cache, import)
+                && !failure_is_reported(cache, &failing, import)
             {
                 continue;
             }
@@ -538,23 +556,27 @@ fn block(ctx: &mut Compiler, failed: FailedName) -> bool {
 /// Any other import's failure has already been reported through those. So an import's failure is
 /// reported if every import that it reaches this way reaches it back, which doesn't depend on the
 /// order the imports are resolved in.
-fn failure_is_reported(cache: &ImportCache, import: ImportId) -> bool {
-    let reached = reached_through_blocks(cache, import);
+fn failure_is_reported(cache: &ImportCache, failing: &HashSet<ImportId>, import: ImportId) -> bool {
+    let reached = reached_through_blocks(cache, failing, import);
 
-    reached
-        .iter()
-        .all(|&other| other == import || reached_through_blocks(cache, other).contains(&import))
+    reached.iter().all(|&other| {
+        other == import || reached_through_blocks(cache, failing, other).contains(&import)
+    })
 }
 
 /// The imports reached by following the origins of the blocks that an import failed at, including
-/// itself.
-fn reached_through_blocks(cache: &ImportCache, import: ImportId) -> HashSet<ImportId> {
+/// itself. Only the origins that are still `failing` are followed.
+fn reached_through_blocks(
+    cache: &ImportCache,
+    failing: &HashSet<ImportId>,
+    import: ImportId,
+) -> HashSet<ImportId> {
     let mut reached = HashSet::from([import]);
     let mut stack = vec![import];
 
     while let Some(current) = stack.pop() {
         for &origin in cache.blocked_imports.get(&current).into_iter().flatten() {
-            if reached.insert(origin) {
+            if failing.contains(&origin) && reached.insert(origin) {
                 stack.push(origin);
             }
         }
@@ -1190,44 +1212,41 @@ fn resolve_import(
                 );
 
                 if diagnostics {
+                    // Only a module can have a path after it, so a value or type is reported as
+                    // such
+                    let other = [Namespace::Value, Namespace::Type]
+                        .into_iter()
+                        .any(|namespace| match segment_base {
+                            Base::Local(scope) => {
+                                ctx.resolve_item_in(scope, namespace, name.text()).is_some()
+                            }
+                            Base::Member(scope) => {
+                                ctx.module_member(scope, namespace, name.text()).is_some()
+                            }
+                            Base::Inner(scope) => {
+                                ctx.scope(scope).item(namespace, name.text()).is_some()
+                            }
+                        });
+
+                    let kind = if other {
+                        DiagnosticKind::SubpathNotSupported(name.text().to_string())
+                    } else {
+                        DiagnosticKind::UndeclaredSymbol(name.text().to_string())
+                    };
+
                     // The imports are resolved again once a reported re-export exports what it
-                    // found (see `report_private_reexports`), which can bring in a module that the
-                    // path names, so it can fail at a later segment than it did before
+                    // found (see `report_private_reexports`), which can bring in what the path
+                    // names, so only how it fails in the last pass is reported
                     for earlier in 0..index {
                         cache
                             .errors
                             .shift_remove(&(import_id, ImportError::UnresolvedPath(earlier)));
                     }
 
-                    cache
-                        .errors
-                        .entry((import_id, ImportError::UnresolvedPath(index)))
-                        .or_insert_with(|| {
-                            // Only a module can have a path after it, so a value or type is
-                            // reported as such
-                            let other =
-                                [Namespace::Value, Namespace::Type]
-                                    .into_iter()
-                                    .any(|namespace| match segment_base {
-                                        Base::Local(scope) => ctx
-                                            .resolve_item_in(scope, namespace, name.text())
-                                            .is_some(),
-                                        Base::Member(scope) => ctx
-                                            .module_member(scope, namespace, name.text())
-                                            .is_some(),
-                                        Base::Inner(scope) => {
-                                            ctx.scope(scope).item(namespace, name.text()).is_some()
-                                        }
-                                    });
-
-                            let kind = if other {
-                                DiagnosticKind::SubpathNotSupported(name.text().to_string())
-                            } else {
-                                DiagnosticKind::UndeclaredSymbol(name.text().to_string())
-                            };
-
-                            (name.clone(), kind)
-                        });
+                    cache.errors.insert(
+                        (import_id, ImportError::UnresolvedPath(index)),
+                        (name.clone(), kind),
+                    );
                 }
                 return false;
             };

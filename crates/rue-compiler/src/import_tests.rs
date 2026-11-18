@@ -3224,7 +3224,7 @@ fn glob_reexports_through_super_dont_export_private_items_another_glob_bound() {
 }
 
 #[test]
-fn names_blocked_by_imports_of_reported_reexports_are_unblocked() {
+fn imports_blocked_by_imports_of_reported_reexports_resolve_past_the_blocks() {
     let compiled = compile(
         "
         const SECRET: Int = 1;
@@ -3265,6 +3265,61 @@ fn names_blocked_by_imports_of_reported_reexports_are_unblocked() {
 
     // The import in `user` first finds the private item and fails, which blocks the name in
     // `user`, and the imports through `super` fail at the block. Once the re-export is reported,
-    // they're all resolved again, and none of them fail.
+    // they're all resolved again, and find the item past the block.
     assert_eq!(compiled.errors(), ["5:27 PrivateReexport(\"SECRET\")"]);
+    assert_eq!(
+        compiled.reference_origins("user::named::f", "SECRET"),
+        ["`SECRET`: (root)"]
+    );
+    assert_eq!(
+        compiled.reference_origins("user::globbed::f", "SECRET"),
+        ["`SECRET`: (root)"]
+    );
+}
+
+#[test]
+fn failures_at_blocks_of_imports_that_resolve_after_reexports_are_reported() {
+    let compiled = compile(
+        "
+        mod m {
+            export const A: Int = 1;
+        }
+
+        mod z {
+            export super::m;
+        }
+
+        mod g {
+            export super::z::*;
+        }
+
+        mod user {
+            import super::z::m;
+            import m::MISSING;
+            import super::g::m::A;
+            import A::B;
+
+            export fn f() -> Int {
+                MISSING + A + B
+            }
+        }
+
+        fn main() -> Int {
+            user::f()
+        }
+        ",
+    );
+
+    // Before the re-export is reported, `m` is private, so the imports of `m` and `A` fail, and
+    // block their names. The imports after them fail at those blocks, but once the re-export is
+    // reported, the imports of `m` and `A` resolve, so the blocks don't explain why the others
+    // still fail, and they're reported.
+    assert_eq!(
+        compiled.errors(),
+        [
+            "7:27 PrivateReexport(\"m\")",
+            "16:23 UnresolvedImport(\"MISSING\")",
+            "18:20 SubpathNotSupported(\"A\")",
+        ]
+    );
 }
