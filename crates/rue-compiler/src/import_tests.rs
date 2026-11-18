@@ -983,14 +983,15 @@ fn glob_imports_that_bring_in_nothing_are_unused() {
 }
 
 /// Glob imports in `user` of `alpha` and `beta`, which both bring in `source`'s items: one
-/// module with named imports (and `named_items`), and the other with a glob import (or
-/// `globbed_items` in its place, if given). The names of the two modules are in either order, so
-/// that either glob import is resolved first and binds the names. `user` has `user_items` after
+/// module with named imports (and `named_items`), and the other with a glob import, of `other`
+/// instead if `collide` is true, which has a different `X`. The named imports are resolved
+/// before the glob import, and the names of the two modules are in either order, so that either
+/// of `user`'s glob imports is resolved first and binds the names. `user` has `user_items` after
 /// its glob imports, which are exported if `exported` is true.
 fn overlapping_globs(
     named_first: bool,
     named_items: &str,
-    globbed_items: Option<&str>,
+    collide: bool,
     exported: bool,
     user_items: &str,
 ) -> String {
@@ -999,7 +1000,7 @@ fn overlapping_globs(
     } else {
         ("beta", "alpha")
     };
-    let globbed_items = globbed_items.unwrap_or("export super::source::*;");
+    let globbed_source = if collide { "other" } else { "source" };
     let keyword = if exported { "export" } else { "import" };
 
     format!(
@@ -1018,7 +1019,11 @@ fn overlapping_globs(
         }}
 
         mod {globbed} {{
-            {globbed_items}
+            export super::{globbed_source}::*;
+        }}
+
+        mod other {{
+            export const X: Int = 4;
         }}
 
         mod user {{
@@ -1049,7 +1054,7 @@ fn glob_imports_of_the_same_item_are_both_used() {
         let compiled = compile(&overlapping_globs(
             named_first,
             "",
-            None,
+            false,
             false,
             "export fn value() -> Int { X }",
         ));
@@ -1069,7 +1074,7 @@ fn glob_imports_of_the_same_unused_item_are_both_unused() {
         let compiled = compile(&overlapping_globs(
             named_first,
             "",
-            None,
+            false,
             false,
             "export fn value() -> Int { 1 }",
         ));
@@ -1077,7 +1082,7 @@ fn glob_imports_of_the_same_unused_item_are_both_unused() {
         compiled.assert_no_errors();
         assert_eq!(
             unused_imports(&compiled),
-            ["20:34 UnusedImport", "21:33 UnusedImport"],
+            ["24:34 UnusedImport", "25:33 UnusedImport"],
             "named first: {named_first}"
         );
     }
@@ -1091,11 +1096,11 @@ fn glob_imports_are_only_used_by_the_names_they_bring_in() {
         let compiled = compile(&overlapping_globs(
             named_first,
             "export const Y: Int = 3;",
-            None,
+            false,
             false,
             "export fn value() -> Int { Y }",
         ));
-        let globbed = if named_first { "21:33" } else { "20:34" };
+        let globbed = if named_first { "25:33" } else { "24:34" };
 
         compiled.assert_no_errors();
         assert_eq!(
@@ -1114,7 +1119,7 @@ fn glob_imports_of_the_same_item_are_both_used_through_an_import_path() {
         let compiled = compile(&overlapping_globs(
             named_first,
             "",
-            None,
+            false,
             false,
             "import m::V;\n\nexport fn value() -> Int { V }",
         ));
@@ -1134,7 +1139,7 @@ fn exported_glob_imports_of_the_same_item_both_bring_it_in() {
         let compiled = compile(&overlapping_globs(
             named_first,
             "",
-            None,
+            false,
             true,
             "export fn value() -> Int { X }",
         ));
@@ -1151,19 +1156,19 @@ fn exported_glob_imports_of_the_same_item_both_bring_it_in() {
 #[test]
 fn colliding_glob_imports_are_both_used() {
     // Which of the two `X`s the ambiguous use counts as using still depends on which glob import
-    // bound the name, so only the warnings about imports are checked
+    // bound the name
     for named_first in [true, false] {
         let compiled = compile(&overlapping_globs(
             named_first,
             "",
-            Some("export const X: Int = 4;"),
+            true,
             false,
             "export fn value() -> Int { X }",
         ));
 
         assert_eq!(
             compiled.errors(),
-            ["22:40 AmbiguousImport(\"X\")"],
+            ["26:40 AmbiguousImport(\"X\")"],
             "named first: {named_first}"
         );
         assert_eq!(
@@ -1180,7 +1185,7 @@ fn colliding_unused_glob_imports_are_both_unused() {
         let compiled = compile(&overlapping_globs(
             named_first,
             "",
-            Some("export const X: Int = 4;"),
+            true,
             false,
             "export fn value() -> Int { 1 }",
         ));
@@ -1188,7 +1193,7 @@ fn colliding_unused_glob_imports_are_both_unused() {
         compiled.assert_no_errors();
         assert_eq!(
             unused_imports(&compiled),
-            ["20:34 UnusedImport", "21:33 UnusedImport"],
+            ["24:34 UnusedImport", "25:33 UnusedImport"],
             "named first: {named_first}"
         );
     }
