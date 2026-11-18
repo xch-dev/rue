@@ -19,6 +19,10 @@ pub enum ImportUser {
 #[derive(Debug, Clone)]
 pub struct Import {
     pub base_scope: ScopeId,
+    /// Whether the path starts with `super` or `crate`, so that its first segment is looked up in
+    /// the module that `base_scope` belongs to (whose private items can be used, since it contains
+    /// the import), rather than from the scope the import is in and the ones it's in.
+    pub from_parent: bool,
     pub source: Source,
     pub path: Vec<Name>,
     pub items: Items,

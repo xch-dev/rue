@@ -1,0 +1,37 @@
+// `crate` names the project's root directory, so it reaches the files in it from anywhere in the
+// project, the same way their names do from the files next to them
+import crate::utils::double;
+
+export const BASE: Int = 100;
+
+const LOCAL: Int = 5;
+
+// An inline module reaches the file's private items through `super`, but `crate` is the directory,
+// where only the files' exported items can be used
+mod inner {
+    import crate::utils::*;
+
+    export fn value() -> Int {
+        double(super::LOCAL) + ONE
+    }
+}
+
+test fn files_in_subdirectories_reach_the_root() -> Int {
+    crate::a::b::deep::total()
+}
+
+test fn imports_from_the_root() -> Int {
+    double(2)
+}
+
+test fn glob_imports_of_files_in_the_root() -> Int {
+    inner::value()
+}
+
+fn identity(value: crate::utils::Number) -> crate::utils::Number {
+    value
+}
+
+test fn types_through_the_root() -> Int {
+    identity(3)
+}

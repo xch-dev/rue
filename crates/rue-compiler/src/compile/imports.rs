@@ -6,11 +6,12 @@ use std::{
 
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
-use rue_ast::{AstImportItem, AstImportPathSegment};
+use rue_ast::{AstImportItem, AstImportPathSegment, AstNode};
 use rue_diagnostic::{DiagnosticKind, Name, Source};
 use rue_hir::{
     Declaration, Import, ImportId, ImportUser, Item, Items, Namespace, ScopeId, Symbol, SymbolId,
 };
+use rue_parser::SyntaxKind;
 
 use crate::{Compiler, SyntaxItemKind};
 
@@ -26,6 +27,7 @@ pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
         ctx,
         base_scope,
         module_stack,
+        false,
         Vec::new(),
         &path.segments().collect::<Vec<_>>(),
         import.export().is_some(),
@@ -41,11 +43,18 @@ fn construct_imports(
     ctx: &mut Compiler,
     mut base_scope: ScopeId,
     mut module_stack: Vec<SymbolId>,
+    mut from_parent: bool,
     mut path: Vec<Name>,
     segments: &[AstImportPathSegment],
     exported: bool,
 ) -> Vec<ImportId> {
     let mut has_non_super = false;
+
+    // Only the first segment of the whole path can be `crate`, not the first one in braces
+    let starts_path = segments
+        .first()
+        .and_then(|segment| segment.syntax().parent()?.parent())
+        .is_some_and(|parent| parent.kind() == SyntaxKind::ImportItem);
 
     if let Some(segment) = segments.first()
         && let Some(separator) = segment.separator()
@@ -53,13 +62,27 @@ fn construct_imports(
         ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
     }
 
-    for segment in segments.iter().take(segments.len() - 1) {
+    for (index, segment) in segments.iter().take(segments.len() - 1).enumerate() {
         if let Some(name) = segment.name() {
-            if name.text() == "super" {
+            if name.text() == "crate" {
+                if starts_path && index == 0 {
+                    let root = ctx.crate_root();
+                    base_scope = ctx.module(root).scope;
+                    from_parent = true;
+
+                    // The root has no parent for a `super` after it to name
+                    module_stack.clear();
+
+                    ctx.add_syntax(SyntaxItemKind::SymbolReference(root), name.text_range());
+                } else {
+                    ctx.diagnostic(&name, DiagnosticKind::CrateNotAtStart);
+                }
+            } else if name.text() == "super" {
                 if has_non_super {
                     ctx.diagnostic(&name, DiagnosticKind::SuperAfterNamedImport);
                 } else if let Some(module) = module_stack.pop() {
                     base_scope = ctx.module(module).scope;
+                    from_parent = true;
 
                     ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
                 } else {
@@ -84,6 +107,19 @@ fn construct_imports(
         return vec![];
     }
 
+    if let Some(name) = last.name()
+        && name.text() == "crate"
+    {
+        // Like `super`, a path that names the root module has nothing to import
+        let kind = if starts_path && segments.len() == 1 {
+            DiagnosticKind::CrateAtEnd
+        } else {
+            DiagnosticKind::CrateNotAtStart
+        };
+        ctx.diagnostic(&name, kind);
+        return vec![];
+    }
+
     let source = ctx.source().clone();
 
     if let Some(name) = last.name() {
@@ -91,6 +127,7 @@ fn construct_imports(
 
         vec![ctx.alloc_import(Import {
             base_scope,
+            from_parent,
             source,
             path,
             items: Items::Named(name),
@@ -102,6 +139,7 @@ fn construct_imports(
 
         vec![ctx.alloc_import(Import {
             base_scope,
+            from_parent,
             source,
             path,
             items: Items::All(star),
@@ -118,6 +156,7 @@ fn construct_imports(
                 ctx,
                 base_scope,
                 module_stack.clone(),
+                from_parent,
                 path.clone(),
                 &item.segments().collect::<Vec<_>>(),
                 exported,
@@ -636,10 +675,10 @@ fn record_blocked_import(
 
 /// Where an import's name, or the first segment of its path, is looked up.
 fn import_base(import: &Import, import_scope: ScopeId) -> Base {
-    if import.base_scope == import_scope {
-        Base::Local(import_scope)
-    } else {
+    if import.from_parent {
         Base::Member(import.base_scope)
+    } else {
+        Base::Local(import_scope)
     }
 }
 
@@ -1179,7 +1218,7 @@ fn resolve_import(
     // that's looked up from the import's own scope doesn't come from a module.
     if let Some(base) = base {
         resolution.bases.insert(import_id, (base, false));
-    } else if import.base_scope != import_scope {
+    } else if import.from_parent {
         resolution
             .bases
             .insert(import_id, (import.base_scope, true));

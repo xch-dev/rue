@@ -25,6 +25,7 @@ fn helper() -> Int {
 "#,
         expect![[r#"
             super [Module]
+            crate [Module]
             total [Variable] Int
             amount [Variable] Int
             LIMIT [Constant] Int
@@ -119,6 +120,7 @@ fn main(value: $0) -> Int {
 "#,
         expect![[r#"
             super [Module]
+            crate [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -275,6 +277,7 @@ fn main() -> $0 {
 "#,
         expect![[r#"
             super [Module]
+            crate [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -310,6 +313,7 @@ fn main() -> Int {
 "#,
         expect![[r#"
             super [Module]
+            crate [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -344,6 +348,7 @@ fn main(value: Any) -> Int {
 "#,
         expect![[r#"
             super [Module]
+            crate [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -376,6 +381,7 @@ type Alias = $0;
 "#,
         expect![[r#"
             super [Module]
+            crate [Module]
             Point [Struct]
             Alias [Struct] {unresolved}
             Atom [Struct]
@@ -534,6 +540,70 @@ mod inner {
             inner [Module]
         "#]],
     );
+}
+
+#[test]
+fn test_complete_crate_members() {
+    // `crate` names the project's directory from anywhere in it, even an inline module, so its
+    // files are offered (rather than the items of the file), but not `super`, since the root has
+    // no parent
+    check(
+        r#"
+const PRIVATE: Int = 1;
+
+mod outer {
+    mod inner {
+        fn main() -> Int {
+            crate::$0
+        }
+    }
+}
+"#,
+        expect![[r#"
+            main [Module]
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_crate_members_in_a_project() {
+    // In a project, `crate` is the root directory, whose files are offered, and only the exported
+    // items of a file after it
+    let project = TestProject::new(&[
+        (
+            "main.rue",
+            r#"
+fn main() -> Int {
+    crate::utils::$0
+}
+"#,
+        ),
+        (
+            "utils.rue",
+            "export const ONE: Int = 1;\nconst TWO: Int = 2;\n",
+        ),
+    ]);
+    expect![[r#"
+        ONE [Constant] Int
+    "#]]
+    .assert_eq(&project.completions());
+
+    let project = TestProject::new(&[
+        (
+            "main.rue",
+            r#"
+fn main() -> Int {
+    crate::$0
+}
+"#,
+        ),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    expect![[r#"
+        main [Module]
+        utils [Module]
+    "#]]
+    .assert_eq(&project.completions());
 }
 
 #[test]

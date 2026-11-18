@@ -22,7 +22,11 @@ fn ty_with(p: &mut Parser, allow_union: bool) {
 fn ty_with_inner(p: &mut Parser, allow_union: bool) {
     let cp = p.checkpoint();
 
-    if p.at_quiet(SyntaxKind::Ident) || p.at_quiet(T![super]) || p.at_quiet(T![::]) {
+    if p.at_quiet(SyntaxKind::Ident)
+        || p.at_quiet(T![super])
+        || p.at_quiet(T![crate])
+        || p.at_quiet(T![::])
+    {
         path_type(p);
     } else if let Some(kind) = p.at_any_quiet(SyntaxKind::LITERAL) {
         p.start(SyntaxKind::LiteralType);
@@ -114,7 +118,7 @@ fn path_type_segment(p: &mut Parser, first: bool) {
     } else {
         p.expect(T![::]);
     }
-    if !p.try_eat(T![super]) {
+    if !p.try_eat(T![super]) && !p.try_eat(T![crate]) {
         p.expect(SyntaxKind::Ident);
     }
     if p.at(T![<]) {
@@ -525,6 +529,20 @@ mod tests {
                 PathType@0..11
                   PathSegment@0..5
                     Super@0..5 "super"
+                  PathSegment@5..11
+                    PathSeparator@5..7 "::"
+                    Ident@7..11 "Type"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            ty,
+            "crate::Type",
+            expect![[r#"
+                PathType@0..11
+                  PathSegment@0..5
+                    Crate@0..5 "crate"
                   PathSegment@5..11
                     PathSeparator@5..7 "::"
                     Ident@7..11 "Type"

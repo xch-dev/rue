@@ -1,0 +1,24 @@
+// Reaching an item through `crate` follows the same rules as reaching it otherwise: a file's
+// private items can't be used from another file, even one deeper in the project
+import crate::utils::hidden;
+
+export crate::utils::shown;
+
+const LOCAL: Int = 4;
+
+// `crate` is the project's directory, not this file, so this file's items aren't its members, and
+// through the file's name they have to be exported
+mod inner {
+    export fn value() -> Int {
+        crate::LOCAL + crate::main::LOCAL
+    }
+}
+
+fn main() -> Int {
+    hidden()
+        + shown()
+        + crate::utils::HIDDEN
+        + crate::a::nested::value()
+        + crate::LOCAL
+        + inner::value()
+}

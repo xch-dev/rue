@@ -395,6 +395,16 @@ impl Compiler {
         stack
     }
 
+    /// The module that `crate` refers to from the code being compiled: the root directory of the
+    /// project, or the file itself if it isn't in a directory (such as a program compiled from a
+    /// single file). The standard library's root is its own directory.
+    pub fn crate_root(&self) -> SymbolId {
+        self.module_stack
+            .first()
+            .copied()
+            .unwrap_or_else(|| self.file.expect("code is compiled in a file").0)
+    }
+
     /// Starts compiling a file, whose module is in the given scope.
     pub fn enter_file(&mut self, module: SymbolId, outer_scope: ScopeId) {
         self.file = Some((module, outer_scope));
