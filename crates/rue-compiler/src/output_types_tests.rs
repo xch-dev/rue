@@ -141,6 +141,40 @@ fn strings_that_cannot_be_written_as_literals_are_written_as_bytes() {
 }
 
 #[test]
+fn concatenated_strings_are_strings() {
+    check("", "String", "\"hello, \" + \"world\"", "\"hello, world\"");
+    check("", "Bytes", "\"a\" + 0x01", "0x6101");
+
+    // A debug print is displayed with the type of its expression, rather than a declared type
+    let output = run(
+        "fn main() -> nil {\n\
+             debug \"hello, \" + \"world\";\n\
+             debug \"a\" + 0x01;\n\
+             nil\n\
+         }\n",
+        DisplayOptions::SINGLE_LINE,
+    );
+
+    assert_eq!(output.prints, ["\"hello, world\"", "0x6101"]);
+}
+
+#[test]
+fn bytes_are_written_as_bytes_even_if_they_are_text() {
+    check("", "Bytes", "\"hello\"", "0x68656c6c6f");
+}
+
+#[test]
+fn items_that_dont_match_their_type_dont_affect_the_rest() {
+    let point = "struct Point { x: Int, y: Int }";
+    check_display_only(
+        point,
+        "List<Point>",
+        "unchecked_cast([Point { x: 1, y: 2 }, 3, Point { x: 4, y: 5 }])",
+        "[Point { x: 1, y: 2 }, 3, Point { x: 4, y: 5 }]",
+    );
+}
+
+#[test]
 fn integers_with_redundant_leading_bytes_are_written_as_bytes() {
     check_display_only("", "Int", "0x0001 as Int", "0x0001");
 }

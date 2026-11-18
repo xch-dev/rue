@@ -57,9 +57,18 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.bytes) {
+                // Concatenating strings gives a string, and anything else gives bytes
+                let string = ctx.builtins().types.string;
+                let ty =
+                    if ctx.is_assignable(left.ty, string) && ctx.is_assignable(right.ty, string) {
+                        string
+                    } else {
+                        ctx.builtins().types.bytes
+                    };
+
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bytes);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Concat, left.hir, right.hir));
-                return Value::new(hir, ctx.builtins().types.bytes);
+                return Value::new(hir, ty);
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.public_key) {

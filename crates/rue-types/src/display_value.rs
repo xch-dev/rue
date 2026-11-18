@@ -177,10 +177,15 @@ impl<'a> ValueDisplay<'a> {
     /// The most specific variant of a union that the value matches. A variant that only matches a
     /// single value (such as `nil` or `true`) is preferred over one that matches values of a given
     /// length, which is preferred over any other. Otherwise, the first variant is chosen.
+    ///
+    /// If the value doesn't match any variant, but only one variant has its shape at the top level
+    /// (such as the pair of a list whose items don't all match), that variant is chosen, so that
+    /// the parts that don't match are displayed without a type rather than the whole value.
     fn variant(&mut self, union: TypeId, node: NodePtr) -> Option<TypeId> {
+        let variants = self.variants(union);
         let mut best: Option<(TypeId, u8)> = None;
 
-        for variant in self.variants(union) {
+        for &variant in &variants {
             if !self.matches(variant, node) {
                 continue;
             }
@@ -192,7 +197,62 @@ impl<'a> ValueDisplay<'a> {
             }
         }
 
-        best.map(|(variant, _)| variant)
+        if let Some((variant, _)) = best {
+            return Some(variant);
+        }
+
+        let mut shaped = variants
+            .into_iter()
+            .filter(|&variant| self.has_shape(variant, node));
+
+        match (shaped.next(), shaped.next()) {
+            (Some(variant), None) => Some(variant),
+            _ => None,
+        }
+    }
+
+    /// Whether the value has the shape of the type at the top level: an atom that meets the type's
+    /// restriction, or a pair. The contents of pairs aren't checked.
+    fn has_shape(&self, ty: TypeId, node: NodePtr) -> bool {
+        let mut ty = ty;
+        let mut visited = HashSet::new();
+
+        while visited.insert(ty) {
+            match (&self.arena[ty], self.allocator.sexp(node)) {
+                (Type::Ref(inner), _) => ty = *inner,
+                (Type::Alias(alias), _) => ty = alias.inner,
+                (Type::Apply(apply), _) => ty = apply.inner,
+                (Type::Struct(ty_struct), _) => ty = ty_struct.inner,
+                (Type::Union(union), _) => {
+                    return union
+                        .types
+                        .iter()
+                        .any(|&variant| self.has_shape(variant, node));
+                }
+                (Type::Atom(atom), SExp::Atom) => {
+                    return match &atom.restriction {
+                        None => true,
+                        Some(AtomRestriction::Value(value)) => {
+                            self.allocator.atom(node).as_ref() == value.as_ref()
+                        }
+                        Some(AtomRestriction::Length(length)) => {
+                            self.allocator.atom_len(node) == *length
+                        }
+                    };
+                }
+                (Type::Pair(_), SExp::Pair(..)) => return true,
+                (Type::Atom(_), SExp::Pair(..))
+                | (Type::Pair(_), SExp::Atom)
+                | (Type::Never, _) => {
+                    return false;
+                }
+                (Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_), _) => {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     /// The variants of a union, including those of nested unions and aliases of unions.
