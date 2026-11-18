@@ -3323,3 +3323,64 @@ fn failures_at_blocks_of_imports_that_resolve_after_reexports_are_reported() {
         ]
     );
 }
+
+#[test]
+fn uses_of_names_blocked_by_imports_that_resolve_after_reexports_are_reported() {
+    let compiled = compile(
+        "
+        mod p {
+            export mod z {
+                export super::M;
+                type M = Int;
+            }
+
+            mod M {
+                export const V: Int = 1;
+            }
+        }
+
+        import p::z::M;
+
+        fn main() -> Int {
+            let a: M = 2;
+            a
+        }
+        ",
+    );
+
+    // Before the re-export is reported, the import finds only private items, and blocks `M`. Once
+    // it's reported, the import brings in the module, so the private type `M` isn't reported, and
+    // the use of `M` as a type is reported like it would be without the block.
+    assert_eq!(
+        compiled.errors(),
+        ["4:31 PrivateReexport(\"M\")", "16:20 ExpectedType(\"M\")",]
+    );
+}
+
+#[test]
+fn super_imports_of_a_name_blocked_by_a_private_type_are_not_reported_again() {
+    let compiled = compile(
+        "
+        mod m {
+            type T = Int;
+        }
+
+        import m::T;
+
+        mod a {
+            import super::T;
+
+            export fn f(x: T) -> super::T {
+                x
+            }
+        }
+
+        fn main() -> Int {
+            let x: T = 1;
+            a::f(x)
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["6:19 PrivateType(\"T\", \"m\")"]);
+}

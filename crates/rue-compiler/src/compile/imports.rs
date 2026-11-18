@@ -373,6 +373,17 @@ pub fn resolve_imports(
             }))
             .collect::<HashSet<_>>();
 
+        // Nor does it hide the uses of its name. Names are only blocked in the scopes that
+        // imports are in.
+        for scope in imports
+            .iter()
+            .map(|&(scope, _)| scope)
+            .collect::<IndexSet<_>>()
+        {
+            ctx.scope_mut(scope)
+                .retain_block_origins(|origin| failing.contains(&origin));
+        }
+
         for (import, missing_imports) in missing_imports {
             if !failure_is_reported(cache, &failing, import) {
                 continue;
