@@ -7,12 +7,13 @@ use indexmap::IndexSet;
 use rue_diagnostic::Name;
 
 use crate::{
-    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
-    FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
-    add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
-    extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
-    resolve_inference_with_bounds, resolve_inference_with_fallback, stringify, substitute,
-    substitute_with_mappings, subtract, unwrap_semantic,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind,
+    Comparison, FunctionParameter, FunctionType, Generic, Inference, InferenceCandidates, Pair,
+    Struct, Type, TypeId, Union, add_expected_bounds, check, compare, compare_with_inference,
+    extract_atoms, extract_functions, extract_pairs, extract_structs, infer_from_expected,
+    is_non_contractive, resolve_inference, resolve_inference_with_bounds,
+    resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
+    unwrap_semantic,
 };
 
 struct Db {
@@ -1598,6 +1599,186 @@ mod inference {
         add_expected(&mut db, &[a, b], b, expected, &mut infer);
         assert_eq!(candidates(&infer, a).upper, vec![]);
         assert_eq!(candidates(&infer, b).upper, vec![]);
+    }
+
+    /// The names of the generic's candidates of each kind, all of them and only those that hold.
+    fn names(db: &mut Db, infer: &Inference, generic: TypeId) -> [(Vec<String>, Vec<String>); 3] {
+        let all = candidates(infer, generic);
+        let matched = infer.matched_candidates(generic).unwrap();
+        let mut names = |types: &[TypeId]| types.iter().map(|&ty| db.name(ty)).collect::<Vec<_>>();
+        [
+            (names(&all.lower), names(&matched.lower)),
+            (names(&all.upper), names(&matched.upper)),
+            (names(&all.held), names(&matched.held)),
+        ]
+    }
+
+    #[test]
+    fn matched_candidates_leave_out_members_that_dont_match() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // A function matches the `T` member, so what the function's runtime structure gives `T`
+        // through `(T, Int)` doesn't hold (#364)
+        let function = db.function(&[int], int);
+        let pair = db.pair(t, int);
+        let param = db.union(&[t, pair, nil]);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert!(all.len() > 1, "{all:?}");
+        assert_eq!(matched, ["fn(p0: Int) -> Int"]);
+    }
+
+    #[test]
+    fn matched_candidates_take_the_best_member() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `(T, Int)` only casts `Bytes` to `Int`, but `(Int, T)` is assignable
+        let value = db.pair(int, bytes);
+        let first = db.pair(t, int);
+        let second = db.pair(int, t);
+        let param = db.union(&[first, second]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert_eq!(all, ["Int", "Bytes"]);
+        assert_eq!(matched, ["Bytes"]);
+    }
+
+    #[test]
+    fn matched_candidates_keep_every_member_that_matches() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `Int` matches `T`, and `nil` matches both members, so it's held
+        let value = db.union(&[int, nil]);
+        let param = db.union(&[t, nil]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        let [lower, upper, held] = names(&mut db, &infer, t);
+        assert_eq!(lower, (vec!["Int".to_string()], vec!["Int".to_string()]));
+        assert_eq!(upper, (vec![], vec![]));
+        assert_eq!(held, (vec!["nil".to_string()], vec!["nil".to_string()]));
+    }
+
+    #[test]
+    fn matched_candidates_keep_everything_when_no_member_matches() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // Neither member can hold the value, so the comparison fails regardless, and what it
+        // collected is kept as it is
+        let int_pair = db.pair(int, int);
+        let value = db.pair(int, int_pair);
+        let first = db.pair(t, nil);
+        let second = db.pair(nil, t);
+        let param = db.union(&[first, second]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Invalid);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert_eq!(all, ["Int", "(Int, Int)"]);
+        assert_eq!(matched, all);
+    }
+
+    #[test]
+    fn matched_candidates_leave_out_unions_nested_in_members_that_dont_match() {
+        let mut db = Db::new();
+        let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `Int` matches `T` in `T | nil`, but the member it's nested in only casts `Bytes`
+        let value = db.pair(int, bytes);
+        let optional = db.union(&[t, nil]);
+        let first = db.pair(optional, int);
+        let second = db.pair(int, t);
+        let param = db.union(&[first, second]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert_eq!(all, ["Int", "Bytes"]);
+        assert_eq!(matched, ["Bytes"]);
+    }
+
+    #[test]
+    fn matched_candidates_keep_the_fallback_when_no_member_holds_the_value() {
+        let mut db = Db::new();
+        let (int, atom) = (db.builtins.int, db.builtins.atom);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // No member is a function type, so the function's runtime structure is compared with the
+        // union instead. What that gives `T` holds, and what comparing the function with
+        // `(T, T)` on its own gave doesn't
+        let function = db.function(&[int], int);
+        let pair = db.pair(t, t);
+        let param = db.union(&[atom, pair]);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+
+        let all = candidates(&infer, t).lower;
+        let matched = infer.matched_candidates(t).unwrap().lower;
+        assert!(!matched.is_empty());
+        assert!(matched.len() < all.len(), "{all:?} {matched:?}");
+    }
+
+    #[test]
+    fn passed_bounds_keep_the_members_they_were_collected_under() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `B ≤ A` was collected under the first member of a union, which didn't match
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        infer.push(a, CandidateKind::Lower, b, vec![unmatched]);
+        infer.push(a, CandidateKind::Lower, five, Vec::new());
+
+        // So the bound that `A ≤ Int` passes on to `B` is only collected under it too
+        let mut expected = Inference::new([a, b]);
+        expected.push(a, CandidateKind::Upper, int, Vec::new());
+        add_expected_bounds(&mut db.arena, &db.builtins, &mut infer, &expected);
+
+        assert_eq!(candidates(&infer, b).upper, vec![int]);
+        assert_eq!(infer.matched_candidates(b).unwrap().upper, vec![]);
+        assert_eq!(candidates(&infer, a).lower, vec![b, five]);
+        assert_eq!(infer.matched_candidates(a).unwrap().lower, vec![five]);
+    }
+
+    #[test]
+    fn retained_bounds_keep_the_members_they_were_collected_under() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let (t, u) = (db.generic("T"), db.generic("U"));
+        let mut infer = Inference::new([t]);
+
+        // The first candidate is dropped, and the second keeps its member, which matched
+        let value = db.pair(u, bytes);
+        let first = db.pair(t, int);
+        let second = db.pair(int, t);
+        let third = db.pair(u, t);
+        let param = db.union(&[first, second, third]);
+        db.infer(value, param, &mut infer);
+        let before = names(&mut db, &infer, t);
+        infer.retain_bounds(|ty| ty != u);
+        let after = names(&mut db, &infer, t);
+
+        assert_eq!(before[0].0, ["U", "Bytes", "Bytes"]);
+        assert_eq!(after[0].0, ["Bytes", "Bytes"]);
+        assert_eq!(after[0].1, ["Bytes"]);
     }
 
     #[test]
