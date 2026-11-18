@@ -262,6 +262,10 @@ pub fn resolve_imports(
         failed_names: Vec::new(),
     };
     let mut missing_imports = IndexMap::new();
+    let import_scopes = imports
+        .iter()
+        .map(|&(scope, _)| scope)
+        .collect::<IndexSet<_>>();
 
     for &(scope, import) in &imports {
         match &ctx.import(import).items {
@@ -344,6 +348,25 @@ pub fn resolve_imports(
                 continue;
             }
 
+            // A block made by an import that no longer fails, such as one that resolves once a
+            // reported re-export exports what it found (see `report_private_reexports`), doesn't
+            // hide its name any more, so the imports are resolved again without it. Names are only
+            // blocked in the scopes that imports are in.
+            if diagnostics {
+                let failing = failing_imports(&missing_imports, cache);
+                let mut unblocked = false;
+
+                for &scope in &import_scopes {
+                    unblocked |= ctx
+                        .scope_mut(scope)
+                        .retain_block_origins(|origin| failing.contains(&origin));
+                }
+
+                if unblocked {
+                    continue;
+                }
+            }
+
             break;
         }
 
@@ -355,34 +378,9 @@ pub fn resolve_imports(
     }
 
     if diagnostics {
-        // The imports that still fail. One that only failed in an earlier pass, such as before a
-        // reported re-export exported what it found (see `report_private_reexports`), doesn't
-        // explain the failures at the blocks it made.
-        let failing = missing_imports
-            .iter()
-            .filter(|(_, names)| !names.is_empty())
-            .map(|(&import, _)| import)
-            .chain(cache.errors.keys().filter_map(|&(import, error)| {
-                matches!(
-                    error,
-                    ImportError::UnresolvedPath(_)
-                        | ImportError::PrivateSymbol
-                        | ImportError::PrivateType
-                )
-                .then_some(import)
-            }))
-            .collect::<HashSet<_>>();
-
-        // Nor does it hide the uses of its name. Names are only blocked in the scopes that
-        // imports are in.
-        for scope in imports
-            .iter()
-            .map(|&(scope, _)| scope)
-            .collect::<IndexSet<_>>()
-        {
-            ctx.scope_mut(scope)
-                .retain_block_origins(|origin| failing.contains(&origin));
-        }
+        // An import that only failed in an earlier pass doesn't explain the failures at the blocks
+        // it made then
+        let failing = failing_imports(&missing_imports, cache);
 
         for (import, missing_imports) in missing_imports {
             if !failure_is_reported(cache, &failing, import) {
@@ -558,6 +556,28 @@ fn block(ctx: &mut Compiler, failed: FailedName) -> bool {
 
     scope.item(failed.namespace, &failed.name).is_none()
         && scope.block(failed.namespace, failed.name, failed.origin)
+}
+
+/// The imports that fail, as far as the imports are resolved: those with a name that's missing, a
+/// path that doesn't resolve, or only private items with the name.
+fn failing_imports(
+    missing_imports: &IndexMap<ImportId, IndexMap<String, Name>>,
+    cache: &ImportCache,
+) -> HashSet<ImportId> {
+    missing_imports
+        .iter()
+        .filter(|(_, names)| !names.is_empty())
+        .map(|(&import, _)| import)
+        .chain(cache.errors.keys().filter_map(|&(import, error)| {
+            matches!(
+                error,
+                ImportError::UnresolvedPath(_)
+                    | ImportError::PrivateSymbol
+                    | ImportError::PrivateType
+            )
+            .then_some(import)
+        }))
+        .collect()
 }
 
 /// Whether an import's failure is reported. An import that failed at a blocked name (see

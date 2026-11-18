@@ -346,14 +346,20 @@ impl Scope {
     }
 
     /// Keeps only the origins of blocked names (see [`Self::block`]) that `keep` accepts, and
-    /// unblocks the names left with none.
-    pub fn retain_block_origins(&mut self, mut keep: impl FnMut(ImportId) -> bool) {
+    /// unblocks the names left with none. Returns whether any origin was removed.
+    pub fn retain_block_origins(&mut self, mut keep: impl FnMut(ImportId) -> bool) -> bool {
+        let mut removed = false;
+
         for namespace in Namespace::ALL {
             self.blocked_names_mut(namespace).retain(|_, origins| {
+                let count = origins.len();
                 origins.retain(|&origin| keep(origin));
+                removed |= origins.len() != count;
                 !origins.is_empty()
             });
         }
+
+        removed
     }
 
     pub fn is_blocked(&self, namespace: Namespace, name: &str) -> bool {

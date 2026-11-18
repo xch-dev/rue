@@ -1,0 +1,29 @@
+import p::z::n;
+
+// Before the re-export is reported, `import p::z::n` finds only private items, so it blocks `n`,
+// which hides the sibling file `n.rue`, and `d`'s import of `n` through `super` stops at the block.
+// Once it's reported, the import brings in the public function `n`, and the block on the module
+// `n` is removed before the imports are resolved again, so `d` reaches `n.rue` too.
+mod p {
+    export mod z {
+        export super::n;
+
+        mod n {}
+    }
+
+    fn n() -> Int {
+        5
+    }
+}
+
+mod d {
+    import super::n;
+
+    export fn f() -> Int {
+        n() + n::Q
+    }
+}
+
+fn main() -> Int {
+    n() + d::f() + n::Q
+}
