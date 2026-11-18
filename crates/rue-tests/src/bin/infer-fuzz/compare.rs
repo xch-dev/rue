@@ -8,16 +8,23 @@
 //! makes variants "not comparable" rather than changed.
 //!
 //! A variant **changes** when its status (inferred, rejected, unsound, slow or crashed), its
-//! output, or its first diagnostic differs, a crash's first diagnostic being the first line of its
-//! panic message. Outputs are only compared when both runs recorded them. A change is a
+//! output, its first diagnostic, or its fingerprint differs, a crash's first diagnostic being the
+//! first line of its panic message. The fingerprint (`oracle::fingerprint`) is a hash of every
+//! diagnostic, warnings included, and the CLVM, so a change that should keep the compiler's
+//! behaviour identical can be checked with no changes at all. Outputs and fingerprints are only
+//! compared when both runs recorded them. A change is a
 //! **regression** when the variant was inferred and no longer is, or becomes unsound, slow or
 //! crashed.
 //!
-//! An explicit program whose status changes is a change of its own, with the variant `explicit`.
+//! An explicit program whose status or fingerprint changes is a change of its own, with the
+//! variant `explicit`.
 //! It's a regression if it compiled and no longer does, or newly crashes. When it compiles in only
 //! one of the runs, its variants can't be compared, but a variant of a newly compiling program
 //! that's unsound, slow or crashed is reported as a regression, with `none` as its before side.
 //! Seeds and variants that are only in one run, or whose source differs, count as not comparable.
+//! Variants and explicit programs that are compared, but whose fingerprint is missing from either
+//! run, are counted as without fingerprints, so a baseline from before fingerprints were recorded
+//! doesn't pass a check for no changes unnoticed.
 //!
 //! The report is meant to be diffed and read by scripts, so its format is kept stable:
 //!
@@ -29,7 +36,7 @@
 //! | Inferred | 8676 | 0 | 0 | 0 | 0 |
 //! ...
 //!
-//! Compared 11638 variants: 12 changed, 0 regressed, 3 newly inferred, 0 not comparable.
+//! Compared 11638 variants: 12 changed, 0 regressed, 3 newly inferred, 0 not comparable, 0 variants and explicit programs without fingerprints.
 //!
 //! ## Changes
 //!
@@ -41,14 +48,15 @@
 //! seed, with the explicit program's change first and then the variants by name:
 //!
 //! - `<variant>` is `all`, `some`, `one`, or `explicit` for the explicit program.
-//! - `<kind>` is `regression`, `status`, `output` or `diagnostic`, the first of them that applies.
+//! - `<kind>` is `regression`, `status`, `output`, `diagnostic` or `fingerprint`, the first of them
+//!   that applies.
 //! - `<before>` and `<after>` are JSON strings, so they never contain a line break or an
 //!   unescaped `"`, and ` -> ` between them is the only one outside a string. Each is the status
 //!   (`Inferred`, `Rejected`, `Unsound`, `Slow`, `Crashed` for a variant; `Valid`, `Rejected`,
 //!   `Panicked`, `NoSites`, `TimedOut`, `Died` for an explicit program), then `: ` and the first
 //!   diagnostic with its position, the output, or the detail, if there is one (the detail, which
-//!   is the timing, for a slow variant). `<before>` is
-//!   `"none"` for a variant that only the new run has.
+//!   is the timing, for a slow variant). For a `fingerprint` change, ` #` and the fingerprint
+//!   follow. `<before>` is `"none"` for a variant that only the new run has.
 //!
 //! The command exits with status 1 if there are any regressions.
 
@@ -89,6 +97,7 @@ pub enum ChangeKind {
     Status,
     Output,
     Diagnostic,
+    Fingerprint,
 }
 
 impl ChangeKind {
@@ -98,6 +107,7 @@ impl ChangeKind {
             ChangeKind::Status => "status",
             ChangeKind::Output => "output",
             ChangeKind::Diagnostic => "diagnostic",
+            ChangeKind::Fingerprint => "fingerprint",
         }
     }
 }
@@ -120,6 +130,10 @@ pub struct Comparison {
     /// Variants that are only in one run, whose source differs, or whose explicit program only
     /// compiles in one run.
     pub not_comparable: usize,
+    /// Variants and explicit programs that were compared, but whose fingerprint is missing from
+    /// either run (one from before fingerprints were recorded, or a crash), so a change in what
+    /// they report other than the first diagnostic wouldn't be seen.
+    pub without_fingerprints: usize,
 }
 
 impl Comparison {
@@ -174,6 +188,27 @@ fn first_crash_line(outcome: &Outcome) -> Option<&str> {
         .flatten()
 }
 
+/// Whether both runs recorded a fingerprint, and they're different.
+fn differ(before: Option<&str>, after: Option<&str>) -> bool {
+    before.is_some() && after.is_some() && before != after
+}
+
+/// The description of a variant or explicit program, with its fingerprint for a `fingerprint`
+/// change, since the rest of the description is the same.
+fn with_fingerprint(description: String, kind: ChangeKind, fingerprint: Option<&str>) -> String {
+    match (kind, fingerprint) {
+        (ChangeKind::Fingerprint, Some(fingerprint)) => format!("{description} #{fingerprint}"),
+        _ => description,
+    }
+}
+
+fn explicit_fingerprint(explicit: &Explicit) -> Option<&str> {
+    match explicit {
+        Explicit::Valid { fingerprint, .. } => fingerprint.as_deref(),
+        _ => None,
+    }
+}
+
 /// What changed between the two outcomes of a variant, if anything.
 fn change_kind(before: &Outcome, after: &Outcome) -> Option<ChangeKind> {
     if is_regression(before.category, after.category) {
@@ -184,6 +219,8 @@ fn change_kind(before: &Outcome, after: &Outcome) -> Option<ChangeKind> {
         Some(ChangeKind::Output)
     } else if before.diag != after.diag || first_crash_line(before) != first_crash_line(after) {
         Some(ChangeKind::Diagnostic)
+    } else if differ(before.fingerprint.as_deref(), after.fingerprint.as_deref()) {
+        Some(ChangeKind::Fingerprint)
     } else {
         None
     }
@@ -242,6 +279,29 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
                 before: before_explicit,
                 after: after_explicit,
             });
+        } else if !matches!(old.explicit, Explicit::NoSites)
+            && (explicit_fingerprint(&old.explicit).is_none()
+                || explicit_fingerprint(&new.explicit).is_none())
+        {
+            // Only a valid program records one, so the same rejection or crash is compared by its
+            // first line alone. A program with no sites has nothing to compare
+            comparison.without_fingerprints += 1;
+        } else if differ(
+            explicit_fingerprint(&old.explicit),
+            explicit_fingerprint(&new.explicit),
+        ) {
+            let kind = ChangeKind::Fingerprint;
+            comparison.changes.push(Change {
+                seed,
+                variant: "explicit".to_string(),
+                kind,
+                before: with_fingerprint(
+                    before_explicit,
+                    kind,
+                    explicit_fingerprint(&old.explicit),
+                ),
+                after: with_fingerprint(after_explicit, kind, explicit_fingerprint(&new.explicit)),
+            });
         }
 
         if !was_valid || !is_valid {
@@ -288,13 +348,25 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
                 .entry((variant.outcome.category, other.outcome.category))
                 .or_default() += 1;
 
+            if variant.outcome.fingerprint.is_none() || other.outcome.fingerprint.is_none() {
+                comparison.without_fingerprints += 1;
+            }
+
             if let Some(kind) = change_kind(&variant.outcome, &other.outcome) {
                 comparison.changes.push(Change {
                     seed,
                     variant: variant.name.clone(),
                     kind,
-                    before: describe(&variant.outcome),
-                    after: describe(&other.outcome),
+                    before: with_fingerprint(
+                        describe(&variant.outcome),
+                        kind,
+                        variant.outcome.fingerprint.as_deref(),
+                    ),
+                    after: with_fingerprint(
+                        describe(&other.outcome),
+                        kind,
+                        other.outcome.fingerprint.as_deref(),
+                    ),
                 });
             }
         }
@@ -346,10 +418,12 @@ impl Comparison {
         let _ = writeln!(
             out,
             "\nCompared {compared} variants: {} changed, {} regressed, {newly_inferred} newly \
-             inferred, {} not comparable.",
+             inferred, {} not comparable, {} variants and explicit programs without \
+             fingerprints.",
             self.changes.len(),
             self.regressions().count(),
-            self.not_comparable
+            self.not_comparable,
+            self.without_fingerprints
         );
 
         if !self.changes.is_empty() {

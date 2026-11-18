@@ -1,6 +1,7 @@
 //! Compiles a program, runs its `main`, and classifies what inference did with a variant.
 
 use std::cell::Cell;
+use std::fmt::Write as _;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +11,7 @@ use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
 use rue_clvm::{disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, File, FileTree};
-use rue_diagnostic::{DiagnosticSeverity, Source, SourceKind};
+use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_lir::CLVM_FLAGS;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
@@ -87,15 +88,17 @@ pub enum Compiled {
         clvm: String,
         run: Run,
         time: Duration,
+        /// See `fingerprint`.
+        fingerprint: String,
     },
     Rejected {
         diag: Diag,
         time: Duration,
+        /// See `fingerprint`.
+        fingerprint: String,
     },
     /// The compiler panicked.
-    Panicked {
-        message: String,
-    },
+    Panicked { message: String },
 }
 
 impl Compiled {
@@ -125,8 +128,17 @@ pub fn compile(source: &str) -> Compiled {
     let time = start.elapsed();
 
     match result {
-        Ok(Ok((clvm, run))) => Compiled::Ok { clvm, run, time },
-        Ok(Err(diag)) => Compiled::Rejected { diag, time },
+        Ok((Ok((clvm, run)), fingerprint)) => Compiled::Ok {
+            clvm,
+            run,
+            time,
+            fingerprint,
+        },
+        Ok((Err(diag), fingerprint)) => Compiled::Rejected {
+            diag,
+            time,
+            fingerprint,
+        },
         Err(payload) => {
             let message = payload
                 .downcast_ref::<&str>()
@@ -138,7 +150,39 @@ pub fn compile(source: &str) -> Compiled {
     }
 }
 
-fn compile_inner(source: &str) -> Result<(String, Run), Diag> {
+/// A hash of everything a compile reports: every diagnostic (warnings included, with its
+/// severity, message and position) and, if it compiled, the CLVM. Two compiles with the same
+/// fingerprint behaved the same as far as a user can see, so a change that should keep inference
+/// as it was can be checked variant by variant (`compare.rs`). It's FNV-1a, which is stable across
+/// builds and toolchains.
+pub fn fingerprint(diagnostics: &[Diagnostic], clvm: Option<&str>) -> String {
+    let mut text = String::new();
+
+    for diagnostic in diagnostics {
+        let _ = writeln!(
+            text,
+            "{:?} {} at {}",
+            diagnostic.severity,
+            diagnostic.kind,
+            diagnostic.start()
+        );
+    }
+
+    if let Some(clvm) = clvm {
+        text.push_str(clvm);
+    }
+
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+
+    format!("{hash:016x}")
+}
+
+fn compile_inner(source: &str) -> (Result<(String, Run), Diag>, String) {
     let mut ctx = Compiler::new(CompilerOptions {
         std: false,
         ..CompilerOptions::default()
@@ -155,6 +199,18 @@ fn compile_inner(source: &str) -> Result<(String, Run), Diag> {
 
     let diagnostics = ctx.take_diagnostics();
 
+    let result = compile_checked(&mut ctx, &tree, &kind, &diagnostics);
+    let clvm = result.as_ref().ok().map(|(clvm, _)| clvm.as_str());
+    let fingerprint = fingerprint(&diagnostics, clvm);
+    (result, fingerprint)
+}
+
+fn compile_checked(
+    ctx: &mut Compiler,
+    tree: &FileTree,
+    kind: &SourceKind,
+    diagnostics: &[Diagnostic],
+) -> Result<(String, Run), Diag> {
     if let Some(error) = diagnostics
         .iter()
         .find(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error)
@@ -174,7 +230,7 @@ fn compile_inner(source: &str) -> Result<(String, Run), Diag> {
 
     let mut allocator = Allocator::new();
 
-    let ptr = match tree.main(&mut ctx, &mut allocator, &kind, PathBuf::from(".")) {
+    let ptr = match tree.main(ctx, &mut allocator, kind, PathBuf::from(".")) {
         Ok(Some(ptr)) => ptr,
         Ok(None) => unreachable!("generated programs have a `main`"),
         Err(error) => {
@@ -241,6 +297,10 @@ pub struct Outcome {
     /// have it.
     #[serde(default)]
     pub output: Option<Run>,
+    /// The stripped program's `fingerprint`, unless it crashed or hung. Runs from before this was
+    /// recorded don't have it.
+    #[serde(default)]
+    pub fingerprint: Option<String>,
 }
 
 impl Outcome {
@@ -253,6 +313,7 @@ impl Outcome {
             detail: Some(detail),
             time_ms,
             output: None,
+            fingerprint: None,
         }
     }
 }
@@ -272,6 +333,7 @@ pub fn classify(
         clvm: explicit_clvm,
         run: explicit_run,
         time: explicit_time,
+        ..
     } = explicit
     else {
         unreachable!("only valid programs are classified");
@@ -281,6 +343,12 @@ pub fn classify(
         Compiled::Ok { run, .. } => Some(run.clone()),
         _ => None,
     };
+    let fingerprint = match stripped {
+        Compiled::Ok { fingerprint, .. } | Compiled::Rejected { fingerprint, .. } => {
+            Some(fingerprint.clone())
+        }
+        Compiled::Panicked { .. } => None,
+    };
     let outcome = |category, diag, same_clvm, detail| Outcome {
         category,
         diag,
@@ -288,6 +356,7 @@ pub fn classify(
         detail,
         time_ms: millis(stripped.time()),
         output: output.clone(),
+        fingerprint: fingerprint.clone(),
     };
 
     if let Compiled::Panicked { message } = stripped {
