@@ -237,6 +237,10 @@ pub struct Outcome {
     /// The outputs, the panic message, or the times, depending on the category.
     pub detail: Option<String>,
     pub time_ms: f64,
+    /// What `main` gave, for a variant that compiled. Runs from before this was recorded don't
+    /// have it.
+    #[serde(default)]
+    pub output: Option<Run>,
 }
 
 impl Outcome {
@@ -248,6 +252,7 @@ impl Outcome {
             same_clvm: false,
             detail: Some(detail),
             time_ms,
+            output: None,
         }
     }
 }
@@ -272,12 +277,17 @@ pub fn classify(
         unreachable!("only valid programs are classified");
     };
 
+    let output = match stripped {
+        Compiled::Ok { run, .. } => Some(run.clone()),
+        _ => None,
+    };
     let outcome = |category, diag, same_clvm, detail| Outcome {
         category,
         diag,
         same_clvm,
         detail,
         time_ms: millis(stripped.time()),
+        output: output.clone(),
     };
 
     if let Compiled::Panicked { message } = stripped {

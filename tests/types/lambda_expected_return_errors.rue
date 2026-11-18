@@ -1,0 +1,23 @@
+// What the type expected of a lambda's body doesn't cover (#354)
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+test fn annotation_wins() -> Int {
+    // The lambda's own return type is what its body is checked against
+    let function: fn(a: Int) -> 7 = fn(x: Int): Int => identity(7);
+    function(1)
+}
+
+test fn early_return() -> Int {
+    // An early `return` isn't given the expected type, since it would also be checked against it
+    let function: fn(a: Int) -> 7 = fn(x) => {
+        if x > 0 {
+            return identity(7);
+        }
+
+        7
+    };
+    function(1)
+}

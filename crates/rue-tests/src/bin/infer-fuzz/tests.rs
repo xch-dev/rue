@@ -783,6 +783,7 @@ fn clusters_are_keyed_by_category_and_diagnostic() {
         same_clvm: false,
         detail: None,
         time_ms: 1.0,
+        output: None,
     };
     assert_eq!(
         cluster_key(&with_diag),
@@ -1142,4 +1143,274 @@ fn workers_resume_at_the_variant_they_are_given() {
         "{out}"
     );
     assert_eq!(lines.last(), Some(&"done"));
+}
+
+// Comparing two runs.
+
+fn compared(before: Category, after: Category) -> compare::Comparison {
+    let old = record(0, &[("all", before, &[])]);
+    let mut new = old.clone();
+    new.variants[0].outcome.category = after;
+    compare::compare(&[old], &[new])
+}
+
+fn kinds(comparison: &compare::Comparison) -> Vec<compare::ChangeKind> {
+    comparison
+        .changes
+        .iter()
+        .map(|change| change.kind)
+        .collect()
+}
+
+#[test]
+fn comparisons_report_variants_that_are_no_longer_inferred() {
+    use compare::ChangeKind::{Regression, Status};
+
+    assert_eq!(kinds(&compared(Category::Inferred, Category::Inferred)), []);
+    assert_eq!(kinds(&compared(Category::Rejected, Category::Rejected)), []);
+    assert_eq!(
+        kinds(&compared(Category::Rejected, Category::Inferred)),
+        [Status]
+    );
+
+    for worse in [
+        Category::Rejected,
+        Category::Unsound,
+        Category::Slow,
+        Category::Crashed,
+    ] {
+        assert_eq!(
+            kinds(&compared(Category::Inferred, worse)),
+            [Regression],
+            "{worse:?}"
+        );
+    }
+
+    // A rejection that becomes unsound is worse too, and so is a move between bad categories
+    assert_eq!(
+        kinds(&compared(Category::Rejected, Category::Unsound)),
+        [Regression]
+    );
+    assert_eq!(
+        kinds(&compared(Category::Unsound, Category::Crashed)),
+        [Regression]
+    );
+    assert_eq!(
+        kinds(&compared(Category::Unsound, Category::Rejected)),
+        [Status]
+    );
+
+    // Staying unsound, slow or crashed isn't a regression in itself
+    for bad in [Category::Unsound, Category::Slow, Category::Crashed] {
+        assert_eq!(kinds(&compared(bad, bad)), [], "{bad:?}");
+    }
+
+    let comparison = compared(Category::Rejected, Category::Inferred);
+    assert_eq!(
+        comparison
+            .transitions
+            .get(&(Category::Rejected, Category::Inferred)),
+        Some(&1)
+    );
+    assert!(comparison.report().contains(
+        "Compared 1 variants: 1 changed, 0 regressed, 1 newly inferred, 0 not comparable."
+    ));
+}
+
+#[test]
+fn comparisons_report_changed_outputs_and_diagnostics() {
+    let mut old = record(
+        0,
+        &[
+            ("all", Category::Inferred, &[]),
+            ("one", Category::Rejected, &[]),
+        ],
+    );
+    let Compiled::Rejected { diag, .. } = rejected(1) else {
+        unreachable!()
+    };
+    old.variants[0].outcome.output = Some(Run::Output("1".to_string()));
+    old.variants[1].outcome.diag = Some(diag.clone());
+
+    // The same results aren't changes
+    assert_eq!(compare::compare(&[old.clone()], &[old.clone()]).changes, []);
+
+    let mut new = old.clone();
+    new.variants[0].outcome.output = Some(Run::Output("2".to_string()));
+    new.variants[1].outcome.diag = Some(Diag {
+        message: "Cannot infer generic `U` for `f`".to_string(),
+        ..diag
+    });
+
+    let comparison = compare::compare(std::slice::from_ref(&old), &[new]);
+    assert_eq!(
+        kinds(&comparison),
+        [compare::ChangeKind::Output, compare::ChangeKind::Diagnostic]
+    );
+    let report = comparison.report();
+    assert!(
+        report.contains(r#"- seed 0 `all` [output]: "Inferred: 1" -> "Inferred: 2""#),
+        "{report}"
+    );
+    assert!(
+        report.contains(
+            r#"- seed 0 `one` [diagnostic]: "Rejected: Cannot infer generic `T` for `f` at 1:1" -> "Rejected: Cannot infer generic `U` for `f` at 1:1""#
+        ),
+        "{report}"
+    );
+
+    // A run from before outputs were recorded has none to compare
+    let mut unrecorded = old.clone();
+    unrecorded.variants[0].outcome.output = None;
+    assert_eq!(compare::compare(&[unrecorded], &[old]).changes, []);
+}
+
+#[test]
+fn comparisons_report_explicit_programs_that_no_longer_compile() {
+    let old = record(0, &[("all", Category::Inferred, &[])]);
+    let mut new = old.clone();
+    new.explicit = Explicit::Panicked("boom".to_string());
+
+    let comparison = compare::compare(&[old], &[new]);
+    assert_eq!(kinds(&comparison), [compare::ChangeKind::Regression]);
+    assert_eq!(comparison.changes[0].variant, "explicit");
+}
+
+#[test]
+fn comparisons_skip_variants_whose_programs_differ() {
+    let old = record(0, &[("all", Category::Inferred, &[])]);
+    let mut new = old.clone();
+    new.variants[0].source = "fn main() -> Int {\n    1\n}\n".to_string();
+    new.variants[0].outcome.category = Category::Rejected;
+
+    // Neither side has a match
+    let comparison = compare::compare(std::slice::from_ref(&old), &[new]);
+    assert_eq!(comparison.changes, []);
+    assert_eq!(comparison.not_comparable, 2);
+
+    // A seed that's only in the first run
+    let comparison = compare::compare(&[old], &[]);
+    assert_eq!(comparison.not_comparable, 1);
+}
+
+#[test]
+fn outcomes_from_before_outputs_were_recorded_still_load() {
+    let json =
+        r#"{"category":"Inferred","diag":null,"same_clvm":true,"detail":null,"time_ms":1.0}"#;
+    let outcome: Outcome = serde_json::from_str(json).unwrap();
+    assert_eq!(outcome.output, None);
+}
+
+#[test]
+fn comparisons_report_crashes_that_change() {
+    let mut old = record(0, &[("all", Category::Crashed, &[])]);
+    old.variants[0].outcome.detail = Some("index out of bounds\nmore".to_string());
+    let mut new = old.clone();
+
+    new.variants[0].outcome.detail = Some("index out of bounds\nother".to_string());
+    assert_eq!(
+        kinds(&compare::compare(
+            std::slice::from_ref(&old),
+            std::slice::from_ref(&new)
+        )),
+        []
+    );
+
+    new.variants[0].outcome.detail = Some("worker died: stack overflow".to_string());
+    let comparison = compare::compare(&[old], &[new]);
+    assert_eq!(kinds(&comparison), [compare::ChangeKind::Diagnostic]);
+    // Each side is one JSON string, whatever its text holds
+    let report = comparison.report();
+    assert!(
+        report.contains(
+            r#""Crashed: index out of bounds\nmore" -> "Crashed: worker died: stack overflow""#
+        ),
+        "{report}"
+    );
+}
+
+#[test]
+fn comparisons_report_explicit_programs_that_newly_compile() {
+    let mut old = record(0, &[]);
+    old.explicit = Explicit::TimedOut;
+    let new = record(
+        0,
+        &[
+            ("all", Category::Unsound, &[]),
+            ("one", Category::Inferred, &[]),
+        ],
+    );
+
+    let comparison = compare::compare(&[old], &[new]);
+    assert_eq!(
+        kinds(&comparison),
+        [compare::ChangeKind::Status, compare::ChangeKind::Regression]
+    );
+    assert_eq!(comparison.changes[0].variant, "explicit");
+    assert_eq!(comparison.changes[1].before, "none");
+    assert_eq!(comparison.not_comparable, 2);
+}
+
+#[test]
+fn comparisons_count_what_only_the_new_run_has() {
+    let old = record(0, &[("all", Category::Inferred, &[])]);
+    let mut new = old.clone();
+    new.variants.push(new.variants[0].clone());
+    new.variants[1].name = "some".to_string();
+    let extra = record(1, &[("all", Category::Inferred, &[])]);
+
+    let comparison = compare::compare(&[old], &[new, extra]);
+    assert_eq!(comparison.changes, []);
+    assert_eq!(comparison.not_comparable, 2);
+}
+
+#[test]
+fn comparisons_load_runs_from_a_file_or_its_directory() {
+    let dir = std::env::temp_dir().join(format!("infer-fuzz-load-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let record = record(3, &[("all", Category::Inferred, &[])]);
+    let line = serde_json::to_string(&record).unwrap();
+    std::fs::write(dir.join("results.jsonl"), format!("{line}\n\n{line}\n")).unwrap();
+
+    assert_eq!(compare::load(&dir).unwrap().len(), 2);
+    assert_eq!(compare::load(&dir.join("results.jsonl")).unwrap().len(), 2);
+
+    std::fs::write(dir.join("results.jsonl"), format!("{line}\nnot json\n")).unwrap();
+    let error = format!("{:#}", compare::load(&dir).unwrap_err());
+    assert!(error.contains("line 2"), "{error}");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn comparisons_compare_explicit_panics_by_their_first_line() {
+    let mut old = record(0, &[]);
+    old.explicit = Explicit::Panicked("assertion failed\nleft: 1".to_string());
+    let mut new = old.clone();
+    new.explicit = Explicit::Panicked("assertion failed\nleft: 2".to_string());
+    assert_eq!(
+        compare::compare(std::slice::from_ref(&old), &[new.clone()]).changes,
+        []
+    );
+
+    new.explicit = Explicit::Panicked("index out of bounds".to_string());
+    assert_eq!(
+        kinds(&compare::compare(&[old], &[new])),
+        [compare::ChangeKind::Diagnostic]
+    );
+}
+
+#[test]
+fn slow_variants_are_described_by_their_timing() {
+    let old = record(0, &[("all", Category::Inferred, &[])]);
+    let mut new = old.clone();
+    new.variants[0].outcome.category = Category::Slow;
+    new.variants[0].outcome.output = Some(Run::Output("1".to_string()));
+    new.variants[0].outcome.detail = Some("500.0 ms, explicit 1.0 ms".to_string());
+
+    let comparison = compare::compare(&[old], &[new]);
+    assert_eq!(
+        comparison.changes[0].after,
+        "Slow: 500.0 ms, explicit 1.0 ms"
+    );
 }
