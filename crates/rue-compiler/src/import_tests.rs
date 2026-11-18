@@ -3193,3 +3193,32 @@ fn reexports_of_names_declared_in_the_module_are_reported_as_duplicates() {
 
     assert_eq!(compiled.errors(), ["6:27 DuplicateSymbol(\"X\")"]);
 }
+
+#[test]
+fn glob_reexports_through_super_dont_export_private_items_another_glob_bound() {
+    let compiled = compile(
+        "
+        const SECRET: Int = 1;
+
+        export mod a {
+            import super::*;
+            export super::*;
+
+            export fn secret() -> Int {
+                SECRET
+            }
+        }
+
+        fn main() -> Int {
+            a::secret() + a::SECRET
+        }
+        ",
+    );
+
+    // The private glob import binds the name first, and the exported one shares its binding,
+    // which it still doesn't export
+    assert_eq!(
+        compiled.errors(),
+        ["14:30 PrivateSymbol(\"SECRET\", \"a\")"]
+    );
+}
