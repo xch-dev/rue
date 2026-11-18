@@ -1,0 +1,64 @@
+tests:
+- name: issue_case
+  program: (a (q 16 2 (q . 1)) (q 1))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 1) ())) (c (a 5 2) 1)) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 1)) (c (q . 1) ()))
+  output: "2"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: unannotated
+  program: (a (q 18 2 (q . 2)) (q 21))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 21) ())) (c (a 5 2) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (c (q . 1) ()))
+  output: "42"
+  runtime_cost: 1199
+  byte_cost: 252000
+  total_cost: 253199
+- name: passed_directly
+  program: (a (q 2 (a 2 (c (q 16 2 (q . 1)) (q 17 2 (q . 1)))) (q 4)) (c (q 2 (i (a (i (l 2) (q) (q 9 2 ())) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 17 2 (q . 1)) (c (q 16 2 (q . 1)) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1))) ()))
+  output: "5"
+  runtime_cost: 1969
+  byte_cost: 1260000
+  total_cost: 1261969
+- name: nested_calls
+  program: (a (q 16 2 (q . 1)) (q 9))
+  debug_program: (a (q 2 (q 2 2 (c (q . 9) ())) (c (a 14 (a 10 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 1) (q . 1))) ()))
+  output: "10"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: through_several_layers
+  program: (a (q 17 2 (q . 1)) (q 3))
+  debug_program: (a (q 2 (q 2 2 (c (q . 3) ())) (c (a 10 (c 14 (a 12 (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ())))))) 1)) (c (c (c (q 17 2 (q . 1)) (q . 1)) (c (q 2 2 3) (q . 1))) ()))
+  output: "2"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: guard_literal_alongside
+  program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (q 5 . 6)) ())) (c (q 2 (i (a (i (l 2) (q) (q 9 2 ())) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 10 (c 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 5) (q . 6))))) (c (c (q 16 2 (q . 1)) (c (q 2 5 (c (a 2 (c 11 15)) ())) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1))) ()))
+  output: "6"
+  runtime_cost: 2160
+  byte_cost: 1140000
+  total_cost: 1142160
+- name: generic_function
+  program: (a (q . 2) (q 8))
+  debug_program: (a (q 2 (q 2 2 (c (q . 8) ())) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q . 2) (q . 1)) ()))
+  output: "8"
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: instance_bounds
+  program: (a (a (q . 2) (c (q 16 2 (q . 1)) ())) (q 1))
+  debug_program: (a (q 2 10 (c 14 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q . 2) (c (q 2 (a 3 (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ())) (c (q . 1) ())) (q 16 2 (q . 1)))) ()))
+  output: "2"
+  runtime_cost: 1209
+  byte_cost: 420000
+  total_cost: 421209
+- name: guard_structural_value
+  program: (a (q 16 4 6) (c (q 3 . 4) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (f 2) (r 2)) (c (a 5 (c (c (q . 3) (q . 4)) 2)) 1)) (c (c (q . 1) (q . 2)) 1)) (c (q . 2) ()))
+  output: "7"
+  runtime_cost: 1086
+  byte_cost: 300000
+  total_cost: 301086

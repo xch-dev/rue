@@ -1601,6 +1601,67 @@ mod inference {
     }
 
     #[test]
+    fn functions_only_add_themselves_to_unions_that_hold_them() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `fn(p0: Int) -> Int` to `T | nil` only gives `T` the function, not its runtime structure
+        let function = db.function(&[int], int);
+        let param = db.union(&[t, nil]);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower.len(), 1);
+        assert_eq!(
+            db.name(candidates(&infer, t).lower[0]),
+            "fn(p0: Int) -> Int"
+        );
+        assert_eq!(candidates(&infer, t).held, vec![]);
+    }
+
+    #[test]
+    fn leaves_out_function_candidates_held_by_others() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let (t, v, w) = (db.generic("T"), db.generic("V"), db.generic("W"));
+        let identity = db.function_with(&[v], &[v], true, v);
+        let other_identity = db.function_with(&[w], &[w], true, w);
+        let increment = db.function(&[int], int);
+        let decrement = db.function(&[int], int);
+        let reverse = db.function(&[bytes], bytes);
+
+        let pick = |db: &mut Db, types: &[TypeId]| {
+            let mut infer = Inference::new([t]);
+            for &ty in types {
+                assert_eq!(db.infer(ty, t, &mut infer), Comparison::Assign);
+            }
+            let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+            db.name(mappings[&t])
+        };
+
+        // A generic function next to one of its instances is left out, in either order
+        assert_eq!(pick(&mut db, &[identity, increment]), "fn(p0: Int) -> Int");
+        assert_eq!(pick(&mut db, &[increment, identity]), "fn(p0: Int) -> Int");
+
+        // Of function types that are assignable to each other, the first is kept
+        assert_eq!(pick(&mut db, &[increment, decrement]), "fn(p0: Int) -> Int");
+        assert_eq!(
+            pick(&mut db, &[identity, other_identity]),
+            "fn<V>(p0: V) -> V"
+        );
+        assert_eq!(
+            pick(&mut db, &[other_identity, identity]),
+            "fn<W>(p0: W) -> W"
+        );
+
+        // Function types that aren't are kept as a union
+        assert_eq!(
+            pick(&mut db, &[increment, reverse]),
+            "fn(p0: Int) -> Int | fn(p0: Bytes) -> Bytes"
+        );
+    }
+
+    #[test]
     fn skips_union_members_held_by_others() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);

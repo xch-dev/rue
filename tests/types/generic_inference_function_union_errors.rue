@@ -1,0 +1,24 @@
+// A function passed to a union that doesn't hold it is still compared by its runtime structure
+// (#349)
+
+fn unwrap<T>(value: T | nil) -> T {
+    unchecked_cast(value)
+}
+
+fn pair_or_nil<T>(value: (T, Int) | nil) -> T {
+    unchecked_cast(value)
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn main() -> Int {
+    // The function is `T`, which isn't `Int`
+    let wrong: Int = unwrap(increment);
+
+    // No member holds the function, so it's compared by its runtime structure, as before
+    let structural = pair_or_nil(increment);
+
+    wrong + structural
+}

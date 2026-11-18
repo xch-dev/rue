@@ -1,0 +1,104 @@
+// A function type that's assignable to another candidate of the same generic adds nothing to their
+// union, so it's left out, such as a generic function next to one of its instances (#355)
+
+fn head_or<T>(_list: List<T>, default: T) -> T {
+    default
+}
+
+test fn issue_case() -> Int {
+    // `T` is `fn(x: Int) -> Int`, so the generic function's `V` doesn't reach the lambda
+    let function = head_or([fn(x: Int) => x, fn<V>(value: V) => value], fn(y) => y + 1);
+    function(1)
+}
+
+fn identity<V>(value: V) -> V {
+    value
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn decrement(value: Int) -> Int {
+    value - 1
+}
+
+fn pick<T>(_first: T, second: T) -> T {
+    second
+}
+
+test fn generic_function_first() -> Int {
+    let function = pick(identity, increment);
+    function(4)
+}
+
+test fn generic_function_second() -> Int {
+    let function = pick(increment, identity);
+    function(4)
+}
+
+test fn equal_function_types() -> Int {
+    // Two functions with the same type are one candidate
+    let function = pick(increment, decrement);
+    function(4)
+}
+
+fn same_literal() -> 5 {
+    5
+}
+
+fn other_literal() -> 5 {
+    5
+}
+
+test fn literal_return_types() -> Int {
+    let function = pick(same_literal, other_literal);
+    function()
+}
+
+fn first_of<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+test fn inside_a_pair() -> Int {
+    let function = first_of((identity, increment));
+    function(10)
+}
+
+fn singleton<T>(value: T) -> List<T> {
+    [value]
+}
+
+test fn nested_calls() -> Int {
+    let function = head_or(singleton(identity), increment);
+    function(2)
+}
+
+fn rigid<V>(function: fn(x: V) -> V, value: V) -> V {
+    // The caller's `fn(x: V) -> V` holds `identity`, so `T` is it
+    let picked = pick(function, identity);
+    picked(value)
+}
+
+test fn outer_generic() -> Int {
+    rigid(increment, 1)
+}
+
+fn same<V>(value: V) -> V {
+    value
+}
+
+test fn equivalent_generic_functions() -> Bool {
+    // Two generic functions that are assignable to each other keep the first, which is still
+    // generic
+    let function = pick(identity, same);
+    let number: Int = function(1);
+    let flag: Bool = function(true);
+    flag && number == 1
+}
+
+test fn guard_other_candidates() -> Bool {
+    // Guard: a candidate that isn't a function isn't compared
+    let value = pick(identity, nil);
+    value is nil
+}

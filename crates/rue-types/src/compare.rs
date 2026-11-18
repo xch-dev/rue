@@ -12,7 +12,7 @@ use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
     FxHashMap, FxIndexSet, Memo, Type, TypeId, Union, compare_memo_enabled, free_generics,
     grow_stack, has_non_contractive_cycle, reachable, references_generic, step, stringify_impl,
-    substitute, substitute_with_mappings,
+    substitute, substitute_with_mappings, unwrap_semantic_without_substitution,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1455,6 +1455,7 @@ fn pick_inferred_type(
     } else {
         &candidates.lower
     };
+    let lower = &without_subsumed_functions(arena, builtins, renamed, lower);
 
     if !lower.is_empty() {
         // Literals are widened to their base type, so that `pick(1, 2)` infers `Int` and a
@@ -1492,6 +1493,50 @@ fn pick_inferred_type(
         // Nothing constrains the generic, so leave it as is
         None
     }
+}
+
+/// Leaves out the function types that are assignable to another of the types, such as
+/// `fn<V>(value: V) -> V` next to `fn(x: Int) -> Int`, since that one already holds them, so their
+/// union is just the other (#355). Of function types that are assignable to each other, the first
+/// is kept. Otherwise a generic function's own generics would be in the parameter types of the
+/// union, where they aren't bound, and a union of function types can't be called.
+fn without_subsumed_functions(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    renamed: &FxHashMap<TypeId, TypeId>,
+    types: &[TypeId],
+) -> Vec<TypeId> {
+    let functions: Vec<bool> = types
+        .iter()
+        .map(|&ty| {
+            let ty = unwrap_semantic_without_substitution(arena, ty, true);
+            matches!(arena[ty], Type::Function(_))
+        })
+        .collect();
+
+    if functions.iter().filter(|&&function| function).count() < 2 {
+        return types.to_vec();
+    }
+
+    let mut result = Vec::new();
+
+    for (i, &ty) in types.iter().enumerate() {
+        let subsumed = functions[i]
+            && types.iter().enumerate().any(|(j, &other)| {
+                j != i
+                    && functions[j]
+                    && compare_renamed(arena, builtins, renamed, ty, other) == Comparison::Assign
+                    && (j < i
+                        || compare_renamed(arena, builtins, renamed, other, ty)
+                            != Comparison::Assign)
+            });
+
+        if !subsumed {
+            result.push(ty);
+        }
+    }
+
+    result
 }
 
 fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) -> TypeId {
@@ -2031,18 +2076,24 @@ fn compare_impl_inner(
                 Comparison::Invalid
             };
 
-            min(
-                result,
-                compare_impl(
-                    arena,
-                    builtins,
-                    ctx,
-                    builtins.recursive_any,
-                    rhs,
-                    lhs_semantic,
-                    rhs_semantic,
-                ),
-            )
+            // As with a generic, the function's runtime structure is only a fallback for when no
+            // member holds it, so that it doesn't add to the generics in the union (#349)
+            if result == Comparison::Assign {
+                result
+            } else {
+                min(
+                    result,
+                    compare_impl(
+                        arena,
+                        builtins,
+                        ctx,
+                        builtins.recursive_any,
+                        rhs,
+                        lhs_semantic,
+                        rhs_semantic,
+                    ),
+                )
+            }
         }
         (_, Type::Union(rhs_union)) => {
             // A generic being inferred doesn't need to include a value that a member already

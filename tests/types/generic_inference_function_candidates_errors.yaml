@@ -1,0 +1,4 @@
+diagnostics:
+- "Cannot disambiguate between multiple functions in type `fn(value: Int) -> Int | fn(value: Bytes) -> Bytes` at generic_inference_function_candidates_errors.rue:22:17"
+- Cannot use `+` operator with `Int | Bytes` and `Int | (V, V)` at generic_inference_function_candidates_errors.rue:28:5
+- "Cannot disambiguate between multiple functions in type `fn(x: Int) -> Int | fn<V>(value: V) -> (V, V)` at generic_inference_function_candidates_errors.rue:28:13"
