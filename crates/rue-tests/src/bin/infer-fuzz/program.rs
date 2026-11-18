@@ -195,11 +195,15 @@ impl Ty {
 
     /// Whether this is a union with a function type in it, such as `F | nil` or `List<F>`,
     /// which doesn't give a lambda the types of its parameters.
+    ///
+    /// Generator version 2's unions give a lambda no parameter types anywhere inside them, nor
+    /// does a `Maybe` or `Tree` of a type with a function in it: `Box<F> | (F, F)` doesn't give
+    /// a lambda in the pair a type.
     pub fn is_function_union(&self) -> bool {
         match self {
             Ty::Opt(inner) | Ty::List(inner) => matches!(**inner, Ty::Fn(..)),
-            Ty::Union(members) => members.iter().any(|member| matches!(member, Ty::Fn(..))),
-            Ty::Named(Named::Maybe | Named::Tree, args) => matches!(args[0], Ty::Fn(..)),
+            Ty::Union(_) => true,
+            Ty::Named(Named::Maybe | Named::Tree, args) => args[0].contains_fn(),
             _ => false,
         }
     }

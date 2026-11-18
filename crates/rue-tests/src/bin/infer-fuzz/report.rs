@@ -344,8 +344,9 @@ fn write_cluster(out: &mut String, records: &[SeedRecord], number: usize, cluste
     }
 }
 
-/// Writes `results.jsonl`, `report.md`, and the shrunk reproductions under `clusters/NN/`,
-/// numbered as in the report.
+/// Writes `results.jsonl`, `report.md`, the shrunk reproductions under `clusters/NN/`, numbered
+/// as in the report, and `shrunk.jsonl`, with each shrunk failure's cluster, seed, variant, and
+/// its programs, shape, tags and own diagnostic.
 pub fn write_outputs(
     out: &Path,
     records: &[SeedRecord],
@@ -364,11 +365,21 @@ pub fn write_outputs(
 
     let dir = out.join("clusters");
     let _ = fs::remove_dir_all(&dir);
+    let mut shrunk_lines = String::new();
     for (index, cluster) in clusters.iter().enumerate() {
-        let cluster_dir = dir.join(format!("{:02}", index + 1));
+        let number = index + 1;
+        let cluster_dir = dir.join(format!("{number:02}"));
         fs::create_dir_all(&cluster_dir)?;
         for ((seed, index), shrunk) in &cluster.shrunk {
             let name = &variant(records, (*seed, *index)).name;
+            let line = serde_json::json!({
+                "cluster": number,
+                "seed": seed,
+                "variant": name,
+                "shrunk": shrunk,
+            });
+            shrunk_lines.push_str(&line.to_string());
+            shrunk_lines.push('\n');
             fs::write(
                 cluster_dir.join(format!("{seed}-{name}-explicit.rue")),
                 &shrunk.explicit,
@@ -379,6 +390,7 @@ pub fn write_outputs(
             )?;
         }
     }
+    fs::write(out.join("shrunk.jsonl"), shrunk_lines)?;
 
     Ok(())
 }

@@ -1657,7 +1657,7 @@ fn version_1_programs_never_change() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 2.
-const VERSION_2_HASH: u64 = 0xec50_1dc6_5b76_640c;
+const VERSION_2_HASH: u64 = 0xb120_2ab9_744a_3761;
 
 #[test]
 fn version_2_programs_never_change() {
