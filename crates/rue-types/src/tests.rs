@@ -1654,7 +1654,10 @@ mod inference {
         let mappings =
             resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &HashMap::new());
         assert_eq!(mappings[&a], five);
-        assert!(compare(&mut db.arena, &db.builtins, mappings[&b], five) == Comparison::Assign);
+        assert_eq!(
+            compare(&mut db.arena, &db.builtins, mappings[&b], five),
+            Comparison::Assign
+        );
 
         // `A` falls back to `5`, and `B`'s bound `Int` doesn't widen it, since `5` is the most
         // specific type that satisfies it
