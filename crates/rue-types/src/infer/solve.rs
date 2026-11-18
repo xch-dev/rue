@@ -136,7 +136,7 @@ impl CallSolver {
     /// The inference with the vars for passed generic functions' instances replaced with what
     /// they're instantiated as (see `InstancePolicy::Joint`), after the bounds that the rest of
     /// it implies for them are passed on to them: the upper bounds of the generics they flow into,
-    /// such as `B ≤ (Int, Int)` with `B ≥ (T, T)`, including the type expected of the call's if
+    /// such as `B ≤ (Int, Int)` with `B ≥ (T, T)`, including the type expected of the call if
     /// `expected` is set, and the lower bounds of the generics that flow into them, such as
     /// `A ≥ (1, nil)` with `A ≤ (T, U)`. Only the vars take these bounds, so the rest is solved as
     /// it would be if they had been instantiated right away.

@@ -70,7 +70,7 @@ pub enum InstancePolicy {
     Eager,
     /// They stay in the inference, and each solve passes on to them the bounds that the generics of
     /// the function being called imply, such as the type expected of the call, before they're
-    /// instantiated. One that's only contravariant in a lower candidate, such as `T` in
+    /// instantiated. One that's only contravariant in a lower or held candidate, such as `T` in
     /// `fn(x: T) -> nil`, takes the greatest instantiation rather than the least (see
     /// `Inference::resolve_instances`).
     Joint,

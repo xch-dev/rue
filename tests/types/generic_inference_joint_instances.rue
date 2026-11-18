@@ -21,6 +21,17 @@ test fn lower_bounds_reach_the_instance_annotated() -> Int {
     result.rest
 }
 
+fn map_checked<A, B>(function: fn(a: A) -> B, value: A, check: fn(b: B) -> nil) -> B {
+    check(function(value));
+    function(value)
+}
+
+test fn argument_upper_bound_reaches_the_instance() -> Int {
+    // The lambda gives `B ≤ (7, 5)`, which is passed on to the instance like the expected type's
+    let result = map_checked(swap, (5, 7), fn(_pair: (7, 5)) => nil);
+    result.first
+}
+
 test fn expected_type_reaches_the_instance() -> Int {
     // `B ≤ (7, 5)` gives `U ≤ 7` and `T ≤ 5`, so the literals aren't widened to `Int`
     let result: (7, 5) = map(swap, (5, 7));
@@ -117,6 +128,19 @@ test fn contravariant_instance() -> Int {
 test fn contravariant_instance_unannotated() -> Int {
     let function = call(make);
     function(1);
+    0
+}
+
+fn or_other<B>(_make: fn() -> B, other: B) -> B {
+    other
+}
+
+type IntCallback = fn(x: Int) -> nil;
+
+test fn contravariant_instance_next_to_a_value() -> Int {
+    // Only other function types can keep it from taking the greatest instantiation
+    let function = or_other(make, nil);
+    let _callback: IntCallback | nil = function;
     0
 }
 

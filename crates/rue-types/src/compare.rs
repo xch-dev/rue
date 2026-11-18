@@ -69,6 +69,7 @@ fn instance_bounds(
             (BoundScope::Free, _) => ty,
             (_, InstancePolicy::Eager) => return None,
             (BoundScope::Instantiated, InstancePolicy::Joint) => continue,
+            // An instance's bounds are only lower and upper bounds
             (BoundScope::Rigid, InstancePolicy::Joint) => match kind {
                 CandidateKind::Upper => builtins.never,
                 CandidateKind::Lower | CandidateKind::Held => builtins.permissive_any,

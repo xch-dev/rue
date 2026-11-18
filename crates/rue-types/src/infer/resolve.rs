@@ -413,6 +413,10 @@ impl Inference {
             // What it's instantiated as where the least and greatest instantiation is needed
             let mut picked: [Option<TypeId>; 2] = [None, None];
             let mut instantiate = |arena: &mut Arena<Type>, ty: TypeId, greatest: bool| {
+                if !references_generic(arena, ty, var, |_| Vec::new()) {
+                    return ty;
+                }
+
                 let instantiated = *picked[usize::from(greatest)].get_or_insert_with(|| {
                     // Without bounds of the kind it needs, the least instantiation is `Never` and
                     // the greatest is `Any`
@@ -445,16 +449,16 @@ impl Inference {
                     let upper = kind == CandidateKind::Upper;
 
                     for (index, ty) in candidates.list_mut(kind).iter_mut().enumerate() {
-                        if !free_generics(arena, *ty).contains(&var)
-                            || !references_generic(arena, *ty, var, |_| Vec::new())
-                        {
-                            continue;
-                        }
-
                         let key = (generic, kind, index);
 
+                        // What it would be with each var instantiated for its kind can reference
+                        // vars that it doesn't, through the other instantiation's bounds
                         if let Some(by_kind) = flipped.get_mut(&key) {
                             *by_kind = instantiate(arena, *by_kind, upper);
+                        }
+
+                        if !references_generic(arena, *ty, var, |_| Vec::new()) {
+                            continue;
                         }
 
                         // Where it's only contravariant in a lower candidate, the greatest
@@ -492,7 +496,12 @@ impl Inference {
         builtins: &BuiltinTypes,
         flipped: IndexMap<(TypeId, CandidateKind, usize), TypeId>,
     ) {
-        for ((generic, kind, index), by_kind) in flipped {
+        // Each is decided before any is put back, and without the others that were instantiated
+        // the other way, which would otherwise hold each other when the same function is passed
+        // twice
+        let mut restored = Vec::new();
+
+        for (&(generic, kind, index), &by_kind) in &flipped {
             let list = self.generics[&generic].list(kind);
             let candidate = list[index];
 
@@ -500,7 +509,8 @@ impl Inference {
                 .iter()
                 .enumerate()
                 .filter(|&(other, &ty)| {
-                    other != index && matches!(arena[resolve_refs(arena, ty)], Type::Function(_))
+                    !flipped.contains_key(&(generic, kind, other))
+                        && matches!(arena[resolve_refs(arena, ty)], Type::Function(_))
                 })
                 .map(|(_, &ty)| ty)
                 .collect();
@@ -512,8 +522,12 @@ impl Inference {
                 });
 
             if !held {
-                self.generics[&generic].list_mut(kind)[index] = by_kind;
+                restored.push((generic, kind, index, by_kind));
             }
+        }
+
+        for (generic, kind, index, by_kind) in restored {
+            self.generics[&generic].list_mut(kind)[index] = by_kind;
         }
     }
 }

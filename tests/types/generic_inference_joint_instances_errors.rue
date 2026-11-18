@@ -1,0 +1,54 @@
+// The types that passed generic functions' instances are solved as jointly, as the errors name them
+// (#362, step 13)
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+fn make_identity<T>() -> fn(x: T) -> T {
+    unchecked_cast(fn(x: Int) => x)
+}
+
+fn pairs<U>() -> (U, U) {
+    unchecked_cast((5, 5))
+}
+
+fn either_of<G, R>(_function: fn(g: G) -> R, _make: fn() -> G, other: R) -> R {
+    other
+}
+
+fn callback<X>(_pair: (X, Int)) -> fn(y: X) -> nil {
+    unchecked_cast(nil)
+}
+
+fn length(_value: Bytes) -> Int {
+    1
+}
+
+fn three<T, R>(_function: fn(a: T) -> R, _make: fn() -> T, other: R) -> R {
+    other
+}
+
+fn four<T, R>(_first: fn(a: T) -> R, _second: fn(a: T) -> R, _make: fn() -> T, other: R) -> R {
+    other
+}
+
+fn callback_from<X>(_value: X) -> fn(y: X) -> Bytes {
+    unchecked_cast(nil)
+}
+
+fn main() -> Int {
+    // `callback`'s `X` takes `pairs`'s instance as a lower bound, which it's replaced with in turn,
+    // so `fn(y: Never) -> nil` next to `length` names neither of them
+    let first: Int = either_of(callback, pairs, length);
+
+    // `fn(y: Any) -> Bytes` would be a member of a union that it doesn't hold, so it's
+    // `fn(y: (Never, Never)) -> Bytes`, whether the function is passed once or twice
+    let second: Int = three(callback_from, pairs, fn(_y: Bytes) => "a");
+    let third: Int = four(callback_from, callback_from, pairs, fn(_y: Bytes) => "a");
+
+    // `T` is both a parameter type and the return type, so it's `Never`, the least instantiation
+    let function = call(make_identity);
+
+    first + second + third + function(1)
+}
