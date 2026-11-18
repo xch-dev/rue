@@ -9,11 +9,11 @@ use indexmap::IndexMap;
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, FALLBACK, FixpointFrame,
-    FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Inference, InferenceCandidates, Memo,
-    Type, TypeId, compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
-    has_non_contractive_cycle, pick_inferred_type, reachable, references_generic, step,
-    stringify_impl, substitute, substitute_with_mappings,
+    AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, Choices, FALLBACK,
+    FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Inference,
+    InferenceCandidates, Memo, Type, TypeId, compare_memo_enabled, comparison_step_limit,
+    free_generics, grow_stack, has_non_contractive_cycle, pick_inferred_type, reachable,
+    references_generic, step, stringify_impl, substitute, substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -56,8 +56,26 @@ enum Frame {
     Fixpoint(FixpointFrame),
 }
 
-/// A bound of a generic being instantiated, along with the environment it's resolved in.
-type Bound = (TypeId, Option<usize>);
+/// A bound of a generic being instantiated, along with the environment it's resolved in and the
+/// union members it was collected under.
+type Bound = (TypeId, Option<usize>, BoundBranches);
+
+/// The innermost union members that a bound of a generic being instantiated was collected under:
+/// in `ComparisonContext::choices`, which decides whether the bound is checked (#360), and in the
+/// inference, if there is one, which the candidates that checking it collects are recorded under.
+#[derive(Debug, Default, Clone, Copy)]
+struct BoundBranches {
+    local: Option<BranchId>,
+    infer: Option<BranchId>,
+}
+
+/// A union that a value is being compared with the members of (see
+/// `ComparisonContext::open_choice`).
+#[derive(Debug, Clone, Copy)]
+struct OpenChoice {
+    local: usize,
+    infer: Option<usize>,
+}
 
 /// What a generic referenced by a type being compared is bound to. The binders are numbered in
 /// the order they're referenced, so that a comparison can be revisited with other binders in
@@ -149,6 +167,14 @@ pub(crate) struct ComparisonContext<'a> {
     /// The innermost union member that the value is being compared with while inferring, which
     /// the candidates collected now are recorded under (see `Inference::matched_candidates`).
     branch: Option<BranchId>,
+    /// The unions that values have been compared with the members of, whether inferring or not,
+    /// which decide which bounds of the generics being instantiated are checked (#360).
+    choices: Choices,
+    /// The innermost union member in `choices` that the value is being compared with, which the
+    /// bounds collected now are recorded under.
+    local_branch: Option<BranchId>,
+    /// The number of bounds that have been collected for the generics being instantiated.
+    bounds: usize,
     /// The candidates that reference the generics of a function being instantiated, which are
     /// replaced with what those generics are instantiated as once the comparison has finished.
     deferred: Vec<DeferredCandidate>,
@@ -282,31 +308,62 @@ impl ComparisonContext<'_> {
 
     /// Starts comparing the value with the members of a union while inferring, so that the
     /// candidates collected under each member are recorded under it, and returns the choice.
-    fn open_choice(&mut self, members: usize) -> Option<usize> {
+    fn open_choice(&mut self, members: usize) -> OpenChoice {
         let parent = self.branch;
-        self.infer
-            .as_mut()
-            .map(|infer| infer.open_choice(parent, members))
+        OpenChoice {
+            local: self.choices.open(self.local_branch, members),
+            infer: self
+                .infer
+                .as_mut()
+                .map(|infer| infer.open_choice(parent, members)),
+        }
     }
 
     /// Compares the value with a member of the union (or its fallback) with the candidates it
     /// collects recorded under it, and records what it gave.
     fn compare_member(
         &mut self,
-        choice: Option<usize>,
+        choice: OpenChoice,
         member: usize,
         compare: impl FnOnce(&mut Self) -> Comparison,
     ) -> Comparison {
-        let Some(choice) = choice else {
-            return compare(self);
+        let local = BranchId {
+            choice: choice.local,
+            member,
+        };
+        let infer = choice.infer.map(|choice| BranchId { choice, member });
+
+        let local_parent = self.local_branch.replace(local);
+        let parent = if infer.is_some() {
+            mem::replace(&mut self.branch, infer)
+        } else {
+            self.branch
         };
 
-        let branch = BranchId { choice, member };
-        let parent = self.branch.replace(branch);
+        let bounds = self.bounds;
         let result = compare(self);
+
+        if self.bounds > bounds {
+            self.choices.mark_bounded(local);
+        }
+
+        self.local_branch = local_parent;
         self.branch = parent;
-        self.infer.as_mut().unwrap().record(branch, result);
+        self.choices.record(local, result);
+
+        if let Some(infer) = infer {
+            self.infer.as_mut().unwrap().record(infer, result);
+        }
+
         result
+    }
+
+    /// The union members that a bound collected now is recorded under.
+    fn bound_branches(&self) -> BoundBranches {
+        BoundBranches {
+            local: self.local_branch,
+            infer: self.branch,
+        }
     }
 
     /// Records the bounds of a finished instance once a candidate has been deferred, unless one of
@@ -318,7 +375,7 @@ impl ComparisonContext<'_> {
 
         let mut free = true;
 
-        for &(ty, env) in instance.lower.iter().chain(&instance.upper) {
+        for &(ty, env, _) in instance.lower.iter().chain(&instance.upper) {
             self.cache_references(arena, ty);
             free &= self.references[&ty]
                 .iter()
@@ -329,8 +386,8 @@ impl ComparisonContext<'_> {
             self.instantiations.insert(
                 binder,
                 InferenceCandidates {
-                    lower: instance.lower.iter().map(|&(ty, _)| ty).collect(),
-                    upper: instance.upper.iter().map(|&(ty, _)| ty).collect(),
+                    lower: instance.lower.iter().map(|&(ty, _, _)| ty).collect(),
+                    upper: instance.upper.iter().map(|&(ty, _, _)| ty).collect(),
                     held: Vec::new(),
                 },
             );
@@ -448,6 +505,7 @@ impl ComparisonContext<'_> {
         }
 
         let instance = &mut self.instances[self.binders[binder].instance.unwrap()];
+        self.bounds += 1;
 
         if upper {
             instance.upper.push(bound);
@@ -1094,11 +1152,21 @@ fn compare_impl_inner(
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Any) => Comparison::Assign,
         (Type::Generic(_), _) if ctx.is_instance(lhs, ctx.lhs_env) => {
-            ctx.add_bound(lhs, ctx.lhs_env, (rhs, ctx.rhs_env), true);
+            ctx.add_bound(
+                lhs,
+                ctx.lhs_env,
+                (rhs, ctx.rhs_env, ctx.bound_branches()),
+                true,
+            );
             Comparison::Assign
         }
         (_, Type::Generic(_)) if ctx.is_instance(rhs, ctx.rhs_env) => {
-            ctx.add_bound(rhs, ctx.rhs_env, (lhs, ctx.lhs_env), false);
+            ctx.add_bound(
+                rhs,
+                ctx.rhs_env,
+                (lhs, ctx.lhs_env, ctx.bound_branches()),
+                false,
+            );
             Comparison::Assign
         }
         (Type::Atom(lhs), Type::Atom(rhs)) => {
@@ -1212,12 +1280,33 @@ fn compare_impl_inner(
                     mem::replace(&mut ctx.instantiable_from, ctx.instances.len());
 
                 'bounds: for instance in bounds {
-                    for &(lower, lower_env) in &instance.lower {
-                        for &(upper, upper_env) in &instance.upper {
+                    for &(lower, lower_env, lower_branches) in &instance.lower {
+                        for &(upper, upper_env, upper_branches) in &instance.upper {
                             // There can be many bounds, so this stops once it's giving up
                             if ctx.spend() {
                                 break 'bounds;
                             }
+
+                            // A bound collected under a union member that didn't match isn't
+                            // needed, so a pair with one doesn't decide the result (#360). It's
+                            // still compared, under that member, since the candidates it collects
+                            // are what a generic being inferred falls back to when nothing else
+                            // gives it any (see `Inference::keep_matched`)
+                            let unmatched =
+                                [lower_branches, upper_branches]
+                                    .into_iter()
+                                    .find(|branches| {
+                                        branches.local.is_some_and(|branch| {
+                                            !ctx.choices.matched_so_far(branch)
+                                        })
+                                    });
+                            let (branch, local_branch) = match unmatched {
+                                Some(branches) => (
+                                    mem::replace(&mut ctx.branch, branches.infer),
+                                    mem::replace(&mut ctx.local_branch, branches.local),
+                                ),
+                                None => (ctx.branch, ctx.local_branch),
+                            };
 
                             let mut envs = vec![(lower_env, upper_env)];
 
@@ -1230,11 +1319,16 @@ fn compare_impl_inner(
                             for (lower_env, upper_env) in envs {
                                 ctx.lhs_env = lower_env;
                                 ctx.rhs_env = upper_env;
-                                result = max(
-                                    result,
-                                    compare_impl(arena, builtins, ctx, lower, upper, None, None),
-                                );
+                                let pair =
+                                    compare_impl(arena, builtins, ctx, lower, upper, None, None);
+
+                                if unmatched.is_none() {
+                                    result = max(result, pair);
+                                }
                             }
+
+                            ctx.branch = branch;
+                            ctx.local_branch = local_branch;
                         }
                     }
                 }

@@ -1,0 +1,11 @@
+fn first<T>(value: T | (T, T)) -> T {
+    unchecked_cast(value)
+}
+
+// Both members match `(5, 5)`, so both of their candidates are kept, and `T` is `Int | (5, 5)`.
+// Picking one would mean backtracking (#362, §5, question 2)
+fn both_members_match() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = first(value);
+    result
+}
