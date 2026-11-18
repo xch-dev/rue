@@ -120,10 +120,17 @@ pub fn is_compiling() -> bool {
 }
 
 /// Compiles the source without the standard library, and runs `main` if there are no errors.
+#[cfg(test)]
 pub fn compile(source: &str) -> Compiled {
+    compile_with(source, false)
+}
+
+/// Compiles the source, with the standard library if `std` is true, which takes about a quarter
+/// of a second longer, so only programs that call it get it.
+pub fn compile_with(source: &str, std: bool) -> Compiled {
     let start = Instant::now();
     COMPILING.set(true);
-    let result = catch_unwind(AssertUnwindSafe(|| compile_inner(source)));
+    let result = catch_unwind(AssertUnwindSafe(|| compile_inner(source, std)));
     COMPILING.set(false);
     let time = start.elapsed();
 
@@ -182,9 +189,9 @@ pub fn fingerprint(diagnostics: &[Diagnostic], clvm: Option<&str>) -> String {
     format!("{hash:016x}")
 }
 
-fn compile_inner(source: &str) -> (Result<(String, Run), Diag>, String) {
+fn compile_inner(source: &str, std: bool) -> (Result<(String, Run), Diag>, String) {
     let mut ctx = Compiler::new(CompilerOptions {
-        std: false,
+        std,
         ..CompilerOptions::default()
     });
 

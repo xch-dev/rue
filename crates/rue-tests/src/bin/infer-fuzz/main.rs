@@ -13,7 +13,8 @@
 //!
 //! Each program is checked in three variants: every removable generic argument removed (`all`),
 //! a random subset of them (`some`, sometimes written as `_`), and the arguments of one site
-//! (`one`). Failures are grouped by category and the first diagnostic, and a few of each group are
+//! (`one`). Generator version 2 adds a fourth, `expected`, which removes only the arguments that
+//! nothing but the expected type gives a type to, such as `let x: Int | nil = none();`. Failures are grouped by category and the first diagnostic, and a few of each group are
 //! shrunk to a small reproduction.
 //!
 //! Run it in release mode, with a seed range:
@@ -32,6 +33,11 @@
 //! - `--shrink N`: how many failures of each group to shrink (default 3, 0 to skip).
 //! - `--out DIR`: also write `results.jsonl` (every program, its variants and their results),
 //!   `report.md` (the summary) and the shrunk reproductions under `clusters/`.
+//! - `--generator N`: the generator version (default 1). A seed gives the same program in every
+//!   version it existed in, so runs stay comparable with `--compare` within a version. Version 2
+//!   adds generic structs and aliases, unions of function types, generic structs and literals,
+//!   generic function types in annotations and return types, longer chains and cycles, `std`'s
+//!   `merge_list`, and the `expected` variant. The versions are listed in `generate.rs`.
 //! - `--print SEED`: print the explicit program and the variants for one seed, and exit.
 //! - `--compare BASELINE NEW`: compare two runs of the same seeds, each a `results.jsonl` or the
 //!   `--out` directory that holds it. It prints how many variants went from each status to each
@@ -61,6 +67,7 @@ use crate::worker::{Shrunk, parallel, run_seed, shrink_on};
 #[derive(Debug, Clone)]
 struct Args {
     seeds: std::ops::Range<u64>,
+    generator: u32,
     threads: usize,
     timeout: Duration,
     shrink: usize,
@@ -77,12 +84,14 @@ fn parse_range(text: &str) -> Result<std::ops::Range<u64>> {
 fn main() -> Result<()> {
     let mut args = Args {
         seeds: 0..1000,
+        generator: 1,
         threads: 2,
         timeout: Duration::from_secs(10),
         shrink: 3,
         out: None,
     };
 
+    let mut print = None;
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
         let mut value = || {
@@ -91,9 +100,12 @@ fn main() -> Result<()> {
         };
         match arg.as_str() {
             "--worker" => return run_in_large_stack(worker::worker),
-            "--print" => {
-                print_seed(value()?.parse()?);
-                return Ok(());
+            "--print" => print = Some(value()?.parse()?),
+            "--generator" => {
+                args.generator = value()?.parse()?;
+                if !generate::VERSIONS.contains(&args.generator) {
+                    bail!("there's no generator version {}", args.generator);
+                }
             }
             "--compare" => {
                 let before = compare::load(&PathBuf::from(value()?))?;
@@ -111,6 +123,11 @@ fn main() -> Result<()> {
         }
     }
 
+    if let Some(seed) = print {
+        print_seed(seed, args.generator);
+        return Ok(());
+    }
+
     drive(&args)
 }
 
@@ -123,8 +140,8 @@ fn run_in_large_stack(f: fn() -> Result<()>) -> Result<()> {
         .unwrap_or_else(|_| bail!("worker thread panicked"))
 }
 
-fn print_seed(seed: u64) {
-    let generated = Generator::new(seed).generate();
+fn print_seed(seed: u64, version: u32) {
+    let generated = Generator::versioned(seed, version).generate();
     println!(
         "// seed {seed}, explicit\n{}",
         generated.program.print(&Variant::default())
@@ -148,7 +165,8 @@ fn drive(args: &Args) -> Result<()> {
     );
 
     let records = parallel(&seeds, args.threads, |worker, &seed| {
-        run_seed(worker, seed, &Generator::new(seed).generate(), args.timeout)
+        let generated = Generator::versioned(seed, args.generator).generate();
+        run_seed(worker, seed, &generated, args.timeout)
     })?;
 
     let mut clusters = report::clusters(&records);
@@ -159,7 +177,7 @@ fn drive(args: &Args) -> Result<()> {
         Ok((
             cluster,
             (seed, index),
-            shrink_on(worker, seed, index, args.timeout)?,
+            shrink_on(worker, args.generator, seed, index, args.timeout)?,
         ))
     })?;
 

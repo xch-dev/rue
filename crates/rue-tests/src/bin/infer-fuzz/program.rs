@@ -30,6 +30,53 @@ pub enum Ty {
     Rigid(String),
     /// `Any`, which `main` returns, so that the types of its unannotated bindings don't matter.
     Any,
+    /// A union of two or more types other than `T | nil`, such as `5 | 7` or
+    /// `(fn(a: Int) -> T) | (fn(a: Bytes) -> T)` (generator version 2).
+    Union(Vec<Ty>),
+    /// A generic alias or struct the program declares (generator version 2).
+    Named(Named, Vec<Ty>),
+    /// A generic function type, such as `fn<T>(a: T) -> (T, T)`, whose generics are `Rigid`
+    /// inside it. Only bindings' annotations and functions' return types have one (generator
+    /// version 2).
+    GenFn(Vec<String>, Vec<Ty>, Box<Ty>),
+}
+
+/// The generic aliases and structs that generator version 2 declares when a program uses them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Named {
+    /// `type Maybe<T> = T | nil;`
+    Maybe,
+    /// `type Tree<T> = nil | (T, (Tree<T>, Tree<T>));`, a recursive alias.
+    Tree,
+    /// `struct Entry<K, V> { key: K, value: V }`
+    Entry,
+}
+
+impl Named {
+    pub const ALL: [Named; 3] = [Named::Maybe, Named::Tree, Named::Entry];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Named::Maybe => "Maybe",
+            Named::Tree => "Tree",
+            Named::Entry => "Entry",
+        }
+    }
+
+    pub fn arity(self) -> usize {
+        match self {
+            Named::Maybe | Named::Tree => 1,
+            Named::Entry => 2,
+        }
+    }
+
+    fn declaration(self) -> &'static str {
+        match self {
+            Named::Maybe => "type Maybe<T> = T | nil;\n",
+            Named::Tree => "type Tree<T> = nil | (T, (Tree<T>, Tree<T>));\n",
+            Named::Entry => "struct Entry<K, V> {\n    key: K,\n    value: V,\n}\n",
+        }
+    }
 }
 
 impl Ty {
@@ -51,6 +98,10 @@ impl Ty {
 
     pub fn func(params: Vec<Ty>, ret: Ty) -> Ty {
         Ty::Fn(params, Box::new(ret))
+    }
+
+    pub fn named(named: Named, args: Vec<Ty>) -> Ty {
+        Ty::Named(named, args)
     }
 
     /// Replaces each `Var(i)` with `args[i]`.
@@ -75,6 +126,17 @@ impl Ty {
                 params.iter().map(|param| param.map_vars(f)).collect(),
                 ret.map_vars(f),
             ),
+            Ty::Union(members) => {
+                Ty::Union(members.iter().map(|member| member.map_vars(f)).collect())
+            }
+            Ty::Named(named, args) => {
+                Ty::Named(*named, args.iter().map(|arg| arg.map_vars(f)).collect())
+            }
+            Ty::GenFn(generics, params, ret) => Ty::GenFn(
+                generics.clone(),
+                params.iter().map(|param| param.map_vars(f)).collect(),
+                Box::new(ret.map_vars(f)),
+            ),
             _ => self.clone(),
         }
     }
@@ -84,7 +146,10 @@ impl Ty {
         match self {
             Ty::Pair(first, rest) => vec![first, rest],
             Ty::Opt(inner) | Ty::List(inner) | Ty::Boxed(inner) => vec![inner],
-            Ty::Fn(params, ret) => params.iter().chain([&**ret]).collect(),
+            Ty::Fn(params, ret) | Ty::GenFn(_, params, ret) => {
+                params.iter().chain([&**ret]).collect()
+            }
+            Ty::Union(members) | Ty::Named(_, members) => members.iter().collect(),
             _ => vec![],
         }
     }
@@ -111,10 +176,6 @@ impl Ty {
         self.any(&|ty| *ty == Ty::Var(index))
     }
 
-    pub fn contains_boxed(&self) -> bool {
-        self.any(&|ty| matches!(ty, Ty::Boxed(_)))
-    }
-
     pub fn contains_fn(&self) -> bool {
         self.any(&|ty| matches!(ty, Ty::Fn(..)))
     }
@@ -124,13 +185,23 @@ impl Ty {
     }
 
     pub fn contains_union(&self) -> bool {
-        self.any(&|ty| matches!(ty, Ty::Opt(_) | Ty::List(_)))
+        self.any(&|ty| {
+            matches!(
+                ty,
+                Ty::Opt(_) | Ty::List(_) | Ty::Union(_) | Ty::Named(Named::Maybe | Named::Tree, _)
+            )
+        })
     }
 
     /// Whether this is a union with a function type in it, such as `F | nil` or `List<F>`,
     /// which doesn't give a lambda the types of its parameters.
     pub fn is_function_union(&self) -> bool {
-        matches!(self, Ty::Opt(inner) | Ty::List(inner) if matches!(**inner, Ty::Fn(..)))
+        match self {
+            Ty::Opt(inner) | Ty::List(inner) => matches!(**inner, Ty::Fn(..)),
+            Ty::Union(members) => members.iter().any(|member| matches!(member, Ty::Fn(..))),
+            Ty::Named(Named::Maybe | Named::Tree, args) => matches!(args[0], Ty::Fn(..)),
+            _ => false,
+        }
     }
 
     /// The type as Rue source, naming the generics of the function it belongs to.
@@ -195,6 +266,49 @@ impl Ty {
                 }
             }
             Ty::Any => out.push_str("Any"),
+            Ty::Union(members) => {
+                if in_union {
+                    out.push('(');
+                }
+                for (index, member) in members.iter().enumerate() {
+                    if index > 0 {
+                        out.push_str(" | ");
+                    }
+                    member.write(out, generics, true);
+                }
+                if in_union {
+                    out.push(')');
+                }
+            }
+            Ty::Named(named, args) => {
+                out.push_str(named.name());
+                out.push('<');
+                for (index, arg) in args.iter().enumerate() {
+                    if index > 0 {
+                        out.push_str(", ");
+                    }
+                    arg.write(out, generics, false);
+                }
+                out.push('>');
+            }
+            Ty::GenFn(names, params, ret) => {
+                if in_union {
+                    out.push('(');
+                }
+                write!(out, "fn<{}>(", names.join(", ")).unwrap();
+                for (index, param) in params.iter().enumerate() {
+                    if index > 0 {
+                        out.push_str(", ");
+                    }
+                    write!(out, "{}: ", param_name(index)).unwrap();
+                    param.write(out, generics, false);
+                }
+                out.push_str(") -> ");
+                ret.write(out, generics, true);
+                if in_union {
+                    out.push(')');
+                }
+            }
             Ty::Var(index) => out.push_str(&generics[*index]),
             Ty::Rigid(name) => out.push_str(name),
         }
@@ -208,6 +322,9 @@ fn param_name(index: usize) -> char {
 
 /// A place that takes generic arguments.
 pub type SiteId = usize;
+
+/// One generic lambda of a `Wrapped` call: its generics, and its parameters with their types.
+pub type Layer = (Vec<String>, Vec<(String, Ty)>);
 
 /// An expression, along with the type it has in the explicit program.
 #[derive(Debug, Clone)]
@@ -266,6 +383,28 @@ pub enum ExprKind {
     /// `unchecked_cast::<T>(nil)`, for a value of a type nothing else can produce, such as the
     /// result of a function whose generic is only in its return type.
     Unchecked,
+    /// `Entry::<K, V> { key: ..., value: ... }` (generator version 2).
+    EntryLit {
+        site: SiteId,
+        args: Vec<Ty>,
+        key: Box<Expr>,
+        value: Box<Expr>,
+    },
+    /// `entry.key` (generator version 2).
+    Key(Box<Expr>),
+    /// A call of an expression's value, such as `function(1)(2)` (generator version 2).
+    Apply(Box<Expr>, Vec<Expr>),
+    /// A call whose type is a generic function type that's expected of it, such as `make()` for a
+    /// `fn<T>(a: T) -> (T, T)`. No explicit generic arguments can produce a generic function
+    /// type, so the explicit program wraps the call in a generic lambda for each generic
+    /// function type, `fn<T>(w1: T) => make::<T, (T, T)>()(w1)`, and the site's variant is the
+    /// bare call `make()`. The call itself has no site (generator version 2).
+    Wrapped {
+        site: SiteId,
+        /// The generics and parameters of each lambda, outermost first.
+        layers: Vec<Layer>,
+        call: Box<Expr>,
+    },
 }
 
 impl Expr {
@@ -284,6 +423,10 @@ impl Expr {
             ExprKind::BoxLit { value, .. } => vec![value],
             ExprKind::Call { args, .. } | ExprKind::CallLocal { args, .. } => args.iter().collect(),
             ExprKind::Lambda { body, .. } => vec![body],
+            ExprKind::EntryLit { key, value, .. } => vec![key, value],
+            ExprKind::Key(inner) => vec![inner],
+            ExprKind::Apply(function, args) => [&**function].into_iter().chain(args).collect(),
+            ExprKind::Wrapped { call, .. } => vec![call],
             _ => vec![],
         }
     }
@@ -300,6 +443,14 @@ impl Expr {
                 args.iter_mut().collect()
             }
             ExprKind::Lambda { body, .. } => vec![body],
+            ExprKind::EntryLit { key, value, .. } => vec![key, value],
+            ExprKind::Key(inner) => vec![inner],
+            ExprKind::Apply(function, args) => {
+                let mut children: Vec<&mut Expr> = vec![function];
+                children.extend(args.iter_mut());
+                children
+            }
+            ExprKind::Wrapped { call, .. } => vec![call],
             _ => vec![],
         }
     }
@@ -314,7 +465,9 @@ impl Expr {
 
     pub fn site(&self) -> Option<SiteId> {
         match &self.kind {
-            ExprKind::BoxLit { site, .. } => Some(*site),
+            ExprKind::BoxLit { site, .. }
+            | ExprKind::EntryLit { site, .. }
+            | ExprKind::Wrapped { site, .. } => Some(*site),
             ExprKind::Call { site, .. } | ExprKind::FnRef { site, .. } => *site,
             _ => None,
         }
@@ -476,31 +629,59 @@ impl Program {
         self.exprs().into_iter().filter_map(Expr::site).collect()
     }
 
-    fn uses_box(&self) -> bool {
+    /// Whether any type in the program, including the generic arguments it writes out, matches.
+    fn uses(&self, matches: &impl Fn(&Ty) -> bool) -> bool {
+        let any = |ty: &Ty| ty.any(matches);
         self.functions_and_main().any(|function| {
-            function.params.iter().any(|(_, ty)| ty.contains_boxed())
-                || function.ret.contains_boxed()
-                || function.lets.iter().any(|binding| {
-                    binding
-                        .annotation
-                        .as_ref()
-                        .is_some_and(Ty::contains_boxed)
-                })
+            function.params.iter().any(|(_, ty)| any(ty))
+                || any(&function.ret)
+                || function
+                    .lets
+                    .iter()
+                    .any(|binding| binding.annotation.as_ref().is_some_and(any))
         }) || self.exprs().iter().any(|expr| {
-            expr.ty.contains_boxed()
-                || matches!(&expr.kind, ExprKind::Call { generic_args, .. } | ExprKind::FnRef { generic_args, .. } if generic_args.iter().any(Ty::contains_boxed))
+            any(&expr.ty)
+                || match &expr.kind {
+                    ExprKind::Call { generic_args, .. } | ExprKind::FnRef { generic_args, .. } => {
+                        generic_args.iter().any(any)
+                    }
+                    ExprKind::EntryLit { args, .. } => args.iter().any(any),
+                    ExprKind::BoxLit { arg, .. } => any(arg),
+                    ExprKind::Wrapped { layers, .. } => layers
+                        .iter()
+                        .any(|(_, params)| params.iter().any(|(_, ty)| any(ty))),
+                    _ => false,
+                }
         })
+    }
+
+    /// Whether the program calls a function from the standard library, so it must be compiled
+    /// with it.
+    pub fn uses_std(&self) -> bool {
+        self.functions.iter().any(|function| is_std(&function.name))
     }
 
     /// The program as Rue source, with the generic arguments that the variant strips removed.
     pub fn print(&self, variant: &Variant) -> String {
         let mut out = String::new();
 
-        if self.uses_box() {
+        if self.uses(&|ty| matches!(ty, Ty::Boxed(_))) {
             out.push_str("struct Box<T> {\n    value: T,\n}\n\n");
         }
 
+        for named in Named::ALL {
+            if self.uses(&|ty| matches!(ty, Ty::Named(other, _) if *other == named)) {
+                out.push_str(named.declaration());
+                out.push('\n');
+            }
+        }
+
+        // A function from the standard library is in the program only so that calls know its
+        // signature
         for function in self.functions_and_main() {
+            if is_std(&function.name) {
+                continue;
+            }
             print_function(&mut out, function, variant);
             out.push('\n');
         }
@@ -508,6 +689,13 @@ impl Program {
         out.pop();
         out
     }
+}
+
+/// The standard library's generic functions that generator version 2 calls.
+pub const STD_FUNCTIONS: &[&str] = &["merge_list"];
+
+fn is_std(name: &str) -> bool {
+    STD_FUNCTIONS.contains(&name)
 }
 
 fn print_function(out: &mut String, function: &Function, variant: &Variant) {
@@ -624,6 +812,52 @@ impl Printer<'_> {
             ExprKind::Unchecked => {
                 format!("unchecked_cast::<{}>(nil)", expr.ty.print(self.generics))
             }
+            ExprKind::EntryLit {
+                site,
+                args,
+                key,
+                value,
+            } => format!(
+                "Entry{} {{ key: {}, value: {} }}",
+                self.generic_args(Some(*site), args),
+                self.expr(key),
+                self.expr(value)
+            ),
+            ExprKind::Key(inner) => format!("{}.key", self.operand(inner)),
+            ExprKind::Apply(function, args) => {
+                format!("{}({})", self.operand(function), self.args(args))
+            }
+            ExprKind::Wrapped { site, layers, call } => {
+                if self.variant.stripped.contains_key(site) {
+                    // Shrinking can replace the call with something simpler
+                    return match &call.kind {
+                        ExprKind::Call { function, args, .. } => {
+                            format!("{function}({})", self.args(args))
+                        }
+                        _ => self.expr(call),
+                    };
+                }
+                let mut text = String::new();
+                for (generics, params) in layers {
+                    let params: Vec<String> = params
+                        .iter()
+                        .map(|(name, ty)| format!("{name}: {}", ty.print(self.generics)))
+                        .collect();
+                    write!(
+                        text,
+                        "fn<{}>({}) => ",
+                        generics.join(", "),
+                        params.join(", ")
+                    )
+                    .unwrap();
+                }
+                text.push_str(&self.expr(call));
+                for (_, params) in layers {
+                    let names: Vec<&str> = params.iter().map(|(name, _)| name.as_str()).collect();
+                    write!(text, "({})", names.join(", ")).unwrap();
+                }
+                text
+            }
         }
     }
 
@@ -637,6 +871,8 @@ impl Printer<'_> {
             | ExprKind::First(_)
             | ExprKind::Rest(_)
             | ExprKind::Field(_)
+            | ExprKind::Key(_)
+            | ExprKind::Apply(..)
             | ExprKind::Pair(..) => text,
             _ => format!("({text})"),
         }

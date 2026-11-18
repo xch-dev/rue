@@ -23,7 +23,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::generate::{Generated, Generator};
-use crate::oracle::{self, Category, Compiled, Diag, Outcome, classify, compile, millis};
+use crate::oracle::{self, Category, Compiled, Diag, Outcome, classify, compile_with, millis};
 use crate::program::{Program, Variant};
 use crate::report::{SeedRecord, VariantRecord};
 use crate::shrink;
@@ -75,9 +75,17 @@ pub fn worker() -> Result<()> {
         let line = line?;
         let words: Vec<&str> = line.split_whitespace().collect();
         match words.as_slice() {
-            ["run", seed, start] => run_command(&mut out, seed.parse()?, start.parse()?)?,
-            ["shrink", seed, index, budget] => {
-                shrink_command(&mut out, seed.parse()?, index.parse()?, budget.parse()?)?;
+            ["run", version, seed, start] => {
+                run_command(&mut out, version.parse()?, seed.parse()?, start.parse()?)?;
+            }
+            ["shrink", version, seed, index, budget] => {
+                shrink_command(
+                    &mut out,
+                    version.parse()?,
+                    seed.parse()?,
+                    index.parse()?,
+                    budget.parse()?,
+                )?;
             }
             _ => bail!("unknown command `{line}`"),
         }
@@ -98,8 +106,10 @@ fn progress(out: &mut impl Write, stage: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn run_command(out: &mut impl Write, seed: u64, start: usize) -> Result<()> {
-    let generated = Generator::new(seed).generate();
+pub fn run_command(out: &mut impl Write, version: u32, seed: u64, start: usize) -> Result<()> {
+    let generated = Generator::versioned(seed, version).generate();
+    let std = generated.program.uses_std();
+    let compile = |source: &str| compile_with(source, std);
     let explicit_source = generated.program.print(&Variant::default());
 
     if generated.variants.is_empty() {
@@ -148,14 +158,24 @@ pub fn run_command(out: &mut impl Write, seed: u64, start: usize) -> Result<()> 
     Ok(())
 }
 
-fn shrink_command(out: &mut impl Write, seed: u64, index: usize, budget: usize) -> Result<()> {
+fn shrink_command(
+    out: &mut impl Write,
+    version: u32,
+    seed: u64,
+    index: usize,
+    budget: usize,
+) -> Result<()> {
     let Generated {
         program, variants, ..
-    } = Generator::new(seed).generate();
+    } = Generator::versioned(seed, version).generate();
+    // Shrinking can remove the call of a function from the standard library
+    let compile_program = |program: &Program, variant: &Variant| {
+        compile_with(&program.print(variant), program.uses_std())
+    };
     let variant = variants[index].1.clone();
 
-    let explicit = compile(&program.print(&Variant::default()));
-    let stripped = compile(&program.print(&variant));
+    let explicit = compile_program(&program, &Variant::default());
+    let stripped = compile_program(&program, &variant);
     let original = classify(&explicit, &stripped, || {
         (explicit.clone(), stripped.clone())
     });
@@ -176,7 +196,7 @@ fn shrink_command(out: &mut impl Write, seed: u64, index: usize, budget: usize) 
             .as_ref()
             .is_none_or(|(last, _)| *last != source)
         {
-            let run = match compile(&source) {
+            let run = match compile_with(&source, program.uses_std()) {
                 Compiled::Ok { run, .. } => Some(run),
                 _ => None,
             };
@@ -186,7 +206,7 @@ fn shrink_command(out: &mut impl Write, seed: u64, index: usize, budget: usize) 
             return false;
         };
 
-        same_failure(&original, expected, &compile(&program.print(variant)))
+        same_failure(&original, expected, &compile_program(program, variant))
     };
 
     let (program, variant) = shrink::shrink(program, variant, budget, &mut fails);
@@ -195,8 +215,7 @@ fn shrink_command(out: &mut impl Write, seed: u64, index: usize, budget: usize) 
         return Err(error);
     }
 
-    let stripped = program.print(&variant);
-    let message = match compile(&stripped) {
+    let message = match compile_program(&program, &variant) {
         Compiled::Rejected { diag, .. } => diag.located(),
         Compiled::Panicked { message } => message,
         Compiled::Ok { run, .. } => format!("{run:?}"),
@@ -204,7 +223,7 @@ fn shrink_command(out: &mut impl Write, seed: u64, index: usize, budget: usize) 
 
     let shrunk = Shrunk {
         explicit: program.print(&Variant::default()),
-        stripped,
+        stripped: program.print(&variant),
         shape: shrink::shape(&program, &variant),
         tags: shrink::tags(&program, &variant),
         message,
@@ -355,7 +374,7 @@ pub fn run_seed(
     let mut start = 0;
 
     'run: loop {
-        worker.send(&format!("run {seed} {start}"))?;
+        worker.send(&format!("run {} {seed} {start}", generated.version))?;
         // A worker that dies before it says anything dies on the explicit program
         let mut stage = Stage::Explicit;
 
@@ -428,6 +447,7 @@ pub fn run_seed(
 
     Ok(SeedRecord {
         seed,
+        generator: generated.version,
         explicit_source: generated.program.print(&Variant::default()),
         explicit,
         variants,
@@ -440,11 +460,12 @@ pub const SHRINK_BUDGET: usize = 3000;
 /// Shrinks a failing variant on a worker, or gives up if it hangs or dies.
 pub fn shrink_on(
     worker: &mut impl Connection,
+    version: u32,
     seed: u64,
     index: usize,
     timeout: Duration,
 ) -> Result<Option<Shrunk>> {
-    worker.send(&format!("shrink {seed} {index} {SHRINK_BUDGET}"))?;
+    worker.send(&format!("shrink {version} {seed} {index} {SHRINK_BUDGET}"))?;
     loop {
         match worker.recv(timeout) {
             Message::Line(line) => match parse_line(&line) {

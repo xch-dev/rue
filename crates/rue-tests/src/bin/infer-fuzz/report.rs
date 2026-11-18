@@ -23,9 +23,16 @@ pub struct VariantRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeedRecord {
     pub seed: u64,
+    /// The generator version, which is 1 in runs from before there were versions.
+    #[serde(default = "version_1")]
+    pub generator: u32,
     pub explicit_source: String,
     pub explicit: Explicit,
     pub variants: Vec<VariantRecord>,
+}
+
+fn version_1() -> u32 {
+    1
 }
 
 /// The record of a seed, from records sorted by seed.
@@ -243,7 +250,14 @@ fn write_counts(out: &mut String, records: &[SeedRecord]) {
         let _ = write!(out, " {category:?} |");
     }
     let _ = writeln!(out, "\n|---|{}", "---|".repeat(Category::ALL.len()));
-    for row in ["all", "some", "one", "total", "programs (worst variant)"] {
+    for row in [
+        "all",
+        "some",
+        "one",
+        "expected",
+        "total",
+        "programs (worst variant)",
+    ] {
         let Some(counts) = table.get(row) else {
             continue;
         };
