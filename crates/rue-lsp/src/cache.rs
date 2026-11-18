@@ -6,7 +6,7 @@ use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::AstNode;
 use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{Source, SourceKind};
-use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
+use rue_hir::{FunctionKind, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind};
 use rue_parser::{SyntaxKind, SyntaxToken, T};
 use rue_types::{Type, TypeId, Union};
@@ -153,33 +153,34 @@ impl Cache<Compiler> {
         )
     }
 
-    /// The scopes that contain the index, innermost first, so that a name that's shadowed
-    /// resolves to the innermost declaration.
+    /// The scopes that are visible at the index, innermost first, so that a name that's shadowed
+    /// resolves to the innermost declaration: the innermost scope that contains it, and the scopes
+    /// it's in. An inline module doesn't see the scopes of the module it's in, though its text is
+    /// inside of them.
     pub fn scopes(&self, index: usize) -> Scopes {
-        let mut scopes = Vec::new();
+        // Every scope that contains the index is nested in or equal to the others, so the narrower
+        // one is the inner one. Of scopes with the same span, the first one exited (which is added
+        // to the syntax map first) is the innermost.
+        let innermost = self
+            .syntax_map
+            .items()
+            .filter(|item| item.source_kind == self.source.kind && contains(item.span, index))
+            .filter_map(|item| match item.kind {
+                SyntaxItemKind::Scope(scope) => Some((item.span.len(), scope)),
+                _ => None,
+            })
+            .min_by_key(|&(len, _)| len)
+            .map(|(_, scope)| scope);
 
-        for item in self.syntax_map.items() {
-            if item.source_kind != self.source.kind {
-                continue;
-            }
+        let mut visible = Vec::new();
+        let mut current = innermost;
 
-            let SyntaxItemKind::Scope(scope) = item.kind else {
-                continue;
-            };
-
-            if contains(item.span, index) {
-                scopes.push((item.span, scope));
-            }
+        while let Some(scope) = current {
+            visible.push(scope);
+            current = self.ctx.scope(scope).parent();
         }
 
-        // Scopes are added to the syntax map when they're exited, which is innermost first within
-        // a function body, but the file's scopes are added before any of the bodies are compiled.
-        // Every scope that contains the index is nested in or equal to the others, so the narrower
-        // one is the inner one. The sort is stable, so scopes with the same span keep the order in
-        // which they were exited.
-        scopes.sort_by_key(|(span, _)| span.len());
-
-        Scopes(scopes.into_iter().map(|(_, scope)| scope).collect())
+        Scopes(visible)
     }
 
     fn completion_context(&self, index: usize) -> (CompletionContext, CompletionContext) {
@@ -353,6 +354,8 @@ impl Cache<Compiler> {
         let partial = self.partial_identifier(index).unwrap_or_default();
 
         let mut scored_items = Vec::new();
+        // Values and modules are both symbols, but are in different namespaces, so a value and
+        // a module can have the same name
         let mut symbol_names = HashSet::new();
         let mut type_names = HashSet::new();
 
@@ -449,36 +452,47 @@ impl Cache<Compiler> {
 
             let scope = self.ctx.module(module).scope;
 
-            for (name, symbol) in self
-                .ctx
-                .scope(scope)
-                .exported_symbols()
-                .map(|(name, symbol)| (name.to_string(), symbol))
-                .collect::<Vec<_>>()
-            {
-                if !symbol_names.insert(name.clone()) {
+            // Only a module that `super` names can be followed by `super`. It contains the code,
+            // so its private items and a file's sibling modules can be used too.
+            let members = |namespace| {
+                if allow_super {
+                    self.ctx.module_members(scope, namespace)
+                } else {
+                    self.ctx.scope(scope).exported_items(namespace)
+                }
+            };
+
+            let symbols = [Namespace::Value, Namespace::Module]
+                .into_iter()
+                .flat_map(members)
+                .filter_map(|(name, item)| symbol_item(name, item))
+                .collect::<Vec<_>>();
+
+            let types = members(Namespace::Type)
+                .into_iter()
+                .filter_map(|(name, item)| Some((name, item.ty()?)))
+                .collect::<Vec<_>>();
+
+            for (name, symbol, is_module) in symbols {
+                if !symbol_names.insert((name.clone(), is_module)) {
                     continue;
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name)
                     && (matches!(subcontext, CompletionContext::Expression)
-                        || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
-                            && matches!(subcontext, CompletionContext::Type)))
+                        || (is_module && matches!(subcontext, CompletionContext::Type)))
                 {
-                    let ty = self.ctx.symbol_type_in(scope, symbol);
-                    let detail = self.symbol_detail(scopes, symbol, ty);
+                    // A module has no type to show
+                    let detail = (!is_module).then(|| {
+                        let ty = self.ctx.symbol_type_in(scope, symbol);
+                        self.symbol_detail(scopes, symbol, ty)
+                    });
                     let kind = symbol_kind(self.ctx.symbol(symbol));
-                    scored_items.push((score, create_completion_item(name, kind, Some(detail))));
+                    scored_items.push((score, create_completion_item(name, kind, detail)));
                 }
             }
 
-            for (name, ty) in self
-                .ctx
-                .scope(scope)
-                .exported_types()
-                .map(|(name, ty)| (name.to_string(), ty))
-                .collect::<Vec<_>>()
-            {
+            for (name, ty) in types {
                 if !type_names.insert(name.clone()) {
                     continue;
                 }
@@ -528,9 +542,10 @@ impl Cache<Compiler> {
         for scope in &scopes.0 {
             let scope = self.ctx.scope(*scope);
 
-            let symbols = scope
-                .symbol_names()
-                .filter_map(|name| Some((name.to_string(), scope.symbol(name)?)))
+            let symbols = [Namespace::Value, Namespace::Module]
+                .into_iter()
+                .flat_map(|namespace| scope.items(namespace))
+                .filter_map(|(name, item)| symbol_item(name, item))
                 .collect::<Vec<_>>();
 
             let types = scope
@@ -538,22 +553,23 @@ impl Cache<Compiler> {
                 .filter_map(|name| Some((name.to_string(), scope.ty(name)?)))
                 .collect::<Vec<_>>();
 
-            for (name, symbol) in symbols {
-                if !symbol_names.insert(name.clone()) {
+            for (name, symbol, is_module) in symbols {
+                if !symbol_names.insert((name.clone(), is_module)) {
                     continue;
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name)
                     && (matches!(context, CompletionContext::Expression)
-                        || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
-                            && matches!(context, CompletionContext::Type)))
+                        || (is_module && matches!(context, CompletionContext::Type)))
                 {
                     // The type is looked up from the cursor's scopes, like on hover, so that it's
                     // narrowed by the conditions the cursor is inside of
-                    let ty = self.symbol_type(scopes, symbol);
-                    let detail = self.symbol_detail(scopes, symbol, ty);
+                    let detail = (!is_module).then(|| {
+                        let ty = self.symbol_type(scopes, symbol);
+                        self.symbol_detail(scopes, symbol, ty)
+                    });
                     let kind = symbol_kind(self.ctx.symbol(symbol));
-                    scored_items.push((score, create_completion_item(name, kind, Some(detail))));
+                    scored_items.push((score, create_completion_item(name, kind, detail)));
                 }
             }
 
@@ -909,7 +925,12 @@ impl Cache<Compiler> {
 
     fn symbol_name(&self, scopes: &Scopes, symbol: SymbolId) -> Option<String> {
         for &scope in &scopes.0 {
-            if let Some(name) = self.ctx.scope(scope).symbol_name(symbol) {
+            let scope = self.ctx.scope(scope);
+
+            if let Some(name) = scope
+                .symbol_name(symbol)
+                .or_else(|| scope.module_name(symbol))
+            {
                 return Some(name.to_string());
             }
         }
@@ -1079,6 +1100,16 @@ fn symbol_kind(symbol: &Symbol) -> Option<CompletionItemKind> {
         Symbol::Module(_) => Some(CompletionItemKind::MODULE),
         Symbol::Builtin(_) => Some(CompletionItemKind::FUNCTION),
         Symbol::Unresolved => None,
+    }
+}
+
+/// A value or module completion, with whether it's a module. Values and modules are both
+/// symbols, but are in different namespaces, so a value and a module can have the same name.
+fn symbol_item(name: String, item: Item) -> Option<(String, SymbolId, bool)> {
+    match item {
+        Item::Value(symbol) => Some((name, symbol, false)),
+        Item::Module(module) => Some((name, module, true)),
+        Item::Type(_) => None,
     }
 }
 

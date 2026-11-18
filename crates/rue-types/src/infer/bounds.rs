@@ -6,7 +6,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::{
     BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
     compare_with_inference, free_generics, infer_from_expected, resolve_inference_with_fallback,
-    substitute_with_mappings, union_of,
+    strongly_connected_components, substitute_with_mappings, union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -449,73 +449,4 @@ fn expanded_lower_bounds(
     }
 
     expanded
-}
-
-/// Returns the strongly connected components of the graph with Tarjan's algorithm, each one after
-/// the components it has edges to. An edge to a node that isn't in the graph is ignored.
-fn strongly_connected_components(edges: &IndexMap<TypeId, Vec<TypeId>>) -> Vec<Vec<TypeId>> {
-    struct State<'a> {
-        edges: &'a IndexMap<TypeId, Vec<TypeId>>,
-        index: HashMap<TypeId, usize>,
-        low: HashMap<TypeId, usize>,
-        stack: Vec<TypeId>,
-        on_stack: HashSet<TypeId>,
-        components: Vec<Vec<TypeId>>,
-    }
-
-    fn visit(state: &mut State<'_>, node: TypeId) {
-        let index = state.index.len();
-        state.index.insert(node, index);
-        state.low.insert(node, index);
-        state.stack.push(node);
-        state.on_stack.insert(node);
-
-        for &next in &state.edges[&node] {
-            if !state.edges.contains_key(&next) {
-                continue;
-            }
-
-            if !state.index.contains_key(&next) {
-                visit(state, next);
-                let low = state.low[&node].min(state.low[&next]);
-                state.low.insert(node, low);
-            } else if state.on_stack.contains(&next) {
-                let low = state.low[&node].min(state.index[&next]);
-                state.low.insert(node, low);
-            }
-        }
-
-        if state.low[&node] == index {
-            let mut component = Vec::new();
-
-            loop {
-                let member = state.stack.pop().unwrap();
-                state.on_stack.remove(&member);
-                component.push(member);
-
-                if member == node {
-                    break;
-                }
-            }
-
-            state.components.push(component);
-        }
-    }
-
-    let mut state = State {
-        edges,
-        index: HashMap::new(),
-        low: HashMap::new(),
-        stack: Vec::new(),
-        on_stack: HashSet::new(),
-        components: Vec::new(),
-    };
-
-    for &node in edges.keys() {
-        if !state.index.contains_key(&node) {
-            visit(&mut state, node);
-        }
-    }
-
-    state.components
 }

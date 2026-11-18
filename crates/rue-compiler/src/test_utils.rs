@@ -88,25 +88,28 @@ impl Compiled {
     /// along the way, starting from the file's module. This includes symbols that were imported
     /// into a module, whether or not they're exported from it.
     fn symbol(&self, path: &str) -> SymbolId {
-        let mut module = self.module;
-        let mut segments = path.split("::").peekable();
+        let (module, name) = match path.rsplit_once("::") {
+            Some((module, name)) => (self.module(module), name),
+            None => (self.module, path),
+        };
+        let scope = self.ctx.module(module).scope;
+        self.ctx
+            .scope(scope)
+            .symbol(name)
+            .unwrap_or_else(|| panic!("`{name}` isn't declared in the scope of `{path}`"))
+    }
 
-        while let Some(name) = segments.next() {
-            let scope = self.ctx.module(module).scope;
-            let symbol = self
-                .ctx
-                .scope(scope)
-                .symbol(name)
-                .unwrap_or_else(|| panic!("`{name}` isn't declared in the scope of `{path}`"));
-
-            if segments.peek().is_none() {
-                return symbol;
-            }
-
-            module = symbol;
-        }
-
-        unreachable!("paths have at least one segment")
+    /// The module that a path like `outer::inner` names, looked up in the module namespace of
+    /// each module along the way, starting from the file's module.
+    fn module(&self, path: &str) -> SymbolId {
+        path.split("::").fold(self.module, |module, name| {
+            self.ctx
+                .scope(self.ctx.module(module).scope)
+                .module(name)
+                .unwrap_or_else(|| {
+                    panic!("module `{name}` isn't declared in the scope of `{path}`")
+                })
+        })
     }
 
     /// The path of the module that declares the symbol a path names, which differs from the
@@ -162,7 +165,7 @@ impl Compiled {
     /// The type that a path like `inner::Point` names, looked up like [`symbol`](Self::symbol).
     fn ty(&self, path: &str) -> TypeId {
         let (module, name) = match path.rsplit_once("::") {
-            Some((module, name)) => (self.symbol(module), name),
+            Some((module, name)) => (self.module(module), name),
             None => (self.module, path),
         };
         let scope = self.ctx.module(module).scope;

@@ -1,0 +1,19 @@
+tests:
+- name: parent_imports_use_what_the_parent_imports
+  program: (q . 18)
+  debug_program: (a (q 16 (+ (a 10 (c 14 ())) (a 12 (q . 10))) 8) (c (c (c (q . 7) (q . 1)) (c (q . 2) (q . 1))) ()))
+  output: "18"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: parent_paths_use_the_parent_module
+  program: (a (q 16 2 2) (q 7))
+  debug_program: (a (q 16 (a 6 (c 4 ())) 4) (c (c (q . 7) (q . 2)) ()))
+  output: "14"
+  runtime_cost: 983
+  byte_cost: 228000
+  total_cost: 228983
+diagnostics:
+- Unused type alias `T` at parent_imports.rue:8:6
+- Unused constant `W` at parent_imports.rue:16:22
+- Unused import `*` at parent_imports.rue:45:22

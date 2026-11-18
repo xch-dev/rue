@@ -4,7 +4,7 @@ use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, FunctionType, Type, TypeId};
 
@@ -69,6 +69,57 @@ impl PathSegment for SyntaxToken {
     }
 }
 
+/// Where a segment of a path is looked up.
+#[derive(Debug, Clone, Copy)]
+enum SegmentBase {
+    /// In the module that the previous segment names, where private items can be found so that
+    /// they're reported.
+    Module(ScopeId),
+    /// From the scope the path is written in, and then each enclosing scope.
+    Local(ScopeId),
+    /// In the module that `super` names. It contains the code with the path, so its private items
+    /// can be used, and a file's sibling modules can be too.
+    Parent(ScopeId),
+}
+
+/// Looks up a segment of a path in one namespace. The item is returned with whether it can be
+/// used from where the path is written, and the import that brought it into the scope it was
+/// found in, if any.
+fn lookup_segment(
+    ctx: &Compiler,
+    base: SegmentBase,
+    namespace: Namespace,
+    name: &str,
+) -> Option<(Item, bool, Option<ImportId>)> {
+    match base {
+        SegmentBase::Module(scope) => {
+            let scope = ctx.scope(scope);
+            scope
+                .item_with_import(namespace, name)
+                .map(|(item, via)| (item, scope.is_item_exported(item), via))
+        }
+        SegmentBase::Local(scope) => ctx
+            .resolve_item_in(scope, namespace, name)
+            .map(|(item, via)| (item, true, via)),
+        SegmentBase::Parent(scope) => ctx
+            .module_member(scope, namespace, name)
+            .map(|(item, via)| (item, true, via)),
+    }
+}
+
+/// Looks up a segment of a path in one namespace, like [`lookup_segment`], as the kind of ID that
+/// the namespace has.
+fn lookup_as<T>(
+    ctx: &Compiler,
+    base: SegmentBase,
+    namespace: Namespace,
+    name: &str,
+    id: fn(Item) -> Option<T>,
+) -> Option<(T, bool, Option<ImportId>)> {
+    let (item, exported, via) = lookup_segment(ctx, base, namespace, name)?;
+    Some((id(item)?, exported, via))
+}
+
 pub fn compile_path<S>(
     ctx: &mut Compiler,
     range: &impl GetTextRange,
@@ -81,7 +132,8 @@ where
 {
     let mut segments = segments.collect::<Vec<_>>();
     let mut base_scope = ctx.last_scope_id();
-    let mut module_stack = ctx.parent_module_stack().to_vec();
+    // The modules that `super` can refer to, which are only needed if the path starts with it
+    let mut module_stack = None;
     let mut path_completion_module = None;
 
     let length = segments.len();
@@ -91,6 +143,9 @@ where
     {
         ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
     }
+
+    // The last `super`, and whether it named a module
+    let mut last_super = None;
 
     while let Some(segment) = segments.first()
         && let Some(name) = segment.name()
@@ -111,15 +166,31 @@ where
 
         segments.remove(0);
 
-        if let Some(module) = module_stack.pop() {
+        if let Some(module) = module_stack
+            .get_or_insert_with(|| ctx.parent_module_stack())
+            .pop()
+        {
             base_scope = ctx.module(module).scope;
             path_completion_module = Some(module);
 
             ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
+            last_super = Some((name, true));
         } else {
             ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
             completions = false;
+            last_super = Some((name, false));
         }
+    }
+
+    // A path that's only `super` names a module, which can't be used as a value or a type
+    if segments.is_empty()
+        && let Some((name, resolved)) = last_super
+    {
+        if resolved {
+            ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
+        }
+
+        return PathResult::Unresolved;
     }
 
     let mut value = None;
@@ -154,26 +225,18 @@ where
             return PathResult::Unresolved;
         };
 
-        // A name that's resolved through a module (rather than from the scope it's written in)
-        // can only be used if it's exported
-        let qualified = value.is_some() || base_scope != ctx.last_scope_id();
+        // A name that's resolved through a module (rather than from the scope it's written in, or
+        // a module that `super` names, which contains it) can only be used if it's exported
+        let qualified = value.is_some();
 
-        let (symbol, ty) = if let Some(value) = value {
+        // Only a module can have a path after it, and modules have their own namespace
+        let has_subpath = index + 1 < segments.len();
+
+        let base = if let Some(value) = value {
             if let PathResult::Symbol(symbol, _, _) = value
                 && let Symbol::Module(module) = ctx.symbol(symbol)
             {
-                let scope = ctx.scope(module.scope);
-                let symbol = scope.symbol(name.text()).map(|symbol| {
-                    (
-                        symbol,
-                        scope.is_symbol_exported(symbol),
-                        scope.symbol_import(symbol),
-                    )
-                });
-                let ty = scope
-                    .ty(name.text())
-                    .map(|ty| (ty, scope.is_type_exported(ty), scope.type_import(ty)));
-                (symbol, ty)
+                SegmentBase::Module(module.scope)
             } else {
                 let previous = previous.unwrap();
                 ctx.diagnostic(
@@ -183,41 +246,62 @@ where
                 return PathResult::Unresolved;
             }
         } else if base_scope == ctx.last_scope_id() {
-            let resolve_symbol = || {
-                ctx.resolve_symbol_in(base_scope, name.text())
-                    .map(|(symbol, import)| (symbol, true, import))
-            };
-            let resolve_type = || {
-                ctx.resolve_type_in(base_scope, name.text())
-                    .map(|(ty, import)| (ty, true, import))
-            };
+            SegmentBase::Local(base_scope)
+        } else {
+            SegmentBase::Parent(base_scope)
+        };
 
+        // A name whose import failed has already been reported at the import. It's checked in
+        // every namespace, since a use of the wrong kind of item would be reported too.
+        let blocked = |ctx: &Compiler| {
+            Namespace::ALL.into_iter().any(|namespace| match base {
+                SegmentBase::Local(scope) => ctx.is_blocked_in(scope, namespace, name.text()),
+                SegmentBase::Parent(scope) => ctx.scope(scope).is_blocked(namespace, name.text()),
+                SegmentBase::Module(_) => false,
+            })
+        };
+
+        let find_symbol = || lookup_as(ctx, base, Namespace::Value, name.text(), Item::symbol);
+        let find_type = || lookup_as(ctx, base, Namespace::Type, name.text(), Item::ty);
+        let find_module = || lookup_as(ctx, base, Namespace::Module, name.text(), Item::symbol);
+
+        let (symbol, ty) = if has_subpath {
+            let module = find_module();
+
+            if module.is_none()
+                && !blocked(ctx)
+                && (find_symbol().is_some() || find_type().is_some())
+            {
+                ctx.diagnostic(
+                    &name,
+                    DiagnosticKind::SubpathNotSupported(name.text().to_string()),
+                );
+                return PathResult::Unresolved;
+            }
+
+            (module, None)
+        } else {
             // When a name is both a symbol and a type, the expected kind wins, so the other is only
             // looked up as a fallback. A lookup that fails walks every enclosing scope, and each
-            // `let` statement opens one.
-            match kind {
+            // `let` statement opens one. A module is only found so that it can be reported.
+            let (symbol, ty) = match kind {
                 PathKind::Symbol => {
-                    let symbol = resolve_symbol();
-                    let ty = symbol.is_none().then(resolve_type).flatten();
+                    let symbol = find_symbol();
+                    let ty = symbol.is_none().then(find_type).flatten();
                     (symbol, ty)
                 }
                 PathKind::Type => {
-                    let ty = resolve_type();
-                    let symbol = ty.is_none().then(resolve_symbol).flatten();
+                    let ty = find_type();
+                    let symbol = ty.is_none().then(find_symbol).flatten();
                     (symbol, ty)
                 }
+            };
+
+            if symbol.is_none() && ty.is_none() && !blocked(ctx) {
+                (find_module(), None)
+            } else {
+                (symbol, ty)
             }
-        } else {
-            let base = ctx.scope(base_scope);
-            let symbol = base
-                .symbol(name.text())
-                .filter(|s| base.is_symbol_exported(*s))
-                .map(|s| (s, true, base.symbol_import(s)));
-            let ty = base
-                .ty(name.text())
-                .filter(|t| base.is_type_exported(*t))
-                .map(|t| (t, true, base.type_import(t)));
-            (symbol, ty)
         };
 
         let initial = match (symbol, ty) {
@@ -230,12 +314,7 @@ where
             }
             (None, Some((ty, _, type_import))) => PathResult::Type(ty, type_import),
             (None, None) => {
-                // A name whose import failed has already been reported at the import
-                let blocked = !qualified
-                    && match kind {
-                        PathKind::Symbol => ctx.is_symbol_blocked_in(base_scope, name.text()),
-                        PathKind::Type => ctx.is_type_blocked_in(base_scope, name.text()),
-                    };
+                let blocked = blocked(ctx);
 
                 match kind {
                     _ if blocked => {}

@@ -2,7 +2,7 @@ import a::hello_world_a;
 import b::hello_world_b;
 
 mod a {
-    import b::hello;
+    import super::b::hello;
 
     export fn world() -> String {
         "world!"
@@ -14,7 +14,7 @@ mod a {
 }
 
 mod b {
-    import a::world;
+    import super::a::world;
 
     export fn hello() -> String {
         "Hello, "
@@ -43,29 +43,29 @@ mod globbed {
 }
 
 mod glob_order_one {
-    import targeted::*;
+    import super::targeted::*;
 
-    import globbed::*;
+    import super::globbed::*;
 
     export fn result() -> Int {
-        GLOB_ONLY + UNIQUE_TARGETED + globbed::VALUE
+        GLOB_ONLY + UNIQUE_TARGETED + super::globbed::VALUE
     }
 }
 
 mod glob_order_two {
-    import globbed::*;
+    import super::globbed::*;
 
-    import targeted::*;
+    import super::targeted::*;
 
     export fn result() -> Int {
-        GLOB_ONLY + UNIQUE_TARGETED + globbed::VALUE
+        GLOB_ONLY + UNIQUE_TARGETED + super::globbed::VALUE
     }
 }
 
 mod glob_first {
-    import globbed::*;
+    import super::globbed::*;
 
-    import targeted::{Choice, VALUE};
+    import super::targeted::{Choice, VALUE};
 
     export fn result(value: Choice) -> Int {
         GLOB_ONLY + VALUE + value
@@ -73,9 +73,9 @@ mod glob_first {
 }
 
 mod targeted_first {
-    import targeted::{Choice, VALUE};
+    import super::targeted::{Choice, VALUE};
 
-    import globbed::*;
+    import super::globbed::*;
 
     export fn result(value: Choice) -> Int {
         GLOB_ONLY + VALUE + value

@@ -1,0 +1,5 @@
+diagnostics:
+- Undeclared symbol `other` at main.rue:1:8
+- Undeclared symbol `utils` at main.rue:4:19
+- Undeclared symbol `utils` at main.rue:7:16
+- Undeclared symbol `greet` at main.rue:7:33

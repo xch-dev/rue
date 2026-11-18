@@ -1,0 +1,8 @@
+tests:
+- name: path_less_imports_only_shadow_the_namespaces_they_bring_in
+  program: (q . 9)
+  debug_program: (a (q 16 (a 6 ()) 4) (c (c (q . 7) (q 1 . 2)) ()))
+  output: "9"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

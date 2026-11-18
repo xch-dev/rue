@@ -1,0 +1,10 @@
+// `s::*` brings in an ambiguous `F` (from `a` and `b`), and `t::*` brings in `a::F` without
+// ambiguity. It's the same item, so the glob imports don't collide, but it's still ambiguous,
+// whichever records it first: `second.rue` does the same with the names swapped round.
+
+import s::*;
+import t::*;
+
+fn main() -> Int {
+    F
+}

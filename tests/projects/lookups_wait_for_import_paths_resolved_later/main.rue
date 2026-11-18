@@ -1,0 +1,15 @@
+// `a::*` and `m::*` wait for each other, since `m` could bring in `a`, and `super::q` waits for
+// both. `a::*` waits for `m::*`'s path even though it's resolved later in the same pass, so
+// they're forced together, and `super::q` finds the sibling `q.rue` before `a::*` brings in its
+// own `q`, which is reported. `second.rue` does the same with `t.rue`, which sorts after `n`.
+
+import a::*;
+import m::*;
+
+mod m {
+    export super::q::*;
+}
+
+fn main() -> Int {
+    Z
+}

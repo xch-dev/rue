@@ -15,7 +15,7 @@ use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind};
 use rue_hir::{
     Declaration, DependencyGraph, Environment, Lowerer, MAX_LOWERING_DEPTH, ModuleDeclarations,
-    ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
+    ModuleSymbol, Namespace, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
 use rue_lir::CodegenOptions;
@@ -97,6 +97,7 @@ impl FileTree {
         let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
             name: Some(Name::new(name.as_str(), None)),
             scope,
+            parent: None,
             declarations: ModuleDeclarations::default(),
         }));
 
@@ -220,6 +221,7 @@ impl FileTree {
             let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
                 name: Some(Name::new(file_name.as_str(), None)),
                 scope,
+                parent: None,
                 declarations: ModuleDeclarations::default(),
             }));
 
@@ -361,13 +363,14 @@ impl FileTree {
                         entrypoints.insert(Declaration::Symbol(main));
                     }
 
-                    ctx.scope(scope).exported_symbols().for_each(|(_, symbol)| {
-                        entrypoints.insert(Declaration::Symbol(symbol));
-                    });
-
-                    ctx.scope(scope).exported_types().for_each(|(_, ty)| {
-                        entrypoints.insert(Declaration::Type(ty));
-                    });
+                    for namespace in Namespace::ALL {
+                        entrypoints.extend(
+                            ctx.scope(scope)
+                                .exported_items(namespace)
+                                .into_iter()
+                                .map(|(_, item)| Declaration::from(item)),
+                        );
+                    }
                 }
                 Self::Directory(directory) => {
                     directory.children.iter().for_each(|child| {
@@ -582,10 +585,12 @@ impl File {
 
         let sibling_scope = ctx.alloc_child_scope();
         let scope = ctx.alloc_scope(Scope::new(Some(sibling_scope)));
+        ctx.add_sibling_scope(scope, sibling_scope);
 
         let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
             name: Some(Name::new(name.as_str(), None)),
             scope,
+            parent: None,
             declarations: ModuleDeclarations::default(),
         }));
 
@@ -626,12 +631,18 @@ impl File {
             self.document.syntax().text_range().start(),
         );
         ctx.push_scope(scope, self.document.syntax().text_range().start());
-        // ctx.push_module(self.module);
+
+        let outer_scope = ctx
+            .scope(self.sibling_scope)
+            .parent()
+            .expect("a file's sibling scope is in another scope");
+        ctx.enter_file(self.module, outer_scope);
+
         self.module(ctx).declarations.clone()
     }
 
     fn end(&self, ctx: &mut Compiler, declarations: ModuleDeclarations) {
-        // ctx.pop_module();
+        ctx.exit_file();
         ctx.pop_scope(self.document.syntax().text_range().end());
         ctx.pop_scope(self.document.syntax().text_range().end());
         self.module_mut(ctx).declarations = declarations;
@@ -706,7 +717,7 @@ impl Directory {
             let name = child.name().to_string();
             let module = child.module();
             child_modules.insert(name.clone(), module);
-            ctx.scope_mut(scope).insert_symbol(name, module, true);
+            ctx.scope_mut(scope).insert_module(name, module, true);
         }
 
         for child in &children {
@@ -717,7 +728,7 @@ impl Directory {
             for (name, module) in child_modules {
                 if let FileTree::File(file) = child {
                     ctx.scope_mut(file.sibling_scope)
-                        .insert_symbol(name, module, false);
+                        .insert_module(name, module, false);
                 }
             }
         }

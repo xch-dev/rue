@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot reference private symbol `utils` in module `zother` at main.rue:2:16
+- Unused function `greet` at zother.rue:2:15

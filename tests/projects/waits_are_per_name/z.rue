@@ -1,0 +1,4 @@
+export mod y {
+    export const W: Int = 1;
+    export const K: Int = 9;
+}

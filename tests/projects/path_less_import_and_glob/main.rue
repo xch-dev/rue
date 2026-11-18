@@ -1,0 +1,8 @@
+// `import y;` brings in the sibling module `y`, so the glob import still brings in `b`'s
+// function `y`, which is in another namespace
+import b::*;
+import y;
+
+test fn path_less_imports_only_shadow_the_namespaces_they_bring_in() -> Int {
+    y() + y::W
+}

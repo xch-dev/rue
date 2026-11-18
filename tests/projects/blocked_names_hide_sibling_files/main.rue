@@ -1,0 +1,17 @@
+import other::utils;
+
+mod a {
+    import super::utils::greet;
+
+    export fn by_path() -> Int {
+        super::utils::greet()
+    }
+
+    export fn imported() -> Int {
+        greet()
+    }
+}
+
+fn main() -> Int {
+    a::by_path() + a::imported()
+}

@@ -14,8 +14,8 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Mappings, Scope, ScopeId,
-    Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
+    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Item, Mappings, Namespace,
+    Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
 use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
@@ -32,7 +32,15 @@ pub struct Compiler {
     db: Database,
     syntax_map: SyntaxMap,
     scope_stack: Vec<(TextSize, ScopeId)>,
+    /// The directory modules that the file being compiled is in.
     module_stack: Vec<SymbolId>,
+    /// The module of the file being compiled, and the scope outside of it (with the prelude), if
+    /// a file is being compiled.
+    file: Option<(SymbolId, ScopeId)>,
+    /// The inline modules that the code being compiled is in, in the file being compiled.
+    inline_modules: Vec<SymbolId>,
+    /// The scope with the sibling modules of each file, keyed by the scope of the file.
+    sibling_scopes: HashMap<ScopeId, ScopeId>,
     builtins: Builtins,
     field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
@@ -128,6 +136,9 @@ impl Compiler {
             syntax_map: SyntaxMap::new(),
             scope_stack: vec![(TextSize::from(0), builtins.scope)],
             module_stack: Vec::new(),
+            file: None,
+            inline_modules: Vec::new(),
+            sibling_scopes: HashMap::new(),
             builtins,
             field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
@@ -155,22 +166,10 @@ impl Compiler {
 
             let prelude = ctx.alloc_child_scope();
 
-            for (name, symbol) in ctx
-                .scope(prelude_scope)
-                .exported_symbols()
-                .map(|(name, symbol)| (name.to_string(), symbol))
-                .collect::<Vec<_>>()
-            {
-                ctx.scope_mut(prelude).insert_symbol(name, symbol, false);
-            }
-
-            for (name, ty) in ctx
-                .scope(prelude_scope)
-                .exported_types()
-                .map(|(name, ty)| (name.to_string(), ty))
-                .collect::<Vec<_>>()
-            {
-                ctx.scope_mut(prelude).insert_type(name, ty, false);
+            for namespace in Namespace::ALL {
+                for (name, item) in ctx.scope(prelude_scope).exported_items(namespace) {
+                    ctx.scope_mut(prelude).insert_item(name, item, false);
+                }
             }
 
             ctx.push_scope(prelude, prelude_file.document.syntax().text_range().start());
@@ -371,69 +370,135 @@ impl Compiler {
         self.module_stack.pop().unwrap();
     }
 
-    pub fn parent_module_stack(&self) -> &[SymbolId] {
-        if self.module_stack.is_empty() {
-            return &[];
+    /// The modules that `super` refers to from the code being compiled, from the outermost to the
+    /// innermost, so that each `super` pops one. In an inline module, `super` is the module it's
+    /// in. In a file, it's the parent of the file's directory, since the file can already refer to
+    /// the other files in its directory by name.
+    pub fn parent_module_stack(&self) -> Vec<SymbolId> {
+        let mut stack = self.module_stack[..self.module_stack.len().saturating_sub(1)].to_vec();
+
+        if let Some((_, parents)) = self.inline_modules.split_last() {
+            stack.extend(self.file.map(|(module, _)| module));
+            stack.extend_from_slice(parents);
         }
 
-        &self.module_stack[..self.module_stack.len() - 1]
+        stack
     }
 
-    /// Looks up a symbol in a scope and then each enclosing scope. The lookup stops at a scope
-    /// that blocks the name (see [`Scope::block_symbol`]).
-    pub fn resolve_symbol_in(
+    /// Starts compiling a file, whose module is in the given scope.
+    pub fn enter_file(&mut self, module: SymbolId, outer_scope: ScopeId) {
+        self.file = Some((module, outer_scope));
+    }
+
+    pub fn exit_file(&mut self) {
+        self.file = None;
+    }
+
+    pub fn push_inline_module(&mut self, module: SymbolId) {
+        self.inline_modules.push(module);
+    }
+
+    pub fn pop_inline_module(&mut self) {
+        self.inline_modules.pop().unwrap();
+    }
+
+    /// The module that the code being compiled is in, inline or a file.
+    pub fn current_module(&self) -> SymbolId {
+        self.inline_modules.last().copied().unwrap_or_else(|| {
+            let (module, _) = self.file.expect("code is compiled in a file");
+            module
+        })
+    }
+
+    /// The scope that an inline module's scope is in. An inline module only sees its own items and
+    /// imports, and the prelude, like a file, so its scope is in the one outside of the file.
+    pub fn inline_module_parent_scope(&self) -> ScopeId {
+        let (_, outer_scope) = self.file.expect("inline modules are declared in a file");
+        outer_scope
+    }
+
+    /// Records the scope with a file's sibling modules, which are found through `super` from an
+    /// inline module in the file like the file's own items.
+    pub fn add_sibling_scope(&mut self, file_scope: ScopeId, sibling_scope: ScopeId) {
+        self.sibling_scopes.insert(file_scope, sibling_scope);
+    }
+
+    /// The item with a name that a module (by its scope) has, including a file's sibling modules,
+    /// and the import that brought it into the module, if any. This is what `super::name` finds.
+    pub fn module_member(
         &self,
         scope: ScopeId,
+        namespace: Namespace,
         name: &str,
-    ) -> Option<(SymbolId, Option<ImportId>)> {
+    ) -> Option<(Item, Option<ImportId>)> {
+        self.scope(scope)
+            .item_with_import(namespace, name)
+            .or_else(|| self.sibling_item(scope, namespace, name))
+    }
+
+    /// The sibling module with a name, if a scope is a file's and the name is in a namespace that
+    /// modules are in. A name the file blocks (see [`Scope::block`]) hides the sibling, as it does
+    /// for lookups in the file itself.
+    pub fn sibling_item(
+        &self,
+        scope: ScopeId,
+        namespace: Namespace,
+        name: &str,
+    ) -> Option<(Item, Option<ImportId>)> {
+        if self.scope(scope).is_blocked(namespace, name) {
+            return None;
+        }
+
+        let siblings = self.sibling_scopes.get(&scope)?;
+        self.scope(*siblings).item_with_import(namespace, name)
+    }
+
+    /// The names and items that a module (by its scope) has in a namespace, including a file's
+    /// sibling modules. This is what `super::name` can name.
+    pub fn module_members(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
+        let mut items = self.scope(scope).items(namespace);
+        items.extend(self.sibling_items(scope, namespace));
+        items
+    }
+
+    /// The names and items of a file's sibling modules in a namespace, if a scope is a file's,
+    /// except those the file blocks (see [`Self::sibling_item`]).
+    pub fn sibling_items(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
+        let Some(&siblings) = self.sibling_scopes.get(&scope) else {
+            return Vec::new();
+        };
+
+        let mut items = self.scope(siblings).items(namespace);
+        items.retain(|(name, _)| !self.scope(scope).is_blocked(namespace, name));
+        items
+    }
+
+    /// Looks up a name in one namespace in a scope and then each enclosing scope. The lookup
+    /// stops at a scope that blocks the name (see [`Scope::block`]).
+    pub fn resolve_item_in(
+        &self,
+        scope: ScopeId,
+        namespace: Namespace,
+        name: &str,
+    ) -> Option<(Item, Option<ImportId>)> {
         self.lookup_in(scope, |_, scope| {
-            if let Some(found) = scope.symbol_with_import(name) {
+            if let Some(found) = scope.item_with_import(namespace, name) {
                 Some(Some(found))
             } else {
-                scope.is_symbol_blocked(name).then_some(None)
+                scope.is_blocked(namespace, name).then_some(None)
             }
         })
         .flatten()
     }
 
-    /// Looks up a type in a scope and then each enclosing scope. The lookup stops at a scope that
-    /// blocks the name (see [`Scope::block_type`]).
-    pub fn resolve_type_in(
-        &self,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<(TypeId, Option<ImportId>)> {
+    /// Whether looking up a name in a namespace from a scope stops at a scope that blocks the
+    /// name, rather than finding it or reaching the outermost scope.
+    pub fn is_blocked_in(&self, scope: ScopeId, namespace: Namespace, name: &str) -> bool {
         self.lookup_in(scope, |_, scope| {
-            if let Some(found) = scope.type_with_import(name) {
-                Some(Some(found))
-            } else {
-                scope.is_type_blocked(name).then_some(None)
-            }
-        })
-        .flatten()
-    }
-
-    /// Whether looking up a symbol from a scope stops at a scope that blocks the name, rather
-    /// than finding it or reaching the outermost scope.
-    pub fn is_symbol_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.lookup_in(scope, |_, scope| {
-            if scope.symbol(name).is_some() {
+            if scope.item(namespace, name).is_some() {
                 Some(false)
             } else {
-                scope.is_symbol_blocked(name).then_some(true)
-            }
-        })
-        .unwrap_or(false)
-    }
-
-    /// Whether looking up a type from a scope stops at a scope that blocks the name, rather than
-    /// finding it or reaching the outermost scope.
-    pub fn is_type_blocked_in(&self, scope: ScopeId, name: &str) -> bool {
-        self.lookup_in(scope, |_, scope| {
-            if scope.ty(name).is_some() {
-                Some(false)
-            } else {
-                scope.is_type_blocked(name).then_some(true)
+                scope.is_blocked(namespace, name).then_some(true)
             }
         })
         .unwrap_or(false)

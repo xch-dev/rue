@@ -1,0 +1,8 @@
+diagnostics:
+- "`a` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at third.rue:4:8"
+- Unused import `*` at third.rue:4:11
+- "`a` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at main.rue:8:8"
+- Unused import `a` at main.rue:9:11
+- Unused import `w` at second.rue:1:11
+- "`w` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at second.rue:2:8"
+- Unused constant `V` at w.rue:2:18

@@ -1,0 +1,9 @@
+diagnostics:
+- Unused import `*` at second.rue:1:11
+- Unused import `*` at second.rue:2:11
+- "`y` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at second.rue:3:8"
+- Unused import `*` at main.rue:6:11
+- Unused import `*` at main.rue:7:11
+- "`y` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at main.rue:8:8"
+- Unused constant `J` at a.rue:2:18
+- Unused constant `J` at c.rue:2:18

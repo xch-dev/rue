@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use rue_ast::{AstItem, AstNode, AstSymbolItem, AstTypeItem};
 use rue_diagnostic::{Applicability, Lint, Name, SrcLoc, Suggestion};
-use rue_hir::{Database, Declaration, Items, ScopeId, Symbol, SymbolId};
+use rue_hir::{Database, Declaration, Items, Symbol, SymbolId};
 use rue_types::{Type, TypeId};
 
 use crate::{
@@ -23,11 +23,6 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
     let modules = &input.sites.modules;
 
-    let scopes = modules
-        .iter()
-        .map(|&(module, _)| (db.module(module).scope, module))
-        .collect::<HashMap<ScopeId, SymbolId>>();
-
     let qualified = &input.sites.qualified_references;
     let export_keywords = export_keywords(input);
     let imported = imported(db);
@@ -37,7 +32,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     for (module, module_srcloc) in modules {
         let module = *module;
 
-        if is_public(db, &scopes, module) {
+        if is_public(db, module) {
             continue;
         }
 
@@ -135,9 +130,7 @@ fn collect_exports(
 
     let exported = scope
         .exported_symbols()
-        .map(|(_, symbol)| symbol)
-        .filter(|&symbol| !matches!(db.symbol(symbol), Symbol::Module(_)))
-        .map(Declaration::Symbol)
+        .map(|(_, symbol)| Declaration::Symbol(symbol))
         .chain(scope.exported_types().map(|(_, ty)| Declaration::Type(ty)))
         .collect::<Vec<_>>();
 
@@ -155,7 +148,7 @@ fn collect_exports(
     }
 
     for &nested in &declarations.modules {
-        if scope.is_symbol_exported(nested) {
+        if scope.is_module_exported(nested) {
             collect_exports(db, nested, false, exports, seen);
         }
     }
@@ -212,20 +205,17 @@ fn used_exports(
 
 /// Whether the module can be used by anything that imports the file it's in, because it's
 /// exported from the file, or from another module that is.
-fn is_public(db: &Database, scopes: &HashMap<ScopeId, SymbolId>, module: SymbolId) -> bool {
-    let Some(parent) = db.scope(db.module(module).scope).parent() else {
+fn is_public(db: &Database, module: SymbolId) -> bool {
+    let Some(parent) = db.module(module).parent else {
         return false;
     };
 
-    if !db.scope(parent).is_symbol_exported(module) {
+    if !db.scope(db.module(parent).scope).is_module_exported(module) {
         return false;
     }
 
-    match scopes.get(&parent) {
-        Some(&parent) => is_public(db, scopes, parent),
-        // The module is declared directly in a file
-        None => true,
-    }
+    // A file has no parent, and a module declared directly in one is public if the file exports it
+    db.module(parent).parent.is_none() || is_public(db, parent)
 }
 
 /// Where each declaration is imported (or re-exported), which it can only be if it's exported. A

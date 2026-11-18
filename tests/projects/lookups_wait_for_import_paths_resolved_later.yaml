@@ -1,0 +1,7 @@
+diagnostics:
+- Unused import `*` at second.rue:2:11
+- "`q` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at second.rue:5:19"
+- Unused import `*` at main.rue:6:11
+- "`q` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at main.rue:10:19"
+- Unused constant `Z` at a.rue:2:18
+- Unused constant `Z` at t.rue:2:18

@@ -1,0 +1,2 @@
+diagnostics:
+- "`y` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at main.rue:6:8"

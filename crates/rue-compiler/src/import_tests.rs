@@ -1,6 +1,8 @@
 //! Imports: which declaration an imported name refers to, how targeted and glob imports interact,
 //! and the errors for imports that can't be resolved.
 
+use std::fmt::Write;
+
 use crate::test_utils::compile;
 
 #[test]
@@ -320,8 +322,8 @@ fn glob_imports_bring_in_only_exported_items() {
 /// A module with a glob import of `globbed`, which exports `VALUE` and `Choice` among other
 /// things, and a targeted import of the same names from `targeted`, in either order.
 fn targeted_and_glob(glob_first: bool) -> String {
-    let glob = "import globbed::*;";
-    let targeted = "import targeted::{Choice, VALUE};";
+    let glob = "import super::globbed::*;";
+    let targeted = "import super::targeted::{Choice, VALUE};";
     let (first, second) = if glob_first {
         (glob, targeted)
     } else {
@@ -384,7 +386,7 @@ fn targeted_imports_take_precedence_over_glob_imports_that_resolve_first() {
     let compiled = compile(
         "
         mod targeted {
-            export zzz::*;
+            export super::zzz::*;
         }
 
         mod zzz {
@@ -396,8 +398,8 @@ fn targeted_imports_take_precedence_over_glob_imports_that_resolve_first() {
         }
 
         mod user {
-            import targeted::VALUE;
-            import globbed::*;
+            import super::targeted::VALUE;
+            import super::globbed::*;
 
             export fn result() -> Int {
                 VALUE
@@ -432,8 +434,8 @@ fn colliding_glob_imports_are_ambiguous_when_used() {
             }}
 
             mod user {{
-                import {first}::*;
-                import {second}::*;
+                import super::{first}::*;
+                import super::{second}::*;
 
                 export fn result(value: Number) -> Int {{
                     VALUE + value
@@ -481,8 +483,8 @@ fn ambiguous_glob_imports_are_reported_through_paths_and_imports() {
 
         mod outer {
             export mod both {
-                export alpha::*;
-                export beta::*;
+                export super::super::alpha::*;
+                export super::super::beta::*;
             }
         }
 
@@ -516,16 +518,16 @@ fn ambiguous_glob_imports_are_reported_through_chains_of_globs() {
         }
 
         mod both {
-            export alpha::*;
-            export beta::*;
+            export super::alpha::*;
+            export super::beta::*;
         }
 
         mod chained {
-            export both::*;
+            export super::both::*;
         }
 
         mod user {
-            import chained::*;
+            import super::chained::*;
 
             export fn result() -> Int {
                 VALUE
@@ -560,13 +562,13 @@ fn ambiguous_glob_imports_are_reported_through_mutual_glob_exports() {
         }
 
         mod first {
-            export alpha::*;
-            export beta::*;
-            export second::*;
+            export super::alpha::*;
+            export super::beta::*;
+            export super::second::*;
         }
 
         mod second {
-            export first::*;
+            export super::first::*;
         }
 
         fn main() -> Int {
@@ -585,7 +587,7 @@ fn ambiguous_glob_imports_are_reported_through_mutual_glob_exports() {
 }
 
 #[test]
-fn named_imports_from_an_enclosing_scope_are_checked_for_ambiguity() {
+fn named_imports_from_a_parent_module_are_checked_for_ambiguity() {
     let compiled = compile(
         "
         import alpha::*;
@@ -600,7 +602,7 @@ fn named_imports_from_an_enclosing_scope_are_checked_for_ambiguity() {
         }
 
         mod inner {
-            import VALUE;
+            import super::VALUE;
 
             export fn result() -> Int {
                 VALUE
@@ -613,7 +615,7 @@ fn named_imports_from_an_enclosing_scope_are_checked_for_ambiguity() {
         ",
     );
 
-    assert_eq!(compiled.errors(), ["14:20 AmbiguousImport(\"VALUE\")"]);
+    assert_eq!(compiled.errors(), ["14:27 AmbiguousImport(\"VALUE\")"]);
 }
 
 #[test]
@@ -677,7 +679,7 @@ fn glob_imports_of_the_same_item_are_not_ambiguous() {
         }
 
         mod beta {
-            export alpha::VALUE;
+            export super::alpha::VALUE;
         }
 
         import alpha::*;
@@ -842,7 +844,7 @@ fn mutual_glob_exports_resolve() {
     let compiled = compile(
         "
         mod a {
-            export b::*;
+            export super::b::*;
 
             export fn a() -> Int {
                 4
@@ -850,7 +852,7 @@ fn mutual_glob_exports_resolve() {
         }
 
         mod b {
-            export a::*;
+            export super::a::*;
 
             export fn b() -> Int {
                 5
@@ -875,7 +877,7 @@ fn imports_resolve_through_items_imported_later() {
         import first::value;
 
         mod first {
-            export second::value;
+            export super::second::value;
         }
 
         mod second {
@@ -895,19 +897,37 @@ fn imports_resolve_through_items_imported_later() {
 }
 
 #[test]
-fn super_only_refers_to_directory_modules() {
-    // Inline modules aren't parents for `super` (since fc8b077a), so this is unresolved
+fn super_refers_to_the_module_an_inline_module_is_in() {
+    // `super` from an inline module is the module it's in, whose private items it can use, and
+    // a single file has no module above it
     let compiled = compile(
         "
         const TOP: Int = 1;
 
         mod inner {
             import super::TOP;
+            import super::super::x;
+
+            export fn value() -> Int {
+                TOP + super::TOP
+            }
+        }
+
+        fn main() -> Int {
+            inner::value()
         }
         ",
     );
 
-    assert_eq!(compiled.errors(), ["5:20 UnresolvedSuper"]);
+    assert_eq!(
+        compiled.errors(),
+        ["6:27 UnresolvedSuper", "6:34 UnresolvedImport(\"x\")"]
+    );
+    assert_eq!(compiled.symbol_origin("inner::TOP"), "(root)");
+    assert_eq!(
+        compiled.reference_origins("inner::value", "TOP"),
+        ["`TOP`: (root)", "`super::TOP`: (root)"]
+    );
 }
 
 #[test]
@@ -963,10 +983,9 @@ fn glob_imports_that_bring_in_nothing_are_unused() {
 }
 
 #[test]
-fn imports_from_an_enclosing_scope_wait_for_its_imports() {
-    // `import V;` and the first segment of `import m::W` are looked up like a use in `deeper`
-    // would be, so they find what `inner` imports rather than the items at the top level, even
-    // though they're resolved first
+fn imports_from_a_parent_module_find_what_it_imports() {
+    // `import super::V;` and `import super::m::W;` find what `inner` imports, rather than the
+    // items at the top level, even though `inner`'s imports are resolved after them
     let compiled = compile(
         "
         mod a {
@@ -988,14 +1007,14 @@ fn imports_from_an_enclosing_scope_wait_for_its_imports() {
         }
 
         mod inner {
-            import a::V;
-            import a::T;
-            import z::m;
+            import super::a::V;
+            import super::a::T;
+            import super::z::m;
 
             export mod deeper {
-                import V;
-                import T;
-                import m::W;
+                import super::V;
+                import super::T;
+                import super::m::W;
 
                 export fn value(value: T) -> Int {
                     V + W + value
@@ -1018,7 +1037,7 @@ fn imports_from_an_enclosing_scope_wait_for_its_imports() {
 }
 
 #[test]
-fn imports_from_an_enclosing_scope_wait_for_its_glob_imports() {
+fn reexports_from_a_parent_module_find_what_it_glob_imports() {
     let compiled = compile(
         "
         mod a {
@@ -1028,10 +1047,10 @@ fn imports_from_an_enclosing_scope_wait_for_its_glob_imports() {
         const V: Int = 2;
 
         mod inner {
-            import a::*;
+            import super::a::*;
 
             export mod deeper {
-                export V;
+                export super::V;
             }
         }
 
@@ -1047,9 +1066,9 @@ fn imports_from_an_enclosing_scope_wait_for_its_glob_imports() {
 }
 
 #[test]
-fn imports_from_an_enclosing_scope_skip_imports_that_bring_in_nothing() {
-    // `inner`'s glob import never brings in `V`, and its named import only brings in a type, so
-    // once nothing else can be resolved the lookups go past them
+fn imports_from_a_parent_module_find_only_the_namespaces_it_has() {
+    // `inner` only has a type named `V`, so the value `V` is imported from the top level by a
+    // separate import of the same name, which isn't a duplicate
     let compiled = compile(
         "
         mod a {
@@ -1060,11 +1079,13 @@ fn imports_from_an_enclosing_scope_skip_imports_that_bring_in_nothing() {
         const V: Int = 2;
 
         mod inner {
-            import a::*;
-            import a::V;
+            import super::a::*;
+            import super::a::V;
 
             export mod deeper {
-                import V;
+                import super::V;
+                import super::super::V;
+                import super::OTHER;
 
                 export fn value(value: V) -> Int {
                     V + value + OTHER
@@ -1084,7 +1105,7 @@ fn imports_from_an_enclosing_scope_skip_imports_that_bring_in_nothing() {
 }
 
 #[test]
-fn chains_of_imports_from_enclosing_scopes_resolve_from_the_outside_in() {
+fn chains_of_imports_from_parent_modules_resolve() {
     let compiled = compile(
         "
         mod a {
@@ -1094,13 +1115,13 @@ fn chains_of_imports_from_enclosing_scopes_resolve_from_the_outside_in() {
         const V: Int = 2;
 
         mod first {
-            import a::*;
+            import super::a::*;
 
             export mod second {
-                import V;
+                import super::V;
 
                 export mod third {
-                    import V;
+                    import super::V;
 
                     export fn value() -> Int {
                         V
@@ -1120,25 +1141,32 @@ fn chains_of_imports_from_enclosing_scopes_resolve_from_the_outside_in() {
 }
 
 #[test]
-fn local_declarations_take_precedence_over_imported_modules() {
+fn local_modules_take_precedence_over_imported_modules() {
     let compiled = compile(
         "
         import m::helper;
         import m::*;
 
         mod m {
-            export mod helper {}
-            export mod value {}
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export mod other {
+                export const VALUE: Int = 2;
+            }
         }
 
-        fn helper() -> Int {
-            1
+        mod helper {
+            export const VALUE: Int = 3;
         }
 
-        const value: Int = 2;
+        mod other {
+            export const VALUE: Int = 4;
+        }
 
         fn main() -> Int {
-            helper() + value
+            helper::VALUE + other::VALUE
         }
         ",
     );
@@ -1146,6 +1174,42 @@ fn local_declarations_take_precedence_over_imported_modules() {
     // Like any named import of a declared name, the import of `helper` is the duplicate. The
     // glob import is shadowed.
     assert_eq!(compiled.errors(), ["2:19 DuplicateSymbol(\"helper\")"]);
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "helper");
+    assert_eq!(compiled.symbol_origin("other::VALUE"), "other");
+}
+
+#[test]
+fn imported_modules_and_local_values_with_the_same_name_are_both_bound() {
+    // Modules have their own namespace, so an imported module doesn't clash with a local
+    // function or constant
+    let compiled = compile(
+        "
+        import m::helper;
+        import m::*;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export mod value {
+                export const VALUE: Int = 2;
+            }
+        }
+
+        fn helper() -> Int {
+            3
+        }
+
+        const value: Int = 4;
+
+        fn main() -> Int {
+            helper() + value + helper::VALUE + value::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
     assert_eq!(
         compiled.reference_origins("main", "helper"),
         ["`helper`: (root)"]
@@ -1154,6 +1218,8 @@ fn local_declarations_take_precedence_over_imported_modules() {
         compiled.reference_origins("main", "value"),
         ["`value`: (root)"]
     );
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "m::helper");
+    assert_eq!(compiled.symbol_origin("value::VALUE"), "m::value");
 }
 
 #[test]
@@ -1197,7 +1263,7 @@ fn uses_of_a_private_import_are_not_reported_again() {
 
         mod nested {
             export fn value() -> Int {
-                secret()
+                super::secret()
             }
         }
 
@@ -1249,9 +1315,8 @@ fn private_imports_do_not_hide_a_declaration_with_the_same_name() {
 }
 
 #[test]
-fn imports_from_an_enclosing_scope_wait_for_outer_forced_imports() {
-    // `third` waits for `second`'s import of `V`, which only resolves once `first`'s glob import
-    // (which never brings in `V`) has been skipped
+fn imports_from_each_parent_module_find_what_it_imports() {
+    // `third` imports `V` from `second` and `OTHER` from `first`, which each import them
     let compiled = compile(
         "
         mod a {
@@ -1265,13 +1330,14 @@ fn imports_from_an_enclosing_scope_wait_for_outer_forced_imports() {
         const V: Int = 2;
 
         mod first {
-            import a::*;
+            import super::a::*;
 
             export mod second {
-                import m::V;
+                import super::super::m::V;
 
                 export mod third {
-                    import V;
+                    import super::V;
+                    import super::super::OTHER;
 
                     export fn value() -> Int {
                         V + OTHER
@@ -1288,13 +1354,13 @@ fn imports_from_an_enclosing_scope_wait_for_outer_forced_imports() {
 
     compiled.assert_no_errors();
     assert_eq!(compiled.symbol_origin("first::second::third::V"), "m");
+    assert_eq!(compiled.symbol_origin("first::second::third::OTHER"), "a");
 }
 
 #[test]
-fn forced_imports_that_a_nearer_import_contradicts_are_ambiguous() {
-    // `inner` gets `V` from `deeper`, whose import of `a` waits for `inner`'s glob import, which
-    // waits for `deeper`. The imports in `user` and `deeper` are resolved without waiting, so
-    // `user` finds the top-level `V`, and a use of `V` in `inner` would find `a::V`.
+fn imports_from_a_parent_module_find_what_it_imports_from_a_child() {
+    // `inner` gets `V` from `deeper` through a glob import, and `user` imports it from `inner`.
+    // Only what `inner` has is looked at, so the top-level `V` can't be found by mistake.
     let compiled = compile(
         "
         mod a {
@@ -1307,11 +1373,11 @@ fn forced_imports_that_a_nearer_import_contradicts_are_ambiguous() {
             import deeper::*;
 
             export mod deeper {
-                export a::V;
+                export super::super::a::V;
             }
 
             export mod user {
-                import V;
+                import super::V;
 
                 export fn f() -> Int {
                     V
@@ -1329,13 +1395,14 @@ fn forced_imports_that_a_nearer_import_contradicts_are_ambiguous() {
         ",
     );
 
-    assert_eq!(compiled.errors(), ["16:24 AmbiguousOuterImport(\"V\")"]);
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::user::V"), "a");
+    assert_eq!(compiled.symbol_origin("inner::V"), "a");
 }
 
 #[test]
-fn forced_import_paths_that_a_nearer_import_contradicts_are_ambiguous() {
-    // Both glob imports in `inner` wait for each other to know whether they bring in `y`. The
-    // import of `y::*` goes first, and finds the top-level `y`, but `z::*` brings in `z::y`.
+fn super_paths_name_the_parent_module_rather_than_a_glob_imported_one() {
+    // `super::z::*` brings a module named `y` into `inner`, but `super::y` is the top-level `y`
     let compiled = compile(
         "
         mod y {
@@ -1349,11 +1416,11 @@ fn forced_import_paths_that_a_nearer_import_contradicts_are_ambiguous() {
         }
 
         mod inner {
-            import z::*;
-            import y::*;
+            import super::z::*;
+            import super::y::*;
 
             export fn f() -> Int {
-                V
+                V + y::V
             }
         }
 
@@ -1363,13 +1430,18 @@ fn forced_import_paths_that_a_nearer_import_contradicts_are_ambiguous() {
         ",
     );
 
-    assert_eq!(compiled.errors(), ["14:20 AmbiguousOuterImport(\"y\")"]);
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::V"), "y");
+    assert_eq!(
+        compiled.reference_origins("inner::f", "V"),
+        ["`V`: y", "`y::V`: z::y"]
+    );
 }
 
 #[test]
 fn glob_imports_that_bring_in_their_own_module_name_are_not_ambiguous() {
     // Like the prelude's `export tree_hash::*;`: the glob import brings in a function with the
-    // name of the module it imports from, after the waiting glob imports have been forced
+    // name of the module it imports from
     let compiled = compile(
         "
         mod helpers {
@@ -1385,8 +1457,8 @@ fn glob_imports_that_bring_in_their_own_module_name_are_not_ambiguous() {
         }
 
         mod inner {
-            import helpers::*;
-            import other::*;
+            import super::helpers::*;
+            import super::other::*;
 
             export fn f() -> Int {
                 helpers() + other()
@@ -1404,9 +1476,8 @@ fn glob_imports_that_bring_in_their_own_module_name_are_not_ambiguous() {
 }
 
 #[test]
-fn private_imports_hide_items_with_the_same_name_in_enclosing_scopes() {
-    // The use in `nested` would otherwise find the top-level function, rather than the import
-    // that was reported
+fn private_imports_in_a_nested_module_do_not_fall_back_to_the_parent() {
+    // The use in `nested` doesn't find the top-level function, and isn't reported again
     let compiled = compile(
         "
         mod inner {
@@ -1420,7 +1491,7 @@ fn private_imports_hide_items_with_the_same_name_in_enclosing_scopes() {
         }
 
         mod nested {
-            import inner::secret;
+            import super::inner::secret;
 
             export fn value() -> Int {
                 secret()
@@ -1435,7 +1506,7 @@ fn private_imports_hide_items_with_the_same_name_in_enclosing_scopes() {
 
     assert_eq!(
         compiled.errors(),
-        ["13:27 PrivateSymbol(\"secret\", \"inner\")"]
+        ["13:34 PrivateSymbol(\"secret\", \"inner\")"]
     );
     assert_eq!(
         compiled.reference_origins("nested::value", "secret"),
@@ -1444,32 +1515,53 @@ fn private_imports_hide_items_with_the_same_name_in_enclosing_scopes() {
 }
 
 #[test]
-fn the_first_of_a_function_and_a_module_with_the_same_name_is_declared() {
-    // Functions and constants are added to the scope along with modules, in the order they're
-    // written, so the later one is the duplicate
+fn functions_and_modules_can_have_the_same_name() {
+    // Modules have their own namespace, so neither is a duplicate, whichever is written first
     let compiled = compile(
         "
         fn helper() -> Int {
-            1
+            helper::VALUE
         }
 
-        mod helper {}
+        mod helper {
+            export const VALUE: Int = 1;
+        }
+
+        mod other {
+            export const VALUE: Int = 2;
+        }
+
+        const other: Int = other::VALUE;
 
         fn main() -> Int {
-            helper()
+            helper() + other
         }
         ",
     );
 
-    assert_eq!(compiled.errors(), ["6:13 DuplicateSymbol(\"helper\")"]);
+    compiled.assert_no_errors();
     assert_eq!(
         compiled.reference_origins("main", "helper"),
         ["`helper`: (root)"]
     );
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "helper");
 }
 
 #[test]
-fn forced_type_imports_that_a_nearer_import_contradicts_are_ambiguous() {
+fn modules_with_the_same_name_are_duplicates() {
+    let compiled = compile(
+        "
+        mod helper {}
+
+        mod helper {}
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["4:13 DuplicateSymbol(\"helper\")"]);
+}
+
+#[test]
+fn type_imports_from_a_parent_module_find_what_it_imports_from_a_child() {
     let compiled = compile(
         "
         mod a {
@@ -1482,11 +1574,11 @@ fn forced_type_imports_that_a_nearer_import_contradicts_are_ambiguous() {
             import deeper::*;
 
             export mod deeper {
-                export a::V;
+                export super::super::a::V;
             }
 
             export mod user {
-                import V;
+                import super::V;
 
                 export fn f(value: V) -> V {
                     value
@@ -1495,18 +1587,19 @@ fn forced_type_imports_that_a_nearer_import_contradicts_are_ambiguous() {
         }
 
         fn main() -> Int {
-            1
+            inner::user::f(1)
         }
         ",
     );
 
-    assert_eq!(compiled.errors(), ["16:24 AmbiguousOuterImport(\"V\")"]);
+    compiled.assert_no_errors();
+    assert_eq!(compiled.type_origin("inner::user::V"), "a");
 }
 
 #[test]
-fn glob_imports_do_not_wait_for_themselves() {
-    // `import y::*` could bring in a `q`, but `import q::V` only waits for it, rather than the
-    // glob import also waiting for itself to know where `y` is
+fn import_paths_wait_for_a_glob_import_that_brings_in_their_first_segment() {
+    // `import q::V` waits for `import super::y::*`, which brings in `y`'s `q`, so it doesn't find
+    // the top-level `q`, which isn't visible in `inner` anyway
     let compiled = compile(
         "
         mod q {
@@ -1521,7 +1614,7 @@ fn glob_imports_do_not_wait_for_themselves() {
 
         mod inner {
             import q::V;
-            import y::*;
+            import super::y::*;
 
             export fn f() -> Int {
                 V
@@ -1540,8 +1633,9 @@ fn glob_imports_do_not_wait_for_themselves() {
 
 #[test]
 fn import_paths_use_what_another_import_in_the_scope_brings_in() {
-    // `import m::X` finds the `m` that `import m::m` brings in, as a use of `m::X` there would,
-    // and so does the same import in a nested module
+    // `import m::X` finds the `m` that `import super::m::m` brings in, as a use of `m::X` there
+    // would, and `super::m` is still the top-level `m`. Paths through `super` aren't shared with
+    // the other imports in the scope, which name a different `m`.
     let compiled = compile(
         "
         mod m {
@@ -1553,7 +1647,7 @@ fn import_paths_use_what_another_import_in_the_scope_brings_in() {
         }
 
         mod inner {
-            import m::m;
+            import super::m::m;
             import m::X;
 
             export fn f() -> Int {
@@ -1561,7 +1655,7 @@ fn import_paths_use_what_another_import_in_the_scope_brings_in() {
             }
 
             export mod deeper {
-                import m::X;
+                import super::m::X;
 
                 export fn g() -> Int {
                     X
@@ -1593,7 +1687,7 @@ fn import_paths_use_what_a_glob_import_in_the_scope_brings_in() {
         }
 
         mod inner {
-            import m::*;
+            import super::m::*;
             import m::Y;
 
             export fn f() -> Int {
@@ -1612,10 +1706,9 @@ fn import_paths_use_what_a_glob_import_in_the_scope_brings_in() {
 }
 
 #[test]
-fn forced_import_paths_are_ambiguous_when_another_import_brings_in_the_same_item() {
-    // Both glob imports bring in `inner::m` as `m`, which only the first is recorded as doing.
-    // `import m::*` found the top-level `m`, but a use of `m` here finds `inner::m`, so it's
-    // still ambiguous even though `import m::*` brought `inner::m` in too.
+fn super_glob_imports_are_not_ambiguous_with_a_module_other_globs_bring_in() {
+    // Both glob imports bring in `inner::m` as `m`, but `super::m` is the top-level `m`, so the
+    // glob import of it isn't affected by them
     let compiled = compile(
         "
         mod inner {
@@ -1625,17 +1718,17 @@ fn forced_import_paths_are_ambiguous_when_another_import_brings_in_the_same_item
         }
 
         mod m {
-            export inner::m;
+            export super::inner::m;
             export const Y: Int = 1;
         }
 
         mod n {
-            export inner::m;
+            export super::inner::m;
         }
 
         mod s {
-            import m::*;
-            import n::*;
+            import super::m::*;
+            import super::n::*;
 
             export fn f() -> Int {
                 Y + m::Y
@@ -1648,11 +1741,13 @@ fn forced_import_paths_are_ambiguous_when_another_import_brings_in_the_same_item
         ",
     );
 
-    assert_eq!(compiled.errors(), ["18:20 AmbiguousOuterImport(\"m\")"]);
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("s::Y"), "m");
+    assert_eq!(compiled.symbol_origin("s::m::Y"), "inner::m");
 }
 
 #[test]
-fn private_type_imports_hide_types_with_the_same_name_in_enclosing_scopes() {
+fn private_type_imports_in_a_nested_module_do_not_fall_back_to_the_parent() {
     let compiled = compile(
         "
         mod inner {
@@ -1662,7 +1757,7 @@ fn private_type_imports_hide_types_with_the_same_name_in_enclosing_scopes() {
         type Secret = Bytes;
 
         mod nested {
-            import inner::Secret;
+            import super::inner::Secret;
 
             export fn value() -> Secret {
                 1
@@ -1677,7 +1772,7 @@ fn private_type_imports_hide_types_with_the_same_name_in_enclosing_scopes() {
 
     assert_eq!(
         compiled.errors(),
-        ["9:27 PrivateType(\"Secret\", \"inner\")"]
+        ["9:34 PrivateType(\"Secret\", \"inner\")"]
     );
 }
 
@@ -1713,9 +1808,9 @@ fn qualified_uses_of_a_private_import_are_still_reported() {
 }
 
 #[test]
-fn forced_import_paths_are_not_ambiguous_with_their_own_items_imported_back() {
-    // `n` re-exports the `m` that `s`'s glob import brought in, so `import n::*` bringing it back
-    // into `s` isn't another source of it
+fn glob_imports_of_items_imported_back_resolve() {
+    // `n` re-exports the `m` that `s`'s glob import brought in, and `import super::n::*` brings it
+    // back into `s`, which isn't another item with the name
     let compiled = compile(
         "
         mod m {
@@ -1727,13 +1822,13 @@ fn forced_import_paths_are_not_ambiguous_with_their_own_items_imported_back() {
         }
 
         mod n {
-            export s::m;
+            export super::s::m;
             export const Z: Int = 3;
         }
 
         mod s {
-            export m::*;
-            import n::*;
+            export super::m::*;
+            import super::n::*;
 
             export fn f() -> Int {
                 Y + Z
@@ -1748,4 +1843,683 @@ fn forced_import_paths_are_not_ambiguous_with_their_own_items_imported_back() {
 
     compiled.assert_no_errors();
     assert_eq!(compiled.symbol_origin("s::Y"), "m");
+}
+
+#[test]
+fn named_imports_bring_in_a_module_and_a_value_with_the_same_name() {
+    let compiled = compile(
+        "
+        import m::helper;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        fn main() -> Int {
+            helper() + helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("helper"), "m");
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "m::helper");
+}
+
+#[test]
+fn reexports_bring_in_a_module_and_a_value_with_the_same_name() {
+    let compiled = compile(
+        "
+        import outer::helper;
+
+        mod inner {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        mod outer {
+            import super::inner::helper;
+            export helper;
+        }
+
+        fn main() -> Int {
+            helper() + helper::VALUE + outer::helper() + outer::helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("outer::helper"), "inner");
+    assert_eq!(
+        compiled.symbol_origin("outer::helper::VALUE"),
+        "inner::helper"
+    );
+}
+
+#[test]
+fn glob_imports_bring_in_a_module_and_a_value_with_the_same_name() {
+    let compiled = compile(
+        "
+        import m::*;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        fn main() -> Int {
+            helper() + helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("helper"), "m");
+    assert_eq!(compiled.symbol_origin("helper::VALUE"), "m::helper");
+}
+
+#[test]
+fn imports_used_only_through_one_namespace_are_used() {
+    // The import brings in both, and using either one uses it
+    let compiled = compile(
+        "
+        import m::helper;
+
+        mod m {
+            export mod helper {
+                export const VALUE: Int = 1;
+            }
+
+            export fn helper() -> Int {
+                2
+            }
+        }
+
+        fn main() -> Int {
+            helper::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert!(
+        !compiled
+            .warnings()
+            .iter()
+            .any(|w| w.ends_with("UnusedImport")),
+        "{:?}",
+        compiled.warnings()
+    );
+}
+
+#[test]
+fn private_module_imports_in_a_nested_module_do_not_fall_back_to_the_parent() {
+    let compiled = compile(
+        "
+        mod inner {
+            mod secret {
+                export const VALUE: Int = 1;
+            }
+        }
+
+        mod secret {
+            export const VALUE: Int = 2;
+        }
+
+        mod nested {
+            import super::inner::secret;
+
+            export fn value() -> Int {
+                secret::VALUE
+            }
+        }
+
+        fn main() -> Int {
+            nested::value() + secret::VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        ["13:34 PrivateSymbol(\"secret\", \"inner\")"]
+    );
+    assert_eq!(
+        compiled.reference_origins("nested::value", "VALUE"),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn private_imports_are_not_reported_again_through_another_namespace() {
+    // The private module `x` and the private function `y` are blocked, so neither is reported as
+    // the wrong kind of item at the uses
+    let compiled = compile(
+        "
+        mod a {
+            mod x {
+                export const Y: Int = 5;
+            }
+
+            fn y() -> Int {
+                1
+            }
+
+            export fn z() -> Int {
+                x::Y + y()
+            }
+        }
+
+        fn x() -> Int {
+            1
+        }
+
+        mod y {
+            export const Y: Int = 7;
+        }
+
+        mod inner {
+            import super::a::x;
+            import super::a::y;
+
+            export fn q() -> Int {
+                x::Y + y()
+            }
+        }
+
+        fn main() -> Int {
+            inner::q() + a::z() + x() + y::Y
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "25:30 PrivateSymbol(\"x\", \"a\")",
+            "26:30 PrivateSymbol(\"y\", \"a\")",
+        ]
+    );
+}
+
+#[test]
+fn module_imports_from_a_parent_module_find_what_it_imports_from_a_child() {
+    let compiled = compile(
+        "
+        mod a {
+            export mod V {
+                export const X: Int = 1;
+            }
+        }
+
+        mod V {
+            export const X: Int = 7;
+        }
+
+        mod inner {
+            import deeper::*;
+
+            export mod deeper {
+                export super::super::a::V;
+            }
+
+            export mod user {
+                import super::V;
+
+                export fn f() -> Int {
+                    V::X
+                }
+            }
+
+            export fn g() -> Int {
+                V::X
+            }
+        }
+
+        fn main() -> Int {
+            inner::user::f() + inner::g() + V::X
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::user::V::X"), "a::V");
+    assert_eq!(compiled.symbol_origin("inner::V::X"), "a::V");
+}
+
+#[test]
+fn glob_exports_of_items_that_are_already_imported_export_them() {
+    // The glob export finds the items the glob import already brought in, and exports them
+    let compiled = compile(
+        "
+        mod m {
+            export mod helper {
+                export const X: Int = 1;
+            }
+
+            export const VALUE: Int = 2;
+        }
+
+        mod outer {
+            import super::m::*;
+            export super::m::*;
+        }
+
+        fn main() -> Int {
+            outer::helper::X + outer::VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("outer::helper::X"), "m::helper");
+    assert_eq!(compiled.symbol_origin("outer::VALUE"), "m");
+}
+
+#[test]
+fn private_imports_are_not_reported_again_at_a_use_of_the_wrong_kind() {
+    // `m` is a private module and `f` a private function, so these uses would be errors even if
+    // the imports had worked, but the imports have already been reported
+    let compiled = compile(
+        "
+        mod a {
+            mod m {
+                export const X: Int = 1;
+            }
+
+            fn f() -> Int {
+                2
+            }
+        }
+
+        import a::m;
+        import a::f;
+
+        fn main() -> Int {
+            m() + f::Y
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "12:19 PrivateSymbol(\"m\", \"a\")",
+            "13:19 PrivateSymbol(\"f\", \"a\")",
+        ]
+    );
+}
+
+#[test]
+fn inline_modules_do_not_see_the_items_of_the_module_they_are_in() {
+    // Neither the file's constant nor its other module can be used by name from `inner`
+    let compiled = compile(
+        "
+        const TOP: Int = 1;
+
+        mod other {
+            export const VALUE: Int = 2;
+        }
+
+        mod inner {
+            import other::VALUE;
+
+            export fn value() -> Int {
+                TOP + other::VALUE
+            }
+        }
+
+        fn main() -> Int {
+            inner::value() + TOP + other::VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "9:20 UndeclaredSymbol(\"other\")",
+            "12:17 UndeclaredSymbol(\"TOP\")",
+            "12:23 UndeclaredSymbol(\"other\")",
+        ]
+    );
+}
+
+#[test]
+fn super_reaches_the_private_items_of_enclosing_modules() {
+    let compiled = compile(
+        "
+        const TOP: Int = 1;
+
+        mod outer {
+            const MIDDLE: Int = 2;
+
+            export mod inner {
+                export fn value() -> Int {
+                    super::MIDDLE + super::super::TOP
+                }
+            }
+        }
+
+        fn main() -> Int {
+            outer::inner::value()
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_origins("outer::inner::value", "MIDDLE"),
+        ["`super::MIDDLE`: outer"]
+    );
+    assert_eq!(
+        compiled.reference_origins("outer::inner::value", "TOP"),
+        ["`super::super::TOP`: (root)"]
+    );
+}
+
+#[test]
+fn glob_imports_of_super_bring_in_private_items() {
+    let compiled = compile(
+        "
+        const TOP: Int = 1;
+        type Number = Int;
+
+        mod inner {
+            import super::*;
+
+            export fn value(number: Number) -> Int {
+                TOP + number
+            }
+        }
+
+        fn main() -> Int {
+            inner::value(2)
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::TOP"), "(root)");
+    assert_eq!(compiled.type_origin("inner::Number"), "(root)");
+}
+
+#[test]
+fn named_imports_of_super_reach_the_private_items_of_the_file() {
+    let compiled = compile(
+        "
+        fn helper() -> Int {
+            1
+        }
+
+        mod inner {
+            import super::helper;
+
+            export fn value() -> Int {
+                helper()
+            }
+        }
+
+        fn main() -> Int {
+            inner::value()
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("inner::helper"), "(root)");
+}
+
+#[test]
+fn super_imports_of_a_blocked_name_are_not_reported_again() {
+    let compiled = compile(
+        "
+        mod m {
+            const X: Int = 1;
+        }
+
+        import m::X;
+
+        mod a {
+            import super::X;
+
+            export fn f() -> Int {
+                super::X + X
+            }
+        }
+
+        fn main() -> Int {
+            a::f() + X
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["6:19 PrivateSymbol(\"X\", \"m\")"]);
+}
+
+#[test]
+fn types_in_inline_modules_use_super() {
+    let compiled = compile(
+        "
+        type T = Int;
+
+        mod a {
+            export type U = super::T;
+
+            export struct S {
+                x: super::T,
+            }
+        }
+
+        fn main() -> a::U {
+            a::S { x: 1 }.x
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.type_origin("a::U"), "a");
+}
+
+#[test]
+fn super_import_paths_through_a_non_module_are_reported() {
+    // `X` is a constant in the file, so it can't have a path after it. `sha256` is only in the
+    // builtins, which `super::` doesn't look in.
+    let compiled = compile(
+        "
+        const X: Int = 1;
+
+        mod a {
+            import super::X::Y;
+            import super::sha256::x;
+        }
+
+        fn main() -> Int {
+            X
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "5:27 SubpathNotSupported(\"X\")",
+            "6:27 UndeclaredSymbol(\"sha256\")",
+        ]
+    );
+}
+
+#[test]
+fn super_paths_still_need_items_inside_other_modules_to_be_exported() {
+    let compiled = compile(
+        "
+        mod m {
+            const P: Int = 1;
+            type Q = Int;
+        }
+
+        mod a {
+            export fn f() -> super::m::Q {
+                super::m::P
+            }
+        }
+
+        fn main() -> Int {
+            a::f()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "8:40 PrivateType(\"Q\", \"m\")",
+            "9:27 PrivateSymbol(\"P\", \"m\")"
+        ]
+    );
+}
+
+#[test]
+fn named_imports_only_shadow_glob_imports_in_their_namespaces() {
+    // `import a::x` only brings in a function, so the glob import still brings in the module `x`
+    let compiled = compile(
+        "
+        mod a {
+            export fn x() -> Int {
+                1
+            }
+        }
+
+        mod b {
+            export mod x {
+                export const Y: Int = 5;
+            }
+
+            export fn x() -> Int {
+                2
+            }
+        }
+
+        import a::x;
+        import b::*;
+
+        fn main() -> Int {
+            x() + x::Y
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("x"), "a");
+    assert_eq!(compiled.symbol_origin("x::Y"), "b::x");
+}
+
+#[test]
+fn many_glob_imports_that_wait_for_each_other_resolve_quickly() {
+    // Each glob import could bring in the module that another one's path names, so they all wait
+    // for each other. Finding which ones to answer used to take time quartic in how many there
+    // are, so this took minutes. It's compiled on another thread, so that a regression fails the
+    // test rather than hanging it.
+    const COUNT: usize = 300;
+
+    /// Removes the directory when the test ends, even if it fails.
+    struct TempDir(std::path::PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    let dir =
+        TempDir(std::env::temp_dir().join(format!("rue-waiting-globs-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).unwrap();
+
+    let mut main = String::new();
+
+    for i in 0..COUNT {
+        writeln!(main, "import f{i}::*;").unwrap();
+        std::fs::write(
+            dir.0.join(format!("f{i}.rue")),
+            format!("export const V{i}: Int = {i};\n"),
+        )
+        .unwrap();
+    }
+
+    writeln!(main, "fn main() -> Int {{\n    V0 + V{}\n}}", COUNT - 1).unwrap();
+    std::fs::write(dir.0.join("main.rue"), main).unwrap();
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let path = dir.0.clone();
+
+    std::thread::spawn(move || {
+        let mut ctx = crate::Compiler::new(rue_options::CompilerOptions {
+            std: false,
+            ..rue_options::CompilerOptions::default()
+        });
+        crate::FileTree::compile_path(&mut ctx, &path, &mut std::collections::HashMap::new())
+            .unwrap();
+
+        let errors = ctx
+            .take_diagnostics()
+            .into_iter()
+            .filter(|diagnostic| diagnostic.severity == rue_diagnostic::DiagnosticSeverity::Error)
+            .map(|diagnostic| diagnostic.kind.to_string())
+            .collect::<Vec<_>>();
+
+        sender.send(errors).ok();
+    });
+
+    let errors = receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("resolving the imports took more than 10 seconds, or panicked");
+
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn glob_imports_of_super_bring_in_blocked_names_as_blocked() {
+    let compiled = compile(
+        "
+        import m::Q;
+
+        mod m {
+            const Q: Int = 1;
+
+            export fn use_q() -> Int {
+                Q
+            }
+        }
+
+        mod b {
+            import super::*;
+
+            export fn f() -> Int {
+                Q + m::use_q()
+            }
+        }
+
+        fn main() -> Int {
+            b::f()
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["2:19 PrivateSymbol(\"Q\", \"m\")"]);
 }

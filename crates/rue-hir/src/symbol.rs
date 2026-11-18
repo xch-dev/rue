@@ -52,6 +52,9 @@ impl Symbol {
 pub struct ModuleSymbol {
     pub name: Option<Name>,
     pub scope: ScopeId,
+    /// The module that an inline module is declared in (inline or a file). An inline module's
+    /// scope isn't in that module's scope, since it doesn't see the items of the module it's in.
+    pub parent: Option<SymbolId>,
     pub declarations: ModuleDeclarations,
 }
 

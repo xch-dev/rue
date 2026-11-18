@@ -1,0 +1,13 @@
+// `import b::a` brings in `a.rue`'s inner module `a`, which shadows the sibling `a.rue` for the
+// path of `import a::*`. The two imports wait for each other, so `a::*`'s path is forced to find
+// the sibling, and the named import contradicts that, which is reported, even though `a::*` would
+// bring in the same inner module as `a`: a named import's binding is never a glob import's. This
+// used to compile to 100, from the inner module. `second.rue` does the same with the names in the
+// other order.
+
+import a::*;
+import b::a;
+
+fn main() -> Int {
+    V
+}

@@ -1,0 +1,6 @@
+import c::*;
+import d::*;
+
+export fn value() -> Int {
+    F
+}

@@ -1,0 +1,16 @@
+// `super::x` in `m` waits for this file's imports, which wait for each other, so it's found
+// outside of the file (the sibling `x.rue`). This file's `x` ends up being the one `w::*` brings
+// in, which `m`'s import doesn't bring into this file, so it's ambiguous.
+
+import m::*;
+import w::*;
+
+mod m {
+    mod x {}
+
+    export super::x::*;
+}
+
+fn main() -> Int {
+    C * 10 + x::C
+}

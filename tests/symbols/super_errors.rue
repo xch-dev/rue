@@ -3,5 +3,21 @@ import super::super;
 import super::x;
 
 mod a {
-    import super::a;
+    import super::super::a;
+}
+
+// A path that's only `super` names a module, which isn't a value or a type
+mod b {
+    export fn value() -> Int {
+        super
+    }
+
+    export fn ty() -> super {
+        1
+    }
+}
+
+// There's no parent module of this file, so this is only reported once
+fn alone() -> Int {
+    super
 }

@@ -1,0 +1,10 @@
+import n::*;
+import t::*;
+
+mod n {
+    export super::q::*;
+}
+
+export fn value() -> Int {
+    Z
+}

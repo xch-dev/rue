@@ -1,0 +1,9 @@
+// Both glob imports bring in a module named `y`, and they're different, so `y::*` is ambiguous,
+// whichever records its `y` first: `second.rue` does the same with `a.rue` in place of `z.rue`.
+
+import y::*;
+import z::*;
+
+fn main() -> Int {
+    W + y::V
+}

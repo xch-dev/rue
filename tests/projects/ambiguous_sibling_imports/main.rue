@@ -1,0 +1,10 @@
+// `z::*` brings in a module named `y`, and `y::*` was resolved to the sibling file `y.rue` while
+// both glob imports waited for each other, so it's ambiguous. Since both are answered at once, it
+// doesn't depend on the order of their names: `second.rue` does the same with `a::*`.
+
+import y::*;
+import z::*;
+
+fn main() -> Int {
+    W
+}

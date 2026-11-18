@@ -1,0 +1,34 @@
+// `lib::*` brings in a `utils` that shadows the sibling file `utils.rue` in this file, so each
+// `super` import in the inline modules waits for it rather than finding the sibling file first.
+// `extra::*` waits for `lib::*` and the other way round, so they're only resolved by forcing
+// them, which has to happen before the inline modules' imports are forced too.
+import extra::*;
+import lib::*;
+
+mod named {
+    import super::utils::f;
+
+    export fn g() -> Int {
+        f()
+    }
+}
+
+mod module {
+    import super::utils;
+
+    export fn g() -> Int {
+        utils::f()
+    }
+}
+
+mod globbed {
+    import super::*;
+
+    export fn g() -> Int {
+        utils::f()
+    }
+}
+
+test fn super_imports_wait_for_the_imports_of_the_module() -> Int {
+    named::g() + module::g() * 10 + globbed::g() * 100 + utils::f() * 1000 + extra::THREE
+}

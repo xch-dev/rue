@@ -1,0 +1,9 @@
+// The same, with the named import of `a` from `a.rue` itself. Only `a::*`'s path is reported: the
+// named import's own path finds the sibling `a.rue`, and the binding is the one it made itself.
+
+import a::*;
+import a::a;
+
+export fn third() -> Int {
+    a::V
+}

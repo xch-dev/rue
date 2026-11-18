@@ -486,7 +486,7 @@ export fn greet(name: String) -> String {
 }
 
 #[test]
-fn test_definition_through_an_import_from_an_enclosing_module() {
+fn test_definition_through_an_import_from_a_parent_module() {
     // `deeper` imports `V` from `inner`, which imports it from `a`, rather than the top level
     check_definitions(
         &[(
@@ -499,10 +499,10 @@ mod a {
 const V: Int = 7;
 
 mod inner {
-    import a::V;
+    import super::a::V;
 
     export mod deeper {
-        import V;
+        import super::V;
 
         export fn f() -> Int {
             V$0
@@ -544,6 +544,83 @@ fn main() -> Int {
         )],
         expect![[r#"
             main.rue:7:3-7:9
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_of_a_module_with_the_same_name_as_a_function() {
+    // Modules have their own namespace, so the path goes to the module
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod helper {
+    export const VALUE: Int = 1;
+}
+
+fn helper() -> Int {
+    2
+}
+
+fn main() -> Int {
+    helper() + help$0er::VALUE
+}
+",
+        )],
+        expect![[r#"
+            main.rue:1:4-1:10
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_of_a_function_with_the_same_name_as_a_module() {
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod helper {
+    export const VALUE: Int = 1;
+}
+
+fn helper() -> Int {
+    2
+}
+
+fn main() -> Int {
+    help$0er() + helper::VALUE
+}
+",
+        )],
+        expect![[r#"
+            main.rue:5:3-5:9
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_of_a_middle_segment_of_an_import_path() {
+    // Each segment of an import's path goes to the module it names, not the last one
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod outer {
+    export mod inner {
+        export const VALUE: Int = 1;
+    }
+}
+
+import outer::inn$0er::VALUE;
+
+fn main() -> Int {
+    VALUE
+}
+",
+        )],
+        expect![[r#"
+            main.rue:2:15-2:20
         "#]],
     );
 }

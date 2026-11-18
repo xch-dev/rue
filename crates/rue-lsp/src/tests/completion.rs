@@ -439,3 +439,127 @@ fn convert<T>(flag: Bool, value: T, amount: Amount) -> T {
         "#]],
     );
 }
+
+#[test]
+fn test_complete_a_module_and_a_function_with_the_same_name() {
+    // Modules have their own namespace, so both are offered
+    check(
+        r#"
+mod helper {
+    export const NUM: Int = 1;
+}
+
+fn helper() -> Int {
+    helper::NUM
+}
+
+fn main() -> Int {
+    help$0
+}
+"#,
+        expect![[r#"
+            helper [Function] fn() -> Int
+            helper [Module]
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_module_exports_with_a_module_and_a_function_with_the_same_name() {
+    check(
+        r#"
+mod outer {
+    export mod helper {}
+
+    export fn helper() -> Int {
+        1
+    }
+}
+
+fn main() -> Int {
+    outer::$0
+}
+"#,
+        expect![[r#"
+            helper [Function] fn() -> Int
+            helper [Module]
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_in_an_inline_module() {
+    // An inline module doesn't see the items of the file it's in, only its own and the prelude
+    check(
+        r#"
+fn outer_helper() -> Int {
+    1
+}
+
+mod inner {
+    fn inner_helper() -> Int {
+        2
+    }
+
+    fn main() -> Int {
+        _helper$0
+    }
+}
+"#,
+        expect![[r#"
+            inner_helper [Function] fn() -> Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_super_members() {
+    // `super` names the module that contains the code, so its private items are offered too
+    check(
+        r#"
+const PRIVATE: Int = 1;
+
+export const PUBLIC: Int = 2;
+
+mod inner {
+    fn main() -> Int {
+        super::$0
+    }
+}
+"#,
+        expect![[r#"
+            super [Module]
+            PRIVATE [Constant] Int
+            PUBLIC [Constant] Int
+            inner [Module]
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_super_members_in_a_type() {
+    // A file's sibling files and private types are offered after `super::` in a type too
+    let project = TestProject::new(&[
+        (
+            "main.rue",
+            r#"
+type Private = Int;
+
+mod inner {
+    fn main() -> Int {
+        let x: super::$0 = 1;
+        x
+    }
+}
+"#,
+        ),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    expect![[r#"
+        super [Module]
+        inner [Module]
+        utils [Module]
+        Private [Struct] Int
+    "#]]
+    .assert_eq(&project.completions());
+}

@@ -1,6 +1,6 @@
-program: (a (q 16 (a 2 ()) (a 2 ()) (q . 58)) (c (q 1 . 1) ()))
-debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 110 (c (c 94 126) ())) (a 118 (c 78 ()))) (a 38 (c 86 ()))) (a 90 (c 122 ()))) (a 114 (c 42 ()))) (f (a 82 ()))) (a 34 ())) (a 124 (c 32 ()))) (a 44 (c (c 32 92) ()))) (a 116 ())) (f (a 84 ()))) (a 120 (c 36 ()))) (a 40 (c 88 ()))) (f (a 48 ()))) (c (c (c (c (c (q 1 . 1) (q 4 (q . 1) ())) (c (q 5 (a 2 ())) (c (q 4 (q . 1) ()) (q 5 (a 2 ()))))) (c (c (q 4 (q . 1) ()) (c (q 4 (q . 1) ()) (q 5 (c (q . 1) (c () ()))))) (c (q 16 (a 4 ()) (a 6 ())) (c (q 1 . 2) (q 16 (a 2 ()) (q . 1)))))) (c (c (c (q 5 (c (q . 1) ())) (c (q 4 (q . 1) ()) (q 2 2 ()))) (c (q 1 . 1) (c (q 2 2 ()) (q 1 . 1)))) (c (c (q 2 2 ()) (c (q 1 . 1) (q 2 2 ()))) (c (c (q 1 . 2) (q 16 (a 4 (c 6 ())) (q . 1))) (c (q . 2) (q . 42)))))) ()))
-output: "60"
+program: (a (q 16 (a 2 ()) (a 2 ()) (q . 61)) (c (q 1 . 1) ()))
+debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 110 (c (c 94 126) ())) (a 118 (c 78 ()))) (a 102 (c 86 ()))) (a 122 (c 70 ()))) (a 106 (c 90 ()))) (f (a 74 ()))) (a 114 ())) (a 82 (c 32 ()))) (a 124 (c (c 32 34) ()))) (a 92 ())) (f (a 108 ()))) (a 116 (c 76 ()))) (a 36 (c 84 ()))) (f (a 120 ()))) (a 104 (c 88 ()))) (a 48 (c 72 ()))) (c (c (c (c (c (q 1 . 1) (q 2 2 ())) (c (c (q 1 . 2) (q 2 2 ())) (c (q 1 . 1) (q 4 (q . 1) ())))) (c (c (q 5 (a 2 ())) (c (q 4 (q . 1) ()) (q 5 (a 2 ())))) (c (c (q 4 (q . 1) ()) (q 4 (q . 1) ())) (c (q 5 (c (q . 1) (c () ()))) (q 16 (a 4 ()) (a 6 ())))))) (c (c (c (q 1 . 2) (c (q 16 (a 2 ()) (q . 1)) (q 5 (c (q . 1) ())))) (c (c (q 4 (q . 1) ()) (q 2 2 ())) (c (q 1 . 1) (q 2 2 ())))) (c (c (c (q 1 . 1) (q 2 2 ())) (c (q 1 . 1) (q 2 2 ()))) (c (c (q 1 . 2) (q 16 (a 4 (c 6 ())) (q . 1))) (c (q . 2) (q . 42)))))) ()))
+output: "63"
 runtime_cost: 1731
 byte_cost: 492000
 total_cost: 493731
@@ -12,23 +12,29 @@ diagnostics:
   `CONSTANT` is exported, but is never used outside of module `helpers` at unused_export.rue:12:18
     help: Remove `export`
 - |-
-  `only_by_name` is exported, but is never used outside of module `lexical` at unused_export.rue:58:15
+  `used_by_nested` is exported, but is never used outside of module `outer` at unused_export.rue:37:15
     help: Remove `export`
 - |-
-  `Temporary` is exported, but is never used outside of module `signature` at unused_export.rue:91:19
+  `only_by_name` is exported, but is never used outside of module `lexical` at unused_export.rue:59:15
     help: Remove `export`
 - |-
-  `Node` is exported, but is never used outside of module `recursive` at unused_export.rue:102:19
+  `Temporary` is exported, but is never used outside of module `signature` at unused_export.rue:92:19
     help: Remove `export`
 - |-
-  Field `next` of struct `Node` is never read at unused_export.rue:104:9
+  `Node` is exported, but is never used outside of module `recursive` at unused_export.rue:103:19
+    help: Remove `export`
+- |-
+  Field `next` of struct `Node` is never read at unused_export.rue:105:9
     note: If it's only needed for the layout of the struct, prefix its name with `_`
 - |-
-  `Result` is exported, but is never used outside of module `chain` at unused_export.rue:128:19
+  `Result` is exported, but is never used outside of module `chain` at unused_export.rue:129:19
     help: Remove `export`
 - |-
-  `make` is exported, but is never used outside of module `chain` at unused_export.rue:132:15
+  `make` is exported, but is never used outside of module `chain` at unused_export.rue:133:15
     help: Remove `export`
 - |-
-  `Value` is exported, but is never used outside of module `internal` at unused_export.rue:144:19
+  `Value` is exported, but is never used outside of module `internal` at unused_export.rue:145:19
+    help: Remove `export`
+- |-
+  `helper` is exported, but is never used outside of module `inner` at unused_export.rue:179:19
     help: Remove `export`
