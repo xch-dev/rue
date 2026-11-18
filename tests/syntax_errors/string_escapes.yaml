@@ -13,3 +13,4 @@ diagnostics:
 - Invalid unicode escape, since it isn't a code point up to `\u{10ffff}` or is a surrogate at string_escapes.rue:14:6
 - Invalid unicode escape, since it isn't a code point up to `\u{10ffff}` or is a surrogate at string_escapes.rue:14:15
 - Cannot assign `"a\\b"` to `"a\"b"`, since they are incompatible at string_escapes.rue:17:45
+- Unknown character escape `\q` at string_escapes.rue:22:7

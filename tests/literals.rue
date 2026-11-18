@@ -80,3 +80,19 @@ test fn string_escaped_type() -> "a\"b\\c\n" {
 test fn string_escapes_match_bytes() -> Bool {
     "\"\\" == 0x225c as String
 }
+
+test fn single_quoted_string() -> "Hello, world!" {
+    'Hello, world!'
+}
+
+test fn single_quoted_string_quotes() -> Bool {
+    'a"b\'c' == "a\"b'c"
+}
+
+test fn single_quoted_string_escapes() -> Bool {
+    '\n\t\\\x41\u{1F600}' == "\n\t\\A😀"
+}
+
+test fn single_quoted_string_type() -> 'it\'s' {
+    "it's"
+}

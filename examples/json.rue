@@ -77,7 +77,7 @@ fn parse_value(input: String) -> (Json, String) {
     } else if char == "[" {
         let (items, rest) = parse_array(rest);
         (JsonArray { items }, rest)
-    } else if char == "\"" {
+    } else if char == '"' {
         let (value, rest) = parse_string(rest, "");
         (JsonString { value }, rest)
     } else if char == "-" {
@@ -134,7 +134,7 @@ fn parse_object(input: String) -> (List<Member>, String) {
 fn parse_members(input: String) -> (List<Member>, String) {
     let input = skip_whitespace(input);
 
-    if !starts_with(input, "\"") {
+    if !starts_with(input, '"') {
         raise "expected a string key";
     }
 
@@ -169,7 +169,7 @@ fn parse_string(input: String, value: String) -> (String, String) {
     let code = char as Int;
     let rest = substr(input, 1);
 
-    if char == "\"" {
+    if char == '"' {
         (value, rest)
     } else if char == "\\" {
         let (escaped, rest) = parse_escape(rest);
@@ -189,7 +189,7 @@ fn parse_escape(input: String) -> (String, String) {
     let char = substr(input, 0, 1);
     let rest = substr(input, 1);
 
-    if char == "\"" || char == "\\" || char == "/" {
+    if char == '"' || char == "\\" || char == "/" {
         (char, rest)
     } else if char == "b" {
         ("\x08", rest)
@@ -358,7 +358,7 @@ fn stringify(json: Json) -> String {
     } else if json is JsonNumber {
         integer_to_string(json.value)
     } else if json is JsonString {
-        "\"" + escape(json.value) + "\""
+        '"' + escape(json.value) + '"'
     } else if json is JsonArray {
         "[" + stringify_items(json.items) + "]"
     } else {
@@ -386,7 +386,7 @@ fn stringify_members(members: List<Member>) -> String {
     }
 
     let member = members.first;
-    let member = "\"" + escape(member.key) + "\"" + ":" + stringify(member.value);
+    let member = '"' + escape(member.key) + '"' + ":" + stringify(member.value);
 
     if members.rest is nil {
         member
@@ -404,7 +404,7 @@ fn escape(value: String) -> String {
     let code = char as Int;
     let rest = escape(substr(value, 1));
 
-    if char == "\"" || char == "\\" {
+    if char == '"' || char == "\\" {
         "\\" + char + rest
     } else if char == "\x08" {
         "\\b" + rest
@@ -456,22 +456,6 @@ fn find(members: List<Member>, key: String) -> Json | nil {
     }
 }
 
-// The tests write JSON with single quotes, which is easier to read than escaping each double quote.
-fn json(source: String) -> String {
-    if source == "" {
-        return "";
-    }
-
-    let char = substr(source, 0, 1);
-    let char = if char == "'" {
-        "\""
-    } else {
-        char
-    };
-
-    char + json(substr(source, 1))
-}
-
 test fn literals() {
     assert parse("null") is JsonNull;
     assert parse(" true ") is JsonBool;
@@ -491,16 +475,16 @@ test fn numbers() {
 }
 
 test fn strings() {
-    let string = parse(json("'hello, world'"));
+    let string = parse('"hello, world"');
     assert string is JsonString && string.value == "hello, world";
 
-    let string = parse("\"tab\\there\\nquote\\\"backslash\\\\slash\\/\"");
+    let string = parse('"tab\\there\\nquote\\"backslash\\\\slash\\/"');
     assert string is JsonString;
     assert string.value == "tab\there\nquote\"backslash\\slash/";
 }
 
 test fn unicode() {
-    let string = parse(json("'café € 😀'"));
+    let string = parse('"café € 😀"');
     assert string is JsonString;
     assert string.value == "caf"
         + 0xc3a9 as String
@@ -510,25 +494,23 @@ test fn unicode() {
         + 0xf09f9880 as String;
 
     // Non-ASCII bytes are passed through as is, and control characters are escaped on the way out
-    assert stringify(string) == json("'caf")
+    assert stringify(string) == '"caf'
         + 0xc3a9 as String
         + " "
         + 0xe282ac as String
         + " "
         + 0xf09f9880 as String
-        + "\"";
-    assert stringify(parse("\"\\u0001\\u001F\"")) == "\"\\u0001\\u001f\"";
+        + '"';
+    assert stringify(parse('"\\u0001\\u001F"')) == '"\\u0001\\u001f"';
 }
 
 test fn nested() {
-    let source = json(
-        "{
-            'name': 'Rue',
-            'version': 1,
-            'tags': ['clvm', 'chia'],
-            'nested': { 'ok': true, 'missing': null, 'empty': [] }
-        }",
-    );
+    let source = '{
+            "name": "Rue",
+            "version": 1,
+            "tags": ["clvm", "chia"],
+            "nested": { "ok": true, "missing": null, "empty": [] }
+        }';
 
     let value = parse(source);
 
@@ -547,7 +529,8 @@ test fn nested() {
     assert get(get(value, "nested"), "missing") is JsonNull;
     assert get(value, "unknown") is nil;
 
-    assert stringify(value) == json(
-        "{'name':'Rue','version':1,'tags':['clvm','chia'],'nested':{'ok':true,'missing':null,'empty':[]}}",
-    );
+    assert stringify(
+        value,
+    )
+        == '{"name":"Rue","version":1,"tags":["clvm","chia"],"nested":{"ok":true,"missing":null,"empty":[]}}';
 }

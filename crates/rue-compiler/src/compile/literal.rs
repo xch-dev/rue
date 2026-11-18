@@ -99,16 +99,17 @@ impl LiteralValue {
 pub fn decode_string(text: &str) -> String {
     let mut text = text;
 
-    if let Some(stripped) = text.strip_prefix('"') {
-        text = stripped;
-    }
+    // Strings are quoted with either `"` or `'`, and end with the same quote they start with
+    if let Some(quote) = text.chars().next().filter(|&c| c == '"' || c == '\'') {
+        text = &text[1..];
 
-    // The closing quote can only be escaped in an unterminated string, which ends with a
-    // backslash rather than a quote
-    if let Some(stripped) = text.strip_suffix('"')
-        && !ends_with_escape(stripped)
-    {
-        text = stripped;
+        // The closing quote can only be escaped in an unterminated string, which ends with a
+        // backslash rather than a quote
+        if let Some(stripped) = text.strip_suffix(quote)
+            && !ends_with_escape(stripped)
+        {
+            text = stripped;
+        }
     }
 
     unescape_string(text, |_, _| {})
@@ -200,6 +201,16 @@ mod tests {
         // An unterminated string that ends with an escaped quote
         assert_eq!(
             LiteralValue::decode_text(SyntaxKind::String, r#""a\""#),
+            LiteralValue::String("a\"".to_string())
+        );
+        // Single quoted strings
+        assert_eq!(
+            LiteralValue::decode_text(SyntaxKind::String, r#"'a"b\'c'"#),
+            LiteralValue::String("a\"b'c".to_string())
+        );
+        // A double quote at the end of a single quoted string is part of an unterminated string
+        assert_eq!(
+            LiteralValue::decode_text(SyntaxKind::String, r#"'a""#),
             LiteralValue::String("a\"".to_string())
         );
         // Invalid escapes are reported by the parser and left out of the value

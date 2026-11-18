@@ -119,7 +119,9 @@ impl<'a> Lexer<'a> {
         TokenKind::BlockComment { is_terminated }
     }
 
-    fn eat_string(&mut self) -> TokenKind {
+    /// Lexes the rest of a string after its opening quote, which is either `"` or `'`. The other
+    /// kind of quote doesn't end the string.
+    fn eat_string(&mut self, quote: char) -> TokenKind {
         let is_terminated = loop {
             // See `eat_block_comment` for why this isn't a `'\0'` check
             if self.at_end() {
@@ -127,7 +129,7 @@ impl<'a> Lexer<'a> {
             }
 
             match self.bump() {
-                '"' => break true,
+                c if c == quote => break true,
                 // An escaped character never ends the string, even if it's a quote. Whether the
                 // escape is valid is checked when the string is decoded.
                 '\\' if !self.at_end() => {
@@ -208,7 +210,8 @@ impl Iterator for Lexer<'_> {
         let kind = match self.bump() {
             c if is_whitespace(c) => self.eat_whitespace(),
             'a'..='z' | 'A'..='Z' | '_' => self.eat_ident(start),
-            '"' => self.eat_string(),
+            '"' => self.eat_string('"'),
+            '\'' => self.eat_string('\''),
             '0' if self.peek() == 'x' => self.eat_hex(),
             '0' if self.peek() == 'b' => self.eat_binary(),
             '0' if self.peek() == 'o' => self.eat_octal(),
@@ -420,6 +423,23 @@ mod tests {
         // Nor does an escaped quote at the end of the source
         check(
             r#""a\""#,
+            expect![[r#"
+                String { is_terminated: false }
+            "#]],
+        );
+
+        // Single quoted strings work the same way, and each kind of quote can contain the other
+        check(
+            r#"'a"b\'c' "d'e""#,
+            expect![[r#"
+                String { is_terminated: true }
+                Whitespace
+                String { is_terminated: true }
+            "#]],
+        );
+
+        check(
+            "'hello",
             expect![[r#"
                 String { is_terminated: false }
             "#]],
