@@ -244,6 +244,18 @@ test fn kind_instantiation_next_to_several_functions() -> Int {
     0
 }
 
+type Handler = fn(y: Bytes) -> "a";
+
+fn handler(_value: Bytes) -> Handler {
+    fn(_y: Bytes) => "a"
+}
+
+test fn kind_instantiation_next_to_an_alias() -> Int {
+    // A function type behind an alias counts as one, so this is `fn(a: Never) -> Bytes` too
+    let _function = compose(either(constant, handler));
+    0
+}
+
 test fn polarity_instantiation_next_to_a_function() -> Int {
     // `T` has the candidates `fn(a: Any) -> (Int, 5)` from `compose` and the lambda's
     // `fn(x: Int) -> (Int, 5)`, which holds it

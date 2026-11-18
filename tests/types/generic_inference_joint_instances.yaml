@@ -118,6 +118,13 @@ tests:
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
+- name: kind_instantiation_next_to_an_alias
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: polarity_instantiation_next_to_a_function
   program: (f (a (a (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q 4 2 (q . 5)) ())) (q 1)))
   debug_program: (a (q 2 (q 5 (a 2 (c (q . 1) ()))) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 4 2 (q . 5))) (c (q . 1) ())))) (c () ()))))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 2 2 (c (a 3 ()) ()))) ()))

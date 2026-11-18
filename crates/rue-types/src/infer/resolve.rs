@@ -9,7 +9,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, Inference,
     InferenceCandidates, InstancePolicy, Type, TypeId, Union, compare, compare_renamed,
-    free_generics, references_generic, resolve_refs, substitute_with_mappings,
+    free_generics, references_generic, substitute_with_mappings,
     unwrap_semantic_without_substitution,
 };
 
@@ -506,7 +506,11 @@ impl Inference {
                     .enumerate()
                     .filter(|&(other, &ty)| {
                         !flipped.contains_key(&(generic, kind, other))
-                            && matches!(arena[resolve_refs(arena, ty)], Type::Function(_))
+                            // As `without_subsumed_functions` sees them, through aliases
+                            && matches!(
+                                arena[unwrap_semantic_without_substitution(arena, ty, true)],
+                                Type::Function(_)
+                            )
                     })
                     .map(|(_, &ty)| ty)
                     .collect()
