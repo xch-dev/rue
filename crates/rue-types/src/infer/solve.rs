@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use id_arena::Arena;
 
 use crate::{
-    BuiltinTypes, Inference, Type, TypeId, add_expected_bounds, resolve_inference,
-    resolve_inference_with_bounds,
+    BuiltinTypes, Inference, Type, TypeId, add_expected_bounds, pass_lower_bounds,
+    pass_upper_bounds, resolve_inference, resolve_inference_with_bounds, upper_bounds,
 };
 
 /// Solves the generics of a call, given the candidates its arguments contribute as they're
@@ -47,7 +47,8 @@ impl CallSolver {
         builtins: &BuiltinTypes,
         infer: &Inference,
     ) -> HashMap<TypeId, TypeId> {
-        resolve_inference(arena, builtins, infer)
+        let instantiated = self.instantiate(arena, builtins, infer, false);
+        resolve_inference(arena, builtins, &instantiated)
     }
 
     /// The mappings that the next argument's expected type is substituted with.
@@ -75,6 +76,8 @@ impl CallSolver {
         inferred: &HashMap<TypeId, TypeId>,
         bound_mapped: bool,
     ) -> HashMap<TypeId, TypeId> {
+        let instantiated = self.instantiate(arena, builtins, infer, true);
+        let infer: &Inference = &instantiated;
         let bounded = match &self.expected {
             Some(expected) => {
                 let mut bounded = infer.clone();
@@ -117,12 +120,50 @@ impl CallSolver {
         &self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
-        mut infer: Inference,
+        infer: Inference,
     ) -> HashMap<TypeId, TypeId> {
+        let mut infer = self.instantiate(arena, builtins, &infer, true).into_owned();
+
         if let Some(expected) = &self.expected {
             add_expected_bounds(arena, builtins, &mut infer, expected);
         }
 
         resolve_inference_with_bounds(arena, builtins, &infer, &self.fallback)
+    }
+
+    /// The inference with the vars for passed generic functions' instances replaced with what
+    /// they're instantiated as (see `InstancePolicy::Joint`), after the bounds that the rest of
+    /// it implies for them are passed on to them: the upper bounds of the generics they flow into,
+    /// such as `B ≤ (Int, Int)` with `B ≥ (T, T)`, including the type expected of the call's if
+    /// `expected` is set, and the lower bounds of the generics that flow into them, such as
+    /// `A ≥ (1, nil)` with `A ≤ (T, U)`. Only the vars take these bounds, so the rest is solved as
+    /// it would be if they had been instantiated right away.
+    fn instantiate<'a>(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        infer: &'a Inference,
+        expected: bool,
+    ) -> Cow<'a, Inference> {
+        if !infer.has_instances() {
+            return Cow::Borrowed(infer);
+        }
+
+        let mut bounded = infer.clone();
+
+        if expected && let Some(expected) = &self.expected {
+            add_expected_bounds(arena, builtins, &mut bounded, expected);
+        }
+
+        let existing = upper_bounds(&bounded);
+        pass_upper_bounds(arena, builtins, &mut bounded, Vec::new(), existing, |_| {
+            true
+        });
+        pass_lower_bounds(arena, builtins, &mut bounded, |_| true);
+
+        let mut instantiated = infer.clone();
+        instantiated.take_instance_bounds(&bounded);
+        instantiated.resolve_instances(arena, builtins);
+        Cow::Owned(instantiated)
     }
 }

@@ -4,12 +4,13 @@ use std::{
 };
 
 use id_arena::Arena;
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, Inference,
-    InferenceCandidates, Type, TypeId, Union, compare, compare_renamed, free_generics,
-    references_generic, substitute_with_mappings, unwrap_semantic_without_substitution,
+    InferenceCandidates, InstancePolicy, Type, TypeId, Union, compare, compare_renamed,
+    free_generics, references_generic, resolve_refs, substitute_with_mappings,
+    unwrap_semantic_without_substitution,
 };
 
 /// Picks a type for each inferred generic, given the candidates collected while comparing.
@@ -381,73 +382,204 @@ impl Inference {
     /// A lower or held candidate takes the least instantiation, from the instance's lower bounds,
     /// and an upper candidate the greatest, from its upper bounds. An instance without bounds of
     /// that kind is instantiated as `Never` or `Any` respectively, such as `(Never, Never)` for `B`
-    /// when `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339). That's the least or greatest
-    /// type for the generic itself, regardless of where the candidate references it, so a generic
-    /// that's only a parameter type in the candidate gives it the greatest function type instead.
+    /// when `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339).
+    ///
+    /// When they're solved jointly (`InstancePolicy::Joint`), a var that's only contravariant in the
+    /// candidate, such as `T` in `fn(x: T) -> nil`, takes the other one, which is what gives the
+    /// candidate its least (or greatest) type (#358). Next to other function types of the same kind,
+    /// that's only kept if one of them holds the candidate (see below).
     pub(crate) fn resolve_instances(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
         if self.instances.is_empty() {
             return;
         }
 
-        let instances: Vec<(TypeId, InferenceCandidates)> = mem::take(&mut self.instances)
-            .into_iter()
-            .map(|var| {
-                self.branches.shift_remove(&var);
-                (var, self.generics.shift_remove(&var).unwrap())
-            })
-            .collect();
+        let by_polarity = self.policy == InstancePolicy::Joint;
 
-        // What each instance is instantiated as, for lower (and held) and upper candidates
-        let mut picked: FxHashMap<(TypeId, bool), TypeId> = FxHashMap::default();
+        // The candidates with every var instantiated for the candidate's kind, which a candidate
+        // with one instantiated the other way falls back to (see below)
+        let mut by_kind = if by_polarity {
+            self.generics.clone()
+        } else {
+            IndexMap::new()
+        };
 
-        for candidates in self.generics.values_mut() {
-            for kind in [
-                CandidateKind::Lower,
-                CandidateKind::Upper,
-                CandidateKind::Held,
-            ] {
-                let upper = matches!(kind, CandidateKind::Upper);
+        // The candidates with a var instantiated the other way, by generic, kind and index
+        let mut flipped: IndexSet<(TypeId, usize, usize)> = IndexSet::new();
 
-                for ty in candidates.list_mut(kind) {
-                    // Most candidates reference none of the vars, which this finds in one pass
-                    let free = free_generics(arena, *ty);
-                    let mut mappings = HashMap::new();
+        // Each is replaced in the candidates that are left, including the bounds of the vars after
+        // it, so a var that a bound passed on to another var references is replaced in turn
+        for var in mem::take(&mut self.instances) {
+            self.branches.shift_remove(&var);
+            by_kind.shift_remove(&var);
+            let mut bounds = self.generics.shift_remove(&var).unwrap();
 
-                    for (var, bounds) in &instances {
-                        if !free.contains(var)
-                            || !references_generic(arena, *ty, *var, |_| Vec::new())
-                        {
-                            continue;
+            // A bound passed on to it can reference it, through another var that was replaced with
+            // it, which says nothing about what it is
+            for kind in [CandidateKind::Lower, CandidateKind::Upper] {
+                bounds
+                    .list_mut(kind)
+                    .retain(|&ty| !free_generics(arena, ty).contains(&var));
+            }
+
+            // What it's instantiated as where the least and greatest instantiation is needed
+            let mut picked: [Option<TypeId>; 2] = [None, None];
+            let mut instantiate = |arena: &mut Arena<Type>, ty: TypeId, greatest: bool| {
+                if !free_generics(arena, ty).contains(&var)
+                    || !references_generic(arena, ty, var, |_| Vec::new())
+                {
+                    return ty;
+                }
+
+                let instantiated = *picked[usize::from(greatest)].get_or_insert_with(|| {
+                    // Without bounds of the kind it needs, the least instantiation is `Never` and
+                    // the greatest is `Any`
+                    if greatest {
+                        let upper = InferenceCandidates {
+                            upper: bounds.upper.clone(),
+                            ..Default::default()
+                        };
+                        pick_inferred_type(arena, builtins, &self.renamed, None, &upper)
+                            .unwrap_or(builtins.permissive_any)
+                    } else if bounds.lower.is_empty() {
+                        builtins.never
+                    } else {
+                        pick_inferred_type(arena, builtins, &self.renamed, None, &bounds).unwrap()
+                    }
+                });
+
+                substitute_with_mappings(arena, ty, &HashMap::from([(var, instantiated)]))
+            };
+
+            for (&generic, candidates) in &mut self.generics {
+                for (kind_index, kind) in [
+                    CandidateKind::Lower,
+                    CandidateKind::Upper,
+                    CandidateKind::Held,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let upper = matches!(kind, CandidateKind::Upper);
+
+                    for (index, ty) in candidates.list_mut(kind).iter_mut().enumerate() {
+                        if by_polarity {
+                            let shadow = &mut by_kind[&generic].list_mut(kind)[index];
+                            *shadow = instantiate(arena, *shadow, upper);
                         }
 
-                        let instantiated = *picked.entry((*var, upper)).or_insert_with(|| {
-                            // Without bounds of the candidate's kind, the least instantiation is
-                            // `Never` and the greatest is `Any`
-                            if upper {
-                                let upper = InferenceCandidates {
-                                    upper: bounds.upper.clone(),
-                                    ..Default::default()
-                                };
-                                pick_inferred_type(arena, builtins, &self.renamed, None, &upper)
-                                    .unwrap_or(builtins.permissive_any)
-                            } else if bounds.lower.is_empty() {
-                                builtins.never
-                            } else {
-                                pick_inferred_type(arena, builtins, &self.renamed, None, bounds)
-                                    .unwrap()
-                            }
-                        });
+                        // Where it's only contravariant in the candidate, the other instantiation
+                        // gives the candidate its least (or greatest) type, as a parameter type in
+                        // `fn(x: T) -> nil` does (#358). Without joint solving, it's the one for
+                        // the candidate's kind wherever it is
+                        let flip = by_polarity && {
+                            let (covariant, contravariant) = polarity(arena, *ty, var);
+                            contravariant && !covariant
+                        };
 
-                        mappings.insert(*var, instantiated);
-                    }
+                        if flip {
+                            flipped.insert((generic, kind_index, index));
+                        }
 
-                    if !mappings.is_empty() {
-                        *ty = substitute_with_mappings(arena, *ty, &mappings);
+                        *ty = instantiate(arena, *ty, upper != flip);
                     }
                 }
             }
         }
+
+        // Next to other function types, a candidate with a var instantiated the other way is only
+        // kept if one of them holds it (or it holds one of them, for an upper candidate), since the
+        // union of function types it would otherwise be part of, such as
+        // `fn(a: Any) -> Bytes | fn(a: Bytes) -> "a"`, is narrower than the one the instantiation for
+        // its kind gives, `fn(a: Never) -> Bytes`
+        for (generic, kind_index, index) in flipped {
+            let kind = [
+                CandidateKind::Lower,
+                CandidateKind::Upper,
+                CandidateKind::Held,
+            ][kind_index];
+            let upper = matches!(kind, CandidateKind::Upper);
+            let list = self.generics[&generic].list(kind);
+            let candidate = list[index];
+
+            let others: Vec<TypeId> = list
+                .iter()
+                .enumerate()
+                .filter(|&(other, &ty)| {
+                    other != index && matches!(arena[resolve_refs(arena, ty)], Type::Function(_))
+                })
+                .map(|(_, &ty)| ty)
+                .collect();
+
+            let held = others.is_empty()
+                || others.iter().any(|&other| {
+                    let (from, to) = if upper {
+                        (other, candidate)
+                    } else {
+                        (candidate, other)
+                    };
+                    compare_renamed(arena, builtins, &self.renamed, from, to) == Comparison::Assign
+                });
+
+            if !held {
+                let ty = by_kind[&generic].list(kind)[index];
+                self.generics[&generic].list_mut(kind)[index] = ty;
+            }
+        }
     }
+}
+
+/// Whether the generic is referenced in the type where it's covariant, and where it's
+/// contravariant (a function's parameter types, flipped again for each function they're in). The
+/// generics of an alias, struct or application count as both.
+fn polarity(arena: &Arena<Type>, ty: TypeId, generic: TypeId) -> (bool, bool) {
+    let mut result = (false, false);
+    let mut visited = HashSet::new();
+    let mut stack = vec![(ty, true)];
+
+    while let Some((id, covariant)) = stack.pop() {
+        if !visited.insert((id, covariant)) {
+            continue;
+        }
+
+        if id == generic {
+            if covariant {
+                result.0 = true;
+            } else {
+                result.1 = true;
+            }
+            continue;
+        }
+
+        match &arena[id] {
+            Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
+            Type::Ref(inner) => stack.push((*inner, covariant)),
+            Type::Pair(pair) => stack.extend([(pair.first, covariant), (pair.rest, covariant)]),
+            Type::Alias(alias) => {
+                stack.push((alias.inner, covariant));
+                for &ty in &alias.generics {
+                    stack.extend([(ty, true), (ty, false)]);
+                }
+            }
+            Type::Struct(ty) => {
+                stack.push((ty.inner, covariant));
+                for &ty in &ty.generics {
+                    stack.extend([(ty, true), (ty, false)]);
+                }
+            }
+            Type::Apply(apply) => {
+                for &ty in apply.generics.values() {
+                    stack.extend([(ty, true), (ty, false)]);
+                }
+            }
+            Type::Function(function) => {
+                stack.push((function.ret, covariant));
+                stack.extend(function.param_types().map(|ty| (ty, !covariant)));
+            }
+            Type::Union(union) => stack.extend(union.types.iter().map(|&ty| (ty, covariant))),
+        }
+    }
+
+    result
 }
 
 /// Returns the lower candidates without the generic that the one being inferred was renamed from
