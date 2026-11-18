@@ -912,6 +912,7 @@ fn tags_and_shapes_describe_the_calls_whose_arguments_are_removed() {
 fn record(seed: u64, outcomes: &[(&str, Category, &[&str])]) -> report::SeedRecord {
     report::SeedRecord {
         seed,
+        generator: 1,
         explicit_source: String::new(),
         explicit: Explicit::Valid {
             time_ms: 1.0,
@@ -1075,9 +1076,9 @@ fn hung_and_dead_workers_are_recorded_and_the_rest_resumed() {
     assert_eq!(
         script.commands,
         [
-            format!("run {seed} 0"),
-            format!("run {seed} 1"),
-            format!("run {seed} 2")
+            format!("run 1 {seed} 0"),
+            format!("run 1 {seed} 1"),
+            format!("run 1 {seed} 2")
         ]
     );
     assert_eq!(script.restarts, 2);
@@ -1128,7 +1129,7 @@ fn a_last_variant_that_hangs_ends_the_seed() {
 
     let record = run_seed(&mut script, seed, &generated, Duration::from_secs(10)).unwrap();
 
-    assert_eq!(script.commands, [format!("run {seed} 0")]);
+    assert_eq!(script.commands, [format!("run 1 {seed} 0")]);
     assert_eq!(script.restarts, 1);
     assert_eq!(record.variants[2].outcome.category, Category::Slow);
 }
@@ -1140,7 +1141,7 @@ fn workers_resume_at_the_variant_they_are_given() {
         .unwrap();
 
     let mut out = Vec::new();
-    worker::run_command(&mut out, seed, 2).unwrap();
+    worker::run_command(&mut out, 1, seed, 2).unwrap();
     let out = String::from_utf8(out).unwrap();
 
     let lines: Vec<&str> = out.lines().collect();
@@ -1428,7 +1429,7 @@ fn workers_send_fingerprints_for_the_explicit_program_and_each_variant() {
         .unwrap();
 
     let mut out = Vec::new();
-    worker::run_command(&mut out, seed, 0).unwrap();
+    worker::run_command(&mut out, 1, seed, 0).unwrap();
     let out = String::from_utf8(out).unwrap();
 
     let explicit = out
@@ -1625,4 +1626,422 @@ fn slow_variants_are_described_by_their_timing() {
         comparison.changes[0].after,
         "Slow: 500.0 ms, explicit 1.0 ms"
     );
+}
+
+/// A hash of the programs and variants that generator version 1 prints for seeds `0..100`. Runs
+/// from before a change to the generator must stay comparable, so this must never change: new
+/// shapes go in a new version.
+const VERSION_1_HASH: u64 = 0x76a7_95f7_9e3d_bec1;
+
+fn programs_hash(version: u32) -> u64 {
+    // FNV-1a, which doesn't depend on the standard library's hasher staying the same
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for seed in 0..100 {
+        let generated = Generator::versioned(seed, version).generate();
+        let mut text = generated.program.print(&Variant::default());
+        for (name, variant) in &generated.variants {
+            text.push_str(name);
+            text.push_str(&generated.program.print(variant));
+        }
+        for byte in text.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    hash
+}
+
+#[test]
+fn version_1_programs_never_change() {
+    assert_eq!(programs_hash(1), VERSION_1_HASH, "{:#x}", programs_hash(1));
+}
+
+/// The same as `VERSION_1_HASH`, for generator version 2.
+const VERSION_2_HASH: u64 = 0xccbd_89ce_e4c9_1ebb;
+
+#[test]
+fn version_2_programs_never_change() {
+    assert_eq!(programs_hash(2), VERSION_2_HASH, "{:#x}", programs_hash(2));
+}
+
+#[test]
+fn version_2_is_deterministic_and_its_explicit_programs_compile() {
+    let mut valid = 0;
+    for seed in 0..40 {
+        let first = Generator::versioned(seed, 2).generate();
+        let second = Generator::versioned(seed, 2).generate();
+        let explicit = first.program.print(&Variant::default());
+        assert_eq!(explicit, second.program.print(&Variant::default()));
+        assert_eq!(first.variants, second.variants);
+        if matches!(
+            oracle::compile_with(&explicit, first.program.uses_std()),
+            Compiled::Ok { .. }
+        ) {
+            valid += 1;
+        }
+    }
+    assert!(valid >= 37, "only {valid} of 40 explicit programs compile");
+}
+
+#[test]
+fn version_2_types_print_as_parsed() {
+    for text in [
+        "Maybe<T>",
+        "Tree<(A, B)>",
+        "Entry<A, List<B>>",
+        "Box<T> | (T, T)",
+        "(fn(a: Int) -> T) | (fn(a: Bytes) -> T)",
+        "5 | 7",
+        "Box<A> | Entry<A, B> | nil",
+    ] {
+        let generics = ["A", "B", "T"];
+        let names: Vec<String> = generics.iter().map(ToString::to_string).collect();
+        assert_eq!(parse_ty(text, &generics).print(&names), text);
+    }
+
+    let nested = Ty::GenFn(
+        vec!["T".to_string()],
+        vec![Ty::Rigid("T".to_string())],
+        Box::new(Ty::GenFn(
+            vec!["U".to_string()],
+            vec![Ty::Rigid("U".to_string())],
+            Box::new(Ty::pair(
+                Ty::Rigid("T".to_string()),
+                Ty::Rigid("U".to_string()),
+            )),
+        )),
+    );
+    assert_eq!(nested.print(&[]), "fn<T>(a: T) -> (fn<U>(a: U) -> (T, U))");
+}
+
+/// `let v0: fn<T>(a: T) -> (T, T) = make();` (#340) can't be written with explicit generic
+/// arguments, so the explicit program wraps the call in a generic lambda.
+#[test]
+fn calls_given_a_generic_function_type_are_wrapped() {
+    let make = function("make", &["A", "B"], &[], "fn(a: A) -> B");
+    let t = || Ty::Rigid("T".to_string());
+    let pair = Ty::pair(t(), t());
+    let annotation = Ty::GenFn(vec!["T".to_string()], vec![t()], Box::new(pair.clone()));
+    let call = Expr::new(
+        ExprKind::Call {
+            site: None,
+            function: "make".to_string(),
+            generic_args: vec![t(), pair],
+            args: Vec::new(),
+        },
+        Ty::func(vec![t()], Ty::pair(t(), t())),
+    );
+    let wrapped = Expr::new(
+        ExprKind::Wrapped {
+            site: 0,
+            layers: vec![(vec!["T".to_string()], vec![("w1".to_string(), t())])],
+            call: Box::new(call),
+        },
+        annotation.clone(),
+    );
+    let mut program = program(vec![make], Some(annotation), wrapped);
+    program.main.body = Expr::new(
+        ExprKind::Apply(
+            Box::new(Expr::new(ExprKind::Var("v0".to_string()), Ty::Any)),
+            vec![int(1, Ty::Int)],
+        ),
+        Ty::Any,
+    );
+
+    let explicit = program.print(&Variant::default());
+    assert!(
+        explicit.contains("= fn<T>(w1: T) => make::<T, (T, T)>()(w1);"),
+        "{explicit}"
+    );
+    assert!(
+        matches!(compile(&explicit), Compiled::Ok { .. }),
+        "{explicit}"
+    );
+
+    let variant = strip_all(&[0]);
+    assert!(program.print(&variant).contains("= make();"));
+    // The expected generic function type gives both of `make`'s generics a type
+    assert_eq!(masks(&program), [[true, true]]);
+    assert_eq!(legalize(&program, &variant), variant);
+}
+
+#[test]
+fn a_value_for_a_union_gives_no_type() {
+    let pair = Ty::pair(Ty::Int, Ty::Int);
+    let both = function("both", &["T"], &[("value", "Box<T> | (T, T)")], "T");
+    let value = call(
+        0,
+        "both",
+        vec![Ty::Int],
+        vec![Expr::new(
+            ExprKind::Pair(Box::new(int(1, Ty::Int)), Box::new(int(2, Ty::Int))),
+            pair.clone(),
+        )],
+        Ty::Int,
+    );
+    // `Box<T>` is a pair too, so the value could be either member's
+    assert_eq!(
+        masks(&program(vec![both.clone()], None, value.clone())),
+        [[false]]
+    );
+
+    // The expected type still gives the return type's generic one
+    assert_eq!(
+        masks(&program(vec![both.clone()], Some(Ty::Int), value.clone())),
+        [[true]]
+    );
+    let union = Ty::Union(vec![Ty::Lit(5), Ty::Lit(7)]);
+    let five = Expr {
+        ty: union.clone(),
+        ..call(0, "both", vec![Ty::Lit(5)], vec![nil(Ty::Nil)], Ty::Lit(5))
+    };
+    assert_eq!(
+        masks(&program(vec![both.clone()], Some(union), five)),
+        [[true]]
+    );
+
+    // `("a", 3)` for `(A, Int) | (Bytes, A)` fits `A = Bytes` and `A = Int`
+    let overlap = function("pick", &["A"], &[("value", "(A, Int) | (Bytes, A)")], "A");
+    let value = call(
+        0,
+        "pick",
+        vec![Ty::Bytes],
+        vec![Expr::new(
+            ExprKind::Pair(
+                Box::new(Expr::new(ExprKind::Bytes, Ty::Bytes)),
+                Box::new(int(3, Ty::Int)),
+            ),
+            Ty::pair(Ty::Bytes, Ty::Int),
+        )],
+        Ty::Bytes,
+    );
+    assert_eq!(masks(&program(vec![overlap], None, value)), [[false]]);
+
+    // Nor does it with generics in only one member each
+    let one = function("both", &["A", "B"], &[("value", "Box<A> | (B, B)")], "B");
+    let value = call(
+        0,
+        "both",
+        vec![Ty::Int, Ty::Int],
+        vec![Expr::new(
+            ExprKind::Pair(Box::new(int(1, Ty::Int)), Box::new(int(2, Ty::Int))),
+            pair,
+        )],
+        Ty::Int,
+    );
+    assert_eq!(masks(&program(vec![one], None, value)), [[false, false]]);
+}
+
+#[test]
+fn the_expected_variant_removes_only_what_the_expected_type_alone_gives() {
+    // Over the seeds, every site the `expected` variant removes has nothing but the expected
+    // type to be inferred from
+    let mut checked = 0;
+    for seed in 0..100 {
+        let generated = Generator::versioned(seed, 2).generate();
+        let Some((_, variant)) = generated
+            .variants
+            .iter()
+            .find(|(name, _)| name == "expected")
+        else {
+            continue;
+        };
+        let without_expected =
+            generate::removable_sites_with(&generated.program, &Variant::default(), false);
+        for site in variant.stripped.keys() {
+            assert!(without_expected[site].iter().all(|&removable| !removable));
+            checked += 1;
+        }
+    }
+    assert!(checked > 20, "only {checked} sites");
+}
+
+#[test]
+fn programs_that_call_std_compile_with_it() {
+    let (seed, generated) = (0..200)
+        .map(|seed| (seed, Generator::versioned(seed, 2).generate()))
+        .find(|(_, generated)| {
+            generated.program.uses_std()
+                && generated
+                    .program
+                    .print(&Variant::default())
+                    .contains("merge_list::<")
+        })
+        .unwrap();
+    let explicit = generated.program.print(&Variant::default());
+    assert!(!explicit.contains("fn merge_list"), "seed {seed}");
+    assert!(
+        matches!(oracle::compile_with(&explicit, true), Compiled::Ok { .. }),
+        "seed {seed}"
+    );
+    assert!(matches!(compile(&explicit), Compiled::Rejected { .. }));
+}
+
+fn std_seed() -> u64 {
+    (0..200)
+        .find(|&seed| Generator::versioned(seed, 2).generate().program.uses_std())
+        .unwrap()
+}
+
+#[test]
+fn workers_compile_version_2_programs_with_std() {
+    let seed = std_seed();
+    let mut out = Vec::new();
+    worker::run_command(&mut out, 2, seed, 0).unwrap();
+    let out = String::from_utf8(out).unwrap();
+    let explicit = out
+        .lines()
+        .find(|line| line.starts_with("explicit "))
+        .unwrap();
+    assert!(explicit.contains("Valid"), "{out}");
+}
+
+#[test]
+fn the_driver_sends_and_records_the_generator_version() {
+    let (seed, generated) = (0..100)
+        .map(|seed| (seed, Generator::versioned(seed, 2).generate()))
+        .find(|(_, generated)| !generated.variants.is_empty())
+        .unwrap();
+    let mut answers = vec![line("progress explicit"), valid()];
+    for index in 0..generated.variants.len() {
+        answers.push(line(&format!("progress {index}")));
+        answers.push(variant_line(index));
+    }
+    answers.push(line("done"));
+    let mut script = Script::new(vec![answers]);
+
+    let record = run_seed(&mut script, seed, &generated, Duration::from_secs(10)).unwrap();
+    assert_eq!(script.commands, [format!("run 2 {seed} 0")]);
+    assert_eq!(record.generator, 2);
+
+    let shrunk = worker::Shrunk {
+        explicit: String::new(),
+        stripped: String::new(),
+        shape: String::new(),
+        tags: Vec::new(),
+        message: String::new(),
+    };
+    let mut script = Script::new(vec![vec![line(&format!(
+        "shrunk {}",
+        serde_json::to_string(&shrunk).unwrap()
+    ))]]);
+    worker::shrink_on(&mut script, 2, seed, 1, Duration::from_secs(10)).unwrap();
+    assert_eq!(
+        script.commands,
+        [format!("shrink 2 {seed} 1 {}", worker::SHRINK_BUDGET)]
+    );
+}
+
+#[test]
+fn outputs_list_every_shrunk_failure_and_count_expected_variants() {
+    let records = vec![record(
+        0,
+        &[
+            ("all", Category::Rejected, &[]),
+            ("expected", Category::Inferred, &[]),
+        ],
+    )];
+    let mut clusters = report::clusters(&records);
+    let shrunk = worker::Shrunk {
+        explicit: "fn main() -> Int {\n    1\n}\n".to_string(),
+        stripped: "fn main() -> Int {\n    1\n}\n".to_string(),
+        shape: "shape".to_string(),
+        tags: vec!["tag".to_string()],
+        message: "message".to_string(),
+    };
+    clusters[0].shrunk.push(((0, 0), shrunk));
+    let report = report::report(&records, &clusters);
+    assert!(
+        report.contains("| expected | 1 | 0 | 0 | 0 | 0 |"),
+        "{report}"
+    );
+
+    let dir = std::env::temp_dir().join(format!("infer-fuzz-outputs-{}", std::process::id()));
+    report::write_outputs(&dir, &records, &clusters, &report).unwrap();
+    let shrunk = std::fs::read_to_string(dir.join("shrunk.jsonl")).unwrap();
+    let lines: Vec<&str> = shrunk.lines().collect();
+    assert_eq!(lines.len(), 1);
+    let line: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+    assert_eq!(line["cluster"], 1);
+    assert_eq!(line["seed"], 0);
+    assert_eq!(line["variant"], "all");
+    assert_eq!(line["shrunk"]["message"], "message");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_value_for_maybe_gives_what_it_would_for_its_inner_type() {
+    // `(1, nil)` for `Maybe<(A, B)>` gives `A` a type, as it would for `(A, B)`, but not `B`
+    let wrap = function("wrap", &["A", "B"], &[("value", "Maybe<(A, B)>")], "Int");
+    let pair = Ty::pair(Ty::Int, Ty::Nil);
+    let value = call(
+        0,
+        "wrap",
+        vec![Ty::Int, Ty::Nil],
+        vec![Expr::new(
+            ExprKind::Pair(Box::new(int(1, Ty::Int)), Box::new(nil(Ty::Nil))),
+            pair,
+        )],
+        Ty::Int,
+    );
+    assert_eq!(masks(&program(vec![wrap], None, value)), [[true, false]]);
+}
+
+/// A wrapped call is removed all or nothing: if anything can't be inferred, nothing is.
+#[test]
+fn wrapped_calls_with_a_generic_nothing_infers_keep_all_their_arguments() {
+    // `C` is only in the parameter, and `nil` gives it nothing
+    let make = function(
+        "make",
+        &["A", "B", "C"],
+        &[("value", "C | nil")],
+        "fn(a: A) -> B",
+    );
+    let t = || Ty::Rigid("T".to_string());
+    let annotation = Ty::GenFn(vec!["T".to_string()], vec![t()], Box::new(t()));
+    let call = Expr::new(
+        ExprKind::Call {
+            site: None,
+            function: "make".to_string(),
+            generic_args: vec![t(), t(), Ty::Int],
+            args: vec![nil(Ty::opt(Ty::Int))],
+        },
+        Ty::func(vec![t()], t()),
+    );
+    let wrapped = Expr::new(
+        ExprKind::Wrapped {
+            site: 0,
+            layers: vec![(vec!["T".to_string()], vec![("w1".to_string(), t())])],
+            call: Box::new(call),
+        },
+        annotation.clone(),
+    );
+    let program = program(vec![make], Some(annotation), wrapped);
+    assert_eq!(masks(&program), [[false, false, false]]);
+    assert_eq!(legalize(&program, &strip_all(&[0])), Variant::default());
+}
+
+#[test]
+fn shrinking_keeps_functions_from_the_standard_library() {
+    let merge = function(
+        "merge_list",
+        &["T"],
+        &[("a", "List<T>"), ("b", "List<T>")],
+        "List<T>",
+    );
+    let list = Ty::list(Ty::Int);
+    let items = |value| Expr::new(ExprKind::List(vec![int(value, Ty::Int)]), list.clone());
+    let value = call(
+        0,
+        "merge_list",
+        vec![Ty::Int],
+        vec![items(1), items(2)],
+        list.clone(),
+    );
+    let program = program(vec![merge], None, value);
+
+    let (program, _) = shrink::shrink(program, strip_all(&[0]), 100, &mut |program, variant| {
+        program.exprs().iter().any(|expr| variant.strips(expr))
+    });
+    assert_eq!(program.functions.len(), 1);
 }

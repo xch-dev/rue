@@ -10,7 +10,7 @@ use std::cell::Cell;
 use std::collections::BTreeSet;
 
 use crate::generate::legalize;
-use crate::program::{Expr, ExprKind, Function, Program, Root, Strip, Ty, Variant};
+use crate::program::{Expr, ExprKind, Function, Named, Program, Root, Strip, Ty, Variant, is_std};
 
 /// Shrinks the program and variant, keeping each change for which `fails` is still true. Gives
 /// up after `budget` calls of `fails`.
@@ -74,6 +74,11 @@ pub fn shrink(
         }
 
         for index in (0..program.functions.len()).rev() {
+            // A function from the standard library isn't printed, so removing it would always
+            // look harmless, and leave its calls with no signature to check removability against
+            if is_std(&program.functions[index].name) {
+                continue;
+            }
             let mut candidate = program.clone();
             candidate.functions.remove(index);
             if check(&candidate, &variant) {
@@ -179,7 +184,20 @@ fn simple(ty: &Ty) -> Expr {
             typed: true,
             body: Box::new(simple(ret)),
         },
-        Ty::Boxed(_) | Ty::Rigid(_) | Ty::Var(_) | Ty::Any => ExprKind::Unchecked,
+        // The simplest member, as a value of the whole union
+        Ty::Union(members) => {
+            return Expr {
+                ty: ty.clone(),
+                ..simple(&members[0])
+            };
+        }
+        Ty::Named(Named::Maybe | Named::Tree, _) => ExprKind::Nil,
+        Ty::Boxed(_)
+        | Ty::Named(Named::Entry, _)
+        | Ty::GenFn(..)
+        | Ty::Rigid(_)
+        | Ty::Var(_)
+        | Ty::Any => ExprKind::Unchecked,
     };
     Expr::new(kind, ty.clone())
 }
@@ -343,6 +361,19 @@ fn describe(program: &Program, expr: &Expr, variant: &Variant) -> String {
         ExprKind::Lambda { typed: false, .. } => "lambda".to_string(),
         ExprKind::IdentityLambda => "generic lambda".to_string(),
         ExprKind::Unchecked => "cast".to_string(),
+        ExprKind::EntryLit { key, value, .. } => format!(
+            "Entry {{ {}, {} }}",
+            describe(program, key, variant),
+            describe(program, value, variant)
+        ),
+        ExprKind::Key(_) => "projection".to_string(),
+        ExprKind::Apply(..) => "local call".to_string(),
+        ExprKind::Wrapped { call, .. } => {
+            format!(
+                "{} for a generic function type",
+                describe(program, call, variant)
+            )
+        }
     }
 }
 
