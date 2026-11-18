@@ -5,10 +5,13 @@ export mod a {
     export super::SECRET;
 }
 
-// Sibling files are public, so they can be re-exported, by name or with a glob import, which
-// doesn't re-export the private items of the file
-export mod files {
+// Sibling files are public, so they can be re-exported by name
+export mod named {
     export super::helpers;
+}
+
+// A glob import re-exports sibling files too, but not the private items of the file
+export mod globbed {
     export super::*;
 
     export fn secret() -> Int {

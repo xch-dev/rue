@@ -2572,7 +2572,8 @@ fn reexports_of_private_local_items_are_reported() {
         }
 
         fn main() -> Int {
-            m::VALUE
+            let value: m::Value = m::VALUE;
+            value + 1
         }
         ",
     );
@@ -2584,6 +2585,9 @@ fn reexports_of_private_local_items_are_reported() {
             "6:20 PrivateReexport(\"Value\")",
         ]
     );
+
+    // The imports aren't also reported as unused, and the uses of the names aren't reported again
+    assert_eq!(compiled.warnings(), Vec::<String>::new());
 }
 
 #[test]
@@ -2690,5 +2694,51 @@ fn glob_reexports_through_super_only_export_public_items() {
     assert_eq!(
         compiled.errors(),
         ["19:53 PrivateSymbol(\"SECRET\", \"a\")"]
+    );
+}
+
+#[test]
+fn reexports_only_export_the_namespaces_that_are_public() {
+    let compiled = compile(
+        "
+        export const X: Int = 1;
+        type X = Int;
+        type Y = Int;
+        export inner::Y;
+
+        mod inner {
+            export const Y: Int = 2;
+        }
+
+        export mod a {
+            export super::X;
+            export super::Y;
+        }
+
+        export mod b {
+            export const Z: Int = 3;
+            type Z = Int;
+            export Z;
+        }
+
+        fn main() -> Int {
+            a::X + a::Y + b::Z
+        }
+
+        fn types(x: a::X, y: a::Y, z: b::Z) {}
+        ",
+    );
+
+    // Only the public value with each name is re-exported, and nothing is reported for the
+    // private types. `a` first finds only the private type `Y`, since it's resolved before the
+    // file imports the value (values are declared after the first resolution of imports), so this
+    // checks that re-exports are only reported once every import is resolved.
+    assert_eq!(
+        compiled.errors(),
+        [
+            "26:24 PrivateType(\"X\", \"a\")",
+            "26:33 PrivateType(\"Y\", \"a\")",
+            "26:42 PrivateType(\"Z\", \"b\")",
+        ]
     );
 }

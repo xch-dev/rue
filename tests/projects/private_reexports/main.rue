@@ -1,3 +1,7 @@
 fn main() -> Int {
-    utils::a::SECRET + utils::files::helpers::HELP + utils::files::secret()
+    utils::a::SECRET
+        + utils::named::helpers::HELP
+        + utils::globbed::helpers::HELP
+        + utils::globbed::secret()
+        + utils::globbed::SECRET
 }
