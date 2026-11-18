@@ -118,3 +118,10 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: bound_from_one_of_several_matching_members_not_passed_on
+  program: (a (q 2 (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) ()))) ()))) (q 6)) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) (c (q . 6) ())) (c (c (q 1 . 1) (c (q 4 2 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))))) ()))
+  output: "1"
+  runtime_cost: 2301
+  byte_cost: 1788000
+  total_cost: 1790301

@@ -423,14 +423,51 @@ fn without_subsumed_functions(
     result
 }
 
+/// The union of the types. A member that's a union of atoms is replaced by its members, and an
+/// atom that's the same as an earlier one is left out, so that unions built from each other, such
+/// as those of generics inferred through a chain of others, don't double in size each time (#337).
+/// Unions with other members are kept whole, since one can be recursive, such as the runtime
+/// structure of a function.
+///
+/// The result is only a single type if it was given one. Otherwise it stays a union, even of one
+/// member, since a union isn't widened as a literal is (see `widen_literal`), which inference has
+/// always relied on for `7 | 7`.
 pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) -> TypeId {
     let types: IndexSet<TypeId> = types.into_iter().collect();
 
     if types.len() == 1 {
-        types[0]
-    } else {
-        arena.alloc(Type::Union(Union::new(types.into_iter().collect())))
+        return types[0];
     }
+
+    let mut members: IndexSet<TypeId> = IndexSet::new();
+    let mut atoms: Vec<(AtomSemantic, Option<AtomRestriction>)> = Vec::new();
+    let mut stack: Vec<TypeId> = types.into_iter().rev().collect();
+
+    while let Some(ty) = stack.pop() {
+        match &arena[ty] {
+            Type::Union(union)
+                if union
+                    .types
+                    .iter()
+                    .all(|&member| matches!(arena[member], Type::Atom(_))) =>
+            {
+                stack.extend(union.types.iter().rev().copied());
+            }
+            Type::Atom(atom) => {
+                let key = (atom.semantic, atom.restriction.clone());
+
+                if !atoms.contains(&key) {
+                    atoms.push(key);
+                    members.insert(ty);
+                }
+            }
+            _ => {
+                members.insert(ty);
+            }
+        }
+    }
+
+    arena.alloc(Type::Union(Union::new(members.into_iter().collect())))
 }
 
 /// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`.

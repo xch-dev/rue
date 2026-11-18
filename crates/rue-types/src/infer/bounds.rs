@@ -444,13 +444,26 @@ pub(crate) fn pass_upper_bounds(
             let mut inner = Inference::new(targets.iter().copied());
             infer_from_expected(arena, builtins, ty, upper, &mut inner);
 
+            // A bound collected under a member of a union in the upper bound is only passed on if
+            // that member is the only one the lower bound matches. In `(T, T) ≤ (Int, Int) | (5, 5)`,
+            // both match, so `T` isn't bounded by `5`. In `(T, nil) ≤ (Int, nil) | nil`, only the
+            // pair does, so `T` is bounded by `Int`
+            let results = inner.choice_results();
+
             for (&other, candidates) in &inner.generics {
                 if accepts(other) {
                     stack.extend(
                         candidates
                             .upper
                             .iter()
-                            .map(|&upper| ((other, upper, passed.clone()), true)),
+                            .enumerate()
+                            .filter(|&(index, _)| {
+                                inner.required(
+                                    &results,
+                                    inner.branches(other, CandidateKind::Upper, index),
+                                )
+                            })
+                            .map(|(_, &upper)| ((other, upper, passed.clone()), true)),
                     );
                 }
             }
