@@ -1,6 +1,8 @@
 //! Imports: which declaration an imported name refers to, how targeted and glob imports interact,
 //! and the errors for imports that can't be resolved.
 
+use std::fmt::Write;
+
 use crate::test_utils::compile;
 
 #[test]
@@ -2426,4 +2428,53 @@ fn named_imports_only_shadow_glob_imports_in_their_namespaces() {
     compiled.assert_no_errors();
     assert_eq!(compiled.symbol_origin("x"), "a");
     assert_eq!(compiled.symbol_origin("x::Y"), "b::x");
+}
+
+#[test]
+fn many_glob_imports_that_wait_for_each_other_resolve_quickly() {
+    // Each glob import could bring in the module that another one's path names, so they all wait
+    // for each other. Finding which ones to answer used to take time quartic in how many there
+    // are, so this took minutes.
+    const COUNT: usize = 300;
+
+    let dir = std::env::temp_dir().join(format!("rue-waiting-globs-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut main = String::new();
+
+    for i in 0..COUNT {
+        writeln!(main, "import f{i}::*;").unwrap();
+        std::fs::write(
+            dir.join(format!("f{i}.rue")),
+            format!("export const V{i}: Int = {i};\n"),
+        )
+        .unwrap();
+    }
+
+    writeln!(main, "fn main() -> Int {{\n    V0 + V{}\n}}", COUNT - 1).unwrap();
+    std::fs::write(dir.join("main.rue"), main).unwrap();
+
+    let start = std::time::Instant::now();
+    let mut ctx = crate::Compiler::new(rue_options::CompilerOptions {
+        std: false,
+        ..rue_options::CompilerOptions::default()
+    });
+    let result =
+        crate::FileTree::compile_path(&mut ctx, &dir, &mut std::collections::HashMap::new());
+    let elapsed = start.elapsed();
+
+    std::fs::remove_dir_all(&dir).unwrap();
+    result.unwrap();
+
+    let errors = ctx
+        .take_diagnostics()
+        .into_iter()
+        .filter(|diagnostic| diagnostic.severity == rue_diagnostic::DiagnosticSeverity::Error)
+        .collect::<Vec<_>>();
+
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "resolving the imports took {elapsed:?}"
+    );
 }

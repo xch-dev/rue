@@ -424,15 +424,20 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
             continue;
         };
 
-        let found = ctx
+        // The import's own binding doesn't count, unless another glob import brings in a
+        // different item with the name too
+        let ambiguous = ctx
             .scope(forced.scope)
             .item_with_import(forced.namespace, forced.name.text())
-            .filter(|&(_, via)| via != Some(import));
+            .is_some_and(|(item, via)| {
+                if via == Some(import) {
+                    ctx.is_ambiguous_import(via, item.into())
+                } else {
+                    item != answer
+                }
+            });
 
-        if let Some((item, _)) = found
-            && item != answer
-            && reported.insert((import, forced.name.text().to_string()))
-        {
+        if ambiguous && reported.insert((import, forced.name.text().to_string())) {
             ctx.diagnostic_name(
                 &forced.name,
                 DiagnosticKind::AmbiguousOuterImport(forced.name.text().to_string()),
@@ -603,7 +608,7 @@ fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
             .blockers
             .iter()
             .copied()
-            .filter(|&blocker| blocker != lookup.key.0 && edges.contains_key(&blocker))
+            .filter(|blocker| edges.contains_key(blocker))
             .collect::<Vec<_>>();
 
         edges[&lookup.key.0].extend(blockers);
@@ -651,6 +656,11 @@ fn strongly_connected_components(
 
     impl Tarjan<'_> {
         fn visit(&mut self, import: ImportId) {
+            // A long chain of imports that wait for each other mustn't overflow the stack
+            rue_types::grow_stack(|| self.visit_inner(import));
+        }
+
+        fn visit_inner(&mut self, import: ImportId) {
             let index = self.index.len();
             self.index.insert(import, index);
             self.low.insert(import, index);
@@ -712,6 +722,8 @@ enum Base {
     /// In the module that `super` names, and then a file's sibling modules. It contains the
     /// import, so its private items can be used.
     Member(ScopeId),
+    /// In the module that the previous segment of a path names, and nowhere else.
+    Inner(ScopeId),
 }
 
 /// What an import's lookup of a name found.
@@ -761,15 +773,23 @@ fn lookup(
 ) -> Lookup {
     let name = at.text();
     let scope = match base {
-        Base::Local(scope) | Base::Member(scope) => scope,
+        Base::Local(scope) | Base::Member(scope) | Base::Inner(scope) => scope,
     };
+
+    // A forced answer is used even once the module has an item with the name, which might have
+    // been brought in by another forced lookup, so that they're all answered from the same state
+    let forced = forced.get(&(import_id, key.clone()));
+
+    if let Some(ForcedLookup {
+        answer: Some((item, via)),
+        ..
+    }) = forced
+    {
+        return Lookup::Found(*item, *via);
+    }
 
     if let Some((item, via)) = ctx.scope(scope).item_with_import(namespace, name) {
         return Lookup::Found(item, via);
-    }
-
-    if let Some(forced) = forced.get(&(import_id, key.clone())) {
-        return Lookup::from_answer(forced.answer);
     }
 
     let outside = match base {
@@ -778,7 +798,12 @@ fn lookup(
             .parent()
             .and_then(|parent| ctx.resolve_item_in(parent, namespace, name)),
         Base::Member(scope) => ctx.sibling_item(scope, namespace, name),
+        Base::Inner(_) => None,
     };
+
+    if forced.is_some() {
+        return Lookup::from_answer(outside);
+    }
 
     let mut blockers = Blockers::default();
 
@@ -847,61 +872,34 @@ fn resolve_import(
         let mut symbols = Vec::new();
 
         for (index, name) in import.path.iter().enumerate() {
-            // A private module is reported, but still resolved, like it is in other paths
-            let module = if let Some(scope) = base {
-                let target = ctx.scope(scope);
+            // A private module is reported, but still resolved, like it is in other paths. A
+            // segment after the first waits for the module the previous one names, so what waits
+            // for this import waits for that module too.
+            let (key, segment_base) = match base {
+                Some(scope) => (LookupKey::Segment(index), Base::Inner(scope)),
+                None => (LookupKey::Path, lookup_base),
+            };
 
-                if let Some((module, via)) = target.module_with_import(name.text()) {
-                    Some((module, via, target.is_module_exported(module)))
-                } else {
-                    // The module could still bring the next one in, and what waits for this
-                    // import waits for that too
-                    let key = (import_id, LookupKey::Segment(index));
-                    let mut blockers = Blockers::default();
+            let module = match lookup(
+                ctx,
+                &cache.forced,
+                resolution,
+                import_id,
+                key,
+                name,
+                segment_base,
+                Namespace::Module,
+            ) {
+                Lookup::Found(module, via) => module.symbol().map(|module| {
+                    let exported = match segment_base {
+                        Base::Inner(scope) => ctx.scope(scope).is_module_exported(module),
+                        Base::Local(_) | Base::Member(_) => true,
+                    };
 
-                    if !diagnostics
-                        && !cache.forced.contains_key(&key)
-                        && may_gain(
-                            ctx,
-                            resolution,
-                            scope,
-                            Namespace::Module,
-                            name.text(),
-                            None,
-                            false,
-                            &mut blockers,
-                        )
-                    {
-                        resolution.waiting.push(WaitingLookup {
-                            key,
-                            forced: ForcedLookup {
-                                scope,
-                                namespace: Namespace::Module,
-                                name: name.clone(),
-                                answer: None,
-                            },
-                            blockers: blockers.imports,
-                        });
-                        return false;
-                    }
-
-                    None
-                }
-            } else {
-                match lookup(
-                    ctx,
-                    &cache.forced,
-                    resolution,
-                    import_id,
-                    LookupKey::Path,
-                    name,
-                    lookup_base,
-                    Namespace::Module,
-                ) {
-                    Lookup::Found(module, via) => module.symbol().map(|module| (module, via, true)),
-                    Lookup::Undetermined => return false,
-                    Lookup::NotFound => None,
-                }
+                    (module, via, exported)
+                }),
+                Lookup::Undetermined => return false,
+                Lookup::NotFound => None,
             };
 
             let Some((symbol, via, exported)) = module else {
@@ -918,6 +916,9 @@ fn resolve_import(
                                 }
                                 Base::Member(scope) => {
                                     ctx.module_member(scope, namespace, name.text()).is_some()
+                                }
+                                Base::Inner(scope) => {
+                                    ctx.scope(scope).item(namespace, name.text()).is_some()
                                 }
                             },
                         });

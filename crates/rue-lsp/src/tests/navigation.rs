@@ -598,3 +598,29 @@ fn main() -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_definition_of_a_middle_segment_of_an_import_path() {
+    // Each segment of an import's path goes to the module it names, not the last one
+    check_definitions(
+        &[(
+            "main.rue",
+            r"
+mod outer {
+    export mod inner {
+        export const VALUE: Int = 1;
+    }
+}
+
+import outer::inn$0er::VALUE;
+
+fn main() -> Int {
+    VALUE
+}
+",
+        )],
+        expect![[r#"
+            main.rue:2:15-2:20
+        "#]],
+    );
+}
