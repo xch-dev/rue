@@ -801,9 +801,16 @@ impl Compiler {
         &mut self,
         solver: &CallSolver,
         infer: &Inference,
-        inferred: HashMap<TypeId, TypeId>,
+        inferred: &HashMap<TypeId, TypeId>,
+        bound_mapped: bool,
     ) -> HashMap<TypeId, TypeId> {
-        solver.argument_mappings(self.db.types_mut(), &self.builtins.types, infer, inferred)
+        solver.argument_mappings(
+            self.db.types_mut(),
+            &self.builtins.types,
+            infer,
+            inferred,
+            bound_mapped,
+        )
     }
 
     /// The mappings a call is checked with, once its arguments have been compiled (see

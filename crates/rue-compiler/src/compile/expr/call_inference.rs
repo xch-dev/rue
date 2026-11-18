@@ -79,13 +79,20 @@ pub(crate) fn infer_call(
         let inferred = ctx.solve_arguments(&solver, order.merged());
 
         // Use what has been inferred from the previous arguments as the expected type, along
-        // with what the type expected of the call implies for the generics they don't map
-        let mut mappings = ctx.argument_mappings(&solver, order.merged(), inferred.clone());
+        // with what the type expected of the call implies
+        let mut mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, true);
 
         let i = order.next(ctx, function, &inferred, &mappings, renamed);
 
         let expr = &args[i];
         let param = function.params[i].ty;
+
+        // An argument with a lambda in it only takes the expected type's bounds for the generics
+        // the arguments map when nothing can add to them afterward (see
+        // `CallSolver::argument_mappings`)
+        if !order.takes_expected_bounds(i) {
+            mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
+        }
 
         restore_renamed(ctx, &mut mappings, renamed);
 
@@ -152,6 +159,9 @@ struct ArgumentOrder {
     compiled_lambdas: Vec<usize>,
     /// The other arguments that were compiled.
     compiled_others: Vec<usize>,
+    /// Whether no argument still to be compiled can add to the generics that the argument `next`
+    /// gave last depends on (see `ArgumentOrder::takes_expected_bounds`).
+    last_settled: bool,
     /// The candidates of each argument that was compiled, collected on their own.
     candidates: Vec<Option<Inference>>,
     /// The candidates of the compiled arguments, put together in `candidate_order`, starting from
@@ -162,7 +172,9 @@ struct ArgumentOrder {
 
 /// What `ArgumentOrder` knows about an argument.
 struct Argument {
-    is_lambda: bool,
+    kind: ArgumentKind,
+    /// Whether it is, or has in it, a lambda.
+    has_lambda: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
     reads: IndexSet<TypeId>,
     /// The callee's generics that comparing it with its parameter can add to: every one in the
@@ -174,13 +186,58 @@ struct Argument {
     /// For a lambda, the generics among its reads that are its whole parameter type, or members
     /// of it.
     bare: IndexSet<TypeId>,
-    /// Whether it's a call with no arguments, which only its expected type can infer.
-    needs_expected: bool,
-    /// Whether it holds up the arguments that read what it writes. A generic lambda doesn't, since
-    /// what it gives the callee's generics comes through an instance of its own generics, which is
-    /// bounded by the callee's other generics rather than by a type of its own, so waiting for it
-    /// adds nothing to compile against.
-    holds_up: bool,
+}
+
+enum ArgumentKind {
+    Lambda {
+        /// Whether it holds up the arguments that read what it writes. A generic lambda doesn't,
+        /// since what it gives the callee's generics comes through an instance of its own generics,
+        /// which is bounded by the callee's other generics rather than by a type of its own, so
+        /// waiting for it adds nothing to compile against.
+        holds_up: bool,
+        /// Whether the return types of the function types expected of it reference a generic it
+        /// reads, so that compiling it can add to the generics its parameter types come from.
+        returns_reads: bool,
+    },
+    Other {
+        /// Whether it's a call with no arguments, which only its expected type can infer.
+        needs_expected: bool,
+    },
+}
+
+impl Argument {
+    fn is_lambda(&self) -> bool {
+        matches!(self.kind, ArgumentKind::Lambda { .. })
+    }
+
+    fn holds_up(&self) -> bool {
+        !matches!(
+            self.kind,
+            ArgumentKind::Lambda {
+                holds_up: false,
+                ..
+            }
+        )
+    }
+
+    fn needs_expected(&self) -> bool {
+        matches!(
+            self.kind,
+            ArgumentKind::Other {
+                needs_expected: true
+            }
+        )
+    }
+
+    fn returns_reads(&self) -> bool {
+        matches!(
+            self.kind,
+            ArgumentKind::Lambda {
+                returns_reads: true,
+                ..
+            }
+        )
+    }
 }
 
 impl ArgumentOrder {
@@ -190,10 +247,33 @@ impl ArgumentOrder {
             .zip(&function.params)
             .map(|(arg, param)| {
                 let is_lambda = matches!(arg, AstExpr::LambdaExpr(_));
+                let reads = reads_of(ctx, function, arg, param.ty);
+                let returns_reads = is_lambda
+                    && rue_types::extract_functions(ctx.types_mut(), param.ty, true)
+                        .into_iter()
+                        .any(|expected| {
+                            generics_in(ctx, function, expected.ret)
+                                .iter()
+                                .any(|generic| reads.contains(generic))
+                        });
+
+                let kind = match arg {
+                    AstExpr::LambdaExpr(lambda) => ArgumentKind::Lambda {
+                        holds_up: lambda.generic_parameters().is_none(),
+                        returns_reads,
+                    },
+                    AstExpr::FunctionCallExpr(call) => ArgumentKind::Other {
+                        needs_expected: call.args().next().is_none(),
+                    },
+                    _ => ArgumentKind::Other {
+                        needs_expected: false,
+                    },
+                };
 
                 Argument {
-                    is_lambda,
-                    reads: reads_of(ctx, function, arg, param.ty),
+                    kind,
+                    has_lambda: has_lambda(arg),
+                    reads,
                     writes: generics_in(ctx, function, param.ty),
                     bounds_above: bounded_above(ctx, function, param.ty),
                     bare: if is_lambda {
@@ -201,22 +281,14 @@ impl ArgumentOrder {
                     } else {
                         IndexSet::new()
                     },
-                    needs_expected: matches!(
-                        arg,
-                        AstExpr::FunctionCallExpr(call) if call.args().next().is_none()
-                    ),
-                    holds_up: !matches!(
-                        arg,
-                        AstExpr::LambdaExpr(lambda) if lambda.generic_parameters().is_some()
-                    ),
                 }
             })
             .collect();
 
         let mut pending: Vec<usize> = (0..arguments.len())
-            .filter(|&i| !arguments[i].is_lambda)
+            .filter(|&i| !arguments[i].is_lambda())
             .collect();
-        pending.extend((0..arguments.len()).filter(|&i| arguments[i].is_lambda));
+        pending.extend((0..arguments.len()).filter(|&i| arguments[i].is_lambda()));
 
         Self {
             candidates: vec![None; arguments.len()],
@@ -224,6 +296,7 @@ impl ArgumentOrder {
             pending,
             compiled_lambdas: Vec::new(),
             compiled_others: Vec::new(),
+            last_settled: false,
             merged: base.clone(),
             base,
         }
@@ -260,13 +333,13 @@ impl ArgumentOrder {
         self.pending.iter().any(|&other| {
             let argument = &self.arguments[other];
 
-            let writes = if !self.arguments[i].is_lambda && argument.is_lambda {
+            let writes = if !self.arguments[i].is_lambda() && argument.is_lambda() {
                 &argument.bounds_above
             } else {
                 &argument.writes
             };
 
-            other != i && argument.holds_up && writes.contains(&generic)
+            other != i && argument.holds_up() && writes.contains(&generic)
         })
     }
 
@@ -302,10 +375,10 @@ impl ArgumentOrder {
     /// (#352). Any other earlier argument infers its own generics, and going ahead of it can only
     /// widen a literal in its expected type.
     fn would_go_ahead_of_others(&self, i: usize) -> bool {
-        !self.arguments[i].is_lambda
+        !self.arguments[i].is_lambda()
             && self
                 .earlier_others(i)
-                .any(|other| !self.arguments[other].needs_expected)
+                .any(|other| !self.arguments[other].needs_expected())
     }
 
     /// The arguments that aren't lambdas and are before this one in `pending`.
@@ -314,7 +387,7 @@ impl ArgumentOrder {
             .iter()
             .copied()
             .take_while(move |&other| other != i)
-            .filter(|&other| !self.arguments[other].is_lambda)
+            .filter(|&other| !self.arguments[other].is_lambda())
     }
 
     /// Whether the argument can be compiled now: it's ready, compiling it doesn't change an earlier
@@ -323,6 +396,23 @@ impl ArgumentOrder {
         self.is_ready(i, state)
             && !self.would_change_earlier(i, state)
             && !self.would_go_ahead_of_others(i)
+    }
+
+    /// Whether the argument `next` just gave can be compiled against the expected type's bounds
+    /// for the generics the arguments map (`CallSolver::argument_mappings`). An argument without a
+    /// lambda in it always can. A lambda only can if no argument still to be compiled can add to
+    /// the generics its parameter types come from, counting every one, unlike the order's
+    /// readiness, and its own return type can't either. Otherwise a narrower parameter type could
+    /// stop a later addition, since parameters are contravariant. A lambda inside another
+    /// argument, such as a block or a pair, never takes them.
+    fn takes_expected_bounds(&self, i: usize) -> bool {
+        let argument = &self.arguments[i];
+
+        if !argument.has_lambda {
+            return true;
+        }
+
+        argument.is_lambda() && self.last_settled && !argument.returns_reads()
     }
 
     /// Whether every argument has been compiled.
@@ -367,12 +457,14 @@ impl ArgumentOrder {
         let can_go = |position: usize| self.can_go(self.pending[position], &state);
 
         let first = self.pending[0];
-        let position = match (0..self.pending.len()).find(|&position| can_go(position)) {
-            Some(position) if !self.arguments[self.pending[position]].is_lambda => position,
+        let ready = (0..self.pending.len()).find(|&position| can_go(position));
+
+        let position = match ready {
+            Some(position) if !self.arguments[self.pending[position]].is_lambda() => position,
             Some(position) => (position..self.pending.len())
                 .find(|&q| can_go(q) && inferred_parameters(self.pending[q]))
                 .unwrap_or(position),
-            None if !self.arguments[first].is_lambda => 0,
+            None if !self.arguments[first].is_lambda() => 0,
             None => (0..self.pending.len())
                 .find(|&q| inferred_parameters(self.pending[q]))
                 .unwrap_or(0),
@@ -380,7 +472,16 @@ impl ArgumentOrder {
 
         let i = self.pending.remove(position);
 
-        if self.arguments[i].is_lambda {
+        // Following mappings (`reads_now`) rather than only the argument's own reads is a defensive
+        // choice: no program has been found where the two differ
+        self.last_settled = self.reads_now(i, &state).iter().all(|generic| {
+            !self
+                .pending
+                .iter()
+                .any(|&other| self.arguments[other].writes.contains(generic))
+        });
+
+        if self.arguments[i].is_lambda() {
             self.compiled_lambdas.push(i);
         } else {
             self.compiled_others.push(i);
@@ -410,7 +511,7 @@ impl ArgumentOrder {
     /// as it does unless an argument that isn't a lambda was compiled after one, or after a later
     /// argument. Otherwise they're all put together again.
     fn add_candidates(&mut self, i: usize, candidates: Inference) {
-        let last = if self.arguments[i].is_lambda {
+        let last = if self.arguments[i].is_lambda() {
             true
         } else {
             self.compiled_lambdas.is_empty() && self.compiled_others.iter().all(|&other| other <= i)
@@ -659,7 +760,10 @@ pub(crate) fn refine_element_expected(
     };
 
     let inferred = ctx.solve_arguments(&argument.solver, &argument.infer);
-    let mappings = ctx.argument_mappings(&argument.solver, &argument.infer, inferred);
+    // The element has a lambda in it, so it keeps what the arguments infer, as a lambda argument
+    // that something can still add to does. That's defensive: the expected bounds would only
+    // matter for a generic an earlier element maps, which no test has found to differ
+    let mappings = ctx.argument_mappings(&argument.solver, &argument.infer, &inferred, false);
     ctx.set_argument_frame(Some(argument));
 
     substitute_with_mappings(ctx.types_mut(), expected, &mappings)

@@ -1401,15 +1401,23 @@ mod inference {
         let mut infer = Inference::new([a, b]);
         let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
         assert!(inferred.is_empty());
-        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        let mappings =
+            solver.argument_mappings(&mut db.arena, &db.builtins, &infer, &inferred, true);
         assert_eq!(mappings[&a], five);
         assert_eq!(mappings[&b], int);
 
-        // Once `5` is passed for `A`, it maps `A`, widened, so the expected type only fills `B`
+        // Once `5` is passed for `A`, the arguments alone widen it to `Int`, but an argument's
+        // expected type keeps the expected bound, `5` (#353). A lambda's keeps what the arguments
+        // infer
         db.infer(five, a, &mut infer);
         let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
         assert_eq!(inferred[&a], int);
-        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        let mappings =
+            solver.argument_mappings(&mut db.arena, &db.builtins, &infer, &inferred, true);
+        assert_eq!(mappings[&a], five);
+        assert_eq!(mappings[&b], int);
+        let mappings =
+            solver.argument_mappings(&mut db.arena, &db.builtins, &infer, &inferred, false);
         assert_eq!(mappings[&a], int);
         assert_eq!(mappings[&b], int);
 
@@ -1423,7 +1431,8 @@ mod inference {
         let mut infer = Inference::new([t]);
         db.infer(five, t, &mut infer);
         let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
-        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        let mappings =
+            solver.argument_mappings(&mut db.arena, &db.builtins, &infer, &inferred, true);
         assert_eq!(mappings[&t], int);
         assert_eq!(
             solver.solve(&mut db.arena, &db.builtins, infer.clone())[&t],
@@ -1446,7 +1455,8 @@ mod inference {
         let mut infer = Inference::new([a, b]);
         infer.push(b, CandidateKind::Lower, a, Vec::new());
         let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
-        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        let mappings =
+            solver.argument_mappings(&mut db.arena, &db.builtins, &infer, &inferred, true);
         assert_eq!(mappings[&a], five);
     }
 
