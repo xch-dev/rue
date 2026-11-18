@@ -2783,3 +2783,57 @@ fn imports_of_reported_reexports_are_not_reported_again() {
         ]
     );
 }
+
+#[test]
+fn errors_in_other_imports_are_reported_once_after_reexports_are_reported() {
+    let compiled = compile(
+        "
+        import nothing::Y;
+        import X::Z;
+        import other::P;
+        import other::deep::Q;
+        import other::T;
+
+        mod other {
+            const P: Int = 1;
+            type T = Int;
+
+            mod deep {
+                export const Q: Int = 2;
+            }
+        }
+
+        const X: Int = 1;
+
+        export mod b {
+            export super::X;
+        }
+
+        mod c {
+            import super::b::X;
+
+            export fn f() -> Int {
+                X
+            }
+        }
+
+        fn main() -> Int {
+            c::f()
+        }
+        ",
+    );
+
+    // The imports are resolved again after the re-export is reported, which still reports the
+    // errors in the other imports, but only once
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:16 UndeclaredSymbol(\"nothing\")",
+            "3:16 SubpathNotSupported(\"X\")",
+            "4:23 PrivateSymbol(\"P\", \"other\")",
+            "5:23 PrivateSymbol(\"deep\", \"other\")",
+            "6:23 PrivateType(\"T\", \"other\")",
+            "20:27 PrivateReexport(\"X\")",
+        ]
+    );
+}

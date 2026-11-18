@@ -163,6 +163,8 @@ enum ImportError {
     PrivateType,
     /// An exported import re-exports a private item.
     PrivateReexport,
+    /// A segment of the path doesn't name a module.
+    UnresolvedPath,
     /// The name is already declared in the scope as a different symbol.
     DuplicateSymbol,
     /// The name is already declared in the scope as a different type.
@@ -410,8 +412,8 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
             .insert((import_id, ImportError::PrivateReexport), (name, kind));
     }
 
-    // The imports that found what's now exported private are resolved again, and reported again
-    // if they still find something private
+    // Every import is resolved again, so the errors for private items are cleared, and recorded
+    // again by the imports that still find something private.
     if exported {
         cache.errors.retain(|(_, error), _| {
             !matches!(
@@ -925,22 +927,12 @@ fn resolve_import(
 
     let mut base = None;
     let mut path_references = Vec::new();
-    let mut private_segments = Vec::new();
 
     // The path doesn't change once it's resolved, and looking it up again could find what the
     // import itself brought in, so it's only resolved once
     if let Some(cached) = cache.paths.get(&import_id) {
         base = Some(cached.scope);
         path_references.clone_from(&cached.references);
-
-        // A module that a reported re-export names is exported once it's reported (see
-        // `report_private_reexports`), so whether each segment is private is checked again
-        private_segments = (1..cached.symbols.len())
-            .filter(|&index| {
-                let parent = ctx.module(cached.symbols[index - 1]).scope;
-                !ctx.scope(parent).is_module_exported(cached.symbols[index])
-            })
-            .collect();
 
         for &(_, import, declaration) in &cached.references {
             ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
@@ -973,19 +965,12 @@ fn resolve_import(
                 segment_base,
                 Namespace::Module,
             ) {
-                Lookup::Found(module, via) => module.symbol().map(|module| {
-                    let exported = match segment_base {
-                        Base::Inner(scope) => ctx.scope(scope).is_module_exported(module),
-                        Base::Local(_) | Base::Member(_) => true,
-                    };
-
-                    (module, via, exported)
-                }),
+                Lookup::Found(module, via) => module.symbol().map(|module| (module, via)),
                 Lookup::Undetermined => return false,
                 Lookup::NotFound => None,
             };
 
-            let Some((symbol, via, exported)) = module else {
+            let Some((symbol, via)) = module else {
                 // A name that a failed import blocked where it's looked up has already been
                 // reported
                 let blocked = Namespace::ALL
@@ -1023,14 +1008,18 @@ fn resolve_import(
                             }
                         });
 
-                    ctx.diagnostic_name(
-                        name,
-                        if other {
-                            DiagnosticKind::SubpathNotSupported(name.text().to_string())
-                        } else {
-                            DiagnosticKind::UndeclaredSymbol(name.text().to_string())
-                        },
-                    );
+                    let kind = if other {
+                        DiagnosticKind::SubpathNotSupported(name.text().to_string())
+                    } else {
+                        DiagnosticKind::UndeclaredSymbol(name.text().to_string())
+                    };
+
+                    // The imports can be resolved again once every import is (see
+                    // `report_private_reexports`), so this is reported once
+                    cache
+                        .errors
+                        .entry((import_id, ImportError::UnresolvedPath))
+                        .or_insert_with(|| (name.clone(), kind));
                 }
                 return false;
             };
@@ -1046,10 +1035,6 @@ fn resolve_import(
 
             if diagnostics {
                 add_reference(ctx, &source, name, SyntaxItemKind::SymbolReference(symbol));
-            }
-
-            if !exported {
-                private_segments.push(index);
             }
 
             base = Some(ctx.module(symbol).scope);
@@ -1085,7 +1070,21 @@ fn resolve_import(
                 .or_insert_with(|| (import.path[index].clone(), via));
         }
 
-        for &index in &private_segments {
+        // A segment after the first names a module in the one before it, which might be private.
+        // This is checked each time, since a reported re-export of a private module exports it
+        // (see `report_private_reexports`).
+        let symbols = cache
+            .paths
+            .get(&import_id)
+            .map_or(&[][..], |path| &path.symbols);
+
+        for index in 1..symbols.len() {
+            let parent = ctx.module(symbols[index - 1]).scope;
+
+            if ctx.scope(parent).is_module_exported(symbols[index]) {
+                continue;
+            }
+
             cache
                 .errors
                 .entry((import_id, ImportError::PrivateModule(index)))
