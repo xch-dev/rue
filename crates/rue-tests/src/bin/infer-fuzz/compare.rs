@@ -8,10 +8,16 @@
 //! makes variants "not comparable" rather than changed.
 //!
 //! A variant **changes** when its status (inferred, rejected, unsound, slow or crashed), its
-//! output, or its first diagnostic differs. Outputs are only compared when both runs recorded them.
-//! A change is a **regression** when the variant was inferred and no longer is, or becomes
-//! unsound, slow or crashed. An explicit program that compiled and no longer does is a regression
-//! too, and its variants aren't compared.
+//! output, or its first diagnostic differs, a crash's first diagnostic being the first line of its
+//! panic message. Outputs are only compared when both runs recorded them. A change is a
+//! **regression** when the variant was inferred and no longer is, or becomes unsound, slow or
+//! crashed.
+//!
+//! An explicit program whose status changes is a change of its own, with the variant `explicit`.
+//! It's a regression if it compiled and no longer does, or newly crashes. When it compiles in only
+//! one of the runs, its variants can't be compared, but a variant of a newly compiling program
+//! that's unsound, slow or crashed is reported as a regression, with `none` as its before side.
+//! Seeds and variants that are only in one run, or whose source differs, count as not comparable.
 //!
 //! The report is meant to be diffed and read by scripts, so its format is kept stable:
 //!
@@ -27,16 +33,23 @@
 //!
 //! ## Changes
 //!
-//! - seed 42 `all` [regression]: Inferred -> Rejected: Cannot infer generic `T` for `f`; ... at 3:5
-//! - seed 57 `one` [diagnostic]: Rejected: <message> at 4:1 -> Rejected: <message> at 4:1
+//! - seed 42 `all` [regression]: "Inferred: 7" -> "Rejected: Cannot infer generic `T` for `f`; ... at 3:5"
+//! - seed 57 `one` [diagnostic]: "Rejected: ... at 4:1" -> "Rejected: ... at 4:1"
 //! ```
 //!
-//! Each change is one line: `- seed <seed> `<variant>` [<kind>]: <before> -> <after>`, sorted by
-//! seed and then variant. `<kind>` is `regression`, `status`, `output` or `diagnostic`, the first
-//! of them that applies. `<variant>` is `all`, `some`, `one`, or `explicit` for an explicit
-//! program that no longer compiles. Each side is the status, then `: ` and the first diagnostic
-//! with its position, the output, or the detail, when there is one. The command exits with status
-//! 1 if there are any regressions.
+//! Each change is one line, `- seed <seed> `<variant>` [<kind>]: <before> -> <after>`, sorted by
+//! seed, with the explicit program's change first and then the variants by name:
+//!
+//! - `<variant>` is `all`, `some`, `one`, or `explicit` for the explicit program.
+//! - `<kind>` is `regression`, `status`, `output` or `diagnostic`, the first of them that applies.
+//! - `<before>` and `<after>` are JSON strings, so they never contain a line break or an
+//!   unescaped `"`, and ` -> ` between them is the only one outside a string. Each is the status
+//!   (`Inferred`, `Rejected`, `Unsound`, `Slow`, `Crashed` for a variant; `Valid`, `Rejected`,
+//!   `Panicked`, `NoSites`, `TimedOut`, `Died` for an explicit program), then `: ` and the first
+//!   diagnostic with its position, the output, or the detail, if there is one. `<before>` is
+//!   `"none"` for a variant that only the new run has.
+//!
+//! The command exits with status 1 if there are any regressions.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -59,7 +72,12 @@ pub fn load(path: &Path) -> Result<Vec<SeedRecord>> {
     let text =
         fs::read_to_string(&file).with_context(|| format!("can't read {}", file.display()))?;
     text.lines()
-        .map(|line| Ok(serde_json::from_str(line)?))
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(index, line)| {
+            serde_json::from_str(line)
+                .with_context(|| format!("can't parse line {} of {}", index + 1, file.display()))
+        })
         .collect()
 }
 
@@ -98,7 +116,8 @@ pub struct Comparison {
     /// How many variants went from each category to each other one.
     pub transitions: BTreeMap<(Category, Category), usize>,
     pub changes: Vec<Change>,
-    /// Variants whose source differs between the runs, or whose seed is only in one of them.
+    /// Variants that are only in one run, whose source differs, or whose explicit program only
+    /// compiles in one run.
     pub not_comparable: usize,
 }
 
@@ -124,12 +143,30 @@ fn describe(outcome: &Outcome) -> String {
     }
 }
 
+fn describe_explicit(explicit: &Explicit) -> String {
+    match explicit {
+        Explicit::Valid { .. } => "Valid".to_string(),
+        Explicit::Rejected(diag) => format!("Rejected: {}", diag.located()),
+        Explicit::Panicked(message) => format!("Panicked: {message}"),
+        Explicit::NoSites => "NoSites".to_string(),
+        Explicit::TimedOut => "TimedOut".to_string(),
+        Explicit::Died(stderr) => format!("Died: {stderr}"),
+    }
+}
+
 fn is_regression(before: Category, after: Category) -> bool {
     (before == Category::Inferred && after != Category::Inferred)
         || (matches!(
             after,
             Category::Unsound | Category::Slow | Category::Crashed
         ) && after != before)
+}
+
+/// A crash's first diagnostic: the first line of its panic message, as `report::cluster_key` uses.
+fn first_crash_line(outcome: &Outcome) -> Option<&str> {
+    (outcome.category == Category::Crashed)
+        .then(|| outcome.detail.as_deref()?.lines().next())
+        .flatten()
 }
 
 /// What changed between the two outcomes of a variant, if anything.
@@ -140,7 +177,7 @@ fn change_kind(before: &Outcome, after: &Outcome) -> Option<ChangeKind> {
         Some(ChangeKind::Status)
     } else if before.output.is_some() && after.output.is_some() && before.output != after.output {
         Some(ChangeKind::Output)
-    } else if before.diag != after.diag {
+    } else if before.diag != after.diag || first_crash_line(before) != first_crash_line(after) {
         Some(ChangeKind::Diagnostic)
     } else {
         None
@@ -149,45 +186,95 @@ fn change_kind(before: &Outcome, after: &Outcome) -> Option<ChangeKind> {
 
 pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
     let mut comparison = Comparison::default();
-    let after: BTreeMap<u64, &SeedRecord> =
+    let before_seeds: BTreeMap<u64, &SeedRecord> =
+        before.iter().map(|record| (record.seed, record)).collect();
+    let after_seeds: BTreeMap<u64, &SeedRecord> =
         after.iter().map(|record| (record.seed, record)).collect();
 
-    for old in before {
-        let Some(new) = after.get(&old.seed) else {
+    // Seeds that are only in the new run
+    for (seed, new) in &after_seeds {
+        if !before_seeds.contains_key(seed) {
+            comparison.not_comparable += new.variants.len();
+        }
+    }
+
+    for (&seed, old) in &before_seeds {
+        let Some(new) = after_seeds.get(&seed) else {
             comparison.not_comparable += old.variants.len();
             continue;
         };
 
         if old.explicit_source != new.explicit_source {
-            comparison.not_comparable += old.variants.len();
+            comparison.not_comparable += old.variants.len() + new.variants.len();
             continue;
         }
 
-        // An explicit program that no longer compiles is a regression of its own, whatever its
-        // variants did
-        if matches!(old.explicit, Explicit::Valid { .. })
-            && !matches!(new.explicit, Explicit::Valid { .. })
-        {
+        let was_valid = matches!(old.explicit, Explicit::Valid { .. });
+        let is_valid = matches!(new.explicit, Explicit::Valid { .. });
+        let (before_explicit, after_explicit) = (
+            describe_explicit(&old.explicit),
+            describe_explicit(&new.explicit),
+        );
+
+        if before_explicit != after_explicit {
+            let crashes = matches!(new.explicit, Explicit::Panicked(_) | Explicit::Died(_))
+                && !matches!(old.explicit, Explicit::Panicked(_) | Explicit::Died(_));
+            let kind = if (was_valid && !is_valid) || crashes {
+                ChangeKind::Regression
+            } else if was_valid == is_valid
+                && std::mem::discriminant(&old.explicit) == std::mem::discriminant(&new.explicit)
+            {
+                ChangeKind::Diagnostic
+            } else {
+                ChangeKind::Status
+            };
             comparison.changes.push(Change {
-                seed: old.seed,
+                seed,
                 variant: "explicit".to_string(),
-                kind: ChangeKind::Regression,
-                before: "Valid".to_string(),
-                after: format!("{:?}", new.explicit),
+                kind,
+                before: before_explicit,
+                after: after_explicit,
             });
-            comparison.not_comparable += old.variants.len();
+        }
+
+        if !was_valid || !is_valid {
+            comparison.not_comparable += old.variants.len() + new.variants.len();
+
+            // Nothing to compare a newly compiling program's variants with, but they still
+            // mustn't be unsound, slow or crashed
+            for variant in &new.variants {
+                if is_regression(Category::Rejected, variant.outcome.category) {
+                    comparison.changes.push(Change {
+                        seed,
+                        variant: variant.name.clone(),
+                        kind: ChangeKind::Regression,
+                        before: "none".to_string(),
+                        after: describe(&variant.outcome),
+                    });
+                }
+            }
             continue;
+        }
+
+        let matching = |variant: &crate::report::VariantRecord,
+                        others: &[crate::report::VariantRecord]| {
+            others
+                .iter()
+                .position(|other| other.name == variant.name && other.source == variant.source)
+        };
+
+        for other in &new.variants {
+            if matching(other, &old.variants).is_none() {
+                comparison.not_comparable += 1;
+            }
         }
 
         for variant in &old.variants {
-            let Some(other) = new
-                .variants
-                .iter()
-                .find(|other| other.name == variant.name && other.source == variant.source)
-            else {
+            let Some(index) = matching(variant, &new.variants) else {
                 comparison.not_comparable += 1;
                 continue;
             };
+            let other = &new.variants[index];
 
             *comparison
                 .transitions
@@ -196,7 +283,7 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
 
             if let Some(kind) = change_kind(&variant.outcome, &other.outcome) {
                 comparison.changes.push(Change {
-                    seed: old.seed,
+                    seed,
                     variant: variant.name.clone(),
                     kind,
                     before: describe(&variant.outcome),
@@ -206,9 +293,16 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
         }
     }
 
-    comparison
-        .changes
-        .sort_by(|a, b| (a.seed, &a.variant).cmp(&(b.seed, &b.variant)));
+    comparison.changes.sort_by(|a, b| {
+        let key = |change: &Change| {
+            (
+                change.seed,
+                change.variant != "explicit",
+                change.variant.clone(),
+            )
+        };
+        key(a).cmp(&key(b))
+    });
     comparison
 }
 
@@ -254,14 +348,15 @@ impl Comparison {
         if !self.changes.is_empty() {
             let _ = writeln!(out, "\n## Changes\n");
             for change in &self.changes {
+                let quote = |text: &str| serde_json::to_string(text).expect("strings serialize");
                 let _ = writeln!(
                     out,
                     "- seed {} `{}` [{}]: {} -> {}",
                     change.seed,
                     change.variant,
                     change.kind.name(),
-                    change.before,
-                    change.after
+                    quote(&change.before),
+                    quote(&change.after)
                 );
             }
         }
