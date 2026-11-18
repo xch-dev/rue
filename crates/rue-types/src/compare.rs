@@ -252,9 +252,6 @@ pub(crate) struct ComparisonContext<'a> {
     /// The innermost union member in `choices` that the value is being compared with, which the
     /// bounds collected now are recorded under.
     local_branch: Option<BranchId>,
-    /// The lowest index in `stack` of a comparison in progress that has been revisited, since
-    /// `compare_member` last reset it.
-    revisited: usize,
     /// The lowest index in `instances` of an instance that a bound has been added to, since
     /// `compare_member` last reset it.
     bounded: usize,
@@ -429,19 +426,15 @@ impl ComparisonContext<'_> {
 
         // Only the bounds of the instances that already exist count, since those of an instance
         // created and checked within the member aren't collected again when a comparison is
-        // reused from the memo, and they don't depend on the member
+        // reused from the memo, and they don't depend on the member. A member that holds by
+        // assuming a comparison in progress gets the bounds that comparison puts on its instances
+        // (its summary), so it counts as bounded if they bound one of these, and otherwise holds
+        // the value whatever they are (see `Choices::mark_bounded`)
         let existing = self.instances.len();
-        // A member that only holds by assuming a comparison in progress that it started outside
-        // of could still bound the instances when that comparison finishes, so it counts as
-        // bounded, rather than holding the value whatever they are (see `Choices::mark_bounded`).
-        // Otherwise it would depend on whether a type is written so that it's revisited
-        let depth = self.stack.len();
-        let revisited = mem::replace(&mut self.revisited, usize::MAX);
         let outer_bounded = mem::replace(&mut self.bounded, usize::MAX);
         let result = compare(self);
-        let bounded = self.bounded < existing || self.revisited < depth;
+        let bounded = self.bounded < existing;
         self.bounded = self.bounded.min(outer_bounded);
-        self.revisited = self.revisited.min(revisited);
 
         self.local_branch = local_parent;
         self.branch = parent;
@@ -1269,8 +1262,6 @@ fn compare_impl_inner(
     let memoize = compare_memo_enabled() && !instances;
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
-        ctx.revisited = ctx.revisited.min(index);
-
         // In fixpoint mode, it's the least value in a single pass, or its approximation from the
         // previous round while iterating
         let value = if ctx.fixpoint {

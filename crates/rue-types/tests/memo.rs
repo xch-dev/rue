@@ -533,6 +533,38 @@ fn test_revisit_gets_summary() {
     });
 }
 
+/// `type N0 = fn<U>(p0: N1 | U, p1: fn(p0: U) -> nil) -> N0; type N1 = (N1, nil) | (N0, nil);`
+/// Returns `N0` twice.
+fn reflexive_through_member(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes { nil, .. } = db.builtins;
+    let n0 = db.declare_alias("N0", vec![]);
+    let n1 = db.declare_alias("N1", vec![]);
+    let u = db.generic();
+    let first = db.union(vec![n1, u]);
+    let second = db.function(vec![], vec![u], nil);
+    let function = db.function(vec![u], vec![first, second], n0);
+    db.define(n0, function);
+    let recursive = db.pair(n1, nil);
+    let outer = db.pair(n0, nil);
+    let body = db.union(vec![recursive, outer]);
+    db.define(n1, body);
+    (n0, n0)
+}
+
+/// Comparing `N1 | U'` with `N1 | U` (from the rigid `U'` of the other `N0`) holds the `N1` with
+/// the `N1` member, by revisiting `N0` against itself, which puts no bound on `U`. That member used
+/// to count as bounding `U` anyway, since it assumed a comparison in progress, which could have
+/// merged bounds into `U` when it finished. So `U ≥ N1` from the `U` member was checked against
+/// `U ≤ U'`, and `N0` wasn't assignable to itself in exact mode. A revisit puts its summary on the
+/// instances it's revisited with now, so whether a member bounds them is only whether it did.
+#[test]
+fn test_reflexive_through_member() {
+    with_large_stack(|| {
+        let results = in_every_mode(reflexive_through_member);
+        assert_eq!(results, [Comparison::Assign; 3]);
+    });
+}
+
 /// `type AL = (KL, fn<U>() -> (U, (U, KL))); type KL = (AL, nil);`
 /// `type AR = (KR, fn() -> (Bytes32, (Int, KR))); type KR = (AR, nil);`
 /// Returns `(AL, fn<U>(p: U) -> (U, KL))` and `(AR, fn(p: Int) -> (Int, KR))`.
