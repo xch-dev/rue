@@ -1,0 +1,5 @@
+diagnostics:
+- Undeclared symbol `nope` at failed_import_origins_z.rue:2:12
+- Unresolved import `X` at failed_import_origins_z.rue:8:22
+- Unresolved import `X` at failed_import_origins_z.rue:9:22
+- Undeclared symbol `Y` at failed_import_origins_z.rue:10:22
