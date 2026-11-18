@@ -455,7 +455,7 @@ impl Cache<Compiler> {
 
             // A module that `super` or `crate` names contains the code, so its private items and
             // a file's sibling modules can be used too.
-            let members = |namespace| {
+            let items = |namespace| {
                 if members {
                     self.ctx.module_members(scope, namespace)
                 } else {
@@ -465,11 +465,11 @@ impl Cache<Compiler> {
 
             let symbols = [Namespace::Value, Namespace::Module]
                 .into_iter()
-                .flat_map(members)
+                .flat_map(items)
                 .filter_map(|(name, item)| symbol_item(name, item))
                 .collect::<Vec<_>>();
 
-            let types = members(Namespace::Type)
+            let types = items(Namespace::Type)
                 .into_iter()
                 .filter_map(|(name, item)| Some((name, item.ty()?)))
                 .collect::<Vec<_>>();

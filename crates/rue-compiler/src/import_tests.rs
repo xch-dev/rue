@@ -977,6 +977,70 @@ fn crate_refers_to_the_file_of_a_single_file_program() {
 }
 
 #[test]
+fn crate_at_the_top_of_a_single_file_does_not_reach_the_prelude() {
+    // At the top level of a single file, `crate` names the scope the code is in, but it's still
+    // only the file's own items (and imports): the prelude around the file isn't searched
+    let compiled = compile(
+        "
+        import crate::Int;
+        import crate::sha256;
+        import crate::LOCAL;
+        export crate::helper;
+
+        type Alias = crate::Int;
+        type Local = crate::Number;
+        type Number = Int;
+
+        const LOCAL: Int = 1;
+        const HASH: Bytes32 = crate::sha256(1);
+        const VALUE: Local = crate::LOCAL + crate::helper();
+
+        fn helper() -> Int {
+            1
+        }
+
+        fn main() -> Int {
+            VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:23 UnresolvedImport(\"Int\")",
+            "3:23 UnresolvedImport(\"sha256\")",
+            "7:29 UndeclaredType(\"Int\")",
+            "12:38 UndeclaredSymbol(\"sha256\")",
+        ]
+    );
+    assert_eq!(compiled.type_origin("Local"), "(root)");
+}
+
+#[test]
+fn glob_imports_of_crate_at_the_top_of_a_single_file_do_not_bring_in_the_prelude() {
+    // `import crate::*` at the top of the file imports the file into itself, which brings in
+    // nothing new, and in particular nothing from the prelude, which is still found as usual
+    let compiled = compile(
+        "
+        import crate::*;
+
+        const LOCAL: Int = 1;
+
+        fn main() -> Int {
+            LOCAL
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_origins("main", "LOCAL"),
+        ["`LOCAL`: (root)"]
+    );
+}
+
+#[test]
 fn crate_paths_into_other_modules_need_their_items_to_be_exported() {
     // Through `crate`, an item inside another module is reached the same way as through `super`
     // or the module's name, so it has to be exported, even from a module that the path is in

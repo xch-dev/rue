@@ -130,6 +130,38 @@ export fn greet(name: String) -> String {
 }
 
 #[test]
+fn test_definition_through_crate() {
+    // A path through `crate` reaches the same items as one through the files' names
+    check_definitions(
+        &[
+            (
+                "main.rue",
+                r#"
+mod inner {
+    export fn value() -> Int {
+        crate::utils::ON$0E
+    }
+}
+"#,
+            ),
+            ("utils.rue", "export const ONE: Int = 1;\n"),
+        ],
+        expect![[r#"
+            utils.rue:0:13-0:16
+        "#]],
+    );
+    check_definitions(
+        &[
+            ("main.rue", "import crate::util$0s::ONE;\n"),
+            ("utils.rue", "export const ONE: Int = 1;\n"),
+        ],
+        expect![[r#"
+            utils.rue:0:0-1:0
+        "#]],
+    );
+}
+
+#[test]
 fn test_definition_file_module() {
     check_definitions(
         &[

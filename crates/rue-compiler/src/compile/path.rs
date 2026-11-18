@@ -195,7 +195,6 @@ where
             base_scope = ctx.module(module).scope;
             path_completion_module = Some(module);
             from_parent = true;
-            allow_super = true;
 
             ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
             last_prefix = Some((name, true));
