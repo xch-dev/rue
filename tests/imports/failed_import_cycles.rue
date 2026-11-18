@@ -1,0 +1,38 @@
+import A::B;
+import B::A;
+import C::C;
+import D::E;
+import E::I;
+import F::G;
+import G::H;
+import H::F;
+import c::X::X;
+import nope::D;
+
+mod c {
+    import super::X;
+}
+
+mod a {
+    import super::b::Y;
+    import super::b::Z;
+
+    export fn f() -> Int {
+        Y + Z
+    }
+}
+
+mod b {
+    import super::a::Y;
+    import nope::Z;
+
+    export fn g() -> Int {
+        Y + Z
+    }
+}
+
+// An import that fails at a name blocked by another failed import isn't reported again, unless
+// that import only failed because of it, which happens in a cycle. The uses aren't reported again.
+fn main() -> Int {
+    A + B + C + D + E + F + G + H + I + X + a::f() + b::g()
+}

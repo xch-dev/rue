@@ -1,0 +1,13 @@
+diagnostics:
+- Undeclared symbol `A` at failed_import_cycles.rue:1:8
+- Undeclared symbol `B` at failed_import_cycles.rue:2:8
+- Undeclared symbol `C` at failed_import_cycles.rue:3:8
+- Undeclared symbol `F` at failed_import_cycles.rue:6:8
+- Undeclared symbol `G` at failed_import_cycles.rue:7:8
+- Undeclared symbol `H` at failed_import_cycles.rue:8:8
+- Undeclared symbol `X` at failed_import_cycles.rue:9:11
+- Undeclared symbol `nope` at failed_import_cycles.rue:10:8
+- Unresolved import `X` at failed_import_cycles.rue:13:19
+- Unresolved import `Y` at failed_import_cycles.rue:17:22
+- Unresolved import `Y` at failed_import_cycles.rue:26:22
+- Undeclared symbol `nope` at failed_import_cycles.rue:27:12

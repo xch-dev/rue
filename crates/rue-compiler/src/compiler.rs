@@ -576,14 +576,25 @@ impl Compiler {
     /// Whether looking up a name in a namespace from a scope stops at a scope that blocks the
     /// name, rather than finding it or reaching the outermost scope.
     pub fn is_blocked_in(&self, scope: ScopeId, namespace: Namespace, name: &str) -> bool {
+        self.block_origin_in(scope, namespace, name).is_some()
+    }
+
+    /// The origin of the block that looking up a name in a namespace from a scope stops at, if it
+    /// stops at a scope that blocks the name (see [`Self::is_blocked_in`] and [`Scope::block`]).
+    pub fn block_origin_in(
+        &self,
+        scope: ScopeId,
+        namespace: Namespace,
+        name: &str,
+    ) -> Option<ImportId> {
         self.lookup_in(scope, |_, scope| {
             if scope.item(namespace, name).is_some() {
-                Some(false)
+                Some(None)
             } else {
-                scope.is_blocked(namespace, name).then_some(true)
+                scope.block_origin(namespace, name).map(Some)
             }
         })
-        .unwrap_or(false)
+        .flatten()
     }
 
     /// The first result of `find` in a scope and then each enclosing scope.

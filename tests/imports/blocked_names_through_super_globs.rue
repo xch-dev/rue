@@ -1,5 +1,7 @@
+import m::Missing;
 import m::missing;
 import m::secret;
+import nope::Nope;
 import nope::X;
 
 mod m {
@@ -41,10 +43,16 @@ mod a {
             }
         }
 
+        // The signatures are resolved between the two runs of import resolution
+        fn s(value: Missing) -> Nope {
+            value
+        }
+
         export fn g() -> Int {
             secret
                 + X
                 + missing
+                + s(1)
                 + super::X
                 + super::super::missing
                 + c::h()

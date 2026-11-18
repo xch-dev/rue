@@ -148,13 +148,11 @@ pub struct ImportCache {
     /// import is resolved.
     imported_names: IndexMap<(ImportId, Declaration), (Name, ImportId)>,
 
-    /// The import whose failure each blocked name (see [`Scope::block`]) comes from, by the scope
-    /// and namespace it's blocked in.
-    block_origins: HashMap<(ScopeId, Namespace, String), ImportId>,
-    /// The imports whose path failed at a name that's blocked where it's looked up, with the
-    /// import that the block comes from. Their errors aren't reported, unless that import's
-    /// failure is only reported through them (see [`path_error_is_reported`]).
-    blocked_paths: HashMap<ImportId, ImportId>,
+    /// The imports that failed at a name that's blocked where they looked it up (a segment of the
+    /// path, or the imported name), with the import whose failure the block comes from (see
+    /// [`Scope::block`]). Their errors are only reported if that one's isn't (see
+    /// [`failure_is_reported`]).
+    blocked_imports: HashMap<ImportId, ImportId>,
 }
 
 /// An error in an import, which is reported once all imports are resolved.
@@ -315,28 +313,21 @@ pub fn resolve_imports(
             // imports are resolved again until nothing new is blocked.
             let mut blocked = false;
 
-            for failed in resolution.failed_names.drain(..) {
-                blocked |= block(ctx, cache, failed);
-            }
-
             // A name that's still missing fails its import too
-            for &(scope, import) in &imports {
-                let Some(names) = missing_imports.get(&import) else {
-                    continue;
-                };
+            let missing = imports.iter().flat_map(|&(scope, import)| {
+                missing_imports
+                    .get(&import)
+                    .into_iter()
+                    .flat_map(IndexMap::keys)
+                    .flat_map(move |name| FailedName::all(scope, name, import))
+            });
 
-                for name in names.keys() {
-                    for namespace in Namespace::ALL {
-                        let name = name.clone();
-                        let failed = FailedName {
-                            scope,
-                            namespace,
-                            name,
-                            origin: import,
-                        };
-                        blocked |= block(ctx, cache, failed);
-                    }
-                }
+            for failed in resolution
+                .failed_names
+                .drain(..)
+                .chain(missing.collect::<Vec<_>>())
+            {
+                blocked |= block(ctx, failed);
             }
 
             if blocked {
@@ -354,7 +345,11 @@ pub fn resolve_imports(
     }
 
     if diagnostics {
-        for missing_imports in missing_imports.into_values() {
+        for (import, missing_imports) in missing_imports {
+            if !failure_is_reported(cache, import) {
+                continue;
+            }
+
             for name in missing_imports.into_values() {
                 ctx.diagnostic_name(
                     &name,
@@ -364,10 +359,8 @@ pub fn resolve_imports(
         }
 
         for (&(import, error), (name, kind)) in &cache.errors {
-            // A path that failed at a blocked name has already been reported where the name's
-            // own import failed
             if matches!(error, ImportError::UnresolvedPath(_))
-                && !path_error_is_reported(cache, import)
+                && !failure_is_reported(cache, import)
             {
                 continue;
             }
@@ -407,49 +400,42 @@ struct FailedName {
     scope: ScopeId,
     namespace: Namespace,
     name: String,
-    /// The import whose failure is reported for the name: the one that failed, or for a name that
-    /// another block passed on, the import that block comes from.
+    /// The import that failed, or for a name that a glob import passes on, the origin of the
+    /// block it passes on.
     origin: ImportId,
 }
 
+impl FailedName {
+    /// The name failed by an import in every namespace.
+    fn all(scope: ScopeId, name: &str, origin: ImportId) -> impl Iterator<Item = Self> {
+        Namespace::ALL.into_iter().map(move |namespace| Self {
+            scope,
+            namespace,
+            name: name.to_string(),
+            origin,
+        })
+    }
+}
+
 /// Blocks a failed name, unless the scope has an item with it. Returns whether it's newly blocked.
-fn block(ctx: &mut Compiler, cache: &mut ImportCache, failed: FailedName) -> bool {
+fn block(ctx: &mut Compiler, failed: FailedName) -> bool {
     let scope = ctx.scope_mut(failed.scope);
 
-    if scope.item(failed.namespace, &failed.name).is_some()
-        || !scope.block(failed.namespace, failed.name.clone())
-    {
-        return false;
-    }
-
-    cache
-        .block_origins
-        .insert((failed.scope, failed.namespace, failed.name), failed.origin);
-    true
+    scope.item(failed.namespace, &failed.name).is_none()
+        && scope.block(failed.namespace, failed.name, failed.origin)
 }
 
-/// The import whose failure a block of a name in a scope comes from, if it's blocked.
-fn block_origin(
-    block_origins: &HashMap<(ScopeId, Namespace, String), ImportId>,
-    scope: ScopeId,
-    namespace: Namespace,
-    name: &str,
-) -> Option<ImportId> {
-    block_origins
-        .get(&(scope, namespace, name.to_string()))
-        .copied()
-}
-
-/// Whether the error of an import whose path failed is reported. It isn't if the path failed at a
-/// name that's blocked because of another import whose failure is reported. Following the imports
-/// that the blocks come from ends at such an import, or at a cycle of imports whose paths failed
-/// at each other's names, whose errors are all reported, since nothing else is.
-fn path_error_is_reported(cache: &ImportCache, import: ImportId) -> bool {
+/// Whether an import's failure is reported. It isn't if it failed at a name that's blocked
+/// because of another import whose failure is reported, so that it isn't reported twice.
+/// Following the imports that the blocks come from ends either at an import that didn't fail
+/// because of a block, whose failure is reported, or at a cycle of imports that failed because of
+/// each other's blocks, whose failures are all reported, since nothing else is.
+fn failure_is_reported(cache: &ImportCache, import: ImportId) -> bool {
     let mut visited = HashSet::new();
     let mut current = import;
 
     while visited.insert(current)
-        && let Some(&origin) = cache.blocked_paths.get(&current)
+        && let Some(&origin) = cache.blocked_imports.get(&current)
     {
         current = origin;
     }
@@ -594,29 +580,12 @@ fn brings_in(
     }
 }
 
-/// The import whose failure a block of a name comes from, if the name is blocked where a segment of
-/// a path looks it up: in the first scope that has the name or blocks it, for a local lookup.
-fn segment_block_origin(
-    ctx: &Compiler,
-    cache: &ImportCache,
-    base: Base,
-    name: &str,
-) -> Option<ImportId> {
-    Namespace::ALL.into_iter().find_map(|namespace| {
-        let scope = match base {
-            Base::Local(scope) => ctx
-                .lookup_in(scope, |id, scope| {
-                    if scope.item(namespace, name).is_some() {
-                        Some(None)
-                    } else {
-                        scope.is_blocked(namespace, name).then_some(Some(id))
-                    }
-                })
-                .flatten()?,
-            Base::Member(scope) | Base::Inner(scope) => scope,
-        };
-
-        block_origin(&cache.block_origins, scope, namespace, name)
+/// The origin of the block of a name where an import looks it up, in any namespace, if it's
+/// blocked there (see [`Scope::block`]).
+fn block_origin_at(ctx: &Compiler, base: Base, name: &str) -> Option<ImportId> {
+    Namespace::ALL.into_iter().find_map(|namespace| match base {
+        Base::Local(scope) => ctx.block_origin_in(scope, namespace, name),
+        Base::Member(scope) | Base::Inner(scope) => ctx.scope(scope).block_origin(namespace, name),
     })
 }
 
@@ -1065,22 +1034,19 @@ fn resolve_import(
                 // The import failed, so the name it brings in is blocked, and its uses aren't
                 // reported again
                 if let Items::Named(item) = &import.items {
-                    for namespace in Namespace::ALL {
-                        resolution.failed_names.push(FailedName {
-                            scope: import_scope,
-                            namespace,
-                            name: item.text().to_string(),
-                            origin: import_id,
-                        });
-                    }
+                    resolution.failed_names.extend(FailedName::all(
+                        import_scope,
+                        item.text(),
+                        import_id,
+                    ));
                 }
 
                 // A name that a failed import blocked where it's looked up has already been
-                // reported there, unless the import that blocked it only failed because of this
-                // one. The name may only be blocked in a later pass, through `super`, so the
-                // error is recorded and only reported once the imports are resolved.
-                if let Some(origin) = segment_block_origin(ctx, cache, segment_base, name.text()) {
-                    cache.blocked_paths.entry(import_id).or_insert(origin);
+                // reported there, unless that import only failed because of this one. The name
+                // may only be blocked in a later pass, through `super`, so the error is recorded
+                // and only reported once the imports are resolved.
+                if let Some(origin) = block_origin_at(ctx, segment_base, name.text()) {
+                    cache.blocked_imports.entry(import_id).or_insert(origin);
                 }
 
                 if diagnostics {
@@ -1231,18 +1197,12 @@ fn resolve_import(
 
                     // A name that a failed import blocked in the module has already been
                     // reported, so it's blocked here too, unless something else brings it in
-                    for name in ctx.scope(source_scope).blocked(namespace) {
+                    for (name, origin) in ctx.scope(source_scope).blocked(namespace) {
                         resolution.failed_names.push(FailedName {
                             scope: import_scope,
                             namespace,
                             name: name.to_string(),
-                            origin: block_origin(
-                                &cache.block_origins,
-                                source_scope,
-                                namespace,
-                                name,
-                            )
-                            .expect("a blocked name has an origin"),
+                            origin,
                         });
                     }
 
@@ -1446,28 +1406,24 @@ fn resolve_import(
                     resolution.bound.insert(import_id);
                 }
 
-                // A name that a failed import blocked in the module that `super` names has
-                // already been reported
-                if let Base::Member(scope) = lookup_base
-                    && found.is_empty()
-                {
-                    for namespace in Namespace::ALL {
-                        if let Some(origin) =
-                            block_origin(&cache.block_origins, scope, namespace, name)
-                        {
-                            missing_imports.shift_remove(name);
-                            resolution.failed_names.push(FailedName {
-                                scope: import_scope,
-                                namespace,
-                                name: name.to_string(),
-                                origin,
-                            });
-                        }
-                    }
-                }
-
                 found
             };
+
+            // A name that a failed import blocked in the module it's imported from has already
+            // been reported there, unless that import only failed because of this one. The name
+            // is still missing, so it's blocked here too.
+            let from = match (base, lookup_base) {
+                (Some(base), _) => Some(Base::Inner(base)),
+                (None, Base::Member(_)) => Some(lookup_base),
+                (None, Base::Local(_) | Base::Inner(_)) => None,
+            };
+
+            if found.is_empty()
+                && missing_imports.contains_key(name)
+                && let Some(origin) = from.and_then(|from| block_origin_at(ctx, from, name))
+            {
+                cache.blocked_imports.entry(import_id).or_insert(origin);
+            }
 
             // This is recorded in every pass, since an import of a name with no path finds its own
             // binding once it has been resolved. The import that it's found through is used by
