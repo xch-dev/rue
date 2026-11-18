@@ -1,0 +1,277 @@
+// The callee's generics in a recursive call are renamed to fresh ones, so that they're inferred
+// separately from the caller's generics with the same ids (#334)
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    // `A` is inferred as `Int` and `B` as `(Int, Int)`, as in a call from outside of `map`
+    let _inner: (Int, Int) = map(duplicate, 1);
+    function(value)
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+test fn issue_case() -> (Int, Int) {
+    map(duplicate, 42)
+}
+
+fn map_nested<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    let _inner: ((Int, Int), (Int, Int)) = map_nested(duplicate, map_nested(duplicate, 1));
+    function(value)
+}
+
+test fn nested_recursive_calls() -> (Int, Int) {
+    map_nested(duplicate, 7)
+}
+
+fn optional<T>(value: T) -> T | nil {
+    value
+}
+
+fn map_union<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    let _inner: Int | nil = map_union(optional, 5);
+    function(value)
+}
+
+test fn union_return_type() -> Int {
+    map_union(fn(value: Int) => value * 2, 21)
+}
+
+fn map_literal<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    // The callee's `A` is inferred from the literal (the errors snapshot checks that it's widened)
+    let (first, second) = map_literal(duplicate, 5);
+    let _sum: Int = first + second;
+    function(value)
+}
+
+test fn literal_argument() -> Int {
+    map_literal(fn(value: Int) => value, 3)
+}
+
+fn forward<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    // `map` isn't `forward`, so its generics aren't in scope and aren't renamed
+    let _inner: (Int, Int) = map(duplicate, 2);
+    let _again: (Int, Int) = forward(duplicate, 3);
+    map(function, value)
+}
+
+test fn through_several_layers() -> (Int, Int) {
+    forward(duplicate, 6)
+}
+
+fn count_down<T>(value: T, depth: Int) -> T {
+    // Guard: the caller's `T` is passed through, and `T` is inferred as it
+    if depth == 0 {
+        value
+    } else {
+        count_down(value, depth - 1)
+    }
+}
+
+test fn guard_passed_through() -> Int {
+    count_down(10, 3)
+}
+
+fn swap<A, B>(depth: Int, first: A, second: B) -> (B, A) {
+    // Guard: the callee's `A` is the caller's `B` and its `B` the caller's `A`
+    if depth == 0 {
+        (second, first)
+    } else {
+        let (a, b) = swap(depth - 1, second, first);
+        (b, a)
+    }
+}
+
+test fn guard_swapped() -> (Int, Bytes) {
+    swap(3, "x", 1)
+}
+
+fn apply_recursive<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
+    // Guard: the lambda's parameter type is the caller's `A`, which the callee's is inferred as
+    if depth == 0 {
+        function(value)
+    } else {
+        apply_recursive(fn(x) => function(x), value, depth - 1)
+    }
+}
+
+test fn guard_lambda() -> Int {
+    apply_recursive(fn(value: Int) => value + 1, 1, 2)
+}
+
+fn from_expected<T>(depth: Int) -> T {
+    // Guard: only the type expected of the call, the caller's `T`, constrains the callee's `T`
+    if depth == 0 {
+        unchecked_cast(5)
+    } else {
+        from_expected(depth - 1)
+    }
+}
+
+test fn guard_from_expected_type() -> Int {
+    from_expected(2)
+}
+
+fn unconstrained<T>(depth: Int) -> (T, Int) {
+    if depth == 0 {
+        unchecked_cast((8, 0))
+    } else {
+        // Guard: nothing constrains the callee's `T`, so it stays the caller's `T`, as before
+        let result = unconstrained(depth - 1);
+        (result.first, depth)
+    }
+}
+
+test fn guard_unconstrained() -> Int {
+    let result: (Int, Int) = unconstrained(2);
+    result.first + result.rest
+}
+
+fn explicit<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
+    if depth == 0 {
+        function(value)
+    } else {
+        // Guard: explicit generic arguments are used as they are
+        let inner = explicit::<Int, (Int, Int)>(duplicate, 1, 0);
+        let _sum: Int = inner.first + inner.rest;
+        explicit(function, value, depth - 1)
+    }
+}
+
+test fn guard_explicit_generic_arguments() -> Int {
+    explicit(fn(value: Int) => value, 4, 1)
+}
+
+fn map_caller<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    // Guard: `duplicate`'s `T` is instantiated as the callee's `A`, which is inferred as the
+    // caller's `A`, so `B` is the caller's `(A, A)`
+    let _pair: (A, A) = map_caller(duplicate, value);
+    function(value)
+}
+
+test fn guard_instantiated_as_the_callers_generic() -> Int {
+    map_caller(fn(value: Int) => value + 1, 41)
+}
+
+fn only_function<A, B>(_function: fn(a: A) -> B, depth: Int) -> B {
+    if depth == 0 {
+        unchecked_cast((1, 1))
+    } else {
+        // Guard: nothing infers the callee's `A`, so `B`, which is `(A, A)` through `duplicate`,
+        // is the caller's `(A, A)`, as before
+        let pair: (A, A) = only_function(duplicate, depth - 1);
+        unchecked_cast(pair)
+    }
+}
+
+test fn guard_uninferred_inside_another_mapping() -> Int {
+    let pair = only_function::<Int, (Int, Int)>(duplicate, 1);
+    pair.first + pair.rest
+}
+
+fn lambda_first<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
+    if depth == 0 {
+        function(value)
+    } else {
+        // Guard: the lambda is compiled last, so the callee's `A` isn't inferred yet when the
+        // second argument is, and its expected type is the caller's `A`, as before
+        lambda_first(fn(x) => function(x), unchecked_cast(value), depth - 1)
+    }
+}
+
+test fn guard_argument_expected_type() -> Int {
+    lambda_first(fn(value: Int) => value * 3, 5, 1)
+}
+
+fn held<A, B>(_value: (A, Int) | B, other: B, depth: Int) -> B {
+    if depth == 0 {
+        return other;
+    }
+
+    // Guard: the caller's `(A, Int)` already fits the union's `(A, Int)` member, since the callee's
+    // `A` was the caller's before it was renamed, so `B` is only inferred from `5`, as before
+    let pair: (A, Int) = unchecked_cast(other);
+    let result = held(pair, 5, depth - 1);
+    unchecked_cast(result + 1)
+}
+
+test fn guard_held_by_a_union_member() -> Int {
+    held::<Int, Int>(1, 2, 2)
+}
+
+fn held_nil<A, B>(_value: (A, Int) | B, other: B, depth: Int) -> B {
+    if depth == 0 {
+        return other;
+    }
+
+    // Guard: as above, `B` is only inferred from `nil`, so the result can be compared to it
+    let pair: (A, Int) = unchecked_cast(other);
+    let result = held_nil(pair, nil, depth - 1);
+
+    if result == nil {
+        other
+    } else {
+        unchecked_cast(result)
+    }
+}
+
+test fn guard_held_by_a_union_member_nil() -> Int {
+    held_nil::<Int, Int>(1, 2, 2)
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn expected_bound<A, B>(function: fn(x: A) -> B, value: A, other: B, depth: Int) -> (A, B) {
+    if depth > 0 {
+        // Guard: the expected type's `A | 5` isn't passed on to the callee's `A` through `B`, so
+        // `B` is `A | 5`, as before
+        let (first, _): (A, A | 5) = expected_bound(identity, value, 5, depth - 1);
+        return (first, other);
+    }
+
+    (value, function(value))
+}
+
+test fn guard_expected_bound_not_passed_on() -> (Int, Int) {
+    expected_bound(identity, 1, 2, 3)
+}
+
+fn upper_bound<A, B>(function: fn(x: A) -> B, sink: fn(x: B) -> Int, value: A, depth: Int) -> A {
+    if depth > 0 {
+        // Guard: the lambda's `A | nil` isn't passed on to the callee's `A` through `B`, so it's
+        // still the caller's `A`, as before
+        let lambda = fn(_x: A | nil) => 1;
+        let result: A = upper_bound(identity, lambda, value, depth - 1);
+        return result;
+    }
+
+    let _ = sink(function(value));
+    value
+}
+
+test fn guard_upper_bound_not_passed_on() -> Int {
+    upper_bound(identity, fn(x: Int) => x, 1, 3)
+}
+
+fn lambda_order<A, B>(
+    function: fn(a: A) -> B,
+    _value: B,
+    sink: fn(b: B) -> Int,
+    other: A,
+    depth: Int,
+) -> Int {
+    if depth == 0 {
+        return sink(function(other));
+    }
+
+    // Guard: the callee's `B` is inferred as the caller's `A`, which was the callee's own `A`
+    // before it was renamed, so the second lambda still waits for the first, which makes `B`
+    // `A | 5` before it's compiled, as before
+    lambda_order(fn(_v: A) => 5, other, fn(_v) => 0, other, depth - 1)
+}
+
+test fn guard_lambda_order() -> Int {
+    lambda_order(fn(v: Int) => v, 1, fn(v) => v, 2, 1)
+}

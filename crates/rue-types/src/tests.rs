@@ -1601,22 +1601,6 @@ mod inference {
     }
 
     #[test]
-    fn doesnt_expand_lower_bounds_through_generics_in_scope() {
-        let mut db = Db::new();
-        let (a, b) = (db.generic("A"), db.generic("B"));
-        let five = db.literal(AtomSemantic::Int, &[5]);
-
-        // `A` is the caller's own generic, so `B`'s candidate `A` isn't expanded through it and
-        // doesn't satisfy the bound
-        let mut infer = Inference::new([a, b]);
-        infer.set_in_scope(a);
-        db.infer(a, b, &mut infer);
-        add_expected(&mut db, &[a, b], b, five, &mut infer);
-        assert_eq!(candidates(&infer, a).upper, vec![]);
-        assert_eq!(candidates(&infer, b).upper, vec![]);
-    }
-
-    #[test]
     fn skips_union_members_held_by_others() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);
@@ -1797,14 +1781,14 @@ mod inference {
     }
 
     #[test]
-    fn leaves_upper_bounded_instances_in_lower_candidates() {
+    fn instantiates_upper_bounded_instances_in_lower_candidates_as_never() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);
         let b = db.generic("B");
         let mut infer = Inference::new([b]);
 
         // `fn<T>(g: fn(x: T) -> nil) -> (T, T)` to `fn(g: fn(x: Int) -> nil) -> B`, where `T` is
-        // only bounded from above, so the least instantiation isn't known
+        // only bounded from above, so its least instantiation is `Never` (#339)
         let t = db.generic("T");
         let ret = db.pair(t, t);
         let callback = db.function(&[t], nil);
@@ -1812,39 +1796,55 @@ mod inference {
         let sink = db.function(&[int], nil);
         let param = db.function(&[sink], b);
         assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
-        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(Never, Never)");
     }
 
     #[test]
-    fn leaves_lower_bounded_instances_in_upper_candidates() {
+    fn instantiates_lower_bounded_instances_in_upper_candidates_as_any() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);
         let a = db.generic("A");
         let mut infer = Inference::new([a]);
 
         // `fn<T>(x: (T, T), y: T) -> nil` to `fn(a: A, b: Int) -> nil`, where `T` is only bounded
-        // from below, so the greatest instantiation isn't known
+        // from below, so its greatest instantiation is `Any` (#339)
         let t = db.generic("T");
         let pair = db.pair(t, t);
         let function = db.function_with(&[t], &[pair, t], true, nil);
         let param = db.function(&[a, int], nil);
         assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
-        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(T, T)");
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(Any, Any)");
     }
 
     #[test]
-    fn leaves_unconstrained_instances_in_candidates() {
+    fn instantiates_unconstrained_instances_in_lower_candidates_as_never() {
         let mut db = Db::new();
         let b = db.generic("B");
         let mut infer = Inference::new([b]);
 
-        // `fn<T>() -> (T, T)` to `fn() -> B`, where nothing constrains `T`
+        // `fn<T>() -> (T, T)` to `fn() -> B`, where nothing constrains `T` (#339)
         let t = db.generic("T");
         let ret = db.pair(t, t);
         let pairs = db.function_with(&[t], &[], true, ret);
         let param = db.function(&[], b);
         assert_eq!(db.infer(pairs, param, &mut infer), Comparison::Assign);
-        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(T, T)");
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(Never, Never)");
+    }
+
+    #[test]
+    fn instantiates_unconstrained_instances_in_upper_candidates_as_any() {
+        let mut db = Db::new();
+        let nil = db.builtins.nil;
+        let a = db.generic("A");
+        let mut infer = Inference::new([a]);
+
+        // `fn<T>(x: (T, T)) -> nil` to `fn(a: A) -> nil`, where nothing constrains `T` (#339)
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let ignore = db.function_with(&[t], &[pair], true, nil);
+        let param = db.function(&[a], nil);
+        assert_eq!(db.infer(ignore, param, &mut infer), Comparison::Assign);
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(Any, Any)");
     }
 
     #[test]
@@ -1965,6 +1965,55 @@ mod inference {
     }
 
     #[test]
+    fn renamed_generics_compare_as_the_original() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, renamed, b) = (db.generic("A"), db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([renamed, b]);
+        infer.rename(renamed, a);
+
+        // `A` to the generic renamed from it, as in a recursive call, holds without a candidate
+        assert_eq!(db.infer(a, renamed, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, renamed), InferenceCandidates::default());
+
+        // `(A, Int)` already fits the union's `(A, Int)` member, so it's only held for `B`
+        let pair = db.pair(a, int);
+        let member = db.pair(renamed, int);
+        let param = db.union(&[member, b]);
+        assert_eq!(db.infer(pair, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, b).lower, vec![]);
+        let held = &candidates(&infer, b).held;
+        assert_eq!(held.len(), 1);
+        assert_eq!(db.name(held[0]), "(A, Int)");
+
+        // A generic that wasn't renamed from `A` is still inferred from it
+        let mut infer = Inference::new([renamed]);
+        assert_eq!(db.infer(a, renamed, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, renamed).lower, vec![a]);
+    }
+
+    #[test]
+    fn renamed_generics_dont_take_passed_bounds() {
+        let mut db = Db::new();
+        let (a, renamed, b) = (db.generic("A"), db.generic("A"), db.generic("B"));
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `B`'s candidate is the generic renamed from `A`, which doesn't take `B`'s bound, as `A`
+        // didn't when the two were the same generic
+        let mut infer = Inference::new([renamed, b]);
+        infer.rename(renamed, a);
+        db.infer(renamed, b, &mut infer);
+        add_expected(&mut db, &[renamed, b], b, five, &mut infer);
+        assert_eq!(candidates(&infer, renamed).upper, vec![]);
+
+        // But it's still resolved through
+        let int = db.builtins.int;
+        assert_eq!(db.infer(int, renamed, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
     fn unconstrained_cycles_are_left_as_is() {
         let mut db = Db::new();
         let (a, b) = (db.generic("A"), db.generic("B"));
@@ -1974,21 +2023,6 @@ mod inference {
 
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(mappings[&a], b);
-        assert_eq!(mappings[&b], a);
-    }
-
-    #[test]
-    fn generics_in_scope_are_not_resolved_through() {
-        let mut db = Db::new();
-        let int = db.builtins.int;
-        let (a, b) = (db.generic("A"), db.generic("B"));
-        let mut infer = Inference::new([a, b]);
-        infer.set_in_scope(a);
-        infer_map_identity(&mut db, a, b, &mut infer);
-
-        // `A` is the caller's own generic, as in a recursive call
-        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
-        assert_eq!(mappings[&a], int);
         assert_eq!(mappings[&b], a);
     }
 }

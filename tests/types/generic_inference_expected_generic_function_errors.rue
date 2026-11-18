@@ -1,0 +1,51 @@
+// A generic function type expected of a call still rejects functions that don't fit it, and only
+// generalizes the generics that no parameter depends on (#340)
+
+fn make_from_int<B>() -> fn(a: Int) -> B {
+    unchecked_cast(nil)
+}
+
+fn make_with<A, B>(_value: B) -> fn(a: A) -> B {
+    unchecked_cast(nil)
+}
+
+fn make_with_nil<A, B>() -> fn(a: A) -> (B, nil) {
+    unchecked_cast(nil)
+}
+
+fn make_binary_with_nil<A, B, C>() -> fn(a: A, b: B) -> (C, nil) {
+    unchecked_cast(nil)
+}
+
+fn make_from_parameter<A, B>(_value: A) -> fn(a: A) -> B {
+    unchecked_cast(nil)
+}
+
+fn main() -> Int {
+    // `B` is `(A, A)`, where `A` is the generic that the result is generalized over, but `nil`
+    // still isn't an `Int`
+    let wrong_member: fn<T>(a: T) -> ((T, T), Int) = make_with_nil();
+
+    // `C` uses the copy of `A`, the first generic inferred as `T`
+    let wrong_binary: fn<T>(a: T, b: T) -> ((T, T), Int) = make_binary_with_nil();
+
+    // `B` is `(A, U)`, where `U` is a copy of the expected one
+    let _wrong_copied: fn<T, U>(a: T) -> ((T, U), Int) = make_with_nil();
+
+    // `A` depends on a parameter, so it isn't generalized and still names `T`. `T` isn't copied
+    // into `B` either, since it leaks regardless
+    let leaked: fn<T>(a: T) -> (T, T) = make_from_parameter(unchecked_cast(nil));
+
+    // The returned function only takes `Int`, which isn't any `T`
+    let only_int: fn<T>(a: T) -> (T, T) = make_from_int();
+
+    // `B` is inferred from the argument, which is typed by the expected type, so it isn't
+    // generalized and still names the expected type's `T`
+    let from_argument: fn<T>(a: T) -> (T, T) = make_with(unchecked_cast(nil));
+
+    only_int(1).first
+        + from_argument(1).first
+        + wrong_member(1).rest
+        + wrong_binary(1, 2).rest
+        + leaked(1).first
+}

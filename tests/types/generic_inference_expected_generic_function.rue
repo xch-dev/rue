@@ -1,0 +1,169 @@
+// A generic function type expected of a call doesn't leak its generics into what's inferred from
+// it. A generic that's inferred as a type referencing them, and that no parameter depends on,
+// references the generics that the returned function is generalized over instead (#340)
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+fn make<A, B>() -> fn(a: A) -> B {
+    unchecked_cast(duplicate)
+}
+
+test fn issue_case() -> Int {
+    // `A` is inferred as `T` and generalized, so `B` is `(A, A)`
+    let function: fn<T>(a: T) -> (T, T) = make();
+    function(1).first
+}
+
+test fn called_with_several_types() -> Int {
+    let function: fn<T>(a: T) -> (T, T) = make();
+    let (first, second) = function(20);
+    let (left, right) = function(true);
+
+    if left && right {
+        first + second + 2
+    } else {
+        0
+    }
+}
+
+fn make_reversed<B, A>() -> fn(a: A) -> B {
+    unchecked_cast(duplicate)
+}
+
+test fn generics_in_another_order() -> Int {
+    let function: fn<T>(a: T) -> (T, T) = make_reversed();
+    function(21).rest
+}
+
+fn make_from_int<B>() -> fn(a: Int) -> B {
+    unchecked_cast(duplicate)
+}
+
+test fn no_generic_inferred_as_it() -> Int {
+    // Nothing is inferred as `T`, so `B` is generalized over a copy of it
+    let function: fn<T>(a: Int) -> (T, T) = make_from_int();
+    let result: (Int, Int) = function(4);
+    result.first + result.rest
+}
+
+fn first_twice<T>(first: T, _second: T) -> (T, T) {
+    (first, first)
+}
+
+fn make_binary<A, B, C>() -> fn(a: A, b: B) -> C {
+    unchecked_cast(first_twice)
+}
+
+test fn several_generics_inferred_as_it() -> Int {
+    // `A` and `B` are both inferred as `T`, and `C` is `(A, A)`, using the first one's copy
+    let function: fn<T>(a: T, b: T) -> (T, T) = make_binary();
+    function(9, 10).rest
+}
+
+test fn inferred_as_it_and_copied() -> Int {
+    // `A` is inferred as `T`, and nothing is inferred as `U`, so `B` is `(A, U)` over a copy of it
+    let function: fn<T, U>(a: T) -> (T, U) = make();
+    let result: (Int, Int) = function(11);
+    result.first
+}
+
+fn take(function: fn<T>(a: T) -> (T, T)) -> Int {
+    function(12).first
+}
+
+test fn expected_from_a_parameter() -> Int {
+    take(make())
+}
+
+fn optional<T>(value: T) -> T | nil {
+    value
+}
+
+fn make_optional<A, B>() -> fn(a: A) -> B {
+    unchecked_cast(optional)
+}
+
+test fn union_return_type() -> Int {
+    let function: fn<T>(a: T) -> T | nil = make_optional();
+    let result = function(42);
+
+    if result is nil {
+        0
+    } else {
+        result
+    }
+}
+
+test fn union_expected_type() -> Bool {
+    let function: (fn<T>(a: T) -> (T, T)) | nil = make();
+    function is nil
+}
+
+fn pair_with_five<T>(value: T) -> (T, 5) {
+    (value, 5)
+}
+
+fn make_with_literal<A, B>() -> fn(a: A) -> B {
+    unchecked_cast(pair_with_five)
+}
+
+test fn literal_member() -> Int {
+    let function: fn<T>(a: T) -> (T, 5) = make_with_literal();
+    let result = function(nil);
+    result.rest
+}
+
+fn curried<T>(first: T) -> fn<U>(second: U) -> (T, U) {
+    fn<U>(second: U): (T, U) => (first, second)
+}
+
+fn make_curried<A, B>() -> fn(a: A) -> B {
+    unchecked_cast(curried)
+}
+
+test fn nested_generic_function() -> Int {
+    // `B` is `fn<U>(second: U) -> (A, U)`, where `U` is still bound inside it
+    let function: fn<T>(first: T) -> fn<U>(second: U) -> (T, U) = make_curried();
+    let (first, second) = function(1)(2);
+    first + second
+}
+
+fn make_through<A, B>() -> fn(a: A) -> B {
+    make()
+}
+
+test fn through_several_layers() -> Int {
+    let function: fn<T>(a: T) -> (T, T) = make_through();
+    function(6).rest
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+test fn nested_call() -> Int {
+    let function: fn<T>(a: T) -> (T, T) = identity(make());
+    function(8).first
+}
+
+fn make_id<T>() -> fn(x: T) -> T {
+    unchecked_cast(identity)
+}
+
+test fn guard_generalized_as_expected_generic() -> Int {
+    // As before, `T` is inferred as `U` and stays generic
+    let function: fn<U>(x: U) -> U = make_id();
+    function(5)
+}
+
+fn make_identity<A, B>() -> fn(a: A) -> B {
+    unchecked_cast(identity)
+}
+
+test fn guard_generics_inferred_as_the_same_one() -> Int {
+    // As before, `A` and `B` are both inferred as `T`, and each is generalized
+    let function: fn<T>(a: T) -> T = make_identity();
+    function(7)
+}

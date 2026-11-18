@@ -1,5 +1,5 @@
 diagnostics:
 - Cannot assign `(Int, Int)` to `(Int, Bytes)` without a cast, since they are semantically different at generic_inference_instantiated_errors.rue:26:38
-- Cannot assign `(T, T)` to `Int`, since they are incompatible at generic_inference_instantiated_errors.rue:29:30
+- Cannot assign `(Never, Never)` to `Int`, since they are incompatible at generic_inference_instantiated_errors.rue:29:30
 - "Cannot assign `fn(value: Bytes) -> (Bytes, Bytes)` to `fn(a: 42) -> (Bytes, Bytes)` without a cast, since they are semantically different at generic_inference_instantiated_errors.rue:32:30"
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at generic_inference_instantiated_errors.rue:34:40

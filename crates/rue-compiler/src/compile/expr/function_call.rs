@@ -43,7 +43,7 @@ pub fn compile_function_call_expr(
 
     let is_unresolved = ctx.is_unresolved(expr.ty);
 
-    let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty, true);
+    let mut expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty, true);
 
     if expected_functions.len() > 1 {
         let name = ctx.type_name(expr.ty);
@@ -55,6 +55,13 @@ pub fn compile_function_call_expr(
         let name = ctx.type_name(expr.ty);
         ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidFunctionCall(name));
     }
+
+    // The callee's generics that are also in scope, as in a recursive call, are renamed to fresh
+    // ones, so that they aren't confused with the caller's generics with the same ids (#334)
+    let renamed = expected_functions
+        .first_mut()
+        .map(|function| rename_generics_in_scope(ctx, function))
+        .unwrap_or_default();
 
     let expected_function = expected_functions.first();
 
@@ -94,10 +101,8 @@ pub fn compile_function_call_expr(
 
         let mut infer = Inference::new(function.generics.iter().copied());
 
-        for &generic in &function.generics {
-            if is_type_in_scope(ctx, generic) {
-                infer.set_in_scope(generic);
-            }
+        for (&copy, &generic) in &renamed {
+            infer.rename(copy, generic);
         }
 
         // The type expected of the call is used for the generics that the arguments don't
@@ -111,10 +116,9 @@ pub fn compile_function_call_expr(
             // from this call, so they're no help in inferring its generics either
             let enclosing = ctx.inferred_generics();
             expected.retain_bounds(|ty| {
-                !enclosing.iter().any(|&generic| {
-                    !is_type_in_scope(ctx, generic)
-                        && contains_generic(ctx.types_mut(), ty, generic)
-                })
+                !enclosing
+                    .iter()
+                    .any(|&generic| contains_generic(ctx.types_mut(), ty, generic))
             });
 
             expected
@@ -152,7 +156,13 @@ pub fn compile_function_call_expr(
                 let index = lambdas
                     .iter()
                     .position(|&i| {
-                        !has_uninferred_parameters(ctx, function.params[i].ty, function, &inferred)
+                        !has_uninferred_parameters(
+                            ctx,
+                            function.params[i].ty,
+                            function,
+                            &inferred,
+                            &renamed,
+                        )
                     })
                     .unwrap_or(0);
 
@@ -185,6 +195,8 @@ pub fn compile_function_call_expr(
                 }
             }
 
+            restore_renamed(ctx, &mut mappings, &renamed);
+
             let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
             let value = compile_expr(ctx, expr, Some(expected));
@@ -211,19 +223,18 @@ pub fn compile_function_call_expr(
         // inferred must satisfy the upper bounds of the generics it's inferred through, so that
         // `feed(identity, inc)` infers `A` from `inc` through `B`
         let mut mappings = ctx.resolve_inference_with_bounds(&infer, &fallback);
+        restore_renamed(ctx, &mut mappings, &renamed);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
             }
 
-            // A generic that's in scope is being passed through a recursive call, so it's
-            // fine for it to stay as is. Otherwise, the callee's generic would leak out, unless
-            // the function's type doesn't reference it at all.
-            if is_type_in_scope(ctx, generic)
-                || !std::iter::once(function.ret)
-                    .chain(function.param_types())
-                    .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+            // The callee's generic would leak out, unless the function's type doesn't reference
+            // it at all
+            if !std::iter::once(function.ret)
+                .chain(function.param_types())
+                .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
             {
                 continue;
             }
@@ -246,25 +257,15 @@ pub fn compile_function_call_expr(
             mappings.insert(generic, ctx.builtins().unresolved.ty);
         }
 
-        // A generic that's only inferred as one of the generics of the function type expected of
-        // the call stays generic (as a copy, so that it doesn't capture anything), since the
-        // function that's returned works for any of them (as long as no parameter depends on it)
+        // The function that's returned can stay generic over the generics of a function type
+        // expected of the call
         let ret = rue_types::unwrap_semantic(ctx.types_mut(), function.ret, true);
 
         if matches!(ctx.ty(ret), Type::Function(_)) {
-            for &generic in &function.generics {
-                if mappings
-                    .get(&generic)
-                    .is_some_and(|&ty| is_expected_generic(ctx, expected_type, ty))
-                    && !function
-                        .param_types()
-                        .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
-                {
-                    let copy = ctx.ty(generic).clone();
-                    let copy = ctx.alloc_type(copy);
-                    mappings.insert(generic, copy);
-                    generalized.push(copy);
-                }
+            let expected_generics = expected_generics(ctx, expected_type);
+
+            if !expected_generics.is_empty() {
+                generalized = generalize(ctx, function, &expected_generics, &mut mappings);
             }
         }
 
@@ -330,12 +331,15 @@ fn callee_name(call: &AstFunctionCallExpr) -> String {
 }
 
 /// Whether the parameters of the function type expected of a lambda reference any of the
-/// callee's generics that haven't been inferred yet.
+/// callee's generics that haven't been inferred yet. A renamed one (see `rename_generics_in_scope`)
+/// also counts where they reference the caller's generic it was renamed from, as it did when the
+/// two were the same generic, so that lambdas are compiled in the same order.
 fn has_uninferred_parameters(
     ctx: &mut Compiler,
     param: TypeId,
     callee: &FunctionType,
     mappings: &HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
 ) -> bool {
     let expected = substitute_with_mappings(ctx.types_mut(), param, mappings);
 
@@ -345,19 +349,174 @@ fn has_uninferred_parameters(
         .any(|param| {
             callee.generics.iter().any(|&generic| {
                 !mappings.contains_key(&generic)
-                    && contains_generic(ctx.types_mut(), param.ty, generic)
+                    && std::iter::once(generic)
+                        .chain(renamed.get(&generic).copied())
+                        .any(|generic| contains_generic(ctx.types_mut(), param.ty, generic))
             })
         })
 }
 
-/// Whether the type is one of the generics of a function type expected of the call, including the
-/// function members of a union such as `Id | nil`.
-fn is_expected_generic(ctx: &mut Compiler, expected_type: Option<TypeId>, ty: TypeId) -> bool {
-    expected_type.is_some_and(|expected_type| {
+/// Generalizes the function returned by a call over the generics of the function type expected
+/// of it, and returns the generics it's generalized over. This only applies to the generics that
+/// no parameter depends on, since the function works for any of them.
+///
+/// A generic that's inferred as one of the expected generics stays generic, as a copy so that it
+/// doesn't capture anything. A generic that's inferred as a type that references them, such as
+/// `(T, T)` for `B` in `let f: fn<T>(a: T) -> (T, T) = make();` with
+/// `fn make<A, B>() -> fn(a: A) -> B`, references the copy of the first generic inferred as each
+/// one instead, so it doesn't leak them (#340). `A` is inferred as `T`, so `B` is `(A, A)`. If no
+/// generic is inferred as one of them, it's copied as well, unless it leaks through a parameter.
+fn generalize(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    expected_generics: &[TypeId],
+    mappings: &mut HashMap<TypeId, TypeId>,
+) -> Vec<TypeId> {
+    let mut generalized = Vec::new();
+
+    let (free, fixed): (Vec<TypeId>, Vec<TypeId>) =
+        function.generics.iter().copied().partition(|&generic| {
+            !function
+                .param_types()
+                .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+        });
+
+    // An expected generic that a generic which a parameter depends on references leaks regardless,
+    // so it isn't copied, since the error would then name the same type on both sides
+    let leaked: Vec<TypeId> = expected_generics
+        .iter()
+        .copied()
+        .filter(|&other| {
+            fixed.iter().any(|generic| {
+                mappings
+                    .get(generic)
+                    .is_some_and(|&ty| contains_generic(ctx.types_mut(), ty, other))
+            })
+        })
+        .collect();
+
+    // The copy that each of the expected generics is generalized as
+    let mut copies = HashMap::new();
+    let mut compound = Vec::new();
+
+    for generic in free {
+        let Some(&ty) = mappings.get(&generic) else {
+            continue;
+        };
+
+        if expected_generics.contains(&ty) {
+            let copy = copy_generic(ctx, generic);
+            mappings.insert(generic, copy);
+            generalized.push(copy);
+            copies.entry(ty).or_insert(copy);
+        } else {
+            compound.push((generic, ty));
+        }
+    }
+
+    for (generic, ty) in compound {
+        let mut references = false;
+
+        for &other in expected_generics {
+            if !contains_generic(ctx.types_mut(), ty, other) {
+                continue;
+            }
+
+            references = true;
+
+            if !copies.contains_key(&other) && !leaked.contains(&other) {
+                let copy = copy_generic(ctx, other);
+                generalized.push(copy);
+                copies.insert(other, copy);
+            }
+        }
+
+        if references {
+            let ty = substitute_with_mappings(ctx.types_mut(), ty, &copies);
+            mappings.insert(generic, ty);
+        }
+    }
+
+    generalized
+}
+
+/// The generics of the function types expected of the call, including the function members of a
+/// union such as `Id | nil`.
+fn expected_generics(ctx: &mut Compiler, expected_type: Option<TypeId>) -> Vec<TypeId> {
+    expected_type.map_or_else(Vec::new, |expected_type| {
         rue_types::extract_functions(ctx.types_mut(), expected_type, false)
-            .iter()
-            .any(|function| function.generics.contains(&ty))
+            .into_iter()
+            .flat_map(|function| function.generics)
+            .collect()
     })
+}
+
+/// Renames the function's generics that are in scope to fresh copies of them, and returns the
+/// generics that each copy was renamed from.
+fn rename_generics_in_scope(
+    ctx: &mut Compiler,
+    function: &mut FunctionType,
+) -> HashMap<TypeId, TypeId> {
+    let mut renaming = HashMap::new();
+
+    for generic in &mut function.generics {
+        if is_type_in_scope(ctx, *generic) {
+            let copy = copy_generic(ctx, *generic);
+            renaming.insert(*generic, copy);
+            *generic = copy;
+        }
+    }
+
+    if renaming.is_empty() {
+        return renaming;
+    }
+
+    for param in &mut function.params {
+        param.ty = substitute_with_mappings(ctx.types_mut(), param.ty, &renaming);
+    }
+
+    function.ret = substitute_with_mappings(ctx.types_mut(), function.ret, &renaming);
+
+    renaming
+        .into_iter()
+        .map(|(generic, copy)| (copy, generic))
+        .collect()
+}
+
+/// Maps the renamed generics that haven't been inferred back to the caller's generics they were
+/// renamed from (see `rename_generics_in_scope`), including where the others are inferred as types
+/// that reference them, since that's what they referred to before they were renamed.
+fn restore_renamed(
+    ctx: &mut Compiler,
+    mappings: &mut HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
+) {
+    let restored: HashMap<TypeId, TypeId> = renamed
+        .iter()
+        .filter(|(copy, _)| !mappings.contains_key(copy))
+        .map(|(&copy, &generic)| (copy, generic))
+        .collect();
+
+    if restored.is_empty() {
+        return;
+    }
+
+    for ty in mappings.values_mut() {
+        if restored
+            .keys()
+            .any(|&copy| contains_generic(ctx.types_mut(), *ty, copy))
+        {
+            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &restored);
+        }
+    }
+
+    mappings.extend(restored);
+}
+
+/// A new generic like the given one, which can be bound separately from it.
+fn copy_generic(ctx: &mut Compiler, generic: TypeId) -> TypeId {
+    let copy = ctx.ty(generic).clone();
+    ctx.alloc_type(copy)
 }
 
 fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {

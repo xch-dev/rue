@@ -46,11 +46,10 @@ pub struct InferenceCandidates {
 #[derive(Debug, Default, Clone)]
 pub struct Inference {
     generics: IndexMap<TypeId, InferenceCandidates>,
-    /// The generics being inferred that are also in scope where they're inferred, such as the
-    /// generics of a function in a recursive call to it. A candidate that references one of them
-    /// refers to the caller's generic with the same id, so it isn't resolved through what the
-    /// generic is inferred as.
-    in_scope: HashSet<TypeId>,
+    /// The generics being inferred that were renamed from another generic, such as the generics of
+    /// a function in a recursive call to it, which are renamed from the caller's (see
+    /// `Inference::rename`).
+    renamed: FxHashMap<TypeId, TypeId>,
 }
 
 impl Inference {
@@ -60,13 +59,17 @@ impl Inference {
                 .into_iter()
                 .map(|generic| (generic, InferenceCandidates::default()))
                 .collect(),
-            in_scope: HashSet::new(),
+            renamed: FxHashMap::default(),
         }
     }
 
-    /// Marks a generic being inferred as in scope where it's inferred (see `Inference::in_scope`).
-    pub fn set_in_scope(&mut self, generic: TypeId) {
-        self.in_scope.insert(generic);
+    /// Records that a generic being inferred was renamed from another generic. They're compared as
+    /// the same type where neither is bound, and bounds aren't passed through it (see
+    /// `Inference::passes_bounds`), since they were the same generic before. But a candidate that
+    /// references this one is resolved through what it's inferred as, unlike one that references
+    /// the other.
+    pub fn rename(&mut self, generic: TypeId, from: TypeId) {
+        self.renamed.insert(generic, from);
     }
 
     pub fn candidates(&self, generic: TypeId) -> Option<&InferenceCandidates> {
@@ -92,9 +95,11 @@ impl Inference {
         self.generics.contains_key(&generic)
     }
 
-    /// Whether a candidate that references the generic is resolved through what it's inferred as.
-    fn is_resolved_through(&self, generic: TypeId) -> bool {
-        self.is_target(generic) && !self.in_scope.contains(&generic)
+    /// Whether upper bounds are passed on to the generic, and lower bounds expanded through it (see
+    /// `pass_upper_bounds`). A renamed generic is left out, as it was when it was the generic it
+    /// was renamed from, so that a recursive call infers the same types as it did then.
+    fn passes_bounds(&self, generic: TypeId) -> bool {
+        self.is_target(generic) && !self.renamed.contains_key(&generic)
     }
 
     fn candidates_mut(&mut self, generic: TypeId) -> &mut InferenceCandidates {
@@ -127,7 +132,11 @@ impl InferenceCandidates {
 ///
 /// A lower or held candidate takes the least instantiation, from the instance's lower bounds, and
 /// an upper candidate the greatest, from its upper bounds. An instance without bounds of that kind
-/// is left as is, as it was before these were instantiated.
+/// is instantiated as `Never` or `Any` respectively, such as `(Never, Never)` for `B` when
+/// `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339). That's the least or greatest type for the
+/// generic itself, regardless of where the candidate references it, so a generic that's only a
+/// parameter type in the candidate gives it the greatest function type instead. An instance that's
+/// left out of `ComparisonContext::instantiations` is left as is.
 #[derive(Debug, Clone, Copy)]
 struct DeferredCandidate {
     generic: TypeId,
@@ -246,6 +255,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// binder. An instance is left out if one of its bounds references a generic bound in the
     /// comparison, since that generic isn't in scope where the candidate is used.
     instantiations: FxHashMap<usize, InferenceCandidates>,
+    /// The generics being inferred that were renamed from another generic (see `Inference::rename`),
+    /// kept here so that comparisons without the inference see them too.
+    renamed: FxHashMap<TypeId, TypeId>,
     /// The context for comparisons that leave the generics being inferred rigid, which is kept
     /// so that its results are memoized for the whole comparison.
     uninferred: Option<Box<ComparisonContext<'static>>>,
@@ -268,6 +280,12 @@ impl ComparisonContext<'_> {
             .as_ref()
             .is_some_and(|infer| infer.is_target(generic))
             && self.resolve(generic, env).is_none()
+    }
+
+    /// Whether the generics are the same generic before one of them was renamed (see
+    /// `Inference::rename`).
+    fn is_renaming(&self, lhs: TypeId, rhs: TypeId) -> bool {
+        self.renamed.get(&lhs) == Some(&rhs) || self.renamed.get(&rhs) == Some(&lhs)
     }
 
     /// Whether the generics being inferred are on the right hand side.
@@ -361,7 +379,7 @@ impl ComparisonContext<'_> {
     /// with what they're instantiated as (see `DeferredCandidate`).
     fn resolve_deferred(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
         // What each binder is instantiated as, for lower (and held) and upper candidates
-        let mut picked: FxHashMap<(usize, bool), Option<TypeId>> = FxHashMap::default();
+        let mut picked: FxHashMap<(usize, bool), TypeId> = FxHashMap::default();
 
         for DeferredCandidate {
             generic,
@@ -387,22 +405,23 @@ impl ComparisonContext<'_> {
                 };
 
                 let instantiated = *picked.entry((binder, upper)).or_insert_with(|| {
+                    // Without bounds of the candidate's kind, the least instantiation is `Never`
+                    // and the greatest is `Any`
                     if upper {
                         let upper = InferenceCandidates {
                             upper: instance.upper.clone(),
                             ..Default::default()
                         };
-                        pick_inferred_type(arena, builtins, &upper)
+                        pick_inferred_type(arena, builtins, &self.renamed, &upper)
+                            .unwrap_or(builtins.permissive_any)
                     } else if instance.lower.is_empty() {
-                        None
+                        builtins.never
                     } else {
-                        pick_inferred_type(arena, builtins, instance)
+                        pick_inferred_type(arena, builtins, &self.renamed, instance).unwrap()
                     }
                 });
 
-                if let Some(instantiated) = instantiated {
-                    mappings.insert(other, instantiated);
-                }
+                mappings.insert(other, instantiated);
             }
 
             if !mappings.is_empty() {
@@ -713,7 +732,12 @@ fn holds_without_inference(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> bool {
-    let mut uninferred = ctx.uninferred.take().unwrap_or_default();
+    let mut uninferred = ctx.uninferred.take().unwrap_or_else(|| {
+        Box::new(ComparisonContext {
+            renamed: ctx.renamed.clone(),
+            ..Default::default()
+        })
+    });
 
     // The binders are shared, but none of them are instantiated
     mem::swap(&mut uninferred.binders, &mut ctx.binders);
@@ -758,6 +782,10 @@ pub fn compare_with_inference(
     }
 
     let mut ctx = ComparisonContext {
+        renamed: infer
+            .as_ref()
+            .map(|infer| infer.renamed.clone())
+            .unwrap_or_default(),
         infer,
         ..Default::default()
     };
@@ -785,6 +813,7 @@ pub fn infer_from_expected(
 
     // The generics being inferred are on the left hand side, so the comparison starts flipped
     let mut ctx = ComparisonContext {
+        renamed: infer.renamed.clone(),
         infer: Some(infer),
         flipped: true,
         ..Default::default()
@@ -823,10 +852,9 @@ pub fn add_expected_bounds(
 /// bound `Int`, so `A` is bounded by `Int` as well, and both are inferred as `Int` (#285).
 ///
 /// This only replaces the mappings of the generics that weren't inferred, or were inferred as a type
-/// that references one of the generics being resolved through that wasn't, since those are reported
-/// as errors. Every
-/// other mapping is kept, since upper bounds that nothing enforces can be left over from a union
-/// member that didn't match, and passing those on would change what's inferred.
+/// that references another generic being inferred that wasn't, since those are reported as errors.
+/// Every other mapping is kept, since upper bounds that nothing enforces can be left over from a
+/// union member that didn't match, and passing those on would change what's inferred.
 pub fn resolve_inference_with_bounds(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -843,7 +871,7 @@ pub fn resolve_inference_with_bounds(
             mappings.get(generic).is_none_or(|&ty| {
                 free_generics(arena, ty)
                     .into_iter()
-                    .any(|other| infer.is_resolved_through(other) && !mappings.contains_key(&other))
+                    .any(|other| infer.passes_bounds(other) && !mappings.contains_key(&other))
             })
         })
         .collect();
@@ -899,8 +927,9 @@ fn pass_upper_bounds(
         .generics
         .keys()
         .copied()
-        .filter(|&generic| infer.is_resolved_through(generic))
+        .filter(|&generic| infer.passes_bounds(generic))
         .collect();
+    let renamed = infer.renamed.clone();
 
     // Each entry is a bound and whether it still has to be added to its generic. A bound passed on
     // is part of the one it was passed on from
@@ -936,8 +965,9 @@ fn pass_upper_bounds(
 
             if given.contains(&upper)
                 || given.iter().any(|&other| {
-                    compare(arena, builtins, other, upper) == Comparison::Assign
-                        && compare(arena, builtins, upper, other) == Comparison::Assign
+                    compare_renamed(arena, builtins, &renamed, other, upper) == Comparison::Assign
+                        && compare_renamed(arena, builtins, &renamed, upper, other)
+                            == Comparison::Assign
                 })
             {
                 continue;
@@ -945,9 +975,9 @@ fn pass_upper_bounds(
 
             given.push(upper);
 
-            if expanded[&generic]
-                .is_some_and(|lower| compare(arena, builtins, lower, upper) != Comparison::Assign)
-            {
+            if expanded[&generic].is_some_and(|lower| {
+                compare_renamed(arena, builtins, &renamed, lower, upper) != Comparison::Assign
+            }) {
                 continue;
             }
 
@@ -956,7 +986,7 @@ fn pass_upper_bounds(
 
         // The generics that flow into this one through its lower bounds must satisfy it too
         for ty in infer.generics[&generic].lower.clone() {
-            if infer.is_resolved_through(ty) {
+            if infer.passes_bounds(ty) {
                 if accepts(ty) {
                     stack.push((ty, upper, true));
                 }
@@ -965,7 +995,7 @@ fn pass_upper_bounds(
 
             if !free_generics(arena, ty)
                 .iter()
-                .any(|&other| infer.is_resolved_through(other))
+                .any(|&other| infer.passes_bounds(other))
             {
                 continue;
             }
@@ -982,9 +1012,9 @@ fn pass_upper_bounds(
     }
 }
 
-/// Returns the union of each generic's lower bounds, with each generic they reference that's
-/// resolved through replaced by the union of that generic's own expanded lower bounds (if it has
-/// any), so that they can be checked against a bound, or `None` if there are none. A lower bound
+/// Returns the union of each generic's lower bounds, with each generic being inferred that they
+/// reference replaced by the union of that generic's own expanded lower bounds (if it has any), so
+/// that they can be checked against a bound, or `None` if there are none. A lower bound
 /// that's just such a generic adds nothing if that generic has none, and one that only references
 /// it is left as is.
 ///
@@ -1004,7 +1034,7 @@ fn expanded_lower_bounds(
                 .lower
                 .iter()
                 .flat_map(|&ty| free_generics(arena, ty))
-                .filter(|&other| infer.is_resolved_through(other))
+                .filter(|&other| infer.passes_bounds(other))
                 .collect();
             (generic, edges)
         })
@@ -1028,7 +1058,7 @@ fn expanded_lower_bounds(
                     continue;
                 }
 
-                if infer.is_resolved_through(ty) {
+                if infer.passes_bounds(ty) {
                     // A generic without lower bounds doesn't add any yet
                     if let Some(&union) = mappings.get(&ty) {
                         result.insert(union);
@@ -1129,6 +1159,28 @@ pub fn compare(
     compare_with_inference(arena, builtins, lhs, rhs, None)
 }
 
+/// Like `compare`, but the generics that were renamed from another generic are compared as it (see
+/// `Inference::rename`), as they are while inferring.
+fn compare_renamed(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    renamed: &FxHashMap<TypeId, TypeId>,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> Comparison {
+    if renamed.is_empty() {
+        return compare(arena, builtins, lhs, rhs);
+    }
+
+    let lhs = substitute(arena, lhs);
+    let rhs = substitute(arena, rhs);
+    let mut ctx = ComparisonContext {
+        renamed: renamed.clone(),
+        ..Default::default()
+    };
+    compare_impl(arena, builtins, &mut ctx, lhs, rhs, None, None)
+}
+
 /// Picks a type for each inferred generic, given the candidates collected while comparing.
 ///
 /// A candidate can reference another generic being inferred, such as `A` becoming a candidate for
@@ -1166,7 +1218,7 @@ pub fn resolve_inference_with_fallback(
                 .chain(&candidates.upper)
                 .chain(&candidates.held)
                 .flat_map(|&ty| free_generics(arena, ty))
-                .filter(|&other| infer.is_resolved_through(other))
+                .filter(|&other| infer.is_target(other))
                 .collect();
             (generic, references)
         })
@@ -1209,8 +1261,8 @@ pub fn resolve_inference_with_fallback(
 struct InferenceResolver<'a> {
     infer: &'a Inference,
     fallback: &'a HashMap<TypeId, TypeId>,
-    /// The generics that each generic's candidates reference, directly or through other
-    /// generics, and are resolved through.
+    /// The generics being inferred that each generic's candidates reference, directly or through
+    /// other generics.
     reachable: HashMap<TypeId, HashSet<TypeId>>,
     resolved: HashSet<TypeId>,
     mappings: HashMap<TypeId, TypeId>,
@@ -1260,7 +1312,7 @@ impl InferenceResolver<'_> {
                 continue;
             }
 
-            let ty = pick_inferred_type(arena, builtins, &candidates)
+            let ty = pick_inferred_type(arena, builtins, &self.infer.renamed, &candidates)
                 .or_else(|| self.fallback.get(&generic).copied());
 
             if let Some(ty) = ty {
@@ -1296,9 +1348,12 @@ impl InferenceResolver<'_> {
             }
 
             for generic in pending.drain(..) {
-                if let Some(ty) =
-                    pick_inferred_type(arena, builtins, &self.infer.generics[&generic])
-                {
+                if let Some(ty) = pick_inferred_type(
+                    arena,
+                    builtins,
+                    &self.infer.renamed,
+                    &self.infer.generics[&generic],
+                ) {
                     self.mappings.insert(generic, ty);
                 }
             }
@@ -1331,7 +1386,8 @@ impl InferenceResolver<'_> {
                     upper: resolved(&raw.upper),
                     held: resolved(&raw.held),
                 };
-                Some((generic, pick_inferred_type(arena, builtins, &candidates)?))
+                let ty = pick_inferred_type(arena, builtins, &self.infer.renamed, &candidates)?;
+                Some((generic, ty))
             })
             .collect()
     }
@@ -1369,7 +1425,7 @@ impl InferenceResolver<'_> {
 
                 let mappings: HashMap<TypeId, TypeId> = free
                     .into_iter()
-                    .filter(|&other| self.infer.is_resolved_through(other))
+                    .filter(|&other| self.infer.is_target(other))
                     .filter_map(|other| Some((other, *self.mappings.get(&other)?)))
                     .collect();
 
@@ -1389,6 +1445,7 @@ impl InferenceResolver<'_> {
 fn pick_inferred_type(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
+    renamed: &FxHashMap<TypeId, TypeId>,
     candidates: &InferenceCandidates,
 ) -> Option<TypeId> {
     // The values that are already held by a union's other members are only used if nothing
@@ -1410,11 +1467,9 @@ fn pick_inferred_type(
             .collect();
         let widened = union_of(arena, widened);
 
-        if candidates
-            .upper
-            .iter()
-            .all(|&upper| compare(arena, builtins, widened, upper) == Comparison::Assign)
-        {
+        if candidates.upper.iter().all(|&upper| {
+            compare_renamed(arena, builtins, renamed, widened, upper) == Comparison::Assign
+        }) {
             Some(widened)
         } else {
             Some(union_of(arena, lower.clone()))
@@ -1427,10 +1482,9 @@ fn pick_inferred_type(
                 .iter()
                 .copied()
                 .find(|&ty| {
-                    candidates
-                        .upper
-                        .iter()
-                        .all(|&other| compare(arena, builtins, ty, other) == Comparison::Assign)
+                    candidates.upper.iter().all(|&other| {
+                        compare_renamed(arena, builtins, renamed, ty, other) == Comparison::Assign
+                    })
                 })
                 .unwrap_or(first),
         )
@@ -1794,7 +1848,10 @@ fn compare_impl_inner(
             }
         }
         (Type::Generic(_), Type::Generic(_))
-            if lhs == rhs && ctx.resolve(lhs, ctx.lhs_env) == ctx.resolve(rhs, ctx.rhs_env) =>
+            if (lhs == rhs && ctx.resolve(lhs, ctx.lhs_env) == ctx.resolve(rhs, ctx.rhs_env))
+                || (ctx.is_renaming(lhs, rhs)
+                    && ctx.resolve(lhs, ctx.lhs_env).is_none()
+                    && ctx.resolve(rhs, ctx.rhs_env).is_none()) =>
         {
             Comparison::Assign
         }

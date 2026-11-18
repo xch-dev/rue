@@ -129,7 +129,7 @@ fn apply<B>(function: fn(callback: fn(value: Int) -> nil) -> B) -> B {
 // It's never called, since it would recurse forever, but it must still compile
 #[expect(unused_function)]
 fn recursive<T>(_callback: fn(value: T) -> nil) -> (T, T) {
-    // `T` is only bounded from above here, so `B`'s candidate `(T, T)` is left as is, as it was
-    // before, and names this function's own `T`, which matches the return type
+    // `T` is only bounded from above here, so it's instantiated as `Never` in `B`'s candidate,
+    // and `(Never, Never)` is assignable to the return type (#339)
     apply(recursive)
 }
