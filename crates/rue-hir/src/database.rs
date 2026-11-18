@@ -40,6 +40,9 @@ pub struct Database {
     relevant_imports: IndexSet<ImportId>,
     /// The declarations referenced through each import, along with where they were referenced.
     import_references: HashMap<ImportId, IndexMap<Declaration, IndexSet<ImportUser>>>,
+    /// The bindings each glob import shares with the glob import that bound the name, as that
+    /// import, the declaration it bound, and the declaration this one brings in under the name.
+    shared_glob_bindings: HashMap<ImportId, IndexSet<(ImportId, Declaration, Declaration)>>,
     tests: Vec<Test>,
 }
 
@@ -282,24 +285,60 @@ impl Database {
             .insert(user);
     }
 
-    /// The declarations referenced through the import.
-    pub fn import_references(&self, import: ImportId) -> Vec<Declaration> {
-        self.import_references
-            .get(&import)
-            .map(|references| references.keys().copied().collect())
-            .unwrap_or_default()
+    /// Records that a glob import brings a declaration in under a name that another glob import
+    /// bound, so that a reference through the binding is a reference through both of them,
+    /// whichever bound the name. Returns whether it wasn't already recorded.
+    pub fn add_shared_glob_binding(
+        &mut self,
+        bound_by: ImportId,
+        bound: Declaration,
+        import: ImportId,
+        declaration: Declaration,
+    ) -> bool {
+        self.shared_glob_bindings
+            .entry(import)
+            .or_default()
+            .insert((bound_by, bound, declaration))
     }
 
-    /// The declarations referenced through the import, along with where they were referenced.
+    /// The declarations referenced through the import, including through a binding it shares.
+    pub fn import_references(&self, import: ImportId) -> Vec<Declaration> {
+        self.import_uses(import)
+            .map(|(declaration, _)| declaration)
+            .collect::<IndexSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    /// The declarations referenced through the import, along with where they were referenced,
+    /// including the references through a binding it shares, as references to the declaration
+    /// that it brings in under the name.
     pub fn import_uses(
         &self,
         import: ImportId,
     ) -> impl Iterator<Item = (Declaration, ImportUser)> + '_ {
-        self.import_references
+        let own = self
+            .import_references
             .get(&import)
             .into_iter()
             .flatten()
-            .flat_map(|(&declaration, users)| users.iter().map(move |&user| (declaration, user)))
+            .flat_map(|(&declaration, users)| users.iter().map(move |&user| (declaration, user)));
+
+        let shared = self
+            .shared_glob_bindings
+            .get(&import)
+            .into_iter()
+            .flatten()
+            .flat_map(|&(bound_by, bound, declaration)| {
+                self.import_references
+                    .get(&bound_by)
+                    .and_then(|references| references.get(&bound))
+                    .into_iter()
+                    .flatten()
+                    .map(move |&user| (declaration, user))
+            });
+
+        own.chain(shared)
     }
 
     pub fn add_test(&mut self, test: Test) {

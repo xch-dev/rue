@@ -1122,8 +1122,17 @@ fn resolve_import(
                         updated |= ctx.add_ambiguous_import(recorded, item.into());
                     }
 
+                    let existing = ctx.scope(import_scope).item(namespace, &name);
+
+                    // The glob import that bound the name, if another one did
+                    let bound_by = existing
+                        .and_then(|existing| ctx.scope(import_scope).item_import(existing))
+                        .filter(|&bound_by| {
+                            bound_by != import_id
+                                && matches!(ctx.import(bound_by).items, Items::All(_))
+                        });
+
                     let target = ctx.scope_mut(import_scope);
-                    let existing = target.item(namespace, &name);
 
                     if existing.is_none() {
                         target.insert_item(name.clone(), item, import.exported);
@@ -1133,6 +1142,36 @@ fn resolve_import(
                             .push((name, item.into()));
                         updated = true;
                         *count += 1;
+                    } else if let Some(existing) = existing
+                        && let Some(bound_by) = bound_by
+                    {
+                        // This import brings in the name too, whether it's the same item or a
+                        // different one, so it's used wherever the binding is. Otherwise, which
+                        // of them counts as used would depend on which one bound the name, and so
+                        // on the order they're resolved in.
+                        if ctx.add_shared_glob_binding(
+                            bound_by,
+                            existing.into(),
+                            import_id,
+                            item.into(),
+                        ) {
+                            ctx.import_mut(import_id)
+                                .declarations
+                                .push((name, item.into()));
+                            *count += 1;
+                        }
+
+                        // The binding (or its ambiguity) is exported if any of the glob imports
+                        // is, whichever one bound the name, so that it's reported where the name
+                        // is used
+                        if import.exported && !ctx.scope(import_scope).is_item_exported(existing) {
+                            ctx.scope_mut(import_scope).export_item(existing);
+                            updated = true;
+                        }
+
+                        if existing != item {
+                            updated |= ctx.add_ambiguous_import(bound_by, existing.into());
+                        }
                     } else if !target.is_item_exported(item)
                         && import.exported
                         && existing == Some(item)
@@ -1143,19 +1182,6 @@ fn resolve_import(
                             .push((name, item.into()));
                         updated = true;
                         *count += 1;
-                    } else if let Some(existing) = existing
-                        && existing != item
-                        && let Some(existing_import) = target.item_import(existing)
-                        && matches!(ctx.import(existing_import).items, Items::All(_))
-                    {
-                        // The ambiguity is exported if any of the glob imports is, whichever one
-                        // recorded the binding, so that it's reported where the name is used
-                        if import.exported && !ctx.scope(import_scope).is_item_exported(existing) {
-                            ctx.scope_mut(import_scope).export_item(existing);
-                            updated = true;
-                        }
-
-                        updated |= ctx.add_ambiguous_import(existing_import, existing.into());
                     }
                 }
             }

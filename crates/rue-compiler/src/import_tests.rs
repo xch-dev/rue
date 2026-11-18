@@ -3,7 +3,7 @@
 
 use std::fmt::Write;
 
-use crate::test_utils::compile;
+use crate::test_utils::{Compiled, compile};
 
 #[test]
 fn named_imports_refer_to_the_exported_declaration() {
@@ -980,6 +980,223 @@ fn glob_imports_that_bring_in_nothing_are_unused() {
 
     compiled.assert_no_errors();
     assert_eq!(compiled.warnings(), ["2:23 UnusedImport"]);
+}
+
+/// Glob imports in `user` of `alpha` and `beta`, which both bring in `source`'s items: one
+/// module with named imports (and `named_items`), and the other with a glob import, of `other`
+/// instead if `collide` is true, which has a different `X`. The named imports are resolved
+/// before the glob import, and the names of the two modules are in either order, so that either
+/// of `user`'s glob imports is resolved first and binds the names. `user` has `user_items` after
+/// its glob imports, which are exported if `exported` is true.
+fn overlapping_globs(
+    named_first: bool,
+    named_items: &str,
+    collide: bool,
+    exported: bool,
+    user_items: &str,
+) -> String {
+    let (named, globbed) = if named_first {
+        ("alpha", "beta")
+    } else {
+        ("beta", "alpha")
+    };
+    let globbed_source = if collide { "other" } else { "source" };
+    let keyword = if exported { "export" } else { "import" };
+
+    format!(
+        "
+        mod source {{
+            export const X: Int = 1;
+
+            export mod m {{
+                export const V: Int = 2;
+            }}
+        }}
+
+        mod {named} {{
+            export super::source::{{X, m}};
+            {named_items}
+        }}
+
+        mod {globbed} {{
+            export super::{globbed_source}::*;
+        }}
+
+        mod other {{
+            export const X: Int = 4;
+        }}
+
+        mod user {{
+            {keyword} super::alpha::*;
+            {keyword} super::beta::*;
+            {user_items}
+        }}
+
+        fn main() -> Int {{
+            user::value()
+        }}
+        "
+    )
+}
+
+/// The warnings about unused imports. `source`'s items are only used in some of the tests.
+fn unused_imports(compiled: &Compiled) -> Vec<String> {
+    compiled
+        .warnings()
+        .into_iter()
+        .filter(|warning| warning.ends_with("UnusedImport"))
+        .collect()
+}
+
+#[test]
+fn glob_imports_of_the_same_item_are_both_used() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(
+            named_first,
+            "",
+            false,
+            false,
+            "export fn value() -> Int { X }",
+        ));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn glob_imports_of_the_same_unused_item_are_both_unused() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(
+            named_first,
+            "",
+            false,
+            false,
+            "export fn value() -> Int { 1 }",
+        ));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            ["24:34 UnusedImport", "25:33 UnusedImport"],
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn glob_imports_are_only_used_by_the_names_they_bring_in() {
+    // `user` only uses `Y`, which only `alpha`'s or `beta`'s named module brings in, so the other
+    // glob import is unused, even though it shares the binding of `X` with it
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(
+            named_first,
+            "export const Y: Int = 3;",
+            false,
+            false,
+            "export fn value() -> Int { Y }",
+        ));
+        let globbed = if named_first { "25:33" } else { "24:34" };
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            [format!("{globbed} UnusedImport")],
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn glob_imports_of_the_same_item_are_both_used_through_an_import_path() {
+    // `import m::V;` uses `m` through whichever glob import bound it, while the imports are being
+    // resolved
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(
+            named_first,
+            "",
+            false,
+            false,
+            "import m::V;\n\nexport fn value() -> Int { V }",
+        ));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn exported_glob_imports_of_the_same_item_both_bring_it_in() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(
+            named_first,
+            "",
+            false,
+            true,
+            "export fn value() -> Int { X }",
+        ));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn colliding_glob_imports_are_both_used() {
+    // Which of the two `X`s the ambiguous use counts as using still depends on which glob import
+    // bound the name
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(
+            named_first,
+            "",
+            true,
+            false,
+            "export fn value() -> Int { X }",
+        ));
+
+        assert_eq!(
+            compiled.errors(),
+            ["26:40 AmbiguousImport(\"X\")"],
+            "named first: {named_first}"
+        );
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn colliding_unused_glob_imports_are_both_unused() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(
+            named_first,
+            "",
+            true,
+            false,
+            "export fn value() -> Int { 1 }",
+        ));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            ["24:34 UnusedImport", "25:33 UnusedImport"],
+            "named first: {named_first}"
+        );
+    }
 }
 
 #[test]

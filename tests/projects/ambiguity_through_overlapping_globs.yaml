@@ -1,7 +1,3 @@
 diagnostics:
-- Unused import `*` at main.rue:6:11
 - "`F` is ambiguous, since glob imports bring in different items with this name at main.rue:9:5"
-- Unused import `*` at second.rue:2:11
 - "`F` is ambiguous, since glob imports bring in different items with this name at second.rue:5:5"
-- Unused import `*` at s.rue:2:11
-- Unused import `*` at d.rue:2:11
