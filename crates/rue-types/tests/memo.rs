@@ -873,14 +873,19 @@ const STEP_LIMIT: usize = 20_000;
 struct Module {
     db: Types,
     aliases: Vec<Declared>,
-    /// Two types, and a target with a generic being inferred.
+    /// Two types, a target, and the generic being inferred in it.
     cases: Vec<[TypeId; 4]>,
 }
 
 /// Generates a random module from the seed, and the cases to compare in it: two types, and a target
 /// with a generic being inferred, such as a parameter of type `(T, rhs)`. Returns `None` if the
 /// module is skipped (see `Generator::module`).
-fn cases(seed: u64, queries: usize, contractive_only: bool, nesting: usize) -> Option<Module> {
+fn random_module(
+    seed: u64,
+    queries: usize,
+    contractive_only: bool,
+    nesting: usize,
+) -> Option<Module> {
     let mut db = Types::new();
     let mut generator = Generator {
         db: &mut db,
@@ -924,7 +929,8 @@ fn differential(
     let mut summary = Summary::default();
 
     for seed in seeds {
-        let Some(Module { mut db, cases, .. }) = cases(seed, queries, contractive_only, nesting)
+        let Some(Module { mut db, cases, .. }) =
+            random_module(seed, queries, contractive_only, nesting)
         else {
             summary.skipped_modules += 1;
             continue;
@@ -1058,8 +1064,9 @@ fn test_memo_differential_nested() {
 }
 
 /// The results of the cases that `differential` generates from the seeds with `HEAVY_NESTING`, with
-/// the memo, as two lines each (the types, then the results, or `gave up` for a case that takes
-/// more than `STEP_LIMIT` steps).
+/// the memo. Each seed lists its aliases (or `skipped`, if its module is), and then each case as
+/// two lines: the types, and the results (or `gave up`, for a case that takes more than
+/// `STEP_LIMIT` steps).
 fn nested_baseline(seeds: impl IntoIterator<Item = u64>, queries: usize) -> String {
     let mut text = String::new();
 
@@ -1068,7 +1075,7 @@ fn nested_baseline(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Stri
             mut db,
             aliases,
             cases,
-        }) = cases(seed, queries, true, HEAVY_NESTING)
+        }) = random_module(seed, queries, true, HEAVY_NESTING)
         else {
             writeln!(text, "{seed}: skipped").unwrap();
             continue;

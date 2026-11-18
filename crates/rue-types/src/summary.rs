@@ -43,6 +43,7 @@ pub(crate) struct Constraint {
     pub(crate) var: Var,
     /// Whether it's an upper bound rather than a lower one.
     pub(crate) upper: bool,
+    /// The type that flows into the binder, or that it flows into.
     pub(crate) ty: TypeId,
     /// What the generics that `ty` references are bound to.
     pub(crate) env: Env,
@@ -63,15 +64,28 @@ impl Constraint {
         }
     }
 
-    /// The local binders that the constraint refers to.
-    fn locals(&self) -> impl Iterator<Item = usize> + '_ {
+    /// Returns the constraint with each local binder it refers to replaced.
+    fn map_locals(&self, mut f: impl FnMut(usize) -> usize) -> Self {
+        self.map_vars(|var| match var {
+            Var::Key(_) => var,
+            Var::Local(local) => Var::Local(f(local)),
+        })
+    }
+
+    /// The binders that the constraint refers to: the one it bounds, then those of its
+    /// environment.
+    fn vars(&self) -> impl Iterator<Item = Var> + '_ {
         [self.var]
             .into_iter()
             .chain(self.env.iter().map(|&(_, var)| var))
-            .filter_map(|var| match var {
-                Var::Key(_) => None,
-                Var::Local(index) => Some(index),
-            })
+    }
+
+    /// The local binders that the constraint refers to.
+    fn locals(&self) -> impl Iterator<Item = usize> + '_ {
+        self.vars().filter_map(|var| match var {
+            Var::Key(_) => None,
+            Var::Local(local) => Some(local),
+        })
     }
 }
 
@@ -120,11 +134,9 @@ impl Summary {
     /// the comparison that bound them has checked them against each other. Other constraints can
     /// still refer to it, in which case it's rigid from then on.
     pub(crate) fn take(&mut self, var: Var) -> Vec<Constraint> {
-        let (taken, kept) = mem::take(&mut self.constraints)
-            .into_iter()
-            .partition(|constraint| constraint.var == var);
-        self.constraints = kept;
-        taken
+        self.constraints
+            .extract_if(.., |constraint| constraint.var == var)
+            .collect()
     }
 
     /// Puts the summary in a canonical form, so that summaries that only differ in the order of
@@ -137,7 +149,9 @@ impl Summary {
     /// components of each shape are kept. That keeps every pair of bounds that can be checked
     /// against each other, up to renaming the local binders: two bounds from one copy (with the
     /// same local binders), and two from different copies (with different ones). A third copy only
-    /// adds more pairs like those. That relies on checking a pair not adding bounds to other
+    /// adds more pairs like those. A component that's too alike to be renumbered exactly (see
+    /// `shape`) can be renumbered another way when it's canonicalized again. Keeping two copies
+    /// relies on checking a pair not adding bounds to other
     /// binders, which it doesn't, since the instances outside of the function whose bounds are
     /// being checked are rigid while checking them.
     pub(crate) fn canonicalize(&mut self) {
@@ -190,13 +204,11 @@ impl Summary {
 
             let offset = self.locals;
             self.locals += locals;
-            self.constraints
-                .extend(constraints.iter().map(|constraint| {
-                    constraint.map_vars(|var| match var {
-                        Var::Key(_) => var,
-                        Var::Local(index) => Var::Local(offset + index),
-                    })
-                }));
+            self.constraints.extend(
+                constraints
+                    .iter()
+                    .map(|constraint| constraint.map_locals(|local| offset + local)),
+            );
         }
     }
 }
@@ -220,8 +232,8 @@ fn find(parents: &mut [usize], mut local: usize) -> usize {
 /// of them apart. Binders that are still alike are tried in each order, which is rarely more than
 /// a few, since a component comes from one comparison. A component whose binders are alike in so
 /// many ways that trying them takes more than `SHAPE_SEARCH_LIMIT` numberings keeps the least one
-/// found by then. Its shape can then depend on how it was numbered, which keeps more copies than
-/// needed but loses nothing.
+/// found by then. Its shape can then depend on how it was numbered, and canonicalizing it again can
+/// give another one, which keeps more copies than needed but loses nothing.
 fn shape(constraints: &[Constraint]) -> (Vec<Constraint>, usize) {
     let mut locals: Vec<usize> = constraints.iter().flat_map(Constraint::locals).collect();
     locals.sort_unstable();
@@ -230,12 +242,7 @@ fn shape(constraints: &[Constraint]) -> (Vec<Constraint>, usize) {
     // A constraint that's there twice would tell its binders apart from the same ones without it
     let mut constraints: Vec<Constraint> = constraints
         .iter()
-        .map(|constraint| {
-            constraint.map_vars(|var| match var {
-                Var::Key(_) => var,
-                Var::Local(local) => Var::Local(locals.binary_search(&local).unwrap()),
-            })
-        })
+        .map(|constraint| constraint.map_locals(|local| locals.binary_search(&local).unwrap()))
         .collect();
     constraints.sort();
     constraints.dedup();
@@ -243,11 +250,7 @@ fn shape(constraints: &[Constraint]) -> (Vec<Constraint>, usize) {
     let mut uses: Vec<Vec<(usize, Vec<usize>)>> = vec![Vec::new(); locals.len()];
 
     for (index, constraint) in constraints.iter().enumerate() {
-        let vars = [constraint.var]
-            .into_iter()
-            .chain(constraint.env.iter().map(|&(_, var)| var));
-
-        for (position, var) in vars.enumerate() {
+        for (position, var) in constraint.vars().enumerate() {
             if let Var::Local(local) = var {
                 match uses[local].last_mut() {
                     Some((last, positions)) if *last == index => positions.push(position),
@@ -299,7 +302,7 @@ impl ShapeSearch<'_> {
             let mut constraints: Vec<Constraint> = self
                 .constraints
                 .iter()
-                .map(|constraint| recolour(constraint, &colours))
+                .map(|constraint| constraint.map_locals(|local| colours[local]))
                 .collect();
             constraints.sort();
 
@@ -343,7 +346,7 @@ impl ShapeSearch<'_> {
             let recoloured: Vec<Constraint> = self
                 .constraints
                 .iter()
-                .map(|constraint| recolour(constraint, &colours))
+                .map(|constraint| constraint.map_locals(|local| colours[local]))
                 .collect();
             let mut sorted: Vec<&Constraint> = recoloured.iter().collect();
             sorted.sort();
@@ -388,14 +391,6 @@ impl ShapeSearch<'_> {
 /// What tells a local binder apart in `ShapeSearch::refine`: its colour, and the ranks of the
 /// recoloured constraints it's in along with its positions in them.
 type Signature<'a> = (usize, Vec<(usize, &'a [usize])>);
-
-/// Returns the constraint with each local binder replaced by its colour.
-fn recolour(constraint: &Constraint, colours: &[usize]) -> Constraint {
-    constraint.map_vars(|var| match var {
-        Var::Key(_) => var,
-        Var::Local(local) => Var::Local(colours[local]),
-    })
-}
 
 #[cfg(test)]
 mod tests {
@@ -697,6 +692,40 @@ mod tests {
             let renumbered = permutations(generics, first, second, numbering);
             assert_eq!(renumbered, expected, "{numbering:?}");
         }
+    }
+
+    /// A chain of local binders is only told apart from one end by refining again and again, which
+    /// would take more numberings than `SHAPE_SEARCH_LIMIT` to try otherwise.
+    #[test]
+    fn test_canonicalize_refines_until_stable() {
+        let mut types = Types::new();
+        let [ty, a] = [types.generic(), types.generic()];
+
+        let chain = |numbering: &dyn Fn(usize) -> usize| {
+            let mut summary = Summary::default();
+
+            for _ in 0..20 {
+                summary.local();
+            }
+
+            for index in 0..19 {
+                let next = Var::Local(numbering(index + 1));
+                summary.add(bound(
+                    Var::Local(numbering(index)),
+                    true,
+                    ty,
+                    vec![(a, next)],
+                ));
+            }
+
+            summary.canonicalize();
+            summary
+        };
+
+        let expected = chain(&|index| index);
+        assert_eq!(chain(&|index| 19 - index), expected);
+        assert_eq!(chain(&|index| (index * 7) % 20), expected);
+        assert_eq!(chain(&|index| (index + 13) % 20), expected);
     }
 
     /// A component with more orders of alike local binders than `SHAPE_SEARCH_LIMIT` (each of the
