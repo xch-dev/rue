@@ -24,6 +24,11 @@ pub struct LintSites {
     /// The `mod` items declared in the documents being linted, along with the location of the
     /// whole item. Modules aren't declarations, so they can't be found from the HIR.
     pub modules: Vec<(SymbolId, SrcLoc)>,
+    /// The names in inline modules that resolve outside of the file (to the prelude or a
+    /// builtin), while a module that encloses them has an item with the same name in the same
+    /// namespace. An inline module doesn't see the items of the modules it's in, so the name means
+    /// the prelude's item rather than the enclosing one.
+    pub enclosed_prelude_references: Vec<EnclosedPreludeReference>,
 }
 
 /// A read of a struct's field. The struct is identified by its name, which every copy of it (such
@@ -32,4 +37,24 @@ pub struct LintSites {
 pub struct FieldRead {
     pub struct_name: Name,
     pub field: String,
+}
+
+/// A name in an inline module that resolves to the prelude or a builtin, while an enclosing module
+/// has an item with the same name in the same namespace (see
+/// [`LintSites::enclosed_prelude_references`]).
+#[derive(Debug, Clone)]
+pub struct EnclosedPreludeReference {
+    /// The name as it's written in the inline module.
+    pub name: Name,
+    /// Whether the name resolves to a builtin, rather than an item of the prelude.
+    pub builtin: bool,
+    /// How many `super`s name the enclosing module with the item, which is the nearest one.
+    pub depth: usize,
+    /// Where the enclosing module declares the item, or the import that brings it into the module.
+    pub enclosing: Option<SrcLoc>,
+    /// Whether the enclosing module brings the item in with an import, rather than declaring it.
+    pub imported: bool,
+    /// Whether the name is a struct field shorthand (such as `Point { x }`), which is both the
+    /// field's name and the value.
+    pub field_shorthand: bool,
 }

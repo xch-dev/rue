@@ -1,0 +1,6 @@
+import v::w;
+import w::*;
+
+export fn value() -> Int {
+    X + w()
+}

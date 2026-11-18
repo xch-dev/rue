@@ -1,0 +1,163 @@
+import helpers::concat;
+
+// Names in an inline module that refer to the prelude or a builtin, while a module that encloses
+// it has an item with the same name, which the inline module doesn't see
+fn sha256(value: Bytes) -> Bytes32 {
+    unchecked_cast(value)
+}
+
+fn tree_hash_atom(value: Bytes) -> Bytes32 {
+    unchecked_cast(value)
+}
+
+struct Remark {
+    message: Bytes,
+}
+
+mod helpers {
+    export fn concat(value: Bytes) -> Bytes {
+        value
+    }
+}
+
+struct Hasher {
+    tree_hash_atom: fn(value: Bytes) -> Bytes32,
+}
+
+mod hashed {
+    // A builtin
+    export fn builtin(value: Bytes) -> Bytes32 {
+        sha256(value)
+    }
+
+    // A function of the prelude
+    export fn prelude(value: Bytes) -> Bytes32 {
+        tree_hash_atom(value)
+    }
+
+    // A builtin, over an item that the enclosing module imports
+    export fn imported(value: Bytes) -> Bytes {
+        concat([value, value])
+    }
+
+    // A struct field shorthand
+    export fn shorthand() -> super::Hasher {
+        super::Hasher { tree_hash_atom }
+    }
+
+    // A type
+    export fn remark() -> Remark {
+        Remark { rest: nil }
+    }
+
+    export mod nested {
+        fn sha256(value: Bytes) -> Bytes32 {
+            unchecked_cast(value)
+        }
+
+        mod innermost {
+            // The nearest enclosing module with the name is the one that's suggested
+            export fn nearest(value: Bytes) -> (Bytes32, Bytes32) {
+                (sha256(value), tree_hash_atom(value))
+            }
+        }
+
+        export fn uses_nested(value: Bytes) -> ((Bytes32, Bytes32), Bytes32) {
+            (innermost::nearest(value), sha256(value))
+        }
+    }
+}
+
+// A module, which is looked up in the module namespace when a path continues after it
+mod module_namespace {
+    // Unused, since `inner` uses the prelude's `std`
+    mod std {
+        export mod tree_hash {
+            export fn tree_hash_atom(value: Bytes) -> Bytes32 {
+                unchecked_cast(value)
+            }
+        }
+    }
+
+    export mod inner {
+        export fn hash(value: Bytes) -> Bytes32 {
+            std::tree_hash::tree_hash_atom(value)
+        }
+    }
+}
+
+// The nearest enclosing module imports the prelude's item, so it means the same thing there,
+// even though the file declares its own
+mod same_item {
+    import std::tree_hash::tree_hash_atom;
+
+    export mod inner {
+        export fn hash(value: Bytes) -> Bytes32 {
+            tree_hash_atom(value)
+        }
+    }
+
+    export fn hash(value: Bytes) -> Bytes32 {
+        tree_hash_atom(value)
+    }
+}
+
+mod not_reported {
+    import std::tree_hash::tree_hash_atom;
+
+    // A path through `super` names the enclosing module's item
+    export fn qualified(value: Bytes) -> Bytes32 {
+        super::sha256(value)
+    }
+
+    // An explicit import keeps the prelude's item
+    export fn explicit(value: Bytes) -> Bytes32 {
+        tree_hash_atom(value)
+    }
+
+    // A local binding isn't the prelude
+    export fn local(sha256: Bytes32) -> Bytes32 {
+        sha256
+    }
+
+    // Prelude items that no enclosing module has a name for
+    export fn unrelated(value: Bytes) -> Bytes32 {
+        keccak256(value)
+    }
+
+    #[allow(prelude_over_enclosing_item)]
+    export fn allowed(value: Bytes) -> Bytes32 {
+        sha256(value)
+    }
+
+    #[expect(prelude_over_enclosing_item)]
+    export fn expected(value: Bytes) -> Bytes32 {
+        sha256(value)
+    }
+}
+
+// Outside of an inline module, the file's items are used
+fn main() -> Any {
+    let value = "hello";
+    let hasher = hashed::shorthand();
+    let remark = Remark { message: concat(value) };
+    [
+        hashed::builtin(value),
+        hashed::prelude(value),
+        hashed::imported(value),
+        hasher.tree_hash_atom(value),
+        hashed::remark(),
+        hashed::nested::uses_nested(value),
+        sha256(value),
+        tree_hash_atom(remark.message),
+        module_namespace::inner::hash(value),
+        same_item::inner::hash(value),
+        same_item::hash(value),
+        not_reported::qualified(value),
+        not_reported::explicit(value),
+        not_reported::local(sha256(value)),
+        not_reported::unrelated(value),
+        not_reported::allowed(value),
+        not_reported::expected(value),
+    ]
+}

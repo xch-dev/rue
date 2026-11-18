@@ -1,12 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    mem,
+};
 
 use id_arena::Arena;
 use indexmap::IndexSet;
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FxHashMap, Inference,
+    AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, Inference,
     InferenceCandidates, Type, TypeId, Union, compare, compare_renamed, free_generics,
-    substitute_with_mappings, unwrap_semantic_without_substitution,
+    references_generic, substitute_with_mappings, unwrap_semantic_without_substitution,
 };
 
 /// Picks a type for each inferred generic, given the candidates collected while comparing.
@@ -367,6 +370,83 @@ fn own_upper(
         upper.to_vec()
     } else {
         upper.iter().copied().filter(|&ty| ty != original).collect()
+    }
+}
+
+impl Inference {
+    /// Resolves the vars for passed generic functions' instances (see `Inference::add_instance`)
+    /// first, each on its own from its bounds, replaces them in the candidates that reference them,
+    /// and removes them, so only the generics of the function being called are left.
+    ///
+    /// A lower or held candidate takes the least instantiation, from the instance's lower bounds,
+    /// and an upper candidate the greatest, from its upper bounds. An instance without bounds of
+    /// that kind is instantiated as `Never` or `Any` respectively, such as `(Never, Never)` for `B`
+    /// when `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339). That's the least or greatest
+    /// type for the generic itself, regardless of where the candidate references it, so a generic
+    /// that's only a parameter type in the candidate gives it the greatest function type instead.
+    pub(crate) fn resolve_instances(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
+        if self.instances.is_empty() {
+            return;
+        }
+
+        let instances: Vec<(TypeId, InferenceCandidates)> = mem::take(&mut self.instances)
+            .into_iter()
+            .map(|var| {
+                self.branches.shift_remove(&var);
+                (var, self.generics.shift_remove(&var).unwrap())
+            })
+            .collect();
+
+        // What each instance is instantiated as, for lower (and held) and upper candidates
+        let mut picked: FxHashMap<(TypeId, bool), TypeId> = FxHashMap::default();
+
+        for candidates in self.generics.values_mut() {
+            for kind in [
+                CandidateKind::Lower,
+                CandidateKind::Upper,
+                CandidateKind::Held,
+            ] {
+                let upper = matches!(kind, CandidateKind::Upper);
+
+                for ty in candidates.list_mut(kind) {
+                    // Most candidates reference none of the vars, which this finds in one pass
+                    let free = free_generics(arena, *ty);
+                    let mut mappings = HashMap::new();
+
+                    for (var, bounds) in &instances {
+                        if !free.contains(var)
+                            || !references_generic(arena, *ty, *var, |_| Vec::new())
+                        {
+                            continue;
+                        }
+
+                        let instantiated = *picked.entry((*var, upper)).or_insert_with(|| {
+                            // Without bounds of the candidate's kind, the least instantiation is
+                            // `Never` and the greatest is `Any`
+                            if upper {
+                                let upper = InferenceCandidates {
+                                    upper: bounds.upper.clone(),
+                                    ..Default::default()
+                                };
+                                pick_inferred_type(arena, builtins, &self.renamed, None, &upper)
+                                    .unwrap_or(builtins.permissive_any)
+                            } else if bounds.lower.is_empty() {
+                                builtins.never
+                            } else {
+                                pick_inferred_type(arena, builtins, &self.renamed, None, bounds)
+                                    .unwrap()
+                            }
+                        });
+
+                        mappings.insert(*var, instantiated);
+                    }
+
+                    if !mappings.is_empty() {
+                        *ty = substitute_with_mappings(arena, *ty, &mappings);
+                    }
+                }
+            }
+        }
     }
 }
 

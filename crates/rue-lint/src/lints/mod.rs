@@ -12,6 +12,7 @@ mod inline_ifs;
 mod inline_values;
 mod naming;
 mod operators;
+mod prelude;
 mod recursion;
 mod returns;
 mod shadowing;
@@ -51,6 +52,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
     InputPass {
         lints: shadowing::LINTS,
         run: shadowing::check,
+    },
+    InputPass {
+        lints: prelude::LINTS,
+        run: prelude::check,
     },
 ];
 

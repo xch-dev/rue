@@ -1,0 +1,12 @@
+// `import c::d` and `import d::*` wait for each other. `d::*`'s path isn't forced while the named
+// import of `d` is in the same cycle, so only `c::d`'s path is forced, which finds the sibling
+// `c.rue`. That can still be contradicted: `d::*`'s path then finds the inner module `d` that
+// `c::d` brings in, which brings in a different module `c`, so `c` is reported. `second.rue` does
+// the same with the names in the other order.
+
+import c::d;
+import d::*;
+
+fn main() -> Int {
+    V
+}

@@ -7,5 +7,4 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 diagnostics:
-- Unused import `*` at main.rue:6:11
 - Unused import `*` at f.rue:3:11
