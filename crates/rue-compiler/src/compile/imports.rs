@@ -1200,9 +1200,9 @@ fn resolve_import(
                 found
             };
 
-            // This is recorded in every pass, since an import of a name from an enclosing scope
-            // finds its own binding once it has been resolved. The import that it's found through
-            // is used by this one, like one in its path.
+            // This is recorded in every pass, since an import of a name with no path finds its own
+            // binding once it has been resolved. The import that it's found through is used by
+            // this one, like one in its path.
             for &(found, via) in &found {
                 if let Some(via) = via
                     && via != import_id
