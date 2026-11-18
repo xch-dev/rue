@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
@@ -259,14 +259,8 @@ pub fn compile_function_call_expr(
 
         // The function that's returned can stay generic over the generics of a function type
         // expected of the call
-        let ret = rue_types::unwrap_semantic(ctx.types_mut(), function.ret, true);
-
-        if matches!(ctx.ty(ret), Type::Function(_)) {
-            let expected_generics = expected_generics(ctx, expected_type);
-
-            if !expected_generics.is_empty() {
-                generalized = generalize(ctx, function, &expected_generics, &mut mappings);
-            }
+        if let Some(expected_type) = expected_type {
+            generalized = generalize(ctx, function, expected_type, &mut mappings);
         }
 
         // Inference only proposes types for the generics, so each argument must be checked
@@ -299,12 +293,8 @@ pub fn compile_function_call_expr(
 
     let mut ty = substitute_with_mappings(ctx.types_mut(), ty, &mappings);
 
-    if !generalized.is_empty()
-        && let unwrapped = rue_types::unwrap_semantic(ctx.types_mut(), ty, true)
-        && let Type::Function(mut function) = ctx.ty(unwrapped).clone()
-    {
-        function.generics.extend(generalized);
-        ty = ctx.alloc_type(Type::Function(function));
+    if !generalized.is_empty() {
+        ty = add_generics(ctx, ty, &generalized);
     }
 
     let hir = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
@@ -356,9 +346,10 @@ fn has_uninferred_parameters(
         })
 }
 
-/// Generalizes the function returned by a call over the generics of the function type expected
-/// of it, and returns the generics it's generalized over. This only applies to the generics that
-/// no parameter depends on, since the function works for any of them.
+/// Generalizes the functions returned by a call over the generics of the function types expected
+/// of them, and returns the generics that each is generalized over, from the outermost. This only
+/// applies to the generics that no parameter of the callee, or of a function returned above it,
+/// depends on, since the function works for any of them.
 ///
 /// A generic that's inferred as one of the expected generics stays generic, as a copy so that it
 /// doesn't capture anything. A generic that's inferred as a type that references them, such as
@@ -366,19 +357,90 @@ fn has_uninferred_parameters(
 /// `fn make<A, B>() -> fn(a: A) -> B`, references the copy of the first generic inferred as each
 /// one instead, so it doesn't leak them (#340). `A` is inferred as `T`, so `B` is `(A, A)`. If no
 /// generic is inferred as one of them, it's copied as well, unless it leaks through a parameter.
+///
+/// The same goes for the function types nested in the return types, at the same depth on each
+/// side, such as `fn<U>(b: U) -> (T, U)` in `fn<T>(a: T) -> fn<U>(b: U) -> (T, U)` (#359).
 fn generalize(
     ctx: &mut Compiler,
     function: &FunctionType,
+    expected_type: TypeId,
+    mappings: &mut HashMap<TypeId, TypeId>,
+) -> Vec<Vec<TypeId>> {
+    let mut levels = Vec::new();
+    let mut params: Vec<TypeId> = function.param_types().collect();
+    let mut returned = function.ret;
+    let mut expected = vec![expected_type];
+    // A recursive function type repeats its levels, so this stops at one that's been seen
+    let mut seen = HashSet::new();
+
+    loop {
+        let unwrapped = rue_types::unwrap_semantic(ctx.types_mut(), returned, true);
+
+        let Type::Function(returned_function) = ctx.ty(unwrapped).clone() else {
+            break;
+        };
+
+        let expected_functions: Vec<FunctionType> = expected
+            .iter()
+            .flat_map(|&ty| rue_types::extract_functions(ctx.types_mut(), ty, false))
+            .collect();
+
+        if expected_functions.is_empty()
+            || expected_functions
+                .iter()
+                .all(|expected| !seen.insert(expected.ret))
+        {
+            break;
+        }
+
+        let expected_generics: Vec<TypeId> = expected_functions
+            .iter()
+            .flat_map(|expected| expected.generics.iter().copied())
+            .collect();
+
+        levels.push(generalize_level(
+            ctx,
+            &function.generics,
+            &params,
+            &expected_generics,
+            mappings,
+        ));
+
+        params.extend(returned_function.param_types());
+        returned = returned_function.ret;
+        expected = expected_functions
+            .iter()
+            .map(|expected| expected.ret)
+            .collect();
+    }
+
+    while levels.last().is_some_and(Vec::is_empty) {
+        levels.pop();
+    }
+
+    levels
+}
+
+/// Generalizes one level of the functions returned by a call (see `generalize`), over the expected
+/// generics at that level, for the generics that none of the parameters reference.
+fn generalize_level(
+    ctx: &mut Compiler,
+    generics: &[TypeId],
+    params: &[TypeId],
     expected_generics: &[TypeId],
     mappings: &mut HashMap<TypeId, TypeId>,
 ) -> Vec<TypeId> {
     let mut generalized = Vec::new();
 
+    if expected_generics.is_empty() {
+        return generalized;
+    }
+
     let (free, fixed): (Vec<TypeId>, Vec<TypeId>) =
-        function.generics.iter().copied().partition(|&generic| {
-            !function
-                .param_types()
-                .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+        generics.iter().copied().partition(|&generic| {
+            !params
+                .iter()
+                .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
         });
 
     // An expected generic that a generic which a parameter depends on references leaks regardless,
@@ -440,15 +502,25 @@ fn generalize(
     generalized
 }
 
-/// The generics of the function types expected of the call, including the function members of a
-/// union such as `Id | nil`.
-fn expected_generics(ctx: &mut Compiler, expected_type: Option<TypeId>) -> Vec<TypeId> {
-    expected_type.map_or_else(Vec::new, |expected_type| {
-        rue_types::extract_functions(ctx.types_mut(), expected_type, false)
-            .into_iter()
-            .flat_map(|function| function.generics)
-            .collect()
-    })
+/// Adds the generics that each level of the function type is generalized over (see `generalize`),
+/// from the outermost.
+fn add_generics(ctx: &mut Compiler, ty: TypeId, levels: &[Vec<TypeId>]) -> TypeId {
+    let Some((generics, inner)) = levels.split_first() else {
+        return ty;
+    };
+
+    let unwrapped = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+
+    let Type::Function(mut function) = ctx.ty(unwrapped).clone() else {
+        return ty;
+    };
+
+    if !inner.is_empty() {
+        function.ret = add_generics(ctx, function.ret, inner);
+    }
+
+    function.generics.extend(generics.iter().copied());
+    ctx.alloc_type(Type::Function(function))
 }
 
 /// Renames the function's generics that are in scope to fresh copies of them, and returns the

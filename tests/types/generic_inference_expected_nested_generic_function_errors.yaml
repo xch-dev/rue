@@ -1,0 +1,3 @@
+diagnostics:
+- "Cannot assign `fn(a: U) -> fn(b: U) -> U` to `fn(a: Int) -> fn<U>(b: U) -> U`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:14:50"
+- "Cannot assign `fn(a: Int) -> fn<U>(b: Int) -> (U, U)` to `fn(a: Int) -> fn<U>(b: U) -> (U, U)`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:17:56"
