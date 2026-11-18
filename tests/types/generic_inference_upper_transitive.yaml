@@ -125,3 +125,10 @@ tests:
   runtime_cost: 2301
   byte_cost: 1788000
   total_cost: 1790301
+- name: bound_referencing_an_unresolved_generic_not_passed_on
+  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) ()))) (q 7))
+  debug_program: (a (q 2 (q 2 2 (c (q . 7) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) 1)) (c (c (q . 2) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))))) ()))
+  output: "7"
+  runtime_cost: 1976
+  byte_cost: 1524000
+  total_cost: 1525976

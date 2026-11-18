@@ -199,3 +199,18 @@ test fn bound_from_one_of_several_matching_members_not_passed_on() -> Int {
     // for the later `6`
     run_later(duplicate_both, either_pair, 5)(6)
 }
+
+fn strip<T>(value: T | 5) -> T {
+    unchecked_cast(value)
+}
+
+fn chain<A, X, B>(first: fn(a: A) -> X, second: fn(x: X) -> B, _value: A) -> fn(a: A) -> B {
+    fn(a: A) => second(first(a))
+}
+
+test fn bound_referencing_an_unresolved_generic_not_passed_on() -> Int {
+    // `X ≤ B | 5` reaches `A` through `identity`, but it references `B`, which isn't resolved yet,
+    // so it doesn't narrow `A` to `5`, and `A` stays `Int` for the later `7`
+    let function = chain(identity, strip, 5);
+    function(7)
+}

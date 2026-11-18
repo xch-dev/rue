@@ -4,10 +4,9 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, InferenceCandidates, Type,
-    TypeId, compare_renamed, compare_with_inference, free_generics, infer_from_expected,
-    resolve_inference_with_fallback, strongly_connected_components, substitute_with_mappings,
-    union_of,
+    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
+    compare_with_inference, free_generics, infer_from_expected, resolve_inference_with_fallback,
+    strongly_connected_components, substitute_with_mappings, union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -123,21 +122,10 @@ fn narrow_inferred(
     fallback: &HashMap<TypeId, TypeId>,
     mappings: &mut HashMap<TypeId, TypeId>,
 ) {
-    // Only a generic with lower bounds of its own, or one that nothing constrains and that falls back
-    // to the type expected of the call, can be widened past an upper bound. One with only held
-    // candidates keeps them, as `L` is `nil` when `nil` is passed to `L | nil` (#333), and one with
-    // only upper bounds already takes the most specific
-    let kept = infer.keep_matched();
     let inferred: HashSet<TypeId> = infer
         .generics
         .keys()
         .copied()
-        .filter(|&generic| {
-            let candidates = &kept.generics[&generic];
-            !candidates.lower.is_empty()
-                || (*candidates == InferenceCandidates::default()
-                    && fallback.contains_key(&generic))
-        })
         .filter(|generic| {
             mappings.get(generic).is_some_and(|&ty| {
                 !free_generics(arena, ty)
@@ -151,6 +139,22 @@ fn narrow_inferred(
         return;
     }
 
+    // Only the upper bounds that don't reference a generic being inferred are passed on. One that
+    // does, such as `B | 5`, can't be checked until that generic is resolved, and the widened type
+    // could still satisfy it then
+    let bounds: Vec<Bound> = upper_bounds(infer)
+        .into_iter()
+        .filter(|(_, upper, _)| {
+            !free_generics(arena, *upper)
+                .into_iter()
+                .any(|other| infer.is_target(other))
+        })
+        .collect();
+
+    if bounds.is_empty() {
+        return;
+    }
+
     let mut bounded = infer.clone();
 
     pass_upper_bounds(
@@ -158,14 +162,15 @@ fn narrow_inferred(
         builtins,
         &mut bounded,
         Vec::new(),
-        upper_bounds(infer),
+        bounds,
         |generic| inferred.contains(&generic),
     );
 
     let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
 
     // A mapping is only replaced by a narrower one, since the bounds can only rule out what it was
-    // widened to. A generic that falls back to `5` and is given the bound `Int` stays `5`
+    // widened to. A generic that falls back to `5` and is given the bound `Int` stays `5`, and one
+    // with only held candidates, such as `L` when `nil` is passed to `L | nil`, keeps `nil` (#333)
     for generic in inferred {
         if let Some(&ty) = resolved.get(&generic)
             && !free_generics(arena, ty).contains(&generic)
