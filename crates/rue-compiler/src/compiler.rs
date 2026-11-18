@@ -52,6 +52,7 @@ pub struct Compiler {
     /// The calls whose generics are being inferred from their arguments, innermost last.
     call_frames: Vec<CallFrame>,
     lint_sites: LintSites,
+    ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
     /// symbol doesn't need to walk every enclosing scope (and each `let` statement opens one).
     overridden_symbols: HashSet<SymbolId>,
@@ -148,6 +149,7 @@ impl Compiler {
             return_count: 0,
             call_frames: Vec::new(),
             lint_sites: LintSites::default(),
+            ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
             unchecked_type_items: Vec::new(),
             cancel: None,
@@ -1071,6 +1073,19 @@ impl Compiler {
 
             self.db.add_import_reference(import, reference, user);
         }
+    }
+
+    /// Records that a glob import brought a declaration into a scope that another glob import
+    /// brings a different declaration with the same name into, or that it brought in a
+    /// declaration that was already ambiguous, so using it is ambiguous. Returns whether it
+    /// wasn't already recorded.
+    pub fn add_ambiguous_import(&mut self, import: ImportId, declaration: Declaration) -> bool {
+        self.ambiguous_imports.insert((import, declaration))
+    }
+
+    /// Whether a name that refers to a declaration through this import is ambiguous.
+    pub fn is_ambiguous_import(&self, import: Option<ImportId>, declaration: Declaration) -> bool {
+        import.is_some_and(|import| self.ambiguous_imports.contains(&(import, declaration)))
     }
 
     /// Records an import that's checked for being unused, unless it's in the standard library,

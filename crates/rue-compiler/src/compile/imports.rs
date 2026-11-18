@@ -1298,17 +1298,21 @@ fn resolve_import(
                     // imports are resolved again until nothing changes, so this reaches the end
                     // of any chain of glob imports. When several glob imports bring in the same
                     // item, it's ambiguous if any of them does, whichever one recorded it, so the
-                    // ambiguity is recorded on that one, along with what else the name could
-                    // refer to.
-                    if ctx.is_ambiguous_import(via, item.into())
-                        && ctx.scope(import_scope).item(namespace, &name) == Some(item)
+                    // ambiguity is recorded on that one. What else the name could refer to is
+                    // recorded the same way, even if a named import passed it on, which isn't
+                    // reported again.
+                    if ctx.scope(import_scope).item(namespace, &name) == Some(item)
                         && let Some(recorded) = ctx.scope(import_scope).item_import(item)
                         && matches!(ctx.import(recorded).items, Items::All(_))
                     {
+                        if ctx.is_ambiguous_import(via, item.into()) {
+                            updated |= ctx.add_ambiguous_import(recorded, item.into());
+                        }
+
                         let others = ctx
                             .ambiguous_alternatives(via, item.into())
                             .collect::<Vec<_>>();
-                        updated |= ctx.add_ambiguous_import(recorded, item.into(), others);
+                        updated |= ctx.add_ambiguous_alternatives(recorded, item.into(), others);
                     }
 
                     let existing = ctx.scope(import_scope).item(namespace, &name);
@@ -1361,11 +1365,14 @@ fn resolve_import(
                         // The name could refer to the item this import brings in, or to what
                         // that could refer to if it's ambiguous where it's imported from
                         if existing != item {
+                            updated |= ctx.add_ambiguous_import(bound_by, existing.into());
+
                             let others = ctx
                                 .ambiguous_alternatives(via, item.into())
                                 .chain([item.into()])
                                 .collect::<Vec<_>>();
-                            updated |= ctx.add_ambiguous_import(bound_by, existing.into(), others);
+                            updated |=
+                                ctx.add_ambiguous_alternatives(bound_by, existing.into(), others);
                         }
                     } else if !target.is_item_exported(item)
                         && import.exported
@@ -1519,6 +1526,13 @@ fn resolve_import(
                 {
                     let declaration = found.into();
                     ctx.add_import_reference(via, declaration, ImportUser::Import(import_id));
+
+                    // What else the name could refer to is passed on, so that it's used and
+                    // exported wherever this import's binding is
+                    let others = ctx
+                        .ambiguous_alternatives(Some(via), declaration)
+                        .collect::<Vec<_>>();
+                    updated |= ctx.add_ambiguous_alternatives(import_id, declaration, others);
                     cache
                         .imported_names
                         .entry((import_id, declaration))

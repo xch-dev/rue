@@ -252,8 +252,14 @@ pub(crate) fn live_declarations(
 fn ambiguous_parents(db: &Database) -> HashMap<Declaration, Vec<Declaration>> {
     let mut parents = HashMap::<Declaration, Vec<Declaration>>::new();
 
-    for (import, declaration, others) in db.ambiguous_imports() {
-        let users = binding_users(db, import, declaration);
+    for (import, declaration, others) in db.ambiguous_bindings() {
+        let users = db
+            .import_users(import, declaration)
+            .filter_map(|user| match user {
+                ImportUser::Declaration(user) => Some(user),
+                ImportUser::Import(_) | ImportUser::Other => None,
+            })
+            .collect::<Vec<_>>();
 
         for &other in others {
             parents
@@ -264,30 +270,6 @@ fn ambiguous_parents(db: &Database) -> HashMap<Declaration, Vec<Declaration>> {
     }
 
     parents
-}
-
-/// The declarations that use a name that refers to the declaration through the import, directly
-/// or through named imports of it.
-fn binding_users(db: &Database, import: ImportId, declaration: Declaration) -> Vec<Declaration> {
-    let mut users = Vec::new();
-    let mut imports = vec![import];
-    let mut visited = HashSet::new();
-
-    while let Some(import) = imports.pop() {
-        if !visited.insert(import) {
-            continue;
-        }
-
-        for user in db.import_users(import, declaration) {
-            match user {
-                ImportUser::Declaration(user) => users.push(user),
-                ImportUser::Import(import) => imports.push(import),
-                ImportUser::Other => {}
-            }
-        }
-    }
-
-    users
 }
 
 /// The bindings that are kept whenever the function they're in is live, which are the bindings

@@ -1231,12 +1231,13 @@ fn unused_constants(compiled: &Compiled) -> Vec<String> {
 #[test]
 fn ambiguous_uses_of_colliding_glob_items_use_all_of_them() {
     // Whichever glob import bound `V`, its use is a use of both `V`s, so neither is reported as
-    // unused, whether it's used directly, through a chain of glob imports, a named import or a
-    // path
+    // unused, whether it's used directly, through a chain of glob imports, a named import, a
+    // glob import of a named import, or a path
     for user_items in [
         "import super::{first}::*; import super::{second}::*; export fn value() -> Int { V }",
         "import super::both::*; export fn value() -> Int { V }",
         "import super::both::V; export fn value() -> Int { V }",
+        "mod mid { export super::super::both::V; } import mid::*; export fn value() -> Int { V }",
         "export fn value() -> Int { super::both::V }",
     ] {
         for first_binds in [true, false] {
