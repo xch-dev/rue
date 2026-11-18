@@ -100,10 +100,6 @@ impl Ty {
         Ty::Fn(params, Box::new(ret))
     }
 
-    pub fn named(named: Named, args: Vec<Ty>) -> Ty {
-        Ty::Named(named, args)
-    }
-
     /// Replaces each `Var(i)` with `args[i]`.
     pub fn subst(&self, args: &[Ty]) -> Ty {
         self.map_vars(&|index| args[index].clone())
@@ -194,17 +190,23 @@ impl Ty {
     }
 
     /// Whether this is a union with a function type in it, such as `F | nil` or `List<F>`,
-    /// which doesn't give a lambda the types of its parameters.
-    ///
-    /// Generator version 2's unions give a lambda no parameter types anywhere inside them, nor
-    /// does a `Maybe` or `Tree` of a type with a function in it: `Box<F> | (F, F)` doesn't give
-    /// a lambda in the pair a type.
+    /// which doesn't give a lambda the types of its parameters. Removability counts such a
+    /// position as having no expected type, which is version 1's rule, kept so that its variants
+    /// don't change.
     pub fn is_function_union(&self) -> bool {
+        matches!(self, Ty::Opt(inner) | Ty::List(inner) if matches!(**inner, Ty::Fn(..)))
+    }
+
+    /// Whether a lambda anywhere in a value of this type gets no parameter types from it, so
+    /// the generator writes their types out. Besides [`is_function_union`](Self::is_function_union),
+    /// generator version 2's unions give a lambda no parameter types anywhere inside them, nor
+    /// does a `Maybe` or `Tree` of a type with a function in it: `Box<F> | (F, F)` doesn't give
+    /// a lambda in the pair a type. The position still has an expected type for anything else.
+    pub fn gives_lambdas_no_types(&self) -> bool {
         match self {
-            Ty::Opt(inner) | Ty::List(inner) => matches!(**inner, Ty::Fn(..)),
             Ty::Union(_) => true,
             Ty::Named(Named::Maybe | Named::Tree, args) => args[0].contains_fn(),
-            _ => false,
+            _ => self.is_function_union(),
         }
     }
 
@@ -251,11 +253,14 @@ impl Ty {
                 inner.write(out, generics, false);
                 out.push('>');
             }
-            Ty::Fn(params, ret) => {
+            Ty::Fn(params, ret) | Ty::GenFn(_, params, ret) => {
                 if in_union {
                     out.push('(');
                 }
-                out.push_str("fn(");
+                match self {
+                    Ty::GenFn(names, ..) => write!(out, "fn<{}>(", names.join(", ")).unwrap(),
+                    _ => out.push_str("fn("),
+                }
                 for (index, param) in params.iter().enumerate() {
                     if index > 0 {
                         out.push_str(", ");
@@ -294,24 +299,6 @@ impl Ty {
                     arg.write(out, generics, false);
                 }
                 out.push('>');
-            }
-            Ty::GenFn(names, params, ret) => {
-                if in_union {
-                    out.push('(');
-                }
-                write!(out, "fn<{}>(", names.join(", ")).unwrap();
-                for (index, param) in params.iter().enumerate() {
-                    if index > 0 {
-                        out.push_str(", ");
-                    }
-                    write!(out, "{}: ", param_name(index)).unwrap();
-                    param.write(out, generics, false);
-                }
-                out.push_str(") -> ");
-                ret.write(out, generics, true);
-                if in_union {
-                    out.push(')');
-                }
             }
             Ty::Var(index) => out.push_str(&generics[*index]),
             Ty::Rigid(name) => out.push_str(name),
@@ -659,10 +646,13 @@ impl Program {
         })
     }
 
-    /// Whether the program calls a function from the standard library, so it must be compiled
-    /// with it.
+    /// Whether the program calls or references a function from the standard library, so it must
+    /// be compiled with it.
     pub fn uses_std(&self) -> bool {
-        self.functions.iter().any(|function| is_std(&function.name))
+        self.exprs().iter().any(|expr| {
+            matches!(&expr.kind, ExprKind::Call { function, .. } | ExprKind::FnRef { function, .. }
+                if is_std(function))
+        })
     }
 
     /// The program as Rue source, with the generic arguments that the variant strips removed.

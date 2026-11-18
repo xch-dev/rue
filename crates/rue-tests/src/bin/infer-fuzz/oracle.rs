@@ -125,8 +125,9 @@ pub fn compile(source: &str) -> Compiled {
     compile_with(source, false)
 }
 
-/// Compiles the source, with the standard library if `std` is true, which takes about a quarter
-/// of a second longer, so only programs that call it get it.
+/// Compiles the source, with the standard library if `std` is true. That takes a few
+/// milliseconds longer, and changes which names are in scope, so only programs that call it get
+/// it.
 pub fn compile_with(source: &str, std: bool) -> Compiled {
     let start = Instant::now();
     COMPILING.set(true);

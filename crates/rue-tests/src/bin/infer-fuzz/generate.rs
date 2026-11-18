@@ -189,9 +189,11 @@ const HELPERS: &[Template] = &[
     template("five", &[], &[], "5"),
 ];
 
-/// The generator versions. A version only ever adds shapes, behind `self.version` checks that
-/// draw nothing from the random number generator in older versions, so a seed gives the same
-/// program in every version it existed in (`version_1_programs_never_change` pins version 1).
+/// The generator versions. A version's programs for a seed never change once it's released, so
+/// `--compare` can compare runs of the same version: a new version's shapes are behind
+/// `self.version` checks that draw nothing from the random number generator in older versions,
+/// and `version_1_programs_never_change` and `version_2_programs_never_change` pin each version.
+/// The same seed is a different program in each version.
 ///
 /// - **1**: the shapes of the first run (#341).
 /// - **2**: adds generic structs and aliases, including a recursive one (`Entry<K, V>`,
@@ -395,7 +397,7 @@ impl TyParser<'_> {
                 }
                 self.expect(">");
                 assert_eq!(args.len(), named.arity(), "arguments of `{word}`");
-                Ty::named(named, args)
+                Ty::Named(named, args)
             }
             _ => Ty::Var(
                 self.generics
@@ -623,9 +625,9 @@ impl Generator {
             let kind = self.rng.below(4);
             let first = self.pattern(count, depth - 1);
             return match kind {
-                0 => Ty::named(Named::Maybe, vec![first]),
-                1 => Ty::named(Named::Tree, vec![first]),
-                2 => Ty::named(Named::Entry, vec![first, self.pattern(count, depth - 1)]),
+                0 => Ty::Named(Named::Maybe, vec![first]),
+                1 => Ty::Named(Named::Tree, vec![first]),
+                2 => Ty::Named(Named::Entry, vec![first, self.pattern(count, depth - 1)]),
                 _ => union_of(vec![first, self.pattern(count, depth - 1)]),
             };
         }
@@ -813,12 +815,12 @@ impl Generator {
                 let second = self.ty(scope, depth - 1);
                 union_of(vec![first, second])
             }
-            2 => Ty::named(Named::Maybe, vec![self.ty(scope, depth - 1)]),
-            3 => Ty::named(Named::Tree, vec![self.ty(scope, depth - 1)]),
+            2 => Ty::Named(Named::Maybe, vec![self.ty(scope, depth - 1)]),
+            3 => Ty::Named(Named::Tree, vec![self.ty(scope, depth - 1)]),
             4 => {
                 let key = self.ty(scope, depth - 1);
                 let value = self.ty(scope, depth - 1);
-                Ty::named(Named::Entry, vec![key, value])
+                Ty::Named(Named::Entry, vec![key, value])
             }
             // A union of generic structs
             5 => {
@@ -826,7 +828,7 @@ impl Generator {
                 let value = self.ty(scope, depth - 1);
                 Ty::Union(vec![
                     Ty::boxed(inner.clone()),
-                    Ty::named(Named::Entry, vec![inner, value]),
+                    Ty::Named(Named::Entry, vec![inner, value]),
                 ])
             }
             // A union of function types
@@ -1062,11 +1064,17 @@ impl Generator {
                 Box::new(self.expr(first, scope, child_depth, expected)),
                 Box::new(self.expr(rest, scope, child_depth, expected)),
             ),
-            Ty::Opt(inner) => {
+            // `Maybe<T>` is `T | nil`
+            Ty::Opt(_) | Ty::Named(Named::Maybe, _) => {
+                let inner = match goal {
+                    Ty::Opt(inner) => inner,
+                    Ty::Named(_, args) => &args[0],
+                    _ => unreachable!(),
+                };
                 if self.rng.chance(30) {
                     ExprKind::Nil
                 } else {
-                    let expected = expected && !goal.is_function_union();
+                    let expected = expected && !goal.gives_lambdas_no_types();
                     return Expr {
                         ty: goal.clone(),
                         ..self.expr(inner, scope, depth, expected)
@@ -1074,7 +1082,7 @@ impl Generator {
                 }
             }
             Ty::List(inner) => {
-                let expected = expected && !goal.is_function_union();
+                let expected = expected && !goal.gives_lambdas_no_types();
                 match self.rng.below(3) {
                     0 => ExprKind::Nil,
                     count => ExprKind::List(
@@ -1103,26 +1111,15 @@ impl Generator {
             }
             Ty::Union(members) => {
                 let member = members[self.rng.below(members.len())].clone();
-                let expected = expected && !goal.is_function_union();
+                let expected = expected && !goal.gives_lambdas_no_types();
                 return Expr {
                     ty: goal.clone(),
                     ..self.expr(&member, scope, depth, expected)
                 };
             }
-            Ty::Named(Named::Maybe, args) => {
-                if self.rng.chance(30) {
-                    ExprKind::Nil
-                } else {
-                    let expected = expected && !goal.is_function_union();
-                    return Expr {
-                        ty: goal.clone(),
-                        ..self.expr(&args[0], scope, depth, expected)
-                    };
-                }
-            }
             Ty::Named(Named::Tree, args) => {
                 if child_depth > 0 && self.rng.chance(40) {
-                    let expected = expected && !goal.is_function_union();
+                    let expected = expected && !goal.gives_lambdas_no_types();
                     let value = self.expr(&args[0], scope, child_depth, expected);
                     let left = self.expr(goal, scope, child_depth - 1, expected);
                     let right = self.expr(goal, scope, child_depth - 1, expected);
@@ -1783,17 +1780,12 @@ fn witness<'a>(
         (Ty::Named(Named::Maybe, args), _) => {
             witness(program, variant, &args[0], arg, witnessed, facts);
         }
-        // A value passed for another union could be any member's, so it only gives a type to the
-        // generics in all of them
-        (Ty::Union(members), _) => {
-            if known(program, variant, arg) {
-                let mut common = members[0].vars();
-                for member in &members[1..] {
-                    common = common.intersection(&member.vars()).copied().collect();
-                }
-                witnessed.extend(common);
-            }
-        }
+        // A value passed for another union gives nothing a type. Its members can match the same
+        // value in more than one way, which leaves more than one solution: `("a", 3)` for
+        // `(A, Int) | (Bytes, A)` fits `A = Bytes` and `A = Int`, and a member that holds a
+        // generic can only be a pair, a struct (which is a pair), a function (which can be any
+        // value) or the generic itself, so any two members of that kind can overlap
+        (Ty::Union(_), _) => {}
         (Ty::Fn(params, ret), ExprKind::Lambda { typed, body, .. }) => {
             // A typed lambda's annotations give its parameters' generics a type. An untyped
             // lambda's parameters get theirs from the call, so its body is only looked at once
