@@ -2730,15 +2730,56 @@ fn reexports_only_export_the_namespaces_that_are_public() {
     );
 
     // Only the public value with each name is re-exported, and nothing is reported for the
-    // private types. `a` first finds only the private type `Y`, since it's resolved before the
-    // file imports the value (values are declared after the first resolution of imports), so this
-    // checks that re-exports are only reported once every import is resolved.
+    // private types. `a`'s import is resolved before the file's `export inner::Y`, so it first
+    // finds only the private type `Y`, which checks that re-exports are only reported once every
+    // import is resolved.
     assert_eq!(
         compiled.errors(),
         [
             "26:24 PrivateType(\"X\", \"a\")",
             "26:33 PrivateType(\"Y\", \"a\")",
             "26:42 PrivateType(\"Z\", \"b\")",
+        ]
+    );
+}
+
+#[test]
+fn imports_of_reported_reexports_are_not_reported_again() {
+    let compiled = compile(
+        "
+        const SECRET: Int = 1;
+
+        mod hidden {
+            export const X: Int = 2;
+        }
+
+        mod z {
+            export super::SECRET;
+            export super::hidden;
+        }
+
+        mod user {
+            import super::z::SECRET;
+            import super::z::hidden::X;
+
+            export fn get() -> Int {
+                SECRET + X
+            }
+        }
+
+        fn main() -> Int {
+            user::get()
+        }
+        ",
+    );
+
+    // The imports through `z` are resolved before the re-exports are reported, when the items are
+    // still private there, so this checks that they're resolved again once they're exported
+    assert_eq!(
+        compiled.errors(),
+        [
+            "9:27 PrivateReexport(\"SECRET\")",
+            "10:27 PrivateReexport(\"hidden\")",
         ]
     );
 }

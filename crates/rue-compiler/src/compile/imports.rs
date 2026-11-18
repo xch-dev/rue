@@ -140,10 +140,10 @@ pub struct ImportCache {
     /// many times the import is resolved.
     errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
     /// What each exported named import with no path re-exports: the scope it imports into, and
-    /// each item it found, with the scope of the module it was found in (its own, or the one that
-    /// `super` names), or `None` if it was found outside of the module, where items are public
-    /// (a file's sibling modules and the prelude). See [`report_private_reexports`].
-    reexports: IndexMap<ImportId, (ScopeId, IndexMap<Item, Option<ScopeId>>)>,
+    /// each item it found, with whether it was found in the module it looks in (its own, or the
+    /// one that `super` names) rather than outside of it, where items are public (a file's sibling
+    /// modules and the prelude). See [`report_private_reexports`].
+    reexports: IndexMap<ImportId, (ScopeId, IndexMap<Item, bool>)>,
     /// The lookups that were answered without waiting for a module to settle, since nothing else
     /// could be resolved. They're checked once every import is resolved.
     forced: IndexMap<(ImportId, LookupKey), ForcedLookup>,
@@ -207,8 +207,6 @@ struct CachedPath {
     /// The declarations referenced through other imports while resolving the path, with the
     /// index of the segment that names each, so that they're recorded each time it's used.
     references: Vec<(usize, ImportId, Declaration)>,
-    /// The indices of the segments of the path that name a private module.
-    private_segments: Vec<usize>,
 }
 
 fn flatten_imports(
@@ -380,9 +378,9 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
     let mut exported = false;
 
     for (&import_id, (import_scope, found)) in &cache.reexports {
-        let public = |(&item, source): (&Item, &Option<ScopeId>)| {
-            source.is_none_or(|source| ctx.scope(source).is_item_exported(item))
-        };
+        let module = ctx.scope(ctx.import(import_id).base_scope);
+        let public =
+            |(&item, &in_module): (&Item, &bool)| !in_module || module.is_item_exported(item);
 
         if found.iter().any(public)
             || cache
@@ -410,6 +408,19 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
         cache
             .errors
             .insert((import_id, ImportError::PrivateReexport), (name, kind));
+    }
+
+    // The imports that found what's now exported private are resolved again, and reported again
+    // if they still find something private
+    if exported {
+        cache.errors.retain(|(_, error), _| {
+            !matches!(
+                error,
+                ImportError::PrivateModule(_)
+                    | ImportError::PrivateSymbol
+                    | ImportError::PrivateType
+            )
+        });
     }
 
     exported
@@ -921,7 +932,15 @@ fn resolve_import(
     if let Some(cached) = cache.paths.get(&import_id) {
         base = Some(cached.scope);
         path_references.clone_from(&cached.references);
-        private_segments.clone_from(&cached.private_segments);
+
+        // A module that a reported re-export names is exported once it's reported (see
+        // `report_private_reexports`), so whether each segment is private is checked again
+        private_segments = (1..cached.symbols.len())
+            .filter(|&index| {
+                let parent = ctx.module(cached.symbols[index - 1]).scope;
+                !ctx.scope(parent).is_module_exported(cached.symbols[index])
+            })
+            .collect();
 
         for &(_, import, declaration) in &cached.references {
             ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
@@ -1043,7 +1062,6 @@ fn resolve_import(
                 scope: base.expect("a resolved path ends in a module"),
                 symbols,
                 references: path_references.clone(),
-                private_segments: private_segments.clone(),
             },
         );
     }
@@ -1168,11 +1186,11 @@ fn resolve_import(
 
                     // Only an item that's public where it's imported from is exported. A file's
                     // sibling modules aren't items of the file, and they're public.
-                    let source = ctx.scope(source_scope);
+                    let module = ctx.scope(source_scope);
                     let exported = import.exported
                         && (base.is_some()
-                            || source.item(namespace, &name) != Some(item)
-                            || source.is_item_exported(item));
+                            || module.item(namespace, &name) != Some(item)
+                            || module.is_item_exported(item));
 
                     // A name that's ambiguous where it's imported from is ambiguous here too. The
                     // imports are resolved again until nothing changes, so this reaches the end
@@ -1210,10 +1228,9 @@ fn resolve_import(
                         && let Some(existing_import) = target.item_import(existing)
                         && matches!(ctx.import(existing_import).items, Items::All(_))
                     {
-                        // The ambiguity is exported if any of the glob imports exports the name,
-                        // whichever one recorded the binding, so that it's reported where the name
-                        // is used
-                        if exported && !ctx.scope(import_scope).is_item_exported(existing) {
+                        // The ambiguity is exported if any of the glob imports is, whichever one
+                        // recorded the binding, so that it's reported where the name is used
+                        if import.exported && !ctx.scope(import_scope).is_item_exported(existing) {
                             ctx.scope_mut(import_scope).export_item(existing);
                             updated = true;
                         }
@@ -1361,15 +1378,11 @@ fn resolve_import(
                 let mut exported = import.exported;
 
                 if import.exported && base.is_none() {
-                    let scope = match lookup_base {
-                        Base::Local(scope) | Base::Member(scope) | Base::Inner(scope) => scope,
-                    };
-                    let source = (via != Some(import_id)
-                        && ctx.scope(scope).item(namespace, name) == Some(found))
-                    .then_some(scope);
+                    let module = ctx.scope(import.base_scope);
+                    let in_module =
+                        via != Some(import_id) && module.item(namespace, name) == Some(found);
 
-                    exported =
-                        source.is_none_or(|source| ctx.scope(source).is_item_exported(found));
+                    exported = !in_module || module.is_item_exported(found);
 
                     // It's reported if nothing it found is public, rather than as unused
                     if !exported {
@@ -1382,7 +1395,7 @@ fn resolve_import(
                         .or_insert_with(|| (import_scope, IndexMap::new()))
                         .1
                         .entry(found)
-                        .or_insert(source);
+                        .or_insert(in_module);
                 }
 
                 if diagnostics {
