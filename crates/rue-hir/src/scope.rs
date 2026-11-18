@@ -347,6 +347,17 @@ impl Scope {
         .contains(name)
     }
 
+    /// The names blocked in a namespace (see [`Self::block`]).
+    pub fn blocked(&self, namespace: Namespace) -> impl Iterator<Item = &str> {
+        match namespace {
+            Namespace::Value => &self.symbols.blocked,
+            Namespace::Type => &self.types.blocked,
+            Namespace::Module => &self.modules.blocked,
+        }
+        .iter()
+        .map(String::as_str)
+    }
+
     fn blocked_names(&mut self, namespace: Namespace) -> &mut HashSet<String> {
         match namespace {
             Namespace::Value => &mut self.symbols.blocked,

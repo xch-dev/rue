@@ -1,0 +1,7 @@
+import a::*;
+import b::*;
+import y::*;
+
+export fn value() -> Int {
+    K
+}

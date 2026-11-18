@@ -1,0 +1,10 @@
+// `m.rue` and `n.rue` each bring in two different `XX`s, one through an exported glob import.
+// Whichever records `XX` first, it's exported as ambiguous, so its uses here are reported rather
+// than finding `r.rue`'s `XX`, in `second.rue` too.
+
+import m::*;
+import r::*;
+
+fn main() -> Int {
+    XX
+}

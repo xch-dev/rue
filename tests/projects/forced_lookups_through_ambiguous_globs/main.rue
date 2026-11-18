@@ -1,0 +1,12 @@
+// The three glob imports wait for each other, so `y::*` is forced to find the sibling `y.rue`.
+// `b::*` brings in that same module as `y`, but `c::*` brings in a different one, so `y` is
+// ambiguous here, even though the binding that `b::*` records is what `y::*` found. In
+// `second.rue`, `a::*` records its own `y` first, which is different.
+
+import b::*;
+import c::*;
+import y::*;
+
+fn main() -> Int {
+    K
+}

@@ -425,17 +425,16 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
             continue;
         };
 
-        // What the import itself brings in under the name isn't ambiguous, whichever import
-        // recorded the binding, unless another glob import brings in a different item too
+        // The module's final binding contradicts the answer if it's a different item, other than
+        // one the import itself brings in under the name (whichever import recorded it). It's
+        // ambiguous either way if glob imports bring in different items with the name, even when
+        // one of them is the item that was found.
         let ambiguous = ctx
             .scope(forced.scope)
             .item_with_import(forced.namespace, forced.name.text())
             .is_some_and(|(item, via)| {
-                if brings_in(ctx, cache, import, forced, item) {
-                    ctx.is_ambiguous_import(via, item.into())
-                } else {
-                    item != answer
-                }
+                ctx.is_ambiguous_import(via, item.into())
+                    || (item != answer && !brings_in(ctx, cache, import, forced, item))
             });
 
         if ambiguous && reported.insert((import, forced.name.text().to_string())) {
@@ -1085,6 +1084,16 @@ fn resolve_import(
                         }
                     }
 
+                    // A name that a failed import blocked in the module has already been
+                    // reported, so it's blocked here too, unless something else brings it in
+                    for name in ctx.scope(source_scope).blocked(namespace) {
+                        resolution.private_names.push((
+                            import_scope,
+                            name.to_string(),
+                            vec![namespace],
+                        ));
+                    }
+
                     items
                 };
 
@@ -1152,6 +1161,13 @@ fn resolve_import(
                         && let Some(existing_import) = target.item_import(existing)
                         && matches!(ctx.import(existing_import).items, Items::All(_))
                     {
+                        // The ambiguity is exported if any of the glob imports is, whichever one
+                        // recorded the binding, so that it's reported where the name is used
+                        if import.exported && !ctx.scope(import_scope).is_item_exported(existing) {
+                            ctx.scope_mut(import_scope).export_item(existing);
+                            updated = true;
+                        }
+
                         updated |= ctx.add_ambiguous_import(existing_import, existing.into());
                     }
                 }

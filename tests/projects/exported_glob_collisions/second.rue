@@ -1,0 +1,6 @@
+import n::*;
+import r::*;
+
+export fn value() -> Int {
+    XX
+}

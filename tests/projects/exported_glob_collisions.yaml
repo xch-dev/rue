@@ -1,0 +1,8 @@
+diagnostics:
+- Unused import `*` at main.rue:5:11
+- "`XX` is ambiguous, since glob imports bring in different items with this name at main.rue:9:5"
+- Unused import `*` at second.rue:1:11
+- "`XX` is ambiguous, since glob imports bring in different items with this name at second.rue:5:5"
+- Unused import `*` at m.rue:2:11
+- Unused import `*` at n.rue:1:11
+- Unused import `*` at n.rue:2:11
