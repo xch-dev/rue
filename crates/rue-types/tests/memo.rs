@@ -176,6 +176,45 @@ fn test_rotating_generic_function() {
     });
 }
 
+/// `fn<U>(x: T20) -> U` and `fn(x: S20) -> ret`, where `T0 = U`, `S0 = leaf`, and each
+/// `T(k + 1) = (Tk, Tk)` and `S(k + 1) = (Sk, Sk)` share their halves.
+fn shared_instance_pairs(db: &mut Types, leaf: TypeId, ret: TypeId) -> (TypeId, TypeId) {
+    let u = db.generic();
+    let (mut lhs, mut rhs) = (u, leaf);
+
+    for _ in 0..20 {
+        lhs = db.pair(lhs, lhs);
+        rhs = db.pair(rhs, rhs);
+    }
+
+    let lhs = db.function(vec![u], vec![lhs], u);
+    let rhs = db.function(vec![], vec![rhs], ret);
+    (lhs, rhs)
+}
+
+#[test]
+fn test_instance_comparisons_are_memoized() {
+    with_large_stack(|| {
+        // Comparing the parameters refers to `U`, which is being instantiated, so until #362's
+        // step 13b.2 none of the million comparisons of their halves were memoized. They're cached
+        // with the bound they put on `U` now, which is put on it again each time one is reused.
+        for (returns_int, expected) in [(true, Comparison::Assign), (false, Comparison::Invalid)] {
+            let mut db = Types::new();
+            let BuiltinTypes { int, nil, .. } = db.builtins;
+            let ret = if returns_int { int } else { nil };
+            let (lhs, rhs) = shared_instance_pairs(&mut db, int, ret);
+
+            let (result, steps) = count_steps(|| {
+                with_step_limit(STEP_BOUND, || {
+                    compare(&mut db.arena, &db.builtins, lhs, rhs)
+                })
+            });
+            assert_eq!(result, expected);
+            assert!(steps < 1_000, "took {steps} steps");
+        }
+    });
+}
+
 /// `type N0 = nil | (nil | (Int | (N1, N0)) | ((nil, N1), N1));`
 /// `type N1 = (N0 | (Bytes | N0), N0);`
 fn mutually_recursive(db: &mut Types) -> (TypeId, TypeId) {

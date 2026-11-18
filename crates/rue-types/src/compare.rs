@@ -2,6 +2,7 @@ use std::{
     cmp::{max, min},
     collections::{HashMap, HashSet},
     mem,
+    rc::Rc,
 };
 
 use id_arena::Arena;
@@ -268,8 +269,10 @@ pub(crate) struct ComparisonContext<'a> {
     /// The context for comparisons that leave the generics being inferred rigid, which is kept
     /// so that its results are memoized for the whole comparison.
     uninferred: Option<Box<ComparisonContext<'static>>>,
-    /// Completed comparisons, reused only where computing them again would do the same thing.
-    memo: Memo<ComparisonKey, ComparisonKey, Comparison>,
+    /// Completed comparisons, reused only where computing them again would do the same thing, along
+    /// with the bounds they put on the instances their keys refer to, if any, which are put on the
+    /// ones they're reused with.
+    memo: Memo<ComparisonKey, ComparisonKey, (Comparison, Option<Rc<Summary>>)>,
     /// Whether the comparison that started from an empty stack is the least fixed point of
     /// monotone equations (see `is_monotone`), so `fixpoint_memo` is used instead of `memo`.
     fixpoint: bool,
@@ -1261,13 +1264,14 @@ fn compare_impl_inner(
     let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
     let key = (lhs, rhs, ctx.flipped, bindings, lhs_semantic, rhs_semantic);
 
-    // Generics that are being instantiated outside of the comparison collect bounds from it as a
-    // side effect, so it's only memoized if it doesn't refer to any. The ones bound inside of it
-    // are checked before it finishes.
+    // Generics that are being instantiated outside of the comparison collect bounds from it. In
+    // exact mode, they're cached with its result as its summary, which is put on the instances it's
+    // reused with (and the ones bound inside of it are checked before it finishes). In fixpoint
+    // mode, a comparison that refers to one is only ever a bound on it, so it isn't memoized.
     let instances = ctx.bindings[bindings]
         .iter()
         .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
-    let memoize = compare_memo_enabled() && !instances;
+    let memoize = compare_memo_enabled() && !(instances && ctx.fixpoint);
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
         // In fixpoint mode, it's the least value in a single pass, or its approximation from the
@@ -1311,7 +1315,15 @@ fn compare_impl_inner(
             // Reusing a result can take as long as the stack, so it counts towards the steps
             let work = ctx.memo.take_work();
             ctx.spend_many(work);
-            result
+
+            result.map(|(result, summary)| {
+                if let Some(summary) = summary {
+                    ctx.spend_many(summary.constraints().len());
+                    ctx.apply_summary(&summary, &binders);
+                }
+
+                result
+            })
         };
 
         if let Some(result) = result {
@@ -1380,18 +1392,31 @@ fn compare_impl_inner(
         ctx.restore(snapshot);
     };
 
-    ctx.stack.pop().unwrap();
-    ctx.frames.pop().unwrap();
-
     // Inference candidates are collected as a side effect of comparing, so a comparison that
     // collected any can't be skipped
     // A comparison that's giving up doesn't have its actual result
     let memo_key =
         (memoize && ctx.candidates == candidates && ctx.budget != Budget::GivingUp).then_some(key);
 
+    // What the last round put on the instances its key refers to, which the rounds before it don't
+    // add to, since they're undone
+    let summary = snapshot
+        .as_ref()
+        .filter(|_| memo_key.is_some() && !ctx.fixpoint)
+        .map(|snapshot| {
+            let mut summary = ctx.summary_since(arena, snapshot);
+            summary.canonicalize();
+            summary
+        })
+        .filter(|summary| !summary.constraints().is_empty())
+        .map(Rc::new);
+
+    ctx.stack.pop().unwrap();
+    ctx.frames.pop().unwrap();
+
     match frame {
         Frame::Exact(frame) => {
-            ctx.memo.exit(frame, key, memo_key, result);
+            ctx.memo.exit(frame, key, memo_key, (result, summary));
             let work = ctx.memo.take_work();
             ctx.spend_many(work);
         }
