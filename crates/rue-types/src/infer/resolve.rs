@@ -140,8 +140,10 @@ impl InferenceResolver<'_> {
                 continue;
             }
 
-            let ty = pick_inferred_type(arena, builtins, &self.infer.renamed, &candidates)
-                .or_else(|| self.fallback.get(&generic).copied());
+            let original = self.infer.renamed.get(&generic).copied();
+            let ty =
+                pick_inferred_type(arena, builtins, &self.infer.renamed, original, &candidates)
+                    .or_else(|| self.fallback.get(&generic).copied());
 
             if let Some(ty) = ty {
                 self.mappings.insert(generic, ty);
@@ -180,6 +182,7 @@ impl InferenceResolver<'_> {
                     arena,
                     builtins,
                     &self.infer.renamed,
+                    self.infer.renamed.get(&generic).copied(),
                     &self.infer.generics[&generic],
                 ) {
                     self.mappings.insert(generic, ty);
@@ -214,7 +217,14 @@ impl InferenceResolver<'_> {
                     upper: resolved(&raw.upper),
                     held: resolved(&raw.held),
                 };
-                let ty = pick_inferred_type(arena, builtins, &self.infer.renamed, &candidates)?;
+                let original = self.infer.renamed.get(&generic).copied();
+                let ty = pick_inferred_type(
+                    arena,
+                    builtins,
+                    &self.infer.renamed,
+                    original,
+                    &candidates,
+                )?;
                 Some((generic, ty))
             })
             .collect()
@@ -269,11 +279,13 @@ impl InferenceResolver<'_> {
     }
 }
 
-/// Picks a type for a generic from its candidates, or `None` if nothing constrains it.
+/// Picks a type for a generic from its candidates, or `None` if nothing constrains it. The
+/// `original` is the generic it was renamed from, if it was (see `Inference::rename`).
 pub(crate) fn pick_inferred_type(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     renamed: &FxHashMap<TypeId, TypeId>,
+    original: Option<TypeId>,
     candidates: &InferenceCandidates,
 ) -> Option<TypeId> {
     // The values that are already held by a union's other members are only used if nothing
@@ -284,7 +296,7 @@ pub(crate) fn pick_inferred_type(
         &candidates.lower
     };
     let lower = &without_subsumed_functions(arena, builtins, renamed, lower);
-    let lower = &without_subsumed_originals(arena, builtins, renamed, lower);
+    let lower = &without_subsumed_original(arena, builtins, renamed, original, lower);
 
     if !lower.is_empty() {
         // Literals are widened to their base type, so that `pick(1, 2)` infers `Int` and a
@@ -324,35 +336,29 @@ pub(crate) fn pick_inferred_type(
     }
 }
 
-/// Leaves out the generics that others being inferred were renamed from (see `Inference::rename`)
-/// where another of the types already holds them, such as `A` next to `Any`. A renamed generic
-/// takes the one it was renamed from as a candidate (#370), which adds nothing to their union
-/// then, so its type is what it was before.
-fn without_subsumed_originals(
+/// Leaves out the generic that the one being inferred was renamed from (see `Inference::rename`)
+/// where another of the types already holds it, such as `A` next to `Any`. A renamed generic takes
+/// the one it was renamed from as a candidate (#370), which adds nothing to their union then, so
+/// its type is what it was before.
+fn without_subsumed_original(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     renamed: &FxHashMap<TypeId, TypeId>,
+    original: Option<TypeId>,
     types: &[TypeId],
 ) -> Vec<TypeId> {
-    if renamed.is_empty() {
+    let Some(original) = original else {
         return types.to_vec();
+    };
+
+    if types.iter().any(|&other| {
+        other != original
+            && compare_renamed(arena, builtins, renamed, original, other) == Comparison::Assign
+    }) {
+        types.iter().copied().filter(|&ty| ty != original).collect()
+    } else {
+        types.to_vec()
     }
-
-    let mut result = Vec::new();
-
-    for &ty in types {
-        let subsumed = renamed.values().any(|&original| original == ty)
-            && types.iter().any(|&other| {
-                other != ty
-                    && compare_renamed(arena, builtins, renamed, ty, other) == Comparison::Assign
-            });
-
-        if !subsumed {
-            result.push(ty);
-        }
-    }
-
-    result
 }
 
 /// Leaves out the function types that are assignable to another of the types, such as

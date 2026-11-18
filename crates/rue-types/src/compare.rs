@@ -341,12 +341,12 @@ impl ComparisonContext<'_> {
                             upper: instance.upper.clone(),
                             ..Default::default()
                         };
-                        pick_inferred_type(arena, builtins, &self.renamed, &upper)
+                        pick_inferred_type(arena, builtins, &self.renamed, None, &upper)
                             .unwrap_or(builtins.permissive_any)
                     } else if instance.lower.is_empty() {
                         builtins.never
                     } else {
-                        pick_inferred_type(arena, builtins, &self.renamed, instance).unwrap()
+                        pick_inferred_type(arena, builtins, &self.renamed, None, instance).unwrap()
                     }
                 });
 

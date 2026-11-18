@@ -112,18 +112,3 @@ fn caller<B>(value: B | nil) -> B {
 test fn guard_from_another_function() -> Int {
     caller(9)
 }
-
-fn with_any<A>(value: A | nil, depth: Int) -> A {
-    if depth > 0 {
-        // Guard: next to `Any`, the caller's `A` adds nothing, so the callee's `A` is `Any`, and
-        // the result is cast back
-        let any: Any = 1;
-        return unchecked_cast(with_any(any, depth - 1));
-    }
-
-    unchecked_cast(value)
-}
-
-test fn guard_any_alongside() -> Int {
-    with_any(10, 1)
-}

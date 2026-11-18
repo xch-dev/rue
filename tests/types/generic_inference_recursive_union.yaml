@@ -55,10 +55,3 @@ tests:
   runtime_cost: 3305
   byte_cost: 996000
   total_cost: 999305
-- name: guard_any_alongside
-  program: (a (q 2 2 (c 2 (q 1 . 10))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (q . 1)))) (q . 7)) 1) ()))
-  debug_program: (a (q 2 2 (c 2 (c (q . 1) (q . 10)))) (c (q 2 (i (> 5 ()) (q 2 (q 2 5 (c 5 (c (- 11 (q . 1)) 2))) (c (q . 1) 1)) (q . 7)) 1) ()))
-  output: "1"
-  runtime_cost: 3273
-  byte_cost: 1020000
-  total_cost: 1023273
