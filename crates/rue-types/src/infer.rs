@@ -4,13 +4,17 @@
 
 mod bounds;
 mod resolve;
+mod solve;
 
 pub use bounds::*;
 pub use resolve::*;
+pub use solve::*;
+
+use std::mem;
 
 use indexmap::IndexMap;
 
-use crate::{FxHashMap, TypeId};
+use crate::{Comparison, FxHashMap, TypeId};
 
 /// The constraints collected for a generic type parameter during inference.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -40,16 +44,83 @@ pub struct Inference {
     /// a function in a recursive call to it, which are renamed from the caller's (see
     /// `Inference::rename`).
     pub(crate) renamed: FxHashMap<TypeId, TypeId>,
+    /// The union members that each candidate was collected under, parallel to the lists in
+    /// `generics` (see `CandidateBranches`).
+    branches: IndexMap<TypeId, CandidateBranches>,
+    /// The unions that values were compared against while collecting the candidates, indexed by
+    /// `BranchId::choice`.
+    choices: Vec<Choice>,
+}
+
+/// One member of a union that a value was compared against while inferring, or the fallback that
+/// the union's comparison falls back to when no member holds the value (`FALLBACK`). A candidate
+/// collected while comparing the value with a member is only needed if the member matched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct BranchId {
+    pub(crate) choice: usize,
+    pub(crate) member: usize,
+}
+
+/// The `BranchId::member` of a union comparison's fallback, such as comparing a function's runtime
+/// structure with the union when no member holds the function (#349).
+pub(crate) const FALLBACK: usize = usize::MAX;
+
+/// A comparison of a value with the members of a union, any one of which can hold it.
+#[derive(Debug, Clone)]
+struct Choice {
+    /// The member that the union itself was compared under, if any.
+    parent: Option<BranchId>,
+    /// What comparing the value with each member gave, once it has been compared.
+    members: Vec<Option<Comparison>>,
+    /// What the fallback gave, if it was compared.
+    fallback: Option<Comparison>,
+}
+
+/// The union members that each of a generic's candidates was collected under, in the same order
+/// as its `InferenceCandidates`. A candidate holds only if every one of them matched. Most are
+/// collected under at most one (the innermost, whose choice records the ones it's nested in), and
+/// one that's passed on from another holds only if the ones that both of them were collected under
+/// matched too.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct CandidateBranches {
+    lower: Vec<Vec<BranchId>>,
+    upper: Vec<Vec<BranchId>>,
+    held: Vec<Vec<BranchId>>,
+}
+
+impl CandidateBranches {
+    fn list(&self, kind: CandidateKind) -> &Vec<Vec<BranchId>> {
+        match kind {
+            CandidateKind::Lower => &self.lower,
+            CandidateKind::Upper => &self.upper,
+            CandidateKind::Held => &self.held,
+        }
+    }
+
+    fn list_mut(&mut self, kind: CandidateKind) -> &mut Vec<Vec<BranchId>> {
+        match kind {
+            CandidateKind::Lower => &mut self.lower,
+            CandidateKind::Upper => &mut self.upper,
+            CandidateKind::Held => &mut self.held,
+        }
+    }
 }
 
 impl Inference {
     pub fn new(generics: impl IntoIterator<Item = TypeId>) -> Self {
+        let generics: IndexMap<TypeId, InferenceCandidates> = generics
+            .into_iter()
+            .map(|generic| (generic, InferenceCandidates::default()))
+            .collect();
+
         Self {
-            generics: generics
-                .into_iter()
-                .map(|generic| (generic, InferenceCandidates::default()))
+            branches: generics
+                .keys()
+                .map(|&generic| (generic, CandidateBranches::default()))
                 .collect(),
+            generics,
             renamed: FxHashMap::default(),
+            choices: Vec::new(),
         }
     }
 
@@ -62,23 +133,165 @@ impl Inference {
         self.renamed.insert(generic, from);
     }
 
+    /// Every candidate collected for the generic, including those collected under a union member
+    /// that didn't match the value.
     pub fn candidates(&self, generic: TypeId) -> Option<&InferenceCandidates> {
         self.generics.get(&generic)
+    }
+
+    /// The candidates collected for the generic that hold, leaving out those collected under a
+    /// union member that didn't match the value (see `Inference::matched`). For example, passing a
+    /// function to `T | (T, Int) | nil` matches the `T` member, so what comparing the function's
+    /// runtime structure with `(T, Int)` collected for `T` is left out (#364).
+    pub fn matched_candidates(&self, generic: TypeId) -> Option<InferenceCandidates> {
+        let candidates = self.generics.get(&generic)?;
+        let branches = &self.branches[&generic];
+        let results = self.choice_results();
+
+        let matched = |kind: CandidateKind, types: &[TypeId]| -> Vec<TypeId> {
+            types
+                .iter()
+                .zip(branches.list(kind))
+                .filter(|(_, branches)| {
+                    branches
+                        .iter()
+                        .all(|&branch| self.matched_with(&results, branch))
+                })
+                .map(|(&ty, _)| ty)
+                .collect()
+        };
+
+        Some(InferenceCandidates {
+            lower: matched(CandidateKind::Lower, &candidates.lower),
+            upper: matched(CandidateKind::Upper, &candidates.upper),
+            held: matched(CandidateKind::Held, &candidates.held),
+        })
     }
 
     /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
     /// if nothing else constrains the generic, they're dropped along with any bound.
     pub fn retain_bounds(&mut self, mut f: impl FnMut(TypeId) -> bool) {
-        for candidates in self.generics.values_mut() {
+        for (generic, candidates) in &mut self.generics {
+            let branches = self.branches.get_mut(generic).unwrap();
             let len = candidates.lower.len() + candidates.upper.len();
 
-            candidates.lower.retain(|&ty| f(ty));
-            candidates.upper.retain(|&ty| f(ty));
+            for kind in [CandidateKind::Lower, CandidateKind::Upper] {
+                let types = candidates.list_mut(kind);
+                let lists = branches.list_mut(kind);
+                (*types, *lists) = mem::take(types)
+                    .into_iter()
+                    .zip(mem::take(lists))
+                    .filter(|&(ty, _)| f(ty))
+                    .unzip();
+            }
 
             if candidates.lower.len() + candidates.upper.len() < len {
                 candidates.held.clear();
+                branches.held.clear();
             }
         }
+    }
+
+    /// Adds a candidate for a generic being inferred, collected under the given union members, and
+    /// returns its index in the list.
+    pub(crate) fn push(
+        &mut self,
+        generic: TypeId,
+        kind: CandidateKind,
+        ty: TypeId,
+        branches: Vec<BranchId>,
+    ) -> usize {
+        let list = self.candidates_mut(generic).list_mut(kind);
+        list.push(ty);
+        let index = list.len() - 1;
+        self.branches
+            .get_mut(&generic)
+            .unwrap()
+            .list_mut(kind)
+            .push(branches);
+        index
+    }
+
+    /// The union members that the candidate at the index was collected under.
+    pub(crate) fn branches(
+        &self,
+        generic: TypeId,
+        kind: CandidateKind,
+        index: usize,
+    ) -> &[BranchId] {
+        &self.branches[&generic].list(kind)[index]
+    }
+
+    /// Starts comparing a value with a union's members, under the given member of an enclosing
+    /// union if there is one, and returns the index of the new choice.
+    pub(crate) fn open_choice(&mut self, parent: Option<BranchId>, members: usize) -> usize {
+        self.choices.push(Choice {
+            parent,
+            members: vec![None; members],
+            fallback: None,
+        });
+        self.choices.len() - 1
+    }
+
+    /// Records what comparing the value with a union's member (or its fallback) gave.
+    pub(crate) fn record(&mut self, branch: BranchId, result: Comparison) {
+        let choice = &mut self.choices[branch.choice];
+
+        if branch.member == FALLBACK {
+            choice.fallback = Some(result);
+        } else {
+            choice.members[branch.member] = Some(result);
+        }
+    }
+
+    /// Whether the candidates collected under the union member hold (see `Inference::matched_with`).
+    #[cfg(test)]
+    pub(crate) fn matched(&self, branch: BranchId) -> bool {
+        self.matched_with(&self.choice_results(), branch)
+    }
+
+    /// Whether the candidates collected under the union member hold, given `choice_results`: the
+    /// member gave the choice's result, the best that any member or the fallback gave, and the
+    /// member the choice is nested in holds too. (The fallback is only compared when no member is
+    /// `Assign`, so it only gives the best result when none is.) When nothing is better than
+    /// `Invalid`, every member gave `Invalid`, so they all hold, and what a comparison that fails
+    /// reports stays the same.
+    fn matched_with(&self, results: &[Option<Comparison>], branch: BranchId) -> bool {
+        let choice = &self.choices[branch.choice];
+
+        let result = if branch.member == FALLBACK {
+            choice.fallback
+        } else {
+            choice.members[branch.member]
+        };
+
+        result.is_some() && result == results[branch.choice]
+    }
+
+    /// The result of each choice, the best that any member or the fallback gave, or `None` if the
+    /// member it's nested in doesn't hold. A choice is opened after the one it's nested in, so they
+    /// can be worked out in order.
+    fn choice_results(&self) -> Vec<Option<Comparison>> {
+        let mut results: Vec<Option<Comparison>> = Vec::with_capacity(self.choices.len());
+
+        for choice in &self.choices {
+            let parent_holds = choice
+                .parent
+                .is_none_or(|parent| self.matched_with(&results, parent));
+
+            let best = choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .flatten()
+                .copied()
+                .min()
+                .unwrap_or(Comparison::Invalid);
+
+            results.push(parent_holds.then_some(best));
+        }
+
+        results
     }
 
     pub(crate) fn is_target(&self, generic: TypeId) -> bool {
@@ -92,6 +305,8 @@ impl Inference {
         self.is_target(generic) && !self.renamed.contains_key(&generic)
     }
 
+    /// The generic's candidates. Any change must keep them in step with the union members they
+    /// were collected under, so a candidate is added with `Inference::push`.
     pub(crate) fn candidates_mut(&mut self, generic: TypeId) -> &mut InferenceCandidates {
         self.generics.get_mut(&generic).unwrap()
     }

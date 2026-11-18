@@ -4,9 +4,13 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    BuiltinTypes, Comparison, Inference, Type, TypeId, compare_renamed, free_generics,
-    infer_from_expected, resolve_inference_with_fallback, substitute_with_mappings, union_of,
+    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
+    free_generics, infer_from_expected, resolve_inference_with_fallback, substitute_with_mappings,
+    union_of,
 };
+
+/// An upper bound for a generic, along with the union members it was collected under.
+pub(crate) type Bound = (TypeId, TypeId, Vec<BranchId>);
 
 /// Adds the upper bounds that were inferred from the type expected of a call to the generics whose
 /// lower bounds satisfy them (as they do if there are none), so that `let x: 5 = id(5);` doesn't
@@ -26,7 +30,12 @@ pub fn add_expected_bounds(
         .generics
         .keys()
         .filter_map(|&generic| Some((generic, expected.candidates(generic)?)))
-        .flat_map(|(generic, expected)| expected.upper.iter().map(move |&upper| (generic, upper)))
+        .flat_map(|(generic, expected)| {
+            expected
+                .upper
+                .iter()
+                .map(move |&upper| (generic, upper, Vec::new()))
+        })
         .collect();
 
     pass_upper_bounds(arena, builtins, infer, bounds, Vec::new(), |_| true);
@@ -68,20 +77,12 @@ pub fn resolve_inference_with_bounds(
 
     let mut bounded = infer.clone();
 
-    let bounds = infer
-        .generics
-        .iter()
-        .flat_map(|(&generic, candidates)| {
-            candidates.upper.iter().map(move |&upper| (generic, upper))
-        })
-        .collect();
-
     pass_upper_bounds(
         arena,
         builtins,
         &mut bounded,
         Vec::new(),
-        bounds,
+        upper_bounds(infer),
         |generic| uninferred.contains(&generic),
     );
 
@@ -96,17 +97,40 @@ pub fn resolve_inference_with_bounds(
     mappings
 }
 
+/// Every generic's upper bounds, with the union members each was collected under.
+pub(crate) fn upper_bounds(infer: &Inference) -> Vec<Bound> {
+    infer
+        .generics
+        .iter()
+        .flat_map(|(&generic, candidates)| {
+            candidates
+                .upper
+                .iter()
+                .enumerate()
+                .map(move |(index, &upper)| {
+                    let branches = infer
+                        .branches(generic, CandidateKind::Upper, index)
+                        .to_vec();
+                    (generic, upper, branches)
+                })
+        })
+        .collect()
+}
+
 /// Adds each of the `added` bounds to its generic if the generic's lower bounds satisfy it, and
 /// passes each bound that's added, as well as each of the `existing` ones (which the generics
 /// already have), on to the generics in the generic's lower bounds that `accepts` allows, in the
 /// same way. A lower bound that's a generic gets the bound directly, and one that references
 /// generics in a compound type passes on what comparing it to the bound infers for them.
-fn pass_upper_bounds(
+///
+/// Each bound comes with the union members it was collected under (see `CandidateBranches`). One
+/// that's passed on through a lower bound was collected under the members of both.
+pub(crate) fn pass_upper_bounds(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     infer: &mut Inference,
-    added: Vec<(TypeId, TypeId)>,
-    existing: Vec<(TypeId, TypeId)>,
+    added: Vec<Bound>,
+    existing: Vec<Bound>,
     accepts: impl Fn(TypeId) -> bool,
 ) {
     let targets: Vec<TypeId> = infer
@@ -119,14 +143,10 @@ fn pass_upper_bounds(
 
     // Each entry is a bound and whether it still has to be added to its generic. A bound passed on
     // is part of the one it was passed on from
-    let mut stack: Vec<(TypeId, TypeId, bool)> = existing
+    let mut stack: Vec<(Bound, bool)> = existing
         .into_iter()
-        .map(|(generic, upper)| (generic, upper, false))
-        .chain(
-            added
-                .into_iter()
-                .map(|(generic, upper)| (generic, upper, true)),
-        )
+        .map(|bound| (bound, false))
+        .chain(added.into_iter().map(|bound| (bound, true)))
         .collect();
     stack.reverse();
 
@@ -134,9 +154,14 @@ fn pass_upper_bounds(
     // same as one of them (or equivalent, assignable both ways) is skipped, since passing it on
     // again can create the same type with a new id (such as a union being substituted), which
     // would otherwise go around a cycle of generics forever.
+    //
+    // A bound that's skipped this way keeps the union members of the one it's the same as, so if
+    // the two were collected under different members, the one that's kept holds only under its
+    // own. Nothing reads which members a bound was collected under here yet; the step that leaves
+    // out the bounds of members that didn't match (#362) has to account for it.
     let mut given: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
 
-    for (generic, upper, add) in &stack {
+    for ((generic, upper, _), add) in &stack {
         if !add {
             given.entry(*generic).or_default().push(*upper);
         }
@@ -145,7 +170,7 @@ fn pass_upper_bounds(
     // A generic's lower bounds don't change here, so they're only expanded once
     let expanded = expanded_lower_bounds(arena, infer);
 
-    while let Some((generic, upper, add)) = stack.pop() {
+    while let Some(((generic, upper, branches), add)) = stack.pop() {
         if add {
             let given = given.entry(generic).or_default();
 
@@ -167,14 +192,24 @@ fn pass_upper_bounds(
                 continue;
             }
 
-            infer.candidates_mut(generic).upper.push(upper);
+            infer.push(generic, CandidateKind::Upper, upper, branches.clone());
         }
 
         // The generics that flow into this one through its lower bounds must satisfy it too
-        for ty in infer.generics[&generic].lower.clone() {
+        for (index, ty) in infer.generics[&generic]
+            .lower
+            .clone()
+            .into_iter()
+            .enumerate()
+        {
+            let mut passed = branches.clone();
+            passed.extend_from_slice(infer.branches(generic, CandidateKind::Lower, index));
+            passed.sort_unstable();
+            passed.dedup();
+
             if infer.passes_bounds(ty) {
                 if accepts(ty) {
-                    stack.push((ty, upper, true));
+                    stack.push(((ty, upper, passed), true));
                 }
                 continue;
             }
@@ -191,7 +226,12 @@ fn pass_upper_bounds(
 
             for (&other, candidates) in &inner.generics {
                 if accepts(other) {
-                    stack.extend(candidates.upper.iter().map(|&upper| (other, upper, true)));
+                    stack.extend(
+                        candidates
+                            .upper
+                            .iter()
+                            .map(|&upper| ((other, upper, passed.clone()), true)),
+                    );
                 }
             }
         }

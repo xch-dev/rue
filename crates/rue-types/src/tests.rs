@@ -7,12 +7,13 @@ use indexmap::IndexSet;
 use rue_diagnostic::Name;
 
 use crate::{
-    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
-    FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
-    add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
-    extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
-    resolve_inference_with_bounds, resolve_inference_with_fallback, stringify, substitute,
-    substitute_with_mappings, subtract, unwrap_semantic,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind,
+    Comparison, FunctionParameter, FunctionType, Generic, Inference, InferenceCandidates, Pair,
+    Struct, Type, TypeId, Union, add_expected_bounds, check, compare, compare_with_inference,
+    extract_atoms, extract_functions, extract_pairs, extract_structs, infer_from_expected,
+    is_non_contractive, resolve_inference, resolve_inference_with_bounds,
+    resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
+    unwrap_semantic,
 };
 
 struct Db {
@@ -1059,6 +1060,7 @@ mod recursive {
 
 mod inference {
     use super::*;
+    use crate::{CallSolver, pass_upper_bounds, upper_bounds};
 
     fn candidates(infer: &Inference, generic: TypeId) -> InferenceCandidates {
         infer.candidates(generic).unwrap().clone()
@@ -1373,6 +1375,81 @@ mod inference {
         assert_eq!(mappings[&t], db.builtins.int);
     }
 
+    #[test]
+    fn call_solver_uses_the_expected_type() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let (a, b, t) = (db.generic("A"), db.generic("B"), db.generic("T"));
+
+        // A call like `let x: 5 = pair(5, make());` with `fn pair<A, B>(a: A, b: B) -> (A, B)`
+        // and the expected type `(5, Int)`
+        let ret = db.pair(a, b);
+        let expected_type = db.pair(five, int);
+        let mut expected = Inference::new([a, b]);
+        infer_from_expected(
+            &mut db.arena,
+            &db.builtins,
+            ret,
+            expected_type,
+            &mut expected,
+        );
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, Some(expected));
+
+        // Before any argument, both generics fall back to the expected type for the next argument,
+        // but the arguments themselves infer nothing
+        let mut infer = Inference::new([a, b]);
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        assert!(inferred.is_empty());
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&a], five);
+        assert_eq!(mappings[&b], int);
+
+        // Once `5` is passed for `A`, it maps `A`, widened, so the expected type only fills `B`
+        db.infer(five, a, &mut infer);
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(inferred[&a], int);
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+
+        // The final solve adds the expected bounds to `A`, so the literal isn't widened
+        let mappings = solver.solve(&mut db.arena, &db.builtins, infer.clone());
+        assert_eq!(mappings[&a], five);
+        assert_eq!(mappings[&b], int);
+
+        // Without an expected type, nothing falls back, and the literal is widened
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, None);
+        let mut infer = Inference::new([t]);
+        db.infer(five, t, &mut infer);
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&t], int);
+        assert_eq!(
+            solver.solve(&mut db.arena, &db.builtins, infer.clone())[&t],
+            int
+        );
+    }
+
+    #[test]
+    fn call_solver_infers_unmapped_generics_through_others_for_arguments() {
+        let mut db = Db::new();
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        // `let x: 5 = map(identity, map(...));`: `identity` gives `B` the candidate `A`, and the
+        // expected type bounds `B`, so the next argument sees `A ≤ 5` through it (#331)
+        let mut expected = Inference::new([a, b]);
+        infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut expected);
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, Some(expected));
+
+        let mut infer = Inference::new([a, b]);
+        infer.push(b, CandidateKind::Lower, a, Vec::new());
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&a], five);
+    }
+
     /// Collects the bounds that `B` is expected to satisfy, as in `let x: <expected> = ...` for a
     /// call returning `B`, and adds them to the inference.
     fn add_expected(
@@ -1598,6 +1675,339 @@ mod inference {
         add_expected(&mut db, &[a, b], b, expected, &mut infer);
         assert_eq!(candidates(&infer, a).upper, vec![]);
         assert_eq!(candidates(&infer, b).upper, vec![]);
+    }
+
+    /// The names of the generic's candidates of each kind, all of them and only those that hold.
+    fn names(db: &mut Db, infer: &Inference, generic: TypeId) -> [(Vec<String>, Vec<String>); 3] {
+        let all = candidates(infer, generic);
+        let matched = infer.matched_candidates(generic).unwrap();
+        let mut names = |types: &[TypeId]| types.iter().map(|&ty| db.name(ty)).collect::<Vec<_>>();
+        [
+            (names(&all.lower), names(&matched.lower)),
+            (names(&all.upper), names(&matched.upper)),
+            (names(&all.held), names(&matched.held)),
+        ]
+    }
+
+    #[test]
+    fn matched_candidates_leave_out_members_that_dont_match() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // A function matches the `T` member, so what the function's runtime structure gives `T`
+        // through `(T, Int)` doesn't hold (#364)
+        let function = db.function(&[int], int);
+        let pair = db.pair(t, int);
+        let param = db.union(&[t, pair, nil]);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert!(all.len() > 1, "{all:?}");
+        assert_eq!(matched, ["fn(p0: Int) -> Int"]);
+    }
+
+    #[test]
+    fn matched_candidates_take_the_best_member() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `(T, Int)` only casts `Bytes` to `Int`, but `(Int, T)` is assignable
+        let value = db.pair(int, bytes);
+        let first = db.pair(t, int);
+        let second = db.pair(int, t);
+        let param = db.union(&[first, second]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert_eq!(all, ["Int", "Bytes"]);
+        assert_eq!(matched, ["Bytes"]);
+    }
+
+    #[test]
+    fn matched_candidates_keep_every_member_that_matches() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `Int` matches `T`, and `nil` matches both members, so it's held
+        let value = db.union(&[int, nil]);
+        let param = db.union(&[t, nil]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        let [lower, upper, held] = names(&mut db, &infer, t);
+        assert_eq!(lower, (vec!["Int".to_string()], vec!["Int".to_string()]));
+        assert_eq!(upper, (vec![], vec![]));
+        assert_eq!(held, (vec!["nil".to_string()], vec!["nil".to_string()]));
+    }
+
+    #[test]
+    fn matched_candidates_keep_everything_when_no_member_matches() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // Neither member can hold the value, so the comparison fails regardless, and what it
+        // collected is kept as it is
+        let int_pair = db.pair(int, int);
+        let value = db.pair(int, int_pair);
+        let first = db.pair(t, nil);
+        let second = db.pair(nil, t);
+        let param = db.union(&[first, second]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Invalid);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert_eq!(all, ["Int", "(Int, Int)"]);
+        assert_eq!(matched, all);
+    }
+
+    #[test]
+    fn matched_candidates_leave_out_unions_nested_in_members_that_dont_match() {
+        let mut db = Db::new();
+        let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `Int` matches `T` in `T | nil`, but the member it's nested in only casts `Bytes`
+        let value = db.pair(int, bytes);
+        let optional = db.union(&[t, nil]);
+        let first = db.pair(optional, int);
+        let second = db.pair(int, t);
+        let param = db.union(&[first, second]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert_eq!(all, ["Int", "Bytes"]);
+        assert_eq!(matched, ["Bytes"]);
+    }
+
+    /// Whether each of the generic's lower candidates holds, in order.
+    fn lower_matched(infer: &Inference, generic: TypeId) -> Vec<bool> {
+        (0..candidates(infer, generic).lower.len())
+            .map(|index| {
+                infer
+                    .branches(generic, CandidateKind::Lower, index)
+                    .iter()
+                    .all(|&branch| infer.matched(branch))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn matched_candidates_keep_the_fallback_when_no_member_holds_the_value() {
+        let mut db = Db::new();
+        let (int, atom) = (db.builtins.int, db.builtins.atom);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // No member is a function type, so the function's runtime structure is compared with the
+        // union instead. What that gives `T` holds, and what comparing the function with `(T, T)`
+        // on its own gave first doesn't
+        let function = db.function(&[int], int);
+        let pair = db.pair(t, t);
+        let param = db.union(&[atom, pair]);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+        assert_eq!(lower_matched(&infer, t), [false, false, true, true]);
+    }
+
+    #[test]
+    fn matched_candidates_leave_out_members_that_dont_match_an_opaque_generic() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (t, u) = (db.generic("T"), db.generic("U"));
+        let mut infer = Inference::new([t]);
+
+        // `U` matches `T`, so what its runtime structure gives `T` through `(T, Int)` doesn't hold
+        let pair = db.pair(t, int);
+        let param = db.union(&[pair, t]);
+        assert_eq!(db.infer(u, param, &mut infer), Comparison::Assign);
+
+        let [(all, matched), _, _] = names(&mut db, &infer, t);
+        assert!(all.len() > 1, "{all:?}");
+        assert_eq!(matched, ["U"]);
+    }
+
+    #[test]
+    fn matched_candidates_leave_out_upper_candidates_of_members_that_dont_match() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // The first member only casts the return type, so `T ≤ Int` from its parameter doesn't
+        // hold, and the second member, which is assignable, collects nothing
+        let function = db.function(&[int], int);
+        let first = db.function(&[t], bytes);
+        let second = db.function(&[int], int);
+        let param = db.union(&[first, second]);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+
+        let [_, (all, matched), _] = names(&mut db, &infer, t);
+        assert_eq!(all, ["Int"]);
+        assert_eq!(matched, Vec::<String>::new());
+    }
+
+    #[test]
+    fn matched_candidates_keep_the_struct_cast_when_no_member_holds_the_struct() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // Neither member holds the struct, but its inner type can be cast to the union as a whole.
+        // What comparing the struct with `(T, T)` collected doesn't hold, and what the cast
+        // collected does
+        let int_pair = db.pair(int, int);
+        let inner = db.union(&[int, int_pair]);
+        let value = db.declare_struct("S", &[]);
+        db.define(value, inner);
+        let pair = db.pair(t, t);
+        let param = db.union(&[bytes, pair]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Cast);
+        assert_eq!(lower_matched(&infer, t), [false, false, true, true]);
+    }
+
+    #[test]
+    fn passed_bounds_keep_the_members_they_were_collected_under() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `B ≤ A` was collected under the first member of a union, which didn't match
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        infer.push(a, CandidateKind::Lower, b, vec![unmatched]);
+        infer.push(a, CandidateKind::Lower, five, Vec::new());
+
+        // So the bound that `A ≤ Int` passes on to `B` is only collected under it too
+        let mut expected = Inference::new([a, b]);
+        expected.push(a, CandidateKind::Upper, int, Vec::new());
+        add_expected_bounds(&mut db.arena, &db.builtins, &mut infer, &expected);
+
+        assert_eq!(candidates(&infer, b).upper, vec![int]);
+        assert_eq!(infer.matched_candidates(b).unwrap().upper, vec![]);
+        assert_eq!(candidates(&infer, a).lower, vec![b, five]);
+        assert_eq!(infer.matched_candidates(a).unwrap().lower, vec![five]);
+    }
+
+    #[test]
+    fn passed_bounds_keep_the_members_of_the_bound_being_passed() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b, c) = (db.generic("A"), db.generic("B"), db.generic("C"));
+        let mut infer = Inference::new([a, b, c]);
+
+        // `A ≤ (Int, Int)` was collected under a member that didn't match. It's passed on to `B`
+        // through `B ≤ A`, and to `C` through `(C, Int) ≤ A`, so what they get only holds under
+        // that member too
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        let compound = db.pair(c, int);
+        infer.push(a, CandidateKind::Lower, b, Vec::new());
+        infer.push(a, CandidateKind::Lower, compound, Vec::new());
+
+        let int_pair = db.pair(int, int);
+        let existing = vec![(a, int_pair, vec![unmatched])];
+        pass_upper_bounds(
+            &mut db.arena,
+            &db.builtins,
+            &mut infer,
+            Vec::new(),
+            existing,
+            |_| true,
+        );
+
+        assert_eq!(candidates(&infer, b).upper, vec![int_pair]);
+        assert_eq!(infer.matched_candidates(b).unwrap().upper, vec![]);
+        assert_eq!(candidates(&infer, c).upper, vec![int]);
+        assert_eq!(infer.matched_candidates(c).unwrap().upper, vec![]);
+    }
+
+    #[test]
+    fn bounds_passed_through_compound_lower_bounds_keep_their_members() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, c) = (db.generic("A"), db.generic("C"));
+        let mut infer = Inference::new([a, c]);
+
+        // `(C, Int) ≤ A` was collected under a member that didn't match, so what `A ≤ (Int, Int)`
+        // gives `C` through it only holds under that member
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        let compound = db.pair(c, int);
+        infer.push(a, CandidateKind::Lower, compound, vec![unmatched]);
+
+        let int_pair = db.pair(int, int);
+        let existing = vec![(a, int_pair, Vec::new())];
+        pass_upper_bounds(
+            &mut db.arena,
+            &db.builtins,
+            &mut infer,
+            Vec::new(),
+            existing,
+            |_| true,
+        );
+
+        assert_eq!(candidates(&infer, c).upper, vec![int]);
+        assert_eq!(infer.matched_candidates(c).unwrap().upper, vec![]);
+    }
+
+    #[test]
+    fn upper_bounds_passed_through_other_generics_keep_their_members() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        infer.push(a, CandidateKind::Upper, int, vec![unmatched]);
+
+        assert_eq!(upper_bounds(&infer), [(a, int, vec![unmatched])]);
+    }
+
+    #[test]
+    fn retained_bounds_keep_the_members_they_were_collected_under() {
+        let mut db = Db::new();
+        let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);
+        let (t, u) = (db.generic("T"), db.generic("U"));
+        let mut infer = Inference::new([t]);
+
+        let choice = infer.open_choice(None, 3);
+        let branch = |member| BranchId { choice, member };
+        infer.push(t, CandidateKind::Lower, u, vec![branch(0)]);
+        infer.push(t, CandidateKind::Lower, int, vec![branch(1)]);
+        infer.push(t, CandidateKind::Upper, u, vec![branch(0)]);
+        infer.push(t, CandidateKind::Upper, bytes, vec![branch(2)]);
+        infer.push(t, CandidateKind::Held, nil, vec![branch(1)]);
+
+        // The bounds on `U` are dropped, and the others keep their members. A bound was dropped,
+        // so the held candidates go too, along with their members
+        infer.retain_bounds(|ty| ty != u);
+        assert_eq!(candidates(&infer, t).lower, vec![int]);
+        assert_eq!(infer.branches(t, CandidateKind::Lower, 0), [branch(1)]);
+        assert_eq!(candidates(&infer, t).upper, vec![bytes]);
+        assert_eq!(infer.branches(t, CandidateKind::Upper, 0), [branch(2)]);
+        assert_eq!(candidates(&infer, t).held, vec![]);
+
+        // A held candidate added afterward has its own members
+        infer.push(t, CandidateKind::Held, nil, Vec::new());
+        assert_eq!(infer.branches(t, CandidateKind::Held, 0), []);
     }
 
     #[test]
