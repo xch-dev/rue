@@ -4,9 +4,10 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
-    compare_with_inference, free_generics, infer_from_expected, resolve_inference_with_fallback,
-    strongly_connected_components, substitute_with_mappings, union_of,
+    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, InferenceCandidates, Type,
+    TypeId, compare_renamed, compare_with_inference, free_generics, infer_from_expected,
+    resolve_inference_with_fallback, strongly_connected_components, substitute_with_mappings,
+    union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -426,10 +427,12 @@ pub(crate) fn pass_upper_bounds(
                 continue;
             }
 
-            // A renamed generic with nothing below it is the generic it was renamed from (see
-            // `Inference::rename`), so it isn't given a bound that holds for that one, and its type
-            // stays what it was (#361)
-            let held_by_original = expanded[&generic].is_none()
+            // A renamed generic with no candidates of its own is the generic it was renamed from
+            // (see `Inference::rename`), so it isn't given a bound that holds for that one, and its
+            // type stays what it was (#361)
+            let held_by_original = infer
+                .candidates(generic)
+                .is_some_and(|candidates| *candidates == InferenceCandidates::default())
                 && renamed.get(&generic).is_some_and(|&original| {
                     compare_renamed(arena, builtins, &renamed, original, upper)
                         == Comparison::Assign
