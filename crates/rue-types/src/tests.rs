@@ -2527,6 +2527,64 @@ mod inference {
     }
 
     #[test]
+    fn instantiates_instances_in_held_candidates() {
+        let mut db = Db::new();
+        let (int, any) = (db.builtins.int, db.builtins.permissive_any);
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T>(x: T) -> (T, T)` to `fn(x: Int) -> B | (Any, Any)`, where `(Any, Any)` already
+        // holds the return value, so `B` only holds `(T, T)` as a last resort
+        let t = db.generic("T");
+        let ret = db.pair(t, t);
+        let duplicate = db.function_with(&[t], &[t], true, ret);
+        let any_pair = db.pair(any, any);
+        let union = db.union(&[b, any_pair]);
+        let param = db.function(&[int], union);
+        assert_eq!(db.infer(duplicate, param, &mut infer), Comparison::Assign);
+
+        let held = &candidates(&infer, b).held;
+        assert_eq!(held.len(), 1);
+        assert_eq!(db.name(held[0]), "(Int, Int)");
+    }
+
+    #[test]
+    fn instantiates_instances_in_lower_and_upper_candidates_separately() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `fn<T>(x: T, y: (T, T)) -> (T, T)` to `fn(x: Int, y: A) -> B`, where the same instance
+        // is the least instantiation in `B`'s lower candidate and the greatest in `A`'s upper one
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let function = db.function_with(&[t], &[t, pair], true, pair);
+        let param = db.function(&[int, a], b);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(Int, Int)");
+        assert_eq!(db.name(candidates(&infer, a).upper[0]), "(Any, Any)");
+    }
+
+    #[test]
+    fn instantiates_each_instance_in_a_candidate() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let b = db.generic("B");
+        let mut infer = Inference::new([b]);
+
+        // `fn<T, U>(x: T, y: U) -> (T, U)` to `fn(x: Int, y: Bytes) -> B`
+        let (t, u) = (db.generic("T"), db.generic("U"));
+        let ret = db.pair(t, u);
+        let function = db.function_with(&[t, u], &[t, u], true, ret);
+        let param = db.function(&[int, bytes], b);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+
+        assert_eq!(db.name(candidates(&infer, b).lower[0]), "(Int, Bytes)");
+    }
+
+    #[test]
     fn resolves_cycles_between_generics() {
         let mut db = Db::new();
         let int = db.builtins.int;

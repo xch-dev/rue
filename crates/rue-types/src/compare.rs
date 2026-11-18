@@ -451,7 +451,8 @@ impl ComparisonContext<'_> {
     /// with a new var for each instance, which the inference takes along with the instance's
     /// bounds, and then resolves the instances (see `Inference::add_instance`).
     fn finish(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
-        let Some(infer) = self.infer.as_deref_mut() else {
+        // It's taken for the loop, so the context's own helpers can still be used
+        let Some(infer) = self.infer.take() else {
             return;
         };
 
@@ -468,12 +469,10 @@ impl ComparisonContext<'_> {
             let ty = infer.candidates_mut(generic).list_mut(kind)[index];
             let mut mappings = HashMap::new();
 
-            self.references
-                .entry(ty)
-                .or_insert_with(|| referenced_generics(arena, ty));
+            self.cache_references(arena, ty);
 
             for &other in &self.references[&ty] {
-                let Some(binder) = resolve(&self.binders, other, env) else {
+                let Some(binder) = self.resolve(other, env) else {
                     continue;
                 };
 
@@ -497,6 +496,7 @@ impl ComparisonContext<'_> {
         }
 
         infer.resolve_instances(arena, builtins);
+        self.infer = Some(infer);
     }
 
     /// Pushes binders for a function's generics onto the environment, and returns the new one.

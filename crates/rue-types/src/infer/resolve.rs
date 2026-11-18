@@ -409,10 +409,14 @@ impl Inference {
                 let upper = matches!(kind, CandidateKind::Upper);
 
                 for ty in candidates.list_mut(kind) {
+                    // Most candidates reference none of the vars, which this finds in one pass
+                    let free = free_generics(arena, *ty);
                     let mut mappings = HashMap::new();
 
                     for (var, bounds) in &instances {
-                        if !references_generic(arena, *ty, *var, |_| Vec::new()) {
+                        if !free.contains(var)
+                            || !references_generic(arena, *ty, *var, |_| Vec::new())
+                        {
                             continue;
                         }
 
