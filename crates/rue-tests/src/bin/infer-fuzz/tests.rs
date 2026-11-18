@@ -1381,3 +1381,36 @@ fn comparisons_load_runs_from_a_file_or_its_directory() {
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn comparisons_compare_explicit_panics_by_their_first_line() {
+    let mut old = record(0, &[]);
+    old.explicit = Explicit::Panicked("assertion failed\nleft: 1".to_string());
+    let mut new = old.clone();
+    new.explicit = Explicit::Panicked("assertion failed\nleft: 2".to_string());
+    assert_eq!(
+        compare::compare(std::slice::from_ref(&old), &[new.clone()]).changes,
+        []
+    );
+
+    new.explicit = Explicit::Panicked("index out of bounds".to_string());
+    assert_eq!(
+        kinds(&compare::compare(&[old], &[new])),
+        [compare::ChangeKind::Diagnostic]
+    );
+}
+
+#[test]
+fn slow_variants_are_described_by_their_timing() {
+    let old = record(0, &[("all", Category::Inferred, &[])]);
+    let mut new = old.clone();
+    new.variants[0].outcome.category = Category::Slow;
+    new.variants[0].outcome.output = Some(Run::Output("1".to_string()));
+    new.variants[0].outcome.detail = Some("500.0 ms, explicit 1.0 ms".to_string());
+
+    let comparison = compare::compare(&[old], &[new]);
+    assert_eq!(
+        comparison.changes[0].after,
+        "Slow: 500.0 ms, explicit 1.0 ms"
+    );
+}

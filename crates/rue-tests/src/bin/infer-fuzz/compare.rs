@@ -46,7 +46,8 @@
 //!   unescaped `"`, and ` -> ` between them is the only one outside a string. Each is the status
 //!   (`Inferred`, `Rejected`, `Unsound`, `Slow`, `Crashed` for a variant; `Valid`, `Rejected`,
 //!   `Panicked`, `NoSites`, `TimedOut`, `Died` for an explicit program), then `: ` and the first
-//!   diagnostic with its position, the output, or the detail, if there is one. `<before>` is
+//!   diagnostic with its position, the output, or the detail, if there is one (the detail, which
+//!   is the timing, for a slow variant). `<before>` is
 //!   `"none"` for a variant that only the new run has.
 //!
 //! The command exits with status 1 if there are any regressions.
@@ -137,6 +138,10 @@ fn describe(outcome: &Outcome) -> String {
     });
     match (&outcome.diag, output, &outcome.detail) {
         (Some(diag), _, _) => format!("{category}: {}", diag.located()),
+        // A slow variant's timing is what explains it
+        (None, _, Some(detail)) if outcome.category == Category::Slow => {
+            format!("{category}: {detail}")
+        }
         (None, Some(output), _) => format!("{category}: {output}"),
         (None, None, Some(detail)) => format!("{category}: {detail}"),
         _ => category,
@@ -216,7 +221,9 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
             describe_explicit(&new.explicit),
         );
 
-        if before_explicit != after_explicit {
+        // A panic is compared by its first line, as a variant's is
+        let first_line = |text: &str| text.lines().next().unwrap_or_default().to_string();
+        if first_line(&before_explicit) != first_line(&after_explicit) {
             let crashes = matches!(new.explicit, Explicit::Panicked(_) | Explicit::Died(_))
                 && !matches!(old.explicit, Explicit::Panicked(_) | Explicit::Died(_));
             let kind = if (was_valid && !is_valid) || crashes {
