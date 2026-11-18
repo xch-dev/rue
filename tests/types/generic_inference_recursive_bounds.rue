@@ -65,18 +65,41 @@ test fn guard_expected_union_only() -> Bool {
     expected_union::<Int>(1) is nil
 }
 
-fn from_expected<A>(depth: Int) -> (A, A) {
+fn feed_union<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A, depth: Int) -> A {
     if depth > 0 {
-        // Guard: the expected `(A, Int)` makes the callee's `A` `Int`, not `A`, as before, since
-        // `A` isn't more specific than `Int`
-        let result: (Int, Int) = from_expected(depth - 1);
+        // Guard: the lambda bounds the callee's `B` by `A | nil`, which `A` already satisfies, so
+        // it isn't passed on to the callee's `A`, which nothing else bounds. It's the caller's `A`,
+        // as before, rather than `A | nil`
+        let inner = feed_union(identity, fn(_b: A | nil) => 1, value, depth - 1);
+        return inner;
+    }
+
+    let _ = second(first(value));
+    value
+}
+
+test fn guard_bound_held_by_the_original() -> Int {
+    feed_union(fn(a: Int) => a, fn(b: Int) => b, 3, 1)
+}
+
+fn lambda_through<A, B>(_first: fn(a: A) -> B, _second: fn(a: A) -> Int, depth: Int) -> B {
+    if depth > 0 {
+        // Guard: likewise through the expected `A | nil`, so the untyped lambda's parameter is the
+        // caller's `A`
+        let result: A | nil = lambda_through(
+            identity,
+            fn(x) => {
+                let _same: A = x;
+                1
+            },
+            depth - 1,
+        );
         return unchecked_cast(result);
     }
 
-    unchecked_cast((1, 1))
+    unchecked_cast(4)
 }
 
-test fn guard_expected_upper_bounds() -> Int {
-    let (first, second) = from_expected::<Int>(1);
-    first + second
+test fn guard_lambda_through_another_generic() -> Int {
+    lambda_through(fn(a: Int) => a, fn(a: Int) => a, 1)
 }

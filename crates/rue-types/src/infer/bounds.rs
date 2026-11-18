@@ -426,7 +426,18 @@ pub(crate) fn pass_upper_bounds(
                 continue;
             }
 
-            infer.push(generic, CandidateKind::Upper, upper, branches.clone());
+            // A renamed generic with nothing below it is the generic it was renamed from (see
+            // `Inference::rename`), so it isn't given a bound that holds for that one, and its type
+            // stays what it was (#361)
+            let held_by_original = expanded[&generic].is_none()
+                && renamed.get(&generic).is_some_and(|&original| {
+                    compare_renamed(arena, builtins, &renamed, original, upper)
+                        == Comparison::Assign
+                });
+
+            if !held_by_original {
+                infer.push(generic, CandidateKind::Upper, upper, branches.clone());
+            }
         }
 
         // The generics that flow into this one through its lower bounds must satisfy it too

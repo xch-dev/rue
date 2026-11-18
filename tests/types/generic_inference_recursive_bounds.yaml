@@ -27,10 +27,17 @@ tests:
   runtime_cost: 3344
   byte_cost: 972000
   total_cost: 975344
-- name: guard_expected_upper_bounds
-  program: (a (q 2 (q 16 4 6) (c (a 2 (c 2 (q . 1))) 1)) (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q 1 1 . 1)) 1) ()))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c 2 (q . 1))) 1)) (c (q 2 (i (> 3 ()) (q 2 (q . 2) (c (a 2 (c 2 (- 3 (q . 1)))) 1)) (q 4 (q . 1) (q . 1))) 1) ()))
-  output: "2"
-  runtime_cost: 4224
-  byte_cost: 1188000
-  total_cost: 1192224
+- name: guard_bound_held_by_the_original
+  program: (a (q 2 2 (c 2 (c (q . 3) (c (q . 1) (c (q . 2) (q . 2)))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q . 2) (q 1 . 1)))))) (q . 5)) 1) ()))
+  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 3) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q 2 (i (> 11 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c 5 (c (- 11 (q . 1)) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q . 5)) 1) (q . 2)) ()))
+  output: "3"
+  runtime_cost: 3672
+  byte_cost: 1476000
+  total_cost: 1479672
+- name: guard_lambda_through_another_generic
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (q . 2))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 2) (q 1 . 1))))) (q 1 . 4)) 1) ()))
+  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (c (q 2 (i (> 5 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))))))) 1)) (q 1 . 4)) 1) (q . 2)) ()))
+  output: "4"
+  runtime_cost: 3454
+  byte_cost: 1332000
+  total_cost: 1335454
