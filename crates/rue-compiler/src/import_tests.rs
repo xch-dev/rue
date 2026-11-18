@@ -3222,3 +3222,49 @@ fn glob_reexports_through_super_dont_export_private_items_another_glob_bound() {
         ["14:30 PrivateSymbol(\"SECRET\", \"a\")"]
     );
 }
+
+#[test]
+fn names_blocked_by_imports_of_reported_reexports_are_unblocked() {
+    let compiled = compile(
+        "
+        const SECRET: Int = 1;
+
+        mod z {
+            export super::SECRET;
+        }
+
+        mod user {
+            import super::z::SECRET;
+
+            mod named {
+                import super::SECRET;
+
+                export fn f() -> Int {
+                    SECRET
+                }
+            }
+
+            mod globbed {
+                import super::*;
+
+                export fn f() -> Int {
+                    SECRET
+                }
+            }
+
+            export fn g() -> Int {
+                named::f() + globbed::f()
+            }
+        }
+
+        fn main() -> Int {
+            user::g()
+        }
+        ",
+    );
+
+    // The import in `user` first finds the private item and fails, which blocks the name in
+    // `user`, and the imports through `super` fail at the block. Once the re-export is reported,
+    // they're all resolved again, and none of them fail.
+    assert_eq!(compiled.errors(), ["5:27 PrivateReexport(\"SECRET\")"]);
+}
