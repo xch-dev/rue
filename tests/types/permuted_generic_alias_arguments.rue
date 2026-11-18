@@ -1,0 +1,23 @@
+// Comparing these took exponential time, since the generic arguments are permuted at each level
+// (#286)
+type N0 = N1<(Bool, N1<Bytes, 2, 1>), N0, Bytes>;
+type N1<A, B, C> = ((C, N1<A, 2, B> | N1<C, Bool, A>), N0);
+
+// Distinct permuted arguments, which compare quickly in a single pass. `R0` can be cast to `S0`
+// and `R1<Bool, Bytes, Int>`, but not the other way around.
+type R0 = R1<Int, Bytes, Bool>;
+type R1<A, B, C> = ((C, R1<A, B, C> | R1<C, B, A>), R0) | nil;
+type S0 = S1<Bool, Bytes, Int>;
+type S1<A, B, C> = ((C, S1<A, B, C> | S1<C, B, A>), S0) | nil;
+
+fn main(x: N1<1, 1, 2>, y: N0, r0: R0, r1: R1<Bool, Bytes, Int>, s0: S0) -> Int {
+    let _z: N1<1, 1, 2> = y;
+    let _w: N0 = x;
+    // This is assignable, and took exponential time as well
+    let _same: N0 = y;
+    let _r0: R0 = s0;
+    let _s0: S0 = r0;
+    let _r1: R1<Bool, Bytes, Int> = r0;
+    let _r1_back: R0 = r1;
+    0
+}

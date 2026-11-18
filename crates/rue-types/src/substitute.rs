@@ -18,20 +18,47 @@ pub fn substitute_with_mappings(
     id: TypeId,
     mappings: &HashMap<TypeId, TypeId>,
 ) -> TypeId {
+    substitute_in(arena, &mut SubstitutionContext::default(), id, mappings)
+}
+
+/// Substitutes each of the types with its mappings, sharing the work between them, and returns
+/// every type that each of them was substituted into along the way, under any mappings. For an
+/// alias, these are its substitution and every application of it that is substituted (such as
+/// `T1<Int>` in `type T1<A> = A | T0; type T0 = T1<Int>;`).
+pub(crate) fn substitute_instances(
+    arena: &mut Arena<Type>,
+    types: &[(TypeId, HashMap<TypeId, TypeId>)],
+) -> FxHashMap<TypeId, Vec<TypeId>> {
+    let mut ctx = SubstitutionContext {
+        instances: types.iter().map(|&(id, _)| (id, Vec::new())).collect(),
+        ..SubstitutionContext::default()
+    };
+
+    for (id, mappings) in types {
+        substitute_in(arena, &mut ctx, *id, mappings);
+    }
+
+    ctx.instances
+}
+
+fn substitute_in(
+    arena: &mut Arena<Type>,
+    ctx: &mut SubstitutionContext,
+    id: TypeId,
+    mappings: &HashMap<TypeId, TypeId>,
+) -> TypeId {
     let name = log_enabled!(Level::Trace).then(|| stringify_impl(arena, id, &mut IndexMap::new()));
 
     if let Some(name) = &name {
         trace!("Substituting {name}");
     }
 
-    let mut ctx = SubstitutionContext::default();
-
     // The mapped types belong to the caller's scope, so they're substituted without the mappings
     let (empty_scope, empty) = ctx.scope(BTreeMap::new(), HashMap::new());
     let mappings: HashMap<TypeId, TypeId> = mappings
         .iter()
         .map(|(&generic, &ty)| {
-            let ty = substitute_impl(arena, ty, &empty, empty_scope, &mut ctx);
+            let ty = substitute_impl(arena, ty, &empty, empty_scope, ctx);
             (generic, ty)
         })
         .collect();
@@ -41,7 +68,7 @@ pub fn substitute_with_mappings(
         .map(|(&generic, &ty)| (generic, Binding::Type(ty)))
         .collect();
     let (scope, mappings) = ctx.scope(bindings, mappings);
-    let result = substitute_impl(arena, id, &mappings, scope, &mut ctx);
+    let result = substitute_impl(arena, id, &mappings, scope, ctx);
 
     if let Some(name) = &name {
         let new_name = stringify_impl(arena, result, &mut IndexMap::new());
@@ -80,6 +107,9 @@ struct SubstitutionContext {
     /// type. The first copy that isn't referenced is reused, so that there are finitely many
     /// distinct mappings and recursive types still reach the substitutions that are in progress.
     renames: FxHashMap<TypeId, Vec<TypeId>>,
+    /// Every type that each of the types it's keyed by was substituted into, for
+    /// `substitute_instances`.
+    instances: FxHashMap<TypeId, Vec<TypeId>>,
 }
 
 impl SubstitutionContext {
@@ -144,10 +174,18 @@ fn substitute_impl_inner(
         // Each reference to an alias or struct is substituted into a distinct type, since their
         // ids are used to tell apart the variants that came from them (for example, when
         // subtracting from a union). The inner type can still be shared between them.
-        return match arena[result] {
+        let result = match arena[result] {
             Type::Alias(_) | Type::Struct(_) => arena.alloc(arena[result].clone()),
             _ => result,
         };
+
+        if !ctx.instances.is_empty()
+            && let Some(instances) = ctx.instances.get_mut(&old_id)
+        {
+            instances.push(result);
+        }
+
+        return result;
     }
 
     let new_id = arena.alloc(Type::Unresolved);
@@ -282,6 +320,12 @@ fn substitute_impl_inner(
     *arena.get_mut(new_id).unwrap() = Type::Ref(result);
 
     ctx.memo.insert((old_id, scope), result);
+
+    if !ctx.instances.is_empty()
+        && let Some(instances) = ctx.instances.get_mut(&old_id)
+    {
+        instances.push(result);
+    }
 
     result
 }

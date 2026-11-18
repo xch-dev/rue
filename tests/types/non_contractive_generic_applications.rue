@@ -1,0 +1,91 @@
+// The cycle passes through an application of the alias that closes it (#282)
+type T0 = T1<Int>;
+type T1<A> = A | (nil, A) | T0;
+
+// The alias that closes the cycle is only part of it through an earlier alias
+type Forward = Id<Forward>;
+type Id<T> = T;
+
+type ForwardUnion = Either<ForwardUnion> | nil;
+type Either<T> = T | Int;
+
+// Only one application of the generic aliases is part of the cycle
+type Outer = Middle<Int>;
+type Middle<T> = Inner<T, Int>;
+type Inner<A, B> = Middle<B> | A;
+
+// The cycle passes through a module that's compiled later
+type Module = nested::Id<Module>;
+
+mod nested {
+    export type Id<T> = T;
+}
+
+// The cycle passes through a struct that's compiled later
+type Wrapped = Wrapper<Wrapped>;
+
+struct Wrapper<T> {
+    ...inner: T,
+}
+
+// A struct that's only part of the cycle through an alias that's compiled later
+struct Struct {
+    ..._inner: Later<Struct>,
+}
+
+// A struct whose application is part of the cycle
+type StructUser = Applied<Int>;
+
+struct Applied<X> {
+    ..._inner: X | (nil, X) | StructUser,
+}
+
+// Both are part of the same cycle, but only the first is reported, since that breaks it
+type First = Later<Second>;
+type Second = Later<First>;
+
+// A generic alias that is only part of the cycle through its own application
+type Fwd<T> = Later<Fwd<Int>> | T;
+
+// The alias is first reached through a pair, so only the second reference to it is on the cycle
+type Repeated = Later<Repeats<Int>>;
+type Repeats<A> = (Repeated, nil) | Repeated | A;
+
+type Later<T> = T;
+
+// These are fine, since the recursion passes through a pair
+type Guarded = Pair<Int>;
+type Pair<A> = A | (nil, Guarded);
+
+type GuardedForward = Later<(Int, GuardedForward)> | nil;
+
+fn main(
+    t0: T0,
+    forward: Forward,
+    forward_union: ForwardUnion,
+    outer: Outer,
+    module: Module,
+    wrapped: Wrapped,
+    structure: Struct,
+    struct_user: StructUser,
+    first: First,
+    second: Second,
+    fwd: Fwd<Int>,
+    repeated: Repeated,
+    guarded: Guarded,
+    guarded_forward: GuardedForward,
+) -> (Guarded, GuardedForward) {
+    let _t0: T0 = t0;
+    let _forward: Forward = forward;
+    let _forward_union: ForwardUnion = forward_union;
+    let _outer: Outer = outer;
+    let _module: Module = module;
+    let _wrapped: Wrapped = wrapped;
+    let _structure: Struct = structure;
+    let _struct_user: StructUser = struct_user;
+    let _first: First = first;
+    let _second: Second = second;
+    let _fwd: Fwd<Int> = fwd;
+    let _repeated: Repeated = repeated;
+    (guarded, guarded_forward)
+}

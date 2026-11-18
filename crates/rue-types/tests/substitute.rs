@@ -7,7 +7,7 @@ use id_arena::Arena;
 use rue_diagnostic::Name;
 use rue_types::{
     Alias, Apply, BuiltinTypes, Comparison, Generic, Pair, Type, TypeId, Union, compare,
-    is_non_contractive, is_non_regular, stringify, substitute_with_mappings,
+    is_non_contractive, is_non_regular, non_contractive_types, stringify, substitute_with_mappings,
 };
 
 struct Types {
@@ -379,4 +379,83 @@ fn permuted_arguments_without_pair_are_non_contractive() {
 
     assert!(!is_non_regular(&db.arena, p));
     assert!(is_non_contractive(&mut db.arena, p));
+}
+
+#[test]
+fn application_of_alias_through_another_alias_is_non_contractive() {
+    let mut db = Types::new();
+    let BuiltinTypes { int, nil, .. } = db.builtins;
+
+    // type T0 = T1<Int>; type T1<A> = A | (nil, A) | T0;
+    let a = db.generic("A");
+    let t0 = db.declare_alias("T0", &[]);
+    let t1 = db.declare_alias("T1", &[a]);
+    let t1_int = db.apply(t1, &[(a, int)]);
+    db.define(t0, t1_int);
+    let nil_a = db.pair(nil, a);
+    let inner = db.union(&[a, nil_a, t0]);
+    db.define(t1, inner);
+
+    // `T1<A>` isn't part of the cycle, but `T1<Int>` is
+    assert!(is_non_contractive(&mut db.arena, t0));
+    assert!(is_non_contractive(&mut db.arena, t1));
+}
+
+#[test]
+fn single_application_is_non_contractive() {
+    let mut db = Types::new();
+    let int = db.builtins.int;
+
+    // type G<T> = H<T, Int>; type H<A, B> = G<B> | A;
+    let g_param = db.generic("T");
+    let h_first = db.generic("A");
+    let h_second = db.generic("B");
+    let g = db.declare_alias("G", &[g_param]);
+    let h = db.declare_alias("H", &[h_first, h_second]);
+    let h_applied = db.apply(h, &[(h_first, g_param), (h_second, int)]);
+    db.define(g, h_applied);
+    let g_applied = db.apply(g, &[(g_param, h_second)]);
+    let inner = db.union(&[g_applied, h_first]);
+    db.define(h, inner);
+
+    // Neither alias is part of the cycle with its own generics, only `G<Int>` and `H<Int, Int>`
+    assert!(is_non_contractive(&mut db.arena, g));
+    assert!(is_non_contractive(&mut db.arena, h));
+
+    // type U = G<Int>; only refers to the cycle
+    let g_int = db.apply(g, &[(g_param, int)]);
+    let user = db.declare_alias("U", &[]);
+    db.define(user, g_int);
+    assert!(!is_non_contractive(&mut db.arena, user));
+}
+
+#[test]
+fn reference_after_guarded_reference_is_non_contractive() {
+    let mut db = Types::new();
+    let BuiltinTypes { int, nil, .. } = db.builtins;
+
+    // type T0 = Id<T1<Int>>; type T1<A> = (T0, nil) | T0 | A; type Id<T> = T;
+    let a = db.generic("A");
+    let t = db.generic("T");
+    let t0 = db.declare_alias("T0", &[]);
+    let t1 = db.declare_alias("T1", &[a]);
+    let id = db.declare_alias("Id", &[t]);
+    let t1_int = db.apply(t1, &[(a, int)]);
+    let id_t1 = db.apply(id, &[(t, t1_int)]);
+    db.define(t0, id_t1);
+    let guarded = db.pair(t0, nil);
+    let inner = db.union(&[guarded, t0, a]);
+    db.define(t1, inner);
+    db.define(id, t);
+
+    // `T0` is substituted inside the pair first, so the cycle only passes through the copy that
+    // the unguarded reference to it is substituted into
+    assert!(is_non_contractive(&mut db.arena, t0));
+    assert!(!is_non_contractive(&mut db.arena, id));
+
+    // Checking them together also returns `Id`, since `Id<T1<Int>>` is part of the cycle
+    assert_eq!(
+        non_contractive_types(&mut db.arena, &[t0, id]),
+        vec![t0, id]
+    );
 }

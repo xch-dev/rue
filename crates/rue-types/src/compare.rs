@@ -254,7 +254,8 @@ pub(crate) struct ComparisonContext<'a> {
     /// Whether the comparison that started from an empty stack is the least fixed point of
     /// monotone equations (see `is_monotone`), so `fixpoint_memo` is used instead of `memo`.
     fixpoint: bool,
-    /// Completed comparisons, reused while the comparisons they relied on are in progress.
+    /// Completed comparisons, reused while the comparisons they relied on are in progress, or
+    /// approximations of them while iterating (see `FixpointMemo`).
     fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
     /// Whether each type that a comparison started from is monotone (see `is_monotone`).
     monotone: FxHashMap<TypeId, bool>,
@@ -577,7 +578,8 @@ impl ComparisonContext<'_> {
     /// equations over the comparisons it reaches, which is what `FixpointMemo` needs. Comparing is
     /// built from `max`, `min` and constants (the fallbacks that are only compared when a union
     /// doesn't hold are a `min` whose result doesn't depend on them otherwise), and returning
-    /// early at a comparison in progress gives `Assign` (the least value), as long as:
+    /// early at a comparison in progress gives `Assign` (the least value), or its approximation
+    /// while `FixpointMemo` is iterating, as long as:
     ///
     /// - The type is contractive, since a cycle that doesn't pass through a pair or function gives
     ///   `Invalid` instead.
@@ -1488,6 +1490,40 @@ pub(crate) fn compare_impl(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
+    if ctx.stack.is_empty() {
+        ctx.fixpoint = ctx.infer.is_none()
+            && ctx.lhs_env.is_none()
+            && ctx.rhs_env.is_none()
+            && ctx.is_monotone(arena, lhs)
+            && ctx.is_monotone(arena, rhs);
+
+        if ctx.fixpoint {
+            ctx.fixpoint_memo.start();
+
+            let result = grow_stack(|| {
+                compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+            });
+
+            if !ctx.fixpoint_memo.abandoned() {
+                return result;
+            }
+
+            // The single pass took too long, so it's repeated until the approximations it reaches
+            // stop changing instead (see `FixpointMemo`)
+            loop {
+                ctx.fixpoint_memo.start_round();
+
+                let result = grow_stack(|| {
+                    compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+                });
+
+                if ctx.fixpoint_memo.finish_round() {
+                    return result;
+                }
+            }
+        }
+    }
+
     grow_stack(|| compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic))
 }
 
@@ -1502,15 +1538,32 @@ fn compare_impl_inner(
 ) -> Comparison {
     step();
 
+    // The comparison that started from an empty stack is unwinding, to iterate instead
+    if ctx.fixpoint && ctx.fixpoint_memo.abandoned() {
+        return Comparison::Assign;
+    }
+
     let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
     let key = (lhs, rhs, ctx.flipped, bindings, lhs_semantic, rhs_semantic);
 
+    // Generics that are being instantiated outside of the comparison collect bounds from it as a
+    // side effect, so it's only memoized if it doesn't refer to any. The ones bound inside of it
+    // are checked before it finishes.
+    let memoize = compare_memo_enabled()
+        && !ctx.bindings[bindings]
+            .iter()
+            .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
+
     if let Some(index) = ctx.stack.get_index_of(&key) {
-        if ctx.fixpoint {
-            ctx.fixpoint_memo.reached(index);
+        // In fixpoint mode, it's the least value in a single pass, or its approximation from the
+        // previous round while iterating
+        let value = if ctx.fixpoint {
+            let key = memoize.then_some(&key);
+            ctx.fixpoint_memo.reached(index, key, Comparison::Assign)
         } else {
             ctx.memo.reached(index);
-        }
+            Comparison::Assign
+        };
 
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
         // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
@@ -1555,24 +1608,8 @@ fn compare_impl_inner(
             }
         }
 
-        return Comparison::Assign;
+        return value;
     }
-
-    if ctx.stack.is_empty() {
-        ctx.fixpoint = ctx.infer.is_none()
-            && ctx.lhs_env.is_none()
-            && ctx.rhs_env.is_none()
-            && ctx.is_monotone(arena, lhs)
-            && ctx.is_monotone(arena, rhs);
-    }
-
-    // Generics that are being instantiated outside of the comparison collect bounds from it as a
-    // side effect, so it's only memoized if it doesn't refer to any. The ones bound inside of it
-    // are checked before it finishes.
-    let memoize = compare_memo_enabled()
-        && !ctx.bindings[bindings]
-            .iter()
-            .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
 
     if memoize {
         let result = if ctx.fixpoint {

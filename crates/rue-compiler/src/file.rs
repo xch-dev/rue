@@ -25,7 +25,8 @@ use thiserror::Error;
 use crate::{
     Compiler, ImportCache, SyntaxItemKind, check_recursion, compile_default_items,
     compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
-    declare_module_items, declare_symbol_items, declare_type_items, resolve_imports,
+    declare_module_items, declare_symbol_items, declare_type_items, recheck_contractive_types,
+    resolve_imports,
 };
 
 #[derive(Debug, Error)]
@@ -313,6 +314,7 @@ impl FileTree {
         }
 
         self.compile_types(ctx);
+        recheck_contractive_types(ctx);
         self.compile_defaults(ctx);
         self.compile_symbols(ctx);
 

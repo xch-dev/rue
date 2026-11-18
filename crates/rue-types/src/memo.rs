@@ -1,6 +1,8 @@
 use std::{hash::Hash, mem};
 
-use crate::{FxHashMap, FxHashSet, FxIndexSet};
+use crate::{
+    FxHashMap, FxHashSet, FxIndexSet, abandoned_pass, compare_memo_enabled, fixpoint_budget,
+};
 
 /// Caches the results of a recursive computation over types, which keeps the items in progress on
 /// a stack and returns early when it reaches one of them again (to handle recursive types).
@@ -96,23 +98,27 @@ where
     }
 }
 
-/// Caches the results of a comparison whose result is the least fixed point of monotone equations
-/// over a finite set of items, built from `max`, `min` and constants over a chain of values, where
-/// returning early at an item in progress gives the least value. Unlike [`Memo`], a result is
-/// cached even if it relied on items in progress, and it's reused while they're still in progress.
+/// Caches the results of a computation whose result is the least fixed point of monotone equations
+/// over a finite set of items, built from `max`, `min` and constants over a chain of values (such
+/// as comparisons between recursive types), where the computation recurses into the items an
+/// item's equation refers to, and returns early at an item that's reached again while it's in
+/// progress. Write `μ` for the least fixed point, and `μ[D]` for the least fixed point with the
+/// items in `D` fixed to the least value instead of their equation.
 ///
-/// The results inside a cycle depend on where it was entered, so a reused result can differ from
-/// what computing it again would give. But the result of the computation as a whole (which starts
-/// from an empty stack) doesn't. Write `μ` for the least fixed point, and `μ[D]` for the least fixed
-/// point with the items in `D` fixed to the least value instead of their equation:
+/// A computation that starts from an empty stack runs in one of two ways.
+///
+/// **In a single pass**, as long as it doesn't take much longer than the number of items it
+/// reaches. Returning early gives the least value, and a result is cached along with the items in
+/// progress that it relied on (`D`), and reused while they're still in progress. The results
+/// inside a cycle depend on where it was entered, so a reused result can differ from what
+/// computing it again would give, but the result of the computation as a whole doesn't:
 ///
 /// - Every value computed is at most `μ`, since returning early gives the least value, reused
 ///   results are at most `μ` (by induction), and the equations are monotone with `μ` as a fixed
 ///   point.
-/// - Every value computed for an item, given the items on the stack below it that it returned early
-///   at or reused a result that relied on (`D`), is at least `μ[D]`. Its equation's inputs are at
-///   least `μ[D ∪ {item}]` (by induction), and fixing only the item gives a unary function `h` of
-///   the value it's fixed to, so the value is at least `h(least)`. That's `μ[D]` (which is the least
+/// - Every value computed for an item is at least `μ[D]`. Its equation's inputs are at least
+///   `μ[D ∪ {item}]` (by induction), and fixing only the item gives a unary function `h` of the
+///   value it's fixed to, so the value is at least `h(least)`. That's `μ[D]` (which is the least
 ///   fixed point of `h`), since `h` is built from `max`, `min` and constants, so `h(h(least))` is
 ///   `h(least)` (it's `h(least) ∨ (y ∧ h(greatest))` at `y`).
 /// - A cached result is reused while `D` is on the stack, where computing it again would give
@@ -120,17 +126,71 @@ where
 ///   can only make the fixed point smaller. So it's at least what computing it again would give.
 ///
 /// So the result of a computation that starts from an empty stack (where `D` is empty) is exactly
-/// `μ`, with or without reusing results, and since every value is at least what computing it would
-/// give and the equations are monotone, so is the result.
+/// `μ`, and so is every result with an empty `D`, which can be reused anywhere.
+///
+/// Inside a large cycle, a result is rarely reusable, since the items it relied on are no longer
+/// in progress when it's reached again by another path. That can take exponential time, so a
+/// computation that takes too long is abandoned (see `abandoned`) and run again **by iterating**
+/// instead. This is chaotic iteration: the computation runs in rounds, and each item is computed
+/// at most once per round. Within a round, an item that's already been computed is given its value
+/// from this round, and an item reached again while it's in progress is given its value from the
+/// previous round (or the least value, if it has none). A round in which every item reached again
+/// while in progress finished with the value it was given is the last one:
+///
+/// - Every value is at most `μ`, since the approximations start at the least value, and the
+///   equations are monotone with `μ` as a fixed point.
+/// - The approximations only increase from one round to the next, since an item's inputs in a
+///   round are at least what they were in the previous one (by induction). So each round that
+///   doesn't end the computation increases at least one item, and there are at most twice as many
+///   rounds as items for a chain of three values.
+/// - In the last round, every item's value is its equation applied to the values of the items it
+///   refers to in that round, since the ones that were in progress finished with the values they
+///   were given. The items reached in that round only refer to each other (a fallback that isn't
+///   compared is a `min` that doesn't depend on it), so their values are a fixed point of their
+///   equations, which is at least `μ`.
+///
+/// So the values in the last round are exactly `μ`, and they're cached for later computations,
+/// while the approximations from earlier rounds are discarded. Each round computes each item with
+/// a key at most once (an item without one is computed every time it's reached).
+///
+/// An item without a key isn't cached or iterated. It's given the least value when it's reached
+/// again, as in a single pass, which is only exact if such an item never relies on itself.
 #[derive(Debug)]
 pub(crate) struct FixpointMemo<K, V> {
-    /// The indices on the stack of the items that were reached again (or that a reused result
-    /// relied on) since the current item started, which haven't been filtered out by an item that
-    /// finished.
-    reached: Vec<usize>,
-    /// Each result, along with the items in progress that it relied on.
+    /// Each result, along with the items in progress that it relied on. A result that relied on
+    /// none of them is exact.
     done: FxHashMap<K, (V, Vec<K>)>,
+    /// In a single pass, the indices on the stack of the items that were reached again (or that a
+    /// reused result relied on) since the current item started, which haven't been filtered out by
+    /// an item that finished.
+    reached: Vec<usize>,
+    /// The number of items computed in the current pass, and the number of results cached before
+    /// it started, which bound how long it may take before it's abandoned.
+    steps: usize,
+    cached: usize,
+    /// How many items it may compute for each new result it caches, and how many more.
+    budget: (usize, usize),
+    abandoned: bool,
+    /// Whether the computation is iterating rather than running in a single pass.
+    iterating: bool,
+    /// While iterating, the approximation of each item reached, along with the round it was last
+    /// computed in.
+    approximations: FxHashMap<K, (V, usize)>,
+    round: usize,
+    /// While iterating, for each item in progress, the approximation it was given when it was
+    /// reached again, if it was.
+    given: Vec<Option<V>>,
+    /// Whether an item in progress finished with another value than it was given when it was
+    /// reached again, during this round.
+    changed: bool,
 }
+
+/// A computation that starts from an empty stack is abandoned in favour of iterating once it has
+/// computed more than this many items for each new result it cached, plus `BASE_STEPS`. In the
+/// examples and tests (other than those for this), a single pass never gets more than about 2,200
+/// items past that allowance per result, so they never iterate.
+const STEPS_PER_ITEM: usize = 8;
+const BASE_STEPS: usize = 16_384;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FixpointFrame {
@@ -141,8 +201,17 @@ pub(crate) struct FixpointFrame {
 impl<K, V> Default for FixpointMemo<K, V> {
     fn default() -> Self {
         Self {
-            reached: Vec::new(),
             done: FxHashMap::default(),
+            reached: Vec::new(),
+            steps: 0,
+            cached: 0,
+            budget: (STEPS_PER_ITEM, BASE_STEPS),
+            abandoned: false,
+            iterating: false,
+            approximations: FxHashMap::default(),
+            round: 0,
+            given: Vec::new(),
+            changed: false,
         }
     }
 }
@@ -150,16 +219,90 @@ impl<K, V> Default for FixpointMemo<K, V> {
 impl<K, V> FixpointMemo<K, V>
 where
     K: Copy + Eq + Hash,
-    V: Copy,
+    V: Copy + Ord,
 {
-    /// Records that the item at the given index on the stack was reached again.
-    pub fn reached(&mut self, index: usize) {
-        self.reached.push(index);
+    /// Starts a computation from an empty stack, in a single pass.
+    pub fn start(&mut self) {
+        self.steps = 0;
+        self.cached = self.done.len();
+        self.budget = fixpoint_budget((STEPS_PER_ITEM, BASE_STEPS));
+        self.abandoned = false;
+        self.iterating = false;
     }
 
-    /// Returns the previous result for the key, if the items it relied on are still in progress.
+    /// Whether the single pass took too long, so the computation must stop and iterate instead.
+    /// Every item still in progress then returns right away, and isn't cached.
+    pub fn abandoned(&self) -> bool {
+        self.abandoned
+    }
+
+    /// Starts a round of iterating, after the single pass was abandoned.
+    pub fn start_round(&mut self) {
+        self.iterating = true;
+        self.abandoned = false;
+        self.reached.clear();
+        self.round += 1;
+        self.changed = false;
+    }
+
+    /// Finishes a round of iterating, and returns `true` if its values are exact. Otherwise,
+    /// another round is needed.
+    pub fn finish_round(&mut self) -> bool {
+        if self.changed {
+            return false;
+        }
+
+        let round = self.round;
+
+        self.done.extend(
+            self.approximations
+                .drain()
+                .filter(|&(_, (_, computed))| computed == round)
+                .map(|(key, (value, _))| (key, (value, Vec::new()))),
+        );
+
+        true
+    }
+
+    /// Records that the item at the given index on the stack was reached again, and returns the
+    /// value it's given: the least value in a single pass, or its approximation from the previous
+    /// round while iterating.
+    pub fn reached(&mut self, index: usize, key: Option<&K>, least: V) -> V {
+        if !self.iterating {
+            self.reached.push(index);
+            return least;
+        }
+
+        let value = key
+            .and_then(|key| self.approximations.get(key))
+            .map_or(least, |&(value, _)| value);
+
+        let given = &mut self.given[index];
+        debug_assert!(given.is_none_or(|given| given == value));
+        *given = Some(value);
+
+        value
+    }
+
+    /// Returns the previous result for the key, if it can be reused.
     pub fn get(&mut self, key: &K, stack: &FxIndexSet<K>) -> Option<V> {
-        let (value, dependencies) = self.done.get(key)?;
+        let done = self.done.get(key);
+
+        if self.iterating {
+            if let Some((value, dependencies)) = done
+                && dependencies.is_empty()
+            {
+                return Some(*value);
+            }
+
+            return self
+                .approximations
+                .get(key)
+                .filter(|&&(_, round)| round == self.round)
+                .map(|&(value, _)| value);
+        }
+
+        let (value, dependencies) = done?;
 
         let indices = dependencies
             .iter()
@@ -172,7 +315,22 @@ where
     }
 
     /// Starts computing the item that will be at the given index on the stack.
-    pub fn enter(&self, index: usize) -> FixpointFrame {
+    pub fn enter(&mut self, index: usize) -> FixpointFrame {
+        if self.iterating {
+            self.given.push(None);
+        } else if !self.abandoned {
+            self.steps += 1;
+
+            let (per_item, base) = self.budget;
+            let items = self.done.len() - self.cached;
+
+            // Without the memo, iterating wouldn't reuse anything either
+            if self.steps > per_item * items + base && compare_memo_enabled() {
+                self.abandoned = true;
+                abandoned_pass();
+            }
+        }
+
         FixpointFrame {
             index,
             reached: self.reached.len(),
@@ -180,8 +338,14 @@ where
     }
 
     /// Finishes computing the item (which has been removed from the stack), and caches the result
-    /// under the key, along with the items below it that it relied on.
+    /// under the key: along with the items below it that it relied on in a single pass, or as its
+    /// approximation for this round while iterating.
     pub fn exit(&mut self, frame: FixpointFrame, key: Option<K>, value: V, stack: &FxIndexSet<K>) {
+        if self.iterating {
+            self.exit_round(key, value);
+            return;
+        }
+
         let mut dependencies: Vec<usize> = self
             .reached
             .drain(frame.reached..)
@@ -190,11 +354,37 @@ where
         dependencies.sort_unstable();
         dependencies.dedup();
 
-        if let Some(key) = key {
+        if let Some(key) = key
+            && !self.abandoned
+        {
             let items = dependencies.iter().map(|&index| stack[index]).collect();
             self.done.insert(key, (value, items));
         }
 
         self.reached.extend(dependencies);
+    }
+
+    fn exit_round(&mut self, key: Option<K>, value: V) {
+        let given = self.given.pop().unwrap();
+
+        let Some(key) = key else {
+            return;
+        };
+
+        // The approximations only increase, since the equations are monotone, but this keeps the
+        // computation finite even if they weren't
+        let value = match self.approximations.get(&key) {
+            Some(&(previous, _)) => {
+                debug_assert!(previous <= value);
+                previous.max(value)
+            }
+            None => value,
+        };
+
+        if given.is_some_and(|given| given != value) {
+            self.changed = true;
+        }
+
+        self.approximations.insert(key, (value, self.round));
     }
 }

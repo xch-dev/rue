@@ -19,10 +19,11 @@ use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_diagnostic::Name;
 use rue_types::{
-    Alias, Apply, BuiltinTypes, Comparison, FunctionParameter, FunctionType, Generic, Inference,
-    Pair, Struct, Type, TypeId, Union, check, compare, compare_with_inference, count_steps,
-    intersect, is_non_contractive, is_non_regular, stringify, with_step_limit,
-    without_compare_memo,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
+    FunctionType, Generic, Inference, Pair, Struct, Type, TypeId, Union, check, compare,
+    compare_with_inference, count_abandoned_passes, count_steps, intersect, is_non_contractive,
+    is_non_regular, reaches_non_contractive_cycle, stringify, substitute, with_fixpoint_budget,
+    with_step_limit, without_compare_memo,
 };
 
 struct Types {
@@ -97,6 +98,13 @@ impl Types {
         self.arena[inner] = Type::Ref(resolved);
     }
 
+    fn int_literal(&mut self, value: u8) -> TypeId {
+        self.alloc(Type::Atom(Atom::new(
+            AtomSemantic::Int,
+            Some(AtomRestriction::Value(vec![value].into())),
+        )))
+    }
+
     fn apply(&mut self, inner: TypeId, generics: HashMap<TypeId, TypeId>) -> TypeId {
         self.alloc(Type::Apply(Apply::new(inner, generics)))
     }
@@ -151,15 +159,19 @@ fn test_rotating_generic_function() {
         let rhs = rotating_function(&mut db);
 
         // This never finished, since nearly every comparison relied on one in progress, and
-        // memoizing was turned off while the function's generic was being instantiated. It takes
-        // about 97,000 steps now.
-        let (result, steps) = count_steps(|| {
-            with_step_limit(STEP_BOUND, || {
-                compare(&mut db.arena, &db.builtins, lhs, rhs)
+        // memoizing was turned off while the function's generic was being instantiated. A single
+        // pass takes about 97,000 steps, so it's abandoned for iterating, and it takes about
+        // 44,000 steps in all.
+        let ((result, steps), abandoned) = count_abandoned_passes(|| {
+            count_steps(|| {
+                with_step_limit(STEP_BOUND, || {
+                    compare(&mut db.arena, &db.builtins, lhs, rhs)
+                })
             })
         });
         assert_eq!(result, Comparison::Assign);
-        assert!(steps < 300_000, "took {steps} steps");
+        assert!(steps < 150_000, "took {steps} steps");
+        assert_eq!(abandoned, 1);
     });
 }
 
@@ -207,8 +219,64 @@ fn test_mutually_recursive_intersection() {
     });
     assert!(steps < 20_000, "took {steps} steps");
 
-    let (_, steps) = count_steps(|| compare(&mut db.arena, &db.builtins, n0, target));
+    let ((_, steps), abandoned) =
+        count_abandoned_passes(|| count_steps(|| compare(&mut db.arena, &db.builtins, n0, target)));
     assert!(steps < 20_000, "took {steps} steps");
+
+    // Recursive comparisons like these finish in a single pass, without iterating
+    assert_eq!(abandoned, 0);
+}
+
+/// `type N0 = N1<(Bool, N1<Bytes, 2, 1>), N0, Bytes>;`
+/// `type N1<A, B, C> = ((C, N1<A, 2, B> | N1<C, Bool, A>), N0);`
+fn permuted_arguments(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes { bool, bytes, .. } = db.builtins;
+    let [a, b, c] = [db.generic(), db.generic(), db.generic()];
+    let n0 = db.declare_alias("N0", vec![]);
+    let n1 = db.declare_alias("N1", vec![a, b, c]);
+    let one = db.int_literal(1);
+    let two = db.int_literal(2);
+
+    let apply =
+        |db: &mut Types, args: [TypeId; 3]| db.apply(n1, [a, b, c].into_iter().zip(args).collect());
+
+    let inner_n1 = apply(db, [bytes, two, one]);
+    let first = db.pair(bool, inner_n1);
+    let n0_inner = apply(db, [first, n0, bytes]);
+    db.define(n0, n0_inner);
+
+    let left = apply(db, [a, two, b]);
+    let right = apply(db, [c, bool, a]);
+    let either = db.union(vec![left, right]);
+    let pair = db.pair(c, either);
+    let n1_inner = db.pair(pair, n0);
+    db.define(n1, n1_inner);
+
+    (apply(db, [one, one, two]), n0)
+}
+
+#[test]
+fn test_permuted_generic_alias_arguments() {
+    with_large_stack(|| {
+        let mut db = Types::new();
+        let (n1, n0) = permuted_arguments(&mut db);
+
+        // Each comparison relied on others in progress, so the fixpoint memo could only reuse it
+        // while they were still on the stack, and these never finished (#286). The single pass
+        // now gives up after about 30,000 steps, and iterating takes about 120,000 more.
+        for (lhs, rhs) in [(n0, n1), (n1, n0)] {
+            let ((result, steps), abandoned) = count_abandoned_passes(|| {
+                count_steps(|| {
+                    with_step_limit(STEP_BOUND, || {
+                        compare(&mut db.arena, &db.builtins, lhs, rhs)
+                    })
+                })
+            });
+            assert_eq!(result, Comparison::Invalid);
+            assert!(steps < 300_000, "took {steps} steps");
+            assert_eq!(abandoned, 1);
+        }
+    });
 }
 
 /// A small deterministic PRNG (`SplitMix64`), to avoid a dependency.
@@ -248,6 +316,8 @@ struct Generator<'a> {
     rng: Rng,
     aliases: Vec<Declared>,
     structs: Vec<TypeId>,
+    /// Whether modules with a non-contractive alias are skipped, as the compiler rejects them.
+    contractive_only: bool,
 }
 
 impl Generator<'_> {
@@ -359,7 +429,8 @@ impl Generator<'_> {
     }
 
     /// Declares a few mutually recursive aliases, some of which have generics. Returns `None` if
-    /// any of them isn't regular or contractive, since the compiler rejects those.
+    /// any of them isn't regular, or (if `contractive_only` is set) isn't contractive, since the
+    /// compiler rejects those.
     fn module(&mut self) -> Option<()> {
         let count = 1 + self.rng.below(3);
 
@@ -378,7 +449,7 @@ impl Generator<'_> {
         // so that's checked first
         for declared in self.aliases.clone() {
             if is_non_regular(&self.db.arena, declared.alias)
-                || is_non_contractive(&mut self.db.arena, declared.alias)
+                || (self.contractive_only && is_non_contractive(&mut self.db.arena, declared.alias))
             {
                 return None;
             }
@@ -461,7 +532,10 @@ struct Summary {
     gave_up_with_memo: usize,
     gave_up_without_memo: usize,
     gave_up_both: usize,
+    /// Cases that only finished with the memo in a single pass, but not with a smaller budget.
+    gave_up_iterating: usize,
     steps_with_memo: usize,
+    steps_iterating: usize,
     steps_without_memo: usize,
 }
 
@@ -506,7 +580,11 @@ fn is_step_limit(payload: &(dyn Any + Send)) -> bool {
 const STEP_LIMIT: usize = 20_000;
 
 /// Compares random types with the memo on and off, and panics if any result differs.
-fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary {
+fn differential(
+    seeds: impl IntoIterator<Item = u64>,
+    queries: usize,
+    contractive_only: bool,
+) -> Summary {
     let mut summary = Summary::default();
 
     for seed in seeds {
@@ -516,6 +594,7 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
             rng: Rng(seed),
             aliases: Vec::new(),
             structs: Vec::new(),
+            contractive_only,
         };
 
         // Substituting some generic aliases takes exponential work (since each application copies
@@ -547,8 +626,46 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
                 give_up_after(|| count_steps(|| results(&mut db, lhs, rhs, target, generic)));
 
             let without_memo = give_up_after(|| {
-                count_steps(|| without_compare_memo(|| results(&mut db, lhs, rhs, target, generic)))
+                let ((results, steps), abandoned) = count_abandoned_passes(|| {
+                    count_steps(|| {
+                        without_compare_memo(|| results(&mut db, lhs, rhs, target, generic))
+                    })
+                });
+
+                // Without the memo, iterating couldn't reuse anything, so it never does
+                assert_eq!(abandoned, 0, "seed {seed}");
+                (results, steps)
             });
+
+            let name = |db: &mut Types, id| stringify(&mut db.arena, id);
+
+            // Iterating from the start (with no budget), or after abandoning a single pass partway
+            // (with a small one), must give the same results as a single pass
+            if let Some((with_memo, _)) = &with_memo {
+                for (per_item, base) in [(0, 0), (1, 64)] {
+                    let iterating = give_up_after(|| {
+                        count_steps(|| {
+                            with_fixpoint_budget(per_item, base, || {
+                                results(&mut db, lhs, rhs, target, generic)
+                            })
+                        })
+                    });
+
+                    if let Some((iterating, steps)) = iterating {
+                        assert_eq!(
+                            with_memo,
+                            &iterating,
+                            "seed {seed} (budget {per_item}, {base}): {} and {} (target {})",
+                            name(&mut db, lhs),
+                            name(&mut db, rhs),
+                            name(&mut db, target),
+                        );
+                        summary.steps_iterating += steps;
+                    } else {
+                        summary.gave_up_iterating += 1;
+                    }
+                }
+            }
 
             let (with_memo, steps, without_memo, steps_without) = match (with_memo, without_memo) {
                 (Some((with_memo, steps)), Some((without_memo, steps_without))) => {
@@ -568,7 +685,6 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
                 }
             };
 
-            let name = |db: &mut Types, id| stringify(&mut db.arena, id);
             assert_eq!(
                 with_memo,
                 without_memo,
@@ -589,17 +705,24 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
 
 #[test]
 fn test_memo_differential() {
-    let summary = with_large_stack(|| differential(0..400, 4));
+    let summary = with_large_stack(|| differential(0..400, 4, true));
     println!("{summary:?}");
 
     // Most modules should be usable, and most cases should finish
     assert!(summary.cases > 800, "{summary:?}");
     assert!(summary.gave_up_with_memo <= 2, "{summary:?}");
+    assert!(summary.gave_up_iterating <= 2, "{summary:?}");
 
-    // These gave different results with the memo when it wasn't limited to contractive types
-    // (4706), or when it cached comparisons that refer to a generic being instantiated (1978)
-    let summary = with_large_stack(|| differential([1978, 4706], 8));
-    assert_eq!(summary.cases, 13, "{summary:?}");
+    // This gave different results with the memo when it cached comparisons that refer to a generic
+    // being instantiated
+    let summary = with_large_stack(|| differential([1978], 8, true));
+    assert_eq!(summary.cases, 8, "{summary:?}");
+
+    // This gave different results with the memo when it wasn't limited to contractive types. Its
+    // module has a cycle through an application of another alias (#282), which the compiler now
+    // rejects, so the comparisons must keep working when they're given such a type directly.
+    let summary = with_large_stack(|| differential([4706], 8, false));
+    assert_eq!(summary.cases, 5, "{summary:?}");
 }
 
 /// A larger run of `test_memo_differential`, which takes a few minutes in release builds:
@@ -607,6 +730,59 @@ fn test_memo_differential() {
 #[test]
 #[ignore = "slow"]
 fn test_memo_differential_large() {
-    let summary = with_large_stack(|| differential(1_000..21_000, 8));
+    let summary = with_large_stack(|| differential(1_000..21_000, 8, true));
     println!("{summary:?}");
+}
+
+/// Checks that if no alias in a random module is non-contractive, no type built from them can
+/// reach a non-contractive cycle either, which is what comparisons rely on. This missed cycles
+/// that only pass through an application of an alias other than the root, such as
+/// `type T0 = T1<Int>; type T1<A> = A | (nil, A) | T0;` (#282).
+fn contractiveness(seeds: impl IntoIterator<Item = u64>) {
+    for seed in seeds {
+        let mut db = Types::new();
+        let mut generator = Generator {
+            db: &mut db,
+            rng: Rng(seed),
+            aliases: Vec::new(),
+            structs: Vec::new(),
+            contractive_only: true,
+        };
+
+        let Some(Some(())) = give_up_after(|| generator.module()) else {
+            continue;
+        };
+
+        let mut types: Vec<TypeId> = generator
+            .aliases
+            .iter()
+            .map(|declared| declared.alias)
+            .collect();
+        types.extend((0..4).map(|_| generator.query()));
+
+        for ty in types {
+            let Some(substituted) = give_up_after(|| substitute(&mut db.arena, ty)) else {
+                continue;
+            };
+
+            assert!(
+                !reaches_non_contractive_cycle(&db.arena, substituted),
+                "seed {seed}: {}",
+                stringify(&mut db.arena, ty)
+            );
+        }
+    }
+}
+
+#[test]
+fn test_contractiveness() {
+    with_large_stack(|| contractiveness(0..500));
+}
+
+/// A larger run of `test_contractiveness`, which takes about two minutes in release builds:
+/// `cargo test --release -p rue-types --test memo -- --ignored`
+#[test]
+#[ignore = "slow"]
+fn test_contractiveness_large() {
+    with_large_stack(|| contractiveness(0..200_000));
 }

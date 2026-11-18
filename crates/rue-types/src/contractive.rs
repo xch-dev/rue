@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use id_arena::Arena;
 
-use crate::{Alias, Struct, Type, TypeId, grow_stack, substitute_with_mappings};
+use crate::{Alias, Struct, Type, TypeId, grow_stack, substitute_instances};
 
 /// Returns `true` if the type can reach itself without passing through a pair or function type.
 ///
@@ -10,41 +10,135 @@ use crate::{Alias, Struct, Type, TypeId, grow_stack, substitute_with_mappings};
 /// structure that bounds its recursion, so it cannot be meaningfully compared or checked and
 /// must be rejected. Recursion through a pair (such as `List<T>`) is fine, since each level
 /// of recursion corresponds to a level of the CLVM tree.
+///
+/// For a generic type, this includes any application of it that substituting it reaches, even if
+/// the type with its own generic parameters isn't part of the cycle. For example, in
+/// `type T1<A> = A | (nil, A) | T0; type T0 = T1<Int>;`, `T1<Int>` reaches itself through `T0`.
 pub fn is_non_contractive(arena: &mut Arena<Type>, id: TypeId) -> bool {
+    !non_contractive_types(arena, &[id]).is_empty()
+}
+
+/// Returns the types that [`is_non_contractive`] may be `true` for, in the order they're given.
+/// The types are substituted together, so this takes about as long as substituting all of them
+/// once, rather than once each.
+///
+/// This includes every type that it's `true` for, but it may include others, since an application
+/// of one of the types may be created while substituting another, and only be part of that one's
+/// cycle (such as `Id<Forward>` in `type Forward = Id<Forward>; type Id<T> = T;`, which makes this
+/// return `Id` as well).
+pub fn non_contractive_types(arena: &mut Arena<Type>, ids: &[TypeId]) -> Vec<TypeId> {
     // Substitution expands generic applications, so a cycle that is only created once the
     // generic arguments are filled in (e.g. `type A<T> = T; type B = A<B>;`) is visible.
     // The generic parameters are mapped to themselves, since that's how recursive references
     // such as `type A<T> = A<T> | nil;` substitute them, and in-progress types are tracked
     // separately for each mapping.
-    let generics = match &arena[id] {
-        Type::Alias(Alias { generics, .. }) | Type::Struct(Struct { generics, .. }) => {
-            generics.iter().map(|&generic| (generic, generic)).collect()
-        }
-        _ => HashMap::new(),
-    };
+    let types: Vec<(TypeId, HashMap<TypeId, TypeId>)> = ids
+        .iter()
+        .map(|&id| {
+            let generics = match &arena[id] {
+                Type::Alias(Alias { generics, .. }) | Type::Struct(Struct { generics, .. }) => {
+                    generics.iter().map(|&generic| (generic, generic)).collect()
+                }
+                _ => HashMap::new(),
+            };
+            (id, generics)
+        })
+        .collect();
 
-    let root = substitute_with_mappings(arena, id, &generics);
+    let instances = substitute_instances(arena, &types);
+    let cyclic = on_unguarded_cycles(arena, instances.values().flatten().copied());
 
-    let mut visited = HashSet::new();
-    let mut stack = unguarded_edges(arena, root);
+    ids.iter()
+        .copied()
+        .filter(|id| {
+            instances[id]
+                .iter()
+                .any(|instance| cyclic.contains(instance))
+        })
+        .collect()
+}
 
-    while let Some(id) = stack.pop() {
-        if id == root {
-            return true;
-        }
+/// Returns the types reachable from the given ones without passing through a pair or function
+/// type that can reach themselves that way. They must already be substituted.
+fn on_unguarded_cycles(
+    arena: &Arena<Type>,
+    roots: impl IntoIterator<Item = TypeId>,
+) -> HashSet<TypeId> {
+    let mut tarjan = Tarjan::default();
 
-        if visited.insert(id) {
-            stack.extend(unguarded_edges(arena, id));
+    for root in roots {
+        if !tarjan.index.contains_key(&root) {
+            tarjan.visit(arena, root);
         }
     }
 
-    false
+    tarjan.cyclic
+}
+
+/// Finds the strongly connected components of the graph of unguarded edges (Tarjan's algorithm).
+#[derive(Default)]
+struct Tarjan {
+    index: HashMap<TypeId, usize>,
+    lowlink: HashMap<TypeId, usize>,
+    stack: Vec<TypeId>,
+    on_stack: HashSet<TypeId>,
+    /// The types in a component with more than one type, or with an edge to itself.
+    cyclic: HashSet<TypeId>,
+}
+
+impl Tarjan {
+    fn visit(&mut self, arena: &Arena<Type>, id: TypeId) {
+        grow_stack(|| self.visit_inner(arena, id));
+    }
+
+    fn visit_inner(&mut self, arena: &Arena<Type>, id: TypeId) {
+        let index = self.index.len();
+        self.index.insert(id, index);
+        self.lowlink.insert(id, index);
+        self.stack.push(id);
+        self.on_stack.insert(id);
+
+        let edges = unguarded_edges(arena, id);
+
+        for &edge in &edges {
+            if !self.index.contains_key(&edge) {
+                self.visit(arena, edge);
+                let lowlink = self.lowlink[&id].min(self.lowlink[&edge]);
+                self.lowlink.insert(id, lowlink);
+            } else if self.on_stack.contains(&edge) {
+                let lowlink = self.lowlink[&id].min(self.index[&edge]);
+                self.lowlink.insert(id, lowlink);
+            }
+        }
+
+        if self.lowlink[&id] != index {
+            return;
+        }
+
+        let mut component = Vec::new();
+
+        loop {
+            let member = self.stack.pop().unwrap();
+            self.on_stack.remove(&member);
+            component.push(member);
+
+            if member == id {
+                break;
+            }
+        }
+
+        // A single type is only part of a cycle if it refers to itself (such as a placeholder for
+        // a type that's still being substituted, which is resolved to a reference to itself)
+        if component.len() > 1 || edges.contains(&id) {
+            self.cyclic.extend(component);
+        }
+    }
 }
 
 /// Returns `true` if a non-contractive cycle can be reached from the type (including through
 /// pairs and functions), even if the type itself isn't part of the cycle. The type must already
 /// be substituted.
-pub(crate) fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> bool {
+pub fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> bool {
     has_non_contractive_cycle(arena, &reachable(arena, id))
 }
 
