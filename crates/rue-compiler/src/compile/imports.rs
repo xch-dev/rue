@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
+    mem,
 };
 
 use indexmap::IndexMap;
@@ -8,8 +9,7 @@ use rowan::TextRange;
 use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::{DiagnosticKind, Name};
 use rue_hir::{
-    Declaration, Import, ImportId, ImportUser, Item, Items, Namespace, Scope, ScopeId, Symbol,
-    SymbolId,
+    Declaration, Import, ImportId, ImportUser, Item, Items, Namespace, ScopeId, Symbol, SymbolId,
 };
 
 use crate::{Compiler, SyntaxItemKind};
@@ -146,12 +146,10 @@ pub struct ImportCache {
     /// The errors in imports, keyed by where they are, so that each is reported once however
     /// many times the import is resolved.
     errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
-    /// The imports whose lookups through enclosing scopes stopped waiting for nearer scopes,
-    /// which are checked once every import is resolved.
-    forced: HashSet<ImportId>,
-    /// The names in each scope that more than one import (or a declaration and an import) bring
-    /// the same module in for, with the imports other than the one recorded as bringing it in.
-    shared_modules: HashMap<(ScopeId, String), HashSet<ImportId>>,
+    /// The lookups that were answered without waiting for a module to settle, since nothing else
+    /// could be resolved. They're checked once every import is resolved.
+    forced: IndexMap<(ImportId, LookupKey), ForcedLookup>,
+
     /// The names in imports that refer to a declaration through another import, which are
     /// ambiguous if that import is an ambiguous glob import. They're checked once every glob
     /// import is resolved.
@@ -212,41 +210,30 @@ struct CachedPath {
     private_segments: Vec<usize>,
 }
 
-/// The imports in each module, along with how deeply each module's scope is nested in the files'
-/// modules (a file's is 0, and an inline module's is one more than the module it's in).
 fn flatten_imports(
     ctx: &mut Compiler,
     top_level_modules: Vec<SymbolId>,
-) -> (Vec<(ScopeId, ImportId)>, HashMap<ScopeId, usize>) {
+) -> Vec<(ScopeId, ImportId)> {
     let mut imports = Vec::new();
-    let mut depths = HashMap::new();
-    let mut stack = vec![(None, 0, top_level_modules)];
+    let mut stack = vec![(None, top_level_modules)];
 
-    while let Some((scope, depth, modules)) = stack.pop() {
+    while let Some((scope, modules)) = stack.pop() {
         if let Some(scope) = scope {
-            depths.insert(scope, depth);
-
             for import in ctx.scope(scope).imports() {
                 imports.push((scope, import));
             }
         }
-
-        let depth = if scope.is_some() { depth + 1 } else { 0 };
 
         for module in modules {
             let Symbol::Module(module) = ctx.symbol(module).clone() else {
                 unreachable!();
             };
 
-            stack.push((
-                Some(module.scope),
-                depth,
-                module.declarations.modules.clone(),
-            ));
+            stack.push((Some(module.scope), module.declarations.modules.clone()));
         }
     }
 
-    (imports, depths)
+    imports
 }
 
 pub fn resolve_imports(
@@ -255,14 +242,15 @@ pub fn resolve_imports(
     cache: &mut ImportCache,
     diagnostics: bool,
 ) {
-    let (mut imports, module_depths) = flatten_imports(ctx, all_modules);
+    let mut imports = flatten_imports(ctx, all_modules);
     imports.sort_by(|(_, left), (_, right)| compare_imports(ctx.import(*left), ctx.import(*right)));
     let mut resolution = Resolution {
         diagnostics,
         named_imports: HashMap::new(),
         glob_imports: HashMap::new(),
-        module_depths,
-        deferred: Vec::new(),
+        bases: HashMap::new(),
+        bound: HashSet::new(),
+        waiting: Vec::new(),
         private_names: Vec::new(),
     };
     let mut missing_imports = IndexMap::new();
@@ -286,7 +274,7 @@ pub fn resolve_imports(
 
     loop {
         let mut updated = false;
-        resolution.deferred.clear();
+        resolution.waiting.clear();
         resolution.private_names.clear();
 
         for &(import_scope, import) in &imports {
@@ -304,22 +292,17 @@ pub fn resolve_imports(
             continue;
         }
 
-        // Nothing else can be resolved, so the lookups that are waiting for a module to bring in a
-        // name are made without waiting. The outermost modules' go first, since the imports that
-        // a lookup waits for are in its own module or one that it's in (through `super`). A
-        // forced lookup can still be wrong if the modules wait on each other, which is checked
-        // once they're all resolved.
-        let Some(depth) = resolution.deferred.iter().map(|&(depth, _)| depth).min() else {
+        // Nothing else can be resolved, so the lookups that are waiting for a module to settle
+        // are answered without waiting. They're all answered from the state they were waiting in,
+        // so that none of them depends on what another one brings in (or on the order that
+        // they're in), and they're checked once every import is resolved.
+        if resolution.waiting.is_empty() {
             break;
-        };
+        }
 
-        cache.forced.extend(
-            resolution
-                .deferred
-                .iter()
-                .filter(|&&(d, _)| d == depth)
-                .map(|&(_, import)| import),
-        );
+        for lookup in stuck_lookups(mem::take(&mut resolution.waiting)) {
+            cache.forced.entry(lookup.key).or_insert(lookup.forced);
+        }
     }
 
     // The uses of a name that's reported as private at its import aren't reported again. This is
@@ -349,16 +332,7 @@ pub fn resolve_imports(
             ctx.diagnostic_name(name, kind.clone());
         }
 
-        let import_scopes = imports
-            .iter()
-            .map(|&(scope, import)| (import, scope))
-            .collect::<HashMap<_, _>>();
-
-        for &(_, import) in &imports {
-            if cache.forced.contains(&import) {
-                check_forced_import(ctx, cache, &resolution, &import_scopes, import);
-            }
-        }
+        check_forced_lookups(ctx, cache);
 
         for (&(_, declaration), (name, via)) in &cache.imported_names {
             if ctx.is_ambiguous_import(Some(*via), declaration) {
@@ -409,146 +383,64 @@ fn import_item_name(items: &Items) -> &str {
     }
 }
 
-/// Reports an import whose lookup through enclosing scopes was forced, if one of the scopes it
-/// skipped has since brought in a different item with the name. A use of the name in the
-/// importing scope would find that item instead, so the import is ambiguous.
-fn check_forced_import(
-    ctx: &mut Compiler,
-    cache: &ImportCache,
-    resolution: &Resolution,
-    import_scopes: &HashMap<ImportId, ScopeId>,
-    import_id: ImportId,
-) {
-    let import_scope = import_scopes[&import_id];
-    let import = ctx.import(import_id).clone();
-
-    // A lookup through `super` can be forced too, but its path isn't cached, so it isn't checked
-    if import.base_scope != import_scope {
-        return;
-    }
-
-    let ambiguous = if let Some(first) = import.path.first() {
-        // The first segment of the path, which is cached once it's resolved
-        let owner = path_owner(resolution, &import, import_scope, import_id);
-        let Some(cached) = cache
-            .scopes
-            .get(&(import_scope, owner, vec![first.text().to_string()]))
-        else {
-            return;
-        };
-
-        // A glob import can bring in an item with the same name as the module it imports from,
-        // which doesn't change what its own path refers to, unless another import brings in the
-        // same item (other than by importing it back from this scope)
-        let skip_own = cache
-            .shared_modules
-            .get(&(import_scope, first.text().to_string()))
-            .is_none_or(|others| {
-                others.iter().all(|&other| {
-                    imported_back(ctx, cache, resolution, import_scopes, other, import_id)
-                })
-            });
-
-        (lookup_past(
-            ctx,
-            import_scope,
-            skip_own.then_some(import_id),
-            first.text(),
-            Scope::module_with_import,
-        ) != Some(cached.symbol))
-        .then_some(first)
-    } else if let Items::Named(name) = &import.items {
-        // Each namespace the import bound the name in is checked
-        Namespace::ALL
-            .into_iter()
-            .any(|namespace| {
-                ctx.scope(import_scope)
-                    .item_with_import(namespace, name.text())
-                    .filter(|&(_, via)| via == Some(import_id))
-                    .is_some_and(|(bound, _)| {
-                        lookup_past(
-                            ctx,
-                            import_scope,
-                            Some(import_id),
-                            name.text(),
-                            |scope, name| scope.item_with_import(namespace, name),
-                        ) != Some(bound)
-                    })
-            })
-            .then_some(name)
-    } else {
-        None
-    };
-
-    if let Some(name) = ambiguous {
-        ctx.diagnostic_name(
-            name,
-            DiagnosticKind::AmbiguousOuterImport(name.text().to_string()),
-        );
-    }
+/// One of the lookups an import makes that can look past a module's own items: to a file's sibling
+/// modules, or the prelude.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum LookupKey {
+    /// The first segment of the import's path.
+    Path,
+    /// The imported name, in a namespace.
+    Item(Namespace),
+    /// A file's sibling module that a glob import of the file (through `super`) brings in.
+    Sibling(Namespace, String),
 }
 
-/// Whether an import brings in the module that `origin` brought into its scope only by importing
-/// it back from there, through a chain of imports with paths. If the chain can't be followed, it's
-/// treated as bringing the symbol in on its own.
-fn imported_back(
-    ctx: &Compiler,
-    cache: &ImportCache,
-    resolution: &Resolution,
-    import_scopes: &HashMap<ImportId, ScopeId>,
-    mut import_id: ImportId,
-    origin: ImportId,
-) -> bool {
-    let origin_scope = import_scopes[&origin];
-    let Some(first) = ctx.import(origin).path.first() else {
-        return false;
-    };
-    let Some(module) = ctx.scope(origin_scope).module(first.text()) else {
-        return false;
-    };
-    let mut visited = HashSet::new();
+/// A lookup that's waiting for a module to settle, with what it'd find if it didn't wait, and
+/// the imports it waits for.
+#[derive(Debug)]
+struct WaitingLookup {
+    key: (ImportId, LookupKey),
+    forced: ForcedLookup,
+    blockers: Vec<ImportId>,
+}
 
-    while visited.insert(import_id) {
-        let import = ctx.import(import_id);
-        let scope = import_scopes[&import_id];
-        let path = import
-            .path
-            .iter()
-            .map(|name| name.text().to_string())
-            .collect::<Vec<_>>();
-        let owner = path_owner(resolution, import, scope, import_id);
+/// A lookup that was answered without waiting for the module it looked past to settle.
+#[derive(Debug, Clone)]
+struct ForcedLookup {
+    /// The module whose own items were looked past.
+    scope: ScopeId,
+    namespace: Namespace,
+    /// The name, where it's written in the import.
+    name: Name,
+    answer: Option<(Item, Option<ImportId>)>,
+}
 
-        // The module the import brought the symbol in from
-        let Some(cached) = cache.scopes.get(&(scope, owner, path)) else {
-            return false;
-        };
-        let Some(via) = ctx.scope(cached.scope).item_import(Item::Module(module)) else {
-            return false;
+/// Reports each lookup that was answered without waiting, if the module it looked past ended up
+/// with a different item with the name (other than one the import itself brought in). The name
+/// would refer to that item everywhere else in the module, so the import is ambiguous.
+fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
+    let mut reported = HashSet::new();
+
+    for (&(import, _), forced) in &cache.forced {
+        let Some((answer, _)) = forced.answer else {
+            continue;
         };
 
-        if cached.scope == origin_scope && via == origin {
-            return true;
+        let found = ctx
+            .scope(forced.scope)
+            .item_with_import(forced.namespace, forced.name.text())
+            .filter(|&(_, via)| via != Some(import));
+
+        if let Some((item, _)) = found
+            && item != answer
+            && reported.insert((import, forced.name.text().to_string()))
+        {
+            ctx.diagnostic_name(
+                &forced.name,
+                DiagnosticKind::AmbiguousOuterImport(forced.name.text().to_string()),
+            );
         }
-
-        import_id = via;
     }
-
-    false
-}
-
-/// What a use of a name in the importing scope finds, apart from what an import brought in.
-fn lookup_past<T>(
-    ctx: &Compiler,
-    import_scope: ScopeId,
-    import_id: Option<ImportId>,
-    name: &str,
-    find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
-) -> Option<T> {
-    ctx.lookup_in(import_scope, |_, scope| {
-        find(scope, name)
-            .filter(|&(_, via)| import_id.is_none() || via != import_id)
-            .map(|(item, _)| item)
-    })
 }
 
 /// The import that a path is cached for, if its first segment could be brought into the scope by
@@ -573,10 +465,14 @@ struct Resolution {
     named_imports: HashMap<ScopeId, HashMap<String, Vec<ImportId>>>,
     /// The glob imports into each scope.
     glob_imports: HashMap<ScopeId, Vec<ImportId>>,
-    /// How deeply each module's scope is nested (see [`flatten_imports`]).
-    module_depths: HashMap<ScopeId, usize>,
-    /// The imports with a lookup that's waiting in this pass, and the depth of their modules.
-    deferred: Vec<(usize, ImportId)>,
+    /// The module each import whose path has been resolved imports from, and whether all of its
+    /// items can be imported (when it's named by `super`, which includes a file's sibling
+    /// modules) rather than only its exported ones.
+    bases: HashMap<ImportId, (ScopeId, bool)>,
+    /// The named imports that have brought in what they import.
+    bound: HashSet<ImportId>,
+    /// The lookups that are waiting for a module to settle in this pass.
+    waiting: Vec<WaitingLookup>,
     /// The names that named imports found only private items for, with the scope they're
     /// imported into and the namespaces the private items are in.
     private_names: Vec<(ScopeId, String, Vec<Namespace>)>,
@@ -587,45 +483,195 @@ impl Resolution {
         self.named_imports.get(&scope)?.get(name)
     }
 
-    /// The imports that could bring a name into a scope: its named imports of the name, or if it
-    /// has none, its glob imports, since they don't bring in a name that has a named import.
-    fn imports_of(&self, scope: ScopeId, name: &str) -> &[ImportId] {
+    /// Whether the import is one of those that could bring the name into the scope: its named
+    /// imports of the name, or if it has none, its glob imports.
+    fn may_bring_in_itself(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
         self.named_imports_of(scope, name)
             .or_else(|| self.glob_imports.get(&scope))
-            .map_or(&[], Vec::as_slice)
-    }
-
-    /// Whether a scope that doesn't have the name yet could still bring it in through one of its
-    /// imports, other than the import that's looking it up.
-    fn may_bring_in(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
-        self.imports_of(scope, name)
-            .iter()
-            .any(|&import| import != importer)
-    }
-
-    /// Whether the import is one of those that could bring the name into the scope.
-    fn may_bring_in_itself(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
-        self.imports_of(scope, name).contains(&importer)
-    }
-
-    fn defer(&mut self, scope: ScopeId, import: ImportId) {
-        let depth = self.module_depths.get(&scope).copied().unwrap_or_default();
-        self.deferred.push((depth, import));
+            .is_some_and(|imports| imports.contains(&importer))
     }
 }
 
-/// What a name refers to, when it's looked up from a scope.
-enum Lookup<T> {
+/// What a lookup waits for: the imports that could still bring the name in, because their paths
+/// aren't resolved yet.
+#[derive(Debug, Default)]
+struct Blockers {
+    imports: Vec<ImportId>,
+    visited: HashSet<(ScopeId, bool)>,
+}
+
+/// Whether a module that doesn't have an item with a name in a namespace could still bring one
+/// in, through one of its imports other than `importer`. A named import could until it has
+/// brought in what it imports, unless the module it imports from can't have the item. A glob
+/// import could until its path is resolved, and then if the module it imports from has the item
+/// or could still bring it in. With `exported`, only the items that the module would export count,
+/// as for a glob import of it. A cycle of modules that nothing else brings the item into can't
+/// bring it in. Every import that could is recorded in `blockers`.
+#[allow(clippy::too_many_arguments)]
+fn may_gain(
+    ctx: &Compiler,
+    resolution: &Resolution,
+    scope: ScopeId,
+    namespace: Namespace,
+    name: &str,
+    importer: Option<ImportId>,
+    exported: bool,
+    blockers: &mut Blockers,
+) -> bool {
+    if !blockers.visited.insert((scope, exported)) {
+        return false;
+    }
+
+    let target = ctx.scope(scope);
+
+    if let Some(item) = target.item(namespace, name)
+        && (!exported || target.is_item_exported(item))
+    {
+        return true;
+    }
+
+    let relevant =
+        |import: ImportId| Some(import) != importer && (!exported || ctx.import(import).exported);
+
+    let mut gains = false;
+
+    for &import in resolution
+        .named_imports_of(scope, name)
+        .into_iter()
+        .flatten()
+    {
+        if relevant(import) {
+            gains |= may_bind(ctx, resolution, import, namespace, name, blockers);
+        }
+    }
+
+    for &import in resolution.glob_imports.get(&scope).into_iter().flatten() {
+        if relevant(import) {
+            gains |= may_import(ctx, resolution, import, namespace, name, blockers);
+        }
+    }
+
+    gains
+}
+
+/// Whether a named import could still bring in an item with its name in a namespace.
+fn may_bind(
+    ctx: &Compiler,
+    resolution: &Resolution,
+    import: ImportId,
+    namespace: Namespace,
+    name: &str,
+    blockers: &mut Blockers,
+) -> bool {
+    !resolution.bound.contains(&import)
+        && may_import(ctx, resolution, import, namespace, name, blockers)
+}
+
+/// Whether the module that an import imports from has, or could still bring in, an item with a
+/// name in a namespace that the import would bring in. It could if the import's path isn't
+/// resolved yet.
+fn may_import(
+    ctx: &Compiler,
+    resolution: &Resolution,
+    import: ImportId,
+    namespace: Namespace,
+    name: &str,
+    blockers: &mut Blockers,
+) -> bool {
+    let Some(&(source, members)) = resolution.bases.get(&import) else {
+        blockers.imports.push(import);
+        return true;
+    };
+
+    may_gain(
+        ctx, resolution, source, namespace, name, None, !members, blockers,
+    ) || (members && ctx.sibling_item(source, namespace, name).is_some())
+}
+
+/// The waiting lookups that are answered without waiting once nothing else can be resolved: those
+/// of the imports that only wait for each other (or for nothing that's still waiting). Imports
+/// that wait for those are answered later, once they're resolved, so an inline module's lookup
+/// through `super` waits for the cycle of imports in the module it names.
+fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
+    let waiting_imports = waiting
+        .iter()
+        .map(|lookup| lookup.key.0)
+        .collect::<HashSet<_>>();
+
+    let mut edges: HashMap<ImportId, HashSet<ImportId>> = HashMap::new();
+
+    for lookup in &waiting {
+        let blocked_by = edges.entry(lookup.key.0).or_default();
+
+        for &blocker in &lookup.blockers {
+            if blocker != lookup.key.0 && waiting_imports.contains(&blocker) {
+                blocked_by.insert(blocker);
+            }
+        }
+    }
+
+    let reachable = |from: ImportId| {
+        let mut seen = HashSet::new();
+        let mut stack = vec![from];
+
+        while let Some(import) = stack.pop() {
+            for &next in edges.get(&import).into_iter().flatten() {
+                if seen.insert(next) {
+                    stack.push(next);
+                }
+            }
+        }
+
+        seen
+    };
+
+    // An import is stuck if every waiting import it waits for (directly or not) waits for it too
+    let stuck = waiting_imports
+        .iter()
+        .copied()
+        .filter(|&import| {
+            reachable(import)
+                .into_iter()
+                .all(|other| reachable(other).contains(&import))
+        })
+        .collect::<HashSet<_>>();
+
+    waiting
+        .into_iter()
+        .filter(|lookup| stuck.contains(&lookup.key.0))
+        .collect()
+}
+
+/// Where an import looks a name up.
+#[derive(Debug, Clone, Copy)]
+enum Base {
+    /// In the scope the import is in, and then the ones it's in (a file's sibling modules and
+    /// the prelude), like a use of the name there.
+    Local(ScopeId),
+    /// In the module that `super` names, and then a file's sibling modules. It contains the
+    /// import, so its private items can be used.
+    Member(ScopeId),
+}
+
+/// What an import's lookup of a name found.
+enum Lookup {
     /// The item, and the import that brought it into the scope it was found in, if any.
-    Found(T, Option<ImportId>),
-    /// A scope nearer than the item could still bring the name in, so it isn't known yet.
+    Found(Item, Option<ImportId>),
+    /// The module could still bring the name in, so it isn't known yet.
     Undetermined,
     NotFound,
 }
 
-impl<T> Lookup<T> {
+impl Lookup {
+    fn from_answer(answer: Option<(Item, Option<ImportId>)>) -> Self {
+        match answer {
+            Some((item, via)) => Self::Found(item, via),
+            None => Self::NotFound,
+        }
+    }
+
     /// The item, if it's known. If it isn't known yet, `undetermined` is set.
-    fn found(self, undetermined: &mut bool) -> Option<(T, Option<ImportId>)> {
+    fn found(self, undetermined: &mut bool) -> Option<(Item, Option<ImportId>)> {
         match self {
             Self::Found(item, via) => Some((item, via)),
             Self::Undetermined => {
@@ -637,57 +683,70 @@ impl<T> Lookup<T> {
     }
 }
 
-/// Looks up a name from a scope and then each enclosing scope, the way that a use of the name in
-/// that scope would be resolved once every import is. Imports are resolved in passes, so a scope
-/// that could still bring the name in through an unresolved import has to be waited for, or a
-/// nearer item would be missed. Once nothing else can be resolved, the lookup is forced and those
-/// scopes are skipped.
-fn lookup_in_scopes<T>(
+/// Looks up a name for an import, the way that a use of it would find it once every import is
+/// resolved. The module's own items shadow what's outside of it, so when it doesn't have the name
+/// yet but could still bring it in, the lookup waits. Once nothing else can be resolved, it's
+/// answered with what's outside (see [`check_forced_lookups`]).
+#[allow(clippy::too_many_arguments)]
+fn lookup(
     ctx: &Compiler,
-    resolution: &Resolution,
-    force: bool,
-    scope: ScopeId,
-    name: &str,
-    importer: ImportId,
-    find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
-) -> Lookup<T> {
-    ctx.lookup_in(scope, |id, scope| {
-        if let Some((item, via)) = find(scope, name) {
-            Some(Lookup::Found(item, via))
-        } else if !force && resolution.may_bring_in(id, name, importer) {
-            Some(Lookup::Undetermined)
-        } else {
-            None
-        }
-    })
-    .unwrap_or(Lookup::NotFound)
-}
-
-/// Looks up a name in the module that `super` names. It contains the import, so its private items
-/// can be used, and a file's sibling modules can be too. The module's own items shadow its
-/// siblings, so a sibling is only found once the module can't bring in the name through one of
-/// its imports.
-fn lookup_member(
-    ctx: &Compiler,
-    resolution: &Resolution,
-    force: bool,
-    scope: ScopeId,
+    forced: &IndexMap<(ImportId, LookupKey), ForcedLookup>,
+    resolution: &mut Resolution,
+    import_id: ImportId,
+    key: LookupKey,
+    at: &Name,
+    base: Base,
     namespace: Namespace,
-    name: &str,
-    importer: ImportId,
-) -> Lookup<Item> {
+) -> Lookup {
+    let name = at.text();
+    let scope = match base {
+        Base::Local(scope) | Base::Member(scope) => scope,
+    };
+
     if let Some((item, via)) = ctx.scope(scope).item_with_import(namespace, name) {
         return Lookup::Found(item, via);
     }
 
-    if !force && resolution.may_bring_in(scope, name, importer) {
+    if let Some(forced) = forced.get(&(import_id, key.clone())) {
+        return Lookup::from_answer(forced.answer);
+    }
+
+    let outside = match base {
+        Base::Local(scope) => ctx
+            .scope(scope)
+            .parent()
+            .and_then(|parent| ctx.resolve_item_in(parent, namespace, name)),
+        Base::Member(scope) => ctx.sibling_item(scope, namespace, name),
+    };
+
+    let mut blockers = Blockers::default();
+
+    if !resolution.diagnostics
+        && may_gain(
+            ctx,
+            resolution,
+            scope,
+            namespace,
+            name,
+            Some(import_id),
+            false,
+            &mut blockers,
+        )
+    {
+        resolution.waiting.push(WaitingLookup {
+            key: (import_id, key),
+            forced: ForcedLookup {
+                scope,
+                namespace,
+                name: at.clone(),
+                answer: outside,
+            },
+            blockers: blockers.imports,
+        });
         return Lookup::Undetermined;
     }
 
-    match ctx.sibling_item(scope, namespace, name) {
-        Some((item, via)) => Lookup::Found(item, via),
-        None => Lookup::NotFound,
-    }
+    Lookup::from_answer(outside)
 }
 
 fn resolve_import(
@@ -699,7 +758,6 @@ fn resolve_import(
     missing_imports: &mut IndexMap<ImportId, IndexMap<String, Name>>,
 ) -> bool {
     let diagnostics = resolution.diagnostics;
-    let force = diagnostics || cache.forced.contains(&import_id);
     let import = ctx.import(import_id).clone();
     let has_super = import.has_super;
     let source = import.source.clone();
@@ -753,38 +811,25 @@ fn resolve_import(
             let base = ctx.scope(base);
             base.module_with_import(name.text())
                 .map(|(m, via)| (m, via, base.is_module_exported(m)))
-        } else if import.base_scope == import_scope {
-            match lookup_in_scopes(
-                ctx,
-                resolution,
-                force,
-                import_scope,
-                name.text(),
-                import_id,
-                Scope::module_with_import,
-            ) {
-                Lookup::Found(module, via) => Some((module, via, true)),
-                Lookup::Undetermined => {
-                    resolution.defer(import_scope, import_id);
-                    return false;
-                }
-                Lookup::NotFound => None,
-            }
         } else {
-            match lookup_member(
+            let base = if import.base_scope == import_scope {
+                Base::Local(import_scope)
+            } else {
+                Base::Member(import.base_scope)
+            };
+
+            match lookup(
                 ctx,
+                &cache.forced,
                 resolution,
-                force,
-                import.base_scope,
-                Namespace::Module,
-                name.text(),
                 import_id,
+                LookupKey::Path,
+                name,
+                base,
+                Namespace::Module,
             ) {
                 Lookup::Found(module, via) => module.symbol().map(|module| (module, via, true)),
-                Lookup::Undetermined => {
-                    resolution.defer(import_scope, import_id);
-                    return false;
-                }
+                Lookup::Undetermined => return false,
                 Lookup::NotFound => None,
             }
         };
@@ -874,6 +919,16 @@ fn resolve_import(
         }
     }
 
+    // The module the import's items are imported from, which other lookups can wait for. A name
+    // that's looked up from the import's own scope doesn't come from a module.
+    if let Some(base) = base {
+        resolution.bases.insert(import_id, (base, false));
+    } else if import.base_scope != import_scope {
+        resolution
+            .bases
+            .insert(import_id, (import.base_scope, true));
+    }
+
     // Errors are only recorded once every declaration is known
     if diagnostics {
         for &(index, via, declaration) in &path_references {
@@ -923,24 +978,49 @@ fn resolve_import(
                     // with the name, or could still bring one in through its imports
                     let mut items = ctx.scope(source_scope).items(namespace);
 
-                    for (name, item) in ctx.sibling_items(source_scope, namespace) {
+                    for (name, _) in ctx.sibling_items(source_scope, namespace) {
                         if ctx.scope(source_scope).item(namespace, &name).is_some() {
                             continue;
                         }
 
-                        if !force && resolution.may_bring_in(source_scope, &name, import_id) {
-                            resolution.defer(import_scope, import_id);
-                            continue;
-                        }
+                        let at = Name::new(name.as_str(), star.srcloc().cloned());
 
-                        items.push((name, item));
+                        if let Lookup::Found(item, _) = lookup(
+                            ctx,
+                            &cache.forced,
+                            resolution,
+                            import_id,
+                            LookupKey::Sibling(namespace, name.clone()),
+                            &at,
+                            Base::Member(source_scope),
+                            namespace,
+                        ) {
+                            items.push((name, item));
+                        }
                     }
 
                     items
                 };
 
                 for (name, item) in items {
-                    if resolution.named_imports_of(import_scope, &name).is_some() {
+                    // A named import of the name shadows the glob import in the namespaces that
+                    // it brings an item into, or could still
+                    if resolution
+                        .named_imports_of(import_scope, &name)
+                        .into_iter()
+                        .flatten()
+                        .any(|&named| {
+                            ctx.scope(import_scope).item_import(item) == Some(named)
+                                || may_bind(
+                                    ctx,
+                                    resolution,
+                                    named,
+                                    namespace,
+                                    &name,
+                                    &mut Blockers::default(),
+                                )
+                        })
+                    {
                         continue;
                     }
 
@@ -958,17 +1038,6 @@ fn resolve_import(
 
                     let target = ctx.scope_mut(import_scope);
                     let existing = target.item(namespace, &name);
-
-                    if namespace == Namespace::Module
-                        && existing == Some(item)
-                        && target.item_import(item) != Some(import_id)
-                    {
-                        cache
-                            .shared_modules
-                            .entry((import_scope, name.clone()))
-                            .or_default()
-                            .insert(import_id);
-                    }
 
                     if existing.is_none() {
                         target.insert_item(name.clone(), item, import.exported);
@@ -1072,22 +1141,22 @@ fn resolve_import(
                 let found = Namespace::ALL
                     .into_iter()
                     .filter_map(|namespace| {
-                        let (found, via) = lookup_in_scopes(
+                        lookup(
                             ctx,
+                            &cache.forced,
                             resolution,
-                            force,
-                            import_scope,
-                            name,
                             import_id,
-                            |scope, name| scope.item_with_import(namespace, name),
+                            LookupKey::Item(namespace),
+                            &item,
+                            Base::Local(import_scope),
+                            namespace,
                         )
-                        .found(&mut undetermined)?;
-                        Some((found, via))
+                        .found(&mut undetermined)
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
 
-                if undetermined {
-                    resolution.defer(import_scope, import_id);
+                if !undetermined && !found.is_empty() {
+                    resolution.bound.insert(import_id);
                 }
 
                 found
@@ -1097,21 +1166,22 @@ fn resolve_import(
                 let found = Namespace::ALL
                     .into_iter()
                     .filter_map(|namespace| {
-                        lookup_member(
+                        lookup(
                             ctx,
+                            &cache.forced,
                             resolution,
-                            force,
-                            import.base_scope,
-                            namespace,
-                            name,
                             import_id,
+                            LookupKey::Item(namespace),
+                            &item,
+                            Base::Member(import.base_scope),
+                            namespace,
                         )
                         .found(&mut undetermined)
                     })
                     .collect::<Vec<_>>();
 
-                if undetermined {
-                    resolution.defer(import_scope, import_id);
+                if !undetermined && !found.is_empty() {
+                    resolution.bound.insert(import_id);
                 }
 
                 // A name that a failed import blocked in that module has already been reported
@@ -1166,17 +1236,6 @@ fn resolve_import(
 
                 let target = ctx.scope_mut(import_scope);
                 let existing = target.item(namespace, name);
-
-                if namespace == Namespace::Module
-                    && existing == Some(found)
-                    && target.item_import(found) != Some(import_id)
-                {
-                    cache
-                        .shared_modules
-                        .entry((import_scope, name.to_string()))
-                        .or_default()
-                        .insert(import_id);
-                }
 
                 if existing.is_none() {
                     target.insert_item(name.to_string(), found, import.exported);

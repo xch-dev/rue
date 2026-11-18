@@ -295,7 +295,7 @@ pub enum DiagnosticKind {
     AmbiguousImport(String),
 
     #[error(
-        "`{0}` is ambiguous, since it was imported from an enclosing module, but an import in a nearer one brings in a different item with this name"
+        "`{0}` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name"
     )]
     AmbiguousOuterImport(String),
 }

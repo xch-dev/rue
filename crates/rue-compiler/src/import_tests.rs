@@ -2392,3 +2392,38 @@ fn super_paths_still_need_items_inside_other_modules_to_be_exported() {
         ]
     );
 }
+
+#[test]
+fn named_imports_only_shadow_glob_imports_in_their_namespaces() {
+    // `import a::x` only brings in a function, so the glob import still brings in the module `x`
+    let compiled = compile(
+        "
+        mod a {
+            export fn x() -> Int {
+                1
+            }
+        }
+
+        mod b {
+            export mod x {
+                export const Y: Int = 5;
+            }
+
+            export fn x() -> Int {
+                2
+            }
+        }
+
+        import a::x;
+        import b::*;
+
+        fn main() -> Int {
+            x() + x::Y
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("x"), "a");
+    assert_eq!(compiled.symbol_origin("x::Y"), "b::x");
+}

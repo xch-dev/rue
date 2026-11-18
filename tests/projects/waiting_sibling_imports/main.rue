@@ -1,0 +1,8 @@
+// The two glob imports wait for each other, since either could bring in a module named like the
+// other's path, but neither does, so both are found in the sibling files, whichever is first
+import y::*;
+import z::*;
+
+test fn glob_imports_that_wait_for_each_other_resolve() -> Int {
+    W + X
+}
