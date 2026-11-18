@@ -7,7 +7,6 @@ mod resolve;
 
 pub use bounds::*;
 pub use resolve::*;
-pub(crate) use resolve::{pick_inferred_type, union_of};
 
 use indexmap::IndexMap;
 
