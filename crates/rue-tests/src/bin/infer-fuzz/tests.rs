@@ -1,10 +1,13 @@
 use std::cell::Cell;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::*;
 use crate::generate::{legalize, parse_ty, removable_sites};
-use crate::oracle::{Category, Compiled, Diag, Outcome, Run, classify, compile};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Source, SourceKind, SrcLoc};
+
+use crate::oracle::{self, Category, Compiled, Diag, Outcome, Run, classify, compile};
 use crate::program::{Expr, ExprKind, Function, Let, Program, Strip, Ty};
 use crate::report::cluster_key;
 use crate::worker::{Connection, Explicit, Message};
@@ -1224,7 +1227,8 @@ fn comparisons_report_variants_that_are_no_longer_inferred() {
         Some(&1)
     );
     assert!(comparison.report().contains(
-        "Compared 1 variants: 1 changed, 0 regressed, 1 newly inferred, 0 not comparable."
+        "Compared 1 variants: 1 changed, 0 regressed, 1 newly inferred, 0 not comparable, 2 \
+         without fingerprints."
     ));
 }
 
@@ -1320,7 +1324,13 @@ fn comparisons_report_changed_fingerprints() {
         time_ms: 1.0,
         fingerprint: None,
     };
-    assert_eq!(compare::compare(&[unrecorded], &[old]).changes, []);
+    let comparison = compare::compare(&[unrecorded], &[old.clone()]);
+    assert_eq!(comparison.changes, []);
+    assert_eq!(comparison.without_fingerprints, 2);
+    assert_eq!(
+        compare::compare(std::slice::from_ref(&old), &[old.clone()]).without_fingerprints,
+        0
+    );
 }
 
 #[test]
@@ -1345,6 +1355,108 @@ fn fingerprints_cover_every_diagnostic_and_the_clvm() {
         other => panic!("{other:?}"),
     };
     assert_ne!(clvm(1), clvm(2));
+
+    // A rejected program's later warnings count too, not only its first error
+    let rejected = |line| {
+        let source = format!(
+            "fn main() -> Int {{\n    let y: Int = \"a\";\n{}    let x = 1;\n    y\n}}\n",
+            "\n".repeat(line)
+        );
+        match compile(&source) {
+            Compiled::Rejected {
+                diag, fingerprint, ..
+            } => (diag, fingerprint),
+            other => panic!("{other:?}"),
+        }
+    };
+    let (first, before) = rejected(0);
+    let (second, after) = rejected(1);
+    assert_eq!(first, second);
+    assert_ne!(before, after);
+
+    // So do each diagnostic's message and severity
+    let source = Source::new(
+        Arc::from("fn main() {}"),
+        SourceKind::File("main.rue".to_string()),
+    );
+    let diagnostic = |field: &str, severity| {
+        Diagnostic::new(
+            SrcLoc::new(source.clone(), 0..2),
+            DiagnosticKind::UnknownField(field.to_string(), "T".to_string()),
+            severity,
+        )
+    };
+    let fingerprint = |diagnostics: &[Diagnostic]| oracle::fingerprint(diagnostics, None);
+    let error = fingerprint(&[diagnostic("a", DiagnosticSeverity::Error)]);
+    assert_eq!(
+        error,
+        fingerprint(&[diagnostic("a", DiagnosticSeverity::Error)])
+    );
+    assert_ne!(
+        error,
+        fingerprint(&[diagnostic("b", DiagnosticSeverity::Error)])
+    );
+    assert_ne!(
+        error,
+        fingerprint(&[diagnostic("a", DiagnosticSeverity::Warning)])
+    );
+}
+
+#[test]
+fn outcomes_record_the_stripped_programs_fingerprint() {
+    let explicit = "fn main() -> Int {\n    2\n}\n";
+    let stripped = "fn main() -> Int {\n    let x = 1;\n    2\n}\n";
+    let outcome = classify_sources(explicit, stripped);
+    assert_eq!(outcome.category, Category::Inferred);
+
+    let fingerprint = |source| match compile(source) {
+        Compiled::Ok { fingerprint, .. } => fingerprint,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(outcome.fingerprint, Some(fingerprint(stripped)));
+    assert_ne!(outcome.fingerprint, Some(fingerprint(explicit)));
+
+    let rejected = classify_sources(explicit, "fn main() -> Int {\n    \"a\"\n}\n");
+    assert_eq!(rejected.category, Category::Rejected);
+    assert!(rejected.fingerprint.is_some());
+}
+
+#[test]
+fn workers_send_fingerprints_for_the_explicit_program_and_each_variant() {
+    let seed = (0..100)
+        .find(|&seed| Generator::new(seed).generate().variants.len() == 3)
+        .unwrap();
+
+    let mut out = Vec::new();
+    worker::run_command(&mut out, seed, 0).unwrap();
+    let out = String::from_utf8(out).unwrap();
+
+    let explicit = out
+        .lines()
+        .find_map(|line| line.strip_prefix("explicit "))
+        .unwrap();
+    let explicit: Explicit = serde_json::from_str(explicit).unwrap();
+    assert!(
+        matches!(
+            explicit,
+            Explicit::Valid {
+                fingerprint: Some(_),
+                ..
+            }
+        ),
+        "{explicit:?}"
+    );
+
+    let variants: Vec<Outcome> = out
+        .lines()
+        .filter_map(|line| line.strip_prefix("variant "))
+        .map(|line| serde_json::from_str::<(usize, Outcome)>(line).unwrap().1)
+        .collect();
+    assert_eq!(variants.len(), 3);
+    assert!(
+        variants.iter().all(|outcome| outcome.fingerprint.is_some()),
+        "{variants:?}"
+    );
 }
 
 #[test]

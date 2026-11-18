@@ -22,6 +22,9 @@
 //! one of the runs, its variants can't be compared, but a variant of a newly compiling program
 //! that's unsound, slow or crashed is reported as a regression, with `none` as its before side.
 //! Seeds and variants that are only in one run, or whose source differs, count as not comparable.
+//! Variants and explicit programs that are compared, but whose fingerprint is missing from either
+//! run, are counted as without fingerprints, so a baseline from before fingerprints were recorded
+//! doesn't pass a check for no changes unnoticed.
 //!
 //! The report is meant to be diffed and read by scripts, so its format is kept stable:
 //!
@@ -33,7 +36,7 @@
 //! | Inferred | 8676 | 0 | 0 | 0 | 0 |
 //! ...
 //!
-//! Compared 11638 variants: 12 changed, 0 regressed, 3 newly inferred, 0 not comparable.
+//! Compared 11638 variants: 12 changed, 0 regressed, 3 newly inferred, 0 not comparable, 0 without fingerprints.
 //!
 //! ## Changes
 //!
@@ -127,6 +130,10 @@ pub struct Comparison {
     /// Variants that are only in one run, whose source differs, or whose explicit program only
     /// compiles in one run.
     pub not_comparable: usize,
+    /// Variants and explicit programs that were compared, but whose fingerprint is missing from
+    /// either run (one from before fingerprints were recorded, or a crash), so a change in what
+    /// they report other than the first diagnostic wouldn't be seen.
+    pub without_fingerprints: usize,
 }
 
 impl Comparison {
@@ -272,6 +279,12 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
                 before: before_explicit,
                 after: after_explicit,
             });
+        } else if was_valid
+            && is_valid
+            && (explicit_fingerprint(&old.explicit).is_none()
+                || explicit_fingerprint(&new.explicit).is_none())
+        {
+            comparison.without_fingerprints += 1;
         } else if differ(
             explicit_fingerprint(&old.explicit),
             explicit_fingerprint(&new.explicit),
@@ -333,6 +346,10 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
                 .transitions
                 .entry((variant.outcome.category, other.outcome.category))
                 .or_default() += 1;
+
+            if variant.outcome.fingerprint.is_none() || other.outcome.fingerprint.is_none() {
+                comparison.without_fingerprints += 1;
+            }
 
             if let Some(kind) = change_kind(&variant.outcome, &other.outcome) {
                 comparison.changes.push(Change {
@@ -400,10 +417,11 @@ impl Comparison {
         let _ = writeln!(
             out,
             "\nCompared {compared} variants: {} changed, {} regressed, {newly_inferred} newly \
-             inferred, {} not comparable.",
+             inferred, {} not comparable, {} without fingerprints.",
             self.changes.len(),
             self.regressions().count(),
-            self.not_comparable
+            self.not_comparable,
+            self.without_fingerprints
         );
 
         if !self.changes.is_empty() {
