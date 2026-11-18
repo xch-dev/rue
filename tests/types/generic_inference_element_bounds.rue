@@ -1,0 +1,30 @@
+fn apply<T>(pair: (T, fn(value: T) -> Int)) -> Int {
+    pair.rest(pair.first)
+}
+
+// The lambda is compiled with `T` inferred from the pair's first element (#350)
+test fn lambda_after_a_value_in_a_pair() -> Int {
+    apply((1, fn(x) => x))
+}
+
+fn apply_nested<T>(pair: (T, (Int, fn(value: T) -> Int))) -> Int {
+    pair.rest.rest(pair.first)
+}
+
+// Through a nested pair
+test fn lambda_in_a_nested_pair() -> Int {
+    apply_nested((1, (2, fn(x) => x + 1)))
+}
+
+fn apply_all<T>(pairs: List<(T, fn(value: T) -> Int)>) -> Int {
+    if pairs is nil {
+        return 0;
+    }
+
+    pairs.first.rest(pairs.first.first) + apply_all(pairs.rest)
+}
+
+// In a list, each lambda is compiled with what the elements before it inferred
+test fn lambdas_in_a_list() -> Int {
+    apply_all([(1, fn(x) => x), (2, fn(y) => y * 2)])
+}

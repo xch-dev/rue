@@ -1,0 +1,22 @@
+tests:
+- name: lambda_after_a_value_in_a_pair
+  program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 3 (c 2 ())) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))) (c (q 2 (r 1) (c (f 1) ())) ()))
+  output: "1"
+  runtime_cost: 786
+  byte_cost: 540000
+  total_cost: 540786
+- name: lambda_in_a_nested_pair
+  program: (a (q 2 2 (c (q . 1) (c (q . 2) (q 16 2 (q . 1))))) (c (q 2 7 (c 2 ())) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))))) (c (q 2 (r (r 1)) (c (f 1) ())) ()))
+  output: "2"
+  runtime_cost: 1637
+  byte_cost: 732000
+  total_cost: 733637
+- name: lambdas_in_a_list
+  program: (a (q 2 2 (c 2 (c (c (q . 1) (q . 2)) (c (c (q . 2) (q 18 2 (q . 2))) ())))) (c (q 2 (i 3 (q 16 (a 13 (c 9 ())) (a 2 (c 2 7))) (q)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ())))) ())))) (c (q 2 (i (not (l 3)) (q) (q 16 (a (r (f 3)) (c (f (f 3)) ())) (a 2 (c 2 (r 3))))) 1) ()))
+  output: "5"
+  runtime_cost: 5408
+  byte_cost: 1404000
+  total_cost: 1409408

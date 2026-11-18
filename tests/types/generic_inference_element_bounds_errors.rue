@@ -1,0 +1,9 @@
+fn apply_later<T>(pair: (fn(value: T) -> Int, T)) -> Int {
+    pair.first(pair.rest)
+}
+
+// Only the elements before a lambda count, since it's compiled before the ones after it, so this
+// lambda still gets the generic itself
+fn lambda_before_its_value() -> Int {
+    apply_later((fn(x) => x, 1))
+}

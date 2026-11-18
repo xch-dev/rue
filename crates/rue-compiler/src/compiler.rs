@@ -4,6 +4,7 @@ use std::{
     fmt, mem,
     ops::{Deref, DerefMut, Range},
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
 };
 
@@ -40,7 +41,8 @@ pub struct Compiler {
     external_programs: HashMap<PathBuf, Vec<u8>>,
     return_stack: Vec<(Option<ReturnTarget>, usize)>,
     return_count: usize,
-    inferred_generics_stack: Vec<Vec<TypeId>>,
+    /// The calls whose generics are being inferred from their arguments, innermost last.
+    call_frames: Vec<CallFrame>,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
@@ -69,6 +71,26 @@ impl fmt::Debug for Cancel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Cancel")
     }
+}
+
+/// A call whose generics are being inferred from its arguments.
+#[derive(Debug, Clone)]
+struct CallFrame {
+    generics: Vec<TypeId>,
+    /// The argument being compiled, if any.
+    argument: Option<ArgumentFrame>,
+}
+
+/// An argument of a call being compiled, while the call's generics are inferred. The elements of
+/// a pair or list in it add what they infer to `infer`, so that a later element with a lambda in
+/// it can be compiled against it (#350).
+#[derive(Debug, Clone)]
+pub struct ArgumentFrame {
+    /// The candidates of the arguments compiled before this one, and of this one's elements so far.
+    pub infer: Inference,
+    pub solver: Rc<CallSolver>,
+    /// The callee's generics that were renamed, and the generics they were renamed from.
+    pub renamed: HashMap<TypeId, TypeId>,
 }
 
 /// The function or lambda body that a `return` statement exits from.
@@ -116,7 +138,7 @@ impl Compiler {
             external_programs: HashMap::new(),
             return_stack: Vec::new(),
             return_count: 0,
-            inferred_generics_stack: Vec::new(),
+            call_frames: Vec::new(),
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
@@ -538,19 +560,46 @@ impl Compiler {
     }
 
     /// Enters the arguments of a call whose generics are being inferred from them.
-    pub fn push_inferred_generics(&mut self, generics: Vec<TypeId>) {
-        self.inferred_generics_stack.push(generics);
+    pub fn push_call_frame(&mut self, generics: Vec<TypeId>) {
+        self.call_frames.push(CallFrame {
+            generics,
+            argument: None,
+        });
     }
 
-    pub fn pop_inferred_generics(&mut self) {
-        self.inferred_generics_stack
+    pub fn pop_call_frame(&mut self) {
+        self.call_frames
             .pop()
-            .expect("inferred generics stack is unbalanced");
+            .expect("call frame stack is unbalanced");
     }
 
     /// The generics of the enclosing calls that are still being inferred.
     pub fn inferred_generics(&self) -> Vec<TypeId> {
-        self.inferred_generics_stack.concat()
+        self.call_frames
+            .iter()
+            .flat_map(|frame| frame.generics.iter().copied())
+            .collect()
+    }
+
+    /// The generics of the innermost call being inferred, if there is one.
+    pub fn call_generics(&self) -> Option<&[TypeId]> {
+        self.call_frames
+            .last()
+            .map(|frame| frame.generics.as_slice())
+    }
+
+    /// Starts compiling an argument of the innermost call being inferred (or stops, with `None`).
+    pub fn set_argument_frame(&mut self, argument: Option<ArgumentFrame>) {
+        self.call_frames
+            .last_mut()
+            .expect("an argument is compiled inside a call")
+            .argument = argument;
+    }
+
+    /// Takes the argument of the innermost call being inferred that's being compiled, if there is
+    /// one, to be put back with `Compiler::set_argument_frame`.
+    pub fn take_argument_frame(&mut self) -> Option<ArgumentFrame> {
+        self.call_frames.last_mut()?.argument.take()
     }
 
     pub fn return_target_mut(&mut self) -> Option<&mut ReturnTarget> {
