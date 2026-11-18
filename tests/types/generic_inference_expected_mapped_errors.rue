@@ -1,0 +1,29 @@
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+// The expected bound on `B` only reaches `A` through the lambda's own return type, which isn't
+// known until the lambda is compiled, so `x` is still `Int` (#335)
+fn lambda_bounded_through_its_own_return() -> Int {
+    let result: 5 = map(fn(x) => x, 5);
+    result + 1
+}
+
+fn apply<A>(value: A, function: fn(a: A) -> Int) -> A {
+    let _ = function(value);
+    value
+}
+
+// Breaking: `x` is `5` now, as it is with `apply::<5>`, so a guard for `6` can't match. It compiled
+// before, with `x: Int`
+fn guard_that_cant_match_the_expected_bound() -> Int {
+    let value: 5 = apply(
+        5,
+        fn(x) => if x is 6 {
+            1
+        } else {
+            2
+        },
+    );
+    value
+}

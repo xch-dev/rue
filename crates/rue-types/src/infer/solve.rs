@@ -50,13 +50,15 @@ impl CallSolver {
         resolve_inference(arena, builtins, infer)
     }
 
-    /// The mappings that the next argument's expected type is substituted with: what the arguments
-    /// compiled so far infer (`inferred`, from `CallSolver::solve_arguments`), then the expected
-    /// type's fallback for the generics they don't map. A generic that's still unmapped takes what
-    /// it's inferred as with the expected type's bounds passed through the others, such as `A` in
-    /// `let x: 5 = map(identity, map(...));` (#331). Only unmapped generics are filled, so that the
-    /// argument expected types of generics the arguments map don't change.
-    pub fn argument_mappings(
+    /// The mappings that a lambda argument's expected type is substituted with: what the arguments
+    /// compiled so far infer (`inferred`), then what the type expected of the call infers on its own
+    /// for the generics they don't map, then what those are inferred as with the expected bounds
+    /// passed through the others (#331). Unlike `CallSolver::argument_mappings`, a generic the
+    /// arguments map keeps what they infer, without the expected bounds. A lambda's parameter types
+    /// are fixed when it's compiled, and a narrower type there, such as `7` where the arguments
+    /// infer `Int`, can stop a later argument from adding to the generic, since parameters are
+    /// contravariant: `fn(x: 7) -> 5` isn't a `fn(a: 7 | 5) -> 7 | 5`.
+    pub fn lambda_mappings(
         &self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
@@ -81,6 +83,52 @@ impl CallSolver {
             for (generic, ty) in resolve_inference(arena, builtins, &bounded) {
                 mappings.entry(generic).or_insert(ty);
             }
+        }
+
+        mappings
+    }
+
+    /// The mappings that the next argument's expected type is substituted with.
+    ///
+    /// A generic that the arguments compiled so far map (`inferred`, from
+    /// `CallSolver::solve_arguments`) takes what it's inferred as with the bounds that the type
+    /// expected of the call implies added. So `T` in `let x: 5 = either(5, either(5, 5));` is `5` for
+    /// the inner call, not `5` widened to `Int` (#353), and a generic in a cycle that's only mapped
+    /// to another generic takes the bound too (#336).
+    ///
+    /// A generic they don't map falls back to what the expected type infers on its own, and failing
+    /// that, takes what it's inferred as with the expected bounds passed through the others, such as
+    /// `A` in `let x: 5 = map(identity, map(...));` (#331).
+    pub fn argument_mappings(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        infer: &Inference,
+        inferred: &HashMap<TypeId, TypeId>,
+    ) -> HashMap<TypeId, TypeId> {
+        let bounded = match &self.expected {
+            Some(expected) => {
+                let mut bounded = infer.clone();
+                add_expected_bounds(arena, builtins, &mut bounded, expected);
+                resolve_inference(arena, builtins, &bounded)
+            }
+            None => HashMap::new(),
+        };
+
+        let mut mappings = HashMap::new();
+
+        for &generic in infer.generics.keys() {
+            let ty = if let Some(&ty) = inferred.get(&generic) {
+                bounded.get(&generic).copied().unwrap_or(ty)
+            } else if let Some(&ty) = self.fallback.get(&generic) {
+                ty
+            } else if let Some(&ty) = bounded.get(&generic) {
+                ty
+            } else {
+                continue;
+            };
+
+            mappings.insert(generic, ty);
         }
 
         mappings
