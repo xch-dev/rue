@@ -33,7 +33,13 @@
 //! - `--out DIR`: also write `results.jsonl` (every program, its variants and their results),
 //!   `report.md` (the summary) and the shrunk reproductions under `clusters/`.
 //! - `--print SEED`: print the explicit program and the variants for one seed, and exit.
+//! - `--compare BASELINE NEW`: compare two runs of the same seeds, each a `results.jsonl` or the
+//!   `--out` directory that holds it. It prints how many variants went from each status to each
+//!   other one, and every variant whose status, output or first diagnostic changed, marking the
+//!   regressions: variants that are no longer inferred, or become unsound, slow or crashed. It
+//!   exits with status 1 if there are any regressions. The format is described in `compare.rs`.
 
+mod compare;
 mod generate;
 mod oracle;
 mod program;
@@ -87,6 +93,13 @@ fn main() -> Result<()> {
             "--print" => {
                 print_seed(value()?.parse()?);
                 return Ok(());
+            }
+            "--compare" => {
+                let before = compare::load(&PathBuf::from(value()?))?;
+                let after = compare::load(&PathBuf::from(value()?))?;
+                let comparison = compare::compare(&before, &after);
+                println!("{}", comparison.report());
+                std::process::exit(i32::from(comparison.regressions().next().is_some()));
             }
             "--seeds" => args.seeds = parse_range(&value()?)?,
             "--threads" => args.threads = value()?.parse()?,
