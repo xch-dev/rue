@@ -1612,7 +1612,10 @@ mod inference {
         let param = db.union(&[t, nil]);
         assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
         assert_eq!(candidates(&infer, t).lower.len(), 1);
-        assert_eq!(db.name(candidates(&infer, t).lower[0]), "fn(p0: Int) -> Int");
+        assert_eq!(
+            db.name(candidates(&infer, t).lower[0]),
+            "fn(p0: Int) -> Int"
+        );
         assert_eq!(candidates(&infer, t).held, vec![]);
     }
 
