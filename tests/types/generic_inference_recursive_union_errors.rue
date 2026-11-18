@@ -1,16 +1,16 @@
 // The caller's generic that a recursive call gives the callee's renamed generic adds nothing next
 // to a candidate that already holds it, so the types named here are what they were before (#370)
 
-fn with_any<A>(value: A, other: A, depth: Int) -> A {
+fn held_any<A>(value: A | Any, depth: Int) -> A {
     if depth > 0 {
-        // The callee's `A` is `Any`, not `Any | A`
-        let any: Any = 1;
-        let result = with_any(any, value, depth - 1);
+        // The `Any` member already holds the caller's `A`, so the callee's `A` is the held `Any`,
+        // not `A`, as before
+        let result = held_any(value, depth - 1);
         let _wrong: Bytes32 = result;
-        return other;
+        return unchecked_cast(nil);
     }
 
-    other
+    unchecked_cast(value)
 }
 
 fn other_generic<A, B>(value: A, _other: B, also: B, depth: Int) -> B {
@@ -26,5 +26,5 @@ fn other_generic<A, B>(value: A, _other: B, also: B, depth: Int) -> B {
 }
 
 fn main() -> Int {
-    with_any(1, 2, 1) + other_generic(1, 2, 3, 1)
+    held_any(1, 1) + other_generic(1, 2, 3, 1)
 }

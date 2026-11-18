@@ -112,3 +112,23 @@ fn caller<B>(value: B | nil) -> B {
 test fn guard_from_another_function() -> Int {
     caller(9)
 }
+
+fn held_any<A>(value: A | Any, depth: Int) -> A {
+    if depth > 0 {
+        // Guard: the callee's `A` is the held `Any`, as before, so a negative guard narrows it
+        let result = held_any(value, depth - 1);
+
+        if !(result is Atom) {
+            let pair: (Any, Any) = result;
+            return unchecked_cast(pair.first);
+        }
+
+        return unchecked_cast(nil);
+    }
+
+    unchecked_cast(value)
+}
+
+test fn guard_held_any() -> Int {
+    held_any((5, 6), 1)
+}
