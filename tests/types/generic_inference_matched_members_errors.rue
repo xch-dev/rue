@@ -9,3 +9,18 @@ fn both_members_match() -> Int {
     let result: 5 = first(value);
     result
 }
+
+type Recursive = fn<A>(x: A) -> (A, Recursive);
+type Rest = (Int, Revisited | Other);
+type Inline = fn(x: Int) -> Rest;
+type Revisited = fn(x: Int) -> Rest;
+type Other = fn(x: Bytes) -> Rest;
+
+// A member that only holds by assuming the comparison in progress doesn't count as holding the
+// value without bounds, so whether `A ≥ Bytes` from `Other` is checked doesn't depend on whether
+// the target is written as the alias that's revisited. Both are rejected, as before
+fn assign_through_the_revisited_alias(function: Recursive) -> Int {
+    let _revisited: Revisited = function;
+    let _inline: Inline = function;
+    1
+}

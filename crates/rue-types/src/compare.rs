@@ -175,6 +175,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// The innermost union member in `choices` that the value is being compared with, which the
     /// bounds collected now are recorded under.
     local_branch: Option<BranchId>,
+    /// The lowest index in `stack` of a comparison in progress that has been revisited, since
+    /// `compare_member` last reset it.
+    revisited: usize,
     /// The candidates that reference the generics of a function being instantiated, which are
     /// replaced with what those generics are instantiated as once the comparison has finished.
     deferred: Vec<DeferredCandidate>,
@@ -353,9 +356,16 @@ impl ComparisonContext<'_> {
                 .map(|instance| instance.added)
                 .sum()
         };
+        // A member that only holds by assuming a comparison in progress that it started outside
+        // of could still bound the instances when that comparison finishes, so it counts as
+        // bounded, rather than holding the value whatever they are (see `Choices::mark_bounded`).
+        // Otherwise it would depend on whether a type is written so that it's revisited
+        let depth = self.stack.len();
+        let revisited = mem::replace(&mut self.revisited, usize::MAX);
         let before = added(self);
         let result = compare(self);
-        let bounded = added(self) > before;
+        let bounded = added(self) > before || self.revisited < depth;
+        self.revisited = self.revisited.min(revisited);
 
         self.local_branch = local_parent;
         self.branch = parent;
@@ -1097,6 +1107,8 @@ fn compare_impl_inner(
             .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
+        ctx.revisited = ctx.revisited.min(index);
+
         // In fixpoint mode, it's the least value in a single pass, or its approximation from the
         // previous round while iterating
         let value = if ctx.fixpoint {
