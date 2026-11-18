@@ -2922,3 +2922,57 @@ fn chains_of_private_reexports_are_reported_at_their_start() {
         ]
     );
 }
+
+#[test]
+fn private_reexports_of_the_same_name_in_one_module_are_all_reported() {
+    let compiled = compile(
+        "
+        export mod m {
+            const X: Int = 1;
+            const Y: Int = 2;
+            export X;
+            export X;
+            export Y;
+
+            export mod c {
+                export super::X;
+            }
+        }
+
+        fn main() -> Int {
+            m::X + m::Y + m::c::X
+        }
+        ",
+    );
+
+    // The imports in `m` don't wait for each other, so both imports of `X` are reported, and `c`
+    // waits for them
+    assert_eq!(
+        compiled.errors(),
+        [
+            "5:20 PrivateReexport(\"X\")",
+            "6:20 PrivateReexport(\"X\")",
+            "7:20 PrivateReexport(\"Y\")",
+        ]
+    );
+}
+
+#[test]
+fn reexports_of_names_declared_in_the_module_are_reported_as_duplicates() {
+    let compiled = compile(
+        "
+        const X: Int = 1;
+
+        export mod m {
+            export const X: Int = 2;
+            export super::X;
+        }
+
+        fn main() -> Int {
+            m::X
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["6:27 DuplicateSymbol(\"X\")"]);
+}

@@ -393,30 +393,22 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
         .map(|(&import_id, _)| import_id)
         .collect::<Vec<_>>();
 
-    // An import that found what another one brought into the module it looks in is only reported
-    // if it still finds something private once that one is, so a chain of re-exports is reported
-    // once, at its start. If they all find what another one brought in, they're all reported.
-    let brought_in = |import_id: ImportId| {
+    // An import through `super` waits for the private re-exports into the module that `super`
+    // names, and is only reported if it still finds something private once they are, so a chain of
+    // re-exports is reported once, at its start. The module is outside of the import's own, so
+    // some import doesn't wait.
+    let waits = |import_id: ImportId| {
         let base = ctx.import(import_id).base_scope;
-        let found = &cache.reexports[&import_id].1;
 
-        private.iter().any(|&other| {
-            let (scope, other_found) = &cache.reexports[&other];
-            other != import_id
-                && *scope == base
-                && found.keys().any(|item| other_found.contains_key(item))
-        })
+        base != cache.reexports[&import_id].0
+            && private.iter().any(|other| cache.reexports[other].0 == base)
     };
 
-    let mut reported = private
+    let reported = private
         .iter()
         .copied()
-        .filter(|&import_id| !brought_in(import_id))
+        .filter(|&import_id| !waits(import_id))
         .collect::<Vec<_>>();
-
-    if reported.is_empty() {
-        reported = private;
-    }
 
     for &import_id in &reported {
         let Items::Named(name) = &ctx.import(import_id).items else {
@@ -1413,18 +1405,26 @@ fn resolve_import(
 
                     exported = !in_module || module.is_item_exported(found);
 
-                    // It's reported if nothing it found is public, rather than as unused
-                    if !exported {
-                        unused_imports.shift_remove(name);
-                    }
+                    // A name that's already bound to a different item is reported as a duplicate
+                    // instead
+                    if ctx
+                        .scope(import_scope)
+                        .item(namespace, name)
+                        .is_none_or(|existing| existing == found)
+                    {
+                        // It's reported if nothing it found is public, rather than as unused
+                        if !exported {
+                            unused_imports.shift_remove(name);
+                        }
 
-                    cache
-                        .reexports
-                        .entry(import_id)
-                        .or_insert_with(|| (import_scope, IndexMap::new()))
-                        .1
-                        .entry(found)
-                        .or_insert(in_module);
+                        cache
+                            .reexports
+                            .entry(import_id)
+                            .or_insert_with(|| (import_scope, IndexMap::new()))
+                            .1
+                            .entry(found)
+                            .or_insert(in_module);
+                    }
                 }
 
                 if diagnostics {
