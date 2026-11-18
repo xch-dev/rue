@@ -36,7 +36,7 @@
 //! | Inferred | 8676 | 0 | 0 | 0 | 0 |
 //! ...
 //!
-//! Compared 11638 variants: 12 changed, 0 regressed, 3 newly inferred, 0 not comparable, 0 without fingerprints.
+//! Compared 11638 variants: 12 changed, 0 regressed, 3 newly inferred, 0 not comparable, 0 variants and explicit programs without fingerprints.
 //!
 //! ## Changes
 //!
@@ -279,11 +279,12 @@ pub fn compare(before: &[SeedRecord], after: &[SeedRecord]) -> Comparison {
                 before: before_explicit,
                 after: after_explicit,
             });
-        } else if was_valid
-            && is_valid
+        } else if !matches!(old.explicit, Explicit::NoSites)
             && (explicit_fingerprint(&old.explicit).is_none()
                 || explicit_fingerprint(&new.explicit).is_none())
         {
+            // Only a valid program records one, so the same rejection or crash is compared by its
+            // first line alone. A program with no sites has nothing to compare
             comparison.without_fingerprints += 1;
         } else if differ(
             explicit_fingerprint(&old.explicit),
@@ -417,7 +418,8 @@ impl Comparison {
         let _ = writeln!(
             out,
             "\nCompared {compared} variants: {} changed, {} regressed, {newly_inferred} newly \
-             inferred, {} not comparable, {} without fingerprints.",
+             inferred, {} not comparable, {} variants and explicit programs without \
+             fingerprints.",
             self.changes.len(),
             self.regressions().count(),
             self.not_comparable,

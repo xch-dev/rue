@@ -1228,7 +1228,7 @@ fn comparisons_report_variants_that_are_no_longer_inferred() {
     );
     assert!(comparison.report().contains(
         "Compared 1 variants: 1 changed, 0 regressed, 1 newly inferred, 0 not comparable, 2 \
-         without fingerprints."
+         variants and explicit programs without fingerprints."
     ));
 }
 
@@ -1468,6 +1468,24 @@ fn comparisons_report_explicit_programs_that_no_longer_compile() {
     let comparison = compare::compare(&[old], &[new]);
     assert_eq!(kinds(&comparison), [compare::ChangeKind::Regression]);
     assert_eq!(comparison.changes[0].variant, "explicit");
+}
+
+#[test]
+fn comparisons_count_the_same_rejected_explicit_program_as_without_a_fingerprint() {
+    let Compiled::Rejected { diag, .. } = rejected(1) else {
+        unreachable!()
+    };
+    let mut old = record(0, &[]);
+    old.explicit = Explicit::Rejected(diag);
+
+    let comparison = compare::compare(std::slice::from_ref(&old), &[old.clone()]);
+    assert_eq!(comparison.changes, []);
+    assert_eq!(comparison.without_fingerprints, 1);
+
+    // A program with no sites has nothing to compare
+    old.explicit = Explicit::NoSites;
+    let comparison = compare::compare(std::slice::from_ref(&old), &[old.clone()]);
+    assert_eq!(comparison.without_fingerprints, 0);
 }
 
 #[test]
