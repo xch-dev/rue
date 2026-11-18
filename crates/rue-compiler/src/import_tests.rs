@@ -977,13 +977,11 @@ fn crate_refers_to_the_file_of_a_single_file_program() {
 }
 
 #[test]
-fn crate_at_the_top_of_a_single_file_does_not_reach_the_prelude() {
+fn crate_paths_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
     // At the top level of a single file, `crate` names the scope the code is in, but it's still
     // only the file's own items (and imports): the prelude around the file isn't searched
     let compiled = compile(
         "
-        import crate::Int;
-        import crate::sha256;
         import crate::LOCAL;
         export crate::helper;
 
@@ -1008,13 +1006,40 @@ fn crate_at_the_top_of_a_single_file_does_not_reach_the_prelude() {
     assert_eq!(
         compiled.errors(),
         [
-            "2:23 UnresolvedImport(\"Int\")",
-            "3:23 UnresolvedImport(\"sha256\")",
-            "7:29 UndeclaredType(\"Int\")",
-            "12:38 UndeclaredSymbol(\"sha256\")",
+            "5:29 UndeclaredType(\"Int\")",
+            "10:38 UndeclaredSymbol(\"sha256\")",
         ]
     );
     assert_eq!(compiled.type_origin("Local"), "(root)");
+}
+
+#[test]
+fn crate_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
+    // An import through `crate` at the top of the file doesn't find the prelude's items either.
+    // Like any failed import, it blocks its name in the file, and `crate` names the file, so a
+    // later use through `crate` isn't reported again, nor is one without it.
+    let compiled = compile(
+        "
+        import crate::Int;
+        import crate::sha256;
+
+        type Alias = crate::Int;
+
+        const HASH: Bytes32 = crate::sha256(1) + sha256(2);
+
+        fn main() -> Int {
+            1
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:23 UnresolvedImport(\"Int\")",
+            "3:23 UnresolvedImport(\"sha256\")",
+        ]
+    );
 }
 
 #[test]
