@@ -2649,3 +2649,43 @@ fn main(value: Bytes) -> Any {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+#[test]
+fn prelude_over_enclosing_item_stops_at_a_name_whose_import_failed() {
+    let source = "\
+fn sha256(value: Bytes) -> Bytes32 {
+    unchecked_cast(value)
+}
+
+mod outer {
+    mod helpers {
+        fn sha256(value: Bytes) -> Bytes32 {
+            unchecked_cast(value)
+        }
+    }
+
+    import helpers::sha256;
+
+    export mod inner {
+        export fn hash(value: Bytes) -> Bytes32 {
+            sha256(value)
+        }
+    }
+}
+
+fn main(value: Bytes) -> (Bytes32, Bytes32) {
+    (outer::inner::hash(value), sha256(value))
+}
+";
+
+    // The import of the private function fails, which is already reported. The failed import
+    // blocks `sha256` in `outer`, so the file's `sha256` isn't the one `inner` would have meant.
+    let (diagnostics, has_errors) = compile_source(source, |_| {});
+
+    assert!(has_errors);
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.lint() != Some(Lint::PreludeOverEnclosingItem))
+    );
+}

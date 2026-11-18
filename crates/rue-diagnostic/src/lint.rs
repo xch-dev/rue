@@ -618,6 +618,7 @@ mod tests {
                 Lint::DuplicateCondition,
                 Lint::UnconditionalRecursion,
                 Lint::BytesIntConfusion,
+                Lint::PreludeOverEnclosingItem,
             ]
         );
     }

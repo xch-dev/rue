@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
-use rue_diagnostic::{SourceKind, SrcLoc};
+use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{
@@ -197,6 +197,34 @@ impl Database {
 
     pub fn ty(&self, id: TypeId) -> &Type {
         &self.types[id]
+    }
+
+    /// The name that a declaration is declared with, if it's an item with a name that's written in
+    /// the source (rather than a builtin, a parameter, or a type with no name).
+    pub fn declaration_name(&self, declaration: Declaration) -> Option<Name> {
+        match declaration {
+            Declaration::Symbol(symbol) => match self.symbol(symbol) {
+                Symbol::Function(_)
+                | Symbol::Constant(_)
+                | Symbol::Binding(_)
+                | Symbol::Module(_) => self.symbol(symbol).name(),
+                Symbol::Unresolved | Symbol::Builtin(_) | Symbol::Parameter(_) => None,
+            },
+            Declaration::Type(ty) => match self.ty(ty) {
+                Type::Struct(ty) => ty.name.clone(),
+                Type::Alias(ty) => ty.name.clone(),
+                Type::Generic(ty) => ty.name.clone(),
+                Type::Unresolved
+                | Type::Any
+                | Type::Never
+                | Type::Ref(_)
+                | Type::Atom(_)
+                | Type::Pair(_)
+                | Type::Function(_)
+                | Type::Apply(_)
+                | Type::Union(_) => None,
+            },
+        }
     }
 
     pub fn ty_mut(&mut self, id: TypeId) -> &mut Type {

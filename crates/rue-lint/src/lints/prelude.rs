@@ -1,8 +1,6 @@
-use std::collections::HashSet;
-
 use rue_diagnostic::{Applicability, Lint, Note, Suggestion};
 
-use crate::{LintContext, LintInput, srcloc_key};
+use crate::{LintContext, LintInput};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::PreludeOverEnclosingItem];
 
@@ -10,17 +8,10 @@ pub(crate) const LINTS: &[Lint] = &[Lint::PreludeOverEnclosingItem];
 /// encloses them has an item with the same name. An inline module doesn't see the items of the
 /// modules it's in, so the name means something different from what it would mean outside of it.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
-    // A path can be compiled more than once, so each name is only reported once
-    let mut reported = HashSet::new();
-
     for reference in &input.sites.enclosed_prelude_references {
         let Some(srcloc) = reference.name.srcloc().cloned() else {
             continue;
         };
-
-        if !reported.insert(srcloc_key(&srcloc)) {
-            continue;
-        }
 
         let name = reference.name.text();
         let path = format!("{}{name}", "super::".repeat(reference.depth));

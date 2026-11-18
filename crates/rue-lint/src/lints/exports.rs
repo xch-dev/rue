@@ -135,12 +135,7 @@ fn collect_exports(
         .collect::<Vec<_>>();
 
     for declaration in exported {
-        let name = match declaration {
-            Declaration::Symbol(symbol) => symbol_name(db, symbol),
-            Declaration::Type(ty) => type_name(db, ty),
-        };
-
-        if let Some(name) = name
+        if let Some(name) = db.declaration_name(declaration)
             && seen.insert(declaration)
         {
             exports.push((declaration, name, direct && declared.contains(&declaration)));
@@ -317,24 +312,6 @@ fn reached_names(
             }
             Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
         }
-    }
-}
-
-fn symbol_name(db: &Database, symbol: SymbolId) -> Option<Name> {
-    match db.symbol(symbol) {
-        Symbol::Function(_) | Symbol::Constant(_) | Symbol::Binding(_) | Symbol::Module(_) => {
-            db.symbol(symbol).name()
-        }
-        Symbol::Unresolved | Symbol::Builtin(_) | Symbol::Parameter(_) => None,
-    }
-}
-
-fn type_name(db: &Database, ty: TypeId) -> Option<Name> {
-    match db.ty(ty) {
-        Type::Struct(ty) => ty.name.clone(),
-        Type::Alias(ty) => ty.name.clone(),
-        Type::Generic(ty) => ty.name.clone(),
-        _ => None,
     }
 }
 

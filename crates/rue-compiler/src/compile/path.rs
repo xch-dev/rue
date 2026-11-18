@@ -362,10 +362,10 @@ where
 
         if let SegmentBase::Local(_) = base {
             let namespace = match initial {
+                PathResult::Unresolved => None,
                 _ if has_subpath => Some(Namespace::Module),
                 PathResult::Symbol(..) => Some(Namespace::Value),
                 PathResult::Type(..) => Some(Namespace::Type),
-                PathResult::Unresolved => None,
             };
 
             if let Some(namespace) = namespace {

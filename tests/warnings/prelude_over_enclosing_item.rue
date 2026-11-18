@@ -68,6 +68,40 @@ mod hashed {
     }
 }
 
+// A module, which is looked up in the module namespace when a path continues after it
+mod module_namespace {
+    // Unused, since `inner` uses the prelude's `std`
+    mod std {
+        export mod tree_hash {
+            export fn tree_hash_atom(value: Bytes) -> Bytes32 {
+                unchecked_cast(value)
+            }
+        }
+    }
+
+    export mod inner {
+        export fn hash(value: Bytes) -> Bytes32 {
+            std::tree_hash::tree_hash_atom(value)
+        }
+    }
+}
+
+// The nearest enclosing module imports the prelude's item, so it means the same thing there,
+// even though the file declares its own
+mod same_item {
+    import std::tree_hash::tree_hash_atom;
+
+    export mod inner {
+        export fn hash(value: Bytes) -> Bytes32 {
+            tree_hash_atom(value)
+        }
+    }
+
+    export fn hash(value: Bytes) -> Bytes32 {
+        tree_hash_atom(value)
+    }
+}
+
 mod not_reported {
     import std::tree_hash::tree_hash_atom;
 
@@ -116,6 +150,9 @@ fn main() -> Any {
         hashed::nested::uses_nested(value),
         sha256(value),
         tree_hash_atom(remark.message),
+        module_namespace::inner::hash(value),
+        same_item::inner::hash(value),
+        same_item::hash(value),
         not_reported::qualified(value),
         not_reported::explicit(value),
         not_reported::local(sha256(value)),
