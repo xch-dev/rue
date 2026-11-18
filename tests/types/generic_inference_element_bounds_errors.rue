@@ -1,0 +1,19 @@
+fn apply_later<T>(pair: (fn(value: T) -> Int, T)) -> Int {
+    pair.first(pair.rest)
+}
+
+// Only the elements before a lambda count, since it's compiled before the ones after it, so this
+// lambda still gets the generic itself
+fn lambda_before_its_value() -> Int {
+    apply_later((fn(x) => x, 1))
+}
+
+// In a recursive call, the argument's expected type has the callee's renamed generics restored to
+// the caller's, so the lambda gets the caller's generic as before
+fn recursive<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        return recursive((1, fn(x) => x), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}

@@ -3,6 +3,7 @@ use rue_ast::AstPairExpr;
 use rue_hir::{Hir, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
+use super::call_inference::{record_element, refine_element_expected};
 use crate::{Compiler, compile_expr};
 
 pub fn compile_pair_expr(
@@ -42,7 +43,11 @@ pub fn compile_pair_expr(
         ctx.builtins().unresolved.clone()
     };
 
+    record_element(ctx, first.ty, expected_first);
+
     let rest = if let Some(rest) = pair.rest() {
+        let expected_rest =
+            expected_rest.map(|expected| refine_element_expected(ctx, expected, &rest));
         compile_expr(ctx, &rest, expected_rest)
     } else {
         debug!("Unresolved pair rest");

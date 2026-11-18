@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use indexmap::IndexSet;
 
@@ -14,7 +15,7 @@ use rue_types::{
     FunctionType, Inference, Type, TypeId, contains_generic, substitute_with_mappings,
 };
 
-use crate::{Compiler, compile_expr};
+use crate::{ArgumentFrame, Compiler, compile_expr};
 
 /// What inferring a call's generics gave.
 pub(crate) struct InferredCall {
@@ -62,7 +63,7 @@ pub(crate) fn infer_call(
         expected
     });
 
-    let solver = ctx.call_solver(expected);
+    let solver = Rc::new(ctx.call_solver(expected));
 
     let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
 
@@ -72,7 +73,7 @@ pub(crate) fn infer_call(
 
     let mut order = ArgumentOrder::new(ctx, function, args, base.clone());
 
-    ctx.push_inferred_generics(function.generics.clone());
+    ctx.push_call_frame(function.generics.clone());
 
     while !order.is_done() {
         let inferred = ctx.solve_arguments(&solver, order.merged());
@@ -90,7 +91,12 @@ pub(crate) fn infer_call(
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
+        ctx.set_argument_frame(Some(ArgumentFrame {
+            infer: order.merged().clone(),
+            solver: solver.clone(),
+        }));
         let value = compile_expr(ctx, expr, Some(expected));
+        ctx.set_argument_frame(None);
         results[i] = value.hir;
 
         // Candidates are collected against the unsubstituted parameter type, so that every
@@ -101,7 +107,7 @@ pub(crate) fn infer_call(
         checks[i] = Some((expr.clone(), value.ty, param));
     }
 
-    ctx.pop_inferred_generics();
+    ctx.pop_call_frame();
 
     if args.len() < function.params.len() {
         debug!("Unresolved function call argument");
@@ -607,4 +613,73 @@ fn restore_renamed(
     }
 
     mappings.extend(restored);
+}
+
+/// Records what an element of a pair or list that's part of an argument being compiled infers for
+/// the call's generics, given the type it was expected to have, so that a later element can be
+/// compiled against it (see `refine_element_expected`).
+pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<TypeId>) {
+    let Some(expected) = expected else {
+        return;
+    };
+
+    if !references_call_generics(ctx, expected) {
+        return;
+    }
+
+    let Some(mut argument) = ctx.take_argument_frame() else {
+        return;
+    };
+
+    ctx.infer_type(ty, expected, &mut argument.infer);
+    ctx.set_argument_frame(Some(argument));
+}
+
+/// The type an element of a pair or list that's part of an argument being compiled is expected to
+/// have, with the call's generics that it still references replaced by what's inferred so far,
+/// from the arguments before it and the elements before this one. A lambda in such an element
+/// would otherwise get the generic itself as a parameter type, as in `apply((1, fn(x) => x))`
+/// (#350). Only an element with a lambda in it is compiled against this, so that other elements
+/// are compiled as they were.
+///
+/// In a recursive call, the callee's generics are renamed, and the argument's expected type has
+/// them restored to the caller's generics before it's compiled (see `restore_renamed`), so it
+/// doesn't reference the call's generics and this doesn't apply.
+pub(crate) fn refine_element_expected(
+    ctx: &mut Compiler,
+    expected: TypeId,
+    element: &AstExpr,
+) -> TypeId {
+    if !has_lambda(element) || !references_call_generics(ctx, expected) {
+        return expected;
+    }
+
+    let Some(argument) = ctx.take_argument_frame() else {
+        return expected;
+    };
+
+    let inferred = ctx.solve_arguments(&argument.solver, &argument.infer);
+    let mappings = ctx.argument_mappings(&argument.solver, &argument.infer, inferred);
+    ctx.set_argument_frame(Some(argument));
+
+    substitute_with_mappings(ctx.types_mut(), expected, &mappings)
+}
+
+/// Whether the type references a generic of the innermost call being inferred.
+fn references_call_generics(ctx: &mut Compiler, ty: TypeId) -> bool {
+    let generics = ctx
+        .call_generics()
+        .map(<[TypeId]>::to_vec)
+        .unwrap_or_default();
+
+    generics
+        .into_iter()
+        .any(|generic| contains_generic(ctx.types_mut(), ty, generic))
+}
+
+/// Whether the expression is, or has in it, a lambda.
+fn has_lambda(expr: &AstExpr) -> bool {
+    expr.syntax()
+        .descendants()
+        .any(|node| AstLambdaExpr::cast(node).is_some())
 }

@@ -4,6 +4,7 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, List, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
+use super::call_inference::{record_element, refine_element_expected};
 use crate::{Compiler, compile_expr};
 
 pub fn compile_list_expr(
@@ -59,7 +60,10 @@ pub fn compile_list_expr(
         };
 
         let value = if let Some(expr) = item.expr() {
-            compile_expr(ctx, &expr, item_type)
+            let item_type = item_type.map(|expected| refine_element_expected(ctx, expected, &expr));
+            let value = compile_expr(ctx, &expr, item_type);
+            record_element(ctx, value.ty, item_type);
+            value
         } else {
             debug!("Unresolved list item expr");
             ctx.builtins().unresolved.clone()
