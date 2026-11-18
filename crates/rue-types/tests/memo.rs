@@ -283,11 +283,13 @@ fn test_permuted_generic_alias_arguments() {
 // The tests below are cases found while working on #344, where an experimental change that let
 // generic functions whose generics are nested inside of their parameters use fixpoint mode gave a
 // different result than without the memo, by reusing a comparison that would have merged the
-// generics instantiated by another one. They're compared in exact mode as things are, so every
-// mode agrees, and they guard any future change that compares them in fixpoint mode. All but
-// `test_merged_into_outer_function` also fail if a comparison with an `Instance` binding is
-// memoized. Most compare the types in a new arena in every mode, since the order of the types can
-// change which comparisons are reached again with which binders.
+// generics instantiated by another one. Since #362's step 13b.1, a revisit doesn't merge instances
+// anymore: it puts the bounds that the comparison it revisits puts on its instances (its summary)
+// on the instances it's revisited with, so each occurrence of a generic function is instantiated
+// on its own. Four of them hold now, since what merging made one instance is the instances of
+// different function values. They guard the modes agreeing. Most compare the types in a new arena
+// in every mode, since the order of the types can change which comparisons are reached again with
+// which binders.
 
 /// `type R = fn<T>(x: Px) -> nil; type Px = (Pf, T); type Pf = fn(g: R, h: fn(k: Pf) -> nil) -> Int;`
 /// and `type Rq = fn(x: Qx) -> nil; type Qx = (Qf, Int);`
@@ -383,12 +385,13 @@ fn reused_across_functions(db: &mut Types) -> (TypeId, TypeId) {
 fn test_reused_across_functions() {
     with_large_stack(|| {
         // Comparing `S1` to `S2` caches the comparison of `fn(k: S1) -> nil` to `fn(k: S2) -> nil`,
-        // whose computation reaches `(U, ...)` against `(Never, ...)` again, which merges the
-        // generic of the function it's in. Reusing it while comparing `S1`'s body to `H` skipped
-        // the merge into `H`'s `U`, so its bounds weren't checked against each other, and this gave
-        // `Assign` rather than `Invalid`.
+        // whose computation reaches `(U, ...)` against `(Never, ...)` again. That used to merge
+        // the `U` of the function it's in into `H`'s, which reusing it skipped. Each is its own
+        // instance now: `S1` is assignable to `S2` with `U = Bytes32`, and `S1`'s body to `H` with
+        // `U = Int`, where comparing their `fn(k: S1) -> nil` parameters compares `S1` to `S2`
+        // again
         let results = in_every_mode(reused_across_functions);
-        assert_eq!(results, [Comparison::Invalid; 3]);
+        assert_eq!(results, [Comparison::Assign; 3]);
     });
 }
 
@@ -425,11 +428,12 @@ fn same_key_other_function(db: &mut Types, last: TypeId) -> (TypeId, TypeId) {
 #[test]
 fn test_same_key_other_function() {
     with_large_stack(|| {
-        // Comparing `(k2, k1)` revisits the comparison of the first parameters, which merges into
-        // the outer function's `U`. It was then reused under the comparison of the callbacks'
-        // functions, whose first parameters have the same key but their own `U`, so their bounds
-        // (`Bytes32` and `Int`) weren't checked against each other, and this was `Assign`
-        for (bytes32, expected) in [(false, Comparison::Invalid), (true, Comparison::Assign)] {
+        // Comparing `(k2, k1)` revisits the comparison of the first parameters, which used to
+        // merge into the outer function's `U`, and was then reused under the comparison of the
+        // callbacks' functions, whose first parameters have the same key but their own `U`. Each
+        // `U` is its own instance now, so the outer one is `Bytes32` and the callback's is `last`,
+        // which holds whether that's `Bytes32` or `Int`
+        for (bytes32, expected) in [(false, Comparison::Assign), (true, Comparison::Assign)] {
             let run = |mode: u8| {
                 let mut db = Types::new();
                 let last = if bytes32 {
@@ -461,7 +465,13 @@ fn test_same_key_other_function() {
 /// `type K2 = fn(k: S2) -> nil; type S2 = fn<W>(p: (Never, (K2, K2)), q: W) -> W;`
 /// Returns `fn<U>(p: (U, (K1, K1))) -> nil` and `fn(p: (Never, (K2, K2))) -> nil`.
 fn merged_twice(db: &mut Types) -> (TypeId, TypeId) {
-    let BuiltinTypes { nil, never, .. } = db.builtins;
+    let never = db.builtins.never;
+    merged_twice_with(db, never)
+}
+
+/// Like `merged_twice`, with `first` in place of `Never`.
+fn merged_twice_with(db: &mut Types, first: TypeId) -> (TypeId, TypeId) {
+    let BuiltinTypes { nil, .. } = db.builtins;
     let s1 = db.declare_alias("S1", vec![]);
     let s2 = db.declare_alias("S2", vec![]);
     let u = db.generic();
@@ -471,7 +481,7 @@ fn merged_twice(db: &mut Types) -> (TypeId, TypeId) {
     let both_k1 = db.pair(k1, k1);
     let both_k2 = db.pair(k2, k2);
     let left = db.pair(u, both_k1);
-    let right = db.pair(never, both_k2);
+    let right = db.pair(first, both_k2);
     let f1 = db.function(vec![u], vec![left, u], u);
     let f2 = db.function(vec![w], vec![right, w], w);
     db.define(s1, f1);
@@ -496,13 +506,29 @@ fn test_merged_twice() {
         };
 
         // `(K2, K1)` is compared twice, and each time, comparing `S1` to `S2` binds a new `U` and
-        // `W`, and merges that `U` into the outer one when the parameters are reached again. Reusing
-        // the second one skipped its copy of the bounds, so the two `W`s weren't checked against
-        // each other, and this gave `Assign`. Computing a result again doesn't have the same side
-        // effects as the first time, even within the same comparisons.
-        assert_eq!(run(2), Comparison::Invalid);
-        assert_eq!(run(0), Comparison::Invalid);
-        assert_eq!(run(1), Comparison::Invalid);
+        // `W`. That `U` used to be merged into the outer one when the parameters are reached again,
+        // so the two `W`s were checked against each other. Each `U` is its own instance now: `S1`
+        // is assignable to `S2` with `U = W`, so `K2` is assignable to `K1`, and the outer `U` only
+        // needs to hold `Never`
+        assert_eq!(run(2), Comparison::Assign);
+        assert_eq!(run(0), Comparison::Assign);
+        assert_eq!(run(1), Comparison::Assign);
+    });
+}
+
+/// With `Int` in place of `Never`, `S1` isn't assignable to `S2`, since `W` would have to hold
+/// `Int`. That's only found through the bound `U ≥ Int` that comparing the parameters puts on `U`,
+/// which a revisit of it with the `U` of `S1` doesn't compute again. The revisit is given what
+/// comparing the parameters put on the outer `U` (its summary), and the comparison is computed
+/// again until that stops changing, so the revisit's `U` gets that bound as well.
+#[test]
+fn test_revisit_gets_summary() {
+    with_large_stack(|| {
+        let results = in_every_mode(|db| {
+            let int = db.builtins.int;
+            merged_twice_with(db, int)
+        });
+        assert_eq!(results, [Comparison::Invalid; 3]);
     });
 }
 
@@ -542,10 +568,12 @@ fn test_reached_through_dependency() {
     with_large_stack(|| {
         // Comparing `(AL, AR)` caches `(KL, KR)`, which relies on `(AL, AR)`. Iterating reused it
         // while comparing the second functions' return types, where computing it again would reach
-        // `(AL, AR)`, then the first functions, whose return types revisit those of the second ones
-        // and merge `U` (with its `Bytes32` bound) into theirs. Skipping that gave `Assign`.
+        // `(AL, AR)`, then the first functions, whose return types revisit those of the second ones,
+        // which used to merge `U` (with its `Bytes32` bound) into theirs. Each `U` is its own
+        // instance now: the thunk's `U` can be `Never`, since `(Never, (Never, KL))` is assignable
+        // to `(Bytes32, (Int, KR))`, and the second function's `U` can be `Int`
         let results = in_every_mode(reached_through_dependency);
-        assert_eq!(results, [Comparison::Invalid; 3]);
+        assert_eq!(results, [Comparison::Assign; 3]);
     });
 }
 

@@ -2028,6 +2028,72 @@ mod inference {
         }));
     }
 
+    /// What's collected under a union member holds as far as the choices from an index on decide,
+    /// which leaves out the ones it's nested in that are still being compared (see
+    /// `ComparisonContext::summary_since`).
+    #[test]
+    fn choices_matched_since() {
+        let mut choices = Choices::default();
+        let outer = choices.open(None, 2);
+        let outer_member = BranchId {
+            choice: outer,
+            member: 1,
+        };
+        choices.record(
+            BranchId {
+                choice: outer,
+                member: 0,
+            },
+            Comparison::Assign,
+        );
+
+        let inner = choices.open(Some(outer_member), 2);
+        let [missed, matched] = [0, 1].map(|member| BranchId {
+            choice: inner,
+            member,
+        });
+        choices.record(missed, Comparison::Invalid);
+        choices.record(matched, Comparison::Assign);
+
+        // Once the outer member gives `Cast`, it doesn't match, but from the inner choice on only
+        // the inner member decides
+        choices.record(outer_member, Comparison::Cast);
+        assert!(!choices.matched_so_far(matched));
+        assert!(choices.matched_since(matched, inner));
+        assert!(!choices.matched_since(missed, inner));
+        assert!(!choices.matched_since(matched, outer));
+
+        // A branch from before the index holds
+        assert!(choices.matched_since(outer_member, inner));
+    }
+
+    /// Restoring a snapshot removes the candidates and choices collected since, so that a
+    /// comparison computed again collects them once.
+    #[test]
+    fn inference_restores_snapshot() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+        infer.push(a, CandidateKind::Lower, int, Vec::new());
+
+        let before = infer.clone();
+        let snapshot = infer.snapshot();
+
+        let choice = infer.open_choice(None, 2);
+        let branch = BranchId { choice, member: 0 };
+        infer.record(branch, Comparison::Assign);
+        infer.push(a, CandidateKind::Lower, b, vec![branch]);
+        infer.push(b, CandidateKind::Upper, int, vec![branch]);
+        infer.push(b, CandidateKind::Held, int, Vec::new());
+
+        infer.restore(&snapshot);
+        assert_eq!(infer.candidates(a), before.candidates(a));
+        assert_eq!(infer.candidates(b), before.candidates(b));
+        assert_eq!(infer.choice_results(), before.choice_results());
+        assert_eq!(infer.matched_candidates(a), before.matched_candidates(a));
+    }
+
     #[test]
     fn bounds_passed_through_compound_lower_bounds_keep_their_members() {
         let mut db = Db::new();

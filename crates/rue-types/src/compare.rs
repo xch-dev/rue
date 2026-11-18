@@ -11,9 +11,11 @@ use log::{Level, debug, log_enabled, trace};
 use crate::{
     AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, Choices, FALLBACK,
     FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic, Inference,
-    InferenceCandidates, InstancePolicy, Memo, Type, TypeId, compare_memo_enabled,
-    comparison_step_limit, free_generics, grow_stack, has_non_contractive_cycle, reachable,
-    references_generic, step, stringify_impl, substitute, substitute_with_mappings,
+    InferenceCandidates, InferenceSnapshot, InstancePolicy, Memo, Type, TypeId,
+    compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
+    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
+    substitute_with_mappings,
+    summary::{Constraint, Summary, Var},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -135,12 +137,10 @@ struct Binder {
     /// hand side, since a generic function is assignable to a function type if it can be
     /// instantiated to it. Otherwise it's rigid, since the function must work for any of them.
     instance: Option<usize>,
-    /// The binder that this one was merged into, which it's treated as from then on.
-    merged: Option<usize>,
-    /// The rigid binders that are renamed in the bounds that flow into this binder's instance
-    /// once it's merged, from the ones on its side of the comparison it was merged at to the ones
-    /// on the other side.
-    renaming: Vec<(usize, usize)>,
+    /// The binder that this one stands for, if it's an alias: one of the binders that an
+    /// environment built for a bound applied from a summary resolves its generics to (see
+    /// `ComparisonContext::apply_summary`).
+    alias: Option<usize>,
 }
 
 /// The bounds collected for a generic being instantiated, which are checked against each other
@@ -149,25 +149,49 @@ struct Binder {
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
-    /// Set if a comparison was assumed to hold for it when it was revisited, so it's missing the
-    /// bounds that it would have collected from the revisit. Those are copies of its bounds in
-    /// which the binders from this index on (which were bound since the comparison was entered)
-    /// and the `renamed` ones are other generics, so it's also checked with them replaced by new
-    /// ones.
-    fresh: Option<usize>,
-    /// The binders that were renamed when it was revisited, which were bound before then.
-    renamed: Vec<usize>,
-    /// The number of bounds that have been added to it, including those that were merged into it.
-    added: usize,
 }
+
+/// A comparison in progress.
+#[derive(Debug)]
+struct StackFrame {
+    /// The number of binders when it was entered. The ones from here on were bound inside of it.
+    entered: usize,
+    /// The binders that its key references, in the order they're numbered (see `Binding`).
+    binders: Vec<usize>,
+    /// What a revisit of it is given while it's in progress: the bounds that it puts on the
+    /// instances its key refers to, as far as they're known (see `Summary`). It starts out empty,
+    /// and each round of computing it that revisits it computes it again with the bounds that the
+    /// round put on them, until that adds nothing (see `compare_impl_inner`).
+    approximation: Summary,
+    /// Whether it was revisited during the current round.
+    revisited: bool,
+}
+
+/// What computing a comparison changed outside of it, to undo it before computing it again (see
+/// `StackFrame::approximation`).
+#[derive(Debug)]
+struct Snapshot {
+    /// For each instance that the key refers to, its position in the key's numbering, its index
+    /// in `ComparisonContext::instances`, and its numbers of lower and upper bounds.
+    instances: Vec<(usize, usize, usize, usize)>,
+    choices: usize,
+    deferred: usize,
+    infer: Option<InferenceSnapshot>,
+}
+
+/// The most rounds that a comparison is computed in before it gives up (see
+/// `StackFrame::approximation`). Each round adds bounds to its summary, which is finite, so this
+/// is only reached by a summary that's too symmetric to be put in a canonical form (see
+/// `Summary::canonicalize`).
+const MAX_ROUNDS: usize = 32;
 
 #[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
     infer: Option<&'a mut Inference>,
     stack: FxIndexSet<ComparisonKey>,
-    /// The number of binders when each comparison in `stack` was entered, and the binders it
-    /// references, in the order they're numbered.
-    stack_binders: Vec<(usize, Vec<usize>)>,
+    /// For each comparison in `stack`, the binders it references and the summary that a revisit
+    /// of it is given (see `StackFrame`).
+    frames: Vec<StackFrame>,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -216,6 +240,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// The lowest index in `stack` of a comparison in progress that has been revisited, since
     /// `compare_member` last reset it.
     revisited: usize,
+    /// The lowest index in `instances` of an instance that a bound has been added to, since
+    /// `compare_member` last reset it.
+    bounded: usize,
     /// The candidates that reference the generics of a function being instantiated, which are
     /// replaced with vars for their instances once the comparison has finished.
     deferred: Vec<DeferredCandidate>,
@@ -389,21 +416,16 @@ impl ComparisonContext<'_> {
         // created and checked within the member aren't collected again when a comparison is
         // reused from the memo, and they don't depend on the member
         let existing = self.instances.len();
-        let added = |ctx: &Self| -> usize {
-            ctx.instances[..existing]
-                .iter()
-                .map(|instance| instance.added)
-                .sum()
-        };
         // A member that only holds by assuming a comparison in progress that it started outside
         // of could still bound the instances when that comparison finishes, so it counts as
         // bounded, rather than holding the value whatever they are (see `Choices::mark_bounded`).
         // Otherwise it would depend on whether a type is written so that it's revisited
         let depth = self.stack.len();
         let revisited = mem::replace(&mut self.revisited, usize::MAX);
-        let before = added(self);
+        let outer_bounded = mem::replace(&mut self.bounded, usize::MAX);
         let result = compare(self);
-        let bounded = added(self) > before || self.revisited < depth;
+        let bounded = self.bounded < existing || self.revisited < depth;
+        self.bounded = self.bounded.min(outer_bounded);
         self.revisited = self.revisited.min(revisited);
 
         self.local_branch = local_parent;
@@ -583,8 +605,7 @@ impl ComparisonContext<'_> {
                 generic,
                 parent: env,
                 instance,
-                merged: None,
-                renaming: Vec::new(),
+                alias: None,
             });
             env = Some(self.binders.len() - 1);
         }
@@ -609,18 +630,17 @@ impl ComparisonContext<'_> {
             .is_some_and(|binder| self.instance_of(binder).is_some())
     }
 
-    /// Adds a bound to the instance of the generic, renaming it into the binders of each instance
-    /// that the generic's has been merged into.
-    fn add_bound(&mut self, generic: TypeId, env: Option<usize>, mut bound: Bound, upper: bool) {
-        let mut binder = binder_of(&self.binders, generic, env).unwrap();
+    /// Adds a bound to the instance of the generic.
+    fn add_bound(&mut self, generic: TypeId, env: Option<usize>, bound: Bound, upper: bool) {
+        let binder = self.resolve(generic, env).unwrap();
+        self.push_bound(binder, bound, upper);
+    }
 
-        while let Some(into) = self.binders[binder].merged {
-            bound.1 = self.rename(bound.1, binder);
-            binder = into;
-        }
-
-        let instance = &mut self.instances[self.binders[binder].instance.unwrap()];
-        instance.added += 1;
+    /// Adds a bound to the instance of the binder.
+    fn push_bound(&mut self, binder: usize, bound: Bound, upper: bool) {
+        let index = self.binders[binder].instance.unwrap();
+        let instance = &mut self.instances[index];
+        self.bounded = self.bounded.min(index);
 
         if upper {
             instance.upper.push(bound);
@@ -629,73 +649,172 @@ impl ComparisonContext<'_> {
         }
     }
 
-    /// Returns an environment in which the rigid binders that the merged binder renames resolve
-    /// to the ones they're renamed to.
-    fn rename(&mut self, env: Option<usize>, binder: usize) -> Option<usize> {
-        let mut renamed = env;
+    /// Records what a comparison that's being entered can change outside of itself: the bounds of
+    /// the instances its key refers to (the binders it numbers), the choices and the deferred
+    /// candidates, and the inference's candidates.
+    fn snapshot(&self, binders: &[usize]) -> Snapshot {
+        let instances = binders
+            .iter()
+            .enumerate()
+            .filter_map(|(position, &binder)| {
+                let index = self.instance_of(binder)?;
+                let instance = &self.instances[index];
+                Some((position, index, instance.lower.len(), instance.upper.len()))
+            })
+            .collect();
 
-        for (from, into) in self.binders[binder].renaming.clone() {
-            let generic = self.binders[from].generic;
+        Snapshot {
+            instances,
+            choices: self.choices.len(),
+            deferred: self.deferred.len(),
+            infer: self.infer.as_ref().map(|infer| infer.snapshot()),
+        }
+    }
 
-            if self.resolve(generic, env) == Some(from) {
-                self.binders.push(Binder {
-                    generic,
-                    parent: renamed,
-                    instance: None,
-                    merged: Some(into),
-                    renaming: Vec::new(),
+    /// Undoes what the comparison changed outside of itself since the snapshot, so that it can be
+    /// computed again. The binders bound inside of it are left as they are, since nothing refers
+    /// to them anymore.
+    fn restore(&mut self, snapshot: &Snapshot) {
+        for &(_, index, lower, upper) in &snapshot.instances {
+            let instance = &mut self.instances[index];
+            instance.lower.truncate(lower);
+            instance.upper.truncate(upper);
+        }
+
+        self.choices.truncate(snapshot.choices);
+        self.deferred.truncate(snapshot.deferred);
+
+        if let (Some(infer), Some(snapshot)) = (self.infer.as_mut(), &snapshot.infer) {
+            infer.restore(snapshot);
+        }
+    }
+
+    /// The bounds that the comparison in progress at the top of the stack put on the instances its
+    /// key refers to since the snapshot, as a summary in its coordinates: the binders its key
+    /// numbers, and local ones for those bound inside of it, which are rigid by the time it
+    /// finishes.
+    fn summary_since(&mut self, arena: &Arena<Type>, snapshot: &Snapshot) -> Summary {
+        let frame = self.frames.last().unwrap();
+        let (entered, numbering) = (frame.entered, frame.binders.clone());
+        let mut summary = Summary::default();
+        let mut locals: FxHashMap<usize, Var> = FxHashMap::default();
+
+        for &(position, index, lower, upper) in &snapshot.instances {
+            let instance = &self.instances[index];
+            let bounds: Vec<(Bound, bool)> = instance.lower[lower..]
+                .iter()
+                .map(|&bound| (bound, false))
+                .chain(instance.upper[upper..].iter().map(|&bound| (bound, true)))
+                .collect();
+
+            for ((ty, env, branches), upper) in bounds {
+                self.cache_references(arena, ty);
+                let mut vars = Vec::new();
+
+                for &generic in &self.references[&ty] {
+                    let Some(binder) = self.resolve(generic, env) else {
+                        continue;
+                    };
+
+                    let outside = (binder < entered)
+                        .then(|| numbering.iter().position(|&other| other == binder))
+                        .flatten();
+                    debug_assert!(
+                        binder >= entered || outside.is_some(),
+                        "a bound refers to a binder outside of the comparison that its key doesn't"
+                    );
+
+                    let var = match outside {
+                        Some(position) => Var::Key(position),
+                        None => *locals.entry(binder).or_insert_with(|| summary.local()),
+                    };
+                    vars.push((generic, var));
+                }
+
+                // A bound collected under a union member inside of the comparison that didn't
+                // match doesn't decide the result wherever the summary is applied either
+                let unmatched = branches
+                    .local
+                    .is_some_and(|branch| !self.choices.matched_since(branch, snapshot.choices));
+
+                summary.add(Constraint {
+                    var: Var::Key(position),
+                    upper,
+                    ty,
+                    env: vars,
+                    unmatched,
                 });
-                renamed = Some(self.binders.len() - 1);
             }
         }
 
-        renamed
+        summary.canonicalize();
+        summary
     }
 
-    /// Merges the instances of two binders, so that they're the same generic from then on. The
-    /// rigid binders that the comparison they're merged at renames from `b`'s side to `a`'s are
-    /// renamed in their bounds, since each instance's bounds are in terms of its own side's. They're
-    /// merged into the one that was bound first, since its comparison finishes last.
-    fn merge(&mut self, a: usize, b: usize, renaming: &[(usize, usize)]) {
-        let (a, b) = (root(&self.binders, a), root(&self.binders, b));
-
-        if a == b {
+    /// Puts the bounds of a summary on the instances of the binders that a comparison's key
+    /// numbers, which are `args` in the summary's coordinates. Each of its local binders is a new
+    /// rigid binder, and each bound's environment is made of aliases of the binders that its
+    /// generics resolve to.
+    fn apply_summary(&mut self, summary: &Summary, args: &[usize]) {
+        if summary.constraints().is_empty() {
             return;
         }
 
-        let (into, from) = (a.min(b), a.max(b));
+        let mut locals: FxHashMap<usize, usize> = FxHashMap::default();
+        let mut unmatched = None;
 
-        self.binders[from].merged = Some(into);
-        self.binders[from].renaming = if from == b {
-            renaming.to_vec()
-        } else {
-            renaming.iter().map(|&(new, old)| (old, new)).collect()
-        };
+        for constraint in summary.constraints() {
+            let Var::Key(position) = constraint.var else {
+                unreachable!("a summary only bounds the instances that its key refers to");
+            };
 
-        let instance = self.binders[from].instance.unwrap();
-        let Instance {
-            lower,
-            upper,
-            fresh,
-            mut renamed,
-            added: _,
-        } = mem::take(&mut self.instances[instance]);
-        let generic = self.binders[from].generic;
+            let mut env = None;
 
-        // The bounds are renamed, so the binders they're renamed to may be renamed as well
-        if fresh.is_some() {
-            let renaming = &self.binders[from].renaming;
-            renamed.extend(renaming.iter().flat_map(|&(from, into)| [from, into]));
-        }
+            for &(generic, var) in &constraint.env {
+                let alias = match var {
+                    Var::Key(position) => args[position],
+                    Var::Local(local) => *locals.entry(local).or_insert_with(|| {
+                        self.binders.push(Binder {
+                            generic,
+                            parent: None,
+                            instance: None,
+                            alias: None,
+                        });
+                        self.binders.len() - 1
+                    }),
+                };
 
-        let into = &mut self.instances[self.binders[into].instance.unwrap()];
-        into.fresh = into.fresh.into_iter().chain(fresh).min();
-        into.renamed.extend(renamed);
-
-        for (bounds, upper) in [(lower, false), (upper, true)] {
-            for bound in bounds {
-                self.add_bound(generic, Some(from), bound, upper);
+                self.binders.push(Binder {
+                    generic,
+                    parent: env,
+                    instance: None,
+                    alias: Some(alias),
+                });
+                env = Some(self.binders.len() - 1);
             }
+
+            // A member of a choice that's only there to not match
+            let local = if constraint.unmatched {
+                Some(*unmatched.get_or_insert_with(|| {
+                    let choice = self.choices.open(self.local_branch, 2);
+                    let [missed, matched] = [0, 1].map(|member| BranchId { choice, member });
+                    self.choices.record(missed, Comparison::Invalid);
+                    self.choices.record(matched, Comparison::Assign);
+                    missed
+                }))
+            } else {
+                self.local_branch
+            };
+
+            let bound = (
+                constraint.ty,
+                env,
+                BoundBranches {
+                    local,
+                    infer: self.branch,
+                },
+            );
+            self.push_bound(root(&self.binders, args[position]), bound, constraint.upper);
         }
     }
 
@@ -714,59 +833,6 @@ impl ComparisonContext<'_> {
         }
 
         self.budget == Budget::GivingUp
-    }
-
-    /// Like `binder_of`, but each binder it walks past counts towards the comparison's steps.
-    fn counted_binder_of(&mut self, generic: TypeId, mut env: Option<usize>) -> Option<usize> {
-        while let Some(index) = env {
-            if self.spend() {
-                return None;
-            }
-
-            if self.binders[index].generic == generic {
-                return Some(index);
-            }
-
-            env = self.binders[index].parent;
-        }
-
-        None
-    }
-
-    /// Returns an environment in which the binders that the instance's missing bounds have other
-    /// generics in place of resolve to new rigid binders.
-    fn refresh(&mut self, env: Option<usize>, instance: &Instance) -> Option<usize> {
-        let (Some(fresh), mut refreshed, mut current) = (instance.fresh, env, env) else {
-            return env;
-        };
-
-        while let Some(index) = current {
-            // This walks every binder in the environment, which can be most of the work of a
-            // comparison, so each one counts towards its steps
-            if self.spend() {
-                return refreshed;
-            }
-
-            let generic = self.binders[index].generic;
-            let binder = root(&self.binders, index);
-
-            if (binder >= fresh || instance.renamed.contains(&binder))
-                && self.counted_binder_of(generic, env) == Some(index)
-            {
-                self.binders.push(Binder {
-                    generic,
-                    parent: refreshed,
-                    instance: None,
-                    merged: None,
-                    renaming: Vec::new(),
-                });
-                refreshed = Some(self.binders.len() - 1);
-            }
-
-            current = self.binders[index].parent;
-        }
-
-        refreshed
     }
 
     /// Whether comparing the type (and the types it contains) is the least fixed point of monotone
@@ -831,18 +897,12 @@ impl ComparisonContext<'_> {
     }
 }
 
-/// Returns the binder that the generic is bound to in the environment (or the one it was merged
-/// into), or `None` if it's free.
-fn resolve(binders: &[Binder], generic: TypeId, env: Option<usize>) -> Option<usize> {
-    binder_of(binders, generic, env).map(|index| root(binders, index))
-}
-
-/// Returns the binder that the generic is bound to in the environment, even if it has since been
-/// merged into another one, or `None` if it's free.
-fn binder_of(binders: &[Binder], generic: TypeId, mut env: Option<usize>) -> Option<usize> {
+/// Returns the binder that the generic is bound to in the environment (or the one it's an alias
+/// of), or `None` if it's free.
+fn resolve(binders: &[Binder], generic: TypeId, mut env: Option<usize>) -> Option<usize> {
     while let Some(index) = env {
         if binders[index].generic == generic {
-            return Some(index);
+            return Some(root(binders, index));
         }
 
         env = binders[index].parent;
@@ -851,10 +911,10 @@ fn binder_of(binders: &[Binder], generic: TypeId, mut env: Option<usize>) -> Opt
     None
 }
 
-/// Returns the binder that the binder has been merged into, or itself if it hasn't been.
+/// Returns the binder that the binder is an alias of, or itself if it isn't one.
 fn root(binders: &[Binder], mut index: usize) -> usize {
-    while let Some(merged) = binders[index].merged {
-        index = merged;
+    while let Some(alias) = binders[index].alias {
+        index = alias;
     }
 
     index
@@ -1167,10 +1227,10 @@ fn compare_impl_inner(
     // Generics that are being instantiated outside of the comparison collect bounds from it as a
     // side effect, so it's only memoized if it doesn't refer to any. The ones bound inside of it
     // are checked before it finishes.
-    let memoize = compare_memo_enabled()
-        && !ctx.bindings[bindings]
-            .iter()
-            .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
+    let instances = ctx.bindings[bindings]
+        .iter()
+        .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
+    let memoize = compare_memo_enabled() && !instances;
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
         ctx.revisited = ctx.revisited.min(index);
@@ -1192,40 +1252,16 @@ fn compare_impl_inner(
             return Comparison::Invalid;
         }
 
-        // If it's revisited with other binders, the bounds that their instances would collect
-        // from it are only collected for the original ones, so they're merged. Rigid binders
-        // aren't merged, since they can be different types, but the comparison holds for them
-        // just the same as long as the instances' bounds are renamed to match. That's not
-        // possible for an instance that's revisited as itself, so it's marked instead.
-        let (bound, original_binders) = ctx.stack_binders[index].clone();
-        let mut instances = Vec::new();
-        let mut renaming = Vec::new();
+        // The bounds that it puts on the instances its key refers to are put on the ones it's
+        // revisited with, as far as they're known, so that each revisit instantiates its own
+        // generic functions (see `StackFrame::approximation`)
+        let frame = &mut ctx.frames[index];
+        frame.revisited = true;
 
-        for &(_, _, binding) in &ctx.bindings[bindings] {
-            let (Binding::Instance(i) | Binding::Rigid(i)) = binding;
-            let original = root(&ctx.binders, original_binders[i]);
-            let binder = root(&ctx.binders, binders[i]);
-
-            match binding {
-                Binding::Instance(_) => instances.push((original, binder)),
-                Binding::Rigid(_) if original != binder => renaming.push((binder, original)),
-                Binding::Rigid(_) => {}
-            }
-        }
-
-        for (original, binder) in instances {
-            // An earlier merge may have made them the same
-            if root(&ctx.binders, original) == root(&ctx.binders, binder) {
-                let instance = ctx.binders[root(&ctx.binders, original)].instance.unwrap();
-                let instance = &mut ctx.instances[instance];
-                instance.fresh = instance.fresh.into_iter().chain([bound]).min();
-                let renamed = renaming
-                    .iter()
-                    .flat_map(|&(binder, original)| [binder, original]);
-                instance.renamed.extend(renamed);
-            } else {
-                ctx.merge(original, binder, &renaming);
-            }
+        if instances {
+            let approximation = mem::take(&mut frame.approximation);
+            ctx.apply_summary(&approximation, &binders);
+            ctx.frames[index].approximation = approximation;
         }
 
         return value;
@@ -1256,9 +1292,84 @@ fn compare_impl_inner(
     let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
-    ctx.stack_binders.push((ctx.binders.len(), binders));
+    let snapshot = instances.then(|| ctx.snapshot(&binders));
+    ctx.frames.push(StackFrame {
+        entered: ctx.binders.len(),
+        binders,
+        approximation: Summary::default(),
+        revisited: false,
+    });
 
-    let result = match (arena[lhs].clone(), arena[rhs].clone()) {
+    let mut rounds = 0;
+
+    let result = loop {
+        let result = compare_structure(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic);
+
+        // If it was revisited, the revisits were given its summary from the previous round, so
+        // it's computed again until this round's adds nothing to it
+        let Some(snapshot) = &snapshot else {
+            break result;
+        };
+
+        if !ctx.frames.last().unwrap().revisited || ctx.budget == Budget::GivingUp {
+            break result;
+        }
+
+        let summary = ctx.summary_since(arena, snapshot);
+        let frame = ctx.frames.last_mut().unwrap();
+        let mut next = frame.approximation.clone();
+        let keys: Vec<Var> = (0..frame.binders.len()).map(Var::Key).collect();
+        next.apply(&summary, &keys);
+        next.canonicalize();
+
+        if next == frame.approximation {
+            break result;
+        }
+
+        rounds += 1;
+
+        if rounds >= MAX_ROUNDS {
+            ctx.budget = Budget::GivingUp;
+            break Comparison::Invalid;
+        }
+
+        frame.approximation = next;
+        frame.revisited = false;
+        ctx.restore(snapshot);
+    };
+
+    ctx.stack.pop().unwrap();
+    ctx.frames.pop().unwrap();
+
+    // Inference candidates are collected as a side effect of comparing, so a comparison that
+    // collected any can't be skipped
+    // A comparison that's giving up doesn't have its actual result
+    let memo_key =
+        (memoize && ctx.candidates == candidates && ctx.budget != Budget::GivingUp).then_some(key);
+
+    match frame {
+        Frame::Exact(frame) => {
+            ctx.memo.exit(frame, key, memo_key, result);
+            let work = ctx.memo.take_work();
+            ctx.spend_many(work);
+        }
+        Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
+    }
+
+    result
+}
+
+/// Compares the types by their structure, once `compare_impl_inner` has entered the comparison.
+fn compare_structure(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    lhs: TypeId,
+    rhs: TypeId,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
+) -> Comparison {
+    match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
         (Type::Ref(lhs), _) => {
             compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
@@ -1377,17 +1488,13 @@ fn compare_impl_inner(
 
                 ctx.flipped = !ctx.flipped;
 
-                // The instances that were merged into another are checked along with it
                 let mut bounds = Vec::new();
 
                 for index in first..first + lhs.generics.len() {
-                    let binder = &ctx.binders[index];
-
-                    if binder.merged.is_none() {
-                        let instance = mem::take(&mut ctx.instances[binder.instance.unwrap()]);
-                        ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
-                        bounds.push(instance);
-                    }
+                    let instance = ctx.binders[index].instance.unwrap();
+                    let instance = mem::take(&mut ctx.instances[instance]);
+                    ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
+                    bounds.push(instance);
                 }
 
                 // There is an instantiation of each generic if every type that flows into it is
@@ -1426,23 +1533,12 @@ fn compare_impl_inner(
                                 None => (ctx.branch, ctx.local_branch),
                             };
 
-                            let mut envs = vec![(lower_env, upper_env)];
+                            ctx.lhs_env = lower_env;
+                            ctx.rhs_env = upper_env;
+                            let pair = compare_impl(arena, builtins, ctx, lower, upper, None, None);
 
-                            // Each missing bound is checked against the others like the original
-                            if instance.fresh.is_some() {
-                                envs.push((ctx.refresh(lower_env, &instance), upper_env));
-                                envs.push((lower_env, ctx.refresh(upper_env, &instance)));
-                            }
-
-                            for (lower_env, upper_env) in envs {
-                                ctx.lhs_env = lower_env;
-                                ctx.rhs_env = upper_env;
-                                let pair =
-                                    compare_impl(arena, builtins, ctx, lower, upper, None, None);
-
-                                if unmatched.is_none() {
-                                    result = max(result, pair);
-                                }
+                            if unmatched.is_none() {
+                                result = max(result, pair);
                             }
 
                             ctx.branch = branch;
@@ -1717,27 +1813,7 @@ fn compare_impl_inner(
         }
         (_, Type::Never) => Comparison::Invalid,
         (_, Type::Function(_)) => Comparison::Invalid,
-    };
-
-    ctx.stack.pop().unwrap();
-    ctx.stack_binders.pop().unwrap();
-
-    // Inference candidates are collected as a side effect of comparing, so a comparison that
-    // collected any can't be skipped
-    // A comparison that's giving up doesn't have its actual result
-    let memo_key =
-        (memoize && ctx.candidates == candidates && ctx.budget != Budget::GivingUp).then_some(key);
-
-    match frame {
-        Frame::Exact(frame) => {
-            ctx.memo.exit(frame, key, memo_key, result);
-            let work = ctx.memo.take_work();
-            ctx.spend_many(work);
-        }
-        Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
     }
-
-    result
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

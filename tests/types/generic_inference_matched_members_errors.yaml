@@ -8,6 +8,4 @@ diagnostics:
 - Unused type alias `Inline` at generic_inference_matched_members_errors.rue:15:6
 - Unused type alias `Revisited` at generic_inference_matched_members_errors.rue:16:6
 - Unused type alias `Other` at generic_inference_matched_members_errors.rue:17:6
-- Unused function `assign_through_the_revisited_alias` at generic_inference_matched_members_errors.rue:22:4
-- Cannot assign `Recursive` to `Revisited` without a cast, since they are semantically different at generic_inference_matched_members_errors.rue:23:33
-- Cannot assign `Recursive` to `Inline` without a cast, since they are semantically different at generic_inference_matched_members_errors.rue:24:27
+- Unused function `assign_through_the_revisited_alias` at generic_inference_matched_members_errors.rue:24:4
