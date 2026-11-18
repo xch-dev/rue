@@ -8,8 +8,8 @@ use rue_diagnostic::Name;
 
 use crate::{
     Alias, Apply, Atom, AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind,
-    Comparison, FunctionParameter, FunctionType, Generic, Inference, InferenceCandidates, Pair,
-    Struct, Type, TypeId, Union, add_expected_bounds, check, compare, compare_with_inference,
+    Choices, Comparison, FunctionParameter, FunctionType, Generic, Inference, InferenceCandidates,
+    Pair, Struct, Type, TypeId, Union, add_expected_bounds, check, compare, compare_with_inference,
     extract_atoms, extract_functions, extract_pairs, extract_structs, infer_from_expected,
     is_non_contractive, resolve_inference, resolve_inference_with_bounds,
     resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
@@ -1942,6 +1942,87 @@ mod inference {
         assert_eq!(infer.matched_candidates(b).unwrap().upper, vec![]);
         assert_eq!(candidates(&infer, c).upper, vec![int]);
         assert_eq!(infer.matched_candidates(c).unwrap().upper, vec![]);
+    }
+
+    #[test]
+    fn same_bound_under_other_members_is_passed_on_again() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `A ≤ Int` was collected twice, once under a member that didn't match and once under none.
+        // Both are passed on to `B` through `B ≤ A`, since skipping the second as the same bound
+        // would leave `B` only the one that doesn't hold
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        infer.push(a, CandidateKind::Lower, b, Vec::new());
+
+        let existing = vec![(a, int, vec![unmatched]), (a, int, Vec::new())];
+        pass_upper_bounds(
+            &mut db.arena,
+            &db.builtins,
+            &mut infer,
+            Vec::new(),
+            existing,
+            |_| true,
+        );
+
+        assert_eq!(candidates(&infer, b).upper, vec![int, int]);
+        assert_eq!(infer.matched_candidates(b).unwrap().upper, vec![int]);
+    }
+
+    #[test]
+    fn choices_leave_out_a_member_that_bounds_when_another_holds_without() {
+        let mut choices = Choices::default();
+
+        // Both members are assignable, but only the first bounded a generic being instantiated,
+        // so its bounds aren't needed (`A ≥ nil` when comparing `nil` with `A | nil`)
+        let choice = choices.open(None, 2);
+        let bounded = BranchId { choice, member: 0 };
+        let holding = BranchId { choice, member: 1 };
+        choices.record(bounded, Comparison::Assign);
+        choices.mark_bounded(bounded);
+        choices.record(holding, Comparison::Assign);
+        assert!(!choices.matched_so_far(bounded));
+        assert!(choices.matched_so_far(holding));
+
+        // One that only casts doesn't hold it, so the member that bounds is kept
+        let choice = choices.open(None, 2);
+        let bounded = BranchId { choice, member: 0 };
+        let casting = BranchId { choice, member: 1 };
+        choices.record(bounded, Comparison::Assign);
+        choices.mark_bounded(bounded);
+        choices.record(casting, Comparison::Cast);
+        assert!(choices.matched_so_far(bounded));
+        assert!(!choices.matched_so_far(casting));
+
+        // A member that's still being compared holds, and so does what's nested in it
+        let outer = choices.open(None, 2);
+        let in_progress = BranchId {
+            choice: outer,
+            member: 0,
+        };
+        let inner = choices.open(Some(in_progress), 2);
+        let matched = BranchId {
+            choice: inner,
+            member: 0,
+        };
+        choices.record(matched, Comparison::Assign);
+        choices.record(
+            BranchId {
+                choice: inner,
+                member: 1,
+            },
+            Comparison::Invalid,
+        );
+        assert!(choices.matched_so_far(matched));
+        assert!(!choices.matched_so_far(BranchId {
+            choice: inner,
+            member: 1,
+        }));
     }
 
     #[test]

@@ -1,0 +1,97 @@
+struct Box<T> {
+    value: T,
+}
+
+fn first<T>(value: T | (T, Int) | nil) -> T {
+    unchecked_cast(value)
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+// The function matches the `T` member, so what comparing its runtime structure with `(T, Int)`
+// gives `T` is left out (#364)
+test fn function_matches_the_generic_member() -> Int {
+    let function = first(increment);
+    function(1)
+}
+
+fn unbox<T>(value: Box<T> | (T, T)) -> T {
+    unchecked_cast(value)
+}
+
+// `Box<5>` matches `Box<T>`, and only casts to `(T, T)` as the pair `(5 . nil)`, so the `nil` that
+// member gives `T` is left out, and the expected type keeps `T` as `5` (#364)
+test fn struct_matches_its_own_member() -> Int {
+    let value: Box<5> = Box::<5> { value: 5 };
+    let result: 5 = unbox(value);
+    result
+}
+
+fn either<A>(value: A) -> (A, Int) | (Int, A) {
+    (value, 1)
+}
+
+// `(A, Int)` matches `(T, Int)`, so the bound `A ≤ Int` from `(Int, T)`, which doesn't match, isn't
+// checked against `T ≤ A` (#360)
+test fn generic_function_with_a_union_return_is_assignable_to_itself() -> Int {
+    let function: fn<T>(value: T) -> (T, Int) | (Int, T) = either;
+    function(1).first
+}
+
+fn unwrap<A>(value: A | nil) -> A {
+    unchecked_cast(value)
+}
+
+// `nil` is held by the `nil` member without bounding `A`, so the bound `A ≥ nil` from the `A`
+// member isn't checked against the return type's `A ≤ Int` (#360)
+test fn generic_function_with_a_union_parameter_is_assignable() -> Int {
+    let function: fn(a: Int | nil) -> Int = unwrap;
+    function(1)
+}
+
+fn ident<A>(x: A) -> (A, Int) {
+    (x, 1)
+}
+
+fn pick<U>(f: fn(x: Int) -> (Int, Int) | (U, Bytes)) -> fn(x: Int) -> (Int, Int) | (U, Bytes) {
+    f
+}
+
+// Guard: `U`'s only candidate, `Int`, comes from the `(U, Bytes)` member, which doesn't match, so
+// it's kept, since a generic whose candidates all come from members that didn't match keeps them
+test fn candidate_only_from_a_member_that_doesnt_match() -> Int {
+    let function = pick(ident);
+    function(5).first
+}
+
+fn apply<U>(f: fn(a: Int | nil) -> U) -> U {
+    f(1)
+}
+
+// The same when it's passed: `U` is inferred from `A`'s instantiation and the bounds checked for
+// it, which leave out `A ≥ nil`, so it's `Int` rather than `Int | nil`
+test fn generic_function_with_a_union_parameter_is_inferred_through() -> Int {
+    let value: Int = apply(unwrap);
+    value + 1
+}
+
+type Same = fn<U>(u: U) -> U;
+type Other = fn<V>(v: V) -> V;
+
+fn take_after<T>(_a: Same, b: T | Same) -> T {
+    unchecked_cast(b)
+}
+
+fn take_before<T>(b: T | Same, _a: Same) -> T {
+    unchecked_cast(b)
+}
+
+// Whether the `Same` member collects bounds doesn't depend on whether comparing `Other` with it was
+// reused from the memo, so both orders are assignable
+test fn member_bounds_dont_depend_on_the_memo() -> Int {
+    let _after: fn(a: Other, b: Other) -> Int = take_after;
+    let _before: fn(b: Other, a: Other) -> Int = take_before;
+    1
+}

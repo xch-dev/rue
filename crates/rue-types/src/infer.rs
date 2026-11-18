@@ -49,7 +49,7 @@ pub struct Inference {
     branches: IndexMap<TypeId, CandidateBranches>,
     /// The unions that values were compared against while collecting the candidates, indexed by
     /// `BranchId::choice`.
-    choices: Vec<Choice>,
+    choices: Choices,
 }
 
 /// One member of a union that a value was compared against while inferring, or the fallback that
@@ -65,6 +65,11 @@ pub(crate) struct BranchId {
 /// structure with the union when no member holds the function (#349).
 pub(crate) const FALLBACK: usize = usize::MAX;
 
+/// The unions that values were compared against, indexed by `BranchId::choice`, and what each of
+/// their members gave, which decides which members' candidates or bounds hold.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Choices(Vec<Choice>);
+
 /// A comparison of a value with the members of a union, any one of which can hold it.
 #[derive(Debug, Clone)]
 struct Choice {
@@ -74,6 +79,9 @@ struct Choice {
     members: Vec<Option<Comparison>>,
     /// What the fallback gave, if it was compared.
     fallback: Option<Comparison>,
+    /// The members (with the fallback last) that collected bounds for a generic being
+    /// instantiated, which are only used by `Choices::matched_so_far`.
+    bounded: Vec<bool>,
 }
 
 /// The union members that each of a generic's candidates was collected under, in the same order
@@ -120,7 +128,7 @@ impl Inference {
                 .collect(),
             generics,
             renamed: FxHashMap::default(),
-            choices: Vec::new(),
+            choices: Choices::default(),
         }
     }
 
@@ -146,7 +154,7 @@ impl Inference {
     pub fn matched_candidates(&self, generic: TypeId) -> Option<InferenceCandidates> {
         let candidates = self.generics.get(&generic)?;
         let branches = &self.branches[&generic];
-        let results = self.choice_results();
+        let results = self.choices.results();
 
         let matched = |kind: CandidateKind, types: &[TypeId]| -> Vec<TypeId> {
             types
@@ -155,7 +163,7 @@ impl Inference {
                 .filter(|(_, branches)| {
                     branches
                         .iter()
-                        .all(|&branch| self.matched_with(&results, branch))
+                        .all(|&branch| self.choices.matched_with(&results, branch))
                 })
                 .map(|(&ty, _)| ty)
                 .collect()
@@ -166,6 +174,25 @@ impl Inference {
             upper: matched(CandidateKind::Upper, &candidates.upper),
             held: matched(CandidateKind::Held, &candidates.held),
         })
+    }
+
+    /// The inference with each generic's candidates replaced by those that hold
+    /// (`Inference::matched_candidates`), which is what the generics are resolved from. A generic
+    /// whose candidates all come from union members that didn't match keeps every one of them, as
+    /// in `pick(ident)` with `fn pick<U>(f: fn(x: Int) -> (Int, Int) | (U, Bytes))`, where `U`'s
+    /// only candidate comes from the `(U, Bytes)` member.
+    pub(crate) fn keep_matched(&self) -> Inference {
+        let mut kept = self.clone();
+
+        for (&generic, candidates) in &mut kept.generics {
+            let matched = self.matched_candidates(generic).unwrap();
+
+            if matched != InferenceCandidates::default() {
+                *candidates = matched;
+            }
+        }
+
+        kept
     }
 
     /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
@@ -197,14 +224,15 @@ impl Inference {
     /// separately, so that they can be put in the order the arguments come in, whatever order
     /// they're compiled in.
     pub fn append(&mut self, other: &Inference) {
-        let offset = self.choices.len();
+        let offset = self.choices.0.len();
         let shift = |branch: &BranchId| BranchId {
             choice: branch.choice + offset,
             member: branch.member,
         };
 
         self.choices
-            .extend(other.choices.iter().map(|choice| Choice {
+            .0
+            .extend(other.choices.0.iter().map(|choice| Choice {
                 parent: choice.parent.as_ref().map(shift),
                 ..choice.clone()
             }));
@@ -257,73 +285,36 @@ impl Inference {
     /// Starts comparing a value with a union's members, under the given member of an enclosing
     /// union if there is one, and returns the index of the new choice.
     pub(crate) fn open_choice(&mut self, parent: Option<BranchId>, members: usize) -> usize {
-        self.choices.push(Choice {
-            parent,
-            members: vec![None; members],
-            fallback: None,
-        });
-        self.choices.len() - 1
+        self.choices.open(parent, members)
     }
 
     /// Records what comparing the value with a union's member (or its fallback) gave.
     pub(crate) fn record(&mut self, branch: BranchId, result: Comparison) {
-        let choice = &mut self.choices[branch.choice];
-
-        if branch.member == FALLBACK {
-            choice.fallback = Some(result);
-        } else {
-            choice.members[branch.member] = Some(result);
-        }
+        self.choices.record(branch, result);
     }
 
-    /// Whether the candidates collected under the union member hold (see `Inference::matched_with`).
+    /// Records that the union member (or the fallback) collected bounds for a generic being
+    /// instantiated (see `Choices::mark_bounded`).
+    pub(crate) fn mark_bounded(&mut self, branch: BranchId) {
+        self.choices.mark_bounded(branch);
+    }
+
+    /// Whether the candidates collected under the union member hold (see `Choices::matched_with`).
     #[cfg(test)]
     pub(crate) fn matched(&self, branch: BranchId) -> bool {
-        self.matched_with(&self.choice_results(), branch)
+        self.choices.matched_with(&self.choices.results(), branch)
     }
 
-    /// Whether the candidates collected under the union member hold, given `choice_results`: the
-    /// member gave the choice's result, the best that any member or the fallback gave, and the
-    /// member the choice is nested in holds too. (The fallback is only compared when no member is
-    /// `Assign`, so it only gives the best result when none is.) When nothing is better than
-    /// `Invalid`, every member gave `Invalid`, so they all hold, and what a comparison that fails
-    /// reports stays the same.
-    fn matched_with(&self, results: &[Option<Comparison>], branch: BranchId) -> bool {
-        let choice = &self.choices[branch.choice];
-
-        let result = if branch.member == FALLBACK {
-            choice.fallback
-        } else {
-            choice.members[branch.member]
-        };
-
-        result.is_some() && result == results[branch.choice]
+    /// What each choice gave (see `Choices::results`), for `Inference::holds`.
+    pub(crate) fn choice_results(&self) -> Vec<Option<Comparison>> {
+        self.choices.results()
     }
 
-    /// The result of each choice, the best that any member or the fallback gave, or `None` if the
-    /// member it's nested in doesn't hold. A choice is opened after the one it's nested in, so they
-    /// can be worked out in order.
-    fn choice_results(&self) -> Vec<Option<Comparison>> {
-        let mut results: Vec<Option<Comparison>> = Vec::with_capacity(self.choices.len());
-
-        for choice in &self.choices {
-            let parent_holds = choice
-                .parent
-                .is_none_or(|parent| self.matched_with(&results, parent));
-
-            let best = choice
-                .members
-                .iter()
-                .chain([&choice.fallback])
-                .flatten()
-                .copied()
-                .min()
-                .unwrap_or(Comparison::Invalid);
-
-            results.push(parent_holds.then_some(best));
-        }
-
-        results
+    /// Whether a candidate collected under the union members holds, given `choice_results`.
+    pub(crate) fn holds(&self, results: &[Option<Comparison>], branches: &[BranchId]) -> bool {
+        branches
+            .iter()
+            .all(|&branch| self.choices.matched_with(results, branch))
     }
 
     pub(crate) fn is_target(&self, generic: TypeId) -> bool {
@@ -341,6 +332,137 @@ impl Inference {
     /// were collected under, so a candidate is added with `Inference::push`.
     pub(crate) fn candidates_mut(&mut self, generic: TypeId) -> &mut InferenceCandidates {
         self.generics.get_mut(&generic).unwrap()
+    }
+}
+
+impl Choices {
+    /// Starts comparing a value with a union's members, under the given member of an enclosing
+    /// union if there is one, and returns the index of the new choice.
+    pub(crate) fn open(&mut self, parent: Option<BranchId>, members: usize) -> usize {
+        self.0.push(Choice {
+            parent,
+            members: vec![None; members],
+            fallback: None,
+            bounded: vec![false; members + 1],
+        });
+        self.0.len() - 1
+    }
+
+    /// Records what comparing the value with a union's member (or its fallback) gave.
+    pub(crate) fn record(&mut self, branch: BranchId, result: Comparison) {
+        let choice = &mut self.0[branch.choice];
+
+        if branch.member == FALLBACK {
+            choice.fallback = Some(result);
+        } else {
+            choice.members[branch.member] = Some(result);
+        }
+    }
+
+    /// Records that the union member (or the fallback) collected bounds for a generic being
+    /// instantiated.
+    pub(crate) fn mark_bounded(&mut self, branch: BranchId) {
+        let choice = &mut self.0[branch.choice];
+        let index = branch.member.min(choice.members.len());
+        choice.bounded[index] = true;
+    }
+
+    /// Whether the candidates collected under the union member hold, given `Choices::results`: the
+    /// member gave the choice's result, the best that any member or the fallback gave, and the
+    /// member the choice is nested in holds too. (The fallback is only compared when no member is
+    /// `Assign`, so it only gives the best result when none is.) When nothing is better than
+    /// `Invalid`, every member gave `Invalid`, so they all hold, and what a comparison that fails
+    /// reports stays the same.
+    pub(crate) fn matched_with(&self, results: &[Option<Comparison>], branch: BranchId) -> bool {
+        let choice = &self.0[branch.choice];
+
+        let result = if branch.member == FALLBACK {
+            choice.fallback
+        } else {
+            choice.members[branch.member]
+        };
+
+        result.is_some()
+            && result == results[branch.choice]
+            && !self.is_held(branch, result.unwrap())
+    }
+
+    /// Whether the union member collected bounds for a generic being instantiated while another
+    /// member that gave the same, best, result didn't. That one holds the value whatever the
+    /// generic is, so the bounds, and what checking them collects, aren't needed, such as `A ≥ nil`
+    /// when comparing `nil` with `A | nil` (#360).
+    fn is_held(&self, branch: BranchId, best: Comparison) -> bool {
+        let choice = &self.0[branch.choice];
+        let index = branch.member.min(choice.members.len());
+
+        choice.bounded[index]
+            && choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .zip(&choice.bounded)
+                .any(|(&other, &bounded)| other == Some(best) && !bounded)
+    }
+
+    /// Whether what's collected under the union member holds so far, while comparisons may still be
+    /// in progress: the member gave the best result of its choice's members compared so far, and
+    /// the member its choice is nested in holds too. A member that's still being compared holds,
+    /// since it hasn't given a result yet. This is for the bounds of a generic being instantiated,
+    /// which are checked once the function comparison that bound it finishes, which can be in the
+    /// middle of comparing an enclosing union's member.
+    pub(crate) fn matched_so_far(&self, branch: BranchId) -> bool {
+        let choice = &self.0[branch.choice];
+
+        let result = if branch.member == FALLBACK {
+            choice.fallback
+        } else {
+            choice.members[branch.member]
+        };
+
+        let Some(result) = result else {
+            return true;
+        };
+
+        let best = choice
+            .members
+            .iter()
+            .chain([&choice.fallback])
+            .flatten()
+            .copied()
+            .min()
+            .unwrap_or(Comparison::Invalid);
+
+        result == best
+            && !self.is_held(branch, best)
+            && choice
+                .parent
+                .is_none_or(|parent| self.matched_so_far(parent))
+    }
+
+    /// The result of each choice, the best that any member or the fallback gave, or `None` if the
+    /// member it's nested in doesn't hold. A choice is opened after the one it's nested in, so they
+    /// can be worked out in order.
+    pub(crate) fn results(&self) -> Vec<Option<Comparison>> {
+        let mut results: Vec<Option<Comparison>> = Vec::with_capacity(self.0.len());
+
+        for choice in &self.0 {
+            let parent_holds = choice
+                .parent
+                .is_none_or(|parent| self.matched_with(&results, parent));
+
+            let best = choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .flatten()
+                .copied()
+                .min()
+                .unwrap_or(Comparison::Invalid);
+
+            results.push(parent_holds.then_some(best));
+        }
+
+        results
     }
 }
 

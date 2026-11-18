@@ -299,15 +299,16 @@ pub(crate) fn pass_upper_bounds(
     // again can create the same type with a new id (such as a union being substituted), which
     // would otherwise go around a cycle of generics forever.
     //
-    // A bound that's skipped this way keeps the union members of the one it's the same as, so if
-    // the two were collected under different members, the one that's kept holds only under its
-    // own. Nothing reads which members a bound was collected under here yet; the step that leaves
-    // out the bounds of members that didn't match (#362) has to account for it.
-    let mut given: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
+    // It's skipped unless it holds and the one it's the same as doesn't, since the bounds of union
+    // members that didn't match are left out (`Inference::keep_matched`). So each generic is given
+    // at most two of the same bound, and a cycle still ends.
+    let results = infer.choice_results();
+    let mut given: HashMap<TypeId, Vec<(TypeId, bool)>> = HashMap::new();
 
-    for ((generic, upper, _), add) in &stack {
+    for ((generic, upper, branches), add) in &stack {
         if !add {
-            given.entry(*generic).or_default().push(*upper);
+            let holds = infer.holds(&results, branches);
+            given.entry(*generic).or_default().push((*upper, holds));
         }
     }
 
@@ -318,17 +319,20 @@ pub(crate) fn pass_upper_bounds(
         if add {
             let given = given.entry(generic).or_default();
 
-            if given.contains(&upper)
-                || given.iter().any(|&other| {
-                    compare_renamed(arena, builtins, &renamed, other, upper) == Comparison::Assign
-                        && compare_renamed(arena, builtins, &renamed, upper, other)
+            let holds = infer.holds(&results, &branches);
+
+            if given.iter().any(|&(other, other_holds)| {
+                (other_holds || !holds)
+                    && (other == upper
+                        || compare_renamed(arena, builtins, &renamed, other, upper)
                             == Comparison::Assign
-                })
-            {
+                            && compare_renamed(arena, builtins, &renamed, upper, other)
+                                == Comparison::Assign)
+            }) {
                 continue;
             }
 
-            given.push(upper);
+            given.push((upper, holds));
 
             if expanded[&generic].is_some_and(|lower| {
                 compare_renamed(arena, builtins, &renamed, lower, upper) != Comparison::Assign
@@ -396,6 +400,10 @@ fn expanded_lower_bounds(
     arena: &mut Arena<Type>,
     infer: &Inference,
 ) -> HashMap<TypeId, Option<TypeId>> {
+    // Only the lower bounds collected under union members that matched are checked against, as
+    // they're the ones the generics are resolved from (see `Inference::keep_matched`)
+    let infer = &infer.keep_matched();
+
     let edges: IndexMap<TypeId, Vec<TypeId>> = infer
         .generics
         .iter()

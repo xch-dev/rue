@@ -36,6 +36,9 @@ pub fn resolve_inference_with_fallback(
     infer: &Inference,
     fallback: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
+    // Only the candidates collected under union members that matched are resolved from (#364)
+    let infer = &infer.keep_matched();
+
     let references: HashMap<TypeId, HashSet<TypeId>> = infer
         .generics
         .iter()
