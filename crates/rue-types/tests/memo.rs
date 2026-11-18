@@ -869,15 +869,18 @@ fn is_step_limit(payload: &(dyn Any + Send)) -> bool {
 /// with it, for generic functions that reference their generics inside recursive types).
 const STEP_LIMIT: usize = 20_000;
 
+/// A random module, and the cases to compare in it.
+struct Module {
+    db: Types,
+    aliases: Vec<Declared>,
+    /// Two types, and a target with a generic being inferred.
+    cases: Vec<[TypeId; 4]>,
+}
+
 /// Generates a random module from the seed, and the cases to compare in it: two types, and a target
 /// with a generic being inferred, such as a parameter of type `(T, rhs)`. Returns `None` if the
 /// module is skipped (see `Generator::module`).
-fn cases(
-    seed: u64,
-    queries: usize,
-    contractive_only: bool,
-    nesting: usize,
-) -> Option<(Types, Vec<[TypeId; 4]>)> {
+fn cases(seed: u64, queries: usize, contractive_only: bool, nesting: usize) -> Option<Module> {
     let mut db = Types::new();
     let mut generator = Generator {
         db: &mut db,
@@ -907,7 +910,8 @@ fn cases(
         })
         .collect();
 
-    Some((db, cases))
+    let aliases = generator.aliases;
+    Some(Module { db, aliases, cases })
 }
 
 /// Compares random types with the memo on and off, and panics if any result differs.
@@ -920,7 +924,8 @@ fn differential(
     let mut summary = Summary::default();
 
     for seed in seeds {
-        let Some((mut db, cases)) = cases(seed, queries, contractive_only, nesting) else {
+        let Some(Module { mut db, cases, .. }) = cases(seed, queries, contractive_only, nesting)
+        else {
             summary.skipped_modules += 1;
             continue;
         };
@@ -1059,10 +1064,26 @@ fn nested_baseline(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Stri
     let mut text = String::new();
 
     for seed in seeds {
-        let Some((mut db, cases)) = cases(seed, queries, true, HEAVY_NESTING) else {
+        let Some(Module {
+            mut db,
+            aliases,
+            cases,
+        }) = cases(seed, queries, true, HEAVY_NESTING)
+        else {
             writeln!(text, "{seed}: skipped").unwrap();
             continue;
         };
+
+        // The aliases that the cases refer to by name
+        for Declared { alias, .. } in aliases {
+            let Type::Alias(Alias { inner, .. }) = db.arena[alias] else {
+                unreachable!();
+            };
+            let name = stringify(&mut db.arena, alias);
+            let definition = stringify(&mut db.arena, inner);
+            let line = format!("{seed}: type {name} = {definition}");
+            writeln!(text, "{}", renumber_generics(&line)).unwrap();
+        }
 
         for (index, [lhs, rhs, target, generic]) in cases.into_iter().enumerate() {
             let names = [lhs, rhs, target].map(|id| stringify(&mut db.arena, id));
