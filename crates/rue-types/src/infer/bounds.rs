@@ -109,6 +109,9 @@ pub fn resolve_inference_with_bounds(
 /// in its upper bounds. An upper bound that's just a generic is left out, since resolution already
 /// resolves through it.
 ///
+/// It's repeated until nothing new is passed on, so that a lower bound passed to a generic reaches
+/// the generics in that generic's compound upper bounds too.
+///
 /// Each lower bound that's passed on is collected under the union members its upper bound was. The
 /// lower bounds it comes from are taken together (`expanded_lower_bounds`), whatever members they
 /// were collected under.
@@ -124,43 +127,72 @@ pub(crate) fn pass_lower_bounds(
         .copied()
         .filter(|&generic| infer.passes_bounds(generic))
         .collect();
-    let expanded = expanded_lower_bounds(arena, infer);
-    let mut passed = Vec::new();
+    let renamed = infer.renamed.clone();
 
-    for (&generic, candidates) in &infer.generics {
-        let Some(lower) = expanded[&generic] else {
-            continue;
-        };
+    // A lower bound that's passed on can reach a generic with a compound upper bound of its own,
+    // as in `map2(first_of, first_of, ((1, 2), (3, 4)))`, so this is repeated until nothing new is
+    // passed on. Each round reaches one compound further, so it takes at most one round per
+    // generic.
+    for _ in 0..infer.generics.len() {
+        let expanded = expanded_lower_bounds(arena, infer);
+        let mut passed = Vec::new();
 
-        for (index, &upper) in candidates.upper.iter().enumerate() {
-            if infer.passes_bounds(upper)
-                || !free_generics(arena, upper)
-                    .into_iter()
-                    .any(|other| infer.passes_bounds(other) && accepts(other))
-            {
+        for (&generic, candidates) in &infer.generics {
+            let Some(lower) = expanded[&generic] else {
                 continue;
-            }
+            };
 
-            let mut inner = Inference::new(targets.iter().copied());
-            compare_with_inference(arena, builtins, lower, upper, Some(&mut inner));
-            let branches = infer.branches(generic, CandidateKind::Upper, index);
-
-            for (&other, implied) in &inner.generics {
-                if !accepts(other) {
+            for (index, &upper) in candidates.upper.iter().enumerate() {
+                if infer.passes_bounds(upper)
+                    || !free_generics(arena, upper)
+                        .into_iter()
+                        .any(|other| infer.passes_bounds(other) && accepts(other))
+                {
                     continue;
                 }
 
-                for kind in [CandidateKind::Lower, CandidateKind::Held] {
-                    for &ty in implied.list(kind) {
-                        passed.push((other, kind, ty, branches.to_vec()));
+                let mut inner = Inference::new(targets.iter().copied());
+                compare_with_inference(arena, builtins, lower, upper, Some(&mut inner));
+                let branches = infer.branches(generic, CandidateKind::Upper, index);
+
+                for (&other, implied) in &inner.generics {
+                    if !accepts(other) {
+                        continue;
+                    }
+
+                    for kind in [CandidateKind::Lower, CandidateKind::Held] {
+                        for &ty in implied.list(kind) {
+                            passed.push((other, kind, ty, branches.to_vec()));
+                        }
                     }
                 }
             }
         }
-    }
 
-    for (generic, kind, ty, branches) in passed {
-        infer.push(generic, kind, ty, branches);
+        // A bound the generic already has, or one that's equivalent to it (assignable both ways),
+        // isn't passed on again, so that the rounds stop
+        let mut added = false;
+
+        for (generic, kind, ty, branches) in passed {
+            let existing = infer.generics[&generic].list(kind);
+
+            if existing.contains(&ty)
+                || existing.iter().any(|&other| {
+                    compare_renamed(arena, builtins, &renamed, other, ty) == Comparison::Assign
+                        && compare_renamed(arena, builtins, &renamed, ty, other)
+                            == Comparison::Assign
+                })
+            {
+                continue;
+            }
+
+            infer.push(generic, kind, ty, branches);
+            added = true;
+        }
+
+        if !added {
+            break;
+        }
     }
 }
 

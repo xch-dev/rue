@@ -33,3 +33,13 @@ fn first_of_three<T>(triple: (T, (T, T))) -> T {
 test fn deeper_compound() -> Int {
     map(first_of_three, (1, (2, 3))) + 1
 }
+
+fn map2<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+// What `A` passes to `first_of`'s instance reaches `B`, and then the next instance, so `C` is
+// inferred through two compound upper bounds
+test fn through_two_compound_upper_bounds() -> Int {
+    map2(first_of, first_of, ((1, 2), (3, 4))) + 1
+}
