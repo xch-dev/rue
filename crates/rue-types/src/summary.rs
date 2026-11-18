@@ -149,11 +149,12 @@ impl Summary {
     /// components of each shape are kept. That keeps every pair of bounds that can be checked
     /// against each other, up to renaming the local binders: two bounds from one copy (with the
     /// same local binders), and two from different copies (with different ones). A third copy only
-    /// adds more pairs like those. A component that's too alike to be renumbered exactly (see
-    /// `shape`) can be renumbered another way when it's canonicalized again. Keeping two copies
-    /// relies on checking a pair not adding bounds to other
-    /// binders, which it doesn't, since the instances outside of the function whose bounds are
-    /// being checked are rigid while checking them.
+    /// adds more pairs like those. Keeping two copies relies on checking a pair not adding bounds
+    /// to other binders, which it doesn't, since the instances outside of the function whose bounds
+    /// are being checked are rigid while checking them.
+    ///
+    /// A component that's too alike to be renumbered exactly (see `shape`) can be renumbered
+    /// another way when it's canonicalized again.
     pub(crate) fn canonicalize(&mut self) {
         let mut parents: Vec<usize> = (0..self.locals).collect();
 
