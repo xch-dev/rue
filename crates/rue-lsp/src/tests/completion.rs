@@ -535,3 +535,31 @@ mod inner {
         "#]],
     );
 }
+
+#[test]
+fn test_complete_super_members_in_a_type() {
+    // A file's sibling files and private types are offered after `super::` in a type too
+    let project = TestProject::new(&[
+        (
+            "main.rue",
+            r#"
+type Private = Int;
+
+mod inner {
+    fn main() -> Int {
+        let x: super::$0 = 1;
+        x
+    }
+}
+"#,
+        ),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    expect![[r#"
+        super [Module]
+        inner [Module]
+        utils [Module]
+        Private [Struct] Int
+    "#]]
+    .assert_eq(&project.completions());
+}

@@ -16,3 +16,8 @@ mod b {
         1
     }
 }
+
+// There's no parent module of this file, so this is only reported once
+fn alone() -> Int {
+    super
+}

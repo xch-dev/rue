@@ -2310,3 +2310,27 @@ fn super_imports_of_a_blocked_name_are_not_reported_again() {
 
     assert_eq!(compiled.errors(), ["6:19 PrivateSymbol(\"X\", \"m\")"]);
 }
+
+#[test]
+fn types_in_inline_modules_use_super() {
+    let compiled = compile(
+        "
+        type T = Int;
+
+        mod a {
+            export type U = super::T;
+
+            export struct S {
+                x: super::T,
+            }
+        }
+
+        fn main() -> a::U {
+            a::S { x: 1 }.x
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.type_origin("a::U"), "a");
+}

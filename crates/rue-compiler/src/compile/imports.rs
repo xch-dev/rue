@@ -212,30 +212,41 @@ struct CachedPath {
     private_segments: Vec<usize>,
 }
 
+/// The imports in each module, along with how deeply each module's scope is nested in the files'
+/// modules (a file's is 0, and an inline module's is one more than the module it's in).
 fn flatten_imports(
     ctx: &mut Compiler,
     top_level_modules: Vec<SymbolId>,
-) -> Vec<(ScopeId, ImportId)> {
+) -> (Vec<(ScopeId, ImportId)>, HashMap<ScopeId, usize>) {
     let mut imports = Vec::new();
-    let mut stack = vec![(None, top_level_modules)];
+    let mut depths = HashMap::new();
+    let mut stack = vec![(None, 0, top_level_modules)];
 
-    while let Some((scope, modules)) = stack.pop() {
+    while let Some((scope, depth, modules)) = stack.pop() {
         if let Some(scope) = scope {
+            depths.insert(scope, depth);
+
             for import in ctx.scope(scope).imports() {
                 imports.push((scope, import));
             }
         }
+
+        let depth = if scope.is_some() { depth + 1 } else { 0 };
 
         for module in modules {
             let Symbol::Module(module) = ctx.symbol(module).clone() else {
                 unreachable!();
             };
 
-            stack.push((Some(module.scope), module.declarations.modules.clone()));
+            stack.push((
+                Some(module.scope),
+                depth,
+                module.declarations.modules.clone(),
+            ));
         }
     }
 
-    imports
+    (imports, depths)
 }
 
 pub fn resolve_imports(
@@ -244,12 +255,13 @@ pub fn resolve_imports(
     cache: &mut ImportCache,
     diagnostics: bool,
 ) {
-    let mut imports = flatten_imports(ctx, all_modules);
+    let (mut imports, module_depths) = flatten_imports(ctx, all_modules);
     imports.sort_by(|(_, left), (_, right)| compare_imports(ctx.import(*left), ctx.import(*right)));
     let mut resolution = Resolution {
         diagnostics,
         named_imports: HashMap::new(),
         glob_imports: HashMap::new(),
+        module_depths,
         deferred: Vec::new(),
         private_names: Vec::new(),
     };
@@ -293,8 +305,9 @@ pub fn resolve_imports(
         }
 
         // Nothing else can be resolved, so the lookups that are waiting for a nearer scope to
-        // bring in a name are made without waiting. The outermost go first, since the imports
-        // that a lookup waits for are in its own scope or an enclosing one. A forced lookup can
+        // bring in a name are made without waiting. The outermost modules' go first, since the
+        // imports that a lookup waits for are in its own module or one that it's in (through
+        // `super`). A forced lookup can
         // still be wrong if the scopes wait on each other, which is checked once they're all
         // resolved.
         let Some(depth) = resolution.deferred.iter().map(|&(depth, _)| depth).min() else {
@@ -561,7 +574,9 @@ struct Resolution {
     named_imports: HashMap<ScopeId, HashMap<String, Vec<ImportId>>>,
     /// The glob imports into each scope.
     glob_imports: HashMap<ScopeId, Vec<ImportId>>,
-    /// The imports with a lookup that's waiting in this pass, and the depth of their scopes.
+    /// How deeply each module's scope is nested (see [`flatten_imports`]).
+    module_depths: HashMap<ScopeId, usize>,
+    /// The imports with a lookup that's waiting in this pass, and the depth of their modules.
     deferred: Vec<(usize, ImportId)>,
     /// The names that named imports found only private items for, with the scope they're
     /// imported into and the namespaces the private items are in.
@@ -594,15 +609,8 @@ impl Resolution {
         self.imports_of(scope, name).contains(&importer)
     }
 
-    fn defer(&mut self, ctx: &Compiler, scope: ScopeId, import: ImportId) {
-        let mut depth = 0;
-        let mut current = ctx.scope(scope).parent();
-
-        while let Some(scope) = current {
-            depth += 1;
-            current = ctx.scope(scope).parent();
-        }
-
+    fn defer(&mut self, scope: ScopeId, import: ImportId) {
+        let depth = self.module_depths.get(&scope).copied().unwrap_or_default();
         self.deferred.push((depth, import));
     }
 }
@@ -677,7 +685,7 @@ fn lookup_member(
         return Lookup::Undetermined;
     }
 
-    match ctx.module_member(scope, namespace, name) {
+    match ctx.sibling_item(scope, namespace, name) {
         Some((item, via)) => Lookup::Found(item, via),
         None => Lookup::NotFound,
     }
@@ -758,7 +766,7 @@ fn resolve_import(
             ) {
                 Lookup::Found(module, via) => Some((module, via, true)),
                 Lookup::Undetermined => {
-                    resolution.defer(ctx, import_scope, import_id);
+                    resolution.defer(import_scope, import_id);
                     return false;
                 }
                 Lookup::NotFound => None,
@@ -775,7 +783,7 @@ fn resolve_import(
             ) {
                 Lookup::Found(module, via) => module.symbol().map(|module| (module, via, true)),
                 Lookup::Undetermined => {
-                    resolution.defer(ctx, import_scope, import_id);
+                    resolution.defer(import_scope, import_id);
                     return false;
                 }
                 Lookup::NotFound => None,
@@ -910,7 +918,7 @@ fn resolve_import(
                         }
 
                         if !force && resolution.may_bring_in(source_scope, &name, import_id) {
-                            resolution.defer(ctx, import_scope, import_id);
+                            resolution.defer(import_scope, import_id);
                             continue;
                         }
 
@@ -1068,7 +1076,7 @@ fn resolve_import(
                     .collect();
 
                 if undetermined {
-                    resolution.defer(ctx, import_scope, import_id);
+                    resolution.defer(import_scope, import_id);
                 }
 
                 found
@@ -1092,7 +1100,7 @@ fn resolve_import(
                     .collect::<Vec<_>>();
 
                 if undetermined {
-                    resolution.defer(ctx, import_scope, import_id);
+                    resolution.defer(import_scope, import_id);
                 }
 
                 // A name that a failed import blocked in that module has already been reported

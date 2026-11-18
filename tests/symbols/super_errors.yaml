@@ -10,3 +10,5 @@ diagnostics:
 - Cannot end path in `super` at super_errors.rue:12:9
 - Unused function `ty` at super_errors.rue:15:15
 - Cannot end path in `super` at super_errors.rue:15:23
+- Unused function `alone` at super_errors.rue:21:4
+- Unresolved `super`, there is no parent module at super_errors.rue:22:5

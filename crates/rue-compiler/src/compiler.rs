@@ -425,10 +425,19 @@ impl Compiler {
     ) -> Option<(Item, Option<ImportId>)> {
         self.scope(scope)
             .item_with_import(namespace, name)
-            .or_else(|| {
-                let siblings = self.sibling_scopes.get(&scope)?;
-                self.scope(*siblings).item_with_import(namespace, name)
-            })
+            .or_else(|| self.sibling_item(scope, namespace, name))
+    }
+
+    /// The sibling module with a name, if a scope is a file's and the name is in a namespace that
+    /// modules are in.
+    pub fn sibling_item(
+        &self,
+        scope: ScopeId,
+        namespace: Namespace,
+        name: &str,
+    ) -> Option<(Item, Option<ImportId>)> {
+        let siblings = self.sibling_scopes.get(&scope)?;
+        self.scope(*siblings).item_with_import(namespace, name)
     }
 
     /// The names and items of a file's sibling modules in a namespace, if a scope is a file's.
@@ -439,47 +448,22 @@ impl Compiler {
             .unwrap_or_default()
     }
 
-    /// Looks up a symbol in a scope and then each enclosing scope. The lookup stops at a scope
-    /// that blocks the name (see [`Scope::block`]).
-    pub fn resolve_symbol_in(
-        &self,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<(SymbolId, Option<ImportId>)> {
-        self.resolve_in(scope, Namespace::Value, name, Scope::symbol_with_import)
-    }
-
-    /// Looks up a type in a scope and then each enclosing scope. The lookup stops at a scope that
-    /// blocks the name (see [`Scope::block`]).
-    pub fn resolve_type_in(
-        &self,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<(TypeId, Option<ImportId>)> {
-        self.resolve_in(scope, Namespace::Type, name, Scope::type_with_import)
-    }
-
-    /// Looks up a module in a scope and then each enclosing scope. The lookup stops at a scope
-    /// that blocks the name (see [`Scope::block`]).
-    pub fn resolve_module_in(
-        &self,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<(SymbolId, Option<ImportId>)> {
-        self.resolve_in(scope, Namespace::Module, name, Scope::module_with_import)
-    }
-
-    /// Looks up a name in one namespace in a scope and then each enclosing scope, like
-    /// [`resolve_symbol_in`](Self::resolve_symbol_in).
+    /// Looks up a name in one namespace in a scope and then each enclosing scope. The lookup
+    /// stops at a scope that blocks the name (see [`Scope::block`]).
     pub fn resolve_item_in(
         &self,
         scope: ScopeId,
         namespace: Namespace,
         name: &str,
     ) -> Option<(Item, Option<ImportId>)> {
-        self.resolve_in(scope, namespace, name, |scope, name| {
-            scope.item_with_import(namespace, name)
+        self.lookup_in(scope, |_, scope| {
+            if let Some(found) = scope.item_with_import(namespace, name) {
+                Some(Some(found))
+            } else {
+                scope.is_blocked(namespace, name).then_some(None)
+            }
         })
+        .flatten()
     }
 
     /// Whether looking up a name in a namespace from a scope stops at a scope that blocks the
@@ -493,23 +477,6 @@ impl Compiler {
             }
         })
         .unwrap_or(false)
-    }
-
-    fn resolve_in<T>(
-        &self,
-        scope: ScopeId,
-        namespace: Namespace,
-        name: &str,
-        find: impl Fn(&Scope, &str) -> Option<(T, Option<ImportId>)>,
-    ) -> Option<(T, Option<ImportId>)> {
-        self.lookup_in(scope, |_, scope| {
-            if let Some(found) = find(scope, name) {
-                Some(Some(found))
-            } else {
-                scope.is_blocked(namespace, name).then_some(None)
-            }
-        })
-        .flatten()
     }
 
     /// The first result of `find` in a scope and then each enclosing scope.

@@ -196,22 +196,12 @@ impl Scope {
         self.symbols.get(name)
     }
 
-    /// The symbol with a name, and the import that brought it into this scope, if any.
-    pub fn symbol_with_import(&self, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
-        self.symbols.get_with_import(name)
-    }
-
     pub fn symbol_name(&self, symbol: SymbolId) -> Option<&str> {
         self.symbols.name(symbol)
     }
 
     pub fn ty(&self, name: &str) -> Option<TypeId> {
         self.types.get(name)
-    }
-
-    /// The type with a name, and the import that brought it into this scope, if any.
-    pub fn type_with_import(&self, name: &str) -> Option<(TypeId, Option<ImportId>)> {
-        self.types.get_with_import(name)
     }
 
     pub fn type_name(&self, ty: TypeId) -> Option<&str> {
