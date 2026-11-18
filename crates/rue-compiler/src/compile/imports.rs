@@ -721,24 +721,25 @@ fn stuck_lookups(
                 })
             })
         })
-        .flat_map(|(index, component)| component.iter().map(move |&import| (import, index)))
-        .collect::<HashMap<_, _>>();
+        .map(|(index, _)| index)
+        .collect::<HashSet<_>>();
 
     waiting
         .into_iter()
         .filter(|lookup| {
             let import = lookup.key.0;
+            let component = component_of[&import];
 
-            let Some(&component) = stuck.get(&import) else {
+            if !stuck.contains(&component) {
                 return false;
-            };
+            }
 
             let shadowed = matches!(ctx.import(import).items, Items::All(_))
                 && resolution
                     .named_imports_of(lookup.forced.scope, lookup.forced.name.text())
                     .into_iter()
                     .flatten()
-                    .any(|named| stuck.get(named) == Some(&component));
+                    .any(|named| component_of.get(named) == Some(&component));
 
             !shadowed
         })
