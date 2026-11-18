@@ -1289,6 +1289,45 @@ fn ambiguous_uses_through_a_glob_import_that_collides_again_use_all_of_them() {
 }
 
 #[test]
+fn ambiguous_uses_through_chains_resolved_in_later_passes_use_all_of_them() {
+    // `both` only finds that `V` is ambiguous once the chain of glob imports to `beta` is resolved,
+    // after the chain of named imports has already passed on `V`, so what else it could refer to
+    // is passed on in later passes
+    for first in ["alpha", "zeta"] {
+        let compiled = compile(&format!(
+            "
+            mod n1 {{ export super::n2::V; }}
+            mod n2 {{ export super::n3::V; }}
+            mod n3 {{ export super::n4::V; }}
+            mod n4 {{ export super::both::V; }}
+            mod {first} {{ export const V: Int = 1; }}
+            mod beta {{ export const V: Int = 2; }}
+            mod g1 {{ export super::g2::*; }}
+            mod g2 {{ export super::g3::*; }}
+            mod g3 {{ export super::g4::*; }}
+            mod g4 {{ export super::g5::*; }}
+            mod g5 {{ export super::beta::*; }}
+            mod both {{ export super::{first}::*; export super::g1::*; }}
+            mod user {{ import super::n1::V; export fn value() -> Int {{ V }} }}
+            mod globbed {{ import super::n1::*; export fn value() -> Int {{ V }} }}
+            fn main() -> Int {{ user::value() + globbed::value() }}
+            "
+        ));
+        let errors = compiled.errors();
+
+        assert!(
+            errors.len() == 1 && errors[0].ends_with("AmbiguousImport(\"V\")"),
+            "first: {first}: {errors:?}"
+        );
+        assert_eq!(
+            unused_constants(&compiled),
+            Vec::<String>::new(),
+            "first: {first}"
+        );
+    }
+}
+
+#[test]
 fn unused_colliding_glob_items_are_all_unused() {
     for first_binds in [true, false] {
         let compiled = compile(&colliding_glob_items(

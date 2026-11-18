@@ -384,25 +384,31 @@ impl Database {
         own.chain(shared)
     }
 
-    /// Records other declarations that a name could refer to, when it refers to the declaration
-    /// through the import, because glob imports bring in different declarations with the name,
-    /// here or where it's imported from. Returns whether any of them weren't already recorded.
+    /// Records that a name that refers to the declaration through the import could also refer to
+    /// what a name that refers to another declaration through another import could: that
+    /// declaration, and its own alternatives. This is because glob imports bring in different
+    /// declarations with the name, here or where it's imported from. Returns whether any of them
+    /// weren't already recorded.
     pub fn add_ambiguous_alternatives(
         &mut self,
         import: ImportId,
         declaration: Declaration,
-        others: impl IntoIterator<Item = Declaration>,
+        from: Option<ImportId>,
+        from_declaration: Declaration,
     ) -> bool {
+        let others = std::iter::once(from_declaration)
+            .chain(self.ambiguous_alternatives(from, from_declaration))
+            .filter(|&other| other != declaration)
+            .collect::<Vec<_>>();
+
         let mut added = false;
 
         for other in others {
-            if other != declaration {
-                added |= self
-                    .ambiguous_alternatives
-                    .entry((import, declaration))
-                    .or_default()
-                    .insert(other);
-            }
+            added |= self
+                .ambiguous_alternatives
+                .entry((import, declaration))
+                .or_default()
+                .insert(other);
         }
 
         added

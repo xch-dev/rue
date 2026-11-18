@@ -1309,10 +1309,8 @@ fn resolve_import(
                             updated |= ctx.add_ambiguous_import(recorded, item.into());
                         }
 
-                        let others = ctx
-                            .ambiguous_alternatives(via, item.into())
-                            .collect::<Vec<_>>();
-                        updated |= ctx.add_ambiguous_alternatives(recorded, item.into(), others);
+                        updated |=
+                            ctx.add_ambiguous_alternatives(recorded, item.into(), via, item.into());
                     }
 
                     let existing = ctx.scope(import_scope).item(namespace, &name);
@@ -1367,12 +1365,12 @@ fn resolve_import(
                         if existing != item {
                             updated |= ctx.add_ambiguous_import(bound_by, existing.into());
 
-                            let others = ctx
-                                .ambiguous_alternatives(via, item.into())
-                                .chain([item.into()])
-                                .collect::<Vec<_>>();
-                            updated |=
-                                ctx.add_ambiguous_alternatives(bound_by, existing.into(), others);
+                            updated |= ctx.add_ambiguous_alternatives(
+                                bound_by,
+                                existing.into(),
+                                via,
+                                item.into(),
+                            );
                         }
                     } else if !target.is_item_exported(item)
                         && import.exported
@@ -1529,10 +1527,12 @@ fn resolve_import(
 
                     // What else the name could refer to is passed on, so that it's used and
                     // exported wherever this import's binding is
-                    let others = ctx
-                        .ambiguous_alternatives(Some(via), declaration)
-                        .collect::<Vec<_>>();
-                    updated |= ctx.add_ambiguous_alternatives(import_id, declaration, others);
+                    updated |= ctx.add_ambiguous_alternatives(
+                        import_id,
+                        declaration,
+                        Some(via),
+                        declaration,
+                    );
                     cache
                         .imported_names
                         .entry((import_id, declaration))

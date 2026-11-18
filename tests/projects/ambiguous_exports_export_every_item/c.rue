@@ -1,2 +1,2 @@
 export a::a::*;
-export b::*;
+export b::b::*;
