@@ -172,6 +172,35 @@ mod reexporting {
     export inner::make;
 }
 
+// A module is only public if every module it's in is exported, up to the file, so `helper` is
+// reported: `hidden` isn't exported
+mod hidden {
+    export mod inner {
+        export fn helper() -> Int {
+            1
+        }
+
+        export fn used() -> Int {
+            helper()
+        }
+    }
+}
+
+// Each module is exported from the one it's in, up to the file, so none of these are reported
+export mod deep {
+    export mod b {
+        export mod c {
+            export fn value() -> Int {
+                2
+            }
+
+            export fn calls() -> Int {
+                value()
+            }
+        }
+    }
+}
+
 fn main() -> Int {
     helpers::used_outside()
         + helpers::calls_private()
@@ -187,4 +216,6 @@ fn main() -> Int {
         + chain::used()
         + internal::total()
         + reexporting::make().value
+        + hidden::inner::used()
+        + deep::b::c::calls()
 }

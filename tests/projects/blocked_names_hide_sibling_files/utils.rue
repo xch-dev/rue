@@ -1,4 +1,6 @@
-// Private, so `super::utils::greet` in main.rue would be reported if it reached this file
-fn greet() -> Int {
-    1
+// The snapshot shows whether `super::utils` in main.rue reaches this file: `greet` is reported as
+// unused if it doesn't. Paths in expressions don't reach it, but in this branch imports through
+// `super` still do, since they're resolved before the failed import blocks the name.
+export fn greet() -> Bytes {
+    "hello"
 }
