@@ -40,6 +40,10 @@ pub struct Database {
     relevant_imports: IndexSet<ImportId>,
     /// The declarations referenced through each import, along with where they were referenced.
     import_references: HashMap<ImportId, IndexMap<Declaration, IndexSet<ImportUser>>>,
+    /// The other glob imports that bring an item into a scope under the name that a glob import
+    /// bound, keyed by that import and the declaration it bound, each with the declaration it
+    /// brings in. A reference through the binding is a reference through each of them too.
+    shared_glob_bindings: HashMap<(ImportId, Declaration), IndexSet<(ImportId, Declaration)>>,
     tests: Vec<Test>,
 }
 
@@ -280,6 +284,59 @@ impl Database {
             .entry(declaration)
             .or_default()
             .insert(user);
+
+        for &(other, other_declaration) in self
+            .shared_glob_bindings
+            .get(&(import, declaration))
+            .into_iter()
+            .flatten()
+        {
+            self.import_references
+                .entry(other)
+                .or_default()
+                .entry(other_declaration)
+                .or_default()
+                .insert(user);
+        }
+    }
+
+    /// Records that another glob import brings a declaration into a scope under the name that a
+    /// glob import bound to a declaration, so that it's used wherever the binding is, whichever of
+    /// them bound the name. Returns whether it wasn't already recorded.
+    pub fn add_shared_glob_binding(
+        &mut self,
+        import: ImportId,
+        declaration: Declaration,
+        other: ImportId,
+        other_declaration: Declaration,
+    ) -> bool {
+        if !self
+            .shared_glob_bindings
+            .entry((import, declaration))
+            .or_default()
+            .insert((other, other_declaration))
+        {
+            return false;
+        }
+
+        // The binding may have been referenced already
+        let users = self
+            .import_references
+            .get(&import)
+            .and_then(|references| references.get(&declaration))
+            .cloned()
+            .unwrap_or_default();
+
+        if !users.is_empty() {
+            self.import_references
+                .entry(other)
+                .or_default()
+                .entry(other_declaration)
+                .or_default()
+                .extend(users);
+        }
+
+        true
     }
 
     /// The declarations referenced through the import.

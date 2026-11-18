@@ -3,7 +3,7 @@
 
 use std::fmt::Write;
 
-use crate::test_utils::compile;
+use crate::test_utils::{Compiled, compile};
 
 #[test]
 fn named_imports_refer_to_the_exported_declaration() {
@@ -980,6 +980,127 @@ fn glob_imports_that_bring_in_nothing_are_unused() {
 
     compiled.assert_no_errors();
     assert_eq!(compiled.warnings(), ["2:23 UnusedImport"]);
+}
+
+/// Two glob imports in `user` of modules that both bring in `source`'s `X`, one with a named
+/// import and one with a glob import, with the names of the modules in either order, so that
+/// either glob import is resolved first and records `X`. `user` uses `X` if `used` is true.
+/// `other` has its own `X` instead if `collide` is true.
+fn overlapping_globs(named_first: bool, used: bool, collide: bool) -> String {
+    let (named, globbed) = if named_first {
+        ("alpha", "beta")
+    } else {
+        ("beta", "alpha")
+    };
+    let globbed_export = if collide {
+        "export const X: Int = 2;"
+    } else {
+        "export super::source::*;"
+    };
+    let body = if used { "X" } else { "1" };
+
+    format!(
+        "
+        mod source {{
+            export const X: Int = 1;
+        }}
+
+        mod {named} {{
+            export super::source::X;
+        }}
+
+        mod {globbed} {{
+            {globbed_export}
+        }}
+
+        mod user {{
+            import super::alpha::*;
+            import super::beta::*;
+
+            export fn value() -> Int {{
+                {body}
+            }}
+        }}
+
+        fn main() -> Int {{
+            user::value()
+        }}
+        "
+    )
+}
+
+#[test]
+fn glob_imports_of_the_same_item_are_both_used() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(named_first, true, false));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            compiled.warnings(),
+            Vec::<String>::new(),
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn glob_imports_of_the_same_unused_item_are_both_unused() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(named_first, false, false));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            compiled.warnings(),
+            [
+                "3:26 UnusedConstant",
+                "15:34 UnusedImport",
+                "16:33 UnusedImport"
+            ],
+            "named first: {named_first}"
+        );
+    }
+}
+
+/// The warnings about unused imports. Which of two colliding items an ambiguous use counts as
+/// using still depends on which glob import recorded the name, so other warnings aren't checked.
+fn unused_imports(compiled: &Compiled) -> Vec<String> {
+    compiled
+        .warnings()
+        .into_iter()
+        .filter(|warning| warning.ends_with("UnusedImport"))
+        .collect()
+}
+
+#[test]
+fn colliding_glob_imports_are_both_used() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(named_first, true, true));
+
+        assert_eq!(
+            compiled.errors(),
+            ["19:17 AmbiguousImport(\"X\")"],
+            "named first: {named_first}"
+        );
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
+            "named first: {named_first}"
+        );
+    }
+}
+
+#[test]
+fn colliding_unused_glob_imports_are_both_unused() {
+    for named_first in [true, false] {
+        let compiled = compile(&overlapping_globs(named_first, false, true));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            ["15:34 UnusedImport", "16:33 UnusedImport"],
+            "named first: {named_first}"
+        );
+    }
 }
 
 #[test]

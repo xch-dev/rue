@@ -1125,6 +1125,34 @@ fn resolve_import(
                     let target = ctx.scope_mut(import_scope);
                     let existing = target.item(namespace, &name);
 
+                    // When another glob import already bound the name, to the same item or a
+                    // different one, this one brings it in too and is used wherever the binding
+                    // is, so that which of them counts as used doesn't depend on which one bound
+                    // it, and so on the order they're resolved in
+                    let shared = if let Some(existing) = existing
+                        && let Some(existing_import) = target.item_import(existing)
+                        && existing_import != import_id
+                        && matches!(ctx.import(existing_import).items, Items::All(_))
+                    {
+                        ctx.add_shared_glob_binding(
+                            existing_import,
+                            existing.into(),
+                            import_id,
+                            item.into(),
+                        )
+                    } else {
+                        false
+                    };
+
+                    if shared {
+                        ctx.import_mut(import_id)
+                            .declarations
+                            .push((name.clone(), item.into()));
+                        *count += 1;
+                    }
+
+                    let target = ctx.scope_mut(import_scope);
+
                     if existing.is_none() {
                         target.insert_item(name.clone(), item, import.exported);
                         target.add_item_import(item, import_id);
@@ -1138,11 +1166,15 @@ fn resolve_import(
                         && existing == Some(item)
                     {
                         target.export_item(item);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name, item.into()));
+
+                        if !shared {
+                            ctx.import_mut(import_id)
+                                .declarations
+                                .push((name, item.into()));
+                            *count += 1;
+                        }
+
                         updated = true;
-                        *count += 1;
                     } else if let Some(existing) = existing
                         && existing != item
                         && let Some(existing_import) = target.item_import(existing)
