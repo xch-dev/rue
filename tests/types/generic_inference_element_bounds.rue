@@ -43,3 +43,44 @@ test fn lambda_item_after_a_value_in_a_list() -> Int {
 test fn call_inside_the_argument() -> Int {
     apply((1, fn(x) => apply((x, fn(y) => y))))
 }
+
+fn make<U>() -> U {
+    unchecked_cast::<U>(nil)
+}
+
+fn first<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+// A call with no arguments only its expected type can infer, so it needs `T` from the element
+// before it
+test fn call_without_arguments_after_a_value_in_a_pair() -> Int {
+    first((5, make()))
+}
+
+fn count<T>(items: List<T>) -> Int {
+    if items is nil {
+        return 0;
+    }
+
+    1 + count(items.rest)
+}
+
+// The same in a list
+test fn call_without_arguments_after_a_value_in_a_list() -> Int {
+    count([5, make()])
+}
+
+fn optional<T>(value: T | nil) -> T {
+    unchecked_cast::<T>(value)
+}
+
+// Guard: a call with arguments infers its own generics from them, so `optional(nil)` is `nil`
+// rather than `(Int, Int)` from the element before it, and the guard can match
+test fn call_with_arguments_after_a_value_keeps_its_own_inference() -> Int {
+    let result = first(((1, 2), optional(nil)));
+    if result is nil {
+        return 0;
+    }
+    1
+}
