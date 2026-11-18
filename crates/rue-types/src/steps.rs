@@ -16,6 +16,8 @@ std::thread_local! {
     static FIXPOINT_BUDGET: std::cell::Cell<Option<(usize, usize)>> =
         const { std::cell::Cell::new(None) };
     static ABANDONED_PASSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static COMPARISON_STEP_LIMIT: std::cell::Cell<Option<usize>> =
+        const { std::cell::Cell::new(None) };
 }
 
 /// Records a step. Called once per call of each recursive operation.
@@ -89,6 +91,28 @@ pub(crate) fn fixpoint_budget(default: (usize, usize)) -> (usize, usize) {
 #[cfg(feature = "step-counter")]
 pub fn with_fixpoint_budget<T>(per_item: usize, base: usize, f: impl FnOnce() -> T) -> T {
     let _restore = Restore::new(&FIXPOINT_BUDGET, Some((per_item, base)));
+    f()
+}
+
+/// Returns how many steps a comparison that starts from an empty stack may take before it gives up
+/// (see `COMPARISON_STEP_LIMIT` in `compare.rs`).
+#[inline]
+pub(crate) fn comparison_step_limit(default: usize) -> usize {
+    #[cfg(feature = "step-counter")]
+    return COMPARISON_STEP_LIMIT
+        .with(std::cell::Cell::get)
+        .unwrap_or(default);
+
+    #[cfg(not(feature = "step-counter"))]
+    default
+}
+
+/// Runs the given function on this thread with another limit on the steps a comparison that
+/// starts from an empty stack may take before it gives up, so that tests can make it give up
+/// quickly.
+#[cfg(feature = "step-counter")]
+pub fn with_comparison_step_limit<T>(limit: usize, f: impl FnOnce() -> T) -> T {
+    let _restore = Restore::new(&COMPARISON_STEP_LIMIT, Some(limit));
     f()
 }
 

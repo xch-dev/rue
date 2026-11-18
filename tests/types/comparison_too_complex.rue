@@ -20,7 +20,11 @@ type N2 = (
 type Q1 = N0;
 type Q2 = N0;
 
-fn main(x: Q1, y: Q2) -> Int {
+fn main(x: Q1, y: N2) -> Int {
+    // Assigning, which compares the types
+    let _z: N0 = y;
+
+    // Checking at runtime, which compares the types to work out what needs to be checked
     if x is Q2 {
         1
     } else {

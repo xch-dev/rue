@@ -11,9 +11,9 @@ use log::{Level, debug, log_enabled, trace};
 use crate::{
     AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, FALLBACK, FixpointFrame,
     FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Inference, InferenceCandidates, Memo,
-    Type, TypeId, compare_memo_enabled, free_generics, grow_stack, has_non_contractive_cycle,
-    pick_inferred_type, reachable, references_generic, step, stringify_impl, substitute,
-    substitute_with_mappings,
+    Type, TypeId, compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
+    has_non_contractive_cycle, pick_inferred_type, reachable, references_generic, step,
+    stringify_impl, substitute, substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -172,8 +172,8 @@ pub(crate) struct ComparisonContext<'a> {
     fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
     /// Whether each type that a comparison started from is monotone (see `is_monotone`).
     monotone: FxHashMap<TypeId, bool>,
-    /// The number of comparisons made since the comparison that started from an empty stack did,
-    /// which gives up once there are more than `COMPARISON_STEP_LIMIT`.
+    /// The steps taken by the comparison that started from an empty stack, which gives up once
+    /// there are more than `COMPARISON_STEP_LIMIT`.
     steps: usize,
     /// Whether a comparison that started from an empty stack gave up, since it took too many
     /// steps.
@@ -203,7 +203,7 @@ pub(crate) const COMPARISON_STEP_LIMIT: usize = 20_000_000;
 
 impl ComparisonContext<'_> {
     /// Returns whether a comparison gave up since this was last called, since it took too many
-    /// steps (see `COMPARISON_STEP_LIMIT`).
+    /// steps (see `COMPARISON_STEP_LIMIT`), and lets the context compare again.
     pub(crate) fn take_too_complex(&mut self) -> bool {
         mem::take(&mut self.budget) == Budget::GaveUp
     }
@@ -525,8 +525,6 @@ impl ComparisonContext<'_> {
         }
     }
 
-    /// Returns an environment in which the binders that the instance's missing bounds have other
-    /// generics in place of resolve to new rigid binders.
     /// Counts a step towards the comparison that started from an empty stack, and returns `true`
     /// if it has taken too many, so it's giving up (see `COMPARISON_STEP_LIMIT`).
     fn spend(&mut self) -> bool {
@@ -537,7 +535,7 @@ impl ComparisonContext<'_> {
     fn spend_many(&mut self, steps: usize) -> bool {
         self.steps += steps;
 
-        if self.steps > COMPARISON_STEP_LIMIT {
+        if self.steps > comparison_step_limit(COMPARISON_STEP_LIMIT) {
             self.budget = Budget::GivingUp;
         }
 
@@ -561,6 +559,8 @@ impl ComparisonContext<'_> {
         None
     }
 
+    /// Returns an environment in which the binders that the instance's missing bounds have other
+    /// generics in place of resolve to new rigid binders.
     fn refresh(&mut self, env: Option<usize>, instance: &Instance) -> Option<usize> {
         let (Some(fresh), mut refreshed, mut current) = (instance.fresh, env, env) else {
             return env;
@@ -956,7 +956,8 @@ fn compare_from_empty_stack(
                 compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
             });
 
-            if ctx.fixpoint_memo.finish_round() || ctx.budget == Budget::GivingUp {
+            // A round that was cut short isn't the last one, even if nothing changed in it
+            if ctx.budget == Budget::GivingUp || ctx.fixpoint_memo.finish_round() {
                 return result;
             }
         }

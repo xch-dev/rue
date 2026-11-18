@@ -147,8 +147,9 @@ pub fn compile_struct_initializer_expr(
 
         if struct_type.fields.contains(name.text()) {
             if let Some(expected_type) = expected_field_types.get(name.text()).copied() {
+                // If comparing them is too complex, `assign_type` reports it
                 if ctx.is_inferred_field(struct_type.semantic, name.text())
-                    && !ctx.is_assignable(value.ty, expected_type)
+                    && ctx.try_is_assignable(value.ty, expected_type) == Ok(false)
                 {
                     let from = ctx.type_name(value.ty);
                     let to = ctx.type_name(expected_type);

@@ -19,11 +19,12 @@ use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_diagnostic::Name;
 use rue_types::{
-    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
-    FunctionType, Generic, Inference, Pair, Struct, Type, TypeId, Union, check, compare,
-    compare_with_inference, count_abandoned_passes, count_steps, intersect, is_non_contractive,
-    is_non_regular, reaches_non_contractive_cycle, stringify, substitute, with_fixpoint_budget,
-    with_step_limit, without_compare_memo,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, CheckError, Comparison,
+    FunctionParameter, FunctionType, Generic, Inference, Pair, Struct, TooComplex, Type, TypeId,
+    Union, check, compare, compare_limited, compare_with_inference, count_abandoned_passes,
+    count_steps, intersect, is_non_contractive, is_non_regular, reaches_non_contractive_cycle,
+    stringify, substitute, with_comparison_step_limit, with_fixpoint_budget, with_step_limit,
+    without_compare_memo,
 };
 
 struct Types {
@@ -279,12 +280,14 @@ fn test_permuted_generic_alias_arguments() {
     });
 }
 
-// The tests below are cases where a change to comparing generic functions whose generics are
-// nested inside of their parameters (which are compared in exact mode) gave a different result
-// than without the memo, by reusing a comparison that would have merged the generics instantiated
-// by another one, found while working on #344. Most compare the types in a new arena in every
-// mode, since the order of the types can change which comparisons are reached again with which
-// binders.
+// The tests below are cases found while working on #344, where an experimental change that let
+// generic functions whose generics are nested inside of their parameters use fixpoint mode gave a
+// different result than without the memo, by reusing a comparison that would have merged the
+// generics instantiated by another one. They're compared in exact mode as things are, so every
+// mode agrees, and they guard any future change that compares them in fixpoint mode. All but
+// `test_merged_into_outer_function` also fail if a comparison with an `Instance` binding is
+// memoized. Most compare the types in a new arena in every mode, since the order of the types can
+// change which comparisons are reached again with which binders.
 
 /// `type R = fn<T>(x: Px) -> nil; type Px = (Pf, T); type Pf = fn(g: R, h: fn(k: Pf) -> nil) -> Int;`
 /// and `type Rq = fn(x: Qx) -> nil; type Qx = (Qf, Int);`
@@ -1106,4 +1109,48 @@ fn test_contractiveness() {
 #[ignore = "slow"]
 fn test_contractiveness_large() {
     with_large_stack(|| contractiveness(0..200_000));
+}
+
+#[test]
+fn test_comparison_step_limit() {
+    with_large_stack(|| {
+        let mut db = Types::new();
+        let (r, rq) = merged_into_outer_function(&mut db);
+
+        let (result, steps) = count_steps(|| compare_limited(&mut db.arena, &db.builtins, r, rq));
+        assert_eq!(result, Ok(Comparison::Invalid));
+
+        // With a limit below what it takes, the comparison gives up, which `compare` treats as
+        // `Invalid`
+        let limit = steps / 2;
+        let limited = with_comparison_step_limit(limit, || {
+            compare_limited(&mut db.arena, &db.builtins, r, rq)
+        });
+        assert_eq!(limited, Err(TooComplex));
+
+        let limited =
+            with_comparison_step_limit(limit, || compare(&mut db.arena, &db.builtins, rq, r));
+        assert_eq!(limited, Comparison::Invalid);
+
+        // Comparing again afterwards isn't affected
+        let result = compare_limited(&mut db.arena, &db.builtins, r, rq);
+        assert_eq!(result, Ok(Comparison::Invalid));
+    });
+}
+
+#[test]
+fn test_check_step_limit() {
+    let mut db = Types::new();
+    let (n0, n1) = mutually_recursive(&mut db);
+
+    // This makes many comparisons, but once one gives up, the others give up right away rather than
+    // each taking as many steps
+    let (result, steps) = count_steps(|| {
+        with_comparison_step_limit(100, || check(&mut db.arena, &db.builtins, n0, n1))
+    });
+    assert_eq!(result, Err(CheckError::TooComplex));
+    assert!(steps < 250, "took {steps} steps");
+
+    let result = check(&mut db.arena, &db.builtins, n0, n1);
+    assert_eq!(result, Err(CheckError::RecursiveType));
 }

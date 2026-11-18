@@ -19,7 +19,7 @@ use rue_hir::{
 use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, Type, TypeId};
+use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
@@ -634,6 +634,13 @@ impl Compiler {
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
         comparison == Comparison::Assign
+    }
+
+    /// Like `is_assignable`, but returns `TooComplex` if comparing the types took too many steps.
+    pub fn try_is_assignable(&mut self, from: TypeId, to: TypeId) -> Result<bool, TooComplex> {
+        let comparison =
+            rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)?;
+        Ok(comparison == Comparison::Assign)
     }
 
     pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
