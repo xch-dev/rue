@@ -691,6 +691,174 @@ fn test_reached_through_dependency() {
     });
 }
 
+// The programs below are #344's, and two of the corpus programs that `nested-corpus` rebuilt for
+// it (with its seed), which never finished before #362's step 13b.3: their generic functions nest
+// their generics inside recursive aliases, so they were compared in exact mode, whose memo can't
+// reuse anything inside a cycle. They're compared in fixpoint mode now, iterating over the bounds
+// that the comparisons put on the instances (their summaries).
+
+/// Applies the alias to each list of arguments, in the order of its generics.
+fn apply_each<const N: usize>(db: &mut Types, alias: TypeId, args: [&[TypeId]; N]) -> [TypeId; N] {
+    let Type::Alias(Alias { generics, .. }) = db.arena[alias].clone() else {
+        panic!("expected an alias");
+    };
+
+    args.map(|args| {
+        db.apply(
+            alias,
+            generics.iter().copied().zip(args.iter().copied()).collect(),
+        )
+    })
+}
+
+/// `type N0 = (fn<U00>(p0: N0, p1: N1<nil>) -> U00, N1<Bool> | N1<Bytes32>);`
+/// `type N1<A> = Bytes32 | (fn(p0: (N1<A>, A), p1: fn<U20, U21>(p0: N0, p1: N1<U21>) -> N1<A>) -> (Bool, A));`
+/// Returns `N0` twice, through two other aliases, as in #344's `type Q1 = N0; type Q2 = N0;`.
+fn issue_344(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        nil, bool, bytes32, ..
+    } = db.builtins;
+    let a = db.generic();
+    let n0 = db.declare_alias("N0", vec![]);
+    let n1 = db.declare_alias("N1", vec![a]);
+    let [u00, u20, u21] = [db.generic(), db.generic(), db.generic()];
+
+    let [n1_nil, n1_bool, n1_bytes32, n1_a, n1_u21] =
+        apply_each(db, n1, [&[nil], &[bool], &[bytes32], &[a], &[u21]]);
+    let function = db.function(vec![u00], vec![n0, n1_nil], u00);
+    let members = db.union(vec![n1_bool, n1_bytes32]);
+    let body = db.pair(function, members);
+    db.define(n0, body);
+
+    let first = db.pair(n1_a, a);
+    let callback = db.function(vec![u20, u21], vec![n0, n1_u21], n1_a);
+    let ret = db.pair(bool, a);
+    let function = db.function(vec![], vec![first, callback], ret);
+    let body = db.union(vec![bytes32, function]);
+    db.define(n1, body);
+
+    let q1 = db.declare_alias("Q1", vec![]);
+    db.define(q1, n0);
+    let q2 = db.declare_alias("Q2", vec![]);
+    db.define(q2, n0);
+    (q2, q1)
+}
+
+/// Seed 666:
+/// `type N0 = fn<U000, U001>(p0: fn<U010>(p0: fn(p0: N1<Bytes32>, p1: N1<U010>) -> N1<U010>, p1: Bool) -> N0, p1: ((N1<Bool>, N1<U001>), N0)) -> Bool;`
+/// `type N1<A> = (fn<U100>(p0: fn(p0: Bytes, p1: N0) -> A, p1: A) -> N0, Bool);`
+/// Returns `N0` twice, through two other aliases.
+fn corpus_666(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        bool,
+        bytes,
+        bytes32,
+        ..
+    } = db.builtins;
+    let a = db.generic();
+    let n0 = db.declare_alias("N0", vec![]);
+    let n1 = db.declare_alias("N1", vec![a]);
+    let [u000, u001, u010, u100] = [db.generic(), db.generic(), db.generic(), db.generic()];
+
+    let [n1_bytes32, n1_u010, n1_bool, n1_u001] =
+        apply_each(db, n1, [&[bytes32], &[u010], &[bool], &[u001]]);
+    let inner = db.function(vec![], vec![n1_bytes32, n1_u010], n1_u010);
+    let first = db.function(vec![u010], vec![inner, bool], n0);
+    let both = db.pair(n1_bool, n1_u001);
+    let second = db.pair(both, n0);
+    let body = db.function(vec![u000, u001], vec![first, second], bool);
+    db.define(n0, body);
+
+    let inner = db.function(vec![], vec![bytes, n0], a);
+    let function = db.function(vec![u100], vec![inner, a], n0);
+    let body = db.pair(function, bool);
+    db.define(n1, body);
+
+    let q1 = db.declare_alias("Q1", vec![]);
+    db.define(q1, n0);
+    let q2 = db.declare_alias("Q2", vec![]);
+    db.define(q2, n0);
+    (q2, q1)
+}
+
+/// Seed 1280:
+/// `type N0<A, B> = (N1<(N0<nil, Bytes32>, Bytes)>, nil) | (N1<A>, nil);`
+/// `type N1<A> = (Bytes32, (fn(p0: N0<A, A>, p1: A) -> Bytes32, N0<nil, A> | N1<nil>));`
+/// `type Q1 = N0<(N0<Int, Bytes32>, nil) | (N0<nil, Bytes32>, nil), fn<U210, U211>(p0: U211, p1: N1<Bytes>) -> U211>;`
+/// `type Q2 = N0<fn<U220, U221>(p0: N1<U220>) -> U220, fn<U230>(p0: U230, p1: U230) -> N1<nil>>;`
+/// Returns `Q2` and `Q1`.
+fn corpus_1280(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        nil,
+        int,
+        bytes,
+        bytes32,
+        ..
+    } = db.builtins;
+    let [a, b, c] = [db.generic(), db.generic(), db.generic()];
+    let n0 = db.declare_alias("N0", vec![a, b]);
+    let n1 = db.declare_alias("N1", vec![c]);
+    let [u210, u211, u220, u221, u230] = [
+        db.generic(),
+        db.generic(),
+        db.generic(),
+        db.generic(),
+        db.generic(),
+    ];
+
+    let [n0_nil_bytes32, n0_c_c, n0_nil_c, n0_int_bytes32] = apply_each(
+        db,
+        n0,
+        [&[nil, bytes32], &[c, c], &[nil, c], &[int, bytes32]],
+    );
+    let pair = db.pair(n0_nil_bytes32, bytes);
+    let [n1_pair, n1_a, n1_nil, n1_bytes, n1_u220] =
+        apply_each(db, n1, [&[pair], &[a], &[nil], &[bytes], &[u220]]);
+    let first = db.pair(n1_pair, nil);
+    let second = db.pair(n1_a, nil);
+    let body = db.union(vec![first, second]);
+    db.define(n0, body);
+
+    let function = db.function(vec![], vec![n0_c_c, c], bytes32);
+    let rest = db.union(vec![n0_nil_c, n1_nil]);
+    let inner = db.pair(function, rest);
+    let body = db.pair(bytes32, inner);
+    db.define(n1, body);
+
+    let first = db.pair(n0_int_bytes32, nil);
+    let second = db.pair(n0_nil_bytes32, nil);
+    let union = db.union(vec![first, second]);
+    let function = db.function(vec![u210, u211], vec![u211, n1_bytes], u211);
+    let [q1] = apply_each(db, n0, [&[union, function]]);
+
+    let first = db.function(vec![u220, u221], vec![n1_u220], u220);
+    let second = db.function(vec![u230], vec![u230, u230], n1_nil);
+    let [q2] = apply_each(db, n0, [&[first, second]]);
+    (q2, q1)
+}
+
+#[rstest::rstest]
+#[case::issue_344(issue_344, Comparison::Assign)]
+#[case::corpus_666(corpus_666, Comparison::Assign)]
+#[case::corpus_1280(corpus_1280, Comparison::Invalid)]
+fn test_nested_generic_functions_in_cycles(
+    #[case] types: fn(&mut Types) -> (TypeId, TypeId),
+    #[case] expected: Comparison,
+) {
+    with_large_stack(move || {
+        // Without the memo, they're still compared in exact mode, so they'd take too many steps
+        let mut db = Types::new();
+        let (lhs, rhs) = types(&mut db);
+        let (result, steps) = count_steps(|| {
+            with_step_limit(STEP_BOUND, || {
+                compare(&mut db.arena, &db.builtins, lhs, rhs)
+            })
+        });
+        assert_eq!(result, expected);
+        assert!(steps < 100_000, "took {steps} steps");
+    });
+}
+
 /// Compares the types without the memo, in a single pass, and iterating from the start, each in a
 /// new arena.
 fn in_every_mode(types: impl Fn(&mut Types) -> (TypeId, TypeId)) -> [Comparison; 3] {
@@ -1346,8 +1514,10 @@ fn test_comparison_step_limit() {
         assert_eq!(result, Ok(Comparison::Assign));
 
         // With a limit below what it takes, the comparison gives up, which `compare` treats as
-        // `Invalid`
-        let limit = steps / 2;
+        // `Invalid`. Since #362's step 13b.3 it takes few enough steps (about 20) that a fraction
+        // of what it takes in all, including substituting and checking the types, isn't below it
+        assert!(steps > 2);
+        let limit = 2;
         let limited = with_comparison_step_limit(limit, || {
             compare_limited(&mut db.arena, &db.builtins, r, r)
         });

@@ -12,7 +12,7 @@ use log::{Level, debug, log_enabled, trace};
 use crate::{
     AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, Choices, FALLBACK,
     FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic, Inference,
-    InferenceCandidates, InferenceSnapshot, InstancePolicy, Memo, Type, TypeId,
+    InferenceCandidates, InferenceSnapshot, InstancePolicy, Join, Memo, Type, TypeId,
     compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
     has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
     substitute_with_mappings,
@@ -192,6 +192,40 @@ struct Snapshot {
     infer: Option<InferenceSnapshot>,
 }
 
+/// A comparison's result and the bounds it puts on the instances its key refers to, if any, which
+/// are what's cached for it and what a revisit of it is given (see `Summary`).
+type Outcome = (Comparison, Option<Rc<Summary>>);
+
+impl Join for Outcome {
+    fn join(&self, other: &Self) -> Self {
+        let summary = match (&self.1, &other.1) {
+            (None, summary) | (summary, None) => summary.clone(),
+            (Some(a), Some(b)) if a == b => Some(a.clone()),
+            (Some(a), Some(b)) => {
+                let mut summary = (**a).clone();
+                summary.extend(b);
+                summary.canonicalize();
+                Some(Rc::new(summary))
+            }
+        };
+
+        (self.0.max(other.0), summary)
+    }
+}
+
+/// How a comparison that starts from a type can be computed (see `ComparisonContext::monotonicity`),
+/// from the most to the least that can be reused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Monotone {
+    /// In fixpoint mode, starting in a single pass.
+    Direct,
+    /// In fixpoint mode, iterating from the start, with the summaries of the comparisons that
+    /// refer to instances as part of their values.
+    Nested,
+    /// In exact mode.
+    No,
+}
+
 /// The most rounds that a comparison is computed in before it gives up (see
 /// `StackFrame::approximation`). Each round adds bounds to its summary, which is finite, so this
 /// is only reached by a summary that's too symmetric to be put in a canonical form (see
@@ -272,15 +306,15 @@ pub(crate) struct ComparisonContext<'a> {
     /// Completed comparisons, reused only where computing them again would do the same thing, along
     /// with the bounds they put on the instances their keys refer to, if any, which are put on the
     /// ones they're reused with.
-    memo: Memo<ComparisonKey, ComparisonKey, (Comparison, Option<Rc<Summary>>)>,
+    memo: Memo<ComparisonKey, ComparisonKey, Outcome>,
     /// Whether the comparison that started from an empty stack is the least fixed point of
-    /// monotone equations (see `is_monotone`), so `fixpoint_memo` is used instead of `memo`.
+    /// monotone equations (see `monotonicity`), so `fixpoint_memo` is used instead of `memo`.
     fixpoint: bool,
     /// Completed comparisons, reused while the comparisons they relied on are in progress, or
     /// approximations of them while iterating (see `FixpointMemo`).
-    fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
-    /// Whether each type that a comparison started from is monotone (see `is_monotone`).
-    monotone: FxHashMap<TypeId, bool>,
+    fixpoint_memo: FixpointMemo<ComparisonKey, Outcome>,
+    /// Whether each type that a comparison started from is monotone (see `monotonicity`).
+    monotone: FxHashMap<TypeId, Monotone>,
     /// The steps taken by the comparison that started from an empty stack, which gives up once
     /// there are more than `COMPARISON_STEP_LIMIT`.
     steps: usize,
@@ -875,30 +909,37 @@ impl ComparisonContext<'_> {
     }
 
     /// Whether comparing the type (and the types it contains) is the least fixed point of monotone
-    /// equations over the comparisons it reaches, which is what `FixpointMemo` needs. Comparing is
-    /// built from `max`, `min` and constants (the fallbacks that are only compared when a union
-    /// doesn't hold are a `min` whose result doesn't depend on them otherwise), and returning
-    /// early at a comparison in progress gives `Assign` (the least value), or its approximation
-    /// while `FixpointMemo` is iterating, as long as:
+    /// equations over the comparisons it reaches, which is what `FixpointMemo` needs, and whether
+    /// it can start in a single pass. Comparing is built from `max`, `min` and constants (the
+    /// fallbacks that are only compared when a union doesn't hold are a `min` whose result doesn't
+    /// depend on them otherwise), and returning early at a comparison in progress gives `Assign`
+    /// (the least value), or its approximation while `FixpointMemo` is iterating, as long as the
+    /// type is contractive, since a cycle that doesn't pass through a pair or function gives
+    /// `Invalid` instead.
     ///
-    /// - The type is contractive, since a cycle that doesn't pass through a pair or function gives
-    ///   `Invalid` instead.
-    /// - Each generic function's parameters and return type either are one of its generics or
-    ///   don't reference them. The generics being instantiated then only collect bounds directly,
-    ///   from the same comparisons whenever the function is compared, so the bounds that are
-    ///   checked against each other are always the same. Otherwise, which bounds they collect
-    ///   would depend on what's in progress (and a revisit would be given a summary that's still
-    ///   being computed).
+    /// A comparison that refers to an instance also puts bounds on it, which are part of its value
+    /// (`Outcome`), and adding bounds only makes the results worse, so the equations are still
+    /// monotone. But `FixpointMemo`'s single pass relies on values being a chain of three, which
+    /// summaries aren't, so it's only used when each generic function's parameters and return
+    /// type either are one of its generics or don't reference them (`Monotone::Direct`). The
+    /// comparisons that refer to instances are then only bounds on them, which reach no other
+    /// comparison, so they're never revisited, and their summaries are never approximated.
+    /// Otherwise it iterates from the start (`Monotone::Nested`).
     ///
     /// Inference also collects candidates as a side effect, so it isn't used then.
-    fn is_monotone(&mut self, arena: &Arena<Type>, id: TypeId) -> bool {
+    fn monotonicity(&mut self, arena: &Arena<Type>, id: TypeId) -> Monotone {
         if let Some(&monotone) = self.monotone.get(&id) {
             return monotone;
         }
 
         let reachable = reachable(arena, id);
-        let monotone = !has_non_contractive_cycle(arena, &reachable)
-            && reachable.iter().all(|&id| instantiates_directly(arena, id));
+        let monotone = if has_non_contractive_cycle(arena, &reachable) {
+            Monotone::No
+        } else if reachable.iter().all(|&id| instantiates_directly(arena, id)) {
+            Monotone::Direct
+        } else {
+            Monotone::Nested
+        };
         self.monotone.insert(id, monotone);
         monotone
     }
@@ -1203,25 +1244,37 @@ fn compare_from_empty_stack(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
-    ctx.fixpoint = ctx.infer.is_none()
-        && ctx.lhs_env.is_none()
-        && ctx.rhs_env.is_none()
-        && ctx.is_monotone(arena, lhs)
-        && ctx.is_monotone(arena, rhs);
+    let monotone = if ctx.infer.is_none() && ctx.lhs_env.is_none() && ctx.rhs_env.is_none() {
+        ctx.monotonicity(arena, lhs)
+            .max(ctx.monotonicity(arena, rhs))
+    } else {
+        Monotone::No
+    };
+
+    // Without the memo, iterating wouldn't reuse anything, and exact mode gives the same results
+    let monotone = if monotone == Monotone::Nested && !compare_memo_enabled() {
+        Monotone::No
+    } else {
+        monotone
+    };
+
+    ctx.fixpoint = monotone != Monotone::No;
 
     if ctx.fixpoint {
         ctx.fixpoint_memo.start();
 
-        let result = grow_stack(|| {
-            compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
-        });
+        if monotone == Monotone::Direct {
+            let result = grow_stack(|| {
+                compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+            });
 
-        if !ctx.fixpoint_memo.abandoned() {
-            return result;
+            if !ctx.fixpoint_memo.abandoned() {
+                return result;
+            }
         }
 
-        // The single pass took too long, so it's repeated until the approximations it reaches
-        // stop changing instead (see `FixpointMemo`)
+        // The single pass took too long, or can't be used, so it's repeated until the
+        // approximations it reaches stop changing instead (see `FixpointMemo`)
         loop {
             ctx.fixpoint_memo.start_round();
 
@@ -1274,17 +1327,20 @@ fn compare_impl_inner(
     let instances = ctx.bindings[bindings]
         .iter()
         .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
-    let memoize = compare_memo_enabled() && !(instances && (ctx.fixpoint || ctx.infer.is_some()));
+    let memoize = compare_memo_enabled()
+        && !(instances
+            && (ctx.infer.is_some() || (ctx.fixpoint && !ctx.fixpoint_memo.iterating())));
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
         // In fixpoint mode, it's the least value in a single pass, or its approximation from the
-        // previous round while iterating
-        let value = if ctx.fixpoint {
+        // previous round while iterating, along with the bounds it puts on its instances
+        let (value, summary) = if ctx.fixpoint {
             let key = memoize.then_some(&key);
-            ctx.fixpoint_memo.reached(index, key, Comparison::Assign)
+            ctx.fixpoint_memo
+                .reached(index, key, (Comparison::Assign, None))
         } else {
             ctx.memo.reached(index);
-            Comparison::Assign
+            (Comparison::Assign, None)
         };
 
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
@@ -1300,7 +1356,9 @@ fn compare_impl_inner(
         let frame = &mut ctx.frames[index];
         frame.revisited = true;
 
-        if instances {
+        if let Some(summary) = summary {
+            ctx.apply_summary(&summary, &binders);
+        } else if instances && !ctx.fixpoint {
             let approximation = mem::take(&mut frame.approximation);
             ctx.apply_summary(&approximation, &binders);
             ctx.frames[index].approximation = approximation;
@@ -1318,16 +1376,17 @@ fn compare_impl_inner(
             // Reusing a result can take as long as the stack, so it counts towards the steps
             let work = ctx.memo.take_work();
             ctx.spend_many(work);
-
-            result.map(|(result, summary)| {
-                if let Some(summary) = summary {
-                    ctx.spend_many(summary.constraints().len());
-                    ctx.apply_summary(&summary, &binders);
-                }
-
-                result
-            })
+            result
         };
+
+        let result = result.map(|(result, summary)| {
+            if let Some(summary) = summary {
+                ctx.spend_many(summary.constraints().len());
+                ctx.apply_summary(&summary, &binders);
+            }
+
+            result
+        });
 
         if let Some(result) = result {
             return result;
@@ -1361,7 +1420,8 @@ fn compare_impl_inner(
 
         // If it was revisited, the revisits were given its summary from the previous round, so
         // it's computed again until this round's adds nothing to it
-        let Some(snapshot) = &snapshot else {
+        // While iterating in fixpoint mode, `FixpointMemo` does this for every comparison
+        let Some(snapshot) = snapshot.as_ref().filter(|_| !ctx.fixpoint) else {
             break result;
         };
 
@@ -1405,7 +1465,7 @@ fn compare_impl_inner(
     // add to, since they're undone
     let summary = snapshot
         .as_ref()
-        .filter(|_| memo_key.is_some() && !ctx.fixpoint)
+        .filter(|_| memo_key.is_some())
         .map(|snapshot| {
             let mut summary = ctx.summary_since(arena, snapshot);
             summary.canonicalize();
@@ -1423,7 +1483,10 @@ fn compare_impl_inner(
             let work = ctx.memo.take_work();
             ctx.spend_many(work);
         }
-        Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
+        Frame::Fixpoint(frame) => {
+            ctx.fixpoint_memo
+                .exit(frame, memo_key, (result, summary), &ctx.stack);
+        }
     }
 
     result
