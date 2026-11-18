@@ -51,6 +51,10 @@ pub struct Compiler {
     return_count: usize,
     /// The calls whose generics are being inferred from their arguments, innermost last.
     call_frames: Vec<CallFrame>,
+    /// Set when the next lambda to be compiled is an argument of a call whose generics are being
+    /// inferred, which compiles its untyped parameters as references and lists them here (see
+    /// `Compiler::wrap_lambda_parameters`).
+    lambda_parameters: Option<Vec<(TypeId, TypeId)>>,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
@@ -158,6 +162,7 @@ impl Compiler {
             return_stack: Vec::new(),
             return_count: 0,
             call_frames: Vec::new(),
+            lambda_parameters: None,
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
@@ -774,6 +779,31 @@ impl Compiler {
             .last_mut()
             .expect("an argument is compiled inside a call")
             .argument = argument;
+    }
+
+    /// Asks the next lambda that's compiled to compile each of its untyped parameters as a reference
+    /// of its own to the type it would have, which `Compiler::take_lambda_parameters` then gives
+    /// along with that type. Where the parameter flows into the lambda's return type unchanged, the
+    /// return type has the reference, so a call can infer the parameter's type along with its
+    /// generics (#335).
+    pub fn wrap_lambda_parameters(&mut self) {
+        self.lambda_parameters = Some(Vec::new());
+    }
+
+    /// Takes the request from `Compiler::wrap_lambda_parameters`, for the lambda being compiled.
+    pub fn take_lambda_parameters_request(&mut self) -> bool {
+        self.lambda_parameters.take().is_some()
+    }
+
+    /// Gives what the lambda compiled for `Compiler::wrap_lambda_parameters`.
+    pub fn set_lambda_parameters(&mut self, parameters: Vec<(TypeId, TypeId)>) {
+        self.lambda_parameters = Some(parameters);
+    }
+
+    /// The references and types of the untyped parameters of the lambda compiled after
+    /// `Compiler::wrap_lambda_parameters`, if it was one.
+    pub fn take_lambda_parameters(&mut self) -> Vec<(TypeId, TypeId)> {
+        self.lambda_parameters.take().unwrap_or_default()
     }
 
     /// Takes the argument of the innermost call being inferred that's being compiled, if there is

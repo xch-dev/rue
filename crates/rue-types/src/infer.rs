@@ -56,6 +56,8 @@ pub struct Inference {
     instances: Vec<TypeId>,
     /// How those vars are resolved.
     policy: InstancePolicy,
+    /// The vars added along with the generics (see `Inference::add_var`).
+    added: Vec<TypeId>,
 }
 
 /// How the vars for passed generic functions' instances are resolved (see
@@ -155,6 +157,7 @@ impl Inference {
             choices: Choices::default(),
             instances: Vec::new(),
             policy: InstancePolicy::Eager,
+            added: Vec::new(),
         }
     }
 
@@ -164,6 +167,27 @@ impl Inference {
     /// one is resolved through what it's inferred as, unlike one that references the other.
     pub fn rename(&mut self, generic: TypeId, from: TypeId) {
         self.renamed.insert(generic, from);
+    }
+
+    /// Adds a var to be inferred along with the generics, which is at most `upper`, such as the type
+    /// of an untyped lambda parameter whose body was compiled with it as `upper` (#335).
+    pub fn add_var(&mut self, var: TypeId, upper: TypeId) {
+        self.generics.insert(var, InferenceCandidates::default());
+        self.branches.insert(var, CandidateBranches::default());
+        self.added.push(var);
+        self.push(var, CandidateKind::Upper, upper, Vec::new());
+    }
+
+    /// Whether the generic is a var that stands for a type that isn't known until the bounds passed
+    /// on to it decide it: a passed generic function's instance, or a var added along with the
+    /// generics, such as an untyped lambda parameter's type. A bound can't be checked against a
+    /// lower bound that references one (see `pass_upper_bounds`).
+    pub(crate) fn is_undecided(&self, generic: TypeId) -> bool {
+        self.is_instance(generic) || self.added.contains(&generic)
+    }
+
+    pub(crate) fn has_undecided(&self) -> bool {
+        !self.instances.is_empty() || !self.added.is_empty()
     }
 
     /// Sets how the vars for passed generic functions' instances are resolved.
@@ -292,9 +316,17 @@ impl Inference {
         for (&generic, candidates) in &other.generics {
             let branches = &other.branches[&generic];
 
-            // The vars for the other's instances are its own
+            // The vars for the other's instances, and those added to it, are its own
             if other.is_instance(generic) && !self.is_instance(generic) {
                 self.add_instance(generic, &InferenceCandidates::default());
+            } else if !self.generics.contains_key(&generic) {
+                self.generics
+                    .insert(generic, InferenceCandidates::default());
+                self.branches.insert(generic, CandidateBranches::default());
+
+                if other.added.contains(&generic) {
+                    self.added.push(generic);
+                }
             }
 
             for kind in [

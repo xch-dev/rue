@@ -12,7 +12,7 @@ use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
 use rue_hir::{HirId, Value};
 use rue_types::{
-    FunctionType, Inference, InstancePolicy, Type, TypeId, contains_generic,
+    CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, contains_generic,
     substitute_with_mappings,
 };
 
@@ -75,6 +75,11 @@ pub(crate) fn infer_call(
     // `ArgumentOrder::candidate_order`)
     let mut checks: Vec<Option<(AstExpr, TypeId, TypeId)>> = vec![None; function.params.len()];
 
+    // For each lambda argument with untyped parameters, the candidates it gives with them as vars
+    // (see `solve_with_lambda_parameters`)
+    let mut with_parameters: Vec<Option<(Vec<LambdaParameter>, Inference)>> =
+        vec![None; function.params.len()];
+
     let mut order = ArgumentOrder::new(ctx, function, args, base.clone());
 
     ctx.push_call_frame(function.generics.clone());
@@ -123,8 +128,14 @@ pub(crate) fn infer_call(
             },
             restored,
         }));
+
+        if matches!(expr, AstExpr::LambdaExpr(_)) {
+            ctx.wrap_lambda_parameters();
+        }
+
         let value = compile_expr(ctx, expr, Some(expected));
         ctx.set_argument_frame(None);
+        let parameter_refs = wrapped_lambda_parameters(ctx);
         results[i] = value.hir;
 
         // Candidates are collected against the unsubstituted parameter type, so that every
@@ -133,6 +144,13 @@ pub(crate) fn infer_call(
         ctx.infer_type(value.ty, param, &mut infer);
         order.add_candidates(i, infer);
         checks[i] = Some((expr.clone(), value.ty, param));
+
+        if !parameter_refs.is_empty() {
+            let mut infer = base.clone();
+            let ty = lambda_type_with_vars(ctx, value.ty, &parameter_refs, &mut infer);
+            ctx.infer_type(ty, param, &mut infer);
+            with_parameters[i] = Some((parameter_refs, infer));
+        }
     }
 
     ctx.pop_call_frame();
@@ -142,6 +160,27 @@ pub(crate) fn infer_call(
     }
 
     let mut mappings = ctx.solve_call(&solver, order.merged().clone());
+
+    // Only a call that the arguments don't solve otherwise is solved again with lambdas' untyped
+    // parameters as vars, so that nothing that compiled before changes. The type expected of a call
+    // that's part of an enclosing call's argument comes from what that call has inferred so far,
+    // which it can still widen, so it only counts outside of one. In a recursive call, the renamed
+    // generics would have to be restored in the vars too, so it's left as is
+    let expected_type = expected_type.filter(|_| ctx.call_generics().is_none());
+
+    if renamed.is_empty()
+        && with_parameters.iter().any(Option::is_some)
+        && !solves_call(ctx, function, &checks, &mappings, expected_type)
+    {
+        let (solved, solved_checks) =
+            solve_with_lambda_parameters(ctx, &solver, &order, &with_parameters, &checks);
+
+        if solves_arguments(ctx, &solved_checks, &solved) {
+            mappings = solved;
+            checks = solved_checks;
+        }
+    }
+
     restore_renamed(ctx, &mut mappings, renamed);
 
     let checks = order
@@ -155,6 +194,140 @@ pub(crate) fn infer_call(
         checks,
         mappings,
     }
+}
+
+/// An untyped parameter of a lambda argument (see `wrapped_lambda_parameters`).
+#[derive(Debug, Clone, Copy)]
+struct LambdaParameter {
+    /// The reference to `ty` that it was compiled as.
+    reference: TypeId,
+    /// The type its body was compiled against.
+    ty: TypeId,
+    /// The var it's inferred as along with the callee's generics.
+    var: TypeId,
+}
+
+/// The untyped parameters of the lambda argument that was just compiled, if it was one, which it
+/// compiled as references (see `Compiler::wrap_lambda_parameters`), each with a var to infer it as.
+/// That lets a bound on the lambda's return type reach a parameter's type: in
+/// `let result: 5 = map(fn(x) => x, 5)`, `x` was compiled as `Int`, the widened `5`, but `B ≤ 5`
+/// makes it `5` (#335).
+fn wrapped_lambda_parameters(ctx: &mut Compiler) -> Vec<LambdaParameter> {
+    ctx.take_lambda_parameters()
+        .into_iter()
+        .map(|(reference, ty)| LambdaParameter {
+            reference,
+            ty,
+            var: ctx.alloc_type(Type::Generic(Generic { name: None })),
+        })
+        .collect()
+}
+
+/// The type of a lambda argument with its untyped parameters as the vars they're inferred as, each
+/// of which is added to the inference as at most the type its body was compiled against.
+fn lambda_type_with_vars(
+    ctx: &mut Compiler,
+    ty: TypeId,
+    parameters: &[LambdaParameter],
+    infer: &mut Inference,
+) -> TypeId {
+    if parameters.is_empty() {
+        return ty;
+    }
+
+    let mut vars = HashMap::new();
+
+    for parameter in parameters {
+        infer.add_var(parameter.var, parameter.ty);
+        vars.insert(parameter.reference, parameter.var);
+    }
+
+    substitute_with_mappings(ctx.types_mut(), ty, &vars)
+}
+
+/// Whether the mappings solve the call: each argument is assignable to its parameter, and the
+/// call's return type to the type expected of it, if there is one.
+fn solves_call(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    checks: &[Option<(AstExpr, TypeId, TypeId)>],
+    mappings: &HashMap<TypeId, TypeId>,
+    expected_type: Option<TypeId>,
+) -> bool {
+    solves_arguments(ctx, checks, mappings)
+        && expected_type.is_none_or(|expected_type| {
+            let ret = substitute_with_mappings(ctx.types_mut(), function.ret, mappings);
+            ctx.is_assignable(ret, expected_type)
+        })
+}
+
+/// Whether each argument is assignable to its parameter with the mappings.
+fn solves_arguments(
+    ctx: &mut Compiler,
+    checks: &[Option<(AstExpr, TypeId, TypeId)>],
+    mappings: &HashMap<TypeId, TypeId>,
+) -> bool {
+    checks.iter().flatten().all(|&(_, ty, param)| {
+        let param = substitute_with_mappings(ctx.types_mut(), param, mappings);
+        ctx.is_assignable(ty, param)
+    })
+}
+
+/// Solves the call again with the untyped parameters of its lambda arguments as vars (see
+/// `wrapped_lambda_parameters`), and gives the mappings and the checks with each lambda's type as
+/// it's inferred.
+fn solve_with_lambda_parameters(
+    ctx: &mut Compiler,
+    solver: &CallSolver,
+    order: &ArgumentOrder,
+    with_parameters: &[Option<(Vec<LambdaParameter>, Inference)>],
+    checks: &[Option<(AstExpr, TypeId, TypeId)>],
+) -> (
+    HashMap<TypeId, TypeId>,
+    Vec<Option<(AstExpr, TypeId, TypeId)>>,
+) {
+    let mut merged = order.base.clone();
+
+    for i in order.candidate_order() {
+        if let Some((_, candidates)) = &with_parameters[i] {
+            merged.append(candidates);
+        } else if let Some(candidates) = &order.candidates[i] {
+            merged.append(candidates);
+        }
+    }
+
+    let mut mappings = ctx.solve_call(solver, merged);
+    let mut checks = checks.to_vec();
+    let mut vars = HashMap::new();
+
+    for (check, parameters) in checks.iter_mut().zip(with_parameters) {
+        let (Some((_, ty, _)), Some((parameters, _))) = (check, parameters) else {
+            continue;
+        };
+
+        let mut inferred = HashMap::new();
+
+        for parameter in parameters {
+            // A parameter that isn't inferred as narrower than what its body was compiled against
+            // is that type, as it was
+            let narrower = mappings
+                .remove(&parameter.var)
+                .filter(|&mapped| ctx.is_assignable(mapped, parameter.ty))
+                .unwrap_or(parameter.ty);
+
+            inferred.insert(parameter.reference, narrower);
+            vars.insert(parameter.var, narrower);
+        }
+
+        *ty = substitute_with_mappings(ctx.types_mut(), *ty, &inferred);
+    }
+
+    // The callee's generics can be inferred through the vars
+    for ty in mappings.values_mut() {
+        *ty = substitute_with_mappings(ctx.types_mut(), *ty, &vars);
+    }
+
+    (mappings, checks)
 }
 
 /// The order a call's arguments are compiled in. An argument is compiled once the callee's
@@ -948,7 +1121,7 @@ pub(crate) fn refine_element_expected(
 }
 
 /// Whether the type references a generic of the innermost call being inferred.
-fn references_call_generics(ctx: &mut Compiler, ty: TypeId) -> bool {
+pub(crate) fn references_call_generics(ctx: &mut Compiler, ty: TypeId) -> bool {
     let generics = ctx
         .call_generics()
         .map(<[TypeId]>::to_vec)

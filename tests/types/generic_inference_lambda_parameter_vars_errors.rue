@@ -1,0 +1,17 @@
+// Where an untyped lambda parameter's type isn't inferred along with the call's generics, so the
+// errors are as they were (#362, step 13c)
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn main() -> Int {
+    // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
+    let computed: 5 = map(fn(x) => x + 0, 5);
+
+    // A call that's part of an enclosing call's argument is only solved with what that call has
+    // inferred so far, which it can still widen, so it isn't solved again for its expected type
+    let nested: (5, Int) = map(fn(pair) => pair, (map(fn(x) => x, 5), 1));
+
+    computed + nested.first
+}

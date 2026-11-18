@@ -1,0 +1,51 @@
+// An untyped lambda parameter's type is inferred along with the call's generics while the lambda's
+// body has been compiled with the type the other arguments gave it, so a bound that only reaches it
+// through the lambda's own return type still narrows it (#362, step 13c)
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+test fn issue_case() -> Int {
+    // `B ≤ 5` reaches `x` through the lambda's return type, so `A` isn't widened to `Int` (#335)
+    let result: 5 = map(fn(x) => x, 5);
+    result + 1
+}
+
+test fn through_a_pair() -> Int {
+    let result: (5, 5) = map(fn(x) => (x, x), 5);
+    result.first + result.rest
+}
+
+test fn without_an_expected_type() -> Int {
+    // Nothing bounds the return type, so `x` is `Int` as before
+    let result = map(fn(x) => x, 5);
+    result + 1
+}
+
+test fn body_compiled_with_the_wider_type() -> Int {
+    // The body is compiled with `x: Int`, so the comparison with `6` is still allowed, and only the
+    // lambda's type is narrowed to `fn(x: 5) -> 5`
+    let result: 5 = map(
+        fn(x) => if x == 6 {
+            5
+        } else {
+            x
+        },
+        5,
+    );
+    result + 1
+}
+
+fn run<A, B>(function: fn(a: A) -> B, check: fn(b: B) -> Int, value: A) -> Int {
+    check(function(value))
+}
+
+fn five_only(value: 5) -> Int {
+    value
+}
+
+test fn bounded_by_another_argument() -> Int {
+    // `five_only` gives `B ≤ 5`, which reaches `x` the same way
+    run(fn(x) => x, five_only, 5)
+}

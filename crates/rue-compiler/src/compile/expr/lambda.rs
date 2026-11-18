@@ -11,11 +11,17 @@ use crate::{
     compile_expr, compile_generic_parameters, compile_type, create_binding,
 };
 
+use super::call_inference::references_call_generics;
+
 pub fn compile_lambda_expr(
     ctx: &mut Compiler,
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
+    // Only this lambda's own parameters are wrapped, not those of lambdas in its body
+    let wrap = ctx.take_lambda_parameters_request();
+    let mut wrapped = Vec::new();
+
     let mut expected_functions = if let Some(ty) = expected_type {
         rue_types::extract_functions(ctx.types_mut(), ty, true)
     } else {
@@ -92,6 +98,23 @@ pub fn compile_lambda_expr(
             debug!("Unresolved lambda parameter type due to missing inference");
             ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType);
             ctx.builtins().unresolved.ty
+        };
+
+        // An untyped parameter of a call's argument is compiled as a reference of its own (see
+        // `Compiler::wrap_lambda_parameters`), unless it comes from a generic function type or
+        // its type is still one of the call's generics, which aren't in scope outside of it
+        let ty = if wrap
+            && param.ty().is_none()
+            && !is_spread
+            && vars.is_empty()
+            && !matches!(ctx.ty(ty), Type::Unresolved)
+            && !references_call_generics(ctx, ty)
+        {
+            let reference = ctx.alloc_type(Type::Ref(ty));
+            wrapped.push((reference, ty));
+            reference
+        } else {
+            ty
         };
 
         let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
@@ -178,6 +201,10 @@ pub fn compile_lambda_expr(
     }));
 
     let hir = ctx.alloc_hir(Hir::Lambda(symbol));
+
+    if wrap {
+        ctx.set_lambda_parameters(wrapped);
+    }
 
     Value::new(hir, ty)
 }
