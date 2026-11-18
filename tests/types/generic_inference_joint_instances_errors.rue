@@ -1,5 +1,5 @@
-// The types that passed generic functions' instances are solved as jointly, as the errors name them
-// (#362, step 13)
+// What passed generic functions' instances are instantiated as when they're solved jointly with the
+// call's generics, as the errors name it (#362, step 13)
 
 fn call<B>(function: fn() -> B) -> B {
     function()

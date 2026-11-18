@@ -221,6 +221,29 @@ test fn kind_instantiation_next_to_a_function() -> Int {
     0
 }
 
+fn make_bytes<T>() -> fn(x: T) -> Bytes {
+    unchecked_cast(fn(x: Bytes) => x)
+}
+
+fn any_of<B>(_first: fn() -> B, _second: fn() -> B, third: fn() -> B) -> B {
+    third()
+}
+
+fn same_bytes(value: Bytes) -> Bytes {
+    value
+}
+
+fn from_int(_value: Int) -> Bytes {
+    ""
+}
+
+test fn kind_instantiation_next_to_several_functions() -> Int {
+    // `same_bytes` holds `fn(x: Any) -> Bytes`, but not `from_int`, so it's `fn(x: Never) -> Bytes`,
+    // which holds both, rather than a union of the two that `compose` can't take
+    let _function = compose(any_of(make_bytes, fn() => same_bytes, fn() => from_int));
+    0
+}
+
 test fn polarity_instantiation_next_to_a_function() -> Int {
     // `T` has the candidates `fn(a: Any) -> (Int, 5)` from `compose` and the lambda's
     // `fn(x: Int) -> (Int, 5)`, which holds it

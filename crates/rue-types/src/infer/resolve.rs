@@ -413,10 +413,6 @@ impl Inference {
             // What it's instantiated as where the least and greatest instantiation is needed
             let mut picked: [Option<TypeId>; 2] = [None, None];
             let mut instantiate = |arena: &mut Arena<Type>, ty: TypeId, greatest: bool| {
-                if !references_generic(arena, ty, var, |_| Vec::new()) {
-                    return ty;
-                }
-
                 let instantiated = *picked[usize::from(greatest)].get_or_insert_with(|| {
                     // Without bounds of the kind it needs, the least instantiation is `Never` and
                     // the greatest is `Any`
@@ -453,7 +449,9 @@ impl Inference {
 
                         // What it would be with each var instantiated for its kind can reference
                         // vars that it doesn't, through the other instantiation's bounds
-                        if let Some(by_kind) = flipped.get_mut(&key) {
+                        if let Some(by_kind) = flipped.get_mut(&key)
+                            && references_generic(arena, *by_kind, var, |_| Vec::new())
+                        {
                             *by_kind = instantiate(arena, *by_kind, upper);
                         }
 
@@ -461,7 +459,7 @@ impl Inference {
                             continue;
                         }
 
-                        // Where it's only contravariant in a lower candidate, the greatest
+                        // Where it's only contravariant in a lower or held candidate, the greatest
                         // instantiation gives the candidate its least type, as a parameter type in
                         // `fn(x: T) -> nil` does (#358). An upper candidate keeps the greatest
                         // instantiation wherever it is, since a generic with only upper candidates
@@ -486,48 +484,50 @@ impl Inference {
 
     /// Puts back each candidate with a var instantiated the other way (see
     /// `Inference::resolve_instances`) with what it is with the var instantiated for its kind,
-    /// unless no other candidate of its generic and kind is a function type, or one of them holds
-    /// it. Otherwise it would be a member of a union of function types, such as
-    /// `fn(a: Any) -> Bytes | fn(a: Bytes) -> "a"`, that's narrower than the one the other
-    /// instantiation gives, `fn(a: Never) -> Bytes`, which holds both.
+    /// unless one of the function types among its generic's other candidates of the same kind holds
+    /// it and all the others, or there are none. Otherwise the function types wouldn't collapse into
+    /// one as they do with the other instantiation: `fn(a: Never) -> Bytes` holds
+    /// `fn(a: Bytes) -> "a"`, but `fn(a: Any) -> Bytes` would be a member of a union with it. The
+    /// other candidates instantiated the other way don't count, since they would hold each other
+    /// when the same function is passed twice.
     fn restore_unheld(
         &mut self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
         flipped: IndexMap<(TypeId, CandidateKind, usize), TypeId>,
     ) {
-        // Each is decided before any is put back, and without the others that were instantiated
-        // the other way, which would otherwise hold each other when the same function is passed
-        // twice
-        let mut restored = Vec::new();
+        let mut others: IndexMap<(TypeId, CandidateKind), Vec<TypeId>> = IndexMap::new();
 
         for (&(generic, kind, index), &by_kind) in &flipped {
-            let list = self.generics[&generic].list(kind);
-            let candidate = list[index];
+            let others = others.entry((generic, kind)).or_insert_with(|| {
+                self.generics[&generic]
+                    .list(kind)
+                    .iter()
+                    .enumerate()
+                    .filter(|&(other, &ty)| {
+                        !flipped.contains_key(&(generic, kind, other))
+                            && matches!(arena[resolve_refs(arena, ty)], Type::Function(_))
+                    })
+                    .map(|(_, &ty)| ty)
+                    .collect()
+            });
 
-            let others: Vec<TypeId> = list
-                .iter()
-                .enumerate()
-                .filter(|&(other, &ty)| {
-                    !flipped.contains_key(&(generic, kind, other))
-                        && matches!(arena[resolve_refs(arena, ty)], Type::Function(_))
-                })
-                .map(|(_, &ty)| ty)
-                .collect();
+            let candidate = self.generics[&generic].list(kind)[index];
+            let mut assigns = |from: TypeId, to: TypeId| {
+                compare_renamed(arena, builtins, &self.renamed, from, to) == Comparison::Assign
+            };
 
             let held = others.is_empty()
-                || others.iter().any(|&other| {
-                    compare_renamed(arena, builtins, &self.renamed, candidate, other)
-                        == Comparison::Assign
+                || others.iter().any(|&holder| {
+                    assigns(candidate, holder)
+                        && others
+                            .iter()
+                            .all(|&other| other == holder || assigns(other, holder))
                 });
 
             if !held {
-                restored.push((generic, kind, index, by_kind));
+                self.generics[&generic].list_mut(kind)[index] = by_kind;
             }
-        }
-
-        for (generic, kind, index, by_kind) in restored {
-            self.generics[&generic].list_mut(kind)[index] = by_kind;
         }
     }
 }
