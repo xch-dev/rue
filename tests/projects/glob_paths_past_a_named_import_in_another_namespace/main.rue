@@ -1,0 +1,10 @@
+// `import b::a` and `import a::*` wait for each other, so `a::*`'s path waits for the named import
+// to be resolved. It brings in only the function `a`, not a module, so `a::*`'s path then finds the
+// sibling `a.rue`, and both are used. `second.rue` does the same with the names in the other order.
+
+import a::*;
+import b::a;
+
+fn main() -> Int {
+    V + a() + second::value()
+}

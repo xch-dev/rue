@@ -1,0 +1,6 @@
+import x::*;
+import y::x;
+
+export fn value() -> Int {
+    V
+}

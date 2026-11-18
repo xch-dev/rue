@@ -1,0 +1,6 @@
+program: (q . 77)
+debug_program: (a (q 16 (+ 30 (a 22 ())) (a 8 (c (c 12 10) ()))) (c (c (c (q 16 6 (a 4 ())) (q 1 . 50)) (c (q . 20) (c (q 1 . 5) (q . 2)))) ()))
+output: "77"
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020

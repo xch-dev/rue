@@ -1,5 +1,5 @@
-// The same, with the named import of `a` from `a.rue` itself. Only `a::*`'s path is reported: the
-// named import's own path finds the sibling `a.rue`, and the binding is the one it made itself.
+// The same, with the named import of `a` from `a.rue` itself. Its path finds the sibling `a.rue`,
+// and `a::*`'s path then finds the inner module `a` it brings in.
 
 import a::*;
 import a::a;
