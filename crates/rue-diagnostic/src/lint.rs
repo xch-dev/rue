@@ -235,6 +235,7 @@ lints! {
     UnnecessaryParens("unnecessary_parens", Warn, "Parentheses that don't change how an expression is evaluated"),
     NamingConvention("naming_convention", Warn, "Names that don't follow the naming convention for what they name"),
     ShadowedBinding("shadowed_binding", Allow, "Bindings and parameters that shadow another binding or parameter with the same name"),
+    PreludeOverEnclosingItem("prelude_over_enclosing_item", Warn, "Names in inline modules that refer to the prelude or a builtin, while an enclosing module has an item with the same name, which inline modules don't see"),
     DebugStatement("debug_statement", Allow, "`debug` statements, which shouldn't be left in a release build"),
     UnconditionalRecursion("unconditional_recursion", Warn, "Functions that call themselves on every path, so they never return"),
     BytesIntConfusion("bytes_int_confusion", Warn, "Casts of byte literals to `Int` whose value is negative or not in canonical form"),
@@ -353,6 +354,7 @@ lint_groups! {
         DuplicateCondition,
         UnconditionalRecursion,
         BytesIntConfusion,
+        PreludeOverEnclosingItem,
     ]),
 }
 

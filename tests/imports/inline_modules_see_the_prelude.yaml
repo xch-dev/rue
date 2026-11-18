@@ -4,3 +4,8 @@ output: (0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824 . "h
 runtime_cost: 643
 byte_cost: 300000
 total_cost: 300643
+diagnostics:
+- |-
+  `sha256` refers to the builtin, not the enclosing module's `super::sha256`, since inline modules don't see the items of the modules they're in at inline_modules_see_the_prelude.rue:10:9
+    note: The enclosing module's `sha256` is declared here at inline_modules_see_the_prelude.rue:4:4
+    help: Use `super::sha256` to refer to the enclosing module's item

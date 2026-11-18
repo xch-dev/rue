@@ -14,12 +14,12 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Item, Mappings, Namespace,
-    Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
+    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Item, Items, Mappings,
+    Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
-use rue_lint::{LintInput, LintSites};
+use rue_lint::{EnclosedPreludeReference, LintInput, LintSites};
 use rue_options::CompilerOptions;
-use rue_parser::{SyntaxNode, SyntaxToken};
+use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
@@ -415,6 +415,98 @@ impl Compiler {
     pub fn inline_module_parent_scope(&self) -> ScopeId {
         let (_, outer_scope) = self.file.expect("inline modules are declared in a file");
         outer_scope
+    }
+
+    /// Records a lint site if a name written in an inline module (as the start of a path) resolves
+    /// outside of the file, to the prelude or a builtin, while a module that encloses it has an
+    /// item with the same name in the namespace. Before inline modules stopped seeing the items of
+    /// the modules they're in, the name meant the enclosing module's item.
+    pub fn record_enclosed_prelude_reference(&mut self, namespace: Namespace, name: &SyntaxToken) {
+        if self.inline_modules.is_empty() || !self.source.kind.check_unused() {
+            return;
+        }
+
+        let outer_scope = self.inline_module_parent_scope();
+        let builtins_scope = self.builtins.scope;
+
+        // The scope that the name resolves in, which is outside of the file if it's the one
+        // outside of the inline module or encloses it
+        let Some((found_scope, resolved)) = self
+            .lookup_in(self.last_scope_id(), |id, scope| {
+                if let Some(item) = scope.item(namespace, name.text()) {
+                    Some(Some((id, item)))
+                } else {
+                    scope.is_blocked(namespace, name.text()).then_some(None)
+                }
+            })
+            .flatten()
+        else {
+            return;
+        };
+
+        if self
+            .lookup_in(outer_scope, |id, _| (id == found_scope).then_some(()))
+            .is_none()
+        {
+            return;
+        }
+
+        // The enclosing modules, from the innermost to the file
+        let (file, _) = self.file.expect("inline modules are declared in a file");
+        let parents = &self.inline_modules[..self.inline_modules.len() - 1];
+        let enclosing = parents.iter().rev().copied().chain([file]);
+
+        for (index, module) in enclosing.enumerate() {
+            let scope = self.module(module).scope;
+
+            if self.scope(scope).is_blocked(namespace, name.text()) {
+                return;
+            }
+
+            let Some((item, import)) = self.module_member(scope, namespace, name.text()) else {
+                continue;
+            };
+
+            // An enclosing module that has the same item (such as by importing it from the
+            // prelude) means the same thing
+            if item == resolved {
+                return;
+            }
+
+            let enclosing = match import {
+                Some(import) => match &self.import(import).items {
+                    Items::Named(name) | Items::All(name) => name.srcloc().cloned(),
+                },
+                None => self.item_name(item).and_then(|name| name.srcloc().cloned()),
+            };
+
+            let reference = EnclosedPreludeReference {
+                name: self.local_name(name),
+                builtin: found_scope == builtins_scope,
+                depth: index + 1,
+                enclosing,
+                imported: import.is_some(),
+                field_shorthand: name
+                    .parent()
+                    .is_some_and(|parent| parent.kind() == SyntaxKind::StructInitializerField),
+            };
+
+            self.lint_sites.enclosed_prelude_references.push(reference);
+            return;
+        }
+    }
+
+    /// The name that an item is declared with, if it has one.
+    fn item_name(&self, item: Item) -> Option<Name> {
+        match item {
+            Item::Value(symbol) | Item::Module(symbol) => self.symbol(symbol).name(),
+            Item::Type(ty) => match self.ty(ty) {
+                Type::Struct(ty) => ty.name.clone(),
+                Type::Alias(ty) => ty.name.clone(),
+                Type::Generic(ty) => ty.name.clone(),
+                _ => None,
+            },
+        }
     }
 
     /// Records the scope with a file's sibling modules, which are found through `super` from an

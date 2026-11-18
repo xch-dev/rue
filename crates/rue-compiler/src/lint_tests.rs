@@ -2534,3 +2534,118 @@ fn main() -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn prelude_over_enclosing_item_suggestions_name_the_enclosing_item() {
+    let source = "\
+fn sha256(value: Bytes) -> Bytes32 {
+    unchecked_cast(value)
+}
+
+struct Remark {
+    message: Bytes,
+}
+
+struct Hasher {
+    sha256: fn(value: Bytes) -> Bytes32,
+}
+
+mod outer {
+    fn tree_hash_atom(value: Bytes) -> Bytes32 {
+        unchecked_cast(value)
+    }
+
+    export mod inner {
+        export fn hash(value: Bytes) -> (Bytes32, Bytes32) {
+            (sha256(value), tree_hash_atom(value))
+        }
+
+        export fn remark(message: Bytes) -> Remark {
+            Remark { message }
+        }
+
+        export fn hasher() -> super::super::Hasher {
+            super::super::Hasher { sha256 }
+        }
+    }
+}
+
+fn main(value: Bytes) -> Any {
+    (outer::inner::hash(value), (outer::inner::remark(value), outer::inner::hasher()))
+}
+";
+
+    let with_std = |options: &mut CompilerOptions| options.std = true;
+    let (diagnostics, has_errors) = compile_source(source, with_std);
+
+    // The prelude's `Remark` has no `message` field
+    assert!(has_errors);
+
+    // The suggestions aren't applied automatically, since the prelude's item might be the one
+    // that's meant
+    let suggestions = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::PreludeOverEnclosingItem))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .collect::<Vec<_>>();
+
+    assert_eq!(suggestions.len(), 5);
+    assert!(
+        suggestions
+            .iter()
+            .all(|suggestion| suggestion.applicability == Applicability::MaybeIncorrect)
+    );
+
+    let edits = suggestions
+        .iter()
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+fn sha256(value: Bytes) -> Bytes32 {
+    unchecked_cast(value)
+}
+
+struct Remark {
+    message: Bytes,
+}
+
+struct Hasher {
+    sha256: fn(value: Bytes) -> Bytes32,
+}
+
+mod outer {
+    fn tree_hash_atom(value: Bytes) -> Bytes32 {
+        unchecked_cast(value)
+    }
+
+    export mod inner {
+        export fn hash(value: Bytes) -> (Bytes32, Bytes32) {
+            (super::super::sha256(value), super::tree_hash_atom(value))
+        }
+
+        export fn remark(message: Bytes) -> super::super::Remark {
+            super::super::Remark { message }
+        }
+
+        export fn hasher() -> super::super::Hasher {
+            super::super::Hasher { sha256: super::super::sha256 }
+        }
+    }
+}
+
+fn main(value: Bytes) -> Any {
+    (outer::inner::hash(value), (outer::inner::remark(value), outer::inner::hasher()))
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, with_std);
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}

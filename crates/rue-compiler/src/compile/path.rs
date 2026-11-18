@@ -360,6 +360,19 @@ where
             );
         }
 
+        if let SegmentBase::Local(_) = base {
+            let namespace = match initial {
+                _ if has_subpath => Some(Namespace::Module),
+                PathResult::Symbol(..) => Some(Namespace::Value),
+                PathResult::Type(..) => Some(Namespace::Type),
+                PathResult::Unresolved => None,
+            };
+
+            if let Some(namespace) = namespace {
+                ctx.record_enclosed_prelude_reference(namespace, &name);
+            }
+        }
+
         let declaration = match initial {
             PathResult::Symbol(symbol, _, import) => Some((Declaration::Symbol(symbol), import)),
             PathResult::Type(ty, import) => Some((Declaration::Type(ty), import)),
