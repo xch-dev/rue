@@ -1,0 +1,82 @@
+// A recursive call's renamed generics take the bounds passed on to them like any other generic
+// being inferred (#361), and the generic each was renamed from is a candidate from above as well as
+// below (#378), so the call infers what the same call does from another function
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    // The expected `5` reaches the callee's `A` through `identity`, as it does from outside
+    let _five: 5 = map(identity, 5);
+    function(value)
+}
+
+test fn expected_bound_through_another_generic() -> Int {
+    map(identity, 1)
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn feed<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, depth: Int) -> fn(a: A) -> Int {
+    if depth > 0 {
+        // `increment` bounds the callee's `B` by `Int`, which is passed on to its `A` (#333)
+        let inner = feed(identity, increment, depth - 1);
+        return fn(a: A) => second(first(a)) + inner(1);
+    }
+
+    fn(a: A) => second(first(a))
+}
+
+test fn upper_bound_through_another_generic() -> Int {
+    let function = feed(identity, increment, 1);
+    function(1)
+}
+
+fn expected_only<A>(depth: Int) -> (A, A | nil) {
+    if depth > 0 {
+        // Only the expected type mentions the caller's `A`, which is the callee's `A` from above,
+        // and more specific than `A | nil` (#378)
+        return expected_only(depth - 1);
+    }
+
+    unchecked_cast((1, nil))
+}
+
+test fn expected_type_only() -> Int {
+    let (first, _) = expected_only::<Int>(1);
+    first
+}
+
+fn expected_union<A>(depth: Int) -> A | nil {
+    if depth > 0 {
+        // Guard: the callee's `A` is now `A` rather than `A | nil`, but the call's type is `A | nil`
+        // either way
+        let result: A | nil = expected_union(depth - 1);
+        return result;
+    }
+
+    nil
+}
+
+test fn guard_expected_union_only() -> Bool {
+    expected_union::<Int>(1) is nil
+}
+
+fn from_expected<A>(depth: Int) -> (A, A) {
+    if depth > 0 {
+        // Guard: the expected `(A, Int)` makes the callee's `A` `Int`, not `A`, as before, since
+        // `A` isn't more specific than `Int`
+        let result: (Int, Int) = from_expected(depth - 1);
+        return unchecked_cast(result);
+    }
+
+    unchecked_cast((1, 1))
+}
+
+test fn guard_expected_upper_bounds() -> Int {
+    let (first, second) = from_expected::<Int>(1);
+    first + second
+}
