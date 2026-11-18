@@ -47,6 +47,26 @@ fn union_parameter<T>(pair: (T, fn(value: T | Int) -> Int), depth: Int) -> Int {
     pair.rest(pair.first)
 }
 
+type Callback<X> = fn(value: X) -> Int;
+
+// With a union of function types expected, the parameter is `T | Int`, which keeps the caller's `T`
+fn union_of_functions<T>(pair: (T, Callback<T> | Callback<Int>), depth: Int) -> Int {
+    if depth > 0 {
+        return union_of_functions(
+            (
+                1,
+                fn(x) => {
+                    let _show: nil = x;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
 fn wrap<F>(function: fn(value: F) -> Int) -> fn(value: F) -> Int {
     function
 }

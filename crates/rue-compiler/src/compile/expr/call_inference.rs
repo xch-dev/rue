@@ -94,12 +94,14 @@ pub(crate) fn infer_call(
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
         }
 
-        // Only a pair or list is made of elements that are refined (see `compile_element`)
-        let restored = if matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) {
-            restorable(ctx, &mappings, renamed)
-        } else {
-            HashMap::new()
-        };
+        // Only a lambda that's an element of a pair or list that the argument is made of is
+        // refined against the callee's renamed generics (see `compile_element`)
+        let restored =
+            if matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) && has_lambda(expr) {
+                restorable(ctx, &mappings, renamed)
+            } else {
+                HashMap::new()
+            };
         restore_renamed(ctx, &mut mappings, renamed);
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
@@ -107,7 +109,11 @@ pub(crate) fn infer_call(
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
             solver: solver.clone(),
-            renamed: renamed.clone(),
+            renamed: if restored.is_empty() {
+                HashMap::new()
+            } else {
+                renamed.clone()
+            },
             restored,
         }));
         let value = compile_expr(ctx, expr, Some(expected));
@@ -790,12 +796,16 @@ pub(crate) fn compile_element(
 
 /// The caller's generics in the type expected of a lambda that's an element of a pair or list in
 /// the argument, which are mapped back to the callee's renamed generics they stand for (see
-/// `refine_element_expected`): those that are the whole type of one of its untyped parameters in a
-/// function type expected of it, which is the type that parameter gets. A lambda with the caller's generic there only compiles if the
-/// callee's generic is inferred as the caller's, so what the elements before it infer can't change
-/// the type of a program that compiles. Anywhere else it can, such as `make()` in
-/// `recursive((1, fn() => make()))` with `recursive<T>(pair: (T, fn() -> T))` (`Int` rather than
-/// `Int | T`), so the caller's generic is kept.
+/// `refine_element_expected`): those that are, after `unwrap_semantic`, the whole type of one of its
+/// untyped parameters in every function type expected of it. That's the type the parameter gets,
+/// and a lambda with the caller's generic there only compiles if the callee's generic is inferred
+/// as the caller's, so what the elements before it infer can't change the type of a program that
+/// compiles. Anywhere else it can, so the caller's generic is kept:
+///
+/// - `make()` in `recursive((1, fn() => make()))` with `recursive<T>(pair: (T, fn() -> T))` would
+///   be `Int` rather than `Int | T`.
+/// - With `Callback<T> | Callback<Int>` expected, the parameter is `T | Int`, which compiles with
+///   the callee's generic inferred as `Int`.
 fn restored_parameters(
     ctx: &mut Compiler,
     restored: &HashMap<TypeId, TypeId>,
@@ -806,20 +816,29 @@ fn restored_parameters(
         return HashMap::new();
     }
 
-    let untyped = untyped_parameters(lambda);
+    let functions = rue_types::extract_functions(ctx.types_mut(), expected, true);
     let mut parameters = HashMap::new();
 
-    for function in rue_types::extract_functions(ctx.types_mut(), expected, true) {
-        for &index in &untyped {
+    for index in untyped_parameters(lambda) {
+        let mut types = IndexSet::new();
+
+        for function in &functions {
             let Some(parameter) = function.params.get(index) else {
+                types.insert(None);
                 continue;
             };
 
-            let ty = rue_types::unwrap_semantic(ctx.types_mut(), parameter.ty, true);
+            types.insert(Some(rue_types::unwrap_semantic(
+                ctx.types_mut(),
+                parameter.ty,
+                true,
+            )));
+        }
 
-            if let Some(&copy) = restored.get(&ty) {
-                parameters.insert(ty, copy);
-            }
+        if let [Some(ty)] = types.into_iter().collect::<Vec<_>>()[..]
+            && let Some(&copy) = restored.get(&ty)
+        {
+            parameters.insert(ty, copy);
         }
     }
 
@@ -894,9 +913,10 @@ pub(crate) fn refine_element_expected(
     // an earlier element maps, and no program has been found where it differs
     let mut mappings = ctx.argument_mappings(&argument.solver, &argument.infer, &inferred, false);
 
-    // The caller's generic is kept where what's inferred so far is assignable to it, or it to
-    // that, such as `T | Int` from `fn(_v: T | Int) => 1` before the lambda: the callee's generic
-    // can still be inferred as the caller's, as it was before the lambda got anything else
+    // The caller's generic is kept where it's assignable to what's inferred so far, such as
+    // `T | Int` from `fn(_v: T | Int) => 1` before the lambda, or that to it (only `T` itself or
+    // `never`): the callee's generic can still be inferred as the caller's, as it was before the
+    // lambda got anything else
     for (&generic, copy) in &restored {
         if let Some(&ty) = mappings.get(copy)
             && (ctx.is_assignable(ty, generic) || ctx.is_assignable(generic, ty))
