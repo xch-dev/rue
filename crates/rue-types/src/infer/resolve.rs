@@ -293,9 +293,11 @@ pub(crate) fn pick_inferred_type(
 ) -> Option<TypeId> {
     let own_lower = without_subsumed_original(arena, builtins, renamed, original, candidates);
 
+    let upper = own_upper(arena, builtins, renamed, original, &candidates.upper);
+
     // The values that are already held by a union's other members are only used if nothing
     // else constrains the generic
-    let lower = if own_lower.is_empty() && candidates.upper.is_empty() {
+    let lower = if own_lower.is_empty() && upper.is_empty() {
         &candidates.held
     } else {
         &own_lower
@@ -313,22 +315,24 @@ pub(crate) fn pick_inferred_type(
             .collect();
         let widened = union_of(arena, widened);
 
-        if candidates.upper.iter().all(|&upper| {
-            compare_renamed(arena, builtins, renamed, widened, upper) == Comparison::Assign
+        // The generic it was renamed from doesn't keep it from being widened, as it didn't before
+        // it was a candidate (#378)
+        if upper.iter().all(|&upper| {
+            Some(upper) == original
+                || compare_renamed(arena, builtins, renamed, widened, upper) == Comparison::Assign
         }) {
             Some(widened)
         } else {
             Some(union_of(arena, lower.clone()))
         }
-    } else if let Some(&first) = candidates.upper.first() {
+    } else if let Some(&first) = upper.first() {
         // Pick the most specific upper bound, if there is one
         Some(
-            candidates
-                .upper
+            upper
                 .iter()
                 .copied()
                 .find(|&ty| {
-                    candidates.upper.iter().all(|&other| {
+                    upper.iter().all(|&other| {
                         compare_renamed(arena, builtins, renamed, ty, other) == Comparison::Assign
                     })
                 })
@@ -337,6 +341,32 @@ pub(crate) fn pick_inferred_type(
     } else {
         // Nothing constrains the generic, so leave it as is
         None
+    }
+}
+
+/// Returns the upper candidates without the generic that the one being inferred was renamed from
+/// (see `Inference::rename`), unless it's the most specific of them, so that it only decides the
+/// type where it's what the generic is, such as `A` next to `A | nil` (#378). Next to an upper
+/// bound it isn't assignable to, such as `Int`, it's left out, and the type is what it was before
+/// it was a candidate.
+fn own_upper(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    renamed: &FxHashMap<TypeId, TypeId>,
+    original: Option<TypeId>,
+    upper: &[TypeId],
+) -> Vec<TypeId> {
+    let Some(original) = original.filter(|original| upper.contains(original)) else {
+        return upper.to_vec();
+    };
+
+    if upper.iter().all(|&other| {
+        other == original
+            || compare_renamed(arena, builtins, renamed, original, other) == Comparison::Assign
+    }) {
+        upper.to_vec()
+    } else {
+        upper.iter().copied().filter(|&ty| ty != original).collect()
     }
 }
 

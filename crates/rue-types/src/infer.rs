@@ -133,10 +133,9 @@ impl Inference {
     }
 
     /// Records that a generic being inferred was renamed from another generic. They're compared as
-    /// the same type where neither is bound, and bounds aren't passed through it (see
-    /// `Inference::passes_bounds`), since they were the same generic before. But a candidate that
-    /// references this one is resolved through what it's inferred as, unlike one that references
-    /// the other.
+    /// the same type where neither is bound, since they were the same generic before, and the
+    /// other one is a candidate of this one where they match. But a candidate that references this
+    /// one is resolved through what it's inferred as, unlike one that references the other.
     pub fn rename(&mut self, generic: TypeId, from: TypeId) {
         self.renamed.insert(generic, from);
     }
@@ -331,10 +330,11 @@ impl Inference {
     }
 
     /// Whether upper bounds are passed on to the generic, and lower bounds expanded through it (see
-    /// `pass_upper_bounds`). A renamed generic is left out, as it was when it was the generic it
-    /// was renamed from, so that a recursive call infers the same types as it did then.
+    /// `pass_upper_bounds`). A renamed generic takes them too (#361): it's a fresh generic, and the
+    /// generic it was renamed from is one of its candidates, which keeps a recursive call's types
+    /// where they were.
     pub(crate) fn passes_bounds(&self, generic: TypeId) -> bool {
-        self.is_target(generic) && !self.renamed.contains_key(&generic)
+        self.is_target(generic)
     }
 
     /// The generic's candidates. Any change must keep them in step with the union members they

@@ -2684,24 +2684,53 @@ mod inference {
     }
 
     #[test]
-    fn renamed_generics_dont_take_passed_bounds() {
+    fn renamed_generics_take_passed_bounds() {
         let mut db = Db::new();
         let (a, renamed, b) = (db.generic("A"), db.generic("A"), db.generic("B"));
         let five = db.literal(AtomSemantic::Int, &[5]);
 
-        // `B`'s candidate is the generic renamed from `A`, which doesn't take `B`'s bound, as `A`
-        // didn't when the two were the same generic
+        // `B`'s candidate is the generic renamed from `A`, which takes `B`'s bound like any other
+        // generic being inferred (#361)
         let mut infer = Inference::new([renamed, b]);
         infer.rename(renamed, a);
         db.infer(renamed, b, &mut infer);
         add_expected(&mut db, &[renamed, b], b, five, &mut infer);
-        assert_eq!(candidates(&infer, renamed).upper, vec![]);
+        assert_eq!(candidates(&infer, renamed).upper, vec![five]);
 
-        // But it's still resolved through
+        // And it's resolved through
         let int = db.builtins.int;
         assert_eq!(db.infer(int, renamed, &mut infer), Comparison::Assign);
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
+    fn renamed_generics_take_the_original_from_above() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let (a, renamed) = (db.generic("A"), db.generic("A"));
+        let a_or_nil = db.union(&[a, nil]);
+
+        // The type expected of `A'` is `A`, from the identity, and `A | nil`, so it's `A`, the
+        // most specific (#378)
+        let mut infer = Inference::new([renamed]);
+        infer.rename(renamed, a);
+        let renamed_or_nil = db.union(&[renamed, nil]);
+        let ret = db.pair(renamed, renamed_or_nil);
+        let expected = db.pair(a, a_or_nil);
+        infer_from_expected(&mut db.arena, &db.builtins, ret, expected, &mut infer);
+        assert!(candidates(&infer, renamed).upper.contains(&a));
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&renamed], a);
+
+        // Next to `Int`, which it isn't assignable to, it's left out, so `A'` is `Int` as before
+        let mut infer = Inference::new([renamed]);
+        infer.rename(renamed, a);
+        let ret = db.pair(renamed, renamed);
+        let expected = db.pair(a, int);
+        infer_from_expected(&mut db.arena, &db.builtins, ret, expected, &mut infer);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&renamed], int);
     }
 
     #[test]

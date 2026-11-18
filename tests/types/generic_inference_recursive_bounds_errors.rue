@@ -1,0 +1,29 @@
+// The types named here are what they were before renamed generics took the generic they were
+// renamed from as a candidate from above (#378)
+
+fn literal_widened<A>(function: fn(a: A) -> Int, value: A, depth: Int) -> Int {
+    if depth > 0 {
+        // The lambda's parameter gives the callee's `A` the caller's `A` from above, which doesn't
+        // keep `2` from being widened to `Int`, as before
+        let _wrong: Bytes32 = literal_widened(fn(_x: A) => 1, 2, depth - 1);
+        return 0;
+    }
+
+    function(value)
+}
+
+fn from_expected<A>(depth: Int) -> (A, A) {
+    if depth > 0 {
+        // The expected `(A, Int)` makes the callee's `A` `Int`, since `A` isn't more specific
+        // than `Int`
+        let result: (A, Int) = from_expected(depth - 1);
+        return unchecked_cast(result);
+    }
+
+    unchecked_cast((1, 1))
+}
+
+fn main() -> Int {
+    let _ = from_expected::<Int>(1);
+    literal_widened(fn(a: Int) => a, 1, 1)
+}

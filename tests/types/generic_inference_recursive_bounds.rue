@@ -1,0 +1,185 @@
+// A recursive call's renamed generics take the bounds passed on to them like any other generic
+// being inferred (#361), and the generic each was renamed from is a candidate from above as well as
+// below (#378), so the call infers what the same call does from another function
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    // The expected `5` reaches the callee's `A` through `identity`, as it does from outside
+    let _five: 5 = map(identity, 5);
+    function(value)
+}
+
+test fn expected_bound_through_another_generic() -> Int {
+    map(identity, 1)
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn feed<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, depth: Int) -> fn(a: A) -> Int {
+    if depth > 0 {
+        // `increment` bounds the callee's `B` by `Int`, which is passed on to its `A` (#333)
+        let inner = feed(identity, increment, depth - 1);
+        return fn(a: A) => second(first(a)) + inner(1);
+    }
+
+    fn(a: A) => second(first(a))
+}
+
+test fn upper_bound_through_another_generic() -> Int {
+    let function = feed(identity, increment, 1);
+    function(1)
+}
+
+fn expected_only<A>(depth: Int) -> (A, A | nil) {
+    if depth > 0 {
+        // Only the expected type mentions the caller's `A`, which is the callee's `A` from above,
+        // and more specific than `A | nil` (#378)
+        return expected_only(depth - 1);
+    }
+
+    unchecked_cast((1, nil))
+}
+
+test fn expected_type_only() -> Int {
+    let (first, _) = expected_only::<Int>(1);
+    first
+}
+
+fn expected_union<A>(depth: Int) -> A | nil {
+    if depth > 0 {
+        // Guard: the callee's `A` is now `A` rather than `A | nil`, but the call's type is `A | nil`
+        // either way
+        let result: A | nil = expected_union(depth - 1);
+        return result;
+    }
+
+    nil
+}
+
+test fn guard_expected_union_only() -> Bool {
+    expected_union::<Int>(1) is nil
+}
+
+fn feed_union<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A, depth: Int) -> A {
+    if depth > 0 {
+        // Guard: the lambda bounds the callee's `B` by `A | nil`, which `A` already satisfies, so
+        // it isn't passed on to the callee's `A`, which nothing else bounds. It's the caller's `A`,
+        // as before, rather than `A | nil`
+        let inner = feed_union(identity, fn(_b: A | nil) => 1, value, depth - 1);
+        return inner;
+    }
+
+    let _ = second(first(value));
+    value
+}
+
+test fn guard_bound_held_by_the_original() -> Int {
+    feed_union(fn(a: Int) => a, fn(b: Int) => b, 3, 1)
+}
+
+fn lambda_through<A, B>(_first: fn(a: A) -> B, _second: fn(a: A) -> Int, depth: Int) -> B {
+    if depth > 0 {
+        // Guard: likewise through the expected `A | nil`, so the untyped lambda's parameter is the
+        // caller's `A`
+        let result: A | nil = lambda_through(
+            identity,
+            fn(x) => {
+                let _same: A = x;
+                1
+            },
+            depth - 1,
+        );
+        return unchecked_cast(result);
+    }
+
+    unchecked_cast(4)
+}
+
+test fn guard_lambda_through_another_generic() -> Int {
+    lambda_through(fn(a: Int) => a, fn(a: Int) => a, 1)
+}
+
+fn held_only<A, B>(first: fn(a: A) -> B, value: A | nil, third: fn(a: A) -> Int, depth: Int) -> B {
+    if depth > 0 {
+        // Guard: the callee's `A` only holds `nil`, and the expected `A | nil` passed on to it
+        // through `B` is one that the caller's `A` satisfies, so it isn't given that, and the
+        // lambda's parameter is `nil`, as before
+        let result: A | nil = held_only(
+            identity,
+            nil,
+            fn(x) => {
+                let _nothing: nil = x;
+                1
+            },
+            depth - 1,
+        );
+        return unchecked_cast(result);
+    }
+
+    let _ = third(unchecked_cast(value));
+    first(unchecked_cast(value))
+}
+
+test fn guard_held_only() -> Int {
+    held_only(fn(a: Int) => a, 1, fn(a: Int) => a, 1)
+}
+
+fn given_directly<A>(value: A | nil, third: fn(a: A) -> Int, depth: Int) -> A | nil {
+    if depth > 0 {
+        // Guard: the expected `A | nil` is given to the callee's `A` directly, which it was before
+        // too, so the lambda's parameter is `A | nil` and its guard isn't unnecessary
+        return given_directly(
+            nil,
+            fn(x) => if x is nil {
+                1
+            } else {
+                2
+            },
+            depth - 1,
+        );
+    }
+
+    let _ = third(unchecked_cast(value));
+    value
+}
+
+test fn guard_given_directly() -> Int | nil {
+    given_directly(5, fn(a: Int) => a, 1)
+}
+
+fn given_after_passed<B, A>(
+    first: fn(x: A) -> B,
+    value: A | nil,
+    third: fn(a: A) -> Int,
+    depth: Int,
+) -> (B, A) {
+    if depth == 0 {
+        let _ = third(unchecked_cast(value));
+        return unchecked_cast(first);
+    }
+
+    // Guard: `B` is declared first, so the expected `A | nil` passed on to the callee's `A` through
+    // `B` is skipped before its own `A | nil` is given to it directly. The skipped one doesn't keep
+    // the given one out, so the lambda's parameter is `A | nil` and its guard isn't unnecessary
+    let result: (A | nil, A | nil) = given_after_passed(
+        identity,
+        nil,
+        fn(x) => if x is nil {
+            1
+        } else {
+            2
+        },
+        depth - 1,
+    );
+    unchecked_cast(result)
+}
+
+test fn guard_given_after_passed() -> Int {
+    let _ = given_after_passed(fn(x: Int) => x, 1, fn(a: Int) => a, 1);
+    1
+}
