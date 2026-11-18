@@ -1043,6 +1043,33 @@ fn crate_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
 }
 
 #[test]
+fn failed_imports_at_the_root_block_their_name_through_crate() {
+    // A name that a failed import blocks in the root is blocked for imports and paths through
+    // `crate` from a nested module too, like through `super`, so only the failure is reported
+    let compiled = compile(
+        "
+        import nope::X;
+
+        mod m {
+            export mod n {
+                import crate::X;
+
+                export fn f() -> Int {
+                    X + crate::X
+                }
+            }
+        }
+
+        fn main() -> Int {
+            m::n::f() + crate::X
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["2:16 UndeclaredSymbol(\"nope\")"]);
+}
+
+#[test]
 fn glob_imports_of_crate_at_the_top_of_a_single_file_do_not_bring_in_the_prelude() {
     // `import crate::*` at the top of the file imports the file into itself, which brings in
     // nothing new, and in particular nothing from the prelude, which is still found as usual
