@@ -1,0 +1,19 @@
+// Only a module's exported imports can bring a name into what it exports, so `import lib::t`
+// doesn't wait for `s`'s private glob import (which waits for it in turn) before finding the
+// module `t` in `lib.rue`, rather than the sibling `t.rue`. This compiles, with `f()` and `t::C`
+// both 5.
+
+import lib::t;
+import s::*;
+
+mod s {
+    import super::t::*;
+
+    export fn f() -> Int {
+        C
+    }
+}
+
+fn main() -> Int {
+    f() + t::C
+}

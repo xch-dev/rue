@@ -268,6 +268,7 @@ pub fn resolve_imports(
 
     loop {
         let mut updated = false;
+        let bases = resolution.bases.len();
         resolution.waiting.clear();
         resolution.private_names.clear();
 
@@ -281,6 +282,11 @@ pub fn resolve_imports(
                 &mut missing_imports,
             );
         }
+
+        // A lookup made before an import's path was resolved in this pass waited for it, so the
+        // lookups are only forced after a pass in which every resolved path was known throughout.
+        // Lookups don't wait when diagnostics are reported, which is done in a single pass.
+        updated |= !diagnostics && resolution.bases.len() != bases;
 
         if updated {
             continue;
@@ -609,6 +615,41 @@ fn may_bind(
         && may_import(ctx, resolution, import, namespace, name, blockers)
 }
 
+/// Whether a module blocks a name in a namespace (see [`Scope::block`]), or will once its imports
+/// are resolved, because a named import of the name into it only found a private item. Lookups past
+/// the module's own items don't find the name, like they don't once it's blocked.
+fn blocks(
+    ctx: &Compiler,
+    resolution: &Resolution,
+    scope: ScopeId,
+    namespace: Namespace,
+    name: &str,
+) -> bool {
+    ctx.scope(scope).is_blocked(namespace, name)
+        || resolution
+            .named_imports_of(scope, name)
+            .into_iter()
+            .flatten()
+            .any(|import| {
+                // An import through `super` can import private items, so it never fails this way
+                let Some(&(source, false)) = resolution.bases.get(import) else {
+                    return false;
+                };
+
+                // A public item in another namespace is imported instead (see `resolve_import`)
+                let source = ctx.scope(source);
+                let public = |namespace| {
+                    source
+                        .item(namespace, name)
+                        .is_some_and(|item| source.is_item_exported(item))
+                };
+
+                source.item(namespace, name).is_some()
+                    && !public(namespace)
+                    && !Namespace::ALL.into_iter().any(public)
+            })
+}
+
 /// Whether the module that an import imports from has, or could still bring in, an item with a
 /// name in a namespace that the import would bring in. It could if the import's path isn't
 /// resolved yet.
@@ -653,7 +694,7 @@ fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
         edges[&lookup.key.0].extend(blockers);
     }
 
-    let components = strongly_connected_components(&edges);
+    let components = rue_types::strongly_connected_components(&edges);
 
     let component_of = components
         .iter()
@@ -678,78 +719,6 @@ fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
         .into_iter()
         .filter(|lookup| stuck.contains(&lookup.key.0))
         .collect()
-}
-
-/// The strongly connected components of a graph, with Tarjan's algorithm.
-fn strongly_connected_components(
-    edges: &IndexMap<ImportId, IndexSet<ImportId>>,
-) -> Vec<Vec<ImportId>> {
-    struct Tarjan<'a> {
-        edges: &'a IndexMap<ImportId, IndexSet<ImportId>>,
-        index: HashMap<ImportId, usize>,
-        low: HashMap<ImportId, usize>,
-        stack: Vec<ImportId>,
-        on_stack: HashSet<ImportId>,
-        components: Vec<Vec<ImportId>>,
-    }
-
-    impl Tarjan<'_> {
-        fn visit(&mut self, import: ImportId) {
-            // A long chain of imports that wait for each other mustn't overflow the stack
-            rue_types::grow_stack(|| self.visit_inner(import));
-        }
-
-        fn visit_inner(&mut self, import: ImportId) {
-            let index = self.index.len();
-            self.index.insert(import, index);
-            self.low.insert(import, index);
-            self.stack.push(import);
-            self.on_stack.insert(import);
-
-            for &next in &self.edges[&import] {
-                if !self.index.contains_key(&next) {
-                    self.visit(next);
-                    let low = self.low[&import].min(self.low[&next]);
-                    self.low.insert(import, low);
-                } else if self.on_stack.contains(&next) {
-                    let low = self.low[&import].min(self.index[&next]);
-                    self.low.insert(import, low);
-                }
-            }
-
-            if self.low[&import] == self.index[&import] {
-                let mut component = Vec::new();
-
-                while let Some(member) = self.stack.pop() {
-                    self.on_stack.remove(&member);
-                    component.push(member);
-
-                    if member == import {
-                        break;
-                    }
-                }
-
-                self.components.push(component);
-            }
-        }
-    }
-
-    let mut tarjan = Tarjan {
-        edges,
-        index: HashMap::new(),
-        low: HashMap::new(),
-        stack: Vec::new(),
-        on_stack: HashSet::new(),
-        components: Vec::new(),
-    };
-
-    for &import in edges.keys() {
-        if !tarjan.index.contains_key(&import) {
-            tarjan.visit(import);
-        }
-    }
-
-    tarjan.components
 }
 
 /// Where an import looks a name up.
@@ -833,6 +802,7 @@ fn lookup(
     }
 
     let outside = match base {
+        _ if blocks(ctx, resolution, scope, namespace, name) => None,
         Base::Local(scope) => ctx
             .scope(scope)
             .parent()
@@ -943,7 +913,27 @@ fn resolve_import(
             };
 
             let Some((symbol, via, exported)) = module else {
-                if diagnostics {
+                // A name that a failed import blocked where it's looked up has already been
+                // reported
+                let blocked = Namespace::ALL
+                    .into_iter()
+                    .any(|namespace| match segment_base {
+                        Base::Local(scope) => ctx.is_blocked_in(scope, namespace, name.text()),
+                        Base::Member(scope) | Base::Inner(scope) => {
+                            ctx.scope(scope).is_blocked(namespace, name.text())
+                        }
+                    });
+
+                // So has the name the import brings in, which is blocked too
+                if blocked && let Items::Named(item) = &import.items {
+                    resolution.private_names.push((
+                        import_scope,
+                        item.text().to_string(),
+                        Namespace::ALL.to_vec(),
+                    ));
+                }
+
+                if diagnostics && !blocked {
                     // Only a module can have a path after it, so a value or type is reported as
                     // such
                     let other = [Namespace::Value, Namespace::Type]

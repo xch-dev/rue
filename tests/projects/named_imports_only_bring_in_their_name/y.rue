@@ -1,0 +1,7 @@
+export fn k() -> Int {
+    1
+}
+
+export mod y {
+    export const V: Int = 2;
+}

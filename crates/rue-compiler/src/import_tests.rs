@@ -2492,3 +2492,34 @@ fn many_glob_imports_that_wait_for_each_other_resolve_quickly() {
 
     assert!(errors.is_empty(), "{errors:?}");
 }
+
+#[test]
+fn glob_imports_of_super_bring_in_blocked_names_as_blocked() {
+    let compiled = compile(
+        "
+        import m::Q;
+
+        mod m {
+            const Q: Int = 1;
+
+            export fn use_q() -> Int {
+                Q
+            }
+        }
+
+        mod b {
+            import super::*;
+
+            export fn f() -> Int {
+                Q + m::use_q()
+            }
+        }
+
+        fn main() -> Int {
+            b::f()
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["2:19 PrivateSymbol(\"Q\", \"m\")"]);
+}

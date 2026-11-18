@@ -8,6 +8,7 @@ mod infer;
 mod intersect;
 mod memo;
 mod regular;
+mod scc;
 mod stack;
 mod steps;
 mod stringify;
@@ -26,6 +27,7 @@ pub use infer::*;
 pub use intersect::*;
 pub(crate) use memo::*;
 pub use regular::*;
+pub use scc::*;
 pub use stack::grow_stack;
 pub(crate) use steps::{
     abandoned_pass, compare_memo_enabled, comparison_step_limit, fixpoint_budget, step,

@@ -1,0 +1,3 @@
+export mod t {
+    export const C: Int = 5;
+}

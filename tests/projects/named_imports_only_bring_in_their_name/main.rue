@@ -1,0 +1,10 @@
+// The two imports wait for each other and are forced. `import y::k` finds the sibling `y.rue`,
+// but `k::*` brings in the module `y::y` as `y`. `import y::k` only brings in `k`, not `y`, so
+// the `y` it found is contradicted, and that's reported.
+
+import k::*;
+import y::k;
+
+fn main() -> Int {
+    k() + y::V
+}
