@@ -341,12 +341,12 @@ impl ComparisonContext<'_> {
                             upper: instance.upper.clone(),
                             ..Default::default()
                         };
-                        pick_inferred_type(arena, builtins, &self.renamed, &upper)
+                        pick_inferred_type(arena, builtins, &self.renamed, None, &upper)
                             .unwrap_or(builtins.permissive_any)
                     } else if instance.lower.is_empty() {
                         builtins.never
                     } else {
-                        pick_inferred_type(arena, builtins, &self.renamed, instance).unwrap()
+                        pick_inferred_type(arena, builtins, &self.renamed, None, instance).unwrap()
                     }
                 });
 
@@ -1100,6 +1100,13 @@ fn compare_impl_inner(
                     && ctx.resolve(lhs, ctx.lhs_env).is_none()
                     && ctx.resolve(rhs, ctx.rhs_env).is_none()) =>
         {
+            // A renamed generic being inferred still takes the generic it was renamed from, which
+            // is what it's explicitly instantiated as, so that a union it's in doesn't leave only
+            // the other members' values (#370)
+            if lhs != rhs && !ctx.flipped && ctx.is_target(rhs, ctx.rhs_env) {
+                ctx.add_candidate(arena, rhs, CandidateKind::Lower, lhs, ctx.lhs_env);
+            }
+
             Comparison::Assign
         }
         (Type::Generic(_), _)

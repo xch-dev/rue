@@ -2443,9 +2443,11 @@ mod inference {
         let mut infer = Inference::new([renamed, b]);
         infer.rename(renamed, a);
 
-        // `A` to the generic renamed from it, as in a recursive call, holds without a candidate
+        // `A` to the generic renamed from it, as in a recursive call, holds, and the renamed one
+        // takes `A` as a candidate, as it's explicitly instantiated as `A` (#370)
         assert_eq!(db.infer(a, renamed, &mut infer), Comparison::Assign);
-        assert_eq!(candidates(&infer, renamed), InferenceCandidates::default());
+        assert_eq!(candidates(&infer, renamed).lower, vec![a]);
+        assert_eq!(candidates(&infer, renamed).held, vec![]);
 
         // `(A, Int)` already fits the union's `(A, Int)` member, so it's only held for `B`
         let pair = db.pair(a, int);
@@ -2461,6 +2463,31 @@ mod inference {
         let mut infer = Inference::new([renamed]);
         assert_eq!(db.infer(a, renamed, &mut infer), Comparison::Assign);
         assert_eq!(candidates(&infer, renamed).lower, vec![a]);
+    }
+
+    #[test]
+    fn renamed_generics_take_the_original_in_a_union() {
+        let mut db = Db::new();
+        let (nil, any) = (db.builtins.nil, db.builtins.permissive_any);
+        let (a, renamed) = (db.generic("A"), db.generic("A"));
+
+        // `A | nil` to `A' | nil` gives `A'` the candidate `A`, and only holds `nil`, so `A'` is
+        // `A`, rather than the held `nil` (#370)
+        let mut infer = Inference::new([renamed]);
+        infer.rename(renamed, a);
+        let value = db.union(&[a, nil]);
+        let param = db.union(&[renamed, nil]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&renamed], a);
+
+        // Next to a candidate that holds it, `A` adds nothing, so `A'` is `Any`, as before
+        let mut infer = Inference::new([renamed]);
+        infer.rename(renamed, a);
+        assert_eq!(db.infer(any, renamed, &mut infer), Comparison::Assign);
+        assert_eq!(db.infer(a, renamed, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&renamed], any);
     }
 
     #[test]

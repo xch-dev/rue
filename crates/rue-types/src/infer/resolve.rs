@@ -140,8 +140,10 @@ impl InferenceResolver<'_> {
                 continue;
             }
 
-            let ty = pick_inferred_type(arena, builtins, &self.infer.renamed, &candidates)
-                .or_else(|| self.fallback.get(&generic).copied());
+            let original = self.infer.renamed.get(&generic).copied();
+            let ty =
+                pick_inferred_type(arena, builtins, &self.infer.renamed, original, &candidates)
+                    .or_else(|| self.fallback.get(&generic).copied());
 
             if let Some(ty) = ty {
                 self.mappings.insert(generic, ty);
@@ -180,6 +182,7 @@ impl InferenceResolver<'_> {
                     arena,
                     builtins,
                     &self.infer.renamed,
+                    self.infer.renamed.get(&generic).copied(),
                     &self.infer.generics[&generic],
                 ) {
                     self.mappings.insert(generic, ty);
@@ -214,7 +217,14 @@ impl InferenceResolver<'_> {
                     upper: resolved(&raw.upper),
                     held: resolved(&raw.held),
                 };
-                let ty = pick_inferred_type(arena, builtins, &self.infer.renamed, &candidates)?;
+                let original = self.infer.renamed.get(&generic).copied();
+                let ty = pick_inferred_type(
+                    arena,
+                    builtins,
+                    &self.infer.renamed,
+                    original,
+                    &candidates,
+                )?;
                 Some((generic, ty))
             })
             .collect()
@@ -269,19 +279,23 @@ impl InferenceResolver<'_> {
     }
 }
 
-/// Picks a type for a generic from its candidates, or `None` if nothing constrains it.
+/// Picks a type for a generic from its candidates, or `None` if nothing constrains it. The
+/// `original` is the generic it was renamed from, if it was (see `Inference::rename`).
 pub(crate) fn pick_inferred_type(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     renamed: &FxHashMap<TypeId, TypeId>,
+    original: Option<TypeId>,
     candidates: &InferenceCandidates,
 ) -> Option<TypeId> {
+    let own_lower = without_subsumed_original(arena, builtins, renamed, original, candidates);
+
     // The values that are already held by a union's other members are only used if nothing
     // else constrains the generic
-    let lower = if candidates.lower.is_empty() && candidates.upper.is_empty() {
+    let lower = if own_lower.is_empty() && candidates.upper.is_empty() {
         &candidates.held
     } else {
-        &candidates.lower
+        &own_lower
     };
     let lower = &without_subsumed_functions(arena, builtins, renamed, lower);
 
@@ -320,6 +334,45 @@ pub(crate) fn pick_inferred_type(
     } else {
         // Nothing constrains the generic, so leave it as is
         None
+    }
+}
+
+/// Returns the lower candidates without the generic that the one being inferred was renamed from
+/// (see `Inference::rename`) where the other lower and held candidates already hold it, such as
+/// `A` next to `Any`. A renamed generic takes the one it was renamed from as a candidate (#370), which
+/// adds nothing then, so its type is what it was before.
+fn without_subsumed_original(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    renamed: &FxHashMap<TypeId, TypeId>,
+    original: Option<TypeId>,
+    candidates: &InferenceCandidates,
+) -> Vec<TypeId> {
+    let Some(original) = original else {
+        return candidates.lower.clone();
+    };
+
+    let others: Vec<TypeId> = candidates
+        .lower
+        .iter()
+        .chain(&candidates.held)
+        .copied()
+        .filter(|&other| other != original)
+        .collect();
+
+    // The others together can hold it, such as the members of `Any` in a union's other members
+    if !others.is_empty() && {
+        let others = union_of(arena, others);
+        compare_renamed(arena, builtins, renamed, original, others) == Comparison::Assign
+    } {
+        candidates
+            .lower
+            .iter()
+            .copied()
+            .filter(|&ty| ty != original)
+            .collect()
+    } else {
+        candidates.lower.clone()
     }
 }
 

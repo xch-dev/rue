@@ -1,0 +1,55 @@
+// The caller's generic that a recursive call gives the callee's renamed generic adds nothing next
+// to a candidate that already holds it, so the types named here are what they were before (#370)
+
+fn held_any<A>(value: A | Any, depth: Int) -> A {
+    if depth > 0 {
+        // The `Any` member already holds the caller's `A`, so the callee's `A` is the held `Any`,
+        // not `A`, as before
+        let result = held_any(value, depth - 1);
+        let _wrong: Bytes32 = result;
+        return unchecked_cast(nil);
+    }
+
+    unchecked_cast(value)
+}
+
+fn other_generic<A, B>(value: A, _other: B, also: B, depth: Int) -> B {
+    if depth > 0 {
+        // The callee's `B` wasn't renamed from `A`, so it keeps `A` next to `Any`, as before
+        let any: Any = 1;
+        let result = other_generic(value, value, any, depth - 1);
+        let _wrong: Bytes32 = result;
+        return also;
+    }
+
+    also
+}
+
+fn lambda_parameter<A>(
+    first: fn(a: A) -> Int,
+    second: fn(a: A) -> Int,
+    value: A,
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        // The callee's `A` is `A`, not the first lambda's `A | nil` as on main, so the untyped
+        // lambda's parameter is `A` (a breaking change of an inferred type, #370)
+        return lambda_parameter(
+            fn(_a: A | nil) => 1,
+            fn(v) => {
+                let _wrong: Bytes32 = v;
+                1
+            },
+            value,
+            depth - 1,
+        );
+    }
+
+    first(value) + second(value)
+}
+
+fn main() -> Int {
+    held_any(1, 1)
+        + other_generic(1, 2, 3, 1)
+        + lambda_parameter(fn(a: Int) => a, fn(a: Int) => a, 1, 1)
+}

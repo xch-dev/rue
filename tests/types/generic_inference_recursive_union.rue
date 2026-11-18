@@ -1,0 +1,149 @@
+// A recursive call passes the caller's generic in a union to the callee's renamed generic in the
+// same union, which is inferred as the caller's generic, as `g::<A>(...)` says (#370)
+
+fn optional<A>(value: A | nil, depth: Int) -> A {
+    if depth > 0 {
+        return optional(value, depth - 1);
+    }
+
+    unchecked_cast(value)
+}
+
+test fn issue_case() -> Int {
+    optional(5, 2)
+}
+
+fn with_literal<A>(value: A | 5, depth: Int) -> A {
+    if depth > 0 {
+        // `A` isn't widened to `Int` from the `5`
+        return with_literal(value, depth - 1);
+    }
+
+    unchecked_cast(value)
+}
+
+test fn literal_member() -> Int {
+    with_literal(6, 2)
+}
+
+fn with_function<A>(value: A, function: fn(a: A) -> A, depth: Int) -> A | nil {
+    if depth > 0 {
+        // The expected `A | nil` doesn't make `A` the callee's `A | nil`
+        return with_function(value, function, depth - 1);
+    }
+
+    function(value)
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+test fn expected_type() -> Int | nil {
+    with_function(1, increment, 2)
+}
+
+fn in_a_pair<A>(value: (A, A | nil), depth: Int) -> (A, A | nil) {
+    if depth > 0 {
+        return in_a_pair(value, depth - 1);
+    }
+
+    value
+}
+
+test fn pair_return_type() -> Int {
+    let (first, _) = in_a_pair((3, nil), 2);
+    first
+}
+
+fn two_generics<A, B>(first: A | nil, second: Int | B, depth: Int) -> (A, B) {
+    if depth > 0 {
+        return two_generics(first, second, depth - 1);
+    }
+
+    unchecked_cast((first, second))
+}
+
+test fn several_generics() -> Int {
+    let (first, second) = two_generics::<Int, Int>(4, 5, 1);
+    first + second
+}
+
+struct Box<T> {
+    value: T,
+}
+
+fn boxed<A>(value: Box<A | nil>, depth: Int) -> A {
+    if depth > 0 {
+        return boxed(value, depth - 1);
+    }
+
+    unchecked_cast(value.value)
+}
+
+test fn inside_a_struct() -> Int {
+    boxed(Box::<Int | nil> { value: 7 }, 1)
+}
+
+fn listed<A>(values: List<A | nil>, depth: Int) -> List<A | nil> {
+    if depth > 0 {
+        return listed(values, depth - 1);
+    }
+
+    values
+}
+
+test fn guard_inside_a_list() -> Int {
+    // Guard: the list's own union is already inferred as before
+    let values = listed([8, nil], 1);
+
+    if values is nil {
+        0
+    } else {
+        unchecked_cast(values.first)
+    }
+}
+
+fn caller<B>(value: B | nil) -> B {
+    // Guard: the same call from another generic function infers `A` as `B`, as before
+    optional(value, 1)
+}
+
+test fn guard_from_another_function() -> Int {
+    caller(9)
+}
+
+fn held_any<A>(value: A | Any, depth: Int) -> A {
+    if depth > 0 {
+        // Guard: the callee's `A` is the held `Any`, as before, so a negative guard narrows it
+        let result = held_any(value, depth - 1);
+
+        if !(result is Atom) {
+            let pair: (Any, Any) = result;
+            return unchecked_cast(pair.first);
+        }
+
+        return unchecked_cast(nil);
+    }
+
+    unchecked_cast(value)
+}
+
+test fn guard_held_any() -> Int {
+    held_any((5, 6), 1)
+}
+
+fn upper_bounded<A>(value: A, function: fn(a: A) -> Int, depth: Int) -> A {
+    if depth > 0 {
+        // The lambda bounds the callee's `A` by `A | nil` from above, and `value` gives it `A`, so
+        // it's `A`, which is what's returned (main inferred `A | nil` here)
+        return upper_bounded(value, fn(_a: A | nil) => 1, depth - 1);
+    }
+
+    let _ = function(value);
+    value
+}
+
+test fn upper_bound_holding_the_original() -> Int {
+    upper_bounded(12, fn(a: Int) => a, 1)
+}
