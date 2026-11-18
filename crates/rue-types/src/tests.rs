@@ -1601,6 +1601,22 @@ mod inference {
     }
 
     #[test]
+    fn functions_only_add_themselves_to_unions_that_hold_them() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `fn(p0: Int) -> Int` to `T | nil` only gives `T` the function, not its runtime structure
+        let function = db.function(&[int], int);
+        let param = db.union(&[t, nil]);
+        assert_eq!(db.infer(function, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower.len(), 1);
+        assert_eq!(db.name(candidates(&infer, t).lower[0]), "fn(p0: Int) -> Int");
+        assert_eq!(candidates(&infer, t).held, vec![]);
+    }
+
+    #[test]
     fn skips_union_members_held_by_others() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);

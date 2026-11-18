@@ -2031,18 +2031,24 @@ fn compare_impl_inner(
                 Comparison::Invalid
             };
 
-            min(
-                result,
-                compare_impl(
-                    arena,
-                    builtins,
-                    ctx,
-                    builtins.recursive_any,
-                    rhs,
-                    lhs_semantic,
-                    rhs_semantic,
-                ),
-            )
+            // As with a generic, the function's runtime structure is only a fallback for when no
+            // member holds it, so that it doesn't add to the generics in the union (#349)
+            if result == Comparison::Assign {
+                result
+            } else {
+                min(
+                    result,
+                    compare_impl(
+                        arena,
+                        builtins,
+                        ctx,
+                        builtins.recursive_any,
+                        rhs,
+                        lhs_semantic,
+                        rhs_semantic,
+                    ),
+                )
+            }
         }
         (_, Type::Union(rhs_union)) => {
             // A generic being inferred doesn't need to include a value that a member already

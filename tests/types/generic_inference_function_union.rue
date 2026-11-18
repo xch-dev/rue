@@ -1,0 +1,90 @@
+// A function passed to a union that holds it, such as `T | nil`, only contributes itself to the
+// generics in the union, not its runtime structure (#349)
+
+fn unwrap<T>(value: T | nil) -> T {
+    unchecked_cast(value)
+}
+
+test fn issue_case() -> Int {
+    let maybe: (fn(a: Int) -> Int) | nil = fn(a: Int) => a + 1;
+    let function: fn(a: Int) -> Int = unwrap(maybe);
+    function(1)
+}
+
+test fn unannotated() -> Int {
+    // `T` is the function type, so the result can be called
+    let maybe: (fn(a: Int) -> Int) | nil = fn(a: Int) => a * 2;
+    let function = unwrap(maybe);
+    function(21)
+}
+
+fn or_else<T>(value: T | nil, default: T) -> T {
+    if value is nil {
+        default
+    } else {
+        unchecked_cast(value)
+    }
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn decrement(value: Int) -> Int {
+    value - 1
+}
+
+test fn passed_directly() -> Int {
+    // `T` is the union of the two function types, which are the same type but not deduplicated, so
+    // the call needs the annotation to pick one
+    let function: fn(value: Int) -> Int = or_else(increment, decrement);
+    function(4)
+}
+
+fn optional<T>(value: T) -> T | nil {
+    value
+}
+
+test fn nested_calls() -> Int {
+    let function = unwrap(optional(increment));
+    function(9)
+}
+
+fn forward<T>(value: T | nil) -> T {
+    unwrap(value)
+}
+
+test fn through_several_layers() -> Int {
+    let function = forward(optional(decrement));
+    function(3)
+}
+
+fn apply<T>(function: fn(value: T) -> T, value: T | nil, default: T) -> T {
+    function(or_else(value, default))
+}
+
+test fn guard_literal_alongside() -> Int {
+    // Guard: `T` is inferred from the literals and the function's parameter, as before
+    apply(increment, 5, 6)
+}
+
+fn identity<V>(value: V) -> V {
+    value
+}
+
+test fn generic_function() -> Int {
+    // A generic function is instantiated as before
+    let function: fn(a: Int) -> Int = unwrap(identity);
+    function(8)
+}
+
+fn pick<T>(_value: T | nil, other: T) -> T {
+    other
+}
+
+test fn guard_structural_value() -> Int {
+    // Guard: a pair still infers its own type
+    let pair: (Int, Int) | nil = (1, 2);
+    let result = pick(pair, (3, 4));
+    result.first + result.rest
+}
