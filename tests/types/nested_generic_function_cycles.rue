@@ -1,5 +1,6 @@
-// Comparing these takes exponential time, since generic functions nest their generics inside of
-// recursive types (#344), so the comparison gives up rather than running for as long as it takes
+// Generic functions nest their generics inside of recursive types here, so comparing these took
+// exponential time until #362's step 13b.3 (#344), and gave up as too complex. They're compared in
+// fixpoint mode now, which finishes
 type N0 = Bytes
     | (((1, Bytes32), N0 | N1<2, Bytes32>))
     | (((N1<Bytes32, Bytes>, N1<1, nil>), N2 | N1<Bytes32, Bytes>));

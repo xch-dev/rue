@@ -39,4 +39,5 @@ include_dir = { workspace = true }
 [dev-dependencies]
 rue-types = { workspace = true, features = ["step-counter"] }
 rue-lexer = { workspace = true }
+rue-types = { workspace = true, features = ["step-counter"] }
 expect-test = { workspace = true }
