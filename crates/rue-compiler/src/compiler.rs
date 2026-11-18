@@ -389,10 +389,10 @@ impl Compiler {
     /// project, or the file itself if it isn't in a directory (such as a program compiled from a
     /// single file). The standard library's root is its own directory.
     pub fn crate_root(&self) -> SymbolId {
-        self.module_stack.first().copied().unwrap_or_else(|| {
-            let (module, _) = self.file.expect("code is compiled in a file");
-            module
-        })
+        self.module_stack
+            .first()
+            .copied()
+            .unwrap_or_else(|| self.file.expect("code is compiled in a file").0)
     }
 
     /// Starts compiling a file, whose module is in the given scope.

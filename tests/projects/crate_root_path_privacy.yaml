@@ -1,6 +1,9 @@
 diagnostics:
 - Cannot reference private symbol `hidden` in module `utils` at main.rue:3:22
-- Cannot reference private symbol `HIDDEN` in module `utils` at main.rue:8:40
+- Undeclared symbol `LOCAL` at main.rue:13:16
+- Cannot reference private symbol `LOCAL` in module `main` at main.rue:13:37
+- Cannot reference private symbol `HIDDEN` in module `utils` at main.rue:20:25
+- Undeclared symbol `LOCAL` at main.rue:22:18
 - Cannot reference private symbol `HIDDEN` in module `utils` at a/nested.rue:2:19
 - Unresolved `super`, there is no parent module at a/nested.rue:2:35
 - Unused function `hidden` at utils.rue:1:4
