@@ -1,0 +1,47 @@
+tests:
+- name: generic_inferred_through_a_compound_upper_bound
+  program: (+ (a (q . 4) (q (q . 2))) (q . 1))
+  debug_program: (a (q 16 (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) (q . 2)))) (q . 1)) (c (c (q 5 2) (q 2 2 (c 3 ()))) ()))
+  output: "2"
+  runtime_cost: 959
+  byte_cost: 276000
+  total_cost: 276959
+- name: value_before_the_function
+  program: (+ (a (q . 4) (q (f . 5))) (q . 1))
+  debug_program: (a (q 16 (a 6 (c (c (q . 5) (q . 5)) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (q . 1)) (c (c (q 5 2) (q 2 3 (c 2 ()))) ()))
+  output: "6"
+  runtime_cost: 959
+  byte_cost: 276000
+  total_cost: 276959
+- name: nested_call
+  program: (a (q 16 (a 6 (c 4 (c (a 6 (c 4 (q 1 . 2))) (q . 3)))) (q . 1)) (c (c (q . 4) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 16 (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) (q . 2)))) (q . 3)))) (q . 1)) (c (c (q 5 2) (q 2 2 (c 3 ()))) ()))
+  output: "2"
+  runtime_cost: 2324
+  byte_cost: 972000
+  total_cost: 974324
+- name: deeper_compound
+  program: (+ (a (q . 4) (q (q 2 . 3))) (q . 1))
+  debug_program: (a (q 16 (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (q . 3))))) (q . 1)) (c (c (q 5 2) (q 2 2 (c 3 ()))) ()))
+  output: "2"
+  runtime_cost: 959
+  byte_cost: 300000
+  total_cost: 300959
+- name: through_two_compound_upper_bounds
+  program: (a (q 16 (a 2 (c (a 2 (q ((q . 2) 3 . 4))) ())) (q . 1)) (c (q . 4) ()))
+  debug_program: (a (q 16 (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))))) (q . 1)) (c (c (q 5 2) (q 2 5 (c (a 2 (c 7 ())) ()))) ()))
+  output: "2"
+  runtime_cost: 1499
+  byte_cost: 636000
+  total_cost: 637499
+- name: through_a_generic_passed_as_a_bound
+  program: (a (q 2 (q . 8) (c (a 2 (c (a (q 4 2 ()) (c (a 2 (q (((q . 2) . 3)))) ())) ())) ())) (c (q . 4) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 30 (c (c (c (c (c (q . 1) (q . 2)) (q . 3)) ()) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) 22) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))))) 1)) (c (c (q 5 2) (c (q 5 (f 2)) (c (q 4 2 ()) (q 2 15 (c (a 11 (c (a 5 (c (a 6 (c 4 ())) ())) ())) ()))))) ()))
+  output: "1"
+  runtime_cost: 1334
+  byte_cost: 948000
+  total_cost: 949334
+diagnostics:
+- |-
+  Binding `value` is returned directly after it's declared at generic_inference_lower_transitive.rue:73:5
+    help: Return the value directly

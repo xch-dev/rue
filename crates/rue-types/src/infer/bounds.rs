@@ -5,8 +5,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
-    free_generics, infer_from_expected, resolve_inference_with_fallback, substitute_with_mappings,
-    union_of,
+    compare_with_inference, free_generics, infer_from_expected, resolve_inference_with_fallback,
+    substitute_with_mappings, union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -86,15 +86,159 @@ pub fn resolve_inference_with_bounds(
         |generic| uninferred.contains(&generic),
     );
 
+    pass_lower_bounds(arena, builtins, &mut bounded, |generic| {
+        uninferred.contains(&generic)
+    });
+
     let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
 
     for generic in uninferred {
-        if let Some(&ty) = resolved.get(&generic) {
+        // A cycle through compound bounds can resolve a generic to a type that references itself,
+        // which no instantiation satisfies, so it's left uninferred instead
+        if let Some(&ty) = resolved.get(&generic)
+            && !free_generics(arena, ty).contains(&generic)
+        {
             mappings.insert(generic, ty);
         }
     }
 
     mappings
+}
+
+/// Gives the generics in each generic's compound upper bounds that `accepts` allows the lower
+/// bounds that its own lower bounds imply. In `map(first_of, (1, 2))` with
+/// `fn first_of<T>(pair: (T, T)) -> T`, `A` has the lower bound `(1, 2)` and the upper bound
+/// `(B, B)`, so `(1, 2) ≤ (B, B)` gives `B` the lower bounds `1` and `2` (#338). This is the
+/// direction `pass_upper_bounds` doesn't cover: a generic's lower bounds flowing into the generics
+/// in its upper bounds. An upper bound that's just a generic is left out, since resolution already
+/// resolves through it.
+///
+/// It's repeated until nothing new is passed on, so that a lower bound passed to a generic reaches
+/// the generics in that generic's compound upper bounds too.
+///
+/// Each lower bound that's passed on is collected under the union members its upper bound was. The
+/// lower bounds it comes from are taken together (`expanded_lower_bounds`), whatever members they
+/// were collected under.
+pub(crate) fn pass_lower_bounds(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &mut Inference,
+    accepts: impl Fn(TypeId) -> bool,
+) {
+    let targets: Vec<TypeId> = infer
+        .generics
+        .keys()
+        .copied()
+        .filter(|&generic| infer.passes_bounds(generic))
+        .collect();
+    let renamed = infer.renamed.clone();
+
+    // A lower bound that's passed on can reach a generic with a compound upper bound of its own,
+    // as in `map2(first_of, first_of, ((1, 2), (3, 4)))`, so this is repeated until nothing new is
+    // passed on. A chain takes one round per compound, but a cycle through compound bounds can
+    // keep making deeper types, so the rounds are capped at one per generic. After the first
+    // round, only the generics whose lower bounds, taken together, can have changed are compared
+    // again: the ones that were given a lower bound, and the ones whose lower bounds reach them.
+    let mut changed: Option<HashSet<TypeId>> = None;
+
+    for _ in 0..infer.generics.len() {
+        let expanded = expanded_lower_bounds(arena, infer);
+        let mut passed = Vec::new();
+
+        for (&generic, candidates) in &infer.generics {
+            if changed
+                .as_ref()
+                .is_some_and(|changed| !changed.contains(&generic))
+            {
+                continue;
+            }
+
+            let Some(lower) = expanded[&generic] else {
+                continue;
+            };
+
+            for (index, &upper) in candidates.upper.iter().enumerate() {
+                if infer.passes_bounds(upper)
+                    || !free_generics(arena, upper)
+                        .into_iter()
+                        .any(|other| infer.passes_bounds(other) && accepts(other))
+                {
+                    continue;
+                }
+
+                let mut inner = Inference::new(targets.iter().copied());
+                compare_with_inference(arena, builtins, lower, upper, Some(&mut inner));
+                let branches = infer.branches(generic, CandidateKind::Upper, index);
+
+                for (&other, implied) in &inner.generics {
+                    if !accepts(other) {
+                        continue;
+                    }
+
+                    for kind in [CandidateKind::Lower, CandidateKind::Held] {
+                        for &ty in implied.list(kind) {
+                            passed.push((other, kind, ty, branches.to_vec()));
+                        }
+                    }
+                }
+            }
+        }
+
+        // A bound the generic already has, or one that's equivalent to it (assignable both ways),
+        // isn't passed on again, so that the rounds stop
+        let mut grown = HashSet::new();
+
+        for (generic, kind, ty, branches) in passed {
+            let existing = infer.generics[&generic].list(kind);
+
+            if existing.contains(&ty)
+                || existing.iter().any(|&other| {
+                    compare_renamed(arena, builtins, &renamed, other, ty) == Comparison::Assign
+                        && compare_renamed(arena, builtins, &renamed, ty, other)
+                            == Comparison::Assign
+                })
+            {
+                continue;
+            }
+
+            infer.push(generic, kind, ty, branches);
+            grown.insert(generic);
+        }
+
+        if grown.is_empty() {
+            break;
+        }
+
+        changed = Some(reaching(arena, infer, grown));
+    }
+}
+
+/// The generics whose lower bounds, taken together (see `expanded_lower_bounds`), reach any of the
+/// given ones, including them.
+fn reaching(arena: &Arena<Type>, infer: &Inference, generics: HashSet<TypeId>) -> HashSet<TypeId> {
+    let mut reaching = generics;
+    let mut added = true;
+
+    while added {
+        added = false;
+
+        for (&generic, candidates) in &infer.generics {
+            if reaching.contains(&generic) {
+                continue;
+            }
+
+            if candidates.lower.iter().any(|&ty| {
+                free_generics(arena, ty)
+                    .iter()
+                    .any(|other| reaching.contains(other))
+            }) {
+                reaching.insert(generic);
+                added = true;
+            }
+        }
+    }
+
+    reaching
 }
 
 /// Every generic's upper bounds, with the union members each was collected under.

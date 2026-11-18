@@ -1,0 +1,75 @@
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+fn first_of<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+// `A ≥ (1, 2)` and `A ≤ (B, B)`, through `first_of`'s instance, give `B ≥ 1` and `B ≥ 2` (#338)
+test fn generic_inferred_through_a_compound_upper_bound() -> Int {
+    map(first_of, (1, 2)) + 1
+}
+
+// The value can come first
+test fn value_before_the_function() -> Int {
+    map_reversed((5, 5), first_of) + 1
+}
+
+// Through a nested call
+test fn nested_call() -> Int {
+    map(first_of, (map(first_of, (1, 2)), 3)) + 1
+}
+
+fn first_of_three<T>(triple: (T, (T, T))) -> T {
+    triple.first
+}
+
+// Different literals in a deeper compound
+test fn deeper_compound() -> Int {
+    map(first_of_three, (1, (2, 3))) + 1
+}
+
+fn map2<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+// What `A` passes to `first_of`'s instance reaches `B`, and then the next instance, so `C` is
+// inferred through two compound upper bounds
+test fn through_two_compound_upper_bounds() -> Int {
+    map2(first_of, first_of, ((1, 2), (3, 4))) + 1
+}
+
+fn pick<T>(pair: (T, Int)) -> T {
+    pair.first
+}
+
+fn boxed<U>(value: U) -> (U, Int) {
+    (value, 0)
+}
+
+fn first_of_first<C, D>(pair: ((C, C), D)) -> C {
+    pair.first.first
+}
+
+fn chain4<Y, R, P, Q, N>(
+    value: Y,
+    first: fn(a: Y) -> R,
+    second: fn(a: R) -> P,
+    third: fn(a: P) -> Q,
+    fourth: fn(a: Q) -> N,
+) -> N {
+    fourth(third(second(first(value))))
+}
+
+// The second `pick`'s instance is given `boxed`'s instance as a lower bound, whose own lower bounds
+// only arrive through the first `pick` while bounds are being passed down, and `N` is inferred
+// through all of them
+test fn through_a_generic_passed_as_a_bound() -> Int {
+    let value = chain4((((1, 2), 3), 0), pick, boxed, pick, first_of_first);
+    value
+}

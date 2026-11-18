@@ -1,0 +1,14 @@
+fn first_of<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+fn map_limited<A, B>(function: fn(a: A) -> B, value: A, limit: fn(b: B) -> nil) -> B {
+    function(value)
+}
+
+// `B` is inferred from its own upper bound, so it isn't narrowed by what `A` passes down
+fn already_inferred_generic_keeps_its_type() -> nil {
+    let value = map_limited(first_of, (1, 2), fn(b: Int | nil) => nil);
+    let shown: nil = value;
+    shown
+}
