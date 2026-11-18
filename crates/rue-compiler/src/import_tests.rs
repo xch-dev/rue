@@ -2748,6 +2748,7 @@ fn imports_of_reported_reexports_are_not_reported_again() {
     let compiled = compile(
         "
         const SECRET: Int = 1;
+        type Secret = Int;
 
         mod hidden {
             export const X: Int = 2;
@@ -2755,20 +2756,39 @@ fn imports_of_reported_reexports_are_not_reported_again() {
 
         mod z {
             export super::SECRET;
+            export super::Secret;
             export super::hidden;
         }
 
         mod user {
             import super::z::SECRET;
+            import super::z::Secret;
             import super::z::hidden::X;
 
             export fn get() -> Int {
-                SECRET + X
+                let value: Secret = SECRET + X;
+                value + 1
             }
         }
 
+        mod outer {
+            mod m {
+                export const Y: Int = 3;
+            }
+
+            export mod foo {
+                export super::m;
+            }
+        }
+
+        // The module `m` is only brought in by the glob import once its re-export is reported, so
+        // the paths that name it only resolve then, and the segment after it is reported
+        import outer::foo::*;
+        import m::Y;
+        import m::n::Z;
+
         fn main() -> Int {
-            user::get()
+            user::get() + Y
         }
         ",
     );
@@ -2778,8 +2798,11 @@ fn imports_of_reported_reexports_are_not_reported_again() {
     assert_eq!(
         compiled.errors(),
         [
-            "9:27 PrivateReexport(\"SECRET\")",
-            "10:27 PrivateReexport(\"hidden\")",
+            "10:27 PrivateReexport(\"SECRET\")",
+            "11:27 PrivateReexport(\"Secret\")",
+            "12:27 PrivateReexport(\"hidden\")",
+            "32:31 PrivateReexport(\"m\")",
+            "40:19 UndeclaredSymbol(\"n\")",
         ]
     );
 }

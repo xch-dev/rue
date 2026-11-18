@@ -1014,12 +1014,13 @@ fn resolve_import(
                         DiagnosticKind::UndeclaredSymbol(name.text().to_string())
                     };
 
-                    // The imports can be resolved again once every import is (see
-                    // `report_private_reexports`), so this is reported once
-                    cache
-                        .errors
-                        .entry((import_id, ImportError::UnresolvedPath))
-                        .or_insert_with(|| (name.clone(), kind));
+                    // The imports are resolved again once a reported re-export exports what it
+                    // found (see `report_private_reexports`), which can bring in a module that the
+                    // path names, so only the last failure is reported, if the path never resolves
+                    cache.errors.insert(
+                        (import_id, ImportError::UnresolvedPath),
+                        (name.clone(), kind),
+                    );
                 }
                 return false;
             };
@@ -1040,6 +1041,10 @@ fn resolve_import(
             base = Some(ctx.module(symbol).scope);
             symbols.push(symbol);
         }
+
+        cache
+            .errors
+            .shift_remove(&(import_id, ImportError::UnresolvedPath));
 
         cache.paths.insert(
             import_id,
@@ -1368,18 +1373,16 @@ fn resolve_import(
                 }
             }
 
-            for &(found, via) in &found {
+            for &(found, _) in &found {
                 let namespace = found.namespace();
 
                 // An import with no path can find a private item of its own module, or of the one
-                // that `super` names, which it only exports if it's public there. What it brought
-                // in itself was found outside of the module, like what's found there now.
+                // that `super` names, which it only exports if it's public there
                 let mut exported = import.exported;
 
                 if import.exported && base.is_none() {
                     let module = ctx.scope(import.base_scope);
-                    let in_module =
-                        via != Some(import_id) && module.item(namespace, name) == Some(found);
+                    let in_module = module.item(namespace, name) == Some(found);
 
                     exported = !in_module || module.is_item_exported(found);
 
