@@ -1,0 +1,35 @@
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+fn first_of<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+// `A ≥ (1, 2)` and `A ≤ (B, B)`, through `first_of`'s instance, give `B ≥ 1` and `B ≥ 2` (#338)
+test fn generic_inferred_through_a_compound_upper_bound() -> Int {
+    map(first_of, (1, 2)) + 1
+}
+
+// The value can come first
+test fn value_before_the_function() -> Int {
+    map_reversed((5, 5), first_of) + 1
+}
+
+// Through a nested call
+test fn nested_call() -> Int {
+    map(first_of, (map(first_of, (1, 2)), 3)) + 1
+}
+
+fn first_of_three<T>(triple: (T, (T, T))) -> T {
+    triple.first
+}
+
+// Different literals in a deeper compound
+test fn deeper_compound() -> Int {
+    map(first_of_three, (1, (2, 3))) + 1
+}

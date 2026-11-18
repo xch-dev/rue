@@ -1060,7 +1060,7 @@ mod recursive {
 
 mod inference {
     use super::*;
-    use crate::{CallSolver, pass_upper_bounds, upper_bounds};
+    use crate::{CallSolver, pass_lower_bounds, pass_upper_bounds, upper_bounds};
 
     fn candidates(infer: &Inference, generic: TypeId) -> InferenceCandidates {
         infer.candidates(generic).unwrap().clone()
@@ -2038,6 +2038,46 @@ mod inference {
             candidates(&together, t),
             together.matched_candidates(t).unwrap()
         );
+    }
+
+    #[test]
+    fn lower_bounds_pass_into_compound_upper_bounds() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (one, two) = (
+            db.literal(AtomSemantic::Int, &[1]),
+            db.literal(AtomSemantic::Int, &[2]),
+        );
+        let (a, b, c) = (db.generic("A"), db.generic("B"), db.generic("C"));
+        let mut infer = Inference::new([a, b, c]);
+
+        // `(1, 2) ≤ A ≤ (B, B)` under a member that didn't match, and `A ≤ C`, which is just a
+        // generic
+        let choice = infer.open_choice(None, 2);
+        let unmatched = BranchId { choice, member: 0 };
+        infer.record(unmatched, Comparison::Invalid);
+        infer.record(BranchId { choice, member: 1 }, Comparison::Assign);
+        let value = db.pair(one, two);
+        let pair = db.pair(b, b);
+        infer.push(a, CandidateKind::Lower, value, Vec::new());
+        infer.push(a, CandidateKind::Upper, pair, vec![unmatched]);
+        infer.push(a, CandidateKind::Upper, c, Vec::new());
+
+        // Only the generics `accepts` allows get them
+        let mut refused = infer.clone();
+        pass_lower_bounds(&mut db.arena, &db.builtins, &mut refused, |_| false);
+        assert_eq!(candidates(&refused, b).lower, vec![]);
+
+        pass_lower_bounds(&mut db.arena, &db.builtins, &mut infer, |_| true);
+        assert_eq!(candidates(&infer, b).lower, vec![one, two]);
+
+        // Under the upper bound's members, and not through an upper bound that's just a generic
+        assert_eq!(infer.matched_candidates(b).unwrap().lower, vec![]);
+        assert_eq!(candidates(&infer, c).lower, vec![]);
+
+        // Which resolves `B` once nothing else infers it
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&b], int);
     }
 
     #[test]
