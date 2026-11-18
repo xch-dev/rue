@@ -1,0 +1,5 @@
+mod utils {
+    export fn greet() -> Int {
+        2
+    }
+}

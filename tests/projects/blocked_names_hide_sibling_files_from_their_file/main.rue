@@ -1,0 +1,6 @@
+import utils::greet;
+import zother::utils;
+
+fn main() -> Int {
+    greet()
+}
