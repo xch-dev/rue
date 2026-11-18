@@ -23,7 +23,7 @@ test fn infer_first() -> Int {
         }
 }
 
-test fn infer_second() -> Bytes {
+test fn infer_second() -> String {
     let pair = both::<Int, _>(1, "hello");
     pair.rest + "!"
 }

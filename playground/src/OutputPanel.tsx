@@ -205,11 +205,21 @@ function RunTab({ compilation, solution, onSolution, run, onRun }: OutputPanelPr
               </pre>
             </ErrorCallout>
           ) : (
-            <Block label="Output" copy={execution.output!}>
-              <pre className="whitespace-pre-wrap break-all font-mono text-sm">
-                {execution.output}
-              </pre>
-            </Block>
+            <>
+              <Block label="Output" copy={execution.output!}>
+                <pre className="whitespace-pre-wrap break-all font-mono text-sm">
+                  {execution.output}
+                </pre>
+              </Block>
+              {execution.clvmOutput !== undefined &&
+                execution.clvmOutput !== execution.output && (
+                  <Block label="CLVM" copy={execution.clvmOutput}>
+                    <pre className="whitespace-pre-wrap break-all font-mono text-sm">
+                      {execution.clvmOutput}
+                    </pre>
+                  </Block>
+                )}
+            </>
           )}
 
           {execution.runtimeCost !== undefined && (

@@ -78,7 +78,7 @@ fn examples_match_snapshots() {
                 "{name}: tree hash"
             );
 
-            let execution = run(hex, &example.solution).unwrap();
+            let execution = run(example.content.clone(), false, &example.solution).unwrap();
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let runtime_cost = execution.runtime_cost.map(|cost| cost as u64);
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -91,7 +91,7 @@ fn examples_match_snapshots() {
             );
 
             assert_eq!(
-                execution.output,
+                execution.clvm_output,
                 snapshot_value(snapshot, "output"),
                 "{name}: output"
             );
@@ -187,19 +187,17 @@ fn errors_have_no_program() {
 fn debug_builds_print_and_locate_assertions() {
     let source = "fn main(x: Int) -> Int {\n    debug x;\n    assert x > 1;\n    x\n}\n";
 
-    let release = compile(source.to_string(), false).unwrap();
-    let execution = run(release.hex.as_ref().unwrap(), "(5)").unwrap();
+    let execution = run(source.to_string(), false, "(5)").unwrap();
     assert_eq!(execution.output.as_deref(), Some("5"));
     assert!(execution.prints.is_empty());
 
-    let debug = compile(source.to_string(), true).unwrap();
-    let execution = run(debug.hex.as_ref().unwrap(), "(5)").unwrap();
+    let execution = run(source.to_string(), true, "(5)").unwrap();
     assert_eq!(execution.output.as_deref(), Some("5"));
     assert_eq!(execution.prints.len(), 1);
     assert_eq!(execution.prints[0].location, "main.rue:2:5");
     assert_eq!(execution.prints[0].value, "5");
 
-    let execution = run(debug.hex.as_ref().unwrap(), "(1)").unwrap();
+    let execution = run(source.to_string(), true, "(1)").unwrap();
     assert_eq!(execution.output, None);
     assert_eq!(execution.runtime_cost, None);
     assert_eq!(
@@ -238,8 +236,7 @@ fn tests_must_return_nil() {
 #[test]
 fn runs_with_the_cli_flags() {
     let source = "fn main() -> Bytes32 {\n    keccak256(\"hello\")\n}\n\ntest fn hashes() {\n    assert main() == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;\n}\n";
-    let compilation = compile(source.to_string(), false).unwrap();
-    let execution = run(compilation.hex.as_ref().unwrap(), "()").unwrap();
+    let execution = run(source.to_string(), false, "()").unwrap();
 
     assert_eq!(
         execution.output.as_deref(),
@@ -253,5 +250,21 @@ fn formats_source() {
     assert_eq!(
         format("fn main()->Int{let x=1;x+2}").unwrap(),
         "fn main() -> Int {\n    let x = 1;\n    x + 2\n}\n"
+    );
+}
+
+#[test]
+fn outputs_and_prints_are_displayed_with_their_types() {
+    let source = "struct Point {\n    x: Int,\n    y: Int,\n}\n\nfn main() -> List<Point> {\n    debug 0xcafef00d;\n    [Point { x: 1, y: 2 }]\n}\n\ntest fn returns_point() -> Point {\n    Point { x: 3, y: 4 }\n}\n";
+
+    let execution = run(source.to_string(), true, "()").unwrap();
+    assert_eq!(execution.output.as_deref(), Some("[Point { x: 1, y: 2 }]"));
+    assert_eq!(execution.clvm_output.as_deref(), Some("((1 2))"));
+    assert_eq!(execution.prints[0].value, "0xcafef00d");
+
+    let results = run_tests(source.to_string()).unwrap();
+    assert_eq!(
+        results[0].error.as_deref(),
+        Some("returned Point { x: 3, y: 4 } instead of nil")
     );
 }

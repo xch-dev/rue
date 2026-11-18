@@ -36,6 +36,6 @@ test fn recursive_field() -> Tree<Int> {
     left(Node::<Int> { left: 42, right: nil })
 }
 
-test fn unused_generic() -> Bytes {
-    untag(Tagged::<Bytes> { value: 1 }, "a")
+test fn unused_generic() -> String {
+    untag(Tagged::<String> { value: 1 }, "a")
 }

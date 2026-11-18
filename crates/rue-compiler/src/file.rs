@@ -390,16 +390,25 @@ impl FileTree {
         path: &SourceKind,
         base_path: PathBuf,
     ) -> Result<Option<NodePtr>, Error> {
+        let Some(main) = self.main_symbol(ctx, path)? else {
+            return Ok(None);
+        };
+
+        Ok(Some(codegen(ctx, allocator, main, base_path)?))
+    }
+
+    /// The `main` function of the file at the path, if it has one.
+    pub fn main_symbol(
+        &self,
+        ctx: &Compiler,
+        path: &SourceKind,
+    ) -> Result<Option<SymbolId>, Error> {
         let tree = self
             .find(path)
             .ok_or_else(|| Error::SourceNotFound(path.clone()))?;
 
         let scope = ctx.module(tree.module).scope;
-        let Some(main) = ctx.scope(scope).symbol("main") else {
-            return Ok(None);
-        };
-
-        Ok(Some(codegen(ctx, allocator, main, base_path)?))
+        Ok(ctx.scope(scope).symbol("main"))
     }
 
     pub fn exports(

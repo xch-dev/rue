@@ -1,4 +1,4 @@
-fn main() -> Bytes {
+fn main() -> String {
     "Hello, world!"
 }
 

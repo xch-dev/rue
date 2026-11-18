@@ -82,7 +82,7 @@ fn swap<A, B>(depth: Int, first: A, second: B) -> (B, A) {
     }
 }
 
-test fn guard_swapped() -> (Int, Bytes) {
+test fn guard_swapped() -> (Int, String) {
     swap(3, "x", 1)
 }
 

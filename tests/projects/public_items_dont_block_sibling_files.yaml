@@ -1,6 +1,7 @@
 program: (q . 4)
 debug_program: (a (q 2 4 (c (c 10 14) ())) (c (c (q 16 (a 6 ()) (a 4 ())) (c (q 1 . 3) (q 1 . 1))) ()))
 output: "4"
+value: "4"
 runtime_cost: 20
 byte_cost: 36000
 total_cost: 36020

@@ -1,6 +1,7 @@
 program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (l 1) (q) (q 9 1 ())) 1) (q 8) (q . 1)) 1) ()))
 debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
 output: "5"
+value: "5"
 runtime_cost: 1118
 byte_cost: 876000
 total_cost: 877118
@@ -9,6 +10,7 @@ tests:
   program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (l 1) (q) (q 9 1 ())) 1) (q 8) (q . 1)) 1) ()))
   debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
   output: "5"
+  value: "5"
   runtime_cost: 1118
   byte_cost: 876000
   total_cost: 877118
@@ -16,6 +18,7 @@ tests:
   program: (a (q 2 2 (q 1 . 2)) (c (q 2 (i (a (i (l 1) (q) (q 9 1 ())) 1) (q 8) (q . 1)) 1) ()))
   debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
   output: (1 . 2)
+  value: (1, 2)
   runtime_cost: 955
   byte_cost: 900000
   total_cost: 900955
@@ -41,6 +44,7 @@ tests:
   program: (a (q 2 2 (q 1 . 2)) (c (q 2 (i (l 1) (q . 1) (q 8)) 1) ()))
   debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 (i (not (l 1)) (q 8 (q . "raise called at generic_else.rue:11:9")) (q . 1)) 1) ()))
   output: (1 . 2)
+  value: (1, 2)
   runtime_cost: 702
   byte_cost: 612000
   total_cost: 612702

@@ -4,6 +4,7 @@ tests:
   debug_program: (a (i (= (f 2) ()) (q) (q 2 (q . 2) (c (f 2) 1))) 1)
   solution: ((5))
   output: "5"
+  value: "5"
   runtime_cost: 313
   byte_cost: 228000
   total_cost: 228313
@@ -12,6 +13,7 @@ tests:
   debug_program: (a (i (= (f 2) ()) (q) (q 2 (q . 2) (c (f 2) 1))) 1)
   solution: ((5))
   output: "5"
+  value: "5"
   runtime_cost: 313
   byte_cost: 228000
   total_cost: 228313
@@ -20,6 +22,7 @@ tests:
   debug_program: (a (i (= (f (f 2)) ()) (q) (q 2 (q . 2) (c (f (f 2)) 1))) 1)
   solution: (((5)))
   output: "5"
+  value: "5"
   runtime_cost: 321
   byte_cost: 228000
   total_cost: 228321
@@ -28,6 +31,7 @@ tests:
   debug_program: (a (q 2 2 5) (c (q 2 (i (l (f 1)) (q 2 (q . 2) (c (f 1) 1)) (q)) 1) 1))
   solution: (((1 . 2)))
   output: (1 . 2)
+  value: (1, 2)
   runtime_cost: 722
   byte_cost: 492000
   total_cost: 492722

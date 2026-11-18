@@ -4,6 +4,7 @@ tests:
   debug_program: (= (r 2) ())
   solution: ((0x0000000000000000000000000000000000000000000000000000000000000000 . 0x0000000000000000000000000000000000000000000000000000000000000000))
   output: ()
+  value: "false"
   runtime_cost: 246
   byte_cost: 84000
   total_cost: 84246
@@ -12,6 +13,7 @@ tests:
   debug_program: (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 2 (i (= (f 2) (q . 2)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (= (r 2) ()) (q 1 . 1) (q)) 1) (q)) 1)
   solution: ((1 . 0x0000000000000000000000000000000000000000000000000000000000000000))
   output: ()
+  value: "false"
   runtime_cost: 876
   byte_cost: 732000
   total_cost: 732876
@@ -20,6 +22,7 @@ tests:
   debug_program: (not (l (r 2)))
   solution: ((51 0x0000000000000000000000000000000000000000000000000000000000000000 1))
   output: ()
+  value: "false"
   runtime_cost: 253
   byte_cost: 60000
   total_cost: 60253
@@ -28,6 +31,7 @@ tests:
   debug_program: (l 2)
   solution: ((7))
   output: "1"
+  value: "true"
   runtime_cost: 68
   byte_cost: 60000
   total_cost: 60068
@@ -36,6 +40,7 @@ tests:
   debug_program: (l 2)
   solution: ((2))
   output: "1"
+  value: "true"
   runtime_cost: 68
   byte_cost: 60000
   total_cost: 60068
@@ -44,6 +49,7 @@ tests:
   debug_program: (a (i (= 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q 1 . 1) (q 2 (i (= 2 (q . 1)) (q 1 . 1) (q)) 1)) 1)
   solution: (0x0000000000000000000000000000000000000000000000000000000000000000)
   output: "1"
+  value: "true"
   runtime_cost: 479
   byte_cost: 828000
   total_cost: 828479
@@ -52,6 +58,7 @@ tests:
   debug_program: (a (i (l 2) (q) (q . 2)) 1)
   solution: ((2))
   output: ()
+  value: nil
   runtime_cost: 301
   byte_cost: 228000
   total_cost: 228301
@@ -60,6 +67,7 @@ tests:
   debug_program: (a (i (= (r 2) ()) (q 1 . 0x0000000000000000000000000000000000000000000000000000000000000000) (q 6 2)) 1)
   solution: ((0x0000000000000000000000000000000000000000000000000000000000000000 . 0x0000000000000000000000000000000000000000000000000000000000000000))
   output: "0x0000000000000000000000000000000000000000000000000000000000000000"
+  value: "0x0000000000000000000000000000000000000000000000000000000000000000"
   runtime_cost: 313
   byte_cost: 636000
   total_cost: 636313
@@ -67,6 +75,7 @@ tests:
   program: (a (q 2 (i (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 9 6 ()) (q)) 1) (q 8) (q 2 (q 2 (i (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 9 6 ()) (q)) 1) (q 2 (q 2 (i (a (i (= 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q 1 . 1) (q 9 2 (q . 1))) 1) (q) (q 8)) 1) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) 1)) (q 8)) 1) (c (q 1) 1))) 1) (c (q 1 . 0x0000000000000000000000000000000000000000000000000000000000000000) 1))
   debug_program: (a (q 2 (i (not (= (r 2) ())) (q 2 (q 2 (i (= (r 2) ()) (q 2 (q 2 (i (not (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 2 (i (= (f 2) (q . 2)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (= (r 2) ()) (q 1 . 1) (q)) 1) (q)) 1)) (q 2 (q 2 (i (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 2 (i (= (f 2) (q . 2)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (= (r 2) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q 2 (i (not (not (l (r 2)))) (q 2 (q 2 (i (not (l (r 2))) (q 2 (q 2 (i (l 2) (q 2 (q 2 (i (not (l 2)) (q 2 (q 2 (i (l 2) (q 2 (q 2 (i (a (i (= 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q 1 . 1) (q 2 (i (= 2 (q . 1)) (q 1 . 1) (q)) 1)) 1) (q) (q 8 (q . "assertion failed at pair_unions.rue:81:5"))) 1) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) 1)) (q 8 (q . "assertion failed at pair_unions.rue:76:5"))) 1) (c (c (q . 2) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:73:5"))) 1) (c () 1)) (q 8 (q . "assertion failed at pair_unions.rue:71:5"))) 1) (c (c (q . 7) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:68:5"))) 1) (c (c (q . 51) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:66:5"))) 1) (c (c (q . 51) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) (c (q . 1) ()))) 1)) (q 8 (q . "assertion failed at pair_unions.rue:60:5"))) 1) (c (c (q . 1) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:58:5"))) 1) (c (c (q . 1) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) 1)) (q 8 (q . "assertion failed at pair_unions.rue:52:5"))) 1) (c (c (q . 1) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:50:5"))) 1) (c (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) 1))
   output: ()
+  value: nil
   runtime_cost: 3548
   byte_cost: 4380000
   total_cost: 4383548

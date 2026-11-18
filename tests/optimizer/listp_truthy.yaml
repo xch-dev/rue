@@ -5,6 +5,7 @@ tests:
   debug_program: (a (i (not (l 2)) (q) (q 8 (q . "assertion failed at listp_truthy.rue:2:5"))) 1)
   solution: (())
   output: ()
+  value: nil
   runtime_cost: 321
   byte_cost: 300000
   total_cost: 300321
@@ -13,6 +14,7 @@ tests:
   debug_program: (a (i (= (not (l 2)) (q . 1)) (q) (q 8 (q . "assertion failed at listp_truthy.rue:6:5"))) 1)
   solution: (())
   output: ()
+  value: nil
   runtime_cost: 662
   byte_cost: 444000
   total_cost: 444662
@@ -21,6 +23,7 @@ tests:
   debug_program: (a (i (not (l 2)) (q) (q 8 (q . "assertion failed at listp_truthy.rue:10:5"))) 1)
   solution: (())
   output: ()
+  value: nil
   runtime_cost: 301
   byte_cost: 252000
   total_cost: 252301
@@ -29,6 +32,7 @@ tests:
   debug_program: (a (i (= (not (l 2)) (q . 1)) (q) (q 8 (q . "assertion failed at listp_truthy.rue:14:5"))) 1)
   solution: (())
   output: ()
+  value: nil
   runtime_cost: 642
   byte_cost: 396000
   total_cost: 396642

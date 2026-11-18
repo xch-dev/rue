@@ -3,6 +3,7 @@ tests:
   program: (q . 300)
   debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))) (c (q 16 (+ (+ (* 4 (q . 10)) (* 6 (q . 20))) (* 5 (q . 30))) (* 7 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
@@ -10,6 +11,7 @@ tests:
   program: (q . 300)
   debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))) (c (q 16 (+ (+ (* 4 (q . 10)) (* 6 (q . 20))) (* 5 (q . 30))) (* 7 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
@@ -17,6 +19,7 @@ tests:
   program: (q . 300)
   debug_program: (+ (+ (+ (* (q . 1) (q . 10)) (* (q . 2) (q . 20))) (* (q . 3) (q . 30))) (* (q . 4) (q . 40)))
   output: "300"
+  value: "300"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
@@ -24,6 +27,7 @@ tests:
   program: (q . 300)
   debug_program: (+ (+ (+ (* (q . 1) (q . 10)) (* (q . 2) (q . 20))) (* (q . 3) (q . 30))) (* (q . 4) (q . 40)))
   output: "300"
+  value: "300"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
@@ -31,6 +35,7 @@ tests:
   program: (q . 300)
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 23 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
@@ -38,6 +43,7 @@ tests:
   program: (q . 300)
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 15 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
@@ -45,6 +51,7 @@ tests:
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) (q 1 2 3 4))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 23 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 5852
   byte_cost: 732000
   total_cost: 737852
@@ -52,6 +59,7 @@ tests:
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) (q 1 2 3 . 4))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 15 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 5848
   byte_cost: 708000
   total_cost: 713848
@@ -59,6 +67,7 @@ tests:
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) (q 1 2 3 4))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 23 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 5852
   byte_cost: 732000
   total_cost: 737852
@@ -66,6 +75,7 @@ tests:
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) (q 1 2 3 . 4))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 15 (q . 40))) ()))
   output: "300"
+  value: "300"
   runtime_cost: 5848
   byte_cost: 708000
   total_cost: 713848

@@ -4,6 +4,7 @@ tests:
   debug_program: (a (i (> 2 (q . 100)) (q 1 . "Large") (q 1 . "Small")) 1)
   solution: (200)
   output: "\"Large\""
+  value: "\"Large\""
   runtime_cost: 647
   byte_cost: 372000
   total_cost: 372647
@@ -12,6 +13,7 @@ tests:
   debug_program: (i (> 2 (q . 100)) (q . "Large") (q . "Small"))
   solution: (200)
   output: "\"Large\""
+  value: "\"Large\""
   runtime_cost: 647
   byte_cost: 372000
   total_cost: 372647
@@ -20,6 +22,7 @@ tests:
   debug_program: (i (> 2 (q . 100)) (q . "Large") (q . "Small"))
   solution: (200)
   output: "\"Large\""
+  value: "\"Large\""
   runtime_cost: 647
   byte_cost: 372000
   total_cost: 372647

@@ -3,6 +3,7 @@ tests:
   program: (q . 8)
   debug_program: (a (q 16 6 4) (c (c (q . 1) (q . 7)) ()))
   output: "8"
+  value: "8"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020

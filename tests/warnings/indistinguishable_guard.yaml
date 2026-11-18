@@ -3,6 +3,7 @@ tests:
   program: (q . 1)
   debug_program: (q . 1)
   output: "1"
+  value: "true"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -10,6 +11,7 @@ tests:
   program: (q . 1)
   debug_program: (q . 1)
   output: "1"
+  value: "true"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
@@ -17,6 +19,7 @@ tests:
   program: (q . 1)
   debug_program: (a (q 32 (= (strlen 2) (q . 32))) (c (q . 42) 1))
   output: "1"
+  value: "true"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020

@@ -4,6 +4,7 @@ tests:
   debug_program: (c (/ 2 5) (% 2 5))
   solution: (-7 2)
   output: (-4 . 1)
+  value: (-4, 1)
   runtime_cost: 1249
   byte_cost: 84000
   total_cost: 85249
@@ -12,6 +13,7 @@ tests:
   debug_program: (c (/ (+ 2 (q . 1)) 5) (% (+ 2 (q . 1)) 5))
   solution: (-8 2)
   output: (-4 . 1)
+  value: (-4, 1)
   runtime_cost: 2025
   byte_cost: 180000
   total_cost: 182025
@@ -20,6 +22,7 @@ tests:
   debug_program: (a (q 5 2) (c (c 2 (c (q . 5) ())) 1))
   solution: (3)
   output: "3"
+  value: "3"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
@@ -34,6 +37,7 @@ tests:
   debug_program: (a (i (> 2 5) (q 1 . 1) (q)) 1)
   solution: (5 3)
   output: "1"
+  value: "true"
   runtime_cost: 603
   byte_cost: 84000
   total_cost: 84603
@@ -42,6 +46,7 @@ tests:
   debug_program: (a (i (= 2 ()) (q) (q 1 . 1)) 1)
   solution: (0)
   output: ()
+  value: "false"
   runtime_cost: 411
   byte_cost: 132000
   total_cost: 132411
@@ -50,6 +55,7 @@ tests:
   debug_program: (a (i (> 2 (q . 10)) (q 1 . 100) (q 1 . 200)) 1)
   solution: (11)
   output: "100"
+  value: "100"
   runtime_cost: 645
   byte_cost: 276000
   total_cost: 276645
@@ -58,6 +64,7 @@ tests:
   debug_program: (i () (substr (q . "abc") () (q . 1)) (i () (/ (q . 10) (+ (q . 3) (q . 2))) (i () (ash (q . 1) (+ (q . 2) (q . 1))) 2)))
   solution: (3)
   output: "3"
+  value: "3"
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048

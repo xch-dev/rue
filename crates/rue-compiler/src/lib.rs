@@ -3,12 +3,14 @@ mod compile;
 mod compiler;
 mod const_eval;
 mod file;
+mod output_types;
 mod syntax_map;
 
 pub use check_recursion::*;
 pub use compile::*;
 pub use compiler::*;
 pub use file::*;
+pub use output_types::*;
 pub use syntax_map::*;
 
 #[cfg(test)]
@@ -25,6 +27,8 @@ mod lint_tests;
 mod narrowing_tests;
 #[cfg(test)]
 mod nesting_tests;
+#[cfg(test)]
+mod output_types_tests;
 #[cfg(test)]
 mod resolve_tests;
 #[cfg(test)]

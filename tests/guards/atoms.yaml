@@ -4,6 +4,7 @@ tests:
   debug_program: (not (l 2))
   solution: (42)
   output: "1"
+  value: "true"
   runtime_cost: 269
   byte_cost: 108000
   total_cost: 108269
@@ -12,6 +13,7 @@ tests:
   debug_program: (= 2 (q . 42))
   solution: (42)
   output: "1"
+  value: "true"
   runtime_cost: 188
   byte_cost: 108000
   total_cost: 108188
@@ -20,6 +22,7 @@ tests:
   debug_program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)
   solution: (34)
   output: "1"
+  value: "true"
   runtime_cost: 585
   byte_cost: 444000
   total_cost: 444585
@@ -28,6 +31,7 @@ tests:
   debug_program: (a (i (not (l 2)) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1) (q)) 1)
   solution: (42)
   output: "1"
+  value: "true"
   runtime_cost: 465
   byte_cost: 372000
   total_cost: 372465
@@ -36,6 +40,7 @@ tests:
   debug_program: (= (strlen 2) (q . 32))
   solution: (0)
   output: ()
+  value: "false"
   runtime_cost: 361
   byte_cost: 156000
   total_cost: 156361
@@ -44,6 +49,7 @@ tests:
   debug_program: (= 2 (q . 42))
   solution: (42)
   output: "1"
+  value: "true"
   runtime_cost: 188
   byte_cost: 108000
   total_cost: 108188

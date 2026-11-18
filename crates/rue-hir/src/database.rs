@@ -41,6 +41,9 @@ pub struct Database {
     /// The declarations referenced through each import, along with where they were referenced.
     import_references: HashMap<ImportId, IndexMap<Declaration, IndexSet<ImportUser>>>,
     tests: Vec<Test>,
+    /// The location of each `debug` statement, along with the type of the value it prints, so
+    /// that the printed value can be displayed with its type.
+    debug_types: Vec<(SrcLoc, TypeId)>,
 }
 
 impl Database {
@@ -308,6 +311,16 @@ impl Database {
 
     pub fn tests(&self) -> impl Iterator<Item = &Test> {
         self.tests.iter()
+    }
+
+    pub fn add_debug_type(&mut self, srcloc: SrcLoc, ty: TypeId) {
+        self.debug_types.push((srcloc, ty));
+    }
+
+    /// The location of each `debug` statement that has been compiled, along with the type of the
+    /// value it prints. A statement that's compiled more than once is listed each time.
+    pub fn debug_types(&self) -> &[(SrcLoc, TypeId)] {
+        &self.debug_types
     }
 
     pub fn debug_symbol(&self, id: SymbolId) -> String {

@@ -4,6 +4,7 @@ tests:
   debug_program: (= (* 2 (q . 1)) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 291
   byte_cost: 156000
   total_cost: 156291
@@ -12,6 +13,7 @@ tests:
   debug_program: (= (* (q . 1) 2) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 291
   byte_cost: 156000
   total_cost: 156291
@@ -20,6 +22,7 @@ tests:
   debug_program: (= (* (* 2 (q . 2)) (q . 1)) (q . 2))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 1214
   byte_cost: 204000
   total_cost: 205214
@@ -28,6 +31,7 @@ tests:
   debug_program: (= (+ 2 ()) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 624
   byte_cost: 156000
   total_cost: 156624
@@ -36,6 +40,7 @@ tests:
   debug_program: (= (- 2 ()) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 624
   byte_cost: 156000
   total_cost: 156624
@@ -44,6 +49,7 @@ tests:
   debug_program: (= (- () (- () 2)) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 624
   byte_cost: 156000
   total_cost: 156624
@@ -52,6 +58,7 @@ tests:
   debug_program: (= (/ 2 (q . 1)) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 1219
   byte_cost: 204000
   total_cost: 205219
@@ -60,6 +67,7 @@ tests:
   debug_program: (= (logand 2 (- () (q . 1))) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 569
   byte_cost: 156000
   total_cost: 156569
@@ -68,6 +76,7 @@ tests:
   debug_program: (= (logior 2 ()) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 569
   byte_cost: 156000
   total_cost: 156569
@@ -76,6 +85,7 @@ tests:
   debug_program: (= (logxor 2 ()) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 569
   byte_cost: 156000
   total_cost: 156569
@@ -84,6 +94,7 @@ tests:
   debug_program: (= (ash 2 ()) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 848
   byte_cost: 180000
   total_cost: 180848
@@ -92,6 +103,7 @@ tests:
   debug_program: (= (ash 2 (- () ())) (q . 1))
   solution: (0x0001)
   output: "1"
+  value: "true"
   runtime_cost: 848
   byte_cost: 180000
   total_cost: 180848

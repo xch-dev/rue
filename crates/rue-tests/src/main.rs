@@ -6,6 +6,7 @@ use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use clvm_utils::tree_hash;
@@ -14,11 +15,13 @@ use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use indexmap::IndexMap;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::normalize_path;
-use rue_compiler::{CompiledTest, Compiler, Error, FileTree};
+use rue_compiler::{CompiledTest, Compiler, Error, FileTree, OutputTypes};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
+use rue_hir::SymbolId;
 use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
 use rue_options::CompilerOptions;
+use rue_types::DisplayOptions;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -101,6 +104,10 @@ struct TestCase {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     output: Option<String>,
+
+    /// The output, displayed as a Rue expression using the return type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     debug_output: Option<String>,
@@ -208,7 +215,14 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         .transpose()?
         .unwrap_or_default();
 
-    handle_tests(&mut allocator, &mut file.tests, &tests, &debug_tests)?;
+    let types = Types::new(&mut ctx, &mut debug_ctx, &tests, None, base_path);
+    handle_tests(
+        &mut allocator,
+        &mut file.tests,
+        &tests,
+        &debug_tests,
+        &types,
+    )?;
 
     compare_snapshot(&yaml_file, &file, update, &mut failed)?;
 
@@ -496,7 +510,22 @@ fn handle_test_file(
         .transpose()?
         .unwrap_or_default();
 
-    handle_test_case(&mut allocator, &mut file.main, main, debug_main)?;
+    let main_symbol = kind
+        .as_ref()
+        .filter(|_| codegen)
+        .map(|kind| unit.main_symbol(&ctx, kind))
+        .transpose()?
+        .flatten();
+    let types = Types::new(&mut ctx, &mut debug_ctx, &tests, main_symbol, &base_path);
+
+    handle_test_case(
+        &mut allocator,
+        &mut file.main,
+        main,
+        debug_main,
+        &types,
+        main_symbol,
+    )?;
 
     file.puzzle_hashes = BTreeMap::new();
 
@@ -531,7 +560,13 @@ fn handle_test_file(
         }
     }
 
-    handle_tests(&mut allocator, &mut file.tests, &tests, &debug_tests)?;
+    handle_tests(
+        &mut allocator,
+        &mut file.tests,
+        &tests,
+        &debug_tests,
+        &types,
+    )?;
 
     compare_snapshot(&yaml_file, &file, update, failed)?;
 
@@ -574,6 +609,7 @@ fn handle_tests(
     test_cases: &mut Vec<TestCase>,
     tests: &[CompiledTest],
     debug_tests: &[CompiledTest],
+    types: &Types,
 ) -> Result<()> {
     assert_eq!(debug_tests.len(), tests.len());
 
@@ -583,7 +619,14 @@ fn handle_tests(
     );
 
     for ((test_case, test), debug_test) in test_cases.iter_mut().zip(tests).zip(debug_tests) {
-        handle_test_case(allocator, test_case, Some(test.ptr), Some(debug_test.ptr))?;
+        handle_test_case(
+            allocator,
+            test_case,
+            Some(test.ptr),
+            Some(debug_test.ptr),
+            types,
+            Some(test.symbol),
+        )?;
     }
 
     Ok(())
@@ -754,16 +797,45 @@ fn format_value(value: &Value) -> String {
     }
 }
 
+/// The types of the values that a file's programs return and print, so they can be displayed as
+/// Rue expressions.
+struct Types {
+    /// The return types of the release build's `main` and tests.
+    returns: OutputTypes,
+    /// The types printed by the debug build's `debug` statements.
+    prints: Rc<OutputTypes>,
+}
+
+impl Types {
+    fn new(
+        ctx: &mut Compiler,
+        debug_ctx: &mut Compiler,
+        tests: &[CompiledTest],
+        main: Option<SymbolId>,
+        base_path: &Path,
+    ) -> Self {
+        let functions = tests.iter().map(|test| test.symbol).chain(main);
+
+        Self {
+            returns: OutputTypes::new(ctx, functions, base_path),
+            prints: Rc::new(OutputTypes::new(debug_ctx, [], base_path)),
+        }
+    }
+}
+
 fn handle_test_case(
     allocator: &mut Allocator,
     test_case: &mut TestCase,
     program: Option<NodePtr>,
     debug_program: Option<NodePtr>,
+    types: &Types,
+    function: Option<SymbolId>,
 ) -> Result<()> {
     let Some(ptr) = program else {
         test_case.program = None;
         test_case.debug_program = None;
         test_case.output = None;
+        test_case.value = None;
         test_case.debug_output = None;
         test_case.clvm_error = None;
         test_case.debug_clvm_error = None;
@@ -789,7 +861,11 @@ fn handle_test_case(
         100_000_000,
     );
 
-    let debug_dialect = DebugDialect::new(CLVM_FLAGS, false);
+    let prints = types.prints.clone();
+    let debug_dialect =
+        DebugDialect::new(CLVM_FLAGS, false).with_display(move |srcloc, allocator, node| {
+            prints.display_debug(srcloc, allocator, node, DisplayOptions::SINGLE_LINE)
+        });
     let debug_response = run_program(allocator, &debug_dialect, debug_ptr, env, 100_000_000);
     let print_messages = debug_dialect.log();
 
@@ -805,6 +881,14 @@ fn handle_test_case(
     match response {
         Ok(output) => {
             test_case.output = Some(disassemble_value(allocator, output.1));
+            test_case.value = function.and_then(|function| {
+                types.returns.display_return(
+                    function,
+                    allocator,
+                    output.1,
+                    DisplayOptions::SINGLE_LINE,
+                )
+            });
             test_case.runtime_cost = Some(output.0);
             test_case.total_cost = Some(output.0 + byte_cost);
             test_case.clvm_error = None;
@@ -817,6 +901,7 @@ fn handle_test_case(
             test_case.runtime_cost = None;
             test_case.total_cost = None;
             test_case.output = None;
+            test_case.value = None;
         }
     }
 

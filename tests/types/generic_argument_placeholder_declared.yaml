@@ -3,6 +3,7 @@ tests:
   program: (q . "hello")
   debug_program: (a (q 2 (q 2 (q 2 (i (= 2 (q . 1)) (q . 9) (q)) 1) (c (f 6) 1)) (c (c (q . "hello") (a 2 (q . 1))) 1)) (c (q 4 1 ()) ()))
   output: "\"hello\""
+  value: "\"hello\""
   runtime_cost: 20
   byte_cost: 96000
   total_cost: 96020
