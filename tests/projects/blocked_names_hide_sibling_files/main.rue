@@ -3,11 +3,15 @@ import other::utils;
 mod a {
     import super::utils::greet;
 
-    export fn f() -> Int {
-        super::utils::greet() + greet()
+    export fn by_path() -> Int {
+        super::utils::greet()
+    }
+
+    export fn imported() -> Int {
+        greet()
     }
 }
 
 fn main() -> Int {
-    a::f()
+    a::by_path() + a::imported()
 }

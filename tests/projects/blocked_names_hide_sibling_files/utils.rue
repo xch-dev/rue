@@ -1,6 +1,6 @@
-// The snapshot shows whether `super::utils` in main.rue reaches this file: `greet` is reported as
-// unused if it doesn't. Paths in expressions don't reach it, but in this branch imports through
-// `super` still do, since they're resolved before the failed import blocks the name.
+// `greet` returns `Bytes`, so a use that reaches this file through `super::utils` in main.rue is a
+// type error. Paths in expressions don't reach it, but in this branch imports through `super`
+// still do, since they're resolved before the failed import blocks the name.
 export fn greet() -> Bytes {
     "hello"
 }

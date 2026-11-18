@@ -1,3 +1,4 @@
 diagnostics:
 - Cannot reference private symbol `utils` in module `other` at main.rue:1:15
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at main.rue:10:33
 - Unused function `greet` at other.rue:2:15
