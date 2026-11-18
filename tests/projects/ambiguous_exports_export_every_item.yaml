@@ -1,0 +1,6 @@
+program: (q . 3)
+debug_program: (q . 3)
+output: "3"
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020

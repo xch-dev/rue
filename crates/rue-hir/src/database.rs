@@ -43,6 +43,10 @@ pub struct Database {
     /// The bindings each glob import shares with the glob import that bound the name, as that
     /// import, the declaration it bound, and the declaration this one brings in under the name.
     shared_glob_bindings: HashMap<ImportId, IndexSet<(ImportId, Declaration, Declaration)>>,
+    /// The bindings that are ambiguous because glob imports bring in different declarations with
+    /// the same name, as the import that bound the name and the declaration it bound, along with
+    /// the other declarations that the name could refer to.
+    ambiguous_imports: IndexMap<(ImportId, Declaration), IndexSet<Declaration>>,
     tests: Vec<Test>,
 }
 
@@ -367,6 +371,57 @@ impl Database {
             });
 
         own.chain(shared)
+    }
+
+    /// Records that a binding a glob import made is ambiguous, since glob imports bring in the
+    /// other declarations under the same name, or it's brought in from another binding that is.
+    /// Returns whether this added anything.
+    pub fn add_ambiguous_import(
+        &mut self,
+        import: ImportId,
+        declaration: Declaration,
+        others: impl IntoIterator<Item = Declaration>,
+    ) -> bool {
+        let entry = self.ambiguous_imports.entry((import, declaration));
+        let mut added = matches!(entry, indexmap::map::Entry::Vacant(_));
+        let alternatives = entry.or_default();
+
+        for other in others {
+            if other != declaration {
+                added |= alternatives.insert(other);
+            }
+        }
+
+        added
+    }
+
+    /// Whether a name that refers to a declaration through this import is ambiguous.
+    pub fn is_ambiguous_import(&self, import: Option<ImportId>, declaration: Declaration) -> bool {
+        import.is_some_and(|import| self.ambiguous_imports.contains_key(&(import, declaration)))
+    }
+
+    /// The other declarations that a name could refer to, if it refers to the declaration through
+    /// this import and is ambiguous.
+    pub fn ambiguous_alternatives(
+        &self,
+        import: ImportId,
+        declaration: Declaration,
+    ) -> impl Iterator<Item = Declaration> + '_ {
+        self.ambiguous_imports
+            .get(&(import, declaration))
+            .into_iter()
+            .flatten()
+            .copied()
+    }
+
+    /// Every ambiguous binding, as the import that bound the name and the declaration it bound,
+    /// along with the other declarations that the name could refer to.
+    pub fn ambiguous_imports(
+        &self,
+    ) -> impl Iterator<Item = (ImportId, Declaration, &IndexSet<Declaration>)> {
+        self.ambiguous_imports
+            .iter()
+            .map(|(&(import, declaration), others)| (import, declaration, others))
     }
 
     pub fn add_test(&mut self, test: Test) {
