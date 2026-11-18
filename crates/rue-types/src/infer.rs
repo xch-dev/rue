@@ -50,6 +50,10 @@ pub struct Inference {
     /// The unions that values were compared against while collecting the candidates, indexed by
     /// `BranchId::choice`.
     choices: Choices,
+    /// The vars in `generics` that stand for an instance of a passed generic function's generic
+    /// rather than for a generic of the function being called (`VarKind::Instance` in #362), with
+    /// the instance's bounds as their candidates (see `Inference::add_instance`).
+    instances: Vec<TypeId>,
 }
 
 /// One member of a union that a value was compared against while inferring, or the fallback that
@@ -129,6 +133,7 @@ impl Inference {
             generics,
             renamed: FxHashMap::default(),
             choices: Choices::default(),
+            instances: Vec::new(),
         }
     }
 
@@ -323,6 +328,22 @@ impl Inference {
         branches
             .iter()
             .all(|&branch| self.choices.matched_with(results, branch))
+    }
+
+    /// Adds a var for the instance of a passed generic function's generic, once the comparison
+    /// that instantiated it has finished, with the instance's bounds as its candidates. The
+    /// candidates that reference the instance reference the var instead (see
+    /// `ComparisonContext::finish`).
+    pub(crate) fn add_instance(&mut self, var: TypeId, bounds: &InferenceCandidates) {
+        self.generics.insert(var, InferenceCandidates::default());
+        self.branches.insert(var, CandidateBranches::default());
+        self.instances.push(var);
+
+        for kind in [CandidateKind::Lower, CandidateKind::Upper] {
+            for &ty in bounds.list(kind) {
+                self.push(var, kind, ty, Vec::new());
+            }
+        }
     }
 
     pub(crate) fn is_target(&self, generic: TypeId) -> bool {
