@@ -95,7 +95,7 @@ fn progress(out: &mut impl Write, stage: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_command(out: &mut impl Write, seed: u64, start: usize) -> Result<()> {
+pub fn run_command(out: &mut impl Write, seed: u64, start: usize) -> Result<()> {
     let generated = Generator::new(seed).generate();
     let explicit_source = generated.program.print(&Variant::default());
 

@@ -225,6 +225,126 @@ fn untyped_lambdas_give_no_type_to_their_parameters() {
     );
 }
 
+fn lambda(params: &[(&str, Ty)], typed: bool, body: Expr, ty: Ty) -> Expr {
+    Expr::new(
+        ExprKind::Lambda {
+            params: params
+                .iter()
+                .map(|(name, ty)| ((*name).to_string(), ty.clone()))
+                .collect(),
+            typed,
+            body: Box::new(body),
+        },
+        ty,
+    )
+}
+
+#[test]
+fn lambdas_give_their_return_type_only_what_their_body_does() {
+    let produce = function("produce", &["T"], &[("make", "fn() -> T")], "T");
+    let list = Ty::list(Ty::Int);
+    let made = |body: Expr| {
+        let ty = body.ty.clone();
+        let make = lambda(&[], false, body, Ty::func(vec![], ty.clone()));
+        call(0, "produce", vec![ty.clone()], vec![make], ty)
+    };
+
+    let from_nil = made(nil(list.clone()));
+    assert_eq!(
+        masks(&program(vec![produce.clone()], None, from_nil)),
+        [[false]]
+    );
+
+    let items = Expr::new(ExprKind::List(vec![int(1, Ty::Int)]), list);
+    assert_eq!(
+        masks(&program(vec![produce.clone()], None, made(items))),
+        [[true]]
+    );
+
+    // An untyped lambda's body is only looked at once the call gives its parameters a type:
+    // `5` gives `A` one, and then `x` gives `B` one. `nil` gives `A` none, so `B` can only be
+    // removed if `A` is kept.
+    let map = function(
+        "map",
+        &["A", "B"],
+        &[("function", "fn(a: A) -> B"), ("value", "A")],
+        "B",
+    );
+    let fn_ty = Ty::func(vec![Ty::Int], Ty::Int);
+    let mapped = |value: Expr| {
+        let echo = lambda(
+            &[("x", Ty::Int)],
+            false,
+            Expr::new(ExprKind::Var("x".to_string()), Ty::Int),
+            fn_ty.clone(),
+        );
+        call(0, "map", vec![Ty::Int, Ty::Int], vec![echo, value], Ty::Int)
+    };
+    assert_eq!(
+        masks(&program(vec![map.clone()], None, mapped(int(5, Ty::Int)))),
+        [[true, true]]
+    );
+    let from_nil = program(vec![map], None, mapped(nil(Ty::opt(Ty::Int))));
+    assert_eq!(masks(&from_nil), [[false, true]]);
+    assert_eq!(
+        legalize(&from_nil, &strip_all(&[0])).stripped,
+        [(0, Strip::Placeholders(vec![false, true]))].into()
+    );
+}
+
+#[test]
+fn lambdas_give_a_bare_generic_no_type() {
+    let identity = function("identity", &["T"], &[("value", "T")], "T");
+    let fn_ty = Ty::func(vec![Ty::Int], Ty::Int);
+    let untyped = || lambda(&[("x", Ty::Int)], false, int(1, Ty::Int), fn_ty.clone());
+
+    let alone = call(
+        0,
+        "identity",
+        vec![fn_ty.clone()],
+        vec![untyped()],
+        fn_ty.clone(),
+    );
+    assert_eq!(
+        masks(&program(vec![identity.clone()], None, alone)),
+        [[false]]
+    );
+
+    // Nor does a pair with one in it
+    let pair_ty = Ty::pair(fn_ty.clone(), Ty::Int);
+    let pair = Expr::new(
+        ExprKind::Pair(Box::new(untyped()), Box::new(int(5, Ty::Int))),
+        pair_ty.clone(),
+    );
+    let in_pair = call(0, "identity", vec![pair_ty.clone()], vec![pair], pair_ty);
+    assert_eq!(masks(&program(vec![identity], None, in_pair)), [[false]]);
+}
+
+#[test]
+fn generic_lambdas_get_types_through_the_call() {
+    let fn_ty = Ty::func(vec![Ty::Int], Ty::Int);
+    let generic_lambda = Expr::new(ExprKind::IdentityLambda, fn_ty.clone());
+
+    let g = function("g", &["A"], &[("function", "fn(a: A) -> A")], "Int");
+    let alone = call(0, "g", vec![Ty::Int], vec![generic_lambda.clone()], Ty::Int);
+    assert_eq!(masks(&program(vec![g], None, alone)), [[false]]);
+
+    let map = function(
+        "map",
+        &["A", "B"],
+        &[("function", "fn(a: A) -> B"), ("value", "A")],
+        "B",
+    );
+    let with_value = call(
+        0,
+        "map",
+        vec![Ty::Int, Ty::Int],
+        vec![generic_lambda, int(42, Ty::Int)],
+        Ty::Int,
+    );
+    assert_eq!(masks(&program(vec![map], None, with_value)), [[true, true]]);
+}
+
 #[test]
 fn struct_literal_arguments_are_kept() {
     let value = Expr::new(
@@ -973,4 +1093,30 @@ fn a_last_variant_that_hangs_ends_the_seed() {
     assert_eq!(script.commands, [format!("run {seed} 0")]);
     assert_eq!(script.restarts, 1);
     assert_eq!(record.variants[2].outcome.category, Category::Slow);
+}
+
+#[test]
+fn workers_resume_at_the_variant_they_are_given() {
+    let seed = (0..100)
+        .find(|&seed| Generator::new(seed).generate().variants.len() == 3)
+        .unwrap();
+
+    let mut out = Vec::new();
+    worker::run_command(&mut out, seed, 2).unwrap();
+    let out = String::from_utf8(out).unwrap();
+
+    let lines: Vec<&str> = out.lines().collect();
+    let progress: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| line.starts_with("progress"))
+        .collect();
+    assert_eq!(progress, ["progress explicit", "progress 2"]);
+    assert!(
+        lines
+            .iter()
+            .all(|line| !line.starts_with("variant [0,") && !line.starts_with("variant [1,")),
+        "{out}"
+    );
+    assert_eq!(lines.last(), Some(&"done"));
 }
