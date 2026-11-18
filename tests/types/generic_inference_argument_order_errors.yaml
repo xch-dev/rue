@@ -12,6 +12,6 @@ diagnostics:
 - Cannot compare `String | 5` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_argument_order_errors.rue:23:22
 - Unused function `either` at generic_inference_argument_order_errors.rue:27:4
 - Unused parameter `first` at generic_inference_argument_order_errors.rue:27:17
-- Unused function `typed_lambda_goes_first` at generic_inference_argument_order_errors.rue:33:4
+- Unused function `lambda_with_inferred_parameters_goes_first` at generic_inference_argument_order_errors.rue:33:4
 - Binding `shown` is returned directly after it's declared at generic_inference_argument_order_errors.rue:35:5
 - Cannot compare `Int | String` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_argument_order_errors.rue:35:22

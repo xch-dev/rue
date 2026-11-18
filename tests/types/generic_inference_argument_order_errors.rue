@@ -30,7 +30,7 @@ fn either<A, T>(first: fn(a: A) -> T, second: fn(b: Int) -> T) -> T {
 
 // The untyped lambda goes first, as #265 ordered them, since its parameter type is already
 // inferred while the typed lambda's `A` isn't, so its `Int` comes before `String`
-fn typed_lambda_goes_first() -> nil {
+fn lambda_with_inferred_parameters_goes_first() -> nil {
     let value = either(fn(x: Int) => "a", fn(y) => 5);
     let shown: nil = value;
     shown
