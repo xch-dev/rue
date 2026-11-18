@@ -1266,12 +1266,15 @@ fn compare_impl_inner(
 
     // Generics that are being instantiated outside of the comparison collect bounds from it. In
     // exact mode, they're cached with its result as its summary, which is put on the instances it's
-    // reused with (and the ones bound inside of it are checked before it finishes). In fixpoint
-    // mode, a comparison that refers to one is only ever a bound on it, so it isn't memoized.
+    // reused with (and the ones bound inside of it are checked before it finishes). A summary is
+    // in a canonical order, without duplicates, which doesn't change whether the bounds hold, but
+    // does change the order of the candidates that checking them collects, so it isn't while
+    // inferring. In fixpoint mode, a comparison that refers to one is only ever a bound on it, so
+    // it isn't memoized.
     let instances = ctx.bindings[bindings]
         .iter()
         .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
-    let memoize = compare_memo_enabled() && !(instances && ctx.fixpoint);
+    let memoize = compare_memo_enabled() && !(instances && (ctx.fixpoint || ctx.infer.is_some()));
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
         // In fixpoint mode, it's the least value in a single pass, or its approximation from the

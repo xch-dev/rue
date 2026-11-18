@@ -23,8 +23,8 @@ use rue_types::{
     FunctionParameter, FunctionType, Generic, Inference, Pair, Struct, TooComplex, Type, TypeId,
     Union, check, compare, compare_limited, compare_with_inference, count_abandoned_passes,
     count_steps, intersect, is_non_contractive, is_non_regular, reaches_non_contractive_cycle,
-    stringify, substitute, with_comparison_step_limit, with_fixpoint_budget, with_step_limit,
-    without_compare_memo,
+    resolve_inference, stringify, substitute, with_comparison_step_limit, with_fixpoint_budget,
+    with_step_limit, without_compare_memo,
 };
 
 struct Types {
@@ -213,6 +213,48 @@ fn test_instance_comparisons_are_memoized() {
             assert!(steps < 1_000, "took {steps} steps");
         }
     });
+}
+
+/// A cached summary is in a canonical order, without duplicates, so a comparison that refers to
+/// an instance isn't cached while inferring: the candidates that checking the instance's bounds
+/// collects would come in another order, and the inferred type would be `Bytes | Int` rather than
+/// `Int | Bytes`. Here, comparing the second `(Int, Bytes)` with `(U, U)` would be reused from the
+/// first.
+#[test]
+fn test_instance_comparisons_arent_memoized_while_inferring() {
+    let inferred = |memo: bool| {
+        let mut db = Types::new();
+        let BuiltinTypes {
+            int,
+            bytes,
+            permissive_any,
+            ..
+        } = db.builtins;
+        let (u, t) = (db.generic(), db.generic());
+        let both = db.pair(u, u);
+        let function = db.function(vec![u], vec![both], u);
+        let lhs = db.pair(function, function);
+        let param = db.pair(int, bytes);
+        let first = db.function(vec![], vec![param], permissive_any);
+        let second = db.function(vec![], vec![param], t);
+        let rhs = db.pair(first, second);
+
+        let mut infer = Inference::new([t]);
+        let mut compare =
+            || compare_with_inference(&mut db.arena, &db.builtins, lhs, rhs, Some(&mut infer));
+        let result = if memo {
+            compare()
+        } else {
+            without_compare_memo(compare)
+        };
+        assert_eq!(result, Comparison::Assign);
+
+        let resolved = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        stringify(&mut db.arena, resolved[&t])
+    };
+
+    assert_eq!(inferred(true), "Int | Bytes");
+    assert_eq!(inferred(false), "Int | Bytes");
 }
 
 /// `type N0 = nil | (nil | (Int | (N1, N0)) | ((nil, N1), N1));`
