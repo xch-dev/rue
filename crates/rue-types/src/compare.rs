@@ -159,9 +159,16 @@ struct StackFrame {
     /// The binders that its key references, in the order they're numbered (see `Binding`).
     binders: Vec<usize>,
     /// What a revisit of it is given while it's in progress: the bounds that it puts on the
-    /// instances its key refers to, as far as they're known (see `Summary`). It starts out empty,
-    /// and each round of computing it that revisits it computes it again with the bounds that the
-    /// round put on them, until that adds nothing (see `compare_impl_inner`).
+    /// instances its key refers to, as far as they're known (see `Summary`). Each round of
+    /// computing it that revisits it computes it again with the bounds that the round put on them,
+    /// until that adds nothing (see `compare_impl_inner`).
+    ///
+    /// It starts out empty, or as what the rounds stopped at the last time the same comparison was
+    /// computed (`ComparisonContext::approximations`). That's sound and exact: every summary
+    /// computed this way is at most the comparison's own (the least fixed point, which only
+    /// depends on its key), since it starts from at most that and the equations are monotone. So
+    /// starting from one still ends at it. Otherwise, a comparison nested in many others that are
+    /// revisited would be computed in a round of its own for each round of each of them.
     approximation: Summary,
     /// Whether it was revisited during the current round.
     revisited: bool,
@@ -192,6 +199,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// For each comparison in `stack`, the binders it references and the summary that a revisit
     /// of it is given (see `StackFrame`).
     frames: Vec<StackFrame>,
+    /// The summary that each comparison's rounds last stopped at, which the first round starts
+    /// from the next time it's computed (see `StackFrame::approximation`).
+    approximations: FxHashMap<ComparisonKey, Summary>,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -1296,7 +1306,11 @@ fn compare_impl_inner(
     ctx.frames.push(StackFrame {
         entered: ctx.binders.len(),
         binders,
-        approximation: Summary::default(),
+        approximation: ctx
+            .approximations
+            .get(&key)
+            .cloned()
+            .unwrap_or_default(),
         revisited: false,
     });
 
@@ -1323,6 +1337,10 @@ fn compare_impl_inner(
         next.canonicalize();
 
         if next == frame.approximation {
+            if !next.constraints().is_empty() {
+                ctx.approximations.insert(key, next);
+            }
+
             break result;
         }
 

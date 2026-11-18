@@ -1,0 +1,18 @@
+// From the corpus of nested generic programs (`nested-corpus`, seed 1969). Each comparison that's
+// revisited is computed again until what it puts on the instances its key refers to stops
+// changing (#362's step 13b.1). They're nested about 80 deep here, so without starting each one
+// from what it stopped at the last time, this took too many steps rather than being rejected
+type N0<A> = A;
+type N1<A, B> = A;
+
+type N2<A, B> = fn<U200, U201>(
+    p0: (fn(p0: N2<N2<Bool, U201>, nil>, p1: B) -> B, N2<U201, U200>),
+) -> (Bytes | Bool, N0<A>);
+
+type Q1 = N2<N1<N2<Bool, Bool>, Bool>, fn<U320, U321>(p0: U321, p1: nil) -> Bool>;
+type Q2 = N2<fn<U330>(p0: N1<Bytes, N0<N1<nil, U330>>>) -> nil, Bool>;
+
+fn main(y: Q2) -> Int {
+    let _z: Q1 = y;
+    0
+}
