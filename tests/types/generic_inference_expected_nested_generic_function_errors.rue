@@ -1,0 +1,31 @@
+// A generic of a nested generic function type expected of a call still leaks where a parameter of
+// a function returned above it depends on the generic it's inferred as (#359)
+
+fn make_fixed<C>() -> fn(a: C) -> fn(b: C) -> C {
+    unchecked_cast(nil)
+}
+
+fn make_inner_only<B>() -> fn(a: Int) -> fn(b: Int) -> B {
+    unchecked_cast(nil)
+}
+
+type Recursive = fn<U>(x: U) -> Recursive;
+type PairLoop<T> = fn(x: T) -> (T, PairLoop<T>);
+
+fn make_pair_loop<T>() -> PairLoop<T> {
+    unchecked_cast(nil)
+}
+
+fn main() -> Int {
+    // `C` is a parameter of the outer function, which isn't generic over the inner `U`
+    let _fixed: fn(a: Int) -> fn<U>(b: U) -> U = make_fixed();
+
+    // The inner function only takes `Int`, which isn't any `U`
+    let _narrow: fn(a: Int) -> fn<U>(b: U) -> (U, U) = make_inner_only();
+
+    // Both are recursive, and a function that returns a pair isn't one that returns a function.
+    // `T` is free and in what's returned, so the walk runs, until `T` is a parameter
+    let _recursive: Recursive = make_pair_loop();
+
+    0
+}

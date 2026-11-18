@@ -1,0 +1,91 @@
+// A generic function type nested in the return type of one expected of a call doesn't leak its
+// generics into what's inferred. The function returned at the same depth is generalized over them,
+// as the outermost one is (#340, #359)
+
+fn curried<T>(first: T) -> fn<U>(second: U) -> (T, U) {
+    fn<U>(second: U): (T, U) => (first, second)
+}
+
+fn make<A, B, C>() -> fn(a: A) -> fn(b: C) -> B {
+    unchecked_cast(curried)
+}
+
+test fn issue_case() -> Int {
+    // `C` is inferred as `U` and `B` as `(A, U)`, so the inner function is generalized over `U`
+    let function: fn<T>(a: T) -> fn<U>(b: U) -> (T, U) = make();
+    let (first, second) = function(1)(2);
+    first + second
+}
+
+test fn called_with_several_types() -> Bool {
+    let function: fn<T>(a: T) -> fn<U>(b: U) -> (T, U) = make();
+    let (number, flag) = function(3)(true);
+    flag && number == 3
+}
+
+fn pair_with<T>(first: T) -> fn<U>(second: U) -> (U, T) {
+    fn<U>(second: U): (U, T) => (second, first)
+}
+
+fn make_from_int<B, C>() -> fn(a: Int) -> fn(b: C) -> B {
+    unchecked_cast(pair_with)
+}
+
+test fn only_the_inner_function_is_generic() -> Int {
+    let function: fn(a: Int) -> fn<U>(b: U) -> (U, Int) = make_from_int();
+    let (first, second) = function(4)(5);
+    first + second
+}
+
+fn triple<T>(first: T) -> fn<U>(second: U) -> fn<V>(third: V) -> (T, (U, V)) {
+    fn<U>(second: U): fn<V>(third: V) -> (T, (U, V)) => fn<V>(third: V): (T, (U, V)) => (
+        first,
+        (second, third),
+    )
+}
+
+fn make_three<A, B, C, D>() -> fn(a: A) -> fn(b: B) -> fn(c: C) -> D {
+    unchecked_cast(triple)
+}
+
+test fn three_levels() -> Int {
+    let function: fn<T>(a: T) -> fn<U>(b: U) -> fn<V>(c: V) -> (T, (U, V)) = make_three();
+    let (first, (second, third)) = function(6)(7)(8);
+    first + second + third
+}
+
+test fn union_at_the_inner_level() -> Int {
+    let function: fn<T>(a: T) -> (fn<U>(b: U) -> (T, U)) | nil = make();
+    let inner = function(9);
+
+    if inner is nil {
+        0
+    } else {
+        1
+    }
+}
+
+type Recursive = fn<U>(x: U) -> Recursive;
+
+fn make_recursive<A, B>() -> fn(x: A) -> B {
+    unchecked_cast(nil)
+}
+
+test fn guard_recursive_function_type() -> Int {
+    // Guard: a recursive expected type, where the returned function ends after one level
+    let _function: Recursive = make_recursive();
+    10
+}
+
+type Loop<T> = fn(x: T) -> Loop<T>;
+
+fn make_loop<T>() -> Loop<T> {
+    unchecked_cast(nil)
+}
+
+test fn guard_recursive_on_both_sides() -> Int {
+    // Guard: both are recursive. `T` is a parameter of the first returned function, so nothing
+    // nested in it is generalized over it, which ends the walk
+    let _function: Recursive = make_loop();
+    11
+}
