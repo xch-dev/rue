@@ -1,0 +1,24 @@
+diagnostics:
+- Unused function `make` at generic_inference_recursive_element_bounds_errors.rue:5:4
+- Unused function `call_without_arguments` at generic_inference_recursive_element_bounds_errors.rue:10:4
+- Cannot compare `Int | T` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:13:26
+- Unused function `lambda_return_type` at generic_inference_recursive_element_bounds_errors.rue:21:4
+- Cannot compare `Int | T` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:24:26
+- Unused function `typed_parameter` at generic_inference_recursive_element_bounds_errors.rue:33:4
+- Cannot compare `Int | T` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:36:26
+- Unused function `union_parameter` at generic_inference_recursive_element_bounds_errors.rue:45:4
+- Cannot compare `T | Int` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:51:38
+- Unused type alias `Callback` at generic_inference_recursive_element_bounds_errors.rue:62:6
+- Unused function `union_of_functions` at generic_inference_recursive_element_bounds_errors.rue:65:4
+- Unused parameter `pair` at generic_inference_recursive_element_bounds_errors.rue:65:26
+- Cannot compare `T | Int` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:71:38
+- Unused function `wrap` at generic_inference_recursive_element_bounds_errors.rue:82:4
+- Unused function `lambda_in_a_call` at generic_inference_recursive_element_bounds_errors.rue:87:4
+- "Cannot assign `(1, fn(value: T) -> Int)` to `(Int, fn(value: Int) -> Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:90:13"
+- Cannot compare `T` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:94:42
+- Unused function `other_generic` at generic_inference_recursive_element_bounds_errors.rue:108:4
+- Cannot compare `T` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:116:38
+- Unused function `expected_generic` at generic_inference_recursive_element_bounds_errors.rue:129:4
+- "Cannot assign `(1, fn(x: T) -> T)` to `(Int, fn(value: Int) -> T)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:131:42"
+- Unused function `lambda_before_its_value` at generic_inference_recursive_element_bounds_errors.rue:139:4
+- "Cannot assign `(fn(x: T) -> T, 1)` to `(fn(value: Int) -> Int, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:141:40"

@@ -1,0 +1,307 @@
+// In a recursive call, the argument's expected type has the callee's generics that aren't inferred
+// yet restored to the caller's generics they were renamed from. A lambda in a pair or list in the
+// argument still gets what the elements before it infer for the callee's generic, as in any other
+// call (#350)
+
+fn recursive<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // The lambda gets `Int`, which the `1` before it infers, not the caller's `T`
+        return recursive((1, fn(x) => x), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn lambda_after_a_value_in_a_recursive_call() -> Int {
+    recursive((2, fn(x) => x), 1)
+}
+
+fn recursive_list<T>(items: (T, (fn(value: T) -> Int, nil)), depth: Int) -> Int {
+    if depth > 0 {
+        return recursive_list([1, fn(x) => x + 1], depth - 1);
+    }
+
+    items.rest.first(items.first)
+}
+
+test fn lambda_item_after_a_value_in_a_recursive_call() -> Int {
+    recursive_list([2, fn(x) => x], 1)
+}
+
+fn recursive_unused<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        return recursive_unused((1, fn(_x) => 0), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn lambda_that_ignores_its_parameter_in_a_recursive_call() -> Int {
+    recursive_unused((2, fn(x) => x), 1)
+}
+
+fn recursive_nil<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // `x` is `nil`, which the element before it infers
+        return recursive_nil(
+            (
+                nil,
+                fn(x) => {
+                    let _nil: nil = x;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn lambda_after_nil_in_a_recursive_call() -> Int {
+    recursive_nil((2, fn(x) => x), 1)
+}
+
+fn recursive_typed<T>(pair: (T, fn(first: Int, second: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // The untyped parameter comes after a typed one
+        return recursive_typed((1, fn(first: Int, second) => first + second), depth - 1);
+    }
+
+    pair.rest(0, pair.first)
+}
+
+test fn lambda_with_a_typed_parameter_in_a_recursive_call() -> Int {
+    recursive_typed((2, fn(_first: Int, second) => second), 1)
+}
+
+fn recursive_nested<T>(pair: (T, (Int, fn(value: T) -> Int)), depth: Int) -> Int {
+    if depth > 0 {
+        return recursive_nested((1, (2, fn(x) => x + 1)), depth - 1);
+    }
+
+    pair.rest.rest(pair.first)
+}
+
+test fn lambda_in_a_nested_pair_in_a_recursive_call() -> Int {
+    recursive_nested((2, (3, fn(x) => x)), 1)
+}
+
+type Same<T> = T;
+
+fn recursive_alias<T>(pair: (T, fn(value: Same<T>) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Through an alias around the parameter type
+        return recursive_alias((1, fn(x) => x), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn lambda_with_an_aliased_parameter_type_in_a_recursive_call() -> Int {
+    recursive_alias((2, fn(x) => x), 1)
+}
+
+fn recursive_value<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: the element before the lambda is the caller's `T`, so the lambda gets `T`, as
+        // before
+        return recursive_value((pair.first, fn(x) => pair.rest(x)), depth - 1);
+    }
+
+    pair.rest(pair.first)
+}
+
+test fn guard_lambda_after_the_callers_generic() -> Int {
+    recursive_value((2, fn(x) => x), 1)
+}
+
+fn recursive_argument<T>(value: T, pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: an argument before the pair infers the callee's `T`, so it isn't restored, as before
+        return recursive_argument(5, (1, fn(x) => x), depth - 1);
+    }
+
+    pair.rest(value)
+}
+
+test fn guard_generic_inferred_by_an_earlier_argument() -> Int {
+    recursive_argument(2, (3, fn(x) => x), 1)
+}
+
+fn recursive_upper<T>(pair: (fn(value: T) -> Int, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: the first lambda can be assigned to `fn(value: T) -> Int`, so it doesn't stop the
+        // callee's `T` from being the caller's, and the second lambda still gets `T`, as before
+        return recursive_upper(
+            (
+                fn(_value: T | Int) => 1,
+                fn(value) => {
+                    let _same: T = value;
+                    1
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_lambda_after_an_upper_bound_the_callers_generic_satisfies() -> Int {
+    recursive_upper((fn(value: Int) => value, fn(value: Int) => value), 1)
+}
+
+fn recursive_local<T>(first: Int, function: fn(value: T) -> Int, depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: only a pair or list argument is refined, so in a pair in a lambda argument's body,
+        // the `T` written in the annotation is the caller's own. The `1` before the inner lambda
+        // doesn't make it `Int`, as before
+        return recursive_local(
+            1,
+            fn(_value) => {
+                let _local: (T | Int, fn(value: T) -> Int) = (
+                    1,
+                    fn(value) => {
+                        let _same: T = value;
+                        1
+                    },
+                );
+                1
+            },
+            depth - 1,
+        );
+    }
+
+    first
+}
+
+test fn guard_pair_in_a_lambda_argument_in_a_recursive_call() -> Int {
+    recursive_local(1, fn(value: Int) => value, 1)
+}
+
+fn recursive_block<T>(pair: (T, Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: a pair in a block that's an element isn't refined either, so the `1` before the
+        // block doesn't make the inner lambda's `T` `Int`, as before
+        return recursive_block(
+            (
+                1,
+                {
+                    let _local: (Int, fn(value: T) -> Int) = (
+                        1,
+                        fn(value) => {
+                            let _same: T = value;
+                            1
+                        },
+                    );
+                    1
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.rest
+}
+
+test fn guard_pair_in_a_block_in_a_recursive_call() -> Int {
+    recursive_block((1, 2), 1)
+}
+
+fn recursive_union_member<T>(pair: (T | Int, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: `1` can be assigned to `T | Int`, as the `Int` member, so it doesn't stop the
+        // callee's `T` from being the caller's, and the lambda still gets `T`, as before
+        return recursive_union_member(
+            (
+                1,
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_value_assignable_to_a_union_with_the_callers_generic() -> Int {
+    recursive_union_member((1, fn(value) => value), 1)
+}
+
+fn recursive_union_list<T>(items: (T | nil, (fn(value: T) -> Int, nil)), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: the same in a list, with `nil`
+        return recursive_union_list(
+            [
+                nil,
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ],
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_list_item_assignable_to_a_union_with_the_callers_generic() -> Int {
+    recursive_union_list([nil, fn(_value) => 0], 1)
+}
+
+fn recursive_union_of_pairs<T>(
+    pair: (T, fn(value: T) -> Int) | (Int, fn(value: T) -> Int),
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        // Guard: the same with a union of pairs expected, whose first elements make `T | Int`
+        return recursive_union_of_pairs(
+            (
+                1,
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_union_of_pairs_with_the_callers_generic() -> Int {
+    recursive_union_of_pairs((1, fn(value) => value), 1)
+}
+
+fn recursive_other_part<T, U>(value: U, pair: ((U, T), fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        let same: Same<T> = pair.first.rest;
+
+        // Guard: `("x", same)` can't be assigned to `(Int, T)` while it's compiled, since the `1`
+        // before it maps `U`, but `Same<T>` is assignable to `T`, so the lambda still gets `T`,
+        // as before
+        return recursive_other_part(
+            1,
+            (
+                ("x", same),
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_element_that_fails_for_another_generic() -> Int {
+    recursive_other_part(1, ((1, 2), fn(value) => value), 1)
+}

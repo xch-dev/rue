@@ -10,7 +10,7 @@ use indexmap::IndexSet;
 
 use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
-use rue_hir::HirId;
+use rue_hir::{HirId, Value};
 use rue_types::{
     FunctionType, Inference, Type, TypeId, contains_generic, substitute_with_mappings,
 };
@@ -94,6 +94,17 @@ pub(crate) fn infer_call(
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
         }
 
+        // Only a lambda that's an element of a pair or list that the argument is made of is
+        // refined against the callee's renamed generics (see `compile_element`), so the others
+        // skip working out what's restored
+        let restored = if !renamed.is_empty()
+            && matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_))
+            && has_lambda(expr)
+        {
+            restorable(ctx, &mappings, renamed)
+        } else {
+            HashMap::new()
+        };
         restore_renamed(ctx, &mut mappings, renamed);
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
@@ -101,6 +112,12 @@ pub(crate) fn infer_call(
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
             solver: solver.clone(),
+            renamed: if restored.is_empty() {
+                HashMap::new()
+            } else {
+                renamed.clone()
+            },
+            restored,
         }));
         let value = compile_expr(ctx, expr, Some(expected));
         ctx.set_argument_frame(None);
@@ -615,12 +632,7 @@ fn reads_of(
 ) -> IndexSet<TypeId> {
     match arg {
         AstExpr::LambdaExpr(lambda) => {
-            let untyped: Vec<usize> = lambda
-                .parameters()
-                .enumerate()
-                .filter(|(_, parameter)| parameter.ty().is_none())
-                .map(|(index, _)| index)
-                .collect();
+            let untyped = untyped_parameters(lambda);
 
             let reads_return = lambda.ty().is_none()
                 && lambda.body().is_some_and(|body| has_call_or_lambda(&body));
@@ -658,6 +670,16 @@ fn reads_of(
         }
         _ => IndexSet::new(),
     }
+}
+
+/// The positions of the lambda's parameters that have no type.
+fn untyped_parameters(lambda: &AstLambdaExpr) -> Vec<usize> {
+    lambda
+        .parameters()
+        .enumerate()
+        .filter(|(_, parameter)| parameter.ty().is_none())
+        .map(|(index, _)| index)
+        .collect()
 }
 
 /// Whether the parameters of the function type expected of a lambda reference any of the
@@ -716,23 +738,143 @@ fn restore_renamed(
     mappings.extend(restored);
 }
 
+/// The caller's generics that `restore_renamed` puts in the argument's expected type in place of
+/// the callee's renamed generics that aren't mapped, each with the generic it stands for, so that a
+/// lambda in a pair or list in the argument can be refined as in any other call (see
+/// `refine_element_expected`). A caller's generic that another mapping already references is left
+/// out, since there it's the caller's generic itself, and the two couldn't be told apart.
+fn restorable(
+    ctx: &mut Compiler,
+    mappings: &HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
+    renamed
+        .iter()
+        .filter(|&(copy, &generic)| {
+            !mappings.contains_key(copy)
+                && !mappings
+                    .values()
+                    .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
+        })
+        .map(|(&copy, &generic)| (generic, copy))
+        .collect()
+}
+
+/// The type with the caller's generics in `restored` replaced by the callee's renamed generics they
+/// stand for (see `restorable`).
+fn unrestore(ctx: &mut Compiler, restored: &HashMap<TypeId, TypeId>, ty: TypeId) -> TypeId {
+    if restored.is_empty() {
+        return ty;
+    }
+
+    substitute_with_mappings(ctx.types_mut(), ty, restored)
+}
+
+/// Compiles an element of a pair or list. The caller's generics in the expected type of the
+/// argument being compiled only stand for the callee's renamed generics (see `restorable`) in the
+/// pairs and lists the argument is made of, so anything else, such as a lambda's body or a block, is
+/// compiled without them: a generic written in an annotation there is the caller's own.
+pub(crate) fn compile_element(
+    ctx: &mut Compiler,
+    expr: &AstExpr,
+    expected: Option<TypeId>,
+) -> Value {
+    if matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) {
+        return compile_expr(ctx, expr, expected);
+    }
+
+    let restored = ctx
+        .argument_frame_mut()
+        .map(|argument| std::mem::take(&mut argument.restored))
+        .unwrap_or_default();
+
+    let value = compile_expr(ctx, expr, expected);
+
+    if let Some(argument) = ctx.argument_frame_mut() {
+        argument.restored = restored;
+    }
+
+    value
+}
+
+/// The caller's generics in the type expected of a lambda that's an element of a pair or list in
+/// the argument, which are mapped back to the callee's renamed generics they stand for (see
+/// `refine_element_expected`): those that are, after `unwrap_semantic`, the whole type of one of its
+/// untyped parameters in every function type expected of it. That's the type the parameter gets,
+/// and a lambda with the caller's generic there only compiles if the callee's generic is inferred
+/// as the caller's, so what the elements before it infer can't change the type of a program that
+/// compiles. Anywhere else it can, so the caller's generic is kept:
+///
+/// - `make()` in `recursive((1, fn() => make()))` with `recursive<T>(pair: (T, fn() -> T))` would
+///   be `Int` rather than `Int | T`.
+/// - With `Callback<T> | Callback<Int>` expected, the parameter is `T | Int`, which compiles with
+///   the callee's generic inferred as `Int`.
+fn restored_parameters(
+    ctx: &mut Compiler,
+    restored: &HashMap<TypeId, TypeId>,
+    expected: TypeId,
+    lambda: &AstLambdaExpr,
+) -> HashMap<TypeId, TypeId> {
+    if restored.is_empty() {
+        return HashMap::new();
+    }
+
+    let functions = rue_types::extract_functions(ctx.types_mut(), expected, true);
+    let mut parameters = HashMap::new();
+
+    for index in untyped_parameters(lambda) {
+        let mut types = functions.iter().map(|function| {
+            function
+                .params
+                .get(index)
+                .map(|parameter| rue_types::unwrap_semantic(ctx.types_mut(), parameter.ty, true))
+        });
+
+        let Some(Some(ty)) = types.next() else {
+            continue;
+        };
+
+        if let Some(&copy) = restored.get(&ty)
+            && types.all(|other| other == Some(ty))
+        {
+            parameters.insert(ty, copy);
+        }
+    }
+
+    parameters
+}
+
 /// Records what an element of a pair or list that's part of an argument being compiled infers for
 /// the call's generics, given the type it was expected to have, so that a later element can be
 /// compiled against it (see `refine_element_expected`).
+///
+/// In a recursive call, an element that isn't assignable to its expected type, which has the
+/// caller's generics in place of the callee's renamed generics that aren't inferred (see
+/// `restorable`), is recorded with them mapped back to the callee's. Then a later lambda whose
+/// parameter type is one of them (see `restored_parameters`) can't compile with the caller's
+/// generic, which it only does if the callee's generic is inferred as the caller's, so it can get
+/// what the element infers instead. An element that is assignable, such as `1` expected to be
+/// `T | Int`, records nothing for them, so the lambda gets the caller's generic, as it would
+/// without being refined.
 pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<TypeId>) {
     let Some(expected) = expected else {
         return;
     };
 
-    if !references_call_generics(ctx, expected) {
-        return;
-    }
-
     let Some(mut argument) = ctx.take_argument_frame() else {
         return;
     };
 
-    ctx.infer_type(ty, expected, &mut argument.infer);
+    let expected = if argument.restored.is_empty() || ctx.is_assignable(ty, expected) {
+        expected
+    } else {
+        unrestore(ctx, &argument.restored, expected)
+    };
+
+    if references_call_generics(ctx, expected) {
+        ctx.infer_type(ty, expected, &mut argument.infer);
+    }
+
     ctx.set_argument_frame(Some(argument));
 }
 
@@ -746,16 +888,18 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
 /// infer them from the refined type instead, such as `opt(nil)` with `opt<T>(x: T | nil)`.
 ///
 /// In a recursive call, the callee's generics are renamed, and the argument's expected type has
-/// them restored to the caller's generics before it's compiled (see `restore_renamed`), so it
-/// doesn't reference the call's generics and this doesn't apply.
+/// those that aren't inferred yet restored to the caller's generics (see `restore_renamed`). They're
+/// mapped back to the callee's here where they're a lambda element's parameter types (see
+/// `restored_parameters`), and the ones that are still not inferred, or are inferred as a type
+/// that's assignable to the caller's generic, are restored again. So the lambda gets the caller's
+/// generic unless an element before it can't be assigned to its expected type with the caller's
+/// generic (see `record_element`), and what it infers can't be either.
 pub(crate) fn refine_element_expected(
     ctx: &mut Compiler,
     expected: TypeId,
     element: &AstExpr,
 ) -> TypeId {
-    if !(has_lambda(element) || is_call_without_arguments(element))
-        || !references_call_generics(ctx, expected)
-    {
+    if !(has_lambda(element) || is_call_without_arguments(element)) {
         return expected;
     }
 
@@ -763,14 +907,40 @@ pub(crate) fn refine_element_expected(
         return expected;
     };
 
+    let refinable = match element {
+        AstExpr::LambdaExpr(lambda) => {
+            restored_parameters(ctx, &argument.restored, expected, lambda)
+        }
+        _ => HashMap::new(),
+    };
+    let unrestored = unrestore(ctx, &refinable, expected);
+
+    if !references_call_generics(ctx, unrestored) {
+        ctx.set_argument_frame(Some(argument));
+        return expected;
+    }
+
     let inferred = ctx.solve_arguments(&argument.solver, &argument.infer);
     // Without the expected type's bounds, as for a lambda argument that something can still add
     // to: a later element can. This is defensive, since the bounds would only matter for a generic
     // an earlier element maps, and no program has been found where it differs
-    let mappings = ctx.argument_mappings(&argument.solver, &argument.infer, &inferred, false);
+    let mut mappings = ctx.argument_mappings(&argument.solver, &argument.infer, &inferred, false);
+
+    // An element can fail to be assigned for a reason that has nothing to do with the caller's
+    // generic, so what it infers can still be assignable to that, such as `Same<T>`, which main
+    // compiles with the callee's generic inferred as the caller's
+    for (&generic, copy) in &refinable {
+        if let Some(&ty) = mappings.get(copy)
+            && ctx.is_assignable(ty, generic)
+        {
+            mappings.remove(copy);
+        }
+    }
+
+    restore_renamed(ctx, &mut mappings, &argument.renamed);
     ctx.set_argument_frame(Some(argument));
 
-    substitute_with_mappings(ctx.types_mut(), expected, &mappings)
+    substitute_with_mappings(ctx.types_mut(), unrestored, &mappings)
 }
 
 /// Whether the type references a generic of the innermost call being inferred.
