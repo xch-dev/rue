@@ -63,8 +63,8 @@ test fn recursive_call() -> Int {
     result.rest
 }
 
-// `Id`'s `U` is instantiated as whatever `takes`'s `T` is, so the bounds between them are left out
-// (#357)
+// `Id`'s `U` is instantiated as whatever `takes`'s `T` is, so the bounds between them are left out,
+// rather than `takes` being left uninstantiated and `B` naming its `T` (#357)
 type Id = fn<U>(x: U) -> U;
 
 fn hof<B>(function: fn(g: Id) -> B) -> B {
