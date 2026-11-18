@@ -33,10 +33,69 @@ fn apply<A>(value: A, function: fn(a: A) -> Int) -> A {
     value
 }
 
-// The lambda is ready once `5` is compiled, and its return type doesn't reference `A`, so its
-// parameter takes the expected bound: `x: 5`
+fn only_five(value: 5) -> Int {
+    value
+}
+
+// Nothing can add to `A` once `5` is compiled, and the lambda's return type doesn't reference it,
+// so its parameter takes the expected bound: `x: 5`
 test fn lambda_parameter_takes_the_expected_bound() -> Int {
-    let value: 5 = apply(5, fn(x) => x + 1);
+    let value: 5 = apply(5, fn(x) => only_five(x));
+    value
+}
+
+fn three<T>(first: T, function: fn(x: T) -> Int, last: T) -> T {
+    let _ = function(first);
+    last
+}
+
+// Guard: the lambda waits for the `6` after it, so its parameter is `5 | 6`, which the call's
+// `fn(x: 5 | 6)` can take, rather than `5`
+test fn lambda_before_a_later_value_keeps_it_wide() -> Int {
+    let value: 5 | 6 = three(5, fn(x) => 1, 6);
+    value
+}
+
+// Guard: a lambda inside another argument never takes the expected bounds, since that argument
+// isn't ordered as a lambda
+test fn lambda_inside_another_argument_keeps_it_wide() -> Int {
+    let block: 5 | 6 = three(5, { fn(x) => 1 }, 6);
+    block + lambda_in_branches_keeps_it_wide(true)
+}
+
+fn lambda_in_branches_keeps_it_wide(condition: Bool) -> Int {
+    let value: 5 | 6 = three(
+        5,
+        if condition {
+            fn(x) => 1
+        } else {
+            fn(x) => 2
+        },
+        6,
+    );
+    value
+}
+
+fn three_in_a_pair<T>(first: T, pair: (T, fn(x: T) -> Int), last: T) -> T {
+    let _ = pair.rest(pair.first);
+    last
+}
+
+// Guard: the same for a lambda in a pair
+test fn lambda_in_a_pair_keeps_it_wide() -> Int {
+    let value: 5 | 6 = three_in_a_pair(5, (5, fn(x) => 1), 6);
+    value
+}
+
+fn generic_last<T>(first: T, function: fn(x: T) -> Int, last: fn(y: Int) -> T) -> T {
+    let _ = function(first);
+    last(1)
+}
+
+// Guard: a generic lambda doesn't hold up the others, but it still adds `6` to `T`, so the first
+// lambda's parameter keeps what the arguments infer
+test fn lambda_before_a_generic_lambda_keeps_it_wide() -> Int {
+    let value: 5 | 6 = generic_last(5, fn(x) => 1, fn<V>(_y: V) => 6);
     value
 }
 

@@ -802,19 +802,15 @@ impl Compiler {
         solver: &CallSolver,
         infer: &Inference,
         inferred: &HashMap<TypeId, TypeId>,
+        bound_mapped: bool,
     ) -> HashMap<TypeId, TypeId> {
-        solver.argument_mappings(self.db.types_mut(), &self.builtins.types, infer, inferred)
-    }
-
-    /// The mappings that a lambda argument's expected type is substituted with (see
-    /// `CallSolver::lambda_mappings`).
-    pub fn lambda_mappings(
-        &mut self,
-        solver: &CallSolver,
-        infer: &Inference,
-        inferred: HashMap<TypeId, TypeId>,
-    ) -> HashMap<TypeId, TypeId> {
-        solver.lambda_mappings(self.db.types_mut(), &self.builtins.types, infer, inferred)
+        solver.argument_mappings(
+            self.db.types_mut(),
+            &self.builtins.types,
+            infer,
+            inferred,
+            bound_mapped,
+        )
     }
 
     /// The mappings a call is checked with, once its arguments have been compiled (see
