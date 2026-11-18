@@ -11,9 +11,9 @@ use log::{Level, debug, log_enabled, trace};
 use crate::{
     AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, FALLBACK, FixpointFrame,
     FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Inference, InferenceCandidates, Memo,
-    Type, TypeId, compare_memo_enabled, free_generics, grow_stack, has_non_contractive_cycle,
-    pick_inferred_type, reachable, references_generic, step, stringify_impl, substitute,
-    substitute_with_mappings,
+    Type, TypeId, compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
+    has_non_contractive_cycle, pick_inferred_type, reachable, references_generic, step,
+    stringify_impl, substitute, substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -172,9 +172,42 @@ pub(crate) struct ComparisonContext<'a> {
     fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
     /// Whether each type that a comparison started from is monotone (see `is_monotone`).
     monotone: FxHashMap<TypeId, bool>,
+    /// The steps taken by the comparison that started from an empty stack, which gives up once
+    /// there are more than `COMPARISON_STEP_LIMIT`.
+    steps: usize,
+    /// Whether a comparison that started from an empty stack gave up, since it took too many
+    /// steps.
+    budget: Budget,
 }
 
+/// Whether a comparison that started from an empty stack gave up (see `COMPARISON_STEP_LIMIT`).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Budget {
+    #[default]
+    Within,
+    /// The comparison in progress is giving up. Every comparison still in progress returns right
+    /// away, and nothing is cached.
+    GivingUp,
+    /// A comparison gave up since this was last taken (see `take_too_complex`). Until then, every
+    /// other one gives up right away.
+    GaveUp,
+}
+
+/// A comparison that starts from an empty stack gives up after this many steps, rather than
+/// running for as long as it takes, since some recursive types take exponential time to compare
+/// (#344). It's then `Invalid`, and the compiler reports it as too complex. Steps count each
+/// comparison, and the work that can grow with the size of the stack or the number of binders.
+/// The examples and tests take at most about 260,000 steps for a comparison, and the 2,500 random
+/// programs of #344 that finish at most about 4,300,000.
+pub(crate) const COMPARISON_STEP_LIMIT: usize = 20_000_000;
+
 impl ComparisonContext<'_> {
+    /// Returns whether a comparison gave up since this was last called, since it took too many
+    /// steps (see `COMPARISON_STEP_LIMIT`), and lets the context compare again.
+    pub(crate) fn take_too_complex(&mut self) -> bool {
+        mem::take(&mut self.budget) == Budget::GaveUp
+    }
+
     /// Whether the generic is free in the environment and being inferred.
     fn is_target(&self, generic: TypeId, env: Option<usize>) -> bool {
         self.infer
@@ -492,6 +525,40 @@ impl ComparisonContext<'_> {
         }
     }
 
+    /// Counts a step towards the comparison that started from an empty stack, and returns `true`
+    /// if it has taken too many, so it's giving up (see `COMPARISON_STEP_LIMIT`).
+    fn spend(&mut self) -> bool {
+        self.spend_many(1)
+    }
+
+    /// Counts the steps towards the comparison that started from an empty stack, like `spend`.
+    fn spend_many(&mut self, steps: usize) -> bool {
+        self.steps += steps;
+
+        if self.steps > comparison_step_limit(COMPARISON_STEP_LIMIT) {
+            self.budget = Budget::GivingUp;
+        }
+
+        self.budget == Budget::GivingUp
+    }
+
+    /// Like `binder_of`, but each binder it walks past counts towards the comparison's steps.
+    fn counted_binder_of(&mut self, generic: TypeId, mut env: Option<usize>) -> Option<usize> {
+        while let Some(index) = env {
+            if self.spend() {
+                return None;
+            }
+
+            if self.binders[index].generic == generic {
+                return Some(index);
+            }
+
+            env = self.binders[index].parent;
+        }
+
+        None
+    }
+
     /// Returns an environment in which the binders that the instance's missing bounds have other
     /// generics in place of resolve to new rigid binders.
     fn refresh(&mut self, env: Option<usize>, instance: &Instance) -> Option<usize> {
@@ -500,11 +567,17 @@ impl ComparisonContext<'_> {
         };
 
         while let Some(index) = current {
+            // This walks every binder in the environment, which can be most of the work of a
+            // comparison, so each one counts towards its steps
+            if self.spend() {
+                return refreshed;
+            }
+
             let generic = self.binders[index].generic;
             let binder = root(&self.binders, index);
 
             if (binder >= fresh || instance.renamed.contains(&binder))
-                && binder_of(&self.binders, generic, env) == Some(index)
+                && self.counted_binder_of(generic, env) == Some(index)
             {
                 self.binders.push(Binder {
                     generic,
@@ -690,6 +763,11 @@ fn holds_without_inference(
     result == Comparison::Assign
 }
 
+/// A comparison gave up, since it took too many steps (see `COMPARISON_STEP_LIMIT`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TooComplex;
+
+/// Like `compare_with_inference_limited`, but a comparison that gives up is `Invalid`.
 pub fn compare_with_inference(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -697,6 +775,18 @@ pub fn compare_with_inference(
     rhs: TypeId,
     infer: Option<&mut Inference>,
 ) -> Comparison {
+    compare_with_inference_limited(arena, builtins, lhs, rhs, infer).unwrap_or(Comparison::Invalid)
+}
+
+/// Compares the types, collecting candidates for the generics being inferred, and returns
+/// `TooComplex` if it took too many steps (see `COMPARISON_STEP_LIMIT`).
+pub fn compare_with_inference_limited(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+    infer: Option<&mut Inference>,
+) -> Result<Comparison, TooComplex> {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
     let names = log_enabled!(Level::Trace).then(|| {
@@ -725,7 +815,11 @@ pub fn compare_with_inference(
         trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
     }
 
-    result
+    if ctx.take_too_complex() {
+        return Err(TooComplex);
+    }
+
+    Ok(result)
 }
 
 /// Collects inference candidates for the generics in `ty` from the type it's expected to be
@@ -760,6 +854,17 @@ pub fn compare(
     compare_with_inference(arena, builtins, lhs, rhs, None)
 }
 
+/// Like `compare`, but returns `TooComplex` if it took too many steps (see
+/// `COMPARISON_STEP_LIMIT`).
+pub fn compare_limited(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> Result<Comparison, TooComplex> {
+    compare_with_inference_limited(arena, builtins, lhs, rhs, None)
+}
+
 /// Like `compare`, but the generics that were renamed from another generic are compared as it (see
 /// `Inference::rename`), as they are while inferring.
 pub(crate) fn compare_renamed(
@@ -792,35 +897,68 @@ pub(crate) fn compare_impl(
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
     if ctx.stack.is_empty() {
-        ctx.fixpoint = ctx.infer.is_none()
-            && ctx.lhs_env.is_none()
-            && ctx.rhs_env.is_none()
-            && ctx.is_monotone(arena, lhs)
-            && ctx.is_monotone(arena, rhs);
+        // Once a comparison gave up, the others that share its context (such as those of a
+        // `check`) give up as well, rather than each taking as long
+        if ctx.budget == Budget::GaveUp {
+            return Comparison::Invalid;
+        }
 
-        if ctx.fixpoint {
-            ctx.fixpoint_memo.start();
+        ctx.steps = 0;
+
+        let result =
+            compare_from_empty_stack(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic);
+
+        if ctx.budget == Budget::GivingUp {
+            ctx.budget = Budget::GaveUp;
+            return Comparison::Invalid;
+        }
+
+        return result;
+    }
+
+    grow_stack(|| compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic))
+}
+
+/// Compares the types from an empty stack, in fixpoint mode if possible (see `FixpointMemo`).
+fn compare_from_empty_stack(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    lhs: TypeId,
+    rhs: TypeId,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
+) -> Comparison {
+    ctx.fixpoint = ctx.infer.is_none()
+        && ctx.lhs_env.is_none()
+        && ctx.rhs_env.is_none()
+        && ctx.is_monotone(arena, lhs)
+        && ctx.is_monotone(arena, rhs);
+
+    if ctx.fixpoint {
+        ctx.fixpoint_memo.start();
+
+        let result = grow_stack(|| {
+            compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+        });
+
+        if !ctx.fixpoint_memo.abandoned() {
+            return result;
+        }
+
+        // The single pass took too long, so it's repeated until the approximations it reaches
+        // stop changing instead (see `FixpointMemo`)
+        loop {
+            ctx.fixpoint_memo.start_round();
 
             let result = grow_stack(|| {
                 compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
             });
 
-            if !ctx.fixpoint_memo.abandoned() {
+            // A round that was cut short stops iterating without finishing the round, so its
+            // approximations aren't kept, and the result is discarded as `Invalid`
+            if ctx.budget == Budget::GivingUp || ctx.fixpoint_memo.finish_round() {
                 return result;
-            }
-
-            // The single pass took too long, so it's repeated until the approximations it reaches
-            // stop changing instead (see `FixpointMemo`)
-            loop {
-                ctx.fixpoint_memo.start_round();
-
-                let result = grow_stack(|| {
-                    compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
-                });
-
-                if ctx.fixpoint_memo.finish_round() {
-                    return result;
-                }
             }
         }
     }
@@ -838,6 +976,11 @@ fn compare_impl_inner(
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
     step();
+
+    // The comparison that started from an empty stack is giving up, so it unwinds
+    if ctx.spend() {
+        return Comparison::Invalid;
+    }
 
     // The comparison that started from an empty stack is unwinding, to iterate instead
     if ctx.fixpoint && ctx.fixpoint_memo.abandoned() {
@@ -916,7 +1059,12 @@ fn compare_impl_inner(
         let result = if ctx.fixpoint {
             ctx.fixpoint_memo.get(&key, &ctx.stack)
         } else {
-            ctx.memo.get(&key, ctx.stack.iter().copied())
+            let result = ctx.memo.get(&key, ctx.stack.iter().copied());
+
+            // Reusing a result can take as long as the stack, so it counts towards the steps
+            let work = ctx.memo.take_work();
+            ctx.spend_many(work);
+            result
         };
 
         if let Some(result) = result {
@@ -1063,9 +1211,14 @@ fn compare_impl_inner(
                 let instantiable_from =
                     mem::replace(&mut ctx.instantiable_from, ctx.instances.len());
 
-                for instance in bounds {
+                'bounds: for instance in bounds {
                     for &(lower, lower_env) in &instance.lower {
                         for &(upper, upper_env) in &instance.upper {
+                            // There can be many bounds, so this stops once it's giving up
+                            if ctx.spend() {
+                                break 'bounds;
+                            }
+
                             let mut envs = vec![(lower_env, upper_env)];
 
                             // Each missing bound is checked against the others like the original
@@ -1357,10 +1510,16 @@ fn compare_impl_inner(
 
     // Inference candidates are collected as a side effect of comparing, so a comparison that
     // collected any can't be skipped
-    let memo_key = (memoize && ctx.candidates == candidates).then_some(key);
+    // A comparison that's giving up doesn't have its actual result
+    let memo_key =
+        (memoize && ctx.candidates == candidates && ctx.budget != Budget::GivingUp).then_some(key);
 
     match frame {
-        Frame::Exact(frame) => ctx.memo.exit(frame, key, memo_key, result),
+        Frame::Exact(frame) => {
+            ctx.memo.exit(frame, key, memo_key, result);
+            let work = ctx.memo.take_work();
+            ctx.spend_many(work);
+        }
         Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
     }
 

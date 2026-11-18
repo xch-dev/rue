@@ -20,7 +20,7 @@ use rue_hir::{
 use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, Type, TypeId};
+use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
@@ -683,6 +683,20 @@ impl Compiler {
         comparison == Comparison::Assign
     }
 
+    /// Like `is_assignable`, but returns `TooComplex` if comparing the types took too many steps.
+    pub fn try_is_assignable(&mut self, from: TypeId, to: TypeId) -> Result<bool, TooComplex> {
+        let comparison =
+            rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)?;
+        Ok(comparison == Comparison::Assign)
+    }
+
+    /// Reports that comparing the types took too many steps (see `rue_types::compare_limited`).
+    pub fn too_complex(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
+        let from = self.type_name(from);
+        let to = self.type_name(to);
+        self.diagnostic(node, DiagnosticKind::TypeComparisonTooComplex(from, to));
+    }
+
     pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
         matches!(comparison, Comparison::Assign | Comparison::Cast)
@@ -713,6 +727,10 @@ impl Compiler {
             }
             Err(CheckError::GenericType) => {
                 self.diagnostic(node, DiagnosticKind::GenericTypeCheck);
+                return Constraint::new(Check::Impossible);
+            }
+            Err(CheckError::TooComplex) => {
+                self.too_complex(node, from, to);
                 return Constraint::new(Check::Impossible);
             }
         };
@@ -795,7 +813,12 @@ impl Compiler {
     }
 
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
-        let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
+        let Ok(comparison) =
+            rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)
+        else {
+            self.too_complex(node, from, to);
+            return;
+        };
 
         match comparison {
             Comparison::Assign => {}
@@ -814,7 +837,8 @@ impl Compiler {
                             CheckError::DepthExceeded
                             | CheckError::RecursiveType
                             | CheckError::FunctionType
-                            | CheckError::GenericType,
+                            | CheckError::GenericType
+                            | CheckError::TooComplex,
                         ) => Check::Impossible,
                     };
 

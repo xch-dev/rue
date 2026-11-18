@@ -26,6 +26,8 @@ pub(crate) struct Memo<S, K, V> {
     /// The items that relied on an item outside of themselves since the current item started.
     open: Vec<S>,
     done: FxHashMap<K, Done<S, V>>,
+    /// See `take_work`.
+    work: usize,
 }
 
 #[derive(Debug)]
@@ -47,6 +49,7 @@ impl<S, K, V> Default for Memo<S, K, V> {
             low: usize::MAX,
             open: Vec::new(),
             done: FxHashMap::default(),
+            work: 0,
         }
     }
 }
@@ -66,13 +69,28 @@ where
     pub fn get(&mut self, key: &K, mut stack: impl Iterator<Item = S>) -> Option<V> {
         let done = self.done.get(key)?;
 
-        if stack.any(|item| done.open.contains(&item)) {
+        if done.open.is_empty() {
+            return Some(done.value.clone());
+        }
+
+        if stack.any(|item| {
+            self.work += 1;
+            done.open.contains(&item)
+        }) {
             return None;
         }
 
+        self.work += done.open.len();
         self.open.extend(&done.open);
 
         Some(done.value.clone())
+    }
+
+    /// Returns how much work `get` and `exit` have done since this was last called, other than a
+    /// constant amount for each call, which grows with the size of the stack and the number of
+    /// items that relied on an item outside of themselves.
+    pub fn take_work(&mut self) -> usize {
+        mem::take(&mut self.work)
     }
 
     /// Starts computing the item that will be at the given index on the stack.
@@ -90,6 +108,7 @@ where
             self.open.push(item);
         } else if let Some(key) = key {
             let open: FxHashSet<S> = self.open.drain(frame.open..).collect();
+            self.work += open.len();
             self.open.extend(&open);
             self.done.insert(key, Done { value, open });
         }

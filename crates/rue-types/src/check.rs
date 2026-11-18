@@ -182,6 +182,9 @@ pub enum CheckError {
 
     #[error("Cannot check if value is of generic type at runtime")]
     GenericType,
+
+    #[error("Comparing the types is too complex")]
+    TooComplex,
 }
 
 pub fn check(
@@ -209,7 +212,13 @@ pub fn check(
         trace!("Checking {lhs_name} to {rhs_name}");
     }
 
-    let result = check_impl(arena, builtins, &mut CheckContext::default(), 0, lhs, rhs);
+    let mut ctx = CheckContext::default();
+    let mut result = check_impl(arena, builtins, &mut ctx, 0, lhs, rhs);
+
+    // A comparison that gave up was `Invalid`, so the check can't be relied on
+    if ctx.comparison.take_too_complex() {
+        result = Err(CheckError::TooComplex);
+    }
 
     if let Some((lhs_name, rhs_name)) = &names {
         trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
