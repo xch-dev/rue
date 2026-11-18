@@ -1,0 +1,32 @@
+test fn unknown_escape() -> String {
+    "a\qb\ c"
+}
+
+test fn invalid_hex_escapes() -> String {
+    "\x8 \xg1 \x80 \xff"
+}
+
+test fn invalid_unicode_escapes() -> String {
+    "\u41 \u{} \u{_1} \u{1234567} \u{12"
+}
+
+test fn invalid_code_points() -> String {
+    "\u{d800} \u{110000}"
+}
+
+test fn mismatched_escaped_type() -> "a\"b" {
+    "a\\b"
+}
+
+test fn single_quoted_unknown_escape() -> String {
+    'a\qb'
+}
+
+test fn mismatched_control_characters() -> "a\n\t\r\0\x01" {
+    "b"
+}
+
+test fn escape_after_line_continuation() -> String {
+    "a \
+        b\q"
+}

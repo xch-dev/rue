@@ -287,6 +287,7 @@ mod tests {
                 &FormatOptions {
                     max_width: 10,
                     indent_width: 4,
+                    single_quote: false,
                 },
             ),
             "lhs == rhs\ntail\n"
@@ -307,6 +308,7 @@ mod tests {
                 &FormatOptions {
                     max_width: 10,
                     indent_width: 4,
+                    single_quote: false,
                 },
             ),
             "long_lhs\n    == rhs\ntail\n"
@@ -329,6 +331,7 @@ mod tests {
                 &FormatOptions {
                     max_width: 5,
                     indent_width: 4,
+                    single_quote: false,
                 },
             ),
             "abcde\ntail\n"

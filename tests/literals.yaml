@@ -90,3 +90,73 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: string_escapes
+  program: (q . 0x746162096e65776c696e650a72657475726e0d71756f74652261706f7374726f706865276261636b736c6173685c6e756c00)
+  debug_program: (q . 0x746162096e65776c696e650a72657475726e0d71756f74652261706f7374726f706865276261636b736c6173685c6e756c00)
+  output: "0x746162096e65776c696e650a72657475726e0d71756f74652261706f7374726f706865276261636b736c6173685c6e756c00"
+  runtime_cost: 20
+  byte_cost: 636000
+  total_cost: 636020
+- name: string_hex_escapes
+  program: (q . 1)
+  debug_program: (= (q . 16767) (q . 16767))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: string_unicode_escapes
+  program: (q . 1)
+  debug_program: (= (q . 0xc3a9e282acf09f9880) (q . 0xc3a9e282acf09f9880))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: string_line_continuation
+  program: (q . "Hello, world!")
+  debug_program: (q . "Hello, world!")
+  output: "\"Hello, world!\""
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020
+- name: string_escaped_type
+  program: (q . 27340877703896074)
+  debug_program: (q . 27340877703896074)
+  output: "27340877703896074"
+  runtime_cost: 20
+  byte_cost: 120000
+  total_cost: 120020
+- name: string_escapes_match_bytes
+  program: (q . 1)
+  debug_program: (= (q . "\"'\\") (q . "\"'\\"))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: single_quoted_string
+  program: (q . 1)
+  debug_program: (= (q . "say \"hi\"") (q . "say \"hi\""))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: single_quoted_string_quotes
+  program: (q . 1)
+  debug_program: (= (q . "a\"b\"'c") (q . "a\"b\"'c"))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: single_quoted_string_escapes
+  program: (q . 1)
+  debug_program: (= (q . 0x220a095c41f09f988022) (q . 0x220a095c41f09f988022))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: single_quoted_string_type
+  program: (q . "say \"it\"")
+  debug_program: (q . "say \"it\"")
+  output: "\"say \\\"it\\\"\""
+  runtime_cost: 20
+  byte_cost: 132000
+  total_cost: 132020

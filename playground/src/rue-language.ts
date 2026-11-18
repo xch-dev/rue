@@ -35,7 +35,8 @@ const atoms = new Set(["nil", "true", "false"]);
 interface State {
   // How many block comments deep the tokenizer is, since they nest
   commentDepth: number;
-  inString: boolean;
+  // The quote that ends the string the tokenizer is in, if any
+  stringQuote: string | null;
 }
 
 function blockComment(stream: StringStream, state: State): string {
@@ -52,23 +53,26 @@ function blockComment(stream: StringStream, state: State): string {
   return "comment";
 }
 
-// Strings have no escape sequences, so they end at the next `"`, even after a backslash
+// Strings end at the next quote of the kind they started with that isn't escaped by a backslash
 function string(stream: StringStream, state: State): string {
-  if (stream.skipTo('"')) {
-    stream.next();
-    state.inString = false;
-  } else {
-    stream.skipToEnd();
+  while (!stream.eol()) {
+    const char = stream.next();
+    if (char === "\\") {
+      stream.next();
+    } else if (char === state.stringQuote) {
+      state.stringQuote = null;
+      break;
+    }
   }
   return "string";
 }
 
 export const rue = StreamLanguage.define<State>({
   name: "rue",
-  startState: () => ({ commentDepth: 0, inString: false }),
+  startState: () => ({ commentDepth: 0, stringQuote: null }),
   token(stream, state) {
     if (state.commentDepth > 0) return blockComment(stream, state);
-    if (state.inString) return string(stream, state);
+    if (state.stringQuote) return string(stream, state);
     if (stream.eatSpace()) return null;
 
     if (stream.match("//")) {
@@ -79,8 +83,9 @@ export const rue = StreamLanguage.define<State>({
       state.commentDepth = 1;
       return blockComment(stream, state);
     }
-    if (stream.eat('"')) {
-      state.inString = true;
+    const quote = stream.eat(/^["']/);
+    if (quote) {
+      state.stringQuote = quote;
       return string(stream, state);
     }
     if (stream.match(/^#!?\[/)) {

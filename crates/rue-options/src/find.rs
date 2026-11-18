@@ -212,7 +212,7 @@ mod tests {
                 project.format_options,
                 FormatOptions {
                     max_width: 80,
-                    indent_width: 4,
+                    ..FormatOptions::default()
                 }
             );
             assert!(project.manifest.is_some());

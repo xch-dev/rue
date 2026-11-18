@@ -1965,12 +1965,12 @@ fn main(a: Int, s: String) -> Int {
         return 1;
     }
 
-    // A brace in a string isn't a struct initializer, and strings don't have escapes
+    // A brace in a string isn't a struct initializer, and an escaped backslash doesn't escape the quote
     if (s == \"{\") == true {
         return 8;
     }
 
-    if (\"\\\" != Point { x: a, s }.s) == false {
+    if (\"\\\\\" != Point { x: a, s }.s) == false {
         return 10;
     }
 
@@ -2009,12 +2009,12 @@ fn main(a: Int, s: String) -> Int {
         return 1;
     }
 
-    // A brace in a string isn't a struct initializer, and strings don't have escapes
+    // A brace in a string isn't a struct initializer, and an escaped backslash doesn't escape the quote
     if s == \"{\" {
         return 8;
     }
 
-    if (\"\\\" == Point { x: a, s }.s) {
+    if (\"\\\\\" == Point { x: a, s }.s) {
         return 10;
     }
 

@@ -61,6 +61,23 @@ pub enum DiagnosticKind {
     #[error("Unterminated octal literal")]
     UnterminatedOctal,
 
+    #[error("Unknown character escape `{0}`")]
+    UnknownEscape(String),
+
+    #[error("Invalid hex escape, which must be `\\x` followed by two hex digits")]
+    InvalidHexEscape,
+
+    #[error("Hex escape is out of range, since only ASCII characters up to `\\x7f` can be escaped")]
+    HexEscapeOutOfRange,
+
+    #[error("Invalid unicode escape, which must be `\\u{{...}}` with 1 to 6 hex digits")]
+    InvalidUnicodeEscape,
+
+    #[error(
+        "Invalid unicode escape, since it isn't a code point up to `\\u{{10ffff}}` or is a surrogate"
+    )]
+    InvalidUnicodeCodePoint,
+
     #[error("Nested too deeply, since the limit is {0} levels")]
     NestingTooDeep(usize),
 

@@ -2,6 +2,7 @@ use std::{borrow::Cow, str::FromStr};
 
 use num_bigint::BigInt;
 use num_traits::Num;
+use rue_lexer::string_value;
 use rue_lir::bigint_atom;
 use rue_parser::{SyntaxKind, SyntaxToken, T};
 use rue_types::{Atom, AtomRestriction, AtomSemantic};
@@ -25,19 +26,7 @@ impl LiteralValue {
 
     fn decode_text(kind: SyntaxKind, text: &str) -> Self {
         match kind {
-            SyntaxKind::String => {
-                let mut text = text;
-
-                if let Some(stripped) = text.strip_prefix('"') {
-                    text = stripped;
-                }
-
-                if let Some(stripped) = text.strip_suffix('"') {
-                    text = stripped;
-                }
-
-                Self::String(text.to_string())
-            }
+            SyntaxKind::String => Self::String(string_value(text)),
             SyntaxKind::Hex => {
                 let text = text.strip_prefix("0x").unwrap_or(text);
 
@@ -174,6 +163,10 @@ mod tests {
         assert_eq!(
             LiteralValue::decode_text(SyntaxKind::String, "\"hello\""),
             LiteralValue::String("hello".to_string())
+        );
+        assert_eq!(
+            LiteralValue::decode_text(SyntaxKind::String, r#"'a"b\'c'"#),
+            LiteralValue::String("a\"b'c".to_string())
         );
     }
 }

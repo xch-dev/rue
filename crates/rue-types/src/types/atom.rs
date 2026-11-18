@@ -116,7 +116,11 @@ impl fmt::Display for Atom {
                     write!(f, "String")
                 }
                 Some(AtomRestriction::Value(value)) => {
-                    write!(f, "\"{}\"", String::from_utf8_lossy(value))
+                    write!(f, "\"")?;
+                    for c in String::from_utf8_lossy(value).chars() {
+                        write_escaped_char(f, c)?;
+                    }
+                    write!(f, "\"")
                 }
             },
             AtomSemantic::Int => match &self.restriction {
@@ -147,5 +151,20 @@ impl fmt::Display for Atom {
                 }
             },
         }
+    }
+}
+
+/// Writes a character of a string value the way it would be written in a string literal, so that
+/// the type can be read back as source.
+fn write_escaped_char(f: &mut fmt::Formatter<'_>, c: char) -> fmt::Result {
+    match c {
+        '"' => write!(f, "\\\""),
+        '\\' => write!(f, "\\\\"),
+        '\n' => write!(f, "\\n"),
+        '\r' => write!(f, "\\r"),
+        '\t' => write!(f, "\\t"),
+        '\0' => write!(f, "\\0"),
+        c if c.is_control() => write!(f, "\\u{{{:x}}}", u32::from(c)),
+        c => write!(f, "{c}"),
     }
 }

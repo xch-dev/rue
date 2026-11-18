@@ -120,6 +120,10 @@ impl Default for CompilerSection {
 pub struct FormatOptions {
     pub max_width: usize,
     pub indent_width: usize,
+    /// Whether strings are quoted with `'` rather than `"`, like Prettier's `singleQuote`. Either
+    /// way, a string that contains more of the preferred quote than the other keeps the other,
+    /// so that fewer quotes need escaping.
+    pub single_quote: bool,
 }
 
 impl Default for FormatOptions {
@@ -127,6 +131,7 @@ impl Default for FormatOptions {
         Self {
             max_width: 100,
             indent_width: 4,
+            single_quote: false,
         }
     }
 }
@@ -294,6 +299,18 @@ mod tests {
             FormatOptions {
                 max_width: 100,
                 indent_width: 2,
+                single_quote: false,
+            }
+        );
+
+        let manifest: Manifest =
+            toml::from_str("[compiler]\n\n[formatter]\nsingle_quote = true\n").unwrap();
+
+        assert_eq!(
+            manifest.formatter,
+            FormatOptions {
+                single_quote: true,
+                ..FormatOptions::default()
             }
         );
     }
@@ -317,7 +334,7 @@ mod tests {
         assert_eq!(
             text,
             format!(
-                "[compiler]\nversion = \"{}\"\nentrypoint = \"puzzles\"\n\n[formatter]\nmax_width = 100\nindent_width = 4\n",
+                "[compiler]\nversion = \"{}\"\nentrypoint = \"puzzles\"\n\n[formatter]\nmax_width = 100\nindent_width = 4\nsingle_quote = false\n",
                 env!("CARGO_PKG_VERSION")
             )
         );

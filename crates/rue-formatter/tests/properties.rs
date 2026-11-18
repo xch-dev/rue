@@ -35,7 +35,7 @@ use proptest::{
 };
 use rue_diagnostic::{Source, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
-use rue_lexer::Lexer;
+use rue_lexer::{Lexer, string_value};
 use rue_parser::{ParseResult, Parser, SyntaxKind, SyntaxNode, SyntaxToken, T};
 
 /// The inputs are the same on every run unless `PROPTEST_RNG_SEED` is set, so that a property
@@ -295,6 +295,11 @@ fn expand_import(
 }
 
 fn token_key(token: &SyntaxToken) -> String {
+    // The formatter can requote a string, which changes its text but not its value
+    if token.kind() == SyntaxKind::String {
+        return format!("String {:?}", string_value(token.text()));
+    }
+
     format!("{:?} {}", token.kind(), token.text())
 }
 
@@ -342,7 +347,8 @@ fn fragment() -> impl Strategy<Value = String> {
         1 => "0x[0-9a-fA-F_]{0,4}",
         1 => "0b[01_]{0,4}",
         1 => "0o[0-7_]{0,4}",
-        1 => "\"[a-z \\\\]{0,5}\"?",
+        1 => "\"[a-z '\"\\\\]{0,5}\"?",
+        1 => "'[a-z '\"\\\\]{0,5}'?",
         3 => proptest::sample::select(TRIVIA).prop_map(str::to_string),
         1 => proptest::sample::select(OTHER).prop_map(str::to_string),
     ]
@@ -461,7 +467,8 @@ fn expression() -> impl Strategy<Value = String> {
         Just("nil".to_string()),
         Just("true".to_string()),
         "0x[0-9a-f]{2,8}",
-        "\"[a-z ]{0,16}\"",
+        "\"([a-z ']|\\\\[nt'\"\\\\]){0,16}\"",
+        "'([a-z \"]|\\\\[nt'\"\\\\]){0,16}'",
     ];
     leaf.prop_recursive(5, 48, 4, |inner| {
         prop_oneof![
@@ -576,10 +583,13 @@ fn formatter_input() -> impl Strategy<Value = String> {
 fn format_options() -> impl Strategy<Value = FormatOptions> {
     prop_oneof![
         3 => Just(FormatOptions::default()),
-        1 => (10usize..120, 1usize..8).prop_map(|(max_width, indent_width)| FormatOptions {
-            max_width,
-            indent_width,
-        }),
+        1 => (10usize..120, 1usize..8, any::<bool>()).prop_map(
+            |(max_width, indent_width, single_quote)| FormatOptions {
+                max_width,
+                indent_width,
+                single_quote,
+            }
+        ),
     ]
 }
 

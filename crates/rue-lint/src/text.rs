@@ -349,8 +349,11 @@ mod tests {
         assert!(!has_code_brace("a /* x /* { */ */ == 1"));
         assert!(!has_code_brace("a == 1 // {"));
 
-        // Strings don't have escapes, so the string ends at the second quote
-        assert!(has_code_brace("\"\\\" != Point { s: a }.s"));
+        // An escaped backslash doesn't escape the closing quote
+        assert!(has_code_brace("\"\\\\\" != Point { s: a }.s"));
+
+        // An escaped quote doesn't end the string
+        assert!(!has_code_brace("s == \"\\\"{\""));
     }
 
     #[test]

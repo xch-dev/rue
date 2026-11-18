@@ -46,11 +46,6 @@ struct Member {
 
 type Json = JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject;
 
-// String literals don't support escape sequences, so a double quote has to be written as bytes.
-// A backslash has no special meaning in a string literal, so it can be written directly.
-inline const QUOTE: String = 0x22 as String;
-inline const BACKSLASH: String = "\";
-
 fn main(input: String) -> String {
     stringify(parse(input))
 }
@@ -82,7 +77,7 @@ fn parse_value(input: String) -> (Json, String) {
     } else if char == "[" {
         let (items, rest) = parse_array(rest);
         (JsonArray { items }, rest)
-    } else if char == QUOTE {
+    } else if char == '"' {
         let (value, rest) = parse_string(rest, "");
         (JsonString { value }, rest)
     } else if char == "-" {
@@ -139,7 +134,7 @@ fn parse_object(input: String) -> (List<Member>, String) {
 fn parse_members(input: String) -> (List<Member>, String) {
     let input = skip_whitespace(input);
 
-    if !starts_with(input, QUOTE) {
+    if !starts_with(input, '"') {
         raise "expected a string key";
     }
 
@@ -174,9 +169,9 @@ fn parse_string(input: String, value: String) -> (String, String) {
     let code = char as Int;
     let rest = substr(input, 1);
 
-    if char == QUOTE {
+    if char == '"' {
         (value, rest)
-    } else if char == BACKSLASH {
+    } else if char == "\\" {
         let (escaped, rest) = parse_escape(rest);
         parse_string(rest, value + escaped)
     } else if code >= 0 && code < 32 {
@@ -194,18 +189,18 @@ fn parse_escape(input: String) -> (String, String) {
     let char = substr(input, 0, 1);
     let rest = substr(input, 1);
 
-    if char == QUOTE || char == BACKSLASH || char == "/" {
+    if char == '"' || char == "\\" || char == "/" {
         (char, rest)
     } else if char == "b" {
-        (byte(8), rest)
+        ("\x08", rest)
     } else if char == "f" {
-        (byte(12), rest)
+        ("\x0c", rest)
     } else if char == "n" {
-        (byte(10), rest)
+        ("\n", rest)
     } else if char == "r" {
-        (byte(13), rest)
+        ("\r", rest)
     } else if char == "t" {
-        (byte(9), rest)
+        ("\t", rest)
     } else if char == "u" {
         parse_unicode(rest)
     } else {
@@ -229,7 +224,7 @@ fn parse_unicode(input: String) -> (String, String) {
         return (utf8(high), rest);
     }
 
-    if !starts_with(rest, BACKSLASH + "u") {
+    if !starts_with(rest, "\\u") {
         raise "expected low surrogate";
     }
 
@@ -336,9 +331,9 @@ fn is_digit(input: String) -> Bool {
 
 fn skip_whitespace(input: String) -> String {
     if starts_with(input, " ")
-        || starts_with(input, byte(9))
-        || starts_with(input, byte(10))
-        || starts_with(input, byte(13))
+        || starts_with(input, "\t")
+        || starts_with(input, "\n")
+        || starts_with(input, "\r")
     {
         skip_whitespace(substr(input, 1))
     } else {
@@ -363,7 +358,7 @@ fn stringify(json: Json) -> String {
     } else if json is JsonNumber {
         integer_to_string(json.value)
     } else if json is JsonString {
-        QUOTE + escape(json.value) + QUOTE
+        '"' + escape(json.value) + '"'
     } else if json is JsonArray {
         "[" + stringify_items(json.items) + "]"
     } else {
@@ -391,7 +386,7 @@ fn stringify_members(members: List<Member>) -> String {
     }
 
     let member = members.first;
-    let member = QUOTE + escape(member.key) + QUOTE + ":" + stringify(member.value);
+    let member = '"' + escape(member.key) + '"' + ":" + stringify(member.value);
 
     if members.rest is nil {
         member
@@ -409,21 +404,20 @@ fn escape(value: String) -> String {
     let code = char as Int;
     let rest = escape(substr(value, 1));
 
-    // Since string literals don't have escape sequences, "\n" is a backslash followed by an "n".
-    if char == QUOTE || char == BACKSLASH {
-        BACKSLASH + char + rest
-    } else if code == 8 {
-        "\b" + rest
-    } else if code == 9 {
-        "\t" + rest
-    } else if code == 10 {
-        "\n" + rest
-    } else if code == 12 {
-        "\f" + rest
-    } else if code == 13 {
-        "\r" + rest
+    if char == '"' || char == "\\" {
+        "\\" + char + rest
+    } else if char == "\x08" {
+        "\\b" + rest
+    } else if char == "\t" {
+        "\\t" + rest
+    } else if char == "\n" {
+        "\\n" + rest
+    } else if char == "\x0c" {
+        "\\f" + rest
+    } else if char == "\r" {
+        "\\r" + rest
     } else if code >= 0 && code < 32 {
-        "\u00" + hex_char(code / 16) + hex_char(code % 16) + rest
+        "\\u00" + hex_char(code / 16) + hex_char(code % 16) + rest
     } else {
         char + rest
     }
@@ -462,22 +456,6 @@ fn find(members: List<Member>, key: String) -> Json | nil {
     }
 }
 
-// Double quotes can't be written in string literals, so the tests write JSON with single quotes.
-fn json(source: String) -> String {
-    if source == "" {
-        return "";
-    }
-
-    let char = substr(source, 0, 1);
-    let char = if char == "'" {
-        QUOTE
-    } else {
-        char
-    };
-
-    char + json(substr(source, 1))
-}
-
 test fn literals() {
     assert parse("null") is JsonNull;
     assert parse(" true ") is JsonBool;
@@ -497,24 +475,16 @@ test fn numbers() {
 }
 
 test fn strings() {
-    let string = parse(json("'hello, world'"));
+    let string = parse('"hello, world"');
     assert string is JsonString && string.value == "hello, world";
 
-    let string = parse(json("'tab\there\nquote\'backslash\\slash\/'"));
+    let string = parse('"tab\\there\\nquote\\"backslash\\\\slash\\/"');
     assert string is JsonString;
-    assert string.value == "tab"
-        + byte(9)
-        + "here"
-        + byte(10)
-        + "quote"
-        + QUOTE
-        + "backslash"
-        + BACKSLASH
-        + "slash/";
+    assert string.value == 'tab\there\nquote"backslash\\slash/';
 }
 
 test fn unicode() {
-    let string = parse(json("'café € 😀'"));
+    let string = parse('"café € 😀"');
     assert string is JsonString;
     assert string.value == "caf"
         + 0xc3a9 as String
@@ -524,25 +494,23 @@ test fn unicode() {
         + 0xf09f9880 as String;
 
     // Non-ASCII bytes are passed through as is, and control characters are escaped on the way out
-    assert stringify(string) == json("'caf")
+    assert stringify(string) == '"caf'
         + 0xc3a9 as String
         + " "
         + 0xe282ac as String
         + " "
         + 0xf09f9880 as String
-        + QUOTE;
-    assert stringify(parse(json("'\u0001\u001F'"))) == json("'\u0001\u001f'");
+        + '"';
+    assert stringify(parse('"\\u0001\\u001F"')) == '"\\u0001\\u001f"';
 }
 
 test fn nested() {
-    let source = json(
-        "{
-            'name': 'Rue',
-            'version': 1,
-            'tags': ['clvm', 'chia'],
-            'nested': { 'ok': true, 'missing': null, 'empty': [] }
-        }",
-    );
+    let source = '{
+            "name": "Rue",
+            "version": 1,
+            "tags": ["clvm", "chia"],
+            "nested": { "ok": true, "missing": null, "empty": [] }
+        }';
 
     let value = parse(source);
 
@@ -561,7 +529,8 @@ test fn nested() {
     assert get(get(value, "nested"), "missing") is JsonNull;
     assert get(value, "unknown") is nil;
 
-    assert stringify(value) == json(
-        "{'name':'Rue','version':1,'tags':['clvm','chia'],'nested':{'ok':true,'missing':null,'empty':[]}}",
-    );
+    assert stringify(
+        value,
+    )
+        == '{"name":"Rue","version":1,"tags":["clvm","chia"],"nested":{"ok":true,"missing":null,"empty":[]}}';
 }

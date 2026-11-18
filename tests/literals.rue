@@ -55,3 +55,45 @@ test fn hex_odd_length_param() -> Bool {
 fn odd_hex_param(value: 0x123) -> Bool {
     value == 0x0123
 }
+
+test fn string_escapes() -> String {
+    "tab\tnewline\nreturn\rquote\"apostrophe'backslash\\nul\0"
+}
+
+test fn string_hex_escapes() -> Bool {
+    "\x41\x7f" == 0x417f as String
+}
+
+test fn string_unicode_escapes() -> Bool {
+    "\u{e9}\u{20AC}\u{1F6_00}" == 0xc3a9e282acf09f9880 as String
+}
+
+test fn string_line_continuation() -> "Hello, world!" {
+    "Hello, \
+        world!"
+}
+
+test fn string_escaped_type() -> "a\"b'c\\\n" {
+    "a\"b'c\\\n"
+}
+
+test fn string_escapes_match_bytes() -> Bool {
+    "\"'\\" == 0x22275c as String
+}
+
+// The formatter keeps single quotes on strings with more double quotes than single quotes
+test fn single_quoted_string() -> Bool {
+    'say "hi"' == 0x7361792022686922 as String
+}
+
+test fn single_quoted_string_quotes() -> Bool {
+    'a"b"\'c' == 0x612262222763 as String
+}
+
+test fn single_quoted_string_escapes() -> Bool {
+    '"\n\t\\\x41\u{1F600}"' == 0x220a095c41f09f988022 as String
+}
+
+test fn single_quoted_string_type() -> 'say "it"' {
+    'say "it"'
+}

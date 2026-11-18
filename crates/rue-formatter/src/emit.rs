@@ -1,3 +1,4 @@
+use rue_lexer::requote_string;
 use rue_parser::{SyntaxKind, T};
 
 use crate::{
@@ -648,7 +649,14 @@ impl<'a> Formatter<'a> {
 
     fn token(&mut self, id: TokenId) -> Doc {
         self.consumed_tokens += 1;
-        Doc::text(&*self.stream.token(id).text)
+        let token = self.stream.token(id);
+
+        if token.kind == SyntaxKind::String {
+            let quote = if self.options.single_quote { '\'' } else { '"' };
+            return Doc::text(requote_string(&token.text, quote));
+        }
+
+        Doc::text(&*token.text)
     }
 
     fn separator(&self, previous: TokenId, next: TokenId) -> Separator {

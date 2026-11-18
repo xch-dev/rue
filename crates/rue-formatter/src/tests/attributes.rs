@@ -242,6 +242,7 @@ fn comments_inside_attributes_stay_inside_the_brackets() {
     let options = FormatOptions {
         max_width: 10,
         indent_width: 6,
+        ..FormatOptions::default()
     };
     let source = "#![ // trailing\n// own-line\nwarn(debug_statement) // line comment\n]\n\nfn main(value: Int) -> Int {\n    value\n}";
     let output = format_source(source, &options).unwrap();
