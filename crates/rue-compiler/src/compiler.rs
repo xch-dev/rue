@@ -402,6 +402,14 @@ impl Compiler {
         self.inline_modules.pop().unwrap();
     }
 
+    /// The module that the code being compiled is in, inline or a file.
+    pub fn current_module(&self) -> SymbolId {
+        self.inline_modules.last().copied().unwrap_or_else(|| {
+            let (module, _) = self.file.expect("code is compiled in a file");
+            module
+        })
+    }
+
     /// The scope that an inline module's scope is in. An inline module only sees its own items and
     /// imports, and the prelude, like a file, so its scope is in the one outside of the file.
     pub fn inline_module_parent_scope(&self) -> ScopeId {
@@ -429,23 +437,40 @@ impl Compiler {
     }
 
     /// The sibling module with a name, if a scope is a file's and the name is in a namespace that
-    /// modules are in.
+    /// modules are in. A name the file blocks (see [`Scope::block`]) hides the sibling, as it does
+    /// for lookups in the file itself.
     pub fn sibling_item(
         &self,
         scope: ScopeId,
         namespace: Namespace,
         name: &str,
     ) -> Option<(Item, Option<ImportId>)> {
+        if self.scope(scope).is_blocked(namespace, name) {
+            return None;
+        }
+
         let siblings = self.sibling_scopes.get(&scope)?;
         self.scope(*siblings).item_with_import(namespace, name)
     }
 
-    /// The names and items of a file's sibling modules in a namespace, if a scope is a file's.
+    /// The names and items that a module (by its scope) has in a namespace, including a file's
+    /// sibling modules. This is what `super::name` can name.
+    pub fn module_members(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
+        let mut items = self.scope(scope).items(namespace);
+        items.extend(self.sibling_items(scope, namespace));
+        items
+    }
+
+    /// The names and items of a file's sibling modules in a namespace, if a scope is a file's,
+    /// except those the file blocks (see [`Self::sibling_item`]).
     pub fn sibling_items(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
-        self.sibling_scopes
-            .get(&scope)
-            .map(|&siblings| self.scope(siblings).items(namespace))
-            .unwrap_or_default()
+        let Some(&siblings) = self.sibling_scopes.get(&scope) else {
+            return Vec::new();
+        };
+
+        let mut items = self.scope(siblings).items(namespace);
+        items.retain(|(name, _)| !self.scope(scope).is_blocked(namespace, name));
+        items
     }
 
     /// Looks up a name in one namespace in a scope and then each enclosing scope. The lookup

@@ -790,7 +790,19 @@ fn resolve_import(
         };
 
         let Some((symbol, via, exported)) = module else {
-            if diagnostics {
+            // A name that a failed import blocked where it's looked up has already been reported
+            let blocked = Namespace::ALL.into_iter().any(|namespace| {
+                if let Some(base) = base {
+                    ctx.scope(base).is_blocked(namespace, name.text())
+                } else if import.base_scope == import_scope {
+                    ctx.is_blocked_in(import.base_scope, namespace, name.text())
+                } else {
+                    ctx.scope(import.base_scope)
+                        .is_blocked(namespace, name.text())
+                }
+            });
+
+            if diagnostics && !blocked {
                 // Only a module can have a path after it, so a value or type is reported as such
                 let other = [Namespace::Value, Namespace::Type]
                     .into_iter()

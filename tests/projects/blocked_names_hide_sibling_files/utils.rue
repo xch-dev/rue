@@ -1,0 +1,4 @@
+// Private, so `super::utils::greet` in main.rue would be reported if it reached this file
+fn greet() -> Int {
+    1
+}

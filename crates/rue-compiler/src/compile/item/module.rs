@@ -15,7 +15,7 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
 
     let outer = ctx.inline_module_parent_scope();
     let scope = ctx.alloc_scope(Scope::new(Some(outer)));
-    let parent = ctx.last_scope_id();
+    let parent = ctx.current_module();
 
     let name = module.name().map(|name| ctx.local_name(&name));
 

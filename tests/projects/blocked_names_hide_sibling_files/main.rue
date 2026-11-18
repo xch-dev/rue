@@ -1,0 +1,13 @@
+import other::utils;
+
+mod a {
+    import super::utils::greet;
+
+    export fn f() -> Int {
+        super::utils::greet() + greet()
+    }
+}
+
+fn main() -> Int {
+    a::f()
+}

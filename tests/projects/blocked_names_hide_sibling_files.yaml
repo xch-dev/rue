@@ -1,0 +1,5 @@
+diagnostics:
+- Cannot reference private symbol `utils` in module `other` at main.rue:1:15
+- Unused import `greet` at main.rue:4:26
+- Unused function `greet` at other.rue:2:15
+- Unused function `greet` at utils.rue:2:4

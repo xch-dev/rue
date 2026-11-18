@@ -456,15 +456,13 @@ impl Cache<Compiler> {
             // so its private items and a file's sibling modules can be used too.
             let members = |namespace| {
                 if allow_super {
-                    let mut items = self.ctx.scope(scope).items(namespace);
-                    items.extend(self.ctx.sibling_items(scope, namespace));
-                    items
+                    self.ctx.module_members(scope, namespace)
                 } else {
                     self.ctx.scope(scope).exported_items(namespace)
                 }
             };
 
-            let exported = [Namespace::Value, Namespace::Module]
+            let symbols = [Namespace::Value, Namespace::Module]
                 .into_iter()
                 .flat_map(members)
                 .filter_map(|(name, item)| symbol_item(name, item))
@@ -475,7 +473,7 @@ impl Cache<Compiler> {
                 .filter_map(|(name, item)| Some((name, item.ty()?)))
                 .collect::<Vec<_>>();
 
-            for (name, symbol, is_module) in exported {
+            for (name, symbol, is_module) in symbols {
                 if !symbol_names.insert((name.clone(), is_module)) {
                     continue;
                 }

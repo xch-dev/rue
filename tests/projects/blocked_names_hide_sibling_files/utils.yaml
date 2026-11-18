@@ -1,0 +1,2 @@
+diagnostics:
+- Unused function `greet` at utils.rue:2:4

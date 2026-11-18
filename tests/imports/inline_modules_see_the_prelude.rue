@@ -1,0 +1,20 @@
+// An inline module doesn't see the items of the module it's in, so a name that the file declares
+// over a prelude item still means the prelude item inside it, as in Rust. `sha256` in `hashed` is
+// the builtin, and `super::sha256` is the file's function.
+fn sha256(value: Bytes) -> Bytes32 {
+    unchecked_cast(value)
+}
+
+mod hashed {
+    export fn builtin(value: Bytes) -> Bytes32 {
+        sha256(value)
+    }
+
+    export fn declared(value: Bytes) -> Bytes32 {
+        super::sha256(value)
+    }
+}
+
+fn main() -> (Bytes32, Bytes32) {
+    (hashed::builtin("hello"), hashed::declared("hello"))
+}

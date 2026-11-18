@@ -2362,3 +2362,33 @@ fn super_import_paths_through_a_non_module_are_reported() {
         ]
     );
 }
+
+#[test]
+fn super_paths_still_need_items_inside_other_modules_to_be_exported() {
+    let compiled = compile(
+        "
+        mod m {
+            const P: Int = 1;
+            type Q = Int;
+        }
+
+        mod a {
+            export fn f() -> super::m::Q {
+                super::m::P
+            }
+        }
+
+        fn main() -> Int {
+            a::f()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "8:40 PrivateType(\"Q\", \"m\")",
+            "9:27 PrivateSymbol(\"P\", \"m\")"
+        ]
+    );
+}
