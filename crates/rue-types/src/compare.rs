@@ -1401,9 +1401,11 @@ fn compare_impl_inner(
         {
             // A renamed generic being inferred still takes the generic it was renamed from, which
             // is what it's explicitly instantiated as, so that a union it's in doesn't leave only
-            // the other members' values (#370)
+            // the other members' values, from below (#370) or above (#378)
             if lhs != rhs && !ctx.flipped && ctx.is_target(rhs, ctx.rhs_env) {
                 ctx.add_candidate(arena, rhs, CandidateKind::Lower, lhs, ctx.lhs_env);
+            } else if lhs != rhs && ctx.flipped && ctx.is_target(lhs, ctx.lhs_env) {
+                ctx.add_candidate(arena, lhs, CandidateKind::Upper, rhs, ctx.rhs_env);
             }
 
             Comparison::Assign
