@@ -460,6 +460,15 @@ fn brings_in(
     let import = ctx.import(import_id);
     let name = forced.name.text();
 
+    // An import through `super` brings items into its own module, not the one it looked past
+    if !ctx
+        .scope(forced.scope)
+        .imports()
+        .any(|other| other == import_id)
+    {
+        return false;
+    }
+
     if let Items::Named(named) = &import.items
         && named.text() != name
     {
@@ -1106,11 +1115,15 @@ fn resolve_import(
 
                     // A name that's ambiguous where it's imported from is ambiguous here too. The
                     // imports are resolved again until nothing changes, so this reaches the end
-                    // of any chain of glob imports.
+                    // of any chain of glob imports. When several glob imports bring in the same
+                    // item, it's ambiguous if any of them does, whichever one recorded it, so the
+                    // ambiguity is recorded on that one.
                     if ctx.is_ambiguous_import(via, item.into())
-                        && ctx.scope(import_scope).item_import(item) == Some(import_id)
+                        && ctx.scope(import_scope).item(namespace, &name) == Some(item)
+                        && let Some(recorded) = ctx.scope(import_scope).item_import(item)
+                        && matches!(ctx.import(recorded).items, Items::All(_))
                     {
-                        updated |= ctx.add_ambiguous_import(import_id, item.into());
+                        updated |= ctx.add_ambiguous_import(recorded, item.into());
                     }
 
                     let target = ctx.scope_mut(import_scope);

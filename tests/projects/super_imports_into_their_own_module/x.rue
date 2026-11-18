@@ -1,0 +1,5 @@
+export mod x {
+    export const C: Int = 2;
+}
+
+export const C: Int = 1;
