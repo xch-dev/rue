@@ -34,3 +34,14 @@ tests:
   runtime_cost: 1499
   byte_cost: 636000
   total_cost: 637499
+- name: through_a_generic_passed_as_a_bound
+  program: (a (q 2 (q . 8) (c (a 2 (c (a (q 4 2 ()) (c (a 2 (q (((q . 2) . 3)))) ())) ())) ())) (c (q . 4) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 30 (c (c (c (c (c (q . 1) (q . 2)) (q . 3)) ()) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) 22) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))))) 1)) (c (c (q 5 2) (c (q 5 (f 2)) (c (q 4 2 ()) (q 2 15 (c (a 11 (c (a 5 (c (a 6 (c 4 ())) ())) ())) ()))))) ()))
+  output: "1"
+  runtime_cost: 1334
+  byte_cost: 948000
+  total_cost: 949334
+diagnostics:
+- |-
+  Binding `value` is returned directly after it's declared at generic_inference_lower_transitive.rue:73:5
+    help: Return the value directly

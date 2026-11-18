@@ -43,3 +43,33 @@ fn map2<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
 test fn through_two_compound_upper_bounds() -> Int {
     map2(first_of, first_of, ((1, 2), (3, 4))) + 1
 }
+
+fn pick<T>(pair: (T, Int)) -> T {
+    pair.first
+}
+
+fn boxed<U>(value: U) -> (U, Int) {
+    (value, 0)
+}
+
+fn first_of_first<C, D>(pair: ((C, C), D)) -> C {
+    pair.first.first
+}
+
+fn chain4<Y, R, P, Q, N>(
+    value: Y,
+    first: fn(a: Y) -> R,
+    second: fn(a: R) -> P,
+    third: fn(a: P) -> Q,
+    fourth: fn(a: Q) -> N,
+) -> N {
+    fourth(third(second(first(value))))
+}
+
+// The second `pick`'s instance is given `boxed`'s instance as a lower bound, whose own lower bounds
+// only arrive through the first `pick` while bounds are being passed down, and `N` is inferred
+// through all of them
+test fn through_a_generic_passed_as_a_bound() -> Int {
+    let value = chain4((((1, 2), 3), 0), pick, boxed, pick, first_of_first);
+    value
+}
