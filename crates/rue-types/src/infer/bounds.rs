@@ -164,9 +164,13 @@ fn narrow_inferred(
 
     let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
 
+    // A mapping is only replaced by a narrower one, since the bounds can only rule out what it was
+    // widened to. A generic that falls back to `5` and is given the bound `Int` stays `5`
     for generic in inferred {
         if let Some(&ty) = resolved.get(&generic)
             && !free_generics(arena, ty).contains(&generic)
+            && compare_renamed(arena, builtins, &infer.renamed, ty, mappings[&generic])
+                == Comparison::Assign
         {
             mappings.insert(generic, ty);
         }
