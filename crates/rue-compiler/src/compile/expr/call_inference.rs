@@ -12,7 +12,8 @@ use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
 use rue_hir::{HirId, Value};
 use rue_types::{
-    FunctionType, Inference, Type, TypeId, contains_generic, substitute_with_mappings,
+    FunctionType, Inference, InstancePolicy, Type, TypeId, contains_generic,
+    substitute_with_mappings,
 };
 
 use crate::{ArgumentFrame, Compiler, compile_expr};
@@ -62,6 +63,9 @@ pub(crate) fn infer_call(
 
         expected
     });
+
+    // The instances of generic functions passed as arguments are solved with the callee's generics
+    base.set_instance_policy(InstancePolicy::Joint);
 
     let solver = Rc::new(ctx.call_solver(expected));
 

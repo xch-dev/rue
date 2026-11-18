@@ -1,0 +1,264 @@
+// A passed generic function's generics are solved with the generics of the function it's passed
+// to, so what bounds those can bound them too (#362, step 13)
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn swap<T, U>(pair: (T, U)) -> (U, T) {
+    (pair.rest, pair.first)
+}
+
+test fn lower_bounds_reach_the_instance() -> Int {
+    // `A ≥ (1, nil)` and `A ≤ (T, U)` give `T ≥ 1` and `U ≥ nil`, so `B` is `(nil, Int)` rather than
+    // `(Never, Never)`
+    let result = map(swap, (1, nil));
+    result.rest
+}
+
+test fn lower_bounds_reach_the_instance_annotated() -> Int {
+    let result: (nil, Int) = map(swap, (1, nil));
+    result.rest
+}
+
+fn map_checked<A, B>(function: fn(a: A) -> B, value: A, check: fn(b: B) -> nil) -> B {
+    check(function(value));
+    function(value)
+}
+
+test fn argument_upper_bound_reaches_the_instance() -> Int {
+    // The lambda gives `B ≤ (7, 5)`, which is passed on to the instance like the expected type's
+    let result = map_checked(swap, (5, 7), fn(_pair: (7, 5)) => nil);
+    result.first
+}
+
+test fn expected_type_reaches_the_instance() -> Int {
+    // `B ≤ (7, 5)` gives `U ≤ 7` and `T ≤ 5`, so the literals aren't widened to `Int`
+    let result: (7, 5) = map(swap, (5, 7));
+    result.first
+}
+
+fn chain<A, B>(value: A, functions: (fn(a: A) -> B, fn(b: B) -> B)) -> B {
+    functions.rest(functions.first(value))
+}
+
+test fn element_of_an_argument() -> Int {
+    let result = chain((1, nil), (swap, fn(pair) => pair));
+    result.rest
+}
+
+fn pick<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
+    if depth > 0 {
+        // The generics are renamed in the recursive call
+        let inner = pick(swap, (1, nil), depth - 1);
+        let _check: Int = inner.rest;
+        function(value)
+    } else {
+        function(value)
+    }
+}
+
+test fn recursive_call() -> Int {
+    let result = pick(swap, (1, nil), 1);
+    result.rest
+}
+
+// `Id`'s `U` is instantiated as whatever `takes`'s `T` is, so the bounds between them are left out,
+// rather than `takes` being left uninstantiated and `B` naming its `T` (#357)
+type Id = fn<U>(x: U) -> U;
+
+fn hof<B>(function: fn(g: Id) -> B) -> B {
+    function(fn<U>(x: U): U => x)
+}
+
+fn takes<T>(_g: fn(x: T) -> T) -> (T, T) {
+    unchecked_cast((1, 2))
+}
+
+test fn bounded_by_an_instantiated_generic() -> Int {
+    let result: (Int, Int) = hof(takes);
+    result.first
+}
+
+// A rigid generic in the function type it's passed as can only be held by `Any` (#357)
+fn rigid<B>(function: fn<U>(a: U) -> B) -> B {
+    function(1)
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+test fn bounded_by_a_rigid_generic() -> Int {
+    let result: (Any, Any) = rigid(duplicate);
+    unchecked_cast(result.first)
+}
+
+// `T ≤ U` with the rigid `U` is only met by `Never`, which `B`'s candidate takes as the greatest
+// instantiation, since `T` is only a parameter type in it
+fn rigid_callback<B>(_function: fn<U>(a: fn(y: U) -> nil) -> B) -> B {
+    unchecked_cast(fn(_x: Int) => nil)
+}
+
+fn relay<T>(_callback: fn(y: T) -> nil) -> fn(x: T) -> nil {
+    unchecked_cast(fn(_x: Int) => nil)
+}
+
+test fn bounded_from_above_by_a_rigid_generic() -> Int {
+    let _function = rigid_callback(relay);
+    0
+}
+
+// A generic that nothing bounds is the least type for where it is in the candidate, which for a
+// parameter type is `Any` (#358)
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+fn make<T>() -> fn(x: T) -> nil {
+    unchecked_cast(fn(_x: Int) => nil)
+}
+
+test fn contravariant_instance() -> Int {
+    let function: fn(x: Int) -> nil = call(make);
+    function(1);
+    0
+}
+
+test fn contravariant_instance_unannotated() -> Int {
+    let function = call(make);
+    function(1);
+    0
+}
+
+fn or_other<B>(_make: fn() -> B, other: B) -> B {
+    other
+}
+
+type IntCallback = fn(x: Int) -> nil;
+
+test fn contravariant_instance_next_to_a_value() -> Int {
+    // Only other function types can keep it from taking the greatest instantiation
+    let function = or_other(make, nil);
+    let _callback: IntCallback | nil = function;
+    0
+}
+
+// In an upper candidate, the greatest instantiation is kept wherever the generic is, since a generic
+// with only upper candidates is inferred as them, and `fn(x: Never) -> nil` would be a wider type
+fn take<T>(_function: fn(x: T) -> nil) -> nil {
+    nil
+}
+
+fn feed<B>(_function: fn(a: B) -> nil) -> B {
+    unchecked_cast(fn(_x: Int) => nil)
+}
+
+test fn contravariant_instance_in_an_upper_candidate() -> Int {
+    let function = feed(take);
+    function(1);
+    0
+}
+
+// `G`'s upper candidate passes a bound on to `mk`'s instance that references `take_pair`'s, which is
+// replaced first
+fn use_both<G>(_function: fn(x: G) -> nil, make: fn() -> G) -> G {
+    make()
+}
+
+fn take_pair<T>(_pair: (fn(y: T) -> nil, Int)) -> nil {
+    nil
+}
+
+fn mk<U>() -> (U, U) {
+    unchecked_cast(nil)
+}
+
+test fn instance_bounded_by_another_in_a_parameter_type() -> Int {
+    let _result = use_both(take_pair, mk);
+    0
+}
+
+// `same`'s `T` passes bounds between `swap`'s and `pairs`'s instances, so they reference each
+// other, and one of them ends up referencing itself once another is replaced with it, which says
+// nothing about what it is
+fn pairs<T>() -> (T, T) {
+    unchecked_cast((5, 5))
+}
+
+fn same<T>(function: fn(a: T) -> T, produce: fn() -> T) -> T {
+    function(produce())
+}
+
+test fn instances_bounded_by_each_other() -> Int {
+    let result: (5, 5) | nil = same(swap, pairs);
+
+    if result is nil {
+        0
+    } else {
+        result.first
+    }
+}
+
+fn either<T>(first: T, _second: T) -> T {
+    first
+}
+
+fn compose<A, B>(function: fn(a: A) -> B) -> fn(a: A) -> B {
+    fn(x) => function(x)
+}
+
+fn constant<A, B>(value: B) -> fn(a: A) -> B {
+    fn(_x: A) => value
+}
+
+test fn kind_instantiation_next_to_a_function() -> Int {
+    // `B` has the candidates `fn(a: A) -> B` from `constant` and `fn(x: Bytes) -> "a"`. `Any` for
+    // `constant`'s `A` would give `fn(a: Any) -> Bytes`, which `fn(x: Bytes) -> "a"` doesn't hold, so
+    // it's `Never`, and `fn(a: Never) -> Bytes` holds both
+    let function = compose(either(constant, fn(_x: Bytes) => fn(_y: Bytes) => "a"));
+    let _inner = function("b");
+    0
+}
+
+fn make_bytes<T>() -> fn(x: T) -> Bytes {
+    unchecked_cast(fn(x: Bytes) => x)
+}
+
+fn any_of<B>(_first: fn() -> B, _second: fn() -> B, third: fn() -> B) -> B {
+    third()
+}
+
+fn same_bytes(value: Bytes) -> Bytes {
+    value
+}
+
+fn from_int(_value: Int) -> Bytes {
+    ""
+}
+
+test fn kind_instantiation_next_to_several_functions() -> Int {
+    // `same_bytes` holds `fn(x: Any) -> Bytes`, but not `from_int`, so it's `fn(x: Never) -> Bytes`,
+    // which holds both, rather than a union of the two that `compose` can't take
+    let _function = compose(any_of(make_bytes, fn() => same_bytes, fn() => from_int));
+    0
+}
+
+type Handler = fn(y: Bytes) -> "a";
+
+fn handler(_value: Bytes) -> Handler {
+    fn(_y: Bytes) => "a"
+}
+
+test fn kind_instantiation_next_to_an_alias() -> Int {
+    // A function type behind an alias counts as one, so this is `fn(a: Never) -> Bytes` too
+    let _function = compose(either(constant, handler));
+    0
+}
+
+test fn polarity_instantiation_next_to_a_function() -> Int {
+    // `T` has the candidates `fn(a: Any) -> (Int, 5)` from `compose` and the lambda's
+    // `fn(x: Int) -> (Int, 5)`, which holds it
+    let function: fn(a: Int) -> (Int, 5) = same(compose, fn() => fn(x: Int) => (x, 5));
+    function(1).first
+}
