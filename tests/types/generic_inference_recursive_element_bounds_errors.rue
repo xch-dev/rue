@@ -28,6 +28,18 @@ fn lambda_return_type<T>(pair: (T, fn() -> T), depth: Int) -> T {
     pair.first
 }
 
+// A typed parameter keeps the caller's `T` in the lambda's expected return type, so `make()` is
+// `Int | T`, as before
+fn typed_parameter<T>(pair: (T, fn(value: T) -> T), depth: Int) -> T {
+    if depth > 0 {
+        let result = typed_parameter((1, fn(_value: T | Int) => make()), depth - 1);
+        let _show: nil = result;
+        return pair.first;
+    }
+
+    pair.first
+}
+
 // A parameter type that's a union with the caller's `T` keeps it, since the lambda could compile
 // with it before
 fn union_parameter<T>(pair: (T, fn(value: T | Int) -> Int), depth: Int) -> Int {

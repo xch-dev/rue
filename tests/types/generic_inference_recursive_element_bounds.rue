@@ -131,8 +131,8 @@ test fn guard_generic_inferred_by_an_earlier_argument() -> Int {
 
 fn recursive_upper<T>(pair: (fn(value: T) -> Int, fn(value: T) -> Int), depth: Int) -> Int {
     if depth > 0 {
-        // Guard: the first lambda bounds the callee's `T` by `T | Int` from above, which `T` is
-        // assignable to, so the second lambda still gets `T`, as before
+        // Guard: the first lambda can be assigned to `fn(value: T) -> Int`, so it doesn't stop the
+        // callee's `T` from being the caller's, and the second lambda still gets `T`, as before
         return recursive_upper(
             (
                 fn(_value: T | Int) => 1,
@@ -182,8 +182,8 @@ test fn guard_pair_in_a_lambda_argument_in_a_recursive_call() -> Int {
 
 fn recursive_block<T>(pair: (T, Int), depth: Int) -> Int {
     if depth > 0 {
-        // Guard: neither is a pair in a block that's an element, so the `1` before the block
-        // doesn't make the inner lambda's `T` `Int`, as before
+        // Guard: a pair in a block that's an element isn't refined either, so the `1` before the
+        // block doesn't make the inner lambda's `T` `Int`, as before
         return recursive_block(
             (
                 1,
@@ -207,4 +207,74 @@ fn recursive_block<T>(pair: (T, Int), depth: Int) -> Int {
 
 test fn guard_pair_in_a_block_in_a_recursive_call() -> Int {
     recursive_block((1, 2), 1)
+}
+
+fn recursive_union_member<T>(pair: (T | Int, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: `1` can be assigned to `T | Int`, as the `Int` member, so it doesn't stop the
+        // callee's `T` from being the caller's, and the lambda still gets `T`, as before
+        return recursive_union_member(
+            (
+                1,
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_value_assignable_to_a_union_with_the_callers_generic() -> Int {
+    recursive_union_member((1, fn(value) => value), 1)
+}
+
+fn recursive_union_list<T>(items: (T | nil, (fn(value: T) -> Int, nil)), depth: Int) -> Int {
+    if depth > 0 {
+        // Guard: the same in a list, with `nil`
+        return recursive_union_list(
+            [
+                nil,
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ],
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_list_item_assignable_to_a_union_with_the_callers_generic() -> Int {
+    recursive_union_list([nil, fn(_value) => 0], 1)
+}
+
+fn recursive_union_of_pairs<T>(
+    pair: (T, fn(value: T) -> Int) | (Int, fn(value: T) -> Int),
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        // Guard: the same with a union of pairs expected, whose first elements make `T | Int`
+        return recursive_union_of_pairs(
+            (
+                1,
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_union_of_pairs_with_the_callers_generic() -> Int {
+    recursive_union_of_pairs((1, fn(value) => value), 1)
 }

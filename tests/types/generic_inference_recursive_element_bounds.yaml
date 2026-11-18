@@ -83,6 +83,30 @@ tests:
   runtime_cost: 3277
   byte_cost: 1068000
   total_cost: 1071277
+- name: guard_value_assignable_to_a_union_with_the_callers_generic
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 1) (q . 2))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 1) (q))))) (q)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 1) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))))))) (q)) 1) ()))
+  output: ()
+  runtime_cost: 3478
+  byte_cost: 1284000
+  total_cost: 1287478
+- name: guard_list_item_assignable_to_a_union_with_the_callers_generic
+  program: (a (q 2 2 (c 2 (c (q . 1) (c () (c (q) ()))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (c (q) ()))))) (q)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c () (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) ()))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) ()))))) (q)) 1) ()))
+  output: ()
+  runtime_cost: 3716
+  byte_cost: 1380000
+  total_cost: 1383716
+- name: guard_union_of_pairs_with_the_callers_generic
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 1) (q . 2))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 1) (q))))) (q)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 1) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))))))) (q)) 1) ()))
+  output: ()
+  runtime_cost: 3478
+  byte_cost: 1284000
+  total_cost: 1287478
 diagnostics:
 - Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:132:23
 - Unused parameter `function` at generic_inference_recursive_element_bounds.rue:155:35
+- Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:212:30
+- Unused parameter `items` at generic_inference_recursive_element_bounds.rue:235:28
+- Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:258:5

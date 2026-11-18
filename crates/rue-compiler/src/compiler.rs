@@ -98,12 +98,14 @@ pub struct ArgumentFrame {
     pub infer: Inference,
     pub solver: Rc<CallSolver>,
     /// The callee's renamed generics (see `rename_generics_in_scope`), and the caller's generics
-    /// they were renamed from.
+    /// they were renamed from, to restore them again after refining an element. It's only filled
+    /// when `restored` isn't empty.
     pub renamed: HashMap<TypeId, TypeId>,
     /// The caller's generics that the argument's expected type has in place of the callee's
     /// renamed generics that weren't inferred yet (see `restore_renamed`), each with the generic it
-    /// stands for. It's only those that nothing else in the expected type gave, and only while the
-    /// pairs and lists the argument is made of are compiled (see `compile_element`).
+    /// stands for. It's only those that nothing else in the expected type gave, only for a pair or
+    /// list argument with a lambda in it, and only while the pairs and lists it's made of are
+    /// compiled (see `compile_element`).
     pub restored: HashMap<TypeId, TypeId>,
 }
 

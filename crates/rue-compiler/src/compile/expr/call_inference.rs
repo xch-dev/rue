@@ -95,13 +95,16 @@ pub(crate) fn infer_call(
         }
 
         // Only a lambda that's an element of a pair or list that the argument is made of is
-        // refined against the callee's renamed generics (see `compile_element`)
-        let restored =
-            if matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) && has_lambda(expr) {
-                restorable(ctx, &mappings, renamed)
-            } else {
-                HashMap::new()
-            };
+        // refined against the callee's renamed generics (see `compile_element`), so the others
+        // skip working out what's restored
+        let restored = if !renamed.is_empty()
+            && matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_))
+            && has_lambda(expr)
+        {
+            restorable(ctx, &mappings, renamed)
+        } else {
+            HashMap::new()
+        };
         restore_renamed(ctx, &mut mappings, renamed);
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
@@ -820,23 +823,19 @@ fn restored_parameters(
     let mut parameters = HashMap::new();
 
     for index in untyped_parameters(lambda) {
-        let mut types = IndexSet::new();
+        let mut types = functions.iter().map(|function| {
+            function
+                .params
+                .get(index)
+                .map(|parameter| rue_types::unwrap_semantic(ctx.types_mut(), parameter.ty, true))
+        });
 
-        for function in &functions {
-            let Some(parameter) = function.params.get(index) else {
-                types.insert(None);
-                continue;
-            };
+        let Some(Some(ty)) = types.next() else {
+            continue;
+        };
 
-            types.insert(Some(rue_types::unwrap_semantic(
-                ctx.types_mut(),
-                parameter.ty,
-                true,
-            )));
-        }
-
-        if let [Some(ty)] = types.into_iter().collect::<Vec<_>>()[..]
-            && let Some(&copy) = restored.get(&ty)
+        if let Some(&copy) = restored.get(&ty)
+            && types.all(|other| other == Some(ty))
         {
             parameters.insert(ty, copy);
         }
@@ -848,6 +847,15 @@ fn restored_parameters(
 /// Records what an element of a pair or list that's part of an argument being compiled infers for
 /// the call's generics, given the type it was expected to have, so that a later element can be
 /// compiled against it (see `refine_element_expected`).
+///
+/// In a recursive call, an element that isn't assignable to its expected type, which has the
+/// caller's generics in place of the callee's renamed generics that aren't inferred (see
+/// `restorable`), is recorded with them mapped back to the callee's. Then a later lambda whose
+/// parameter type is one of them (see `restored_parameters`) can't compile with the caller's
+/// generic, which it only does if the callee's generic is inferred as the caller's, so it can get
+/// what the element infers instead. An element that is assignable, such as `1` expected to be
+/// `T | Int`, records nothing for them, so the lambda gets the caller's generic, as it would
+/// without being refined.
 pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<TypeId>) {
     let Some(expected) = expected else {
         return;
@@ -857,7 +865,11 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
         return;
     };
 
-    let expected = unrestore(ctx, &argument.restored, expected);
+    let expected = if argument.restored.is_empty() || ctx.is_assignable(ty, expected) {
+        expected
+    } else {
+        unrestore(ctx, &argument.restored, expected)
+    };
 
     if references_call_generics(ctx, expected) {
         ctx.infer_type(ty, expected, &mut argument.infer);
@@ -878,9 +890,9 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
 /// In a recursive call, the callee's generics are renamed, and the argument's expected type has
 /// those that aren't inferred yet restored to the caller's generics (see `restore_renamed`). They're
 /// mapped back to the callee's here where they're a lambda element's parameter types (see
-/// `restored_parameters`), and the ones that are still not inferred, or are inferred as a type the
-/// caller's generic can be compared with, are restored again. So the lambda gets the caller's
-/// generic unless the elements before it infer the callee's as something else.
+/// `restored_parameters`), and the ones that are still not inferred are restored again. So the
+/// lambda gets the caller's generic unless an element before it can't be assigned to its expected
+/// type with the caller's generic (see `record_element`).
 pub(crate) fn refine_element_expected(
     ctx: &mut Compiler,
     expected: TypeId,
@@ -894,13 +906,13 @@ pub(crate) fn refine_element_expected(
         return expected;
     };
 
-    let restored = match element {
+    let refinable = match element {
         AstExpr::LambdaExpr(lambda) => {
             restored_parameters(ctx, &argument.restored, expected, lambda)
         }
         _ => HashMap::new(),
     };
-    let unrestored = unrestore(ctx, &restored, expected);
+    let unrestored = unrestore(ctx, &refinable, expected);
 
     if !references_call_generics(ctx, unrestored) {
         ctx.set_argument_frame(Some(argument));
@@ -912,19 +924,6 @@ pub(crate) fn refine_element_expected(
     // to: a later element can. This is defensive, since the bounds would only matter for a generic
     // an earlier element maps, and no program has been found where it differs
     let mut mappings = ctx.argument_mappings(&argument.solver, &argument.infer, &inferred, false);
-
-    // The caller's generic is kept where it's assignable to what's inferred so far, such as
-    // `T | Int` from `fn(_v: T | Int) => 1` before the lambda, or that to it (only `T` itself or
-    // `never`): the callee's generic can still be inferred as the caller's, as it was before the
-    // lambda got anything else
-    for (&generic, copy) in &restored {
-        if let Some(&ty) = mappings.get(copy)
-            && (ctx.is_assignable(ty, generic) || ctx.is_assignable(generic, ty))
-        {
-            mappings.remove(copy);
-        }
-    }
-
     restore_renamed(ctx, &mut mappings, &argument.renamed);
     ctx.set_argument_frame(Some(argument));
 
