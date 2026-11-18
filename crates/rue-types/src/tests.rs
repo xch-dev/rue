@@ -2099,6 +2099,40 @@ mod inference {
         assert_eq!(candidates(&infer, t).lower, vec![int]);
     }
 
+    /// A bound that a revisit gets from a union member that didn't match is checked under an
+    /// inference member that didn't match either, so the candidates it collects are left out of
+    /// the matched ones, like those of the original.
+    #[test]
+    fn revisits_keep_unmatched_candidates_out() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let nil = db.builtins.nil;
+        let t = db.generic("T");
+
+        // type Rec = fn<A>(x: A) -> (A, Rec);
+        let rec = db.declare_alias("Rec", &[]);
+        let a = db.generic("A");
+        let ret = db.pair(a, rec);
+        let function = db.function_with(&[a], &[a], true, ret);
+        db.define(rec, function);
+
+        // type R2 = (Int, Again) | (T, nil); type Again = fn(x: Int) -> R2;
+        let r2 = db.declare_alias("R2", &[]);
+        let again = db.declare_alias("Again", &[]);
+        let matched = db.pair(int, again);
+        let unmatched = db.pair(t, nil);
+        let union = db.union(&[matched, unmatched]);
+        db.define(r2, union);
+        let function = db.function(&[int], r2);
+        db.define(again, function);
+        let target = db.function(&[int], r2);
+
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(rec, target, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower, vec![int, int]);
+        assert_eq!(infer.matched_candidates(t).unwrap().lower, Vec::new());
+    }
+
     /// Restoring a snapshot removes the candidates and choices collected since, so that a
     /// comparison computed again collects them once.
     #[test]
@@ -2121,6 +2155,14 @@ mod inference {
 
         infer.restore(&snapshot);
         assert_eq!(infer.candidates(a), before.candidates(a));
+
+        // The union members are removed along with the candidates, so the next one is in step
+        let choice = infer.open_choice(None, 2);
+        let next = BranchId { choice, member: 1 };
+        let index = infer.push(a, CandidateKind::Lower, b, vec![next]);
+        assert_eq!(infer.branches(a, CandidateKind::Lower, index), [next]);
+        infer.restore(&snapshot);
+
         assert_eq!(infer.candidates(b), before.candidates(b));
         assert_eq!(infer.choice_results(), before.choice_results());
         assert_eq!(infer.matched_candidates(a), before.matched_candidates(a));

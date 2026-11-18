@@ -176,13 +176,16 @@ struct StackFrame {
     revisited: bool,
 }
 
-/// What computing a comparison changed outside of it, to undo it before computing it again (see
-/// `StackFrame::approximation`).
+/// The state outside of a comparison when it was entered, from which `restore` undoes, and
+/// `summary_since` reads, what a round of computing it changed (see `StackFrame::approximation`).
 #[derive(Debug)]
 struct Snapshot {
     /// For each instance that the key refers to, its position in the key's numbering, its index
     /// in `ComparisonContext::instances`, and its numbers of lower and upper bounds.
     instances: Vec<(usize, usize, usize, usize)>,
+    /// The numbers of binders and instances.
+    binders: usize,
+    instance_count: usize,
     choices: usize,
     deferred: usize,
     infer: Option<InferenceSnapshot>,
@@ -191,7 +194,7 @@ struct Snapshot {
 /// The most rounds that a comparison is computed in before it gives up (see
 /// `StackFrame::approximation`). Each round adds bounds to its summary, which is finite, so this
 /// is only reached by a summary that's too symmetric to be put in a canonical form (see
-/// `Summary::canonicalize`).
+/// `Summary::canonicalize`). No test reaches it, since no such summary has been found.
 const MAX_ROUNDS: usize = 32;
 
 #[derive(Debug, Default)]
@@ -677,21 +680,28 @@ impl ComparisonContext<'_> {
 
         Snapshot {
             instances,
+            binders: self.binders.len(),
+            instance_count: self.instances.len(),
             choices: self.choices.len(),
             deferred: self.deferred.len(),
             infer: self.infer.as_ref().map(|infer| infer.snapshot()),
         }
     }
 
-    /// Undoes what the comparison changed outside of itself since the snapshot, so that it can be
-    /// computed again. The binders bound inside of it are left as they are, since nothing refers
-    /// to them anymore.
+    /// Undoes what the comparison changed since the snapshot, so that it can be computed again.
+    /// The binders and instances bound inside of it are removed too, since nothing refers to them
+    /// anymore, so that rounds don't add up.
     fn restore(&mut self, snapshot: &Snapshot) {
         for &(_, index, lower, upper) in &snapshot.instances {
             let instance = &mut self.instances[index];
             instance.lower.truncate(lower);
             instance.upper.truncate(upper);
         }
+
+        self.binders.truncate(snapshot.binders);
+        self.instances.truncate(snapshot.instance_count);
+        self.instantiations
+            .retain(|&binder, _| binder < snapshot.binders);
 
         self.choices.truncate(snapshot.choices);
         self.deferred.truncate(snapshot.deferred);
@@ -704,7 +714,7 @@ impl ComparisonContext<'_> {
     /// The bounds that the comparison in progress at the top of the stack put on the instances its
     /// key refers to since the snapshot, as a summary in its coordinates: the binders its key
     /// numbers, and local ones for those bound inside of it, which are rigid by the time it
-    /// finishes.
+    /// finishes. It isn't canonical yet.
     fn summary_since(&mut self, arena: &Arena<Type>, snapshot: &Snapshot) -> Summary {
         let frame = self.frames.last().unwrap();
         let (entered, numbering) = (frame.entered, frame.binders.clone());
@@ -759,7 +769,6 @@ impl ComparisonContext<'_> {
             }
         }
 
-        summary.canonicalize();
         summary
     }
 
@@ -815,31 +824,32 @@ impl ComparisonContext<'_> {
             };
 
             let bound = (constraint.ty, env, branches);
-            self.push_bound(root(&self.binders, args[position]), bound, constraint.upper);
+            // The binders a key numbers are the ones its generics resolve to, so none is an alias
+            debug_assert!(self.binders[args[position]].alias.is_none());
+            self.push_bound(args[position], bound, constraint.upper);
         }
     }
 
     /// Opens a choice with two members under the current ones, the first of which didn't match,
     /// and returns it (see `ComparisonContext::apply_summary`).
     fn unmatched_branches(&mut self) -> BoundBranches {
+        let choice = self.open_choice(2);
         let missed = |choice| BranchId { choice, member: 0 };
         let matched = |choice| BranchId { choice, member: 1 };
 
-        let choice = self.choices.open(self.local_branch, 2);
-        self.choices.record(missed(choice), Comparison::Invalid);
-        self.choices.record(matched(choice), Comparison::Assign);
+        if let Some(local) = choice.local {
+            self.choices.record(missed(local), Comparison::Invalid);
+            self.choices.record(matched(local), Comparison::Assign);
+        }
 
-        let parent = self.branch;
-        let infer = self.infer.as_mut().map(|infer| {
-            let choice = infer.open_choice(parent, 2);
+        if let (Some(infer), Some(choice)) = (self.infer.as_mut(), choice.infer) {
             infer.record(missed(choice), Comparison::Invalid);
             infer.record(matched(choice), Comparison::Assign);
-            missed(choice)
-        });
+        }
 
         BoundBranches {
-            local: Some(missed(choice)),
-            infer,
+            local: choice.local.map(missed),
+            infer: choice.infer.map(missed),
         }
     }
 
@@ -1348,8 +1358,7 @@ fn compare_impl_inner(
         let summary = ctx.summary_since(arena, snapshot);
         let frame = ctx.frames.last_mut().unwrap();
         let mut next = frame.approximation.clone();
-        let keys: Vec<Var> = (0..frame.binders.len()).map(Var::Key).collect();
-        next.apply(&summary, &keys);
+        next.extend(&summary);
         next.canonicalize();
 
         if next == frame.approximation {

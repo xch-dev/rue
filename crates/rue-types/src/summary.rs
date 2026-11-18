@@ -113,6 +113,9 @@ impl Summary {
 
     /// Adds the constraints of a comparison that this one reached, where `args` are what the
     /// binders its key numbers are in this one's coordinates. Its local binders are new ones.
+    /// Comparisons apply a summary to the binders themselves instead (see `apply_summary` in
+    /// `compare.rs`), so this is only used by the tests of canonical forms.
+    #[cfg(test)]
     pub(crate) fn apply(&mut self, other: &Self, args: &[Var]) {
         let offset = self.locals;
         self.locals += other.locals;
@@ -124,6 +127,18 @@ impl Summary {
             });
             self.constraints.push(constraint);
         }
+    }
+
+    /// Adds the constraints of another summary in the same coordinates, with new local binders.
+    pub(crate) fn extend(&mut self, other: &Self) {
+        let offset = self.locals;
+        self.locals += other.locals;
+        self.constraints.extend(
+            other
+                .constraints
+                .iter()
+                .map(|constraint| constraint.map_locals(|local| offset + local)),
+        );
     }
 
     /// Puts the summary in a canonical form, so that summaries that only differ in the order of
