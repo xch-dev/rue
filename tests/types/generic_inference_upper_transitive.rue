@@ -214,3 +214,35 @@ test fn bound_referencing_an_unresolved_generic_not_passed_on() -> Int {
     let function = chain(identity, strip, 5);
     function(7)
 }
+
+fn run_two<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, one: A, other: A) -> Int {
+    let _ = second(first(other));
+    second(first(one))
+}
+
+test fn inferred_generic_narrowed_to_a_union_of_literals() -> Int {
+    // `A` has `1` and `2`, and reaches `one_or_two`'s `B ≤ 1 | 2`, so it's `1 | 2` rather than `Int`
+    run_two(identity, one_or_two, 1, 2)
+}
+
+fn first_five(pair: (5, nil)) -> Int {
+    pair.first
+}
+
+test fn inferred_generic_narrowed_through_a_compound_bound() -> Int {
+    // `B` is inferred from `(A, nil)` and bounded by `(5, nil)`, so `A` is bounded by `5`
+    run(wrap, first_five, 5)
+}
+
+fn run_three<A, B, C>(
+    first: fn(a: A) -> B,
+    second: fn(b: B) -> C,
+    third: fn(c: C) -> Int,
+    value: A,
+) -> Int {
+    third(second(first(value)))
+}
+
+test fn inferred_generic_narrowed_through_a_compound_bound_and_another_generic() -> Int {
+    run_three(wrap, identity, first_five, 5)
+}

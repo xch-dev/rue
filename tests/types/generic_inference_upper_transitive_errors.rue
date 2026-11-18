@@ -20,6 +20,15 @@ fn run<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A) -> Int {
     second(first(value))
 }
 
+fn one_or_two(value: 1 | 2) -> Int {
+    value
+}
+
+fn run_two<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, one: A, other: A) -> Int {
+    let _ = second(first(other));
+    second(first(one))
+}
+
 fn five_only(value: 5) -> Int {
     value
 }
@@ -36,5 +45,8 @@ fn main() -> Int {
     // `6` isn't `5`
     let wrong_literal = run(identity, five_only, 6);
 
-    wrong_argument + wrong_type + wrong_literal
+    // `3` isn't `1 | 2`, so `A` isn't narrowed, and the bound is reported where it's checked
+    let outside_the_union = run_two(identity, one_or_two, 1, 3);
+
+    wrong_argument + wrong_type + wrong_literal + outside_the_union
 }

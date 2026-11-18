@@ -49,9 +49,9 @@ pub fn add_expected_bounds(
 /// A generic that was inferred is given them too, so that it isn't widened past them: in
 /// `run(identity, five_only, 5)`, `A` has the lower bound `5` and reaches `five_only`'s `B ≤ 5`
 /// through `A ≤ B`, so it's `5` rather than `Int` (#337). Only the upper bounds of union members
-/// that matched are resolved from (`Inference::keep_matched`), and one is only added if the
-/// generic's lower bounds satisfy it, so a mapping only changes to one that satisfies a bound the
-/// final check needs.
+/// that matched are resolved from (`Inference::keep_matched`), one is only added if the generic's
+/// lower bounds satisfy it, and a mapping is only replaced by a narrower one (see
+/// `narrow_inferred`).
 ///
 /// A generic that wasn't inferred, or was inferred as a type that references another generic
 /// being inferred that wasn't, also takes the lower bounds passed down through its compound upper
@@ -112,9 +112,9 @@ pub fn resolve_inference_with_bounds(
     mappings
 }
 
-/// Replaces the mapping of each generic that was inferred with what it's inferred as once the upper
-/// bounds of the generics it's inferred through are passed on to it (see
-/// `resolve_inference_with_bounds`).
+/// Replaces the mapping of each generic that was inferred, as a type that doesn't reference one
+/// that wasn't, with what it's inferred as once the upper bounds of the generics it's inferred
+/// through are passed on to it, if that's narrower (see `resolve_inference_with_bounds`).
 fn narrow_inferred(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -165,6 +165,15 @@ fn narrow_inferred(
         bounds,
         |generic| inferred.contains(&generic),
     );
+
+    // Bounds are only added to the generics in `inferred`, so if none was added to, resolving again
+    // gives the same mappings
+    if inferred
+        .iter()
+        .all(|generic| bounded.generics[generic].upper.len() == infer.generics[generic].upper.len())
+    {
+        return;
+    }
 
     let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
 

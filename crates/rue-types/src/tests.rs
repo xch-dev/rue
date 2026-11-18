@@ -1646,15 +1646,15 @@ mod inference {
         let five = db.literal(AtomSemantic::Int, &[5]);
 
         // `A` has the lower bound `5`, and `B`'s bound `5` is passed on to it, so it's `5` rather
-        // than widened to `Int` (#337). `C` isn't inferred, so the bounds are passed on for it too
-        let c = db.generic("C");
-        let mut infer = Inference::new([a, b, c]);
+        // than widened to `Int` (#337). `B`, which is inferred through it, is `5` too
+        let mut infer = Inference::new([a, b]);
         db.infer(a, b, &mut infer);
         db.infer(five, a, &mut infer);
         infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut infer);
         let mappings =
             resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &HashMap::new());
         assert_eq!(mappings[&a], five);
+        assert!(compare(&mut db.arena, &db.builtins, mappings[&b], five) == Comparison::Assign);
 
         // `A` falls back to `5`, and `B`'s bound `Int` doesn't widen it, since `5` is the most
         // specific type that satisfies it
