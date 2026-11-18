@@ -27,6 +27,7 @@ clvmr = { workspace = true }
 rue-clvm = { workspace = true }
 rue-formatter = { workspace = true }
 rue-lir = { workspace = true }
+rue-types = { workspace = true }
 clvm-utils = { workspace = true }
 hex = { workspace = true }
 wasm-bindgen = { workspace = true }

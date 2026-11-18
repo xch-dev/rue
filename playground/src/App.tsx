@@ -157,7 +157,11 @@ export default function App() {
     setTab("run");
     setMobileView("output");
     if (!current.hex) return;
-    setRunResult({ hex: current.hex, solution, execution: run(current.hex, solution) });
+    setRunResult({
+      hex: current.hex,
+      solution,
+      execution: run(current.source, current.debug, solution),
+    });
   }, [currentCompilation, solution]);
 
   const onRunTests = useCallback(() => {

@@ -45,7 +45,10 @@ export interface Print {
 }
 
 export interface Execution {
+  /** The value it returned, as a Rue expression of its return type. */
   output?: string;
+  /** The value it returned, as CLVM. */
+  clvmOutput?: string;
   error?: string;
   runtimeCost?: number;
   byteCost: number;
@@ -127,11 +130,13 @@ export function compile(source: string, debug: boolean): Compilation {
   return result;
 }
 
-export function run(hex: string, solution: string): Execution {
+/** Compiles the source and runs its `main` function with the solution. */
+export function run(source: string, debug: boolean, solution: string): Execution {
   try {
-    const execution = wasm.run(hex, solution);
+    const execution = wasm.run(source, debug, solution);
     const result: Execution = {
       output: execution.output,
+      clvmOutput: execution.clvmOutput,
       error: execution.error,
       runtimeCost: execution.runtimeCost,
       byteCost: execution.byteCost,

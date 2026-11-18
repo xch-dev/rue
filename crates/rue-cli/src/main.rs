@@ -3,6 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process,
+    rc::Rc,
 };
 
 use anyhow::Result;
@@ -16,13 +17,14 @@ use clvmr::{
 };
 use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
-use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_compiler::{Compiler, FileTree, OutputTypes, normalize_path};
 use rue_diagnostic::{
     Diagnostic, DiagnosticSeverity, ForbiddenBy, LineIndex, Lint, LintGroup, LintLevel, LintLevels,
     LintName, SourceKind,
 };
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
+use rue_types::DisplayOptions;
 
 mod fmt;
 
@@ -33,6 +35,8 @@ pub enum Command {
     Init(InitArgs),
     Build(BuildArgs),
     Test(TestArgs),
+    /// Compile and run the `main` function, and print its output as a Rue value
+    Run(RunArgs),
     Debug(DebugArgs),
     Fmt(FmtArgs),
     /// List every lint and lint group, along with each lint's default level
@@ -246,6 +250,23 @@ impl FromArgMatches for LintArgs {
 }
 
 #[derive(Debug, Parser)]
+pub struct RunArgs {
+    /// The file whose `main` function to run (the project's `main.rue` by default)
+    file: Option<String>,
+    /// The arguments to pass to `main`, as a CLVM list such as `(5 "hello")`
+    #[clap(short, long)]
+    solution: Option<String>,
+    /// Compile in debug mode, which keeps `debug` statements and the locations of failed
+    /// assertions
+    #[clap(short, long)]
+    debug: bool,
+    #[clap(flatten)]
+    lints: LintArgs,
+    #[clap(flatten)]
+    cost: CostArgs,
+}
+
+#[derive(Debug, Parser)]
 pub struct DebugArgs {
     program: String,
     solution: Option<String>,
@@ -262,6 +283,7 @@ fn main() -> Result<()> {
         Command::Init(args) => init(args),
         Command::Build(args) => build(args),
         Command::Test(args) => test(args),
+        Command::Run(args) => run(&args),
         Command::Debug(args) => {
             println!("{}", debug(args)?);
             Ok(())
@@ -704,6 +726,11 @@ fn test(args: TestArgs) -> Result<()> {
     }
 
     let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path, false)?;
+    let types = Rc::new(OutputTypes::new(
+        &mut ctx,
+        tests.iter().map(|test| test.symbol),
+        &base_path,
+    ));
 
     let len = tests.len();
 
@@ -721,7 +748,17 @@ fn test(args: TestArgs) -> Result<()> {
                 .bold()
         );
 
-        if let Err(message) = run_test(&mut allocator, test.ptr, args.cost) {
+        let display = |allocator: &Allocator, node| {
+            types.display_return(test.symbol, allocator, node, DisplayOptions::SINGLE_LINE)
+        };
+
+        if let Err(message) = run_test(
+            &mut allocator,
+            test.ptr,
+            args.cost,
+            &typed_dialect(true, Some(&types)),
+            display,
+        ) {
             eprintln!("{}", format!("Test failed due to {message}").red().bold());
             failed = true;
         }
@@ -734,28 +771,130 @@ fn test(args: TestArgs) -> Result<()> {
     Ok(())
 }
 
-/// Runs a test, which passes if it returns nil, and otherwise returns why it failed.
-fn run_test(allocator: &mut Allocator, program: NodePtr, cost: CostArgs) -> Result<(), String> {
-    match run_program(
-        allocator,
-        &DebugDialect::new(CLVM_FLAGS, true),
-        program,
-        NodePtr::NIL,
-        cost.max_cost,
-    ) {
+/// A dialect that prints the values of `debug` statements (to stderr if `stdout` is set), displayed
+/// with their types if they're known.
+fn typed_dialect(stdout: bool, types: Option<&Rc<OutputTypes>>) -> DebugDialect {
+    let dialect = DebugDialect::new(CLVM_FLAGS, stdout);
+
+    let Some(types) = types.cloned() else {
+        return dialect;
+    };
+
+    dialect.with_display(move |srcloc, allocator, node| {
+        types.display_debug(srcloc, allocator, node, DisplayOptions::SINGLE_LINE)
+    })
+}
+
+/// Runs a test, which passes if it returns nil, and otherwise returns why it failed. A non-nil
+/// output is shown with `display` where it returns a value, and disassembled otherwise.
+fn run_test(
+    allocator: &mut Allocator,
+    program: NodePtr,
+    cost: CostArgs,
+    dialect: &DebugDialect,
+    display: impl Fn(&Allocator, NodePtr) -> Option<String>,
+) -> Result<(), String> {
+    match run_program(allocator, dialect, program, NodePtr::NIL, cost.max_cost) {
         Ok(output) => {
             if let SExp::Atom = allocator.sexp(output.1)
                 && allocator.atom(output.1).is_empty()
             {
                 Ok(())
             } else {
-                Err("non-nil output".to_string())
+                let value = display(allocator, output.1)
+                    .unwrap_or_else(|| disassemble_value(allocator, output.1));
+                Err(format!("non-nil output: {value}"))
             }
         }
         Err(EvalErr::Raise(value)) => {
             Err(format!("raise: {}", disassemble_value(allocator, value)))
         }
         Err(error) => Err(format!("error: {}", cost.describe_error(&error))),
+    }
+}
+
+/// Compiles and runs the `main` function, and prints its output as a Rue value.
+fn run(args: &RunArgs) -> Result<()> {
+    let mut allocator = Allocator::new();
+
+    let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
+    let Some(mut project) = find_project(search_path, args.debug)? else {
+        eprintln!("{}", "No project found".red().bold());
+        process::exit(1);
+    };
+
+    let lint_errors = configure_lints(&mut project, &args.lints);
+
+    let main_kind = if let Some(file) = &args.file {
+        normalize_path(Path::new(file))?
+    } else if project.entrypoint.is_file() {
+        normalize_path(&project.entrypoint)?
+    } else {
+        normalize_path(&project.entrypoint.join("main.rue"))?
+    };
+
+    let mut ctx = Compiler::new(project.options);
+
+    let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
+    let base_path = if project.entrypoint.is_file() {
+        project.entrypoint.parent().unwrap().canonicalize()?
+    } else {
+        project.entrypoint.canonicalize()?
+    };
+
+    if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
+        process::exit(1);
+    }
+
+    let (Some(main), Some(program)) = (
+        tree.main_symbol(&ctx, &main_kind)?,
+        tree.main(&mut ctx, &mut allocator, &main_kind, base_path.clone())?,
+    ) else {
+        eprintln!("{}", "No `main` function found".red().bold());
+        process::exit(1);
+    };
+
+    let types = Rc::new(OutputTypes::new(&mut ctx, [main], &base_path));
+
+    let solution = match &args.solution {
+        Some(solution) => assemble(&mut allocator, solution)?,
+        None => NodePtr::NIL,
+    };
+
+    let output = run_program(
+        &mut allocator,
+        &typed_dialect(true, Some(&types)),
+        program,
+        solution,
+        args.cost.max_cost,
+    );
+
+    match output {
+        Ok(output) => {
+            let value = types
+                .display_return(main, &allocator, output.1, DisplayOptions::default())
+                .unwrap_or_else(|| disassemble_value(&allocator, output.1));
+            println!("{value}");
+            Ok(())
+        }
+        Err(EvalErr::Raise(value)) => {
+            eprintln!(
+                "{}",
+                format!("raise: {}", disassemble_value(&allocator, value))
+                    .red()
+                    .bold()
+            );
+            process::exit(1);
+        }
+        Err(error) => {
+            eprintln!(
+                "{}",
+                format!("error: {}", args.cost.describe_error(&error))
+                    .red()
+                    .bold()
+            );
+            process::exit(1);
+        }
     }
 }
 
@@ -796,7 +935,7 @@ fn debug(args: DebugArgs) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, CostArgs, DEFAULT_MAX_COST, debug, run_test};
+    use super::{Command, CostArgs, DEFAULT_MAX_COST, debug, run_test, typed_dialect};
     use clap::{CommandFactory, Parser, error::ErrorKind};
     use clvmr::Allocator;
     use rue_clvm::assemble;
@@ -1110,7 +1249,13 @@ mod tests {
     fn run_test_with(program: &str, max_cost: u64) -> Result<(), String> {
         let mut allocator = Allocator::new();
         let program = assemble(&mut allocator, program).unwrap();
-        run_test(&mut allocator, program, CostArgs { max_cost })
+        run_test(
+            &mut allocator,
+            program,
+            CostArgs { max_cost },
+            &typed_dialect(false, None),
+            |_, _| None,
+        )
     }
 
     #[test]
@@ -1130,7 +1275,7 @@ mod tests {
     fn other_failures_are_reported_as_before() {
         let fail = |program| run_test_with(program, DEFAULT_MAX_COST).unwrap_err();
         assert_eq!(fail("(x (q . 5))"), "raise: 5");
-        assert_eq!(fail("(q . 1)"), "non-nil output");
+        assert_eq!(fail("(q . 1)"), "non-nil output: 1");
 
         // Only running out of cost mentions the limit
         assert_eq!(

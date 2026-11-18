@@ -1,11 +1,16 @@
-use std::path::Path;
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use clvmr::{
     Allocator, NodePtr, SExp, error::EvalErr, reduction::Reduction, run_program,
-    serde::node_from_bytes,
+    serde::node_to_bytes,
 };
 use rue_clvm::{assemble, disassemble_value};
+use rue_compiler::OutputTypes;
 use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
+use rue_types::DisplayOptions;
 use wasm_bindgen::prelude::*;
 
 use crate::check;
@@ -17,8 +22,11 @@ const MAX_COST: u64 = 11_000_000_000;
 #[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Execution {
-    /// The value it returned.
+    /// The value it returned, as a Rue expression of its return type.
     pub output: Option<String>,
+    /// The value it returned, as CLVM.
+    #[wasm_bindgen(js_name = clvmOutput)]
+    pub clvm_output: Option<String>,
     /// Why it failed, such as `raise "assertion failed at main.rue:2:5"`.
     pub error: Option<String>,
     /// The cost of running it, which is missing if it failed.
@@ -40,15 +48,29 @@ pub struct Print {
     pub value: String,
 }
 
-/// Runs a serialized program (as hex) with a solution written as CLVM, such as `(5 "hello")`.
+/// Compiles the source the way `compile` does, and runs its `main` function with a solution written
+/// as CLVM, such as `(5 "hello")`. Fails if the source has errors or no `main` function.
 #[wasm_bindgen]
-pub fn run(program: &str, solution: &str) -> Result<Execution, JsError> {
+pub fn run(source: String, debug: bool, solution: &str) -> Result<Execution, JsError> {
     console_error_panic_hook::set_once();
 
     let mut allocator = Allocator::new();
+    let (mut ctx, tree, source) = check(source, debug);
 
-    let bytes = hex::decode(program.trim())?;
-    let program = node_from_bytes(&mut allocator, &bytes)?;
+    if ctx.has_errors() {
+        return Err(JsError::new("The source has errors"));
+    }
+
+    let (Some(main), Some(program)) = (
+        tree.main_symbol(&ctx, &source.kind)?,
+        tree.main(&mut ctx, &mut allocator, &source.kind, PathBuf::from("."))?,
+    ) else {
+        return Err(JsError::new("The source has no `main` function"));
+    };
+
+    let types = Rc::new(OutputTypes::new(&mut ctx, [main], Path::new(".")));
+
+    let bytes = node_to_bytes(&allocator, program)?;
     let byte_cost = bytes.len() as u64 * COST_PER_BYTE;
 
     let solution = if solution.trim().is_empty() {
@@ -58,20 +80,22 @@ pub fn run(program: &str, solution: &str) -> Result<Execution, JsError> {
             .map_err(|error| JsError::new(&format!("Invalid solution: {error}")))?
     };
 
-    let (result, prints) = execute(&mut allocator, program, solution);
+    let (result, prints) = execute(&mut allocator, program, solution, &types);
 
-    let (output, error, runtime_cost) = match result {
+    let (output, clvm_output, error, runtime_cost) = match result {
         Ok(reduction) => (
+            types.display_return(main, &allocator, reduction.1, DisplayOptions::default()),
             Some(disassemble_value(&allocator, reduction.1)),
             None,
             Some(reduction.0),
         ),
-        Err(error) => (None, Some(describe_error(&allocator, &error)), None),
+        Err(error) => (None, None, Some(describe_error(&allocator, &error)), None),
     };
 
     #[allow(clippy::cast_precision_loss)]
     Ok(Execution {
         output,
+        clvm_output,
         error,
         runtime_cost: runtime_cost.map(|cost| cost as f64),
         byte_cost: byte_cost as f64,
@@ -111,6 +135,12 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
         false,
     )?;
 
+    let types = Rc::new(OutputTypes::new(
+        &mut ctx,
+        tests.iter().map(|test| test.symbol),
+        Path::new("."),
+    ));
+
     let mut results = Vec::new();
 
     for test in tests {
@@ -118,7 +148,7 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
             continue;
         };
 
-        let (result, prints) = execute(&mut allocator, test.ptr, NodePtr::NIL);
+        let (result, prints) = execute(&mut allocator, test.ptr, NodePtr::NIL, &types);
 
         let error = match result {
             Ok(reduction) => {
@@ -127,10 +157,15 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
                 {
                     None
                 } else {
-                    Some(format!(
-                        "returned {} instead of nil",
-                        disassemble_value(&allocator, reduction.1)
-                    ))
+                    let value = types
+                        .display_return(
+                            test.symbol,
+                            &allocator,
+                            reduction.1,
+                            DisplayOptions::SINGLE_LINE,
+                        )
+                        .unwrap_or_else(|| disassemble_value(&allocator, reduction.1));
+                    Some(format!("returned {value} instead of nil"))
                 }
             }
             Err(error) => Some(describe_error(&allocator, &error)),
@@ -146,13 +181,19 @@ pub fn run_tests(source: String) -> Result<Vec<TestResult>, JsError> {
     Ok(results)
 }
 
-/// Runs a program the way the CLI does, along with the values its `debug` statements printed.
+/// Runs a program the way the CLI does, along with the values its `debug` statements printed,
+/// displayed with their types.
 fn execute(
     allocator: &mut Allocator,
     program: NodePtr,
     env: NodePtr,
+    types: &Rc<OutputTypes>,
 ) -> (Result<Reduction, EvalErr>, Vec<Print>) {
-    let dialect = DebugDialect::new(CLVM_FLAGS, false);
+    let types = types.clone();
+    let dialect =
+        DebugDialect::new(CLVM_FLAGS, false).with_display(move |srcloc, allocator, node| {
+            types.display_debug(srcloc, allocator, node, DisplayOptions::SINGLE_LINE)
+        });
     let result = run_program(allocator, &dialect, program, env, MAX_COST);
 
     let prints = dialect

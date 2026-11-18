@@ -264,7 +264,9 @@ pub fn compile_block(
                     ctx.builtins().unresolved.clone()
                 };
 
-                Statement::Debug(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
+                let srcloc = ctx.trimmed_srcloc(stmt.syntax());
+                ctx.add_debug_type(srcloc.clone(), value.ty);
+                Statement::Debug(value.hir, srcloc)
             }
         };
 

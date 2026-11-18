@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, fmt, rc::Rc};
 
 use clvm_traits::{FromClvm, destructure_tuple, match_tuple};
 use clvmr::{
@@ -28,11 +28,27 @@ pub struct PrintMessage {
     pub message: String,
 }
 
-#[derive(Debug, Clone)]
+/// Displays the value printed by the `debug` statement at a location, or returns `None` to
+/// display it without a type.
+pub type DisplayPrint = dyn Fn(&str, &Allocator, NodePtr) -> Option<String>;
+
+#[derive(Clone)]
 pub struct DebugDialect {
     flags: ClvmFlags,
     stdout: bool,
     log: RefCell<Vec<PrintMessage>>,
+    display: Option<Rc<DisplayPrint>>,
+}
+
+impl fmt::Debug for DebugDialect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DebugDialect")
+            .field("flags", &self.flags)
+            .field("stdout", &self.stdout)
+            .field("log", &self.log)
+            .field("display", &self.display.is_some())
+            .finish()
+    }
 }
 
 impl DebugDialect {
@@ -41,7 +57,19 @@ impl DebugDialect {
             flags,
             stdout,
             log: RefCell::new(Vec::new()),
+            display: None,
         }
+    }
+
+    /// Displays printed values with `display` (for example, using their types), falling back to
+    /// disassembling them where it returns `None`.
+    #[must_use]
+    pub fn with_display(
+        mut self,
+        display: impl Fn(&str, &Allocator, NodePtr) -> Option<String> + 'static,
+    ) -> Self {
+        self.display = Some(Rc::new(display));
+        self
     }
 
     pub fn log(&self) -> Vec<PrintMessage> {
@@ -93,7 +121,11 @@ impl Dialect for DebugDialect {
                 return Err(EvalErr::InvalidNilTerminator(args));
             };
 
-            let message = disassemble_value(allocator, value);
+            let message = self
+                .display
+                .as_ref()
+                .and_then(|display| display(&srcloc, allocator, value))
+                .unwrap_or_else(|| disassemble_value(allocator, value));
 
             if self.stdout {
                 eprintln!("{}: {}", srcloc.cyan().bold(), message);
