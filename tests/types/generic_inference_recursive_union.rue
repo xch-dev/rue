@@ -132,3 +132,18 @@ fn held_any<A>(value: A | Any, depth: Int) -> A {
 test fn guard_held_any() -> Int {
     held_any((5, 6), 1)
 }
+
+fn upper_bounded<A>(value: A, function: fn(a: A) -> Int, depth: Int) -> A {
+    if depth > 0 {
+        // The lambda bounds the callee's `A` by `A | nil` from above, and `value` gives it `A`, so
+        // it's `A`, which is what's returned (main inferred `A | nil` here)
+        return upper_bounded(value, fn(_a: A | nil) => 1, depth - 1);
+    }
+
+    let _ = function(value);
+    value
+}
+
+test fn upper_bound_holding_the_original() -> Int {
+    upper_bounded(12, fn(a: Int) => a, 1)
+}

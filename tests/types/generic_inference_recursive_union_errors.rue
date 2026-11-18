@@ -25,6 +25,31 @@ fn other_generic<A, B>(value: A, _other: B, also: B, depth: Int) -> B {
     also
 }
 
+fn lambda_parameter<A>(
+    first: fn(a: A) -> Int,
+    second: fn(a: A) -> Int,
+    value: A,
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        // The callee's `A` is `A`, not the first lambda's `A | nil` as on main, so the untyped
+        // lambda's parameter is `A` (a breaking change of an inferred type, #370)
+        return lambda_parameter(
+            fn(_a: A | nil) => 1,
+            fn(v) => {
+                let _wrong: Bytes32 = v;
+                1
+            },
+            value,
+            depth - 1,
+        );
+    }
+
+    first(value) + second(value)
+}
+
 fn main() -> Int {
-    held_any(1, 1) + other_generic(1, 2, 3, 1)
+    held_any(1, 1)
+        + other_generic(1, 2, 3, 1)
+        + lambda_parameter(fn(a: Int) => a, fn(a: Int) => a, 1, 1)
 }

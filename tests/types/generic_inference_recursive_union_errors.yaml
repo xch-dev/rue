@@ -1,3 +1,4 @@
 diagnostics:
 - Cannot compare `Atom | 1 @ (Atom | <1>, Atom | <1>)` to `Bytes32` without a type guard, since the runtime value must be constrained at generic_inference_recursive_union_errors.rue:9:31
 - Cannot compare `A | Any` to `Bytes32` without a type guard, since the runtime value must be constrained at generic_inference_recursive_union_errors.rue:21:31
+- Cannot compare `A` to `Bytes32` without a type guard, since the runtime value must be constrained at generic_inference_recursive_union_errors.rue:40:39
