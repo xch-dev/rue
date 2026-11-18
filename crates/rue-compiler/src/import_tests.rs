@@ -2334,3 +2334,31 @@ fn types_in_inline_modules_use_super() {
     compiled.assert_no_errors();
     assert_eq!(compiled.type_origin("a::U"), "a");
 }
+
+#[test]
+fn super_import_paths_through_a_non_module_are_reported() {
+    // `X` is a constant in the file, so it can't have a path after it. `sha256` is only in the
+    // builtins, which `super::` doesn't look in.
+    let compiled = compile(
+        "
+        const X: Int = 1;
+
+        mod a {
+            import super::X::Y;
+            import super::sha256::x;
+        }
+
+        fn main() -> Int {
+            X
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "5:27 SubpathNotSupported(\"X\")",
+            "6:27 UndeclaredSymbol(\"sha256\")",
+        ]
+    );
+}
