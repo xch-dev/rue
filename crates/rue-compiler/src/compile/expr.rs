@@ -1,4 +1,5 @@
 mod binary;
+mod call_inference;
 mod cast;
 mod const_expr;
 mod field_access;
