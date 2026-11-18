@@ -262,8 +262,8 @@ impl ArgumentOrder {
                         holds_up: lambda.generic_parameters().is_none(),
                         returns_reads,
                     },
-                    AstExpr::FunctionCallExpr(call) => ArgumentKind::Other {
-                        needs_expected: call.args().next().is_none(),
+                    AstExpr::FunctionCallExpr(_) => ArgumentKind::Other {
+                        needs_expected: is_call_without_arguments(arg),
                     },
                     _ => ArgumentKind::Other {
                         needs_expected: false,
@@ -740,8 +740,10 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
 /// have, with the call's generics that it still references replaced by what's inferred so far,
 /// from the arguments before it and the elements before this one. A lambda in such an element
 /// would otherwise get the generic itself as a parameter type, as in `apply((1, fn(x) => x))`
-/// (#350). Only an element with a lambda in it is compiled against this, so that other elements
-/// are compiled as they were.
+/// (#350), and a call with no arguments, such as `make()` in `first((5, make()))`, couldn't be
+/// inferred. Only those two kinds of element are compiled against this. Any other element is
+/// compiled as it was, since a call in it that infers its own generics from its arguments could
+/// infer them from the refined type instead, such as `opt(nil)` with `opt<T>(x: T | nil)`.
 ///
 /// In a recursive call, the callee's generics are renamed, and the argument's expected type has
 /// them restored to the caller's generics before it's compiled (see `restore_renamed`), so it
@@ -751,7 +753,9 @@ pub(crate) fn refine_element_expected(
     expected: TypeId,
     element: &AstExpr,
 ) -> TypeId {
-    if !has_lambda(element) || !references_call_generics(ctx, expected) {
+    if !(has_lambda(element) || is_call_without_arguments(element))
+        || !references_call_generics(ctx, expected)
+    {
         return expected;
     }
 
@@ -760,9 +764,9 @@ pub(crate) fn refine_element_expected(
     };
 
     let inferred = ctx.solve_arguments(&argument.solver, &argument.infer);
-    // The element has a lambda in it, so it keeps what the arguments infer, as a lambda argument
-    // that something can still add to does. That's defensive: the expected bounds would only
-    // matter for a generic an earlier element maps, which no test has found to differ
+    // Without the expected type's bounds, as for a lambda argument that something can still add
+    // to: a later element can. This is defensive, since the bounds would only matter for a generic
+    // an earlier element maps, and no program has been found where it differs
     let mappings = ctx.argument_mappings(&argument.solver, &argument.infer, &inferred, false);
     ctx.set_argument_frame(Some(argument));
 
@@ -779,6 +783,12 @@ fn references_call_generics(ctx: &mut Compiler, ty: TypeId) -> bool {
     generics
         .into_iter()
         .any(|generic| contains_generic(ctx.types_mut(), ty, generic))
+}
+
+/// Whether the expression is a call with no arguments, whose generics, if it has any to infer,
+/// only its expected type can infer.
+fn is_call_without_arguments(expr: &AstExpr) -> bool {
+    matches!(expr, AstExpr::FunctionCallExpr(call) if call.args().next().is_none())
 }
 
 /// Whether the expression is, or has in it, a lambda.
