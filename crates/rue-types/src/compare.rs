@@ -10,10 +10,10 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, Choices, FALLBACK,
-    FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Inference,
+    FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic, Inference,
     InferenceCandidates, Memo, Type, TypeId, compare_memo_enabled, comparison_step_limit,
-    free_generics, grow_stack, has_non_contractive_cycle, pick_inferred_type, reachable,
-    references_generic, step, stringify_impl, substitute, substitute_with_mappings,
+    free_generics, grow_stack, has_non_contractive_cycle, reachable, references_generic, step,
+    stringify_impl, substitute, substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -26,15 +26,10 @@ pub enum Comparison {
 /// A candidate that references the generics of a generic function on the other side that's being
 /// instantiated, such as `(T, T)` for `B` when `fn<T>(x: T) -> (T, T)` is compared to
 /// `fn(a: A) -> B`. Those generics aren't in scope where the candidate is used, so once the
-/// comparison has finished, they're replaced with what they're instantiated as (`A` here).
-///
-/// A lower or held candidate takes the least instantiation, from the instance's lower bounds, and
-/// an upper candidate the greatest, from its upper bounds. An instance without bounds of that kind
-/// is instantiated as `Never` or `Any` respectively, such as `(Never, Never)` for `B` when
-/// `fn<T>() -> (T, T)` is compared to `fn() -> B` (#339). That's the least or greatest type for the
-/// generic itself, regardless of where the candidate references it, so a generic that's only a
-/// parameter type in the candidate gives it the greatest function type instead. An instance that's
-/// left out of `ComparisonContext::instantiations` is left as is.
+/// comparison has finished, each of them is replaced with a var that stands for its instance (see
+/// `ComparisonContext::finish`), which the inference resolves like its other vars (see
+/// `Inference::add_instance`). An instance that's left out of
+/// `ComparisonContext::instantiations` is left as is.
 #[derive(Debug, Clone, Copy)]
 struct DeferredCandidate {
     generic: TypeId,
@@ -179,11 +174,12 @@ pub(crate) struct ComparisonContext<'a> {
     /// `compare_member` last reset it.
     revisited: usize,
     /// The candidates that reference the generics of a function being instantiated, which are
-    /// replaced with what those generics are instantiated as once the comparison has finished.
+    /// replaced with vars for their instances once the comparison has finished.
     deferred: Vec<DeferredCandidate>,
     /// Once a candidate has been deferred, the bounds of each instance that finishes afterward, by
-    /// binder. An instance is left out if one of its bounds references a generic bound in the
-    /// comparison, since that generic isn't in scope where the candidate is used.
+    /// binder, as handed over by `ComparisonContext::instance_finished`. An instance is left out if
+    /// one of its bounds references a generic bound in the comparison, since that generic isn't in
+    /// scope where the candidate is used.
     instantiations: FxHashMap<usize, InferenceCandidates>,
     /// The generics being inferred that were renamed from another generic (see `Inference::rename`),
     /// kept here so that comparisons without the inference see them too.
@@ -274,7 +270,8 @@ impl ComparisonContext<'_> {
     }
 
     /// Adds a candidate for a generic being inferred. If it references the generics of a function
-    /// being instantiated, it's deferred until they've been instantiated (see `DeferredCandidate`).
+    /// being instantiated, it's deferred until their instances have finished (see
+    /// `DeferredCandidate`).
     fn add_candidate(
         &mut self,
         arena: &Arena<Type>,
@@ -399,9 +396,16 @@ impl ComparisonContext<'_> {
         }
     }
 
-    /// Records the bounds of a finished instance once a candidate has been deferred, unless one of
-    /// them references a generic bound in the comparison.
-    fn record_instantiation(&mut self, arena: &Arena<Type>, binder: usize, instance: &Instance) {
+    /// Hands the bounds of an instance whose function comparison has finished to the inference,
+    /// once a candidate has been deferred, unless one of them references a generic bound in the
+    /// comparison. They become the bounds of the instance's var (see `ComparisonContext::finish`).
+    fn instance_finished(
+        &mut self,
+        arena: &Arena<Type>,
+        binder: usize,
+        lower: &[Bound],
+        upper: &[Bound],
+    ) {
         if self.deferred.is_empty() {
             return;
         }
@@ -414,17 +418,17 @@ impl ComparisonContext<'_> {
                 .local
                 .is_none_or(|branch| self.choices.matched_so_far(branch))
         };
-        let mut lower: Vec<&Bound> = instance.lower.iter().filter(holds).collect();
-        let mut upper: Vec<&Bound> = instance.upper.iter().filter(holds).collect();
+        let mut kept_lower: Vec<&Bound> = lower.iter().filter(holds).collect();
+        let mut kept_upper: Vec<&Bound> = upper.iter().filter(holds).collect();
 
-        if lower.is_empty() && upper.is_empty() {
-            lower = instance.lower.iter().collect();
-            upper = instance.upper.iter().collect();
+        if kept_lower.is_empty() && kept_upper.is_empty() {
+            kept_lower = lower.iter().collect();
+            kept_upper = upper.iter().collect();
         }
 
         let mut free = true;
 
-        for &&(ty, env, _) in lower.iter().chain(&upper) {
+        for &&(ty, env, _) in kept_lower.iter().chain(&kept_upper) {
             self.cache_references(arena, ty);
             free &= self.references[&ty]
                 .iter()
@@ -435,8 +439,8 @@ impl ComparisonContext<'_> {
             self.instantiations.insert(
                 binder,
                 InferenceCandidates {
-                    lower: lower.iter().map(|&&(ty, _, _)| ty).collect(),
-                    upper: upper.iter().map(|&&(ty, _, _)| ty).collect(),
+                    lower: kept_lower.iter().map(|&&(ty, _, _)| ty).collect(),
+                    upper: kept_upper.iter().map(|&&(ty, _, _)| ty).collect(),
                     held: Vec::new(),
                 },
             );
@@ -444,10 +448,16 @@ impl ComparisonContext<'_> {
     }
 
     /// Replaces the generics of the instantiated functions that the deferred candidates reference
-    /// with what they're instantiated as (see `DeferredCandidate`).
-    fn resolve_deferred(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
-        // What each binder is instantiated as, for lower (and held) and upper candidates
-        let mut picked: FxHashMap<(usize, bool), TypeId> = FxHashMap::default();
+    /// with a new var for each instance, which the inference takes along with the instance's
+    /// bounds, and then resolves the instances (see `Inference::add_instance`).
+    fn finish(&mut self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) {
+        // It's taken for the loop, so the context's own helpers can still be used
+        let Some(infer) = self.infer.take() else {
+            return;
+        };
+
+        // The var that stands for each binder's instance
+        let mut vars: FxHashMap<usize, TypeId> = FxHashMap::default();
 
         for DeferredCandidate {
             generic,
@@ -456,9 +466,7 @@ impl ComparisonContext<'_> {
             env,
         } in mem::take(&mut self.deferred)
         {
-            let infer = self.infer.as_mut().unwrap();
             let ty = infer.candidates_mut(generic).list_mut(kind)[index];
-            let upper = matches!(kind, CandidateKind::Upper);
             let mut mappings = HashMap::new();
 
             self.cache_references(arena, ty);
@@ -468,36 +476,27 @@ impl ComparisonContext<'_> {
                     continue;
                 };
 
-                let Some(instance) = self.instantiations.get(&binder) else {
+                let Some(bounds) = self.instantiations.get(&binder) else {
                     continue;
                 };
 
-                let instantiated = *picked.entry((binder, upper)).or_insert_with(|| {
-                    // Without bounds of the candidate's kind, the least instantiation is `Never`
-                    // and the greatest is `Any`
-                    if upper {
-                        let upper = InferenceCandidates {
-                            upper: instance.upper.clone(),
-                            ..Default::default()
-                        };
-                        pick_inferred_type(arena, builtins, &self.renamed, None, &upper)
-                            .unwrap_or(builtins.permissive_any)
-                    } else if instance.lower.is_empty() {
-                        builtins.never
-                    } else {
-                        pick_inferred_type(arena, builtins, &self.renamed, None, instance).unwrap()
-                    }
+                let var = *vars.entry(binder).or_insert_with(|| {
+                    let var = arena.alloc(Type::Generic(Generic { name: None }));
+                    infer.add_instance(var, bounds);
+                    var
                 });
 
-                mappings.insert(other, instantiated);
+                mappings.insert(other, var);
             }
 
             if !mappings.is_empty() {
                 let ty = substitute_with_mappings(arena, ty, &mappings);
-                let infer = self.infer.as_mut().unwrap();
                 infer.candidates_mut(generic).list_mut(kind)[index] = ty;
             }
         }
+
+        infer.resolve_instances(arena, builtins);
+        self.infer = Some(infer);
     }
 
     /// Pushes binders for a function's generics onto the environment, and returns the new one.
@@ -917,7 +916,7 @@ pub fn compare_with_inference_limited(
         ..Default::default()
     };
     let result = compare_impl(arena, builtins, &mut ctx, lhs, rhs, None, None);
-    ctx.resolve_deferred(arena, builtins);
+    ctx.finish(arena, builtins);
 
     if let Some((lhs_name, rhs_name)) = &names {
         trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
@@ -950,7 +949,7 @@ pub fn infer_from_expected(
         ..Default::default()
     };
     compare_impl(arena, builtins, &mut ctx, ty, expected, None, None);
-    ctx.resolve_deferred(arena, builtins);
+    ctx.finish(arena, builtins);
 }
 
 pub fn compare(
@@ -1319,7 +1318,7 @@ fn compare_impl_inner(
 
                     if binder.merged.is_none() {
                         let instance = mem::take(&mut ctx.instances[binder.instance.unwrap()]);
-                        ctx.record_instantiation(arena, index, &instance);
+                        ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
                         bounds.push(instance);
                     }
                 }
@@ -1763,6 +1762,50 @@ mod tests {
         assert!(instantiates_directly(&arena, direct));
         assert!(instantiates_directly(&arena, shadowed));
         assert!(!instantiates_directly(&arena, nested));
+    }
+
+    /// A candidate that references a passed generic function's generic is resolved through its
+    /// instance's var, which is gone from the inference afterward (see
+    /// `Inference::resolve_instances`).
+    #[rstest]
+    #[case::from_lower_bounds(true)]
+    #[case::without_lower_bounds(false)]
+    fn test_instance_var(#[case] param: bool) {
+        let mut arena = Arena::new();
+        let builtins = BuiltinTypes::new(&mut arena);
+        let mut generic = || arena.alloc(Type::Generic(Generic { name: None }));
+        let (t, a, b) = (generic(), generic(), generic());
+        let pair = arena.alloc(Type::Pair(Pair::new(t, t)));
+
+        let function = |arena: &mut Arena<Type>, generics, param: Option<TypeId>, ret| {
+            arena.alloc(Type::Function(FunctionType {
+                generics,
+                params: param
+                    .map(|ty| FunctionParameter::new("x", ty))
+                    .into_iter()
+                    .collect(),
+                nil_terminated: true,
+                ret,
+            }))
+        };
+
+        // `fn<T>(x: T) -> (T, T)` to `fn(x: A) -> B` gives `B` the candidate `(A, A)`, and
+        // `fn<T>() -> (T, T)` to `fn() -> B` gives it `(Never, Never)` (#339)
+        let lhs = function(&mut arena, vec![t], param.then_some(t), pair);
+        let rhs = function(&mut arena, vec![], param.then_some(a), b);
+
+        let mut infer = Inference::new([a, b]);
+        let result = compare_with_inference(&mut arena, &builtins, lhs, rhs, Some(&mut infer));
+        assert_eq!(result, Comparison::Assign);
+        assert_eq!(infer.generics.keys().copied().collect::<Vec<_>>(), [a, b]);
+
+        let lower = &infer.candidates(b).unwrap().lower;
+        assert_eq!(lower.len(), 1);
+        let Type::Pair(pair) = &arena[lower[0]] else {
+            panic!("expected a pair");
+        };
+        let instantiated = if param { a } else { builtins.never };
+        assert_eq!((pair.first, pair.rest), (instantiated, instantiated));
     }
 
     #[rstest]
