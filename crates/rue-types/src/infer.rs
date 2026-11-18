@@ -310,6 +310,15 @@ impl Inference {
         self.choices.results()
     }
 
+    /// Whether a candidate collected under the union members is needed, given `choice_results`: each
+    /// member matched, and is the only one of its union that did. A candidate of a member that
+    /// matched along with another isn't needed, since the value could be held by the other.
+    pub(crate) fn required(&self, results: &[Option<Comparison>], branches: &[BranchId]) -> bool {
+        branches
+            .iter()
+            .all(|&branch| self.choices.only_match(results, branch))
+    }
+
     /// Whether a candidate collected under the union members holds, given `choice_results`.
     pub(crate) fn holds(&self, results: &[Option<Comparison>], branches: &[BranchId]) -> bool {
         branches
@@ -385,6 +394,21 @@ impl Choices {
         result.is_some()
             && result == results[branch.choice]
             && !self.is_held(branch, result.unwrap())
+    }
+
+    /// Whether the union member matched (see `Choices::matched_with`), and no other member of its
+    /// union, or the fallback, gave the same result.
+    pub(crate) fn only_match(&self, results: &[Option<Comparison>], branch: BranchId) -> bool {
+        let choice = &self.0[branch.choice];
+        let index = branch.member.min(choice.members.len());
+
+        self.matched_with(results, branch)
+            && choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .enumerate()
+                .all(|(other, &result)| other == index || result != results[branch.choice])
     }
 
     /// Whether the union member collected bounds for a generic being instantiated while another

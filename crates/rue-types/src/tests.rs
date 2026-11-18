@@ -1639,25 +1639,28 @@ mod inference {
     }
 
     #[test]
-    fn keeps_inferred_generics_when_passing_upper_bounds() {
+    fn narrows_inferred_generics_when_passing_upper_bounds() {
         let mut db = Db::new();
         let int = db.builtins.int;
         let (a, b) = (db.generic("A"), db.generic("B"));
         let five = db.literal(AtomSemantic::Int, &[5]);
 
-        // `A` is inferred as `Int` from `5`, so `B`'s bound `5` isn't passed on to it, since it
-        // might be left over from a union member that didn't match. `C` isn't inferred, so the
-        // bounds are passed on for it, which mustn't change the others
-        let c = db.generic("C");
-        let mut infer = Inference::new([a, b, c]);
+        // `A` has the lower bound `5`, and `B`'s bound `5` is passed on to it, so it's `5` rather
+        // than widened to `Int` (#337). `B`, which is inferred through it, is `5` too
+        let mut infer = Inference::new([a, b]);
         db.infer(a, b, &mut infer);
         db.infer(five, a, &mut infer);
         infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut infer);
         let mappings =
             resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &HashMap::new());
-        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&a], five);
+        assert_eq!(
+            compare(&mut db.arena, &db.builtins, mappings[&b], five),
+            Comparison::Assign
+        );
 
-        // `A` falls back to `5`, so it isn't given `B`'s bound `Int` either
+        // `A` falls back to `5`, and `B`'s bound `Int` doesn't widen it, since `5` is the most
+        // specific type that satisfies it
         let mut infer = Inference::new([a, b]);
         db.infer(a, b, &mut infer);
         infer_from_expected(&mut db.arena, &db.builtins, b, int, &mut infer);

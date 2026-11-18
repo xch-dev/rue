@@ -46,10 +46,16 @@ pub fn add_expected_bounds(
 /// `feed(identity, inc)`, `identity` gives `B` the lower bound `A` and `inc` gives it the upper
 /// bound `Int`, so `A` is bounded by `Int` as well, and both are inferred as `Int` (#285).
 ///
-/// This only replaces the mappings of the generics that weren't inferred, or were inferred as a type
-/// that references another generic being inferred that wasn't, since those are reported as errors.
-/// Every other mapping is kept, since upper bounds that nothing enforces can be left over from a
-/// union member that didn't match, and passing those on would change what's inferred.
+/// A generic that was inferred is given them too, so that it isn't widened past them: in
+/// `run(identity, five_only, 5)`, `A` has the lower bound `5` and reaches `five_only`'s `B ≤ 5`
+/// through `A ≤ B`, so it's `5` rather than `Int` (#337). Only the upper bounds of union members
+/// that matched are resolved from (`Inference::keep_matched`), one is only added if the generic's
+/// lower bounds satisfy it, and a mapping is only replaced by a narrower one (see
+/// `narrow_inferred`).
+///
+/// A generic that wasn't inferred, or was inferred as a type that references another generic
+/// being inferred that wasn't, also takes the lower bounds passed down through its compound upper
+/// bounds (see `pass_lower_bounds`).
 pub fn resolve_inference_with_bounds(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -57,6 +63,7 @@ pub fn resolve_inference_with_bounds(
     fallback: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
     let mut mappings = resolve_inference_with_fallback(arena, builtins, infer, fallback);
+    narrow_inferred(arena, builtins, infer, fallback, &mut mappings);
 
     let uninferred: HashSet<TypeId> = infer
         .generics
@@ -103,6 +110,85 @@ pub fn resolve_inference_with_bounds(
     }
 
     mappings
+}
+
+/// Replaces the mapping of each generic that was inferred, as a type that doesn't reference one
+/// that wasn't, with what it's inferred as once the upper bounds of the generics it's inferred
+/// through are passed on to it, if that's narrower (see `resolve_inference_with_bounds`).
+fn narrow_inferred(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &Inference,
+    fallback: &HashMap<TypeId, TypeId>,
+    mappings: &mut HashMap<TypeId, TypeId>,
+) {
+    let inferred: HashSet<TypeId> = infer
+        .generics
+        .keys()
+        .copied()
+        .filter(|generic| {
+            mappings.get(generic).is_some_and(|&ty| {
+                !free_generics(arena, ty)
+                    .into_iter()
+                    .any(|other| infer.passes_bounds(other) && !mappings.contains_key(&other))
+            })
+        })
+        .collect();
+
+    if inferred.is_empty() {
+        return;
+    }
+
+    // Only the upper bounds that don't reference a generic being inferred are passed on. One that
+    // does, such as `B | 5`, can't be checked until that generic is resolved, and the widened type
+    // could still satisfy it then
+    let bounds: Vec<Bound> = upper_bounds(infer)
+        .into_iter()
+        .filter(|(_, upper, _)| {
+            !free_generics(arena, *upper)
+                .into_iter()
+                .any(|other| infer.is_target(other))
+        })
+        .collect();
+
+    if bounds.is_empty() {
+        return;
+    }
+
+    let mut bounded = infer.clone();
+
+    pass_upper_bounds(
+        arena,
+        builtins,
+        &mut bounded,
+        Vec::new(),
+        bounds,
+        |generic| inferred.contains(&generic),
+    );
+
+    // Bounds are only added to the generics in `inferred`, so if none was added to, resolving again
+    // gives the same mappings
+    if inferred
+        .iter()
+        .all(|generic| bounded.generics[generic].upper.len() == infer.generics[generic].upper.len())
+    {
+        return;
+    }
+
+    let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
+
+    // A mapping is only replaced by a narrower one, since the bounds can only rule out what it was
+    // widened to. A generic that falls back to `5` and is given the bound `Int` stays `5`, and one
+    // with only held candidates, such as `L` when `nil` is passed to `L | nil`, keeps `nil` (#333)
+    for generic in inferred {
+        if let Some(&ty) = resolved.get(&generic)
+            && !free_generics(arena, ty).contains(&generic)
+            && compare_renamed(arena, builtins, &infer.renamed, ty, mappings[&generic])
+                == Comparison::Assign
+        {
+            mappings.insert(generic, ty);
+        }
+    }
 }
 
 /// Gives the generics in each generic's compound upper bounds that `accepts` allows the lower
@@ -372,13 +458,26 @@ pub(crate) fn pass_upper_bounds(
             let mut inner = Inference::new(targets.iter().copied());
             infer_from_expected(arena, builtins, ty, upper, &mut inner);
 
+            // A bound collected under a member of a union in the upper bound is only passed on if
+            // that member is the only one the lower bound matches. In `(T, T) ≤ (Int, Int) | (5, 5)`,
+            // both match, so `T` isn't bounded by `5`. In `(T, nil) ≤ (Int, nil) | nil`, only the
+            // pair does, so `T` is bounded by `Int`
+            let results = inner.choice_results();
+
             for (&other, candidates) in &inner.generics {
                 if accepts(other) {
                     stack.extend(
                         candidates
                             .upper
                             .iter()
-                            .map(|&upper| ((other, upper, passed.clone()), true)),
+                            .enumerate()
+                            .filter(|&(index, _)| {
+                                inner.required(
+                                    &results,
+                                    inner.branches(other, CandidateKind::Upper, index),
+                                )
+                            })
+                            .map(|(_, &upper)| ((other, upper, passed.clone()), true)),
                     );
                 }
             }
