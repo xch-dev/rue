@@ -1,0 +1,17 @@
+diagnostics:
+- Unused function `apply` at generic_inference_argument_order_errors.rue:1:4
+- Unused function `lambda_in_a_pair` at generic_inference_argument_order_errors.rue:7:4
+- "Cannot assign `(1, fn(x: T) -> T)` to `(Int, fn(value: Int) -> Int)`, since they are incompatible at generic_inference_argument_order_errors.rue:8:11"
+- Unused function `head_or` at generic_inference_argument_order_errors.rue:11:4
+- Unused parameter `list` at generic_inference_argument_order_errors.rue:11:15
+- Unused function `take` at generic_inference_argument_order_errors.rue:15:4
+- Unused parameter `function` at generic_inference_argument_order_errors.rue:15:22
+- Unused function `candidates_keep_the_argument_order` at generic_inference_argument_order_errors.rue:21:4
+- "Cannot assign `fn(x: 5 | \"hi\") -> 5` to `fn(a: String | 5) -> String | 5`, since they are incompatible at generic_inference_argument_order_errors.rue:22:42"
+- Binding `shown` is returned directly after it's declared at generic_inference_argument_order_errors.rue:23:5
+- Cannot compare `String | 5` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_argument_order_errors.rue:23:22
+- Unused function `either` at generic_inference_argument_order_errors.rue:27:4
+- Unused parameter `first` at generic_inference_argument_order_errors.rue:27:17
+- Unused function `lambda_with_inferred_parameters_goes_first` at generic_inference_argument_order_errors.rue:33:4
+- Binding `shown` is returned directly after it's declared at generic_inference_argument_order_errors.rue:35:5
+- Cannot compare `Int | String` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_argument_order_errors.rue:35:22

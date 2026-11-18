@@ -1,0 +1,37 @@
+fn apply<T>(pair: (T, fn(value: T) -> Int)) -> Int {
+    pair.rest(pair.first)
+}
+
+// A lambda inside another argument is compiled with that argument, so it still gets the raw
+// generic (#350, left to the next step of #362)
+fn lambda_in_a_pair() -> Int {
+    apply((1, fn(x) => x))
+}
+
+fn head_or<T>(list: List<T>, default: T) -> T {
+    default
+}
+
+fn take<T>(value: T, function: fn(a: T) -> T) -> T {
+    value
+}
+
+// `head_or(...)` waits for the typed lambda, but its candidates still come first, so the union's
+// members are in the order the arguments come in, as they were before
+fn candidates_keep_the_argument_order() -> nil {
+    let value = take(head_or(nil, "hi"), fn(x: 5 | "hi") => 5);
+    let shown: nil = value;
+    shown
+}
+
+fn either<A, T>(first: fn(a: A) -> T, second: fn(b: Int) -> T) -> T {
+    second(1)
+}
+
+// The untyped lambda goes first, as #265 ordered them, since its parameter type is already
+// inferred while the typed lambda's `A` isn't, so its `Int` comes before `String`
+fn lambda_with_inferred_parameters_goes_first() -> nil {
+    let value = either(fn(x: Int) => "a", fn(y) => 5);
+    let shown: nil = value;
+    shown
+}
