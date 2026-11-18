@@ -1,0 +1,26 @@
+import module::MISSING;
+import module::MissingType;
+import module::PRIVATE;
+import module::PrivateType;
+import module::VALUE::INNER;
+import module::VALUE::InnerType;
+import nope::NopeType;
+import nope::X;
+
+mod module {
+    export const VALUE: Int = 1;
+
+    const PRIVATE: Int = 2;
+
+    type PrivateType = Int;
+}
+
+// The uses of a name whose import failed aren't reported again, whatever the reason it failed,
+// including in a function's signature
+fn f(a: MissingType, b: PrivateType, c: InnerType) -> NopeType {
+    a + b + c
+}
+
+fn main() -> Int {
+    X + MISSING + INNER + PRIVATE + f(1, 2, 3)
+}

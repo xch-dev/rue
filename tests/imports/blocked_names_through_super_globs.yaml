@@ -1,0 +1,10 @@
+diagnostics:
+- Unresolved import `Missing` at blocked_names_through_super_globs.rue:1:11
+- Unresolved import `missing` at blocked_names_through_super_globs.rue:2:11
+- Cannot reference private symbol `secret` in module `m` at blocked_names_through_super_globs.rue:3:11
+- Undeclared symbol `nope` at blocked_names_through_super_globs.rue:4:8
+- Undeclared symbol `nope` at blocked_names_through_super_globs.rue:5:8
+- Unused function `secret` at blocked_names_through_super_globs.rue:8:8
+- Unused import `*` at blocked_names_through_super_globs.rue:16:19
+- Unused import `*` at blocked_names_through_super_globs.rue:19:23
+- Unused import `*` at blocked_names_through_super_globs.rue:22:27

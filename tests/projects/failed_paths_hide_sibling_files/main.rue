@@ -1,0 +1,22 @@
+import nope::utils;
+import utils;
+import utils::greet;
+
+mod a {
+    import super::utils::greet;
+    import super::utils;
+
+    export fn by_path() -> Int {
+        super::utils::greet() + utils::greet()
+    }
+
+    export fn imported() -> Int {
+        greet()
+    }
+}
+
+// A name whose import's path doesn't resolve hides the sibling file with the name, from paths and
+// from imports, like a name whose import found only a private item
+fn main() -> Int {
+    a::by_path() + a::imported() + utils::greet() + greet()
+}
