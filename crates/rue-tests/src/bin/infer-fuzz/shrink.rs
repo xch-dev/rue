@@ -10,7 +10,7 @@ use std::cell::Cell;
 use std::collections::BTreeSet;
 
 use crate::generate::legalize;
-use crate::program::{Expr, ExprKind, Function, Named, Program, Root, Strip, Ty, Variant};
+use crate::program::{Expr, ExprKind, Function, Named, Program, Root, Strip, Ty, Variant, is_std};
 
 /// Shrinks the program and variant, keeping each change for which `fails` is still true. Gives
 /// up after `budget` calls of `fails`.
@@ -74,6 +74,11 @@ pub fn shrink(
         }
 
         for index in (0..program.functions.len()).rev() {
+            // A function from the standard library isn't printed, so removing it would always
+            // look harmless, and leave its calls with no signature to check removability against
+            if is_std(&program.functions[index].name) {
+                continue;
+            }
             let mut candidate = program.clone();
             candidate.functions.remove(index);
             if check(&candidate, &variant) {

@@ -688,7 +688,7 @@ impl Program {
 /// The standard library's generic functions that generator version 2 calls.
 pub const STD_FUNCTIONS: &[&str] = &["merge_list"];
 
-fn is_std(name: &str) -> bool {
+pub fn is_std(name: &str) -> bool {
     STD_FUNCTIONS.contains(&name)
 }
 

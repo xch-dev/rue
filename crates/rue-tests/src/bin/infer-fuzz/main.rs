@@ -14,8 +14,9 @@
 //! Each program is checked in three variants: every removable generic argument removed (`all`),
 //! a random subset of them (`some`, sometimes written as `_`), and the arguments of one site
 //! (`one`). Generator version 2 adds a fourth, `expected`, which removes only the arguments
-//! that nothing but the expected type gives a type to, such as `let x: Int | nil = none();`. Failures are grouped by category and the first diagnostic, and a few of each group are
-//! shrunk to a small reproduction.
+//! that nothing but the expected type gives a type to, such as `let x: Int | nil = none();`.
+//! Failures are grouped by category and the first diagnostic, and a few of each group are shrunk
+//! to a small reproduction.
 //!
 //! Run it in release mode, with a seed range:
 //!

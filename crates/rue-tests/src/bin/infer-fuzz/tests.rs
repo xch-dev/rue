@@ -1986,3 +1986,62 @@ fn a_value_for_maybe_gives_what_it_would_for_its_inner_type() {
     );
     assert_eq!(masks(&program(vec![wrap], None, value)), [[true, false]]);
 }
+
+/// A wrapped call is removed all or nothing: if anything can't be inferred, nothing is.
+#[test]
+fn wrapped_calls_with_a_generic_nothing_infers_keep_all_their_arguments() {
+    // `C` is only in the parameter, and `nil` gives it nothing
+    let make = function(
+        "make",
+        &["A", "B", "C"],
+        &[("value", "C | nil")],
+        "fn(a: A) -> B",
+    );
+    let t = || Ty::Rigid("T".to_string());
+    let annotation = Ty::GenFn(vec!["T".to_string()], vec![t()], Box::new(t()));
+    let call = Expr::new(
+        ExprKind::Call {
+            site: None,
+            function: "make".to_string(),
+            generic_args: vec![t(), t(), Ty::Int],
+            args: vec![nil(Ty::opt(Ty::Int))],
+        },
+        Ty::func(vec![t()], t()),
+    );
+    let wrapped = Expr::new(
+        ExprKind::Wrapped {
+            site: 0,
+            layers: vec![(vec!["T".to_string()], vec![("w1".to_string(), t())])],
+            call: Box::new(call),
+        },
+        annotation.clone(),
+    );
+    let program = program(vec![make], Some(annotation), wrapped);
+    assert_eq!(masks(&program), [[false, false, false]]);
+    assert_eq!(legalize(&program, &strip_all(&[0])), Variant::default());
+}
+
+#[test]
+fn shrinking_keeps_functions_from_the_standard_library() {
+    let merge = function(
+        "merge_list",
+        &["T"],
+        &[("a", "List<T>"), ("b", "List<T>")],
+        "List<T>",
+    );
+    let list = Ty::list(Ty::Int);
+    let items = |value| Expr::new(ExprKind::List(vec![int(value, Ty::Int)]), list.clone());
+    let value = call(
+        0,
+        "merge_list",
+        vec![Ty::Int],
+        vec![items(1), items(2)],
+        list.clone(),
+    );
+    let program = program(vec![merge], None, value);
+
+    let (program, _) = shrink::shrink(program, strip_all(&[0]), 100, &mut |program, variant| {
+        program.exprs().iter().any(|expr| variant.strips(expr))
+    });
+    assert_eq!(program.functions.len(), 1);
+}

@@ -1472,7 +1472,7 @@ impl Removable<'_> {
         let expected = self.use_expected && expected && !expr.ty.is_function_union();
 
         // A shrunk program can call a function it no longer declares. It doesn't compile, so its
-        // sites don't matter.
+        // sites don't matter. Functions from the standard library are never removed.
         match &expr.kind {
             ExprKind::Call {
                 site: Some(site),
