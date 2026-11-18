@@ -124,11 +124,7 @@ pub fn compile_function_call_expr(
             expected
         });
 
-        let fallback = if let Some(expected) = &expected {
-            ctx.resolve_inference(expected)
-        } else {
-            HashMap::new()
-        };
+        let solver = ctx.call_solver(expected);
 
         let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
         let mut checks = Vec::new();
@@ -144,7 +140,7 @@ pub fn compile_function_call_expr(
         ctx.push_inferred_generics(function.generics.clone());
 
         loop {
-            let inferred = ctx.resolve_inference(&infer);
+            let inferred = ctx.solve_arguments(&solver, &infer);
 
             let i = if let Some(i) = others.next() {
                 i
@@ -172,29 +168,9 @@ pub fn compile_function_call_expr(
             let expr = &args[i];
             let param = function.params[i].ty;
 
-            // Use what has been inferred from the previous arguments as the expected type
-            let mut mappings = inferred;
-
-            for (&generic, &ty) in &fallback {
-                mappings.entry(generic).or_insert(ty);
-            }
-
-            // A generic that's still unmapped may be inferred through others that the type
-            // expected of the call bounds, such as `A` in `let x: 5 = map(identity, map(...));`
-            if let Some(expected) = &expected
-                && function
-                    .generics
-                    .iter()
-                    .any(|generic| !mappings.contains_key(generic))
-            {
-                let mut bounded = infer.clone();
-                ctx.add_expected_bounds(&mut bounded, expected);
-
-                for (generic, ty) in ctx.resolve_inference(&bounded) {
-                    mappings.entry(generic).or_insert(ty);
-                }
-            }
-
+            // Use what has been inferred from the previous arguments as the expected type, along
+            // with what the type expected of the call implies for the generics they don't map
+            let mut mappings = ctx.argument_mappings(&solver, &infer, inferred);
             restore_renamed(ctx, &mut mappings, &renamed);
 
             let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
@@ -214,15 +190,7 @@ pub fn compile_function_call_expr(
             debug!("Unresolved function call argument");
         }
 
-        if let Some(expected) = &expected {
-            ctx.add_expected_bounds(&mut infer, expected);
-        }
-
-        // A generic that the arguments don't constrain falls back to the type expected of the call,
-        // and the generics inferred from it are resolved through that. One that still isn't
-        // inferred must satisfy the upper bounds of the generics it's inferred through, so that
-        // `feed(identity, inc)` infers `A` from `inc` through `B`
-        let mut mappings = ctx.resolve_inference_with_bounds(&infer, &fallback);
+        let mut mappings = ctx.solve_call(&solver, &mut infer);
         restore_renamed(ctx, &mut mappings, &renamed);
 
         for &generic in &function.generics {

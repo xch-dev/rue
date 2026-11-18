@@ -1060,7 +1060,7 @@ mod recursive {
 
 mod inference {
     use super::*;
-    use crate::{pass_upper_bounds, upper_bounds};
+    use crate::{CallSolver, pass_upper_bounds, upper_bounds};
 
     fn candidates(infer: &Inference, generic: TypeId) -> InferenceCandidates {
         infer.candidates(generic).unwrap().clone()
@@ -1373,6 +1373,81 @@ mod inference {
 
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(mappings[&t], db.builtins.int);
+    }
+
+    #[test]
+    fn call_solver_uses_the_expected_type() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let (a, b, t) = (db.generic("A"), db.generic("B"), db.generic("T"));
+
+        // A call like `let x: 5 = pair(5, make());` with `fn pair<A, B>(a: A, b: B) -> (A, B)`
+        // and the expected type `(5, Int)`
+        let ret = db.pair(a, b);
+        let expected_type = db.pair(five, int);
+        let mut expected = Inference::new([a, b]);
+        infer_from_expected(
+            &mut db.arena,
+            &db.builtins,
+            ret,
+            expected_type,
+            &mut expected,
+        );
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, Some(expected));
+
+        // Before any argument, both generics fall back to the expected type for the next argument,
+        // but the arguments themselves infer nothing
+        let mut infer = Inference::new([a, b]);
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        assert!(inferred.is_empty());
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&a], five);
+        assert_eq!(mappings[&b], int);
+
+        // Once `5` is passed for `A`, it maps `A`, widened, so the expected type only fills `B`
+        db.infer(five, a, &mut infer);
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(inferred[&a], int);
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+
+        // The final solve adds the expected bounds to `A`, so the literal isn't widened
+        let mappings = solver.solve(&mut db.arena, &db.builtins, &mut infer);
+        assert_eq!(mappings[&a], five);
+        assert_eq!(mappings[&b], int);
+
+        // Without an expected type, nothing falls back, and the literal is widened
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, None);
+        let mut infer = Inference::new([t]);
+        db.infer(five, t, &mut infer);
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&t], int);
+        assert_eq!(
+            solver.solve(&mut db.arena, &db.builtins, &mut infer)[&t],
+            int
+        );
+    }
+
+    #[test]
+    fn call_solver_infers_unmapped_generics_through_others_for_arguments() {
+        let mut db = Db::new();
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        // `let x: 5 = map(identity, map(...));`: `identity` gives `B` the candidate `A`, and the
+        // expected type bounds `B`, so the next argument sees `A ≤ 5` through it (#331)
+        let mut expected = Inference::new([a, b]);
+        infer_from_expected(&mut db.arena, &db.builtins, b, five, &mut expected);
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, Some(expected));
+
+        let mut infer = Inference::new([a, b]);
+        infer.push(b, CandidateKind::Lower, a, Vec::new());
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        let mappings = solver.argument_mappings(&mut db.arena, &db.builtins, &infer, inferred);
+        assert_eq!(mappings[&a], five);
     }
 
     /// Collects the bounds that `B` is expected to satisfy, as in `let x: <expected> = ...` for a

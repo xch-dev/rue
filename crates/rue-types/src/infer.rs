@@ -4,9 +4,11 @@
 
 mod bounds;
 mod resolve;
+mod solve;
 
 pub use bounds::*;
 pub use resolve::*;
+pub use solve::*;
 
 use std::mem;
 

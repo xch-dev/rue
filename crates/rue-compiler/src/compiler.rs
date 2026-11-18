@@ -19,7 +19,7 @@ use rue_hir::{
 use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{Check, CheckError, Comparison, Inference, Type, TypeId};
+use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, Type, TypeId};
 
 use crate::{FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
@@ -715,40 +715,40 @@ impl Compiler {
         );
     }
 
-    /// Constrains the generics with what was inferred from the type expected of the call, where
-    /// the arguments satisfy it.
-    pub fn add_expected_bounds(&mut self, infer: &mut Inference, expected: &Inference) {
-        rue_types::add_expected_bounds(self.db.types_mut(), &self.builtins.types, infer, expected);
+    /// A solver for a call's generics, given what was inferred from the type expected of it.
+    pub fn call_solver(&mut self, expected: Option<Inference>) -> CallSolver {
+        CallSolver::new(self.db.types_mut(), &self.builtins.types, expected)
     }
 
-    pub fn resolve_inference_with_bounds(
+    /// What the arguments of a call compiled so far infer on their own (see
+    /// `CallSolver::solve_arguments`).
+    pub fn solve_arguments(
         &mut self,
+        solver: &CallSolver,
         infer: &Inference,
-        fallback: &HashMap<TypeId, TypeId>,
     ) -> HashMap<TypeId, TypeId> {
-        rue_types::resolve_inference_with_bounds(
-            self.db.types_mut(),
-            &self.builtins.types,
-            infer,
-            fallback,
-        )
+        solver.solve_arguments(self.db.types_mut(), &self.builtins.types, infer)
     }
 
-    pub fn resolve_inference(&mut self, infer: &Inference) -> HashMap<TypeId, TypeId> {
-        rue_types::resolve_inference(self.db.types_mut(), &self.builtins.types, infer)
-    }
-
-    pub fn resolve_inference_with_fallback(
+    /// The mappings that the next argument's expected type is substituted with (see
+    /// `CallSolver::argument_mappings`).
+    pub fn argument_mappings(
         &mut self,
+        solver: &CallSolver,
         infer: &Inference,
-        fallback: &HashMap<TypeId, TypeId>,
+        inferred: HashMap<TypeId, TypeId>,
     ) -> HashMap<TypeId, TypeId> {
-        rue_types::resolve_inference_with_fallback(
-            self.db.types_mut(),
-            &self.builtins.types,
-            infer,
-            fallback,
-        )
+        solver.argument_mappings(self.db.types_mut(), &self.builtins.types, infer, inferred)
+    }
+
+    /// The mappings a call is checked with, once its arguments have been compiled (see
+    /// `CallSolver::solve`).
+    pub fn solve_call(
+        &mut self,
+        solver: &CallSolver,
+        infer: &mut Inference,
+    ) -> HashMap<TypeId, TypeId> {
+        solver.solve(self.db.types_mut(), &self.builtins.types, infer)
     }
 
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
