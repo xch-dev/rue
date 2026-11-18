@@ -890,9 +890,10 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
 /// In a recursive call, the callee's generics are renamed, and the argument's expected type has
 /// those that aren't inferred yet restored to the caller's generics (see `restore_renamed`). They're
 /// mapped back to the callee's here where they're a lambda element's parameter types (see
-/// `restored_parameters`), and the ones that are still not inferred are restored again. So the
-/// lambda gets the caller's generic unless an element before it can't be assigned to its expected
-/// type with the caller's generic (see `record_element`).
+/// `restored_parameters`), and the ones that are still not inferred, or are inferred as a type
+/// that's assignable to the caller's generic, are restored again. So the lambda gets the caller's
+/// generic unless an element before it can't be assigned to its expected type with the caller's
+/// generic (see `record_element`), and what it infers can't be either.
 pub(crate) fn refine_element_expected(
     ctx: &mut Compiler,
     expected: TypeId,
@@ -924,6 +925,18 @@ pub(crate) fn refine_element_expected(
     // to: a later element can. This is defensive, since the bounds would only matter for a generic
     // an earlier element maps, and no program has been found where it differs
     let mut mappings = ctx.argument_mappings(&argument.solver, &argument.infer, &inferred, false);
+
+    // An element can fail to be assigned for a reason that has nothing to do with the caller's
+    // generic, so what it infers can still be assignable to that, such as `Same<T>`, which main
+    // compiles with the callee's generic inferred as the caller's
+    for (&generic, copy) in &refinable {
+        if let Some(&ty) = mappings.get(copy)
+            && ctx.is_assignable(ty, generic)
+        {
+            mappings.remove(copy);
+        }
+    }
+
     restore_renamed(ctx, &mut mappings, &argument.renamed);
     ctx.set_argument_frame(Some(argument));
 

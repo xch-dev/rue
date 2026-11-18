@@ -278,3 +278,30 @@ fn recursive_union_of_pairs<T>(
 test fn guard_union_of_pairs_with_the_callers_generic() -> Int {
     recursive_union_of_pairs((1, fn(value) => value), 1)
 }
+
+fn recursive_other_part<T, U>(value: U, pair: ((U, T), fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        let same: Same<T> = pair.first.rest;
+
+        // Guard: `("x", same)` can't be assigned to `(Int, T)` while it's compiled, since the `1`
+        // before it maps `U`, but `Same<T>` is assignable to `T`, so the lambda still gets `T`,
+        // as before
+        return recursive_other_part(
+            1,
+            (
+                ("x", same),
+                fn(value) => {
+                    let _same: T = value;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn guard_element_that_fails_for_another_generic() -> Int {
+    recursive_other_part(1, ((1, 2), fn(value) => value), 1)
+}
