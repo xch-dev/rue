@@ -445,8 +445,15 @@ pub(crate) fn pass_upper_bounds(
 
             given.push((upper, holds));
 
+            // Lower bounds that reference a var for a passed generic function's instance can't be
+            // checked until it's instantiated, which these bounds are passed on to decide (see
+            // `CallSolver::instantiate`)
             if expanded[&generic].is_some_and(|lower| {
-                compare_renamed(arena, builtins, &renamed, lower, upper) != Comparison::Assign
+                !free_generics(arena, lower)
+                    .iter()
+                    .any(|&other| infer.is_instance(other))
+                    && compare_renamed(arena, builtins, &renamed, lower, upper)
+                        != Comparison::Assign
             }) {
                 continue;
             }

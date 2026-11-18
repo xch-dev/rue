@@ -39,6 +39,48 @@ struct DeferredCandidate {
     env: Option<usize>,
 }
 
+/// Where the generics that a bound of an instance references are bound, which decides whether it's
+/// in scope where the candidates that reference the instance are used (see `instance_bounds`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoundScope {
+    /// Outside of the comparison (or nowhere), so it's in scope.
+    Free,
+    /// Inside of it, by functions that are being instantiated themselves, such as `Id`'s `U` in
+    /// #357.
+    Instantiated,
+    /// Inside of it, and at least one of them is rigid, such as `U` in `fn<U>(a: U) -> B`.
+    Rigid,
+}
+
+/// The bounds that the var for an instance takes, or `None` if the instance is left as is in the
+/// candidates that reference it. Without joint solving, an instance with a bound that isn't in
+/// scope is left as is (#357). With it, such a bound is left out if the generics it references are
+/// instantiated themselves, since they can be instantiated as whatever this instance is. One that
+/// references a rigid generic is only met by `Any` from below (or `Never` from above) in scope.
+fn instance_bounds(
+    builtins: &BuiltinTypes,
+    policy: InstancePolicy,
+    bounds: &[(CandidateKind, TypeId, BoundScope)],
+) -> Option<InferenceCandidates> {
+    let mut candidates = InferenceCandidates::default();
+
+    for &(kind, ty, scope) in bounds {
+        let ty = match (scope, policy) {
+            (BoundScope::Free, _) => ty,
+            (_, InstancePolicy::Eager) => return None,
+            (BoundScope::Instantiated, InstancePolicy::Joint) => continue,
+            (BoundScope::Rigid, InstancePolicy::Joint) => match kind {
+                CandidateKind::Upper => builtins.never,
+                CandidateKind::Lower | CandidateKind::Held => builtins.permissive_any,
+            },
+        };
+
+        candidates.list_mut(kind).push(ty);
+    }
+
+    Some(candidates)
+}
+
 /// The types being compared, whether the comparison is flipped, what the generics they reference
 /// are bound to (interned in `ComparisonContext::bindings`), and the semantics passed down to it.
 /// This is everything that the result depends on other than the stack, so that a comparison is
@@ -177,9 +219,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// replaced with vars for their instances once the comparison has finished.
     deferred: Vec<DeferredCandidate>,
     /// Once a candidate has been deferred, the bounds of each instance that finishes afterward, by
-    /// binder, as handed over by `ComparisonContext::instance_finished`, which leaves out the ones
-    /// that can't be instantiated in scope.
-    instantiations: FxHashMap<usize, InferenceCandidates>,
+    /// binder, as handed over by `ComparisonContext::instance_finished`, along with where the
+    /// generics they reference are bound.
+    instantiations: FxHashMap<usize, Vec<(CandidateKind, TypeId, BoundScope)>>,
     /// The generics being inferred that were renamed from another generic (see `Inference::rename`),
     /// kept here so that comparisons without the inference see them too.
     renamed: FxHashMap<TypeId, TypeId>,
@@ -396,15 +438,12 @@ impl ComparisonContext<'_> {
     }
 
     /// Hands the bounds of an instance whose function comparison has finished to the inference,
-    /// once a candidate has been deferred. They become the bounds of the instance's var (see
-    /// `ComparisonContext::finish`). A bound that references a generic bound in the comparison isn't
-    /// in scope where the candidate is used: when the instances are solved jointly
-    /// (`InstancePolicy::Joint`), it's left out, or replaced as below, and otherwise the instance is
-    /// left out (#357).
+    /// once a candidate has been deferred, along with where the generics they reference are bound.
+    /// They become the bounds of the instance's var, as far as they're in scope where the candidate
+    /// is used (see `ComparisonContext::finish` and `instance_bounds`).
     fn instance_finished(
         &mut self,
         arena: &Arena<Type>,
-        builtins: &BuiltinTypes,
         binder: usize,
         lower: &[Bound],
         upper: &[Bound],
@@ -429,12 +468,7 @@ impl ComparisonContext<'_> {
             kept_upper = upper.iter().collect();
         }
 
-        let joint = self
-            .infer
-            .as_ref()
-            .is_some_and(|infer| infer.instance_policy() == InstancePolicy::Joint);
-        let mut free = true;
-        let mut bounds = InferenceCandidates::default();
+        let mut bounds = Vec::new();
 
         for (kind, kept) in [
             (CandidateKind::Lower, &kept_lower),
@@ -448,35 +482,22 @@ impl ComparisonContext<'_> {
                     .filter_map(|&generic| self.resolve(generic, env))
                     .collect();
 
-                if inner.is_empty() {
-                    bounds.list_mut(kind).push(ty);
-                    continue;
-                }
-
-                free = false;
-
-                // A bound that references a rigid generic bound in the comparison, such as `T ≥ U`
-                // with `fn<U>(a: U) -> B`, is only met by `Any` (or `Never` from above) in scope.
-                // One that only references generics that are instantiated themselves, such as
-                // `Id`'s `U` in #357, is left out, since they can be instantiated as whatever
-                // this instance is
-                if joint
-                    && inner
-                        .iter()
-                        .any(|&binder| self.binders[binder].instance.is_none())
+                let scope = if inner.is_empty() {
+                    BoundScope::Free
+                } else if inner
+                    .iter()
+                    .all(|&binder| self.binders[binder].instance.is_some())
                 {
-                    bounds.list_mut(kind).push(match kind {
-                        CandidateKind::Upper => builtins.never,
-                        _ => builtins.permissive_any,
-                    });
-                }
+                    BoundScope::Instantiated
+                } else {
+                    BoundScope::Rigid
+                };
+
+                bounds.push((kind, ty, scope));
             }
         }
 
-        // Without joint solving, an instance with such a bound is left as is (#357)
-        if free || joint {
-            self.instantiations.insert(binder, bounds);
-        }
+        self.instantiations.insert(binder, bounds);
     }
 
     /// Replaces the generics of the instantiated functions that the deferred candidates reference
@@ -487,6 +508,16 @@ impl ComparisonContext<'_> {
         let Some(infer) = self.infer.take() else {
             return;
         };
+
+        // The bounds of each binder's instance that can be instantiated in scope
+        let policy = infer.instance_policy();
+        let instantiable: FxHashMap<usize, InferenceCandidates> = self
+            .instantiations
+            .iter()
+            .filter_map(|(&binder, bounds)| {
+                Some((binder, instance_bounds(builtins, policy, bounds)?))
+            })
+            .collect();
 
         // The var that stands for each binder's instance
         let mut vars: FxHashMap<usize, TypeId> = FxHashMap::default();
@@ -508,7 +539,7 @@ impl ComparisonContext<'_> {
                     continue;
                 };
 
-                let Some(bounds) = self.instantiations.get(&binder) else {
+                let Some(bounds) = instantiable.get(&binder) else {
                     continue;
                 };
 
@@ -527,7 +558,7 @@ impl ComparisonContext<'_> {
             }
         }
 
-        if infer.instance_policy() == InstancePolicy::Eager {
+        if policy == InstancePolicy::Eager {
             infer.resolve_instances(arena, builtins);
         }
 
@@ -1353,13 +1384,7 @@ fn compare_impl_inner(
 
                     if binder.merged.is_none() {
                         let instance = mem::take(&mut ctx.instances[binder.instance.unwrap()]);
-                        ctx.instance_finished(
-                            arena,
-                            builtins,
-                            index,
-                            &instance.lower,
-                            &instance.upper,
-                        );
+                        ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
                         bounds.push(instance);
                     }
                 }

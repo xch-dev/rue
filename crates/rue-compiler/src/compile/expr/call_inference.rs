@@ -45,15 +45,11 @@ pub(crate) fn infer_call(
         base.rename(copy, generic);
     }
 
-    // The instances of generic functions passed as arguments are solved with the callee's generics
-    base.set_instance_policy(InstancePolicy::Joint);
-
     // The type expected of the call is used for the generics that the arguments don't
     // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
     // ones they do from being widened past it
     let expected = expected_type.map(|expected_type| {
         let mut expected = base.clone();
-        expected.set_instance_policy(InstancePolicy::Eager);
         ctx.infer_from_expected(function.ret, expected_type, &mut expected);
 
         // The generics of an enclosing call that are still being inferred can't be inferred
@@ -67,6 +63,9 @@ pub(crate) fn infer_call(
 
         expected
     });
+
+    // The instances of generic functions passed as arguments are solved with the callee's generics
+    base.set_instance_policy(InstancePolicy::Joint);
 
     let solver = Rc::new(ctx.call_solver(expected));
 

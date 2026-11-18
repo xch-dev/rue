@@ -120,9 +120,11 @@ impl CallSolver {
         &self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
-        infer: Inference,
+        mut infer: Inference,
     ) -> HashMap<TypeId, TypeId> {
-        let mut infer = self.instantiate(arena, builtins, &infer, true).into_owned();
+        if infer.has_instances() {
+            infer = self.instantiate(arena, builtins, &infer, true).into_owned();
+        }
 
         if let Some(expected) = &self.expected {
             add_expected_bounds(arena, builtins, &mut infer, expected);

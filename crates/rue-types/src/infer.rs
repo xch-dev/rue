@@ -68,10 +68,11 @@ pub enum InstancePolicy {
     /// solving, such as the bounds implied by a call's expected type.
     #[default]
     Eager,
-    /// They stay in the inference and are solved with the generics of the function being called, so
-    /// that what bounds those can bound them too, such as the type expected of the call. One that
-    /// nothing bounds takes the least or greatest type for where it is in each generic's type
-    /// (see `Inference::resolve_instances`).
+    /// They stay in the inference, and each solve passes on to them the bounds that the generics of
+    /// the function being called imply, such as the type expected of the call, before they're
+    /// instantiated. One that's only contravariant in a lower candidate, such as `T` in
+    /// `fn(x: T) -> nil`, takes the greatest instantiation rather than the least (see
+    /// `Inference::resolve_instances`).
     Joint,
 }
 
@@ -564,7 +565,7 @@ impl Choices {
 }
 
 /// Which list of a generic's `InferenceCandidates` a candidate is in.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CandidateKind {
     Lower,
     Upper,

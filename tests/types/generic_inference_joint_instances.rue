@@ -21,6 +21,37 @@ test fn lower_bounds_reach_the_instance_annotated() -> Int {
     result.rest
 }
 
+test fn expected_type_reaches_the_instance() -> Int {
+    // `B ≤ (7, 5)` gives `U ≤ 7` and `T ≤ 5`, so the literals aren't widened to `Int`
+    let result: (7, 5) = map(swap, (5, 7));
+    result.first
+}
+
+fn chain<A, B>(value: A, functions: (fn(a: A) -> B, fn(b: B) -> B)) -> B {
+    functions.rest(functions.first(value))
+}
+
+test fn element_of_an_argument() -> Int {
+    let result = chain((1, nil), (swap, fn(pair) => pair));
+    result.rest
+}
+
+fn pick<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
+    if depth > 0 {
+        // The generics are renamed in the recursive call
+        let inner = pick(swap, (1, nil), depth - 1);
+        let _check: Int = inner.rest;
+        function(value)
+    } else {
+        function(value)
+    }
+}
+
+test fn recursive_call() -> Int {
+    let result = pick(swap, (1, nil), 1);
+    result.rest
+}
+
 // `Id`'s `U` is instantiated as whatever `takes`'s `T` is, so the bounds between them are left out
 // (#357)
 type Id = fn<U>(x: U) -> U;
@@ -52,6 +83,21 @@ test fn bounded_by_a_rigid_generic() -> Int {
     unchecked_cast(result.first)
 }
 
+// `T ≤ U` with the rigid `U` is only met by `Never`, which `B`'s candidate takes as the greatest
+// instantiation, since `T` is only a parameter type in it
+fn rigid_callback<B>(_function: fn<U>(a: fn(y: U) -> nil) -> B) -> B {
+    unchecked_cast(fn(_x: Int) => nil)
+}
+
+fn relay<T>(_callback: fn(y: T) -> nil) -> fn(x: T) -> nil {
+    unchecked_cast(fn(_x: Int) => nil)
+}
+
+test fn bounded_from_above_by_a_rigid_generic() -> Int {
+    let _function = rigid_callback(relay);
+    0
+}
+
 // A generic that nothing bounds is the least type for where it is in the candidate, which for a
 // parameter type is `Any` (#358)
 fn call<B>(function: fn() -> B) -> B {
@@ -74,8 +120,44 @@ test fn contravariant_instance_unannotated() -> Int {
     0
 }
 
-// The bounds passed on to the instances can reference each other (`A ≥ T` and `T ≤ A` here), which
-// isn't a bound of the instance on itself
+// In an upper candidate, the greatest instantiation is kept wherever the generic is, since a generic
+// with only upper candidates is inferred as them, and `fn(x: Never) -> nil` would be a wider type
+fn take<T>(_function: fn(x: T) -> nil) -> nil {
+    nil
+}
+
+fn feed<B>(_function: fn(a: B) -> nil) -> B {
+    unchecked_cast(fn(_x: Int) => nil)
+}
+
+test fn contravariant_instance_in_an_upper_candidate() -> Int {
+    let function = feed(take);
+    function(1);
+    0
+}
+
+// `G`'s upper candidate passes a bound on to `mk`'s instance that references `take_pair`'s, which is
+// replaced first
+fn use_both<G>(_function: fn(x: G) -> nil, make: fn() -> G) -> G {
+    make()
+}
+
+fn take_pair<T>(_pair: (fn(y: T) -> nil, Int)) -> nil {
+    nil
+}
+
+fn mk<U>() -> (U, U) {
+    unchecked_cast(nil)
+}
+
+test fn instance_bounded_by_another_in_a_parameter_type() -> Int {
+    let _result = use_both(take_pair, mk);
+    0
+}
+
+// `same`'s `T` passes bounds between `swap`'s and `pairs`'s instances, so they reference each
+// other, and one of them ends up referencing itself once another is replaced with it, which says
+// nothing about what it is
 fn pairs<T>() -> (T, T) {
     unchecked_cast((5, 5))
 }
