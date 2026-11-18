@@ -57,7 +57,7 @@ fn odd_hex_param(value: 0x123) -> Bool {
 }
 
 test fn string_escapes() -> String {
-    "tab\tnewline\nreturn\rquote\"apostrophe\'backslash\\nul\0"
+    "tab\tnewline\nreturn\rquote\"apostrophe'backslash\\nul\0"
 }
 
 test fn string_hex_escapes() -> Bool {
@@ -73,26 +73,27 @@ test fn string_line_continuation() -> "Hello, world!" {
         world!"
 }
 
-test fn string_escaped_type() -> "a\"b\\c\n" {
-    "a\"b\\c\n"
+test fn string_escaped_type() -> "a\"b'c\\\n" {
+    "a\"b'c\\\n"
 }
 
 test fn string_escapes_match_bytes() -> Bool {
-    "\"\\" == 0x225c as String
+    "\"'\\" == 0x22275c as String
 }
 
-test fn single_quoted_string() -> "Hello, world!" {
-    'Hello, world!'
+// The formatter keeps single quotes on strings with more double quotes than single quotes
+test fn single_quoted_string() -> Bool {
+    'say "hi"' == 0x7361792022686922 as String
 }
 
 test fn single_quoted_string_quotes() -> Bool {
-    'a"b\'c' == "a\"b'c"
+    'a"b"\'c' == 0x612262222763 as String
 }
 
 test fn single_quoted_string_escapes() -> Bool {
-    '\n\t\\\x41\u{1F600}' == "\n\t\\A😀"
+    '"\n\t\\\x41\u{1F600}"' == 0x220a095c41f09f988022 as String
 }
 
-test fn single_quoted_string_type() -> 'it\'s' {
-    "it's"
+test fn single_quoted_string_type() -> 'say "it"' {
+    'say "it"'
 }

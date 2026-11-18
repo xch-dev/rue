@@ -2,7 +2,7 @@ use std::{borrow::Cow, str::FromStr};
 
 use num_bigint::BigInt;
 use num_traits::Num;
-use rue_lexer::unescape_string;
+use rue_lexer::string_value;
 use rue_lir::bigint_atom;
 use rue_parser::{SyntaxKind, SyntaxToken, T};
 use rue_types::{Atom, AtomRestriction, AtomSemantic};
@@ -26,7 +26,7 @@ impl LiteralValue {
 
     fn decode_text(kind: SyntaxKind, text: &str) -> Self {
         match kind {
-            SyntaxKind::String => Self::String(decode_string(text)),
+            SyntaxKind::String => Self::String(string_value(text)),
             SyntaxKind::Hex => {
                 let text = text.strip_prefix("0x").unwrap_or(text);
 
@@ -92,32 +92,6 @@ impl LiteralValue {
             Self::False => Atom::FALSE,
         }
     }
-}
-
-/// Decodes the value of a string literal token, including its escape sequences. Invalid escapes
-/// are reported by the parser, so they're left out here.
-pub fn decode_string(text: &str) -> String {
-    let mut text = text;
-
-    // Strings are quoted with either `"` or `'`, and end with the same quote they start with
-    if let Some(quote) = text.chars().next().filter(|&c| c == '"' || c == '\'') {
-        text = &text[1..];
-
-        // The closing quote can only be escaped in an unterminated string, which ends with a
-        // backslash rather than a quote
-        if let Some(stripped) = text.strip_suffix(quote)
-            && !ends_with_escape(stripped)
-        {
-            text = stripped;
-        }
-    }
-
-    unescape_string(text, |_, _| {})
-}
-
-/// Whether the text ends with an odd number of backslashes, which escape what comes after it.
-fn ends_with_escape(text: &str) -> bool {
-    text.bytes().rev().take_while(|&byte| byte == b'\\').count() % 2 == 1
 }
 
 fn decode_radix(text: &str, radix: u32) -> BigInt {

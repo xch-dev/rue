@@ -53,6 +53,81 @@ pub fn unescape_string(text: &str, mut on_error: impl FnMut(Range<usize>, Escape
     output
 }
 
+/// Splits a string literal token into its quote and the text between its quotes. The closing
+/// quote is missing from an unterminated string, so it's only stripped if it isn't escaped.
+fn split_string(token: &str) -> Option<(char, &str, bool)> {
+    let quote = token.chars().next().filter(|&c| c == '"' || c == '\'')?;
+    let text = &token[1..];
+
+    match text.strip_suffix(quote) {
+        Some(stripped) if !ends_with_escape(stripped) => Some((quote, stripped, true)),
+        _ => Some((quote, text, false)),
+    }
+}
+
+/// Whether the text ends with an odd number of backslashes, which escape what comes after it.
+fn ends_with_escape(text: &str) -> bool {
+    text.bytes().rev().take_while(|&byte| byte == b'\\').count() % 2 == 1
+}
+
+/// Decodes the value of a string literal token, quoted with either `"` or `'`. Invalid escapes
+/// are left out, since the parser reports them.
+pub fn string_value(token: &str) -> String {
+    let text = split_string(token).map_or(token, |(_, text, _)| text);
+    unescape_string(text, |_, _| {})
+}
+
+/// Rewrites a string literal token to use the preferred quote (`"` or `'`), the way Prettier does:
+/// the other quote is used instead if the string contains more of the preferred one, so that
+/// fewer quotes need escaping. Quotes that no longer need escaping are unescaped, and every other
+/// escape is kept as written, so the string's value doesn't change. An unterminated string is
+/// returned as is.
+pub fn requote_string(token: &str, preferred: char) -> String {
+    let Some((_, text, true)) = split_string(token) else {
+        return token.to_string();
+    };
+
+    let alternate = if preferred == '"' { '\'' } else { '"' };
+    let count = |quote| text.chars().filter(|&c| c == quote).count();
+    let quote = if count(preferred) > count(alternate) {
+        alternate
+    } else {
+        preferred
+    };
+
+    let mut output = String::with_capacity(token.len() + 2);
+    output.push(quote);
+
+    let mut chars = text.chars();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                // An escaped quote only needs its backslash if it's the enclosing quote
+                Some(escaped @ ('"' | '\'')) => {
+                    if escaped == quote {
+                        output.push('\\');
+                    }
+                    output.push(escaped);
+                }
+                Some(escaped) => {
+                    output.push('\\');
+                    output.push(escaped);
+                }
+                None => output.push('\\'),
+            },
+            c if c == quote => {
+                output.push('\\');
+                output.push(c);
+            }
+            c => output.push(c),
+        }
+    }
+
+    output.push(quote);
+    output
+}
+
 /// Decodes one escape sequence after its backslash, or returns `None` for a line continuation.
 fn unescape_char(chars: &mut Chars<'_>) -> Result<Option<char>, EscapeError> {
     let Some(c) = chars.next() else {
@@ -264,6 +339,56 @@ mod tests {
             unescape("a\\"),
             ("a".to_string(), vec![(1..2, EscapeError::LoneBackslash)])
         );
+    }
+
+    #[test]
+    fn test_string_value() {
+        assert_eq!(string_value(r#""a\"b""#), "a\"b");
+        assert_eq!(string_value(r#"'a"b\'c'"#), "a\"b'c");
+        assert_eq!(string_value(r#""\\""#), "\\");
+        // Unterminated strings, where the last quote is escaped or of the other kind
+        assert_eq!(string_value(r#""a\""#), "a\"");
+        assert_eq!(string_value(r#"'a""#), "a\"");
+    }
+
+    #[test]
+    fn test_requote_string() {
+        let requote = |token: &str, preferred| {
+            let output = requote_string(token, preferred);
+            assert_eq!(
+                string_value(&output),
+                string_value(token),
+                "{token:?} -> {output:?}"
+            );
+            output
+        };
+
+        assert_eq!(requote("'hello'", '"'), r#""hello""#);
+        assert_eq!(requote(r#""hello""#, '\''), "'hello'");
+        assert_eq!(requote(r#""hello""#, '"'), r#""hello""#);
+
+        // The other quote is used when it needs fewer escapes, and ties go to the preferred one
+        assert_eq!(requote(r#"'say "hi"'"#, '"'), r#"'say "hi"'"#);
+        assert_eq!(requote(r#""it's""#, '\''), r#""it's""#);
+        assert_eq!(requote(r#"'a"b\'c'"#, '"'), r#""a\"b'c""#);
+        assert_eq!(requote(r#"'a"b\'c'"#, '\''), r#"'a"b\'c'"#);
+
+        // Quotes are escaped or unescaped as needed
+        assert_eq!(requote(r#"'it\'s'"#, '"'), r#""it's""#);
+        assert_eq!(requote(r#""\'""#, '"'), r#""'""#);
+        assert_eq!(requote(r#""a\"b""#, '"'), r#"'a"b'"#);
+
+        // Other escapes are kept as written, including escaped backslashes before a quote
+        assert_eq!(
+            requote(r#"'\n\x41\u{1F600}\\'"#, '"'),
+            r#""\n\x41\u{1F600}\\""#
+        );
+        assert_eq!(requote(r#"'a\\'"#, '"'), r#""a\\""#);
+        assert_eq!(requote("'a\\\n   b'", '"'), "\"a\\\n   b\"");
+
+        // Unterminated strings are left alone
+        assert_eq!(requote("'abc", '"'), "'abc");
+        assert_eq!(requote(r#""a\""#, '\''), r#""a\""#);
     }
 
     #[test]

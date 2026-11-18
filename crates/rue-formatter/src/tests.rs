@@ -104,6 +104,7 @@ fn spaces_at_the_end_of_a_line_do_not_count_toward_the_width() {
     let options = FormatOptions {
         max_width: 30,
         indent_width: 3,
+        ..FormatOptions::default()
     };
     let output =
         format_source("fn f() {\n    a & (b == c(d) /* block */ );\n}\n", &options).unwrap();
@@ -116,6 +117,40 @@ fn spaces_at_the_end_of_a_line_do_not_count_toward_the_width() {
         }
     "#]]
     .assert_eq(&output);
+}
+
+#[test]
+fn strings_use_double_quotes_by_default() {
+    check(
+        r#"fn main() { ['plain', 'it\'s', 'say "hi"', 'a"b\'c', "\'", '\n\\', 'line \
+    continued'] }"#,
+        expect![[r#"
+            fn main() {
+                ["plain", "it's", 'say "hi"', "a\"b'c", "'", "\n\\", "line \
+                continued"]
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn strings_use_single_quotes_when_configured() {
+    let options = FormatOptions {
+        single_quote: true,
+        ..FormatOptions::default()
+    };
+    let output = format_source(
+        r#"fn main() { ["plain", "it's", 'say "hi"', "a\"b'c", "\"", "\x41"] }"#,
+        &options,
+    )
+    .unwrap();
+    expect![[r#"
+        fn main() {
+            ['plain', "it's", 'say "hi"', 'a"b\'c', '"', '\x41']
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(format_source(&output, &options).unwrap(), output);
 }
 
 #[test]
@@ -426,6 +461,7 @@ fn binary_precedence_obeys_exact_width_and_custom_indent() {
     let exact = FormatOptions {
         max_width: 24,
         indent_width: 2,
+        ..FormatOptions::default()
     };
     let flat = format_source("fn main(){first+second*third}", &exact).unwrap();
     expect![[r#"
@@ -438,6 +474,7 @@ fn binary_precedence_obeys_exact_width_and_custom_indent() {
     let narrow = FormatOptions {
         max_width: 23,
         indent_width: 2,
+        ..FormatOptions::default()
     };
     let wrapped = format_source("fn main(){first+second*third}", &narrow).unwrap();
     expect![[r#"
@@ -1276,6 +1313,7 @@ fn fill_layout_obeys_exact_width_and_custom_indentation() {
     let exact = FormatOptions {
         max_width: 17,
         indent_width: 2,
+        ..FormatOptions::default()
     };
     let flat = format_source("fn main(){const{12345}}", &exact).unwrap();
     expect![[r#"
@@ -1288,6 +1326,7 @@ fn fill_layout_obeys_exact_width_and_custom_indentation() {
     let narrow = FormatOptions {
         max_width: 14,
         indent_width: 2,
+        ..FormatOptions::default()
     };
     let broken = format_source("fn main(){const{12345}}", &narrow).unwrap();
     expect![[r#"
@@ -1477,6 +1516,7 @@ fn custom_indentation_width_is_applied_consistently() {
     let options = FormatOptions {
         max_width: 24,
         indent_width: 2,
+        ..FormatOptions::default()
     };
     let output = format_source(
         "fn main(){if first_condition&&second_condition{let values=[first_condition,second_condition];values}}",
@@ -1619,6 +1659,7 @@ fn very_narrow_width_still_produces_valid_idempotent_output() {
     let options = FormatOptions {
         max_width: 8,
         indent_width: 2,
+        ..FormatOptions::default()
     };
     let output = format_source(
         "fn main(value:LongType)->LongType{consume(value,value)}",

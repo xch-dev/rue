@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, Source, SourceKind};
-use rue_lexer::Lexer;
+use rue_lexer::{Lexer, string_value};
 use rue_parser::{Parser, SyntaxKind, SyntaxNode};
 use thiserror::Error;
 
@@ -193,6 +193,10 @@ fn append_node_signature(node: &SyntaxNode, signature: &mut Vec<String>) {
             rowan::NodeOrToken::Node(child) => append_node_signature(&child, signature),
             rowan::NodeOrToken::Token(token)
                 if token.kind() == rue_parser::T![,] && is_optional_trailing_comma(&token) => {}
+            // Strings can be requoted, which changes their text but not their value
+            rowan::NodeOrToken::Token(token) if token.kind() == SyntaxKind::String => {
+                signature.push(format!("t:String:{:?}", string_value(token.text())));
+            }
             rowan::NodeOrToken::Token(token) if !token.kind().is_trivia() => {
                 signature.push(format!("t:{:?}:{}", token.kind(), token.text()));
             }

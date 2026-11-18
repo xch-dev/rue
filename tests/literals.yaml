@@ -119,47 +119,44 @@ tests:
   byte_cost: 192000
   total_cost: 192020
 - name: string_escaped_type
-  program: (q . 106800307004170)
-  debug_program: (q . 106800307004170)
-  output: "106800307004170"
+  program: (q . 27340877703896074)
+  debug_program: (q . 27340877703896074)
+  output: "27340877703896074"
   runtime_cost: 20
-  byte_cost: 108000
-  total_cost: 108020
+  byte_cost: 120000
+  total_cost: 120020
 - name: string_escapes_match_bytes
   program: (q . 1)
-  debug_program: (= (q . 8796) (q . 8796))
+  debug_program: (= (q . "\"'\\") (q . "\"'\\"))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: single_quoted_string
-  program: (q . "Hello, world!")
-  debug_program: (q . "Hello, world!")
-  output: "\"Hello, world!\""
+  program: (q . 1)
+  debug_program: (= (q . "say \"hi\"") (q . "say \"hi\""))
+  output: "1"
   runtime_cost: 20
-  byte_cost: 192000
-  total_cost: 192020
+  byte_cost: 36000
+  total_cost: 36020
 - name: single_quoted_string_quotes
   program: (q . 1)
-  debug_program: (= (q . "a\"b'c") (q . "a\"b'c"))
+  debug_program: (= (q . "a\"b\"'c") (q . "a\"b\"'c"))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: single_quoted_string_escapes
   program: (q . 1)
-  debug_program: (= (q . 723210653449296000) (q . 723210653449296000))
+  debug_program: (= (q . 0x220a095c41f09f988022) (q . 0x220a095c41f09f988022))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: single_quoted_string_type
-  program: (q . "it's")
-  debug_program: (q . "it's")
-  output: "\"it's\""
+  program: (q . "say \"it\"")
+  debug_program: (q . "say \"it\"")
+  output: "\"say \\\"it\\\"\""
   runtime_cost: 20
-  byte_cost: 84000
-  total_cost: 84020
-diagnostics:
-- Both sides of `==` are the same, so it always evaluates to `true` at literals.rue:89:5
-- Both sides of `==` are the same, so it always evaluates to `true` at literals.rue:93:5
+  byte_cost: 132000
+  total_cost: 132020

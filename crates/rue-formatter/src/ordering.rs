@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::Write};
 
 use rue_ast::{AstDocument, AstFunctionItem, AstItem, AstNode};
+use rue_lexer::string_value;
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::{
@@ -372,6 +373,11 @@ fn canonical_node_key(node: &SyntaxNode) -> String {
                 );
             }
             rowan::NodeOrToken::Node(child) => key.push_str(&canonical_node_key(&child)),
+            // The formatter can requote a string, so its identity is its value, not its text
+            rowan::NodeOrToken::Token(token) if token.kind() == SyntaxKind::String => {
+                write!(&mut key, "t:String:{:?};", string_value(token.text()))
+                    .expect("writing to a String cannot fail");
+            }
             rowan::NodeOrToken::Token(token)
                 if !token.kind().is_trivia() && token.kind() != T![,] =>
             {

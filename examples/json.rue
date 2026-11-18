@@ -480,7 +480,7 @@ test fn strings() {
 
     let string = parse('"tab\\there\\nquote\\"backslash\\\\slash\\/"');
     assert string is JsonString;
-    assert string.value == "tab\there\nquote\"backslash\\slash/";
+    assert string.value == 'tab\there\nquote"backslash\\slash/';
 }
 
 test fn unicode() {

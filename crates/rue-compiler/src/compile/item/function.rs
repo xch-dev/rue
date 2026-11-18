@@ -7,13 +7,13 @@ use rue_diagnostic::{DiagnosticKind, SourceKind};
 use rue_hir::{
     Declaration, FunctionKind, FunctionSymbol, HirId, ParameterSymbol, Symbol, SymbolId, Test,
 };
+use rue_lexer::string_value;
 use rue_parser::SyntaxToken;
 use rue_types::{FunctionParameter, FunctionType, Type};
 
 use crate::{
     BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
     compile_generic_parameters, compile_type, const_eval::decode_node, create_binding,
-    decode_string,
 };
 
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: SymbolId) {
@@ -203,7 +203,7 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
 
 fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> HirId {
     let unresolved = ctx.builtins().unresolved.hir;
-    let path_text = decode_string(source_path.text());
+    let path_text = string_value(source_path.text());
     let relative_path = Path::new(&path_text);
 
     if relative_path.is_absolute() {
