@@ -45,6 +45,8 @@ pub fn compile_lambda_expr(
         for param in &mut function.params {
             param.ty = substitute_with_mappings(ctx.types_mut(), param.ty, &mappings);
         }
+
+        function.ret = substitute_with_mappings(ctx.types_mut(), function.ret, &mappings);
     }
 
     let range = expr.syntax().text_range();
@@ -108,6 +110,11 @@ pub fn compile_lambda_expr(
 
     let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));
 
+    // Without an annotation, the lambda returns whatever its body does, but the body is expected
+    // to be what the function type expected of the lambda returns, so that `identity(7)` in
+    // `fn(x: Int) => identity(7)` isn't widened to `Int` when a `7` is expected
+    let body_type = return_type.or_else(|| expected_return_type(&expected_functions));
+
     ctx.push_return_target(Some(ReturnTarget {
         expected_type: return_type,
         types: Vec::new(),
@@ -119,9 +126,9 @@ pub fn compile_lambda_expr(
                 SyntaxItemKind::CompletionContext(CompletionContext::Expression),
                 block.syntax().text_range(),
             );
-            compile_block(ctx, block, BlockKind::Body, return_type, true)
+            compile_block(ctx, block, BlockKind::Body, body_type, true)
         } else {
-            compile_expr(ctx, &body, return_type)
+            compile_expr(ctx, &body, body_type)
         };
         if let Some(return_type) = return_type {
             ctx.assign_type(expr.syntax(), result.ty, return_type);
@@ -173,4 +180,14 @@ pub fn compile_lambda_expr(
     let hir = ctx.alloc_hir(Hir::Lambda(symbol));
 
     Value::new(hir, ty)
+}
+
+/// The return type of the function type expected of a lambda, if there's only one. A call in the
+/// body leaves out what it would infer from generics that an enclosing call is still inferring,
+/// such as `B` in `map(fn(x) => identity(x), 5)`, as it does with any expected type.
+fn expected_return_type(functions: &[FunctionType]) -> Option<TypeId> {
+    match functions {
+        [function] => Some(function.ret),
+        _ => None,
+    }
 }

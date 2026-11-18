@@ -1,0 +1,66 @@
+// A lambda's body is expected to be what the function type expected of the lambda returns, so
+// that a literal in the body isn't widened when it doesn't need to be (#354)
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn seven(function: fn(a: Int) -> 7) -> Int {
+    function(1)
+}
+
+test fn annotated_binding() -> Int {
+    let function: fn(a: Int) -> 7 = fn(x: Int) => identity(7);
+    function(1)
+}
+
+test fn untyped_parameter() -> Int {
+    let function: fn(a: Int) -> 7 = fn(x) => identity(7);
+    function(1)
+}
+
+test fn argument() -> Int {
+    seven(fn(x) => identity(7))
+}
+
+test fn argument_of_generic_call() -> Int {
+    // `B` is inferred from the type expected of the call before the lambda is compiled
+    let value: 7 = map(fn(x) => identity(7), 1);
+    value + 1
+}
+
+test fn inside_pair() -> Int {
+    let function: fn(a: Int) -> (7, Int | nil) = fn(x) => (identity(7), identity(x));
+    function(1).first
+}
+
+test fn block_body() -> Int {
+    let function: fn(a: Int) -> 7 = fn(x) => {
+        let _copy = x;
+        identity(7)
+    };
+    function(1)
+}
+
+test fn generic_function_type() -> Int {
+    // The body is expected to be the lambda's own copy of `T`
+    let function: fn<T>(a: T) -> T = fn(x) => identity(x);
+    function(1)
+}
+
+test fn generic_function_type_from_expected_type_alone() -> Int {
+    // `unchecked_cast`'s type comes only from what's expected, which must be the lambda's own
+    // copy of `T` rather than the expected function type's
+    let function: fn<T>(a: T) -> T = fn(x) => unchecked_cast(nil);
+    function(1)
+}
+
+test fn uninferred_generic() -> Int {
+    // The lambda's expected return type is `B`, which is still being inferred. A call in the body
+    // doesn't infer anything from it, so `B` is inferred from the body, as before.
+    map(fn(x) => identity(x), 5) + 1
+}
