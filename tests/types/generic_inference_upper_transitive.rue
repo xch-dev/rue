@@ -149,3 +149,35 @@ test fn bound_from_unmatched_union_member_ignored() -> Int {
     let function: fn(a: Int) -> Int = either(identity, five_only, 5);
     function(1)
 }
+
+fn run<A, B>(first: fn(a: A) -> B, second: fn(b: B) -> Int, value: A) -> Int {
+    second(first(value))
+}
+
+test fn inferred_generic_narrowed_through_another() -> Int {
+    // `A` has the lower bound `5`, and reaches `five_only`'s `B ≤ 5` through `A ≤ B`, so it's
+    // inferred as `5` rather than widened to `Int` (#337)
+    run(identity, five_only, 5)
+}
+
+test fn inferred_generic_narrowed_with_an_expected_type() -> Int {
+    // The same when the expected type gives `A` a fallback
+    let function: fn(a: 5) -> Int = feed(identity, five_only);
+    function(5)
+}
+
+fn cycle3<A, B, C>(
+    first: fn(a: A) -> B,
+    second: fn(b: B) -> C,
+    _third: fn(c: C) -> A,
+    value: A,
+) -> C {
+    second(first(value))
+}
+
+test fn inferred_generic_narrowed_in_a_longer_cycle() -> Int {
+    // `A` has `7` and `nil`, and reaches `B ≤ 7 | nil` through `identity`, so it's `7 | nil`
+    // rather than `Int | nil` (#337, generator 2)
+    let _result = cycle3(identity, fn(s0: 7 | nil) => "a", fn(s0: Bytes) => nil, 7);
+    1
+}
