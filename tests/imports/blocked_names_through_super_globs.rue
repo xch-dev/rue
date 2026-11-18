@@ -1,0 +1,56 @@
+import m::missing;
+import m::secret;
+import nope::X;
+
+mod m {
+    fn secret() -> Int {
+        1
+    }
+}
+
+// A name that a failed import blocks is blocked through every level of `super::*` below it
+mod a {
+    import super::*;
+
+    mod b {
+        import super::*;
+
+        mod c {
+            import super::*;
+
+            export fn h() -> Int {
+                secret + X + missing
+            }
+        }
+
+        mod named {
+            import super::secret;
+            import super::X;
+            import super::missing;
+
+            export fn i() -> Int {
+                secret + X + missing
+            }
+        }
+
+        mod paths {
+            import super::X::Y;
+
+            export fn j() -> Int {
+                Y
+            }
+        }
+
+        export fn g() -> Int {
+            secret + X + missing + c::h() + named::i() + paths::j()
+        }
+    }
+
+    export fn f() -> Int {
+        secret + X + missing + b::g()
+    }
+}
+
+fn main() -> Int {
+    a::f()
+}

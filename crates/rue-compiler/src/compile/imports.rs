@@ -154,6 +154,8 @@ pub struct ImportCache {
 enum ImportError {
     /// The segment of the path at this index names a private module.
     PrivateModule(usize),
+    /// The segment of the path at this index doesn't name a module.
+    UnresolvedPath(usize),
     PrivateSymbol,
     PrivateType,
     /// The name is already declared in the scope as a different symbol.
@@ -245,7 +247,7 @@ pub fn resolve_imports(
         bases: HashMap::new(),
         bound: HashSet::new(),
         waiting: Vec::new(),
-        private_names: Vec::new(),
+        failed_names: Vec::new(),
     };
     let mut missing_imports = IndexMap::new();
 
@@ -270,7 +272,7 @@ pub fn resolve_imports(
         let mut updated = false;
         let bases = resolution.bases.len();
         resolution.waiting.clear();
-        resolution.private_names.clear();
+        resolution.failed_names.clear();
 
         for &(import_scope, import) in &imports {
             updated |= resolve_import(
@@ -298,6 +300,33 @@ pub fn resolve_imports(
         // (or on the order that they're in), and they're checked once every import is resolved.
         // The other waiting lookups are retried once those are resolved.
         if resolution.waiting.is_empty() {
+            // The uses of a name whose named import failed aren't reported again. This is only
+            // done once every import is resolved, since an item with the name could be found in a
+            // later pass, and the name isn't blocked if something else brought it in. A name
+            // that's still missing is only blocked once every declaration is known, when
+            // diagnostics are reported. Blocking a name can fail imports of it in other modules,
+            // such as through `super`, so the imports are resolved again until nothing new is
+            // blocked.
+            let mut blocked = false;
+
+            for (scope, name, namespaces) in resolution.failed_names.drain(..) {
+                blocked |= block(ctx, scope, &name, &namespaces);
+            }
+
+            if diagnostics {
+                for &(scope, import) in &imports {
+                    if let Some(names) = missing_imports.get(&import) {
+                        for name in names.keys() {
+                            blocked |= block(ctx, scope, name, &Namespace::ALL);
+                        }
+                    }
+                }
+            }
+
+            if blocked {
+                continue;
+            }
+
             break;
         }
 
@@ -305,19 +334,6 @@ pub fn resolve_imports(
 
         for lookup in stuck_lookups(ctx, &resolution, waiting) {
             cache.forced.entry(lookup.key).or_insert(lookup.forced);
-        }
-    }
-
-    // The uses of a name that's reported as private at its import aren't reported again. This is
-    // only done once every import is resolved, since a public item with the name could be found
-    // in a later pass, and the name isn't blocked if something else brought it in.
-    for (scope, name, namespaces) in resolution.private_names.drain(..) {
-        let scope = ctx.scope_mut(scope);
-
-        for namespace in namespaces {
-            if scope.item(namespace, &name).is_none() {
-                scope.block(namespace, name.clone());
-            }
         }
     }
 
@@ -358,6 +374,22 @@ pub fn resolve_imports(
             }
         }
     }
+}
+
+/// Blocks a name in the namespaces of a scope that don't have an item with it (see
+/// [`Scope::block`]). Returns whether any of them wasn't blocked already.
+fn block(ctx: &mut Compiler, scope: ScopeId, name: &str, namespaces: &[Namespace]) -> bool {
+    let scope = ctx.scope_mut(scope);
+    let mut blocked = false;
+
+    for &namespace in namespaces {
+        if scope.item(namespace, name).is_none() && !scope.is_blocked(namespace, name) {
+            scope.block(namespace, name.to_string());
+            blocked = true;
+        }
+    }
+
+    blocked
 }
 
 fn compare_imports(left: &Import, right: &Import) -> Ordering {
@@ -535,9 +567,10 @@ struct Resolution {
     bound: HashSet<ImportId>,
     /// The lookups that are waiting for a module to settle in this pass.
     waiting: Vec<WaitingLookup>,
-    /// The names that named imports found only private items for, with the scope they're
-    /// imported into and the namespaces the private items are in.
-    private_names: Vec<(ScopeId, String, Vec<Namespace>)>,
+    /// The names that named imports failed to bring in, because they found only private items or
+    /// their path didn't resolve, or because the name is blocked where they look it up, with the
+    /// scope they're imported into and the namespaces to block the name in.
+    failed_names: Vec<(ScopeId, String, Vec<Namespace>)>,
 }
 
 impl Resolution {
@@ -949,16 +982,23 @@ fn resolve_import(
                         }
                     });
 
-                // So has the name the import brings in, which is blocked too
-                if blocked && let Items::Named(item) = &import.items {
-                    resolution.private_names.push((
+                // The import failed, so the name it brings in is blocked, and its uses aren't
+                // reported again
+                if let Items::Named(item) = &import.items {
+                    resolution.failed_names.push((
                         import_scope,
                         item.text().to_string(),
                         Namespace::ALL.to_vec(),
                     ));
                 }
 
-                if diagnostics && !blocked {
+                // The name may only be blocked in a later pass, through `super`, so the error is
+                // recorded until the imports are resolved, and dropped if it is
+                let key = (import_id, ImportError::UnresolvedPath(index));
+
+                if blocked {
+                    cache.errors.shift_remove(&key);
+                } else if diagnostics {
                     // Only a module can have a path after it, so a value or type is reported as
                     // such
                     let other = [Namespace::Value, Namespace::Type]
@@ -975,14 +1015,16 @@ fn resolve_import(
                             }
                         });
 
-                    ctx.diagnostic_name(
-                        name,
-                        if other {
-                            DiagnosticKind::SubpathNotSupported(name.text().to_string())
-                        } else {
-                            DiagnosticKind::UndeclaredSymbol(name.text().to_string())
-                        },
-                    );
+                    let kind = if other {
+                        DiagnosticKind::SubpathNotSupported(name.text().to_string())
+                    } else {
+                        DiagnosticKind::UndeclaredSymbol(name.text().to_string())
+                    };
+
+                    cache
+                        .errors
+                        .entry(key)
+                        .or_insert_with(|| (name.clone(), kind));
                 }
                 return false;
             };
@@ -1102,7 +1144,7 @@ fn resolve_import(
                     // A name that a failed import blocked in the module has already been
                     // reported, so it's blocked here too, unless something else brings it in
                     for name in ctx.scope(source_scope).blocked(namespace) {
-                        resolution.private_names.push((
+                        resolution.failed_names.push((
                             import_scope,
                             name.to_string(),
                             vec![namespace],
@@ -1258,7 +1300,7 @@ fn resolve_import(
                     // The name is reported as private rather than unresolved
                     if !items.is_empty() {
                         missing_imports.shift_remove(name);
-                        resolution.private_names.push((
+                        resolution.failed_names.push((
                             import_scope,
                             name.to_string(),
                             items.iter().map(|&(found, ..)| found.namespace()).collect(),
@@ -1319,7 +1361,7 @@ fn resolve_import(
                     if !blocked.is_empty() {
                         missing_imports.shift_remove(name);
                         resolution
-                            .private_names
+                            .failed_names
                             .push((import_scope, name.to_string(), blocked));
                     }
                 }

@@ -1,0 +1,15 @@
+import module::MISSING;
+import module::PRIVATE;
+import module::VALUE::INNER;
+import nope::X;
+
+mod module {
+    export const VALUE: Int = 1;
+
+    const PRIVATE: Int = 2;
+}
+
+// The uses of a name whose import failed aren't reported again, whatever the reason it failed
+fn main() -> Int {
+    X + MISSING + INNER + PRIVATE
+}

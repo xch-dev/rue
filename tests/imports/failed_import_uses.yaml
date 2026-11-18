@@ -1,0 +1,7 @@
+diagnostics:
+- Unresolved import `MISSING` at failed_import_uses.rue:1:16
+- Cannot reference private symbol `PRIVATE` in module `module` at failed_import_uses.rue:2:16
+- Cannot subpath non-module symbol `VALUE` at failed_import_uses.rue:3:16
+- Undeclared symbol `nope` at failed_import_uses.rue:4:8
+- Unused constant `VALUE` at failed_import_uses.rue:7:18
+- Unused constant `PRIVATE` at failed_import_uses.rue:9:11
