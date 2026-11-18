@@ -1,0 +1,15 @@
+diagnostics:
+- Unknown character escape `\q` at string_escapes.rue:2:7
+- Unknown character escape `\ ` at string_escapes.rue:2:10
+- Invalid hex escape, which must be `\x` followed by two hex digits at string_escapes.rue:6:6
+- Invalid hex escape, which must be `\x` followed by two hex digits at string_escapes.rue:6:10
+- Hex escape is out of range, since only ASCII characters up to `\x7f` can be escaped at string_escapes.rue:6:15
+- Hex escape is out of range, since only ASCII characters up to `\x7f` can be escaped at string_escapes.rue:6:20
+- Invalid unicode escape, which must be `\u{...}` with 1 to 6 hex digits at string_escapes.rue:10:6
+- Invalid unicode escape, which must be `\u{...}` with 1 to 6 hex digits at string_escapes.rue:10:11
+- Invalid unicode escape, which must be `\u{...}` with 1 to 6 hex digits at string_escapes.rue:10:16
+- Invalid unicode escape, which must be `\u{...}` with 1 to 6 hex digits at string_escapes.rue:10:23
+- Invalid unicode escape, which must be `\u{...}` with 1 to 6 hex digits at string_escapes.rue:10:35
+- Invalid unicode escape, since it isn't a code point up to `\u{10ffff}` or is a surrogate at string_escapes.rue:14:6
+- Invalid unicode escape, since it isn't a code point up to `\u{10ffff}` or is a surrogate at string_escapes.rue:14:15
+- Cannot assign `"a\\b"` to `"a\"b"`, since they are incompatible at string_escapes.rue:17:45

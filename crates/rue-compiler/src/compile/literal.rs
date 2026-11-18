@@ -2,6 +2,7 @@ use std::{borrow::Cow, str::FromStr};
 
 use num_bigint::BigInt;
 use num_traits::Num;
+use rue_lexer::unescape_string;
 use rue_lir::bigint_atom;
 use rue_parser::{SyntaxKind, SyntaxToken, T};
 use rue_types::{Atom, AtomRestriction, AtomSemantic};
@@ -25,19 +26,7 @@ impl LiteralValue {
 
     fn decode_text(kind: SyntaxKind, text: &str) -> Self {
         match kind {
-            SyntaxKind::String => {
-                let mut text = text;
-
-                if let Some(stripped) = text.strip_prefix('"') {
-                    text = stripped;
-                }
-
-                if let Some(stripped) = text.strip_suffix('"') {
-                    text = stripped;
-                }
-
-                Self::String(text.to_string())
-            }
+            SyntaxKind::String => Self::String(decode_string(text)),
             SyntaxKind::Hex => {
                 let text = text.strip_prefix("0x").unwrap_or(text);
 
@@ -103,6 +92,31 @@ impl LiteralValue {
             Self::False => Atom::FALSE,
         }
     }
+}
+
+/// Decodes the value of a string literal token, including its escape sequences. Invalid escapes
+/// are reported by the parser, so they're left out here.
+pub fn decode_string(text: &str) -> String {
+    let mut text = text;
+
+    if let Some(stripped) = text.strip_prefix('"') {
+        text = stripped;
+    }
+
+    // The closing quote can only be escaped in an unterminated string, which ends with a
+    // backslash rather than a quote
+    if let Some(stripped) = text.strip_suffix('"')
+        && !ends_with_escape(stripped)
+    {
+        text = stripped;
+    }
+
+    unescape_string(text, |_, _| {})
+}
+
+/// Whether the text ends with an odd number of backslashes, which escape what comes after it.
+fn ends_with_escape(text: &str) -> bool {
+    text.bytes().rev().take_while(|&byte| byte == b'\\').count() % 2 == 1
 }
 
 fn decode_radix(text: &str, radix: u32) -> BigInt {
@@ -174,6 +188,24 @@ mod tests {
         assert_eq!(
             LiteralValue::decode_text(SyntaxKind::String, "\"hello\""),
             LiteralValue::String("hello".to_string())
+        );
+        assert_eq!(
+            LiteralValue::decode_text(SyntaxKind::String, r#""a\"b\\c\n\x41\u{1F600}""#),
+            LiteralValue::String("a\"b\\c\nA😀".to_string())
+        );
+        assert_eq!(
+            LiteralValue::decode_text(SyntaxKind::String, r#""\\""#),
+            LiteralValue::String("\\".to_string())
+        );
+        // An unterminated string that ends with an escaped quote
+        assert_eq!(
+            LiteralValue::decode_text(SyntaxKind::String, r#""a\""#),
+            LiteralValue::String("a\"".to_string())
+        );
+        // Invalid escapes are reported by the parser and left out of the value
+        assert_eq!(
+            LiteralValue::decode_text(SyntaxKind::String, r#""a\qb\x80""#),
+            LiteralValue::String("ab".to_string())
         );
     }
 }

@@ -126,14 +126,14 @@ impl<'a> Lexer<'a> {
                 break false;
             }
 
-            match self.peek() {
-                '"' => {
+            match self.bump() {
+                '"' => break true,
+                // An escaped character never ends the string, even if it's a quote. Whether the
+                // escape is valid is checked when the string is decoded.
+                '\\' if !self.at_end() => {
                     self.bump();
-                    break true;
                 }
-                _ => {
-                    self.bump();
-                }
+                _ => {}
             }
         };
 
@@ -402,6 +402,24 @@ mod tests {
 
         check(
             "\"hello world",
+            expect![[r#"
+                String { is_terminated: false }
+            "#]],
+        );
+
+        // An escaped quote doesn't end the string
+        check(
+            r#""a\"b\\" "c""#,
+            expect![[r#"
+                String { is_terminated: true }
+                Whitespace
+                String { is_terminated: true }
+            "#]],
+        );
+
+        // Nor does an escaped quote at the end of the source
+        check(
+            r#""a\""#,
             expect![[r#"
                 String { is_terminated: false }
             "#]],

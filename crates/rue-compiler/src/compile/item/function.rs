@@ -13,6 +13,7 @@ use rue_types::{FunctionParameter, FunctionType, Type};
 use crate::{
     BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
     compile_generic_parameters, compile_type, const_eval::decode_node, create_binding,
+    decode_string,
 };
 
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: SymbolId) {
@@ -202,12 +203,8 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
 
 fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> HirId {
     let unresolved = ctx.builtins().unresolved.hir;
-    let path_text = source_path
-        .text()
-        .strip_prefix('"')
-        .and_then(|path| path.strip_suffix('"'))
-        .unwrap_or(source_path.text());
-    let relative_path = Path::new(path_text);
+    let path_text = decode_string(source_path.text());
+    let relative_path = Path::new(&path_text);
 
     if relative_path.is_absolute() {
         ctx.diagnostic(source_path, DiagnosticKind::AbsoluteExternalPath);
