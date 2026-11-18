@@ -34,5 +34,19 @@ tests:
   runtime_cost: 281
   byte_cost: 300000
   total_cost: 300281
+- name: generic_function_with_a_union_parameter_is_inferred_through
+  program: (+ (a (q . 2) (q 1)) (q . 1))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q . 2) (q 2 1 (c (q . 1) ()))) ()))
+  output: "2"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: member_bounds_dont_depend_on_the_memo
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - Binding `result` is returned directly after it's declared at generic_inference_matched_members.rue:28:5

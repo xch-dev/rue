@@ -293,10 +293,28 @@ impl Inference {
         self.choices.record(branch, result);
     }
 
+    /// Records that the union member (or the fallback) collected bounds for a generic being
+    /// instantiated (see `Choices::mark_bounded`).
+    pub(crate) fn mark_bounded(&mut self, branch: BranchId) {
+        self.choices.mark_bounded(branch);
+    }
+
     /// Whether the candidates collected under the union member hold (see `Choices::matched_with`).
     #[cfg(test)]
     pub(crate) fn matched(&self, branch: BranchId) -> bool {
         self.choices.matched_with(&self.choices.results(), branch)
+    }
+
+    /// What each choice gave (see `Choices::results`), for `Inference::holds`.
+    pub(crate) fn choice_results(&self) -> Vec<Option<Comparison>> {
+        self.choices.results()
+    }
+
+    /// Whether a candidate collected under the union members holds, given `choice_results`.
+    pub(crate) fn holds(&self, results: &[Option<Comparison>], branches: &[BranchId]) -> bool {
+        branches
+            .iter()
+            .all(|&branch| self.choices.matched_with(results, branch))
     }
 
     pub(crate) fn is_target(&self, generic: TypeId) -> bool {
@@ -364,7 +382,26 @@ impl Choices {
             choice.members[branch.member]
         };
 
-        result.is_some() && result == results[branch.choice]
+        result.is_some()
+            && result == results[branch.choice]
+            && !self.is_held(branch, result.unwrap())
+    }
+
+    /// Whether the union member collected bounds for a generic being instantiated while another
+    /// member that gave the same, best, result didn't. That one holds the value whatever the
+    /// generic is, so the bounds, and what checking them collects, aren't needed, such as `A ≥ nil`
+    /// when comparing `nil` with `A | nil` (#360).
+    fn is_held(&self, branch: BranchId, best: Comparison) -> bool {
+        let choice = &self.0[branch.choice];
+        let index = branch.member.min(choice.members.len());
+
+        choice.bounded[index]
+            && choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .zip(&choice.bounded)
+                .any(|(&other, &bounded)| other == Some(best) && !bounded)
     }
 
     /// Whether what's collected under the union member holds so far, while comparisons may still be
@@ -395,20 +432,8 @@ impl Choices {
             .min()
             .unwrap_or(Comparison::Invalid);
 
-        // A member that gives the best result without bounding the generics being instantiated
-        // holds the value whatever they are, so the bounds of another member are left out, such as
-        // `A ≥ nil` when comparing `nil` with `A | nil`
-        let index = branch.member.min(choice.members.len());
-        let held = choice.bounded[index]
-            && choice
-                .members
-                .iter()
-                .chain([&choice.fallback])
-                .zip(&choice.bounded)
-                .any(|(&other, &bounded)| other == Some(best) && !bounded);
-
         result == best
-            && !held
+            && !self.is_held(branch, best)
             && choice
                 .parent
                 .is_none_or(|parent| self.matched_so_far(parent))

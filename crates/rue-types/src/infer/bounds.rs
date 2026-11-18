@@ -299,18 +299,16 @@ pub(crate) fn pass_upper_bounds(
     // again can create the same type with a new id (such as a union being substituted), which
     // would otherwise go around a cycle of generics forever.
     //
-    // It's only skipped if the one it's the same as was collected under some of the same union
-    // members, and no others, so that it holds whenever this one would. Otherwise both are kept,
-    // since the bounds of members that didn't match are left out (`Inference::keep_matched`), and
-    // there are only so many sets of members, so a cycle still ends.
-    let mut given: HashMap<TypeId, Vec<(TypeId, Vec<BranchId>)>> = HashMap::new();
+    // It's skipped unless it holds and the one it's the same as doesn't, since the bounds of union
+    // members that didn't match are left out (`Inference::keep_matched`). So each generic is given
+    // at most two of the same bound, and a cycle still ends.
+    let results = infer.choice_results();
+    let mut given: HashMap<TypeId, Vec<(TypeId, bool)>> = HashMap::new();
 
     for ((generic, upper, branches), add) in &stack {
         if !add {
-            given
-                .entry(*generic)
-                .or_default()
-                .push((*upper, branches.clone()));
+            let holds = infer.holds(&results, branches);
+            given.entry(*generic).or_default().push((*upper, holds));
         }
     }
 
@@ -321,20 +319,20 @@ pub(crate) fn pass_upper_bounds(
         if add {
             let given = given.entry(generic).or_default();
 
-            if given.iter().any(|(other, other_branches)| {
-                other_branches
-                    .iter()
-                    .all(|branch| branches.contains(branch))
-                    && (*other == upper
-                        || compare_renamed(arena, builtins, &renamed, *other, upper)
+            let holds = infer.holds(&results, &branches);
+
+            if given.iter().any(|&(other, other_holds)| {
+                (other_holds || !holds)
+                    && (other == upper
+                        || compare_renamed(arena, builtins, &renamed, other, upper)
                             == Comparison::Assign
-                            && compare_renamed(arena, builtins, &renamed, upper, *other)
+                            && compare_renamed(arena, builtins, &renamed, upper, other)
                                 == Comparison::Assign)
             }) {
                 continue;
             }
 
-            given.push((upper, branches.clone()));
+            given.push((upper, holds));
 
             if expanded[&generic].is_some_and(|lower| {
                 compare_renamed(arena, builtins, &renamed, lower, upper) != Comparison::Assign

@@ -73,7 +73,7 @@ struct BoundBranches {
 /// `ComparisonContext::open_choice`).
 #[derive(Debug, Clone, Copy)]
 struct OpenChoice {
-    local: usize,
+    local: Option<usize>,
     infer: Option<usize>,
 }
 
@@ -119,6 +119,8 @@ struct Instance {
     fresh: Option<usize>,
     /// The binders that were renamed when it was revisited, which were bound before then.
     renamed: Vec<usize>,
+    /// The number of bounds that have been added to it, including those that were merged into it.
+    added: usize,
 }
 
 #[derive(Debug, Default)]
@@ -173,8 +175,6 @@ pub(crate) struct ComparisonContext<'a> {
     /// The innermost union member in `choices` that the value is being compared with, which the
     /// bounds collected now are recorded under.
     local_branch: Option<BranchId>,
-    /// The number of bounds that have been collected for the generics being instantiated.
-    bounds: usize,
     /// The candidates that reference the generics of a function being instantiated, which are
     /// replaced with what those generics are instantiated as once the comparison has finished.
     deferred: Vec<DeferredCandidate>,
@@ -311,7 +311,9 @@ impl ComparisonContext<'_> {
     fn open_choice(&mut self, members: usize) -> OpenChoice {
         let parent = self.branch;
         OpenChoice {
-            local: self.choices.open(self.local_branch, members),
+            // Only a bound can depend on it, so it's left out while there are no instances
+            local: (self.instances.len() > self.instantiable_from)
+                .then(|| self.choices.open(self.local_branch, members)),
             infer: self
                 .infer
                 .as_mut()
@@ -327,29 +329,50 @@ impl ComparisonContext<'_> {
         member: usize,
         compare: impl FnOnce(&mut Self) -> Comparison,
     ) -> Comparison {
-        let local = BranchId {
-            choice: choice.local,
-            member,
-        };
+        let local = choice.local.map(|choice| BranchId { choice, member });
         let infer = choice.infer.map(|choice| BranchId { choice, member });
 
-        let local_parent = self.local_branch.replace(local);
+        let local_parent = if local.is_some() {
+            mem::replace(&mut self.local_branch, local)
+        } else {
+            self.local_branch
+        };
         let parent = if infer.is_some() {
             mem::replace(&mut self.branch, infer)
         } else {
             self.branch
         };
 
-        let bounds = self.bounds;
+        // Only the bounds of the instances that already exist count, since those of an instance
+        // created and checked within the member aren't collected again when a comparison is
+        // reused from the memo, and they don't depend on the member
+        let existing = self.instances.len();
+        let added = |ctx: &Self| -> usize {
+            ctx.instances[..existing]
+                .iter()
+                .map(|instance| instance.added)
+                .sum()
+        };
+        let before = added(self);
         let result = compare(self);
-
-        if self.bounds > bounds {
-            self.choices.mark_bounded(local);
-        }
+        let bounded = added(self) > before;
 
         self.local_branch = local_parent;
         self.branch = parent;
-        self.choices.record(local, result);
+
+        if let Some(local) = local {
+            if bounded {
+                self.choices.mark_bounded(local);
+            }
+
+            self.choices.record(local, result);
+        }
+
+        if let Some(infer) = infer
+            && bounded
+        {
+            self.infer.as_mut().unwrap().mark_bounded(infer);
+        }
 
         if let Some(infer) = infer {
             self.infer.as_mut().unwrap().record(infer, result);
@@ -373,9 +396,25 @@ impl ComparisonContext<'_> {
             return;
         }
 
+        // Like the pairs that are checked, only the bounds collected under union members that
+        // matched are used, unless none were (see `Inference::keep_matched`)
+        let holds = |bound: &&Bound| {
+            bound
+                .2
+                .local
+                .is_none_or(|branch| self.choices.matched_so_far(branch))
+        };
+        let mut lower: Vec<&Bound> = instance.lower.iter().filter(holds).collect();
+        let mut upper: Vec<&Bound> = instance.upper.iter().filter(holds).collect();
+
+        if lower.is_empty() && upper.is_empty() {
+            lower = instance.lower.iter().collect();
+            upper = instance.upper.iter().collect();
+        }
+
         let mut free = true;
 
-        for &(ty, env, _) in instance.lower.iter().chain(&instance.upper) {
+        for &&(ty, env, _) in lower.iter().chain(&upper) {
             self.cache_references(arena, ty);
             free &= self.references[&ty]
                 .iter()
@@ -386,8 +425,8 @@ impl ComparisonContext<'_> {
             self.instantiations.insert(
                 binder,
                 InferenceCandidates {
-                    lower: instance.lower.iter().map(|&(ty, _, _)| ty).collect(),
-                    upper: instance.upper.iter().map(|&(ty, _, _)| ty).collect(),
+                    lower: lower.iter().map(|&&(ty, _, _)| ty).collect(),
+                    upper: upper.iter().map(|&&(ty, _, _)| ty).collect(),
                     held: Vec::new(),
                 },
             );
@@ -505,7 +544,7 @@ impl ComparisonContext<'_> {
         }
 
         let instance = &mut self.instances[self.binders[binder].instance.unwrap()];
-        self.bounds += 1;
+        instance.added += 1;
 
         if upper {
             instance.upper.push(bound);
@@ -563,6 +602,7 @@ impl ComparisonContext<'_> {
             upper,
             fresh,
             mut renamed,
+            added: _,
         } = mem::take(&mut self.instances[instance]);
         let generic = self.binders[from].generic;
 

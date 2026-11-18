@@ -1989,6 +1989,16 @@ mod inference {
         assert!(!choices.matched_so_far(bounded));
         assert!(choices.matched_so_far(holding));
 
+        // One that only casts doesn't hold it, so the member that bounds is kept
+        let choice = choices.open(None, 2);
+        let bounded = BranchId { choice, member: 0 };
+        let casting = BranchId { choice, member: 1 };
+        choices.record(bounded, Comparison::Assign);
+        choices.mark_bounded(bounded);
+        choices.record(casting, Comparison::Cast);
+        assert!(choices.matched_so_far(bounded));
+        assert!(!choices.matched_so_far(casting));
+
         // A member that's still being compared holds, and so does what's nested in it
         let outer = choices.open(None, 2);
         let in_progress = BranchId {

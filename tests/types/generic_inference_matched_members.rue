@@ -65,3 +65,33 @@ test fn candidate_only_from_a_member_that_doesnt_match() -> Int {
     let function = pick(ident);
     function(5).first
 }
+
+fn apply<U>(f: fn(a: Int | nil) -> U) -> U {
+    f(1)
+}
+
+// The same when it's passed: `U` is inferred from `A`'s instantiation and the bounds checked for
+// it, which leave out `A ≥ nil`, so it's `Int` rather than `Int | nil`
+test fn generic_function_with_a_union_parameter_is_inferred_through() -> Int {
+    let value: Int = apply(unwrap);
+    value + 1
+}
+
+type Same = fn<U>(u: U) -> U;
+type Other = fn<V>(v: V) -> V;
+
+fn take_after<T>(_a: Same, b: T | Same) -> T {
+    unchecked_cast(b)
+}
+
+fn take_before<T>(b: T | Same, _a: Same) -> T {
+    unchecked_cast(b)
+}
+
+// Whether the `Same` member collects bounds doesn't depend on whether comparing `Other` with it was
+// reused from the memo, so both orders are assignable
+test fn member_bounds_dont_depend_on_the_memo() -> Int {
+    let _after: fn(a: Other, b: Other) -> Int = take_after;
+    let _before: fn(b: Other, a: Other) -> Int = take_before;
+    1
+}
