@@ -1,0 +1,11 @@
+tests:
+- name: glob_imports_of_the_same_module_are_not_ambiguous
+  program: (q . 10)
+  debug_program: (a (q 16 6 4) (c (c (q . 3) (q . 7)) ()))
+  output: "10"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+diagnostics:
+- Unused import `*` at main.rue:6:11
+- Unused import `*` at f.rue:3:11

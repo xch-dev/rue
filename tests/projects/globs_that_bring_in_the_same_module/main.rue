@@ -1,0 +1,10 @@
+// The glob imports wait for each other, and both bring in `y.rue`'s module `y`, which `y::*` itself
+// brings in, so it isn't ambiguous, whichever records it first: `second.rue` does the same with
+// `a.rue` in place of `z.rue`.
+
+import y::*;
+import z::*;
+
+test fn glob_imports_of_the_same_module_are_not_ambiguous() -> Int {
+    W + y::V
+}

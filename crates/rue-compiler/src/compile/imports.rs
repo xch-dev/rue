@@ -378,8 +378,9 @@ fn import_item_name(items: &Items) -> &str {
     }
 }
 
-/// One of the lookups an import makes that can look past a module's own items: to a file's sibling
-/// modules, or the prelude.
+/// One of the lookups an import makes that can wait for a module to settle, and that (except for
+/// a segment after the first) look past the module's own items when it doesn't have the name: to a
+/// file's sibling modules, or the prelude.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum LookupKey {
     /// The first segment of the import's path.
@@ -405,7 +406,7 @@ struct WaitingLookup {
 /// A lookup that was answered without waiting for the module it looked past to settle.
 #[derive(Debug, Clone)]
 struct ForcedLookup {
-    /// The module whose own items were looked past.
+    /// The module that the lookup waited for, whose own items it looked past.
     scope: ScopeId,
     namespace: Namespace,
     /// The name, where it's written in the import.
@@ -424,13 +425,13 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
             continue;
         };
 
-        // The import's own binding doesn't count, unless another glob import brings in a
-        // different item with the name too
+        // What the import itself brings in under the name isn't ambiguous, whichever import
+        // recorded the binding, unless another glob import brings in a different item too
         let ambiguous = ctx
             .scope(forced.scope)
             .item_with_import(forced.namespace, forced.name.text())
             .is_some_and(|(item, via)| {
-                if via == Some(import) {
+                if brings_in(ctx, cache, import, forced, item) {
                     ctx.is_ambiguous_import(via, item.into())
                 } else {
                     item != answer
@@ -443,6 +444,36 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
                 DiagnosticKind::AmbiguousOuterImport(forced.name.text().to_string()),
             );
         }
+    }
+}
+
+/// Whether an import brings in an item with the name that a forced lookup of it looked up, into
+/// the module whose items it looked past. An import with a path brings in what the module it names
+/// exports, and one without a path brings in what it finds itself.
+fn brings_in(
+    ctx: &Compiler,
+    cache: &ImportCache,
+    import_id: ImportId,
+    forced: &ForcedLookup,
+    item: Item,
+) -> bool {
+    let import = ctx.import(import_id);
+    let name = forced.name.text();
+
+    if let Items::Named(named) = &import.items
+        && named.text() != name
+    {
+        return false;
+    }
+
+    if let Some(path) = cache.paths.get(&import_id) {
+        let source = ctx.scope(path.scope);
+
+        source
+            .item(forced.namespace, name)
+            .is_some_and(|found| found == item && source.is_item_exported(found))
+    } else {
+        import.path.is_empty() && forced.answer.is_some_and(|(answer, _)| answer == item)
     }
 }
 
@@ -759,7 +790,8 @@ impl Lookup {
 /// Looks up a name for an import, the way that a use of it would find it once every import is
 /// resolved. The module's own items shadow what's outside of it, so when it doesn't have the name
 /// yet but could still bring it in, the lookup waits. Once nothing else can be resolved, it's
-/// answered with what's outside (see [`check_forced_lookups`]).
+/// answered with what's outside (see [`check_forced_lookups`]), which for a segment of a path
+/// after the first is nothing, since it's only looked up in the module the previous one names.
 #[allow(clippy::too_many_arguments)]
 fn lookup(
     ctx: &Compiler,
@@ -908,19 +940,16 @@ fn resolve_import(
                     // such
                     let other = [Namespace::Value, Namespace::Type]
                         .into_iter()
-                        .any(|namespace| match base {
-                            Some(scope) => ctx.scope(scope).item(namespace, name.text()).is_some(),
-                            None => match lookup_base {
-                                Base::Local(scope) => {
-                                    ctx.resolve_item_in(scope, namespace, name.text()).is_some()
-                                }
-                                Base::Member(scope) => {
-                                    ctx.module_member(scope, namespace, name.text()).is_some()
-                                }
-                                Base::Inner(scope) => {
-                                    ctx.scope(scope).item(namespace, name.text()).is_some()
-                                }
-                            },
+                        .any(|namespace| match segment_base {
+                            Base::Local(scope) => {
+                                ctx.resolve_item_in(scope, namespace, name.text()).is_some()
+                            }
+                            Base::Member(scope) => {
+                                ctx.module_member(scope, namespace, name.text()).is_some()
+                            }
+                            Base::Inner(scope) => {
+                                ctx.scope(scope).item(namespace, name.text()).is_some()
+                            }
                         });
 
                     ctx.diagnostic_name(

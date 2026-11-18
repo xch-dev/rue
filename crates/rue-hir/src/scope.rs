@@ -212,11 +212,6 @@ impl Scope {
         self.modules.get(name)
     }
 
-    /// The module with a name, and the import that brought it into this scope, if any.
-    pub fn module_with_import(&self, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
-        self.modules.get_with_import(name)
-    }
-
     pub fn module_name(&self, module: SymbolId) -> Option<&str> {
         self.modules.name(module)
     }

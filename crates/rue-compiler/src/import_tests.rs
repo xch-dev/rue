@@ -2434,47 +2434,61 @@ fn named_imports_only_shadow_glob_imports_in_their_namespaces() {
 fn many_glob_imports_that_wait_for_each_other_resolve_quickly() {
     // Each glob import could bring in the module that another one's path names, so they all wait
     // for each other. Finding which ones to answer used to take time quartic in how many there
-    // are, so this took minutes.
+    // are, so this took minutes. It's compiled on another thread, so that a regression fails the
+    // test rather than hanging it.
     const COUNT: usize = 300;
 
-    let dir = std::env::temp_dir().join(format!("rue-waiting-globs-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    /// Removes the directory when the test ends, even if it fails.
+    struct TempDir(std::path::PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    let dir =
+        TempDir(std::env::temp_dir().join(format!("rue-waiting-globs-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).unwrap();
 
     let mut main = String::new();
 
     for i in 0..COUNT {
         writeln!(main, "import f{i}::*;").unwrap();
         std::fs::write(
-            dir.join(format!("f{i}.rue")),
+            dir.0.join(format!("f{i}.rue")),
             format!("export const V{i}: Int = {i};\n"),
         )
         .unwrap();
     }
 
     writeln!(main, "fn main() -> Int {{\n    V0 + V{}\n}}", COUNT - 1).unwrap();
-    std::fs::write(dir.join("main.rue"), main).unwrap();
+    std::fs::write(dir.0.join("main.rue"), main).unwrap();
 
-    let start = std::time::Instant::now();
-    let mut ctx = crate::Compiler::new(rue_options::CompilerOptions {
-        std: false,
-        ..rue_options::CompilerOptions::default()
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let path = dir.0.clone();
+
+    std::thread::spawn(move || {
+        let mut ctx = crate::Compiler::new(rue_options::CompilerOptions {
+            std: false,
+            ..rue_options::CompilerOptions::default()
+        });
+        crate::FileTree::compile_path(&mut ctx, &path, &mut std::collections::HashMap::new())
+            .unwrap();
+
+        let errors = ctx
+            .take_diagnostics()
+            .into_iter()
+            .filter(|diagnostic| diagnostic.severity == rue_diagnostic::DiagnosticSeverity::Error)
+            .map(|diagnostic| diagnostic.kind.to_string())
+            .collect::<Vec<_>>();
+
+        sender.send(errors).ok();
     });
-    let result =
-        crate::FileTree::compile_path(&mut ctx, &dir, &mut std::collections::HashMap::new());
-    let elapsed = start.elapsed();
 
-    std::fs::remove_dir_all(&dir).unwrap();
-    result.unwrap();
-
-    let errors = ctx
-        .take_diagnostics()
-        .into_iter()
-        .filter(|diagnostic| diagnostic.severity == rue_diagnostic::DiagnosticSeverity::Error)
-        .collect::<Vec<_>>();
+    let errors = receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("resolving the imports took more than 10 seconds, or panicked");
 
     assert!(errors.is_empty(), "{errors:?}");
-    assert!(
-        elapsed < std::time::Duration::from_secs(10),
-        "resolving the imports took {elapsed:?}"
-    );
 }

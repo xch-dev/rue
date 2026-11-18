@@ -1,0 +1,5 @@
+// Two glob imports of the same module wait for each other, and both bring in its module `q`
+export q::*;
+import q::*;
+
+export const B: Int = 1;
