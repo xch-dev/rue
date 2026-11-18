@@ -369,7 +369,7 @@ fn ty_kind(ty: &Ty) -> &'static str {
 /// Features of the calls whose generic arguments the variant removes, which point at the
 /// inference rules a failure involves, such as `recursive call` (#334) or `untyped lambda for a
 /// bare generic`. Shrunk failures with the same diagnostic are grouped by these.
-pub fn tags(program: &Program, variant: &Variant) -> BTreeSet<&'static str> {
+pub fn tags(program: &Program, variant: &Variant) -> Vec<String> {
     let mut tags = BTreeSet::new();
     let stripped = |expr: &Expr| variant.strips(expr);
 
@@ -415,7 +415,7 @@ pub fn tags(program: &Program, variant: &Variant) -> BTreeSet<&'static str> {
         }
     }
 
-    tags
+    tags.into_iter().map(ToString::to_string).collect()
 }
 
 fn call_arg_tags(

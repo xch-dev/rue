@@ -8,7 +8,7 @@ use std::path::Path;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::oracle::{Category, Outcome};
+use crate::oracle::{Category, Diag, Outcome};
 use crate::worker::{Explicit, Shrunk};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +40,9 @@ fn variant(records: &[SeedRecord], (seed, index): (u64, usize)) -> &VariantRecor
     &record(records, seed).variants[index]
 }
 
+/// A failing variant, as (seed, variant index).
+pub type Member = (u64, usize);
+
 /// A group of failures with the same category and first diagnostic.
 #[derive(Debug)]
 pub struct Cluster {
@@ -49,7 +52,7 @@ pub struct Cluster {
     pub members: Vec<(u64, usize)>,
     /// How many of the `one` variants had each shape.
     pub shapes: BTreeMap<String, usize>,
-    pub shrunk: Vec<((u64, usize), Shrunk)>,
+    pub shrunk: Vec<(Member, Shrunk)>,
 }
 
 /// Groups failures by category and first diagnostic, or the first line of a panic.
@@ -239,7 +242,7 @@ fn write_counts(out: &mut String, records: &[SeedRecord]) {
     for category in Category::ALL {
         let _ = write!(out, " {category:?} |");
     }
-    let _ = writeln!(out, "\n|---|---|---|---|---|---|");
+    let _ = writeln!(out, "\n|---|{}", "---|".repeat(Category::ALL.len()));
     for row in ["all", "some", "one", "total", "programs (worst variant)"] {
         let Some(counts) = table.get(row) else {
             continue;
@@ -284,7 +287,7 @@ fn write_cluster(out: &mut String, records: &[SeedRecord], number: usize, cluste
     }
 
     // The shrunk failures, grouped by their tags, with the smallest of each group
-    let mut groups: BTreeMap<String, Vec<&((u64, usize), Shrunk)>> = BTreeMap::new();
+    let mut groups: BTreeMap<String, Vec<&(Member, Shrunk)>> = BTreeMap::new();
     for shrunk in &cluster.shrunk {
         let tags = if shrunk.1.tags.is_empty() {
             "no tags".to_string()
@@ -306,7 +309,7 @@ fn write_cluster(out: &mut String, records: &[SeedRecord], number: usize, cluste
             .outcome
             .diag
             .as_ref()
-            .map(|diag| format!("{} at {}", diag.message, diag.line_col))
+            .map(Diag::located)
             .or_else(|| original.outcome.detail.clone())
             .unwrap_or_default();
         let _ = writeln!(

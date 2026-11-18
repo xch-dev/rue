@@ -140,7 +140,7 @@ fn masks(program: &Program) -> Vec<Vec<bool>> {
 }
 
 #[test]
-fn nil_gives_no_type_to_an_optional_generic() {
+fn nil_gives_no_type() {
     let opt = Ty::opt(Ty::Int);
 
     let from_nil = call(0, "unwrap", vec![Ty::Int], vec![nil(opt.clone())], Ty::Int);
@@ -154,6 +154,33 @@ fn nil_gives_no_type_to_an_optional_generic() {
         masks(&program(vec![unwrap()], Some(Ty::Int), from_nil)),
         [[true]]
     );
+
+    // Nor does a call whose type is `nil`, nor `nil` for a bare generic
+    let inner = call(
+        1,
+        "unwrap",
+        vec![Ty::Nil],
+        vec![nil(Ty::opt(Ty::Nil))],
+        Ty::Nil,
+    );
+    let from_nil_call = call(0, "unwrap", vec![Ty::Int], vec![inner], Ty::Int);
+    assert_eq!(
+        removable_sites(
+            &program(vec![unwrap()], None, from_nil_call),
+            &Variant::default()
+        )[&0],
+        [false]
+    );
+
+    let either = function("either", &["T"], &[("first", "T"), ("second", "T")], "T");
+    let nils = call(
+        0,
+        "either",
+        vec![Ty::Nil],
+        vec![nil(Ty::Nil), nil(Ty::Nil)],
+        Ty::Nil,
+    );
+    assert_eq!(masks(&program(vec![either], None, nils)), [[false]]);
 
     let from_value = call(0, "unwrap", vec![Ty::Int], vec![int(5, opt)], Ty::Int);
     assert_eq!(masks(&program(vec![unwrap()], None, from_value)), [[true]]);
@@ -261,6 +288,130 @@ fn removed_calls_only_give_types_they_infer_from_arguments() {
     assert_eq!(legalize(&program, &both).stripped, [(1, Strip::All)].into());
 }
 
+fn fn_ref(site: usize, function: &str, generic_args: Vec<Ty>, ty: Ty) -> Expr {
+    Expr::new(
+        ExprKind::FnRef {
+            site: Some(site),
+            function: function.to_string(),
+            generic_args,
+        },
+        ty,
+    )
+}
+
+fn strip_all(sites: &[usize]) -> Variant {
+    Variant {
+        stripped: sites.iter().map(|&site| (site, Strip::All)).collect(),
+    }
+}
+
+#[test]
+fn function_references_need_an_expected_type() {
+    let duplicate = function("duplicate", &["T"], &[("value", "T")], "(T, T)");
+    let ty = Ty::func(vec![Ty::Int], Ty::pair(Ty::Int, Ty::Int));
+    let reference = fn_ref(0, "duplicate", vec![Ty::Int], ty.clone());
+
+    assert_eq!(
+        masks(&program(vec![duplicate.clone()], None, reference.clone())),
+        [[false]]
+    );
+    assert_eq!(
+        masks(&program(vec![duplicate], Some(ty), reference)),
+        [[true]]
+    );
+}
+
+/// In `map(duplicate, 42)`, `42` gives `A` a type, which gives `duplicate`'s `T` one, and so
+/// `B` gets one. In `g(identity)`, nothing gives `A` a type, so only one of the two can have its
+/// arguments removed.
+#[test]
+fn function_references_get_types_through_the_call() {
+    let map = function(
+        "map",
+        &["A", "B"],
+        &[("function", "fn(a: A) -> B"), ("value", "A")],
+        "B",
+    );
+    let duplicate = function("duplicate", &["T"], &[("value", "T")], "(T, T)");
+    let pair = Ty::pair(Ty::Int, Ty::Int);
+    let value = call(
+        1,
+        "map",
+        vec![Ty::Int, pair.clone()],
+        vec![
+            fn_ref(
+                0,
+                "duplicate",
+                vec![Ty::Int],
+                Ty::func(vec![Ty::Int], pair.clone()),
+            ),
+            int(42, Ty::Int),
+        ],
+        pair,
+    );
+    let mapped = program(vec![map, duplicate], None, value);
+    assert_eq!(legalize(&mapped, &strip_all(&[0, 1])), strip_all(&[0, 1]));
+
+    let identity = function("identity", &["T"], &[("value", "T")], "T");
+    let g = function("g", &["A"], &[("function", "fn(a: A) -> A")], "Int");
+    let fn_ty = Ty::func(vec![Ty::Int], Ty::Int);
+    let value = call(
+        1,
+        "g",
+        vec![Ty::Int],
+        vec![fn_ref(0, "identity", vec![Ty::Int], fn_ty)],
+        Ty::Int,
+    );
+    let passed = program(vec![identity, g], None, value);
+    assert_eq!(legalize(&passed, &strip_all(&[0, 1])), strip_all(&[1]));
+}
+
+#[test]
+fn lambda_bodies_and_unions_of_functions_give_no_expected_type() {
+    let make = function("make", &["A", "B"], &[], "fn(a: A) -> B");
+    let fn_ty = Ty::func(vec![Ty::Int], Ty::Int);
+    let made = |ty: Ty| call(0, "make", vec![Ty::Int, Ty::Int], vec![], ty);
+
+    assert_eq!(
+        masks(&program(
+            vec![make.clone()],
+            Some(fn_ty.clone()),
+            made(fn_ty.clone())
+        )),
+        [[true, true]]
+    );
+
+    // `F | nil`, whose value is the call itself
+    let opt = Ty::opt(fn_ty.clone());
+    assert_eq!(
+        masks(&program(vec![make.clone()], Some(opt.clone()), made(opt))),
+        [[false, false]]
+    );
+
+    // `List<F>`'s items
+    let list = Ty::list(fn_ty.clone());
+    let items = Expr::new(ExprKind::List(vec![made(fn_ty.clone())]), list.clone());
+    assert_eq!(
+        masks(&program(vec![make.clone()], Some(list), items)),
+        [[false, false]]
+    );
+
+    // A lambda's body
+    let outer = Ty::func(vec![Ty::Int], fn_ty.clone());
+    let lambda = Expr::new(
+        ExprKind::Lambda {
+            params: vec![("x".to_string(), Ty::Int)],
+            typed: true,
+            body: Box::new(made(fn_ty)),
+        },
+        outer.clone(),
+    );
+    assert_eq!(
+        masks(&program(vec![make], Some(outer), lambda)),
+        [[false, false]]
+    );
+}
+
 #[test]
 fn shrinking_keeps_what_a_removed_generic_is_inferred_from() {
     // Shrinking would replace `maybe(5)` with `nil`, the simplest `Int | nil`, and the program
@@ -338,6 +489,25 @@ fn shrinks_to_what_the_failure_needs() {
     assert_eq!(program.main.lets.len(), 1, "{}", program.print(&variant));
     // It reaches a fixed point rather than using up the budget
     assert!(checks.get() < 500, "took {} checks", checks.get());
+}
+
+#[test]
+fn shrinking_leaves_simple_pairs_alone() {
+    // Replacing `(1, 2)` with the simplest `(Int, Int)` gives the same pair, which must not
+    // count as progress
+    let mut f = function("f", &[], &[], "(Int, Int)");
+    f.body = Expr::new(
+        ExprKind::Pair(Box::new(int(1, Ty::Int)), Box::new(int(2, Ty::Int))),
+        Ty::pair(Ty::Int, Ty::Int),
+    );
+    let program = program(vec![f], None, nil(Ty::Nil));
+
+    let checks = Cell::new(0);
+    shrink::shrink(program, Variant::default(), 1000, &mut |program, _| {
+        checks.set(checks.get() + 1);
+        program.function("f").is_some()
+    });
+    assert!(checks.get() < 20, "took {} checks", checks.get());
 }
 
 #[test]
@@ -511,6 +681,151 @@ fn shrinking_keeps_the_generic_and_function_a_rejection_names() {
     assert!(other_type.same_failure(&other_types));
 }
 
+#[test]
+fn unsound_and_crashed_failures_must_stay_so_while_shrinking() {
+    let expected = Run::Output("1".to_string());
+
+    let unsound = Outcome::failed(Category::Unsound, String::new(), 1.0);
+    assert!(!worker::same_failure(
+        &unsound,
+        &expected,
+        &ok("(q . 1)", 1)
+    ));
+    let different = Compiled::Ok {
+        clvm: "(q . 2)".to_string(),
+        run: Run::Output("2".to_string()),
+        time: Duration::from_millis(1),
+    };
+    assert!(worker::same_failure(&unsound, &expected, &different));
+
+    let crashed = Outcome::failed(Category::Crashed, "boom".to_string(), 0.0);
+    let panicked = |message: &str| Compiled::Panicked {
+        message: message.to_string(),
+    };
+    assert!(worker::same_failure(&crashed, &expected, &panicked("boom")));
+    assert!(!worker::same_failure(
+        &crashed,
+        &expected,
+        &panicked("other")
+    ));
+}
+
+#[test]
+fn tags_and_shapes_describe_the_calls_whose_arguments_are_removed() {
+    let cycle = function(
+        "cycle",
+        &["A", "B"],
+        &[
+            ("forward", "fn(a: A) -> B"),
+            ("backward", "fn(b: B) -> A"),
+            ("value", "A"),
+        ],
+        "B",
+    );
+    let fn_ty = Ty::func(vec![Ty::Lit(5)], Ty::Lit(5));
+    let lambda = |typed| {
+        Expr::new(
+            ExprKind::Lambda {
+                params: vec![("x".to_string(), Ty::Lit(5))],
+                typed,
+                body: Box::new(int(5, Ty::Lit(5))),
+            },
+            fn_ty.clone(),
+        )
+    };
+    let value = call(
+        0,
+        "cycle",
+        vec![Ty::Lit(5), Ty::Lit(5)],
+        vec![lambda(false), lambda(true), int(5, Ty::Lit(5))],
+        Ty::Lit(5),
+    );
+    let program = program(vec![cycle], Some(Ty::Lit(5)), value);
+    let variant = strip_all(&[0]);
+
+    assert_eq!(
+        shrink::tags(&program, &variant),
+        [
+            "cycle of generics",
+            "expected literal",
+            "typed lambda",
+            "untyped lambda"
+        ]
+    );
+    assert_eq!(
+        shrink::shape(&program, &variant),
+        "cycle(lambda, typed lambda, lit) as let: literal"
+    );
+}
+
+fn record(seed: u64, outcomes: &[(&str, Category, &[&str])]) -> report::SeedRecord {
+    report::SeedRecord {
+        seed,
+        explicit_source: String::new(),
+        explicit: Explicit::Valid { time_ms: 1.0 },
+        variants: outcomes
+            .iter()
+            .map(|(name, category, tags)| report::VariantRecord {
+                name: (*name).to_string(),
+                source: String::new(),
+                shape: String::new(),
+                tags: tags.iter().map(ToString::to_string).collect(),
+                outcome: Outcome::failed(*category, "detail".to_string(), 1.0),
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn shrink_jobs_sample_each_set_of_tags() {
+    let mut records = Vec::new();
+    for seed in 0..12 {
+        records.push(record(
+            seed,
+            &[
+                ("all", Category::Unsound, &[]),
+                ("some", Category::Slow, &[]),
+                ("one", Category::Crashed, &["a"]),
+            ],
+        ));
+    }
+    let clusters = report::clusters(&records);
+    let jobs = report::shrink_jobs(&records, &clusters, 2);
+
+    let count = |category| {
+        jobs.iter()
+            .filter(|(cluster, _)| clusters[*cluster].category == category)
+            .count()
+    };
+    // Slow failures aren't shrunk, and at least 10 of the rare categories are
+    assert_eq!(count(Category::Slow), 0);
+    assert_eq!(count(Category::Unsound), 10);
+    assert_eq!(count(Category::Crashed), 10);
+}
+
+#[test]
+fn shrink_jobs_take_single_sites_first_and_each_set_of_tags_in_turn() {
+    let records = vec![
+        record(
+            0,
+            &[
+                ("all", Category::Unsound, &["a"]),
+                ("one", Category::Unsound, &["a"]),
+            ],
+        ),
+        record(1, &[("all", Category::Unsound, &["b"])]),
+    ];
+    let clusters = report::clusters(&records);
+    let mut jobs: Vec<(u64, usize)> = report::shrink_jobs(&records, &clusters, 0)
+        .into_iter()
+        .map(|(_, member)| member)
+        .collect();
+    jobs.truncate(2);
+
+    // The `one` variant of the larger set, then the other set
+    assert_eq!(jobs, [(0, 1), (1, 0)]);
+}
+
 // The driver, with a worker that follows a script.
 
 /// Answers each command with the next list of messages, and records the commands and restarts.
@@ -633,4 +948,29 @@ fn a_worker_that_dies_at_once_dies_on_the_explicit_program() {
     assert_eq!(record.explicit, Explicit::Died("startup".to_string()));
     assert!(record.variants.is_empty());
     assert_eq!(script.restarts, 1);
+}
+
+#[test]
+fn a_last_variant_that_hangs_ends_the_seed() {
+    let (seed, generated) = (0..100)
+        .map(|seed| (seed, Generator::new(seed).generate()))
+        .find(|(_, generated)| generated.variants.len() == 3)
+        .unwrap();
+
+    let mut script = Script::new(vec![vec![
+        line("progress explicit"),
+        valid(),
+        line("progress 0"),
+        variant_line(0),
+        line("progress 1"),
+        variant_line(1),
+        line("progress 2"),
+        Message::TimedOut,
+    ]]);
+
+    let record = run_seed(&mut script, seed, &generated, Duration::from_secs(10)).unwrap();
+
+    assert_eq!(script.commands, [format!("run {seed} 0")]);
+    assert_eq!(script.restarts, 1);
+    assert_eq!(record.variants[2].outcome.category, Category::Slow);
 }

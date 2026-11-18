@@ -41,6 +41,10 @@ impl Rng {
         low + self.below(high - low + 1)
     }
 
+    fn int(&mut self, low: usize, high: usize) -> i64 {
+        i64::try_from(self.range(low, high)).unwrap()
+    }
+
     /// Picks an index with probability proportional to its weight.
     fn weighted(&mut self, weights: &[usize]) -> usize {
         let mut pick = self.below(weights.iter().sum());
@@ -300,13 +304,14 @@ impl TyParser<'_> {
 /// Matches `pattern`, whose `Ty::Var`s are the generics being solved for, against `target`.
 fn unify(pattern: &Ty, target: &Ty, solution: &mut [Option<Ty>]) -> bool {
     match (pattern, target) {
-        (Ty::Var(index), _) => match &solution[*index] {
-            Some(bound) => bound == target,
-            None => {
+        (Ty::Var(index), _) => {
+            if let Some(bound) = &solution[*index] {
+                bound == target
+            } else {
                 solution[*index] = Some(target.clone());
                 true
             }
-        },
+        }
         (Ty::Pair(a, b), Ty::Pair(c, d)) => unify(a, c, solution) && unify(b, d, solution),
         (Ty::Opt(a), Ty::Opt(b)) | (Ty::List(a), Ty::List(b)) | (Ty::Boxed(a), Ty::Boxed(b)) => {
             unify(a, b, solution)
@@ -336,7 +341,7 @@ impl Scope {
     }
 }
 
-/// A generated program, with its sites and the variants to check.
+/// A generated program, and the variants to check.
 #[derive(Debug, Clone)]
 pub struct Generated {
     pub program: Program,
@@ -379,13 +384,13 @@ impl Generator {
         picked.sort_by_key(|template| CATALOG.iter().position(|other| other.name == template.name));
 
         for template in picked {
-            let function = self.from_template(template);
+            let function = self.template_function(template);
             self.functions.push(function);
         }
 
         for template in HELPERS {
             if self.rng.chance(50) {
-                let function = self.from_template(template);
+                let function = self.template_function(template);
                 self.functions.push(function);
             }
         }
@@ -418,14 +423,13 @@ impl Generator {
         site
     }
 
-    fn from_template(&mut self, template: &Template) -> Function {
+    fn template_function(&mut self, template: &Template) -> Function {
         let generics: Vec<String> = template.generics.iter().map(ToString::to_string).collect();
-        let params: Vec<(String, Ty)> = template
+        let mut params: Vec<(String, Ty)> = template
             .params
             .iter()
             .map(|(name, ty)| ((*name).to_string(), parse_ty(ty, template.generics)))
             .collect();
-        let mut params = params;
         let ret = parse_ty(template.ret, template.generics);
         // Some higher-order functions call themselves, as `map` does in #334
         let recursive = !generics.is_empty()
@@ -534,7 +538,9 @@ impl Generator {
     }
 
     /// Builds a function's body, with the function's generics rigid inside it. Catalog functions
-    /// get plain bodies (`function(value)`); random ones may call the functions before them.
+    /// get plain bodies (`function(value)`); random ones may call the functions before them. The
+    /// arguments of a recursion guard's calls may call them in both, as in `map(duplicate, 1)`
+    /// inside `map` (#334).
     fn function(
         &mut self,
         name: String,
@@ -699,7 +705,7 @@ impl Generator {
         }
 
         if self.rng.chance(60)
-            && let Some(found) = self.from_scope(goal, scope, depth)
+            && let Some(found) = self.in_scope(goal, scope, depth)
         {
             return found;
         }
@@ -707,7 +713,7 @@ impl Generator {
         let child_depth = depth.saturating_sub(1);
 
         let kind = match goal {
-            Ty::Int => ExprKind::Int(self.rng.range(1, 9) as i64),
+            Ty::Int => ExprKind::Int(self.rng.int(1, 9)),
             Ty::Lit(value) => ExprKind::Int(*value),
             Ty::Bytes => ExprKind::Bytes,
             Ty::Bool => ExprKind::Bool,
@@ -752,7 +758,7 @@ impl Generator {
             }
             Ty::Rigid(_) => {
                 return self
-                    .from_scope(goal, scope, depth)
+                    .in_scope(goal, scope, depth)
                     .unwrap_or_else(|| Expr::new(ExprKind::Unchecked, goal.clone()));
             }
             Ty::Var(_) | Ty::Any => unreachable!("expressions have concrete types"),
@@ -763,7 +769,7 @@ impl Generator {
 
     /// A parameter or binding of the goal type, or one that leads to it: a pair's field, a
     /// box's value, or a function's result.
-    fn from_scope(&mut self, goal: &Ty, scope: &Scope, depth: u32) -> Option<Expr> {
+    fn in_scope(&mut self, goal: &Ty, scope: &Scope, depth: u32) -> Option<Expr> {
         let mut direct = Vec::new();
         let mut functions = Vec::new();
 
@@ -871,7 +877,7 @@ impl Generator {
                 })
                 .collect();
             if !candidates.is_empty() {
-                solution = candidates[self.rng.below(candidates.len())].clone();
+                solution.clone_from(&candidates[self.rng.below(candidates.len())]);
             }
         }
 
@@ -891,7 +897,7 @@ impl Generator {
             .iter()
             .map(|(name, ty)| {
                 if name == "depth" {
-                    Expr::new(ExprKind::Int(self.rng.range(1, 2) as i64), Ty::Int)
+                    Expr::new(ExprKind::Int(self.rng.int(1, 2)), Ty::Int)
                 } else {
                     self.expr(
                         &ty.subst(&generic_args),
@@ -989,8 +995,7 @@ impl Generator {
 /// For each site, which of its generic arguments may be removed, so that inference has something
 /// to infer each of them from: an argument that gives the generic a type, or the expected type,
 /// for a generic in the return type. An untyped lambda doesn't give its parameters a type, and
-/// `nil` doesn't give one to `T` in `T | nil`. Removing any other argument would be a correct
-/// rejection.
+/// `nil` gives none. Removing any other argument would be a correct rejection.
 ///
 /// A call whose generic arguments the variant removes only gives a type to the generics of the
 /// call it's passed to if its own generics are inferred from its arguments. In
@@ -999,45 +1004,42 @@ pub fn removable_sites(program: &Program, variant: &Variant) -> BTreeMap<SiteId,
     let mut walk = Removable {
         program,
         variant,
-        removable: BTreeMap::new(),
+        masks: BTreeMap::new(),
     };
     for function in program.functions_and_main() {
         for (expr, root) in function.roots() {
             walk.expr(expr, root.has_expected_type());
         }
     }
-    walk.removable
+    walk.masks
 }
 
 /// Reduces what the variant removes to what [`removable_sites`] allows, keeping the other
-/// arguments of a site as placeholders. Keeping the arguments of one call can make a call it's
-/// passed to removable again, but this only ever keeps more, so it stops.
+/// arguments of a site as placeholders. Keeping the arguments of one site can make others
+/// removable again, as in `g(identity)`, where either one's arguments can be removed but not
+/// both, so it fixes one site at a time, in order. It only ever keeps more, so it stops.
 pub fn legalize(program: &Program, variant: &Variant) -> Variant {
     let mut variant = variant.clone();
-    loop {
+    'fix: loop {
         let removable = removable_sites(program, &variant);
-        let mut changed = false;
-        let sites: Vec<SiteId> = variant.stripped.keys().copied().collect();
-        for site in sites {
+        for (&site, strip) in &variant.stripped {
             // A site that shrinking removed along with its expression doesn't matter
             let Some(mask) = removable.get(&site) else {
                 continue;
             };
-            let removed = removed_mask(&variant.stripped[&site], mask.len());
+            let removed = removed_mask(strip, mask.len());
             let allowed: Vec<bool> = removed.iter().zip(mask).map(|(&a, &b)| a && b).collect();
             if allowed == removed {
                 continue;
             }
-            changed = true;
             if allowed.iter().any(|&allowed| allowed) {
                 variant.stripped.insert(site, Strip::Placeholders(allowed));
             } else {
                 variant.stripped.remove(&site);
             }
+            continue 'fix;
         }
-        if !changed {
-            return variant;
-        }
+        return variant;
     }
 }
 
@@ -1052,7 +1054,7 @@ fn removed_mask(strip: &Strip, len: usize) -> Vec<bool> {
 struct Removable<'a> {
     program: &'a Program,
     variant: &'a Variant,
-    removable: BTreeMap<SiteId, Vec<bool>>,
+    masks: BTreeMap<SiteId, Vec<bool>>,
 }
 
 impl Removable<'_> {
@@ -1062,14 +1064,48 @@ impl Removable<'_> {
     /// `List<F>`'s items) gives a lambda no parameter types.
     fn expr(&mut self, expr: &Expr, expected: bool) {
         let expected =
-            expected && !(expr.ty.is_function_union() && !matches!(expr.kind, ExprKind::List(_)));
+            expected && (!expr.ty.is_function_union() || matches!(expr.kind, ExprKind::List(_)));
 
-        if let Some(site) = expr.site() {
-            // A shrunk program can call a function it no longer declares. It doesn't compile,
-            // so its sites don't matter.
-            if let Some(mask) = self.mask(expr, expected) {
-                self.removable.insert(site, mask);
+        // A shrunk program can call a function it no longer declares. It doesn't compile, so its
+        // sites don't matter.
+        match &expr.kind {
+            ExprKind::Call {
+                site: Some(site),
+                function,
+                args,
+                ..
+            } => {
+                if let Some(function) = self.program.function(function) {
+                    let witnessed =
+                        Witnessed::new(self.program, self.variant, function, *site, args, expected);
+                    self.masks.insert(*site, witnessed.generics);
+                    // The generics of a function passed to the call get a type through it
+                    self.masks.extend(witnessed.references);
+                }
             }
+            ExprKind::FnRef {
+                site: Some(site),
+                function,
+                ..
+            } => {
+                // Unless the call it's passed to has already given its mask
+                if !self.masks.contains_key(site)
+                    && let Some(function) = self.program.function(function)
+                {
+                    let mut solution = vec![None; function.generics.len()];
+                    unify(&function.ty(), &expr.ty, &mut solution);
+                    let mask = solution
+                        .iter()
+                        .map(|arg| expected && arg.is_some())
+                        .collect();
+                    self.masks.insert(*site, mask);
+                }
+            }
+            // A struct literal's generic arguments can't be inferred, so they're kept
+            ExprKind::BoxLit { site, .. } => {
+                self.masks.insert(*site, vec![false]);
+            }
+            _ => {}
         }
 
         let child_expected = match &expr.kind {
@@ -1082,51 +1118,132 @@ impl Removable<'_> {
             self.expr(child, child_expected);
         }
     }
+}
 
-    fn mask(&self, expr: &Expr, expected: bool) -> Option<Vec<bool>> {
-        match &expr.kind {
-            ExprKind::Call { function, args, .. } => {
-                let function = self.program.function(function)?;
-                let witnessed = witnessed_by_args(self.program, self.variant, function, args);
-                Some(
-                    (0..function.generics.len())
-                        .map(|generic| {
-                            witnessed.contains(&generic)
-                                || (expected && function.ret.contains_var(generic))
-                        })
-                        .collect(),
-                )
-            }
-            ExprKind::FnRef { function, .. } => {
-                let function = self.program.function(function)?;
-                let mut solution = vec![None; function.generics.len()];
-                unify(&function.ty(), &expr.ty, &mut solution);
-                Some(
-                    solution
-                        .iter()
-                        .map(|arg| expected && arg.is_some())
-                        .collect(),
-                )
-            }
-            // A struct literal's generic arguments can't be inferred, so they're kept
-            ExprKind::BoxLit { .. } => Some(vec![false]),
-            _ => None,
+/// What a call's arguments give a type to.
+///
+/// A function passed with its own generic arguments removed, such as `duplicate` in
+/// `map(duplicate, 42)`, or a generic lambda, gives nothing a type by itself: its generics are
+/// inferred from the parameter it's passed to. Each one links parts of the parameter's type to
+/// parts of its own type (`A` to `T`, and `B` to `(T, T)`), and types flow through the links
+/// both ways until nothing changes: `42` gives `A` a type, so `T` gets one, and so `B` does. In
+/// `g(identity)` with `g<A>(f: fn(a: A) -> A)`, nothing does.
+struct Witnessed {
+    /// Which of the call's generics could have their arguments removed: those that get a type
+    /// when every other generic whose argument the variant keeps is known.
+    generics: Vec<bool>,
+    /// For each function passed with removed generic arguments, which of its generics get a
+    /// type.
+    references: BTreeMap<SiteId, Vec<bool>>,
+}
+
+/// The parts of a parameter's type and of a function's type, passed for it, that line up.
+struct Link {
+    site: Option<SiteId>,
+    count: usize,
+    pairs: Vec<(Ty, Ty)>,
+}
+
+impl Witnessed {
+    fn new(
+        program: &Program,
+        variant: &Variant,
+        function: &Function,
+        site: SiteId,
+        args: &[Expr],
+        expected: bool,
+    ) -> Self {
+        let count = function.generics.len();
+        let removed = variant
+            .stripped
+            .get(&site)
+            .map_or_else(|| vec![false; count], |strip| removed_mask(strip, count));
+
+        // What the arguments give a type to directly, and the expected type
+        let mut direct = BTreeSet::new();
+        if expected {
+            direct.extend(function.ret.vars());
+        }
+        let mut links = Vec::new();
+        for ((_, param), arg) in function.params.iter().zip(args) {
+            witness(program, variant, param, arg, &mut direct, &mut links);
+        }
+
+        let kept = |except: Option<usize>| {
+            let mut known = direct.clone();
+            known
+                .extend((0..count).filter(|&generic| !removed[generic] && Some(generic) != except));
+            known
+        };
+
+        let generics = (0..count)
+            .map(|generic| solve(&links, kept(Some(generic))).0.contains(&generic))
+            .collect();
+
+        let (_, determined) = solve(&links, kept(None));
+        let references = links
+            .iter()
+            .zip(&determined)
+            .filter_map(|(link, determined)| {
+                let mask = (0..link.count)
+                    .map(|generic| determined.contains(&generic))
+                    .collect();
+                link.site.map(|site| (site, mask))
+            })
+            .collect();
+
+        Self {
+            generics,
+            references,
         }
     }
 }
 
-/// The generics of a call that its arguments give a type to.
-fn witnessed_by_args(
-    program: &Program,
-    variant: &Variant,
-    function: &Function,
-    args: &[Expr],
-) -> BTreeSet<usize> {
-    let mut witnessed = BTreeSet::new();
-    for ((_, param), arg) in function.params.iter().zip(args) {
-        witness(program, variant, param, arg, &mut witnessed);
+/// Lets types flow through the links, from the call's generics that are known, until nothing
+/// changes. Returns the call's generics that get a type, and those of each linked function.
+fn solve(links: &[Link], mut known: BTreeSet<usize>) -> (BTreeSet<usize>, Vec<BTreeSet<usize>>) {
+    let mut determined = vec![BTreeSet::new(); links.len()];
+    loop {
+        let mut changed = false;
+        for (link, determined) in links.iter().zip(&mut determined) {
+            for (param, own) in &link.pairs {
+                if own.vars().is_subset(determined) {
+                    for generic in param.vars() {
+                        changed |= known.insert(generic);
+                    }
+                }
+                if param.vars().is_subset(&known) {
+                    for generic in own.vars() {
+                        changed |= determined.insert(generic);
+                    }
+                }
+            }
+        }
+        if !changed {
+            return (known, determined);
+        }
     }
-    witnessed
+}
+
+/// Lines up the parts of two types, down to where either one is a generic.
+fn align(param: &Ty, own: &Ty, pairs: &mut Vec<(Ty, Ty)>) {
+    match (param, own) {
+        (Ty::Var(_), _) | (_, Ty::Var(_)) => pairs.push((param.clone(), own.clone())),
+        (Ty::Pair(a, b), Ty::Pair(c, d)) => {
+            align(a, c, pairs);
+            align(b, d, pairs);
+        }
+        (Ty::Opt(a), Ty::Opt(b)) | (Ty::List(a), Ty::List(b)) | (Ty::Boxed(a), Ty::Boxed(b)) => {
+            align(a, b, pairs);
+        }
+        (Ty::Fn(a, r), Ty::Fn(b, s)) if a.len() == b.len() => {
+            for (a, b) in a.iter().zip(b) {
+                align(a, b, pairs);
+            }
+            align(r, s, pairs);
+        }
+        _ => {}
+    }
 }
 
 fn witness(
@@ -1135,6 +1252,7 @@ fn witness(
     pattern: &Ty,
     arg: &Expr,
     witnessed: &mut BTreeSet<usize>,
+    links: &mut Vec<Link>,
 ) {
     match (pattern, &arg.kind) {
         (Ty::Var(_), ExprKind::Lambda { typed: false, .. }) => {}
@@ -1143,13 +1261,17 @@ fn witness(
             witnessed.extend(ret.vars().into_iter().filter(|var| !params.contains(var)));
         }
         (Ty::Pair(first, rest), ExprKind::Pair(first_arg, rest_arg)) => {
-            witness(program, variant, first, first_arg, witnessed);
-            witness(program, variant, rest, rest_arg, witnessed);
+            witness(program, variant, first, first_arg, witnessed, links);
+            witness(program, variant, rest, rest_arg, witnessed, links);
         }
-        (Ty::Opt(_) | Ty::List(_), ExprKind::Nil) => {}
+        // `nil` gives nothing to `T | nil`, and only `nil` to `T`, which a nested call such as
+        // `or_else(nil, nil)` then passes on as its type, whatever its explicit type is. So `nil`
+        // and anything of type `nil` count as giving nothing a type.
+        (_, ExprKind::Nil) => {}
+        (_, _) if arg.ty == Ty::Nil => {}
         (Ty::List(inner), ExprKind::List(items)) => {
             for item in items {
-                witness(program, variant, inner, item, witnessed);
+                witness(program, variant, inner, item, witnessed, links);
             }
         }
         (
@@ -1167,15 +1289,56 @@ fn witness(
                 return;
             };
             let removed = removed_mask(&variant.stripped[site], function.generics.len());
-            let inner = witnessed_by_args(program, variant, function, args);
+            let inner = Witnessed::new(program, variant, function, *site, args, false);
             let known = function
                 .ret
                 .vars()
                 .into_iter()
-                .all(|generic| !removed[generic] || inner.contains(&generic));
+                .all(|generic| !removed[generic] || inner.generics[generic]);
             if known {
                 witnessed.extend(pattern.vars());
             }
+        }
+        (
+            _,
+            ExprKind::FnRef {
+                site: Some(site),
+                function,
+                generic_args,
+            },
+        ) if variant.stripped.contains_key(site) => {
+            let Some(function) = program.function(function) else {
+                return;
+            };
+            // The generic arguments that are kept are types, and the removed ones stay generics
+            let removed = removed_mask(&variant.stripped[site], function.generics.len());
+            let args: Vec<Ty> = generic_args
+                .iter()
+                .enumerate()
+                .map(|(generic, arg)| {
+                    if removed[generic] {
+                        Ty::Var(generic)
+                    } else {
+                        arg.clone()
+                    }
+                })
+                .collect();
+            let mut pairs = Vec::new();
+            align(pattern, &function.ty().subst(&args), &mut pairs);
+            links.push(Link {
+                site: Some(*site),
+                count: function.generics.len(),
+                pairs,
+            });
+        }
+        (_, ExprKind::IdentityLambda) => {
+            let mut pairs = Vec::new();
+            align(pattern, &Ty::func(vec![Ty::Var(0)], Ty::Var(0)), &mut pairs);
+            links.push(Link {
+                site: None,
+                count: 1,
+                pairs,
+            });
         }
         _ => witnessed.extend(pattern.vars()),
     }

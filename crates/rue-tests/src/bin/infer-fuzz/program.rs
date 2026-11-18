@@ -140,8 +140,8 @@ impl Ty {
         out
     }
 
-    /// Writes the type, with parentheses around a union where it would otherwise bind wrongly
-    /// (as a function's return type, inside another union, or as a list's element type).
+    /// Writes the type. `in_union` is true where a union or a function type needs parentheses to
+    /// bind as intended: as a function's return type, or as a member of another union.
     fn write(&self, out: &mut String, generics: &[String], in_union: bool) {
         match self {
             Ty::Int => out.push_str("Int"),

@@ -45,6 +45,15 @@ impl Diag {
         out
     }
 
+    /// The message and where it is, such as `... at 3:5`.
+    pub fn located(&self) -> String {
+        if self.line_col.is_empty() {
+            self.message.clone()
+        } else {
+            format!("{} at {}", self.message, self.line_col)
+        }
+    }
+
     /// The key that groups failures: the template and the kind, such as
     /// ``Cannot infer generic `_` for `_`; ... (CannotInferGeneric)``.
     pub fn key(&self) -> String {

@@ -84,7 +84,10 @@ fn main() -> Result<()> {
         };
         match arg.as_str() {
             "--worker" => return run_in_large_stack(worker::worker),
-            "--print" => return print_seed(value()?.parse()?),
+            "--print" => {
+                print_seed(value()?.parse()?);
+                return Ok(());
+            }
             "--seeds" => args.seeds = parse_range(&value()?)?,
             "--threads" => args.threads = value()?.parse()?,
             "--timeout" => args.timeout = Duration::from_secs(value()?.parse()?),
@@ -106,7 +109,7 @@ fn run_in_large_stack(f: fn() -> Result<()>) -> Result<()> {
         .unwrap_or_else(|_| bail!("worker thread panicked"))
 }
 
-fn print_seed(seed: u64) -> Result<()> {
+fn print_seed(seed: u64) {
     let generated = Generator::new(seed).generate();
     println!(
         "// seed {seed}, explicit\n{}",
@@ -119,7 +122,6 @@ fn print_seed(seed: u64) -> Result<()> {
             generated.program.print(variant)
         );
     }
-    Ok(())
 }
 
 fn drive(args: &Args) -> Result<()> {

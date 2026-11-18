@@ -99,11 +99,17 @@ fn run_command(out: &mut impl Write, seed: u64, start: usize) -> Result<()> {
     let generated = Generator::new(seed).generate();
     let explicit_source = generated.program.print(&Variant::default());
 
+    if generated.variants.is_empty() {
+        send(out, "explicit", &Explicit::NoSites)?;
+        writeln!(out, "done")?;
+        out.flush()?;
+        return Ok(());
+    }
+
     progress(out, "explicit")?;
     let explicit = compile(&explicit_source);
 
     let status = match &explicit {
-        _ if generated.variants.is_empty() => Explicit::NoSites,
         Compiled::Ok { time, .. } => Explicit::Valid {
             time_ms: millis(*time),
         },
@@ -118,8 +124,14 @@ fn run_command(out: &mut impl Write, seed: u64, start: usize) -> Result<()> {
             let source = generated.program.print(variant);
             progress(out, &index.to_string())?;
             let stripped = compile(&source);
+            // Each compile of the recheck gets its own time limit too. An error writing the
+            // progress shows up when the outcome is sent.
+            let stage = index.to_string();
             let outcome = classify(&explicit, &stripped, || {
-                (compile(&explicit_source), compile(&source))
+                let _ = progress(out, &stage);
+                let explicit = compile(&explicit_source);
+                let _ = progress(out, &stage);
+                (explicit, compile(&source))
             });
             send(out, "variant", &(index, outcome))?;
         }
@@ -179,7 +191,7 @@ fn shrink_command(out: &mut impl Write, seed: u64, index: usize, budget: usize) 
 
     let stripped = program.print(&variant);
     let message = match compile(&stripped) {
-        Compiled::Rejected { diag, .. } => format!("{} at {}", diag.message, diag.line_col),
+        Compiled::Rejected { diag, .. } => diag.located(),
         Compiled::Panicked { message } => message,
         Compiled::Ok { run, .. } => format!("{run:?}"),
     };
@@ -188,10 +200,7 @@ fn shrink_command(out: &mut impl Write, seed: u64, index: usize, budget: usize) 
         explicit: program.print(&Variant::default()),
         stripped,
         shape: shrink::shape(&program, &variant),
-        tags: shrink::tags(&program, &variant)
-            .into_iter()
-            .map(ToString::to_string)
-            .collect(),
+        tags: shrink::tags(&program, &variant),
         message,
     };
     send(out, "shrunk", &shrunk)?;
@@ -405,10 +414,7 @@ pub fn run_seed(
                 name: name.clone(),
                 source: generated.program.print(variant),
                 shape: shrink::shape(&generated.program, variant),
-                tags: shrink::tags(&generated.program, variant)
-                    .into_iter()
-                    .map(ToString::to_string)
-                    .collect(),
+                tags: shrink::tags(&generated.program, variant),
                 outcome: outcome.context("worker skipped a variant")?,
             });
         }
