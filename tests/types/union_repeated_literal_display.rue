@@ -1,0 +1,14 @@
+fn pick<T>(first: T, second: T, function: fn(x: T) -> Int) -> T {
+    let _ = function(first);
+    second
+}
+
+// `T` is inferred as a union of the two `5`s, which the warning shows once, as `5`
+test fn guard_on_a_union_of_the_same_literal() -> Int {
+    let value = pick(5, 5, fn(x: 5) => 1);
+    if value is Int {
+        value
+    } else {
+        0
+    }
+}

@@ -27,3 +27,27 @@ fn guard_that_cant_match_the_expected_bound() -> Int {
     );
     value
 }
+
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn cycle<A, B>(value: A, back: fn(b: B) -> A, function: fn(a: A) -> B) -> A {
+    let _ = back(function(value));
+    value
+}
+
+// `x` is the union of `5` and the expected bound `5 | 6` passed through `B`, which is shown once
+// each, as `5 | 6`, not as `5 | 5 | 6`
+fn guard_against_a_union_with_a_repeated_literal() -> Int {
+    let value: 5 | 6 = cycle(
+        5,
+        identity,
+        fn(x) => if x is 7 {
+            6
+        } else {
+            5
+        },
+    );
+    value
+}

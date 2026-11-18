@@ -126,9 +126,16 @@ fn stringify_impl_inner(
         }
         // References to the same struct are substituted into distinct types, so variants which come
         // from the same declaration and look the same are only displayed once
+        // A member that's shown the same as an earlier one is left out if it's an atom, such as the
+        // second `5` in a union that inference collected `5` into twice. Other types are kept apart
+        // by their declaration, since two structs can have the same name
         Type::Union(_) => union_variants(arena, id)
             .into_iter()
-            .map(|id| (declaration(arena, id), stringify_impl(arena, id, stack)))
+            .map(|id| {
+                let declaration =
+                    (!matches!(arena[id], Type::Atom(_))).then(|| declaration(arena, id));
+                (declaration, stringify_impl(arena, id, stack))
+            })
             .collect::<IndexSet<_>>()
             .into_iter()
             .map(|(_, name)| name)

@@ -6,3 +6,8 @@ diagnostics:
 - Unused function `guard_that_cant_match_the_expected_bound` at generic_inference_expected_mapped_errors.rue:19:4
 - Binding `value` is returned directly after it's declared at generic_inference_expected_mapped_errors.rue:20:5
 - Cannot type guard from `5` to `6`, since they do not overlap at generic_inference_expected_mapped_errors.rue:22:21
+- Unused function `identity` at generic_inference_expected_mapped_errors.rue:31:4
+- Unused function `cycle` at generic_inference_expected_mapped_errors.rue:35:4
+- Unused function `guard_against_a_union_with_a_repeated_literal` at generic_inference_expected_mapped_errors.rue:42:4
+- Binding `value` is returned directly after it's declared at generic_inference_expected_mapped_errors.rue:43:5
+- Cannot type guard from `5 | 6` to `7`, since they do not overlap at generic_inference_expected_mapped_errors.rue:46:21
