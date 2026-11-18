@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::{collections::HashMap, hash::Hash};
 
 use id_arena::Id;
 use indexmap::{IndexMap, IndexSet};
@@ -76,7 +73,8 @@ struct Bindings<T> {
     names: IndexMap<T, String>,
     imports: HashMap<T, ImportId>,
     exported: IndexSet<T>,
-    blocked: HashSet<String>,
+    /// The blocked names (see [`Scope::block`]), with the imports whose failures each comes from.
+    blocked: HashMap<String, Vec<ImportId>>,
 }
 
 impl<T> Default for Bindings<T> {
@@ -86,7 +84,7 @@ impl<T> Default for Bindings<T> {
             names: IndexMap::new(),
             imports: HashMap::new(),
             exported: IndexSet::new(),
-            blocked: HashSet::new(),
+            blocked: HashMap::new(),
         }
     }
 }
@@ -332,33 +330,49 @@ impl Scope {
         };
     }
 
-    /// Stops a name from being looked up in enclosing scopes, because an import of it into this
-    /// scope failed and has already been reported.
-    pub fn block(&mut self, namespace: Namespace, name: String) {
-        self.blocked_names(namespace).insert(name);
+    /// Stops a name from being looked up in enclosing scopes, because an import of it failed and
+    /// has already been reported. `origin` is that import, which is an import into this scope, or
+    /// for a name that an import through `super` passes on, an origin of the block it passes on.
+    /// A name can have several origins. Returns whether the origin is new.
+    pub fn block(&mut self, namespace: Namespace, name: String, origin: ImportId) -> bool {
+        let origins = self.blocked_names_mut(namespace).entry(name).or_default();
+
+        if origins.contains(&origin) {
+            return false;
+        }
+
+        origins.push(origin);
+        true
     }
 
     pub fn is_blocked(&self, namespace: Namespace, name: &str) -> bool {
+        self.blocked_names(namespace).contains_key(name)
+    }
+
+    /// The imports whose failures a blocked name comes from (see [`Self::block`]), which are empty
+    /// if it isn't blocked.
+    pub fn block_origins(&self, namespace: Namespace, name: &str) -> &[ImportId] {
+        self.blocked_names(namespace)
+            .get(name)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// The names blocked in a namespace, with their origins (see [`Self::block`]).
+    pub fn blocked(&self, namespace: Namespace) -> impl Iterator<Item = (&str, &[ImportId])> {
+        self.blocked_names(namespace)
+            .iter()
+            .map(|(name, origins)| (name.as_str(), origins.as_slice()))
+    }
+
+    fn blocked_names(&self, namespace: Namespace) -> &HashMap<String, Vec<ImportId>> {
         match namespace {
             Namespace::Value => &self.symbols.blocked,
             Namespace::Type => &self.types.blocked,
             Namespace::Module => &self.modules.blocked,
         }
-        .contains(name)
     }
 
-    /// The names blocked in a namespace (see [`Self::block`]).
-    pub fn blocked(&self, namespace: Namespace) -> impl Iterator<Item = &str> {
-        match namespace {
-            Namespace::Value => &self.symbols.blocked,
-            Namespace::Type => &self.types.blocked,
-            Namespace::Module => &self.modules.blocked,
-        }
-        .iter()
-        .map(String::as_str)
-    }
-
-    fn blocked_names(&mut self, namespace: Namespace) -> &mut HashSet<String> {
+    fn blocked_names_mut(&mut self, namespace: Namespace) -> &mut HashMap<String, Vec<ImportId>> {
         match namespace {
             Namespace::Value => &mut self.symbols.blocked,
             Namespace::Type => &mut self.types.blocked,

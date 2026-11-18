@@ -1,0 +1,20 @@
+mod a {
+    export nope::X;
+}
+
+// Which imports' failures are reported doesn't depend on the order the imports are resolved in,
+// which depends on module names (see failed_import_origins_a and failed_import_origins_z)
+mod b {
+    import super::a::X;
+    import super::b::X;
+    import super::a::Y::Z;
+    import Z::Z;
+
+    export fn f() -> Int {
+        X + Z
+    }
+}
+
+fn main() -> Int {
+    b::f()
+}

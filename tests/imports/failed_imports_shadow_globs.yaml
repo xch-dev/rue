@@ -1,0 +1,7 @@
+diagnostics:
+- Undeclared symbol `lib` at failed_imports_shadow_globs.rue:1:8
+- Unused import `*` at failed_imports_shadow_globs.rue:2:16
+- Unused function `helper` at failed_imports_shadow_globs.rue:5:15
+- Undeclared symbol `nope` at failed_imports_shadow_globs.rue:11:12
+- Unused import `*` at failed_imports_shadow_globs.rue:12:22
+- Unused function `item` at failed_imports_shadow_globs.rue:20:15
