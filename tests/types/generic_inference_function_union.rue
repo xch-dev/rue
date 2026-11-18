@@ -78,6 +78,20 @@ test fn generic_function() -> Int {
     function(8)
 }
 
+fn id_or<U>(value: U | nil) -> U {
+    unchecked_cast(value)
+}
+
+fn takes(function: fn(x: fn(value: Int) -> Int) -> fn(value: Int) -> Int) -> Int {
+    function(increment)(1)
+}
+
+test fn instance_bounds() -> Int {
+    // `id_or`'s `U` is instantiated as `fn(value: Int) -> Int`, without the runtime structure as
+    // a lower bound, which isn't a function
+    takes(id_or)
+}
+
 fn pick<T>(_value: T | nil, other: T) -> T {
     other
 }

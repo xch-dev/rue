@@ -48,6 +48,13 @@ tests:
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
+- name: instance_bounds
+  program: (a (a (q . 2) (c (q 16 2 (q . 1)) ())) (q 1))
+  debug_program: (a (q 2 10 (c 14 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q . 2) (c (q 2 (a 3 (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ())) (c (q . 1) ())) (q 16 2 (q . 1)))) ()))
+  output: "2"
+  runtime_cost: 1209
+  byte_cost: 420000
+  total_cost: 421209
 - name: guard_structural_value
   program: (a (q 16 4 6) (c (q 3 . 4) 1))
   debug_program: (a (q 2 (q 2 (q 16 (f 2) (r 2)) (c (a 5 (c (c (q . 3) (q . 4)) 2)) 1)) (c (c (q . 1) (q . 2)) 1)) (c (q . 2) ()))
