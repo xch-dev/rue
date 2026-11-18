@@ -254,3 +254,24 @@ fn upper_bound<A, B>(function: fn(x: A) -> B, sink: fn(x: B) -> Int, value: A, d
 test fn guard_upper_bound_not_passed_on() -> Int {
     upper_bound(identity, fn(x: Int) => x, 1, 3)
 }
+
+fn lambda_order<A, B>(
+    function: fn(a: A) -> B,
+    _value: B,
+    sink: fn(b: B) -> Int,
+    other: A,
+    depth: Int,
+) -> Int {
+    if depth == 0 {
+        return sink(function(other));
+    }
+
+    // Guard: the callee's `B` is inferred as the caller's `A`, which was the callee's own `A`
+    // before it was renamed, so the second lambda still waits for the first, which makes `B`
+    // `A | 5` before it's compiled, as before
+    lambda_order(fn(_v: A) => 5, other, fn(_v) => 0, other, depth - 1)
+}
+
+test fn guard_lambda_order() -> Int {
+    lambda_order(fn(v: Int) => v, 1, fn(v) => v, 2, 1)
+}

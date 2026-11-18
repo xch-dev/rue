@@ -156,7 +156,13 @@ pub fn compile_function_call_expr(
                 let index = lambdas
                     .iter()
                     .position(|&i| {
-                        !has_uninferred_parameters(ctx, function.params[i].ty, function, &inferred)
+                        !has_uninferred_parameters(
+                            ctx,
+                            function.params[i].ty,
+                            function,
+                            &inferred,
+                            &renamed,
+                        )
                     })
                     .unwrap_or(0);
 
@@ -325,12 +331,15 @@ fn callee_name(call: &AstFunctionCallExpr) -> String {
 }
 
 /// Whether the parameters of the function type expected of a lambda reference any of the
-/// callee's generics that haven't been inferred yet.
+/// callee's generics that haven't been inferred yet. A renamed one (see `rename_generics_in_scope`)
+/// also counts where they reference the caller's generic it was renamed from, as it did when the
+/// two were the same generic, so that lambdas are compiled in the same order.
 fn has_uninferred_parameters(
     ctx: &mut Compiler,
     param: TypeId,
     callee: &FunctionType,
     mappings: &HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
 ) -> bool {
     let expected = substitute_with_mappings(ctx.types_mut(), param, mappings);
 
@@ -340,7 +349,9 @@ fn has_uninferred_parameters(
         .any(|param| {
             callee.generics.iter().any(|&generic| {
                 !mappings.contains_key(&generic)
-                    && contains_generic(ctx.types_mut(), param.ty, generic)
+                    && std::iter::once(generic)
+                        .chain(renamed.get(&generic).copied())
+                        .any(|generic| contains_generic(ctx.types_mut(), param.ty, generic))
             })
         })
 }
