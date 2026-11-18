@@ -1,0 +1,9 @@
+export mod x {
+    export const V: Int = 100;
+
+    export mod y {
+        export const W: Int = 3;
+    }
+}
+
+export const V: Int = 2;

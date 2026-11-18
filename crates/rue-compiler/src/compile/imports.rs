@@ -301,7 +301,9 @@ pub fn resolve_imports(
             break;
         }
 
-        for lookup in stuck_lookups(mem::take(&mut resolution.waiting)) {
+        let waiting = mem::take(&mut resolution.waiting);
+
+        for lookup in stuck_lookups(ctx, &resolution, waiting) {
             cache.forced.entry(lookup.key).or_insert(lookup.forced);
         }
     }
@@ -678,7 +680,17 @@ fn may_import(
 /// the strongly connected components of the imports that wait for each other that don't wait for
 /// any other one. Imports that wait for those are answered later, once they're resolved, so an
 /// inline module's lookup through `super` waits for the cycle of imports in the module it names.
-fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
+///
+/// A glob import's lookup of a name isn't answered while a named import of the name into the
+/// module it looks past is in the same component. A named import's binding takes precedence over
+/// what's outside of the module, so the lookup waits for it to be resolved instead of finding
+/// what's outside and being contradicted by it. The named import's own lookups are answered, so
+/// the component still makes progress.
+fn stuck_lookups(
+    ctx: &Compiler,
+    resolution: &Resolution,
+    waiting: Vec<WaitingLookup>,
+) -> Vec<WaitingLookup> {
     let mut edges: IndexMap<ImportId, IndexSet<ImportId>> = IndexMap::new();
 
     for lookup in &waiting {
@@ -709,12 +721,27 @@ fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
                 })
             })
         })
-        .flat_map(|(_, component)| component.iter().copied())
-        .collect::<HashSet<_>>();
+        .flat_map(|(index, component)| component.iter().map(move |&import| (import, index)))
+        .collect::<HashMap<_, _>>();
 
     waiting
         .into_iter()
-        .filter(|lookup| stuck.contains(&lookup.key.0))
+        .filter(|lookup| {
+            let import = lookup.key.0;
+
+            let Some(&component) = stuck.get(&import) else {
+                return false;
+            };
+
+            let shadowed = matches!(ctx.import(import).items, Items::All(_))
+                && resolution
+                    .named_imports_of(lookup.forced.scope, lookup.forced.name.text())
+                    .into_iter()
+                    .flatten()
+                    .any(|named| stuck.get(named) == Some(&component));
+
+            !shadowed
+        })
         .collect()
 }
 
