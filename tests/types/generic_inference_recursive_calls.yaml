@@ -51,7 +51,7 @@ tests:
   program: (a (q 2 2 (c 2 (q 3 120 . 1))) (c (q 2 (i 5 (q 2 (q 4 6 4) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1)) (q 4 15 11)) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (q . 3) (c (q . 120) (q . 1))))) (c (q 2 (i (= 5 ()) (q 4 15 11) (q 2 (q 4 (r 2) (f 2)) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1))) 1) ()))
   output: (1 . 120)
-  value: (1, 0x78)
+  value: (1, "x")
   runtime_cost: 6604
   byte_cost: 1332000
   total_cost: 1338604

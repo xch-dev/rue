@@ -19,7 +19,7 @@ tests:
   program: (q . 97)
   debug_program: (a (q 2 2 (c (q . 97) (c (q . 1) ()))) (c (q . 2) ()))
   output: "97"
-  value: "0x61"
+  value: "\"a\""
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020

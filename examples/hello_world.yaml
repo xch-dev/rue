@@ -2,7 +2,7 @@ program: (q . "Hello, world!")
 debug_program: (q . "Hello, world!")
 solution: ()
 output: "\"Hello, world!\""
-value: "0x48656c6c6f2c20776f726c6421"
+value: "\"Hello, world!\""
 runtime_cost: 20
 byte_cost: 192000
 total_cost: 192020

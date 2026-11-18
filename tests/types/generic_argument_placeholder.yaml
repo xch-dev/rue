@@ -11,7 +11,7 @@ tests:
   program: (q . "hello!")
   debug_program: (a (q 2 (q 14 (r 2) (q . 33)) (c (a 2 (c (q . 1) (q . "hello"))) 1)) (c (q 4 2 3) ()))
   output: "\"hello!\""
-  value: "0x68656c6c6f21"
+  value: "\"hello!\""
   runtime_cost: 20
   byte_cost: 108000
   total_cost: 108020
