@@ -278,11 +278,7 @@ fn binding_users(db: &Database, import: ImportId, declaration: Declaration) -> V
             continue;
         }
 
-        for (used, user) in db.import_uses(import) {
-            if used != declaration {
-                continue;
-            }
-
+        for user in db.import_users(import, declaration) {
             match user {
                 ImportUser::Declaration(user) => users.push(user),
                 ImportUser::Import(import) => imports.push(import),

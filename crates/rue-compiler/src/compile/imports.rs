@@ -1300,8 +1300,7 @@ fn resolve_import(
                     // item, it's ambiguous if any of them does, whichever one recorded it, so the
                     // ambiguity is recorded on that one, along with what else the name could
                     // refer to.
-                    if let Some(via) = via
-                        && ctx.is_ambiguous_import(Some(via), item.into())
+                    if ctx.is_ambiguous_import(via, item.into())
                         && ctx.scope(import_scope).item(namespace, &name) == Some(item)
                         && let Some(recorded) = ctx.scope(import_scope).item_import(item)
                         && matches!(ctx.import(recorded).items, Items::All(_))
@@ -1362,9 +1361,8 @@ fn resolve_import(
                         // The name could refer to the item this import brings in, or to what
                         // that could refer to if it's ambiguous where it's imported from
                         if existing != item {
-                            let others = via
-                                .into_iter()
-                                .flat_map(|via| ctx.ambiguous_alternatives(via, item.into()))
+                            let others = ctx
+                                .ambiguous_alternatives(via, item.into())
                                 .chain([item.into()])
                                 .collect::<Vec<_>>();
                             updated |= ctx.add_ambiguous_import(bound_by, existing.into(), others);

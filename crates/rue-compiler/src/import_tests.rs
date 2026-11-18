@@ -1197,21 +1197,22 @@ fn colliding_unused_glob_imports_are_both_unused() {
     }
 }
 
-/// `alpha` and `beta` each export a different `V`, which `both` glob exports from both of them.
-/// The first module's `V` has the value `first_value`, and the module names are in either order,
-/// so that either glob import binds `V`. `user` has `user_items`.
-fn colliding_glob_items(alpha_first: bool, first_value: &str, user_items: &str) -> String {
-    let (first, second) = if alpha_first {
-        ("alpha", "beta")
-    } else {
-        ("beta", "alpha")
-    };
+/// Two modules each export a different `V`, which `both` glob exports from both of them, and
+/// `user` has `user_items`, in which `{first}` and `{second}` are replaced with the modules'
+/// names. The first module's `V` has the value `first_value`. The names are `alpha` and `beta` if
+/// `first_binds`, and otherwise `zeta` and `beta`, so that either glob import binds `V`, since
+/// that depends on the modules' names.
+fn colliding_glob_items(first_binds: bool, first_value: &str, user_items: &str) -> String {
+    let first = if first_binds { "alpha" } else { "zeta" };
+    let user_items = user_items
+        .replace("{first}", first)
+        .replace("{second}", "beta");
 
     format!(
         "
         mod {first} {{ export const V: Int = {first_value}; }}
-        mod {second} {{ export const V: Int = 2; }}
-        mod both {{ export super::alpha::*; export super::beta::*; }}
+        mod beta {{ export const V: Int = 2; }}
+        mod both {{ export super::{first}::*; export super::beta::*; }}
         mod user {{ {user_items} }}
         fn main() -> Int {{ user::value() }}
         "
@@ -1233,23 +1234,54 @@ fn ambiguous_uses_of_colliding_glob_items_use_all_of_them() {
     // unused, whether it's used directly, through a chain of glob imports, a named import or a
     // path
     for user_items in [
-        "import super::alpha::*; import super::beta::*; export fn value() -> Int { V }",
+        "import super::{first}::*; import super::{second}::*; export fn value() -> Int { V }",
         "import super::both::*; export fn value() -> Int { V }",
         "import super::both::V; export fn value() -> Int { V }",
         "export fn value() -> Int { super::both::V }",
     ] {
-        for alpha_first in [true, false] {
-            let compiled = compile(&colliding_glob_items(alpha_first, "1", user_items));
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_glob_items(first_binds, "1", user_items));
             let errors = compiled.errors();
 
             assert!(
                 errors.len() == 1 && errors[0].ends_with("AmbiguousImport(\"V\")"),
-                "{user_items}, alpha first: {alpha_first}: {errors:?}"
+                "{user_items}, first binds: {first_binds}: {errors:?}"
             );
             assert_eq!(
                 unused_constants(&compiled),
                 Vec::<String>::new(),
-                "{user_items}, alpha first: {alpha_first}"
+                "{user_items}, first binds: {first_binds}"
+            );
+        }
+    }
+}
+
+#[test]
+fn ambiguous_uses_through_a_glob_import_that_collides_again_use_all_of_them() {
+    // `user` brings in a third `V`, which collides with the ambiguous `V` that `both` exports.
+    // Whichever of the three the name is bound to, the use counts as a use of all of them.
+    for third in ["aaa", "zzz"] {
+        for first_binds in [true, false] {
+            let source = colliding_glob_items(
+                first_binds,
+                "1",
+                &format!(
+                    "import super::{third}::*; import super::both::*; export fn value() -> Int {{ V }}"
+                ),
+            );
+            let compiled = compile(&format!(
+                "{source}mod {third} {{ export const V: Int = 3; }}"
+            ));
+            let errors = compiled.errors();
+
+            assert!(
+                errors.len() == 1 && errors[0].ends_with("AmbiguousImport(\"V\")"),
+                "third: {third}, first binds: {first_binds}: {errors:?}"
+            );
+            assert_eq!(
+                unused_constants(&compiled),
+                Vec::<String>::new(),
+                "third: {third}, first binds: {first_binds}"
             );
         }
     }
@@ -1257,26 +1289,22 @@ fn ambiguous_uses_of_colliding_glob_items_use_all_of_them() {
 
 #[test]
 fn unused_colliding_glob_items_are_all_unused() {
-    for alpha_first in [true, false] {
+    for first_binds in [true, false] {
         let compiled = compile(&colliding_glob_items(
-            alpha_first,
+            first_binds,
             "1",
-            "import super::alpha::*; import super::beta::*; export fn value() -> Int { 1 }",
+            "import super::{first}::*; import super::{second}::*; export fn value() -> Int { 1 }",
         ));
-        let (first, second) = if alpha_first {
-            ("2:34", "3:33")
-        } else {
-            ("2:33", "3:34")
-        };
+        let first = if first_binds { "2:34" } else { "2:33" };
 
         compiled.assert_no_errors();
         assert_eq!(
             unused_constants(&compiled),
             [
                 format!("{first} UnusedConstant"),
-                format!("{second} UnusedConstant")
+                "3:33 UnusedConstant".to_string()
             ],
-            "alpha first: {alpha_first}"
+            "first binds: {first_binds}"
         );
     }
 }
@@ -1286,11 +1314,11 @@ fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others()
     // The first module's `V` calls the function that uses `V`, which is only recursive if the
     // name is bound to it. The use counts as a use of the other `V` too, but isn't a reference to
     // it.
-    for alpha_first in [true, false] {
+    for first_binds in [true, false] {
         let compiled = compile(&colliding_glob_items(
-            alpha_first,
+            first_binds,
             "super::user::value()",
-            "import super::alpha::*; import super::beta::*; export fn value() -> Int { V }",
+            "import super::{first}::*; import super::{second}::*; export fn value() -> Int { V }",
         ));
         let recursive = compiled
             .errors()
@@ -1298,8 +1326,7 @@ fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others()
             .filter(|error| error.contains("Recursive"))
             .collect::<Vec<_>>();
 
-        // `alpha`'s glob import binds the name
-        if alpha_first {
+        if first_binds {
             assert_eq!(recursive, ["2:34 RecursiveConstant(\"V\")"]);
         } else {
             assert_eq!(recursive, Vec::<String>::new());
@@ -1308,7 +1335,7 @@ fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others()
         assert_eq!(
             unused_constants(&compiled),
             Vec::<String>::new(),
-            "alpha first: {alpha_first}"
+            "first binds: {first_binds}"
         );
     }
 }

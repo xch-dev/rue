@@ -317,6 +317,21 @@ impl Database {
             .insert(user);
     }
 
+    /// Where a declaration was referenced through the import itself, not including the references
+    /// through a binding it shares.
+    pub fn import_users(
+        &self,
+        import: ImportId,
+        declaration: Declaration,
+    ) -> impl Iterator<Item = ImportUser> + '_ {
+        self.import_references
+            .get(&import)
+            .and_then(|references| references.get(&declaration))
+            .into_iter()
+            .flatten()
+            .copied()
+    }
+
     /// Records that a glob import brings a declaration in under a name that another glob import
     /// bound, so that a reference through the binding is a reference through both of them,
     /// whichever bound the name. Returns whether it wasn't already recorded.
@@ -404,11 +419,11 @@ impl Database {
     /// this import and is ambiguous.
     pub fn ambiguous_alternatives(
         &self,
-        import: ImportId,
+        import: Option<ImportId>,
         declaration: Declaration,
     ) -> impl Iterator<Item = Declaration> + '_ {
-        self.ambiguous_imports
-            .get(&(import, declaration))
+        import
+            .and_then(|import| self.ambiguous_imports.get(&(import, declaration)))
             .into_iter()
             .flatten()
             .copied()

@@ -369,9 +369,8 @@ impl FileTree {
 
                             // A name that's ambiguous is exported along with everything it could
                             // refer to, whichever glob import bound it
-                            if let Some(import) = ctx.scope(scope).item_import(item) {
-                                entrypoints.extend(ctx.ambiguous_alternatives(import, item.into()));
-                            }
+                            let import = ctx.scope(scope).item_import(item);
+                            entrypoints.extend(ctx.ambiguous_alternatives(import, item.into()));
                         }
                     }
                 }
