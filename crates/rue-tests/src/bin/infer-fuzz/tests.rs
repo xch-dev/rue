@@ -720,6 +720,7 @@ fn ok(clvm: &str, millis: u64) -> Compiled {
         clvm: clvm.to_string(),
         run: Run::Output("1".to_string()),
         time: Duration::from_millis(millis),
+        fingerprint: String::new(),
     }
 }
 
@@ -731,6 +732,7 @@ fn rejected(millis: u64) -> Compiled {
             line_col: "1:1".to_string(),
         },
         time: Duration::from_millis(millis),
+        fingerprint: String::new(),
     }
 }
 
@@ -784,6 +786,7 @@ fn clusters_are_keyed_by_category_and_diagnostic() {
         detail: None,
         time_ms: 1.0,
         output: None,
+        fingerprint: None,
     };
     assert_eq!(
         cluster_key(&with_diag),
@@ -839,6 +842,7 @@ fn unsound_and_crashed_failures_must_stay_so_while_shrinking() {
         clvm: "(q . 2)".to_string(),
         run: Run::Output("2".to_string()),
         time: Duration::from_millis(1),
+        fingerprint: String::new(),
     };
     assert!(worker::same_failure(&unsound, &expected, &different));
 
@@ -906,7 +910,10 @@ fn record(seed: u64, outcomes: &[(&str, Category, &[&str])]) -> report::SeedReco
     report::SeedRecord {
         seed,
         explicit_source: String::new(),
-        explicit: Explicit::Valid { time_ms: 1.0 },
+        explicit: Explicit::Valid {
+            time_ms: 1.0,
+            fingerprint: None,
+        },
         variants: outcomes
             .iter()
             .map(|(name, category, tags)| report::VariantRecord {
@@ -1015,7 +1022,11 @@ fn line(text: &str) -> Message {
 fn valid() -> Message {
     line(&format!(
         "explicit {}",
-        serde_json::to_string(&Explicit::Valid { time_ms: 1.0 }).unwrap()
+        serde_json::to_string(&Explicit::Valid {
+            time_ms: 1.0,
+            fingerprint: None,
+        })
+        .unwrap()
     ))
 }
 
@@ -1263,6 +1274,77 @@ fn comparisons_report_changed_outputs_and_diagnostics() {
     let mut unrecorded = old.clone();
     unrecorded.variants[0].outcome.output = None;
     assert_eq!(compare::compare(&[unrecorded], &[old]).changes, []);
+}
+
+#[test]
+fn comparisons_report_changed_fingerprints() {
+    let mut old = record(0, &[("all", Category::Inferred, &[])]);
+    old.variants[0].outcome.fingerprint = Some("aaaa".to_string());
+    old.explicit = Explicit::Valid {
+        time_ms: 1.0,
+        fingerprint: Some("eeee".to_string()),
+    };
+
+    let mut new = old.clone();
+    new.variants[0].outcome.fingerprint = Some("bbbb".to_string());
+    new.explicit = Explicit::Valid {
+        time_ms: 2.0,
+        fingerprint: Some("ffff".to_string()),
+    };
+
+    let comparison = compare::compare(std::slice::from_ref(&old), &[new]);
+    assert_eq!(
+        kinds(&comparison),
+        [
+            compare::ChangeKind::Fingerprint,
+            compare::ChangeKind::Fingerprint
+        ]
+    );
+    assert_eq!(comparison.regressions().count(), 0);
+    let report = comparison.report();
+    assert!(
+        report.contains(r#"- seed 0 `explicit` [fingerprint]: "Valid #eeee" -> "Valid #ffff""#),
+        "{report}"
+    );
+    assert!(
+        report.contains(
+            r#"- seed 0 `all` [fingerprint]: "Inferred: detail #aaaa" -> "Inferred: detail #bbbb""#
+        ),
+        "{report}"
+    );
+
+    // A run from before fingerprints were recorded has none to compare
+    let mut unrecorded = old.clone();
+    unrecorded.variants[0].outcome.fingerprint = None;
+    unrecorded.explicit = Explicit::Valid {
+        time_ms: 1.0,
+        fingerprint: None,
+    };
+    assert_eq!(compare::compare(&[unrecorded], &[old]).changes, []);
+}
+
+#[test]
+fn fingerprints_cover_every_diagnostic_and_the_clvm() {
+    let warning = |line| {
+        let source = format!(
+            "fn main() -> Int {{\n{}    let x = 1;\n    2\n}}\n",
+            "\n".repeat(line)
+        );
+        match compile(&source) {
+            Compiled::Ok { fingerprint, .. } => fingerprint,
+            other => panic!("{other:?}"),
+        }
+    };
+
+    // The same program has the same fingerprint, and moving its warning changes it
+    assert_eq!(warning(0), warning(0));
+    assert_ne!(warning(0), warning(1));
+
+    let clvm = |value| match compile(&format!("fn main() -> Int {{\n    {value}\n}}\n")) {
+        Compiled::Ok { fingerprint, .. } => fingerprint,
+        other => panic!("{other:?}"),
+    };
+    assert_ne!(clvm(1), clvm(2));
 }
 
 #[test]

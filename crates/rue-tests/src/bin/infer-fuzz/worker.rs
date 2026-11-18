@@ -33,6 +33,9 @@ use crate::shrink;
 pub enum Explicit {
     Valid {
         time_ms: f64,
+        /// See `oracle::fingerprint`. Runs from before this was recorded don't have it.
+        #[serde(default)]
+        fingerprint: Option<String>,
     },
     Rejected(Diag),
     Panicked(String),
@@ -110,8 +113,11 @@ pub fn run_command(out: &mut impl Write, seed: u64, start: usize) -> Result<()> 
     let explicit = compile(&explicit_source);
 
     let status = match &explicit {
-        Compiled::Ok { time, .. } => Explicit::Valid {
+        Compiled::Ok {
+            time, fingerprint, ..
+        } => Explicit::Valid {
             time_ms: millis(*time),
+            fingerprint: Some(fingerprint.clone()),
         },
         Compiled::Rejected { diag, .. } => Explicit::Rejected(diag.clone()),
         Compiled::Panicked { message } => Explicit::Panicked(message.clone()),

@@ -35,8 +35,8 @@
 //! - `--print SEED`: print the explicit program and the variants for one seed, and exit.
 //! - `--compare BASELINE NEW`: compare two runs of the same seeds, each a `results.jsonl` or the
 //!   `--out` directory that holds it. It prints how many variants went from each status to each
-//!   other one, and every variant whose status, output or first diagnostic changed, marking the
-//!   regressions: variants that are no longer inferred, or become unsound, slow or crashed. It
+//!   other one, and every variant whose status, output, first diagnostic or fingerprint (a hash
+//!   of every diagnostic and the CLVM) changed, marking the regressions: variants that are no longer inferred, or become unsound, slow or crashed. It
 //!   exits with status 1 if there are any regressions. The format is described in `compare.rs`.
 
 mod compare;
