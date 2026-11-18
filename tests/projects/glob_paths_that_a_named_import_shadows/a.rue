@@ -1,0 +1,5 @@
+export mod a {
+    export const V: Int = 100;
+}
+
+export const V: Int = 2;

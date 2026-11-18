@@ -421,8 +421,9 @@ struct ForcedLookup {
 }
 
 /// Reports each lookup that was answered without waiting, if the module it looked past ended up
-/// with a different item with the name (other than one the import itself brought in). The name
-/// would refer to that item everywhere else in the module, so the import is ambiguous.
+/// with a different item with the name (other than one the import itself brought in), or with an
+/// ambiguous one. The name would refer to that item everywhere else in the module, so the import
+/// is ambiguous.
 fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
     let mut reported = HashSet::new();
 
@@ -431,16 +432,19 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
             continue;
         };
 
-        // The module's final binding contradicts the answer if it's a different item, other than
-        // one the import itself brings in under the name (whichever import recorded it). It's
-        // ambiguous either way if glob imports bring in different items with the name, even when
-        // one of them is the item that was found.
+        // A different item contradicts the answer, unless the import itself brings it in under the
+        // name (whichever glob import recorded it). An ambiguous one does even if it's the same.
         let ambiguous = ctx
             .scope(forced.scope)
             .item_with_import(forced.namespace, forced.name.text())
             .is_some_and(|(item, via)| {
-                ctx.is_ambiguous_import(via, item.into())
-                    || (item != answer && !brings_in(ctx, cache, import, forced, item))
+                // A binding that a named import (other than this one) made takes precedence over
+                // what a glob import brings in, so it isn't this import's, whatever it brings in
+                let own = via.is_some_and(|via| {
+                    via == import || matches!(ctx.import(via).items, Items::All(_))
+                }) && brings_in(ctx, cache, import, forced, item);
+
+                ctx.is_ambiguous_import(via, item.into()) || (item != answer && !own)
             });
 
         if ambiguous && reported.insert((import, forced.name.text().to_string())) {
@@ -644,9 +648,7 @@ fn blocks(
                         .is_some_and(|item| source.is_item_exported(item))
                 };
 
-                source.item(namespace, name).is_some()
-                    && !public(namespace)
-                    && !Namespace::ALL.into_iter().any(public)
+                source.item(namespace, name).is_some() && !Namespace::ALL.into_iter().any(public)
             })
 }
 
@@ -680,18 +682,10 @@ fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
     let mut edges: IndexMap<ImportId, IndexSet<ImportId>> = IndexMap::new();
 
     for lookup in &waiting {
-        edges.entry(lookup.key.0).or_default();
-    }
-
-    for lookup in &waiting {
-        let blockers = lookup
-            .blockers
-            .iter()
-            .copied()
-            .filter(|blocker| edges.contains_key(blocker))
-            .collect::<Vec<_>>();
-
-        edges[&lookup.key.0].extend(blockers);
+        edges
+            .entry(lookup.key.0)
+            .or_default()
+            .extend(lookup.blockers.iter().copied());
     }
 
     let components = rue_types::strongly_connected_components(&edges);
@@ -706,10 +700,13 @@ fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
         .iter()
         .enumerate()
         .filter(|&(index, component)| {
+            // A blocker that isn't waiting itself is resolved, so it doesn't count
             component.iter().all(|import| {
-                edges[import]
-                    .iter()
-                    .all(|blocker| component_of[blocker] == index)
+                edges[import].iter().all(|blocker| {
+                    component_of
+                        .get(blocker)
+                        .is_none_or(|&other| other == index)
+                })
             })
         })
         .flat_map(|(_, component)| component.iter().copied())
@@ -802,13 +799,13 @@ fn lookup(
     }
 
     let outside = match base {
+        Base::Inner(_) => None,
         _ if blocks(ctx, resolution, scope, namespace, name) => None,
         Base::Local(scope) => ctx
             .scope(scope)
             .parent()
             .and_then(|parent| ctx.resolve_item_in(parent, namespace, name)),
         Base::Member(scope) => ctx.sibling_item(scope, namespace, name),
-        Base::Inner(_) => None,
     };
 
     if forced.is_some() {

@@ -1,0 +1,17 @@
+// `other.rue` has a private module `utils` and a public function `utils`, so `import other::utils`
+// only brings in the function, and doesn't block the module name: `super::utils` is the sibling
+// `utils.rue`. Compare `blocked_names_hide_sibling_files`.
+
+import other::utils;
+
+mod a {
+    import super::utils::greet;
+
+    export fn f() -> Int {
+        greet() + super::utils()
+    }
+}
+
+fn main() -> Int {
+    a::f()
+}

@@ -1,0 +1,9 @@
+mod utils {
+    export fn greet() -> Int {
+        2
+    }
+}
+
+export fn utils() -> Int {
+    3
+}
