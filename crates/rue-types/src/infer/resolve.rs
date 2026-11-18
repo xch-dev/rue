@@ -479,7 +479,7 @@ impl Inference {
             }
         }
 
-        self.restore_unheld(arena, builtins, flipped);
+        self.restore_unheld(arena, builtins, &flipped);
     }
 
     /// Puts back each candidate with a var instantiated the other way (see
@@ -494,11 +494,11 @@ impl Inference {
         &mut self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
-        flipped: IndexMap<(TypeId, CandidateKind, usize), TypeId>,
+        flipped: &IndexMap<(TypeId, CandidateKind, usize), TypeId>,
     ) {
         let mut others: IndexMap<(TypeId, CandidateKind), Vec<TypeId>> = IndexMap::new();
 
-        for (&(generic, kind, index), &by_kind) in &flipped {
+        for (&(generic, kind, index), &by_kind) in flipped {
             let others = others.entry((generic, kind)).or_insert_with(|| {
                 self.generics[&generic]
                     .list(kind)
