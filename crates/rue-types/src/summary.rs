@@ -19,7 +19,7 @@
 
 use std::mem;
 
-use crate::{FxHashMap, FxIndexMap, TypeId};
+use crate::{FxHashMap, TypeId};
 
 /// A binder in a summary's coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -126,14 +126,12 @@ impl Summary {
     /// summary that's applied again and again don't grow it without bound.
     ///
     /// The local binders are grouped into components that share a constraint, and the constraints
-    /// that refer to none are kept once each. Each component is renumbered from 0 (its shape), and
-    /// at most two components of each shape are kept. That keeps every pair of bounds that can be
-    /// checked against each other, up to renaming the local binders: two bounds from one copy (with
-    /// the same local binders), and two from different copies (with different ones). A third copy
-    /// only adds more pairs like those. A shape is renumbered in the order that its constraints
-    /// sort in with the local binders left out, so two components with the same constraints in the
-    /// same order always have the same shape, but two whose constraints are only the same up to
-    /// a different numbering might not, which keeps more than needed but loses nothing.
+    /// that refer to none are kept once each. Each component is renumbered from 0 in a way that
+    /// doesn't depend on how it was numbered before (its shape, see `shape`), and at most two
+    /// components of each shape are kept. That keeps every pair of bounds that can be checked
+    /// against each other, up to renaming the local binders: two bounds from one copy (with the
+    /// same local binders), and two from different copies (with different ones). A third copy only
+    /// adds more pairs like those.
     pub(crate) fn canonicalize(&mut self) {
         let mut parents: Vec<usize> = (0..self.locals).collect();
 
@@ -151,7 +149,7 @@ impl Summary {
         }
 
         let mut ground = Vec::new();
-        let mut components: FxIndexMap<usize, Vec<Constraint>> = FxIndexMap::default();
+        let mut components: FxHashMap<usize, Vec<Constraint>> = FxHashMap::default();
 
         for constraint in mem::take(&mut self.constraints) {
             let local = constraint.locals().next();
@@ -168,8 +166,10 @@ impl Summary {
         ground.sort();
         ground.dedup();
 
-        let mut shapes: Vec<(Vec<Constraint>, usize)> =
-            components.into_values().map(shape).collect();
+        let mut shapes: Vec<(Vec<Constraint>, usize)> = components
+            .values()
+            .map(|constraints| shape(constraints))
+            .collect();
         shapes.sort();
 
         self.constraints = ground;
@@ -205,33 +205,163 @@ fn find(parents: &mut [usize], mut local: usize) -> usize {
 
 /// Renumbers the local binders of a component from 0, and returns its sorted constraints and the
 /// number of local binders (see `Summary::canonicalize`).
-fn shape(mut constraints: Vec<Constraint>) -> (Vec<Constraint>, usize) {
-    // A stable sort, so that constraints that are the same apart from their local binders stay in
-    // the order they were added in
-    constraints.sort_by_cached_key(|constraint| {
-        constraint.map_vars(|var| match var {
-            Var::Key(_) => var,
-            Var::Local(_) => Var::Local(0),
-        })
-    });
+///
+/// The numbering is the least one, by the sorted constraints it gives, among those that colour
+/// refinement allows: each local binder is told apart by the constraints it's in and its positions
+/// in them, then by the colours of the binders it shares them with, until that stops telling more
+/// of them apart. Binders that are still alike are tried in each order, which is rarely more than
+/// a few, since a component comes from one comparison. A component whose binders are alike in so
+/// many ways that trying them takes more than `SHAPE_SEARCH_LIMIT` numberings keeps the least one
+/// found by then, so that its shape can depend on how it was numbered, which keeps more copies
+/// than needed but loses nothing.
+fn shape(constraints: &[Constraint]) -> (Vec<Constraint>, usize) {
+    let mut locals: Vec<usize> = constraints.iter().flat_map(Constraint::locals).collect();
+    locals.sort_unstable();
+    locals.dedup();
 
-    let mut numbers: FxHashMap<usize, usize> = FxHashMap::default();
-    let mut constraints: Vec<Constraint> = constraints
+    let constraints: Vec<Constraint> = constraints
         .iter()
         .map(|constraint| {
             constraint.map_vars(|var| match var {
                 Var::Key(_) => var,
-                Var::Local(index) => {
-                    let next = numbers.len();
-                    Var::Local(*numbers.entry(index).or_insert(next))
-                }
+                Var::Local(local) => Var::Local(locals.binary_search(&local).unwrap()),
             })
         })
         .collect();
 
-    constraints.sort();
-    constraints.dedup();
-    (constraints, numbers.len())
+    let mut search = ShapeSearch {
+        constraints: &constraints,
+        best: None,
+        numberings: 0,
+    };
+    search.search(vec![0; locals.len()]);
+    (search.best.unwrap(), locals.len())
+}
+
+/// The most numberings of a component's local binders that `shape` tries.
+const SHAPE_SEARCH_LIMIT: usize = 64;
+
+struct ShapeSearch<'a> {
+    /// The component's constraints, with its local binders numbered from 0.
+    constraints: &'a [Constraint],
+    /// The least sorted constraints found so far.
+    best: Option<Vec<Constraint>>,
+    numberings: usize,
+}
+
+impl ShapeSearch<'_> {
+    /// Tries each numbering that the colours of the local binders allow, after refining them.
+    fn search(&mut self, colours: Vec<usize>) {
+        let colours = self.refine(colours);
+        let count = colours.len();
+
+        // The first binder of the least colour that more than one binder has
+        let tied = (0..count)
+            .filter(|&local| colours.iter().filter(|&&c| c == colours[local]).count() > 1)
+            .min_by_key(|&local| colours[local]);
+
+        let Some(tied) = tied else {
+            let mut constraints: Vec<Constraint> = self
+                .constraints
+                .iter()
+                .map(|constraint| recolour(constraint, &colours))
+                .collect();
+            constraints.sort();
+            constraints.dedup();
+
+            if self.best.as_ref().is_none_or(|best| constraints < *best) {
+                self.best = Some(constraints);
+            }
+
+            self.numberings += 1;
+            return;
+        };
+
+        // Each binder of that colour is tried first, before the others of the same colour
+        let colour = colours[tied];
+
+        for local in (0..count).filter(|&local| colours[local] == colour) {
+            if self.best.is_some() && self.numberings >= SHAPE_SEARCH_LIMIT {
+                return;
+            }
+
+            let individualized = colours
+                .iter()
+                .enumerate()
+                .map(|(other, &c)| 2 * c + usize::from(c == colour && other != local))
+                .collect();
+            self.search(individualized);
+        }
+    }
+
+    /// Tells the local binders apart by the colours of the constraints they're in (with each
+    /// binder replaced by its colour), and their positions in them, until that stops telling more
+    /// of them apart. Colours are numbered in the order of what tells them apart, which doesn't
+    /// depend on how the binders are numbered, and a binder that had a lesser colour than another
+    /// keeps one.
+    fn refine(&self, mut colours: Vec<usize>) -> Vec<usize> {
+        loop {
+            let signatures: Vec<Signature> = (0..colours.len())
+                .map(|local| {
+                    let mut uses: Vec<(Constraint, Vec<usize>)> = self
+                        .constraints
+                        .iter()
+                        .filter_map(|constraint| {
+                            let positions = positions(constraint, local);
+                            (!positions.is_empty())
+                                .then(|| (recolour(constraint, &colours), positions))
+                        })
+                        .collect();
+                    uses.sort();
+                    (colours[local], uses)
+                })
+                .collect();
+
+            let mut distinct = signatures.clone();
+            distinct.sort();
+            distinct.dedup();
+
+            let before = {
+                let mut before = colours.clone();
+                before.sort_unstable();
+                before.dedup();
+                before.len()
+            };
+
+            colours = signatures
+                .iter()
+                .map(|signature| distinct.binary_search(signature).unwrap())
+                .collect();
+
+            if distinct.len() == before {
+                return colours;
+            }
+        }
+    }
+}
+
+/// What tells a local binder apart in `ShapeSearch::refine`: its colour, and the constraints it's in
+/// (with each local binder replaced by its colour) along with its positions in them.
+type Signature = (usize, Vec<(Constraint, Vec<usize>)>);
+
+/// Returns the constraint with each local binder replaced by its colour.
+fn recolour(constraint: &Constraint, colours: &[usize]) -> Constraint {
+    constraint.map_vars(|var| match var {
+        Var::Key(_) => var,
+        Var::Local(local) => Var::Local(colours[local]),
+    })
+}
+
+/// The positions of the local binder in the constraint: 0 for the binder it bounds, and 1 onward
+/// for its environment.
+fn positions(constraint: &Constraint, local: usize) -> Vec<usize> {
+    [constraint.var]
+        .into_iter()
+        .chain(constraint.env.iter().map(|&(_, var)| var))
+        .enumerate()
+        .filter(|&(_, var)| var == Var::Local(local))
+        .map(|(position, _)| position)
+        .collect()
 }
 
 #[cfg(test)]
@@ -424,6 +554,86 @@ mod tests {
         for constraint in summary.constraints() {
             assert!(constraint.locals().all(|local| local < 4));
         }
+    }
+
+    /// Local binders in a component that are only told apart by the binders they share
+    /// constraints with are numbered the same way whatever order the constraints are in, so
+    /// copies of them in each order are one shape.
+    #[test]
+    fn test_canonicalize_numbers_alike_locals_by_structure() {
+        let mut types = Types::new();
+        let ty = types.generic();
+        let generics = [types.generic(), types.generic(), types.generic()];
+
+        let child = |reversed: bool| {
+            let mut child = Summary::default();
+            let locals = [child.local(), child.local(), child.local()];
+            let env = |locals: [Var; 3]| generics.into_iter().zip(locals).collect();
+            let mut constraints = vec![
+                bound(Var::Key(0), false, ty, env(locals)),
+                bound(
+                    Var::Key(0),
+                    false,
+                    ty,
+                    env([locals[0], locals[0], locals[2]]),
+                ),
+            ];
+
+            if reversed {
+                constraints.reverse();
+            }
+
+            for constraint in constraints {
+                child.add(constraint);
+            }
+
+            child
+        };
+
+        let mut forward = child(false);
+        let mut reversed = child(true);
+        forward.canonicalize();
+        reversed.canonicalize();
+        assert_eq!(forward, reversed);
+
+        let canonical = forward.clone();
+        forward.canonicalize();
+        assert_eq!(forward, canonical);
+
+        let mut summary = Summary::default();
+
+        for reversed in [false, true, false, true, true, false] {
+            summary.apply(&child(reversed), &[Var::Key(0)]);
+        }
+
+        summary.canonicalize();
+        assert_eq!(summary.locals, 6);
+        assert_eq!(summary.constraints().len(), 4);
+    }
+
+    /// A component whose local binders can't be told apart at all, such as a cycle of them, has
+    /// the same shape however it's numbered.
+    #[test]
+    fn test_canonicalize_numbers_symmetric_locals() {
+        let mut types = Types::new();
+        let [ty, a] = [types.generic(), types.generic()];
+
+        let cycle = |order: [usize; 4]| {
+            let mut child = Summary::default();
+            let locals = [child.local(), child.local(), child.local(), child.local()];
+
+            for i in order {
+                child.add(bound(locals[i], true, ty, vec![(a, locals[(i + 1) % 4])]));
+            }
+
+            child.canonicalize();
+            child
+        };
+
+        let first = cycle([0, 1, 2, 3]);
+        assert_eq!(first, cycle([2, 0, 3, 1]));
+        assert_eq!(first, cycle([3, 2, 1, 0]));
+        assert_eq!(first.locals, 4);
     }
 
     /// The order that constraints were added in, and how the local binders were numbered, doesn't

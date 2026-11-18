@@ -1052,8 +1052,9 @@ fn test_memo_differential_nested() {
     assert!(summary.cases > 0, "{summary:?}");
 }
 
-/// The results of `test_memo_differential_nested`'s cases with the memo, one line each, or `gave
-/// up` for a case that takes more than `STEP_LIMIT` steps.
+/// The results of the cases that `differential` generates from the seeds with `HEAVY_NESTING`, with
+/// the memo, as two lines each (the types, then the results, or `gave up` for a case that takes
+/// more than `STEP_LIMIT` steps).
 fn nested_baseline(seeds: impl IntoIterator<Item = u64>, queries: usize) -> String {
     let mut text = String::new();
 
@@ -1084,7 +1085,10 @@ fn nested_baseline(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Stri
 /// then shows in the diff of `nested_baseline.txt`, which `UPDATE_EXPECT=1` rewrites.
 #[test]
 fn test_nested_baseline() {
-    let text = with_large_stack(|| nested_baseline(0..150, 4));
+    // The cases of `test_memo_differential_nested`, including the seeds that merging instances
+    // made fixpoint mode get wrong
+    let text =
+        with_large_stack(|| nested_baseline(0..150, 4) + &nested_baseline([31_451, 35_565], 8));
     expect_test::expect_file!["nested_baseline.txt"].assert_eq(&text);
 }
 
