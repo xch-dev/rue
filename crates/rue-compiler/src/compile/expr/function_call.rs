@@ -367,19 +367,23 @@ fn generalize(
     mappings: &mut HashMap<TypeId, TypeId>,
 ) -> Vec<Vec<TypeId>> {
     let mut levels = Vec::new();
-    let mut params: Vec<TypeId> = function.param_types().collect();
     let mut returned = function.ret;
     let mut expected = vec![expected_type];
 
-    // A generic only ever stops being free, so the walk ends once none that's left is in what's
-    // returned. A recursive function type without parameters could go on, which the limit stops
+    // The generics that no parameter so far references, and the ones that a parameter does
+    let (mut free, mut fixed) = split_by_params(
+        ctx,
+        &function.generics,
+        &function.param_types().collect::<Vec<_>>(),
+    );
+
+    // A generic only ever stops being free, and one that's still in what's returned eventually
+    // turns up in a parameter or behind a return type that isn't a function, so the walk ends. The
+    // limit is only a backstop
     while levels.len() < MAX_GENERALIZED_LEVELS
-        && function.generics.iter().any(|&generic| {
-            contains_generic(ctx.types_mut(), returned, generic)
-                && !params
-                    .iter()
-                    .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
-        })
+        && free
+            .iter()
+            .any(|&generic| contains_generic(ctx.types_mut(), returned, generic))
     {
         let unwrapped = rue_types::unwrap_semantic(ctx.types_mut(), returned, true);
 
@@ -403,13 +407,19 @@ fn generalize(
 
         levels.push(generalize_level(
             ctx,
-            &function.generics,
-            &params,
+            &free,
+            &fixed,
             &expected_generics,
             mappings,
         ));
 
-        params.extend(returned_function.param_types());
+        let (still_free, now_fixed) = split_by_params(
+            ctx,
+            &free,
+            &returned_function.param_types().collect::<Vec<_>>(),
+        );
+        free = still_free;
+        fixed.extend(now_fixed);
         returned = returned_function.ret;
         expected = expected_functions
             .iter()
@@ -427,12 +437,27 @@ fn generalize(
 /// How deeply nested the functions returned by a call can be generalized (see `generalize`).
 const MAX_GENERALIZED_LEVELS: usize = 25;
 
-/// Generalizes one level of the functions returned by a call (see `generalize`), over the expected
-/// generics at that level, for the generics that none of the parameters reference.
-fn generalize_level(
+/// Splits the generics into the ones that none of the parameter types reference and the ones that
+/// one does, keeping their order.
+fn split_by_params(
     ctx: &mut Compiler,
     generics: &[TypeId],
     params: &[TypeId],
+) -> (Vec<TypeId>, Vec<TypeId>) {
+    generics.iter().copied().partition(|&generic| {
+        !params
+            .iter()
+            .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
+    })
+}
+
+/// Generalizes one level of the functions returned by a call (see `generalize`), over the expected
+/// generics at that level, for the `free` generics that no parameter above it references. The
+/// `fixed` ones are referenced by one.
+fn generalize_level(
+    ctx: &mut Compiler,
+    free: &[TypeId],
+    fixed: &[TypeId],
     expected_generics: &[TypeId],
     mappings: &mut HashMap<TypeId, TypeId>,
 ) -> Vec<TypeId> {
@@ -441,13 +466,6 @@ fn generalize_level(
     if expected_generics.is_empty() {
         return generalized;
     }
-
-    let (free, fixed): (Vec<TypeId>, Vec<TypeId>) =
-        generics.iter().copied().partition(|&generic| {
-            !params
-                .iter()
-                .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
-        });
 
     // An expected generic that a generic which a parameter depends on references leaks regardless,
     // so it isn't copied, since the error would then name the same type on both sides
@@ -467,7 +485,7 @@ fn generalize_level(
     let mut copies = HashMap::new();
     let mut compound = Vec::new();
 
-    for generic in free {
+    for &generic in free {
         let Some(&ty) = mappings.get(&generic) else {
             continue;
         };

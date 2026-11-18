@@ -10,9 +10,9 @@ fn make_inner_only<B>() -> fn(a: Int) -> fn(b: Int) -> B {
 }
 
 type Recursive = fn<U>(x: U) -> Recursive;
-type IntLoop = fn(x: Int) -> IntLoop;
+type PairLoop<T> = fn(x: T) -> (T, PairLoop<T>);
 
-fn make_int_loop() -> IntLoop {
+fn make_pair_loop<T>() -> PairLoop<T> {
     unchecked_cast(nil)
 }
 
@@ -23,8 +23,9 @@ fn main() -> Int {
     // The inner function only takes `Int`, which isn't any `U`
     let _narrow: fn(a: Int) -> fn<U>(b: U) -> (U, U) = make_inner_only();
 
-    // Both are recursive, and a function that only takes `Int` isn't any `U`
-    let _recursive: Recursive = make_int_loop();
+    // Both are recursive, and a function that returns a pair isn't one that returns a function.
+    // `T` is free and in what's returned, so the walk runs, until `T` is a parameter
+    let _recursive: Recursive = make_pair_loop();
 
     0
 }
