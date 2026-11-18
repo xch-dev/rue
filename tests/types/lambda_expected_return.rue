@@ -67,7 +67,7 @@ test fn uninferred_generic() -> Int {
 
 test fn several_function_types() -> Int {
     // The body is expected to be one of their return types, as its parameter is one of theirs
-    let _function: (fn(a: Int) -> 7) | (fn(a: Int, b: Int) -> 7) = fn(x) => identity(7);
+    let _function: (fn(a: Int) -> 7) | (fn(a: Int, b: Int) -> 8) = fn(x) => identity(7);
     7
 }
 
