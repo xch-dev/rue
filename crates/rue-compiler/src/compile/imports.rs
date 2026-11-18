@@ -374,35 +374,62 @@ pub fn resolve_imports(
 /// exported if it's public there, so a name that's public in only one namespace is re-exported in
 /// only that one. A module can export an item through an import that's resolved later, so this is
 /// done once every import is resolved. A reported import exports what it found anyway, so that the
-/// uses and re-exports of the name aren't reported too, and the imports are resolved again if
-/// anything was exported.
+/// uses and re-exports of the name aren't reported too, and the imports are resolved again if any
+/// were reported.
 fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool {
-    let mut exported = false;
+    let private = cache
+        .reexports
+        .iter()
+        .filter(|&(&import_id, (_, found))| {
+            let module = ctx.scope(ctx.import(import_id).base_scope);
 
-    for (&import_id, (import_scope, found)) in &cache.reexports {
-        let module = ctx.scope(ctx.import(import_id).base_scope);
-        let public =
-            |(&item, &in_module): (&Item, &bool)| !in_module || module.is_item_exported(item);
-
-        if found.iter().any(public)
-            || cache
+            !cache
                 .errors
                 .contains_key(&(import_id, ImportError::PrivateReexport))
-        {
-            continue;
-        }
+                && !found
+                    .iter()
+                    .any(|(&item, &in_module)| !in_module || module.is_item_exported(item))
+        })
+        .map(|(&import_id, _)| import_id)
+        .collect::<Vec<_>>();
 
+    // An import that found what another one brought into the module it looks in is only reported
+    // if it still finds something private once that one is, so a chain of re-exports is reported
+    // once, at its start. If they all find what another one brought in, they're all reported.
+    let brought_in = |import_id: ImportId| {
+        let base = ctx.import(import_id).base_scope;
+        let found = &cache.reexports[&import_id].1;
+
+        private.iter().any(|&other| {
+            let (scope, other_found) = &cache.reexports[&other];
+            other != import_id
+                && *scope == base
+                && found.keys().any(|item| other_found.contains_key(item))
+        })
+    };
+
+    let mut reported = private
+        .iter()
+        .copied()
+        .filter(|&import_id| !brought_in(import_id))
+        .collect::<Vec<_>>();
+
+    if reported.is_empty() {
+        reported = private;
+    }
+
+    for &import_id in &reported {
         let Items::Named(name) = &ctx.import(import_id).items else {
             unreachable!("only named imports are recorded");
         };
         let name = name.clone();
+        let (import_scope, found) = &cache.reexports[&import_id];
 
         for &item in found.keys() {
             let target = ctx.scope_mut(*import_scope);
 
             if target.item(item.namespace(), name.text()) == Some(item) {
                 target.export_item(item);
-                exported = true;
             }
         }
 
@@ -414,7 +441,7 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
 
     // Every import is resolved again, so the errors for private items are cleared, and recorded
     // again by the imports that still find something private.
-    if exported {
+    if !reported.is_empty() {
         cache.errors.retain(|(_, error), _| {
             !matches!(
                 error,
@@ -425,7 +452,7 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
         });
     }
 
-    exported
+    !reported.is_empty()
 }
 
 fn compare_imports(left: &Import, right: &Import) -> Ordering {

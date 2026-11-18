@@ -2860,3 +2860,65 @@ fn errors_in_other_imports_are_reported_once_after_reexports_are_reported() {
         ]
     );
 }
+
+#[test]
+fn chains_of_private_reexports_are_reported_at_their_start() {
+    let compiled = compile(
+        "
+        const X: Int = 1;
+
+        export mod a {
+            export super::X;
+
+            export mod b {
+                export super::X;
+
+                export mod c {
+                    export super::X;
+                }
+            }
+        }
+
+        export mod p {
+            const Y: Int = 2;
+            export Y;
+
+            export mod c {
+                export mod d {
+                    export super::Y;
+                }
+
+                export super::Y;
+            }
+        }
+
+        export mod q {
+            export mod c {
+                export super::Z;
+
+                export mod d {
+                    export super::Z;
+                }
+            }
+
+            export Z;
+            const Z: Int = 3;
+        }
+
+        fn main() -> Int {
+            a::b::c::X + p::c::d::Y + q::c::d::Z
+        }
+        ",
+    );
+
+    // Each re-export after the first finds what the one before it brought in, which is exported
+    // once the first is reported
+    assert_eq!(
+        compiled.errors(),
+        [
+            "5:27 PrivateReexport(\"X\")",
+            "18:20 PrivateReexport(\"Y\")",
+            "38:20 PrivateReexport(\"Z\")",
+        ]
+    );
+}
