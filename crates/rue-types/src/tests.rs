@@ -1993,6 +1993,27 @@ mod inference {
     }
 
     #[test]
+    fn renamed_generics_dont_take_passed_bounds() {
+        let mut db = Db::new();
+        let (a, renamed, b) = (db.generic("A"), db.generic("A"), db.generic("B"));
+        let five = db.literal(AtomSemantic::Int, &[5]);
+
+        // `B`'s candidate is the generic renamed from `A`, which doesn't take `B`'s bound, as `A`
+        // didn't when the two were the same generic
+        let mut infer = Inference::new([renamed, b]);
+        infer.rename(renamed, a);
+        db.infer(renamed, b, &mut infer);
+        add_expected(&mut db, &[renamed, b], b, five, &mut infer);
+        assert_eq!(candidates(&infer, renamed).upper, vec![]);
+
+        // But it's still resolved through
+        let int = db.builtins.int;
+        assert_eq!(db.infer(int, renamed, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
     fn unconstrained_cycles_are_left_as_is() {
         let mut db = Db::new();
         let (a, b) = (db.generic("A"), db.generic("B"));

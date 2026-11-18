@@ -218,3 +218,39 @@ fn held_nil<A, B>(_value: (A, Int) | B, other: B, depth: Int) -> B {
 test fn guard_held_by_a_union_member_nil() -> Int {
     held_nil::<Int, Int>(1, 2, 2)
 }
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn expected_bound<A, B>(function: fn(x: A) -> B, value: A, other: B, depth: Int) -> (A, B) {
+    if depth > 0 {
+        // Guard: the expected type's `A | 5` isn't passed on to the callee's `A` through `B`, so
+        // `B` is `A | 5`, as before
+        let (first, _): (A, A | 5) = expected_bound(identity, value, 5, depth - 1);
+        return (first, other);
+    }
+
+    (value, function(value))
+}
+
+test fn guard_expected_bound_not_passed_on() -> (Int, Int) {
+    expected_bound(identity, 1, 2, 3)
+}
+
+fn upper_bound<A, B>(function: fn(x: A) -> B, sink: fn(x: B) -> Int, value: A, depth: Int) -> A {
+    if depth > 0 {
+        // Guard: the lambda's `A | nil` isn't passed on to the callee's `A` through `B`, so it's
+        // still the caller's `A`, as before
+        let lambda = fn(_x: A | nil) => 1;
+        let result: A = upper_bound(identity, lambda, value, depth - 1);
+        return result;
+    }
+
+    let _ = sink(function(value));
+    value
+}
+
+test fn guard_upper_bound_not_passed_on() -> Int {
+    upper_bound(identity, fn(x: Int) => x, 1, 3)
+}

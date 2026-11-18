@@ -111,3 +111,17 @@ tests:
   runtime_cost: 4895
   byte_cost: 1404000
   total_cost: 1408895
+- name: guard_expected_bound_not_passed_on
+  program: (a (q 2 6 (c 2 (c (q . 1) (c (q . 3) (c 4 (q . 2)))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 4 (f (a 6 (c 2 (c 5 (c (- 11 (q . 1)) (c 4 (q . 5))))))) 31) (q 4 5 (a 23 (c 5 ())))) 1)) ()))
+  debug_program: (a (q 2 6 (c (c 4 6) (c (q . 1) (c (q . 3) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 2)))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 2 (q 4 (f 2) 63) (c (a 6 (c (c 4 6) (c 5 (c (- 11 (q . 1)) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))))) 1)) (q 4 5 (a 23 (c 5 ())))) 1)) ()))
+  output: (1 . 2)
+  runtime_cost: 8960
+  byte_cost: 1836000
+  total_cost: 1844960
+- name: guard_upper_bound_not_passed_on
+  program: (a (q 2 6 (c 2 (c (q . 1) (c (q . 3) (c 4 (q . 2)))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 2 6 (c 2 (c 5 (c (- 11 (q . 1)) (c 4 (q 1 . 1)))))) (q . 5)) 1)) ()))
+  debug_program: (a (q 2 6 (c (c 4 6) (c (q . 1) (c (q . 3) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 2 (q 2 (q . 2) (c (a 13 (c (c 9 13) (c 11 (c (- 23 (q . 1)) (c (c (q . 2) (c (c (q . 1) 9) (c (q . 1) ()))) 2))))) 1)) (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) 1)) (q . 5)) 1)) ()))
+  output: "1"
+  runtime_cost: 8137
+  byte_cost: 1524000
+  total_cost: 1532137
