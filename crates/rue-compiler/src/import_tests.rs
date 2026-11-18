@@ -1047,7 +1047,7 @@ fn reexports_from_a_parent_module_find_what_it_glob_imports() {
         const V: Int = 2;
 
         mod inner {
-            import super::a::*;
+            export super::a::*;
 
             export mod deeper {
                 export super::V;
@@ -1242,7 +1242,8 @@ fn reexports_of_a_local_declaration_ignore_enclosing_modules_with_the_name() {
         ",
     );
 
-    compiled.assert_no_errors();
+    // The function is private, so it can't be re-exported, but the name still refers to it
+    assert_eq!(compiled.errors(), ["5:20 PrivateReexport(\"thing\")"]);
     assert_eq!(compiled.symbol_origin("inner::thing"), "inner");
 }
 
@@ -1889,8 +1890,7 @@ fn reexports_bring_in_a_module_and_a_value_with_the_same_name() {
         }
 
         mod outer {
-            import super::inner::helper;
-            export helper;
+            export super::inner::helper;
         }
 
         fn main() -> Int {
@@ -2522,4 +2522,173 @@ fn glob_imports_of_super_bring_in_blocked_names_as_blocked() {
     );
 
     assert_eq!(compiled.errors(), ["2:19 PrivateSymbol(\"Q\", \"m\")"]);
+}
+
+#[test]
+fn reexports_of_private_items_through_super_are_reported() {
+    let compiled = compile(
+        "
+        const SECRET: Int = 1;
+        type Secret = Int;
+        mod hidden {}
+
+        export mod a {
+            export super::SECRET;
+            export super::Secret;
+            export super::hidden;
+
+            export mod b {
+                export super::SECRET;
+            }
+        }
+
+        fn main() -> Int {
+            a::SECRET + a::b::SECRET
+        }
+        ",
+    );
+
+    // Each re-export is reported once, where it's private. The name is still bound, so its uses,
+    // and re-exports of the binding, aren't reported again.
+    assert_eq!(
+        compiled.errors(),
+        [
+            "7:27 PrivateReexport(\"SECRET\")",
+            "8:27 PrivateReexport(\"Secret\")",
+            "9:27 PrivateReexport(\"hidden\")",
+        ]
+    );
+}
+
+#[test]
+fn reexports_of_private_local_items_are_reported() {
+    let compiled = compile(
+        "
+        mod m {
+            const VALUE: Int = 1;
+            type Value = Int;
+            export VALUE;
+            export Value;
+        }
+
+        fn main() -> Int {
+            m::VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "5:20 PrivateReexport(\"VALUE\")",
+            "6:20 PrivateReexport(\"Value\")",
+        ]
+    );
+}
+
+#[test]
+fn reexports_of_private_imports_are_reported() {
+    let compiled = compile(
+        "
+        mod inner {
+            export const VALUE: Int = 1;
+            export const OTHER: Int = 2;
+        }
+
+        import inner::OTHER;
+
+        mod m {
+            import super::inner::VALUE;
+            export VALUE;
+        }
+
+        export mod n {
+            export super::OTHER;
+        }
+
+        fn main() -> Int {
+            m::VALUE + n::OTHER
+        }
+        ",
+    );
+
+    // An import's binding is private unless it's exported, as in Rust, even if the item it
+    // brings in is public where it's declared
+    assert_eq!(
+        compiled.errors(),
+        [
+            "11:20 PrivateReexport(\"VALUE\")",
+            "15:27 PrivateReexport(\"OTHER\")",
+        ]
+    );
+}
+
+#[test]
+fn reexports_of_public_items_are_not_reported() {
+    let compiled = compile(
+        "
+        export const VALUE: Int = 1;
+        export inner::OTHER;
+        const SECRET: Int = 3;
+
+        mod inner {
+            export const OTHER: Int = 2;
+        }
+
+        // The parent's re-export is resolved after this one, which still sees it
+        export mod a {
+            export super::OTHER;
+            export super::VALUE;
+            import super::SECRET;
+            export LOCAL;
+
+            export const LOCAL: Int = SECRET;
+        }
+
+        mod b {
+            import super::inner::OTHER;
+            export super::a::OTHER;
+        }
+
+        fn main() -> Int {
+            a::OTHER + a::VALUE + a::LOCAL + b::OTHER
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("a::OTHER"), "inner");
+}
+
+#[test]
+fn glob_reexports_through_super_only_export_public_items() {
+    let compiled = compile(
+        "
+        const SECRET: Int = 1;
+        export const PUBLIC: Int = 2;
+        export inner::LATER;
+
+        mod inner {
+            export const LATER: Int = 3;
+        }
+
+        export mod a {
+            export super::*;
+
+            export fn secret() -> Int {
+                SECRET
+            }
+        }
+
+        fn main() -> Int {
+            a::PUBLIC + a::LATER + a::secret() + a::SECRET
+        }
+        ",
+    );
+
+    // The private item is brought into `a` without being re-exported, so it isn't reported there
+    assert_eq!(
+        compiled.errors(),
+        ["19:53 PrivateSymbol(\"SECRET\", \"a\")"]
+    );
 }

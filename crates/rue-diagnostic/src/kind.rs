@@ -209,6 +209,9 @@ pub enum DiagnosticKind {
     #[error("Cannot reference private type `{0}` in module `{1}`")]
     PrivateType(String, String),
 
+    #[error("Cannot re-export `{0}`, since it's private")]
+    PrivateReexport(String),
+
     #[error("Expected symbol, but found type `{0}`")]
     ExpectedSymbol(String),
 

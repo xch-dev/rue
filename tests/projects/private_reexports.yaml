@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot re-export `SECRET`, since it's private at utils.rue:5:19

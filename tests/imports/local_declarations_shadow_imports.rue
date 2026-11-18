@@ -8,20 +8,6 @@ fn value() -> Int {
     2
 }
 
-mod thing {}
-
-mod reexport {
-    export thing;
-
-    fn thing() -> Int {
-        3
-    }
-}
-
 test fn local_declarations_shadow_glob_imports_of_modules() -> Int {
     value()
-}
-
-test fn reexports_use_the_local_declaration() -> Int {
-    reexport::thing()
 }
