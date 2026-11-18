@@ -165,32 +165,8 @@ mod tests {
             LiteralValue::String("hello".to_string())
         );
         assert_eq!(
-            LiteralValue::decode_text(SyntaxKind::String, r#""a\"b\\c\n\x41\u{1F600}""#),
-            LiteralValue::String("a\"b\\c\nA😀".to_string())
-        );
-        assert_eq!(
-            LiteralValue::decode_text(SyntaxKind::String, r#""\\""#),
-            LiteralValue::String("\\".to_string())
-        );
-        // An unterminated string that ends with an escaped quote
-        assert_eq!(
-            LiteralValue::decode_text(SyntaxKind::String, r#""a\""#),
-            LiteralValue::String("a\"".to_string())
-        );
-        // Single quoted strings
-        assert_eq!(
             LiteralValue::decode_text(SyntaxKind::String, r#"'a"b\'c'"#),
             LiteralValue::String("a\"b'c".to_string())
-        );
-        // A double quote at the end of a single quoted string is part of an unterminated string
-        assert_eq!(
-            LiteralValue::decode_text(SyntaxKind::String, r#"'a""#),
-            LiteralValue::String("a\"".to_string())
-        );
-        // Invalid escapes are reported by the parser and left out of the value
-        assert_eq!(
-            LiteralValue::decode_text(SyntaxKind::String, r#""a\qb\x80""#),
-            LiteralValue::String("ab".to_string())
         );
     }
 }

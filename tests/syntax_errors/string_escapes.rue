@@ -21,3 +21,12 @@ test fn mismatched_escaped_type() -> "a\"b" {
 test fn single_quoted_unknown_escape() -> String {
     'a\qb'
 }
+
+test fn mismatched_control_characters() -> "a\n\t\r\0\x01" {
+    "b"
+}
+
+test fn escape_after_line_continuation() -> String {
+    "a \
+        b\q"
+}

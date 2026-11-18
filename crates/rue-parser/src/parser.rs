@@ -3,7 +3,7 @@ use std::{mem, ops::Range};
 use indexmap::IndexSet;
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
 use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Source, SrcLoc};
-use rue_lexer::{EscapeError, Token, TokenKind, unescape_string};
+use rue_lexer::{EscapeError, Token, TokenKind, check_string_escapes};
 
 use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
 
@@ -16,20 +16,8 @@ use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
 pub const MAX_NESTING_DEPTH: usize = 256;
 
 /// Reports the escape sequences in a string literal that can't be decoded.
-fn check_escapes(
-    source: &Source,
-    span: Range<usize>,
-    is_terminated: bool,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    let start = span.start + 1;
-    let end = if is_terminated {
-        span.end - 1
-    } else {
-        span.end
-    };
-
-    unescape_string(&source.text[start..end], |range, error| {
+fn check_escapes(source: &Source, span: Range<usize>, diagnostics: &mut Vec<Diagnostic>) {
+    check_string_escapes(&source.text[span.clone()], |range, error| {
         let kind = match error {
             EscapeError::Unknown(c) => {
                 DiagnosticKind::UnknownEscape(format!("\\{}", c.escape_debug()))
@@ -43,7 +31,10 @@ fn check_escapes(
         };
 
         diagnostics.push(Diagnostic::new(
-            SrcLoc::new(source.clone(), start + range.start..start + range.end),
+            SrcLoc::new(
+                source.clone(),
+                span.start + range.start..span.start + range.end,
+            ),
             kind,
             DiagnosticSeverity::Error,
         ));
@@ -109,7 +100,7 @@ impl Parser {
                             DiagnosticSeverity::Error,
                         ));
                     }
-                    check_escapes(&source, token.span.clone(), is_terminated, &mut diagnostics);
+                    check_escapes(&source, token.span.clone(), &mut diagnostics);
                     SyntaxKind::String
                 }
                 TokenKind::Hex { is_terminated } => {

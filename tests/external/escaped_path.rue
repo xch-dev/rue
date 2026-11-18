@@ -1,0 +1,2 @@
+// Escapes in the path are decoded, so this loads `./add.hex`
+extern fn main(a: Int, b: Int) -> Int from "./\x61dd.hex";

@@ -28,20 +28,48 @@ pub enum EscapeError {
 ///
 /// Each escape that can't be decoded is reported to `on_error` with its byte range in `text`,
 /// and is left out of the result.
-pub fn unescape_string(text: &str, mut on_error: impl FnMut(Range<usize>, EscapeError)) -> String {
+pub fn unescape_string(text: &str, on_error: impl FnMut(Range<usize>, EscapeError)) -> String {
     let mut output = String::with_capacity(text.len());
+    unescape(text, |c| output.push(c), on_error);
+    output
+}
+
+/// Reports each escape sequence in a string literal token that can't be decoded, with its byte
+/// range in the token, without building the decoded value.
+pub fn check_string_escapes(token: &str, mut on_error: impl FnMut(Range<usize>, EscapeError)) {
+    let Some((text, _)) = split_string(token) else {
+        return;
+    };
+
+    // The text starts after the opening quote
+    unescape(
+        text,
+        |_| {},
+        |range, error| {
+            on_error(range.start + 1..range.end + 1, error);
+        },
+    );
+}
+
+/// Walks the text between a string literal's quotes, passing each decoded character to `on_char`
+/// and each escape that can't be decoded to `on_error`.
+fn unescape(
+    text: &str,
+    mut on_char: impl FnMut(char),
+    mut on_error: impl FnMut(Range<usize>, EscapeError),
+) {
     let mut chars = text.chars();
 
     while let Some(c) = chars.next() {
         if c != '\\' {
-            output.push(c);
+            on_char(c);
             continue;
         }
 
         let start = text.len() - chars.as_str().len() - 1;
 
         match unescape_char(&mut chars) {
-            Ok(Some(c)) => output.push(c),
+            Ok(Some(c)) => on_char(c),
             Ok(None) => {}
             Err(error) => {
                 let end = text.len() - chars.as_str().len();
@@ -49,19 +77,18 @@ pub fn unescape_string(text: &str, mut on_error: impl FnMut(Range<usize>, Escape
             }
         }
     }
-
-    output
 }
 
-/// Splits a string literal token into its quote and the text between its quotes. The closing
-/// quote is missing from an unterminated string, so it's only stripped if it isn't escaped.
-fn split_string(token: &str) -> Option<(char, &str, bool)> {
+/// Splits a string literal token, quoted with either `"` or `'`, into the text between its quotes
+/// and whether it's terminated. The closing quote is missing from an unterminated string, so it's
+/// only stripped if it isn't escaped.
+fn split_string(token: &str) -> Option<(&str, bool)> {
     let quote = token.chars().next().filter(|&c| c == '"' || c == '\'')?;
     let text = &token[1..];
 
     match text.strip_suffix(quote) {
-        Some(stripped) if !ends_with_escape(stripped) => Some((quote, stripped, true)),
-        _ => Some((quote, text, false)),
+        Some(stripped) if !ends_with_escape(stripped) => Some((stripped, true)),
+        _ => Some((text, false)),
     }
 }
 
@@ -73,7 +100,7 @@ fn ends_with_escape(text: &str) -> bool {
 /// Decodes the value of a string literal token, quoted with either `"` or `'`. Invalid escapes
 /// are left out, since the parser reports them.
 pub fn string_value(token: &str) -> String {
-    let text = split_string(token).map_or(token, |(_, text, _)| text);
+    let text = split_string(token).map_or(token, |(text, _)| text);
     unescape_string(text, |_, _| {})
 }
 
@@ -83,7 +110,7 @@ pub fn string_value(token: &str) -> String {
 /// escape is kept as written, so the string's value doesn't change. An unterminated string is
 /// returned as is.
 pub fn requote_string(token: &str, preferred: char) -> String {
-    let Some((_, text, true)) = split_string(token) else {
+    let Some((text, true)) = split_string(token) else {
         return token.to_string();
     };
 
@@ -346,9 +373,33 @@ mod tests {
         assert_eq!(string_value(r#""a\"b""#), "a\"b");
         assert_eq!(string_value(r#"'a"b\'c'"#), "a\"b'c");
         assert_eq!(string_value(r#""\\""#), "\\");
+        assert_eq!(string_value(r#""a\"b\\c\n\x41\u{1F600}""#), "a\"b\\c\nA😀");
+        // Invalid escapes are reported by the parser and left out of the value
+        assert_eq!(string_value(r#""a\qb\x80""#), "ab");
         // Unterminated strings, where the last quote is escaped or of the other kind
         assert_eq!(string_value(r#""a\""#), "a\"");
         assert_eq!(string_value(r#"'a""#), "a\"");
+    }
+
+    #[test]
+    fn test_check_string_escapes() {
+        let check = |token: &str| {
+            let mut errors = Vec::new();
+            check_string_escapes(token, |range, error| errors.push((range, error)));
+            errors
+        };
+
+        assert_eq!(check(r#""a\nb""#), vec![]);
+        // Ranges are relative to the token, including its opening quote
+        assert_eq!(
+            check(r#"'a\qb\x80'"#),
+            vec![
+                (2..4, EscapeError::Unknown('q')),
+                (5..9, EscapeError::HexOutOfRange)
+            ]
+        );
+        // The trailing backslash of an unterminated string is a lone backslash
+        assert_eq!(check("\"abc\\"), vec![(4..5, EscapeError::LoneBackslash)]);
     }
 
     #[test]

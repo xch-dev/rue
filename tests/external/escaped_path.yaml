@@ -1,0 +1,7 @@
+program: (+ 2 5)
+debug_program: (a (c (q . 16) (c (q . 2) (c (q . 5) ()))) 1)
+solution: (20 22)
+output: "42"
+runtime_cost: 856
+byte_cost: 84000
+total_cost: 84856
