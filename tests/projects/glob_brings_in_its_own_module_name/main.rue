@@ -1,0 +1,8 @@
+// The glob imports wait for each other, so `y::*` is resolved to the sibling file `y.rue`, which
+// exports a module named `y`. It's what the import itself brings in, so it isn't ambiguous.
+import y::*;
+import z::*;
+
+test fn glob_imports_can_bring_in_their_own_module_name() -> Int {
+    W + X + y::V
+}

@@ -1,0 +1,8 @@
+// `import f::C` waits for `import lib::m::f`, which waits for `lib`'s glob imports to bring in
+// `m`. Those wait for each other, so they're forced first, and the rest are resolved after them.
+import f::C;
+import lib::m::f;
+
+test fn imports_wait_for_the_modules_in_their_paths() -> Int {
+    C
+}

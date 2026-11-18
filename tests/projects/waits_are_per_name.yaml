@@ -1,0 +1,3 @@
+diagnostics:
+- "`y` is ambiguous, since it was found outside of this module, but an import here brings in a different item with this name at main.rue:4:8"
+- Unused constant `W` at z.rue:2:18

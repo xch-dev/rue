@@ -4,10 +4,10 @@ use std::{
     mem,
 };
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 use rue_ast::{AstImportItem, AstImportPathSegment};
-use rue_diagnostic::{DiagnosticKind, Name};
+use rue_diagnostic::{DiagnosticKind, Name, Source};
 use rue_hir::{
     Declaration, Import, ImportId, ImportUser, Item, Items, Namespace, ScopeId, Symbol, SymbolId,
 };
@@ -46,7 +46,6 @@ fn construct_imports(
     exported: bool,
 ) -> Vec<ImportId> {
     let mut has_non_super = false;
-    let mut has_super = false;
 
     if let Some(segment) = segments.first()
         && let Some(separator) = segment.separator()
@@ -66,8 +65,6 @@ fn construct_imports(
                 } else {
                     ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
                 }
-
-                has_super = true;
             } else {
                 path.push(ctx.local_name(&name));
                 has_non_super = true;
@@ -99,7 +96,6 @@ fn construct_imports(
             items: Items::Named(name),
             exported,
             declarations: Vec::new(),
-            has_super,
         })]
     } else if let Some(star) = last.star() {
         let star = ctx.local_name(&star);
@@ -111,7 +107,6 @@ fn construct_imports(
             items: Items::All(star),
             exported,
             declarations: Vec::new(),
-            has_super,
         })]
     } else if let items = last.items().collect::<Vec<_>>()
         && !items.is_empty()
@@ -137,10 +132,8 @@ fn construct_imports(
 
 #[derive(Debug, Default)]
 pub struct ImportCache {
-    /// The modules that paths resolve to from each scope. A path whose first segment could be
-    /// brought into the scope by the import itself is cached for that import only, since the
-    /// other imports in the scope wait for it to be resolved and then find what it brought in.
-    scopes: HashMap<(ScopeId, Option<ImportId>, Vec<String>), CachedPath>,
+    /// What each import's path resolves to, once it's resolved.
+    paths: HashMap<ImportId, CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
     /// The errors in imports, keyed by where they are, so that each is reported once however
@@ -197,14 +190,15 @@ impl ImportError {
     }
 }
 
-/// The module that a path resolves to.
+/// What an import's path resolves to.
 #[derive(Debug, Clone)]
 struct CachedPath {
+    /// The scope of the module that the path names.
     scope: ScopeId,
-    symbol: SymbolId,
+    /// The module that each segment names.
+    symbols: Vec<SymbolId>,
     /// The declarations referenced through other imports while resolving the path, with the
-    /// index of the segment that names each, so that they're recorded for every import that uses
-    /// it.
+    /// index of the segment that names each, so that they're recorded each time it's used.
     references: Vec<(usize, ImportId, Declaration)>,
     /// The indices of the segments of the path that name a private module.
     private_segments: Vec<usize>,
@@ -292,10 +286,11 @@ pub fn resolve_imports(
             continue;
         }
 
-        // Nothing else can be resolved, so the lookups that are waiting for a module to settle
-        // are answered without waiting. They're all answered from the state they were waiting in,
-        // so that none of them depends on what another one brings in (or on the order that
-        // they're in), and they're checked once every import is resolved.
+        // Nothing else can be resolved, so the lookups of the imports that only wait for each
+        // other (see `stuck_lookups`) are answered without waiting. They're all answered from the
+        // state they were waiting in, so that none of them depends on what another one brings in
+        // (or on the order that they're in), and they're checked once every import is resolved.
+        // The other waiting lookups are retried once those are resolved.
         if resolution.waiting.is_empty() {
             break;
         }
@@ -393,6 +388,9 @@ enum LookupKey {
     Item(Namespace),
     /// A file's sibling module that a glob import of the file (through `super`) brings in.
     Sibling(Namespace, String),
+    /// A segment of the import's path after the first, which is looked up in the module the
+    /// previous one names. It doesn't look past the module, but it waits for it to settle.
+    Segment(usize),
 }
 
 /// A lookup that's waiting for a module to settle, with what it'd find if it didn't wait, and
@@ -443,19 +441,27 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
     }
 }
 
-/// The import that a path is cached for, if its first segment could be brought into the scope by
-/// the import itself (see [`ImportCache::scopes`]).
-fn path_owner(
-    resolution: &Resolution,
-    import: &Import,
-    import_scope: ScopeId,
-    import_id: ImportId,
-) -> Option<ImportId> {
-    let first = import.path.first()?;
+/// Where an import's name, or the first segment of its path, is looked up.
+fn import_base(import: &Import, import_scope: ScopeId) -> Base {
+    if import.base_scope == import_scope {
+        Base::Local(import_scope)
+    } else {
+        Base::Member(import.base_scope)
+    }
+}
 
-    (import.base_scope == import_scope
-        && resolution.may_bring_in_itself(import_scope, first.text(), import_id))
-    .then_some(import_id)
+/// Records a reference to an item from a name in an import, for the language server.
+fn add_reference(ctx: &mut Compiler, source: &Source, name: &Name, kind: SyntaxItemKind) {
+    if let Some(srcloc) = name.srcloc() {
+        ctx.add_syntax_for_source(
+            kind,
+            TextRange::new(
+                srcloc.span.start.try_into().unwrap(),
+                srcloc.span.end.try_into().unwrap(),
+            ),
+            source.kind.clone(),
+        );
+    }
 }
 
 /// The state of one call to [`resolve_imports`].
@@ -481,14 +487,6 @@ struct Resolution {
 impl Resolution {
     fn named_imports_of(&self, scope: ScopeId, name: &str) -> Option<&Vec<ImportId>> {
         self.named_imports.get(&scope)?.get(name)
-    }
-
-    /// Whether the import is one of those that could bring the name into the scope: its named
-    /// imports of the name, or if it has none, its glob imports.
-    fn may_bring_in_itself(&self, scope: ScopeId, name: &str, importer: ImportId) -> bool {
-        self.named_imports_of(scope, name)
-            .or_else(|| self.glob_imports.get(&scope))
-            .is_some_and(|imports| imports.contains(&importer))
     }
 }
 
@@ -589,57 +587,120 @@ fn may_import(
 }
 
 /// The waiting lookups that are answered without waiting once nothing else can be resolved: those
-/// of the imports that only wait for each other (or for nothing that's still waiting). Imports
-/// that wait for those are answered later, once they're resolved, so an inline module's lookup
-/// through `super` waits for the cycle of imports in the module it names.
+/// of the imports that only wait for each other (or for nothing that's still waiting), which are
+/// the strongly connected components of the imports that wait for each other that don't wait for
+/// any other one. Imports that wait for those are answered later, once they're resolved, so an
+/// inline module's lookup through `super` waits for the cycle of imports in the module it names.
 fn stuck_lookups(waiting: Vec<WaitingLookup>) -> Vec<WaitingLookup> {
-    let waiting_imports = waiting
-        .iter()
-        .map(|lookup| lookup.key.0)
-        .collect::<HashSet<_>>();
-
-    let mut edges: HashMap<ImportId, HashSet<ImportId>> = HashMap::new();
+    let mut edges: IndexMap<ImportId, IndexSet<ImportId>> = IndexMap::new();
 
     for lookup in &waiting {
-        let blocked_by = edges.entry(lookup.key.0).or_default();
-
-        for &blocker in &lookup.blockers {
-            if blocker != lookup.key.0 && waiting_imports.contains(&blocker) {
-                blocked_by.insert(blocker);
-            }
-        }
+        edges.entry(lookup.key.0).or_default();
     }
 
-    let reachable = |from: ImportId| {
-        let mut seen = HashSet::new();
-        let mut stack = vec![from];
+    for lookup in &waiting {
+        let blockers = lookup
+            .blockers
+            .iter()
+            .copied()
+            .filter(|&blocker| blocker != lookup.key.0 && edges.contains_key(&blocker))
+            .collect::<Vec<_>>();
 
-        while let Some(import) = stack.pop() {
-            for &next in edges.get(&import).into_iter().flatten() {
-                if seen.insert(next) {
-                    stack.push(next);
-                }
-            }
-        }
+        edges[&lookup.key.0].extend(blockers);
+    }
 
-        seen
-    };
+    let components = strongly_connected_components(&edges);
 
-    // An import is stuck if every waiting import it waits for (directly or not) waits for it too
-    let stuck = waiting_imports
+    let component_of = components
         .iter()
-        .copied()
-        .filter(|&import| {
-            reachable(import)
-                .into_iter()
-                .all(|other| reachable(other).contains(&import))
+        .enumerate()
+        .flat_map(|(index, component)| component.iter().map(move |&import| (import, index)))
+        .collect::<HashMap<_, _>>();
+
+    let stuck = components
+        .iter()
+        .enumerate()
+        .filter(|&(index, component)| {
+            component.iter().all(|import| {
+                edges[import]
+                    .iter()
+                    .all(|blocker| component_of[blocker] == index)
+            })
         })
+        .flat_map(|(_, component)| component.iter().copied())
         .collect::<HashSet<_>>();
 
     waiting
         .into_iter()
         .filter(|lookup| stuck.contains(&lookup.key.0))
         .collect()
+}
+
+/// The strongly connected components of a graph, with Tarjan's algorithm.
+fn strongly_connected_components(
+    edges: &IndexMap<ImportId, IndexSet<ImportId>>,
+) -> Vec<Vec<ImportId>> {
+    struct Tarjan<'a> {
+        edges: &'a IndexMap<ImportId, IndexSet<ImportId>>,
+        index: HashMap<ImportId, usize>,
+        low: HashMap<ImportId, usize>,
+        stack: Vec<ImportId>,
+        on_stack: HashSet<ImportId>,
+        components: Vec<Vec<ImportId>>,
+    }
+
+    impl Tarjan<'_> {
+        fn visit(&mut self, import: ImportId) {
+            let index = self.index.len();
+            self.index.insert(import, index);
+            self.low.insert(import, index);
+            self.stack.push(import);
+            self.on_stack.insert(import);
+
+            for &next in &self.edges[&import] {
+                if !self.index.contains_key(&next) {
+                    self.visit(next);
+                    let low = self.low[&import].min(self.low[&next]);
+                    self.low.insert(import, low);
+                } else if self.on_stack.contains(&next) {
+                    let low = self.low[&import].min(self.index[&next]);
+                    self.low.insert(import, low);
+                }
+            }
+
+            if self.low[&import] == self.index[&import] {
+                let mut component = Vec::new();
+
+                while let Some(member) = self.stack.pop() {
+                    self.on_stack.remove(&member);
+                    component.push(member);
+
+                    if member == import {
+                        break;
+                    }
+                }
+
+                self.components.push(component);
+            }
+        }
+    }
+
+    let mut tarjan = Tarjan {
+        edges,
+        index: HashMap::new(),
+        low: HashMap::new(),
+        stack: Vec::new(),
+        on_stack: HashSet::new(),
+        components: Vec::new(),
+    };
+
+    for &import in edges.keys() {
+        if !tarjan.index.contains_key(&import) {
+            tarjan.visit(import);
+        }
+    }
+
+    tarjan.components
 }
 
 /// Where an import looks a name up.
@@ -759,164 +820,150 @@ fn resolve_import(
 ) -> bool {
     let diagnostics = resolution.diagnostics;
     let import = ctx.import(import_id).clone();
-    let has_super = import.has_super;
     let source = import.source.clone();
+    let lookup_base = import_base(&import, import_scope);
 
     let mut base = None;
-    let mut path_so_far = Vec::new();
     let mut path_references = Vec::new();
     let mut private_segments = Vec::new();
-    let owner = path_owner(resolution, &import, import_scope, import_id);
 
-    // A path that starts with `super` is resolved from another module's scope, so it isn't
-    // cached under the names in it, which other imports in the scope would share
-    for i in (1..=import.path.len()).rev().filter(|_| !has_super) {
-        let subpath = import
-            .path
-            .iter()
-            .take(i)
-            .map(|t| t.text().to_string())
-            .collect::<Vec<_>>();
+    // The path doesn't change once it's resolved, and looking it up again could find what the
+    // import itself brought in, so it's only resolved once
+    if let Some(cached) = cache.paths.get(&import_id) {
+        base = Some(cached.scope);
+        path_references.clone_from(&cached.references);
+        private_segments.clone_from(&cached.private_segments);
 
-        if let Some(cached) = cache.scopes.get(&(import_scope, owner, subpath.clone())) {
-            base = Some(cached.scope);
-            path_so_far = subpath;
-            path_references.clone_from(&cached.references);
-            private_segments.clone_from(&cached.private_segments);
-
-            for &(_, import, declaration) in &cached.references {
-                ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
-            }
-
-            for name in import.path.iter().take(path_so_far.len()) {
-                if diagnostics && let Some(srcloc) = name.srcloc() {
-                    ctx.add_syntax_for_source(
-                        SyntaxItemKind::SymbolReference(cached.symbol),
-                        TextRange::new(
-                            srcloc.span.start.try_into().unwrap(),
-                            srcloc.span.end.try_into().unwrap(),
-                        ),
-                        source.kind.clone(),
-                    );
-                }
-            }
-
-            break;
+        for &(_, import, declaration) in &cached.references {
+            ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
         }
-    }
 
-    for (index, name) in import.path.iter().enumerate().skip(path_so_far.len()) {
-        // A private module is reported, but still resolved, like it is in other paths
-        let module = if let Some(base) = base {
-            let base = ctx.scope(base);
-            base.module_with_import(name.text())
-                .map(|(m, via)| (m, via, base.is_module_exported(m)))
-        } else {
-            let base = if import.base_scope == import_scope {
-                Base::Local(import_scope)
+        if diagnostics {
+            for (name, &symbol) in import.path.iter().zip(&cached.symbols) {
+                add_reference(ctx, &source, name, SyntaxItemKind::SymbolReference(symbol));
+            }
+        }
+    } else if !import.path.is_empty() {
+        let mut symbols = Vec::new();
+
+        for (index, name) in import.path.iter().enumerate() {
+            // A private module is reported, but still resolved, like it is in other paths
+            let module = if let Some(scope) = base {
+                let target = ctx.scope(scope);
+
+                if let Some((module, via)) = target.module_with_import(name.text()) {
+                    Some((module, via, target.is_module_exported(module)))
+                } else {
+                    // The module could still bring the next one in, and what waits for this
+                    // import waits for that too
+                    let key = (import_id, LookupKey::Segment(index));
+                    let mut blockers = Blockers::default();
+
+                    if !diagnostics
+                        && !cache.forced.contains_key(&key)
+                        && may_gain(
+                            ctx,
+                            resolution,
+                            scope,
+                            Namespace::Module,
+                            name.text(),
+                            None,
+                            false,
+                            &mut blockers,
+                        )
+                    {
+                        resolution.waiting.push(WaitingLookup {
+                            key,
+                            forced: ForcedLookup {
+                                scope,
+                                namespace: Namespace::Module,
+                                name: name.clone(),
+                                answer: None,
+                            },
+                            blockers: blockers.imports,
+                        });
+                        return false;
+                    }
+
+                    None
+                }
             } else {
-                Base::Member(import.base_scope)
+                match lookup(
+                    ctx,
+                    &cache.forced,
+                    resolution,
+                    import_id,
+                    LookupKey::Path,
+                    name,
+                    lookup_base,
+                    Namespace::Module,
+                ) {
+                    Lookup::Found(module, via) => module.symbol().map(|module| (module, via, true)),
+                    Lookup::Undetermined => return false,
+                    Lookup::NotFound => None,
+                }
             };
 
-            match lookup(
-                ctx,
-                &cache.forced,
-                resolution,
-                import_id,
-                LookupKey::Path,
-                name,
-                base,
-                Namespace::Module,
-            ) {
-                Lookup::Found(module, via) => module.symbol().map(|module| (module, via, true)),
-                Lookup::Undetermined => return false,
-                Lookup::NotFound => None,
-            }
-        };
+            let Some((symbol, via, exported)) = module else {
+                if diagnostics {
+                    // Only a module can have a path after it, so a value or type is reported as
+                    // such
+                    let other = [Namespace::Value, Namespace::Type]
+                        .into_iter()
+                        .any(|namespace| match base {
+                            Some(scope) => ctx.scope(scope).item(namespace, name.text()).is_some(),
+                            None => match lookup_base {
+                                Base::Local(scope) => {
+                                    ctx.resolve_item_in(scope, namespace, name.text()).is_some()
+                                }
+                                Base::Member(scope) => {
+                                    ctx.module_member(scope, namespace, name.text()).is_some()
+                                }
+                            },
+                        });
 
-        let Some((symbol, via, exported)) = module else {
-            // A name that a failed import blocked where it's looked up has already been reported
-            let blocked = Namespace::ALL.into_iter().any(|namespace| {
-                if let Some(base) = base {
-                    ctx.scope(base).is_blocked(namespace, name.text())
-                } else if import.base_scope == import_scope {
-                    ctx.is_blocked_in(import.base_scope, namespace, name.text())
-                } else {
-                    ctx.scope(import.base_scope)
-                        .is_blocked(namespace, name.text())
-                }
-            });
-
-            if diagnostics && !blocked {
-                // Only a module can have a path after it, so a value or type is reported as such
-                let other = [Namespace::Value, Namespace::Type]
-                    .into_iter()
-                    .any(|namespace| {
-                        if let Some(base) = base {
-                            ctx.scope(base).item(namespace, name.text()).is_some()
-                        } else if import.base_scope == import_scope {
-                            ctx.resolve_item_in(import.base_scope, namespace, name.text())
-                                .is_some()
+                    ctx.diagnostic_name(
+                        name,
+                        if other {
+                            DiagnosticKind::SubpathNotSupported(name.text().to_string())
                         } else {
-                            ctx.module_member(import.base_scope, namespace, name.text())
-                                .is_some()
-                        }
-                    });
+                            DiagnosticKind::UndeclaredSymbol(name.text().to_string())
+                        },
+                    );
+                }
+                return false;
+            };
 
-                ctx.diagnostic_name(
-                    name,
-                    if other {
-                        DiagnosticKind::SubpathNotSupported(name.text().to_string())
-                    } else {
-                        DiagnosticKind::UndeclaredSymbol(name.text().to_string())
-                    },
+            if let Some(via) = via {
+                ctx.add_import_reference(
+                    via,
+                    Declaration::Symbol(symbol),
+                    ImportUser::Import(import_id),
                 );
+                path_references.push((index, via, Declaration::Symbol(symbol)));
             }
-            return false;
-        };
 
-        if let Some(via) = via {
-            ctx.add_import_reference(
-                via,
-                Declaration::Symbol(symbol),
-                ImportUser::Import(import_id),
-            );
-            path_references.push((index, via, Declaration::Symbol(symbol)));
+            if diagnostics {
+                add_reference(ctx, &source, name, SyntaxItemKind::SymbolReference(symbol));
+            }
+
+            if !exported {
+                private_segments.push(index);
+            }
+
+            base = Some(ctx.module(symbol).scope);
+            symbols.push(symbol);
         }
 
-        if diagnostics && let Some(srcloc) = name.srcloc() {
-            ctx.add_syntax_for_source(
-                SyntaxItemKind::SymbolReference(symbol),
-                TextRange::new(
-                    srcloc.span.start.try_into().unwrap(),
-                    srcloc.span.end.try_into().unwrap(),
-                ),
-                source.kind.clone(),
-            );
-        }
-
-        let Symbol::Module(module) = ctx.symbol(symbol) else {
-            unreachable!("the module namespace only has modules");
-        };
-
-        base = Some(module.scope);
-        path_so_far.push(name.text().to_string());
-
-        if !exported {
-            private_segments.push(index);
-        }
-
-        if !has_super {
-            cache.scopes.insert(
-                (import_scope, owner, path_so_far.clone()),
-                CachedPath {
-                    scope: module.scope,
-                    symbol,
-                    references: path_references.clone(),
-                    private_segments: private_segments.clone(),
-                },
-            );
-        }
+        cache.paths.insert(
+            import_id,
+            CachedPath {
+                scope: base.expect("a resolved path ends in a module"),
+                symbols,
+                references: path_references.clone(),
+                private_segments: private_segments.clone(),
+            },
+        );
     }
 
     // The module the import's items are imported from, which other lookups can wait for. A name
@@ -1134,7 +1181,7 @@ fn resolve_import(
 
                     Vec::new()
                 }
-            } else if import.base_scope == import_scope {
+            } else {
                 // A namespace that isn't known yet is looked up again in a later pass
                 let mut undetermined = false;
 
@@ -1148,7 +1195,7 @@ fn resolve_import(
                             import_id,
                             LookupKey::Item(namespace),
                             &item,
-                            Base::Local(import_scope),
+                            lookup_base,
                             namespace,
                         )
                         .found(&mut undetermined)
@@ -1159,42 +1206,22 @@ fn resolve_import(
                     resolution.bound.insert(import_id);
                 }
 
-                found
-            } else {
-                let mut undetermined = false;
+                // A name that a failed import blocked in the module that `super` names has
+                // already been reported
+                if let Base::Member(scope) = lookup_base
+                    && found.is_empty()
+                {
+                    let blocked = Namespace::ALL
+                        .into_iter()
+                        .filter(|&namespace| ctx.scope(scope).is_blocked(namespace, name))
+                        .collect::<Vec<_>>();
 
-                let found = Namespace::ALL
-                    .into_iter()
-                    .filter_map(|namespace| {
-                        lookup(
-                            ctx,
-                            &cache.forced,
-                            resolution,
-                            import_id,
-                            LookupKey::Item(namespace),
-                            &item,
-                            Base::Member(import.base_scope),
-                            namespace,
-                        )
-                        .found(&mut undetermined)
-                    })
-                    .collect::<Vec<_>>();
-
-                if !undetermined && !found.is_empty() {
-                    resolution.bound.insert(import_id);
-                }
-
-                // A name that a failed import blocked in that module has already been reported
-                let blocked = Namespace::ALL
-                    .into_iter()
-                    .filter(|&namespace| ctx.scope(import.base_scope).is_blocked(namespace, name))
-                    .collect::<Vec<_>>();
-
-                if found.is_empty() && !blocked.is_empty() {
-                    missing_imports.shift_remove(name);
-                    resolution
-                        .private_names
-                        .push((import_scope, name.to_string(), blocked));
+                    if !blocked.is_empty() {
+                        missing_imports.shift_remove(name);
+                        resolution
+                            .private_names
+                            .push((import_scope, name.to_string(), blocked));
+                    }
                 }
 
                 found
@@ -1218,20 +1245,15 @@ fn resolve_import(
 
             for &(found, _) in &found {
                 let namespace = found.namespace();
-                if diagnostics && let Some(srcloc) = item.srcloc() {
-                    ctx.add_syntax_for_source(
-                        match found {
-                            Item::Value(symbol) | Item::Module(symbol) => {
-                                SyntaxItemKind::SymbolReference(symbol)
-                            }
-                            Item::Type(ty) => SyntaxItemKind::TypeReference(ty),
-                        },
-                        TextRange::new(
-                            srcloc.span.start.try_into().unwrap(),
-                            srcloc.span.end.try_into().unwrap(),
-                        ),
-                        source.kind.clone(),
-                    );
+                if diagnostics {
+                    let kind = match found {
+                        Item::Value(symbol) | Item::Module(symbol) => {
+                            SyntaxItemKind::SymbolReference(symbol)
+                        }
+                        Item::Type(ty) => SyntaxItemKind::TypeReference(ty),
+                    };
+
+                    add_reference(ctx, &source, &item, kind);
                 }
 
                 let target = ctx.scope_mut(import_scope);

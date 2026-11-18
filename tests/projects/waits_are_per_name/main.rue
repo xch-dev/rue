@@ -1,0 +1,10 @@
+// The glob imports wait for each other and conflict, which is reported once. `import y::K` only
+// waits for the imports that could bring in a `y`, not for every import here, so it isn't forced
+// along with them, and it's resolved once they are.
+import y::*;
+import y::K;
+import z::*;
+
+fn main() -> Int {
+    W + K
+}
