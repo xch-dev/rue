@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
@@ -370,10 +370,17 @@ fn generalize(
     let mut params: Vec<TypeId> = function.param_types().collect();
     let mut returned = function.ret;
     let mut expected = vec![expected_type];
-    // A recursive function type repeats its levels, so this stops at one that's been seen
-    let mut seen = HashSet::new();
 
-    loop {
+    // A generic only ever stops being free, so the walk ends once none that's left is in what's
+    // returned. A recursive function type without parameters could go on, which the limit stops
+    while levels.len() < MAX_GENERALIZED_LEVELS
+        && function.generics.iter().any(|&generic| {
+            contains_generic(ctx.types_mut(), returned, generic)
+                && !params
+                    .iter()
+                    .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
+        })
+    {
         let unwrapped = rue_types::unwrap_semantic(ctx.types_mut(), returned, true);
 
         let Type::Function(returned_function) = ctx.ty(unwrapped).clone() else {
@@ -385,11 +392,7 @@ fn generalize(
             .flat_map(|&ty| rue_types::extract_functions(ctx.types_mut(), ty, false))
             .collect();
 
-        if expected_functions.is_empty()
-            || expected_functions
-                .iter()
-                .all(|expected| !seen.insert(expected.ret))
-        {
+        if expected_functions.is_empty() {
             break;
         }
 
@@ -420,6 +423,9 @@ fn generalize(
 
     levels
 }
+
+/// How deeply nested the functions returned by a call can be generalized (see `generalize`).
+const MAX_GENERALIZED_LEVELS: usize = 25;
 
 /// Generalizes one level of the functions returned by a call (see `generalize`), over the expected
 /// generics at that level, for the generics that none of the parameters reference.

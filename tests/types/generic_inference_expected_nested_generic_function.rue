@@ -72,7 +72,20 @@ fn make_recursive<A, B>() -> fn(x: A) -> B {
 }
 
 test fn guard_recursive_function_type() -> Int {
-    // Guard: a recursive function type repeats its levels, which stops the generalization
+    // Guard: a recursive expected type, where the returned function ends after one level
     let _function: Recursive = make_recursive();
     10
+}
+
+type Loop<T> = fn(x: T) -> Loop<T>;
+
+fn make_loop<T>() -> Loop<T> {
+    unchecked_cast(nil)
+}
+
+test fn guard_recursive_on_both_sides() -> Int {
+    // Guard: both are recursive. `T` is a parameter of the first returned function, so nothing
+    // nested in it is generalized over it, which ends the walk
+    let _function: Recursive = make_loop();
+    11
 }

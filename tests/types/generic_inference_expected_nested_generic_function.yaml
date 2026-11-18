@@ -41,3 +41,10 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: guard_recursive_on_both_sides
+  program: (q . 11)
+  debug_program: (q . 11)
+  output: "11"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

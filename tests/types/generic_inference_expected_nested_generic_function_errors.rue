@@ -9,12 +9,22 @@ fn make_inner_only<B>() -> fn(a: Int) -> fn(b: Int) -> B {
     unchecked_cast(nil)
 }
 
+type Recursive = fn<U>(x: U) -> Recursive;
+type IntLoop = fn(x: Int) -> IntLoop;
+
+fn make_int_loop() -> IntLoop {
+    unchecked_cast(nil)
+}
+
 fn main() -> Int {
     // `C` is a parameter of the outer function, which isn't generic over the inner `U`
     let _fixed: fn(a: Int) -> fn<U>(b: U) -> U = make_fixed();
 
     // The inner function only takes `Int`, which isn't any `U`
     let _narrow: fn(a: Int) -> fn<U>(b: U) -> (U, U) = make_inner_only();
+
+    // Both are recursive, and a function that only takes `Int` isn't any `U`
+    let _recursive: Recursive = make_int_loop();
 
     0
 }
