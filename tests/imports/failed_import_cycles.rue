@@ -9,9 +9,19 @@ import H::F;
 import c::X::X;
 import d::W::W;
 import nope::D;
+import nope::V;
+import p::q::V::V;
 
 mod c {
     import super::X;
+}
+
+mod p {
+    import super::*;
+
+    mod q {
+        import super::V;
+    }
 }
 
 mod d {
@@ -41,5 +51,5 @@ mod b {
 // An import that fails at a name blocked by another failed import isn't reported again, unless
 // that import only failed because of it, which happens in a cycle. The uses aren't reported again.
 fn main() -> Int {
-    A + B + C + D + E + F + G + H + I + W + X + a::f() + b::g()
+    A + B + C + D + E + F + G + H + I + V + W + X + a::f() + b::g()
 }

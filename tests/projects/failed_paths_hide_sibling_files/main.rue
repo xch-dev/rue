@@ -1,4 +1,5 @@
 import nope::utils;
+import utils;
 import utils::greet;
 
 mod a {

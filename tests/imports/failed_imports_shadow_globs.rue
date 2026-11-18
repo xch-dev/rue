@@ -1,0 +1,29 @@
+import lib::helper;
+import module::*;
+
+mod module {
+    export fn helper() -> Bytes {
+        "x"
+    }
+}
+
+mod a {
+    import nope::item;
+    import super::b::*;
+
+    export fn f() -> Int {
+        item()
+    }
+}
+
+mod b {
+    export fn item() -> Int {
+        1
+    }
+}
+
+// A named import whose path doesn't resolve still shadows a glob import of its name, which is
+// blocked instead
+fn main() -> Int {
+    helper(1, 2) + 3 + a::f()
+}

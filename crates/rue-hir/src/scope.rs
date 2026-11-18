@@ -332,8 +332,8 @@ impl Scope {
 
     /// Stops a name from being looked up in enclosing scopes, because an import of it failed and
     /// has already been reported. `origin` is that import, which is an import into this scope, or
-    /// for a name that a glob import passes on, an origin of the block it passes on. A name can
-    /// have several origins. Returns whether the origin is new.
+    /// for a name that an import through `super` passes on, an origin of the block it passes on.
+    /// A name can have several origins. Returns whether the origin is new.
     pub fn block(&mut self, namespace: Namespace, name: String, origin: ImportId) -> bool {
         let origins = self.blocked_names_mut(namespace).entry(name).or_default();
 

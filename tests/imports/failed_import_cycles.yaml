@@ -8,9 +8,11 @@ diagnostics:
 - Undeclared symbol `X` at failed_import_cycles.rue:9:11
 - Undeclared symbol `W` at failed_import_cycles.rue:10:11
 - Undeclared symbol `nope` at failed_import_cycles.rue:11:8
-- Unresolved import `X` at failed_import_cycles.rue:14:19
-- Unused import `*` at failed_import_cycles.rue:18:19
-- Unresolved import `Y` at failed_import_cycles.rue:24:22
-- Unresolved import `Z` at failed_import_cycles.rue:25:22
-- Unresolved import `Y` at failed_import_cycles.rue:33:22
-- Undeclared symbol `nope` at failed_import_cycles.rue:34:12
+- Undeclared symbol `nope` at failed_import_cycles.rue:12:8
+- Unresolved import `X` at failed_import_cycles.rue:16:19
+- Unused import `*` at failed_import_cycles.rue:20:19
+- Unused import `*` at failed_import_cycles.rue:28:19
+- Unresolved import `Y` at failed_import_cycles.rue:34:22
+- Unresolved import `Z` at failed_import_cycles.rue:35:22
+- Unresolved import `Y` at failed_import_cycles.rue:43:22
+- Undeclared symbol `nope` at failed_import_cycles.rue:44:12

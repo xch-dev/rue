@@ -150,8 +150,8 @@ pub struct ImportCache {
 
     /// The imports that failed at a name that's blocked where they looked it up (a segment of the
     /// path, or the name imported through `super`), with the origins of the block (see
-    /// [`Scope::block`]). Whether their errors are reported depends on those imports' (see
-    /// [`failure_is_reported`]).
+    /// [`Scope::block`]). Whether their errors are reported depends on whether those imports'
+    /// failures are (see [`failure_is_reported`]).
     blocked_imports: HashMap<ImportId, HashSet<ImportId>>,
 }
 
@@ -392,7 +392,7 @@ pub fn resolve_imports(
     }
 }
 
-/// A name that a named import failed to bring into a scope, or that a glob import through `super`
+/// A name that a named import failed to bring into a scope, or that an import through `super`
 /// passes on, which is blocked there (see [`Scope::block`]) once the imports are resolved, so that
 /// its uses aren't reported again.
 #[derive(Debug)]
@@ -400,8 +400,8 @@ struct FailedName {
     scope: ScopeId,
     namespace: Namespace,
     name: String,
-    /// The import that failed, or for a name that a glob import passes on, an origin of the
-    /// block it passes on.
+    /// The import that failed, or for a name that an import through `super` passes on, an origin
+    /// of the block it passes on.
     origin: ImportId,
 }
 
@@ -654,13 +654,13 @@ struct Resolution {
     bases: HashMap<ImportId, (ScopeId, bool)>,
     /// The named imports that have brought in what they import.
     bound: HashSet<ImportId>,
-    /// The imports whose paths don't resolve, which can't bring anything in.
+    /// The imports whose paths don't resolve, whose names will be blocked.
     failed_paths: HashSet<ImportId>,
     /// The lookups that are waiting for a module to settle in this pass.
     waiting: Vec<WaitingLookup>,
     /// The names that named imports with a path failed to bring in in this pass, because they
-    /// found only private items or their path didn't resolve, and the names that glob imports
-    /// through `super` pass on from the module. Names that are still missing once the imports are
+    /// found only private items or their path didn't resolve, and the names that imports through
+    /// `super` pass on from the module. Names that are still missing once the imports are
     /// resolved are blocked too.
     failed_names: Vec<FailedName>,
 }
@@ -747,7 +747,8 @@ fn may_bind(
 }
 
 /// Whether a module blocks a name in a namespace (see [`Scope::block`]), or will once its imports
-/// are resolved, because a named import of the name into it only found a private item. Lookups past
+/// are resolved, because a named import of the name into it only found a private item or its path
+/// doesn't resolve. Lookups past
 /// the module's own items don't find the name, like they don't once it's blocked.
 fn blocks(
     ctx: &Compiler,
@@ -796,11 +797,6 @@ fn may_import(
     blockers: &mut Blockers,
 ) -> bool {
     let Some(&(source, members)) = resolution.bases.get(&import) else {
-        // An import whose path doesn't resolve can't bring anything in
-        if resolution.failed_paths.contains(&import) {
-            return false;
-        }
-
         blockers.imports.push(import);
         return true;
     };
@@ -1456,17 +1452,32 @@ fn resolve_import(
                     resolution.bound.insert(import_id);
                 }
 
+                // A name that a failed import blocked in the module that `super` names is
+                // blocked here too, in the namespaces that the import doesn't find it in
+                if let Base::Member(scope) = lookup_base {
+                    for namespace in Namespace::ALL {
+                        if found.iter().any(|(item, _)| item.namespace() == namespace) {
+                            continue;
+                        }
+
+                        for &origin in ctx.scope(scope).block_origins(namespace, name) {
+                            resolution.failed_names.push(FailedName {
+                                scope: import_scope,
+                                namespace,
+                                name: name.to_string(),
+                                origin,
+                            });
+                        }
+                    }
+                }
+
                 found
             };
 
-            // A name that a failed import blocked in the module that `super` names has already
-            // been reported there, unless that import only failed because of this one. The name
-            // is still missing, so it's blocked here too.
-            if base.is_none()
-                && let Base::Member(_) = lookup_base
-                && found.is_empty()
-                && missing_imports.contains_key(name)
-            {
+            // A name that a failed import blocked where an import without a path looks it up has
+            // already been reported there, unless that import only failed because of this one.
+            // The name is still missing, so it's blocked here too.
+            if base.is_none() && found.is_empty() && missing_imports.contains_key(name) {
                 record_blocked_import(
                     ctx,
                     &mut cache.blocked_imports,
