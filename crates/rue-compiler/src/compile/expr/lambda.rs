@@ -113,7 +113,7 @@ pub fn compile_lambda_expr(
     // Without an annotation, the lambda returns whatever its body does, but the body is expected
     // to be what the function type expected of the lambda returns, so that `identity(7)` in
     // `fn(x: Int) => identity(7)` isn't widened to `Int` when a `7` is expected
-    let body_type = return_type.or_else(|| expected_return_type(&expected_functions));
+    let body_type = return_type.or_else(|| expected_return_type(ctx, &expected_functions));
 
     ctx.push_return_target(Some(ReturnTarget {
         expected_type: return_type,
@@ -182,12 +182,18 @@ pub fn compile_lambda_expr(
     Value::new(hir, ty)
 }
 
-/// The return type of the function type expected of a lambda, if there's only one. A call in the
-/// body leaves out what it would infer from generics that an enclosing call is still inferring,
-/// such as `B` in `map(fn(x) => identity(x), 5)`, as it does with any expected type.
-fn expected_return_type(functions: &[FunctionType]) -> Option<TypeId> {
+/// What the body of a lambda without a return annotation is expected to be: the return type of
+/// the function type expected of it, or the union of them if it could be one of several, as its
+/// parameter types are. A call in the body leaves out what it would infer from generics that an
+/// enclosing call is still inferring, such as `B` in `map(fn(x) => identity(x), 5)`, as it does
+/// with any expected type.
+fn expected_return_type(ctx: &mut Compiler, functions: &[FunctionType]) -> Option<TypeId> {
     match functions {
+        [] => None,
         [function] => Some(function.ret),
-        _ => None,
+        functions => {
+            let types = functions.iter().map(|function| function.ret).collect();
+            Some(ctx.alloc_type(Type::Union(Union::new(types))))
+        }
     }
 }

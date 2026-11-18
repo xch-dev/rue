@@ -64,3 +64,21 @@ test fn uninferred_generic() -> Int {
     // doesn't infer anything from it, so `B` is inferred from the body, as before.
     map(fn(x) => identity(x), 5) + 1
 }
+
+test fn several_function_types() -> Int {
+    // The body is expected to be one of their return types, as its parameter is one of theirs
+    let _function: (fn(a: Int) -> 7) | (fn(a: Int, b: Int) -> 7) = fn(x) => identity(7);
+    7
+}
+
+test fn nested_lambda() -> Int {
+    // The inner lambda is expected to be `fn(b: Int) -> Int`, so its parameter is inferred
+    let function: fn(a: Int) -> fn(b: Int) -> Int = fn(x) => fn(y) => x * 10 + y;
+    function(1)(2)
+}
+
+test fn nested_lambda_through_generic_function_type() -> Int {
+    // The inner lambda's parameter is the outer lambda's copy of `T`
+    let function: fn<T>(a: T) -> fn(b: T) -> T = fn(x) => fn(y) => y;
+    function(1)(2)
+}

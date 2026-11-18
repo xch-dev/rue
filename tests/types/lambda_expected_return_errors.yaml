@@ -1,4 +1,3 @@
 diagnostics:
 - "Cannot assign `fn(x: Int) -> Int` to `fn(a: Int) -> 7`, since they are incompatible at lambda_expected_return_errors.rue:9:37"
-- "Cannot assign `fn(x: Int) -> Int` to `fn(a: Int) -> 7 | fn(a: Int, b: Int) -> 7`, since they are incompatible at lambda_expected_return_errors.rue:15:68"
-- "Cannot assign `fn(x: Int) -> Int | 7` to `fn(a: Int) -> 7`, since they are incompatible at lambda_expected_return_errors.rue:21:37"
+- "Cannot assign `fn(x: Int) -> Int | 7` to `fn(a: Int) -> 7`, since they are incompatible at lambda_expected_return_errors.rue:15:37"

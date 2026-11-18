@@ -62,3 +62,24 @@ tests:
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
+- name: several_function_types
+  program: (q . 7)
+  debug_program: (q . 7)
+  output: "7"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_lambda
+  program: (a (a (q 4 (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 10)) 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 1)) (q 2))
+  debug_program: (a (q 2 (a 2 (c (q . 1) ())) (c (q . 2) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 10)) 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) (c (q . 1) ()))) 1))
+  output: "12"
+  runtime_cost: 3008
+  byte_cost: 1164000
+  total_cost: 1167008
+- name: nested_lambda_through_generic_function_type
+  program: (a (a (q 1 . 2) (q 1)) (q 2))
+  debug_program: (a (q 2 (a 2 (c (q . 1) ())) (c (q . 2) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (q . 1) ()))) 1))
+  output: "2"
+  runtime_cost: 310
+  byte_cost: 300000
+  total_cost: 300310

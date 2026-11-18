@@ -10,12 +10,6 @@ test fn annotation_wins() -> Int {
     function(1)
 }
 
-test fn several_function_types() -> Int {
-    // When the lambda could be one of several function types, its body has no expected type
-    let _function: (fn(a: Int) -> 7) | (fn(a: Int, b: Int) -> 7) = fn(x) => identity(7);
-    7
-}
-
 test fn early_return() -> Int {
     // An early `return` isn't given the expected type, since it would also be checked against it
     let function: fn(a: Int) -> 7 = fn(x) => {
