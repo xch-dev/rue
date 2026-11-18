@@ -147,6 +147,14 @@ pub struct ImportCache {
     /// ambiguous if that import is an ambiguous glob import. They're checked once every glob
     /// import is resolved.
     imported_names: IndexMap<(ImportId, Declaration), (Name, ImportId)>,
+
+    /// The import whose failure each blocked name (see [`Scope::block`]) comes from, by the scope
+    /// and namespace it's blocked in.
+    block_origins: HashMap<(ScopeId, Namespace, String), ImportId>,
+    /// The imports whose path failed at a name that's blocked where it's looked up, with the
+    /// import that the block comes from. Their errors aren't reported, unless that import's
+    /// failure is only reported through them (see [`path_error_is_reported`]).
+    blocked_paths: HashMap<ImportId, ImportId>,
 }
 
 /// An error in an import, which is reported once all imports are resolved.
@@ -287,7 +295,7 @@ pub fn resolve_imports(
 
         // A lookup made before an import's path was resolved in this pass waited for it, so the
         // lookups are only forced after a pass in which every resolved path was known throughout.
-        // Lookups don't wait when diagnostics are reported, which is done in a single pass.
+        // Lookups don't wait when diagnostics are reported, so this doesn't apply then.
         updated |= !diagnostics && resolution.bases.len() != bases;
 
         if updated {
@@ -302,23 +310,31 @@ pub fn resolve_imports(
         if resolution.waiting.is_empty() {
             // The uses of a name whose named import failed aren't reported again. This is only
             // done once every import is resolved, since an item with the name could be found in a
-            // later pass, and the name isn't blocked if something else brought it in. A name
-            // that's still missing is only blocked once every declaration is known, when
-            // diagnostics are reported. Blocking a name can fail imports of it in other modules,
-            // such as through `super`, so the imports are resolved again until nothing new is
-            // blocked.
+            // later pass, and the name isn't blocked if something else brought it in. Blocking a
+            // name can fail imports of it in other modules, such as through `super`, so the
+            // imports are resolved again until nothing new is blocked.
             let mut blocked = false;
 
-            for (scope, name, namespaces) in resolution.failed_names.drain(..) {
-                blocked |= block(ctx, scope, &name, &namespaces);
+            for failed in resolution.failed_names.drain(..) {
+                blocked |= block(ctx, cache, failed);
             }
 
-            if diagnostics {
-                for &(scope, import) in &imports {
-                    if let Some(names) = missing_imports.get(&import) {
-                        for name in names.keys() {
-                            blocked |= block(ctx, scope, name, &Namespace::ALL);
-                        }
+            // A name that's still missing fails its import too
+            for &(scope, import) in &imports {
+                let Some(names) = missing_imports.get(&import) else {
+                    continue;
+                };
+
+                for name in names.keys() {
+                    for namespace in Namespace::ALL {
+                        let name = name.clone();
+                        let failed = FailedName {
+                            scope,
+                            namespace,
+                            name,
+                            origin: import,
+                        };
+                        blocked |= block(ctx, cache, failed);
                     }
                 }
             }
@@ -347,7 +363,15 @@ pub fn resolve_imports(
             }
         }
 
-        for (name, kind) in cache.errors.values() {
+        for (&(import, error), (name, kind)) in &cache.errors {
+            // A path that failed at a blocked name has already been reported where the name's
+            // own import failed
+            if matches!(error, ImportError::UnresolvedPath(_))
+                && !path_error_is_reported(cache, import)
+            {
+                continue;
+            }
+
             ctx.diagnostic_name(name, kind.clone());
         }
 
@@ -376,20 +400,61 @@ pub fn resolve_imports(
     }
 }
 
-/// Blocks a name in the namespaces of a scope that don't have an item with it (see
-/// [`Scope::block`]). Returns whether any of them wasn't blocked already.
-fn block(ctx: &mut Compiler, scope: ScopeId, name: &str, namespaces: &[Namespace]) -> bool {
-    let scope = ctx.scope_mut(scope);
-    let mut blocked = false;
+/// A name that a named import failed to bring into a scope, which is blocked there (see
+/// [`Scope::block`]) once the imports are resolved, so that its uses aren't reported again.
+#[derive(Debug)]
+struct FailedName {
+    scope: ScopeId,
+    namespace: Namespace,
+    name: String,
+    /// The import whose failure is reported for the name: the one that failed, or for a name that
+    /// another block passed on, the import that block comes from.
+    origin: ImportId,
+}
 
-    for &namespace in namespaces {
-        if scope.item(namespace, name).is_none() && !scope.is_blocked(namespace, name) {
-            scope.block(namespace, name.to_string());
-            blocked = true;
-        }
+/// Blocks a failed name, unless the scope has an item with it. Returns whether it's newly blocked.
+fn block(ctx: &mut Compiler, cache: &mut ImportCache, failed: FailedName) -> bool {
+    let scope = ctx.scope_mut(failed.scope);
+
+    if scope.item(failed.namespace, &failed.name).is_some()
+        || !scope.block(failed.namespace, failed.name.clone())
+    {
+        return false;
     }
 
-    blocked
+    cache
+        .block_origins
+        .insert((failed.scope, failed.namespace, failed.name), failed.origin);
+    true
+}
+
+/// The import whose failure a block of a name in a scope comes from, if it's blocked.
+fn block_origin(
+    block_origins: &HashMap<(ScopeId, Namespace, String), ImportId>,
+    scope: ScopeId,
+    namespace: Namespace,
+    name: &str,
+) -> Option<ImportId> {
+    block_origins
+        .get(&(scope, namespace, name.to_string()))
+        .copied()
+}
+
+/// Whether the error of an import whose path failed is reported. It isn't if the path failed at a
+/// name that's blocked because of another import whose failure is reported. Following the imports
+/// that the blocks come from ends at such an import, or at a cycle of imports whose paths failed
+/// at each other's names, whose errors are all reported, since nothing else is.
+fn path_error_is_reported(cache: &ImportCache, import: ImportId) -> bool {
+    let mut visited = HashSet::new();
+    let mut current = import;
+
+    while visited.insert(current)
+        && let Some(&origin) = cache.blocked_paths.get(&current)
+    {
+        current = origin;
+    }
+
+    current == import
 }
 
 fn compare_imports(left: &Import, right: &Import) -> Ordering {
@@ -529,6 +594,32 @@ fn brings_in(
     }
 }
 
+/// The import whose failure a block of a name comes from, if the name is blocked where a segment of
+/// a path looks it up: in the first scope that has the name or blocks it, for a local lookup.
+fn segment_block_origin(
+    ctx: &Compiler,
+    cache: &ImportCache,
+    base: Base,
+    name: &str,
+) -> Option<ImportId> {
+    Namespace::ALL.into_iter().find_map(|namespace| {
+        let scope = match base {
+            Base::Local(scope) => ctx
+                .lookup_in(scope, |id, scope| {
+                    if scope.item(namespace, name).is_some() {
+                        Some(None)
+                    } else {
+                        scope.is_blocked(namespace, name).then_some(Some(id))
+                    }
+                })
+                .flatten()?,
+            Base::Member(scope) | Base::Inner(scope) => scope,
+        };
+
+        block_origin(&cache.block_origins, scope, namespace, name)
+    })
+}
+
 /// Where an import's name, or the first segment of its path, is looked up.
 fn import_base(import: &Import, import_scope: ScopeId) -> Base {
     if import.base_scope == import_scope {
@@ -568,9 +659,9 @@ struct Resolution {
     /// The lookups that are waiting for a module to settle in this pass.
     waiting: Vec<WaitingLookup>,
     /// The names that named imports failed to bring in, because they found only private items or
-    /// their path didn't resolve, or because the name is blocked where they look it up, with the
-    /// scope they're imported into and the namespaces to block the name in.
-    failed_names: Vec<(ScopeId, String, Vec<Namespace>)>,
+    /// their path didn't resolve, or because the name is blocked where they look it up, in this
+    /// pass. Glob imports through `super` pass on the names blocked in the module too.
+    failed_names: Vec<FailedName>,
 }
 
 impl Resolution {
@@ -971,60 +1062,57 @@ fn resolve_import(
             };
 
             let Some((symbol, via, exported)) = module else {
-                // A name that a failed import blocked where it's looked up has already been
-                // reported
-                let blocked = Namespace::ALL
-                    .into_iter()
-                    .any(|namespace| match segment_base {
-                        Base::Local(scope) => ctx.is_blocked_in(scope, namespace, name.text()),
-                        Base::Member(scope) | Base::Inner(scope) => {
-                            ctx.scope(scope).is_blocked(namespace, name.text())
-                        }
-                    });
-
                 // The import failed, so the name it brings in is blocked, and its uses aren't
                 // reported again
                 if let Items::Named(item) = &import.items {
-                    resolution.failed_names.push((
-                        import_scope,
-                        item.text().to_string(),
-                        Namespace::ALL.to_vec(),
-                    ));
+                    for namespace in Namespace::ALL {
+                        resolution.failed_names.push(FailedName {
+                            scope: import_scope,
+                            namespace,
+                            name: item.text().to_string(),
+                            origin: import_id,
+                        });
+                    }
                 }
 
-                // The name may only be blocked in a later pass, through `super`, so the error is
-                // recorded until the imports are resolved, and dropped if it is
-                let key = (import_id, ImportError::UnresolvedPath(index));
+                // A name that a failed import blocked where it's looked up has already been
+                // reported there, unless the import that blocked it only failed because of this
+                // one. The name may only be blocked in a later pass, through `super`, so the
+                // error is recorded and only reported once the imports are resolved.
+                if let Some(origin) = segment_block_origin(ctx, cache, segment_base, name.text()) {
+                    cache.blocked_paths.entry(import_id).or_insert(origin);
+                }
 
-                if blocked {
-                    cache.errors.shift_remove(&key);
-                } else if diagnostics {
-                    // Only a module can have a path after it, so a value or type is reported as
-                    // such
-                    let other = [Namespace::Value, Namespace::Type]
-                        .into_iter()
-                        .any(|namespace| match segment_base {
-                            Base::Local(scope) => {
-                                ctx.resolve_item_in(scope, namespace, name.text()).is_some()
-                            }
-                            Base::Member(scope) => {
-                                ctx.module_member(scope, namespace, name.text()).is_some()
-                            }
-                            Base::Inner(scope) => {
-                                ctx.scope(scope).item(namespace, name.text()).is_some()
-                            }
-                        });
-
-                    let kind = if other {
-                        DiagnosticKind::SubpathNotSupported(name.text().to_string())
-                    } else {
-                        DiagnosticKind::UndeclaredSymbol(name.text().to_string())
-                    };
-
+                if diagnostics {
                     cache
                         .errors
-                        .entry(key)
-                        .or_insert_with(|| (name.clone(), kind));
+                        .entry((import_id, ImportError::UnresolvedPath(index)))
+                        .or_insert_with(|| {
+                            // Only a module can have a path after it, so a value or type is
+                            // reported as such
+                            let other =
+                                [Namespace::Value, Namespace::Type]
+                                    .into_iter()
+                                    .any(|namespace| match segment_base {
+                                        Base::Local(scope) => ctx
+                                            .resolve_item_in(scope, namespace, name.text())
+                                            .is_some(),
+                                        Base::Member(scope) => ctx
+                                            .module_member(scope, namespace, name.text())
+                                            .is_some(),
+                                        Base::Inner(scope) => {
+                                            ctx.scope(scope).item(namespace, name.text()).is_some()
+                                        }
+                                    });
+
+                            let kind = if other {
+                                DiagnosticKind::SubpathNotSupported(name.text().to_string())
+                            } else {
+                                DiagnosticKind::UndeclaredSymbol(name.text().to_string())
+                            };
+
+                            (name.clone(), kind)
+                        });
                 }
                 return false;
             };
@@ -1144,11 +1232,18 @@ fn resolve_import(
                     // A name that a failed import blocked in the module has already been
                     // reported, so it's blocked here too, unless something else brings it in
                     for name in ctx.scope(source_scope).blocked(namespace) {
-                        resolution.failed_names.push((
-                            import_scope,
-                            name.to_string(),
-                            vec![namespace],
-                        ));
+                        resolution.failed_names.push(FailedName {
+                            scope: import_scope,
+                            namespace,
+                            name: name.to_string(),
+                            origin: block_origin(
+                                &cache.block_origins,
+                                source_scope,
+                                namespace,
+                                name,
+                            )
+                            .expect("a blocked name has an origin"),
+                        });
                     }
 
                     items
@@ -1300,11 +1395,14 @@ fn resolve_import(
                     // The name is reported as private rather than unresolved
                     if !items.is_empty() {
                         missing_imports.shift_remove(name);
-                        resolution.failed_names.push((
-                            import_scope,
-                            name.to_string(),
-                            items.iter().map(|&(found, ..)| found.namespace()).collect(),
-                        ));
+                        for &(found, ..) in &items {
+                            resolution.failed_names.push(FailedName {
+                                scope: import_scope,
+                                namespace: found.namespace(),
+                                name: name.to_string(),
+                                origin: import_id,
+                            });
+                        }
                     }
 
                     if diagnostics {
@@ -1353,16 +1451,18 @@ fn resolve_import(
                 if let Base::Member(scope) = lookup_base
                     && found.is_empty()
                 {
-                    let blocked = Namespace::ALL
-                        .into_iter()
-                        .filter(|&namespace| ctx.scope(scope).is_blocked(namespace, name))
-                        .collect::<Vec<_>>();
-
-                    if !blocked.is_empty() {
-                        missing_imports.shift_remove(name);
-                        resolution
-                            .failed_names
-                            .push((import_scope, name.to_string(), blocked));
+                    for namespace in Namespace::ALL {
+                        if let Some(origin) =
+                            block_origin(&cache.block_origins, scope, namespace, name)
+                        {
+                            missing_imports.shift_remove(name);
+                            resolution.failed_names.push(FailedName {
+                                scope: import_scope,
+                                namespace,
+                                name: name.to_string(),
+                                origin,
+                            });
+                        }
                     }
                 }
 

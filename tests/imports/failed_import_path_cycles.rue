@@ -1,0 +1,11 @@
+import A::B;
+import B::A;
+import C::C;
+import D::E;
+import nope::D;
+
+// A path that fails at a name blocked by another failed import isn't reported again, unless that
+// import only failed because of it, which happens in a cycle. The uses aren't reported again.
+fn main() -> Int {
+    A + B + C + D + E
+}

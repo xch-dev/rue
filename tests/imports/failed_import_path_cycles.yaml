@@ -1,0 +1,5 @@
+diagnostics:
+- Undeclared symbol `A` at failed_import_path_cycles.rue:1:8
+- Undeclared symbol `B` at failed_import_path_cycles.rue:2:8
+- Undeclared symbol `C` at failed_import_path_cycles.rue:3:8
+- Undeclared symbol `nope` at failed_import_path_cycles.rue:5:8

@@ -42,7 +42,14 @@ mod a {
         }
 
         export fn g() -> Int {
-            secret + X + missing + c::h() + named::i() + paths::j()
+            secret
+                + X
+                + missing
+                + super::X
+                + super::super::missing
+                + c::h()
+                + named::i()
+                + paths::j()
         }
     }
 

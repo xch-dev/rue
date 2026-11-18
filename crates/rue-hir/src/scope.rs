@@ -333,9 +333,9 @@ impl Scope {
     }
 
     /// Stops a name from being looked up in enclosing scopes, because an import of it into this
-    /// scope failed and has already been reported.
-    pub fn block(&mut self, namespace: Namespace, name: String) {
-        self.blocked_names(namespace).insert(name);
+    /// scope failed and has already been reported. Returns whether it wasn't blocked already.
+    pub fn block(&mut self, namespace: Namespace, name: String) -> bool {
+        self.blocked_names(namespace).insert(name)
     }
 
     pub fn is_blocked(&self, namespace: Namespace, name: &str) -> bool {
