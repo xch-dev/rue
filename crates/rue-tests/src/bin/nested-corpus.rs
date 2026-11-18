@@ -35,7 +35,8 @@
 //! - `--timeout S`: the time limit in seconds for each compile (default 300).
 //! - `--out FILE`: where to write the results, one JSON object per line: the seed, the status
 //!   (`compiled`, `rejected`, `too_complex`, `timeout` or `crashed`), the time taken in
-//!   milliseconds, a hash of everything the compiler printed, and its first error.
+//!   milliseconds, a hash of everything the compiler printed, and its first error (or for a
+//!   compile that failed without reporting one, the first line it printed).
 //! - `--compare BEFORE AFTER`: compare two result files, and print each seed whose status or
 //!   output changed.
 
@@ -336,6 +337,10 @@ fn compile(rue: &Path, dir: &Path, seed: u64, timeout: Duration) -> Result<Recor
     let mut child = Command::new(rue)
         .arg("build")
         .arg(&path)
+        // Errors are found by how their lines start, and the output is hashed, so it's never in
+        // colour
+        .env_remove("CLICOLOR_FORCE")
+        .env("NO_COLOR", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
