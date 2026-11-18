@@ -1,0 +1,7 @@
+export type Number = Int;
+
+export const ONE: Int = 1;
+
+export fn double(value: Int) -> Int {
+    value * 2
+}

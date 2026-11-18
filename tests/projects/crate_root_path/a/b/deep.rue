@@ -1,0 +1,7 @@
+// `crate` is the same module as the `super`s that reach the root from here, and a `super` can't
+// follow it, since the root has no parent
+import crate::utils::{ONE, double};
+
+export fn total() -> Int {
+    double(crate::main::BASE) + ONE + super::super::utils::ONE + crate::a::b::sibling::TWO
+}

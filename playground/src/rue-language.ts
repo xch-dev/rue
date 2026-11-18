@@ -28,6 +28,7 @@ const keywords = new Set([
   "is",
   "as",
   "super",
+  "crate",
 ]);
 
 const atoms = new Set(["nil", "true", "false"]);

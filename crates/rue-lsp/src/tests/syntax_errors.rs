@@ -197,9 +197,9 @@ fn test_let_without_value() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -218,9 +218,9 @@ fn test_let_without_value_before_semicolon() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -239,9 +239,9 @@ fn test_return_without_value() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -260,9 +260,9 @@ fn test_if_without_condition() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -281,9 +281,9 @@ fn test_assert_without_condition() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -302,9 +302,9 @@ fn test_raise_without_value() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -316,19 +316,19 @@ fn test_constant_without_value() {
         "const LIMIT: Int = $0
 ",
         expect![[r#"
-    hover:
-    <none>
-    definitions:
-    <none>
-    references:
-    <none>
-    completions:
-    super [Module]
-    LIMIT [Constant] Int
-    unchecked_cast [Function] fn<T>(value: Any) -> T
-    sha256 [Function] fn(value: Bytes) -> Bytes32
-    ...
-"#]],
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            super [Module]
+            crate [Module]
+            LIMIT [Constant] Int
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            ...
+        "#]],
     );
 }
 
@@ -363,9 +363,9 @@ fn test_cursor_after_string() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -385,9 +385,9 @@ fn test_cursor_before_string() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -407,9 +407,9 @@ fn test_cursor_after_line_comment() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -428,9 +428,9 @@ fn test_cursor_after_line_comment_crlf() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] 42
             main [Function] fn() -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );
@@ -573,9 +573,9 @@ fn test_unfinished_struct() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             Point [Struct]
             Atom [Struct]
-            Bytes [Struct]
             ...
         "#]],
     );
@@ -594,9 +594,9 @@ fn test_unfinished_binary_expression() {
             <none>
             completions:
             super [Module]
+            crate [Module]
             value [Variable] Int
             main [Function] fn(value: Int) -> Int
-            unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
         "#]],
     );

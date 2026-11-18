@@ -75,6 +75,10 @@ pub enum CompletionContext {
     },
     ModuleExports {
         module: SymbolId,
+        /// Whether `super` can come next, after a path of `super`s.
         allow_super: bool,
+        /// Whether the module was named by `super` or `crate`, so it contains the code and its
+        /// private items (and a file's sibling modules) can be used, rather than only its exports.
+        members: bool,
     },
 }

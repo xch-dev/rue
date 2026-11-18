@@ -1,0 +1,9 @@
+// Reaching an item through `crate` follows the same rules as reaching it otherwise: a file's
+// private items can't be used from another file, even one deeper in the project
+import crate::utils::hidden;
+
+export crate::utils::shown;
+
+fn main() -> Int {
+    hidden() + shown() + crate::utils::HIDDEN + crate::a::nested::value()
+}
