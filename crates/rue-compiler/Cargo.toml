@@ -30,6 +30,7 @@ rowan = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
 hex = { workspace = true }
+sha2 = { workspace = true }
 clvmr = { workspace = true }
 indexmap = { workspace = true }
 log = { workspace = true }
@@ -40,3 +41,4 @@ include_dir = { workspace = true }
 rue-types = { workspace = true, features = ["step-counter"] }
 rue-lexer = { workspace = true }
 expect-test = { workspace = true }
+rue-clvm = { workspace = true }

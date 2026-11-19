@@ -1,0 +1,44 @@
+===== debug =====
+program: (a (q 16 (a 4 (c 6 5)) (q . 1)) (c (c (q 2 (q 16 (a 5 (c 2 7)) 2) (c (* 3 (q . 2)) 1)) (q 2 (i (> 2 (q . 100)) (q 17 2 3) (q 8 (q . "assertion failed at nested_assert.rue:13:5"))) 1)) 1))
+sidecar: 2049 bytes
+files:
+  nested_assert.rue
+functions:
+  0: main ((_ . _) . (amount@6: integer . _))
+  1: outer (_ . value@3: integer)
+  2: inner (total@2: integer . base@3: integer)
+nodes:
+  nested_assert.rue:3:29-5:2  (a (q 16 (a 4 (c 6 5)) (q . 1)) (c (c (q 2 (q 16 (a 5 (c ...
+    nested_assert.rue:4:5-4:22 fn main  (+ (a 4 (c 6 5)) (q . 1))
+      nested_assert.rue:4:5-4:18  (a 4 (c 6 5))
+      nested_assert.rue:4:21-4:22  (q . 1)
+    nested_assert.rue:7:29-10:2 fn outer  (a (q 16 (a 5 (c 2 7)) 2) (c (* 3 (q . 2)) 1))
+      nested_assert.rue:9:5-9:36  (+ (a 5 (c 2 7)) 2)
+        nested_assert.rue:9:5-9:26  (a 5 (c 2 7))
+      nested_assert.rue:8:19-8:28  (* 3 (q . 2))
+        nested_assert.rue:8:27-8:28  (q . 2)
+    nested_assert.rue:13:5-13:24 fn inner  (a (i (> 2 (q . 100)) (q 17 2 3) (q 8 (q . "assertion fai...
+      nested_assert.rue:13:12-13:23  (> 2 (q . 100))
+        nested_assert.rue:13:20-13:23  (q . 100)
+      nested_assert.rue:14:5-14:17  (- 2 3)
+===== release =====
+program: (a (q 16 (a 4 (c 6 5)) (q . 1)) (c (c (q 2 (q 16 (a 5 (c 2 7)) 2) (c (* 3 (q . 2)) 1)) (q 2 (i (> 2 (q . 100)) (q 17 2 3) (q 8)) 1)) 1))
+sidecar: 1939 bytes
+files:
+  nested_assert.rue
+functions:
+  0: main ((_ . _) . (amount@6: integer . _))
+  1: outer (_ . value@3: integer)
+  2: inner (total@2: integer . base@3: integer)
+nodes:
+  nested_assert.rue:3:29-5:2  (a (q 16 (a 4 (c 6 5)) (q . 1)) (c (c (q 2 (q 16 (a 5 (c ...
+    nested_assert.rue:4:5-4:22 fn main  (+ (a 4 (c 6 5)) (q . 1))
+      nested_assert.rue:4:5-4:18  (a 4 (c 6 5))
+    nested_assert.rue:7:29-10:2 fn outer  (a (q 16 (a 5 (c 2 7)) 2) (c (* 3 (q . 2)) 1))
+      nested_assert.rue:9:5-9:36  (+ (a 5 (c 2 7)) 2)
+        nested_assert.rue:9:5-9:26  (a 5 (c 2 7))
+      nested_assert.rue:8:19-8:28  (* 3 (q . 2))
+    nested_assert.rue:13:5-13:24 fn inner  (a (i (> 2 (q . 100)) (q 17 2 3) (q 8)) 1)
+      nested_assert.rue:13:12-13:23  (> 2 (q . 100))
+        nested_assert.rue:13:20-13:23  (q . 100)
+      nested_assert.rue:14:5-14:17  (- 2 3)

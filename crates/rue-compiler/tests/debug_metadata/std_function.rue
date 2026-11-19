@@ -1,0 +1,8 @@
+// solution: ((1 2) 3)
+
+// A function from the standard library is located in its own file
+fn main(value: Any, expected: Int) -> Bytes32 {
+    let hash = tree_hash(value);
+    assert expected == 3;
+    hash
+}

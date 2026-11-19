@@ -1,0 +1,35 @@
+===== debug =====
+program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (= 5 ()) (q 8 (q . "raise called at recursion_tabs.rue:9:3") (q . "hit zero")) (q 2 2 (c 2 (c (- 5 (q . 1)) (+ 7 5))))) 1) 1))
+sidecar: 1638 bytes
+files:
+  recursion_tabs.rue
+functions:
+  0: main (_ . (n@6: integer . _))
+  1: countdown (_ . (n@6: integer . acc@7: integer))
+nodes:
+  recursion_tabs.rue:3:24-5:2  (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (= 5 ()) (q 8 (q . "...
+    recursion_tabs.rue:4:8-4:23 fn main  (a 2 (c 2 (c 5 ())))
+    recursion_tabs.rue:7:39-12:2 fn countdown  (a (i (= 5 ()) (q 8 (q . "raise called at recursion_tabs....
+      recursion_tabs.rue:8:11-8:17  (= 5 ())
+      recursion_tabs.rue:9:16-9:33  (x (q . "raise called at recursion_tabs.rue:9:3") (q . "h...
+        recursion_tabs.rue:9:22-9:32  (q . "hit zero")
+      recursion_tabs.rue:11:8-11:33  (a 2 (c 2 (c (- 5 (q . 1)) (+ 7 5))))
+        recursion_tabs.rue:11:18-11:23  (- 5 (q . 1))
+          recursion_tabs.rue:11:22-11:23  (q . 1)
+        recursion_tabs.rue:11:25-11:32  (+ 7 5)
+===== release =====
+program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i 5 (q 2 2 (c 2 (c (- 5 (q . 1)) (+ 7 5)))) (q 8)) 1) 1))
+sidecar: 1402 bytes
+files:
+  recursion_tabs.rue
+functions:
+  0: main (_ . (n@6: integer . _))
+  1: countdown (_ . (n@6: integer . acc@7: integer))
+nodes:
+  recursion_tabs.rue:3:24-5:2  (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i 5 (q 2 2 (c 2 (c (- ...
+    recursion_tabs.rue:4:8-4:23 fn main  (a 2 (c 2 (c 5 ())))
+    recursion_tabs.rue:7:39-12:2 fn countdown  (a (i 5 (q 2 2 (c 2 (c (- 5 (q . 1)) (+ 7 5)))) (q 8)) 1)
+      recursion_tabs.rue:11:8-11:33  (a 2 (c 2 (c (- 5 (q . 1)) (+ 7 5))))
+        recursion_tabs.rue:11:18-11:23  (- 5 (q . 1))
+        recursion_tabs.rue:11:25-11:32  (+ 7 5)
+      recursion_tabs.rue:9:16-9:33  (x)

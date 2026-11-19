@@ -1,0 +1,38 @@
+===== debug =====
+program: (a (q 2 (q 16 (a 5 2) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (q . 2) (q 8 (q . "assertion failed at closure_no_params.rue:5:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) 1)) (c (q 18 (a 1 ()) (q . 2)) 1))
+sidecar: 2191 bytes
+files:
+  closure_no_params.rue
+functions:
+  0: main (_ . (x@6: integer . _))
+  1: <lambda> (x@2: integer . _)
+  2: run f@1: unknown
+nodes:
+  closure_no_params.rue:3:24-9:2  (a (q 2 (q 16 (a 5 2) (q . 1)) (c (c (q . 2) (c (c (q . 1...
+    closure_no_params.rue:3:24-9:2 fn main  (a (q 16 (a 5 2) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q ...
+      closure_no_params.rue:8:5-8:19  (+ (a 5 2) (q . 1))
+        closure_no_params.rue:8:5-8:15  (a 5 2)
+        closure_no_params.rue:8:18-8:19  (q . 1)
+      closure_no_params.rue:4:17-7:6  (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (q . 2) (q...
+        closure_no_params.rue:5:9-5:22 fn <lambda>  (a (i (> 2 (q . 5)) (q . 2) (q 8 (q . "assertion failed a...
+          closure_no_params.rue:5:16-5:21  (> 2 (q . 5))
+            closure_no_params.rue:5:20-5:21  (q . 5)
+    closure_no_params.rue:12:5-12:12 fn run  (* (a 1 ()) (q . 2))
+      closure_no_params.rue:12:5-12:8  (a 1 ())
+      closure_no_params.rue:12:11-12:12  (q . 2)
+===== release =====
+program: (+ (* (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (q . 2) (q 8)) 1)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) (q . 2)) (q . 1))
+sidecar: 1625 bytes
+files:
+  closure_no_params.rue
+functions:
+  0: main (x@2: integer . _)
+  1: <lambda> (x@2: integer . _)
+nodes:
+  closure_no_params.rue:8:5-8:19 fn main  (+ (* (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (...
+    closure_no_params.rue:12:5-12:12  (* (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (q ....
+      closure_no_params.rue:12:5-12:8  (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (q . 2)...
+        closure_no_params.rue:4:17-7:6  (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (q . 2) (q...
+          closure_no_params.rue:5:9-5:22 fn <lambda>  (a (i (> 2 (q . 5)) (q . 2) (q 8)) 1)
+            closure_no_params.rue:5:16-5:21  (> 2 (q . 5))
+              closure_no_params.rue:5:20-5:21  (q . 5)

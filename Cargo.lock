@@ -1685,6 +1685,7 @@ dependencies = [
  "num-traits",
  "rowan",
  "rue-ast",
+ "rue-clvm",
  "rue-diagnostic",
  "rue-hir",
  "rue-lexer",
@@ -1693,6 +1694,7 @@ dependencies = [
  "rue-options",
  "rue-parser",
  "rue-types",
+ "sha2 0.10.9",
  "thiserror",
 ]
 

@@ -2,12 +2,15 @@ mod check_recursion;
 mod compile;
 mod compiler;
 mod const_eval;
+pub mod debug_metadata;
 mod file;
 mod syntax_map;
 
 pub use check_recursion::*;
 pub use compile::*;
 pub use compiler::*;
+pub use debug_metadata::EncodeError;
+pub(crate) use debug_metadata::build_debug_metadata;
 pub use file::*;
 pub use syntax_map::*;
 

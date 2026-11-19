@@ -1,0 +1,13 @@
+// solution: (0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 100 "hello world" 1)
+// solution: (0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 1751477356 "hi" 0)
+
+fn main(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+    validate(owner, target, amount, memo, enabled)
+}
+
+fn validate(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+    assert enabled;
+    assert target != sha256(owner as Bytes);
+    assert memo.length < 5;
+    amount
+}

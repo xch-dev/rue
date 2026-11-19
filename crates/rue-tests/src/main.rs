@@ -490,6 +490,17 @@ fn handle_test_file(
         .map(|kind| debug_unit.main(&mut debug_ctx, &mut allocator, kind, base_path.clone()));
     let (main, debug_main) = main_programs(main, debug_main, &mut file.diagnostics)?;
 
+    if let Some(kind) = &kind {
+        for (ctx, unit, program) in [
+            (&mut ctx, &unit, main),
+            (&mut debug_ctx, &debug_unit, debug_main),
+        ] {
+            if let Some(program) = program {
+                check_debug_metadata(ctx, unit, &mut allocator, kind, &base_path, program)?;
+            }
+        }
+    }
+
     let tests = codegen
         .then(|| unit.tests(&mut ctx, &mut allocator, None, None, &base_path, false))
         .transpose()?
@@ -546,6 +557,27 @@ fn handle_test_file(
     handle_tests(&mut allocator, &mut file.tests, &tests, &debug_tests)?;
 
     compare_snapshot(&yaml_file, &file, update, failed)?;
+
+    Ok(())
+}
+
+/// Checks that compiling `main` along with a debug metadata sidecar doesn't change the program.
+fn check_debug_metadata(
+    ctx: &mut Compiler,
+    unit: &FileTree,
+    allocator: &mut Allocator,
+    kind: &SourceKind,
+    base_path: &Path,
+    program: NodePtr,
+) -> Result<()> {
+    let (with_metadata, _) = unit
+        .main_with_debug_metadata(ctx, allocator, kind, base_path.to_path_buf())?
+        .context("main has a program, so it has one with a sidecar")?;
+
+    anyhow::ensure!(
+        node_to_bytes(allocator, with_metadata)? == node_to_bytes(allocator, program)?,
+        "compiling main with a debug metadata sidecar changed the program"
+    );
 
     Ok(())
 }
