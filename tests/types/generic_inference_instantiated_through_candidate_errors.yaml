@@ -1,0 +1,4 @@
+diagnostics:
+- Unused function `both` at generic_inference_instantiated_through_candidate_errors.rue:1:4
+- Unused function `instantiated_once` at generic_inference_instantiated_through_candidate_errors.rue:7:4
+- "Cannot assign `fn<B, C>(f: fn(x: Int) -> (B, C)) -> (B, C)` to `fn(a: fn<T>(x: T) -> (T, T)) -> (Int, Bytes32)`, since they are incompatible at generic_inference_instantiated_through_candidate_errors.rue:8:73"

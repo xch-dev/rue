@@ -1,0 +1,10 @@
+fn both<B, C>(f: fn(x: Int) -> (B, C)) -> (B, C) {
+    f(1)
+}
+
+// The generic function's `T` is instantiated once for all of `B` and `C`'s bounds, along with its
+// own `T ≥ Int`, so it can't be `Int` for `B` and `Bytes32` for `C` (#363)
+fn instantiated_once() -> Int {
+    let _instantiated: fn(a: fn<T>(x: T) -> (T, T)) -> (Int, Bytes32) = both;
+    1
+}

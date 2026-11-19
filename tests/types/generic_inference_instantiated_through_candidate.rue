@@ -17,3 +17,21 @@ test fn generic_function_instantiated_through_another() -> Int {
     let result: (Int, Int) = map(call, pairs);
     result.first + result.rest
 }
+
+type Pairs = fn<T>() -> (T, T);
+
+struct Two<X> {
+    first: X,
+    second: X,
+}
+
+fn call_first<B>(two: Two<fn() -> B>) -> B {
+    two.first()
+}
+
+// Comparing `Pairs` with `fn() -> B` the second time reuses the first, and `Pairs`' generic can
+// still be instantiated there
+test fn generic_function_instantiated_through_a_reused_comparison() -> Int {
+    let _call: fn(two: Two<Pairs>) -> (Int, Int) = call_first;
+    1
+}

@@ -11,8 +11,8 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, Choices, FALLBACK,
-    FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic, Inference,
-    InferenceCandidates, InferenceSnapshot, InstancePolicy, Join, Memo, Type, TypeId,
+    FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxHashSet, FxIndexSet, Generic,
+    Inference, InferenceCandidates, InferenceSnapshot, InstancePolicy, Join, Memo, Type, TypeId,
     compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
     has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
     substitute_with_mappings,
@@ -765,58 +765,103 @@ impl ComparisonContext<'_> {
     /// key refers to since the snapshot, as a summary in its coordinates: the binders its key
     /// numbers, and local ones for those bound inside of it, which are rigid by the time it
     /// finishes. It isn't canonical yet.
-    fn summary_since(&mut self, arena: &Arena<Type>, snapshot: &Snapshot) -> Summary {
+    fn summary_since(
+        &mut self,
+        arena: &Arena<Type>,
+        builtins: &BuiltinTypes,
+        snapshot: &Snapshot,
+    ) -> Summary {
         let frame = self.frames.last().unwrap();
         let (entered, numbering) = (frame.entered, frame.binders.clone());
         let mut summary = Summary::default();
         let mut locals: FxHashMap<usize, Var> = FxHashMap::default();
 
+        // The bounds to add, for the binder they bound (in the summary's coordinates)
+        let mut pending: Vec<(Var, Bound, bool)> = Vec::new();
+
         for &(position, index, lower, upper) in &snapshot.instances {
             let instance = &self.instances[index];
-            let bounds: Vec<(Bound, bool)> = instance.lower[lower..]
-                .iter()
-                .map(|&bound| (bound, false))
-                .chain(instance.upper[upper..].iter().map(|&bound| (bound, true)))
-                .collect();
+            pending.extend(
+                instance.lower[lower..]
+                    .iter()
+                    .map(|&bound| (Var::Key(position), bound, false))
+                    .chain(
+                        instance.upper[upper..]
+                            .iter()
+                            .map(|&bound| (Var::Key(position), bound, true)),
+                    ),
+            );
+        }
 
-            for ((ty, env, branches), upper) in bounds {
-                self.cache_references(arena, ty);
-                let mut vars = Vec::new();
+        // The local binders whose own bounds have been added to `pending`
+        let mut exported: FxHashSet<usize> = FxHashSet::default();
 
-                for &generic in &self.references[&ty] {
-                    let Some(binder) = self.resolve(generic, env) else {
-                        continue;
-                    };
+        while let Some((bounded, (ty, env, branches), upper)) = pending.pop() {
+            self.cache_references(arena, ty);
+            let mut vars = Vec::new();
 
-                    let outside = (binder < entered)
-                        .then(|| numbering.iter().position(|&other| other == binder))
-                        .flatten();
-                    debug_assert!(
-                        binder >= entered || outside.is_some(),
-                        "a bound refers to a binder outside of the comparison that its key doesn't"
+            for &generic in &self.references[&ty].clone() {
+                let Some(binder) = self.resolve(generic, env) else {
+                    continue;
+                };
+
+                let outside = (binder < entered)
+                    .then(|| numbering.iter().position(|&other| other == binder))
+                    .flatten();
+                debug_assert!(
+                    binder >= entered || outside.is_some(),
+                    "a bound refers to a binder outside of the comparison that its key doesn't"
+                );
+
+                let var = match outside {
+                    Some(position) => Var::Key(position),
+                    None => *locals.entry(binder).or_insert_with(|| summary.local()),
+                };
+
+                // A local binder that's the instance of a generic function compared inside of the
+                // comparison can still be instantiated while an enclosing comparison checks the
+                // bounds that refer to it (#363), so its own bounds come along with it. Only for the
+                // bounds of the key's instances: its own bounds are checked again with every
+                // instance rigid, so the instances they refer to don't need theirs
+                if outside.is_none()
+                    && matches!(bounded, Var::Key(_))
+                    && let Some(index) = self.binders[binder].instance
+                    && exported.insert(binder)
+                {
+                    // Without bounds, it's marked as an instance by `Any`, a bound that always
+                    // holds, since a constraint on a local binder is what makes it one
+                    let instance = &self.instances[index];
+                    let any = (instance.lower.is_empty() && instance.upper.is_empty()).then_some((
+                        builtins.permissive_any,
+                        None,
+                        BoundBranches::default(),
+                    ));
+                    pending.extend(
+                        instance
+                            .lower
+                            .iter()
+                            .map(|&bound| (var, bound, false))
+                            .chain(instance.upper.iter().map(|&bound| (var, bound, true)))
+                            .chain(any.map(|any| (var, any, true))),
                     );
-
-                    let var = match outside {
-                        Some(position) => Var::Key(position),
-                        None => *locals.entry(binder).or_insert_with(|| summary.local()),
-                    };
-                    vars.push((generic, var));
                 }
 
-                // A bound collected under a union member inside of the comparison that didn't
-                // match doesn't decide the result wherever the summary is applied either
-                let unmatched = branches
-                    .local
-                    .is_some_and(|branch| !self.choices.matched_since(branch, snapshot.choices));
-
-                summary.add(Constraint {
-                    var: Var::Key(position),
-                    upper,
-                    ty,
-                    env: vars,
-                    unmatched,
-                });
+                vars.push((generic, var));
             }
+
+            // A bound collected under a union member inside of the comparison that didn't match
+            // doesn't decide the result wherever the summary is applied either
+            let unmatched = branches
+                .local
+                .is_some_and(|branch| !self.choices.matched_since(branch, snapshot.choices));
+
+            summary.add(Constraint {
+                var: bounded,
+                upper,
+                ty,
+                env: vars,
+                unmatched,
+            });
         }
 
         summary
@@ -834,9 +879,42 @@ impl ComparisonContext<'_> {
         let mut locals: FxHashMap<usize, usize> = FxHashMap::default();
         let mut unmatched = None;
 
+        // The local binders that a constraint bounds are instances of generic functions compared
+        // inside of the comparison, which can still be instantiated by an enclosing comparison
+        let instances: FxHashSet<usize> = summary
+            .constraints()
+            .iter()
+            .filter_map(|constraint| match constraint.var {
+                Var::Local(local) => Some(local),
+                Var::Key(_) => None,
+            })
+            .collect();
+
+        let mut local = |ctx: &mut Self, local: usize, generic: TypeId| {
+            *locals.entry(local).or_insert_with(|| {
+                let instance = instances.contains(&local).then(|| {
+                    ctx.instances.push(Instance::default());
+                    ctx.instances.len() - 1
+                });
+                ctx.binders.push(Binder {
+                    generic,
+                    parent: None,
+                    instance,
+                    alias: None,
+                });
+                ctx.binders.len() - 1
+            })
+        };
+
         for constraint in summary.constraints() {
-            let Var::Key(position) = constraint.var else {
-                unreachable!("a summary only bounds the instances that its key refers to");
+            let target = match constraint.var {
+                Var::Key(position) => {
+                    // The binders a key numbers are the ones its generics resolve to, so none is
+                    // an alias
+                    debug_assert!(self.binders[args[position]].alias.is_none());
+                    args[position]
+                }
+                Var::Local(index) => local(self, index, constraint.ty),
             };
 
             let mut env = None;
@@ -844,15 +922,7 @@ impl ComparisonContext<'_> {
             for &(generic, var) in &constraint.env {
                 let alias = match var {
                     Var::Key(position) => args[position],
-                    Var::Local(local) => *locals.entry(local).or_insert_with(|| {
-                        self.binders.push(Binder {
-                            generic,
-                            parent: None,
-                            instance: None,
-                            alias: None,
-                        });
-                        self.binders.len() - 1
-                    }),
+                    Var::Local(index) => local(self, index, generic),
                 };
 
                 self.binders.push(Binder {
@@ -874,13 +944,11 @@ impl ComparisonContext<'_> {
             };
 
             let bound = (constraint.ty, env, branches);
-            // The binders a key numbers are the ones its generics resolve to, so none is an alias
-            debug_assert!(self.binders[args[position]].alias.is_none());
 
             // A bound that didn't match doesn't decide anything, so it doesn't count as bounding
             // the instance for the union member it's applied under either (see `compare_member`)
             let bounded = self.bounded;
-            self.push_bound(args[position], bound, constraint.upper);
+            self.push_bound(target, bound, constraint.upper);
 
             if constraint.unmatched {
                 self.bounded = bounded;
@@ -1469,7 +1537,7 @@ fn compare_impl_inner(
         }
 
         let snapshot = snapshot.as_ref().unwrap();
-        let summary = ctx.summary_since(arena, snapshot);
+        let summary = ctx.summary_since(arena, builtins, snapshot);
         let frame = ctx.frames.last_mut().unwrap();
         let next = frame.approximation.join(&summary);
         let value = if iterate_values {
@@ -1511,7 +1579,7 @@ fn compare_impl_inner(
         .as_ref()
         .filter(|_| instances && memo_key.is_some())
         .map(|snapshot| {
-            let mut summary = ctx.summary_since(arena, snapshot);
+            let mut summary = ctx.summary_since(arena, builtins, snapshot);
             summary.canonicalize();
             summary
         })

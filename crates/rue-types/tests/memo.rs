@@ -954,6 +954,32 @@ fn test_unmatched_member_bound_modes() {
     });
 }
 
+/// `fn<B>(f: fn() -> B, g: fn() -> B) -> B` and `fn(f: P, g: P) -> (Int, Int)`, where
+/// `P = fn<T>() -> (T, T)`, with each parameter list using one type twice.
+fn inner_instance_reused(db: &mut Types) -> (TypeId, TypeId) {
+    let int = db.builtins.int;
+    let [b, t] = [db.generic(), db.generic()];
+    let thunk = db.function(vec![], vec![], b);
+    let call = db.function(vec![b], vec![thunk, thunk], b);
+    let both = db.pair(t, t);
+    let pairs = db.function(vec![t], vec![], both);
+    let ints = db.pair(int, int);
+    let target = db.function(vec![], vec![pairs, pairs], ints);
+    (call, target)
+}
+
+/// The second comparison of `P` with `fn() -> B` is reused from the first, with its summary. The
+/// instance of `P`'s `T` is a local binder in that summary, which is applied as an instance with
+/// its own bounds, so that `B`'s bounds can still instantiate it (#363) as when it's computed
+/// again without the memo.
+#[test]
+fn test_inner_instance_reused() {
+    with_large_stack(|| {
+        let results = in_every_mode(inner_instance_reused);
+        assert_eq!(results, [Comparison::Assign; 3]);
+    });
+}
+
 /// Compares the types without the memo, in a single pass, and iterating from the start, each in a
 /// new arena.
 fn in_every_mode(types: impl Fn(&mut Types) -> (TypeId, TypeId)) -> [Comparison; 3] {
