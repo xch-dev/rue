@@ -34,3 +34,10 @@ tests:
   runtime_cost: 433
   byte_cost: 324000
   total_cost: 324433
+- name: guarded_value_unchanged
+  program: (= (a (q . 2) (q 5)) (q . 5))
+  debug_program: (a (q 9 (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (q . 5)) (c (q 2 2 (c 3 ())) ()))
+  output: "1"
+  runtime_cost: 319
+  byte_cost: 252000
+  total_cost: 252319

@@ -18,8 +18,20 @@ pub fn compile_lambda_expr(
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
-    // Only this lambda's own parameters are wrapped, not those of lambdas in its body
-    let wrap = ctx.take_lambda_parameters_request();
+    compile_lambda(ctx, expr, expected_type, false).0
+}
+
+/// Compiles a lambda. With `wrap`, for a lambda that's an argument of a call whose generics are
+/// being inferred, each untyped parameter is compiled as a reference of its own to the type it
+/// would have, which is the same type to its body. Where the parameter flows into the lambda's
+/// return type unchanged, the return type has the reference, so the call can infer the parameter's
+/// type along with its generics (#335). It returns the references and the types they refer to.
+pub(crate) fn compile_lambda(
+    ctx: &mut Compiler,
+    expr: &AstLambdaExpr,
+    expected_type: Option<TypeId>,
+    wrap: bool,
+) -> (Value, Vec<(TypeId, TypeId)>) {
     let mut wrapped = Vec::new();
 
     let mut expected_functions = if let Some(ty) = expected_type {
@@ -100,9 +112,8 @@ pub fn compile_lambda_expr(
             ctx.builtins().unresolved.ty
         };
 
-        // An untyped parameter of a call's argument is compiled as a reference of its own (see
-        // `Compiler::wrap_lambda_parameters`), unless it comes from a generic function type or
-        // its type is still one of the call's generics, which aren't in scope outside of it
+        // Not for a generic lambda or one expected to be a generic function, or when its type is
+        // still one of the call's generics, which aren't in scope outside of it
         let ty = if wrap
             && param.ty().is_none()
             && !is_spread
@@ -202,11 +213,7 @@ pub fn compile_lambda_expr(
 
     let hir = ctx.alloc_hir(Hir::Lambda(symbol));
 
-    if wrap {
-        ctx.set_lambda_parameters(wrapped);
-    }
-
-    Value::new(hir, ty)
+    (Value::new(hir, ty), wrapped)
 }
 
 /// What the body of a lambda without a return annotation is expected to be: the return type of

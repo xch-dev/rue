@@ -49,3 +49,8 @@ test fn bounded_by_another_argument() -> Int {
     // `five_only` gives `B ≤ 5`, which reaches `x` the same way
     run(fn(x) => x, five_only, 5)
 }
+
+test fn guarded_value_unchanged() -> Bool {
+    // A guard's type is only a hint, so the call is solved as before and the guard still checks
+    map(fn(x) => x, 5) is 5
+}
