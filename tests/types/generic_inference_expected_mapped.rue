@@ -137,3 +137,58 @@ test fn lambda_through_a_nested_call_before_a_later_value_keeps_it_wide() -> Int
     let block: 5 | 6 = three(5, { pass(fn(x) => 1) }, 6);
     value + deeper + block
 }
+
+fn constant<T>(value: T) -> fn() -> T {
+    fn() => value
+}
+
+// A call with arguments and no lambda takes the expected type's own bound, `7 | 8`, rather than
+// the `7` the first argument narrows `T` to, since its own argument then adds `8`, as with
+// `either::<7 | 8>`
+test fn nested_call_takes_the_expected_types_own_bound() -> Int {
+    let value: 7 | 8 = either(7, identity(8));
+    let deeper: 7 | 8 = either(7, identity(identity(8)));
+    let both: 7 | 8 = either(identity(7), identity(8));
+    let function: fn() -> 7 | 8 = either(constant(7), constant(8));
+    value + deeper + both + function()
+}
+
+fn later<T>(value: T, other: T, function: fn(x: T) -> Int) -> T {
+    let _ = function(value);
+    other
+}
+
+fn make<T>() -> T {
+    unchecked_cast(5)
+}
+
+fn tail<T>(first: T, function: fn(x: T) -> Int) -> T {
+    let _ = function(first);
+    first
+}
+
+// Guards: a call without arguments only has its expected type to infer from, so it keeps the
+// narrower `5`, and so does a lambda that a call passes through. Either way, `x` is `5`, as on main,
+// which the unnecessary guards show
+test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
+    let made: 5 | 6 = later(
+        5,
+        make(),
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    let passed: 5 | 6 = tail(
+        5,
+        pass(
+            fn(x) => if x is 5 {
+                1
+            } else {
+                2
+            },
+        ),
+    );
+    made + passed
+}
