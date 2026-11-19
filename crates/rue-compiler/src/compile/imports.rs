@@ -16,8 +16,8 @@ use rue_parser::SyntaxKind;
 use rue_types::Type;
 
 use crate::{
-    Compiler, Place, SyntaxItemKind, alternative_items, alternative_modules,
-    hides_glob_alternatives, modules_of,
+    Compiler, Place, SyntaxItemKind, alternative_items, alternative_modules, glob_imports,
+    modules_of, unhidden_glob_alternatives,
 };
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
@@ -174,11 +174,18 @@ fn construct_imports(
     }
 }
 
+/// A named import, an item it finds with its name, and the import it finds the item through, if
+/// any.
+type NamedFind = (ImportId, Item, Option<ImportId>);
+
 #[derive(Debug, Default)]
 pub struct ImportCache {
     /// What each import's path resolves to, once it's resolved.
     paths: HashMap<ImportId, CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
+    /// The items each named import finds with its name, and the import that each is found
+    /// through, if any, by the scope it's in and the name (see [`resolve_duplicate_imports`]).
+    named_finds: IndexMap<(ScopeId, String), IndexSet<NamedFind>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
     /// The errors in imports, keyed by where they are, so that each is reported once however
     /// many times the import is resolved.
@@ -536,6 +543,8 @@ pub fn resolve_imports(
             }
         }
 
+        resolve_duplicate_imports(ctx, cache);
+
         for unused_imports in cache.unused_imports.values() {
             for name in unused_imports.values() {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
@@ -550,7 +559,10 @@ pub fn resolve_imports(
         for (&import, (name, count)) in &cache.glob_import_counts {
             // One that could bring in something if its path were bound differently is reported
             // as unused instead, unless any of that is used
-            if may_bring_in_more(ctx, scopes[&import], import) {
+            if unhidden_glob_alternatives(ctx, scopes[&import], import)
+                .next()
+                .is_some()
+            {
                 ctx.add_glob_that_may_bring_in_more(import);
             } else if *count == 0 {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
@@ -1688,9 +1700,11 @@ fn add_path_alternatives(
 }
 
 /// Records what a glob import could bring in besides what it does (see
-/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)): what each of the other modules its path could name exports,
-/// and what the glob imports that they, or the module it imports from, export could bring in.
-/// Returns whether any of it wasn't already recorded.
+/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)): what each of the other
+/// modules its path could name exports, what the glob imports that they, or the module it imports
+/// from, export could bring in, and once any of that is recorded, what it does bring in, which a
+/// failed import's error item could hide one way but not another. Returns whether any of it
+/// wasn't already recorded.
 fn add_glob_alternatives(
     ctx: &mut Compiler,
     import_id: ImportId,
@@ -1746,17 +1760,6 @@ fn add_glob_alternatives(
     updated
 }
 
-/// Whether a glob import into a scope could bring in something besides what it does (see
-/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)) under a name that
-/// nothing in the scope hides (see [`hides_glob_alternatives`]).
-fn may_bring_in_more(ctx: &Compiler, scope: ScopeId, import: ImportId) -> bool {
-    ctx.all_glob_alternatives(import)
-        .any(|(namespace, name, _)| {
-            let binding = ctx.scope(scope).item_with_import(namespace, name);
-            !hides_glob_alternatives(ctx, binding)
-        })
-}
-
 /// What the glob imports into a scope (or only the exported ones) could bring in besides what they
 /// do (see [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)).
 fn scope_glob_alternatives(
@@ -1764,12 +1767,7 @@ fn scope_glob_alternatives(
     scope: ScopeId,
     exported_only: bool,
 ) -> Vec<(Namespace, String, Item)> {
-    ctx.scope(scope)
-        .imports()
-        .filter(|&import| {
-            let import = ctx.import(import);
-            matches!(import.items, Items::All(_)) && (import.exported || !exported_only)
-        })
+    glob_imports(ctx, ctx.scope(scope), exported_only)
         .flat_map(|import| {
             ctx.all_glob_alternatives(import)
                 .map(|(namespace, name, item)| (namespace, name.to_string(), item))
@@ -1999,11 +1997,9 @@ fn resolve_glob_import(
 
             // The name could also refer to what the other modules that the path could name have
             // with it, which is recorded on the glob import that bound it, whichever one did
-            if let Some(binding) = ctx.scope(import_scope).item(namespace, &name)
-                && let Some(recorded) = ctx
-                    .scope(import_scope)
-                    .item_import(binding)
-                    .filter(|&recorded| matches!(ctx.import(recorded).items, Items::All(_)))
+            if let Some((binding, Some(recorded))) =
+                ctx.scope(import_scope).item_with_import(namespace, &name)
+                && ctx.import(recorded).is_glob()
             {
                 updated |= add_path_alternatives(ctx, alternatives, recorded, binding, &name);
             }
@@ -2127,6 +2123,16 @@ fn resolve_named_import(
         }
     }
 
+    for &(item, via) in &found {
+        if !ctx.is_error_item(item) {
+            cache
+                .named_finds
+                .entry((import_scope, name.to_string()))
+                .or_default()
+                .insert((import_id, item, via));
+        }
+    }
+
     for &(found, _) in &found {
         let namespace = found.namespace();
         let error = ctx.is_error_item(found);
@@ -2191,40 +2197,8 @@ fn resolve_named_import(
             add_reference(ctx, &import.source, item, found.into());
         }
 
-        // Another named import that brings in the same item may have bound the name, depending on
-        // the order they're resolved in, and so on module names. Only one of them is needed, so
-        // the others are reported as unused, whichever bound the name: the exported one, or else
-        // the first one in the source, gets the uses of the binding.
-        let bound_by = ctx
-            .scope(import_scope)
-            .item_import(found)
-            .filter(|&bound_by| {
-                bound_by != import_id
-                    && existing == Some(found)
-                    && matches!(ctx.import(bound_by).items, Items::Named(_))
-            });
-
-        let first = bound_by.is_some_and(|bound_by| {
-            let other = ctx.import(bound_by).exported;
-            (import.exported && !other)
-                || (import.exported == other && import_id.index() < bound_by.index())
-        });
-
-        if let Some(bound_by) = bound_by.filter(|_| first) {
-            updated |= ctx.add_shared_binding(bound_by, found.into(), import_id, found.into());
-            updated |= ctx.add_redundant_import(bound_by, found.into());
-        }
-
         if bind(ctx, import_scope, import_id, name, found, exported) {
             updated = true;
-            unused_imports.shift_remove(name);
-        } else if first {
-            let declaration = (name.to_string(), found.into());
-
-            if !ctx.import(import_id).declarations.contains(&declaration) {
-                ctx.import_mut(import_id).declarations.push(declaration);
-            }
-
             unused_imports.shift_remove(name);
         } else if diagnostics && existing != Some(found) {
             let (error, kind) = ImportError::duplicate(namespace, name);
@@ -2239,8 +2213,9 @@ fn resolve_named_import(
         // The name could also refer to what the other modules that the path could name have
         // with it, which is recorded on the import that bound it, if another one brought in the
         // same item first
-        if ctx.scope(import_scope).item(namespace, name) == Some(found)
-            && let Some(recorded) = ctx.scope(import_scope).item_import(found)
+        if let Some((binding, Some(recorded))) =
+            ctx.scope(import_scope).item_with_import(namespace, name)
+            && binding == found
         {
             updated |= add_path_alternatives(ctx, alternatives, recorded, found, name);
         }
@@ -2253,6 +2228,85 @@ fn resolve_named_import(
     }
 
     updated
+}
+
+/// Picks which of the named imports into a scope that bring in the same item with the same name
+/// is used. Whichever is resolved first binds the name, which depends on module names, so the
+/// exported one, or else the first one in the source, gets the uses of the binding instead, and
+/// the others are reported as unused. An import that finds the item through another of them (such
+/// as `import X;` after `import a::X;`) needs that one, so it isn't one of them.
+fn resolve_duplicate_imports(ctx: &mut Compiler, cache: &mut ImportCache) {
+    for ((scope, name), finds) in &cache.named_finds {
+        let importers = finds
+            .iter()
+            .map(|&(import, _, _)| import)
+            .collect::<IndexSet<_>>();
+
+        let items = finds
+            .iter()
+            .map(|&(_, item, _)| item)
+            .collect::<IndexSet<_>>();
+
+        for item in items {
+            let mut candidates = finds
+                .iter()
+                .filter(|&&(_, found, via)| {
+                    found == item && via.is_none_or(|via| !importers.contains(&via))
+                })
+                .map(|&(import, _, _)| import)
+                .collect::<IndexSet<_>>();
+
+            let Some(bound_by) = ctx
+                .scope(*scope)
+                .item_import(item)
+                .filter(|bound_by| candidates.contains(bound_by))
+            else {
+                continue;
+            };
+
+            if candidates.len() < 2 {
+                continue;
+            }
+
+            candidates.sort_by_key(|&import| (!ctx.import(import).exported, import.index()));
+            let used = candidates[0];
+            let declaration = Declaration::from(item);
+
+            if used != bound_by {
+                ctx.add_shared_binding(bound_by, declaration, used, declaration);
+
+                let entry = (name.clone(), declaration);
+
+                if !ctx.import(used).declarations.contains(&entry) {
+                    ctx.import_mut(used).declarations.push(entry);
+                }
+
+                if let Some(unused) = cache.unused_imports.get_mut(&used) {
+                    unused.shift_remove(name);
+                }
+            }
+
+            for &import in candidates.iter().skip(1) {
+                ctx.add_redundant_import(import, declaration);
+
+                // It's reported as bringing in nothing, unless it brings in something else with
+                // the name (in another namespace)
+                let redundant = ctx
+                    .import(import)
+                    .declarations
+                    .iter()
+                    .all(|&(_, declaration)| ctx.is_redundant_import(import, declaration));
+
+                if redundant && let Items::Named(item) = &ctx.import(import).items {
+                    cache
+                        .unused_imports
+                        .entry(import)
+                        .or_default()
+                        .insert(name.clone(), item.clone());
+                }
+            }
+        }
+    }
 }
 
 /// The names that a named import imports, keyed by their text, for tracking which are missing or

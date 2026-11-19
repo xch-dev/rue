@@ -2151,6 +2151,92 @@ fn only_the_first_named_import_of_an_item_is_used() {
 }
 
 #[test]
+fn only_the_first_of_several_named_imports_of_an_item_is_used() {
+    // Three named imports of the same `X`, with their modules named in every order, so that each
+    // of them binds the name in some order. The first one in the source is always the one that's
+    // used.
+    let names = ["ma", "mm", "mz"];
+
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let [a, b, c] = order.map(|index| names[index]);
+
+        for (body, expected) in [
+            ("X", vec!["6:64 UnusedImport", "6:85 UnusedImport"]),
+            (
+                "1",
+                vec![
+                    "6:43 UnusedImport",
+                    "6:64 UnusedImport",
+                    "6:85 UnusedImport",
+                ],
+            ),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {a} {{ export super::src::X; }}
+                mod {b} {{ export super::src::X; }}
+                mod {c} {{ export super::src::X; }}
+                mod u {{ import super::{a}::X; import super::{b}::X; import super::{c}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("{a} {b} {c}, body: {body}");
+
+            compiled.assert_no_errors();
+            assert_eq!(unused_imports(&compiled), expected, "{context}");
+        }
+    }
+}
+
+#[test]
+fn only_the_first_exported_import_of_an_item_is_used() {
+    // Both re-exports of `X` are exported, so the first one in the source is the one that's used,
+    // and the other is reported, whichever binds the name
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        let compiled = compile(&format!(
+            "
+            mod src {{ export const X: Int = 1; }}
+            mod {first} {{ export super::src::X; }}
+            mod {second} {{ export super::src::X; }}
+            mod re {{ export super::{second}::X; export super::{first}::X; }}
+            fn main() -> Int {{ re::X }}
+            "
+        ));
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_imports(&compiled),
+            ["5:61 UnusedImport"],
+            "first: {first}"
+        );
+    }
+}
+
+#[test]
+fn named_imports_that_find_an_item_through_another_are_the_unused_ones() {
+    // `import X;` finds `X` through `import super::src::X;`, which it needs, so it's the one
+    // that's reported, even though it comes first
+    let compiled = compile(
+        "
+        mod src { export const X: Int = 1; }
+        mod user { import X; import super::src::X; export fn value() -> Int { X } }
+        fn main() -> Int { user::value() }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(unused_imports(&compiled), ["3:27 UnusedImport"]);
+}
+
+#[test]
 fn private_named_imports_of_an_exported_item_are_unused() {
     // The exported import is the one that's used, even when it comes after the private one and
     // whichever binds the name, so the private one is reported as unused, and so is an exact

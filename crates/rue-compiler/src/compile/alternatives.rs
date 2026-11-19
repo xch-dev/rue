@@ -5,7 +5,7 @@
 //! their members are reported as unused doesn't depend on module names either.
 
 use indexmap::IndexSet;
-use rue_hir::{Declaration, ImportId, Item, Items, Namespace, Scope, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Item, Namespace, Scope, ScopeId, Symbol, SymbolId};
 
 use crate::Compiler;
 
@@ -28,9 +28,36 @@ pub(crate) enum Place {
 /// fills a name that nothing else brings in.
 pub(crate) fn hides_glob_alternatives(ctx: &Compiler, binding: Option<Found>) -> bool {
     binding.is_some_and(|(item, via)| {
-        !ctx.is_error_item(item)
-            && via.is_none_or(|via| !matches!(ctx.import(via).items, Items::All(_)))
+        !ctx.is_error_item(item) && via.is_none_or(|via| !ctx.import(via).is_glob())
     })
+}
+
+/// The glob imports into a scope, or only the exported ones.
+pub(crate) fn glob_imports<'a>(
+    ctx: &'a Compiler,
+    scope: &'a Scope,
+    exported_only: bool,
+) -> impl Iterator<Item = ImportId> + 'a {
+    scope.imports().filter(move |&import| {
+        let import = ctx.import(import);
+        import.is_glob() && (import.exported || !exported_only)
+    })
+}
+
+/// What a glob import into a scope could bring in besides what it does (see
+/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)) under a name that
+/// nothing in the scope hides (see [`hides_glob_alternatives`]).
+pub(crate) fn unhidden_glob_alternatives(
+    ctx: &Compiler,
+    scope: ScopeId,
+    import: ImportId,
+) -> impl Iterator<Item = Item> + '_ {
+    ctx.all_glob_alternatives(import)
+        .filter(move |&(namespace, name, _)| {
+            let binding = ctx.scope(scope).item_with_import(namespace, name);
+            !hides_glob_alternatives(ctx, binding)
+        })
+        .map(|(_, _, item)| item)
 }
 
 /// What a name is bound to in one namespace where a segment of a path is looked up, if anything
@@ -53,15 +80,11 @@ fn lookup(
             .filter(|&(item, _)| !exported_only || scope.is_item_exported(item));
 
         if !hides_glob_alternatives(ctx, binding) {
-            for import in scope.imports() {
-                let glob = ctx.import(import);
-
-                if matches!(glob.items, Items::All(_)) && (glob.exported || !exported_only) {
-                    others.extend(
-                        ctx.glob_alternatives(import, namespace, name)
-                            .map(|item| (item, Some(import))),
-                    );
-                }
+            for import in glob_imports(ctx, scope, exported_only) {
+                others.extend(
+                    ctx.glob_alternatives(import, namespace, name)
+                        .map(|item| (item, Some(import))),
+                );
             }
         }
 
@@ -120,8 +143,9 @@ pub(crate) fn alternative_items(
 }
 
 /// The other modules that a segment of a path before the last one could name, besides `resolved`,
-/// the one it's resolved to (see [`alternative_items`]). A name that glob imports bring in different
-/// modules with could also name each of them (see [`Database::ambiguous_alternatives`](rue_hir::Database::ambiguous_alternatives)). Each is
+/// the one it's resolved to (see [`alternative_items`]). A name that glob imports bring in
+/// different modules with could also name each of them (see
+/// [`Database::ambiguous_alternatives`](rue_hir::Database::ambiguous_alternatives)). Each is
 /// returned with each import it's found through, if any.
 pub(crate) fn alternative_modules(
     ctx: &Compiler,

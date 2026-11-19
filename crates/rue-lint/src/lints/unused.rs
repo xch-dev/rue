@@ -121,8 +121,6 @@ fn is_import_used(
             ImportUser::Other => true,
         })
         .map(|(declaration, _)| declaration)
-        // Another named import is the one that brings it in
-        .filter(|&declaration| !db.is_redundant_import(id, declaration))
         .collect::<HashSet<_>>();
 
     match &import.items {
@@ -132,10 +130,14 @@ fn is_import_used(
         // An item can import declarations from more than one namespace (such as a type and a
         // constant with the same name), so it's used if any of them are
         Items::Named(item) => {
+            // A declaration that another named import is the one to bring in doesn't count, since
+            // the import is reported as bringing in nothing if that's all it brings in
             let mut declarations = import
                 .declarations
                 .iter()
-                .filter(|(name, _)| item.text() == name)
+                .filter(|&&(ref name, declaration)| {
+                    item.text() == name && !db.is_redundant_import(id, declaration)
+                })
                 .peekable();
 
             declarations.peek().is_none()

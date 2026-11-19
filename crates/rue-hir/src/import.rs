@@ -30,6 +30,13 @@ pub struct Import {
     pub declarations: Vec<(String, Declaration)>,
 }
 
+impl Import {
+    /// Whether it's a glob import, which brings in everything a module exports.
+    pub fn is_glob(&self) -> bool {
+        matches!(self.items, Items::All(_))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Items {
     All(Name),

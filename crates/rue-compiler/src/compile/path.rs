@@ -149,7 +149,8 @@ where
 }
 
 /// Where a path's first name is looked up, the names in the path from there, and the module that
-/// each name before the last one names, as far as it's resolved, with the import it's named through.
+/// each name before the last one names, as far as it's resolved, with the import it's named
+/// through.
 #[derive(Debug, Default)]
 struct PathTrail {
     base: Option<SegmentBase>,
