@@ -1,24 +1,10 @@
 ===== debug: (5) =====
 error: clvm raise
-File "inline_fail.rue", line 3, column 24, in main
-  fn main(x: Int) -> Int {
-                         ^
-  x = 5
-File "inline_fail.rue", line 8, column 46
-  inline fn checked_sub(a: Int, b: Int) -> Int {
-                                               ^
-File "inline_fail.rue", line 10, column 9
-  raise "underflow";
-  ^^^^^^^^^^^^^^^^^^
+  inline_fail.rue:10:9, in main
+    raise "underflow";
+    x = 5
 ===== release: (5) =====
 error: clvm raise
-File "inline_fail.rue", line 5, column 5, in main
-  y * 2
-  ^^^^^
-  x = 5
-File "inline_fail.rue", line 8, column 46
-  inline fn checked_sub(a: Int, b: Int) -> Int {
-                                               ^
-File "inline_fail.rue", line 10, column 9
-  raise "underflow";
-  ^^^^^^^^^^^^^^^^^^
+  inline_fail.rue:10:9, in main
+    raise "underflow";
+    x = 5

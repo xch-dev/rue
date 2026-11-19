@@ -10,6 +10,8 @@ use clvmr::{
 };
 use rue_lir::DebugDialect;
 
+use crate::compact::compact_trace;
+
 /// How many of the innermost frames are kept when a program fails.
 const MAX_FRAMES: usize = 64;
 
@@ -36,7 +38,8 @@ pub struct Failure {
 }
 
 /// Runs the program like `run_program`, and if it fails, symbolizes the frames that were active
-/// with the sidecars. Frames that no sidecar describes are shown by their tree hash.
+/// with the sidecars, and shows them concisely (see [`compact_trace`]). Frames that no sidecar
+/// describes are shown by their tree hash.
 pub fn run_with_trace(
     allocator: &mut Allocator,
     dialect: &DebugDialect,
@@ -70,7 +73,8 @@ pub fn run_with_trace(
                 failure.truncated,
                 StackFrameStyle::Python,
             )
-        });
+        })
+        .map(|trace| compact_trace(&trace));
 
     Err(Failure {
         error: failure.error,

@@ -24,6 +24,7 @@ use rue_diagnostic::{
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
 
+mod compact;
 mod fmt;
 mod trace;
 
@@ -1490,15 +1491,12 @@ mod tests {
         let failure = run_test(&mut allocator, tests[1].ptr, cost).unwrap_err();
         assert!(failure.raised);
 
-        // The trace shows the call to `check` in that test, and the assertion with its argument
+        // The trace shows the test at its call to `check`, and the assertion with its argument
         let trace = trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap();
-        assert!(trace.contains("line 9, column 21, in fails_too"), "{trace}");
-        assert!(trace.contains("line 10, column 5\n  check(3);"), "{trace}");
-        assert!(
-            trace.contains("line 14, column 5, in check\n  assert value > 10;"),
-            "{trace}"
+        assert_eq!(
+            trace,
+            "  main.rue:10:5, in fails_too\n    check(3);\n  main.rue:14:5, in check\n    assert value > 10;\n    value = 3"
         );
-        assert!(trace.contains("value = 3"), "{trace}");
 
         // When a failure is traced, what tracing allocates is freed, along with what the test did
         let pairs = allocator.pair_count();
@@ -1515,7 +1513,7 @@ mod tests {
             run_and_trace_test(&mut ctx, &mut allocator, &tests[2], &project.0, cost).unwrap_err();
         assert!(failure.raised);
         let traced = traced.unwrap().unwrap();
-        assert!(traced.contains("line 23, column 5, in divide"), "{traced}");
+        assert!(traced.contains("main.rue:23:5, in divide"), "{traced}");
         assert!(traced.contains("b = ()"), "{traced}");
 
         // The test that passes doesn't fail when it's run again
@@ -1553,7 +1551,7 @@ mod tests {
         // The solution `(3)` fails the assertion, and `(30)` doesn't
         let error = run_debug(&["-x", hex, "ff0380", "--debug-metadata", sidecar]).unwrap_err();
         assert!(error.starts_with("clvm raise\n"), "{error}");
-        assert!(error.contains("line 14, column 5, in check"), "{error}");
+        assert!(error.contains("main.rue:14:5, in check"), "{error}");
         assert!(error.contains("value = 3"), "{error}");
         assert_eq!(
             run_debug(&["-x", hex, "ff1e80", "--debug-metadata", sidecar]),
@@ -1575,7 +1573,7 @@ mod tests {
             sidecar,
         ])
         .unwrap_err();
-        assert!(error.contains("line 14, column 5, in check"), "{error}");
+        assert!(error.contains("main.rue:14:5, in check"), "{error}");
 
         // Without the sidecar, the failure is reported as before
         assert_eq!(run_debug(&["-x", hex, "ff0380"]).unwrap_err(), "clvm raise");

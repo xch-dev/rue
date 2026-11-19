@@ -1,50 +1,26 @@
 ===== debug: (1) =====
 error: clvm raise
-File "recursion_tabs.rue", line 3, column 24
-  fn main(n: Int) -> Int {
-                         ^
-File "recursion_tabs.rue", line 4, column 8, in main
-  countdown(n, 0)
-  ^^^^^^^^^^^^^^^
-  n = 1
-File "recursion_tabs.rue", line 7, column 39, in countdown
-  fn countdown(n: Int, acc: Int) -> Int {
-                                        ^
-  n = 1
-  acc = ()
-File "recursion_tabs.rue", line 11, column 8
-  countdown(n - 1, acc + n)
-  ^^^^^^^^^^^^^^^^^^^^^^^^^
-File "recursion_tabs.rue", line 7, column 39, in countdown
-  fn countdown(n: Int, acc: Int) -> Int {
-                                        ^
-  n = ()
-  acc = 1
-File "recursion_tabs.rue", line 9, column 16
-  raise "hit zero";
-  ^^^^^^^^^^^^^^^^^
+  recursion_tabs.rue:4:8, in main
+    countdown(n, 0)
+    n = 1
+  recursion_tabs.rue:11:8, in countdown
+    countdown(n - 1, acc + n)
+    n = 1
+    acc = ()
+  recursion_tabs.rue:9:16, in countdown
+    raise "hit zero";
+    n = ()
+    acc = 1
 ===== release: (1) =====
 error: clvm raise
-File "recursion_tabs.rue", line 3, column 24
-  fn main(n: Int) -> Int {
-                         ^
-File "recursion_tabs.rue", line 4, column 8, in main
-  countdown(n, 0)
-  ^^^^^^^^^^^^^^^
-  n = 1
-File "recursion_tabs.rue", line 7, column 39, in countdown
-  fn countdown(n: Int, acc: Int) -> Int {
-                                        ^
-  n = 1
-  acc = ()
-File "recursion_tabs.rue", line 11, column 8
-  countdown(n - 1, acc + n)
-  ^^^^^^^^^^^^^^^^^^^^^^^^^
-File "recursion_tabs.rue", line 7, column 39, in countdown
-  fn countdown(n: Int, acc: Int) -> Int {
-                                        ^
-  n = ()
-  acc = 1
-File "recursion_tabs.rue", line 9, column 16
-  raise "hit zero";
-  ^^^^^^^^^^^^^^^^^
+  recursion_tabs.rue:4:8, in main
+    countdown(n, 0)
+    n = 1
+  recursion_tabs.rue:11:8, in countdown
+    countdown(n - 1, acc + n)
+    n = 1
+    acc = ()
+  recursion_tabs.rue:9:16, in countdown
+    raise "hit zero";
+    n = ()
+    acc = 1
