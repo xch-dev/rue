@@ -20,6 +20,8 @@ mod hir_type_tests;
 #[cfg(test)]
 mod import_tests;
 #[cfg(test)]
+mod inference_order_tests;
+#[cfg(test)]
 mod lint_tests;
 #[cfg(test)]
 mod narrowing_tests;
