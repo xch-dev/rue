@@ -1,0 +1,261 @@
+// Regression test, not for production use. A port of `nft_puzzles/nft_state_layer.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./nft_state_layer.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The default metadata updater, used as a real updater in the tests.
+extern fn default_updater(
+    current_metadata: Any,
+    current_updater_puzzle_hash: Bytes32,
+    solution: Any,
+) -> UpdaterOutput from "./nft_metadata_updater_default.clsp.hex";
+
+struct MetadataState {
+    metadata: Any,
+    updater_puzzle_hash: Bytes32,
+}
+
+struct UpdaterOutput {
+    state: MetadataState,
+    conditions: List<Condition>,
+}
+
+type Updater = fn(
+    current_metadata: Any,
+    current_updater_puzzle_hash: Bytes32,
+    solution: Any,
+) -> UpdaterOutput;
+
+// A magic condition that runs the metadata updater.
+struct UpdateMetadata {
+    opcode = -24,
+    updater_puzzle: Updater,
+    updater_solution: Any,
+}
+
+type StateCondition = Condition | UpdateMetadata;
+
+fn main(
+    mod_hash: Bytes32,
+    metadata: Any,
+    metadata_updater_puzzle_hash: Bytes32,
+    inner_puzzle: fn(...solution: Any) -> List<StateCondition>,
+    inner_solution: Any,
+) -> List<Condition> {
+    wrap_conditions(
+        mod_hash,
+        inner_puzzle(...inner_solution),
+        nil,
+        UpdaterOutput {
+            state: MetadataState { metadata, updater_puzzle_hash: metadata_updater_puzzle_hash },
+            conditions: nil,
+        },
+        false,
+    )
+}
+
+fn state_layer_puzzle_hash(
+    mod_hash: Bytes32,
+    state: MetadataState,
+    inner_puzzle_hash: Bytes32,
+) -> Bytes32 {
+    curry_tree_hash(
+        mod_hash,
+        [
+            tree_hash_atom(mod_hash),
+            tree_hash(state.metadata),
+            tree_hash_atom(state.updater_puzzle_hash),
+            inner_puzzle_hash,
+        ],
+    )
+}
+
+// Removes the one odd output and runs the metadata updater at most once, then recreates the odd
+// output with the new state, followed by the updater's conditions.
+fn wrap_conditions(
+    mod_hash: Bytes32,
+    conditions: List<StateCondition>,
+    odd_coin: CreateCoin | nil,
+    update: UpdaterOutput,
+    updated: Bool,
+) -> List<Condition> {
+    if conditions is nil {
+        assert odd_coin is CreateCoin;
+
+        return [
+            CreateCoin {
+                puzzle_hash: state_layer_puzzle_hash(mod_hash, update.state, odd_coin.puzzle_hash),
+                amount: odd_coin.amount,
+                memos: odd_coin.memos,
+            },
+            ...update.conditions,
+        ];
+    }
+
+    let condition = conditions.first;
+
+    if condition is CreateCoin {
+        if condition.amount & 1 != 0 {
+            assert odd_coin is nil;
+            return wrap_conditions(mod_hash, conditions.rest, condition, update, updated);
+        }
+
+        return [
+            condition,
+            ...wrap_conditions(mod_hash, conditions.rest, odd_coin, update, updated),
+        ];
+    }
+
+    if condition is UpdateMetadata {
+        assert (tree_hash(condition.updater_puzzle) == update.state.updater_puzzle_hash) & !updated;
+
+        let new_update = condition.updater_puzzle(
+            update.state.metadata,
+            update.state.updater_puzzle_hash,
+            condition.updater_solution,
+        );
+
+        return wrap_conditions(mod_hash, conditions.rest, odd_coin, new_update, true);
+    }
+
+    [condition, ...wrap_conditions(mod_hash, conditions.rest, odd_coin, update, updated)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn metadata() -> Any {
+    [("u", ["https://a"]), ("h", [sha256("data")]), ("mu", nil), ("lu", nil)]
+}
+
+fn default_updater_hash() -> Bytes32 {
+    tree_hash(default_updater)
+}
+
+// An updater that ignores its solution, sets new metadata, and outputs a condition.
+fn custom_updater() -> Updater {
+    unchecked_cast::<Updater>((
+        1,
+        [[["new"] as Any, sha256("next_updater")], [ReserveFee { amount: 7 }]],
+    ))
+}
+
+fn odd_coin() -> CreateCoin {
+    CreateCoin {
+        puzzle_hash: sha256("inner_puzzle"),
+        amount: 1,
+        memos: Memos { value: [sha256("hint")] },
+    }
+}
+
+fn spend(updater_puzzle_hash: Bytes32, conditions: Any) -> Any {
+    [sha256("state_mod"), metadata(), updater_puzzle_hash, 1, conditions]
+}
+
+test fn keeps_the_state() -> Any {
+    check(spend(
+        default_updater_hash(),
+        [Remark { rest: nil }, odd_coin(), CreateCoin { puzzle_hash: sha256("other"), amount: 2 }],
+    ))
+}
+
+test fn updates_the_metadata() -> Any {
+    check(spend(
+        default_updater_hash(),
+        [
+            odd_coin(),
+            UpdateMetadata {
+                updater_puzzle: default_updater,
+                updater_solution: ("u", "https://b"),
+            },
+            ReserveFee { amount: 1 },
+        ],
+    ))
+}
+
+test fn runs_a_custom_updater() -> Any {
+    check(spend(
+        tree_hash(custom_updater()),
+        [UpdateMetadata { updater_puzzle: custom_updater(), updater_solution: nil }, odd_coin()],
+    ))
+}
+
+fn two_odd_coins() -> Any {
+    spend(
+        default_updater_hash(),
+        [odd_coin(), CreateCoin { puzzle_hash: sha256("other"), amount: 3 }],
+    )
+}
+
+test fn rejects_two_odd_coins() -> Any {
+    run(main, two_odd_coins())
+}
+
+test fn reference_rejects_two_odd_coins() -> Any {
+    run(reference, two_odd_coins())
+}
+
+fn no_odd_coin() -> Any {
+    spend(default_updater_hash(), [CreateCoin { puzzle_hash: sha256("other"), amount: 2 }])
+}
+
+test fn rejects_no_odd_coin() -> Any {
+    run(main, no_odd_coin())
+}
+
+test fn reference_rejects_no_odd_coin() -> Any {
+    run(reference, no_odd_coin())
+}
+
+fn wrong_updater() -> Any {
+    spend(
+        default_updater_hash(),
+        [odd_coin(), UpdateMetadata { updater_puzzle: custom_updater(), updater_solution: nil }],
+    )
+}
+
+test fn rejects_the_wrong_updater() -> Any {
+    run(main, wrong_updater())
+}
+
+test fn reference_rejects_the_wrong_updater() -> Any {
+    run(reference, wrong_updater())
+}
+
+fn two_updates() -> Any {
+    spend(
+        default_updater_hash(),
+        [
+            odd_coin(),
+            UpdateMetadata {
+                updater_puzzle: default_updater,
+                updater_solution: ("u", "https://b"),
+            },
+            UpdateMetadata {
+                updater_puzzle: default_updater,
+                updater_solution: ("u", "https://c"),
+            },
+        ],
+    )
+}
+
+test fn rejects_two_updates() -> Any {
+    run(main, two_updates())
+}
+
+test fn reference_rejects_two_updates() -> Any {
+    run(reference, two_updates())
+}
+
+test fn keeps_the_state_with_an_odd_amount_other_than_one() -> Any {
+    check(spend(
+        default_updater_hash(),
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 3 }],
+    ))
+}

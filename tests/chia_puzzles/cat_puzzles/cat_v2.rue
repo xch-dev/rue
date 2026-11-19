@@ -1,0 +1,468 @@
+// Regression test, not for production use. A port of `cat_puzzles/cat_v2.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./cat_v2.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The facts about the CAT spend that are passed to the TAIL.
+struct Truths {
+    puzzle: PuzzleTruths,
+    ...coin: CoinTruths,
+}
+
+struct PuzzleTruths {
+    inner_puzzle_hash: Bytes32,
+    ...cat_info: CatInfo,
+}
+
+struct CatInfo {
+    mod_hash: Bytes32,
+    mod_hash_hash: Bytes32,
+    tail_program_hash: Bytes32,
+}
+
+struct CoinTruths {
+    my_id: Bytes32,
+    ...my_coin: Coin,
+}
+
+struct Coin {
+    parent_coin_info: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+// A coin's parent id, inner puzzle hash and amount, used to calculate the id of a CAT coin.
+struct CoinProof {
+    parent_coin_info: Bytes32,
+    inner_puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+type Tail = fn(
+    truths: Truths,
+    parent_is_cat: Bool,
+    lineage_proof: CoinProof | nil,
+    extra_delta: Int,
+    conditions: List<Condition>,
+    tail_solution: Any,
+) -> List<Condition>;
+
+// A `CREATE_COIN` with an amount of -113 reveals the TAIL and its solution, ignoring the rest.
+struct RunTail {
+    opcode: Int,
+    puzzle_hash: Any,
+    amount: Int,
+    tail_puzzle: Tail,
+    tail_solution: Any,
+    ..._rest: Any,
+}
+
+struct TailInfo {
+    tail_puzzle: Tail,
+    ...tail_solution: Any,
+}
+
+// The inner puzzle's conditions after they've been morphed.
+struct Morphed {
+    conditions: List<Condition>,
+    output_sum: Int,
+    ...tail_info: TailInfo | nil,
+}
+
+// The byte at the start of the announcements that link the CATs spent together into a ring.
+inline const RING_MORPH_BYTE: Bytes = 0xcb;
+
+fn main(
+    mod_hash: Bytes32,
+    tail_program_hash: Bytes32,
+    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    inner_puzzle_solution: Any,
+    lineage_proof: CoinProof | nil,
+    prev_coin_id: Bytes32,
+    this_coin_info: Coin,
+    next_coin_proof: CoinProof,
+    prev_subtotal: Int,
+    extra_delta: Int,
+) -> List<Condition> {
+    let cat_info = CatInfo { mod_hash, mod_hash_hash: tree_hash_atom(mod_hash), tail_program_hash };
+    let my_id = coinid(
+        this_coin_info.parent_coin_info,
+        this_coin_info.puzzle_hash,
+        this_coin_info.amount,
+    );
+    let truths = Truths {
+        puzzle: PuzzleTruths { inner_puzzle_hash: tree_hash(inner_puzzle), cat_info },
+        coin: CoinTruths { my_id, my_coin: this_coin_info },
+    };
+
+    let morphed = morph_conditions(inner_puzzle(...inner_puzzle_solution), cat_info, nil);
+
+    let next_coin_id = coinid(
+        next_coin_proof.parent_coin_info,
+        cat_puzzle_hash(cat_info, next_coin_proof.inner_puzzle_hash),
+        next_coin_proof.amount,
+    );
+    let subtotal = prev_subtotal + (this_coin_info.amount - morphed.output_sum) + extra_delta;
+
+    // Link this coin to the previous and next coins in the ring.
+    let conditions: List<Condition> = [
+        CreateCoinAnnouncement {
+            message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal]),
+        },
+        AssertCoinAnnouncement {
+            id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([my_id, subtotal])),
+        },
+        ...morphed.conditions,
+    ];
+
+    let parent_is_cat = if lineage_proof is nil {
+        false
+    } else {
+        this_coin_info.parent_coin_info == coinid(
+            lineage_proof.parent_coin_info,
+            cat_puzzle_hash(cat_info, lineage_proof.inner_puzzle_hash),
+            lineage_proof.amount,
+        )
+    };
+
+    [
+        AssertMyCoinId { coin_id: my_id },
+        ...if morphed.tail_info is nil {
+            // Without a TAIL, the parent must be a CAT with the same TAIL, and the supply can't change.
+            assert parent_is_cat & (extra_delta == 0);
+            conditions
+        } else {
+            let tail_info = morphed.tail_info;
+            assert tree_hash(tail_info.tail_puzzle) == tail_program_hash;
+            merge_list(
+                tail_info.tail_puzzle(
+                    truths,
+                    parent_is_cat,
+                    lineage_proof,
+                    extra_delta,
+                    conditions,
+                    tail_info.tail_solution,
+                ),
+                conditions,
+            )
+        },
+    ]
+}
+
+fn cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Bytes32 {
+    curry_tree_hash(
+        cat_info.mod_hash,
+        [cat_info.mod_hash_hash, tree_hash_atom(cat_info.tail_program_hash), inner_puzzle_hash],
+    )
+}
+
+// Wraps created coins in the CAT layer, sums their amounts, and takes out the last TAIL reveal.
+fn morph_conditions(
+    conditions: List<Condition>,
+    cat_info: CatInfo,
+    tail_info: TailInfo | nil,
+) -> Morphed {
+    if conditions is nil {
+        return Morphed { conditions: nil, output_sum: 0, tail_info };
+    }
+
+    let condition = conditions.first;
+
+    if condition is CreateCoin {
+        if condition.amount == -113 {
+            let run_tail = unchecked_cast::<RunTail>(condition);
+            return morph_conditions(
+                conditions.rest,
+                cat_info,
+                TailInfo {
+                    tail_puzzle: run_tail.tail_puzzle,
+                    tail_solution: run_tail.tail_solution,
+                },
+            );
+        }
+
+        let rest = morph_conditions(conditions.rest, cat_info, tail_info);
+        let morphed = CreateCoin {
+            puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
+            amount: condition.amount,
+            memos: condition.memos,
+        };
+
+        return Morphed {
+            conditions: [morphed, ...rest.conditions],
+            output_sum: rest.output_sum + condition.amount,
+            tail_info: rest.tail_info,
+        };
+    }
+
+    // Coin announcements can't pretend to be part of the ring.
+    assert !(
+        condition is CreateCoinAnnouncement
+            && condition.message.length == 33
+            && substr(condition.message, 0, 1) == RING_MORPH_BYTE
+    );
+
+    let rest = morph_conditions(conditions.rest, cat_info, tail_info);
+
+    Morphed {
+        conditions: [condition, ...rest.conditions],
+        output_sum: rest.output_sum,
+        tail_info: rest.tail_info,
+    }
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn cat_info(tail_program_hash: Bytes32) -> CatInfo {
+    CatInfo {
+        mod_hash: sha256("cat_mod"),
+        mod_hash_hash: tree_hash_atom(sha256("cat_mod")),
+        tail_program_hash,
+    }
+}
+
+// A lineage proof for the parent CAT.
+fn lineage_proof() -> CoinProof {
+    CoinProof {
+        parent_coin_info: sha256("parent_parent"),
+        inner_puzzle_hash: sha256("parent_inner_puzzle"),
+        amount: 100,
+    }
+}
+
+fn cat_parent_id(tail_program_hash: Bytes32) -> Bytes32 {
+    let proof = lineage_proof();
+    coinid(
+        proof.parent_coin_info,
+        cat_puzzle_hash(cat_info(tail_program_hash), proof.inner_puzzle_hash),
+        proof.amount,
+    )
+}
+
+fn next_coin_proof() -> CoinProof {
+    CoinProof {
+        parent_coin_info: sha256("next_parent"),
+        inner_puzzle_hash: sha256("next_inner_puzzle"),
+        amount: 50,
+    }
+}
+
+// The solution for a spend, with the inner puzzle `1` returning the conditions.
+fn solution(
+    tail_program_hash: Bytes32,
+    conditions: Any,
+    lineage_proof: CoinProof | nil,
+    parent_coin_info: Bytes32,
+    extra_delta: Int,
+) -> Any {
+    [
+        sha256("cat_mod"),
+        tail_program_hash,
+        1,
+        conditions,
+        lineage_proof,
+        sha256("prev_coin"),
+        Coin { parent_coin_info, puzzle_hash: sha256("cat_puzzle"), amount: 100 },
+        next_coin_proof(),
+        25,
+        extra_delta,
+    ]
+}
+
+test fn spends_with_a_lineage_proof() -> Any {
+    let tail_program_hash = sha256("tail");
+    check(
+        solution(
+            tail_program_hash,
+            [
+                CreateCoin {
+                    puzzle_hash: sha256("alice"),
+                    amount: 60,
+                    memos: Memos { value: [sha256("alice")] },
+                },
+                CreateCoin { puzzle_hash: sha256("bob"), amount: 40 },
+                // Announcements that start with the ring morph byte are fine if they're not 33 bytes.
+                CreateCoinAnnouncement { message: 0xcb },
+                CreateCoinAnnouncement { message: sha256("message") },
+                ReserveFee { amount: 1 },
+            ],
+            lineage_proof(),
+            cat_parent_id(tail_program_hash),
+            0,
+        ),
+    )
+}
+
+// A TAIL that outputs its whole solution in a remark: `(c (c (q . 1) 1) ())`.
+fn echo_tail() -> Any {
+    [4 as Any, [4 as Any, (1, 1), 1], nil]
+}
+
+test fn runs_the_tail() -> Any {
+    let tail_program_hash = tree_hash(echo_tail());
+    check(solution(
+        tail_program_hash,
+        [
+            CreateCoin { puzzle_hash: sha256("alice"), amount: 150 },
+            [51 as Any, nil, -113, echo_tail(), "tail_solution", 42],
+        ],
+        lineage_proof(),
+        cat_parent_id(tail_program_hash),
+        50,
+    ))
+}
+
+test fn runs_the_last_tail_revealed() -> Any {
+    let tail = (1, [ReserveFee { amount: 7 }]);
+    let tail_program_hash = tree_hash(tail);
+    check(solution(
+        tail_program_hash,
+        [
+            [51 as Any, nil, -113, echo_tail(), nil],
+            CreateCoin { puzzle_hash: sha256("alice"), amount: 90 },
+            [51 as Any, sha256("ignored"), -113, tail, nil],
+        ],
+        nil,
+        sha256("not_a_cat"),
+        -10,
+    ))
+}
+
+fn no_lineage_proof() -> Any {
+    solution(
+        sha256("tail"),
+        [CreateCoin { puzzle_hash: sha256("alice"), amount: 100 }],
+        nil,
+        sha256("parent"),
+        0,
+    )
+}
+
+test fn rejects_no_lineage_proof() -> Any {
+    run(main, no_lineage_proof())
+}
+
+test fn reference_rejects_no_lineage_proof() -> Any {
+    run(reference, no_lineage_proof())
+}
+
+fn wrong_lineage_proof() -> Any {
+    solution(
+        sha256("tail"),
+        [CreateCoin { puzzle_hash: sha256("alice"), amount: 100 }],
+        lineage_proof(),
+        cat_parent_id(sha256("other_tail")),
+        0,
+    )
+}
+
+test fn rejects_the_wrong_lineage_proof() -> Any {
+    run(main, wrong_lineage_proof())
+}
+
+test fn reference_rejects_the_wrong_lineage_proof() -> Any {
+    run(reference, wrong_lineage_proof())
+}
+
+fn extra_delta_without_tail() -> Any {
+    let tail_program_hash = sha256("tail");
+    solution(
+        tail_program_hash,
+        [CreateCoin { puzzle_hash: sha256("alice"), amount: 100 }],
+        lineage_proof(),
+        cat_parent_id(tail_program_hash),
+        1,
+    )
+}
+
+test fn rejects_an_extra_delta_without_a_tail() -> Any {
+    run(main, extra_delta_without_tail())
+}
+
+test fn reference_rejects_an_extra_delta_without_a_tail() -> Any {
+    run(reference, extra_delta_without_tail())
+}
+
+fn wrong_tail() -> Any {
+    solution(sha256("tail"), [[51 as Any, nil, -113, echo_tail(), nil]], nil, sha256("parent"), 0)
+}
+
+test fn rejects_the_wrong_tail() -> Any {
+    run(main, wrong_tail())
+}
+
+test fn reference_rejects_the_wrong_tail() -> Any {
+    run(reference, wrong_tail())
+}
+
+fn ring_announcement() -> Any {
+    let tail_program_hash = sha256("tail");
+    solution(
+        tail_program_hash,
+        [CreateCoinAnnouncement { message: 0xcb + sha256("fake") }],
+        lineage_proof(),
+        cat_parent_id(tail_program_hash),
+        0,
+    )
+}
+
+test fn rejects_a_ring_announcement() -> Any {
+    run(main, ring_announcement())
+}
+
+test fn reference_rejects_a_ring_announcement() -> Any {
+    run(reference, ring_announcement())
+}
+
+test fn allows_other_announcements_shaped_like_the_ring() -> Any {
+    let tail_program_hash = sha256("tail");
+    check(
+        solution(
+            tail_program_hash,
+            [
+                CreateCoin { puzzle_hash: sha256("alice"), amount: 100 },
+                // 33 bytes, but without the ring morph byte.
+                CreateCoinAnnouncement { message: 0x00 + sha256("x") },
+                // The ring morph byte and 33 bytes, but a puzzle announcement.
+                CreatePuzzleAnnouncement { message: 0xcb + sha256("x") },
+            ],
+            lineage_proof(),
+            cat_parent_id(tail_program_hash),
+            0,
+        ),
+    )
+}
+
+test fn keeps_fields_after_the_memos() -> Any {
+    let tail_program_hash = sha256("tail");
+    check(solution(
+        tail_program_hash,
+        [[51 as Any, sha256("alice"), 100, [sha256("alice")], "extra"]],
+        lineage_proof(),
+        cat_parent_id(tail_program_hash),
+        0,
+    ))
+}
+
+test fn runs_the_tail_with_a_wrong_lineage_proof() -> Any {
+    let tail_program_hash = tree_hash(echo_tail());
+    check(
+        solution(
+            tail_program_hash,
+            [
+                CreateCoin { puzzle_hash: sha256("alice"), amount: 150 },
+                [51 as Any, nil, -113, echo_tail(), "tail_solution"],
+            ],
+            lineage_proof(),
+            // The parent is a CAT with a different TAIL, so the TAIL sees `parent_is_cat` as false.
+            cat_parent_id(sha256("other_tail")),
+            50,
+        ),
+    )
+}

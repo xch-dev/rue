@@ -1,0 +1,120 @@
+// Regression test, not for production use. A port of `cat_puzzles/delegated_tail.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./delegated_tail.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The facts about the CAT spend that the CAT layer passes to its TAIL.
+struct Truths {
+    puzzle: PuzzleTruths,
+    ...coin: CoinTruths,
+}
+
+struct PuzzleTruths {
+    inner_puzzle_hash: Bytes32,
+    ...cat_info: CatInfo,
+}
+
+struct CatInfo {
+    mod_hash: Bytes32,
+    mod_hash_hash: Bytes32,
+    tail_program_hash: Bytes32,
+}
+
+struct CoinTruths {
+    my_id: Bytes32,
+    ...my_coin: Coin,
+}
+
+struct Coin {
+    parent_coin_info: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+type Tail = fn(
+    truths: Truths,
+    parent_is_cat: Bool,
+    lineage_proof: Any,
+    delta: Int,
+    inner_conditions: List<Condition>,
+    ...solution: Any,
+) -> List<Condition>;
+
+struct DelegatedSolution {
+    delegated_puzzle: Tail,
+    delegated_solution: Any,
+}
+
+fn main(
+    public_key: PublicKey,
+    truths: Truths,
+    parent_is_cat: Bool,
+    lineage_proof: Any,
+    delta: Int,
+    inner_conditions: List<Condition>,
+    solution: DelegatedSolution,
+) -> List<Condition> {
+    [
+        AggSigUnsafe { public_key, message: tree_hash(solution.delegated_puzzle) },
+        ...solution.delegated_puzzle(
+            truths,
+            parent_is_cat,
+            lineage_proof,
+            delta,
+            inner_conditions,
+            ...solution.delegated_solution,
+        ),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn truths(parent_coin_info: Bytes32) -> Truths {
+    Truths {
+        puzzle: PuzzleTruths {
+            inner_puzzle_hash: sha256("inner_puzzle"),
+            cat_info: CatInfo {
+                mod_hash: sha256("cat_mod"),
+                mod_hash_hash: tree_hash_atom(sha256("cat_mod")),
+                tail_program_hash: sha256("tail"),
+            },
+        },
+        coin: CoinTruths {
+            my_id: sha256("my_id"),
+            my_coin: Coin { parent_coin_info, puzzle_hash: sha256("cat_puzzle"), amount: 100 },
+        },
+    }
+}
+
+test fn runs_the_delegated_puzzle() -> Any {
+    // A delegated puzzle that outputs its whole solution in a remark: `(c (c (q . 1) 1) ())`.
+    let delegated_puzzle = [4 as Any, [4 as Any, (1, 1), 1], nil];
+    check([
+        pubkey_for_exp(42),
+        truths(sha256("parent")),
+        true,
+        [sha256("parent_parent"), sha256("parent_inner_puzzle"), 100],
+        10,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 110 }],
+        [delegated_puzzle, ["extra", 42]],
+    ])
+}
+
+test fn runs_a_quoted_delegated_puzzle() -> Any {
+    let delegated_puzzle = (1, [ReserveFee { amount: 1 }]);
+    check([
+        pubkey_for_exp(42),
+        truths(sha256("parent")),
+        false,
+        nil,
+        0,
+        nil,
+        [delegated_puzzle, nil],
+    ])
+}

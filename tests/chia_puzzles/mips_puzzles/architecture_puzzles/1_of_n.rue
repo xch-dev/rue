@@ -1,0 +1,81 @@
+// Regression test, not for production use. A port of `mips_puzzles/architecture_puzzles/1_of_n.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./1_of_n.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+type Member = fn(delegated_puzzle_hash: Bytes32, ...member_solution: Any) -> List<Condition>;
+
+fn main(
+    merkle_root: Bytes32,
+    delegated_puzzle_hash: Bytes32,
+    merkle_proof: MerkleProof,
+    member_puzzle: Member,
+    member_solution: Any,
+) -> List<Condition> {
+    assert merkle_root == simplify_merkle_proof(tree_hash(member_puzzle), merkle_proof);
+    member_puzzle(delegated_puzzle_hash, ...member_solution)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A member that outputs a remark with the delegated puzzle hash, followed by its solution:
+// `(c (c (q . 1) 2) 3)`.
+fn left_member() -> Any {
+    [4 as Any, [4 as Any, (1, 1), 2], 3]
+}
+
+// A member that ignores the delegated puzzle hash.
+inline const RIGHT_MEMBER: (1, List<ReserveFee>) = (1, [ReserveFee { amount: 5 }]);
+
+fn left_leaf() -> Bytes32 {
+    tree_hash_atom(tree_hash(left_member()))
+}
+
+fn right_leaf() -> Bytes32 {
+    tree_hash_atom(tree_hash(RIGHT_MEMBER))
+}
+
+fn root() -> Bytes32 {
+    tree_hash_pair(left_leaf(), right_leaf())
+}
+
+test fn runs_the_left_member() -> Any {
+    check([
+        root(),
+        sha256("delegated_puzzle"),
+        (0, [right_leaf()]),
+        left_member(),
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
+test fn runs_the_right_member() -> Any {
+    check([root(), sha256("delegated_puzzle"), (1, [left_leaf()]), RIGHT_MEMBER, nil])
+}
+
+// A deeper tree, `(other . (right . left))`, so proving the right member takes the path 2: the
+// low bit puts it on the left of its first pair, then the shifted bit puts that pair on the right.
+test fn runs_a_member_two_levels_deep() -> Any {
+    let other_leaf = tree_hash_atom(sha256("other"));
+    let root = tree_hash_pair(other_leaf, tree_hash_pair(right_leaf(), left_leaf()));
+    check([root, sha256("delegated_puzzle"), (2, [left_leaf(), other_leaf]), RIGHT_MEMBER, nil])
+}
+
+fn wrong_path() -> Any {
+    [root(), sha256("delegated_puzzle"), (1, [right_leaf()]), left_member(), nil]
+}
+
+test fn rejects_the_wrong_path() -> Any {
+    run(main, wrong_path())
+}
+
+test fn reference_rejects_the_wrong_path() -> Any {
+    run(reference, wrong_path())
+}

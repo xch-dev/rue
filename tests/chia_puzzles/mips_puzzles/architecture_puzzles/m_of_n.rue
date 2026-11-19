@@ -1,0 +1,159 @@
+// Regression test, not for production use. A port of `mips_puzzles/architecture_puzzles/m_of_n.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./m_of_n.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+type Member = fn(delegated_puzzle_hash: Bytes32, ...member_solution: Any) -> List<Condition>;
+
+// A revealed member in the proof, which is run.
+struct Leaf {
+    marker: nil,
+    member: Member,
+    ...solution: Any,
+}
+
+// The result of checking part of the proof.
+struct Proven {
+    root: Bytes32,
+    conditions: List<Condition>,
+    total: Int,
+}
+
+// Runs the revealed members of a partially revealed merkle tree of members, and checks that there
+// are exactly `m` of them and that the tree has the right root.
+fn main(
+    m: Int,
+    merkle_root: Bytes32,
+    delegated_puzzle_hash: Bytes32,
+    // Each node is a pair of branches, a `Leaf`, or (as a branch) the hash of an unrevealed subtree.
+    member_proof: (Any, Any),
+) -> List<Condition> {
+    let proven = hash_and_run(member_proof, delegated_puzzle_hash);
+    assert (m == proven.total) & (merkle_root == proven.root);
+    proven.conditions
+}
+
+fn handle_branch(branch: Any, delegated_puzzle_hash: Bytes32) -> Proven {
+    if branch is Bytes {
+        return Proven { root: unchecked_cast::<Bytes32>(branch), conditions: nil, total: 0 };
+    }
+
+    hash_and_run(branch, delegated_puzzle_hash)
+}
+
+fn hash_and_run(tree: (Any, Any), delegated_puzzle_hash: Bytes32) -> Proven {
+    if tree.first is nil {
+        let leaf = unchecked_cast::<Leaf>(tree);
+        return Proven {
+            root: tree_hash_atom(tree_hash(leaf.member)),
+            conditions: leaf.member(delegated_puzzle_hash, ...leaf.solution),
+            total: 1,
+        };
+    }
+
+    let left = handle_branch(tree.first, delegated_puzzle_hash);
+    let right = handle_branch(tree.rest, delegated_puzzle_hash);
+
+    Proven {
+        root: tree_hash_pair(left.root, right.root),
+        conditions: merge_list(left.conditions, right.conditions),
+        total: left.total + right.total,
+    }
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// `(c (c (q . 1) 2) 3)`, which outputs a remark with the delegated puzzle hash, then its solution.
+fn first_member() -> Any {
+    [4 as Any, [4 as Any, (1, 1), 2], 3]
+}
+
+inline const SECOND_MEMBER: (1, List<ReserveFee>) = (1, [ReserveFee { amount: 5 }]);
+inline const THIRD_MEMBER: 1 = 1;
+
+fn leaf_hash(member: Any) -> Bytes32 {
+    tree_hash_atom(tree_hash(member))
+}
+
+// The tree `((first . second) . third)`.
+fn root() -> Bytes32 {
+    tree_hash_pair(
+        tree_hash_pair(leaf_hash(first_member()), leaf_hash(SECOND_MEMBER)),
+        leaf_hash(THIRD_MEMBER),
+    )
+}
+
+fn leaf(member: Any, solution: Any) -> Any {
+    (nil, (member, solution))
+}
+
+test fn runs_two_of_three() -> Any {
+    check([
+        2,
+        root(),
+        sha256("delegated_puzzle"),
+        (
+            (
+                leaf(
+                    first_member(),
+                    [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+                ),
+                leaf_hash(SECOND_MEMBER),
+            ),
+            leaf(THIRD_MEMBER, [AssertHeightRelative { height: 10 }]),
+        ),
+    ])
+}
+
+test fn runs_three_of_three() -> Any {
+    check([
+        3,
+        root(),
+        sha256("delegated_puzzle"),
+        ((leaf(first_member(), nil), leaf(SECOND_MEMBER, nil)), leaf(THIRD_MEMBER, nil)),
+    ])
+}
+
+fn too_few_members() -> Any {
+    [
+        2,
+        root(),
+        sha256("delegated_puzzle"),
+        (
+            tree_hash_pair(leaf_hash(first_member()), leaf_hash(SECOND_MEMBER)),
+            leaf(THIRD_MEMBER, nil),
+        ),
+    ]
+}
+
+test fn rejects_too_few_members() -> Any {
+    run(main, too_few_members())
+}
+
+test fn reference_rejects_too_few_members() -> Any {
+    run(reference, too_few_members())
+}
+
+fn wrong_root() -> Any {
+    [
+        2,
+        root(),
+        sha256("delegated_puzzle"),
+        ((leaf(first_member(), nil), leaf(SECOND_MEMBER, nil)), sha256("other_member")),
+    ]
+}
+
+test fn rejects_the_wrong_root() -> Any {
+    run(main, wrong_root())
+}
+
+test fn reference_rejects_the_wrong_root() -> Any {
+    run(reference, wrong_root())
+}

@@ -1,0 +1,126 @@
+// Regression test, not for production use. A port of `mips_puzzles/restriction_puzzles/enforce_dpuz_wrappers.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./enforce_dpuz_wrappers.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+// The tree hashes of nil, `1`, `c`, `a`, and `(1)`.
+inline const NIL_HASH: Bytes32 = 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a;
+inline const ONE_HASH: Bytes32 = 0x9dcf97a184f32623d11a73124ceb99a5709b083721e878a16d78f596718ba7b2;
+inline const C_HASH: Bytes32 = 0xa8d5dd63fba471ebcb1f3e8f7c1e1879b7152a6e7298a91ce119a63400ade7c5;
+inline const A_HASH: Bytes32 = 0xa12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222;
+inline const ONE_LIST_HASH: Bytes32 = 0xba4484b961b7a2369d948d06c55b64bdbfaffb326bc13b490ab1215dd33d8d46;
+
+// Checks that the delegated puzzle is the innermost puzzle, wrapped (with `add_dpuz_wrapper`) in
+// each of the wrappers in the stack, from the last to the first.
+fn main(
+    // The tree hash of `(q . ADD_WRAPPER_MOD)`.
+    quoted_add_wrapper_mod_hash: Bytes32,
+    // The tree hashes of each `(q . WRAPPER)`.
+    wrapper_stack: List<Bytes32>,
+    delegated_puzzle_hash: Bytes32,
+    inner_most_puzzle_hash: Bytes32,
+) -> nil {
+    assert delegated_puzzle_hash == wrap(
+        quoted_add_wrapper_mod_hash,
+        wrapper_stack,
+        inner_most_puzzle_hash,
+    );
+    nil
+}
+
+// The tree hash of `(a (q . ADD_WRAPPER_MOD) (c (q . WRAPPER) (c (q . inner_puzzle) 1)))`.
+fn wrap(
+    quoted_add_wrapper_mod_hash: Bytes32,
+    wrapper_stack: List<Bytes32>,
+    inner_most_puzzle_hash: Bytes32,
+) -> Bytes32 {
+    if wrapper_stack is nil {
+        return inner_most_puzzle_hash;
+    }
+
+    let inner_puzzle_hash = wrap(
+        quoted_add_wrapper_mod_hash,
+        wrapper_stack.rest,
+        inner_most_puzzle_hash,
+    );
+
+    tree_hash_pair(
+        A_HASH,
+        tree_hash_pair(
+            quoted_add_wrapper_mod_hash,
+            tree_hash_pair(
+                tree_hash_pair(
+                    C_HASH,
+                    tree_hash_pair(
+                        wrapper_stack.first,
+                        tree_hash_pair(
+                            tree_hash_pair(
+                                C_HASH,
+                                tree_hash_pair(
+                                    tree_hash_pair(ONE_HASH, inner_puzzle_hash),
+                                    ONE_LIST_HASH,
+                                ),
+                            ),
+                            NIL_HASH,
+                        ),
+                    ),
+                ),
+                NIL_HASH,
+            ),
+        ),
+    )
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+inline const ADD_WRAPPER_MOD: String = "add_wrapper_mod";
+inline const FIRST_WRAPPER: String = "first_wrapper";
+inline const SECOND_WRAPPER: String = "second_wrapper";
+inline const INNER_PUZZLE: String = "inner_puzzle";
+
+// The program `(a (q . module) (c (q . first) (c (q . second) 1)))`.
+fn curry(module: Any, first: Any, second: Any) -> Any {
+    [2 as Any, (1, module), [4 as Any, (1, first), [4 as Any, (1, second), 1]]]
+}
+
+fn stack() -> List<Bytes32> {
+    [tree_hash((1, FIRST_WRAPPER)), tree_hash((1, SECOND_WRAPPER))]
+}
+
+test fn accepts_the_wrapped_puzzle() -> Any {
+    let delegated_puzzle = curry(
+        ADD_WRAPPER_MOD,
+        FIRST_WRAPPER,
+        curry(ADD_WRAPPER_MOD, SECOND_WRAPPER, INNER_PUZZLE),
+    );
+    check([
+        tree_hash((1, ADD_WRAPPER_MOD)),
+        stack(),
+        tree_hash(delegated_puzzle),
+        tree_hash(INNER_PUZZLE),
+    ])
+}
+
+test fn accepts_no_wrappers() -> Any {
+    check([tree_hash((1, ADD_WRAPPER_MOD)), nil, tree_hash(INNER_PUZZLE), tree_hash(INNER_PUZZLE)])
+}
+
+fn missing_wrapper() -> Any {
+    let delegated_puzzle = curry(ADD_WRAPPER_MOD, FIRST_WRAPPER, INNER_PUZZLE);
+    [tree_hash((1, ADD_WRAPPER_MOD)), stack(), tree_hash(delegated_puzzle), tree_hash(INNER_PUZZLE)]
+}
+
+test fn rejects_a_missing_wrapper() -> Any {
+    run(main, missing_wrapper())
+}
+
+test fn reference_rejects_a_missing_wrapper() -> Any {
+    run(reference, missing_wrapper())
+}

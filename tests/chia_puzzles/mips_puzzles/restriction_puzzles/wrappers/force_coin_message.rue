@@ -1,0 +1,71 @@
+// Regression test, not for production use. A port of
+// `mips_puzzles/restriction_puzzles/wrappers/force_coin_message.clsp` from chia_puzzles, checked against the
+// compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./force_coin_message.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
+
+// Requires the conditions to include a `SendMessage` to a coin, or part of one.
+fn main(conditions: List<Condition>) -> List<Condition> {
+    check_conditions(conditions)
+}
+
+fn check_conditions(conditions: List<Condition>) -> List<Condition> {
+    // Like the original, this fails when it reaches the end of the list.
+    let conditions = unchecked_cast::<(Condition, List<Condition>)>(conditions);
+    let condition = conditions.first;
+
+    if condition is SendMessage && condition.mode & RECEIVER_COIN != 0 {
+        return conditions;
+    }
+
+    [condition, ...check_conditions(conditions.rest)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn finds_the_message() -> Any {
+    check([[
+        SendMessage {
+            mode: SENDER_COIN | RECEIVER_PUZZLE,
+            message: "puzzle",
+            receiver: [sha256("puzzle")],
+        },
+        SendMessage { mode: SENDER_COIN | RECEIVER_AMOUNT, message: "amount", receiver: [1] },
+        ReserveFee { amount: 1 },
+    ]])
+}
+
+// Skips the conditions before the first message to a coin, which only sets the parent bit (0x04).
+test fn finds_the_message_after_others() -> Any {
+    check([[
+        ReserveFee { amount: 1 },
+        SendMessage { mode: SENDER_COIN, message: "nobody", receiver: nil },
+        SendMessage {
+            mode: SENDER_COIN | RECEIVER_PARENT,
+            message: "parent",
+            receiver: [sha256("parent")],
+        },
+        ReserveFee { amount: 2 },
+    ]])
+}
+
+fn no_coin_message() -> Any {
+    [[
+        SendMessage { mode: SENDER_COIN, message: "nobody", receiver: nil },
+        ReserveFee { amount: 1 },
+    ]]
+}
+
+test fn rejects_a_missing_message() -> Any {
+    run(main, no_coin_message())
+}
+
+test fn reference_rejects_a_missing_message() -> Any {
+    run(reference, no_coin_message())
+}

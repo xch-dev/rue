@@ -1,0 +1,99 @@
+// Regression test, not for production use. A port of `vc_puzzles/eml_transfer_program_covenant_adapter.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(
+    ...solution: Any,
+) -> Any from "./eml_transfer_program_covenant_adapter.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+struct AdapterSolution {
+    lineage_proof: Any,
+    morpher_solution: Any,
+    inner_solution: Any,
+}
+
+// The covenant layer's output: the condition asserting its parent, followed by the transfer
+// program's output.
+struct CovenantOutput {
+    parent_assertion: Any,
+    new_owner: Any,
+    new_transfer_program_hash: Any,
+    conditions: List<Any>,
+}
+
+// The covenant layer's inner solution, which is the transfer program's solution.
+struct TransferProgramSolution {
+    metadata: Any,
+    conditions: Any,
+    solution: Any,
+}
+
+// The transfer program's output.
+struct TransferProgramOutput {
+    new_owner: Any,
+    new_transfer_program_hash: Any,
+    conditions: List<Any>,
+}
+
+// Adapts a covenant layer that wraps a transfer program, by moving the covenant layer's parent
+// assertion into the transfer program's conditions.
+fn main(
+    covenant_layer: fn(
+        lineage_proof: Any,
+        morpher_solution: Any,
+        inner_solution: TransferProgramSolution,
+    ) -> CovenantOutput,
+    metadata: Any,
+    conditions: Any,
+    solution: AdapterSolution,
+) -> TransferProgramOutput {
+    let output = covenant_layer(
+        solution.lineage_proof,
+        solution.morpher_solution,
+        TransferProgramSolution { metadata, conditions, solution: solution.inner_solution },
+    );
+
+    TransferProgramOutput {
+        new_owner: output.new_owner,
+        new_transfer_program_hash: output.new_transfer_program_hash,
+        conditions: [output.parent_assertion, ...output.conditions],
+    }
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn moves_the_parent_assertion() -> Any {
+    // A covenant layer that ignores its solution.
+    let covenant_layer = (
+        1,
+        [
+            AssertMyParentId { parent_id: sha256("parent") } as Any,
+            sha256("new_owner"),
+            sha256("new_transfer_program"),
+            [ReserveFee { amount: 1 }],
+        ],
+    );
+    check([
+        covenant_layer,
+        ("key", "value"),
+        nil,
+        ["lineage_proof", "morpher_solution", "inner_solution"],
+    ])
+}
+
+test fn passes_the_solution_to_the_covenant_layer() -> Any {
+    // A covenant layer that prepends a parent assertion to its solution, `(c (q . "assertion") 1)`,
+    // so the transfer program's solution ends up in the conditions.
+    let covenant_layer = [4 as Any, (1, "assertion"), 1];
+    check([
+        covenant_layer,
+        ("key", "value"),
+        [ReserveFee { amount: 1 }],
+        ["lineage_proof", "morpher_solution", "inner_solution"],
+    ])
+}

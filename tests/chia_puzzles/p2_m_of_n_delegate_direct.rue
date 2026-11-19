@@ -1,0 +1,101 @@
+// Regression test, not for production use. A port of `p2_m_of_n_delegate_direct.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_m_of_n_delegate_direct.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    m: Int,
+    public_key_list: List<PublicKey>,
+    // Whether each public key signs.
+    selectors: List<Any>,
+    delegated_puzzle: fn(...solution: Any) -> List<Condition>,
+    solution: Any,
+) -> List<Condition> {
+    assert m == count_selectors(selectors);
+    add_agg_sigs(
+        choose_keys(selectors, public_key_list),
+        tree_hash(delegated_puzzle),
+        delegated_puzzle(...solution),
+    )
+}
+
+fn add_agg_sigs(
+    public_keys: List<PublicKey>,
+    message: Bytes32,
+    conditions: List<Condition>,
+) -> List<Condition> {
+    if public_keys is nil {
+        return conditions;
+    }
+
+    [
+        AggSigUnsafe { public_key: public_keys.first, message },
+        ...add_agg_sigs(public_keys.rest, message, conditions),
+    ]
+}
+
+fn choose_keys(selectors: List<Any>, public_keys: List<PublicKey>) -> List<PublicKey> {
+    if selectors is nil {
+        return nil;
+    }
+
+    // There must be a public key for each selector.
+    inline let public_key_list = unchecked_cast::<(PublicKey, List<PublicKey>)>(public_keys);
+    let rest = choose_keys(selectors.rest, public_key_list.rest);
+
+    if selectors.first is nil {
+        rest
+    } else {
+        [public_key_list.first, ...rest]
+    }
+}
+
+fn count_selectors(selectors: List<Any>) -> Int {
+    if selectors is nil {
+        return 0;
+    }
+
+    count_selectors(selectors.rest) + inline if selectors.first is nil { 0 } else { 1 }
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn public_keys() -> List<PublicKey> {
+    [pubkey_for_exp(1), pubkey_for_exp(2), pubkey_for_exp(3)]
+}
+
+test fn signs_with_two_of_three() -> Any {
+    check([
+        2,
+        public_keys(),
+        [1, nil, 1],
+        1,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
+test fn signs_with_none() -> Any {
+    check([0, public_keys(), [nil, nil, nil], 1, nil])
+}
+
+test fn rejects_the_wrong_count() -> Any {
+    run(main, [2, public_keys(), [1, nil, nil], 1, nil])
+}
+
+test fn reference_rejects_the_wrong_count() -> Any {
+    run(reference, [2, public_keys(), [1, nil, nil], 1, nil])
+}
+
+test fn rejects_more_selectors_than_keys() -> Any {
+    run(main, [2, [pubkey_for_exp(1)], [1, 1], 1, nil])
+}
+
+test fn reference_rejects_more_selectors_than_keys() -> Any {
+    run(reference, [2, [pubkey_for_exp(1)], [1, 1], 1, nil])
+}

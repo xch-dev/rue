@@ -1,0 +1,190 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_proposal_validator.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./dao_proposal_validator.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The announcement the treasury passes on from the proposal.
+struct ProposalAnnouncement {
+    announcement_source: Bytes32,
+    delegated_puzzle_hash: Bytes32,
+    announcement_args: Any,
+}
+
+struct ValidatorSolution {
+    proposal_id: Bytes32,
+    total_votes: Int,
+    yes_votes: Int,
+    coin_parent: Bytes32,
+    coin_amount: Int,
+}
+
+fn main(
+    singleton_struct: SingletonStruct,
+    proposal_self_hash: Bytes32,
+    proposal_minimum_amount: Int,
+    proposal_excess_payout_puzzle_hash: Bytes32,
+    // These are passed in by the treasury.
+    attendance_required: Int,
+    pass_margin: Int,
+    proposal_announcement: ProposalAnnouncement,
+    solution: ValidatorSolution,
+    conditions: List<Condition>,
+) -> List<Condition> {
+    let proposal_struct = SingletonStruct {
+        mod_hash: singleton_struct.mod_hash,
+        launcher_id: solution.proposal_id,
+        launcher_puzzle_hash: singleton_struct.launcher_puzzle_hash,
+    };
+    // This validates the yes and total votes.
+    let proposal_inner_puzzle_hash = curry_tree_hash(
+        proposal_self_hash,
+        [
+            tree_hash_atom(proposal_self_hash),
+            tree_hash_atom(solution.proposal_id),
+            tree_hash_atom(proposal_announcement.delegated_puzzle_hash),
+            tree_hash_atom(solution.yes_votes as Bytes),
+            tree_hash_atom(solution.total_votes as Bytes),
+        ],
+    );
+    let proposal_puzzle_hash = curry_tree_hash(
+        proposal_struct.mod_hash,
+        [tree_hash(proposal_struct), proposal_inner_puzzle_hash],
+    );
+    let (required_yes_votes, _) = divmod(solution.total_votes * pass_margin, 10000);
+
+    assert solution.coin_amount >= proposal_minimum_amount;
+    assert solution.total_votes >= attendance_required;
+    assert solution.yes_votes >= required_yes_votes;
+    assert proposal_announcement.announcement_source == coinid(
+        solution.coin_parent,
+        proposal_puzzle_hash,
+        solution.coin_amount,
+    );
+
+    [
+        CreatePuzzleAnnouncement { message: solution.proposal_id },
+        ...if solution.coin_amount - 1 > 0 {
+            [
+                CreateCoin {
+                    puzzle_hash: proposal_excess_payout_puzzle_hash,
+                    amount: solution.coin_amount - 1,
+                    memos: Memos { value: [singleton_struct.launcher_id] },
+                },
+                ...conditions,
+            ]
+        } else {
+            conditions
+        },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn singleton_struct() -> SingletonStruct {
+    SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256("treasury_id"),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    }
+}
+
+// The coin id of a proposal with these votes.
+fn proposal_coin_id(yes_votes: Int, total_votes: Int, amount: Int) -> Bytes32 {
+    let proposal_struct = SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256("proposal_id"),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    };
+    let inner_puzzle_hash = curry_tree_hash(
+        sha256("proposal_self_hash"),
+        [
+            tree_hash_atom(sha256("proposal_self_hash")),
+            tree_hash_atom(sha256("proposal_id")),
+            tree_hash_atom(sha256("delegated_puzzle")),
+            tree_hash_atom(yes_votes as Bytes),
+            tree_hash_atom(total_votes as Bytes),
+        ],
+    );
+    coinid(
+        sha256("proposal_parent"),
+        curry_tree_hash(sha256("singleton_mod"), [tree_hash(proposal_struct), inner_puzzle_hash]),
+        amount,
+    )
+}
+
+// A spend with a minimum amount of 1, 500 votes required, and a pass margin of 51%.
+fn spend(yes_votes: Int, total_votes: Int, amount: Int, source_amount: Int) -> Any {
+    [
+        singleton_struct(),
+        sha256("proposal_self_hash"),
+        1,
+        sha256("excess_payout"),
+        500,
+        5100,
+        ProposalAnnouncement {
+            announcement_source: proposal_coin_id(yes_votes, total_votes, source_amount),
+            delegated_puzzle_hash: sha256("delegated_puzzle"),
+            announcement_args: nil,
+        },
+        ValidatorSolution {
+            proposal_id: sha256("proposal_id"),
+            total_votes,
+            yes_votes,
+            coin_parent: sha256("proposal_parent"),
+            coin_amount: amount,
+        },
+        [CreateCoin { puzzle_hash: sha256("payee"), amount: 100 }],
+    ]
+}
+
+test fn passes_with_excess() -> Any {
+    check(spend(510, 1000, 10, 10))
+}
+
+test fn passes_without_excess() -> Any {
+    check(spend(600, 1000, 1, 1))
+}
+
+test fn rejects_too_few_yes_votes() -> Any {
+    run(main, spend(509, 1000, 10, 10))
+}
+
+test fn reference_rejects_too_few_yes_votes() -> Any {
+    run(reference, spend(509, 1000, 10, 10))
+}
+
+test fn rejects_too_little_attendance() -> Any {
+    run(main, spend(499, 499, 10, 10))
+}
+
+test fn reference_rejects_too_little_attendance() -> Any {
+    run(reference, spend(499, 499, 10, 10))
+}
+
+test fn rejects_too_small_an_amount() -> Any {
+    run(main, spend(600, 1000, 0, 0))
+}
+
+test fn reference_rejects_too_small_an_amount() -> Any {
+    run(reference, spend(600, 1000, 0, 0))
+}
+
+test fn rejects_the_wrong_source() -> Any {
+    run(main, spend(600, 1000, 10, 11))
+}
+
+test fn reference_rejects_the_wrong_source() -> Any {
+    run(reference, spend(600, 1000, 10, 11))
+}
+
+test fn passes_with_exactly_enough_attendance() -> Any {
+    check(spend(500, 500, 10, 10))
+}

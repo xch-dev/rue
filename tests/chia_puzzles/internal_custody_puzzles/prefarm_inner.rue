@@ -1,0 +1,499 @@
+// Regression test, not for production use. A port of `internal_custody_puzzles/prefarm_inner.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./prefarm_inner.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+struct State {
+    // The rekey and payment puzzles' mod hashes.
+    mod_hashes: (Bytes32, Bytes32),
+    ach_timelock: Int,
+    base_rekey_timelock: Int,
+    ...slow_rekey_penalty: Int,
+}
+
+// The spend solution for starting or finishing a rekey.
+struct RekeySolution {
+    timelock_multiple: Int,
+    new_root: Bytes32,
+}
+
+// The spend solution for a payment.
+struct PaymentSolution {
+    out_amount: Int,
+    in_amount: Int,
+    clawforward_puzzle_hash: Bytes32,
+}
+
+inline const REKEY_KW: Bytes = "r";
+
+fn main(
+    this_mod_hash: Bytes32,
+    root: Bytes32,
+    state: State,
+    my_amount: Int,
+    // Nil to finish a rekey, 1 to start one, or 2 to make a payment.
+    spend_type: Int,
+    spend_solution: Any,
+    puzzle_reveal: fn(...solution: Any) -> List<Condition>,
+    proof_of_inclusion: MerkleProof,
+    puzzle_solution: Any,
+) -> List<Condition> {
+    [
+        AssertMyAmount { amount: my_amount },
+        ...if spend_type == 0 {
+            finish_rekey(this_mod_hash, root, state, my_amount, unchecked_cast(spend_solution))
+        } else {
+            assert root == simplify_merkle_proof(tree_hash(puzzle_reveal), proof_of_inclusion);
+
+            let conditions = puzzle_reveal(...puzzle_solution);
+
+            if spend_type == 1 {
+                start_rekey(
+                    this_mod_hash,
+                    root,
+                    state,
+                    my_amount,
+                    conditions,
+                    unchecked_cast(spend_solution),
+                )
+            } else if spend_type == 2 {
+                handle_payment(
+                    this_mod_hash,
+                    root,
+                    state,
+                    my_amount,
+                    conditions,
+                    unchecked_cast(spend_solution),
+                )
+            } else {
+                raise;
+            }
+        },
+    ]
+}
+
+fn our_puzzle_hash(this_mod_hash: Bytes32, root: Bytes32, state: State) -> Bytes32 {
+    curry_tree_hash(
+        this_mod_hash,
+        [tree_hash_atom(this_mod_hash), tree_hash_atom(root), tree_hash(state)],
+    )
+}
+
+inline fn rekey_puzzle_hash(
+    state: State,
+    root: Bytes32,
+    timelock_multiple: Int,
+    new_root: Bytes32,
+) -> Bytes32 {
+    curry_tree_hash(state.mod_hashes.first, [tree_hash([new_root as Any, root, timelock_multiple])])
+}
+
+fn finish_rekey(
+    this_mod_hash: Bytes32,
+    root: Bytes32,
+    state: State,
+    my_amount: Int,
+    spend_solution: RekeySolution,
+) -> List<Condition> {
+    [
+        AssertPuzzleAnnouncement {
+            id: sha256(
+                rekey_puzzle_hash(
+                    state,
+                    root,
+                    spend_solution.timelock_multiple,
+                    spend_solution.new_root,
+                )
+                    + REKEY_KW,
+            ),
+        },
+        CreatePuzzleAnnouncement { message: REKEY_KW },
+        CreateCoin {
+            puzzle_hash: our_puzzle_hash(this_mod_hash, spend_solution.new_root, state),
+            amount: my_amount,
+        },
+    ]
+}
+
+fn start_rekey(
+    this_mod_hash: Bytes32,
+    root: Bytes32,
+    state: State,
+    my_amount: Int,
+    conditions: List<Condition>,
+    spend_solution: RekeySolution,
+) -> List<Condition> {
+    let timelock_multiple = spend_solution.timelock_multiple;
+    let penalty = if timelock_multiple > 1 {
+        state.slow_rekey_penalty
+    } else {
+        0
+    };
+
+    [
+        AssertSecondsRelative { seconds: state.base_rekey_timelock * timelock_multiple + penalty },
+        ...check_singleton_and_even(
+            conditions,
+            (our_puzzle_hash(this_mod_hash, root, state), my_amount),
+            (rekey_puzzle_hash(state, root, timelock_multiple, spend_solution.new_root), 0),
+            false,
+            false,
+        ),
+    ]
+}
+
+fn handle_payment(
+    this_mod_hash: Bytes32,
+    root: Bytes32,
+    state: State,
+    my_amount: Int,
+    conditions: List<Condition>,
+    spend_solution: PaymentSolution,
+) -> List<Condition> {
+    assert spend_solution.in_amount >= 0;
+
+    let payment_puzzle_hash = curry_tree_hash(
+        state.mod_hashes.rest,
+        [tree_hash((root, spend_solution.clawforward_puzzle_hash))],
+    );
+
+    [
+        AssertSecondsRelative { seconds: state.ach_timelock },
+        ...check_singleton_and_even(
+            conditions,
+            (
+                our_puzzle_hash(this_mod_hash, root, state),
+                my_amount - spend_solution.out_amount + spend_solution.in_amount,
+            ),
+            (payment_puzzle_hash, spend_solution.out_amount),
+            false,
+            // There's no payment coin to find if nothing is paid out.
+            spend_solution.out_amount == 0,
+        ),
+    ]
+}
+
+// Checks that exactly one odd coin (the singleton) and one even coin are created, with the given
+// puzzle hashes and amounts, and that the spend doesn't authorize a rekey.
+fn check_singleton_and_even(
+    conditions: List<Condition>,
+    singleton: (Bytes32, Int),
+    even: (Bytes32, Int),
+    seen_singleton: Bool,
+    seen_even: Bool,
+) -> List<Condition> {
+    if conditions is nil {
+        assert seen_singleton && seen_even;
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    let (seen_singleton, seen_even) = if condition is CreateCoin {
+        if condition.amount & 1 != 0 {
+            assert !seen_singleton
+                && condition.puzzle_hash == singleton.first
+                && condition.amount == singleton.rest;
+            (true, seen_even)
+        } else {
+            assert !seen_even
+                && condition.puzzle_hash == even.first
+                && condition.amount == even.rest;
+            (seen_singleton, true)
+        }
+    } else {
+        assert !(condition is CreatePuzzleAnnouncement && condition.message == REKEY_KW);
+        (seen_singleton, seen_even)
+    };
+
+    [
+        condition,
+        ...check_singleton_and_even(conditions.rest, singleton, even, seen_singleton, seen_even),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A tree with two leaves: the puzzle `1` on the left, and another puzzle on the right.
+fn left_leaf() -> Bytes32 {
+    tree_hash_atom(tree_hash(1))
+}
+
+fn right_leaf() -> Bytes32 {
+    tree_hash_atom(sha256("other_puzzle"))
+}
+
+fn root() -> Bytes32 {
+    tree_hash_pair(left_leaf(), right_leaf())
+}
+
+fn state() -> State {
+    State {
+        mod_hashes: (sha256("rekey_mod"), sha256("ach_mod")),
+        ach_timelock: 600,
+        base_rekey_timelock: 3600,
+        slow_rekey_penalty: 10000,
+    }
+}
+
+fn spend(spend_type: Int, spend_solution: Any, conditions: List<Condition>) -> Any {
+    [
+        sha256("prefarm_mod"),
+        root(),
+        state(),
+        101,
+        spend_type,
+        spend_solution,
+        1,
+        (0, [right_leaf()]),
+        conditions,
+    ]
+}
+
+fn our_coin(amount: Int) -> CreateCoin {
+    CreateCoin { puzzle_hash: our_puzzle_hash(sha256("prefarm_mod"), root(), state()), amount }
+}
+
+fn rekey_coin(timelock_multiple: Int) -> CreateCoin {
+    CreateCoin {
+        puzzle_hash: rekey_puzzle_hash(state(), root(), timelock_multiple, sha256("new_root")),
+        amount: 0,
+    }
+}
+
+fn payment_coin(amount: Int) -> CreateCoin {
+    CreateCoin {
+        puzzle_hash: curry_tree_hash(
+            sha256("ach_mod"),
+            [tree_hash((root(), sha256("clawforward")))],
+        ),
+        amount,
+    }
+}
+
+fn rekey_solution(timelock_multiple: Int) -> RekeySolution {
+    RekeySolution { timelock_multiple, new_root: sha256("new_root") }
+}
+
+fn payment_solution(out_amount: Int, in_amount: Int) -> PaymentSolution {
+    PaymentSolution { out_amount, in_amount, clawforward_puzzle_hash: sha256("clawforward") }
+}
+
+test fn finishes_a_rekey() -> Any {
+    check([sha256("prefarm_mod"), root(), state(), 101, nil, rekey_solution(2), nil, nil, nil])
+}
+
+test fn starts_a_rekey() -> Any {
+    check(spend(1, rekey_solution(1), [our_coin(101), ReserveFee { amount: 0 }, rekey_coin(1)]))
+}
+
+test fn starts_a_slow_rekey() -> Any {
+    check(spend(1, rekey_solution(3), [rekey_coin(3), our_coin(101)]))
+}
+
+test fn makes_a_payment() -> Any {
+    check(spend(2, payment_solution(10, 0), [our_coin(91), payment_coin(10)]))
+}
+
+test fn accepts_a_payment() -> Any {
+    check(spend(2, payment_solution(0, 20), [our_coin(121)]))
+}
+
+test fn makes_and_accepts_a_payment() -> Any {
+    check(spend(2, payment_solution(10, 20), [our_coin(111), payment_coin(10)]))
+}
+
+// Only a puzzle announcement of the rekey keyword is refused, not other announcements of it.
+test fn allows_other_rekey_keyword_announcements() -> Any {
+    check(spend(
+        1,
+        rekey_solution(1),
+        [
+            our_coin(101),
+            rekey_coin(1),
+            CreateCoinAnnouncement { message: "r" },
+            CreatePuzzleAnnouncement { message: "other" },
+        ],
+    ))
+}
+
+fn wrong_singleton_puzzle_hash() -> Any {
+    spend(
+        1,
+        rekey_solution(1),
+        [CreateCoin { puzzle_hash: sha256("other"), amount: 101 }, rekey_coin(1)],
+    )
+}
+
+test fn rejects_the_wrong_singleton_puzzle_hash() -> Any {
+    run(main, wrong_singleton_puzzle_hash())
+}
+
+test fn reference_rejects_the_wrong_singleton_puzzle_hash() -> Any {
+    run(reference, wrong_singleton_puzzle_hash())
+}
+
+fn wrong_payment_amount() -> Any {
+    spend(2, payment_solution(10, 0), [our_coin(91), payment_coin(12)])
+}
+
+test fn rejects_the_wrong_payment_amount() -> Any {
+    run(main, wrong_payment_amount())
+}
+
+test fn reference_rejects_the_wrong_payment_amount() -> Any {
+    run(reference, wrong_payment_amount())
+}
+
+fn unknown_spend_type() -> Any {
+    spend(3, nil, [our_coin(101)])
+}
+
+test fn rejects_an_unknown_spend_type() -> Any {
+    run(main, unknown_spend_type())
+}
+
+test fn reference_rejects_an_unknown_spend_type() -> Any {
+    run(reference, unknown_spend_type())
+}
+
+fn wrong_proof() -> Any {
+    [
+        sha256("prefarm_mod"),
+        root(),
+        state(),
+        101,
+        1,
+        rekey_solution(1),
+        1,
+        (1, [right_leaf()]),
+        [our_coin(101), rekey_coin(1)],
+    ]
+}
+
+test fn rejects_the_wrong_proof() -> Any {
+    run(main, wrong_proof())
+}
+
+test fn reference_rejects_the_wrong_proof() -> Any {
+    run(reference, wrong_proof())
+}
+
+fn missing_rekey_coin() -> Any {
+    spend(1, rekey_solution(1), [our_coin(101)])
+}
+
+test fn rejects_a_missing_rekey_coin() -> Any {
+    run(main, missing_rekey_coin())
+}
+
+test fn reference_rejects_a_missing_rekey_coin() -> Any {
+    run(reference, missing_rekey_coin())
+}
+
+fn missing_singleton() -> Any {
+    spend(1, rekey_solution(1), [rekey_coin(1)])
+}
+
+test fn rejects_a_missing_singleton() -> Any {
+    run(main, missing_singleton())
+}
+
+test fn reference_rejects_a_missing_singleton() -> Any {
+    run(reference, missing_singleton())
+}
+
+fn two_singletons() -> Any {
+    spend(1, rekey_solution(1), [our_coin(101), our_coin(101), rekey_coin(1)])
+}
+
+test fn rejects_two_singletons() -> Any {
+    run(main, two_singletons())
+}
+
+test fn reference_rejects_two_singletons() -> Any {
+    run(reference, two_singletons())
+}
+
+fn wrong_singleton_amount() -> Any {
+    spend(1, rekey_solution(1), [our_coin(103), rekey_coin(1)])
+}
+
+test fn rejects_the_wrong_singleton_amount() -> Any {
+    run(main, wrong_singleton_amount())
+}
+
+test fn reference_rejects_the_wrong_singleton_amount() -> Any {
+    run(reference, wrong_singleton_amount())
+}
+
+fn two_even_coins() -> Any {
+    spend(1, rekey_solution(1), [our_coin(101), rekey_coin(1), rekey_coin(1)])
+}
+
+test fn rejects_two_even_coins() -> Any {
+    run(main, two_even_coins())
+}
+
+test fn reference_rejects_two_even_coins() -> Any {
+    run(reference, two_even_coins())
+}
+
+fn wrong_rekey_coin() -> Any {
+    spend(1, rekey_solution(1), [our_coin(101), rekey_coin(2)])
+}
+
+test fn rejects_the_wrong_rekey_coin() -> Any {
+    run(main, wrong_rekey_coin())
+}
+
+test fn reference_rejects_the_wrong_rekey_coin() -> Any {
+    run(reference, wrong_rekey_coin())
+}
+
+fn rekey_announcement() -> Any {
+    spend(
+        1,
+        rekey_solution(1),
+        [our_coin(101), rekey_coin(1), CreatePuzzleAnnouncement { message: "r" }],
+    )
+}
+
+test fn rejects_the_rekey_announcement() -> Any {
+    run(main, rekey_announcement())
+}
+
+test fn reference_rejects_the_rekey_announcement() -> Any {
+    run(reference, rekey_announcement())
+}
+
+fn unreported_even_coin() -> Any {
+    spend(2, payment_solution(0, 20), [our_coin(121), payment_coin(0)])
+}
+
+test fn rejects_an_unreported_even_coin() -> Any {
+    run(main, unreported_even_coin())
+}
+
+test fn reference_rejects_an_unreported_even_coin() -> Any {
+    run(reference, unreported_even_coin())
+}
+
+fn negative_in_amount() -> Any {
+    spend(2, payment_solution(10, -1), [our_coin(90), payment_coin(10)])
+}
+
+test fn rejects_a_negative_in_amount() -> Any {
+    run(main, negative_in_amount())
+}
+
+test fn reference_rejects_a_negative_in_amount() -> Any {
+    run(reference, negative_in_amount())
+}

@@ -1,0 +1,32 @@
+// Regression test, not for production use. A port of `augmented_condition.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./augmented_condition.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    condition: Condition,
+    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    inner_solution: Any,
+) -> List<Condition> {
+    [condition, ...inner_puzzle(...inner_solution)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn prepends_the_condition() -> Any {
+    check([
+        AssertHeightAbsolute { height: 100 },
+        1,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
+test fn prepends_to_no_conditions() -> Any {
+    check([AssertMyAmount { amount: 1 }, 1, nil])
+}

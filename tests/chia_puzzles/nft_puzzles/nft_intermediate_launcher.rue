@@ -1,0 +1,27 @@
+// Regression test, not for production use. A port of `nft_puzzles/nft_intermediate_launcher.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./nft_intermediate_launcher.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(launcher_puzzle_hash: Bytes32, mint_number: Int, mint_total: Int) -> List<Condition> {
+    [
+        CreateCoin { puzzle_hash: launcher_puzzle_hash, amount: 1 },
+        CreateCoinAnnouncement { message: sha256(mint_number as Bytes + mint_total as Bytes) },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn creates_the_launcher() -> Any {
+    check([sha256("launcher"), 7, 100])
+}
+
+test fn creates_the_first_launcher() -> Any {
+    check([sha256("launcher"), 0, 1])
+}

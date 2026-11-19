@@ -1,0 +1,74 @@
+// Regression test, not for production use. A port of `vc_puzzles/covenant_layer.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::{LineageProof, Proof};
+
+extern fn reference(...solution: Any) -> Any from "./covenant_layer.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(
+    initial_puzzle_hash: Bytes32,
+    parent_morpher: fn(
+        initial_puzzle_hash: Bytes32,
+        parent_inner_puzzle_hash: Bytes32,
+        ...morpher_solution: Any,
+    ) -> Bytes32,
+    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    lineage_proof: Proof,
+    morpher_solution: Any,
+    inner_solution: Any,
+) -> List<Condition> {
+    // The eve spend's parent is the initial puzzle, and each later parent must have had this layer.
+    let parent_id = if lineage_proof is LineageProof {
+        sha256(
+            lineage_proof.parent_parent_coin_info
+                + parent_morpher(
+                    initial_puzzle_hash,
+                    lineage_proof.parent_inner_puzzle_hash,
+                    ...morpher_solution,
+                )
+                + lineage_proof.parent_amount as Bytes,
+        )
+    } else {
+        sha256(
+            lineage_proof.parent_parent_coin_info
+                + initial_puzzle_hash
+                + lineage_proof.parent_amount as Bytes,
+        )
+    };
+
+    [AssertMyParentId { parent_id }, ...inner_puzzle(...inner_solution)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A parent morpher that hashes the initial puzzle hash, the parent's inner puzzle hash, and the
+// morpher solution together: `(sha256 2 5 7)`.
+inline const MORPHER: Any = [11 as Any, 2, 5, 7];
+
+test fn spends_the_eve_coin() -> Any {
+    check([
+        sha256("initial_puzzle"),
+        MORPHER,
+        1,
+        [sha256("parent_parent"), 1],
+        nil,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
+test fn spends_with_a_lineage_proof() -> Any {
+    check([
+        sha256("initial_puzzle"),
+        MORPHER,
+        1,
+        [sha256("parent_parent"), sha256("parent_inner_puzzle"), 3],
+        "morpher_solution",
+        [ReserveFee { amount: 1 }],
+    ])
+}

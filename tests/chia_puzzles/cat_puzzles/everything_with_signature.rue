@@ -1,0 +1,78 @@
+// Regression test, not for production use. A port of `cat_puzzles/everything_with_signature.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./everything_with_signature.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The facts about the CAT spend that the CAT layer passes to its TAIL.
+struct Truths {
+    puzzle: PuzzleTruths,
+    ...coin: CoinTruths,
+}
+
+struct PuzzleTruths {
+    inner_puzzle_hash: Bytes32,
+    ...cat_info: CatInfo,
+}
+
+struct CatInfo {
+    mod_hash: Bytes32,
+    mod_hash_hash: Bytes32,
+    tail_program_hash: Bytes32,
+}
+
+struct CoinTruths {
+    my_id: Bytes32,
+    ...my_coin: Coin,
+}
+
+struct Coin {
+    parent_coin_info: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+fn main(
+    public_key: PublicKey,
+    _truths: Truths,
+    _parent_is_cat: Bool,
+    _lineage_proof: Any,
+    delta: Int,
+    _inner_conditions: List<Condition>,
+    _solution: Any,
+) -> List<Condition> {
+    // A delta of zero signs the empty message.
+    [AggSigMe { public_key, message: delta as Bytes }]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn truths(parent_coin_info: Bytes32) -> Truths {
+    Truths {
+        puzzle: PuzzleTruths {
+            inner_puzzle_hash: sha256("inner_puzzle"),
+            cat_info: CatInfo {
+                mod_hash: sha256("cat_mod"),
+                mod_hash_hash: tree_hash_atom(sha256("cat_mod")),
+                tail_program_hash: sha256("tail"),
+            },
+        },
+        coin: CoinTruths {
+            my_id: sha256("my_id"),
+            my_coin: Coin { parent_coin_info, puzzle_hash: sha256("cat_puzzle"), amount: 100 },
+        },
+    }
+}
+
+test fn signs_the_delta() -> Any {
+    check([pubkey_for_exp(42), truths(sha256("parent")), true, nil, -50, nil, nil])
+}
+
+test fn signs_a_zero_delta() -> Any {
+    check([pubkey_for_exp(42), truths(sha256("parent")), false, nil, 0, nil, nil])
+}

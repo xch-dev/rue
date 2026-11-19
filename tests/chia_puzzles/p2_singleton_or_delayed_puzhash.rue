@@ -1,0 +1,75 @@
+// Regression test, not for production use. A port of `p2_singleton_or_delayed_puzhash.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./p2_singleton_or_delayed_puzhash.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    singleton_mod_hash: Bytes32,
+    launcher_id: Bytes32,
+    launcher_puzzle_hash: Bytes32,
+    seconds_delay: Int,
+    delayed_puzzle_hash: Bytes32,
+    // The singleton's inner puzzle hash when claimed by the singleton, or else the amount.
+    p1: Bytes32,
+    my_id: Bytes32 | nil,
+) -> List<Condition> {
+    if my_id is nil {
+        let amount = p1 as Int;
+
+        return [
+            AssertSecondsRelative { seconds: seconds_delay },
+            CreateCoin { puzzle_hash: delayed_puzzle_hash, amount },
+            AssertMyAmount { amount },
+        ];
+    }
+
+    let singleton_struct = SingletonStruct {
+        mod_hash: singleton_mod_hash,
+        launcher_id,
+        launcher_puzzle_hash,
+    };
+    let singleton_puzzle_hash = curry_tree_hash(
+        singleton_mod_hash,
+        [tree_hash(singleton_struct), p1],
+    );
+
+    [
+        AssertPuzzleAnnouncement { id: sha256(singleton_puzzle_hash + my_id) },
+        CreateCoinAnnouncement { message: "$" },
+        AssertMyCoinId { coin_id: my_id },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn claims_from_the_singleton() -> Any {
+    check([
+        sha256("singleton_mod"),
+        sha256("launcher_id"),
+        sha256("launcher_puzzle"),
+        3600,
+        sha256("delayed_puzzle"),
+        sha256("inner_puzzle"),
+        sha256("my_id"),
+    ])
+}
+
+test fn spends_to_the_delayed_puzzle() -> Any {
+    check([
+        sha256("singleton_mod"),
+        sha256("launcher_id"),
+        sha256("launcher_puzzle"),
+        3600,
+        sha256("delayed_puzzle"),
+        1750000000000,
+        nil,
+    ])
+}

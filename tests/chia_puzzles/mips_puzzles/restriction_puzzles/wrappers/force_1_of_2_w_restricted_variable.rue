@@ -1,0 +1,155 @@
+// Regression test, not for production use. A port of
+// `mips_puzzles/restriction_puzzles/wrappers/force_1_of_2_w_restricted_variable.clsp` from chia_puzzles, checked against the
+// compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./force_1_of_2_w_restricted_variable.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
+
+// Requires every coin created to have the puzzle hash of a 1 of 2 (behind an index wrapper and a
+// delegated puzzle feeder), whose left side is fixed and whose right side is a restricted member
+// that can be chosen in the solution.
+fn main(
+    delegated_puzzle_feeder_mod_hash: Bytes32,
+    one_of_n_mod_hash: Bytes32,
+    left_side_subtree_hash_hash: Bytes32,
+    index_wrapper_hash: Bytes32,
+    nonce: Int,
+    restriction_mod_hash: Bytes32,
+    member_validator_list_hash: Bytes32,
+    delegated_puzzle_validator_list_hash: Bytes32,
+    conditions: List<Condition>,
+    new_right_side_member_hash: Bytes32,
+) -> List<Condition> {
+    let fixed_puzzle_hash = fixed_puzzle_hash(
+        delegated_puzzle_feeder_mod_hash,
+        one_of_n_mod_hash,
+        left_side_subtree_hash_hash,
+        index_wrapper_hash,
+        nonce,
+        restriction_mod_hash,
+        member_validator_list_hash,
+        delegated_puzzle_validator_list_hash,
+        new_right_side_member_hash,
+    );
+
+    assert check_coins(conditions, fixed_puzzle_hash);
+    conditions
+}
+
+fn fixed_puzzle_hash(
+    delegated_puzzle_feeder_mod_hash: Bytes32,
+    one_of_n_mod_hash: Bytes32,
+    left_side_subtree_hash_hash: Bytes32,
+    index_wrapper_hash: Bytes32,
+    nonce: Int,
+    restriction_mod_hash: Bytes32,
+    member_validator_list_hash: Bytes32,
+    delegated_puzzle_validator_list_hash: Bytes32,
+    new_right_side_member_hash: Bytes32,
+) -> Bytes32 {
+    let nonce_hash = tree_hash_atom(nonce as Bytes);
+
+    let right_side_member_hash = curry_tree_hash(
+        index_wrapper_hash,
+        [
+            nonce_hash,
+            curry_tree_hash(
+                restriction_mod_hash,
+                [
+                    member_validator_list_hash,
+                    delegated_puzzle_validator_list_hash,
+                    new_right_side_member_hash,
+                ],
+            ),
+        ],
+    );
+
+    let merkle_root = tree_hash_pair(
+        left_side_subtree_hash_hash,
+        tree_hash_atom(right_side_member_hash),
+    );
+
+    curry_tree_hash(
+        index_wrapper_hash,
+        [
+            nonce_hash,
+            curry_tree_hash(
+                delegated_puzzle_feeder_mod_hash,
+                [curry_tree_hash(one_of_n_mod_hash, [tree_hash_atom(merkle_root)])],
+            ),
+        ],
+    )
+}
+
+fn check_coins(conditions: List<Condition>, fixed_puzzle_hash: Bytes32) -> Bool {
+    if conditions is nil {
+        return true;
+    }
+
+    let condition = conditions.first;
+    assert !(condition is CreateCoin) || condition.puzzle_hash == fixed_puzzle_hash;
+    check_coins(conditions.rest, fixed_puzzle_hash)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn solution(conditions: List<Condition>) -> Any {
+    [
+        sha256("delegated_puzzle_feeder"),
+        sha256("1_of_n"),
+        sha256("left_side"),
+        sha256("index_wrapper"),
+        7,
+        sha256("restrictions"),
+        sha256("member_validators"),
+        sha256("dpuz_validators"),
+        conditions,
+        sha256("new_right_side"),
+    ]
+}
+
+fn fixed() -> Bytes32 {
+    fixed_puzzle_hash(
+        sha256("delegated_puzzle_feeder"),
+        sha256("1_of_n"),
+        sha256("left_side"),
+        sha256("index_wrapper"),
+        7,
+        sha256("restrictions"),
+        sha256("member_validators"),
+        sha256("dpuz_validators"),
+        sha256("new_right_side"),
+    )
+}
+
+test fn allows_coins_to_the_fixed_puzzle() -> Any {
+    check(solution([
+        CreateCoin { puzzle_hash: fixed(), amount: 1 },
+        ReserveFee { amount: 1 },
+        CreateCoin { puzzle_hash: fixed(), amount: 2 },
+    ]))
+}
+
+test fn allows_no_coins() -> Any {
+    check(solution([ReserveFee { amount: 1 }]))
+}
+
+fn other_coin() -> Any {
+    solution([
+        CreateCoin { puzzle_hash: fixed(), amount: 1 },
+        CreateCoin { puzzle_hash: sha256("destination"), amount: 1 },
+    ])
+}
+
+test fn rejects_a_coin_to_another_puzzle() -> Any {
+    run(main, other_coin())
+}
+
+test fn reference_rejects_a_coin_to_another_puzzle() -> Any {
+    run(reference, other_coin())
+}

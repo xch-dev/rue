@@ -1,0 +1,54 @@
+// Regression test, not for production use. A port of `mips_puzzles/member_puzzles/bls_with_taproot_member_puzzle_assert.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(
+    ...solution: Any,
+) -> Any from "./bls_with_taproot_member_puzzle_assert.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+fn main(
+    synthetic_public_key: PublicKey,
+    delegated_puzzle_hash: Bytes32,
+    original_public_key: PublicKey | nil,
+    // Unused, as in the original: the delegated puzzle hash is the hidden puzzle's hash.
+    _hidden_puzzle: Any,
+) -> List<Condition> {
+    if original_public_key is nil {
+        return [AggSigPuzzle { public_key: synthetic_public_key, message: delegated_puzzle_hash }];
+    }
+
+    assert synthetic_public_key == original_public_key
+        + pubkey_for_exp(sha256(original_public_key as Bytes + delegated_puzzle_hash));
+
+    nil
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn synthetic_public_key() -> PublicKey {
+    let original_public_key = pubkey_for_exp(42);
+    original_public_key
+        + pubkey_for_exp(sha256(original_public_key as Bytes + sha256("hidden_puzzle")))
+}
+
+test fn signs_the_delegated_puzzle_hash() -> Any {
+    check([synthetic_public_key(), sha256("delegated_puzzle"), nil, nil])
+}
+
+test fn reveals_the_hidden_puzzle() -> Any {
+    check([synthetic_public_key(), sha256("hidden_puzzle"), pubkey_for_exp(42), nil])
+}
+
+test fn rejects_the_wrong_hidden_puzzle() -> Any {
+    run(main, [synthetic_public_key(), sha256("delegated_puzzle"), pubkey_for_exp(42), nil])
+}
+
+test fn reference_rejects_the_wrong_hidden_puzzle() -> Any {
+    run(reference, [synthetic_public_key(), sha256("delegated_puzzle"), pubkey_for_exp(42), nil])
+}

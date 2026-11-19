@@ -1,0 +1,124 @@
+// Regression test, not for production use. A port of `mips_puzzles/architecture_puzzles/restrictions.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./restrictions.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+// Validates the conditions the inner puzzle outputs. Its output is ignored, so it can only reject.
+type MemberValidator = fn(conditions: List<Condition>, ...solution: Any) -> Any;
+
+// Validates the delegated puzzle hash. Its output is ignored, so it can only reject.
+type DelegatedPuzzleValidator = fn(delegated_puzzle_hash: Bytes32, ...solution: Any) -> Any;
+
+fn main(
+    member_validators: List<MemberValidator>,
+    delegated_puzzle_validators: List<DelegatedPuzzleValidator>,
+    inner_puzzle: fn(delegated_puzzle_hash: Bytes32, ...inner_solution: Any) -> List<Condition>,
+    delegated_puzzle_hash: Bytes32,
+    member_validator_solutions: List<Any>,
+    delegated_puzzle_validator_solutions: List<Any>,
+    inner_solution: Any,
+) -> List<Condition> {
+    let conditions = inner_puzzle(delegated_puzzle_hash, ...inner_solution);
+    let _ = run_validators(member_validators, member_validator_solutions, conditions);
+    let _ = run_validators(
+        delegated_puzzle_validators,
+        delegated_puzzle_validator_solutions,
+        delegated_puzzle_hash,
+    );
+    conditions
+}
+
+// Runs each validator with its solution, discarding their output.
+fn run_validators<T>(
+    validators: List<fn(value: T, ...solution: Any) -> Any>,
+    solutions: List<Any>,
+    value: T,
+) -> nil {
+    if validators is nil {
+        return nil;
+    }
+
+    // Like the original, this expects a solution for each validator.
+    let solutions = unchecked_cast::<(Any, List<Any>)>(solutions);
+    let _ = validators.first(value, ...solutions.first);
+    run_validators(validators.rest, solutions.rest, value)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A program that raises unless the condition holds: `(a (i condition (q) (q 8)) 1)`.
+fn assert_program(condition: Any) -> Any {
+    [2 as Any, [3 as Any, condition, [1 as Any], [1 as Any, 8]], 1]
+}
+
+// Accepts a delegated puzzle hash equal to its solution.
+fn equals_validator() -> Any {
+    assert_program([9 as Any, 2, 5])
+}
+
+// Accepts conditions whose first opcode is its solution.
+fn opcode_validator() -> Any {
+    assert_program([9 as Any, [5 as Any, [5 as Any, 2]], 5])
+}
+
+// `(c (q . 1) 2)`, which outputs something that must be discarded.
+fn noisy_validator() -> Any {
+    [4 as Any, (1, 1), 2]
+}
+
+inline const CONDITIONS: Any = [[52 as Any, 1]];
+
+test fn runs_with_no_validators() -> Any {
+    check([nil, nil, 3, sha256("delegated_puzzle"), nil, nil, [ReserveFee { amount: 1 }]])
+}
+
+test fn passes_the_validators() -> Any {
+    check([
+        [opcode_validator(), noisy_validator()],
+        [noisy_validator(), equals_validator()],
+        3,
+        sha256("delegated_puzzle"),
+        [[52], nil],
+        [nil, [sha256("delegated_puzzle")]],
+        CONDITIONS,
+    ])
+}
+
+fn failing_member_validator() -> Any {
+    [[opcode_validator()], nil, 3, sha256("delegated_puzzle"), [[51]], nil, CONDITIONS]
+}
+
+test fn rejects_the_conditions() -> Any {
+    run(main, failing_member_validator())
+}
+
+test fn reference_rejects_the_conditions() -> Any {
+    run(reference, failing_member_validator())
+}
+
+fn failing_delegated_puzzle_validator() -> Any {
+    [
+        nil,
+        [noisy_validator(), equals_validator()],
+        3,
+        sha256("delegated_puzzle"),
+        nil,
+        [nil, [sha256("other_puzzle")]],
+        CONDITIONS,
+    ]
+}
+
+test fn rejects_the_delegated_puzzle() -> Any {
+    run(main, failing_delegated_puzzle_validator())
+}
+
+test fn reference_rejects_the_delegated_puzzle() -> Any {
+    run(reference, failing_delegated_puzzle_validator())
+}

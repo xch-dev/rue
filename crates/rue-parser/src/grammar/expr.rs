@@ -71,6 +71,13 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
             p.start_at(checkpoint, SyntaxKind::StructInitializerExpr);
             p.expect(T!['{']);
             delimited_list(p, T!['}'], |p| {
+                // Leave anything that can't start a field to the list's recovery, which only
+                // reports the first error, so a missing `}` before more of an enclosing list
+                // doesn't report every element after it
+                if !p.at(SyntaxKind::Ident) {
+                    return;
+                }
+
                 p.start(SyntaxKind::StructInitializerField);
                 p.expect(SyntaxKind::Ident);
                 if p.try_eat(T![:]) {

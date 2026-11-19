@@ -1,0 +1,150 @@
+// Regression test, not for production use. A port of `internal_custody_puzzles/ach_clawback.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./ach_clawback.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(
+    clawback_puzzle_hash: Bytes32,
+    // The custody coin's merkle root, which authenticates the clawback, and the rest of the
+    // curried arguments.
+    puzzle_root_and_rest: (Bytes32, Any),
+    my_amount: Int,
+    puzzle_reveal: fn(...solution: Any) -> List<Condition>,
+    merkle_proof: MerkleProof,
+    puzzle_solution: Any,
+) -> List<Condition> {
+    assert puzzle_root_and_rest.first == simplify_merkle_proof(
+        tree_hash(puzzle_reveal),
+        merkle_proof,
+    );
+
+    [
+        AssertMyAmount { amount: my_amount },
+        ...check_for_clawback(
+            puzzle_reveal(...puzzle_solution),
+            clawback_puzzle_hash,
+            my_amount,
+            false,
+        ),
+    ]
+}
+
+// Checks that there's exactly one coin created, and that it claws back the whole amount.
+fn check_for_clawback(
+    conditions: List<Condition>,
+    clawback_puzzle_hash: Bytes32,
+    amount: Int,
+    seen: Bool,
+) -> List<Condition> {
+    if conditions is nil {
+        assert seen;
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    assert !(condition is CreateCoin)
+        || (!seen && condition.puzzle_hash == clawback_puzzle_hash && condition.amount == amount);
+
+    [
+        condition,
+        ...check_for_clawback(
+            conditions.rest,
+            clawback_puzzle_hash,
+            amount,
+            seen || condition is CreateCoin,
+        ),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A tree with two leaves: the puzzle `1` on the left, and another puzzle on the right.
+fn left_leaf() -> Bytes32 {
+    tree_hash_atom(tree_hash(1))
+}
+
+fn right_leaf() -> Bytes32 {
+    tree_hash_atom(sha256("other_puzzle"))
+}
+
+fn root() -> Bytes32 {
+    tree_hash_pair(left_leaf(), right_leaf())
+}
+
+fn spend(conditions: List<Condition>) -> Any {
+    [sha256("clawback"), (root(), sha256("p2")), 100, 1, (0, [right_leaf()]), conditions]
+}
+
+test fn claws_back() -> Any {
+    check(spend([
+        ReserveFee { amount: 0 },
+        CreateCoin { puzzle_hash: sha256("clawback"), amount: 100 },
+        CreateCoinAnnouncement { message: "hello" },
+    ]))
+}
+
+test fn rejects_no_coin() -> Any {
+    run(main, spend([ReserveFee { amount: 0 }]))
+}
+
+test fn reference_rejects_no_coin() -> Any {
+    run(reference, spend([ReserveFee { amount: 0 }]))
+}
+
+fn two_coins() -> Any {
+    spend([
+        CreateCoin { puzzle_hash: sha256("clawback"), amount: 100 },
+        CreateCoin { puzzle_hash: sha256("clawback"), amount: 100 },
+    ])
+}
+
+test fn rejects_two_coins() -> Any {
+    run(main, two_coins())
+}
+
+test fn reference_rejects_two_coins() -> Any {
+    run(reference, two_coins())
+}
+
+test fn rejects_the_wrong_puzzle_hash() -> Any {
+    run(main, spend([CreateCoin { puzzle_hash: sha256("thief"), amount: 100 }]))
+}
+
+test fn reference_rejects_the_wrong_puzzle_hash() -> Any {
+    run(reference, spend([CreateCoin { puzzle_hash: sha256("thief"), amount: 100 }]))
+}
+
+test fn rejects_the_wrong_amount() -> Any {
+    run(main, spend([CreateCoin { puzzle_hash: sha256("clawback"), amount: 99 }]))
+}
+
+test fn reference_rejects_the_wrong_amount() -> Any {
+    run(reference, spend([CreateCoin { puzzle_hash: sha256("clawback"), amount: 99 }]))
+}
+
+fn wrong_proof() -> Any {
+    [
+        sha256("clawback"),
+        (root(), sha256("p2")),
+        100,
+        1,
+        (1, [right_leaf()]),
+        [CreateCoin { puzzle_hash: sha256("clawback"), amount: 100 }],
+    ]
+}
+
+test fn rejects_the_wrong_proof() -> Any {
+    run(main, wrong_proof())
+}
+
+test fn reference_rejects_the_wrong_proof() -> Any {
+    run(reference, wrong_proof())
+}

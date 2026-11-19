@@ -1,0 +1,20 @@
+// Regression test, not for production use. A port of `notification.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./notification.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(target: Bytes32, amount: Int) -> List<Condition> {
+    [CreateCoin { puzzle_hash: target, amount }, CreateCoinAnnouncement { message: nil }]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn notifies_the_target() -> Any {
+    check([sha256("target"), 1])
+}

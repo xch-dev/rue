@@ -1,0 +1,123 @@
+// Regression test, not for production use. A port of `vc_puzzles/standard_vc_revocation_puzzle.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./standard_vc_revocation_puzzle.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The magic condition that runs the exigent metadata layer's transfer program.
+struct RunTransferProgram {
+    opcode = -10,
+    lineage_proof: Any,
+    morpher_solution: Any,
+    transfer_program_solution: Any,
+}
+
+struct MorpherSolution {
+    previous_metadata_hash: Bytes32,
+    launcher_id: Bytes32,
+}
+
+struct TransferProgramSolution {
+    provider_inner_puzzle_hash: Bytes32,
+    my_coin_id: Bytes32,
+    new_metadata: nil,
+    new_transfer_program_hash: Bytes32,
+}
+
+struct ProviderSolution {
+    provider_inner_puzzle_hash: Bytes32,
+    my_coin_id: Bytes32,
+}
+
+// Revokes a verifiable credential, by spending it to its inner puzzle hash and resetting its
+// metadata and transfer program.
+fn main(
+    singleton_mod_hash: Bytes32,
+    singleton_launcher_hash_hash: Bytes32,
+    ownership_layer_mod_hash: Bytes32,
+    revocation_layer_mod_hash: Bytes32,
+    default_transfer_program_hash: Bytes32,
+    launcher_id: Bytes32,
+    metadata_hash: Bytes32,
+    transfer_program_hash: Bytes32,
+    this_hash_hash: Bytes32,
+    inner_puzzle_hash: Bytes32,
+    my_amount: Int,
+    ownership_lineage_proof: Any,
+    previous_metadata_hash: Bytes32,
+    announcement_nonce: Bytes,
+    provider_solution: ProviderSolution,
+) -> List<Condition | RunTransferProgram> {
+    let revocation_layer_hash = curry_tree_hash(
+        revocation_layer_mod_hash,
+        [
+            tree_hash_atom(revocation_layer_mod_hash),
+            this_hash_hash,
+            tree_hash_atom(inner_puzzle_hash),
+        ],
+    );
+    let ownership_layer_hash = curry_tree_hash(
+        ownership_layer_mod_hash,
+        [
+            tree_hash_atom(ownership_layer_mod_hash),
+            metadata_hash,
+            transfer_program_hash,
+            tree_hash_atom(transfer_program_hash),
+            revocation_layer_hash,
+        ],
+    );
+    let singleton_struct_hash = tree_hash_pair(
+        tree_hash_atom(singleton_mod_hash),
+        tree_hash_pair(tree_hash_atom(launcher_id), singleton_launcher_hash_hash),
+    );
+
+    [
+        AssertMyPuzzleHash {
+            puzzle_hash: curry_tree_hash(
+                singleton_mod_hash,
+                [singleton_struct_hash, ownership_layer_hash],
+            ),
+        },
+        AssertMyAmount { amount: my_amount },
+        CreateCoin { puzzle_hash: inner_puzzle_hash, amount: my_amount },
+        // For fees to be attached to.
+        CreateCoinAnnouncement { message: announcement_nonce },
+        RunTransferProgram {
+            lineage_proof: ownership_lineage_proof,
+            morpher_solution: MorpherSolution { previous_metadata_hash, launcher_id },
+            transfer_program_solution: TransferProgramSolution {
+                provider_inner_puzzle_hash: provider_solution.provider_inner_puzzle_hash,
+                my_coin_id: provider_solution.my_coin_id,
+                new_metadata: nil,
+                new_transfer_program_hash: default_transfer_program_hash,
+            },
+        },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn revokes_the_credential() -> Any {
+    check([
+        sha256("singleton_mod"),
+        tree_hash_atom(sha256("launcher")),
+        sha256("ownership_layer_mod"),
+        sha256("revocation_layer_mod"),
+        sha256("default_transfer_program"),
+        sha256("launcher_id"),
+        sha256("metadata"),
+        sha256("transfer_program"),
+        sha256("this_hash"),
+        sha256("inner_puzzle"),
+        1,
+        [sha256("parent_parent"), sha256("parent_inner_puzzle"), 1],
+        sha256("previous_metadata"),
+        "nonce",
+        [sha256("provider_inner_puzzle"), sha256("my_coin")],
+    ])
+}

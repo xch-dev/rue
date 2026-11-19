@@ -1,0 +1,52 @@
+// Regression test, not for production use. A port of
+// `mips_puzzles/restriction_puzzles/wrappers/force_assert_coin_announcement.clsp` from chia_puzzles, checked against the
+// compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./force_assert_coin_announcement.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
+
+// Requires the conditions to include an `AssertCoinAnnouncement`.
+fn main(conditions: List<Condition>) -> List<Condition> {
+    check_conditions(conditions)
+}
+
+fn check_conditions(conditions: List<Condition>) -> List<Condition> {
+    // Like the original, this fails when it reaches the end of the list.
+    let conditions = unchecked_cast::<(Condition, List<Condition>)>(conditions);
+
+    if conditions.first is AssertCoinAnnouncement {
+        return conditions;
+    }
+
+    [conditions.first, ...check_conditions(conditions.rest)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn finds_the_announcement() -> Any {
+    check([[
+        CreateCoin { puzzle_hash: sha256("destination"), amount: 1 },
+        AssertCoinAnnouncement { id: sha256("announcement") },
+        ReserveFee { amount: 1 },
+    ]])
+}
+
+fn no_announcement() -> Any {
+    [[
+        CreateCoin { puzzle_hash: sha256("destination"), amount: 1 },
+        AssertPuzzleAnnouncement { id: sha256("announcement") },
+    ]]
+}
+
+test fn rejects_a_missing_announcement() -> Any {
+    run(main, no_announcement())
+}
+
+test fn reference_rejects_a_missing_announcement() -> Any {
+    run(reference, no_announcement())
+}

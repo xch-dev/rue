@@ -1,0 +1,58 @@
+// Regression test, not for production use. A port of `p2_parent.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_parent.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    morpher: fn(...inner_puzzle_hash: Bytes32) -> Bytes32,
+    parent_parent_id: Bytes32,
+    parent_inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    parent_amount: Int,
+    parent_solution: Any,
+) -> List<Condition> {
+    let parent_puzzle_hash = morpher(...tree_hash(parent_inner_puzzle));
+    [
+        AssertMyParentId { parent_id: coinid(parent_parent_id, parent_puzzle_hash, parent_amount) },
+        ...parent_inner_puzzle(...parent_solution),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn asserts_an_unmorphed_parent() -> Any {
+    check([
+        1,
+        sha256("parent_parent"),
+        1,
+        5,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
+test fn asserts_a_morphed_parent() -> Any {
+    // A morpher that hashes the inner puzzle hash again.
+    let morpher = [11 as Any, (1, 1), 1];
+    check([morpher, sha256("parent_parent"), 1, 5, nil])
+}
+
+test fn rejects_a_negative_amount() -> Any {
+    run(main, [1, sha256("parent_parent"), 1, -1, nil])
+}
+
+test fn reference_rejects_a_negative_amount() -> Any {
+    run(reference, [1, sha256("parent_parent"), 1, -1, nil])
+}
+
+test fn rejects_a_short_parent_id() -> Any {
+    run(main, [1, 0x1234, 1, 5, nil])
+}
+
+test fn reference_rejects_a_short_parent_id() -> Any {
+    run(reference, [1, 0x1234, 1, 5, nil])
+}

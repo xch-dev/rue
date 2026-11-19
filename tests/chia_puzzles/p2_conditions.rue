@@ -1,0 +1,25 @@
+// Regression test, not for production use. A port of `p2_conditions.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_conditions.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+// Returns a program that quotes the conditions, to be used as a delegated puzzle.
+fn main(conditions: Any) -> (1, Any) {
+    (1, conditions)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn quotes_the_conditions() -> Any {
+    check([[CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }]])
+}
+
+test fn quotes_nil() -> Any {
+    check([nil])
+}

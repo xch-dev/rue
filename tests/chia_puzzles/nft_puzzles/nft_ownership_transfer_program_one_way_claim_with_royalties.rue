@@ -1,0 +1,225 @@
+// Regression test, not for production use. A port of
+// `nft_puzzles/nft_ownership_transfer_program_one_way_claim_with_royalties.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::offer::{NotarizedPayment, Payment};
+import std::singleton::SingletonStruct;
+
+extern fn reference(
+    ...solution: Any,
+) -> Any from "./nft_ownership_transfer_program_one_way_claim_with_royalties.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// What the NFT ownership layer expects a transfer program to return.
+struct TransferOutput {
+    new_owner: Bytes32 | nil,
+    new_transfer_program: nil,
+    conditions: List<Condition>,
+}
+
+// A price the NFT was traded for, paid to the settlement puzzle.
+struct TradePrice {
+    amount: Int,
+    settlement_puzzle_hash: Bytes32,
+}
+
+struct Solution {
+    // The launcher id of the DID that owns the NFT, if any.
+    new_owner: Bytes32 | nil,
+    trade_prices: List<TradePrice>,
+    new_did_inner_puzzle_hash: Bytes32,
+}
+
+fn main(
+    singleton_struct: SingletonStruct,
+    royalty_address: Bytes32,
+    trade_price_percentage: Int,
+    current_owner: Bytes32 | nil,
+    // The conditions of the NFT's inner puzzle, which this transfer program doesn't check.
+    _conditions: Any,
+    solution: Solution | nil,
+) -> TransferOutput {
+    if solution is nil {
+        return TransferOutput {
+            new_owner: current_owner,
+            new_transfer_program: nil,
+            conditions: nil,
+        };
+    }
+
+    let my_nft_id = singleton_struct.launcher_id;
+    let royalties = assert_royalties(
+        royalty_address,
+        trade_price_percentage,
+        solution.trade_prices,
+        my_nft_id,
+    );
+    let new_owner = solution.new_owner;
+
+    let conditions = if !(new_owner is nil) && new_owner != current_owner {
+        // The new owner DID must approve the transfer.
+        let did_struct = SingletonStruct {
+            mod_hash: singleton_struct.mod_hash,
+            launcher_id: new_owner,
+            launcher_puzzle_hash: singleton_struct.launcher_puzzle_hash,
+        };
+        let did_puzzle_hash = curry_tree_hash(
+            singleton_struct.mod_hash,
+            [tree_hash(did_struct), solution.new_did_inner_puzzle_hash],
+        );
+        [AssertPuzzleAnnouncement { id: sha256(did_puzzle_hash + my_nft_id) }, ...royalties]
+    } else {
+        royalties
+    };
+
+    TransferOutput { new_owner, new_transfer_program: nil, conditions }
+}
+
+// Asserts that each trade paid its royalty to the royalty address.
+fn assert_royalties(
+    royalty_address: Bytes32,
+    trade_price_percentage: Int,
+    trade_prices: List<TradePrice>,
+    my_nft_id: Bytes32,
+) -> List<Condition> {
+    if trade_prices is nil {
+        return nil;
+    }
+
+    let trade_price = trade_prices.first;
+    let (royalty, _) = divmod(trade_price.amount * trade_price_percentage, 10000);
+    let payment = NotarizedPayment {
+        nonce: my_nft_id,
+        payments: [Payment {
+            puzzle_hash: royalty_address,
+            amount: royalty,
+            memos: Memos { value: [royalty_address] },
+        }],
+    };
+
+    [
+        AssertPuzzleAnnouncement {
+            id: sha256(trade_price.settlement_puzzle_hash + tree_hash(payment)),
+        },
+        ...assert_royalties(royalty_address, trade_price_percentage, trade_prices.rest, my_nft_id),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn singleton_struct() -> SingletonStruct {
+    SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256("nft_launcher_id"),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    }
+}
+
+fn trade_prices() -> List<TradePrice> {
+    [
+        TradePrice { amount: 1000, settlement_puzzle_hash: sha256("xch_settlement") },
+        TradePrice { amount: 12345, settlement_puzzle_hash: sha256("cat_settlement") },
+    ]
+}
+
+test fn keeps_the_owner_without_a_solution() -> Any {
+    check([singleton_struct(), sha256("royalty"), 300, sha256("did"), nil, nil])
+}
+
+test fn transfers_to_a_new_did() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        300,
+        sha256("did"),
+        nil,
+        Solution {
+            new_owner: sha256("new_did"),
+            trade_prices: trade_prices(),
+            new_did_inner_puzzle_hash: sha256("new_did_inner"),
+        },
+    ])
+}
+
+test fn keeps_the_same_did() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        300,
+        sha256("did"),
+        nil,
+        Solution {
+            new_owner: sha256("did"),
+            trade_prices: trade_prices(),
+            new_did_inner_puzzle_hash: sha256("did_inner"),
+        },
+    ])
+}
+
+test fn removes_the_owner() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        0,
+        sha256("did"),
+        nil,
+        Solution {
+            new_owner: nil,
+            trade_prices: trade_prices(),
+            new_did_inner_puzzle_hash: sha256("none"),
+        },
+    ])
+}
+
+test fn transfers_without_trades() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        300,
+        nil,
+        nil,
+        Solution {
+            new_owner: sha256("new_did"),
+            trade_prices: nil,
+            new_did_inner_puzzle_hash: sha256("new_did_inner"),
+        },
+    ])
+}
+
+test fn rounds_a_negative_royalty_down() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        300,
+        sha256("did"),
+        nil,
+        Solution {
+            new_owner: sha256("new_did"),
+            trade_prices: [TradePrice {
+                amount: -12345,
+                settlement_puzzle_hash: sha256("xch_settlement"),
+            }],
+            new_did_inner_puzzle_hash: sha256("new_did_inner"),
+        },
+    ])
+}
+
+test fn rounds_a_negative_percentage_down() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        -1,
+        sha256("did"),
+        nil,
+        Solution {
+            new_owner: sha256("new_did"),
+            trade_prices: trade_prices(),
+            new_did_inner_puzzle_hash: sha256("new_did_inner"),
+        },
+    ])
+}

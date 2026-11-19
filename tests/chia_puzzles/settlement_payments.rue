@@ -1,0 +1,89 @@
+// Regression test, not for production use. A port of `settlement_payments.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::offer::{NotarizedPayment, Payment};
+
+extern fn reference(...solution: Any) -> Any from "./settlement_payments.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(...notarized_payments: List<NotarizedPayment>) -> List<Condition> {
+    settle(notarized_payments)
+}
+
+fn settle(notarized_payments: List<NotarizedPayment>) -> List<Condition> {
+    if notarized_payments is nil {
+        return nil;
+    }
+
+    let notarized_payment = notarized_payments.first;
+
+    [
+        CreatePuzzleAnnouncement { message: tree_hash(notarized_payment) },
+        ...create_coins(notarized_payment.payments, settle(notarized_payments.rest)),
+    ]
+}
+
+fn create_coins(payments: List<Payment>, rest: List<Condition>) -> List<Condition> {
+    if payments is nil {
+        return rest;
+    }
+
+    let payment = payments.first;
+    assert payment.amount > 0;
+
+    [
+        CreateCoin {
+            puzzle_hash: payment.puzzle_hash,
+            amount: payment.amount,
+            memos: payment.memos,
+        },
+        ...create_coins(payments.rest, rest),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn settles_payments() -> Any {
+    check([
+        NotarizedPayment {
+            nonce: sha256("first"),
+            payments: [
+                Payment {
+                    puzzle_hash: sha256("alice"),
+                    amount: 100,
+                    memos: Memos { value: [sha256("alice")] },
+                },
+                Payment { puzzle_hash: sha256("bob"), amount: 50, memos: nil },
+            ],
+        },
+        NotarizedPayment { nonce: sha256("second"), payments: nil },
+        NotarizedPayment {
+            nonce: sha256("third"),
+            payments: [Payment { puzzle_hash: sha256("carol"), amount: 1, memos: nil }],
+        },
+    ])
+}
+
+test fn settles_nothing() -> Any {
+    check(nil)
+}
+
+fn zero_payment() -> Any {
+    [NotarizedPayment {
+        nonce: sha256("nonce"),
+        payments: [Payment { puzzle_hash: sha256("alice"), amount: 0, memos: nil }],
+    }]
+}
+
+test fn rejects_a_zero_payment() -> Any {
+    run(main, zero_payment())
+}
+
+test fn reference_rejects_a_zero_payment() -> Any {
+    run(reference, zero_payment())
+}

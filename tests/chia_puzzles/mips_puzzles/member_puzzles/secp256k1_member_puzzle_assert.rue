@@ -1,0 +1,50 @@
+// Regression test, not for production use. A port of `mips_puzzles/member_puzzles/secp256k1_member_puzzle_assert.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./secp256k1_member_puzzle_assert.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+fn main(
+    public_key: K1PublicKey,
+    delegated_puzzle_hash: Bytes32,
+    my_puzzle_hash: Bytes32,
+    signature: K1Signature,
+) -> List<Condition> {
+    secp256k1_verify(public_key, sha256(delegated_puzzle_hash + my_puzzle_hash), signature);
+    [AssertMyPuzzleHash { puzzle_hash: my_puzzle_hash }]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// Signed with the secret key 12345.
+inline const PUBLIC_KEY: K1PublicKey = 0x03f01d6b9018ab421dd410404cb869072065522bf85734008f105cf385a023a80f as K1PublicKey;
+inline const SIGNATURE: K1Signature = 0xe079fe5dd03876e12ad9961fad274b163ced57a647212d077b57c4471070347c53881633fbcab6b9d689c0255b8bc543ac5fc06b773d9821f6037c262aa58649 as K1Signature;
+
+// A valid signature, but of the delegated puzzle hash and a different my_puzzle_hash.
+inline const OTHER_SIGNATURE: K1Signature = 0x8633b8673536e8cf23d835d2fa37ce651e091bf85c684ad6d241ec2c973f9b6b12e23699cdbef49772b2e76d0bef745ed3f2b701006c5880f6266bc7ac12dd3b as K1Signature;
+
+test fn verifies_the_signature() -> Any {
+    check([PUBLIC_KEY, sha256("delegated_puzzle"), sha256("my_puzzle"), SIGNATURE])
+}
+
+test fn rejects_the_wrong_signature() -> Any {
+    run(main, [PUBLIC_KEY, sha256("delegated_puzzle"), sha256("my_puzzle"), OTHER_SIGNATURE])
+}
+
+test fn reference_rejects_the_wrong_signature() -> Any {
+    run(reference, [PUBLIC_KEY, sha256("delegated_puzzle"), sha256("my_puzzle"), OTHER_SIGNATURE])
+}
+
+test fn rejects_another_delegated_puzzle() -> Any {
+    run(main, [PUBLIC_KEY, sha256("other_puzzle"), sha256("my_puzzle"), SIGNATURE])
+}
+
+test fn reference_rejects_another_delegated_puzzle() -> Any {
+    run(reference, [PUBLIC_KEY, sha256("other_puzzle"), sha256("my_puzzle"), SIGNATURE])
+}

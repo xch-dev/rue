@@ -1,0 +1,74 @@
+// Regression test, not for production use. A port of `p2_singleton_via_delegated_puzzle.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./p2_singleton_via_delegated_puzzle.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    singleton_struct: SingletonStruct,
+    aggregator_puzzle: fn(...solution: Any) -> List<Condition>,
+    aggregator_solution: Any,
+    singleton_inner_puzzle_hash: Bytes32,
+    delegated_puzzle: fn(...solution: Any) -> List<Condition>,
+    delegated_solution: Any,
+    my_id: Bytes32,
+) -> List<Condition> {
+    if !(aggregator_solution is nil) {
+        return aggregator_puzzle(...aggregator_solution);
+    }
+
+    let singleton_puzzle_hash = curry_tree_hash(
+        singleton_struct.mod_hash,
+        [tree_hash(singleton_struct), singleton_inner_puzzle_hash],
+    );
+
+    [
+        AssertPuzzleAnnouncement {
+            id: sha256(singleton_puzzle_hash + tree_hash([my_id, tree_hash(delegated_puzzle)])),
+        },
+        CreateCoinAnnouncement { message: "$" },
+        AssertMyCoinId { coin_id: my_id },
+        ...delegated_puzzle(...delegated_solution),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn singleton_struct() -> SingletonStruct {
+    SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256("launcher_id"),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    }
+}
+
+test fn runs_the_delegated_puzzle() -> Any {
+    check([
+        singleton_struct(),
+        1,
+        nil,
+        sha256("inner_puzzle"),
+        1,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+        sha256("my_id"),
+    ])
+}
+
+test fn runs_the_aggregator() -> Any {
+    check([
+        singleton_struct(),
+        1,
+        [ReserveFee { amount: 1 }],
+        sha256("inner_puzzle"),
+        1,
+        nil,
+        sha256("my_id"),
+    ])
+}

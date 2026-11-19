@@ -1,0 +1,34 @@
+// Regression test, not for production use. A port of `mips_puzzles/restriction_puzzles/add_dpuz_wrapper.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./add_dpuz_wrapper.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+// Runs the delegated puzzle, and passes its conditions to the wrapper.
+fn main(
+    wrapper: fn(conditions: List<Condition>, ...wrapper_solution: Any) -> List<Condition>,
+    delegated_puzzle: fn(...solution: Any) -> List<Condition>,
+    wrapper_solution: Any,
+    delegated_solution: Any,
+) -> List<Condition> {
+    wrapper(delegated_puzzle(...delegated_solution), ...wrapper_solution)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn wraps_the_conditions() -> Any {
+    // A wrapper that prepends the first item of its solution: `(c (f 3) 2)`.
+    let wrapper = [4 as Any, [5 as Any, 3], 2];
+    check([
+        wrapper,
+        1,
+        [AssertHeightRelative { height: 10 }],
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}

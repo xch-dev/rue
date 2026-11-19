@@ -1,0 +1,145 @@
+// Regression test, not for production use. A port of `p2_singleton_aggregator.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_singleton_aggregator.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+struct MergedCoin {
+    parent_coin_id: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+struct OutputCoin {
+    parent_coin_id: Bytes32,
+    amount: Int,
+}
+
+fn main(
+    my_id: Bytes32,
+    my_puzzle_hash: Bytes32,
+    my_amount: Int,
+    merged_coins: List<MergedCoin>,
+    output_coin: OutputCoin,
+) -> List<Condition> {
+    [
+        AssertMyAmount { amount: my_amount },
+        AssertMyPuzzleHash { puzzle_hash: my_puzzle_hash },
+        AssertMyCoinId { coin_id: my_id },
+        ...if merged_coins is nil {
+            // This coin is being merged into the output coin.
+            let output_coin_id = coinid(
+                output_coin.parent_coin_id,
+                my_puzzle_hash,
+                output_coin.amount,
+            );
+            [
+                CreateCoinAnnouncement { message: nil },
+                AssertCoinAnnouncement { id: sha256(output_coin_id + my_id) },
+            ]
+        } else {
+            merge(my_puzzle_hash, merged_coins, my_amount)
+        },
+    ]
+}
+
+// Announces to each coin being merged, and creates a coin with all of their value.
+fn merge(my_puzzle_hash: Bytes32, merged_coins: List<MergedCoin>, total: Int) -> List<Condition> {
+    if merged_coins is nil {
+        return [
+            AssertHeightRelative { height: 5 },
+            CreateCoin {
+                puzzle_hash: my_puzzle_hash,
+                amount: total,
+                memos: Memos { value: [my_puzzle_hash] },
+            },
+        ];
+    }
+
+    let coin = merged_coins.first;
+    let coin_id = coinid(coin.parent_coin_id, coin.puzzle_hash, coin.amount);
+
+    [
+        AssertCoinAnnouncement { id: sha256(coin_id) },
+        CreateCoinAnnouncement { message: coin_id },
+        ...merge(my_puzzle_hash, merged_coins.rest, total + coin.amount),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn merges_coins() -> Any {
+    check([
+        sha256("my_id"),
+        sha256("my_puzzle"),
+        10,
+        [
+            MergedCoin {
+                parent_coin_id: sha256("first"),
+                puzzle_hash: sha256("my_puzzle"),
+                amount: 20,
+            },
+            MergedCoin {
+                parent_coin_id: sha256("second"),
+                puzzle_hash: sha256("my_puzzle"),
+                amount: 30,
+            },
+        ],
+        nil,
+    ])
+}
+
+test fn gives_itself_to_the_merge() -> Any {
+    check([
+        sha256("my_id"),
+        sha256("my_puzzle"),
+        20,
+        nil,
+        OutputCoin { parent_coin_id: sha256("output"), amount: 10 },
+    ])
+}
+
+fn negative_merged_amount() -> Any {
+    [
+        sha256("my_id"),
+        sha256("my_puzzle"),
+        10,
+        [MergedCoin {
+            parent_coin_id: sha256("first"),
+            puzzle_hash: sha256("my_puzzle"),
+            amount: -1,
+        }],
+        nil,
+    ]
+}
+
+test fn rejects_a_negative_merged_amount() -> Any {
+    run(main, negative_merged_amount())
+}
+
+test fn reference_rejects_a_negative_merged_amount() -> Any {
+    run(reference, negative_merged_amount())
+}
+
+fn negative_output_amount() -> Any {
+    [
+        sha256("my_id"),
+        sha256("my_puzzle"),
+        20,
+        nil,
+        OutputCoin { parent_coin_id: sha256("output"), amount: -1 },
+    ]
+}
+
+test fn rejects_a_negative_output_amount() -> Any {
+    run(main, negative_output_amount())
+}
+
+test fn reference_rejects_a_negative_output_amount() -> Any {
+    run(reference, negative_output_amount())
+}

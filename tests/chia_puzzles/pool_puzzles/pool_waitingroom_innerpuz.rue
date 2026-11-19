@@ -1,0 +1,118 @@
+// Regression test, not for production use. A port of `pool_puzzles/pool_waitingroom_innerpuz.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./pool_waitingroom_innerpuz.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The facts about the spend that the singleton top layer (version 1.0) passes to its inner puzzle.
+struct Truths {
+    coin: (Bytes32, Bytes32),
+    inner_puzzle: (Bytes32, Int),
+    ...singleton: Any,
+}
+
+fn main(
+    pool_puzzle_hash: Bytes32,
+    p2_singleton_puzzle_hash: Bytes32,
+    owner_public_key: PublicKey,
+    pool_reward_prefix: Int,
+    relative_lock_height: Int,
+    truths: Truths,
+    // Nil to absorb a pool reward, or else to travel to a new puzzle hash.
+    spend_type: Any,
+    // The pool reward amount when absorbing a reward, or else extra data to sign.
+    p1: Any,
+    // The height of the pool reward when absorbing a reward, or else the new puzzle hash.
+    p2: Bytes,
+) -> List<Condition> {
+    let my_amount = truths.inner_puzzle.rest;
+
+    if !(spend_type is nil) {
+        let new_puzzle_hash = unchecked_cast::<Bytes32>(p2);
+
+        return [
+            AssertHeightRelative { height: relative_lock_height },
+            CreateCoin { puzzle_hash: new_puzzle_hash, amount: my_amount },
+            AggSigMe {
+                public_key: owner_public_key,
+                message: tree_hash([new_puzzle_hash as Any, p1]),
+            },
+        ];
+    }
+
+    let pool_reward_amount = unchecked_cast::<Int>(p1);
+    let pool_reward_height = p2 as Int;
+    let pool_reward_id = sha256(
+        (pool_reward_prefix | (pool_reward_height & ((1 << 128) - 1))) as Bytes
+            + p2_singleton_puzzle_hash
+            + pool_reward_amount as Bytes,
+    );
+
+    [
+        CreateCoin { puzzle_hash: truths.inner_puzzle.first, amount: my_amount },
+        CreateCoin { puzzle_hash: pool_puzzle_hash, amount: pool_reward_amount },
+        CreatePuzzleAnnouncement { message: pool_reward_id },
+        AssertCoinAnnouncement { id: sha256(pool_reward_id + "$") },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn truths() -> Truths {
+    Truths {
+        coin: (sha256("my_id"), sha256("full_puzzle")),
+        inner_puzzle: (sha256("inner_puzzle"), 1),
+        singleton: nil,
+    }
+}
+
+// The mainnet genesis challenge's first 16 bytes, followed by 16 zero bytes.
+inline const POOL_REWARD_PREFIX: Bytes32 = 0xccd5bb71183532bff220ba46c268991a00000000000000000000000000000000;
+
+test fn absorbs_a_pool_reward() -> Any {
+    check([
+        sha256("pool_puzzle"),
+        sha256("p2_singleton"),
+        pubkey_for_exp(42),
+        POOL_REWARD_PREFIX,
+        100,
+        truths(),
+        nil,
+        1750000000000,
+        5000000,
+    ])
+}
+
+test fn travels_to_a_new_pool() -> Any {
+    check([
+        sha256("pool_puzzle"),
+        sha256("p2_singleton"),
+        pubkey_for_exp(42),
+        POOL_REWARD_PREFIX,
+        100,
+        truths(),
+        1,
+        [("p", sha256("new_pool"))],
+        sha256("new_puzzle"),
+    ])
+}
+
+test fn masks_the_pool_reward_height() -> Any {
+    check([
+        sha256("pool_puzzle"),
+        sha256("p2_singleton"),
+        pubkey_for_exp(42),
+        POOL_REWARD_PREFIX,
+        100,
+        truths(),
+        nil,
+        1750000000000,
+        0x0100000000000000000000000000004c4b40,
+    ])
+}

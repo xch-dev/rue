@@ -1,0 +1,48 @@
+// Regression test, not for production use. A port of `mips_puzzles/member_puzzles/singleton_member.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./singleton_member.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+// Approves the delegated puzzle when the singleton sends it as a message.
+fn main(
+    singleton_struct: SingletonStruct,
+    delegated_puzzle_hash: Bytes32,
+    singleton_inner_puzzle_hash: Bytes32,
+    // Unused, as in the original.
+    _singleton_amount: Int,
+) -> List<Condition> {
+    let singleton_puzzle_hash = curry_tree_hash(
+        singleton_struct.mod_hash,
+        [tree_hash(singleton_struct), singleton_inner_puzzle_hash],
+    );
+
+    [ReceiveMessage {
+        mode: SENDER_PUZZLE | RECEIVER_COIN,
+        message: delegated_puzzle_hash,
+        sender: [singleton_puzzle_hash],
+    }]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn receives_the_message() -> Any {
+    check([
+        SingletonStruct {
+            mod_hash: sha256("singleton_mod"),
+            launcher_id: sha256("launcher_id"),
+            launcher_puzzle_hash: sha256("launcher_puzzle"),
+        },
+        sha256("delegated_puzzle"),
+        sha256("inner_puzzle"),
+        1,
+    ])
+}

@@ -1,0 +1,44 @@
+// Regression test, not for production use. A port of `vc_puzzles/std_parent_morpher.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./std_parent_morpher.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// Wraps a parent's inner puzzle hash in a covenant layer that has this morpher as its parent
+// morpher.
+fn main(
+    this_mod_hash: Bytes32,
+    covenant_mod_hash: Bytes32,
+    covenant_initial_puzzle_hash: Bytes32,
+    inner_puzzle_hash: Bytes32,
+) -> Bytes32 {
+    let parent_morpher_hash = curry_tree_hash(
+        this_mod_hash,
+        [
+            tree_hash_atom(this_mod_hash),
+            tree_hash_atom(covenant_mod_hash),
+            tree_hash_atom(covenant_initial_puzzle_hash),
+        ],
+    );
+
+    curry_tree_hash(
+        covenant_mod_hash,
+        [tree_hash_atom(covenant_initial_puzzle_hash), parent_morpher_hash, inner_puzzle_hash],
+    )
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn morphs_the_inner_puzzle_hash() -> Any {
+    check([
+        sha256("this_mod"),
+        sha256("covenant_mod"),
+        sha256("initial_puzzle"),
+        sha256("inner_puzzle"),
+    ])
+}

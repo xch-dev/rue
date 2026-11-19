@@ -1,0 +1,42 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_cat_eve.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./dao_cat_eve.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The condition that reveals the CAT's TAIL: `(51 () -113 tail_reveal tail_solution)`.
+struct RunTail {
+    opcode = 51,
+    puzzle_hash = nil,
+    amount = -113,
+    tail_reveal: Any,
+    tail_solution: Any,
+}
+
+fn main(
+    new_puzzle_hash: Bytes32,
+    my_amount: Int,
+    tail_reveal: Any,
+    tail_solution: Any,
+) -> List<Condition | RunTail> {
+    [
+        CreateCoin {
+            puzzle_hash: new_puzzle_hash,
+            amount: my_amount,
+            memos: Memos { value: [new_puzzle_hash] },
+        },
+        AssertMyAmount { amount: my_amount },
+        RunTail { tail_reveal, tail_solution },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn eve_spends_the_cat() -> Any {
+    check([sha256("new_puzzle"), 100, (1, nil), [1, 2, 3]])
+}

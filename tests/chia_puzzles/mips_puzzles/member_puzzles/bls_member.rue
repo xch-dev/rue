@@ -1,0 +1,21 @@
+// Regression test, not for production use. A port of `mips_puzzles/member_puzzles/bls_member.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./bls_member.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+fn main(public_key: PublicKey, delegated_puzzle_hash: Bytes32) -> List<Condition> {
+    [AggSigMe { public_key, message: delegated_puzzle_hash }]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn signs_the_delegated_puzzle_hash() -> Any {
+    check([pubkey_for_exp(42), sha256("delegated_puzzle")])
+}

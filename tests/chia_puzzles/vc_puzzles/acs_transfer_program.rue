@@ -1,0 +1,30 @@
+// Regression test, not for production use. A port of `vc_puzzles/acs_transfer_program.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./acs_transfer_program.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// A transfer program that returns its solution if there is one, or else keeps the metadata and
+// transfer program.
+fn main(metadata: Any, _conditions: Any, ...solution: Any) -> Any {
+    if solution is nil {
+        [metadata, nil, nil]
+    } else {
+        solution
+    }
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn keeps_the_metadata() -> Any {
+    check([("key", "value"), [ReserveFee { amount: 1 }]])
+}
+
+test fn returns_the_solution() -> Any {
+    check([("key", "value"), nil, sha256("new_owner"), sha256("new_transfer_program"), nil])
+}

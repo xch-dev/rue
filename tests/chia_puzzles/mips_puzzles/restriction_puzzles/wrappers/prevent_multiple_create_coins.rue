@@ -1,0 +1,68 @@
+// Regression test, not for production use. A port of
+// `mips_puzzles/restriction_puzzles/wrappers/prevent_multiple_create_coins.clsp` from chia_puzzles, checked against the
+// compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./prevent_multiple_create_coins.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
+
+// Requires exactly one `CreateCoin` in the conditions.
+fn main(conditions: List<Condition>) -> List<Condition> {
+    assert count_coins(conditions, 0) == 1;
+    conditions
+}
+
+fn count_coins(conditions: List<Condition>, count: Int) -> Int {
+    if conditions is nil {
+        return count;
+    }
+
+    count_coins(
+        conditions.rest,
+        if conditions.first is CreateCoin {
+            count + 1
+        } else {
+            count
+        },
+    )
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn allows_one_coin() -> Any {
+    check([[
+        ReserveFee { amount: 1 },
+        CreateCoin { puzzle_hash: sha256("destination"), amount: 1 },
+    ]])
+}
+
+fn no_coins() -> Any {
+    [[ReserveFee { amount: 1 }]]
+}
+
+fn two_coins() -> Any {
+    [[
+        CreateCoin { puzzle_hash: sha256("first"), amount: 1 },
+        CreateCoin { puzzle_hash: sha256("second"), amount: 1 },
+    ]]
+}
+
+test fn rejects_no_coins() -> Any {
+    run(main, no_coins())
+}
+
+test fn reference_rejects_no_coins() -> Any {
+    run(reference, no_coins())
+}
+
+test fn rejects_two_coins() -> Any {
+    run(main, two_coins())
+}
+
+test fn reference_rejects_two_coins() -> Any {
+    run(reference, two_coins())
+}

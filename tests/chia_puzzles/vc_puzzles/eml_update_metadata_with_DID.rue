@@ -1,0 +1,115 @@
+// Regression test, not for production use. A port of `vc_puzzles/eml_update_metadata_with_DID.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./eml_update_metadata_with_DID.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The metadata, which starts with the DID that provides it.
+struct Metadata {
+    provider_id: Bytes32,
+    ...metadata: Any,
+}
+
+struct TransferProgramSolution {
+    provider_inner_puzzle_hash: Bytes32,
+    my_coin_id: Bytes32,
+    new_metadata: Any,
+    new_transfer_program_hash: Bytes32,
+}
+
+// A transfer program for the exigent metadata layer that lets the DID that provides the metadata
+// update it, and the transfer program.
+fn main(
+    singleton_mod_hash: Bytes32,
+    singleton_launcher_hash: Bytes32,
+    metadata: Metadata,
+    _conditions: Any,
+    solution: TransferProgramSolution | Bytes,
+) -> Any {
+    if solution is Bytes {
+        // The solution is a new transfer program hash, which resets the metadata, or else nil to
+        // keep both.
+        return if solution is nil {
+            [metadata as Any, nil, nil]
+        } else {
+            [nil, solution, nil]
+        };
+    }
+
+    let provider_puzzle_hash = curry_tree_hash(
+        singleton_mod_hash,
+        [
+            tree_hash_pair(
+                tree_hash_atom(singleton_mod_hash),
+                tree_hash_pair(
+                    tree_hash_atom(metadata.provider_id),
+                    tree_hash_atom(singleton_launcher_hash),
+                ),
+            ),
+            solution.provider_inner_puzzle_hash,
+        ],
+    );
+    let message = sha256(
+        solution.my_coin_id + tree_hash(solution.new_metadata) + solution.new_transfer_program_hash,
+    );
+
+    [
+        inline if solution.new_metadata is nil {
+            nil
+        } else {
+            (metadata.provider_id, solution.new_metadata) as Any
+        },
+        solution.new_transfer_program_hash,
+        [
+            AssertMyCoinId { coin_id: solution.my_coin_id },
+            AssertPuzzleAnnouncement { id: sha256(provider_puzzle_hash + message) },
+        ],
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn metadata() -> Metadata {
+    Metadata { provider_id: sha256("provider"), metadata: ("key", "value") }
+}
+
+fn solution(transfer_program_solution: Any) -> Any {
+    [
+        sha256("singleton_mod") as Any,
+        sha256("launcher"),
+        metadata(),
+        [ReserveFee { amount: 1 }],
+        transfer_program_solution,
+    ]
+}
+
+test fn updates_the_metadata() -> Any {
+    check(solution(TransferProgramSolution {
+        provider_inner_puzzle_hash: sha256("provider_inner_puzzle"),
+        my_coin_id: sha256("my_coin"),
+        new_metadata: ("new_key", "new_value"),
+        new_transfer_program_hash: sha256("new_transfer_program"),
+    }))
+}
+
+test fn clears_the_metadata() -> Any {
+    check(solution(TransferProgramSolution {
+        provider_inner_puzzle_hash: sha256("provider_inner_puzzle"),
+        my_coin_id: sha256("my_coin"),
+        new_metadata: nil,
+        new_transfer_program_hash: sha256("new_transfer_program"),
+    }))
+}
+
+test fn resets_the_transfer_program() -> Any {
+    check(solution(sha256("new_transfer_program")))
+}
+
+test fn keeps_everything() -> Any {
+    check(solution(nil))
+}

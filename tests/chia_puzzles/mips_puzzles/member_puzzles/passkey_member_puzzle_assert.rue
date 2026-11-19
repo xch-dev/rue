@@ -1,0 +1,162 @@
+// Regression test, not for production use. A port of `mips_puzzles/member_puzzles/passkey_member_puzzle_assert.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./passkey_member_puzzle_assert.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+inline const BASE64URL_CHARSET: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+// Verifies a WebAuthn (passkey) signature, whose challenge is the delegated puzzle hash and the
+// puzzle hash, encoded as unpadded base64url.
+fn main(
+    public_key: R1PublicKey,
+    delegated_puzzle_hash: Bytes32,
+    authenticator_data: Bytes,
+    client_data_json: Bytes,
+    challenge_index: Int,
+    signature: R1Signature,
+    puzzle_hash: Bytes32,
+) -> List<Condition> {
+    let challenge = '"challenge":"'
+        + base64url_encode(sha256(delegated_puzzle_hash + puzzle_hash))
+        + '"';
+
+    assert substr(
+        client_data_json,
+        challenge_index,
+        challenge_index + challenge.length,
+    ) == challenge;
+
+    secp256r1_verify(public_key, sha256(authenticator_data + sha256(client_data_json)), signature);
+
+    [AssertMyPuzzleHash { puzzle_hash }]
+}
+
+// Encodes the blob as base64url, without padding.
+fn base64url_encode(blob: Bytes) -> Bytes {
+    let remainder = blob.length % 3;
+    let padding = if remainder == 0 {
+        0
+    } else {
+        3 - remainder
+    };
+    let encoded = encode_triples(blob + substr(0x000000, 0, padding), 0);
+    substr(encoded, 0, encoded.length - padding)
+}
+
+// Encodes each group of three bytes, from the index onwards, as four characters.
+fn encode_triples(bytes: Bytes, index: Int) -> Bytes {
+    if index >= bytes.length {
+        return nil;
+    }
+
+    let first = byte_at(bytes, index);
+    let second = byte_at(bytes, index + 1);
+    let third = byte_at(bytes, index + 2);
+
+    lookup(first / 4)
+        + lookup(((first % 4) << 4) | (second / 16))
+        + lookup(((second % 16) << 2) | (third / 64))
+        + lookup(third % 64)
+        + encode_triples(bytes, index + 3)
+}
+
+// The unsigned value of the byte at the index.
+fn byte_at(bytes: Bytes, index: Int) -> Int {
+    let value = substr(bytes, index, index + 1) as Int;
+    if value > -1 {
+        value
+    } else {
+        value + 256
+    }
+}
+
+fn lookup(sextet: Int) -> Bytes {
+    substr(BASE64URL_CHARSET, sextet, sextet + 1)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// Signed with the secret key 12345.
+inline const PUBLIC_KEY: R1PublicKey = 0x0226efcebd0ee9e34a669187e18b3a9122b2f733945b649cc9f9f921e9f9dad812 as R1PublicKey;
+inline const SIGNATURE: R1Signature = 0x9d5402100516ab26a26cc0f9e96bdd13ab90a980fd2ed4905491d940544a2d8162c541ad89ed4e29d984d37aa82e40389a545cae1b74d526882d134242e34b79 as R1Signature;
+inline const AUTHENTICATOR_DATA: Bytes = 0xdc71a266174e22731ce297ca855fd9f20500000001;
+inline const CLIENT_DATA_JSON: String = '{"type":"webauthn.get","challenge":"zm6LSNliGU12dLfikNmxqUgicTxjD6VpmlwKn_wetTY","origin":"https://example.com"}';
+
+test fn verifies_the_passkey_signature() -> Any {
+    check([
+        PUBLIC_KEY,
+        sha256("delegated_puzzle"),
+        AUTHENTICATOR_DATA,
+        CLIENT_DATA_JSON,
+        23,
+        SIGNATURE,
+        sha256("my_puzzle"),
+    ])
+}
+
+fn wrong_challenge_index() -> Any {
+    [
+        PUBLIC_KEY,
+        sha256("delegated_puzzle"),
+        AUTHENTICATOR_DATA,
+        CLIENT_DATA_JSON,
+        24,
+        SIGNATURE,
+        sha256("my_puzzle"),
+    ]
+}
+
+test fn rejects_the_wrong_challenge_index() -> Any {
+    run(main, wrong_challenge_index())
+}
+
+test fn reference_rejects_the_wrong_challenge_index() -> Any {
+    run(reference, wrong_challenge_index())
+}
+
+fn wrong_challenge() -> Any {
+    [
+        PUBLIC_KEY,
+        sha256("other_puzzle"),
+        AUTHENTICATOR_DATA,
+        CLIENT_DATA_JSON,
+        23,
+        SIGNATURE,
+        sha256("my_puzzle"),
+    ]
+}
+
+test fn rejects_the_wrong_challenge() -> Any {
+    run(main, wrong_challenge())
+}
+
+test fn reference_rejects_the_wrong_challenge() -> Any {
+    run(reference, wrong_challenge())
+}
+
+fn wrong_authenticator_data() -> Any {
+    [
+        PUBLIC_KEY,
+        sha256("delegated_puzzle"),
+        0x00,
+        CLIENT_DATA_JSON,
+        23,
+        SIGNATURE,
+        sha256("my_puzzle"),
+    ]
+}
+
+test fn rejects_the_wrong_signature() -> Any {
+    run(main, wrong_authenticator_data())
+}
+
+test fn reference_rejects_the_wrong_signature() -> Any {
+    run(reference, wrong_authenticator_data())
+}

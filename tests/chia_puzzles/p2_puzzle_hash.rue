@@ -1,0 +1,33 @@
+// Regression test, not for production use. A port of `p2_puzzle_hash.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_puzzle_hash.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    inner_puzzle_hash: Bytes32,
+    inner_puzzle: fn(...solution: Any) -> Any,
+    inner_puzzle_solution: Any,
+) -> Any {
+    assert inner_puzzle_hash == tree_hash(inner_puzzle);
+    inner_puzzle(...inner_puzzle_solution)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn runs_the_matching_puzzle() -> Any {
+    check([tree_hash(1), 1, [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }]])
+}
+
+test fn rejects_a_different_puzzle() -> Any {
+    run(main, [tree_hash(1), (1, nil), nil])
+}
+
+test fn reference_rejects_a_different_puzzle() -> Any {
+    run(reference, [tree_hash(1), (1, nil), nil])
+}
