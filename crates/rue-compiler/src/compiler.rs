@@ -156,9 +156,6 @@ pub struct PendingDefault {
     /// The struct whose default value it is.
     pub ty: TypeId,
     pub name: String,
-    /// The type the default value must be assignable to in this initializer, which can differ
-    /// from the declared field type if generics were substituted.
-    pub expected_type: Option<TypeId>,
     /// Where the struct initializer is, and the scope it's in, for reporting errors.
     pub srcloc: SrcLoc,
     pub scope: ScopeId,
@@ -1142,40 +1139,10 @@ impl Compiler {
     }
 
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
-        let range = node.text_range();
-        let scope = self.last_scope_id();
-        self.compare_type_in(|ctx| ctx.srcloc(&range), scope, from, to, cast);
-    }
-
-    /// Like [`Self::assign_type`], but for a location in any file, with type names as they're
-    /// written in the given scope.
-    pub(crate) fn assign_type_at(
-        &mut self,
-        srcloc: &SrcLoc,
-        scope: ScopeId,
-        from: TypeId,
-        to: TypeId,
-    ) {
-        self.compare_type_in(|_| srcloc.clone(), scope, from, to, false);
-    }
-
-    fn compare_type_in(
-        &mut self,
-        srcloc: impl Fn(&Self) -> SrcLoc,
-        scope: ScopeId,
-        from: TypeId,
-        to: TypeId,
-        cast: bool,
-    ) {
         let Ok(comparison) =
             rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)
         else {
-            let from = self.type_name_in(scope, from);
-            let to = self.type_name_in(scope, to);
-            self.diagnostic_at(
-                srcloc(self),
-                DiagnosticKind::TypeComparisonTooComplex(from, to),
-            );
+            self.too_complex(node, from, to);
             return;
         };
 
@@ -1183,9 +1150,9 @@ impl Compiler {
             Comparison::Assign => {}
             Comparison::Cast => {
                 if !cast {
-                    let from = self.type_name_in(scope, from);
-                    let to = self.type_name_in(scope, to);
-                    self.diagnostic_at(srcloc(self), DiagnosticKind::UnassignableType(from, to));
+                    let from = self.type_name(from);
+                    let to = self.type_name(to);
+                    self.diagnostic(node, DiagnosticKind::UnassignableType(from, to));
                 }
             }
             Comparison::Invalid => {
@@ -1201,18 +1168,15 @@ impl Compiler {
                         ) => Check::Impossible,
                     };
 
-                let from = self.type_name_in(scope, from);
-                let to = self.type_name_in(scope, to);
+                let from = self.type_name(from);
+                let to = self.type_name(to);
 
                 if check != Check::Impossible {
-                    self.diagnostic_at(
-                        srcloc(self),
-                        DiagnosticKind::UnconstrainableComparison(from, to),
-                    );
+                    self.diagnostic(node, DiagnosticKind::UnconstrainableComparison(from, to));
                 } else if cast {
-                    self.diagnostic_at(srcloc(self), DiagnosticKind::IncompatibleCast(from, to));
+                    self.diagnostic(node, DiagnosticKind::IncompatibleCast(from, to));
                 } else {
-                    self.diagnostic_at(srcloc(self), DiagnosticKind::IncompatibleType(from, to));
+                    self.diagnostic(node, DiagnosticKind::IncompatibleType(from, to));
                 }
             }
         }

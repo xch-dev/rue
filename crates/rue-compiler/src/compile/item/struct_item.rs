@@ -287,10 +287,9 @@ pub fn resolve_pending_defaults(ctx: &mut Compiler) {
             continue;
         };
 
-        if let Some(expected_type) = pending.expected_type {
-            ctx.assign_type_at(&pending.srcloc, pending.scope, value.ty, expected_type);
-        }
-
+        // Unlike a default that's already compiled, this isn't checked against the field type of
+        // the initializer's instantiation, since a default is only kept if it's assignable to
+        // the declared field type, which makes it assignable to every instantiation of it
         let Hir::Struct(initializer) = ctx.hir_mut(pending.hir) else {
             unreachable!();
         };

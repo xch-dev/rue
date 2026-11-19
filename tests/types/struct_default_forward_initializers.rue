@@ -20,7 +20,7 @@ struct Tagged {
     opcode = 51,
 }
 
-// A generic struct's default is checked against the field type of the instantiation
+// So can an instance of a generic struct
 struct UsesGeneric {
     boxed: BoxedBytes = BoxedBytes {},
 }

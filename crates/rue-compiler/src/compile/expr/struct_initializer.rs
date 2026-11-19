@@ -267,7 +267,6 @@ pub fn compile_struct_initializer_expr(
     }));
 
     for (index, name) in pending {
-        let expected_type = expected_field_types.get(&name).copied();
         let srcloc = ctx.srcloc(expr.syntax());
         let scope = ctx.last_scope_id();
         let user = ctx.compiling_default();
@@ -277,7 +276,6 @@ pub fn compile_struct_initializer_expr(
             index,
             ty: struct_type.semantic,
             name,
-            expected_type,
             srcloc,
             scope,
             user,
