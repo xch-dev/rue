@@ -247,7 +247,8 @@ pub(crate) struct ComparisonContext<'a> {
     frames: Vec<StackFrame>,
     /// The result and summary that each comparison's rounds last stopped at, which the first round
     /// starts from the next time it's computed (see `StackFrame::value` and
-    /// `StackFrame::approximation`).
+    /// `StackFrame::approximation`). Starting from them only saves rounds: they're at most the
+    /// comparison's own, so the rounds end at the same result and summary as from the start.
     approximations: FxHashMap<ComparisonKey, (Comparison, Summary)>,
     /// What the types that the comparison that started from an empty stack started from are like
     /// (see `monotonicity`). If they nest generic functions' generics (`Monotone::Nested`), a
@@ -2050,6 +2051,42 @@ mod tests {
     use crate::{Atom, FunctionParameter, FunctionType, Generic, Pair, Type, compare};
 
     use super::*;
+
+    /// Joining two outcomes takes the worse result and both summaries' bounds, which is what the
+    /// approximations of `FixpointMemo` grow by from one round to the next.
+    #[test]
+    fn test_outcome_join() {
+        let mut arena = Arena::new();
+        let builtins = BuiltinTypes::new(&mut arena);
+        let summary = |bound: TypeId| {
+            let mut summary = Summary::default();
+            summary.add(Constraint {
+                var: Var::Key(0),
+                upper: true,
+                ty: bound,
+                env: Vec::new(),
+                unmatched: false,
+            });
+            Rc::new(summary)
+        };
+        let (int, bytes) = (summary(builtins.int), summary(builtins.bytes));
+
+        let joined = (Comparison::Assign, Some(int.clone())).join(&(Comparison::Cast, Some(bytes)));
+        assert_eq!(joined.0, Comparison::Cast);
+        let bounds: Vec<TypeId> = joined
+            .1
+            .unwrap()
+            .constraints()
+            .iter()
+            .map(|constraint| constraint.ty)
+            .collect();
+        assert_eq!(bounds.len(), 2);
+        assert!(bounds.contains(&builtins.int) && bounds.contains(&builtins.bytes));
+
+        // Without a summary on one side, the other's is kept
+        let joined = (Comparison::Invalid, None).join(&(Comparison::Assign, Some(int.clone())));
+        assert_eq!(joined, (Comparison::Invalid, Some(int)));
+    }
 
     #[test]
     fn test_instantiates_directly() {
