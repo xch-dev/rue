@@ -245,13 +245,13 @@ pub enum DiagnosticKind {
     #[error("Cannot call non-function value with type `{0}`")]
     InvalidFunctionCall(String),
 
-    #[error("Expected {0} arguments, but found {1}")]
+    #[error("Expected {0} {noun}, but found {1}", noun = if *.0 == 1 { "argument" } else { "arguments" })]
     ExpectedArguments(usize, usize),
 
     #[error("Cannot infer generic `{0}` for `{1}`; specify it explicitly, e.g. `{1}::<...>()`")]
     CannotInferGeneric(String, String),
 
-    #[error("Expected between {0} and {1} arguments, but found {1}")]
+    #[error("Expected between {0} and {1} arguments, but found {2}")]
     ExpectedArgumentsBetween(usize, usize, usize),
 
     #[error("Expected an even number of arguments")]

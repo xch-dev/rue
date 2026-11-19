@@ -1,20 +1,20 @@
 diagnostics:
-- Expected 1 arguments, but found 0 at builtin_errors.rue:17:13
-- Expected 1 arguments, but found 2 at builtin_errors.rue:18:13
+- Expected 1 argument, but found 0 at builtin_errors.rue:17:13
+- Expected 1 argument, but found 2 at builtin_errors.rue:18:13
 - Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:19:20
 - Cannot assign `List<Int>` to `List<Bytes>` without a cast, since they are semantically different at builtin_errors.rue:20:23
 - Spread operator cannot be used on this builtin at builtin_errors.rue:21:27
-- Expected 1 arguments, but found 2 at builtin_errors.rue:22:13
+- Expected 1 argument, but found 2 at builtin_errors.rue:22:13
 - Spread operator cannot be used on this builtin at builtin_errors.rue:23:30
-- Expected 1 arguments, but found 0 at builtin_errors.rue:26:13
-- Expected 1 arguments, but found 2 at builtin_errors.rue:27:13
+- Expected 1 argument, but found 0 at builtin_errors.rue:26:13
+- Expected 1 argument, but found 2 at builtin_errors.rue:27:13
 - Cannot compare `Bytes` to `List<Bytes>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:27:20
 - Spread operator cannot be used on this builtin at builtin_errors.rue:28:20
-- Expected 1 arguments, but found 2 at builtin_errors.rue:29:13
+- Expected 1 argument, but found 2 at builtin_errors.rue:29:13
 - Cannot compare `Int` to `List<Int>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:29:17
 - Spread operator cannot be used on this builtin at builtin_errors.rue:30:17
 - Cannot assign `List<true | false>` to `List<Int>` without a cast, since they are semantically different at builtin_errors.rue:31:24
-- Expected 1 arguments, but found 0 at builtin_errors.rue:32:13
+- Expected 1 argument, but found 0 at builtin_errors.rue:32:13
 - Cannot assign `List<Int>` to `List<true | false>`, since they are incompatible at builtin_errors.rue:33:17
 - Spread operator cannot be used on this builtin at builtin_errors.rue:34:17
 - Cannot compare `List<Signature>` to `List<PublicKey>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:35:20
@@ -25,20 +25,20 @@ diagnostics:
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:42:32
 - Expected 3 arguments, but found 1 at builtin_errors.rue:43:13
 - Spread operator cannot be used on this builtin at builtin_errors.rue:43:20
-- Expected between 2 and 3 arguments, but found 3 at builtin_errors.rue:44:13
-- Expected between 2 and 3 arguments, but found 3 at builtin_errors.rue:45:13
+- Expected between 2 and 3 arguments, but found 1 at builtin_errors.rue:44:13
+- Expected between 2 and 3 arguments, but found 4 at builtin_errors.rue:45:13
 - Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:46:20
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:46:25
 - Expected 2 arguments, but found 1 at builtin_errors.rue:47:13
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:48:25
 - Expected 3 arguments, but found 2 at builtin_errors.rue:49:13
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:50:30
-- Expected 1 arguments, but found 0 at builtin_errors.rue:51:13
+- Expected 1 argument, but found 0 at builtin_errors.rue:51:13
 - Cannot assign `PublicKey` to `Int | Bytes32` without a cast, since they are semantically different at builtin_errors.rue:52:28
 - Spread operator cannot be used on this builtin at builtin_errors.rue:53:28
 - Cannot assign `(Int, nil)` to `Int | Bytes32`, since they are incompatible at builtin_errors.rue:53:31
-- Expected between 1 and 2 arguments, but found 2 at builtin_errors.rue:54:13
-- Expected between 1 and 2 arguments, but found 2 at builtin_errors.rue:55:13
+- Expected between 1 and 2 arguments, but found 0 at builtin_errors.rue:54:13
+- Expected between 1 and 2 arguments, but found 3 at builtin_errors.rue:55:13
 - Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:56:20
 - Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:57:27
 - Spread operator cannot be used on this builtin at builtin_errors.rue:58:20
@@ -46,7 +46,7 @@ diagnostics:
 - Expected an even number of arguments at builtin_errors.rue:61:13
 - Cannot assign `Signature` to `PublicKey`, since they are incompatible at builtin_errors.rue:62:34
 - Cannot assign `PublicKey` to `Signature`, since they are incompatible at builtin_errors.rue:62:39
-- Expected 1 arguments, but found 2 at builtin_errors.rue:63:13
+- Expected 1 argument, but found 2 at builtin_errors.rue:63:13
 - Cannot assign `PublicKey` to `AlternatingList<PublicKey, Signature>`, since they are incompatible at builtin_errors.rue:63:34
 - Expected one argument followed by an even number of additional arguments at builtin_errors.rue:64:13
 - Expected one argument followed by an even number of additional arguments at builtin_errors.rue:65:13
@@ -58,6 +58,6 @@ diagnostics:
 - Cannot assign `K1Signature` to `R1Signature` without a cast, since they are semantically different at builtin_errors.rue:73:43
 - Expected 3 arguments, but found 1 at builtin_errors.rue:74:13
 - Spread operator cannot be used on this builtin at builtin_errors.rue:74:30
-- Expected 1 arguments, but found 2 at builtin_errors.rue:77:13
+- Expected 1 argument, but found 2 at builtin_errors.rue:77:13
 - Can only spread the last element in a list at builtin_errors.rue:77:20
 - Cannot compare `List<Int>` to `Bytes` without a type guard, since the runtime value must be constrained at builtin_errors.rue:77:23
