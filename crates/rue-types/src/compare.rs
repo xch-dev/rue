@@ -162,7 +162,8 @@ struct StackFrame {
     /// What a revisit of it is given while it's in progress: the bounds that it puts on the
     /// instances its key refers to, as far as they're known (see `Summary`). Each round of
     /// computing it that revisits it computes it again with the bounds that the round put on them,
-    /// until that adds nothing (see `compare_impl_inner`).
+    /// until that adds nothing (see `compare_impl_inner`). That's in exact mode: while iterating in
+    /// fixpoint mode, `FixpointMemo`'s rounds do the same for every comparison (see `Outcome`).
     ///
     /// It starts out empty, or as what the rounds stopped at the last time the same comparison was
     /// computed (`ComparisonContext::approximations`). Otherwise, a comparison nested in many
@@ -200,13 +201,8 @@ impl Join for Outcome {
     fn join(&self, other: &Self) -> Self {
         let summary = match (&self.1, &other.1) {
             (None, summary) | (summary, None) => summary.clone(),
-            (Some(a), Some(b)) if a == b => Some(a.clone()),
-            (Some(a), Some(b)) => {
-                let mut summary = (**a).clone();
-                summary.extend(b);
-                summary.canonicalize();
-                Some(Rc::new(summary))
-            }
+            (Some(a), Some(b)) if Rc::ptr_eq(a, b) || a == b => Some(a.clone()),
+            (Some(a), Some(b)) => Some(Rc::new(a.join(b))),
         };
 
         (self.0.max(other.0), summary)
@@ -313,7 +309,7 @@ pub(crate) struct ComparisonContext<'a> {
     /// Completed comparisons, reused while the comparisons they relied on are in progress, or
     /// approximations of them while iterating (see `FixpointMemo`).
     fixpoint_memo: FixpointMemo<ComparisonKey, Outcome>,
-    /// Whether each type that a comparison started from is monotone (see `monotonicity`).
+    /// How a comparison that starts from each type can be computed (see `monotonicity`).
     monotone: FxHashMap<TypeId, Monotone>,
     /// The steps taken by the comparison that started from an empty stack, which gives up once
     /// there are more than `COMPARISON_STEP_LIMIT`.
@@ -1245,17 +1241,17 @@ fn compare_from_empty_stack(
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
     let monotone = if ctx.infer.is_none() && ctx.lhs_env.is_none() && ctx.rhs_env.is_none() {
-        ctx.monotonicity(arena, lhs)
+        match ctx
+            .monotonicity(arena, lhs)
             .max(ctx.monotonicity(arena, rhs))
+        {
+            // Without the memo, iterating wouldn't reuse anything, and exact mode gives the same
+            // results
+            Monotone::Nested if !compare_memo_enabled() => Monotone::No,
+            monotone => monotone,
+        }
     } else {
         Monotone::No
-    };
-
-    // Without the memo, iterating wouldn't reuse anything, and exact mode gives the same results
-    let monotone = if monotone == Monotone::Nested && !compare_memo_enabled() {
-        Monotone::No
-    } else {
-        monotone
     };
 
     ctx.fixpoint = monotone != Monotone::No;
@@ -1317,13 +1313,13 @@ fn compare_impl_inner(
     let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
     let key = (lhs, rhs, ctx.flipped, bindings, lhs_semantic, rhs_semantic);
 
-    // Generics that are being instantiated outside of the comparison collect bounds from it. In
-    // exact mode, they're cached with its result as its summary, which is put on the instances it's
-    // reused with (and the ones bound inside of it are checked before it finishes). A summary is
-    // in a canonical order, without duplicates, which doesn't change whether the bounds hold, but
-    // does change the order of the candidates that checking them collects, so it isn't while
-    // inferring. In fixpoint mode, a comparison that refers to one is only ever a bound on it, so
-    // it isn't memoized.
+    // Generics that are being instantiated outside of the comparison collect bounds from it, which
+    // are cached with its result as its summary, and put on the instances it's reused with (the
+    // ones bound inside of it are checked before it finishes). A summary is in a canonical order,
+    // without duplicates, which doesn't change whether the bounds hold, but does change the order
+    // of the candidates that checking them collects, so it isn't cached while inferring. Nor in
+    // fixpoint mode's single pass, whose values must be a chain of three, where a comparison that
+    // refers to an instance is only ever a bound on it (see `ComparisonContext::monotonicity`).
     let instances = ctx.bindings[bindings]
         .iter()
         .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
@@ -1405,7 +1401,7 @@ fn compare_impl_inner(
     ctx.frames.push(StackFrame {
         entered: ctx.binders.len(),
         binders,
-        approximation: if instances {
+        approximation: if instances && !ctx.fixpoint {
             ctx.approximations.get(&key).cloned().unwrap_or_default()
         } else {
             Summary::default()
@@ -1431,9 +1427,7 @@ fn compare_impl_inner(
 
         let summary = ctx.summary_since(arena, snapshot);
         let frame = ctx.frames.last_mut().unwrap();
-        let mut next = frame.approximation.clone();
-        next.extend(&summary);
-        next.canonicalize();
+        let next = frame.approximation.join(&summary);
 
         if next == frame.approximation {
             if !next.constraints().is_empty() {

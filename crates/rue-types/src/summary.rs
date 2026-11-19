@@ -141,6 +141,15 @@ impl Summary {
         );
     }
 
+    /// The least summary that has the constraints of both (with new local binders for the other's),
+    /// in a canonical form.
+    pub(crate) fn join(&self, other: &Self) -> Self {
+        let mut joined = self.clone();
+        joined.extend(other);
+        joined.canonicalize();
+        joined
+    }
+
     /// Puts the summary in a canonical form, so that summaries that only differ in the order of
     /// their constraints and the numbering of their local binders are equal, and the copies of a
     /// summary that's applied again and again don't grow it without bound.
