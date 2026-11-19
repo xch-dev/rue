@@ -27,7 +27,15 @@ tests:
   runtime_cost: 1495
   byte_cost: 564000
   total_cost: 565495
+- name: inner_instance_compared_with_itself
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - |-
   Field `second` of struct `Two` is never read at generic_inference_instantiated_through_candidate.rue:25:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`
+- Value returned by statement is unused at generic_inference_instantiated_through_candidate.rue:66:5

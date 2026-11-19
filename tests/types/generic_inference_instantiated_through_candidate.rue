@@ -59,3 +59,17 @@ test fn generic_function_instantiated_through_two_calls() -> Int {
     let result: (Int, Int) = through(call, pairs);
     result.first + result.rest
 }
+
+type Twin = fn<T>(x: (T, T), y: T) -> (T, T);
+
+fn apply_twin<B>(function: fn(x: B, y: Int) -> B) -> Int {
+    function(unchecked_cast((1, 1)), 1);
+    1
+}
+
+// `B ≤ (T', T') ≤ B` compares `(T', T')` with itself while `T'` can be instantiated, which holds
+// without bounding `T'` by itself, so its `T' ≥ Int` is still enough
+test fn inner_instance_compared_with_itself() -> Int {
+    let _apply: fn(function: Twin) -> Int = apply_twin;
+    1
+}

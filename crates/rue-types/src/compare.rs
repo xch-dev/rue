@@ -1670,6 +1670,18 @@ fn compare_structure(
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Any) => Comparison::Assign,
+        // A binder is assignable to itself, which is checked before an instance is bounded, since
+        // an inner instance can be instantiated while an enclosing comparison checks bounds that
+        // refer to it on both sides, and bounding it by itself would then conflict with its other
+        // bounds once it's rigid
+        (Type::Generic(_), Type::Generic(_))
+            if lhs == rhs
+                && ctx
+                    .resolve(lhs, ctx.lhs_env)
+                    .is_some_and(|binder| ctx.resolve(rhs, ctx.rhs_env) == Some(binder)) =>
+        {
+            Comparison::Assign
+        }
         (Type::Generic(_), _) if ctx.is_instance(lhs, ctx.lhs_env) => {
             ctx.add_bound(
                 lhs,
