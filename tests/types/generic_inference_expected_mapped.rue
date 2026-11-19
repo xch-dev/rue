@@ -168,7 +168,7 @@ fn tail<T>(first: T, function: fn(x: T) -> Int) -> T {
 }
 
 // Guards: a call without arguments only has its expected type to infer from, so it keeps the
-// narrower `5`, and so does a lambda that a call passes through. Either way, `x` is `5`, as on main,
+// narrower `5`, as does a call with one inside it, and so does a lambda that a call passes through. Either way, `x` is `5`, as on main,
 // which the unnecessary guards show
 test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
     let made: 5 | 6 = later(
@@ -190,7 +190,16 @@ test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
             },
         ),
     );
-    made + passed
+    let inside: 5 | 6 = later(
+        5,
+        identity(make()),
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    made + passed + inside
 }
 
 type Tree<T> = nil | (T, (Tree<T>, Tree<T>));
