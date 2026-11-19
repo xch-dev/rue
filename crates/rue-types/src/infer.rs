@@ -93,11 +93,11 @@ pub(crate) const FALLBACK: usize = usize::MAX;
 
 /// The unions that values were compared against, indexed by `BranchId::choice`, and what each of
 /// their members gave, which decides which members' candidates or bounds hold.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Choices(Vec<Choice>);
 
 /// A comparison of a value with the members of a union, any one of which can hold it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Choice {
     /// The member that the union itself was compared under, if any.
     parent: Option<BranchId>,
@@ -159,6 +159,19 @@ impl Inference {
             policy: InstancePolicy::Eager,
             added: Vec::new(),
         }
+    }
+
+    /// Whether the two hold the same candidates, in the same order, with the same union members and
+    /// vars, so that anything computed from one gives the same result for the other.
+    /// `IndexMap`'s own equality ignores the order, which the result can depend on.
+    pub(crate) fn is_identical(&self, other: &Self) -> bool {
+        self.generics.iter().eq(other.generics.iter())
+            && self.branches.iter().eq(other.branches.iter())
+            && self.renamed == other.renamed
+            && self.choices == other.choices
+            && self.instances == other.instances
+            && self.policy == other.policy
+            && self.added == other.added
     }
 
     /// Records that a generic being inferred was renamed from another generic. They're compared as
@@ -326,11 +339,7 @@ impl Inference {
                 self.added.push(generic);
             }
 
-            for kind in [
-                CandidateKind::Lower,
-                CandidateKind::Upper,
-                CandidateKind::Held,
-            ] {
+            for kind in CandidateKind::ALL {
                 for (&ty, branches) in candidates.list(kind).iter().zip(branches.list(kind)) {
                     self.push(generic, kind, ty, branches.iter().map(shift).collect());
                 }
@@ -594,11 +603,16 @@ impl Choices {
 }
 
 /// Which list of a generic's `InferenceCandidates` a candidate is in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum CandidateKind {
     Lower,
     Upper,
     Held,
+}
+
+impl CandidateKind {
+    /// Every kind, in the order they're declared, which is the order they're visited in.
+    pub(crate) const ALL: [Self; 3] = [Self::Lower, Self::Upper, Self::Held];
 }
 
 impl InferenceCandidates {

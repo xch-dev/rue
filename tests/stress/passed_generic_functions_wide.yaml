@@ -1,0 +1,67 @@
+program: (a (q 1 . 1) (c (q 4 6 4) ()))
+debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 1) ()) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) 1)) (c (c (q 4 (r 2) (f 2)) (q . 2)) ()))
+output: "1"
+runtime_cost: 246
+byte_cost: 300000
+total_cost: 300246
+diagnostics:
+- Unused parameter `f0` at passed_generic_functions_wide.rue:73:5
+- Unused parameter `f1` at passed_generic_functions_wide.rue:74:5
+- Unused parameter `f2` at passed_generic_functions_wide.rue:75:5
+- Unused parameter `f3` at passed_generic_functions_wide.rue:76:5
+- Unused parameter `f4` at passed_generic_functions_wide.rue:77:5
+- Unused parameter `f5` at passed_generic_functions_wide.rue:78:5
+- Unused parameter `f6` at passed_generic_functions_wide.rue:79:5
+- Unused parameter `f7` at passed_generic_functions_wide.rue:80:5
+- Unused parameter `f8` at passed_generic_functions_wide.rue:81:5
+- Unused parameter `f9` at passed_generic_functions_wide.rue:82:5
+- Unused parameter `f10` at passed_generic_functions_wide.rue:83:5
+- Unused parameter `f11` at passed_generic_functions_wide.rue:84:5
+- Unused parameter `f12` at passed_generic_functions_wide.rue:85:5
+- Unused parameter `f13` at passed_generic_functions_wide.rue:86:5
+- Unused parameter `f14` at passed_generic_functions_wide.rue:87:5
+- Unused parameter `f15` at passed_generic_functions_wide.rue:88:5
+- Unused parameter `f16` at passed_generic_functions_wide.rue:89:5
+- Unused parameter `f17` at passed_generic_functions_wide.rue:90:5
+- Unused parameter `f18` at passed_generic_functions_wide.rue:91:5
+- Unused parameter `f19` at passed_generic_functions_wide.rue:92:5
+- Unused parameter `f20` at passed_generic_functions_wide.rue:93:5
+- Unused parameter `f21` at passed_generic_functions_wide.rue:94:5
+- Unused parameter `f22` at passed_generic_functions_wide.rue:95:5
+- Unused parameter `f23` at passed_generic_functions_wide.rue:96:5
+- Unused parameter `f24` at passed_generic_functions_wide.rue:97:5
+- Unused parameter `f25` at passed_generic_functions_wide.rue:98:5
+- Unused parameter `f26` at passed_generic_functions_wide.rue:99:5
+- Unused parameter `f27` at passed_generic_functions_wide.rue:100:5
+- Unused parameter `f28` at passed_generic_functions_wide.rue:101:5
+- Unused parameter `f29` at passed_generic_functions_wide.rue:102:5
+- Unused parameter `f30` at passed_generic_functions_wide.rue:103:5
+- Unused parameter `f31` at passed_generic_functions_wide.rue:104:5
+- Unused parameter `f32` at passed_generic_functions_wide.rue:105:5
+- Unused parameter `f33` at passed_generic_functions_wide.rue:106:5
+- Unused parameter `f34` at passed_generic_functions_wide.rue:107:5
+- Unused parameter `f35` at passed_generic_functions_wide.rue:108:5
+- Unused parameter `f36` at passed_generic_functions_wide.rue:109:5
+- Unused parameter `f37` at passed_generic_functions_wide.rue:110:5
+- Unused parameter `f38` at passed_generic_functions_wide.rue:111:5
+- Unused parameter `f39` at passed_generic_functions_wide.rue:112:5
+- Unused parameter `f40` at passed_generic_functions_wide.rue:113:5
+- Unused parameter `f41` at passed_generic_functions_wide.rue:114:5
+- Unused parameter `f42` at passed_generic_functions_wide.rue:115:5
+- Unused parameter `f43` at passed_generic_functions_wide.rue:116:5
+- Unused parameter `f44` at passed_generic_functions_wide.rue:117:5
+- Unused parameter `f45` at passed_generic_functions_wide.rue:118:5
+- Unused parameter `f46` at passed_generic_functions_wide.rue:119:5
+- Unused parameter `f47` at passed_generic_functions_wide.rue:120:5
+- Unused parameter `f48` at passed_generic_functions_wide.rue:121:5
+- Unused parameter `f49` at passed_generic_functions_wide.rue:122:5
+- Unused parameter `f50` at passed_generic_functions_wide.rue:123:5
+- Unused parameter `f51` at passed_generic_functions_wide.rue:124:5
+- Unused parameter `f52` at passed_generic_functions_wide.rue:125:5
+- Unused parameter `f53` at passed_generic_functions_wide.rue:126:5
+- Unused parameter `f54` at passed_generic_functions_wide.rue:127:5
+- Unused parameter `f55` at passed_generic_functions_wide.rue:128:5
+- Unused parameter `f56` at passed_generic_functions_wide.rue:129:5
+- Unused parameter `f57` at passed_generic_functions_wide.rue:130:5
+- Unused parameter `f58` at passed_generic_functions_wide.rue:131:5
+- Unused parameter `f59` at passed_generic_functions_wide.rue:132:5

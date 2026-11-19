@@ -12,8 +12,8 @@ use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
 use rue_hir::{HirId, Value};
 use rue_types::{
-    CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, contains_generic,
-    substitute_with_mappings,
+    CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, contained_generics,
+    contains_generic, substitute_with_mappings,
 };
 
 use crate::{ArgumentFrame, Compiler, compile_expr, compile_lambda_argument};
@@ -750,11 +750,8 @@ fn bounded_above(ctx: &mut Compiler, function: &FunctionType, ty: TypeId) -> Ind
 
 /// The callee's generics that the type references.
 fn generics_in(ctx: &mut Compiler, function: &FunctionType, ty: TypeId) -> IndexSet<TypeId> {
-    function
-        .generics
-        .iter()
-        .copied()
-        .filter(|&generic| contains_generic(ctx.types_mut(), ty, generic))
+    contained_generics(ctx.types_mut(), ty, function.generics.iter().copied())
+        .into_iter()
         .collect()
 }
 

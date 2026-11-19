@@ -431,6 +431,28 @@ pub fn contains_generic(arena: &mut Arena<Type>, id: TypeId, generic: TypeId) ->
     references_generic(arena, root, generic, |_| Vec::new())
 }
 
+/// The generics among `generics` that are referenced anywhere in the type, as `contains_generic`
+/// finds them, in the order they're given. The type is only substituted once.
+pub fn contained_generics(
+    arena: &mut Arena<Type>,
+    id: TypeId,
+    generics: impl IntoIterator<Item = TypeId>,
+) -> Vec<TypeId> {
+    let generics: Vec<TypeId> = generics.into_iter().collect();
+
+    // Most calls are to functions without generics, and there's nothing to substitute for them
+    if generics.is_empty() {
+        return generics;
+    }
+
+    let root = substitute(arena, id);
+
+    generics
+        .into_iter()
+        .filter(|&generic| references_generic(arena, root, generic, |_| Vec::new()))
+        .collect()
+}
+
 /// Returns `true` if the type is unresolved, or contains an unresolved type anywhere inside of it
 /// (such as an element of a pair or a field of a struct), because an error has already been
 /// reported for it.
