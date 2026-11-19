@@ -51,6 +51,9 @@ pub struct Compiler {
     return_count: usize,
     /// The calls whose generics are being inferred from their arguments, innermost last.
     call_frames: Vec<CallFrame>,
+    /// How many expressions enclose the one being compiled whose expected type is only a hint,
+    /// such as the type of a guard (see `Compiler::with_hinted_expected_type`).
+    hinted: usize,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
@@ -158,6 +161,7 @@ impl Compiler {
             return_stack: Vec::new(),
             return_count: 0,
             call_frames: Vec::new(),
+            hinted: 0,
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
@@ -774,6 +778,21 @@ impl Compiler {
             .last_mut()
             .expect("an argument is compiled inside a call")
             .argument = argument;
+    }
+
+    /// Compiles with an expected type that's only a hint, which the value doesn't have to be
+    /// assignable to, such as the type of a guard or a cast.
+    pub fn with_hinted_expected_type<T>(&mut self, compile: impl FnOnce(&mut Self) -> T) -> T {
+        self.hinted += 1;
+        let result = compile(self);
+        self.hinted -= 1;
+        result
+    }
+
+    /// Whether the expression being compiled is inside one whose expected type is only a hint (see
+    /// `Compiler::with_hinted_expected_type`).
+    pub fn is_expected_type_hinted(&self) -> bool {
+        self.hinted > 0
     }
 
     /// Takes the argument of the innermost call being inferred that's being compiled, if there is

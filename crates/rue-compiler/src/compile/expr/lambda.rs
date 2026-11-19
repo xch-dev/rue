@@ -11,11 +11,29 @@ use crate::{
     compile_expr, compile_generic_parameters, compile_type, create_binding,
 };
 
+use super::call_inference::references_call_generics;
+
 pub fn compile_lambda_expr(
     ctx: &mut Compiler,
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
+    compile_lambda(ctx, expr, expected_type, false).0
+}
+
+/// Compiles a lambda. With `wrap`, for a lambda that's an argument of a call whose generics are
+/// being inferred, each untyped parameter is compiled as a reference of its own to the type it
+/// would have, which is the same type to its body. Where the parameter flows into the lambda's
+/// return type unchanged, the return type has the reference, so the call can infer the parameter's
+/// type along with its generics (#335). It returns the references and the types they refer to.
+pub(crate) fn compile_lambda(
+    ctx: &mut Compiler,
+    expr: &AstLambdaExpr,
+    expected_type: Option<TypeId>,
+    wrap: bool,
+) -> (Value, Vec<(TypeId, TypeId)>) {
+    let mut wrapped = Vec::new();
+
     let mut expected_functions = if let Some(ty) = expected_type {
         rue_types::extract_functions(ctx.types_mut(), ty, true)
     } else {
@@ -92,6 +110,23 @@ pub fn compile_lambda_expr(
             debug!("Unresolved lambda parameter type due to missing inference");
             ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType);
             ctx.builtins().unresolved.ty
+        };
+
+        // Not for a generic lambda or one expected to be a generic function, or when its type is
+        // still one of the call's generics, which aren't in scope outside of it
+        let ty = if wrap
+            && param.ty().is_none()
+            && !is_spread
+            && vars.is_empty()
+            && !matches!(ctx.ty(ty), Type::Unresolved)
+            && !references_call_generics(ctx, ty)
+        {
+            let reference = ctx.alloc_type(Type::Ref(ty));
+            ctx.report_type_as(reference, ty);
+            wrapped.push((reference, ty));
+            reference
+        } else {
+            ty
         };
 
         let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
@@ -179,7 +214,7 @@ pub fn compile_lambda_expr(
 
     let hir = ctx.alloc_hir(Hir::Lambda(symbol));
 
-    Value::new(hir, ty)
+    (Value::new(hir, ty), wrapped)
 }
 
 /// What the body of a lambda without a return annotation is expected to be: the return type of

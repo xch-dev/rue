@@ -27,6 +27,9 @@ pub struct Database {
     hir: Arena<Hir>,
     const_exprs: Vec<HirId>,
     hir_types: HashMap<HirId, TypeId>,
+    /// Types that nodes are reported as having in place of the ones they were recorded with (see
+    /// `Database::report_type_as`).
+    reported_types: HashMap<TypeId, TypeId>,
     hir_srclocs: HashMap<HirId, SrcLoc>,
     hir_scopes: HashMap<HirId, ScopeId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
@@ -98,7 +101,15 @@ impl Database {
     /// the compiler generates in other ways, such as the destructuring of a binding, don't have
     /// one.
     pub fn hir_type(&self, hir: HirId) -> Option<TypeId> {
-        self.hir_types.get(&hir).copied()
+        let ty = *self.hir_types.get(&hir)?;
+        Some(self.reported_types.get(&ty).copied().unwrap_or(ty))
+    }
+
+    /// Reports the nodes recorded with the type as having another one instead, which it's the same
+    /// type as, such as an untyped lambda parameter that's compiled as a reference of its own to its
+    /// type (see `compile_lambda` in `rue-compiler`), so that it's the same type to lints too.
+    pub fn report_type_as(&mut self, ty: TypeId, reported: TypeId) {
+        self.reported_types.insert(ty, reported);
     }
 
     /// Records the location of the source expression that a HIR node was compiled from. Like
