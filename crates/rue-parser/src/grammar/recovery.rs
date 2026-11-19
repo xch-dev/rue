@@ -1150,6 +1150,43 @@ fn test_struct_recovery() {
 }
 
 #[test]
+fn test_struct_initializer_missing_close_brace_before_list() {
+    // Only the first error in the struct's fields is reported, not one for every element of the
+    // list that the struct runs into
+    check(
+        "fn main() {\n    let list = [Point { x: 1, [2, nil, -3, \"four\", 5], 6];\n}",
+        expect![[r#"
+            Document
+              FunctionItem
+                Block
+                  LetStmt
+                    NamedBinding
+                    ListExpr
+                      ListItem
+                        StructInitializerExpr
+                          PathExpr
+                            PathSegment
+                          StructInitializerField
+                            LiteralExpr
+                          Error "["
+                          Error "2"
+                          Error "nil"
+                          Error "-"
+                          Error "3"
+                          Error "\"four\""
+                          Error "5"
+                    Error ","
+                    Error "6"
+                  Error "]"
+                  Error ";"
+        "#]],
+        expect![[r#"
+            Expected one of `}`, identifier, `,`, found `[` at main.rue:2:31
+            Expected `;`, found `,` at main.rue:2:54"#]],
+    );
+}
+
+#[test]
 fn test_struct_initializer_missing_open_brace() {
     check(
         "fn main() {\n    let point = Point x: 1, y: 2 };\n    point\n}\n\nfn other() {}",
