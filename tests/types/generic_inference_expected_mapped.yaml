@@ -77,12 +77,12 @@ tests:
   byte_cost: 2556000
   total_cost: 2561920
 - name: narrower_mapping_kept_without_arguments_or_with_a_lambda
-  program: (a (q 16 (a 10 (c (a 4 ()) (c (q . 5) (q 1 . 1)))) (a 14 (c (q . 5) (q 1 . 1))) (a 10 (c (a 4 ()) (c (q . 5) (q 1 . 1))))) (c (c (q 1 . 5) (c (q . 2) (q 3 () (a 3 (c 2 ())) 2))) ()))
-  debug_program: (a (q 2 (q 16 (+ 4 10) 14) (c (c (a 12 (c (a 8 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (c (a 30 (c (q . 5) (a 22 (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 12 (c (a 10 (a 8 ())) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))))) 1)) (c (c (c (q 1 . 5) (q . 2)) (c (q . 1) (c (q . 1) (q 3 () (a 3 (c 2 ())) 2)))) ()))
-  output: "15"
-  runtime_cost: 3201
-  byte_cost: 1692000
-  total_cost: 1695201
+  program: (a (q 16 (a 4 (c (a 22 ()) (c (q . 5) (q 1 . 1)))) (a 30 (c (q . 5) (q 1 . 1))) (a 4 (c (a 22 ()) (c (q . 5) (q 1 . 1)))) (a 4 (c (q . 1) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ())))))) (a 4 (c () (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))))))) (c (c (q . 2) (c (q . 1) (c (q 1 . 5) (q 3 () (a 3 (c 2 ())) 2)))) ()))
+  debug_program: (a (q 2 (q 16 (+ (+ (+ 8 12) 10) 22) 30) (c (c (c (a 8 (c (a 18 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 62 (c (q . 5) (a 46 (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (c (a 8 (c (a 54 (a 18 ())) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (c (a 8 (c (a 38 (q . 1)) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 12) (c (q . 1) ()))) ())))))) (a 8 (c (a 26 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 12) (c (q . 1) ()))) ()))))))))) 1)) (c (c (c (q . 2) (q . 1)) (c (c (q 1 . 5) (q . 1)) (c (c (q . 1) (q . 1)) (c (q . 1) (q 3 () (a 3 (c 2 ())) 2))))) ()))
+  output: "16"
+  runtime_cost: 5961
+  byte_cost: 3924000
+  total_cost: 3929961
 - name: generic_bounded_from_above_keeps_its_mapping
   program: (a (q 2 (q 2 (i 2 (q . 2) (q)) 1) (c (a 4 (c 2 (c (q . 1) (c (q) (q . 2))))) 1)) (c (c (q 2 (i (> 5 ()) (q 2 4 (c 2 (c (- 5 (q . 1)) (c 11 (a 6 (q . 2)))))) (q)) 1) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ())))) ()))
   debug_program: (a (q 2 (q 2 (i (= 2 ()) (q) (q . 2)) 1) (c (a 4 (c (c 4 (c 10 14)) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) 1)) (c (c (q 2 (i (> 5 ()) (q 2 4 (c (c 4 (c 10 14)) (c (- 5 (q . 1)) (c 11 (a 14 (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ())))))))) (q)) 1) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
@@ -99,6 +99,6 @@ diagnostics:
 - Unused parameter `first` at generic_inference_expected_mapped.rue:79:23
 - Binding `value` is returned directly after it's declared at generic_inference_expected_mapped.rue:86:5
 - Binding `value` is returned directly after it's declared at generic_inference_expected_mapped.rue:98:5
-- Unnecessary type guard from `5` to `5`, since they are already compatible types at generic_inference_expected_mapped.rue:177:21
-- Unnecessary type guard from `5` to `5`, since they are already compatible types at generic_inference_expected_mapped.rue:186:25
-- Unnecessary type guard from `5` to `5`, since they are already compatible types at generic_inference_expected_mapped.rue:196:21
+- Unnecessary type guard from `5` to `5`, since they are already compatible types at generic_inference_expected_mapped.rue:178:21
+- Unnecessary type guard from `5` to `5`, since they are already compatible types at generic_inference_expected_mapped.rue:187:25
+- Unnecessary type guard from `5` to `5`, since they are already compatible types at generic_inference_expected_mapped.rue:197:21

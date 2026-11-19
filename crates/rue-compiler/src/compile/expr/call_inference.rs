@@ -673,11 +673,11 @@ struct Argument {
     has_own_lambda: bool,
     /// Whether it's compiled against the expected type's own bounds (see
     /// `ArgumentOrder::widens_to_expected`). It's a call, since its own arguments add to the
-    /// generics once it's compiled against them, as `8` does in `id(8)`. It has arguments and no
-    /// call without arguments in it, since such a call infers only from its expected type, so
-    /// widening that would only widen the call's result, as `make()` would become `5 | 6`. And it
-    /// has no lambda in it, even one a call passes through, since a lambda's parameter types keep
-    /// the narrower mappings.
+    /// generics once it's compiled against them, as `8` does in `id(8)`, and its generics that
+    /// only its expected type constrains, such as `A` in `nothing<A>(v: Int) -> A` or the `T` of
+    /// a call without arguments, still take the narrower type (see
+    /// `Compiler::with_narrower_expected_type`). It has no lambda in it, even one a call passes
+    /// through, since a lambda's parameter types keep the narrower mappings.
     widens: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
     reads: IndexSet<TypeId>,

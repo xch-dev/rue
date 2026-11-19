@@ -167,8 +167,9 @@ fn tail<T>(first: T, function: fn(x: T) -> Int) -> T {
     first
 }
 
-// Guards: a call without arguments only has its expected type to infer from, so it keeps the
-// narrower `5`, as does a call with one inside it, and so does a lambda that a call passes through. Either way, `x` is `5`, as on main,
+// Guards: a call's generic that only its expected type constrains keeps the narrower `5`, whether
+// the call has no arguments, has one without any inside it, or has arguments that don't constrain
+// it (`nothing(1)`, `default_or(nil)`), and so does a lambda that a call passes through. Either way, `x` is `5`, as on main,
 // which the unnecessary guards show
 test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
     let made: 5 | 6 = later(
@@ -199,7 +200,9 @@ test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
             2
         },
     );
-    made + passed + inside
+    let unbound: 5 | 6 = later(5, nothing(1), fn(x) => only_five(x));
+    let held: 5 | 6 = later(5, default_or(nil), fn(x) => only_five(x));
+    made + passed + inside + unbound + held
 }
 
 type Tree<T> = nil | (T, (Tree<T>, Tree<T>));
@@ -227,4 +230,12 @@ test fn generic_bounded_from_above_keeps_its_mapping() -> Int {
     } else {
         result
     }
+}
+
+fn nothing<A>(value: Int) -> A {
+    unchecked_cast(value)
+}
+
+fn default_or<A>(value: A | nil) -> A {
+    unchecked_cast(value)
 }
