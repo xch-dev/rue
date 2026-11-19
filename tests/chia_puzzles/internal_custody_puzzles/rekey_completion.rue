@@ -1,0 +1,88 @@
+// Regression test, not for production use. A port of `internal_custody_puzzles/rekey_completion.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+import std::singleton::{LineageProof, SingletonStruct};
+
+extern fn reference(...solution: Any) -> Any from "./rekey_completion.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The arguments curried into the rekey coin.
+struct RekeyArgs {
+    // These two aren't used here, but are curried in to be part of the puzzle hash.
+    old_custody_root: Bytes32,
+    new_custody_root: Bytes32,
+    timelock: Int,
+}
+
+inline const REKEY_KW: Bytes = "r";
+
+fn main(
+    singleton_struct: SingletonStruct,
+    finishing_timelock: Int,
+    rekey_args: RekeyArgs,
+    lineage_proof: LineageProof,
+) -> List<Condition> {
+    // The finishing timelock is used unless this is a lock, with a timelock of 0.
+    let timelock = if rekey_args.timelock != 0 {
+        finishing_timelock
+    } else {
+        0
+    };
+
+    let parent_puzzle_hash = curry_tree_hash(
+        singleton_struct.mod_hash,
+        [tree_hash(singleton_struct), lineage_proof.parent_inner_puzzle_hash],
+    );
+
+    [
+        AssertSecondsRelative { seconds: timelock },
+        AssertMyParentId {
+            parent_id: coinid(
+                lineage_proof.parent_parent_coin_info,
+                parent_puzzle_hash,
+                lineage_proof.parent_amount,
+            ),
+        },
+        AssertPuzzleAnnouncement { id: sha256(parent_puzzle_hash + REKEY_KW) },
+        CreatePuzzleAnnouncement { message: REKEY_KW },
+        // For fees.
+        CreateCoinAnnouncement { message: nil },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn spend(timelock: Int) -> Any {
+    [
+        SingletonStruct {
+            mod_hash: sha256("singleton_mod"),
+            launcher_id: sha256("launcher_id"),
+            launcher_puzzle_hash: sha256("launcher_puzzle"),
+        },
+        3600,
+        RekeyArgs {
+            old_custody_root: sha256("old_root"),
+            new_custody_root: sha256("new_root"),
+            timelock,
+        },
+        LineageProof {
+            parent_parent_coin_info: sha256("parent_parent"),
+            parent_inner_puzzle_hash: sha256("parent_inner_puzzle"),
+            parent_amount: 1,
+        },
+    ]
+}
+
+test fn completes_a_rekey() -> Any {
+    check(spend(2))
+}
+
+test fn completes_a_lock() -> Any {
+    check(spend(0))
+}

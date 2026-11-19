@@ -1,0 +1,33 @@
+// Regression test, not for production use. A port of `internal_custody_puzzles/ach_completion.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./ach_completion.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(
+    clawback_period: Int,
+    // The first curried argument is used by the clawback spend, and the payment is made to the
+    // puzzle hash after it if it isn't clawed back.
+    puzzle_root_and_p2_puzzle_hash: (Any, Bytes32),
+    my_amount: Int,
+) -> List<Condition> {
+    [
+        AssertSecondsRelative { seconds: clawback_period },
+        AssertMyAmount { amount: my_amount },
+        CreateCoin { puzzle_hash: puzzle_root_and_p2_puzzle_hash.rest, amount: my_amount },
+        // For fees.
+        CreateCoinAnnouncement { message: nil },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn completes_the_payment() -> Any {
+    check([3600, (sha256("puzzle_root"), sha256("p2")), 100])
+}

@@ -1,0 +1,177 @@
+// Regression test, not for production use. A port of `internal_custody_puzzles/rekey_and_payment.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./rekey_and_payment.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The arguments curried into the rekey coin.
+struct RekeyArgs {
+    new_root: Bytes32,
+    old_root: Bytes32,
+    timelock: Int,
+}
+
+struct CurriedArgs {
+    // The rekey puzzle's mod hash, and the shortest timelock that a rekey is allowed to have.
+    rekey: (Bytes32, Int),
+    // The payment puzzle's mod hash, and the puzzle hash that payments can be clawed back to.
+    ...payment: (Bytes32, Bytes32),
+}
+
+// The inner solution that `p2_merkle_tree.clsp` passes, after the curried arguments.
+struct RekeyAndPaymentSolution {
+    solution: Any,
+    // `RekeyArgs` for a rekey, or the arguments curried into a payment.
+    curried_args_to_coin: Any,
+}
+
+fn main(
+    curried_args: CurriedArgs,
+    // The parameters in `p2_merkle_tree.clsp`.
+    puzzle_reveal: fn(...solution: Any) -> List<Condition>,
+    inner_solution: RekeyAndPaymentSolution,
+) -> List<Condition> {
+    check_even_coin(
+        puzzle_reveal(...inner_solution.solution),
+        inner_solution.curried_args_to_coin,
+        curried_args,
+    )
+}
+
+// Checks that every even coin that's created is a clawback, a payment, or a rekey coin with a long
+// enough timelock.
+fn check_even_coin(
+    conditions: List<Condition>,
+    curried_args_to_coin: Any,
+    curried_args: CurriedArgs,
+) -> List<Condition> {
+    if conditions is nil {
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    assert !(condition is CreateCoin && condition.amount & 1 == 0)
+        || inline if condition.amount != 0 {
+            // A payment, or a clawback.
+            condition.puzzle_hash == curried_args.payment.rest
+                || condition.puzzle_hash == curry_tree_hash(
+                    curried_args.payment.first,
+                    [tree_hash(curried_args_to_coin)],
+                )
+        } else {
+            // A rekey.
+            condition.puzzle_hash == curry_tree_hash(
+                    curried_args.rekey.first,
+                    [tree_hash(curried_args_to_coin)],
+                )
+                && curried_args.rekey.rest <= unchecked_cast::<RekeyArgs>(
+                    curried_args_to_coin,
+                ).timelock
+        };
+
+    [condition, ...check_even_coin(conditions.rest, curried_args_to_coin, curried_args)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn curried_args() -> CurriedArgs {
+    CurriedArgs {
+        rekey: (sha256("rekey_mod"), 2),
+        payment: (sha256("ach_mod"), sha256("clawback")),
+    }
+}
+
+fn rekey_args(timelock: Int) -> RekeyArgs {
+    RekeyArgs { new_root: sha256("new_root"), old_root: sha256("old_root"), timelock }
+}
+
+fn payment_args() -> (Bytes32, Bytes32) {
+    (sha256("puzzle_root"), sha256("p2"))
+}
+
+fn spend(conditions: List<Condition>, curried_args_to_coin: Any) -> Any {
+    [curried_args(), 1, RekeyAndPaymentSolution { solution: conditions, curried_args_to_coin }]
+}
+
+test fn allows_a_rekey() -> Any {
+    check(spend(
+        [
+            CreateCoin { puzzle_hash: sha256("singleton"), amount: 1 },
+            CreateCoin {
+                puzzle_hash: curry_tree_hash(sha256("rekey_mod"), [tree_hash(rekey_args(2))]),
+                amount: 0,
+            },
+        ],
+        rekey_args(2),
+    ))
+}
+
+test fn allows_a_payment() -> Any {
+    check(spend(
+        [
+            CreateCoin { puzzle_hash: sha256("singleton"), amount: 1 },
+            CreateCoin {
+                puzzle_hash: curry_tree_hash(sha256("ach_mod"), [tree_hash(payment_args())]),
+                amount: 100,
+            },
+        ],
+        payment_args(),
+    ))
+}
+
+test fn allows_a_clawback() -> Any {
+    check(spend([CreateCoin { puzzle_hash: sha256("clawback"), amount: 100 }], nil))
+}
+
+test fn allows_no_even_coin() -> Any {
+    check(spend([ReserveFee { amount: 1 }], nil))
+}
+
+fn wrong_payment() -> Any {
+    spend([CreateCoin { puzzle_hash: sha256("other"), amount: 100 }], payment_args())
+}
+
+test fn rejects_the_wrong_payment() -> Any {
+    run(main, wrong_payment())
+}
+
+test fn reference_rejects_the_wrong_payment() -> Any {
+    run(reference, wrong_payment())
+}
+
+fn wrong_rekey() -> Any {
+    spend([CreateCoin { puzzle_hash: sha256("other"), amount: 0 }], rekey_args(2))
+}
+
+test fn rejects_the_wrong_rekey() -> Any {
+    run(main, wrong_rekey())
+}
+
+test fn reference_rejects_the_wrong_rekey() -> Any {
+    run(reference, wrong_rekey())
+}
+
+fn short_timelock() -> Any {
+    spend(
+        [CreateCoin {
+            puzzle_hash: curry_tree_hash(sha256("rekey_mod"), [tree_hash(rekey_args(1))]),
+            amount: 0,
+        }],
+        rekey_args(1),
+    )
+}
+
+test fn rejects_a_short_timelock() -> Any {
+    run(main, short_timelock())
+}
+
+test fn reference_rejects_a_short_timelock() -> Any {
+    run(reference, short_timelock())
+}

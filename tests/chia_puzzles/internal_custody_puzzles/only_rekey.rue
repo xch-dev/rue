@@ -1,0 +1,120 @@
+// Regression test, not for production use. A port of `internal_custody_puzzles/only_rekey.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./only_rekey.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The arguments curried into the rekey coin.
+struct RekeyArgs {
+    new_root: Bytes32,
+    old_root: Bytes32,
+    timelock: Int,
+}
+
+// The inner solution that `p2_merkle_tree.clsp` passes, after the curried arguments.
+struct OnlyRekeySolution {
+    solution: Any,
+    curried_args_to_coin: RekeyArgs,
+}
+
+fn main(
+    // The rekey puzzle's mod hash, and the shortest timelock that a rekey is allowed to have.
+    curried_args: (Bytes32, Int),
+    // The parameters in `p2_merkle_tree.clsp`.
+    puzzle_reveal: fn(...solution: Any) -> List<Condition>,
+    inner_solution: OnlyRekeySolution,
+) -> List<Condition> {
+    check_zero_coin(
+        puzzle_reveal(...inner_solution.solution),
+        inner_solution.curried_args_to_coin,
+        curried_args,
+    )
+}
+
+// Checks that every even coin that's created is a rekey coin with a long enough timelock.
+fn check_zero_coin(
+    conditions: List<Condition>,
+    curried_args_to_coin: RekeyArgs,
+    curried_args: (Bytes32, Int),
+) -> List<Condition> {
+    if conditions is nil {
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    assert !(condition is CreateCoin && condition.amount & 1 == 0)
+        || (
+            condition.amount == 0
+                && condition.puzzle_hash == curry_tree_hash(
+                    curried_args.first,
+                    [tree_hash(curried_args_to_coin)],
+                )
+                && curried_args.rest <= curried_args_to_coin.timelock
+        );
+
+    [condition, ...check_zero_coin(conditions.rest, curried_args_to_coin, curried_args)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn rekey_args(timelock: Int) -> RekeyArgs {
+    RekeyArgs { new_root: sha256("new_root"), old_root: sha256("old_root"), timelock }
+}
+
+fn rekey_puzzle_hash(timelock: Int) -> Bytes32 {
+    curry_tree_hash(sha256("rekey_mod"), [tree_hash(rekey_args(timelock))])
+}
+
+fn spend(conditions: List<Condition>, timelock: Int) -> Any {
+    [
+        (sha256("rekey_mod"), 2),
+        1,
+        OnlyRekeySolution { solution: conditions, curried_args_to_coin: rekey_args(timelock) },
+    ]
+}
+
+test fn allows_a_rekey() -> Any {
+    check(spend(
+        [
+            CreateCoin { puzzle_hash: sha256("singleton"), amount: 1 },
+            CreateCoin { puzzle_hash: rekey_puzzle_hash(3), amount: 0 },
+            ReserveFee { amount: 0 },
+        ],
+        3,
+    ))
+}
+
+test fn allows_no_rekey() -> Any {
+    check(spend([CreateCoin { puzzle_hash: sha256("singleton"), amount: 1 }], 2))
+}
+
+test fn rejects_a_nonzero_even_coin() -> Any {
+    run(main, spend([CreateCoin { puzzle_hash: rekey_puzzle_hash(2), amount: 2 }], 2))
+}
+
+test fn reference_rejects_a_nonzero_even_coin() -> Any {
+    run(reference, spend([CreateCoin { puzzle_hash: rekey_puzzle_hash(2), amount: 2 }], 2))
+}
+
+test fn rejects_the_wrong_puzzle_hash() -> Any {
+    run(main, spend([CreateCoin { puzzle_hash: sha256("other"), amount: 0 }], 2))
+}
+
+test fn reference_rejects_the_wrong_puzzle_hash() -> Any {
+    run(reference, spend([CreateCoin { puzzle_hash: sha256("other"), amount: 0 }], 2))
+}
+
+test fn rejects_a_short_timelock() -> Any {
+    run(main, spend([CreateCoin { puzzle_hash: rekey_puzzle_hash(1), amount: 0 }], 1))
+}
+
+test fn reference_rejects_a_short_timelock() -> Any {
+    run(reference, spend([CreateCoin { puzzle_hash: rekey_puzzle_hash(1), amount: 0 }], 1))
+}

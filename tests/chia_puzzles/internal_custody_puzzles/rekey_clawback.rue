@@ -1,0 +1,189 @@
+// Regression test, not for production use. A port of `internal_custody_puzzles/rekey_clawback.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./rekey_clawback.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The arguments curried into the rekey coin.
+struct RekeyArgs {
+    // Not used here, but curried in to be part of the puzzle hash.
+    new_custody_root: Bytes32,
+    old_custody_root: Bytes32,
+    timelock: Int,
+}
+
+inline const REKEY_KW: Bytes = "r";
+
+fn main(
+    rekey_args: RekeyArgs,
+    my_puzzle_hash: Bytes32,
+    puzzle_reveal: fn(...solution: Any) -> List<Condition>,
+    merkle_proof: MerkleProof,
+    puzzle_solution: Any,
+) -> List<Condition> {
+    // Locks can't be clawed back.
+    assert rekey_args.timelock > 0;
+    assert rekey_args.old_custody_root == simplify_merkle_proof(
+        tree_hash(puzzle_reveal),
+        merkle_proof,
+    );
+
+    [
+        AssertMyPuzzleHash { puzzle_hash: my_puzzle_hash },
+        ...filter_conditions(puzzle_reveal(...puzzle_solution), my_puzzle_hash, false),
+    ]
+}
+
+// Removes the one coin, which must recreate this coin with no value, and checks that the spend
+// doesn't authorize the rekey.
+fn filter_conditions(
+    conditions: List<Condition>,
+    my_puzzle_hash: Bytes32,
+    seen: Bool,
+) -> List<Condition> {
+    if conditions is nil {
+        assert seen;
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    if condition is CreateCoin {
+        assert !seen && condition.puzzle_hash == my_puzzle_hash && condition.amount == 0;
+        return filter_conditions(conditions.rest, my_puzzle_hash, true);
+    }
+
+    assert !(condition is CreatePuzzleAnnouncement && condition.message == REKEY_KW);
+
+    [condition, ...filter_conditions(conditions.rest, my_puzzle_hash, seen)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A tree with two leaves: the puzzle `1` on the left, and another puzzle on the right.
+fn left_leaf() -> Bytes32 {
+    tree_hash_atom(tree_hash(1))
+}
+
+fn right_leaf() -> Bytes32 {
+    tree_hash_atom(sha256("other_puzzle"))
+}
+
+fn rekey_args(timelock: Int) -> RekeyArgs {
+    RekeyArgs {
+        new_custody_root: sha256("new_root"),
+        old_custody_root: tree_hash_pair(left_leaf(), right_leaf()),
+        timelock,
+    }
+}
+
+fn spend(timelock: Int, conditions: List<Condition>) -> Any {
+    [rekey_args(timelock), sha256("me"), 1, (0, [right_leaf()]), conditions]
+}
+
+test fn claws_back_the_rekey() -> Any {
+    check(spend(
+        2,
+        [
+            ReserveFee { amount: 1 },
+            CreateCoin { puzzle_hash: sha256("me"), amount: 0 },
+            CreatePuzzleAnnouncement { message: "other" },
+        ],
+    ))
+}
+
+fn lock() -> Any {
+    spend(0, [CreateCoin { puzzle_hash: sha256("me"), amount: 0 }])
+}
+
+test fn rejects_a_lock() -> Any {
+    run(main, lock())
+}
+
+test fn reference_rejects_a_lock() -> Any {
+    run(reference, lock())
+}
+
+fn wrong_proof() -> Any {
+    [
+        rekey_args(2),
+        sha256("me"),
+        1,
+        (1, [right_leaf()]),
+        [CreateCoin { puzzle_hash: sha256("me"), amount: 0 }],
+    ]
+}
+
+test fn rejects_the_wrong_proof() -> Any {
+    run(main, wrong_proof())
+}
+
+test fn reference_rejects_the_wrong_proof() -> Any {
+    run(reference, wrong_proof())
+}
+
+test fn rejects_no_coin() -> Any {
+    run(main, spend(2, nil))
+}
+
+test fn reference_rejects_no_coin() -> Any {
+    run(reference, spend(2, nil))
+}
+
+fn two_coins() -> Any {
+    spend(
+        2,
+        [
+            CreateCoin { puzzle_hash: sha256("me"), amount: 0 },
+            CreateCoin { puzzle_hash: sha256("me"), amount: 0 },
+        ],
+    )
+}
+
+test fn rejects_two_coins() -> Any {
+    run(main, two_coins())
+}
+
+test fn reference_rejects_two_coins() -> Any {
+    run(reference, two_coins())
+}
+
+test fn rejects_the_wrong_puzzle_hash() -> Any {
+    run(main, spend(2, [CreateCoin { puzzle_hash: sha256("other"), amount: 0 }]))
+}
+
+test fn reference_rejects_the_wrong_puzzle_hash() -> Any {
+    run(reference, spend(2, [CreateCoin { puzzle_hash: sha256("other"), amount: 0 }]))
+}
+
+test fn rejects_a_nonzero_amount() -> Any {
+    run(main, spend(2, [CreateCoin { puzzle_hash: sha256("me"), amount: 2 }]))
+}
+
+test fn reference_rejects_a_nonzero_amount() -> Any {
+    run(reference, spend(2, [CreateCoin { puzzle_hash: sha256("me"), amount: 2 }]))
+}
+
+fn rekey_announcement() -> Any {
+    spend(
+        2,
+        [
+            CreateCoin { puzzle_hash: sha256("me"), amount: 0 },
+            CreatePuzzleAnnouncement { message: "r" },
+        ],
+    )
+}
+
+test fn rejects_the_rekey_announcement() -> Any {
+    run(main, rekey_announcement())
+}
+
+test fn reference_rejects_the_rekey_announcement() -> Any {
+    run(reference, rekey_announcement())
+}
