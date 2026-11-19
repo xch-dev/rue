@@ -644,6 +644,9 @@ struct Argument {
     kind: ArgumentKind,
     /// Whether it is, or has in it, a lambda.
     has_lambda: bool,
+    /// Whether every lambda in it is in the arguments of a call in it, such as
+    /// `map_reversed(5, fn(x) => 7)` (see `lambdas_only_in_calls`).
+    lambdas_only_in_calls: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
     reads: IndexSet<TypeId>,
     /// The callee's generics that comparing it with its parameter can add to: every one in the
@@ -742,6 +745,7 @@ impl ArgumentOrder {
                 Argument {
                     kind,
                     has_lambda: has_lambda(arg),
+                    lambdas_only_in_calls: lambdas_only_in_calls(arg),
                     reads,
                     writes: generics_in(ctx, function, param.ty),
                     bounds_above: bounded_above(ctx, function, param.ty),
@@ -879,6 +883,15 @@ impl ArgumentOrder {
 
         if !argument.has_lambda {
             return true;
+        }
+
+        // A call with lambdas only in its own arguments compiles them against its own generics,
+        // which its expected type only bounds through its return type, as it does for a call
+        // without lambdas. Like a lambda, it only takes them once nothing still to be compiled can
+        // add to the generics its expected type comes from, since a narrower type could stop a
+        // later addition where it ends up in a parameter type, such as a returned function's
+        if argument.lambdas_only_in_calls {
+            return self.last_settled;
         }
 
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
@@ -1493,6 +1506,24 @@ pub(crate) fn references_call_generics(ctx: &mut Compiler, ty: TypeId) -> bool {
 /// only its expected type can infer.
 fn is_call_without_arguments(expr: &AstExpr) -> bool {
     matches!(expr, AstExpr::FunctionCallExpr(call) if call.args().next().is_none())
+}
+
+/// Whether every lambda in the expression is in the arguments of a call in it: it has no lambda
+/// outside of a call's arguments, and the expression isn't one itself.
+fn lambdas_only_in_calls(expr: &AstExpr) -> bool {
+    let mut stack = vec![expr.syntax().clone()];
+
+    while let Some(node) = stack.pop() {
+        if AstLambdaExpr::cast(node.clone()).is_some() {
+            return false;
+        }
+
+        if AstFunctionCallExpr::cast(node.clone()).is_none() {
+            stack.extend(node.children());
+        }
+    }
+
+    true
 }
 
 /// Whether the expression is, or has in it, a lambda.
