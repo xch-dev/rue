@@ -67,7 +67,16 @@ pub(crate) fn infer_call(
     // The instances of generic functions passed as arguments are solved with the callee's generics
     base.set_instance_policy(InstancePolicy::Joint);
 
-    let solver = Rc::new(ctx.call_solver(expected));
+    // A call with arguments in an element that's only refined for a call without arguments in it
+    // only uses the type expected of it for the generics its arguments don't give a type (see
+    // `refine_element_expected`)
+    let fallback_only = ctx.is_expected_type_fallback() && !args.is_empty();
+    let solver = ctx.call_solver(expected);
+    let solver = Rc::new(if fallback_only {
+        solver.fallback_only()
+    } else {
+        solver
+    });
 
     let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
 
@@ -146,21 +155,23 @@ pub(crate) fn infer_call(
             _ => None,
         };
 
-        let (value, mut parameters) = ctx.with_expected_type_hint(hint, |ctx| {
-            if let AstExpr::LambdaExpr(lambda) = expr {
-                let wrap = match &params {
-                    Some(params) => ParameterWrap::Generics {
-                        params,
-                        generics: &function.generics,
-                        mappings: &mappings,
-                    },
-                    None => ParameterWrap::Whole,
-                };
+        let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
+            ctx.with_expected_type_hint(hint, |ctx| {
+                if let AstExpr::LambdaExpr(lambda) = expr {
+                    let wrap = match &params {
+                        Some(params) => ParameterWrap::Generics {
+                            params,
+                            generics: &function.generics,
+                            mappings: &mappings,
+                        },
+                        None => ParameterWrap::Whole,
+                    };
 
-                compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
-            } else {
-                (compile_expr(ctx, expr, Some(expected)), Vec::new())
-            }
+                    compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
+                } else {
+                    (compile_expr(ctx, expr, Some(expected)), Vec::new())
+                }
+            })
         });
 
         // The lambdas among the elements of a pair or list argument (see `compile_element`)
@@ -193,7 +204,7 @@ pub(crate) fn infer_call(
     // that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one that
     // comes from what an enclosing call has inferred so far, which it can still widen. The checks
     // are made with the renamed generics restored, as the call is checked
-    let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint());
+    let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint() && !fallback_only);
 
     restore_renamed(ctx, &mut mappings, renamed);
 
@@ -1219,17 +1230,26 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
 /// that's assignable to the caller's generic, are restored again. So the lambda gets the caller's
 /// generic unless an element before it can't be assigned to its expected type with the caller's
 /// generic (see `record_element`), and what it infers can't be either.
+///
+/// A pair or list with a call without arguments in it, such as `(3, make())` in
+/// `first(((1, 2), (3, make())))`, is compiled against it too, but only as a fallback: a call with
+/// arguments in it only uses it for the generics its arguments don't give a type, so `opt(nil)` in
+/// `(opt(nil), make())` is as it was. The second value is whether it's only a fallback.
 pub(crate) fn refine_element_expected(
     ctx: &mut Compiler,
     expected: TypeId,
     element: &AstExpr,
-) -> TypeId {
-    if !(has_lambda(element) || is_call_without_arguments(element)) {
-        return expected;
+) -> (TypeId, bool) {
+    let fallback = !has_lambda(element)
+        && !is_call_without_arguments(element)
+        && contains_call_without_arguments(element);
+
+    if !(has_lambda(element) || is_call_without_arguments(element) || fallback) {
+        return (expected, false);
     }
 
     let Some(argument) = ctx.take_argument_frame() else {
-        return expected;
+        return (expected, false);
     };
 
     let refinable = match element {
@@ -1242,7 +1262,7 @@ pub(crate) fn refine_element_expected(
 
     if !references_call_generics(ctx, unrestored) {
         ctx.set_argument_frame(Some(argument));
-        return expected;
+        return (expected, false);
     }
 
     let inferred = ctx.solve_arguments(&argument.solver, &argument.infer);
@@ -1265,7 +1285,26 @@ pub(crate) fn refine_element_expected(
     restore_renamed(ctx, &mut mappings, &argument.renamed);
     ctx.set_argument_frame(Some(argument));
 
-    substitute_with_mappings(ctx.types_mut(), unrestored, &mappings)
+    (
+        substitute_with_mappings(ctx.types_mut(), unrestored, &mappings),
+        fallback,
+    )
+}
+
+/// Whether the expression is a call with no arguments, or a pair or list with one in it.
+fn contains_call_without_arguments(expr: &AstExpr) -> bool {
+    match expr {
+        AstExpr::PairExpr(pair) => pair
+            .first()
+            .into_iter()
+            .chain(pair.rest())
+            .any(|expr| contains_call_without_arguments(&expr)),
+        AstExpr::ListExpr(list) => list
+            .items()
+            .filter_map(|item| item.expr())
+            .any(|expr| contains_call_without_arguments(&expr)),
+        _ => is_call_without_arguments(expr),
+    }
 }
 
 /// Whether the type references a generic of the innermost call being inferred.

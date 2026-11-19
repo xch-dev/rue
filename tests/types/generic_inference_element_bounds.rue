@@ -84,3 +84,24 @@ test fn call_with_arguments_after_a_value_keeps_its_own_inference() -> Int {
     }
     1
 }
+
+// A call with no arguments inside a pair element gets the element's refined type too
+test fn call_without_arguments_nested_in_a_pair() -> Int {
+    let result = first(((1, 2), (3, make())));
+    result.first
+}
+
+// The same in a list inside a pair
+test fn call_without_arguments_nested_in_a_list() -> Int {
+    count([[5], [make()]])
+}
+
+// Guard: a call with arguments next to it still infers its own generics from them, using the
+// refined type only for the generics they don't give a type, so `optional(nil)` is still `nil`
+test fn call_with_arguments_next_to_a_nested_call_without_them() -> Int {
+    let result = first(((1, 2), (optional(nil), make())));
+    if result.first is nil {
+        return 0;
+    }
+    1
+}

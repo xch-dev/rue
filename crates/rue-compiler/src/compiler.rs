@@ -54,6 +54,9 @@ pub struct Compiler {
     /// Whether the type expected of the expression being compiled is only a hint, which it doesn't
     /// have to be assignable to (see `Compiler::with_expected_type_hint`).
     hinted: bool,
+    /// Whether the type expected of the expression being compiled is only for the generics of the
+    /// calls in it that nothing else gives a type (see `Compiler::with_expected_type_fallback`).
+    fallback: bool,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
@@ -169,6 +172,7 @@ impl Compiler {
             return_count: 0,
             call_frames: Vec::new(),
             hinted: false,
+            fallback: false,
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
@@ -810,6 +814,26 @@ impl Compiler {
     /// `Compiler::with_expected_type_hint`).
     pub fn is_expected_type_hint(&self) -> bool {
         self.hinted
+    }
+
+    /// Compiles with an expected type that's only for the generics of the calls in the expression
+    /// that nothing else gives a type, or one that's for all of them. It's inherited by the
+    /// expressions it's passed down to, and an argument of a call is compiled with its own.
+    pub fn with_expected_type_fallback<T>(
+        &mut self,
+        fallback: bool,
+        compile: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let outer = mem::replace(&mut self.fallback, fallback);
+        let result = compile(self);
+        self.fallback = outer;
+        result
+    }
+
+    /// Whether the type expected of the expression being compiled is only a fallback (see
+    /// `Compiler::with_expected_type_fallback`).
+    pub fn is_expected_type_fallback(&self) -> bool {
+        self.fallback
     }
 
     /// Takes the argument of the innermost call being inferred that's being compiled, if there is

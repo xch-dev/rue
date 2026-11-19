@@ -51,9 +51,18 @@ pub fn compile_pair_expr(
     record_element(ctx, first.ty, expected_first);
 
     let rest = if let Some(rest) = pair.rest() {
-        let expected_rest =
-            expected_rest.map(|expected| refine_element_expected(ctx, expected, &rest));
-        ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &rest, expected_rest))
+        let (expected_rest, fallback) = match expected_rest {
+            Some(expected) => {
+                let (expected, fallback) = refine_element_expected(ctx, expected, &rest);
+                (Some(expected), fallback)
+            }
+            None => (None, false),
+        };
+        let fallback = fallback || ctx.is_expected_type_fallback();
+
+        ctx.with_expected_type_fallback(fallback, |ctx| {
+            ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &rest, expected_rest))
+        })
     } else {
         debug!("Unresolved pair rest");
         ctx.builtins().unresolved.clone()

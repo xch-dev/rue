@@ -68,9 +68,18 @@ pub fn compile_list_expr(
         };
 
         let value = if let Some(expr) = item.expr() {
-            let item_type = item_type.map(|expected| refine_element_expected(ctx, expected, &expr));
-            let value =
-                ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &expr, item_type));
+            let (item_type, fallback) = match item_type {
+                Some(expected) => {
+                    let (expected, fallback) = refine_element_expected(ctx, expected, &expr);
+                    (Some(expected), fallback)
+                }
+                None => (None, false),
+            };
+            let fallback = fallback || ctx.is_expected_type_fallback();
+
+            let value = ctx.with_expected_type_fallback(fallback, |ctx| {
+                ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &expr, item_type))
+            });
             record_element(ctx, value.ty, item_type);
             value
         } else {
