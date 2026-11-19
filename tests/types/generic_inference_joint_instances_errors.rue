@@ -50,5 +50,18 @@ fn main() -> Int {
     // `T` is both a parameter type and the return type, so it's `Never`, the least instantiation
     let function = call(make_identity);
 
-    first + second + third + function(1)
+    // `X` takes `Y` as a lower bound and `Y` takes `Z`, through `A` and `C`, so the function type
+    // that `X` is instantiated as for its kind names `Y` and then `Z` as each is replaced, and it
+    // names neither once all of them are
+    let fourth: Int = chain_of(chained, fn() => length);
+
+    first + second + third + fourth + function(1)
+}
+
+fn chained<X, Y, Z>(_first: (X, X), _second: (Y, Y)) -> (fn(x: X) -> nil, ((Y, Y), (Z, Z))) {
+    unchecked_cast(nil)
+}
+
+fn chain_of<A, C, B>(_function: fn(a: A, c: C) -> (B, (A, C)), other: fn() -> B) -> B {
+    other()
 }
