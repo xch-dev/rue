@@ -229,20 +229,28 @@ impl ImportCache {
                 .any(|(&item, &in_module)| !in_module || module.is_item_exported(item))
     }
 
-    /// The private re-exports that would export an item that a module has but doesn't export, once
-    /// they're reported, since a reported re-export exports what it found (see
-    /// [`report_private_reexports`]). They're those into the module that found the item, and those
-    /// into the module that an exported glob import through `super` or `project` brought it in
-    /// from, which then exports it too.
-    fn exporters(&self, ctx: &Compiler, scope: ScopeId, item: Item) -> IndexSet<ImportId> {
+    /// The private re-exports that would export an item that a module has with a name but doesn't
+    /// export, once they're reported, since a reported re-export exports what it found (see
+    /// [`report_private_reexports`]). They're those into the module the item was found in, and, if
+    /// a glob import brought it in, those that would export it in a module that an exported glob
+    /// import of `super` or `project` brings it in from, which then exports it too, as any glob
+    /// import that brings in a name exports it if it's exported.
+    fn exporters(
+        &self,
+        ctx: &Compiler,
+        scope: ScopeId,
+        name: &str,
+        item: Item,
+    ) -> IndexSet<ImportId> {
         let mut exporters = IndexSet::new();
-        let mut scope = scope;
+        let mut visited = HashSet::new();
+        let mut stack = vec![scope];
 
-        loop {
+        while let Some(scope) = stack.pop() {
             let module = ctx.scope(scope);
 
-            if module.is_item_exported(item) {
-                break;
+            if !visited.insert(scope) || module.is_item_exported(item) {
+                continue;
             }
 
             exporters.extend(
@@ -256,21 +264,26 @@ impl ImportCache {
                     .map(|(&import_id, _)| import_id),
             );
 
-            let Some(via) = module.item_import(item) else {
-                break;
-            };
-            let import = ctx.import(via);
+            let by_glob = module
+                .item_import(item)
+                .is_some_and(|via| matches!(ctx.import(via).items, Items::All(_)));
 
-            if !matches!(import.items, Items::All(_))
-                || !import.exported
-                || !import.from_parent
-                || !import.path.is_empty()
-                || import.base_scope == scope
-            {
-                break;
+            if !by_glob {
+                continue;
             }
 
-            scope = import.base_scope;
+            for glob in module.imports() {
+                let glob = ctx.import(glob);
+
+                if matches!(glob.items, Items::All(_))
+                    && glob.exported
+                    && glob.from_parent
+                    && glob.path.is_empty()
+                    && ctx.scope(glob.base_scope).item(item.namespace(), name) == Some(item)
+                {
+                    stack.push(glob.base_scope);
+                }
+            }
         }
 
         exporters
@@ -608,25 +621,27 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
     let edges = private
         .iter()
         .map(|&import_id| {
-            let base = ctx.import(import_id).base_scope;
+            let import = ctx.import(import_id);
+            let Items::Named(name) = &import.items else {
+                unreachable!("only named imports are recorded");
+            };
             let mut waits_for = IndexSet::new();
 
             for &item in cache.reexports[&import_id].1.keys() {
-                waits_for.extend(cache.exporters(ctx, base, item));
+                waits_for.extend(cache.exporters(ctx, import.base_scope, name.text(), item));
             }
 
-            waits_for.shift_remove(&import_id);
             (import_id, waits_for)
         })
         .collect::<IndexMap<_, _>>();
 
-    let (components, _, closed) = closed_components(&edges);
+    let (_, component_of, closed) = closed_components(&edges);
 
-    let mut reported = closed
+    // They're reported in the order they were recorded in
+    let reported = private
         .into_iter()
-        .flat_map(|index| components[index].iter().copied())
+        .filter(|import_id| closed.contains(&component_of[import_id]))
         .collect::<Vec<_>>();
-    reported.sort_by_key(|import_id| private.iter().position(|other| other == import_id));
 
     for &import_id in &reported {
         let Items::Named(name) = &ctx.import(import_id).items else {
@@ -1069,7 +1084,7 @@ fn may_gain(
     if let Some(item) = target.item(namespace, name)
         && (!exported
             || target.is_item_exported(item)
-            || cache.is_some_and(|cache| !cache.exporters(ctx, scope, item).is_empty()))
+            || cache.is_some_and(|cache| !cache.exporters(ctx, scope, name, item).is_empty()))
     {
         return true;
     }

@@ -1,7 +1,7 @@
-// A private type re-exported through `a::m` is reported once, even though the signatures that use
-// it are resolved before every import is: the imports are resolved before the signatures too, and
-// the reported re-export exports the type then. That's whichever module is resolved first, which
-// depends on module names (see private_reexported_types_in_signatures_a and
+// A private type re-exported through `a::m` is reported once, even where signatures use it.
+// Signatures are declared between the two import passes, but the first pass already reports the
+// re-export and exports the type, so the signatures find it. That holds whichever module is
+// resolved first, which depends on module names (see private_reexported_types_in_signatures_a and
 // private_reexported_types_in_signatures_z).
 mod a {
     type X = Int;
