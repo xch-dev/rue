@@ -642,11 +642,9 @@ struct ArgumentOrder {
 /// What `ArgumentOrder` knows about an argument.
 struct Argument {
     kind: ArgumentKind,
-    /// Whether it is, or has in it, a lambda.
-    has_lambda: bool,
-    /// Whether every lambda in it is in the arguments of a call in it, such as
-    /// `map_reversed(5, fn(x) => 7)` (see `lambdas_only_in_calls`).
-    lambdas_only_in_calls: bool,
+    /// Whether it is, or has in it, a lambda that isn't in the arguments of a call in it (see
+    /// `has_own_lambda`).
+    has_own_lambda: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
     reads: IndexSet<TypeId>,
     /// The callee's generics that comparing it with its parameter can add to: every one in the
@@ -744,8 +742,7 @@ impl ArgumentOrder {
 
                 Argument {
                     kind,
-                    has_lambda: has_lambda(arg),
-                    lambdas_only_in_calls: lambdas_only_in_calls(arg),
+                    has_own_lambda: has_own_lambda(arg),
                     reads,
                     writes: generics_in(ctx, function, param.ty),
                     bounds_above: bounded_above(ctx, function, param.ty),
@@ -873,7 +870,8 @@ impl ArgumentOrder {
 
     /// Whether the argument `next` just gave can be compiled against the expected type's bounds
     /// for the generics the arguments map (`CallSolver::argument_mappings`). An argument without a
-    /// lambda in it always can. A lambda only can if no argument still to be compiled can add to
+    /// lambda in it always can, and so can one whose lambdas are all in the arguments of calls in
+    /// it (see `has_own_lambda`). A lambda only can if no argument still to be compiled can add to
     /// the generics its parameter types come from, counting every one, unlike the order's
     /// readiness, and its own return type can't either. Otherwise a narrower parameter type could
     /// stop a later addition, since parameters are contravariant. A lambda inside another
@@ -881,17 +879,8 @@ impl ArgumentOrder {
     fn takes_expected_bounds(&self, i: usize) -> bool {
         let argument = &self.arguments[i];
 
-        if !argument.has_lambda {
+        if !argument.has_own_lambda {
             return true;
-        }
-
-        // A call with lambdas only in its own arguments compiles them against its own generics,
-        // which its expected type only bounds through its return type, as it does for a call
-        // without lambdas. Like a lambda, it only takes them once nothing still to be compiled can
-        // add to the generics its expected type comes from, since a narrower type could stop a
-        // later addition where it ends up in a parameter type, such as a returned function's
-        if argument.lambdas_only_in_calls {
-            return self.last_settled;
         }
 
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
@@ -1508,14 +1497,16 @@ fn is_call_without_arguments(expr: &AstExpr) -> bool {
     matches!(expr, AstExpr::FunctionCallExpr(call) if call.args().next().is_none())
 }
 
-/// Whether every lambda in the expression is in the arguments of a call in it: it has no lambda
-/// outside of a call's arguments, and the expression isn't one itself.
-fn lambdas_only_in_calls(expr: &AstExpr) -> bool {
+/// Whether the expression is, or has in it, a lambda that isn't in the arguments of a call in it.
+/// A lambda in a call's arguments, such as in `map_reversed(5, fn(x) => 7)`, is compiled against
+/// that call's own generics, which the call's expected type only bounds through its return type,
+/// so the call takes the expected bounds as a call without a lambda does.
+fn has_own_lambda(expr: &AstExpr) -> bool {
     let mut stack = vec![expr.syntax().clone()];
 
     while let Some(node) = stack.pop() {
         if AstLambdaExpr::cast(node.clone()).is_some() {
-            return false;
+            return true;
         }
 
         if AstFunctionCallExpr::cast(node.clone()).is_none() {
@@ -1523,7 +1514,7 @@ fn lambdas_only_in_calls(expr: &AstExpr) -> bool {
         }
     }
 
-    true
+    false
 }
 
 /// Whether the expression is, or has in it, a lambda.
