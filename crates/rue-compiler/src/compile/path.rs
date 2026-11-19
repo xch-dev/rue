@@ -137,8 +137,13 @@ pub fn compile_path<S>(
 where
     S: PathSegment,
 {
+    // A path can only refer to something else once a name is ambiguous
+    if !ctx.has_alternatives() {
+        return resolve_path(ctx, range, segments, kind, completions, None);
+    }
+
     let mut trail = PathTrail::default();
-    let result = resolve_path(ctx, range, segments, kind, completions, &mut trail);
+    let result = resolve_path(ctx, range, segments, kind, completions, Some(&mut trail));
     use_alternatives(ctx, &trail, kind);
     result
 }
@@ -220,7 +225,7 @@ fn resolve_path<S>(
     segments: impl Iterator<Item = S>,
     kind: PathKind,
     mut completions: bool,
-    trail: &mut PathTrail,
+    mut trail: Option<&mut PathTrail>,
 ) -> PathResult
 where
     S: PathSegment,
@@ -314,15 +319,17 @@ where
         return PathResult::Unresolved;
     }
 
-    trail.base = Some(if from_parent {
-        SegmentBase::Parent(base_scope)
-    } else {
-        SegmentBase::Local(base_scope)
-    });
-    trail.names = segments
-        .iter()
-        .map_while(|segment| segment.name().map(|name| name.text().to_string()))
-        .collect();
+    if let Some(trail) = trail.as_deref_mut() {
+        trail.base = Some(if from_parent {
+            SegmentBase::Parent(base_scope)
+        } else {
+            SegmentBase::Local(base_scope)
+        });
+        trail.names = segments
+            .iter()
+            .map_while(|segment| segment.name().map(|name| name.text().to_string()))
+            .collect();
+    }
 
     let mut value = None;
     let mut previous: Option<SyntaxToken> = None;
@@ -613,7 +620,7 @@ where
                 if matches!(ctx.symbol(symbol), Symbol::Module(_)) {
                     path_completion_module = Some(symbol);
 
-                    if has_subpath {
+                    if has_subpath && let Some(trail) = trail.as_deref_mut() {
                         trail.modules.push((symbol, import));
                     }
                 }

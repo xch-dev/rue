@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use id_arena::{Arena, ArenaBehavior, DefaultArenaBehavior};
 use indexmap::{IndexMap, IndexSet};
@@ -48,6 +48,10 @@ pub struct Database {
     /// [`Database::add_shared_binding`]), as that import, the declaration it bound, and the
     /// declaration this one brings in under the name.
     shared_bindings: HashMap<ImportId, IndexSet<(ImportId, Declaration, Declaration)>>,
+    /// The declarations that named imports bring in that another named import of the same name
+    /// brings into the same scope, which is the one that's used (see
+    /// [`Database::add_redundant_import`]).
+    redundant_imports: IndexSet<(ImportId, Declaration)>,
     /// The other declarations that a name could refer to, because glob imports bring in different
     /// declarations with it, keyed by the import that the name refers to a declaration through and
     /// that declaration.
@@ -61,7 +65,10 @@ pub struct Database {
     /// does, if a name in its path, or in the path of a glob import that it brings in items
     /// through, were bound to another module that glob imports bring in with it (see
     /// [`Database::glob_alternatives`]).
-    glob_alternatives: HashMap<ImportId, IndexMap<(Namespace, String), IndexSet<Item>>>,
+    glob_alternatives: HashMap<ImportId, IndexMap<Namespace, IndexMap<String, IndexSet<Item>>>>,
+    /// The glob imports that could bring in something under a name that nothing else in their
+    /// scope hides (see [`Database::may_bring_in_more`]).
+    globs_that_may_bring_in_more: HashSet<ImportId>,
     tests: Vec<Test>,
 }
 
@@ -432,6 +439,19 @@ impl Database {
         own.chain(shared)
     }
 
+    /// Records that an import brings in a declaration under a name that another named import in
+    /// the same scope brings it in under too, which is the one that counts as using it, so this
+    /// one doesn't. Returns whether it wasn't already recorded.
+    pub fn add_redundant_import(&mut self, import: ImportId, declaration: Declaration) -> bool {
+        self.redundant_imports.insert((import, declaration))
+    }
+
+    /// Whether another named import is the one that counts as bringing in the declaration (see
+    /// [`Database::add_redundant_import`]).
+    pub fn is_redundant_import(&self, import: ImportId, declaration: Declaration) -> bool {
+        self.redundant_imports.contains(&(import, declaration))
+    }
+
     /// Records that a name that refers to the declaration through the import could also refer to
     /// what a name that refers to another declaration through another import could: that
     /// declaration, and its own alternatives. This is because glob imports bring in different
@@ -505,19 +525,21 @@ impl Database {
     }
 
     /// Records that a glob import could bring in an item with a name, if the names in its path
-    /// were bound differently (see [`Database::glob_alternatives`]). Returns whether it wasn't already
-    /// recorded.
+    /// were bound differently (see [`Database::glob_alternatives`]). Returns whether it wasn't
+    /// already recorded.
     pub fn add_glob_alternative(
         &mut self,
         import: ImportId,
         namespace: Namespace,
-        name: &str,
+        name: String,
         item: Item,
     ) -> bool {
         self.glob_alternatives
             .entry(import)
             .or_default()
-            .entry((namespace, name.to_string()))
+            .entry(namespace)
+            .or_default()
+            .entry(name)
             .or_default()
             .insert(item)
     }
@@ -536,7 +558,8 @@ impl Database {
     ) -> impl Iterator<Item = Item> + '_ {
         self.glob_alternatives
             .get(&import)
-            .and_then(|alternatives| alternatives.get(&(namespace, name.to_string())))
+            .and_then(|alternatives| alternatives.get(&namespace))
+            .and_then(|alternatives| alternatives.get(name))
             .into_iter()
             .flatten()
             .copied()
@@ -544,26 +567,41 @@ impl Database {
 
     /// Everything a glob import could bring in besides what it does (see
     /// [`Database::glob_alternatives`]), with the namespace and name of each.
-    pub fn all_glob_alternatives(&self, import: ImportId) -> Vec<(Namespace, String, Item)> {
+    pub fn all_glob_alternatives(
+        &self,
+        import: ImportId,
+    ) -> impl Iterator<Item = (Namespace, &str, Item)> + '_ {
         self.glob_alternatives
             .get(&import)
             .into_iter()
             .flatten()
-            .flat_map(|((namespace, name), items)| {
-                items.iter().map(|&item| (*namespace, name.clone(), item))
+            .flat_map(|(&namespace, names)| {
+                names.iter().flat_map(move |(name, items)| {
+                    items
+                        .iter()
+                        .map(move |&item| (namespace, name.as_str(), item))
+                })
             })
-            .collect()
     }
 
-    /// Whether any glob import could bring in something besides what it does.
-    pub fn has_glob_alternatives(&self) -> bool {
-        !self.glob_alternatives.is_empty()
+    /// Whether any glob import could bring in something besides what it does, or any name could
+    /// refer to something besides what it's bound to, so that paths could refer to something
+    /// else too.
+    pub fn has_alternatives(&self) -> bool {
+        !self.glob_alternatives.is_empty() || !self.ambiguous_alternatives.is_empty()
     }
 
-    /// Whether a glob import could bring in something besides what it does, so that it isn't
-    /// reported for bringing in nothing, and is used if any of it is.
+    /// Records that a glob import could bring in something under a name that nothing else in
+    /// its scope hides, besides what it does (see [`Database::may_bring_in_more`]).
+    pub fn add_glob_that_may_bring_in_more(&mut self, import: ImportId) {
+        self.globs_that_may_bring_in_more.insert(import);
+    }
+
+    /// Whether a glob import could bring in something under a name that nothing else in its
+    /// scope hides, besides what it does, if the names in its path were bound differently. It
+    /// isn't reported for bringing in nothing, and is used if any of it is.
     pub fn may_bring_in_more(&self, import: ImportId) -> bool {
-        self.glob_alternatives.contains_key(&import)
+        self.globs_that_may_bring_in_more.contains(&import)
     }
 
     pub fn add_test(&mut self, test: Test) {

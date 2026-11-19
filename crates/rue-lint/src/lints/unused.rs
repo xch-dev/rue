@@ -121,6 +121,8 @@ fn is_import_used(
             ImportUser::Other => true,
         })
         .map(|(declaration, _)| declaration)
+        // Another named import is the one that brings it in
+        .filter(|&declaration| !db.is_redundant_import(id, declaration))
         .collect::<HashSet<_>>();
 
     match &import.items {

@@ -1,3 +1,4 @@
 export mod m {
     export const X: Int = 1;
+    export const W: Int = 5;
 }

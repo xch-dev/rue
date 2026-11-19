@@ -5,12 +5,12 @@
 //! their members are reported as unused doesn't depend on module names either.
 
 use indexmap::IndexSet;
-use rue_hir::{Declaration, ImportId, Item, Items, Namespace, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Item, Items, Namespace, Scope, ScopeId, Symbol, SymbolId};
 
 use crate::Compiler;
 
 /// An item, with the import it's found through, if any.
-type Found = (Item, Option<ImportId>);
+pub(crate) type Found = (Item, Option<ImportId>);
 
 /// Where a segment of a path is looked up, for finding what else it could refer to.
 #[derive(Debug, Clone, Copy)]
@@ -21,12 +21,22 @@ pub(crate) enum Place {
     Scope(ScopeId),
 }
 
+/// Whether a binding of a name hides what glob imports in its scope could bring in with it (see
+/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)), whichever way the names
+/// in their paths are bound. A declaration or a named import does, but what a glob import binds
+/// could collide with what another one brings in instead, and a failed import's error item only
+/// fills a name that nothing else brings in.
+pub(crate) fn hides_glob_alternatives(ctx: &Compiler, binding: Option<Found>) -> bool {
+    binding.is_some_and(|(item, via)| {
+        !ctx.is_error_item(item)
+            && via.is_none_or(|via| !matches!(ctx.import(via).items, Items::All(_)))
+    })
+}
+
 /// What a name is bound to in one namespace where a segment of a path is looked up, if anything
 /// other than a failed import's error item, along with what else the glob imports there could
-/// bring in with the name, if the modules their paths name were bound differently (see
-/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)). Those are returned with the glob import. A name that a
-/// declaration or a named import binds hides what any glob import could bring in, whichever way
-/// they're bound, so only a name that's unbound, or bound by a glob or failed import, has any.
+/// bring in with the name, if the modules their paths name were bound differently, unless the
+/// binding hides them (see [`hides_glob_alternatives`]). Those are returned with the glob import.
 /// With `exported_only`, only what the place exports counts, as when another module imports it.
 fn lookup(
     ctx: &Compiler,
@@ -35,49 +45,37 @@ fn lookup(
     name: &str,
     exported_only: bool,
 ) -> (Option<Found>, Vec<Found>) {
-    let (mut current, chain) = match place {
-        Place::Chain(scope) => (Some(scope), true),
-        Place::Scope(scope) => (Some(scope), false),
-    };
-
     let mut others = Vec::new();
 
-    while let Some(scope_id) = current {
-        let scope = ctx.scope(scope_id);
-
+    let mut visit = |scope: &Scope| {
         let binding = scope
             .item_with_import(namespace, name)
             .filter(|&(item, _)| !exported_only || scope.is_item_exported(item));
 
-        let hidden = binding.is_some_and(|(item, via)| {
-            !ctx.is_error_item(item)
-                && via.is_none_or(|via| !matches!(ctx.import(via).items, Items::All(_)))
-        });
-
-        if !hidden && ctx.has_glob_alternatives() {
+        if !hides_glob_alternatives(ctx, binding) {
             for import in scope.imports() {
-                if !matches!(ctx.import(import).items, Items::All(_))
-                    || (exported_only && !ctx.import(import).exported)
-                {
-                    continue;
-                }
+                let glob = ctx.import(import);
 
-                others.extend(
-                    ctx.glob_alternatives(import, namespace, name)
-                        .map(|item| (item, Some(import))),
-                );
+                if matches!(glob.items, Items::All(_)) && (glob.exported || !exported_only) {
+                    others.extend(
+                        ctx.glob_alternatives(import, namespace, name)
+                            .map(|item| (item, Some(import))),
+                    );
+                }
             }
         }
 
-        if let Some((item, via)) = binding {
-            let binding = (!ctx.is_error_item(item)).then_some((item, via));
-            return (binding, others);
-        }
+        binding
+    };
 
-        current = if chain { scope.parent() } else { None };
-    }
+    let binding = match place {
+        Place::Chain(scope) => ctx.lookup_in(scope, |_, scope| visit(scope)),
+        Place::Scope(scope) => visit(ctx.scope(scope)),
+    };
 
-    (None, others)
+    let binding = binding.filter(|&(item, _)| !ctx.is_error_item(item));
+
+    (binding, others)
 }
 
 /// What a segment of a path could refer to other than what it's bound to where it's looked up,
@@ -148,7 +146,8 @@ pub(crate) fn alternative_modules(
     }
 
     // The path itself uses the module it's resolved to through the import it's resolved through,
-    // but another glob import could bring in the same module, which it uses too
+    // but another glob import could bring in the same module, which it uses too, so that's kept
+    // (and left out of where the rest of the path is looked up by `modules_of`)
     modules.retain(|&(module, via)| {
         resolved != Some((module, via))
             && !ctx.is_error_item(Item::Module(module))

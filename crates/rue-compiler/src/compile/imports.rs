@@ -15,7 +15,10 @@ use rue_hir::{
 use rue_parser::SyntaxKind;
 use rue_types::Type;
 
-use crate::{Compiler, Place, SyntaxItemKind, alternative_items, alternative_modules, modules_of};
+use crate::{
+    Compiler, Place, SyntaxItemKind, alternative_items, alternative_modules,
+    hides_glob_alternatives, modules_of,
+};
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
     let Some(path) = import.path() else {
@@ -539,10 +542,17 @@ pub fn resolve_imports(
             }
         }
 
+        let scopes = imports
+            .iter()
+            .map(|&(scope, import)| (import, scope))
+            .collect::<HashMap<_, _>>();
+
         for (&import, (name, count)) in &cache.glob_import_counts {
             // One that could bring in something if its path were bound differently is reported
             // as unused instead, unless any of that is used
-            if *count == 0 && !ctx.may_bring_in_more(import) {
+            if may_bring_in_more(ctx, scopes[&import], import) {
+                ctx.add_glob_that_may_bring_in_more(import);
+            } else if *count == 0 {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
             }
         }
@@ -1250,6 +1260,15 @@ enum Base {
 }
 
 impl Base {
+    /// Where the name is looked up, for finding what else it could refer to (see
+    /// [`path_alternatives`]).
+    fn place(self) -> Place {
+        match self {
+            Self::Local(scope) => Place::Chain(scope),
+            Self::Member(scope) | Self::Inner(scope) => Place::Scope(scope),
+        }
+    }
+
     /// The scope whose own items the name is looked up in first.
     fn scope(self) -> ScopeId {
         match self {
@@ -1601,6 +1620,11 @@ fn path_alternatives(
         return Vec::new();
     };
 
+    // Nothing could refer to anything else until a name is ambiguous
+    if !ctx.has_alternatives() {
+        return Vec::new();
+    }
+
     let mut alternatives = Vec::new();
 
     for (index, (name, &symbol)) in import.path.iter().zip(&path.symbols).enumerate() {
@@ -1612,10 +1636,7 @@ fn path_alternatives(
 
         // Where the name is looked up in the module the path names up to it
         let place = if index == 0 {
-            match import_base(import, import_scope) {
-                Base::Local(scope) => Place::Chain(scope),
-                Base::Member(scope) | Base::Inner(scope) => Place::Scope(scope),
-            }
+            import_base(import, import_scope).place()
         } else {
             Place::Scope(ctx.module(path.symbols[index - 1]).scope)
         };
@@ -1719,10 +1740,21 @@ fn add_glob_alternatives(
     let mut updated = false;
 
     for (namespace, name, item) in found {
-        updated |= ctx.add_glob_alternative(import_id, namespace, &name, item);
+        updated |= ctx.add_glob_alternative(import_id, namespace, name, item);
     }
 
     updated
+}
+
+/// Whether a glob import into a scope could bring in something besides what it does (see
+/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)) under a name that
+/// nothing in the scope hides (see [`hides_glob_alternatives`]).
+fn may_bring_in_more(ctx: &Compiler, scope: ScopeId, import: ImportId) -> bool {
+    ctx.all_glob_alternatives(import)
+        .any(|(namespace, name, _)| {
+            let binding = ctx.scope(scope).item_with_import(namespace, name);
+            !hides_glob_alternatives(ctx, binding)
+        })
 }
 
 /// What the glob imports into a scope (or only the exported ones) could bring in besides what they
@@ -1738,7 +1770,10 @@ fn scope_glob_alternatives(
             let import = ctx.import(import);
             matches!(import.items, Items::All(_)) && (import.exported || !exported_only)
         })
-        .flat_map(|import| ctx.all_glob_alternatives(import))
+        .flat_map(|import| {
+            ctx.all_glob_alternatives(import)
+                .map(|(namespace, name, item)| (namespace, name.to_string(), item))
+        })
         .collect()
 }
 
@@ -2157,9 +2192,9 @@ fn resolve_named_import(
         }
 
         // Another named import that brings in the same item may have bound the name, depending on
-        // the order they're resolved in, and so on module names. Like glob imports that bring in
-        // the name, this one shares its binding, so that it's used wherever that one is, rather
-        // than which of them is reported as unused depending on the order.
+        // the order they're resolved in, and so on module names. Only one of them is needed, so
+        // the others are reported as unused, whichever bound the name: the exported one, or else
+        // the first one in the source, gets the uses of the binding.
         let bound_by = ctx
             .scope(import_scope)
             .item_import(found)
@@ -2169,15 +2204,25 @@ fn resolve_named_import(
                     && matches!(ctx.import(bound_by).items, Items::Named(_))
             });
 
+        let first = bound_by.is_some_and(|bound_by| {
+            let other = ctx.import(bound_by).exported;
+            (import.exported && !other)
+                || (import.exported == other && import_id.index() < bound_by.index())
+        });
+
+        if let Some(bound_by) = bound_by.filter(|_| first) {
+            updated |= ctx.add_shared_binding(bound_by, found.into(), import_id, found.into());
+            updated |= ctx.add_redundant_import(bound_by, found.into());
+        }
+
         if bind(ctx, import_scope, import_id, name, found, exported) {
             updated = true;
             unused_imports.shift_remove(name);
-        } else if let Some(bound_by) = bound_by {
-            if ctx.add_shared_binding(bound_by, found.into(), import_id, found.into()) {
-                ctx.import_mut(import_id)
-                    .declarations
-                    .push((name.to_string(), found.into()));
-                updated = true;
+        } else if first {
+            let declaration = (name.to_string(), found.into());
+
+            if !ctx.import(import_id).declarations.contains(&declaration) {
+                ctx.import_mut(import_id).declarations.push(declaration);
             }
 
             unused_imports.shift_remove(name);

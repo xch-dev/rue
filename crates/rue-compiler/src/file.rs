@@ -14,8 +14,9 @@ use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind};
 use rue_hir::{
-    Declaration, DependencyGraph, Environment, Lowerer, MAX_LOWERING_DEPTH, ModuleDeclarations,
-    ModuleSymbol, Namespace, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
+    Declaration, DependencyGraph, Environment, Items, Lowerer, MAX_LOWERING_DEPTH,
+    ModuleDeclarations, ModuleSymbol, Namespace, Scope, ScopeId, Symbol, SymbolId,
+    has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
 use rue_lir::CodegenOptions;
@@ -25,8 +26,8 @@ use thiserror::Error;
 use crate::{
     Compiler, ImportCache, SyntaxItemKind, check_recursion, compile_default_items,
     compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
-    declare_module_items, declare_symbol_items, declare_type_items, recheck_contractive_types,
-    resolve_imports, resolve_pending_defaults,
+    declare_module_items, declare_symbol_items, declare_type_items, hides_glob_alternatives,
+    recheck_contractive_types, resolve_imports, resolve_pending_defaults,
 };
 
 #[derive(Debug, Error)]
@@ -372,6 +373,24 @@ impl FileTree {
                             // refer to, whichever glob import bound it
                             let import = ctx.scope(scope).item_import(item);
                             entrypoints.extend(ctx.ambiguous_alternatives(import, item.into()));
+                        }
+                    }
+
+                    // So is what an exported glob import could bring in if the names in its path
+                    // were bound differently, unless something in the file hides it
+                    for import in ctx.scope(scope).imports() {
+                        let glob = ctx.import(import);
+
+                        if !glob.exported || !matches!(glob.items, Items::All(_)) {
+                            continue;
+                        }
+
+                        for (namespace, name, item) in ctx.all_glob_alternatives(import) {
+                            let binding = ctx.scope(scope).item_with_import(namespace, name);
+
+                            if !hides_glob_alternatives(ctx, binding) {
+                                entrypoints.insert(item.into());
+                            }
                         }
                     }
                 }

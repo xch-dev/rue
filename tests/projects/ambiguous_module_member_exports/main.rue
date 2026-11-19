@@ -1,7 +1,10 @@
 // `c.rue` and `w.rue` each export two different modules `m`, so `m` is ambiguous in each. `d.rue`
-// exports `X` through `c.rue`'s `m` by name, and `e.rue` through `w.rue`'s with a glob export. The
-// module names are in either order, so either glob export binds each `m`, and since the files'
-// exports could refer to the `X` in either module, none of the `X`s is reported as unused.
+// exports `X` through `c.rue`'s `m` by name, and `e.rue` everything in `w.rue`'s with a glob
+// export. In `c.rue` the glob export that binds `m` comes first, and in `w.rue` it comes second.
+// Either way, the files' exports could refer to the `X` in either module, so none of the `X`s is
+// reported as unused. Only `z.rue`'s `m` has a `W`, which `e.rue` exports only when `w.rue`'s
+// `m` is bound to it, but it could be either way, so it isn't reported either. `a.rue`'s `W` is
+// only in a module that `d.rue` doesn't export everything from, so it's reported.
 
 fn main() -> Int {
     3
