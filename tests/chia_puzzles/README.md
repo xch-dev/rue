@@ -15,6 +15,20 @@ The ports follow the original puzzles' logic and parameter layout, so that both 
 same solution, but they're written in idiomatic Rue and don't try to match the reference bytecode.
 Their tree hashes are expected to differ from the reference, and to change as the compiler does.
 
+## Known differences from the originals
+
+The ports trust their parameter types, so on inputs that don't match those types they can accept a
+spend the original rejects, or the other way around. The tests only use inputs that match. There are
+two known cases:
+
+- **Lists that end in an atom other than nil.** A port checks whether a `List` has ended with
+  `is nil`, which compiles to a check for a pair, while Chialisp's `(if list ...)` checks whether
+  the value is non-nil. On a list such as `(a b . 5)` the original fails on `(f 5)`, while the
+  port stops at `5` and carries on.
+- **Coin ids.** Ports use the `coinid` operator where the original calls `calculate_coin_id`, which
+  only checks lengths and that the amount isn't negative. `coinid` also rejects amounts with leading
+  zero bytes or above the largest coin amount, which no real coin can have.
+
 ## How the tests work
 
 Every port's tests run the compiled `main` (the real puzzle, not a copy of it inlined into the

@@ -103,3 +103,43 @@ test fn gives_itself_to_the_merge() -> Any {
         OutputCoin { parent_coin_id: sha256("output"), amount: 10 },
     ])
 }
+
+fn negative_merged_amount() -> Any {
+    [
+        sha256("my_id"),
+        sha256("my_puzzle"),
+        10,
+        [MergedCoin {
+            parent_coin_id: sha256("first"),
+            puzzle_hash: sha256("my_puzzle"),
+            amount: -1,
+        }],
+        nil,
+    ]
+}
+
+test fn rejects_a_negative_merged_amount() -> Any {
+    run(main, negative_merged_amount())
+}
+
+test fn reference_rejects_a_negative_merged_amount() -> Any {
+    run(reference, negative_merged_amount())
+}
+
+fn negative_output_amount() -> Any {
+    [
+        sha256("my_id"),
+        sha256("my_puzzle"),
+        20,
+        nil,
+        OutputCoin { parent_coin_id: sha256("output"), amount: -1 },
+    ]
+}
+
+test fn rejects_a_negative_output_amount() -> Any {
+    run(main, negative_output_amount())
+}
+
+test fn reference_rejects_a_negative_output_amount() -> Any {
+    run(reference, negative_output_amount())
+}

@@ -155,6 +155,18 @@ test fn passes_the_truths() -> Any {
     ])
 }
 
+test fn passes_the_eve_truths() -> Any {
+    // The same inner puzzle as `passes_the_truths`, spent with an eve proof.
+    let inner_puzzle = [4 as Any, [4 as Any, (1, 1), 2], 3];
+    check([
+        singleton_struct(),
+        inner_puzzle,
+        eve_proof(),
+        1,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 }],
+    ])
+}
+
 test fn spends_with_a_lineage_proof() -> Any {
     check([
         singleton_struct(),

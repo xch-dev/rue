@@ -91,3 +91,11 @@ test fn rejects_the_wrong_count() -> Any {
 test fn reference_rejects_the_wrong_count() -> Any {
     run(reference, [2, public_keys(), [1, nil, nil], 1, nil])
 }
+
+test fn rejects_more_selectors_than_keys() -> Any {
+    run(main, [2, [pubkey_for_exp(1)], [1, 1], 1, nil])
+}
+
+test fn reference_rejects_more_selectors_than_keys() -> Any {
+    run(reference, [2, [pubkey_for_exp(1)], [1, 1], 1, nil])
+}

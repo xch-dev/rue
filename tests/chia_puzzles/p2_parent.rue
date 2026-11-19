@@ -48,3 +48,11 @@ test fn rejects_a_negative_amount() -> Any {
 test fn reference_rejects_a_negative_amount() -> Any {
     run(reference, [1, sha256("parent_parent"), 1, -1, nil])
 }
+
+test fn rejects_a_short_parent_id() -> Any {
+    run(main, [1, 0x1234, 1, 5, nil])
+}
+
+test fn reference_rejects_a_short_parent_id() -> Any {
+    run(reference, [1, 0x1234, 1, 5, nil])
+}

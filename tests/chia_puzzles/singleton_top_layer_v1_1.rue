@@ -222,3 +222,43 @@ test fn rejects_the_wrong_launcher() -> Any {
 test fn reference_rejects_the_wrong_launcher() -> Any {
     run(reference, wrong_launcher())
 }
+
+fn negative_parent_amount() -> Any {
+    [
+        singleton_struct(),
+        1,
+        LineageProof {
+            parent_parent_coin_info: sha256("parent_parent"),
+            parent_inner_puzzle_hash: sha256("parent_inner_puzzle"),
+            parent_amount: -1,
+        },
+        1,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 }],
+    ]
+}
+
+test fn rejects_a_negative_parent_amount() -> Any {
+    run(main, negative_parent_amount())
+}
+
+test fn reference_rejects_a_negative_parent_amount() -> Any {
+    run(reference, negative_parent_amount())
+}
+
+fn short_parent_id() -> Any {
+    [
+        singleton_struct(),
+        1,
+        [0x1234 as Any, sha256("parent_inner_puzzle"), 1],
+        1,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 }],
+    ]
+}
+
+test fn rejects_a_short_parent_id() -> Any {
+    run(main, short_parent_id())
+}
+
+test fn reference_rejects_a_short_parent_id() -> Any {
+    run(reference, short_parent_id())
+}

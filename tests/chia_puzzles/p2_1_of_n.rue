@@ -56,3 +56,17 @@ test fn rejects_the_wrong_path() -> Any {
 test fn reference_rejects_the_wrong_path() -> Any {
     run(reference, [root(), (1, [right_leaf()]), 1, nil])
 }
+
+// A deeper tree, `(right . (left . right))`, so the path is shifted and read again.
+fn deeper_root() -> Bytes32 {
+    tree_hash_pair(right_leaf(), root())
+}
+
+test fn runs_a_puzzle_two_levels_down() -> Any {
+    check([
+        deeper_root(),
+        (2, [right_leaf(), right_leaf()]),
+        1,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
