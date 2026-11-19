@@ -132,14 +132,25 @@ impl CallSolver {
     /// `CallSolver::new`'s fallback) with that bound, where the mapping is assignable to it. This
     /// is for an argument that's a call, so it's compiled against what the expected type allows,
     /// such as `7 | 8` for `T` in `let v: 7 | 8 = either(7, id(8));`, rather than what the
-    /// arguments so far narrowed it to (`7`), which the call's own value can't widen.
+    /// arguments so far narrowed it to (`7`), which the call's own value can't widen. A generic
+    /// that the arguments bound from above (`infer`) keeps its mapping.
     pub fn widen_to_expected(
         &self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
+        infer: &Inference,
         mappings: &mut HashMap<TypeId, TypeId>,
     ) {
         for (generic, ty) in mappings.iter_mut() {
+            // A generic that an argument bounds from above, such as one in a parameter type, or
+            // in both positions, can't be widened past what that argument fixes
+            if infer
+                .candidates(*generic)
+                .is_some_and(|candidates| !candidates.upper.is_empty())
+            {
+                continue;
+            }
+
             if let Some(&bound) = self.fallback.get(generic)
                 && bound != *ty
                 && compare(arena, builtins, *ty, bound) == Comparison::Assign

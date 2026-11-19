@@ -1137,9 +1137,10 @@ impl Compiler {
     pub fn widen_to_expected(
         &mut self,
         solver: &CallSolver,
+        infer: &Inference,
         mappings: &mut HashMap<TypeId, TypeId>,
     ) {
-        solver.widen_to_expected(self.db.types_mut(), &self.builtins.types, mappings);
+        solver.widen_to_expected(self.db.types_mut(), &self.builtins.types, infer, mappings);
     }
 
     /// The mappings a call is checked with, once its arguments have been compiled (see

@@ -192,3 +192,30 @@ test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
     );
     made + passed
 }
+
+type Tree<T> = nil | (T, (Tree<T>, Tree<T>));
+
+fn twice<A>(function: fn(a: A) -> A) -> fn(a: A) -> A {
+    fn(a: A) => function(function(a))
+}
+
+fn grow<A>(build: fn(a: fn(a: A) -> A) -> Tree<A>, step: fn(a: A) -> A, depth: Int) -> A | nil {
+    if depth > 0 {
+        // Guard: the renamed `A` is fixed by `build`, which holds it in a parameter type too, so
+        // `twice(identity)` keeps `A` rather than the return type's `A | nil`, which `build` isn't
+        // (infer-fuzz generator 2, seed 875)
+        return grow(build, twice(identity), depth - 1);
+    }
+
+    let _tree = build(step);
+    nil
+}
+
+test fn generic_bounded_from_above_keeps_its_mapping() -> Int {
+    let result = grow(fn(_step: fn(a: Int) -> Int) => nil, fn(a: Int) => a, 1);
+    if result is nil {
+        0
+    } else {
+        result
+    }
+}

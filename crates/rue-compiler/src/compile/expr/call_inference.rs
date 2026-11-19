@@ -130,7 +130,7 @@ pub(crate) fn infer_call(
         if !order.takes_expected_bounds(i) {
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
         } else if order.widens_to_expected(i, expr) {
-            ctx.widen_to_expected(&solver, &mut mappings);
+            ctx.widen_to_expected(&solver, order.merged(), &mut mappings);
         }
 
         // Only a lambda that's an element of a pair or list that the argument is made of is
