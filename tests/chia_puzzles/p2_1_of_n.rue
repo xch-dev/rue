@@ -1,0 +1,58 @@
+// Regression test, not for production use. A port of `p2_1_of_n.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_1_of_n.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    merkle_root: Bytes32,
+    merkle_proof: MerkleProof,
+    puzzle_to_execute: fn(...solution: Any) -> List<Condition>,
+    inner_solution: Any,
+) -> List<Condition> {
+    assert merkle_root == simplify_merkle_proof(tree_hash(puzzle_to_execute), merkle_proof);
+    puzzle_to_execute(...inner_solution)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A tree with two leaves: the puzzle `1` on the left, and a quoted list of conditions on the right.
+inline const RIGHT_PUZZLE: (1, List<ReserveFee>) = (1, [ReserveFee { amount: 5 }]);
+
+fn left_leaf() -> Bytes32 {
+    tree_hash_atom(tree_hash(1))
+}
+
+fn right_leaf() -> Bytes32 {
+    tree_hash_atom(tree_hash(RIGHT_PUZZLE))
+}
+
+fn root() -> Bytes32 {
+    tree_hash_pair(left_leaf(), right_leaf())
+}
+
+test fn runs_the_left_puzzle() -> Any {
+    check([
+        root(),
+        (0, [right_leaf()]),
+        1,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
+test fn runs_the_right_puzzle() -> Any {
+    check([root(), (1, [left_leaf()]), RIGHT_PUZZLE, nil])
+}
+
+test fn rejects_the_wrong_path() -> Any {
+    run(main, [root(), (1, [right_leaf()]), 1, nil])
+}
+
+test fn reference_rejects_the_wrong_path() -> Any {
+    run(reference, [root(), (1, [right_leaf()]), 1, nil])
+}

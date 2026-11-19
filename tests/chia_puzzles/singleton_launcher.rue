@@ -1,0 +1,29 @@
+// Regression test, not for production use. A port of `singleton_launcher.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./singleton_launcher.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(singleton_full_puzzle_hash: Bytes32, amount: Int, key_value_list: Any) -> List<Condition> {
+    [
+        CreateCoin { puzzle_hash: singleton_full_puzzle_hash, amount },
+        CreateCoinAnnouncement {
+            message: tree_hash([singleton_full_puzzle_hash as Any, amount, key_value_list]),
+        },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn launches_the_singleton() -> Any {
+    check([sha256("singleton"), 1, [("key", "value"), ("other", 42)]])
+}
+
+test fn launches_with_no_metadata() -> Any {
+    check([sha256("singleton"), 1, nil])
+}

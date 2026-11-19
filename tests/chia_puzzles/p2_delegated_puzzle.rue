@@ -1,0 +1,31 @@
+// Regression test, not for production use. A port of `p2_delegated_puzzle.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_delegated_puzzle.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+fn main(
+    public_key: PublicKey,
+    delegated_puzzle: fn(...solution: Any) -> List<Condition>,
+    delegated_solution: Any,
+) -> List<Condition> {
+    [
+        AggSigMe { public_key, message: tree_hash(delegated_puzzle) },
+        ...delegated_puzzle(...delegated_solution),
+    ]
+}
+
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn signs_the_delegated_puzzle() -> Any {
+    let delegated_puzzle = fn(...solution: Any) => unchecked_cast::<List<Condition>>(solution);
+    check([
+        pubkey_for_exp(42),
+        delegated_puzzle,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}

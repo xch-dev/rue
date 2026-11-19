@@ -1,0 +1,254 @@
+// Regression test, not for production use. A port of `singleton_top_layer.clsp` (version 1.0,
+// which `singleton_top_layer_v1_1.clsp` replaced) from chia_puzzles, checked against the compiled
+// original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::{EveProof, LineageProof, Proof, SingletonStruct};
+
+extern fn reference(...solution: Any) -> Any from "./singleton_top_layer.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
+
+// The facts about the spend that are passed to the inner puzzle, before its solution.
+struct Truths {
+    coin: (Bytes32, Bytes32),
+    inner_puzzle: (Bytes32, Int),
+    ...singleton: (Proof, SingletonStruct),
+}
+
+fn main(
+    singleton_struct: SingletonStruct,
+    inner_puzzle: fn(truths: Truths, ...inner_solution: Any) -> List<Condition>,
+    lineage_proof: Proof,
+    my_amount: Int,
+    inner_solution: Any,
+) -> List<Condition> {
+    assert my_amount & 1 != 0;
+
+    let inner_puzzle_hash = tree_hash(inner_puzzle);
+    let full_puzzle_hash = singleton_puzzle_hash(singleton_struct, inner_puzzle_hash);
+
+    // Version 1.0 hashes coin ids with `sha256`, rather than `coinid`.
+    let my_id = if lineage_proof is LineageProof {
+        let parent_id = sha256(
+            lineage_proof.parent_parent_coin_info
+                + singleton_puzzle_hash(singleton_struct, lineage_proof.parent_inner_puzzle_hash)
+                + lineage_proof.parent_amount as Bytes,
+        );
+        sha256(parent_id + full_puzzle_hash + my_amount as Bytes)
+    } else {
+        assert singleton_struct.launcher_id == sha256(
+            lineage_proof.parent_parent_coin_info
+                + singleton_struct.launcher_puzzle_hash
+                + lineage_proof.parent_amount as Bytes,
+        );
+        sha256(singleton_struct.launcher_id + full_puzzle_hash + my_amount as Bytes)
+    };
+
+    let truths = Truths {
+        coin: (my_id, full_puzzle_hash),
+        inner_puzzle: (inner_puzzle_hash, my_amount),
+        singleton: (lineage_proof, singleton_struct),
+    };
+
+    [
+        AssertMyCoinId { coin_id: my_id },
+        ...morph_conditions(singleton_struct, inner_puzzle(truths, ...inner_solution), false),
+    ]
+}
+
+fn singleton_puzzle_hash(singleton_struct: SingletonStruct, inner_puzzle_hash: Bytes32) -> Bytes32 {
+    curry_tree_hash(singleton_struct.mod_hash, [tree_hash(singleton_struct), inner_puzzle_hash])
+}
+
+// Wraps the one odd output in the singleton layer, dropping its memos, or removes it if it's -113
+// to melt the singleton.
+fn morph_conditions(
+    singleton_struct: SingletonStruct,
+    conditions: List<Condition>,
+    found_odd_output: Bool,
+) -> List<Condition> {
+    if conditions is nil {
+        assert found_odd_output;
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    if condition is CreateCoin && condition.amount & 1 == 1 {
+        assert !found_odd_output;
+
+        let rest = morph_conditions(singleton_struct, conditions.rest, true);
+
+        if condition.amount == -113 {
+            return rest;
+        }
+
+        return [
+            CreateCoin {
+                puzzle_hash: singleton_puzzle_hash(singleton_struct, condition.puzzle_hash),
+                amount: condition.amount,
+            },
+            ...rest,
+        ];
+    }
+
+    [condition, ...morph_conditions(singleton_struct, conditions.rest, found_odd_output)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn singleton_struct() -> SingletonStruct {
+    SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256(sha256("launcher_parent") + sha256("launcher_puzzle") + 1 as Bytes),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    }
+}
+
+fn eve_proof() -> EveProof {
+    EveProof { parent_parent_coin_info: sha256("launcher_parent"), parent_amount: 1 }
+}
+
+fn lineage_proof() -> LineageProof {
+    LineageProof {
+        parent_parent_coin_info: sha256("parent_parent"),
+        parent_inner_puzzle_hash: sha256("parent_inner_puzzle"),
+        parent_amount: 1,
+    }
+}
+
+// An inner puzzle that drops the truths and returns the rest of its solution as conditions.
+inline const INNER_PUZZLE: 3 = 3;
+
+test fn spends_the_eve_singleton() -> Any {
+    check([
+        singleton_struct(),
+        INNER_PUZZLE,
+        eve_proof(),
+        1,
+        [
+            Remark { rest: nil },
+            CreateCoin {
+                puzzle_hash: sha256("inner_puzzle"),
+                amount: 1,
+                memos: Memos { value: [sha256("hint")] },
+            },
+            CreateCoin { puzzle_hash: sha256("other"), amount: 2 },
+        ],
+    ])
+}
+
+test fn passes_the_truths() -> Any {
+    // An inner puzzle that outputs the truths in a remark, followed by the rest of its solution:
+    // `(c (c (q . 1) 2) 3)`.
+    let inner_puzzle = [4 as Any, [4 as Any, (1, 1), 2], 3];
+    check([
+        singleton_struct(),
+        inner_puzzle,
+        lineage_proof(),
+        3,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 3 }],
+    ])
+}
+
+test fn spends_with_a_lineage_proof() -> Any {
+    check([
+        singleton_struct(),
+        INNER_PUZZLE,
+        lineage_proof(),
+        3,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 3 }],
+    ])
+}
+
+test fn melts_the_singleton() -> Any {
+    check([
+        singleton_struct(),
+        INNER_PUZZLE,
+        lineage_proof(),
+        1,
+        [
+            CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: -113 },
+            ReserveFee { amount: 1 },
+        ],
+    ])
+}
+
+fn even_amount() -> Any {
+    [
+        singleton_struct(),
+        INNER_PUZZLE,
+        lineage_proof(),
+        2,
+        CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 },
+    ]
+}
+
+test fn rejects_an_even_amount() -> Any {
+    run(main, even_amount())
+}
+
+test fn reference_rejects_an_even_amount() -> Any {
+    run(reference, even_amount())
+}
+
+fn two_odd_outputs() -> Any {
+    [
+        singleton_struct(),
+        INNER_PUZZLE,
+        lineage_proof(),
+        1,
+        [
+            CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 },
+            CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 3 },
+        ],
+    ]
+}
+
+test fn rejects_two_odd_outputs() -> Any {
+    run(main, two_odd_outputs())
+}
+
+test fn reference_rejects_two_odd_outputs() -> Any {
+    run(reference, two_odd_outputs())
+}
+
+fn no_odd_output() -> Any {
+    [
+        singleton_struct(),
+        INNER_PUZZLE,
+        lineage_proof(),
+        1,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 2 }],
+    ]
+}
+
+test fn rejects_no_odd_output() -> Any {
+    run(main, no_odd_output())
+}
+
+test fn reference_rejects_no_odd_output() -> Any {
+    run(reference, no_odd_output())
+}
+
+fn wrong_launcher() -> Any {
+    [
+        singleton_struct(),
+        INNER_PUZZLE,
+        EveProof { parent_parent_coin_info: sha256("other_parent"), parent_amount: 1 },
+        1,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 }],
+    ]
+}
+
+test fn rejects_the_wrong_launcher() -> Any {
+    run(main, wrong_launcher())
+}
+
+test fn reference_rejects_the_wrong_launcher() -> Any {
+    run(reference, wrong_launcher())
+}
