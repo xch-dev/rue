@@ -298,6 +298,8 @@ fn wrap_parameter(
             .iter()
             .any(|&param| occurs_contravariantly(ctx, param, generic))
         {
+            let target = mappings.get(&generic).copied().unwrap_or(generic);
+            substitution.insert(generic, target);
             continue;
         }
 
@@ -313,7 +315,12 @@ fn wrap_parameter(
         substitution.insert(generic, reference);
     }
 
-    if substitution.is_empty() {
+    // Without a reference in it, it's the type it would have
+    if substitution.values().all(|reference| {
+        !references
+            .values()
+            .any(|placeholder| placeholder == reference)
+    }) {
         return ty;
     }
 
