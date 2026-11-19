@@ -57,7 +57,7 @@ pub struct Inference {
     /// How those vars are resolved.
     policy: InstancePolicy,
     /// The vars added along with the generics (see `Inference::add_var`).
-    added: Vec<TypeId>,
+    pub(crate) added: Vec<TypeId>,
 }
 
 /// How the vars for passed generic functions' instances are resolved (see
