@@ -2045,6 +2045,71 @@ fn named_imports_through_ambiguous_modules_hide_other_kinds_they_could_bring_in(
 }
 
 #[test]
+fn named_imports_through_ambiguous_modules_are_used_through_other_kinds() {
+    // The import brings in the first module's type alias `Y` when that `m` is bound, but could
+    // bring in `beta`'s function `Y`, which the call could refer to, so the import and the
+    // function are used in either order. (When the type alias is brought in, the call finds it
+    // and reports it as a type, so it's only used in that order, which the errors differ in too.)
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export type Y = Int;",
+            "export fn Y() -> Int { 1 }",
+            "mod user { import super::both::m::Y; export fn value() -> Int { Y() } } fn main() -> Int { user::value() }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert!(
+            !unused_items(&compiled).contains(&"3:47 UnusedFunction".to_string()),
+            "{context}"
+        );
+        assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+    }
+}
+
+#[test]
+fn named_imports_that_fail_do_not_hide_what_glob_imports_could_bring_in() {
+    // Found by renaming modules at random. `u`'s import of `Y` fails in either order, since the
+    // `n` it's bound to has no `Y`, though another `n` its path could name does. Its error item
+    // only fills `Y` when the glob import doesn't bring one in, which it does in one order (from
+    // `{b}`'s `m`), so what the glob import could bring in is used in either order.
+    let template = "
+        mod {a} { export mod m { export const X: Int = 1; export const Y: Int = 2; export type T = Int; export mod n { export const X: Int = 3; export const Y: Int = 4; export type T = Int; } } }
+        mod {b} { export mod m { export const X: Int = 5; export const Y: Int = 6; export mod n { export const X: Int = 7; } } }
+        mod {c} { export mod m { export mod n { export const X: Int = 8; export const Y: Int = 9; } } }
+        mod {d} { export mod m { export const X: Int = 10; export type T = Int; export mod n { export const X: Int = 11; export type T = Int; } export super::super::{c}::m::*; } }
+        mod {e} { export super::{d}::*; export super::{c}::*; export super::{b}::*; }
+        mod {f} { export super::{c}::*; export super::{b}::*; export super::{e}::*; }
+        mod {g} { export super::{f}::*; export super::{c}::*; export super::{a}::*; }
+        mod u { import super::{e}::m::*; import super::{f}::m::n::Y; export fn value() -> Int { super::{b}::m::X + X + super::{e}::m::n::X + Y } }
+        fn main() -> Int { u::value() }
+    ";
+    let orders = [
+        ["hx", "dx", "hk", "bk", "ck", "dz", "fz"],
+        ["dx", "dz", "fz", "hx", "hk", "hj", "ck"],
+    ];
+    let mut results = Vec::new();
+
+    for names in orders {
+        let source = ["a", "b", "c", "d", "e", "f", "g"]
+            .into_iter()
+            .zip(names)
+            .fold(template.to_string(), |source, (key, name)| {
+                source.replace(&format!("{{{key}}}"), name)
+            });
+        let compiled = compile(&source);
+
+        results.push((compiled.errors(), unused_items(&compiled)));
+    }
+
+    assert_eq!(results[0], results[1]);
+    assert!(
+        !results[0].1.contains(&"3:71 UnusedConstant".to_string()),
+        "{results:?}"
+    );
+}
+
+#[test]
 fn members_of_ambiguous_modules_used_from_outside_are_needed_exports_in_each() {
     // A use of `both::m::X` from outside of either `m`, by path or by import, needs the `X` in
     // each `m` it could refer to to be exported, whichever is bound. `Z` is only used inside of

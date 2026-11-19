@@ -25,10 +25,11 @@ pub(crate) enum Place {
 /// bring in besides what they do (see
 /// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)), whichever way the
 /// names in their paths are bound. A declaration or a named import that binds it hides it, and so
-/// does a named import that could bring in something with it if its path were bound differently.
-/// What a glob import binds doesn't, since what another one could bring in instead would collide
-/// with it, and neither does a failed import's error item, which only fills a name that nothing
-/// else brings in.
+/// does a named import that brings in something with its name in another namespace but could
+/// bring in something in this one if its path were bound differently. What a glob import binds
+/// doesn't, since what another one could bring in instead would collide with it, and neither does
+/// a failed import's error item (or a named import that fails), which only fills a name that
+/// nothing else brings in.
 pub(crate) fn hides_alternatives(
     ctx: &Compiler,
     scope: &Scope,
@@ -48,6 +49,11 @@ pub(crate) fn hides_alternatives(
                     .import_alternatives(import, namespace, name)
                     .next()
                     .is_some()
+                && Namespace::ALL.into_iter().any(|namespace| {
+                    scope
+                        .item_with_import(namespace, name)
+                        .is_some_and(|(item, via)| via == Some(import) && !ctx.is_error_item(item))
+                })
         })
 }
 
