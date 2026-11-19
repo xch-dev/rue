@@ -153,6 +153,27 @@ tests:
   runtime_cost: 969
   byte_cost: 708000
   total_cost: 708969
+- name: compound_element_of_a_compound_parameter
+  program: (a (q 16 (f (a 2 (c (q . 4) (q . 5)))) (r (a (q . 4) (q ((q . 5) . 2)))) (a 2 (c (q . 8) (q . 5)))) (c (q 2 2 (c (c (c 3 (q . 1)) (q . 2)) ())) ()))
+  debug_program: (a (q 2 (q 16 (+ (f 4) (r 10)) 14) (c (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) (c (a 6 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) (a 4 (c (c (q . 2) (c (c (q . 1) (q 5 (f 2))) (c (q . 1) ()))) (q . 5))))) 1)) (c (c (q 2 2 (c (c (c 3 (q . 1)) (q . 2)) ())) (q 2 2 (c (c (c (q . 1) 3) (q . 2)) ()))) ()))
+  output: "15"
+  runtime_cost: 2966
+  byte_cost: 1308000
+  total_cost: 1310966
+- name: field_of_a_struct_parameter
+  program: (+ (a (q . 4) (q (f 1))) (a (q . 10) (q (q 5))) (f (a (q . 4) (q ((f . 1) 2)))))
+  debug_program: (a (q 2 (q 16 (+ 4 10) (f 14)) (c (c (a 14 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) (c (a 10 (c (c (q . 2) (c (c (q . 1) (q 5 (r 2))) (c (q . 1) ()))) (q . 5))) (a 4 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))))) 1)) (c (c (q 2 2 (c (c (c 3 (q . 1)) (c (q . 2) ())) ())) (c (q 2 2 (c (c (q . 1) (c 3 ())) ())) (q 2 2 (c (c 3 (c (q . 1) ())) ())))) ()))
+  output: "15"
+  runtime_cost: 1663
+  byte_cost: 756000
+  total_cost: 757663
+- name: reference_in_a_struct_or_union_element
+  program: (a (q 2 (i 6 (q 16 8 10) (q . 8)) 1) (c (c (a (q . 4) (q ((f 1) . 2))) (a (q . 4) (q ((f . 1) . 2)))) 1))
+  debug_program: (a (q 2 (q 2 (i (l 6) (q 16 (f 4) (f 6)) (q 5 4)) 1) (c (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) (a 6 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5)))) 1)) (c (c (q 2 2 (c (c (c 3 (c (q . 1) ())) (q . 2)) ())) (q 2 2 (c (c (c 3 (q . 1)) (q . 2)) ()))) ()))
+  output: "10"
+  runtime_cost: 1752
+  byte_cost: 948000
+  total_cost: 949752
 diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:61:5

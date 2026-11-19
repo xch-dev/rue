@@ -226,3 +226,69 @@ test fn argument_whose_generic_takes_values() -> Int {
     // `fn(a: Int) -> Int` that `compose` ends up needing, and this compiles as before
     chain::<Int | nil, 5, Int>(compose(fn(_x) => 5), compose(feed(fn(x) => x, five_only)), nil)
 }
+
+fn nested_map<A, B>(function: fn(p: ((A, Int), Int)) -> B, value: A) -> B {
+    function(((value, 1), 2))
+}
+
+fn nested_rest_map<A, B>(function: fn(p: ((Int, A), Int)) -> B, value: A) -> B {
+    function(((1, value), 2))
+}
+
+test fn compound_element_of_a_compound_parameter() -> Int {
+    // `p.first` keeps the reference to `A` inside it, wherever it is, and so does `p.first.first`
+    let pair: (5, Int) = nested_map(fn(p) => p.first, 5);
+    let rest: (Int, 5) = nested_rest_map(fn(p) => p.first, 5);
+    let element: 5 = nested_map(fn(p) => p.first.first, 5);
+    pair.first + rest.rest + element
+}
+
+struct Wrapper<T> {
+    value: T,
+    other: Int,
+}
+
+struct Last<T> {
+    other: Int,
+    value: T,
+}
+
+fn struct_map<A, B>(function: fn(wrapper: Wrapper<A>) -> B, value: A) -> B {
+    function(Wrapper::<A> { value, other: 1 })
+}
+
+fn last_map<A, B>(function: fn(last: Last<A>) -> B, value: A) -> B {
+    function(Last::<A> { other: 1, value })
+}
+
+fn pair_struct_map<A, B>(function: fn(wrapper: Wrapper<(A, Int)>) -> B, value: A) -> B {
+    function(Wrapper::<(A, Int)> { value: (value, 1), other: 2 })
+}
+
+test fn field_of_a_struct_parameter() -> Int {
+    // A struct's fields keep the reference to `A` too, wherever they are in it
+    let first: 5 = struct_map(fn(wrapper) => wrapper.value, 5);
+    let last: 5 = last_map(fn(last) => last.value, 5);
+    let pair: (5, Int) = pair_struct_map(fn(wrapper) => wrapper.value, 5);
+    first + last + pair.first
+}
+
+fn wrapped_map<A, B>(function: fn(p: (Wrapper<A>, Int)) -> B, value: A) -> B {
+    function((Wrapper::<A> { value, other: 1 }, 2))
+}
+
+fn optional_map<A, B>(function: fn(p: ((A, Int) | nil, Int)) -> B, value: A) -> B {
+    function(((value, 1), 2))
+}
+
+test fn reference_in_a_struct_or_union_element() -> Int {
+    // An element keeps the reference to `A` inside a struct or a union in it too
+    let wrapper: Wrapper<5> = wrapped_map(fn(p) => p.first, 5);
+    let optional: (5, Int) | nil = optional_map(fn(p) => p.first, 5);
+
+    if optional is (5, Int) {
+        wrapper.value + optional.first
+    } else {
+        wrapper.value
+    }
+}

@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FieldAccess, FieldKind, Hir, HirId, TypePath, Value};
 use rue_lint::FieldRead;
-use rue_types::{Pair, Struct, Type, TypeId, Union};
+use rue_types::{Struct, Type, TypeId, Union};
 
 use crate::{Compiler, GetTextRange};
 
@@ -99,7 +101,7 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                     );
 
                     let first = if pairs.len() == 1 {
-                        wrapped_element(ctx, expr.ty, |pair| pair.first).unwrap_or(pairs[0].first)
+                        wrapped_at(ctx, expr.ty, &[TypePath::First]).unwrap_or(pairs[0].first)
                     } else {
                         ctx.alloc_type(Type::Union(Union::new(
                             pairs.iter().map(|pair| pair.first).collect(),
@@ -124,7 +126,7 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                     );
 
                     let rest = if pairs.len() == 1 {
-                        wrapped_element(ctx, expr.ty, |pair| pair.rest).unwrap_or(pairs[0].rest)
+                        wrapped_at(ctx, expr.ty, &[TypePath::Rest]).unwrap_or(pairs[0].rest)
                     } else {
                         ctx.alloc_type(Type::Union(Union::new(
                             pairs.iter().map(|pair| pair.rest).collect(),
@@ -224,6 +226,12 @@ fn compile_struct_field(
         }
     }
 
+    // The field's type before the struct's type is substituted, which the references are in
+    let field_type = match ctx.ty(expr.ty) {
+        Type::Struct(raw) => wrapped_at(ctx, raw.inner, &path),
+        _ => None,
+    }
+    .unwrap_or(field_type);
     let hir = alloc_field_access(ctx, expr.hir, name, FieldKind::Path(path));
     let mut value = Value::new(hir, field_type);
 
@@ -242,19 +250,49 @@ fn alloc_field_access(ctx: &mut Compiler, value: HirId, name: &str, kind: FieldK
     }))
 }
 
-/// The element of the value's pair type, if it's a pair whose element is a reference that an untyped
-/// lambda parameter's type is made of (see `ParameterWrap`), which the element keeps, so that the
-/// lambda's return type still shows where the parameter flows (#362, step 13e). Substituting the type
-/// would see through the reference.
-fn wrapped_element(
-    ctx: &Compiler,
-    ty: TypeId,
-    element: impl Fn(&Pair) -> TypeId,
-) -> Option<TypeId> {
-    let Type::Pair(pair) = ctx.ty(ty) else {
-        return None;
-    };
+/// The part of the type at the path, through its pairs, if it keeps a reference that an untyped
+/// lambda parameter's type is made of (see `ParameterWrap`), so that the lambda's return type still
+/// shows where the parameter flows (#362, step 13e). Substituting the type would see through the
+/// reference.
+fn wrapped_at(ctx: &Compiler, ty: TypeId, path: &[TypePath]) -> Option<TypeId> {
+    let mut ty = ty;
 
-    let element = element(pair);
-    ctx.is_reported_as_another_type(element).then_some(element)
+    for step in path {
+        let Type::Pair(pair) = ctx.ty(ty) else {
+            return None;
+        };
+
+        ty = match step {
+            TypePath::First => pair.first,
+            TypePath::Rest => pair.rest,
+        };
+    }
+
+    keeps_reference(ctx, ty).then_some(ty)
+}
+
+/// Whether the type has a reference that an untyped lambda parameter's type is made of in it, through
+/// the pairs, unions and structs it's made of, which are what field accesses reach.
+fn keeps_reference(ctx: &Compiler, ty: TypeId) -> bool {
+    let mut visited = HashSet::new();
+    let mut stack = vec![ty];
+
+    while let Some(ty) = stack.pop() {
+        if !visited.insert(ty) {
+            continue;
+        }
+
+        if ctx.is_reported_as_another_type(ty) {
+            return true;
+        }
+
+        match ctx.ty(ty) {
+            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+            Type::Struct(ty) => stack.push(ty.inner),
+            _ => {}
+        }
+    }
+
+    false
 }

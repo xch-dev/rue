@@ -73,7 +73,19 @@ fn generic_in_a_callback_parameter() -> Int {
     result
 }
 
+struct Wrapper<T> {
+    value: T,
+    other: Int,
+}
+
+fn struct_map<A, B>(function: fn(wrapper: Wrapper<A>) -> B, value: A) -> B {
+    function(Wrapper::<A> { value, other: 1 })
+}
+
 fn main() -> Int {
+    // `other` is `Int` whatever `A` is, so it doesn't reference `A`, and isn't narrowed to `1`
+    let other: 1 = struct_map(fn(wrapper) => wrapper.other, 5);
+
     // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
     let computed: 5 = map(fn(x) => x + 0, 5);
 
@@ -99,5 +111,5 @@ fn main() -> Int {
     let unbounded = map(fn(x) => x, 5);
     let five: 5 = unbounded;
 
-    computed + nested.first + unfitting + spread + generic + mismatched.first + cast + five
+    other + computed + nested.first + unfitting + spread + generic + mismatched.first + cast + five
 }
