@@ -5,8 +5,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, FunctionParameter, FunctionType, FxHashMap, FxIndexMap, FxIndexSet, Pair, Struct, Type,
-    TypeId, Union, grow_stack, step, stringify_impl,
+    Alias, FunctionParameter, FunctionType, FxHashMap, FxHashSet, FxIndexMap, FxIndexSet, Pair,
+    Struct, Type, TypeId, Union, grow_stack, step, stringify_impl,
 };
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
@@ -375,7 +375,7 @@ fn substitute_argument(
 /// union's members, is the same from run to run.
 pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> FxIndexSet<TypeId> {
     let mut generics = FxIndexSet::default();
-    let mut visited = HashSet::new();
+    let mut visited = FxHashSet::default();
     let mut stack = vec![id];
 
     while let Some(id) = stack.pop() {
@@ -398,7 +398,13 @@ pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> FxIndexSet<TypeI
                 stack.push(ty.inner);
                 stack.extend(ty.generics.iter().copied());
             }
-            Type::Apply(apply) => stack.extend(apply.generics.values().copied()),
+            Type::Apply(apply) => {
+                // Its arguments are in a `HashMap`, so they're visited in the order of the
+                // generics they're for
+                let mut arguments: Vec<_> = apply.generics.iter().collect();
+                arguments.sort_unstable_by_key(|&(&generic, _)| generic);
+                stack.extend(arguments.into_iter().map(|(_, &ty)| ty));
+            }
             Type::Function(function) => {
                 stack.push(function.ret);
                 stack.extend(function.param_types());
