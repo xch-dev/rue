@@ -1,0 +1,52 @@
+// A guard's type isn't expected of the value it checks, so it can't infer a generic that nothing
+// else gives a type, which would leave the guard with nothing to check
+
+fn wrap<T>(value: Any) -> List<T> {
+    unchecked_cast([value])
+}
+
+extern fn external<T>(value: Any) -> T from "../projects/external_import/add.hex";
+
+fn unchecked_cast_operand(value: Any) -> Bool {
+    unchecked_cast(value) is Bytes32
+}
+
+fn generic_return_operand(value: Any) -> Bool {
+    wrap(value) is List<Int>
+}
+
+fn extern_operand(value: Any) -> Bool {
+    external(value) is Bytes32
+}
+
+fn block_operand(value: Any) -> Bool {
+    { unchecked_cast(value) } is Bytes32
+}
+
+fn pair_operand(value: Any) -> Bool {
+    (unchecked_cast(value), 1) is (Bytes32, Int)
+}
+
+fn list_operand(value: Any) -> Bool {
+    [unchecked_cast(value)] is List<Bytes32>
+}
+
+fn if_operand(value: Any, condition: Bool) -> Bool {
+    (
+        if condition {
+            unchecked_cast(value)
+        } else {
+            1
+        }
+    ) is Int
+}
+
+fn main(value: Any) -> Bool {
+    unchecked_cast_operand(value)
+        && generic_return_operand(value)
+        && extern_operand(value)
+        && block_operand(value)
+        && pair_operand(value)
+        && list_operand(value)
+        && if_operand(value, true)
+}
