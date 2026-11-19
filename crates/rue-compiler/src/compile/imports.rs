@@ -180,8 +180,8 @@ pub struct ImportCache {
     errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
     /// What each exported named import with no path re-exports: the scope it imports into, and
     /// each item it found, with whether it was found in the module it looks in (its own, or the
-    /// one that `super` names) rather than outside of it, where items are public (a file's sibling
-    /// modules and the prelude). See [`report_private_reexports`].
+    /// one that `super` or `crate` names) rather than outside of it, where items are public (a
+    /// file's sibling modules and the prelude). See [`report_private_reexports`].
     reexports: IndexMap<ImportId, (ScopeId, IndexMap<Item, bool>)>,
     /// The lookups that were answered without waiting for a module to settle, since nothing else
     /// could be resolved. They're checked once every import is resolved.
@@ -1408,7 +1408,8 @@ fn resolve_import(
                 .1;
 
             // Glob imports bring in every exported item of a module. A glob import of a parent
-            // module (through `super`) brings in its private items too, but doesn't export them.
+            // module (through `super` or `crate`) brings in its private items too, but doesn't
+            // export them.
             let source_scope = base.unwrap_or(import.base_scope);
 
             for namespace in Namespace::ALL {
@@ -1483,8 +1484,7 @@ fn resolve_import(
                     // sibling modules aren't items of the file, and they're public.
                     let module = ctx.scope(source_scope);
                     let exported = import.exported
-                        && (base.is_some()
-                            || module.item(namespace, &name) != Some(item)
+                        && (module.item(namespace, &name) != Some(item)
                             || module.is_item_exported(item));
 
                     // A name that's ambiguous where it's imported from is ambiguous here too. The
@@ -1740,7 +1740,7 @@ fn resolve_import(
                 let namespace = found.namespace();
 
                 // An import with no path can find a private item of its own module, or of the one
-                // that `super` names, which it only exports if it's public there
+                // that `super` or `crate` names, which it only exports if it's public there
                 let mut exported = import.exported;
 
                 if import.exported && base.is_none() {
