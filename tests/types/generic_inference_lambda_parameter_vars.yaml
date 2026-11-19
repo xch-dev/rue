@@ -118,6 +118,13 @@ tests:
   runtime_cost: 959
   byte_cost: 276000
   total_cost: 276959
+- name: excluded_generic_next_to_a_wrapped_one
+  program: (a (q 16 4 6) (c (a (q 4 4 (+ 6 (a 5 (c 6 ())))) (c (q 5 . 6) (c (q) ()))) 1))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (f 2) (+ (r 2) (a 5 (c (r 2) ()))))) (c (q . 1) ()))) (c (q . 5) (q . 6)))) 1)) (c (q 2 2 (c (c 5 7) (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) ()))) ()))
+  output: "11"
+  runtime_cost: 2605
+  byte_cost: 852000
+  total_cost: 854605
 diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:61:5

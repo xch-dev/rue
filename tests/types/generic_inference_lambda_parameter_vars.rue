@@ -168,3 +168,14 @@ test fn rest_of_a_compound_parameter() -> Int {
     let result: 5 = rest_map(fn(p) => p.rest, 5);
     result + 1
 }
+
+fn mixed_map<A, B, C>(function: fn(pair: (A, B), callback: fn(x: B) -> Int) -> C, a: A, b: B) -> C {
+    function((a, b), fn(_x) => 0)
+}
+
+test fn excluded_generic_next_to_a_wrapped_one() -> Int {
+    // `B` is a parameter of `callback` too, so it isn't wrapped, but `p.rest` is still what `B` is
+    // inferred as, `Int`, next to the reference to `A` in `p`
+    let result: (5, Int) = mixed_map(fn(p, callback) => (p.first, p.rest + callback(p.rest)), 5, 6);
+    result.first + result.rest
+}

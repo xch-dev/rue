@@ -137,7 +137,7 @@ pub(crate) fn infer_call(
             .iter()
             .any(|&generic| contains_generic(ctx.types_mut(), param, generic));
 
-        // A lambda expected to be exactly the parameter's function type wraps each of the callee's
+        // A lambda expected to be exactly the parameter's function type wraps the callee's
         // generics in its parameters (see `ParameterWrap`)
         let params = match ctx.ty(param).clone() {
             Type::Function(function_param) if function_param.generics.is_empty() => {

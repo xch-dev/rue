@@ -31,9 +31,10 @@ pub(crate) enum ParameterWrap<'a> {
     Whole,
     /// The lambda is expected to be exactly the function type with these parameter types, before
     /// the callee's generics in them are substituted with what they're inferred as so far
-    /// (`mappings`, or the generic itself if it isn't mapped). Each of those generics is a reference
-    /// of its own in them instead, so a part of a parameter, such as `p.first` with `p: (A, Int)`,
-    /// still has it.
+    /// (`mappings`, or the generic itself if it isn't mapped). Each of those generics that only
+    /// occurs where values flow into the lambda (see `occurs_contravariantly`) is a reference of its
+    /// own in them instead, so a part of a parameter, such as `p.first` with `p: (A, Int)`, still has
+    /// it. The others are substituted with what they're inferred as so far, as they would be.
     Generics {
         params: &'a [TypeId],
         generics: &'a [TypeId],
@@ -285,6 +286,7 @@ fn wrap_parameter(
     };
 
     let mut substitution = HashMap::new();
+    let mut has_reference = false;
 
     for &generic in *generics {
         if !contains_generic(ctx.types_mut(), source, generic) {
@@ -313,14 +315,11 @@ fn wrap_parameter(
         });
 
         substitution.insert(generic, reference);
+        has_reference = true;
     }
 
     // Without a reference in it, it's the type it would have
-    if substitution.values().all(|reference| {
-        !references
-            .values()
-            .any(|placeholder| placeholder == reference)
-    }) {
+    if !has_reference {
         return ty;
     }
 
