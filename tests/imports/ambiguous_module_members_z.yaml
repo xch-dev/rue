@@ -1,0 +1,8 @@
+diagnostics:
+- Unused constant `UNUSED` at ambiguous_module_members_z.rue:36:18
+- "`m` is ambiguous, since glob imports bring in different items with this name at ambiguous_module_members_z.rue:41:29"
+- "`m` is ambiguous, since glob imports bring in different items with this name at ambiguous_module_members_z.rue:41:49"
+- "`m` is ambiguous, since glob imports bring in different items with this name at ambiguous_module_members_z.rue:42:26"
+- "`m` is ambiguous, since glob imports bring in different items with this name at ambiguous_module_members_z.rue:42:49"
+- "`m` is ambiguous, since glob imports bring in different items with this name at ambiguous_module_members_z.rue:47:25"
+- "`m` is ambiguous, since glob imports bring in different items with this name at ambiguous_module_members_z.rue:48:25"

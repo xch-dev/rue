@@ -451,6 +451,10 @@ where
             PathResult::Unresolved => return PathResult::Unresolved,
             PathResult::Symbol(symbol, mut override_type, import) => {
                 ctx.reference(Declaration::Symbol(symbol), import);
+
+                if has_subpath {
+                    ctx.add_ambiguous_path(import, Declaration::Symbol(symbol));
+                }
                 ctx.reference_span(Declaration::Symbol(symbol), name.text_range());
 
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {

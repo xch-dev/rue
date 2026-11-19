@@ -507,6 +507,24 @@ pub fn resolve_imports(
         }
     }
 
+    // An import whose path goes through a name that could refer to other modules is used, and so
+    // is everything in each of them (see `Database::add_ambiguous_path`)
+    let paths = cache
+        .paths
+        .iter()
+        .flat_map(|(&import, path)| {
+            path.references
+                .iter()
+                .map(move |&(_, via, module)| (import, via, module))
+        })
+        .collect::<Vec<_>>();
+
+    for (import, via, module) in paths {
+        if ctx.add_ambiguous_path(Some(via), module) {
+            ctx.add_import_through_ambiguous_name(import);
+        }
+    }
+
     if diagnostics {
         let reported = reported_failures(cache);
 

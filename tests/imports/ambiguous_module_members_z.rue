@@ -1,0 +1,57 @@
+// `both::m` is ambiguous, since both glob exports bring in a module `m`. Which one the name is
+// bound to depends on the order the imports are resolved in, which depends on module names, so a
+// path or import through it counts everything in both modules as used, including what nothing
+// uses, such as `UNUSED`. Here, `beta` sorts before `z`, so `m` is bound to `beta`'s (ambiguous_module_members_a has the module names in the
+// other order). `other`'s `UNUSED` isn't in either, so it's reported.
+mod z {
+    export mod m {
+        export const X: Int = 1;
+        export type T = Int;
+        export const UNUSED: Int = 3;
+
+        export mod n {
+            export const Y: Int = 1;
+        }
+    }
+}
+
+mod beta {
+    export mod m {
+        export const X: Int = 2;
+        export type T = Int;
+        export const ONLY: Int = 5;
+
+        export mod n {
+            export const Y: Int = 2;
+        }
+    }
+}
+
+mod both {
+    export super::z::*;
+    export super::beta::*;
+}
+
+mod other {
+    export const UNUSED: Int = 6;
+}
+
+mod paths {
+    export fn value() -> Int {
+        let t: super::both::m::T = super::both::m::X;
+        t + super::both::m::n::Y + super::both::m::ONLY
+    }
+}
+
+mod imports {
+    import super::both::m::n::Y;
+    import super::both::m::*;
+
+    export fn value() -> Int {
+        X + Y
+    }
+}
+
+fn main() -> Int {
+    paths::value() + imports::value()
+}

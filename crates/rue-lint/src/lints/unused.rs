@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use rue_diagnostic::{Lint, Name};
 use rue_hir::{
     BindingSymbol, ConstantSymbol, Database, Declaration, FailureAnalysis, FunctionSymbol,
-    ImportId, ImportUser, Items, ParameterSymbol, Symbol,
+    ImportId, ImportUser, Items, Namespace, ParameterSymbol, Symbol,
 };
 use rue_types::{Alias, Generic, Struct, Type};
 
@@ -109,7 +109,7 @@ fn is_import_used(
 ) -> bool {
     let import = db.import(id);
 
-    if import.exported {
+    if import.exported || db.is_import_through_ambiguous_name(id) {
         return true;
     }
 
@@ -226,6 +226,7 @@ pub(crate) fn live_declarations(
     let mut stack = entrypoints
         .iter()
         .copied()
+        .chain(ambiguous_module_items(db))
         .chain(db.relevant_declarations().filter(|&declaration| {
             db.declaration_parents(declaration).is_empty() && is_exempt(db, declaration)
         }))
@@ -242,6 +243,45 @@ pub(crate) fn live_declarations(
     }
 
     live
+}
+
+/// What's in the modules that a path or import goes through an ambiguous name to, and in the
+/// modules inside of them. Any of it could be what the path refers to, whichever module the name is
+/// bound to, so it all counts as used, rather than which of it is reported as unused depending on
+/// the order imports are resolved in.
+fn ambiguous_module_items(db: &Database) -> Vec<Declaration> {
+    let mut items = Vec::new();
+    let mut visited = HashSet::new();
+    let mut stack = db.ambiguous_modules().collect::<Vec<_>>();
+
+    while let Some(module) = stack.pop() {
+        if !visited.insert(module) {
+            continue;
+        }
+
+        let Symbol::Module(module) = db.symbol(module) else {
+            continue;
+        };
+
+        let scope = db.scope(module.scope);
+
+        // What a name in it refers to, and what else it could if it's ambiguous there too
+        for namespace in Namespace::ALL {
+            for (_, item) in scope.items(namespace) {
+                let declaration = Declaration::from(item);
+                let others = db.ambiguous_alternatives(scope.item_import(item), declaration);
+
+                for declaration in std::iter::once(declaration).chain(others) {
+                    match (namespace, declaration) {
+                        (Namespace::Module, Declaration::Symbol(module)) => stack.push(module),
+                        _ => items.push(declaration),
+                    }
+                }
+            }
+        }
+    }
+
+    items
 }
 
 /// The declarations that use an ambiguous name, for each of the other declarations it could
