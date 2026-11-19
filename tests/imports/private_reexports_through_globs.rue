@@ -1,0 +1,21 @@
+export d::*;
+
+// A reported re-export exports what it found before any import's failure is final, so a glob
+// import of the module brings it in too, and a use of the value as a type is reported as such
+mod d {
+    export X;
+
+    const X: Int = 1;
+}
+
+mod b {
+    import super::*;
+
+    export fn f(v: X) -> Int {
+        v
+    }
+}
+
+fn main() -> Int {
+    b::f(1)
+}

@@ -1,6 +1,6 @@
 // `greet` returns `Bytes`, so a use that reaches this file through `super::utils` in main.rue is a
 // type error. Neither paths nor imports through `super` reach it, since the failed import in
-// main.rue blocks the name.
+// main.rue binds the name to an error item.
 export fn greet() -> Bytes {
     "hello"
 }

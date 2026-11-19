@@ -236,6 +236,59 @@ fn main() -> Int {
 }
 
 #[test]
+fn test_complete_module_exports_skip_failed_imports() {
+    // A failed import's name is bound to an error item, which isn't anything that could be used,
+    // even when the import is exported
+    check(
+        r#"
+mod inner {
+    export nope::Gone;
+    export const NUM: Int = 42;
+}
+
+fn main() -> Int {
+    inner::$0
+}
+"#,
+        expect![[r#"
+            NUM [Constant] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_types_skip_failed_imports() {
+    check(
+        r#"
+import nope::Missing;
+
+fn main(value: Mis$0) -> Int {
+    1
+}
+"#,
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_scope_skips_failed_imports() {
+    check(
+        r#"
+import nope::Missing;
+
+fn main() -> Int {
+    Mis$0
+}
+"#,
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
+
+#[test]
 fn test_complete_after_single_colon() {
     check(
         r#"
@@ -603,6 +656,32 @@ fn main() -> Int {
     expect![[r#"
         main [Module]
         utils [Module]
+    "#]]
+    .assert_eq(&project.completions());
+}
+
+#[test]
+fn test_complete_super_members_skip_sibling_files_hidden_by_failed_imports() {
+    // A failed import of `utils` binds the name in the file to an error item, which hides the
+    // sibling file, so neither is offered after `super::`
+    let project = TestProject::new(&[
+        (
+            "main.rue",
+            r#"
+import nope::utils;
+
+mod inner {
+    fn main() -> Int {
+        super::$0
+    }
+}
+"#,
+        ),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    expect![[r#"
+        super [Module]
+        inner [Module]
     "#]]
     .assert_eq(&project.completions());
 }

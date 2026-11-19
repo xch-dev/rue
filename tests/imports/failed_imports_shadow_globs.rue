@@ -23,7 +23,7 @@ mod b {
 }
 
 // A named import whose path doesn't resolve still shadows a glob import of its name, which is
-// blocked instead
+// bound to an error item instead
 fn main() -> Int {
     helper(1, 2) + 3 + a::f()
 }

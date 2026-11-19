@@ -1,0 +1,13 @@
+import T::x;
+// `m::T` only finds a private type, so it binds `T` to an error item in the type namespace alone.
+// `T::x` doesn't find a module `T`, but its failure is explained by that error item, so it isn't
+// reported again.
+import m::T;
+
+mod m {
+    type T = Int;
+}
+
+fn main() -> Int {
+    1
+}

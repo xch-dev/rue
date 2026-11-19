@@ -2679,7 +2679,8 @@ fn main(value: Bytes) -> (Bytes32, Bytes32) {
 ";
 
     // The import of the private function fails, which is already reported. The failed import
-    // blocks `sha256` in `outer`, so the file's `sha256` isn't the one `inner` would have meant.
+    // binds `sha256` to an error item in `outer`, so the file's `sha256` isn't the one `inner`
+    // would have meant.
     let (diagnostics, has_errors) = compile_source(source, |_| {});
 
     assert!(has_errors);

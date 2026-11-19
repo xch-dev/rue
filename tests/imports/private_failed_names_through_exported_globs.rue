@@ -1,0 +1,17 @@
+// `m` brings in the root's error item through `super::*` and `a`'s through `project::a::*`. The
+// root's failed import isn't exported, so the glob import that re-exports the root's items doesn't
+// export it either, and `m::X` is reported as missing from `m`
+import nope::X;
+
+mod a {
+    export nada::X;
+}
+
+mod m {
+    import project::a::*;
+    export super::*;
+}
+
+fn main() -> Int {
+    m::X
+}

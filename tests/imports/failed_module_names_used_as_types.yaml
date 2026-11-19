@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot reference private symbol `x` in module `m` at failed_module_names_used_as_types.rue:3:11

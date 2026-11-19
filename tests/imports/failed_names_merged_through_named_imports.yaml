@@ -1,0 +1,2 @@
+diagnostics:
+- Undeclared symbol `nope` at failed_names_merged_through_named_imports.rue:12:12

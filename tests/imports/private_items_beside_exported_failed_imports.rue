@@ -1,0 +1,14 @@
+import m::X;
+
+// `m` has a private type `X` and an exported failed import of `X`. Had that import found its item,
+// `import m::X` would bring it in and not the private type, so the failure explains why the import
+// only finds a private type, and it isn't reported again
+mod m {
+    type X = Int;
+
+    export nope::X;
+}
+
+fn main() -> X {
+    1
+}

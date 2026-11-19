@@ -1,0 +1,17 @@
+// `import m::x` finds the function and the error items of `m`'s failed export, which meet the ones
+// that `import x::d::x` binds, so either explains a use of the name. `import x::d::x` resolves
+// through them, so its failure isn't reported.
+import m::x;
+import x::d::x;
+
+mod m {
+    export fn x() -> Int {
+        1
+    }
+
+    export nope::x;
+}
+
+fn main() -> Int {
+    x()
+}

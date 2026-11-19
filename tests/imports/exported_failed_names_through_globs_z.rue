@@ -1,0 +1,22 @@
+import m::X;
+
+// `m` glob-imports two modules with failed imports of `X`, one privately and one exported, so it
+// exports the error item whichever of them brings it in first, which depends on module names (see
+// exported_failed_names_through_globs_a and exported_failed_names_through_globs_z). Both glob
+// imports count as bringing it in.
+mod b {
+    export nope::X;
+}
+
+mod a {
+    export nada::X;
+}
+
+mod m {
+    import super::b::*;
+    export super::a::*;
+}
+
+fn main() -> Int {
+    X
+}

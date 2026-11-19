@@ -1,0 +1,7 @@
+diagnostics:
+- Unresolved import `X` at failed_names_through_globs.rue:1:8
+- Undeclared symbol `missing` at failed_names_through_globs.rue:12:12
+- Unused import `*` at failed_names_through_globs.rue:25:22
+- Unresolved import `X` at failed_names_through_globs.rue:27:12
+- Unused import `*` at failed_names_through_globs.rue:31:19
+- Undeclared symbol `X` at failed_names_through_globs.rue:32:12

@@ -1,0 +1,18 @@
+// `import m::x` only finds a private module, so it binds `x` to an error item in the module
+// namespace alone. A use of `x` as a type finds nothing else, so it isn't reported again.
+import m::x;
+
+mod m {
+    mod x {
+        export const Y: Int = 1;
+    }
+
+    export fn f() -> Int {
+        x::Y
+    }
+}
+
+fn main() -> Int {
+    let a: x = 1;
+    a + m::f()
+}

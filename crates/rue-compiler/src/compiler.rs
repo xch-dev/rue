@@ -41,6 +41,8 @@ pub struct Compiler {
     inline_modules: Vec<SymbolId>,
     /// The scope with the sibling modules of each file, keyed by the scope of the file.
     sibling_scopes: HashMap<ScopeId, ScopeId>,
+    /// The items that failed imports bind their names to (see [`Self::is_error_item`]).
+    error_items: HashSet<Item>,
     builtins: Builtins,
     field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
@@ -162,6 +164,7 @@ impl Compiler {
             file: None,
             inline_modules: Vec::new(),
             sibling_scopes: HashMap::new(),
+            error_items: HashSet::new(),
             builtins,
             field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
@@ -473,12 +476,13 @@ impl Compiler {
             .enumerate()
             .find_map(|(index, &module)| {
                 let scope = self.module(module).scope;
+                let (item, import) = self.module_member(scope, namespace, name.text())?;
 
-                if self.scope(scope).is_blocked(namespace, name.text()) {
+                // A failed import's name has already been reported
+                if self.is_error_item(item) {
                     return Some(None);
                 }
 
-                let (item, import) = self.module_member(scope, namespace, name.text())?;
                 Some(Some((index + 1, item, import)))
             })
             .flatten()
@@ -491,18 +495,11 @@ impl Compiler {
         let outer_scope = self.inline_module_parent_scope();
         let mut outside = false;
 
-        let Some((resolved, scope)) = self
-            .lookup_in(self.last_scope_id(), |id, scope| {
-                outside |= id == outer_scope;
+        let Some((resolved, scope)) = self.lookup_in(self.last_scope_id(), |id, scope| {
+            outside |= id == outer_scope;
 
-                if let Some(item) = scope.item(namespace, name.text()) {
-                    Some(Some((item, id)))
-                } else {
-                    scope.is_blocked(namespace, name.text()).then_some(None)
-                }
-            })
-            .flatten()
-        else {
+            scope.item(namespace, name.text()).map(|item| (item, id))
+        }) else {
             return;
         };
 
@@ -555,18 +552,14 @@ impl Compiler {
     }
 
     /// The sibling module with a name, if a scope is a file's and the name is in a namespace that
-    /// modules are in. A name the file blocks (see [`Scope::block`]) hides the sibling, as it does
-    /// for lookups in the file itself.
+    /// modules are in. An item of the file with the name hides the sibling, so this is only looked
+    /// up once the file doesn't have one.
     pub fn sibling_item(
         &self,
         scope: ScopeId,
         namespace: Namespace,
         name: &str,
     ) -> Option<(Item, Option<ImportId>)> {
-        if self.scope(scope).is_blocked(namespace, name) {
-            return None;
-        }
-
         let siblings = self.sibling_scopes.get(&scope)?;
         self.scope(*siblings).item_with_import(namespace, name)
     }
@@ -574,67 +567,48 @@ impl Compiler {
     /// The names and items that a module (by its scope) has in a namespace, including a file's
     /// sibling modules. This is what `super::name` can name.
     pub fn module_members(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
-        let mut items = self.scope(scope).items(namespace);
-        items.extend(self.sibling_items(scope, namespace));
+        let module = self.scope(scope);
+        let mut items = module.items(namespace);
+
+        // An item of the file with the name hides the sibling (see [`Self::sibling_item`])
+        items.extend(
+            self.sibling_items(scope, namespace)
+                .into_iter()
+                .filter(|(name, _)| module.item(namespace, name).is_none()),
+        );
+
         items
     }
 
-    /// The names and items of a file's sibling modules in a namespace, if a scope is a file's,
-    /// except those the file blocks (see [`Self::sibling_item`]).
+    /// The names and items of a file's sibling modules in a namespace, if a scope is a file's.
     pub fn sibling_items(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
         let Some(&siblings) = self.sibling_scopes.get(&scope) else {
             return Vec::new();
         };
 
-        let mut items = self.scope(siblings).items(namespace);
-        items.retain(|(name, _)| !self.scope(scope).is_blocked(namespace, name));
-        items
+        self.scope(siblings).items(namespace)
     }
 
-    /// Looks up a name in one namespace in a scope and then each enclosing scope. The lookup
-    /// stops at a scope that blocks the name (see [`Scope::block`]).
+    /// Looks up a name in one namespace in a scope and then each enclosing scope.
     pub fn resolve_item_in(
         &self,
         scope: ScopeId,
         namespace: Namespace,
         name: &str,
     ) -> Option<(Item, Option<ImportId>)> {
-        self.lookup_in(scope, |_, scope| {
-            if let Some(found) = scope.item_with_import(namespace, name) {
-                Some(Some(found))
-            } else {
-                scope.is_blocked(namespace, name).then_some(None)
-            }
-        })
-        .flatten()
+        self.lookup_in(scope, |_, scope| scope.item_with_import(namespace, name))
     }
 
-    /// Whether looking up a name in a namespace from a scope stops at a scope that blocks the
-    /// name, rather than finding it or reaching the outermost scope.
-    pub fn is_blocked_in(&self, scope: ScopeId, namespace: Namespace, name: &str) -> bool {
-        !self.block_origins_in(scope, namespace, name).is_empty()
+    /// Records an item that a failed import binds its name to (see [`Self::is_error_item`]).
+    pub fn add_error_item(&mut self, item: Item) {
+        self.error_items.insert(item);
     }
 
-    /// The origins of the block that looking up a name in a namespace from a scope stops at, which
-    /// are empty unless it stops at a scope that blocks the name (see [`Self::is_blocked_in`] and
-    /// [`Scope::block`]).
-    pub fn block_origins_in(
-        &self,
-        scope: ScopeId,
-        namespace: Namespace,
-        name: &str,
-    ) -> &[ImportId] {
-        self.lookup_in(scope, |id, scope| {
-            if scope.item(namespace, name).is_some() {
-                Some(None)
-            } else {
-                scope.is_blocked(namespace, name).then_some(Some(id))
-            }
-        })
-        .flatten()
-        .map_or(&[], |scope| {
-            self.scope(scope).block_origins(namespace, name)
-        })
+    /// Whether an item is one that a failed import binds its name to, in place of what it would
+    /// have brought in. The import's failure has been reported, so a use of the name is silently
+    /// unresolved, and imports of it bind it too.
+    pub fn is_error_item(&self, item: Item) -> bool {
+        self.error_items.contains(&item)
     }
 
     /// The first result of `find` in a scope and then each enclosing scope.

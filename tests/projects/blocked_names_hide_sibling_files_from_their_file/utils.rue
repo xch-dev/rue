@@ -1,5 +1,5 @@
 // `greet` returns `Bytes`, so a use that reaches this file from main.rue is a type error. It
-// doesn't, since the failed import in main.rue blocks the name, even though that import sorts
+// doesn't, since the failed import in main.rue binds the name, even though that import sorts
 // after the one that looks `utils` up.
 export fn greet() -> Bytes {
     "hello"

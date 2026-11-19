@@ -1,0 +1,3 @@
+diagnostics:
+- Unresolved import `d` at failed_import_cycles_through_exports.rue:5:15
+- Unresolved import `d` at failed_import_cycles_through_exports.rue:8:23

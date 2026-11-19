@@ -1016,8 +1016,8 @@ fn project_paths_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
 #[test]
 fn project_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
     // An import through `project` at the top of the file doesn't find the prelude's items either.
-    // Like any failed import, it blocks its name in the file, and `project` names the file, so a
-    // later use through `project` isn't reported again, nor is one without it.
+    // Like any failed import, it binds its name to an error item in the file, and `project` names
+    // the file, so a later use through `project` isn't reported again, nor is one without it.
     let compiled = compile(
         "
         import project::Int;
@@ -1043,9 +1043,10 @@ fn project_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
 }
 
 #[test]
-fn failed_imports_at_the_root_block_their_name_through_project() {
-    // A name that a failed import blocks in the root is blocked for imports and paths through
-    // `project` from a nested module too, like through `super`, so only the failure is reported
+fn failed_imports_at_the_root_bind_their_name_through_project() {
+    // A name that a failed import binds to an error item in the root is found by imports and paths
+    // through `project` from a nested module too, like through `super`, so only the failure is
+    // reported
     let compiled = compile(
         "
         import nope::X;
@@ -2440,8 +2441,8 @@ fn private_type_imports_in_a_nested_module_do_not_fall_back_to_the_parent() {
 
 #[test]
 fn qualified_uses_of_a_private_import_are_still_reported() {
-    // Only a name looked up from the scope stops at the blocked name, so `other::secret` is
-    // reported as missing from `other`
+    // The error item of an import that isn't exported is only found from the module, so
+    // `other::secret` is reported as missing from `other`
     let compiled = compile(
         "
         import inner::secret;
@@ -2669,8 +2670,8 @@ fn private_module_imports_in_a_nested_module_do_not_fall_back_to_the_parent() {
 
 #[test]
 fn private_imports_are_not_reported_again_through_another_namespace() {
-    // The private module `x` and the private function `y` are blocked, so neither is reported as
-    // the wrong kind of item at the uses
+    // The names of the private module `x` and the private function `y` are bound to error items,
+    // so neither is reported as the wrong kind of item at the uses
     let compiled = compile(
         "
         mod a {
@@ -2948,7 +2949,7 @@ fn named_imports_of_super_reach_the_private_items_of_the_file() {
 }
 
 #[test]
-fn super_imports_of_a_blocked_name_are_not_reported_again() {
+fn super_imports_of_a_failed_name_are_not_reported_again() {
     let compiled = compile(
         "
         mod m {
@@ -3155,7 +3156,7 @@ fn many_glob_imports_that_wait_for_each_other_resolve_quickly() {
 }
 
 #[test]
-fn glob_imports_of_super_bring_in_blocked_names_as_blocked() {
+fn glob_imports_of_super_bring_in_the_error_items_of_failed_names() {
     let compiled = compile(
         "
         import m::Q;
@@ -3668,7 +3669,7 @@ fn glob_reexports_through_super_dont_export_private_items_another_glob_bound() {
 }
 
 #[test]
-fn imports_blocked_by_imports_of_reported_reexports_resolve_past_the_blocks() {
+fn imports_through_the_names_of_reported_reexports_resolve() {
     let compiled = compile(
         "
         const SECRET: Int = 1;
@@ -3707,9 +3708,8 @@ fn imports_blocked_by_imports_of_reported_reexports_resolve_past_the_blocks() {
         ",
     );
 
-    // The import in `user` first finds the private item and fails, which blocks the name in
-    // `user`, and the imports through `super` fail at the block. Once the re-export is reported,
-    // they're all resolved again, and find the item past the block.
+    // The import in `user` finds the private item, but the re-export is reported (and exports it)
+    // before any failure is final, so it and the imports through `super` resolve.
     assert_eq!(compiled.errors(), ["5:27 PrivateReexport(\"SECRET\")"]);
     assert_eq!(
         compiled.reference_origins("user::named::f", "SECRET"),
@@ -3722,7 +3722,7 @@ fn imports_blocked_by_imports_of_reported_reexports_resolve_past_the_blocks() {
 }
 
 #[test]
-fn failures_at_blocks_of_imports_that_resolve_after_reexports_are_reported() {
+fn failures_past_imports_that_resolve_after_reexports_are_reported() {
     let compiled = compile(
         "
         mod m {
@@ -3754,10 +3754,9 @@ fn failures_at_blocks_of_imports_that_resolve_after_reexports_are_reported() {
         ",
     );
 
-    // Before the re-export is reported, `m` is private, so the imports of `m` and `A` fail, and
-    // block their names. The imports after them fail at those blocks, but once the re-export is
-    // reported, the imports of `m` and `A` resolve, so the blocks don't explain why the others
-    // still fail, and they're reported.
+    // Before the re-export is reported, `m` is private, so the imports of `m` and `A` fail. The
+    // re-export is reported before any failure is final, so the imports of `m` and `A` resolve,
+    // and nothing explains why the others still fail, so they're reported.
     assert_eq!(
         compiled.errors(),
         [
@@ -3769,7 +3768,7 @@ fn failures_at_blocks_of_imports_that_resolve_after_reexports_are_reported() {
 }
 
 #[test]
-fn uses_of_names_blocked_by_imports_that_resolve_after_reexports_are_reported() {
+fn uses_of_names_whose_imports_resolve_after_reexports_are_reported() {
     let compiled = compile(
         "
         mod p {
@@ -3792,9 +3791,9 @@ fn uses_of_names_blocked_by_imports_that_resolve_after_reexports_are_reported() 
         ",
     );
 
-    // Before the re-export is reported, the import finds only private items, and blocks `M`. Once
-    // it's reported, the import brings in the module, so the private type `M` isn't reported, and
-    // the use of `M` as a type is reported like it would be without the block.
+    // Before the re-export is reported, the import finds only private items. Once it's reported,
+    // the import brings in the module, so the private type `M` isn't reported, and the use of `M`
+    // as a type is reported like it would be if the import had never failed.
     assert_eq!(
         compiled.errors(),
         ["4:31 PrivateReexport(\"M\")", "16:20 ExpectedType(\"M\")",]
@@ -3802,7 +3801,7 @@ fn uses_of_names_blocked_by_imports_that_resolve_after_reexports_are_reported() 
 }
 
 #[test]
-fn super_imports_of_a_name_blocked_by_a_private_type_are_not_reported_again() {
+fn super_imports_of_a_name_whose_import_found_a_private_type_are_not_reported_again() {
     let compiled = compile(
         "
         mod m {

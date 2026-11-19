@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot re-export `X`, since it's private at private_reexports_through_globs.rue:6:12
+- Expected type, but found symbol `X` at private_reexports_through_globs.rue:14:20

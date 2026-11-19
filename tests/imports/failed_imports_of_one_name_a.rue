@@ -1,0 +1,17 @@
+// When two failed imports bring the same name into a module, its error item is exported if either
+// import is, whichever is resolved first, which depends on module names (see
+// failed_imports_of_one_name_a and failed_imports_of_one_name_z)
+export mod e {
+    export fn f() -> Int {
+        c::Y
+    }
+
+    mod c {
+        export super::e::c::Y;
+        import c::c::Y;
+    }
+}
+
+fn main() -> Int {
+    e::f()
+}

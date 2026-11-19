@@ -28,8 +28,8 @@ mod d {
     import super::*;
 }
 
-// A named import with a path is still reported when the module it names blocks the name, like a
-// path to it in code is
+// A named import with a path is still reported when the module it names failed to import the name
+// privately, like a path to it in code is
 mod a {
     import super::b::Y;
     import super::b::Z;
@@ -48,7 +48,7 @@ mod b {
     }
 }
 
-// An import that fails at a name blocked by another failed import isn't reported again, unless
+// An import that fails at a name that another failed import binds isn't reported again, unless
 // that import only failed because of it, which happens in a cycle. The uses aren't reported again.
 fn main() -> Int {
     A + B + C + D + E + F + G + H + I + V + W + X + a::f() + b::g()

@@ -1,0 +1,34 @@
+import d::Y;
+
+// A failed import that's exported binds its name to an error item that's exported too, so other
+// modules can import it, glob-import it or use it by path without it being reported again
+mod a {
+    export nope::X;
+    export nope::T;
+}
+
+mod b {
+    import super::a::X;
+
+    export fn f() -> Int {
+        X
+    }
+}
+
+mod c {
+    import super::a::*;
+
+    export fn g(value: T) -> Int {
+        value + X
+    }
+}
+
+// A failed import that isn't exported doesn't bring anything in for other modules, so the name is
+// reported as missing there, like any other private item would be
+mod d {
+    import nope::Y;
+}
+
+fn main() -> Int {
+    a::X + b::f() + c::g(1) + d::Y
+}

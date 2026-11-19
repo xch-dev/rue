@@ -1,0 +1,6 @@
+diagnostics:
+- Unresolved import `Y` at exported_failed_imports.rue:1:11
+- Undeclared symbol `nope` at exported_failed_imports.rue:6:12
+- Undeclared symbol `nope` at exported_failed_imports.rue:7:12
+- Undeclared symbol `nope` at exported_failed_imports.rue:29:12
+- Undeclared symbol `Y` at exported_failed_imports.rue:33:34

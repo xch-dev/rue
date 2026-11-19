@@ -1,0 +1,3 @@
+diagnostics:
+- Unused type alias `X` at private_items_beside_exported_failed_imports.rue:7:10
+- Undeclared symbol `nope` at private_items_beside_exported_failed_imports.rue:9:12

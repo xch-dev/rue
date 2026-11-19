@@ -94,9 +94,16 @@ fn lookup_segment(
     match base {
         SegmentBase::Module(scope) => {
             let scope = ctx.scope(scope);
-            scope
-                .item_with_import(namespace, name)
-                .map(|(item, via)| (item, scope.is_item_exported(item), via))
+            let (item, via) = scope.item_with_import(namespace, name)?;
+            let exported = scope.is_item_exported(item);
+
+            // A failed import that isn't exported doesn't bring anything in for other modules, so
+            // the name is reported as undeclared there
+            if ctx.is_error_item(item) && !exported {
+                return None;
+            }
+
+            Some((item, exported, via))
         }
         SegmentBase::Local(scope) => ctx
             .resolve_item_in(scope, namespace, name)
@@ -285,13 +292,13 @@ where
             SegmentBase::Local(base_scope)
         };
 
-        // A name whose import failed has already been reported at the import. It's checked in
-        // every namespace, since a use of the wrong kind of item would be reported too.
-        let blocked = |ctx: &Compiler| {
-            Namespace::ALL.into_iter().any(|namespace| match base {
-                SegmentBase::Local(scope) => ctx.is_blocked_in(scope, namespace, name.text()),
-                SegmentBase::Parent(scope) => ctx.scope(scope).is_blocked(namespace, name.text()),
-                SegmentBase::Module(_) => false,
+        // A name whose import failed has already been reported at the import, so it's
+        // unresolved without being reported again. It's checked in every namespace, since a use
+        // of the wrong kind of item would be reported too.
+        let failed = |ctx: &Compiler| {
+            Namespace::ALL.into_iter().any(|namespace| {
+                lookup_segment(ctx, base, namespace, name.text())
+                    .is_some_and(|(item, _, _)| ctx.is_error_item(item))
             })
         };
 
@@ -302,10 +309,13 @@ where
         let (symbol, ty) = if has_subpath {
             let module = find_module();
 
-            if module.is_none()
-                && !blocked(ctx)
-                && (find_symbol().is_some() || find_type().is_some())
+            if module.is_none_or(|(module, _, _)| ctx.is_error_item(Item::Module(module)))
+                && failed(ctx)
             {
+                return PathResult::Unresolved;
+            }
+
+            if module.is_none() && (find_symbol().is_some() || find_type().is_some()) {
                 ctx.diagnostic(
                     &name,
                     DiagnosticKind::SubpathNotSupported(name.text().to_string()),
@@ -331,7 +341,14 @@ where
                 }
             };
 
-            if symbol.is_none() && ty.is_none() && !blocked(ctx) {
+            let error = symbol.is_some_and(|(symbol, _, _)| ctx.is_error_item(Item::Value(symbol)))
+                || ty.is_some_and(|(ty, _, _)| ctx.is_error_item(Item::Type(ty)));
+
+            if error || (symbol.is_none() && ty.is_none() && failed(ctx)) {
+                return PathResult::Unresolved;
+            }
+
+            if symbol.is_none() && ty.is_none() {
                 (find_module(), None)
             } else {
                 (symbol, ty)
@@ -348,10 +365,7 @@ where
             }
             (None, Some((ty, _, type_import))) => PathResult::Type(ty, type_import),
             (None, None) => {
-                let blocked = blocked(ctx);
-
                 match kind {
-                    _ if blocked => {}
                     PathKind::Symbol => ctx.diagnostic(
                         &name,
                         DiagnosticKind::UndeclaredSymbol(name.text().to_string()),

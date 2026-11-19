@@ -1,0 +1,32 @@
+export a::*;
+export b::*;
+// `import t::X` only fails in the value namespace, so the root's type and module `X` are filled by
+// the glob imports, whose error items meet there. `a`'s failure explains them, and so the chain of
+// re-exports through `b`, `c` and `r`, which would find `a`'s `X` without it, whichever glob import
+// brings in its error item first (see failed_globs_beside_named_imports_a and
+// failed_globs_beside_named_imports_z).
+import t::X;
+
+mod t {
+    const X: Int = 1;
+}
+
+mod b {
+    export nope::X;
+}
+
+mod a {
+    export super::c::X;
+}
+
+mod c {
+    export super::r::X;
+}
+
+mod r {
+    export super::*;
+}
+
+fn main() -> Int {
+    1
+}
