@@ -272,3 +272,9 @@ test fn uninferred_generic_sees_a_narrowed_one() -> Int {
     let result = narrowed_then_paired(5, identity, five_only, pair_of, fn(c: (5, Int)) => c.first);
     result.first
 }
+
+test fn uninferred_generic_sees_a_narrowed_one_next_to_a_literal() -> Int {
+    // Likewise with `D` bounded by `5`, `C` is `(5, 5)` rather than `(Int, 5)`
+    let result = narrowed_then_paired(5, identity, five_only, pair_of, fn(c: (5, 5)) => c.first);
+    result.first
+}
