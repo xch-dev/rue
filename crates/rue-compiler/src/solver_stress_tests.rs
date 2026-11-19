@@ -55,3 +55,55 @@ fn passed_generic_functions_are_instantiated_once_per_inference() {
     let steps = steps(&passed_generic_functions(60));
     assert!(steps < 125_000, "took {steps} steps");
 }
+
+/// A chain of `count` generics where each one is passed `first_of` for every later one, so that
+/// the lower bounds passed down through `first_of`'s compound upper bound `(T, T)` reach each
+/// generic through every earlier one, one round at a time.
+fn dense_compound_chain(count: usize) -> String {
+    let generics: Vec<String> = (0..count).map(|i| format!("G{i}")).collect();
+    let mut params = String::new();
+    let mut args = String::new();
+
+    for i in 0..count {
+        for j in i + 1..count {
+            params.push_str(&format!("    f{i}_{j}: fn(a: G{i}) -> G{j},\n"));
+            args.push_str("        first_of,\n");
+        }
+    }
+
+    let pairs: String = (1..=count)
+        .map(|k| format!("    let p{k} = (p{}, p{});\n", k - 1, k - 1))
+        .collect();
+
+    format!(
+        "
+fn first_of<T>(pair: (T, T)) -> T {{
+    pair.first
+}}
+
+fn chain<{}>(
+    value: G0,
+{params}) -> G0 {{
+    value
+}}
+
+fn main() -> Int {{
+    let p0 = 1;
+{pairs}    let _result = chain(
+        p{count},
+{args}    );
+    1
+}}
+",
+        generics.join(", "),
+    )
+}
+
+/// Each round of passing lower bounds down compared every member of each generic's expanded lower
+/// bounds again, though only the new ones can pass on anything new. Main took about 3,150,000
+/// steps here, and 684,000 for 12 generics.
+#[test]
+fn dense_compound_chain_compares_new_members_once() {
+    let steps = steps(&dense_compound_chain(16));
+    assert!(steps < 1_800_000, "took {steps} steps");
+}
