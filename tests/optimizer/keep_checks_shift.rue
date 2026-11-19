@@ -6,8 +6,6 @@
 // `>>` and `>>>` negate the amount before shifting, which writes it without the leading zeros.
 // They're still treated as possibly failing, which only costs an optimization.
 
-const LONG_ONE: Int = 0x0000000001 as Int;
-
 test fn left_shift_long_constant(x: Int, flag: Bool) -> Int {
     let shifted = x << (0x0000000001 as Int);
     if flag {
@@ -35,8 +33,8 @@ test fn logical_shift_long_constant(x: Int, flag: Bool) -> Int {
     }
 }
 
-test fn shift_long_named_constant(x: Int, flag: Bool) -> Int {
-    let shifted = x << LONG_ONE;
+test fn left_shift_long_const_expr(x: Int, flag: Bool) -> Int {
+    let shifted = x << const { 0x0000000001 as Int };
     if flag {
         shifted
     } else {

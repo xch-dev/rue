@@ -21,9 +21,9 @@ tests:
   runtime_cost: 877
   byte_cost: 504000
   total_cost: 504877
-- name: shift_long_named_constant
+- name: left_shift_long_const_expr
   program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0000000001)) 1))
-  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (ash 5 2) 1)) (c (q . 0x0000000001) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0000000001)) 1))
   solution: (5 ())
   byte_cost: 552000
   clvm_error: "InvalidOperatorArg: ash requires int32 args (with no leading zeros)"
@@ -73,32 +73,32 @@ tests:
   total_cost: 384305
 diagnostics:
 - |-
-  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:9:23
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:10:24
     help: Write the number `1` instead
 - |-
-  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:12:24
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:19:24
     help: Write the number `1` instead
 - |-
-  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:21:24
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:28:25
     help: Write the number `1` instead
 - |-
-  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:30:25
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:37:32
     help: Write the number `1` instead
 - |-
-  `0x0000000000` has a leading zero byte, so it isn't equal to the `Int` `0`, since integers are compared by their bytes at keep_checks_shift.rue:48:24
+  `0x0000000000` has a leading zero byte, so it isn't equal to the `Int` `0`, since integers are compared by their bytes at keep_checks_shift.rue:46:24
     help: Write the number `0` instead
 - |-
-  `0x0001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:57:24
+  `0x0001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:55:24
     help: Write the number `1` instead
 - |-
-  `0x00000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:66:24
+  `0x00000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:64:24
     help: Write the number `1` instead
 - |-
-  `0xffffffff` is the negative number `-1` as an `Int`, since integers are signed at keep_checks_shift.rue:75:24
+  `0xffffffff` is the negative number `-1` as an `Int`, since integers are signed at keep_checks_shift.rue:73:24
     help: Write the number `4294967295` instead
 - |-
-  `0x0000000000` has a leading zero byte, so it isn't equal to the `Int` `0`, since integers are compared by their bytes at keep_checks_shift.rue:86:24
+  `0x0000000000` has a leading zero byte, so it isn't equal to the `Int` `0`, since integers are compared by their bytes at keep_checks_shift.rue:84:24
     help: Write the number `0` instead
 - |-
-  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:95:24
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:93:24
     help: Write the number `1` instead
