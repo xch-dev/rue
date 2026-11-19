@@ -678,7 +678,9 @@ struct Argument {
     /// only its expected type constrains, such as `A` in `nothing<A>(v: Int) -> A` or the `T` of
     /// a call without arguments, still take the narrower type (see
     /// `compile_call_argument`). It has no lambda in it, even one a call passes
-    /// through, since a lambda's parameter types keep the narrower mappings.
+    /// through, since a lambda's parameter types keep the narrower mappings. That's defensive: a call
+    /// that passes a lambda through leaves its generic to its expected type, which the narrower
+    /// type covers, and no program has been found where the two differ.
     widens: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
     reads: IndexSet<TypeId>,
