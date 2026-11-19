@@ -130,11 +130,10 @@ pub(crate) fn infer_call(
 
         // The parameter's type is only a hint while it references the callee's generics, since
         // what they're inferred as so far can still widen
-        let hint = function.generics.iter().any(|&generic| {
-            std::iter::once(generic)
-                .chain(renamed.get(&generic).copied())
-                .any(|generic| contains_generic(ctx.types_mut(), param, generic))
-        });
+        let hint = function
+            .generics
+            .iter()
+            .any(|&generic| contains_generic(ctx.types_mut(), param, generic));
 
         let (value, parameters) = ctx.with_expected_type_hint(hint, |ctx| {
             if let AstExpr::LambdaExpr(lambda) = expr {
