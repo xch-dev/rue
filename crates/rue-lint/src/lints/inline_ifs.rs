@@ -73,7 +73,14 @@ impl HirLintPass for BoolOperatorMayRaise {
             return;
         }
 
-        let Some(srcloc) = cx.db().hir_srcloc(hir).cloned() else {
+        // The right operand is reported rather than the whole expression, since in a chain like
+        // `a & b & c` every operator's expression starts at `a`
+        let Some(srcloc) = cx
+            .db()
+            .hir_srcloc(right)
+            .or_else(|| cx.db().hir_srcloc(hir))
+            .cloned()
+        else {
             return;
         };
 
@@ -81,7 +88,7 @@ impl HirLintPass for BoolOperatorMayRaise {
             Lint::BoolOperatorMayRaise,
             srcloc,
             format!(
-                "The right side of this `{operator}` can raise, but it's evaluated even when the left side is `{deciding_value}`; use `{short_circuit}` to skip it"
+                "This operand can raise, but it's evaluated even when the left side of `{operator}` is `{deciding_value}`; use `{short_circuit}` to skip it"
             ),
         );
     }

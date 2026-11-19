@@ -34,6 +34,14 @@ test fn nested_short_circuit() -> Bool {
     nested_short_circuit_operator(false, true, 0)
 }
 
+test fn chained_twice() -> Bool {
+    chained_twice_operator(false, 0, 1)
+}
+
+fn chained_twice_operator(a: Bool, x: Int, y: Int) -> Bool {
+    a & check_positive(x) & check_positive(y)
+}
+
 // `&&` only skips the call when `b` is false, not when `a` is
 fn nested_short_circuit_operator(a: Bool, b: Bool, x: Int) -> Bool {
     a & (b && check_positive(x))
