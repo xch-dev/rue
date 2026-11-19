@@ -1,0 +1,267 @@
+// Regression test, not for production use. A port of `vc_puzzles/exigent_metadata_layer.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./exigent_metadata_layer.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The magic condition that runs the transfer program with the rest of the condition as its
+// solution.
+struct RunTransferProgram {
+    opcode = -10,
+    ...solution: Any,
+}
+
+type EmlCondition = Condition | RunTransferProgram;
+
+struct TransferProgramOutput {
+    new_owner: Any,
+    new_transfer_program_hash: Bytes32 | nil,
+    conditions: List<Any>,
+}
+
+type TransferProgram = fn(
+    metadata: Any,
+    conditions: List<EmlCondition>,
+    solution: Any,
+) -> TransferProgramOutput;
+
+// What's been found in the conditions so far.
+struct State {
+    // The odd output, which is wrapped in this layer once the transfer program has run.
+    odd_output: CreateCoin | nil,
+    transfer_program_output: TransferProgramOutput | nil,
+    // The condition to output next, since the odd output and the condition that runs the
+    // transfer program are replaced by remarks.
+    pending: EmlCondition | nil,
+}
+
+fn main(
+    this_mod_hash: Bytes32,
+    metadata: Any,
+    transfer_program: TransferProgram,
+    transfer_program_hash: Bytes32,
+    inner_puzzle: fn(...solution: Any) -> List<EmlCondition>,
+    inner_solution: Any,
+) -> List<Any> {
+    let conditions = inner_puzzle(...inner_solution);
+    process_conditions(
+        this_mod_hash,
+        transfer_program,
+        transfer_program_hash,
+        metadata,
+        conditions,
+        conditions,
+        State { odd_output: nil, transfer_program_output: nil, pending: nil },
+    )
+}
+
+fn process_conditions(
+    this_mod_hash: Bytes32,
+    transfer_program: TransferProgram,
+    transfer_program_hash: Bytes32,
+    metadata: Any,
+    all_conditions: List<EmlCondition>,
+    conditions: List<EmlCondition>,
+    state: State,
+) -> List<Any> {
+    let first = if state.pending is nil {
+        Remark {} as Any
+    } else {
+        state.pending as Any
+    };
+
+    if conditions is nil {
+        // There must be an odd output, and the transfer program must have run.
+        inline let odd_output = unchecked_cast::<CreateCoin>(state.odd_output);
+        inline let output = unchecked_cast::<TransferProgramOutput>(state.transfer_program_output);
+
+        let new_transfer_program_hash = if output.new_transfer_program_hash is nil {
+            transfer_program_hash
+        } else {
+            output.new_transfer_program_hash
+        };
+        let puzzle_hash = curry_tree_hash(
+            this_mod_hash,
+            [
+                tree_hash_atom(this_mod_hash),
+                tree_hash(output.new_owner),
+                new_transfer_program_hash,
+                tree_hash_atom(new_transfer_program_hash),
+                odd_output.puzzle_hash,
+            ],
+        );
+
+        return [
+            first,
+            CreateCoin { puzzle_hash, amount: odd_output.amount, memos: odd_output.memos } as Any,
+            ...output.conditions,
+        ];
+    }
+
+    let condition = conditions.first;
+
+    let next_state = if condition is CreateCoin && condition.amount & 1 != 0 {
+        assert state.odd_output is nil;
+        State {
+            odd_output: condition,
+            transfer_program_output: state.transfer_program_output,
+            pending: nil,
+        }
+    } else if condition is RunTransferProgram {
+        assert state.transfer_program_output is nil;
+        State {
+            odd_output: state.odd_output,
+            transfer_program_output: transfer_program(metadata, all_conditions, condition.solution),
+            pending: nil,
+        }
+    } else {
+        State {
+            odd_output: state.odd_output,
+            transfer_program_output: state.transfer_program_output,
+            pending: condition,
+        }
+    };
+
+    [
+        first,
+        ...process_conditions(
+            this_mod_hash,
+            transfer_program,
+            transfer_program_hash,
+            metadata,
+            all_conditions,
+            conditions.rest,
+            next_state,
+        ),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A transfer program that returns its solution.
+inline const RETURN_SOLUTION: Any = 11;
+
+fn solution(transfer_program: Any, conditions: Any) -> Any {
+    [
+        sha256("eml_mod") as Any,
+        ("key", "value"),
+        transfer_program,
+        sha256("transfer_program"),
+        1,
+        conditions,
+    ]
+}
+
+test fn transfers_with_a_new_transfer_program() -> Any {
+    check(solution(
+        RETURN_SOLUTION,
+        [
+            ReserveFee { amount: 1 } as Any,
+            CreateCoin {
+                puzzle_hash: sha256("inner_puzzle"),
+                amount: 1,
+                memos: Memos { value: [sha256("hint")] },
+            },
+            AssertMyAmount { amount: 1 },
+            [
+                (-10) as Any,
+                sha256("new_owner"),
+                sha256("new_transfer_program"),
+                [AssertHeightRelative { height: 1 }],
+            ],
+            CreateCoin { puzzle_hash: sha256("other"), amount: 2 },
+        ],
+    ))
+}
+
+test fn transfers_with_the_same_transfer_program() -> Any {
+    check(solution(
+        RETURN_SOLUTION,
+        [
+            [(-10) as Any, sha256("new_owner"), nil, nil],
+            CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 },
+        ],
+    ))
+}
+
+test fn passes_the_metadata_and_conditions() -> Any {
+    // A transfer program that keeps the transfer program and puts its arguments in a remark:
+    // `(q () () ((1 . <arguments>)))`, built from `(c (q) (c (q) (c (c (c (q . 1) 1) ()) ())))`.
+    let transfer_program = [
+        4 as Any,
+        (1, nil),
+        [4 as Any, (1, nil), [4 as Any, [4 as Any, [4 as Any, (1, 1), 1], nil], nil]],
+    ];
+    check(solution(
+        transfer_program,
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 3 }, [(-10) as Any, "solution"]],
+    ))
+}
+
+fn two_odd_outputs() -> Any {
+    solution(
+        RETURN_SOLUTION,
+        [
+            CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 } as Any,
+            CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 3 },
+            [(-10) as Any, sha256("new_owner"), nil, nil],
+        ],
+    )
+}
+
+test fn rejects_two_odd_outputs() -> Any {
+    run(main, two_odd_outputs())
+}
+
+test fn reference_rejects_two_odd_outputs() -> Any {
+    run(reference, two_odd_outputs())
+}
+
+fn two_transfers() -> Any {
+    solution(
+        RETURN_SOLUTION,
+        [
+            [(-10) as Any, sha256("new_owner"), nil, nil],
+            CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 },
+            [(-10) as Any, sha256("new_owner"), nil, nil],
+        ],
+    )
+}
+
+test fn rejects_two_transfers() -> Any {
+    run(main, two_transfers())
+}
+
+test fn reference_rejects_two_transfers() -> Any {
+    run(reference, two_transfers())
+}
+
+fn no_transfer() -> Any {
+    solution(RETURN_SOLUTION, [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 1 }])
+}
+
+test fn rejects_no_transfer() -> Any {
+    run(main, no_transfer())
+}
+
+test fn reference_rejects_no_transfer() -> Any {
+    run(reference, no_transfer())
+}
+
+fn no_odd_output() -> Any {
+    solution(RETURN_SOLUTION, [[(-10) as Any, sha256("new_owner"), nil, nil]])
+}
+
+test fn rejects_no_odd_output() -> Any {
+    run(main, no_odd_output())
+}
+
+test fn reference_rejects_no_odd_output() -> Any {
+    run(reference, no_odd_output())
+}

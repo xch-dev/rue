@@ -1,0 +1,112 @@
+// Regression test, not for production use. A port of `vc_puzzles/cr_puzzles/flag_proofs_checker.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./flag_proofs_checker.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+// A proof that a key has a value.
+type Flag = (Bytes, Bytes);
+
+// Checks that the proofs include each of the flags, in order once they're sorted by key.
+fn main(flags: List<Flag>, proofs: (Flag, List<Flag>), _solution: Any) -> Bool {
+    compare_against_flags(flags, sort_proofs(proofs))
+}
+
+// Sorts the proofs by key, in descending order.
+fn sort_proofs(proofs: (Flag, List<Flag>)) -> (Flag, List<Flag>) {
+    let rest = proofs.rest;
+
+    if rest is nil {
+        return proofs;
+    }
+
+    unchecked_cast(insert_by_keys(sort_proofs(rest), sort_proofs([proofs.first])))
+}
+
+fn insert_by_keys(sorted: List<Flag>, insertions: List<Flag>) -> List<Flag> {
+    if insertions is nil {
+        return sorted;
+    }
+
+    if sorted is nil || insertions.first.first > sorted.first.first {
+        return insert_by_keys([insertions.first, ...sorted], insertions.rest);
+    }
+
+    insert_by_keys(
+        [sorted.first, ...insert_by_keys(sorted.rest, [insertions.first])],
+        insertions.rest,
+    )
+}
+
+// Checks that each flag matches the proof in the same position.
+fn compare_against_flags(subject: List<Flag>, comparison: List<Flag>) -> Bool {
+    if subject is nil {
+        return true;
+    }
+
+    // There must be a proof for each flag.
+    inline let comparison = unchecked_cast::<(Flag, List<Flag>)>(comparison);
+
+    if (subject.first.first == comparison.first.first)
+        & (subject.first.rest == comparison.first.rest)
+    {
+        compare_against_flags(subject.rest, comparison.rest)
+    } else {
+        false
+    }
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn proofs() -> List<Flag> {
+    [("b", "2"), ("a", "1"), ("d", "4"), ("c", "3")]
+}
+
+test fn accepts_matching_flags() -> Any {
+    check([[("d", "4"), ("c", "3")], proofs(), nil])
+}
+
+test fn accepts_all_flags() -> Any {
+    check([[("d", "4"), ("c", "3"), ("b", "2"), ("a", "1")], proofs(), nil])
+}
+
+test fn accepts_no_flags() -> Any {
+    check([nil, proofs(), nil])
+}
+
+test fn accepts_one_proof() -> Any {
+    check([[("a", "1")], [("a", "1")], nil])
+}
+
+test fn refuses_a_wrong_value() -> Any {
+    check([[("d", "5")], proofs(), nil])
+}
+
+test fn refuses_flags_out_of_order() -> Any {
+    check([[("c", "3"), ("d", "4")], proofs(), nil])
+}
+
+fn too_many_flags() -> Any {
+    [[("a", "1"), ("b", "2")], [("a", "1")], nil]
+}
+
+test fn rejects_more_flags_than_proofs() -> Any {
+    run(main, too_many_flags())
+}
+
+test fn reference_rejects_more_flags_than_proofs() -> Any {
+    run(reference, too_many_flags())
+}
+
+test fn rejects_no_proofs() -> Any {
+    run(main, [nil, nil, nil])
+}
+
+test fn reference_rejects_no_proofs() -> Any {
+    run(reference, [nil, nil, nil])
+}

@@ -1,0 +1,118 @@
+// Regression test, not for production use. A port of `vc_puzzles/revocation_layer.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./revocation_layer.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(
+    this_mod_hash: Bytes32,
+    hidden_puzzle_hash: Bytes32,
+    inner_puzzle_hash: Bytes32,
+    hidden: Bool,
+    puzzle_reveal: fn(...solution: Any) -> List<Condition>,
+    solution: Any,
+) -> List<Condition> {
+    if hidden {
+        assert hidden_puzzle_hash == tree_hash(puzzle_reveal);
+        return puzzle_reveal(...solution);
+    }
+
+    assert inner_puzzle_hash == tree_hash(puzzle_reveal);
+    wrap_create_coins(this_mod_hash, hidden_puzzle_hash, puzzle_reveal(...solution))
+}
+
+// Wraps the puzzle hash of each created coin in the revocation layer.
+fn wrap_create_coins(
+    this_mod_hash: Bytes32,
+    hidden_puzzle_hash: Bytes32,
+    conditions: List<Condition>,
+) -> List<Condition> {
+    if conditions is nil {
+        return nil;
+    }
+
+    let condition = conditions.first;
+    let rest = wrap_create_coins(this_mod_hash, hidden_puzzle_hash, conditions.rest);
+
+    if condition is CreateCoin {
+        let puzzle_hash = curry_tree_hash(
+            this_mod_hash,
+            [
+                tree_hash_atom(this_mod_hash),
+                tree_hash_atom(hidden_puzzle_hash),
+                tree_hash_atom(condition.puzzle_hash),
+            ],
+        );
+        return [
+            CreateCoin { puzzle_hash, amount: condition.amount, memos: condition.memos },
+            ...rest,
+        ];
+    }
+
+    [condition, ...rest]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// The hidden puzzle is a quoted list of conditions.
+inline const HIDDEN_PUZZLE: (1, List<ReserveFee>) = (1, [ReserveFee { amount: 1 }]);
+
+fn solution(hidden: Any, puzzle_reveal: Any, solution: Any) -> Any {
+    [
+        sha256("revocation_layer") as Any,
+        tree_hash(HIDDEN_PUZZLE),
+        tree_hash(1),
+        hidden,
+        puzzle_reveal,
+        solution,
+    ]
+}
+
+test fn wraps_the_inner_puzzle_outputs() -> Any {
+    check(solution(
+        nil,
+        1,
+        [
+            CreateCoin {
+                puzzle_hash: sha256("destination"),
+                amount: 1,
+                memos: Memos { value: [sha256("hint")] },
+            },
+            AssertMyAmount { amount: 1 },
+            CreateCoin { puzzle_hash: sha256("other"), amount: 2 },
+        ],
+    ))
+}
+
+test fn runs_the_hidden_puzzle() -> Any {
+    check(solution(1, HIDDEN_PUZZLE, nil))
+}
+
+fn wrong_inner_puzzle() -> Any {
+    solution(nil, HIDDEN_PUZZLE, nil)
+}
+
+test fn rejects_the_wrong_inner_puzzle() -> Any {
+    run(main, wrong_inner_puzzle())
+}
+
+test fn reference_rejects_the_wrong_inner_puzzle() -> Any {
+    run(reference, wrong_inner_puzzle())
+}
+
+fn wrong_hidden_puzzle() -> Any {
+    solution(1, 1, nil)
+}
+
+test fn rejects_the_wrong_hidden_puzzle() -> Any {
+    run(main, wrong_hidden_puzzle())
+}
+
+test fn reference_rejects_the_wrong_hidden_puzzle() -> Any {
+    run(reference, wrong_hidden_puzzle())
+}

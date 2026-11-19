@@ -1,0 +1,26 @@
+// Regression test, not for production use. A port of `vc_puzzles/p2_announced_delegated_puzzle.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./p2_announced_delegated_puzzle.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(
+    delegated_puzzle: fn(...solution: Any) -> List<Condition>,
+    delegated_solution: Any,
+) -> List<Condition> {
+    [
+        CreateCoinAnnouncement { message: tree_hash(delegated_puzzle) },
+        ...delegated_puzzle(...delegated_solution),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn announces_the_delegated_puzzle() -> Any {
+    check([1, [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }]])
+}
