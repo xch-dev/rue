@@ -168,10 +168,10 @@ fn tail<T>(first: T, function: fn(x: T) -> Int) -> T {
 }
 
 // Guards: a call's generic that only its expected type constrains keeps the narrower `5`, whether
-// the call has no arguments, has one without any inside it, or has arguments that don't constrain
-// it (`nothing(1)`, `default_or(nil)`, `head([])`), and so does a lambda that a call passes
-// through. A block isn't widened at all, only a call is Either way, `x` is `5`, as on main,
-// which the unnecessary guards show
+// the call has no arguments, has one without any inside it, has arguments that don't constrain it
+// (`nothing(1)`, `default_or(nil)`, `head([])`) or only bounds it from above (`sink(…)`), and so
+// does a lambda that a call passes through. A block isn't widened at all, only a call is. Either
+// way, `x` is `5`, as on main, which the unnecessary guards show
 test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
     let made: 5 | 6 = later(
         5,
@@ -221,7 +221,8 @@ test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
             2
         },
     );
-    made + passed + inside + unbound + held + empty + block
+    let sunk: 5 | 6 = later(5, sink(takes_five_or_six), only_five);
+    made + passed + inside + unbound + held + empty + block + sunk
 }
 
 type Tree<T> = nil | (T, (Tree<T>, Tree<T>));
@@ -297,4 +298,12 @@ test fn widened_call_keeps_what_fits_the_narrower_type() -> Int {
 test fn widened_pair_takes_a_value_the_narrower_type_doesnt_hold() -> Int {
     let value: (5 | 6, Int) = later((5, 1), pair(6, 2), fn(_x) => 1);
     value.first
+}
+
+fn sink<T>(_function: fn(x: T) -> Int) -> T {
+    unchecked_cast(5)
+}
+
+fn takes_five_or_six(value: 5 | 6) -> Int {
+    value
 }

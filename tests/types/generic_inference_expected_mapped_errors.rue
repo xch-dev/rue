@@ -51,3 +51,14 @@ fn call_in_a_block_isnt_widened() -> Int {
     let value: 7 | 8 = either(7, { identity(8) });
     value
 }
+
+fn nothing<A>(value: Int) -> A {
+    unchecked_cast(value)
+}
+
+// The narrower type of a widened call isn't passed on to a builtin's arguments, so `nothing`'s `A`
+// is still only inferable from what `sha256` expects of it, which is nothing
+fn narrower_type_doesnt_reach_a_builtins_arguments() -> Bytes32 {
+    let value: Bytes32 = either(sha256("a"), sha256(nothing(1)));
+    value
+}
