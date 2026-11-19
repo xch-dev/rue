@@ -1174,8 +1174,8 @@ fn project_errors_are_reported() {
         ",
     );
 
-    // An import that ends in `project` imports nothing, and a `project` after the start of a path is
-    // skipped in an import, like `super` after a name
+    // An import that ends in `project` imports nothing, and a `project` after the start of a path
+    // is skipped in an import, like `super` after a name
     assert_eq!(
         compiled.errors(),
         [

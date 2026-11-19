@@ -6,8 +6,8 @@ export const BASE: Int = 100;
 
 const LOCAL: Int = 5;
 
-// An inline module reaches the file's private items through `super`, but `project` is the directory,
-// where only the files' exported items can be used
+// An inline module reaches the file's private items through `super`, but `project` is the
+// directory, where only the files' exported items can be used
 mod inner {
     import project::utils::*;
 

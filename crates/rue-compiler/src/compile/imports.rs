@@ -494,9 +494,9 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
         .map(|(&import_id, _)| import_id)
         .collect::<Vec<_>>();
 
-    // An import through `super` (or `project`, below the root) waits for the private re-exports into
-    // the module that it names, and is only reported if it still finds something private once they
-    // are, so a chain of re-exports is reported once, at its start. That module encloses the
+    // An import through `super` (or `project`, below the root) waits for the private re-exports
+    // into the module that it names, and is only reported if it still finds something private once
+    // they are, so a chain of re-exports is reported once, at its start. That module encloses the
     // import's own, so some import doesn't wait.
     let waits = |import_id: ImportId| {
         let base = ctx.import(import_id).base_scope;

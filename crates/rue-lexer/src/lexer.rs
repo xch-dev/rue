@@ -768,6 +768,14 @@ mod tests {
                 Project
             "#]],
         );
+
+        // `crate` was the keyword before `project`, and is an ordinary identifier again
+        check(
+            "crate",
+            expect![[r#"
+                Ident
+            "#]],
+        );
     }
 
     #[test]

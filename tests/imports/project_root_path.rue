@@ -1,5 +1,5 @@
-// In a program compiled from a single file, `project` names the file, so it reaches the file's items
-// (private ones too, since every module is in it) from any inline module
+// In a program compiled from a single file, `project` names the file, so it reaches the file's
+// items (private ones too, since every module is in it) from any inline module
 const SECRET: Int = 40;
 
 mod a {

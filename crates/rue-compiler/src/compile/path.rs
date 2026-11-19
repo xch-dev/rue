@@ -146,7 +146,7 @@ where
 
     // The last `super` or `project` that the path starts with, and whether it named a module
     let mut last_prefix = None;
-    // Whether the path starts with `super` or `project` that named a module, which contains the code
+    // Whether the path starts with a `super` or `project` that named a module (containing the code)
     let mut from_parent = false;
     // Whether a `super` can come next, which it can't after `project`, since the root has no parent
     let mut allow_super = true;
