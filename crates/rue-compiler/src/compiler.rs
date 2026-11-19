@@ -97,7 +97,8 @@ struct CallFrame {
 
 /// An argument of a call being compiled, while the call's generics are inferred. The elements of
 /// a pair or list in it add what they infer to `infer`, so that a later element with a lambda in
-/// it, or a call with no arguments, can be compiled against it (#350).
+/// it, or a call with no arguments, or a pair or list with one in it, can be compiled against it
+/// (#350, see `refine_element_expected`).
 #[derive(Debug, Clone)]
 pub struct ArgumentFrame {
     /// The candidates of the arguments compiled before this one, and of this one's elements so far.

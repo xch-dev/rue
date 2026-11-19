@@ -69,7 +69,7 @@ pub(crate) fn infer_call(
 
     // A call with arguments in an element that's only refined for a call without arguments in it
     // only uses the type expected of it for the generics its arguments don't give a type (see
-    // `refine_element_expected`)
+    // `refine_element_expected`), so it isn't solved again for it either
     let fallback_only = ctx.is_expected_type_fallback() && !args.is_empty();
     let solver = ctx.call_solver(expected);
     let solver = Rc::new(if fallback_only {
@@ -1219,9 +1219,10 @@ pub(crate) fn record_element(ctx: &mut Compiler, ty: TypeId, expected: Option<Ty
 /// from the arguments before it and the elements before this one. A lambda in such an element
 /// would otherwise get the generic itself as a parameter type, as in `apply((1, fn(x) => x))`
 /// (#350), and a call with no arguments, such as `make()` in `first((5, make()))`, couldn't be
-/// inferred. Only those two kinds of element are compiled against this. Any other element is
-/// compiled as it was, since a call in it that infers its own generics from its arguments could
-/// infer them from the refined type instead, such as `opt(nil)` with `opt<T>(x: T | nil)`.
+/// inferred. Only those two kinds of element, and pairs and lists with a call with no arguments in
+/// them (as a fallback, below), are compiled against this. Any other element is compiled as it was,
+/// since a call in it that infers its own generics from its arguments could infer them from the
+/// refined type instead, such as `opt(nil)` with `opt<T>(x: T | nil)`.
 ///
 /// In a recursive call, the callee's generics are renamed, and the argument's expected type has
 /// those that aren't inferred yet restored to the caller's generics (see `restore_renamed`). They're
@@ -1240,11 +1241,10 @@ pub(crate) fn refine_element_expected(
     expected: TypeId,
     element: &AstExpr,
 ) -> (TypeId, bool) {
-    let fallback = !has_lambda(element)
-        && !is_call_without_arguments(element)
-        && contains_call_without_arguments(element);
+    let direct = has_lambda(element) || is_call_without_arguments(element);
+    let fallback = !direct && contains_call_without_arguments(element);
 
-    if !(has_lambda(element) || is_call_without_arguments(element) || fallback) {
+    if !direct && !fallback {
         return (expected, false);
     }
 
@@ -1289,6 +1289,28 @@ pub(crate) fn refine_element_expected(
         substitute_with_mappings(ctx.types_mut(), unrestored, &mappings),
         fallback,
     )
+}
+
+/// Compiles an element of a pair or list after the first, against its refined expected type (see
+/// `refine_element_expected`), as only a fallback where that's all it is, and as only a hint if
+/// `hint` is set (see `Compiler::with_expected_type_hint`). It returns the element's value and the
+/// type it was expected to have.
+pub(crate) fn compile_refined_element(
+    ctx: &mut Compiler,
+    expr: &AstExpr,
+    expected: Option<TypeId>,
+    hint: bool,
+) -> (Value, Option<TypeId>) {
+    let (expected, fallback) = expected
+        .map(|expected| refine_element_expected(ctx, expected, expr))
+        .unzip();
+    let fallback = fallback.unwrap_or(false) || ctx.is_expected_type_fallback();
+
+    let value = ctx.with_expected_type_fallback(fallback, |ctx| {
+        ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, expr, expected))
+    });
+
+    (value, expected)
 }
 
 /// Whether the expression is a call with no arguments, or a pair or list with one in it.

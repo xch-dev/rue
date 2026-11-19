@@ -55,6 +55,14 @@ fn callback_of_an_enclosing_call() -> Int {
     ))
 }
 
+fn first<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+fn make<U>() -> U {
+    unchecked_cast(nil)
+}
+
 fn callback_map<A, B>(function: fn(callback: fn(x: A) -> Int, y: A) -> B, value: A) -> B {
     function(fn(_x) => 0, value)
 }
@@ -74,6 +82,10 @@ fn generic_in_a_callback_parameter() -> Int {
 }
 
 fn main() -> Int {
+    // `T` is inferred from `[2]` as `(Int, nil)`, which `[3, make()]` can't be, so nothing gives
+    // `make` a type, as `first::<List<Int>>` would
+    let list = first(([2], [3, make()]));
+
     // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
     let computed: 5 = map(fn(x) => x + 0, 5);
 
@@ -99,5 +111,13 @@ fn main() -> Int {
     let unbounded = map(fn(x) => x, 5);
     let five: 5 = unbounded;
 
-    computed + nested.first + unfitting + spread + generic + mismatched.first + cast + five
+    computed
+        + list.first
+        + nested.first
+        + unfitting
+        + spread
+        + generic
+        + mismatched.first
+        + cast
+        + five
 }

@@ -105,3 +105,12 @@ test fn call_with_arguments_next_to_a_nested_call_without_them() -> Int {
     }
     1
 }
+
+// Guard: the fallback is inherited by the pairs nested in the element too
+test fn call_with_arguments_deeper_next_to_a_call_without_them() -> Int {
+    let result = first(((1, (2, 3)), (4, (optional(nil), make()))));
+    if result.rest.first is nil {
+        return 0;
+    }
+    1
+}

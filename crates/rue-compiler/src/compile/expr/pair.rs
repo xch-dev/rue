@@ -4,7 +4,7 @@ use rue_hir::{Hir, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
 use super::call_inference::{
-    compile_element, holds_other_pairs, record_element, refine_element_expected,
+    compile_element, compile_refined_element, holds_other_pairs, record_element,
 };
 use crate::Compiler;
 
@@ -51,18 +51,7 @@ pub fn compile_pair_expr(
     record_element(ctx, first.ty, expected_first);
 
     let rest = if let Some(rest) = pair.rest() {
-        let (expected_rest, fallback) = match expected_rest {
-            Some(expected) => {
-                let (expected, fallback) = refine_element_expected(ctx, expected, &rest);
-                (Some(expected), fallback)
-            }
-            None => (None, false),
-        };
-        let fallback = fallback || ctx.is_expected_type_fallback();
-
-        ctx.with_expected_type_fallback(fallback, |ctx| {
-            ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &rest, expected_rest))
-        })
+        compile_refined_element(ctx, &rest, expected_rest, hint).0
     } else {
         debug!("Unresolved pair rest");
         ctx.builtins().unresolved.clone()

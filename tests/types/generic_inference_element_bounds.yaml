@@ -76,3 +76,10 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: call_with_arguments_deeper_next_to_a_call_without_them
+  program: (q . 1)
+  debug_program: (a (q 2 (q 2 (i (= (f (r 2)) ()) (q) (q 1 . 1)) 1) (c (a 14 (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 4) (c (a 10 ()) (a 4 ()))))) 1)) (c (c (q) (c (q . 1) (q 5 1))) ()))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

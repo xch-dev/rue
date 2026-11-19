@@ -4,9 +4,7 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, List, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
-use super::call_inference::{
-    compile_element, holds_other_pairs, record_element, refine_element_expected,
-};
+use super::call_inference::{compile_refined_element, holds_other_pairs, record_element};
 use crate::Compiler;
 
 pub fn compile_list_expr(
@@ -68,18 +66,7 @@ pub fn compile_list_expr(
         };
 
         let value = if let Some(expr) = item.expr() {
-            let (item_type, fallback) = match item_type {
-                Some(expected) => {
-                    let (expected, fallback) = refine_element_expected(ctx, expected, &expr);
-                    (Some(expected), fallback)
-                }
-                None => (None, false),
-            };
-            let fallback = fallback || ctx.is_expected_type_fallback();
-
-            let value = ctx.with_expected_type_fallback(fallback, |ctx| {
-                ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &expr, item_type))
-            });
+            let (value, item_type) = compile_refined_element(ctx, &expr, item_type, hint);
             record_element(ctx, value.ty, item_type);
             value
         } else {
