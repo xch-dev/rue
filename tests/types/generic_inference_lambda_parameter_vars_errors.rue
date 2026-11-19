@@ -13,15 +13,6 @@ fn map_spread<A, B>(function: fn(...a: A) -> B, value: A) -> B {
     function(...value)
 }
 
-// It's never called, since it would recurse forever, but it must still compile
-#[expect(unused_function)]
-fn map_recursive<A, B>(function: fn(a: A) -> B, value: A) -> B {
-    // The generics are renamed in a recursive call, so it's left as is
-    let recursive: 5 = map_recursive(fn(x) => x, 5);
-    let _ = recursive;
-    function(value)
-}
-
 fn apply_to<T>(pair: (fn(value: T) -> T, T)) -> T {
     pair.first(pair.rest)
 }

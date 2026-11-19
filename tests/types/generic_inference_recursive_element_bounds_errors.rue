@@ -134,12 +134,3 @@ fn expected_generic<T, U>(pair: (T, fn(value: T) -> U), depth: Int) -> U {
 
     pair.rest(pair.first)
 }
-
-// Only the elements before a lambda count
-fn lambda_before_its_value<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
-    if depth > 0 {
-        return lambda_before_its_value((fn(x) => x, 1), depth - 1);
-    }
-
-    pair.first(pair.rest)
-}

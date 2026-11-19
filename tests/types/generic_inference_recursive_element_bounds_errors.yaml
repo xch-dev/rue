@@ -20,5 +20,3 @@ diagnostics:
 - Cannot compare `T` to `nil` without a type guard, since the runtime value must be constrained at generic_inference_recursive_element_bounds_errors.rue:116:38
 - Unused function `expected_generic` at generic_inference_recursive_element_bounds_errors.rue:129:4
 - "Cannot assign `(1, fn(x: T) -> T)` to `(Int, fn(value: Int) -> T)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:131:42"
-- Unused function `lambda_before_its_value` at generic_inference_recursive_element_bounds_errors.rue:139:4
-- "Cannot assign `(fn(x: T) -> T, 1)` to `(fn(value: Int) -> Int, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:141:40"

@@ -117,6 +117,10 @@ pub(crate) fn infer_call(
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
+        // A lambda in the argument's pairs and lists can have the caller's generics that stand for
+        // the callee's renamed generics as its parameters' types, which are those generics to it
+        let stands_for = restored.clone();
+
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
             solver: solver.clone(),
@@ -150,6 +154,10 @@ pub(crate) fn infer_call(
             parameters.append(&mut argument.lambda_parameters);
         }
 
+        for (_, parameter) in &mut parameters {
+            *parameter = unrestore(ctx, &stands_for, *parameter);
+        }
+
         ctx.set_argument_frame(None);
         results[i] = value.hir;
         lambda_parameters[i] = parameters;
@@ -173,46 +181,69 @@ pub(crate) fn infer_call(
     // Only a call that the arguments don't solve otherwise is solved again with lambdas' untyped
     // parameters as vars, so that nothing that compiled before changes. A type expected of the call
     // that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one that
-    // comes from what an enclosing call has inferred so far, which it can still widen. In a
-    // recursive call, the renamed generics would have to be restored in the vars too, so it's left
-    // as is
+    // comes from what an enclosing call has inferred so far, which it can still widen. The checks
+    // are made with the renamed generics restored, as the call is checked
     let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint());
 
-    if renamed.is_empty() {
-        instantiate_generic_parameters(ctx, function, &lambda_parameters, &mappings, &mut checks);
-    }
+    restore_renamed(ctx, &mut mappings, renamed);
 
-    if renamed.is_empty()
-        && lambda_parameters
-            .iter()
-            .any(|parameters| !parameters.is_empty())
-        && !solves_call(ctx, function, &checks, &mappings, expected_type)
+    if lambda_parameters
+        .iter()
+        .any(|parameters| !parameters.is_empty())
     {
-        let mut alternative = checks.clone();
-        let solved = solve_with_lambda_parameters(
+        let mut instantiated = checks.clone();
+        instantiate_generic_parameters(
             ctx,
             function,
-            &solver,
-            &order,
             &lambda_parameters,
-            &mut alternative,
+            &mappings,
+            &mut instantiated,
         );
 
-        // It's only used if it solves the call, so a call that still fails reports what it did, and
-        // if it doesn't infer a generic as a type that references the callee's generics, which a
-        // call nested in an argument of a call to the same function shares with it. This is a
-        // safety net: no program has been found that reaches it
-        if solves_call(ctx, function, &alternative, &solved, expected_type)
-            && !solved
-                .values()
-                .any(|&ty| references_generics(ctx, ty, &function.generics))
-        {
-            mappings = solved;
-            checks = alternative;
+        if solves_call(ctx, function, &instantiated, &mappings, expected_type) {
+            checks = instantiated;
+        } else {
+            let mut alternative = checks.clone();
+            let mut solved = solve_with_lambda_parameters(
+                ctx,
+                function,
+                &solver,
+                &order,
+                &lambda_parameters,
+                &mut alternative,
+            );
+
+            // What the vars are inferred as can reference the renamed generics too
+            let restored = restore_renamed(ctx, &mut solved, renamed);
+
+            for (_, ty, _) in alternative.iter_mut().flatten() {
+                *ty = substitute_with_mappings(ctx.types_mut(), *ty, &restored);
+            }
+
+            instantiate_generic_parameters(
+                ctx,
+                function,
+                &lambda_parameters,
+                &solved,
+                &mut alternative,
+            );
+
+            // It's only used if it solves the call, so a call that still fails reports what it did,
+            // and if it doesn't infer a generic as a type that references the callee's generics,
+            // which a call nested in an argument of a call to the same function shares with it.
+            // This is a safety net: no program has been found that reaches it
+            if solves_call(ctx, function, &alternative, &solved, expected_type)
+                && !solved
+                    .values()
+                    .any(|&ty| references_generics(ctx, ty, &function.generics))
+            {
+                mappings = solved;
+                checks = alternative;
+            } else {
+                checks = instantiated;
+            }
         }
     }
-
-    restore_renamed(ctx, &mut mappings, renamed);
 
     let checks = order
         .candidate_order()
@@ -974,12 +1005,13 @@ fn has_uninferred_parameters(
 
 /// Maps the renamed generics that haven't been inferred back to the caller's generics they were
 /// renamed from (see `rename_generics_in_scope`), including where the others are inferred as types
-/// that reference them, since that's what they referred to before they were renamed.
+/// that reference them, since that's what they referred to before they were renamed. It returns the
+/// generics it restored.
 fn restore_renamed(
     ctx: &mut Compiler,
     mappings: &mut HashMap<TypeId, TypeId>,
     renamed: &HashMap<TypeId, TypeId>,
-) {
+) -> HashMap<TypeId, TypeId> {
     let restored: HashMap<TypeId, TypeId> = renamed
         .iter()
         .filter(|(copy, _)| !mappings.contains_key(copy))
@@ -987,7 +1019,7 @@ fn restore_renamed(
         .collect();
 
     if restored.is_empty() {
-        return;
+        return restored;
     }
 
     for ty in mappings.values_mut() {
@@ -999,7 +1031,8 @@ fn restore_renamed(
         }
     }
 
-    mappings.extend(restored);
+    mappings.extend(restored.clone());
+    restored
 }
 
 /// The caller's generics that `restore_renamed` puts in the argument's expected type in place of
