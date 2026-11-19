@@ -615,13 +615,21 @@ fn bind_failed_imports(
                     bound = true;
                 }
                 // Another failed import of the name (such as `import nope::x;` along with
-                // `import x;`) bound it first, so what finds it is explained by either
+                // `import x;`) bound it first, so what finds it is explained by either, and it's
+                // exported if either is
                 Some(existing) if ctx.is_error_item(existing) => {
                     cache
                         .error_origins
                         .entry(existing)
                         .or_default()
                         .insert(import_id);
+
+                    let target = ctx.scope_mut(failure.scope);
+
+                    if exported && !target.is_item_exported(existing) {
+                        target.export_item(existing);
+                        bound = true;
+                    }
                 }
                 Some(_) => {}
             }
