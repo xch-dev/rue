@@ -5,7 +5,7 @@
 //! their members are reported as unused doesn't depend on module names either.
 
 use indexmap::IndexSet;
-use rue_hir::{Declaration, ImportId, Item, Namespace, Scope, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Item, Items, Namespace, Scope, ScopeId, Symbol, SymbolId};
 
 use crate::Compiler;
 
@@ -25,7 +25,8 @@ pub(crate) enum Place {
 /// bring in besides what they do (see
 /// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)), whichever way the
 /// names in their paths are bound. A declaration or a named import that binds it hides it (unless
-/// the named import might bring in nothing with it if its path were bound differently, see
+/// every named import of the name might bring in nothing with it if its path were bound
+/// differently, see
 /// [`Database::add_partial_import`](rue_hir::Database::add_partial_import)), and so does a named
 /// import that brings in something with its name in another namespace but could bring in
 /// something in this one if its path were bound differently. What a glob import binds
@@ -38,13 +39,20 @@ pub(crate) fn hides_alternatives(
     namespace: Namespace,
     name: &str,
 ) -> bool {
+    // Whichever named import of the name binds it, every one of them could, so it's only left
+    // unhidden if each of them might bring in nothing with it
+    let partial = || {
+        scope
+            .imports()
+            .filter(|&import| matches!(&ctx.import(import).items, Items::Named(item) if item.text() == name))
+            .all(|import| ctx.is_partial_import(import, namespace))
+    };
+
     let bound = scope
         .item_with_import(namespace, name)
         .is_some_and(|(item, via)| {
             !ctx.is_error_item(item)
-                && via.is_none_or(|via| {
-                    !ctx.import(via).is_glob() && !ctx.is_partial_import(via, namespace)
-                })
+                && via.is_none_or(|via| !ctx.import(via).is_glob() && !partial())
         });
 
     bound

@@ -2136,6 +2136,50 @@ fn named_imports_that_might_bring_in_nothing_do_not_hide_glob_imports() {
 }
 
 #[test]
+fn hiding_by_duplicate_named_imports_does_not_depend_on_which_binds() {
+    // Found by renaming modules at random. `u` imports `T` twice, once through an unambiguous
+    // path and once through the ambiguous `{f}::m`, where it might bring in nothing. Which of
+    // them binds `T` depends on module names, but the first always brings it in, so `T` is
+    // hidden from what the glob imports could bring in either way, and `{h}`'s glob import
+    // (which could only bring in a `T`) is unused in either order.
+    let template = "
+        mod {a} { export mod m { export const Y: Int = 1; export mod n { export const X: Int = 2; export const Y: Int = 3; export type T = Int; } } }
+        mod {b} { export mod m { export const X: Int = 4; export const Y: Int = 5; export type T = Int; } }
+        mod {c} { export mod m { export const Y: Int = 6; export type T = Int; } }
+        mod {d} { export mod m { export const X: Int = 7; export const Y: Int = 8; export mod n { export type T = Int; } export super::super::{b}::m::*; } }
+        mod {e} { export super::{d}::*; export super::{b}::*; export super::{a}::*; }
+        mod {f} { export super::{c}::*; export super::{e}::*; export super::{b}::*; }
+        mod {g} { export super::{d}::*; }
+        mod {h} { export super::{f}::m::*; }
+        mod u { import super::{g}::m::T; import super::{f}::m::T; import super::{e}::*; import super::{d}::*; import super::{h}::*; export fn value() -> Int { { let t: T = 1; t } + { let t: T = 1; t } + m::Y + m::Y + m::X } }
+        fn main() -> Int { u::value() }
+    ";
+    let orders = [
+        ["fj", "bj", "hj", "gz", "cj", "fk", "bx", "fz"],
+        ["cj", "fz", "hj", "bj", "bx", "fj", "fk", "gz"],
+    ];
+    let mut results = Vec::new();
+
+    for names in orders {
+        let source = ["a", "b", "c", "d", "e", "f", "g", "h"]
+            .into_iter()
+            .zip(names)
+            .fold(template.to_string(), |source, (key, name)| {
+                source.replace(&format!("{{{key}}}"), name)
+            });
+        let compiled = compile(&source);
+
+        results.push((compiled.errors(), compiled.warnings()));
+    }
+
+    assert_eq!(results[0], results[1]);
+    assert!(
+        results[0].1.contains(&"10:125 UnusedImport".to_string()),
+        "{results:?}"
+    );
+}
+
+#[test]
 fn members_of_ambiguous_modules_used_from_outside_are_needed_exports_in_each() {
     // A use of `both::m::X` from outside of either `m`, by path or by import, needs the `X` in
     // each `m` it could refer to to be exported, whichever is bound. `Z` is only used inside of
