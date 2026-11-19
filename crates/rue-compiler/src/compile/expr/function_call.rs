@@ -14,6 +14,7 @@ pub fn compile_function_call_expr(
     ctx: &mut Compiler,
     call: &AstFunctionCallExpr,
     expected_type: Option<TypeId>,
+    narrower: Option<TypeId>,
 ) -> Value {
     let Some(call_expr) = call.expr() else {
         debug!("Unresolved function call expr");
@@ -105,7 +106,7 @@ pub fn compile_function_call_expr(
             results,
             checks,
             mut mappings,
-        } = infer_call(ctx, function, &args, expected_type, &renamed);
+        } = infer_call(ctx, function, &args, expected_type, narrower, &renamed);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {

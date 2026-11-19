@@ -1,0 +1,121 @@
+// infer-fuzz generator 2, seed 875, variant `all`: the recursive call to `g0` passes
+// `compose(identity)`, whose `A` an argument bounds from above, so it isn't widened to the return
+// type's `A | nil` (see `CallSolver::widen_to_expected`)
+
+type Maybe<T> = T | nil;
+
+type Tree<T> = nil | (T, (Tree<T>, Tree<T>));
+
+struct Entry<K, V> {
+    key: K,
+    value: V,
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn optional<T>(value: T) -> T | nil {
+    nil
+}
+
+fn head_or<T>(list: List<T>, default: T) -> T {
+    default
+}
+
+fn swap<A, B>(pair: (A, B)) -> (B, A) {
+    (pair.rest, pair.first)
+}
+
+fn compose<A, B>(function: fn(a: A) -> B) -> fn(a: A) -> B {
+    fn(x1) => function(x1)
+}
+
+fn same<T>(function: fn(a: T) -> T, produce: fn() -> T) -> T {
+    function(produce())
+}
+
+fn unwrap_maybe<T>(value: Maybe<T>, default: T) -> T {
+    default
+}
+
+fn value_of<K, V>(entry: Entry<K, V>) -> V {
+    entry.value
+}
+
+fn call_either<T>(function: (fn(a: Int) -> T) | (fn(a: Bytes) -> T)) -> T {
+    unchecked_cast::<T>(nil)
+}
+
+fn cycle3<A, B, C>(
+    first: fn(a: A) -> B,
+    second: fn(a: B) -> C,
+    third: fn(a: C) -> A,
+    value: A,
+) -> C {
+    second(first(value))
+}
+
+fn five_only(value: 5) -> Int {
+    1
+}
+
+fn increment(value: Int) -> Int {
+    value
+}
+
+fn five() -> 5 {
+    5
+}
+
+fn g0<A>(
+    p0: 5,
+    p1: fn(a: fn(a: A) -> A) -> Tree<A>,
+    p2: fn(a: A) -> A,
+    depth: Int,
+) -> Maybe<A | nil> {
+    if depth > 0 {
+        return g0(p0, p1, compose(identity), depth - 1);
+    }
+
+    unwrap_maybe(
+        same(identity, fn() => unchecked_cast::<Maybe<A>>(nil)),
+        value_of(Entry::<5 | 7, A> { key: 7, value: unchecked_cast::<A>(nil) }),
+    )
+}
+
+fn g1<A>(p0: A) -> 5 {
+    5
+}
+
+fn g2<A, B>(p0: fn(a: A | nil) -> Entry<B, Int>, p1: Int, p2: List<(B, B)>) -> A {
+    unwrap_maybe(
+        unwrap_maybe(unchecked_cast::<Maybe<Maybe<A>>>(nil), unchecked_cast::<Maybe<A>>(nil)),
+        identity(unchecked_cast::<A>(nil)),
+    )
+}
+
+fn main() -> Any {
+    let v0 = g2(
+        head_or(
+            [
+                fn(x2: Int | nil) => Entry::<Int, Int> { key: 9, value: 8 },
+                fn(x3: Int | nil) => Entry::<Int, Int> { key: 8, value: 6 },
+            ],
+            fn(x4: Int | nil) => Entry::<Int, Int> { key: 6, value: 9 },
+        ),
+        cycle3(
+            same(fn(x5) => x5, fn() => fn(x6: (Bytes, Bytes)) => 3),
+            fn(x7) => 5,
+            g2(fn(x8) => Entry::<Int | nil, Int> { key: nil, value: 9 }, 8, [(nil, 7), (8, 4)]),
+            ("a", "a"),
+        ),
+        [call_either(fn(x9: Int) => (4, 8))],
+    );
+    let v1: Int = unwrap_maybe(
+        value_of::<Int, _>(call_either(fn(x10: Int) => Entry::<Int, Int> { key: 6, value: x10 })),
+        9,
+    );
+
+    (v0, v1)
+}

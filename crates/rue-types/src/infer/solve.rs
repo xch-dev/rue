@@ -3,9 +3,9 @@ use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 use id_arena::Arena;
 
 use crate::{
-    BuiltinTypes, Inference, Type, TypeId, add_expected_bounds, add_lambda_var_lower_bounds,
-    pass_lower_bounds, pass_upper_bounds, resolve_inference, resolve_inference_with_bounds,
-    upper_bounds,
+    BuiltinTypes, Comparison, Inference, Type, TypeId, add_expected_bounds,
+    add_lambda_var_lower_bounds, compare, pass_lower_bounds, pass_upper_bounds, resolve_inference,
+    resolve_inference_with_bounds, upper_bounds,
 };
 
 /// Solves the generics of a call, given the candidates its arguments contribute as they're
@@ -18,8 +18,16 @@ pub struct CallSolver {
     /// The candidates inferred from the type expected of the call, if it has one.
     expected: Option<Inference>,
     /// What the expected type infers on its own, for the generics that nothing else constrains,
-    /// such as `T` in `let value: Int = unchecked_cast(nil);`.
+    /// such as `T` in `let value: Int = unchecked_cast(nil);`, or what a narrower expected type
+    /// does, if the solver has one (see `CallSolver::with_narrower_expected`).
     fallback: HashMap<TypeId, TypeId>,
+    /// What the expected type infers on its own, always, which `CallSolver::widen_to_expected`
+    /// widens an argument's mappings to.
+    expected_bounds: HashMap<TypeId, TypeId>,
+    /// The candidates inferred from a narrower type expected of the call, which bound the generics
+    /// that nothing but the expected type constrains in place of it (see
+    /// `CallSolver::with_narrower_expected`).
+    narrower: Option<Inference>,
     /// The last inference that `CallSolver::instantiate` was given for each value of its `expected`
     /// flag, with what it gave. The argument loop solves the same inference up to three times
     /// before each argument, and a nested call in an argument solves it again, so each one is
@@ -43,9 +51,28 @@ impl CallSolver {
 
         Self {
             expected,
+            expected_bounds: fallback.clone(),
             fallback,
+            narrower: None,
             instantiated: RefCell::default(),
         }
+    }
+
+    /// The solver with the generics that nothing but the expected type constrains bounded by what
+    /// `narrower`, a narrower type expected of the call, infers, and falling back to it, rather
+    /// than to the expected type, which still bounds the others. That's for a call whose expected
+    /// type was widened to its enclosing call's (see `CallSolver::widen_to_expected`), where
+    /// `narrower` is the one it would have had.
+    #[must_use]
+    pub fn with_narrower_expected(
+        mut self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        narrower: &Inference,
+    ) -> Self {
+        self.fallback = resolve_inference(arena, builtins, narrower);
+        self.narrower = Some(narrower.clone());
+        self
     }
 
     /// The solver with the type expected of the call only used for the generics that nothing else
@@ -128,6 +155,38 @@ impl CallSolver {
         mappings
     }
 
+    /// Replaces each of the mappings that the type expected of the call bounds on its own (see
+    /// `expected_bounds`) with that bound, where the mapping is assignable to it. This
+    /// is for an argument that's a call, so it's compiled against what the expected type allows,
+    /// such as `7 | 8` for `T` in `let v: 7 | 8 = either(7, id(8));`, rather than what the
+    /// arguments so far narrowed it to (`7`), which the call's own value can't widen. A generic
+    /// that the arguments bound from above (`infer`) keeps its mapping.
+    pub fn widen_to_expected(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        infer: &Inference,
+        mappings: &mut HashMap<TypeId, TypeId>,
+    ) {
+        for (generic, ty) in mappings.iter_mut() {
+            // A generic that an argument bounds from above, such as one in a parameter type, or
+            // in both positions, can't be widened past what that argument fixes
+            if infer
+                .candidates(*generic)
+                .is_some_and(|candidates| !candidates.upper.is_empty())
+            {
+                continue;
+            }
+
+            if let Some(&bound) = self.expected_bounds.get(generic)
+                && bound != *ty
+                && compare(arena, builtins, *ty, bound) == Comparison::Assign
+            {
+                *ty = bound;
+            }
+        }
+    }
+
     /// The mappings the call is checked with, once every argument has been compiled. The expected
     /// type's bounds are added to the generics whose lower bounds satisfy them, a generic that the
     /// arguments don't constrain falls back to the expected type, and one that still isn't
@@ -144,8 +203,36 @@ impl CallSolver {
             infer = self.instantiate(arena, builtins, &infer, true).into_owned();
         }
 
+        // With a narrower expected type, the generics that nothing but the expected type constrains
+        // are bounded by it rather than by the expected type, as they would have been before the
+        // expected type was widened, and the generics bounded through them follow (see
+        // `CallSolver::with_narrower_expected`)
         if let Some(expected) = &self.expected {
-            add_expected_bounds(arena, builtins, &mut infer, expected);
+            if let Some(narrower) = &self.narrower {
+                // A generic only takes the wide bounds where its arguments give it a lower bound
+                // that the narrower type doesn't hold, such as `8` where it's `7`
+                let wide_generics: Vec<TypeId> = infer
+                    .generics
+                    .iter()
+                    .filter(|(generic, candidates)| {
+                        !candidates.lower.is_empty()
+                            && self.fallback.get(*generic).is_none_or(|&narrow| {
+                                candidates.lower.iter().any(|&lower| {
+                                    compare(arena, builtins, lower, narrow) != Comparison::Assign
+                                })
+                            })
+                    })
+                    .map(|(&generic, _)| generic)
+                    .collect();
+                let mut wide = expected.clone();
+                wide.retain_generics(|generic| wide_generics.contains(&generic));
+                let mut narrow = narrower.clone();
+                narrow.retain_generics(|generic| !wide_generics.contains(&generic));
+                add_expected_bounds(arena, builtins, &mut infer, &wide);
+                add_expected_bounds(arena, builtins, &mut infer, &narrow);
+            } else {
+                add_expected_bounds(arena, builtins, &mut infer, expected);
+            }
         }
 
         // After the expected type's bounds have reached the vars of untyped lambda parameters

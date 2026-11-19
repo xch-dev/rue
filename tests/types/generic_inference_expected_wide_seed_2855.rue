@@ -1,0 +1,60 @@
+// infer-fuzz generator 2, seed 2855, variant `all`: the bare `make()` isn't widened to the expected
+// type's own bound, since it has nothing of its own to add (see `Argument::widens`)
+
+type Maybe<T> = T | nil;
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+fn singleton<T>(value: T) -> List<T> {
+    [value, value]
+}
+
+fn or_else<T>(value: T | nil, default: T) -> T {
+    default
+}
+
+fn make<A, B>() -> fn(a: A) -> B {
+    fn(x1: A) => unchecked_cast::<B>(nil)
+}
+
+fn map_list<T, U>(list: List<T>, function: fn(a: T) -> U) -> List<U> {
+    [function(unchecked_cast::<T>(nil)), function(unchecked_cast::<T>(nil))]
+}
+
+fn pair_fn<T>() -> fn(a: T) -> (T, T) {
+    duplicate
+}
+
+fn unwrap_maybe<T>(value: Maybe<T>, default: T) -> T {
+    default
+}
+
+fn five_only(value: 5) -> Int {
+    3
+}
+
+fn maybe(value: Int) -> Int | nil {
+    value
+}
+
+fn g0<A, B, C>(p0: List<(Int, C)>, p1: (B, A), p2: List<C>) -> (C, (A, C)) {
+    (
+        unwrap_maybe(nil, unchecked_cast::<C>(nil)),
+        unwrap_maybe(nil, (p1.rest, unchecked_cast::<C>(nil))),
+    )
+}
+
+fn main() -> Any {
+    let v0: (fn(a: Int) -> Int) | (fn(a: Bytes) -> Int) = or_else(
+        or_else(
+            unwrap_maybe(nil, fn<V>(value: V) => value),
+            unwrap_maybe(fn(x2: Bytes) => 5, fn(x3: Int) => 7),
+        ),
+        make(),
+    );
+    let v1 = g0(singleton(unwrap_maybe(nil, (8, 7))), (or_else(7, 7), 7), [or_else(7, 7), 7]);
+
+    (v0, v1)
+}

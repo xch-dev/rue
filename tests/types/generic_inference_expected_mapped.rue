@@ -137,3 +137,173 @@ test fn lambda_through_a_nested_call_before_a_later_value_keeps_it_wide() -> Int
     let block: 5 | 6 = three(5, { pass(fn(x) => 1) }, 6);
     value + deeper + block
 }
+
+fn constant<T>(value: T) -> fn() -> T {
+    fn() => value
+}
+
+// A call with arguments and no lambda takes the expected type's own bound, `7 | 8`, rather than
+// the `7` the first argument narrows `T` to, since its own argument then adds `8`, as with
+// `either::<7 | 8>`
+test fn nested_call_takes_the_expected_types_own_bound() -> Int {
+    let value: 7 | 8 = either(7, identity(8));
+    let deeper: 7 | 8 = either(7, identity(identity(8)));
+    let both: 7 | 8 = either(identity(7), identity(8));
+    let function: fn() -> 7 | 8 = either(constant(7), constant(8));
+    value + deeper + both + function()
+}
+
+fn later<T>(value: T, other: T, function: fn(x: T) -> Int) -> T {
+    let _ = function(value);
+    other
+}
+
+fn make<T>() -> T {
+    unchecked_cast(5)
+}
+
+fn tail<T>(first: T, function: fn(x: T) -> Int) -> T {
+    let _ = function(first);
+    first
+}
+
+// Guards: a call's generic that only its expected type constrains keeps the narrower `5`, whether
+// the call has no arguments, has one without any inside it, has arguments that don't constrain it
+// (`nothing(1)`, `default_or(nil)`, `head([])`) or only bounds it from above (`sink(…)`), and so
+// does a lambda that a call passes through. A block isn't widened at all, only a call is. Either
+// way, `x` is `5`, as on main, which the unnecessary guards show
+test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
+    let made: 5 | 6 = later(
+        5,
+        make(),
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    let passed: 5 | 6 = tail(
+        5,
+        pass(
+            fn(x) => if x is 5 {
+                1
+            } else {
+                2
+            },
+        ),
+    );
+    let inside: 5 | 6 = later(
+        5,
+        identity(make()),
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    let unbound: 5 | 6 = later(5, nothing(1), fn(x) => only_five(x));
+    let held: 5 | 6 = later(5, default_or(nil), fn(x) => only_five(x));
+    let empty: 5 | 6 = later(
+        5,
+        head([]),
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    let block: 5 | 6 = later(
+        5,
+        { head([]) },
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    let sunk: 5 | 6 = later(5, sink(takes_five_or_six), only_five);
+    made + passed + inside + unbound + held + empty + block + sunk
+}
+
+type Tree<T> = nil | (T, (Tree<T>, Tree<T>));
+
+fn twice<A>(function: fn(a: A) -> A) -> fn(a: A) -> A {
+    fn(a: A) => function(function(a))
+}
+
+fn grow<A>(build: fn(a: fn(a: A) -> A) -> Tree<A>, step: fn(a: A) -> A, depth: Int) -> A | nil {
+    if depth > 0 {
+        // Guard: the renamed `A` is fixed by `build`, which holds it in a parameter type too, so
+        // `twice(identity)` keeps `A` rather than the return type's `A | nil`, which `build` isn't
+        // (infer-fuzz generator 2, seed 875)
+        return grow(build, twice(identity), depth - 1);
+    }
+
+    let _tree = build(step);
+    nil
+}
+
+test fn generic_bounded_from_above_keeps_its_mapping() -> Int {
+    let result = grow(fn(_step: fn(a: Int) -> Int) => nil, fn(a: Int) => a, 1);
+    if result is nil {
+        0
+    } else {
+        result
+    }
+}
+
+fn nothing<A>(value: Int) -> A {
+    unchecked_cast(value)
+}
+
+fn default_or<A>(value: A | nil) -> A {
+    unchecked_cast(value)
+}
+
+fn head<T>(list: List<T>) -> T {
+    unchecked_cast(list)
+}
+
+fn pair<A, B>(first: A, rest: B) -> (A, B) {
+    (first, rest)
+}
+
+fn wrap<A>(value: A) -> (A, Int) {
+    (value, 1)
+}
+
+fn listy<A>(value: A) -> List<A> {
+    [value]
+}
+
+// Guards: a widened call's generic whose own arguments fit the narrower type keeps it, so
+// `pair(5, 5)` is a `(5, 5)` here, not a `(5 | Int, 5 | Int)` under the expected type's own
+// `(Int, Int)`, and `x.first` is `5`, as on main. Only a generic whose arguments don't fit it, such
+// as `id(8)`'s where `T` is narrowed to `7`, takes the wider bound
+test fn widened_call_keeps_what_fits_the_narrower_type() -> Int {
+    let paired: (Int, Int) = later((5, 5), pair(5, 5), fn(x) => only_five(x.first));
+    let wrapped: (Int, Int) = later((5, 5), wrap(5), fn(x) => only_five(x.first));
+    let _listed: List<Int> = later(
+        [5],
+        listy(5),
+        fn(x) => if x is List<5> {
+            1
+        } else {
+            2
+        },
+    );
+    paired.first + wrapped.first
+}
+
+test fn widened_pair_takes_a_value_the_narrower_type_doesnt_hold() -> Int {
+    let value: (5 | 6, Int) = later((5, 1), pair(6, 2), fn(_x) => 1);
+    value.first
+}
+
+fn sink<T>(_function: fn(x: T) -> Int) -> T {
+    unchecked_cast(5)
+}
+
+fn takes_five_or_six(value: 5 | 6) -> Int {
+    value
+}

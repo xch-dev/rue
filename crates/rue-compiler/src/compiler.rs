@@ -1099,9 +1099,22 @@ impl Compiler {
         );
     }
 
-    /// A solver for a call's generics, given what was inferred from the type expected of it.
-    pub fn call_solver(&mut self, expected: Option<Inference>) -> CallSolver {
-        CallSolver::new(self.db.types_mut(), &self.builtins.types, expected)
+    /// A solver for a call's generics, given what was inferred from the type expected of it, and
+    /// from a narrower one, if the call is an argument widened to its enclosing call's expected
+    /// type (see `CallSolver::with_narrower_expected`).
+    pub fn call_solver(
+        &mut self,
+        expected: Option<Inference>,
+        narrower: Option<&Inference>,
+    ) -> CallSolver {
+        let solver = CallSolver::new(self.db.types_mut(), &self.builtins.types, expected);
+
+        match narrower {
+            Some(narrower) => {
+                solver.with_narrower_expected(self.db.types_mut(), &self.builtins.types, narrower)
+            }
+            None => solver,
+        }
     }
 
     /// What the arguments of a call compiled so far infer on their own (see
@@ -1130,6 +1143,17 @@ impl Compiler {
             inferred,
             bound_mapped,
         )
+    }
+
+    /// Widens the mappings to the bounds the call's expected type gives on its own (see
+    /// `CallSolver::widen_to_expected`).
+    pub fn widen_to_expected(
+        &mut self,
+        solver: &CallSolver,
+        infer: &Inference,
+        mappings: &mut HashMap<TypeId, TypeId>,
+    ) {
+        solver.widen_to_expected(self.db.types_mut(), &self.builtins.types, infer, mappings);
     }
 
     /// The mappings a call is checked with, once its arguments have been compiled (see
