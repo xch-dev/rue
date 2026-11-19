@@ -1,6 +1,6 @@
 use std::{
     cmp::{max, min},
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     mem,
     rc::Rc,
 };
@@ -152,8 +152,9 @@ struct Binder {
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
-    /// Whether it can be instantiated again while an enclosing comparison checks its bounds,
-    /// whatever `ComparisonContext::instantiable_from` is (see `ComparisonContext::is_closed`).
+    /// Whether it can be instantiated again while bounds that refer to it are checked, whatever
+    /// `ComparisonContext::instantiable_from` is: an enclosing comparison's, or those of an instance
+    /// whose bounds grew and are checked again (see `ComparisonContext::is_closed`).
     open: bool,
 }
 
@@ -714,12 +715,39 @@ impl ComparisonContext<'_> {
         (instance >= self.instantiable_from || self.instances[instance].open).then_some(instance)
     }
 
-    /// Whether the instance's bounds refer to no binder, so that it can be instantiated again
-    /// while an enclosing comparison checks bounds that refer to it (#363). Its bounds are the
-    /// same wherever it's reached, including through a summary, which has every bound it had then
-    /// (see `summary_since`), and the bounds added after it are added again where it's applied.
-    /// An instance whose bounds refer to other binders stays rigid, which can only reject more.
-    fn is_closed(&mut self, arena: &Arena<Type>, index: usize) -> bool {
+    /// Whether the instance can be instantiated again while an enclosing comparison checks bounds
+    /// that refer to it (#363): its bounds refer to no binder other than instances that come after
+    /// it, such as those of the generic functions compared inside of its own comparison, each of
+    /// which can be too, so this doesn't loop. Its bounds are the same wherever it's reached,
+    /// including through a summary, which has every bound it had then, and those of the instances
+    /// they refer to (see `summary_since`), and the bounds added after it are added again where
+    /// it's applied. An instance whose bounds refer to other binders stays rigid, which can only
+    /// reject more. `closed` has what's been found for each instance since the bounds last
+    /// changed, so that an instance that many others refer to is only looked at once.
+    fn is_closed(
+        &mut self,
+        arena: &Arena<Type>,
+        index: usize,
+        closed: &mut FxHashMap<usize, bool>,
+    ) -> bool {
+        if let Some(&is_closed) = closed.get(&index) {
+            return is_closed;
+        }
+
+        let is_closed = self
+            .referenced_instances(arena, index)
+            .into_iter()
+            .all(|deeper| {
+                deeper.is_some_and(|deeper| deeper > index && self.is_closed(arena, deeper, closed))
+            });
+
+        closed.insert(index, is_closed);
+        is_closed
+    }
+
+    /// The instance of each binder that the instance's bounds refer to, or `None` for one that
+    /// isn't being instantiated.
+    fn referenced_instances(&mut self, arena: &Arena<Type>, index: usize) -> Vec<Option<usize>> {
         let instance = &self.instances[index];
         let bounds: Vec<Bound> = instance
             .lower
@@ -727,13 +755,57 @@ impl ComparisonContext<'_> {
             .chain(&instance.upper)
             .copied()
             .collect();
+        let mut referenced = Vec::new();
 
-        bounds.into_iter().all(|(ty, env, _)| {
+        for (ty, env, _) in bounds {
             self.cache_references(arena, ty);
-            self.references[&ty]
-                .iter()
-                .all(|&generic| self.resolve(generic, env).is_none())
-        })
+
+            for &generic in &self.references[&ty] {
+                if let Some(binder) = resolve(&self.binders, generic, env) {
+                    referenced.push(self.binders[binder].instance);
+                }
+            }
+        }
+
+        referenced
+    }
+
+    /// The closed instances that the instance's bounds refer to, which can be instantiated again
+    /// while its bounds are checked again (see `is_closed`). Only those can gain bounds there, since
+    /// the check only compares the types its bounds mention: one further in that grows is reopened
+    /// when the one that refers to it is checked again in turn.
+    fn closed_referenced(&mut self, arena: &Arena<Type>, index: usize) -> Vec<usize> {
+        let mut closed = FxHashMap::default();
+        let mut found = Vec::new();
+
+        for deeper in self
+            .referenced_instances(arena, index)
+            .into_iter()
+            .flatten()
+        {
+            if deeper > index
+                && !found.contains(&deeper)
+                && self.is_closed(arena, deeper, &mut closed)
+            {
+                found.push(deeper);
+            }
+        }
+
+        found
+    }
+
+    /// Lets the instances be instantiated again while a bounds check runs (see `Instance::open`),
+    /// and returns them with their numbers of bounds, for `close_reopened`.
+    fn reopen(&mut self, indices: Vec<usize>) -> Vec<(usize, (usize, usize))> {
+        indices
+            .into_iter()
+            .map(|index| {
+                self.open += 1;
+                let instance = &mut self.instances[index];
+                instance.open = true;
+                (index, (instance.lower.len(), instance.upper.len()))
+            })
+            .collect()
     }
 
     /// Whether comparing the type with itself would collect no candidates: it references no
@@ -772,6 +844,37 @@ impl ComparisonContext<'_> {
         }
     }
 
+    /// Records what checking a function comparison's bounds can change, to undo it (see
+    /// `restore`): the bounds of its own instances and those after them (from `own` on), those of
+    /// the instances that an enclosing comparison reopened, and the rest (see `snapshot_with`).
+    fn snapshot_from(&self, own: usize) -> Snapshot {
+        let instances = self
+            .instances
+            .iter()
+            .enumerate()
+            .filter(|&(index, instance)| index >= own || instance.open)
+            .map(|(index, instance)| (0, index, instance.lower.len(), instance.upper.len()))
+            .collect();
+
+        self.snapshot_with(instances)
+    }
+
+    /// Records what a bounds check can change outside of itself, to undo it (see `restore`): the
+    /// bounds of the instances that an enclosing comparison reopened, which it can add to (see
+    /// `Instance::open`), and the rest (see `snapshot_with`). No comparison has been found where the
+    /// bounds a failed check leaves on those decide anything, so recording them is defensive.
+    fn snapshot_open(&self) -> Snapshot {
+        let instances = self
+            .instances
+            .iter()
+            .enumerate()
+            .filter(|(_, instance)| instance.open)
+            .map(|(index, instance)| (0, index, instance.lower.len(), instance.upper.len()))
+            .collect();
+
+        self.snapshot_with(instances)
+    }
+
     /// Records what a comparison that's being entered can change outside of itself: the bounds of
     /// the instances its key refers to (the binders it numbers), the choices and the deferred
     /// candidates, and the inference's candidates.
@@ -786,6 +889,12 @@ impl ComparisonContext<'_> {
             })
             .collect();
 
+        self.snapshot_with(instances)
+    }
+
+    /// A snapshot of the instances' numbers of bounds given (see `Snapshot::instances`), along with
+    /// the rest of what a comparison or bounds check can change.
+    fn snapshot_with(&self, instances: Vec<(usize, usize, usize, usize)>) -> Snapshot {
         Snapshot {
             instances,
             binders: self.binders.len(),
@@ -829,9 +938,9 @@ impl ComparisonContext<'_> {
     /// what makes it an instance where the summary is applied. That's every bound it has, since
     /// those that a function comparison inside of this one added while checking its bounds aren't
     /// added again where the summary is applied. One without bounds gets `≤ Any`, which always
-    /// holds. That's only for those that the bounds of the key's instances
-    /// refer to: their own bounds are checked again with every instance rigid, so the instances
-    /// that those refer to don't need theirs.
+    /// holds. That's for those that the bounds of the key's instances refer to, and, in turn, those
+    /// that the exported ones' bounds refer to, which can be instantiated again with them (see
+    /// `is_closed`).
     fn summary_since(
         &mut self,
         arena: &Arena<Type>,
@@ -845,6 +954,7 @@ impl ComparisonContext<'_> {
 
         // The local binders that are instances, which the bounds of the key's instances refer to
         let mut exported: Vec<(usize, Var)> = Vec::new();
+        let mut closed = FxHashMap::default();
 
         for &(position, index, lower_from, upper_from) in &snapshot.instances {
             let instance = &self.instances[index];
@@ -868,20 +978,18 @@ impl ComparisonContext<'_> {
                     &mut locals,
                 );
 
-                for local in referenced {
-                    if let Some(index) = self.binders[local.0].instance
-                        && !exported.contains(&local)
-                        && self.is_closed(arena, index)
-                    {
-                        exported.push(local);
-                    }
-                }
+                self.export_closed(arena, referenced, &mut exported, &mut closed);
 
                 summary.add(constraint);
             }
         }
 
-        for (binder, target) in exported {
+        // Those that the exported ones' bounds refer to are exported too, since they can be
+        // instantiated again with them (see `is_closed`)
+        let mut next = 0;
+
+        while let Some(&(binder, target)) = exported.get(next) {
+            next += 1;
             let instance = &self.instances[self.binders[binder].instance.unwrap()];
             // Every bound it has, including those that a function comparison inside of this one
             // added while checking its bounds, which aren't added again where the summary is
@@ -901,7 +1009,7 @@ impl ComparisonContext<'_> {
             }
 
             for (bound, upper) in bounds {
-                let (constraint, _) = self.constraint_of(
+                let (constraint, referenced) = self.constraint_of(
                     arena,
                     snapshot,
                     (entered, &numbering),
@@ -909,11 +1017,33 @@ impl ComparisonContext<'_> {
                     &mut summary,
                     &mut locals,
                 );
+
+                self.export_closed(arena, referenced, &mut exported, &mut closed);
+
                 summary.add(constraint);
             }
         }
 
         summary
+    }
+
+    /// Adds each of the local binders that's a closed instance to the ones whose bounds a summary
+    /// exports, if it isn't already (see `summary_since`).
+    fn export_closed(
+        &mut self,
+        arena: &Arena<Type>,
+        referenced: Vec<(usize, Var)>,
+        exported: &mut Vec<(usize, Var)>,
+        closed: &mut FxHashMap<usize, bool>,
+    ) {
+        for local in referenced {
+            if let Some(index) = self.binders[local.0].instance
+                && !exported.contains(&local)
+                && self.is_closed(arena, index, closed)
+            {
+                exported.push(local);
+            }
+        }
     }
 
     /// The constraint for a bound in the summary of the comparison at the top of the stack (see
@@ -975,7 +1105,7 @@ impl ComparisonContext<'_> {
     /// numbers, which are `args` in the summary's coordinates. Each of its local binders is a new
     /// binder: an instance if a constraint bounds it (see `summary_since`), and rigid otherwise.
     /// Each bound's environment is made of aliases of the binders that its generics resolve to.
-    fn apply_summary(&mut self, summary: &Summary, args: &[usize]) {
+    fn apply_summary(&mut self, summary: &Summary, args: &[usize], finished: bool) {
         if summary.constraints().is_empty() {
             return;
         }
@@ -984,6 +1114,8 @@ impl ComparisonContext<'_> {
         // the binder to have one, since it's reached through aliases rather than by its generic
         let mut generics: Vec<Option<TypeId>> = vec![None; summary.locals()];
         let mut instances = vec![false; summary.locals()];
+        // The locals that each one's constraints refer to
+        let mut refers: Vec<Vec<usize>> = vec![Vec::new(); summary.locals()];
 
         for constraint in summary.constraints() {
             if let Var::Local(local) = constraint.var {
@@ -993,18 +1125,41 @@ impl ComparisonContext<'_> {
             for &(generic, var) in &constraint.env {
                 if let Var::Local(local) = var {
                     generics[local].get_or_insert(generic);
+
+                    if let Var::Local(target) = constraint.var
+                        && target != local
+                    {
+                        refers[target].push(local);
+                    }
                 }
             }
         }
 
+        // For a finished comparison's summary, the instances come after those whose constraints
+        // refer to them, as they did where it was made, since an instance can only be
+        // instantiated again with those after it (see `is_closed`), whatever order the summary
+        // numbers them in. A revisit's summary keeps its own order, which can leave those rigid:
+        // the bounds of a comparison that's still in progress can grow with each round, and
+        // instantiating the instances nested further in again would export their bounds too (see
+        // `summary_since`), so that rounds over a recursive type wouldn't stop adding to them
+        let mut slots: Vec<Option<usize>> = vec![None; summary.locals()];
+        let order = if finished {
+            instance_order(&instances, &refers)
+        } else {
+            (0..instances.len())
+                .filter(|&local| instances[local])
+                .collect()
+        };
+
+        for local in order {
+            self.instances.push(Instance::default());
+            slots[local] = Some(self.instances.len() - 1);
+        }
+
         let locals: Vec<usize> = generics
             .into_iter()
-            .zip(instances)
+            .zip(slots)
             .map(|(generic, instance)| {
-                let instance = instance.then(|| {
-                    self.instances.push(Instance::default());
-                    self.instances.len() - 1
-                });
                 self.binders.push(Binder {
                     generic: generic.unwrap_or(summary.constraints()[0].ty),
                     parent: None,
@@ -1582,10 +1737,10 @@ fn compare_impl_inner(
         frame.revisited = true;
 
         if let Some(summary) = summary {
-            ctx.apply_summary(&summary, &binders);
+            ctx.apply_summary(&summary, &binders, false);
         } else if instances && !ctx.fixpoint {
             let approximation = mem::take(&mut frame.approximation);
-            ctx.apply_summary(&approximation, &binders);
+            ctx.apply_summary(&approximation, &binders, false);
             ctx.frames[index].approximation = approximation;
         }
 
@@ -1607,7 +1762,7 @@ fn compare_impl_inner(
         let result = result.map(|(result, summary)| {
             if let Some(summary) = summary {
                 ctx.spend_many(summary.constraints().len());
-                ctx.apply_summary(&summary, &binders);
+                ctx.apply_summary(&summary, &binders, true);
             }
 
             result
@@ -1895,38 +2050,41 @@ fn compare_structure(
                 // functions being instantiated are rigid, so they're hidden while checking. The
                 // generic functions compared inside of this one can still be instantiated, though:
                 // a bound such as `B ≥ (T, T)`, from `fn<T>() -> (T, T)` compared with
-                // `fn() -> B`, holds for `B ≤ (Int, Int)` with `T` as `Int` (#363). Each of them is
-                // instantiated once for all of the bounds, and its own bounds are checked again
-                // with what that adds to them
-                // This one's own instances, and those of enclosing comparisons, stay rigid: the
-                // pairs being checked are their own bounds
-                let end = ctx.instances.len();
-                let mut reopened: Vec<(usize, (usize, usize))> = Vec::new();
+                // `fn() -> B`, holds for `B ≤ (Int, Int)` with `T` as `Int` (#363). This one's own
+                // instances, and those of enclosing comparisons, stay rigid: the pairs being
+                // checked are their own bounds
+                //
+                // The inner instances whose bounds refer to no binder are instantiated again first,
+                // as they were before instances nested further in could be. Only if that doesn't
+                // hold is it undone and checked again with those whose bounds refer to the inner
+                // instances after them too (see `is_closed`), whose result is used if it's no
+                // worse. Instantiating more can only add bounds, which can make a union member
+                // that matched with fewer of them conflict, so it isn't always better (#362)
+                let instantiable_from = ctx.instantiable_from;
+                let snapshot = ctx.snapshot_from(own);
+                let (shallow, deeper) =
+                    check_inner_bounds(arena, builtins, ctx, (own, inner), false);
 
-                for index in inner..end {
-                    if ctx.is_closed(arena, index) {
-                        ctx.open += 1;
-                        let instance = &mut ctx.instances[index];
-                        instance.open = true;
-                        reopened.push((index, (instance.lower.len(), instance.upper.len())));
-                    }
-                }
-                let instantiable_from = mem::replace(&mut ctx.instantiable_from, end);
-                result = max(result, check_bounds(arena, builtins, ctx, own..inner));
+                // It's only checked again if instantiating more could make a difference, which it
+                // can't where there's nothing nested further in to instantiate: otherwise, a
+                // comparison nested in many others that fail would be checked again at each level
+                result = max(
+                    result,
+                    if shallow == Comparison::Assign || !deeper {
+                        shallow
+                    } else {
+                        ctx.restore(&snapshot);
+                        let (deep, _) =
+                            check_inner_bounds(arena, builtins, ctx, (own, inner), true);
 
-                let grown: Vec<usize> = reopened
-                    .into_iter()
-                    .filter_map(|(index, (lower, upper))| {
-                        ctx.open -= 1;
-                        let instance = &mut ctx.instances[index];
-                        instance.open = false;
-                        (instance.lower.len() > lower || instance.upper.len() > upper)
-                            .then_some(index)
-                    })
-                    .collect();
-
-                ctx.instantiable_from = ctx.instances.len();
-                result = max(result, check_bounds(arena, builtins, ctx, grown));
+                        if deep <= shallow {
+                            deep
+                        } else {
+                            ctx.restore(&snapshot);
+                            check_inner_bounds(arena, builtins, ctx, (own, inner), false).0
+                        }
+                    },
+                );
 
                 ctx.instantiable_from = instantiable_from;
                 ctx.lhs_env = lhs_env;
@@ -2270,6 +2428,133 @@ fn check_bounds(
     }
 
     result
+}
+
+/// The locals of a summary that are instances (`instances`), in an order where each comes before
+/// those that its constraints refer to (`refers`), which `summary_since` only exports for instances
+/// after it, so they don't form a cycle. Locals in a cycle are kept in their own order.
+fn instance_order(instances: &[bool], refers: &[Vec<usize>]) -> Vec<usize> {
+    // Depth-first, adding each local after those it refers to, and then reversing
+    let mut order = Vec::new();
+    let mut state = vec![0u8; instances.len()];
+
+    for start in 0..instances.len() {
+        let mut stack = vec![(start, 0)];
+
+        while let Some(&mut (local, ref mut next)) = stack.last_mut() {
+            if *next == 0 {
+                if state[local] != 0 {
+                    stack.pop();
+                    continue;
+                }
+                state[local] = 1;
+            }
+
+            if let Some(&referred) = refers[local].get(*next) {
+                *next += 1;
+
+                if state[referred] == 0 {
+                    stack.push((referred, 0));
+                }
+            } else {
+                state[local] = 2;
+                order.push(local);
+                stack.pop();
+            }
+        }
+    }
+
+    order.reverse();
+    order.retain(|&local| instances[local]);
+    order
+}
+
+/// Checks the bounds of a function comparison's own instances (`own..inner`) against each other,
+/// with the instances of the generic functions compared inside of it (from `inner` on) that can be
+/// instantiated again open, and those again whose bounds that grows (see `compare_structure`'s
+/// function arm). With `deep`, those are the closed ones (see `ComparisonContext::is_closed`),
+/// and checking an instance's bounds again opens the closed ones that they refer to. Otherwise,
+/// they're only those whose bounds refer to no binder, and everything else stays rigid. It also
+/// returns whether checking it `deep` could open more: whether an instance's bounds refer to closed
+/// ones, among those opened at first or those whose bounds didn't hold when checked again.
+fn check_inner_bounds(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    (own, inner): (usize, usize),
+    deep: bool,
+) -> (Comparison, bool) {
+    let end = ctx.instances.len();
+    let mut memo = FxHashMap::default();
+    let mut deeper = false;
+    let closed: Vec<usize> = (inner..end)
+        .filter(|&index| {
+            if deep {
+                ctx.is_closed(arena, index, &mut memo)
+            } else if ctx.referenced_instances(arena, index).is_empty() {
+                true
+            } else {
+                deeper |= ctx.is_closed(arena, index, &mut memo);
+                false
+            }
+        })
+        .collect();
+    let reopened = ctx.reopen(closed);
+    ctx.instantiable_from = end;
+    let mut result = check_bounds(arena, builtins, ctx, own..inner);
+    let mut grown: BTreeSet<usize> = close_reopened(ctx, reopened);
+
+    // Each instance whose bounds grew is checked again, from the outermost in. It's checked with
+    // every instance rigid first, as when nothing is instantiated again, which only costs as much
+    // as it did: that it holds then is enough, and reopening only when it doesn't is what keeps the
+    // union member differentials from doubling in time. Only if it doesn't, and it's `deep`, is the check
+    // undone and made again with the closed instances that its bounds refer to open, which come
+    // after it, and those that grow are checked again in turn. A check only grows the instances
+    // after the one it checks, so each is checked at most once. An instance that an earlier check
+    // made is rigid too, since its own check has finished: one that's closed is reopened like the
+    // others where a bound refers to it, and one that isn't would otherwise take bounds that
+    // nothing checks, though no comparison has been found where those don't fail elsewhere first
+    while let Some(index) = grown.pop_first() {
+        ctx.instantiable_from = ctx.instances.len();
+        let snapshot = ctx.snapshot_open();
+        let rigid = check_bounds(arena, builtins, ctx, [index]);
+
+        if rigid == Comparison::Assign {
+            continue;
+        }
+
+        let referenced = ctx.closed_referenced(arena, index);
+
+        if !deep || referenced.is_empty() {
+            deeper |= !referenced.is_empty();
+            result = max(result, rigid);
+            continue;
+        }
+
+        ctx.restore(&snapshot);
+        let reopened = ctx.reopen(referenced);
+        result = max(result, check_bounds(arena, builtins, ctx, [index]));
+        grown.extend(close_reopened(ctx, reopened));
+    }
+
+    (result, deeper)
+}
+
+/// Makes the instances that `ComparisonContext::reopen` reopened rigid again, and returns those
+/// whose bounds grew since.
+fn close_reopened(
+    ctx: &mut ComparisonContext<'_>,
+    reopened: Vec<(usize, (usize, usize))>,
+) -> BTreeSet<usize> {
+    reopened
+        .into_iter()
+        .filter_map(|(index, (lower, upper))| {
+            ctx.open -= 1;
+            let instance = &mut ctx.instances[index];
+            instance.open = false;
+            (instance.lower.len() > lower || instance.upper.len() > upper).then_some(index)
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -45,3 +45,32 @@ fn bound_kept_when_reused() -> Int {
     ) = deferred_pair;
     1
 }
+
+type Duplicate = fn<U>(x: U) -> (U, U);
+type CallsBack = fn<T>(callback: fn(x: Int) -> T) -> (T, T);
+
+fn call_duplicate<B>(function: fn(callback: Duplicate) -> B) -> B {
+    function(unchecked_cast(nil))
+}
+
+// `Duplicate`'s `U` is at least `Int`, from `CallsBack`' callback, so it can't also be `Bytes32`,
+// although it's instantiated two levels in
+fn not_both_two_levels_in() -> Int {
+    let _instantiated: fn(function: CallsBack) -> ((Int, Bytes32), (Int, Bytes32)) = call_duplicate;
+    1
+}
+
+type Identity = fn<V>(v: V) -> V;
+type GivesPair = fn<U>(h: fn(v: U) -> (Int, Int), k: U) -> Int;
+type TakesInt = fn<T>(g: fn(h: T, k: Int) -> Int, b: T) -> Int;
+
+fn call_back<B>(f: fn(g: GivesPair, b: B) -> Int, w: B) -> Int {
+    f(unchecked_cast(nil), w)
+}
+
+// `Identity`'s `V` would have to be both at least `Int` and at most `(Int, Int)`: it's made while
+// `TakesInt`' `T` is checked again, and stays rigid while `GivesPair`' `U` is checked after it
+fn not_instantiated_after_its_check() -> Int {
+    let _instantiated: fn(f: TakesInt, w: Identity) -> Int = call_back;
+    1
+}
