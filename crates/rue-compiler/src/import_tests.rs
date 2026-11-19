@@ -1737,10 +1737,15 @@ fn members_of_ambiguous_modules_exported_from_a_file_are_exported_from_each_modu
     // The file exports what `both::m::X` names, which counts as exporting the `X` in each module
     // that `m` could refer to, whether it's exported by name or through a glob export. A glob
     // export exports `ONLY` too, which only `beta`'s `m` has, even when `m` is bound to the first
-    // module's, but exporting `X` by name doesn't.
+    // module's, unless the file has its own `ONLY`, but exporting `X` by name doesn't.
     for (export, expected) in [
         ("export both::m::X;", vec!["3:81 UnusedConstant"]),
         ("export both::m::*;", vec![]),
+        // The file's own `ONLY` hides `beta`'s, which the glob export never exports
+        (
+            "export both::m::*; const ONLY: Int = 4;",
+            vec!["3:81 UnusedConstant", "5:42 UnusedConstant"],
+        ),
     ] {
         for first_binds in [true, false] {
             let first = if first_binds { "alpha" } else { "zeta" };
@@ -1977,6 +1982,48 @@ fn paths_through_ambiguous_modules_prefer_the_expected_kind_in_each() {
         assert_eq!(
             unused_items(&compiled),
             ["3:72 UnusedTypeAlias"],
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn paths_through_ambiguous_modules_fall_back_to_the_other_kind_in_each() {
+    // `beta`'s `m` only has a type alias `X`, which a use of `both::m::X` as a value finds when
+    // that `m` is bound, and reports as a type. When the first module's `m` is bound, the path
+    // finds its constant, but could refer to `beta`'s type alias too.
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const X: Int = 1;",
+            "export type X = Int;",
+            "fn main() -> Int { both::m::X }",
+        ));
+
+        assert_eq!(
+            unused_items(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn imports_that_other_modules_name_paths_through_are_used() {
+    // `beta`'s `m` has `n` through a private import, which `both::m::n` only finds when that `m`
+    // is bound (and reports as private). Either way, the import's path could name it through
+    // that import, which is used.
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export mod n { export const Y: Int = 1; }",
+            "import super::super::src::n;",
+            "mod src { export mod n { export const Y: Int = 2; } } mod user { import super::both::m::n::Y; export fn value() -> Int { Y } } fn main() -> Int { user::value() }",
+        ));
+
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
             "first binds: {first_binds}"
         );
     }
