@@ -44,11 +44,19 @@ pub fn compile_pair_fields(
 pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> FieldResult {
     let ty = rue_types::unwrap_semantic(ctx.types_mut(), expr.ty, true);
 
+    // The value's type as the parts that keep the references of untyped lambda parameters' types,
+    // if narrowing saw through them (see `narrowed_with_references`)
+    let raw = ctx.with_narrowed_references(expr.ty);
+
     // Narrowing a field of a struct produces a copy of the struct with a narrower inner type, so
     // the field of a union of these copies is the union of the field in each of them
     if matches!(ctx.ty(ty), Type::Union(_))
         && let Some(structs) = rue_types::extract_structs(ctx.types_mut(), ty)
     {
+        // The copies as they were before they were substituted, if they're what the value's type
+        // is made of, so that their fields keep the references in them (see `wrapped_at`)
+        let structs = raw_structs(ctx, raw).unwrap_or(structs);
+
         let mut result: Option<Value> = None;
         let mut types = Vec::new();
 
@@ -101,7 +109,9 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                     );
 
                     let first = if pairs.len() == 1 {
-                        wrapped_at(ctx, expr.ty, &[TypePath::First]).unwrap_or(pairs[0].first)
+                        wrapped_at(ctx, raw, &[TypePath::First]).unwrap_or(pairs[0].first)
+                    } else if let Some(first) = wrapped_union_at(ctx, raw, TypePath::First) {
+                        first
                     } else {
                         ctx.alloc_type(Type::Union(Union::new(
                             pairs.iter().map(|pair| pair.first).collect(),
@@ -126,7 +136,9 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                     );
 
                     let rest = if pairs.len() == 1 {
-                        wrapped_at(ctx, expr.ty, &[TypePath::Rest]).unwrap_or(pairs[0].rest)
+                        wrapped_at(ctx, raw, &[TypePath::Rest]).unwrap_or(pairs[0].rest)
+                    } else if let Some(rest) = wrapped_union_at(ctx, raw, TypePath::Rest) {
+                        rest
                     } else {
                         ctx.alloc_type(Type::Union(Union::new(
                             pairs.iter().map(|pair| pair.rest).collect(),
@@ -145,7 +157,17 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                 _ => FieldResult::Unknown,
             }
         }
-        Type::Struct(ty) => compile_struct_field(ctx, expr, &ty, name),
+        Type::Struct(ty) => {
+            // The struct as it was before it was substituted, so that its fields keep the
+            // references in it (see `wrapped_at`)
+            let raw = unwrap_raw(ctx, raw);
+            let ty = match ctx.ty(raw) {
+                Type::Struct(raw_struct) if keeps_reference(ctx, raw) => raw_struct.clone(),
+                _ => ty,
+            };
+
+            compile_struct_field(ctx, expr, &ty, name)
+        }
     }
 }
 
@@ -226,12 +248,9 @@ fn compile_struct_field(
         }
     }
 
-    // The field's type before the struct's type is substituted, which the references are in
-    let field_type = match ctx.ty(expr.ty) {
-        Type::Struct(raw) => wrapped_at(ctx, raw.inner, &path),
-        _ => None,
-    }
-    .unwrap_or(field_type);
+    // The field's type in the struct's type as it was before it was substituted, if that's the
+    // struct given, which the references are in
+    let field_type = wrapped_at(ctx, ty.inner, &path).unwrap_or(field_type);
     let hir = alloc_field_access(ctx, expr.hir, name, FieldKind::Path(path));
     let mut value = Value::new(hir, field_type);
 
@@ -258,7 +277,7 @@ fn wrapped_at(ctx: &Compiler, ty: TypeId, path: &[TypePath]) -> Option<TypeId> {
     let mut ty = ty;
 
     for step in path {
-        let Type::Pair(pair) = ctx.ty(ty) else {
+        let Type::Pair(pair) = ctx.ty(unwrap_raw(ctx, ty)) else {
             return None;
         };
 
@@ -271,8 +290,144 @@ fn wrapped_at(ctx: &Compiler, ty: TypeId, path: &[TypePath]) -> Option<TypeId> {
     keeps_reference(ctx, ty).then_some(ty)
 }
 
+/// The union of the parts of the pairs that the type is a union of, as they were before they were
+/// substituted, if it's a union of pairs with a reference that an untyped lambda parameter's type
+/// is made of in them (see `wrapped_at`).
+fn wrapped_union_at(ctx: &mut Compiler, ty: TypeId, step: TypePath) -> Option<TypeId> {
+    let parts = raw_members(ctx, ty)?
+        .into_iter()
+        .map(|member| match ctx.ty(member) {
+            Type::Pair(pair) => Some(match step {
+                TypePath::First => pair.first,
+                TypePath::Rest => pair.rest,
+            }),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    Some(ctx.alloc_type(Type::Union(Union::new(parts))))
+}
+
+/// The structs that the type is a union of, as they were before they were substituted, if it's a
+/// union of structs with a reference that an untyped lambda parameter's type is made of in them.
+fn raw_structs(ctx: &Compiler, ty: TypeId) -> Option<Vec<Struct>> {
+    raw_members(ctx, ty)?
+        .into_iter()
+        .map(|member| match ctx.ty(member) {
+            Type::Struct(ty) => Some(ty.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The members of the union the type is, through the aliases and unions in it, as they were before
+/// they were substituted, if it has a reference that an untyped lambda parameter's type is made of
+/// in it (see `wrapped_at`).
+fn raw_members(ctx: &Compiler, ty: TypeId) -> Option<Vec<TypeId>> {
+    if !keeps_reference(ctx, ty) {
+        return None;
+    }
+
+    let Type::Union(union) = ctx.ty(unwrap_raw(ctx, ty)) else {
+        return None;
+    };
+
+    let mut members = Vec::new();
+    let mut stack: Vec<TypeId> = union.types.iter().rev().copied().collect();
+    let mut visited = HashSet::new();
+
+    while let Some(member) = stack.pop() {
+        let member = unwrap_raw(ctx, member);
+
+        if !visited.insert(member) {
+            continue;
+        }
+
+        match ctx.ty(member) {
+            Type::Union(union) => stack.extend(union.types.iter().rev().copied()),
+            _ => members.push(member),
+        }
+    }
+
+    Some(members)
+}
+
+/// Records the type a value of `from` is narrowed to as the parts of it that keep the references
+/// that an untyped lambda parameter's type is made of (see `ParameterWrap`), if `narrowed` sees
+/// through them. Narrowing substitutes what it narrows, so `list` in the `else` of `if list is nil`
+/// with `list: List<A>` would lose `A`'s. The value keeps the narrowed type, so that it's named and
+/// inferred from as it would be otherwise, and only its field accesses read the parts (see
+/// `Compiler::add_narrowed_reference`), which are the same type.
+///
+/// `replaced` is `from` narrowed the same way, which keeps the references outside of the parts it
+/// narrows, such as the rest of a struct when one of its fields is narrowed. If it doesn't keep any,
+/// the parts are the members of `from` that `narrowed` is made of, with a member that's kept whole
+/// staying as it is, alias and all. Nothing is recorded unless the parts are the same type as
+/// `narrowed` and keep a reference that it doesn't already have.
+pub(crate) fn narrowed_with_references(
+    ctx: &mut Compiler,
+    from: TypeId,
+    replaced: TypeId,
+    narrowed: TypeId,
+) {
+    if !keeps_reference(ctx, from) || keeps_reference(ctx, narrowed) {
+        return;
+    }
+
+    let candidate = if keeps_reference(ctx, replaced) {
+        replaced
+    } else {
+        let mut kept = Vec::new();
+        let mut stack = vec![from];
+        let mut visited = HashSet::new();
+
+        while let Some(part) = stack.pop() {
+            if !visited.insert(part) {
+                continue;
+            }
+
+            if ctx.is_assignable(part, narrowed) {
+                kept.push(part);
+            } else if let Type::Union(union) = ctx.ty(unwrap_raw(ctx, part)) {
+                stack.extend(union.types.iter().rev().copied());
+            }
+        }
+
+        match kept.as_slice() {
+            [] => return,
+            [part] => *part,
+            _ => ctx.alloc_type(Type::Union(Union::new(kept))),
+        }
+    };
+
+    if keeps_reference(ctx, candidate)
+        && ctx.is_assignable(candidate, narrowed)
+        && ctx.is_assignable(narrowed, candidate)
+    {
+        ctx.add_narrowed_reference(narrowed, candidate);
+    }
+}
+
+/// The type that an alias, or a reference that isn't an untyped lambda parameter's (such as where a
+/// recursive type refers to itself), stands for, without substituting it, so that the references in
+/// it are kept (see `wrapped_at`).
+fn unwrap_raw(ctx: &Compiler, ty: TypeId) -> TypeId {
+    let mut ty = ty;
+    let mut visited = HashSet::new();
+
+    while visited.insert(ty) {
+        ty = match ctx.ty(ty) {
+            Type::Alias(alias) => alias.inner,
+            Type::Ref(inner) if !ctx.is_reported_as_another_type(ty) => *inner,
+            _ => break,
+        };
+    }
+
+    ty
+}
+
 /// Whether the type has a reference that an untyped lambda parameter's type is made of in it, through
-/// the pairs, unions and structs it's made of, which are what field accesses reach.
+/// the pairs, unions, structs and aliases it's made of, which are what field accesses reach.
 fn keeps_reference(ctx: &Compiler, ty: TypeId) -> bool {
     let mut visited = HashSet::new();
     let mut stack = vec![ty];
@@ -290,6 +445,8 @@ fn keeps_reference(ctx: &Compiler, ty: TypeId) -> bool {
             Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
             Type::Union(union) => stack.extend(union.types.iter().copied()),
             Type::Struct(ty) => stack.push(ty.inner),
+            Type::Alias(alias) => stack.push(alias.inner),
+            &Type::Ref(inner) => stack.push(inner),
             _ => {}
         }
     }

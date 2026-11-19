@@ -70,6 +70,10 @@ impl LambdaBody {
     /// Functions and constants are declared outside of any function, so their types can't have
     /// these generics, other than a function's own generics, which a reference to it renames. A
     /// value's declared type is what counts, since narrowing it can't add a generic to it.
+    ///
+    /// The body's nodes are the ones allocated while the lambda was compiled, rather than the ones
+    /// a walk of its body reaches. Any others among them, such as ones compiled and then dropped,
+    /// can only make this find more captures, so it errs on the side of not instantiating.
     pub(crate) fn captures_generics(&self, ctx: &mut Compiler, generics: &[TypeId]) -> bool {
         let captured: Vec<TypeId> = ctx
             .hirs_between(self.first_hir, self.end_hir)

@@ -1,0 +1,185 @@
+// Narrowing a value whose type keeps a reference that an untyped lambda parameter's type is made of
+// names and infers its type as it would otherwise (#362, step 13e)
+
+fn list_map<A, B>(function: fn(list: List<A>) -> B, value: A) -> B {
+    function([value])
+}
+
+type PairOrBytes<T> = (T, Int) | Bytes32;
+
+fn alias_map<A, B>(function: fn(value: PairOrBytes<A> | nil) -> B, value: A) -> B {
+    function((value, 1))
+}
+
+fn bytes_map<A, B>(function: fn(value: nil | Bytes | (A, Int)) -> B, value: A) -> B {
+    function((value, 1))
+}
+
+type MyInt = Int;
+
+fn my_int() -> MyInt {
+    1
+}
+
+fn int_or_bytes_map<A, B>(function: fn(value: A | Bytes) -> B, value: A) -> B {
+    function(value)
+}
+
+type Maybe = (Int, Int) | nil;
+
+fn maybe() -> Maybe {
+    nil
+}
+
+test fn whole_type_kept() -> Int {
+    // Narrowing that keeps all of `List<A>` names it as before
+    list_map(
+        fn(list) => if list is Any {
+            if list is Any {
+                1
+            } else {
+                2
+            }
+        } else {
+            3
+        },
+        5,
+    )
+}
+
+test fn list_past_nil() -> Int {
+    // Past `nil`, a `List<A>` is named as it was narrowed to otherwise
+    list_map(
+        fn(list) => if list is nil {
+            0
+        } else if list is (Any, Any) {
+            1
+        } else {
+            2
+        },
+        5,
+    )
+}
+
+test fn inferred_from_a_narrowed_value() -> Int {
+    // What's inferred from the narrowed `x` is named as it would be otherwise, `Int | 0`
+    let result = int_or_bytes_map(
+        fn(x) => if x is Int {
+            x
+        } else {
+            0
+        },
+        my_int(),
+    );
+    if result is Int {
+        1
+    } else {
+        2
+    }
+}
+
+test fn narrowed_value_returned_whole() -> Int {
+    // A lambda that returns the narrowed `list` itself infers the call's result as `5 | List<Int>`,
+    // as it would otherwise
+    let result = list_map(
+        fn(list) => if list is nil {
+            5
+        } else {
+            list
+        },
+        5,
+    );
+    if result is Any {
+        1
+    } else {
+        2
+    }
+}
+
+test fn narrowed_value_inside_another_one() -> Int {
+    // A narrowed `List<A>` is named as before inside a list, in a pair that's narrowed itself, and
+    // returned from a lambda
+    list_map(
+        fn(list) => if list is nil {
+            0
+        } else {
+            let in_a_list = [list];
+            let in_a_pair = if list is (Any, Any) {
+                (list, 1)
+            } else {
+                nil
+            };
+            let returned = (fn() => list)();
+            let checked = if in_a_list is (Any, Any) {
+                1
+            } else {
+                2
+            };
+            let again = if in_a_pair is nil {
+                0
+            } else if in_a_pair is (Any, Any) {
+                1
+            } else {
+                2
+            };
+            if returned is Any {
+                checked + again
+            } else {
+                0
+            }
+        },
+        5,
+    )
+}
+
+test fn alias_kept_whole() -> Int {
+    // Past `nil`, the alias is kept whole, so it's named as before
+    alias_map(
+        fn(value) => if value is nil {
+            0
+        } else if value is Any {
+            1
+        } else {
+            2
+        },
+        5,
+    )
+}
+
+test fn kept_parts_without_the_reference() -> Int {
+    // `x` past the pair is `nil | Bytes`, which has no reference in it, so it's narrowed as before,
+    // and what the lambda returns is named as before
+    let result = bytes_map(
+        fn(x) => if x is Bytes {
+            x
+        } else {
+            "z"
+        },
+        5,
+    );
+    let checked = if result is Bytes {
+        if result is Bytes {
+            1
+        } else {
+            2
+        }
+    } else {
+        3
+    };
+    checked
+}
+
+test fn without_a_lambda() -> Int {
+    // A type without a lambda parameter's reference in it is narrowed as before
+    let value = maybe();
+
+    if value is nil {
+        return 0;
+    }
+
+    if value is Any {
+        value.rest
+    } else {
+        0
+    }
+}

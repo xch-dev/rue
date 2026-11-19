@@ -7,7 +7,7 @@ fn make<U>() -> U {
 
 fn main() -> Any {
     // The expected type goes on as `Any` rather than ending, so the list isn't past its end and
-    // nothing gives `make` a type, as before
+    // nothing gives `make` a type, as before. This is by design: `Any` isn't `nil`
     let open: (Int, Any) = [1, make()];
 
     // A type of its own that ends after one item can't hold a second one, whatever it is, so the

@@ -83,7 +83,38 @@ fn struct_map<A, B>(function: fn(wrapper: Wrapper<A>) -> B, value: A) -> B {
     function(Wrapper::<A> { value, other: 1 })
 }
 
+fn optional_map<A, B>(function: fn(x: A | nil) -> B, value: A) -> B {
+    function(value)
+}
+
+fn mixed_map<A, B>(function: fn(x: (A, Int) | ((Int, Int) | Int, Bytes)) -> B, value: A) -> B {
+    function((value, 1))
+}
+
 fn main() -> Int {
+    // Past `x.first is Int`, `x` is both members, which the `(A, Int)` member alone isn't all of,
+    // so it's narrowed as before, and its `rest` can still be `Bytes`
+    let mixed: Int = mixed_map(
+        fn(x) => if x.first is Int {
+            x.rest
+        } else {
+            0
+        },
+        5,
+    );
+
+    // Past `Bytes`, `x` is `nil | (Int, Int)`, where only `nil` is a member of `A | nil` on its own,
+    // which has no reference, so it's narrowed as before and `Bytes` doesn't fit the `nil` expected
+    let pair_or_bytes: (Int, Int) | Bytes = "hi";
+    let narrowed: nil = optional_map(
+        fn(x) => if x is Bytes {
+            x
+        } else {
+            nil
+        },
+        pair_or_bytes,
+    );
+
     // `other` is `Int` whatever `A` is, so it doesn't reference `A`, and isn't narrowed to `1`
     let other: 1 = struct_map(fn(wrapper) => wrapper.other, 5);
 
@@ -112,5 +143,6 @@ fn main() -> Int {
     let unbounded = map(fn(x) => x, 5);
     let five: 5 = unbounded;
 
+    let _narrowed = (narrowed, mixed);
     other + computed + nested.first + unfitting + spread + generic + mismatched.first + cast + five
 }
