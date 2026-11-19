@@ -60,7 +60,7 @@ pub(crate) fn compile_builtin(
             let hir = (call.args.len() >= 2).then(|| {
                 let value = call.check(ctx, 0, types.bytes);
                 let start = call.check(ctx, 1, types.int);
-                let end = (call.args.len() == 3).then(|| call.check(ctx, 2, types.int));
+                let end = call.check_arg(ctx, 2, types.int);
                 ctx.alloc_hir(Hir::Substr(value, start, end))
             });
 
@@ -249,6 +249,12 @@ impl<'a> BuiltinCall<'a> {
         (index < self.args.len()).then(|| self.check(ctx, index, ty))
     }
 
+    /// Checks the argument at `index` against `ty`, or stands in a placeholder if it's missing.
+    fn arg_or_unresolved(&self, ctx: &mut Compiler, index: usize, ty: TypeId) -> HirId {
+        self.check_arg(ctx, index, ty)
+            .unwrap_or_else(|| ctx.unresolved().hir)
+    }
+
     /// Compiles a call with exactly one argument per parameter and no spread. The arguments are
     /// only checked if there are the right number of them.
     fn fixed<const N: usize>(
@@ -294,9 +300,7 @@ impl<'a> BuiltinCall<'a> {
             types.bytes
         };
 
-        let value = self
-            .check_arg(ctx, 0, ty)
-            .unwrap_or_else(|| ctx.unresolved().hir);
+        let value = self.arg_or_unresolved(ctx, 0, ty);
 
         let hir = match (self.spread.is_some(), inline) {
             (true, _) => Hir::ClvmOp(spread_op, value),
@@ -313,9 +317,7 @@ impl<'a> BuiltinCall<'a> {
         self.reject_spread(ctx);
 
         let list = list_of(ctx, item);
-        let value = self
-            .check_arg(ctx, 0, list)
-            .unwrap_or_else(|| ctx.unresolved().hir);
+        let value = self.arg_or_unresolved(ctx, 0, list);
 
         Value::new(ctx.alloc_hir(Hir::ClvmOp(op, value)), ret)
     }
@@ -332,9 +334,7 @@ impl<'a> BuiltinCall<'a> {
         self.expect_between(ctx, 1, 2);
         self.reject_spread(ctx);
 
-        let data = self
-            .check_arg(ctx, 0, bytes)
-            .unwrap_or_else(|| ctx.unresolved().hir);
+        let data = self.arg_or_unresolved(ctx, 0, bytes);
         let dst = self.check_arg(ctx, 1, bytes);
 
         Value::new(ctx.alloc_hir(map(data, dst)), ret)
