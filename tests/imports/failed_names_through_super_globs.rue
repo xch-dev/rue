@@ -1,0 +1,12 @@
+// A module's own failed import of a name is explained by the failure that a glob import through
+// `super` would have brought the name in from, so it isn't reported again
+import X;
+
+mod a {
+    import super::*;
+    import X::d::X;
+}
+
+fn main() -> Int {
+    1
+}

@@ -1,0 +1,15 @@
+// A failed import binds its name in the namespaces that nothing else has it in, so a use of the
+// value isn't reported as finding the type with the same name instead
+mod b {
+    import nope::Z;
+
+    type Z = Int;
+
+    export fn f() -> Int {
+        1 + Z
+    }
+}
+
+fn main() -> Int {
+    b::f()
+}

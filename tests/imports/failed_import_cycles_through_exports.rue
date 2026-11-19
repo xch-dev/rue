@@ -1,0 +1,14 @@
+// A failed import that's exported explains the failures of the imports that find its error item,
+// so a cycle through one, like `b`'s import of `a::d` and `a`'s re-export of `super::d`, reports
+// each of its imports, like other cycles do
+export mod b {
+    import a::d;
+
+    mod a {
+        export super::d;
+    }
+}
+
+fn main() -> Int {
+    1
+}

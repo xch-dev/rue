@@ -943,7 +943,7 @@ struct Resolution {
     /// The named imports that have brought in what they import.
     bound: HashSet<ImportId>,
     /// The imports whose paths don't resolve, which bind their names to error items once nothing
-    /// else can be resolved (see [`blocks`]).
+    /// else can be resolved (see [`fails_to_import`]).
     failed_paths: HashSet<ImportId>,
     /// The lookups that are waiting for a module to settle in this pass.
     waiting: Vec<WaitingLookup>,
@@ -1037,7 +1037,7 @@ fn may_bind(
 /// resolved (see [`bind_failed_imports`]), because a named import of the name into it only found a
 /// private item or its path doesn't resolve. Lookups past the module's own items don't find the
 /// name, like they don't once it's bound.
-fn blocks(
+fn fails_to_import(
     ctx: &Compiler,
     resolution: &Resolution,
     scope: ScopeId,
@@ -1049,7 +1049,7 @@ fn blocks(
         .into_iter()
         .flatten()
         .any(|import| {
-            // An import whose path doesn't resolve blocks its name in every namespace
+            // An import whose path doesn't resolve fails in every namespace
             if resolution.failed_paths.contains(import) {
                 return true;
             }
@@ -1277,10 +1277,11 @@ fn lookup(
         return Lookup::Found(item, via);
     }
 
-    // A segment after the first isn't looked up outside of the module, so it isn't blocked there
+    // A segment after the first isn't looked up outside of the module, so a failed import of it
+    // doesn't matter there
     let outside = match base {
         Base::Inner(_) => None,
-        _ if blocks(ctx, resolution, scope, namespace, name) => None,
+        _ if fails_to_import(ctx, resolution, scope, namespace, name) => None,
         _ => base.outside(ctx, namespace, name),
     };
 
@@ -1497,7 +1498,7 @@ fn resolve_path(
                     let scope = segment_base.scope();
 
                     let found = ctx.scope(scope).item(namespace, name.text()).or_else(|| {
-                        if blocks(ctx, resolution, scope, namespace, name.text()) {
+                        if fails_to_import(ctx, resolution, scope, namespace, name.text()) {
                             return None;
                         }
 
@@ -1717,9 +1718,12 @@ fn resolve_glob_import(
             if ctx.is_error_item(item)
                 || existing.is_some_and(|existing| ctx.is_error_item(existing))
             {
+                // It counts as something the import brings in, since uses of the name are
+                // explained by it
                 if existing.is_none() {
                     insert_error_item(ctx, import_scope, import_id, &name, item, exported);
                     updated = true;
+                    *count += 1;
                 }
 
                 continue;
