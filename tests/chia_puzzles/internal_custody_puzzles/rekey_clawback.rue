@@ -94,6 +94,7 @@ test fn claws_back_the_rekey() -> Any {
             ReserveFee { amount: 1 },
             CreateCoin { puzzle_hash: sha256("me"), amount: 0 },
             CreatePuzzleAnnouncement { message: "other" },
+            CreateCoinAnnouncement { message: "r" },
         ],
     ))
 }

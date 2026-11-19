@@ -306,6 +306,52 @@ test fn accepts_a_payment() -> Any {
     check(spend(2, payment_solution(0, 20), [our_coin(121)]))
 }
 
+test fn makes_and_accepts_a_payment() -> Any {
+    check(spend(2, payment_solution(10, 20), [our_coin(111), payment_coin(10)]))
+}
+
+// Only a puzzle announcement of the rekey keyword is refused, not other announcements of it.
+test fn allows_other_rekey_keyword_announcements() -> Any {
+    check(spend(
+        1,
+        rekey_solution(1),
+        [
+            our_coin(101),
+            rekey_coin(1),
+            CreateCoinAnnouncement { message: "r" },
+            CreatePuzzleAnnouncement { message: "other" },
+        ],
+    ))
+}
+
+fn wrong_singleton_puzzle_hash() -> Any {
+    spend(
+        1,
+        rekey_solution(1),
+        [CreateCoin { puzzle_hash: sha256("other"), amount: 101 }, rekey_coin(1)],
+    )
+}
+
+test fn rejects_the_wrong_singleton_puzzle_hash() -> Any {
+    run(main, wrong_singleton_puzzle_hash())
+}
+
+test fn reference_rejects_the_wrong_singleton_puzzle_hash() -> Any {
+    run(reference, wrong_singleton_puzzle_hash())
+}
+
+fn wrong_payment_amount() -> Any {
+    spend(2, payment_solution(10, 0), [our_coin(91), payment_coin(12)])
+}
+
+test fn rejects_the_wrong_payment_amount() -> Any {
+    run(main, wrong_payment_amount())
+}
+
+test fn reference_rejects_the_wrong_payment_amount() -> Any {
+    run(reference, wrong_payment_amount())
+}
+
 fn unknown_spend_type() -> Any {
     spend(3, nil, [our_coin(101)])
 }

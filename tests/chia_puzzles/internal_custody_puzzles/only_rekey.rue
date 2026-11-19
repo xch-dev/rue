@@ -91,6 +91,10 @@ test fn allows_a_rekey() -> Any {
     ))
 }
 
+test fn allows_the_minimum_timelock() -> Any {
+    check(spend([CreateCoin { puzzle_hash: rekey_puzzle_hash(2), amount: 0 }], 2))
+}
+
 test fn allows_no_rekey() -> Any {
     check(spend([CreateCoin { puzzle_hash: sha256("singleton"), amount: 1 }], 2))
 }
