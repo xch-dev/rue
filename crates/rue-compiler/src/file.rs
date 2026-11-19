@@ -26,7 +26,7 @@ use crate::{
     Compiler, ImportCache, SyntaxItemKind, check_recursion, compile_default_items,
     compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
     declare_module_items, declare_symbol_items, declare_type_items, recheck_contractive_types,
-    resolve_imports,
+    resolve_imports, resolve_pending_defaults,
 };
 
 #[derive(Debug, Error)]
@@ -318,6 +318,7 @@ impl FileTree {
         self.compile_types(ctx);
         recheck_contractive_types(ctx);
         self.compile_defaults(ctx);
+        resolve_pending_defaults(ctx);
         self.compile_symbols(ctx);
 
         if ctx.is_cancelled() {

@@ -7,7 +7,7 @@ use rue_hir::{Hir, StructField, StructInitializer, SymbolPath, Value};
 use rue_types::{Type, Union};
 
 use crate::{
-    Compiler, CompletionContext, PathKind, PathResult, SyntaxField, SyntaxItemKind,
+    Compiler, CompletionContext, PathKind, PathResult, PendingDefault, SyntaxField, SyntaxItemKind,
     check_symbol_value, compile_expr, compile_path,
 };
 
@@ -193,16 +193,23 @@ pub fn compile_struct_initializer_expr(
 
     for name in struct_type.fields.into_iter().rev() {
         let value = if let Some(value) = fields.remove(&name) {
-            Some((value, false))
+            FieldValue::Given(value)
         } else if let Some(value) = ctx.default_field(struct_type.semantic, &name) {
             // Defaults are checked against the declared field type, but check them against the
             // field type of this instantiation as well, in case generics were substituted.
             if let Some(expected_type) = expected_field_types.get(&name) {
                 ctx.assign_type(expr.syntax(), value.ty, *expected_type);
             }
-            Some((value, true))
+            ctx.record_default_use(struct_type.semantic, &name);
+            FieldValue::Default(value)
+        } else if ctx.has_declared_default(struct_type.semantic, &name) {
+            // This is in the default value of another field, and this field's default hasn't been
+            // compiled yet, so it's filled in once every default has been (see
+            // `resolve_pending_defaults`)
+            ctx.record_default_use(struct_type.semantic, &name);
+            FieldValue::Pending
         } else {
-            None
+            FieldValue::Missing
         };
 
         values.push((name, value));
@@ -212,7 +219,7 @@ pub fn compile_struct_initializer_expr(
 
     let missing_fields = values
         .iter()
-        .filter(|(_, value)| value.is_none())
+        .filter(|(_, value)| matches!(value, FieldValue::Missing))
         .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
 
@@ -226,17 +233,28 @@ pub fn compile_struct_initializer_expr(
         );
     }
 
+    let mut pending = Vec::new();
+
     let initializer_fields = values
         .into_iter()
-        .map(|(name, value)| {
-            let (value, is_default) = value.unwrap_or_else(|| {
-                debug!("Unresolved struct initializer field");
-                (ctx.unresolved(), false)
-            });
+        .enumerate()
+        .map(|(index, (name, value))| {
+            let (hir, is_default) = match value {
+                FieldValue::Given(value) => (value.hir, false),
+                FieldValue::Default(value) => (value.hir, true),
+                FieldValue::Pending => {
+                    pending.push((index, name.clone()));
+                    (ctx.builtins().unresolved.hir, true)
+                }
+                FieldValue::Missing => {
+                    debug!("Unresolved struct initializer field");
+                    (ctx.unresolved().hir, false)
+                }
+            };
 
             StructField {
                 name,
-                value: value.hir,
+                value: hir,
                 is_default,
             }
         })
@@ -248,5 +266,32 @@ pub fn compile_struct_initializer_expr(
         nil_terminated: struct_type.nil_terminated,
     }));
 
+    for (index, name) in pending {
+        let expected_type = expected_field_types.get(&name).copied();
+        let srcloc = ctx.srcloc(expr.syntax());
+        let scope = ctx.last_scope_id();
+        let user = ctx.compiling_default();
+
+        ctx.push_pending_default(PendingDefault {
+            hir,
+            index,
+            ty: struct_type.semantic,
+            name,
+            expected_type,
+            srcloc,
+            scope,
+            user,
+        });
+    }
+
     Value::new(hir, ty)
+}
+
+/// The value of a field in a struct initializer.
+enum FieldValue {
+    Given(Value),
+    Default(Value),
+    /// The field has a default value that hasn't been compiled yet.
+    Pending,
+    Missing,
 }

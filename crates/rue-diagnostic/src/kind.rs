@@ -233,6 +233,9 @@ pub enum DiagnosticKind {
     #[error("Struct `{0}` is missing required fields: {1}")]
     MissingRequiredFields(String, String),
 
+    #[error("The default value of field `{0}` on struct `{1}` depends on itself")]
+    RecursiveFieldDefault(String, String),
+
     #[error("Type of parameter cannot be inferred, it must be specified explicitly")]
     CannotInferParameterType,
 

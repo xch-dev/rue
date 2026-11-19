@@ -15,8 +15,9 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Item, Items, Mappings,
-    Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
+    Builtins, Constraint, Database, Declaration, HirId, ImportId, ImportUser, Item, Items,
+    Mappings, Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings,
+    replace_type,
 };
 use rue_lint::{EnclosedPreludeReference, LintInput, LintSites};
 use rue_options::CompilerOptions;
@@ -49,6 +50,16 @@ pub struct Compiler {
     builtins: Builtins,
     field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
+    /// The fields of each struct that have a default value, which is known before the default
+    /// values are compiled.
+    declared_defaults: HashSet<(TypeId, String)>,
+    /// The field whose default value is being compiled, if any.
+    compiling_default: Option<(TypeId, String)>,
+    /// The defaults that each default value uses, by the field it belongs to.
+    default_uses: HashMap<(TypeId, String), Vec<(TypeId, String)>>,
+    /// The fields of struct initializers in default values whose own defaults hadn't been
+    /// compiled yet (see `resolve_pending_defaults`).
+    pending_defaults: Vec<PendingDefault>,
     declaration_stack: Vec<Declaration>,
     registered_scopes: HashSet<ScopeId>,
     external_programs: HashMap<PathBuf, Vec<u8>>,
@@ -134,6 +145,27 @@ pub struct ArgumentFrame {
     pub lambda_parameters: Vec<LambdaParameter>,
 }
 
+/// A field of a struct initializer in a default value, whose own default value hadn't been compiled
+/// yet, so it's filled in once every default value has been (see `resolve_pending_defaults`).
+#[derive(Debug, Clone)]
+pub struct PendingDefault {
+    /// The struct initializer.
+    pub hir: HirId,
+    /// The index of the field in the struct initializer.
+    pub index: usize,
+    /// The struct whose default value it is.
+    pub ty: TypeId,
+    pub name: String,
+    /// The type the default value must be assignable to in this initializer, which can differ
+    /// from the declared field type if generics were substituted.
+    pub expected_type: Option<TypeId>,
+    /// Where the struct initializer is, and the scope it's in, for reporting errors.
+    pub srcloc: SrcLoc,
+    pub scope: ScopeId,
+    /// The field whose default value the struct initializer is in.
+    pub user: Option<(TypeId, String)>,
+}
+
 /// The function or lambda body that a `return` statement exits from.
 #[derive(Debug, Clone)]
 pub struct ReturnTarget {
@@ -178,6 +210,10 @@ impl Compiler {
             builtins,
             field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
+            declared_defaults: HashSet::new(),
+            compiling_default: None,
+            default_uses: HashMap::new(),
+            pending_defaults: Vec::new(),
             declaration_stack: Vec::new(),
             registered_scopes: HashSet::new(),
             external_programs: HashMap::new(),
@@ -1106,10 +1142,40 @@ impl Compiler {
     }
 
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
+        let range = node.text_range();
+        let scope = self.last_scope_id();
+        self.compare_type_in(|ctx| ctx.srcloc(&range), scope, from, to, cast);
+    }
+
+    /// Like [`Self::assign_type`], but for a location in any file, with type names as they're
+    /// written in the given scope.
+    pub(crate) fn assign_type_at(
+        &mut self,
+        srcloc: &SrcLoc,
+        scope: ScopeId,
+        from: TypeId,
+        to: TypeId,
+    ) {
+        self.compare_type_in(|_| srcloc.clone(), scope, from, to, false);
+    }
+
+    fn compare_type_in(
+        &mut self,
+        srcloc: impl Fn(&Self) -> SrcLoc,
+        scope: ScopeId,
+        from: TypeId,
+        to: TypeId,
+        cast: bool,
+    ) {
         let Ok(comparison) =
             rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)
         else {
-            self.too_complex(node, from, to);
+            let from = self.type_name_in(scope, from);
+            let to = self.type_name_in(scope, to);
+            self.diagnostic_at(
+                srcloc(self),
+                DiagnosticKind::TypeComparisonTooComplex(from, to),
+            );
             return;
         };
 
@@ -1117,9 +1183,9 @@ impl Compiler {
             Comparison::Assign => {}
             Comparison::Cast => {
                 if !cast {
-                    let from = self.type_name(from);
-                    let to = self.type_name(to);
-                    self.diagnostic(node, DiagnosticKind::UnassignableType(from, to));
+                    let from = self.type_name_in(scope, from);
+                    let to = self.type_name_in(scope, to);
+                    self.diagnostic_at(srcloc(self), DiagnosticKind::UnassignableType(from, to));
                 }
             }
             Comparison::Invalid => {
@@ -1135,15 +1201,18 @@ impl Compiler {
                         ) => Check::Impossible,
                     };
 
-                let from = self.type_name(from);
-                let to = self.type_name(to);
+                let from = self.type_name_in(scope, from);
+                let to = self.type_name_in(scope, to);
 
                 if check != Check::Impossible {
-                    self.diagnostic(node, DiagnosticKind::UnconstrainableComparison(from, to));
+                    self.diagnostic_at(
+                        srcloc(self),
+                        DiagnosticKind::UnconstrainableComparison(from, to),
+                    );
                 } else if cast {
-                    self.diagnostic(node, DiagnosticKind::IncompatibleCast(from, to));
+                    self.diagnostic_at(srcloc(self), DiagnosticKind::IncompatibleCast(from, to));
                 } else {
-                    self.diagnostic(node, DiagnosticKind::IncompatibleType(from, to));
+                    self.diagnostic_at(srcloc(self), DiagnosticKind::IncompatibleType(from, to));
                 }
             }
         }
@@ -1166,6 +1235,45 @@ impl Compiler {
 
     pub fn is_inferred_field(&self, ty: TypeId, name: &str) -> bool {
         self.inferred_fields.contains(&(ty, name.to_string()))
+    }
+
+    /// Marks a struct field that has a default value, before the default values are compiled.
+    pub(crate) fn insert_declared_default(&mut self, ty: TypeId, name: String) {
+        self.declared_defaults.insert((ty, name));
+    }
+
+    pub(crate) fn has_declared_default(&self, ty: TypeId, name: &str) -> bool {
+        self.declared_defaults.contains(&(ty, name.to_string()))
+    }
+
+    pub(crate) fn set_compiling_default(&mut self, field: Option<(TypeId, String)>) {
+        self.compiling_default = field;
+    }
+
+    pub(crate) fn compiling_default(&self) -> Option<(TypeId, String)> {
+        self.compiling_default.clone()
+    }
+
+    /// Records that the default value being compiled, if any, uses the given field's default.
+    pub(crate) fn record_default_use(&mut self, ty: TypeId, name: &str) {
+        if let Some(user) = self.compiling_default.clone() {
+            self.default_uses
+                .entry(user)
+                .or_default()
+                .push((ty, name.to_string()));
+        }
+    }
+
+    pub(crate) fn default_uses(&self, field: &(TypeId, String)) -> &[(TypeId, String)] {
+        self.default_uses.get(field).map_or(&[], Vec::as_slice)
+    }
+
+    pub(crate) fn push_pending_default(&mut self, pending: PendingDefault) {
+        self.pending_defaults.push(pending);
+    }
+
+    pub(crate) fn take_pending_defaults(&mut self) -> Vec<PendingDefault> {
+        mem::take(&mut self.pending_defaults)
     }
 
     pub fn push_declaration(&mut self, declaration: Declaration) {

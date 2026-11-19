@@ -1,8 +1,10 @@
+use std::collections::HashSet;
+
 use indexmap::IndexSet;
 use log::debug;
 use rue_ast::{AstNode, AstStructItem, AstTypeItem};
 use rue_diagnostic::{DiagnosticKind, Name};
-use rue_hir::{Declaration, ScopeId};
+use rue_hir::{Declaration, Hir, ScopeId};
 use rue_types::{Generic, Pair, Struct, Type, TypeId};
 
 use super::{check_regular, report_and_break_cycle};
@@ -138,8 +140,12 @@ pub fn compile_struct_item(
             continue;
         };
 
-        if field.expr().is_some() && field.ty().is_none() {
-            ctx.insert_inferred_field(struct_type, name.text().to_string());
+        if field.expr().is_some() {
+            ctx.insert_declared_default(struct_type, name.text().to_string());
+
+            if field.ty().is_none() {
+                ctx.insert_inferred_field(struct_type, name.text().to_string());
+            }
         }
 
         if names.insert(name.text().to_string()) {
@@ -204,7 +210,13 @@ pub fn compile_struct_defaults(
 
         let expected_type = field.ty().is_some().then_some(field_type);
 
+        ctx.set_compiling_default(
+            field
+                .name()
+                .map(|name| (struct_type, name.text().to_string())),
+        );
         let mut value = compile_expr(ctx, &expr, expected_type);
+        ctx.set_compiling_default(None);
 
         // The default value must be assignable to the declared field type. If the field type
         // depends on generic parameters, this effectively rejects the default, since a concrete
@@ -242,4 +254,66 @@ pub fn compile_struct_defaults(
     ctx.pop_scope(range.end());
 
     ctx.pop_declaration();
+}
+
+/// Fills in the fields of struct initializers in default values whose own defaults hadn't been
+/// compiled yet, now that every default value has been. A default value that depends on itself
+/// through them is reported, and the field is left unresolved, since it would be infinite.
+pub fn resolve_pending_defaults(ctx: &mut Compiler) {
+    for pending in ctx.take_pending_defaults() {
+        let field = (pending.ty, pending.name.clone());
+
+        if let Some(user) = &pending.user
+            && depends_on(ctx, &field, user)
+        {
+            let type_name = ctx.type_name_in(pending.scope, pending.ty);
+            ctx.diagnostic_at(
+                pending.srcloc,
+                DiagnosticKind::RecursiveFieldDefault(pending.name, type_name),
+            );
+            ctx.note_placeholder();
+            continue;
+        }
+
+        let Some(value) = ctx.default_field(pending.ty, &pending.name) else {
+            // The default value wasn't compiled, which only happens if the struct has errors, but
+            // the field is still reported rather than left unresolved without an error
+            let type_name = ctx.type_name_in(pending.scope, pending.ty);
+            ctx.diagnostic_at(
+                pending.srcloc,
+                DiagnosticKind::MissingRequiredFields(type_name, pending.name),
+            );
+            ctx.note_placeholder();
+            continue;
+        };
+
+        if let Some(expected_type) = pending.expected_type {
+            ctx.assign_type_at(&pending.srcloc, pending.scope, value.ty, expected_type);
+        }
+
+        let Hir::Struct(initializer) = ctx.hir_mut(pending.hir) else {
+            unreachable!();
+        };
+
+        initializer.fields[pending.index].value = value.hir;
+    }
+}
+
+/// Whether the default value of the field uses the default value of `target`, directly or
+/// through the defaults it uses.
+fn depends_on(ctx: &Compiler, field: &(TypeId, String), target: &(TypeId, String)) -> bool {
+    let mut visited = HashSet::new();
+    let mut stack = vec![field.clone()];
+
+    while let Some(current) = stack.pop() {
+        if &current == target {
+            return true;
+        }
+
+        if visited.insert(current.clone()) {
+            stack.extend(ctx.default_uses(&current).iter().cloned());
+        }
+    }
+
+    false
 }

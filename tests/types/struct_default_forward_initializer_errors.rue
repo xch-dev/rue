@@ -1,0 +1,40 @@
+// A default value can't depend on itself, whether directly or through other defaults
+struct Node {
+    value: Int = 1,
+    next: Node | nil = Node {},
+}
+
+struct First {
+    second: Second = Second {},
+}
+
+struct Second {
+    first: First | nil = First {},
+}
+
+// A field declared later without a default is still missing
+struct Holder {
+    required: Required = Required {},
+}
+
+struct Required {
+    value: Int,
+}
+
+// A default that's declared later is still checked against the field's type
+struct Checked {
+    wrong: Int = Wrong {}.value,
+}
+
+struct Wrong {
+    value: Bytes = "hello",
+}
+
+fn main() -> Int {
+    let node = Node {};
+    let first = First {};
+    let holder = Holder {};
+    let checked = Checked {};
+    let _first = first;
+    node.value + holder.required.value + checked.wrong
+}

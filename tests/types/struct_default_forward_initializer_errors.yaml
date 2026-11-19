@@ -1,0 +1,5 @@
+diagnostics:
+- The default value of field `next` on struct `Node` depends on itself at struct_default_forward_initializer_errors.rue:4:24
+- The default value of field `first` on struct `Second` depends on itself at struct_default_forward_initializer_errors.rue:8:22
+- "Struct `Required` is missing required fields: value at struct_default_forward_initializer_errors.rue:17:26"
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at struct_default_forward_initializer_errors.rue:26:18

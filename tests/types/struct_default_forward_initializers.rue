@@ -1,0 +1,57 @@
+// A default value can build a struct that's declared later, which then uses its own defaults
+struct Outer {
+    middle: Middle = Middle {},
+    tagged: Tagged = Tagged {},
+    nested: Inner = Inner { value: 3 },
+}
+
+struct Middle {
+    value: Int = 5,
+    inner: Inner = Inner {},
+}
+
+struct Inner {
+    value: Int = 6,
+    other: Int = 7,
+}
+
+// An inferred field type is only known once its default has been compiled
+struct Tagged {
+    opcode = 51,
+}
+
+// A generic struct's default is checked against the field type of the instantiation
+struct UsesGeneric {
+    boxed: BoxedBytes = BoxedBytes {},
+}
+
+type BoxedBytes = Boxed<Bytes>;
+
+struct Boxed<T> {
+    value: T | Int = 9,
+}
+
+// The struct can also be declared in a module that comes later
+struct UsesModule {
+    later: m::Later = m::Later {},
+}
+
+mod m {
+    export struct Later {
+        value: Int = 8,
+    }
+}
+
+test fn forward_initializers() -> Int {
+    let outer = Outer {};
+    let uses_module = UsesModule {};
+    let uses_generic = UsesGeneric {};
+    outer.middle.value
+        + outer.middle.inner.value
+        + outer.middle.inner.other
+        + outer.tagged.opcode
+        + outer.nested.value
+        + outer.nested.other
+        + uses_module.later.value
+        + uses_generic.boxed.value as Int
+}
