@@ -1,0 +1,90 @@
+// A lambda that's an element of a pair or list argument has its untyped parameters compiled as
+// references to the callee's generics, and a call in its body sees through the reference, so its
+// return type can have the generic itself. Those generics are instantiated with what the call
+// infers, as the parameter is, so none of them is left in the lambda's type (#362, 13k)
+
+fn identity<Q>(value: Q) -> Q {
+    value
+}
+
+fn apply<T, U>(function: fn(x: T) -> U, value: T) -> U {
+    function(value)
+}
+
+fn map_list<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    if functions is (fn(x: T) -> U, List<fn(x: T) -> U>) {
+        [functions.first(value), ...map_list(functions.rest, value)]
+    } else {
+        nil
+    }
+}
+
+fn apply_first<T, U>(functions: (fn(x: T) -> U, Int), value: T) -> U {
+    functions.first(value)
+}
+
+test fn element_of_a_list() -> List<Int> {
+    map_list([fn(x) => identity(x)], 5)
+}
+
+test fn element_of_a_list_without_an_expected_type() -> List<Int> {
+    let results = map_list([fn(x) => identity(x)], 5);
+    results
+}
+
+test fn element_of_a_pair() -> Int {
+    apply_first((fn(x) => identity(x), 1), 5)
+}
+
+test fn several_elements() -> List<Int> {
+    map_list([fn(x) => identity(x), fn(x) => x], 5)
+}
+
+test fn element_before_a_spread() -> List<Int> {
+    let rest = [fn(x: Int) => x * 2];
+
+    map_list([fn(x) => identity(x), ...rest], 5)
+}
+
+test fn nested_calls_in_the_body() -> List<Int> {
+    map_list([fn(x) => identity(identity(x))], 5)
+}
+
+test fn nested_lambda_in_the_body() -> List<Int> {
+    map_list([fn(x) => apply(fn(y) => identity(y), x)], 5)
+}
+
+test fn block_body() -> List<Int> {
+    map_list(
+        [
+            fn(x) => {
+                let y = identity(x);
+                y
+            },
+        ],
+        5,
+    )
+}
+
+test fn generic_inside_a_returned_pair() -> List<(Int, Int)> {
+    map_list([fn(x) => (identity(x), x)], 5)
+}
+
+struct Holder<T, U> {
+    function: fn(x: T) -> U,
+}
+
+fn apply_holder<T, U>(holder: Holder<T, U>, value: T) -> U {
+    holder.function(value)
+}
+
+// A struct initializer's generics are written out, so its fields are compiled against those, not
+// the callee's
+test fn struct_field() -> Int {
+    apply_holder(Holder::<Int, Int> { function: fn(x) => identity(x) }, 5)
+}
+
+// A lambda that's the whole argument was already instantiated through its parameters' references
+test fn whole_argument() -> Int {
+    apply(fn(x) => identity(x), 5)
+}
