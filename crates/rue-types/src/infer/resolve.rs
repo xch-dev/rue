@@ -706,10 +706,15 @@ fn without_subsumed_functions(
     result
 }
 
-/// The union of the types. A member that's a union is replaced by its members, and one that's the
-/// same as an earlier one is left out (an atom with the same semantic and restriction, or a copy of
-/// a compound type, see `same_structure`), so that unions built from each other, such as those of
+/// The union of the types. A member that's a union is replaced by its members, an atom that's the
+/// same as an earlier one is left out, and so is a compound type that two earlier members are
+/// copies of (see `same_structure`), so that unions built from each other, such as those of
 /// generics inferred through a chain of others, don't double in size each time (#337).
+///
+/// Two copies of a compound type are kept, since a union with one copy of `(5, 5)` doesn't type the
+/// same as one with two: a field of the first can be a lone `5`, which is widened to `Int`, where
+/// the second gives the union `5 | 5`, which isn't. Atoms already rely on that difference being
+/// made by the unions they're in, and a union of two copies says no more than one of any number.
 ///
 /// The result is only a single type if it was given one. Otherwise it stays a union, even of one
 /// member, since a union isn't widened as a literal is (see `widen_literal`), which inference has
@@ -743,10 +748,12 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
                 }
             }
             _ => {
-                if !members
+                let copies = members
                     .iter()
-                    .any(|&member| same_structure(arena, member, ty))
-                {
+                    .filter(|&&member| same_structure(arena, member, ty))
+                    .count();
+
+                if copies < 2 {
                     members.insert(ty);
                 }
             }
