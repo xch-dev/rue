@@ -44,6 +44,7 @@ fn main(
     let _ = substr(bytes);
     let _ = substr(bytes, int, int, int);
     let _ = substr(int, bytes);
+    let _ = substr(bytes, ...[int]);
     let _ = divmod(int);
     let _ = divmod(int, bytes);
     let _ = modpow(int, int);
@@ -65,6 +66,8 @@ fn main(
     let _ = bls_verify(sig, pk);
     let _ = bls_verify(pk, pk, bytes);
     let _ = bls_verify(sig, pk, ...[bytes]);
+    let _ = bls_verify(sig, ...pks);
+    let _ = bls_pairing_identity(...pks);
 
     // Secp verification takes a key, a message hash and a signature of the same curve
     let _ = secp256k1_verify(k1_pk, hash);
