@@ -34,3 +34,19 @@ test fn pair_struct(p: (Int, (Int, nil)) | nil) -> Int {
     }
     0
 }
+
+// The rest of a merged guard sees the structure as well
+test fn pair_struct_and(p: (Int, (Int, nil)) | nil) -> Int {
+    if (p as Point | nil) is Point && p.first > 0 {
+        return (p as Point).y;
+    }
+    0
+}
+
+// An `Atom` has no semantic of its own, so like `Any` it takes on the guard's
+test fn atom_bytes32(a: Atom) -> Bytes32 {
+    if a is Bytes32 {
+        return a;
+    }
+    sha256(a as Bytes)
+}

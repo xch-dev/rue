@@ -18,3 +18,9 @@ diagnostics:
   Unnecessary parentheses at cast_guard_errors.rue:56:9
     help: Remove the parentheses
 - Cannot assign `Int` to `Bytes32` without a cast, since they are semantically different at cast_guard_errors.rue:57:16
+- Unused function `else_to_struct` at cast_guard_errors.rue:62:4
+- Cannot assign `Point | (Int, (Int, nil))` to `Point` without a cast, since they are semantically different at cast_guard_errors.rue:62:56
+- Unused function `and_to_struct` at cast_guard_errors.rue:70:4
+- Cannot assign `(Int, (Int, nil))` to `Point` without a cast, since they are semantically different at cast_guard_errors.rue:72:16
+- Unused function `int_to_non_canonical` at cast_guard_errors.rue:77:4
+- Cannot assign `0x0001` to `1`, since they are incompatible at cast_guard_errors.rue:79:20

@@ -3,8 +3,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Atom, BuiltinTypes, Comparison, ComparisonContext, FxIndexSet, Memo, OverlapMemo, Pair, Struct, Type,
-    TypeId, Union, compare, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
+    Atom, BuiltinTypes, Comparison, ComparisonContext, FxIndexSet, Memo, OverlapMemo, Pair, Struct,
+    Type, TypeId, Union, compare, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
     stringify_impl, substitute, types_may_overlap, unwrap_semantic_without_substitution,
 };
 
@@ -64,7 +64,7 @@ pub fn intersect(
 struct IntersectContext {
     stack: FxIndexSet<(TypeId, TypeId)>,
     /// Completed intersections, keyed by the types and the depth (since the result falls back to
-    /// `rhs` past a certain depth). The same intersections are reached through every reference to
+    /// `lhs` past a certain depth). The same intersections are reached through every reference to
     /// a type, which is exponential in the depth of the type.
     memo: Memo<(TypeId, TypeId), (TypeId, TypeId, usize), TypeId>,
     /// Shared by every comparison and overlap check, since they all start from an empty stack.
@@ -450,6 +450,9 @@ mod tests {
         ));
         assert_eq!(db.intersect(b.bool, one), b.bool_true);
 
+        // An `Atom` has no semantic of its own, so like `Any` it takes on the other one
+        assert_eq!(db.intersect(b.atom, b.bytes32), b.bytes32);
+
         // A value fits within a length restriction of the same length
         let value = db.atom(Atom::new(
             AtomSemantic::Bytes,
@@ -646,6 +649,25 @@ mod tests {
 
         let pair = db.pair(b.int, b.int);
         assert_eq!(db.intersect(alias, pair), b.never);
+    }
+
+    #[test]
+    fn test_intersect_depth_limit() {
+        let mut db = Db::new();
+        let b = db.builtins;
+
+        // Past the maximum depth, the value being narrowed is kept as is, with its semantic
+        let (mut lhs, mut rhs) = (b.int, b.bytes32);
+        for _ in 0..=MAX_DEPTH {
+            lhs = db.pair(lhs, b.nil);
+            rhs = db.pair(rhs, b.nil);
+        }
+
+        let mut ty = db.intersect(lhs, rhs);
+        while let Type::Pair(pair) = db.arena[ty].clone() {
+            ty = pair.first;
+        }
+        assert_eq!(ty, b.int);
     }
 
     #[test]
