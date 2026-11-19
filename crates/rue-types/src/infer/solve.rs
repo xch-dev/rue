@@ -18,13 +18,15 @@ pub struct CallSolver {
     /// The candidates inferred from the type expected of the call, if it has one.
     expected: Option<Inference>,
     /// What the expected type infers on its own, for the generics that nothing else constrains,
-    /// such as `T` in `let value: Int = unchecked_cast(nil);`.
+    /// such as `T` in `let value: Int = unchecked_cast(nil);`, or what a narrower expected type
+    /// does, if the solver has one (see `CallSolver::with_narrower_expected`).
     fallback: HashMap<TypeId, TypeId>,
-    /// What the expected type infers on its own, which `CallSolver::widen_to_expected` widens to.
-    /// It's `fallback` unless a narrower one was given (see `CallSolver::with_fallback`).
+    /// What the expected type infers on its own, always, which `CallSolver::widen_to_expected`
+    /// widens an argument's mappings to.
     expected_bounds: HashMap<TypeId, TypeId>,
     /// The candidates inferred from a narrower type expected of the call, which bound the generics
-    /// that nothing but the expected type constrains in place of it (see `CallSolver::with_fallback`).
+    /// that nothing but the expected type constrains in place of it (see
+    /// `CallSolver::with_narrower_expected`).
     narrower: Option<Inference>,
     /// The last inference that `CallSolver::instantiate` was given for each value of its `expected`
     /// flag, with what it gave. The argument loop solves the same inference up to three times
@@ -56,22 +58,20 @@ impl CallSolver {
         }
     }
 
-    /// The solver with the generics that nothing else constrains taking what `fallback` infers on
-    /// its own, rather than what the type expected of the call does, which still bounds the others.
-    /// That's for a call whose expected type was widened to an enclosing call's expected type (see
-    /// `CallSolver::widen_to_expected`), where `fallback` is the narrower one it would have had.
+    /// The solver with the generics that nothing but the expected type constrains bounded by what
+    /// `narrower`, a narrower type expected of the call, infers, and falling back to it, rather
+    /// than to the expected type, which still bounds the others. That's for a call whose expected
+    /// type was widened to its enclosing call's (see `CallSolver::widen_to_expected`), where
+    /// `narrower` is the one it would have had.
     #[must_use]
-    pub fn with_fallback(
+    pub fn with_narrower_expected(
         mut self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
-        fallback: Option<&Inference>,
+        narrower: &Inference,
     ) -> Self {
-        if let Some(fallback) = fallback {
-            self.fallback = resolve_inference(arena, builtins, fallback);
-            self.narrower = Some(fallback.clone());
-        }
-
+        self.fallback = resolve_inference(arena, builtins, narrower);
+        self.narrower = Some(narrower.clone());
         self
     }
 
@@ -156,7 +156,7 @@ impl CallSolver {
     }
 
     /// Replaces each of the mappings that the type expected of the call bounds on its own (see
-    /// `CallSolver::new`'s fallback) with that bound, where the mapping is assignable to it. This
+    /// `expected_bounds`) with that bound, where the mapping is assignable to it. This
     /// is for an argument that's a call, so it's compiled against what the expected type allows,
     /// such as `7 | 8` for `T` in `let v: 7 | 8 = either(7, id(8));`, rather than what the
     /// arguments so far narrowed it to (`7`), which the call's own value can't widen. A generic
@@ -206,7 +206,7 @@ impl CallSolver {
         // With a narrower expected type, the generics that nothing but the expected type constrains
         // are bounded by it rather than by the expected type, as they would have been before the
         // expected type was widened, and the generics bounded through them follow (see
-        // `CallSolver::with_fallback`)
+        // `CallSolver::with_narrower_expected`)
         if let Some(expected) = &self.expected {
             if let Some(narrower) = &self.narrower {
                 let constrained = |generic: TypeId| {

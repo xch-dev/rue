@@ -289,8 +289,6 @@ impl Inference {
         kept
     }
 
-    /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
-    /// if nothing else constrains the generic, they're dropped along with any bound.
     /// Drops every candidate of the generics that `keep` doesn't allow.
     pub(crate) fn retain_generics(&mut self, keep: impl Fn(TypeId) -> bool) {
         for (&generic, candidates) in &mut self.generics {
@@ -301,6 +299,8 @@ impl Inference {
         }
     }
 
+    /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
+    /// if nothing else constrains the generic, they're dropped along with any bound.
     pub fn retain_bounds(&mut self, mut f: impl FnMut(TypeId) -> bool) {
         for (generic, candidates) in &mut self.generics {
             let branches = self.branches.get_mut(generic).unwrap();

@@ -32,7 +32,7 @@ pub use path::*;
 pub use prefix::*;
 pub use struct_initializer::*;
 
-use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
+use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
 use rue_hir::Value;
 use rue_types::TypeId;
 
@@ -54,7 +54,9 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::ListExpr(expr) => compile_list_expr(ctx, expr, expected_type),
         AstExpr::PrefixExpr(expr) => compile_prefix_expr(ctx, expr),
         AstExpr::BinaryExpr(expr) => compile_binary_expr(ctx, expr),
-        AstExpr::FunctionCallExpr(expr) => compile_function_call_expr(ctx, expr, expected_type),
+        AstExpr::FunctionCallExpr(expr) => {
+            compile_function_call_expr(ctx, expr, expected_type, None)
+        }
         AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type),
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
@@ -63,6 +65,25 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::Block(block) => compile_block(ctx, block, BlockKind::Expr, expected_type, true),
     };
 
+    ctx.record_value(expr.syntax(), value)
+}
+
+/// Compiles a call that's an argument of a call whose generics are being inferred, as
+/// `compile_expr` does, with a narrower type expected of it than `expected_type`, which its generics
+/// that nothing else gives a type take (see `ArgumentOrder::widens_to_expected`).
+pub(crate) fn compile_call_argument(
+    ctx: &mut Compiler,
+    expr: &AstExpr,
+    call: &AstFunctionCallExpr,
+    expected_type: Option<TypeId>,
+    narrower: Option<TypeId>,
+) -> Value {
+    ctx.add_syntax(
+        SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+        expr.syntax().text_range(),
+    );
+
+    let value = compile_function_call_expr(ctx, call, expected_type, narrower);
     ctx.record_value(expr.syntax(), value)
 }
 

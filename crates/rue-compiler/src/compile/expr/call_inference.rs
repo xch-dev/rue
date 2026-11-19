@@ -17,8 +17,8 @@ use rue_types::{
 };
 
 use crate::{
-    ArgumentFrame, Compiler, LambdaBody, LambdaParameter, ParameterWrap, compile_expr,
-    compile_lambda_argument, occurs_contravariantly,
+    ArgumentFrame, Compiler, LambdaBody, LambdaParameter, ParameterWrap, compile_call_argument,
+    compile_expr, compile_lambda_argument, occurs_contravariantly,
 };
 
 /// What inferring a call's generics gave.
@@ -139,7 +139,7 @@ pub(crate) fn infer_call(
 
         // A call that's widened to the expected type's own bounds takes what the arguments so far
         // map as a narrower expected type, for its generics that nothing else gives a type, such
-        // as `A` in `nothing<A>(v: Int) -> A` (see `Compiler::with_narrower_expected_type`)
+        // as `A` in `nothing<A>(v: Int) -> A` (see `compile_call_argument`)
         let mut narrower_mappings = None;
 
         if order.widens_to_expected(i) {
@@ -203,24 +203,25 @@ pub(crate) fn infer_call(
             _ => None,
         };
 
-        let (value, mut parameters) = ctx.with_narrower_expected_type(narrower, |ctx| {
-            ctx.with_expected_type_fallback(false, |ctx| {
-                ctx.with_expected_type_hint(hint, |ctx| {
-                    if let AstExpr::LambdaExpr(lambda) = expr {
-                        let wrap = match &params {
-                            Some(params) => ParameterWrap::Generics {
-                                params,
-                                generics: &function.generics,
-                                mappings: &mappings,
-                            },
-                            None => ParameterWrap::Whole,
-                        };
+        let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
+            ctx.with_expected_type_hint(hint, |ctx| match expr {
+                AstExpr::LambdaExpr(lambda) => {
+                    let wrap = match &params {
+                        Some(params) => ParameterWrap::Generics {
+                            params,
+                            generics: &function.generics,
+                            mappings: &mappings,
+                        },
+                        None => ParameterWrap::Whole,
+                    };
 
-                        compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
-                    } else {
-                        (compile_expr(ctx, expr, Some(expected)), Vec::new())
-                    }
-                })
+                    compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
+                }
+                AstExpr::FunctionCallExpr(call) if narrower.is_some() => (
+                    compile_call_argument(ctx, expr, call, Some(expected), narrower),
+                    Vec::new(),
+                ),
+                _ => (compile_expr(ctx, expr, Some(expected)), Vec::new()),
             })
         });
 
@@ -676,7 +677,7 @@ struct Argument {
     /// generics once it's compiled against them, as `8` does in `id(8)`, and its generics that
     /// only its expected type constrains, such as `A` in `nothing<A>(v: Int) -> A` or the `T` of
     /// a call without arguments, still take the narrower type (see
-    /// `Compiler::with_narrower_expected_type`). It has no lambda in it, even one a call passes
+    /// `compile_call_argument`). It has no lambda in it, even one a call passes
     /// through, since a lambda's parameter types keep the narrower mappings.
     widens: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).

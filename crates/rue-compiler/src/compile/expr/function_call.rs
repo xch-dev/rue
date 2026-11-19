@@ -14,10 +14,8 @@ pub fn compile_function_call_expr(
     ctx: &mut Compiler,
     call: &AstFunctionCallExpr,
     expected_type: Option<TypeId>,
+    narrower: Option<TypeId>,
 ) -> Value {
-    // Only this call takes a narrower expected type, not the expressions in it
-    let narrower = ctx.take_narrower_expected_type();
-
     let Some(call_expr) = call.expr() else {
         debug!("Unresolved function call expr");
         return ctx.unresolved();
