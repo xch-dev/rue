@@ -109,3 +109,19 @@ test fn bounds_from_unmatched_members_dont_decide_revisits() -> Int {
     let _inline: fn(x: Int) -> Rest = function;
     1
 }
+
+type Nested = (Nested, nil);
+type Either<U> = U | (Either<U>, nil);
+
+fn either_of<U>(value: Either<U>) -> U {
+    unchecked_cast(value)
+}
+
+// Comparing `(Nested, nil)` with `Either<U>` holds the pair with the pair member, by revisiting the
+// same comparison. The only bound the revisit puts on `U` is one that didn't match, so the pair
+// member holds the value whatever `U` is, the `U` member's `U ≥ Nested` isn't needed, and `U` is
+// `Int` (#362's step 13b.1)
+test fn unmatched_bounds_from_revisits_dont_bound() -> Int {
+    let _f: fn(value: Nested) -> Int = either_of;
+    1
+}

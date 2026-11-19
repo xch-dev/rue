@@ -819,7 +819,15 @@ impl ComparisonContext<'_> {
             let bound = (constraint.ty, env, branches);
             // The binders a key numbers are the ones its generics resolve to, so none is an alias
             debug_assert!(self.binders[args[position]].alias.is_none());
+
+            // A bound that didn't match doesn't decide anything, so it doesn't count as bounding
+            // the instance for the union member it's applied under either (see `compare_member`)
+            let bounded = self.bounded;
             self.push_bound(args[position], bound, constraint.upper);
+
+            if constraint.unmatched {
+                self.bounded = bounded;
+            }
         }
     }
 
