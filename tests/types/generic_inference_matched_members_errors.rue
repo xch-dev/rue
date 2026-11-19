@@ -16,11 +16,25 @@ type Inline = fn(x: Int) -> Rest;
 type Revisited = fn(x: Int) -> Rest;
 type Other = fn(x: Bytes) -> Rest;
 
-// A member that only holds by assuming the comparison in progress doesn't count as holding the
-// value without bounds, so whether `A ≥ Bytes` from `Other` is checked doesn't depend on whether
-// the target is written as the alias that's revisited. Both are rejected, as before
+// Whether the target is written as the alias that's revisited doesn't change the result. Both
+// are accepted since #362's step 13b.1, which instantiates each occurrence of a generic function
+// on its own: the `Recursive` that `function` returns is assignable to `Revisited` whatever the
+// outer `A` is. They were rejected before, when revisiting the return type merged the inner `A`,
+// with its `A ≥ Bytes` from `Other`, into the outer one
 fn assign_through_the_revisited_alias(function: Recursive) -> Int {
     let _revisited: Revisited = function;
     let _inline: Inline = function;
+    1
+}
+
+fn pick<A>(value: (A | Bytes32, nil) | (Int, A)) -> A {
+    unchecked_cast(value)
+}
+
+// The first member only bounds `A` through the union nested in it, which still counts as bounding
+// it, so it doesn't hold the value whatever `A` is, and the second member's `A ≥ nil` is checked
+// against `A ≤ Int`
+fn nested_member_bounds() -> Int {
+    let _f: fn(value: (Int, nil)) -> Int = pick;
     1
 }

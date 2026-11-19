@@ -2028,6 +2028,146 @@ mod inference {
         }));
     }
 
+    /// What's collected under a union member holds as far as the choices from an index on decide,
+    /// which leaves out the ones it's nested in that are still being compared (see
+    /// `ComparisonContext::summary_since`).
+    #[test]
+    fn choices_matched_since() {
+        let mut choices = Choices::default();
+        let outer = choices.open(None, 2);
+        let outer_member = BranchId {
+            choice: outer,
+            member: 1,
+        };
+        choices.record(
+            BranchId {
+                choice: outer,
+                member: 0,
+            },
+            Comparison::Assign,
+        );
+
+        let inner = choices.open(Some(outer_member), 2);
+        let [missed, matched] = [0, 1].map(|member| BranchId {
+            choice: inner,
+            member,
+        });
+        choices.record(missed, Comparison::Invalid);
+        choices.record(matched, Comparison::Assign);
+
+        // Once the outer member gives `Cast`, it doesn't match, but from the inner choice on only
+        // the inner member decides
+        choices.record(outer_member, Comparison::Cast);
+        assert!(!choices.matched_so_far(matched));
+        assert!(choices.matched_since(matched, inner));
+        assert!(!choices.matched_since(missed, inner));
+        assert!(!choices.matched_since(matched, outer));
+
+        // A branch from before the index holds
+        assert!(choices.matched_since(outer_member, inner));
+    }
+
+    /// A comparison that's revisited is computed again in rounds, until what it puts on the
+    /// instances its key refers to stops changing, and each round undoes the candidates the one
+    /// before collected, so that they're collected once.
+    #[test]
+    fn rounds_collect_candidates_once() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let t = db.generic("T");
+
+        // type Rec = fn<A>(x: A) -> (A, (Int, Rec));
+        let rec = db.declare_alias("Rec", &[]);
+        let a = db.generic("A");
+        let rest = db.pair(int, rec);
+        let ret = db.pair(a, rest);
+        let function = db.function_with(&[a], &[a], true, ret);
+        db.define(rec, function);
+
+        // type R2 = (Int, (T, Again)); type Again = fn(x: Int) -> R2;
+        let r2 = db.declare_alias("R2", &[]);
+        let again = db.declare_alias("Again", &[]);
+        let rest = db.pair(t, again);
+        let inner = db.pair(int, rest);
+        db.define(r2, inner);
+        let function = db.function(&[int], r2);
+        db.define(again, function);
+        let target = db.function(&[int], r2);
+
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(rec, target, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower, vec![int]);
+    }
+
+    /// A bound that a revisit gets from a union member that didn't match is checked under an
+    /// inference member that didn't match either, so the candidates it collects are left out of
+    /// the matched ones, like those of the original.
+    #[test]
+    fn revisits_keep_unmatched_candidates_out() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let nil = db.builtins.nil;
+        let t = db.generic("T");
+
+        // type Rec = fn<A>(x: A) -> (A, Rec);
+        let rec = db.declare_alias("Rec", &[]);
+        let a = db.generic("A");
+        let ret = db.pair(a, rec);
+        let function = db.function_with(&[a], &[a], true, ret);
+        db.define(rec, function);
+
+        // type R2 = (Int, Again) | (T, nil); type Again = fn(x: Int) -> R2;
+        let r2 = db.declare_alias("R2", &[]);
+        let again = db.declare_alias("Again", &[]);
+        let matched = db.pair(int, again);
+        let unmatched = db.pair(t, nil);
+        let union = db.union(&[matched, unmatched]);
+        db.define(r2, union);
+        let function = db.function(&[int], r2);
+        db.define(again, function);
+        let target = db.function(&[int], r2);
+
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(rec, target, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower, vec![int, int]);
+        assert_eq!(infer.matched_candidates(t).unwrap().lower, Vec::new());
+    }
+
+    /// Restoring a snapshot removes the candidates and choices collected since, so that a
+    /// comparison computed again collects them once.
+    #[test]
+    fn inference_restores_snapshot() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+        infer.push(a, CandidateKind::Lower, int, Vec::new());
+
+        let before = infer.clone();
+        let snapshot = infer.snapshot();
+
+        let choice = infer.open_choice(None, 2);
+        let branch = BranchId { choice, member: 0 };
+        infer.record(branch, Comparison::Assign);
+        infer.push(a, CandidateKind::Lower, b, vec![branch]);
+        infer.push(b, CandidateKind::Upper, int, vec![branch]);
+        infer.push(b, CandidateKind::Held, int, Vec::new());
+
+        infer.restore(&snapshot);
+        assert_eq!(infer.candidates(a), before.candidates(a));
+
+        // The union members are removed along with the candidates, so the next one is in step
+        let choice = infer.open_choice(None, 2);
+        let next = BranchId { choice, member: 1 };
+        let index = infer.push(a, CandidateKind::Lower, b, vec![next]);
+        assert_eq!(infer.branches(a, CandidateKind::Lower, index), [next]);
+        infer.restore(&snapshot);
+
+        assert_eq!(infer.candidates(b), before.candidates(b));
+        assert_eq!(infer.choice_results(), before.choice_results());
+        assert_eq!(infer.matched_candidates(a), before.matched_candidates(a));
+    }
+
     #[test]
     fn bounds_passed_through_compound_lower_bounds_keep_their_members() {
         let mut db = Db::new();
@@ -2967,7 +3107,7 @@ mod substitution {
     }
 
     #[test]
-    fn recursive_rigid_generics_are_not_merged() {
+    fn recursive_rigid_generics_get_the_summary() {
         let mut db = Db::new();
         let int = db.builtins.int;
         let any = db.alloc(Type::Any);
@@ -3014,7 +3154,7 @@ mod substitution {
     }
 
     #[test]
-    fn recursive_shared_instances_are_checked_against_fresh_generics() {
+    fn recursive_shared_instances_get_the_summary() {
         let mut db = Db::new();
         let int = db.builtins.int;
         let any = db.alloc(Type::Any);

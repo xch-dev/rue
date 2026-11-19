@@ -172,6 +172,13 @@ where
 /// while the approximations from earlier rounds are discarded. Each round computes each item with
 /// a key at most once (an item without one is computed every time it's reached).
 ///
+/// The single pass relies on the values being a chain of three. Iterating only relies on them
+/// forming a finite lattice in which the equations are monotone, with `Join` as its least upper
+/// bound: the comparisons that put bounds on generic functions' instances have those bounds (their
+/// summaries) as part of their values, which a revisit applies to its own instances, and which
+/// only grow from one round to the next. Those comparisons iterate from the start (see
+/// `ComparisonContext::monotonicity` in `compare.rs`).
+///
 /// An item without a key isn't cached or iterated. It's given the least value when it's reached
 /// again, as in a single pass, which is only exact if such an item never relies on itself.
 #[derive(Debug)]
@@ -235,10 +242,18 @@ impl<K, V> Default for FixpointMemo<K, V> {
     }
 }
 
+/// A value that `FixpointMemo` approximates, which has a least upper bound of two values. The
+/// approximations of an item only increase from one round to the next, as long as its equation is
+/// monotone in this order.
+pub(crate) trait Join: Clone + Eq {
+    /// The least value that's at least both.
+    fn join(&self, other: &Self) -> Self;
+}
+
 impl<K, V> FixpointMemo<K, V>
 where
     K: Copy + Eq + Hash,
-    V: Copy + Ord,
+    V: Join,
 {
     /// Starts a computation from an empty stack, in a single pass.
     pub fn start(&mut self) {
@@ -255,7 +270,12 @@ where
         self.abandoned
     }
 
-    /// Starts a round of iterating, after the single pass was abandoned.
+    /// Whether the computation is iterating rather than running in a single pass.
+    pub fn iterating(&self) -> bool {
+        self.iterating
+    }
+
+    /// Starts a round of iterating, after the single pass was abandoned (or instead of it).
     pub fn start_round(&mut self) {
         self.iterating = true;
         self.abandoned = false;
@@ -294,11 +314,11 @@ where
 
         let value = key
             .and_then(|key| self.approximations.get(key))
-            .map_or(least, |&(value, _)| value);
+            .map_or(least, |(value, _)| value.clone());
 
         let given = &mut self.given[index];
-        debug_assert!(given.is_none_or(|given| given == value));
-        *given = Some(value);
+        debug_assert!(given.as_ref().is_none_or(|given| *given == value));
+        *given = Some(value.clone());
 
         value
     }
@@ -311,14 +331,14 @@ where
             if let Some((value, dependencies)) = done
                 && dependencies.is_empty()
             {
-                return Some(*value);
+                return Some(value.clone());
             }
 
             return self
                 .approximations
                 .get(key)
                 .filter(|&&(_, round)| round == self.round)
-                .map(|&(value, _)| value);
+                .map(|(value, _)| value.clone());
         }
 
         let (value, dependencies) = done?;
@@ -330,7 +350,7 @@ where
 
         self.reached.extend(indices);
 
-        Some(*value)
+        Some(value.clone())
     }
 
     /// Starts computing the item that will be at the given index on the stack.
@@ -393,10 +413,7 @@ where
         // The approximations only increase, since the equations are monotone, but this keeps the
         // computation finite even if they weren't
         let value = match self.approximations.get(&key) {
-            Some(&(previous, _)) => {
-                debug_assert!(previous <= value);
-                previous.max(value)
-            }
+            Some((previous, _)) => previous.join(&value),
             None => value,
         };
 

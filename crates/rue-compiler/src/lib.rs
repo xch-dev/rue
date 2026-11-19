@@ -14,6 +14,8 @@ pub use syntax_map::*;
 #[cfg(test)]
 mod cancel_tests;
 #[cfg(test)]
+mod comparison_limit_tests;
+#[cfg(test)]
 mod const_eval_tests;
 #[cfg(test)]
 mod hir_type_tests;

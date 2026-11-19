@@ -456,7 +456,99 @@ impl Inference {
     }
 }
 
+/// The number of candidates of each kind collected for each generic, and the number of choices, so
+/// that the candidates collected since can be undone (see `Inference::restore`).
+#[derive(Debug, Clone)]
+pub(crate) struct InferenceSnapshot {
+    candidates: Vec<[usize; 3]>,
+    choices: usize,
+}
+
+impl Inference {
+    /// Records how many candidates and choices there are, for `Inference::restore`.
+    pub(crate) fn snapshot(&self) -> InferenceSnapshot {
+        InferenceSnapshot {
+            candidates: self
+                .generics
+                .values()
+                .map(|candidates| {
+                    [
+                        candidates.lower.len(),
+                        candidates.upper.len(),
+                        candidates.held.len(),
+                    ]
+                })
+                .collect(),
+            choices: self.choices.len(),
+        }
+    }
+
+    /// Removes the candidates and choices collected since the snapshot, which was taken while the
+    /// same comparison was in progress, so no generics have been added since.
+    pub(crate) fn restore(&mut self, snapshot: &InferenceSnapshot) {
+        for ((candidates, branches), lengths) in self
+            .generics
+            .values_mut()
+            .zip(self.branches.values_mut())
+            .zip(&snapshot.candidates)
+        {
+            for (kind, &length) in [
+                CandidateKind::Lower,
+                CandidateKind::Upper,
+                CandidateKind::Held,
+            ]
+            .into_iter()
+            .zip(lengths)
+            {
+                candidates.list_mut(kind).truncate(length);
+                branches.list_mut(kind).truncate(length);
+            }
+        }
+
+        self.choices.truncate(snapshot.choices);
+    }
+}
+
 impl Choices {
+    /// The number of choices opened so far.
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Removes the choices opened since there were this many.
+    pub(crate) fn truncate(&mut self, len: usize) {
+        self.0.truncate(len);
+    }
+
+    /// Whether what's collected under the union member holds as far as the choices opened from
+    /// index `from` on decide, once those have been compared: like `Choices::matched_so_far`, but
+    /// the choices before `from` (in which the member is nested) are left out.
+    pub(crate) fn matched_since(&self, branch: BranchId, from: usize) -> bool {
+        if branch.choice < from {
+            return true;
+        }
+
+        let choice = &self.0[branch.choice];
+
+        let result = if branch.member == FALLBACK {
+            choice.fallback
+        } else {
+            choice.members[branch.member]
+        };
+
+        let Some(result) = result else {
+            return true;
+        };
+
+        let best = best_of(choice);
+
+        result == best
+            && !self.is_held(branch, best)
+            && choice
+                .parent
+                .is_none_or(|parent| self.matched_since(parent, from))
+    }
+
     /// Starts comparing a value with a union's members, under the given member of an enclosing
     /// union if there is one, and returns the index of the new choice.
     pub(crate) fn open(&mut self, parent: Option<BranchId>, members: usize) -> usize {
@@ -547,32 +639,7 @@ impl Choices {
     /// which are checked once the function comparison that bound it finishes, which can be in the
     /// middle of comparing an enclosing union's member.
     pub(crate) fn matched_so_far(&self, branch: BranchId) -> bool {
-        let choice = &self.0[branch.choice];
-
-        let result = if branch.member == FALLBACK {
-            choice.fallback
-        } else {
-            choice.members[branch.member]
-        };
-
-        let Some(result) = result else {
-            return true;
-        };
-
-        let best = choice
-            .members
-            .iter()
-            .chain([&choice.fallback])
-            .flatten()
-            .copied()
-            .min()
-            .unwrap_or(Comparison::Invalid);
-
-        result == best
-            && !self.is_held(branch, best)
-            && choice
-                .parent
-                .is_none_or(|parent| self.matched_so_far(parent))
+        self.matched_since(branch, 0)
     }
 
     /// The result of each choice, the best that any member or the fallback gave, or `None` if the
@@ -586,20 +653,25 @@ impl Choices {
                 .parent
                 .is_none_or(|parent| self.matched_with(&results, parent));
 
-            let best = choice
-                .members
-                .iter()
-                .chain([&choice.fallback])
-                .flatten()
-                .copied()
-                .min()
-                .unwrap_or(Comparison::Invalid);
+            let best = best_of(choice);
 
             results.push(parent_holds.then_some(best));
         }
 
         results
     }
+}
+
+/// The best result that any member of the choice, or its fallback, gave so far.
+fn best_of(choice: &Choice) -> Comparison {
+    choice
+        .members
+        .iter()
+        .chain([&choice.fallback])
+        .flatten()
+        .copied()
+        .min()
+        .unwrap_or(Comparison::Invalid)
 }
 
 /// Which list of a generic's `InferenceCandidates` a candidate is in.

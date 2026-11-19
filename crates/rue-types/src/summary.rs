@@ -1,21 +1,13 @@
-//! Summaries of the bounds that a comparison puts on generics being instantiated, for #362's step
-//! 13b, which isn't using them yet.
+//! Summaries of the bounds that a comparison puts on generics being instantiated (#362's step 13b).
 //!
-//! A comparison with a binding to a generic being instantiated currently collects bounds into it
-//! as a side effect, and merges two instances when it's revisited. What it does then depends on
-//! which comparisons are in progress, so its result can't be reused exactly (#344). A summary
-//! records those bounds as data instead, in the comparison's own coordinates: the binders that its
-//! key numbers (see `Binding`), and the ones bound inside of it. A comparison's result is then its
-//! value and its summary, which only depend on its key. Reusing it, or reaching it again while
-//! it's in progress, applies the summary to the binders it's reached with.
-
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "comparisons start using summaries in #362's step 13b.1"
-    )
-)]
+//! A comparison with a binding to a generic being instantiated collects bounds into it. They used
+//! to be a side effect: revisiting the comparison merged the two instances, so what it did depended
+//! on which comparisons were in progress, and its result couldn't be reused exactly (#344). A
+//! summary records those bounds as data instead, in the comparison's own coordinates: the binders
+//! that its key numbers (see `Binding`), and the ones bound inside of it. A comparison's result is
+//! then its value and its summary, which only depend on its key. Reaching it again while it's in
+//! progress applies the summary to the binders it's reached with (see `StackFrame` in
+//! `compare.rs`).
 
 use std::mem;
 
@@ -47,6 +39,9 @@ pub(crate) struct Constraint {
     pub(crate) ty: TypeId,
     /// What the generics that `ty` references are bound to.
     pub(crate) env: Env,
+    /// Whether it was collected under a union member inside of the comparison that didn't match
+    /// the value, so it doesn't decide whether the instance's bounds hold.
+    pub(crate) unmatched: bool,
 }
 
 impl Constraint {
@@ -56,6 +51,7 @@ impl Constraint {
             var: f(self.var),
             upper: self.upper,
             ty: self.ty,
+            unmatched: self.unmatched,
             env: self
                 .env
                 .iter()
@@ -117,6 +113,9 @@ impl Summary {
 
     /// Adds the constraints of a comparison that this one reached, where `args` are what the
     /// binders its key numbers are in this one's coordinates. Its local binders are new ones.
+    /// Comparisons apply a summary to the binders themselves instead (see `apply_summary` in
+    /// `compare.rs`), so this is only used by the tests of canonical forms.
+    #[cfg(test)]
     pub(crate) fn apply(&mut self, other: &Self, args: &[Var]) {
         let offset = self.locals;
         self.locals += other.locals;
@@ -130,13 +129,25 @@ impl Summary {
         }
     }
 
-    /// Removes and returns the bounds of the binder, such as those of a function's generics once
-    /// the comparison that bound them has checked them against each other. Other constraints can
-    /// still refer to it, in which case it's rigid from then on.
-    pub(crate) fn take(&mut self, var: Var) -> Vec<Constraint> {
-        self.constraints
-            .extract_if(.., |constraint| constraint.var == var)
-            .collect()
+    /// Adds the constraints of another summary in the same coordinates, with new local binders.
+    pub(crate) fn extend(&mut self, other: &Self) {
+        let offset = self.locals;
+        self.locals += other.locals;
+        self.constraints.extend(
+            other
+                .constraints
+                .iter()
+                .map(|constraint| constraint.map_locals(|local| offset + local)),
+        );
+    }
+
+    /// The least summary that has the constraints of both (with new local binders for the other's),
+    /// in a canonical form.
+    pub(crate) fn join(&self, other: &Self) -> Self {
+        let mut joined = self.clone();
+        joined.extend(other);
+        joined.canonicalize();
+        joined
     }
 
     /// Puts the summary in a canonical form, so that summaries that only differ in the order of
@@ -422,6 +433,7 @@ mod tests {
             upper,
             ty,
             env,
+            unmatched: false,
         }
     }
 
@@ -459,35 +471,6 @@ mod tests {
                 bound(Var::Local(0), true, generic, vec![(generic, Var::Local(1))]),
                 bound(Var::Key(3), false, generic, vec![(generic, Var::Local(2))]),
                 bound(Var::Key(3), true, generic, vec![(generic, Var::Local(2))]),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_take() {
-        let mut types = Types::new();
-        let ty = types.generic();
-        let mut summary = Summary::default();
-        let local = summary.local();
-        summary.add(bound(Var::Key(0), false, ty, vec![]));
-        summary.add(bound(local, true, ty, vec![]));
-        summary.add(bound(Var::Key(1), true, ty, vec![(ty, local)]));
-        summary.add(bound(local, false, ty, vec![(ty, Var::Key(0))]));
-
-        assert_eq!(
-            summary.take(local),
-            [
-                bound(local, true, ty, vec![]),
-                bound(local, false, ty, vec![(ty, Var::Key(0))]),
-            ]
-        );
-
-        // A constraint that only refers to it in its environment stays
-        assert_eq!(
-            summary.constraints(),
-            [
-                bound(Var::Key(0), false, ty, vec![]),
-                bound(Var::Key(1), true, ty, vec![(ty, local)]),
             ]
         );
     }
