@@ -2011,38 +2011,55 @@ fn paths_through_ambiguous_modules_prefer_the_expected_kind_in_each() {
 }
 
 #[test]
-fn named_imports_through_ambiguous_modules_hide_other_kinds_they_could_bring_in() {
+fn named_and_glob_imports_through_the_same_ambiguous_module_are_order_independent() {
     // The first module's `m` has a type alias `Y` and `beta`'s a function `Y`, so `import
-    // both::m::Y` brings in one or the other, and could bring in either. Both hide what `u2`'s
-    // glob export of `both::m` could bring in, so nothing uses either `Y`, in either order, and
-    // the import is unused. (The glob export never brings anything in either, since it's bound
-    // to the same `m` as the import, but since the import might not bring in a `Y` of each kind,
-    // the glob export counts as possibly bringing in the one it hides, so it isn't reported as
-    // bringing in nothing, in either order.)
-    for first_binds in [true, false] {
-        let compiled = compile(&colliding_modules(
-            first_binds,
-            "export type Y = Int;",
-            "export fn Y() -> Int { 1 }",
-            "mod u2 { export super::both::m::*; import super::both::m::Y; } import u2::*; fn main() -> Int { 1 }",
-        ));
-        let context = format!("first binds: {first_binds}");
-        let warnings = compiled
-            .warnings()
-            .into_iter()
-            .filter(|warning| warning.contains(" Unused"))
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            warnings,
-            [
+    // both::m::Y` brings in one or the other, and could bring in either, so what it brings in is
+    // uncertain, and it doesn't hide what `u2`'s glob export of `both::m` could bring in. Neither
+    // could the glob export ever bring in anything the import doesn't hide (it's bound to the
+    // same `m`), but the two are treated separately, so it counts as possibly bringing in either
+    // `Y`. The results are the same in either order: with no use, both `Y`s and the import are
+    // unused, and a call of `Y` through `u2`'s glob export uses the function.
+    for (main, expected) in [
+        (
+            "fn main() -> Int { 1 }",
+            vec![
                 "2:48 UnusedTypeAlias",
                 "3:45 UnusedFunction",
                 "5:67 UnusedImport",
                 "5:83 UnusedImport",
             ],
-            "{context}"
-        );
+        ),
+        (
+            "fn main() -> Int { Y() }",
+            vec!["2:48 UnusedTypeAlias", "5:67 UnusedImport"],
+        ),
+        (
+            "mod u3 { import super::u2::*; export fn value() -> Int { Y() } } fn main() -> Int { u3::value() }",
+            vec![
+                "2:48 UnusedTypeAlias",
+                "5:67 UnusedImport",
+                "5:83 UnusedImport",
+            ],
+        ),
+    ] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                "export type Y = Int;",
+                "export fn Y() -> Int { 1 }",
+                &format!(
+                    "mod u2 {{ export super::both::m::*; import super::both::m::Y; }} import u2::*; {main}"
+                ),
+            ));
+            let context = format!("{main}, first binds: {first_binds}");
+            let warnings = compiled
+                .warnings()
+                .into_iter()
+                .filter(|warning| warning.contains(" Unused"))
+                .collect::<Vec<_>>();
+
+            assert_eq!(warnings, expected, "{context}");
+        }
     }
 }
 
@@ -2052,7 +2069,7 @@ fn named_imports_through_ambiguous_modules_are_used_through_other_kinds() {
     // bring in `beta`'s function `Y`, which the call could refer to, so the import and the
     // function are used in either order. (When the type alias is brought in, the call finds it
     // and reports it as a type, so it's only used in that order, which the errors differ in too.)
-    for first_binds in [true, false] {
+    for (first_binds, expected) in [(true, vec![]), (false, vec!["2:48 UnusedTypeAlias"])] {
         let compiled = compile(&colliding_modules(
             first_binds,
             "export type Y = Int;",
@@ -2061,11 +2078,53 @@ fn named_imports_through_ambiguous_modules_are_used_through_other_kinds() {
         ));
         let context = format!("first binds: {first_binds}");
 
-        assert!(
-            !unused_items(&compiled).contains(&"3:47 UnusedFunction".to_string()),
-            "{context}"
-        );
+        assert_eq!(unused_items(&compiled), expected, "{context}");
         assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+    }
+}
+
+#[test]
+fn uncertain_named_imports_through_re_exports_are_order_independent() {
+    // `u2` re-exports `Y` through the ambiguous `both::m`, which is the first module's type alias
+    // or `beta`'s constant, so what an import of `u2::Y` brings in is uncertain too, beside an
+    // import of `beta`'s constant, a glob import with another constant `Y`, or a failed import of
+    // `Y`. Only the type alias is unused (the constants could all be what `Y` refers to), along
+    // with the import of `u2::Y` beside the import of `beta`'s constant, which it duplicates in one
+    // order and only brings in the unused type alias with in the other.
+    for (rest, imports) in [
+        (
+            "mod u1 { import super::u2::Y; import super::beta::m::Y; export fn f() -> Int { Y } } fn main() -> Int { u1::f() }",
+            vec!["5:73 UnusedImport"],
+        ),
+        (
+            "mod u1 { export super::u2::Y; import super::beta::m::Y; export fn f() -> Int { Y } } fn main() -> Int { u1::f() }",
+            vec![],
+        ),
+        (
+            "mod o { export const Y: Int = 5; } mod u1 { export super::u2::Y; export super::o::*; } mod user { import super::u1::*; export fn f() -> Int { Y } } fn main() -> Int { user::f() }",
+            vec![],
+        ),
+        (
+            "mod o { export const Y: Int = 5; } mod e {} mod u1 { import super::both::m::Y; import super::e::Y; import super::o::*; export fn f() -> Int { Y } } fn main() -> Int { u1::f() }",
+            vec![],
+        ),
+    ] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                "export type Y = Int;",
+                "export const Y: Int = 2;",
+                &format!("mod u2 {{ export super::both::m::Y; }} {rest}"),
+            ));
+            let context = format!("{rest}, first binds: {first_binds}");
+
+            assert_eq!(
+                unused_items(&compiled),
+                ["2:48 UnusedTypeAlias"],
+                "{context}"
+            );
+            assert_eq!(unused_imports(&compiled), imports, "{context}");
+        }
     }
 }
 
@@ -2143,10 +2202,10 @@ fn named_imports_that_might_bring_in_nothing_do_not_hide_glob_imports() {
 #[test]
 fn hiding_by_duplicate_named_imports_does_not_depend_on_which_binds() {
     // Found by renaming modules at random. `u` imports `T` twice, once through an unambiguous
-    // path and once through the ambiguous `{f}::m`, where it might bring in nothing. Which of
-    // them binds `T` depends on module names, but the first always brings it in, so `T` is
-    // hidden from what the glob imports could bring in either way, and `{h}`'s glob import
-    // (which could only bring in a `T`) is unused in either order.
+    // path and once through the ambiguous `{f}::m`, which makes what `T` is uncertain. Which of
+    // them binds `T` depends on module names, but neither hides what the glob imports could bring
+    // in with it either way, so `{h}`'s glob import (which could only bring in a `T`) counts as
+    // used in either order.
     let template = "
         mod {a} { export mod m { export const Y: Int = 1; export mod n { export const X: Int = 2; export const Y: Int = 3; export type T = Int; } } }
         mod {b} { export mod m { export const X: Int = 4; export const Y: Int = 5; export type T = Int; } }
@@ -2170,7 +2229,7 @@ fn hiding_by_duplicate_named_imports_does_not_depend_on_which_binds() {
 
     assert_eq!(results[0], results[1]);
     assert!(
-        results[0].1.contains(&"10:125 UnusedImport".to_string()),
+        !results[0].1.contains(&"10:125 UnusedImport".to_string()),
         "{results:?}"
     );
 }

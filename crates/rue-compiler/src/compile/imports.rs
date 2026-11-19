@@ -1754,12 +1754,18 @@ fn add_glob_alternatives(
             }
         }
 
-        found.extend(scope_alternatives(ctx, scope, true));
+        found.extend(
+            scope_alternatives(ctx, scope, true)
+                .map(|(namespace, name, item)| (namespace, name.to_string(), item)),
+        );
     }
 
     // A glob import of a parent module brings in its private items too
     let source = base.unwrap_or(import.base_scope);
-    found.extend(scope_alternatives(ctx, source, base.is_some()));
+    found.extend(
+        scope_alternatives(ctx, source, base.is_some())
+            .map(|(namespace, name, item)| (namespace, name.to_string(), item)),
+    );
 
     // What it brings in from the module it imports from could be hidden by a failed import's
     // error item one way but not another, so that's included too, if anything else could be
@@ -1949,20 +1955,20 @@ fn resolve_glob_import(
                         )
                 })
             {
-                // A named import that brings in something with the name here might not if its
-                // path were bound differently, and then this one would bring the item in, which
-                // could refer to what it could where it's imported from
+                // What a named import brings in with the name here is uncertain, so this one could
+                // bring the item in instead, which could refer to what it could where it's
+                // imported from
                 if resolution.settled
                     && !ctx.is_error_item(item)
                     && resolution
                         .named_imports_of(import_scope, &name)
                         .into_iter()
                         .flatten()
-                        .any(|&named| ctx.is_partial_import(named, namespace))
+                        .any(|&named| ctx.is_uncertain_import(named))
                 {
                     let others = ctx
                         .ambiguous_alternatives(via, item.into())
-                        .filter_map(|other| item_of(namespace, other))
+                        .filter_map(|other| Item::from_declaration(namespace, other))
                         .collect::<Vec<_>>();
 
                     for item in std::iter::once(item).chain(others) {
@@ -2051,16 +2057,6 @@ fn resolve_glob_import(
         .2 = count;
 
     updated
-}
-
-/// The item that a declaration is in a namespace, if it's one there.
-fn item_of(namespace: Namespace, declaration: Declaration) -> Option<Item> {
-    match (namespace, declaration) {
-        (Namespace::Value, Declaration::Symbol(symbol)) => Some(Item::Value(symbol)),
-        (Namespace::Module, Declaration::Symbol(symbol)) => Some(Item::Module(symbol)),
-        (Namespace::Type, Declaration::Type(ty)) => Some(Item::Type(ty)),
-        _ => None,
-    }
 }
 
 /// Brings in the items with the name that a named import imports, from `base`, the module its path
@@ -2273,37 +2269,54 @@ fn resolve_named_import(
         }
     }
 
-    // In each namespace that it brings nothing in, it could bring in what the other modules its
-    // path could name export with the name, if the path were bound to one of them. In each that it
-    // does, it might bring in nothing if one of them doesn't export anything with the name.
-    if !alternatives.is_empty() {
+    // Once the bindings are settled, what it brings in is uncertain if a name in its path could
+    // name another module, or what it finds could refer to something else. In each namespace
+    // that it brings nothing in, it could bring in what those other modules export with the name,
+    // or what the imports in the module it imports from could bring in.
+    if resolution.settled {
+        let mut uncertain = !alternatives.is_empty()
+            || found.iter().any(|&(item, via)| {
+                !ctx.is_error_item(item)
+                    && (ctx
+                        .ambiguous_alternatives(via, item.into())
+                        .next()
+                        .is_some()
+                        || via.is_some_and(|via| ctx.is_uncertain_import(via)))
+            });
+
         for namespace in Namespace::ALL {
             if found
                 .iter()
                 .any(|&(found, _)| found.namespace() == namespace && !ctx.is_error_item(found))
             {
-                let partial = alternatives.iter().any(|&module| {
-                    let scope = ctx.scope(ctx.module(module).scope);
-
-                    scope
-                        .item_with_import(namespace, name)
-                        .is_none_or(|(item, _)| {
-                            !scope.is_item_exported(item) || ctx.is_error_item(item)
-                        })
-                });
-
-                if partial {
-                    updated |= ctx.add_partial_import(import_id, namespace);
-                }
-
                 continue;
             }
 
+            let place = base.map(Place::Scope);
             let namespaces = [namespace];
 
-            for (item, _) in alternative_items(ctx, None, alternatives, &namespaces, name, true) {
-                updated |= ctx.add_import_alternative(import_id, namespace, name.to_string(), item);
+            // What another named import of the name brings in here is that one's, which this one
+            // would duplicate rather than bring in
+            let binding = ctx
+                .scope(import_scope)
+                .item_with_import(namespace, name)
+                .filter(|&(_, via)| {
+                    via.is_some_and(|via| via != import_id && !ctx.import(via).is_glob())
+                })
+                .map(|(item, _)| item);
+
+            for (item, _) in alternative_items(ctx, place, alternatives, &namespaces, name, true) {
+                uncertain = true;
+
+                if Some(item) != binding {
+                    updated |=
+                        ctx.add_import_alternative(import_id, namespace, name.to_string(), item);
+                }
             }
+        }
+
+        if uncertain {
+            updated |= ctx.add_uncertain_import(import_id);
         }
     }
 
@@ -2317,7 +2330,8 @@ fn resolve_named_import(
 }
 
 /// Picks which of the named imports into a scope that bring in the same item with the same name
-/// is used. Whichever is resolved first binds the name, which depends on module names, so the
+/// is used. Whichever is resolved first binds the name, which depends on module names, so one
+/// whose import is certain (see [`Database::add_uncertain_import`](rue_hir::Database::add_uncertain_import)), then the
 /// exported one, or else the first one in the source, gets the uses of the binding instead, and
 /// the others don't bring it in, so they're reported as unused. An import that finds the item
 /// through another of them (such as `import X;` after `import a::X;`) needs that one, so it isn't
@@ -2381,7 +2395,15 @@ fn resolve_duplicate_imports(ctx: &mut Compiler, cache: &mut ImportCache, resolu
                 continue;
             };
 
-            candidates.sort_by_key(|&import| (!ctx.import(import).exported, import.index()));
+            // One that could bring in something else if names were bound differently might not
+            // be one of them in another order, so a certain one is preferred
+            candidates.sort_by_key(|&import| {
+                (
+                    ctx.is_uncertain_import(import),
+                    !ctx.import(import).exported,
+                    import.index(),
+                )
+            });
             let used = candidates[0];
             let declaration = Declaration::from(item);
 
@@ -2400,6 +2422,16 @@ fn resolve_duplicate_imports(ctx: &mut Compiler, cache: &mut ImportCache, resolu
             }
 
             for &import in candidates.iter().skip(1) {
+                // An exported one that could bring in something else in another order exports
+                // that there, so it's used either way
+                if ctx.import(import).exported && ctx.is_uncertain_import(import) {
+                    if let Some(unused) = cache.unused_imports.get_mut(&import) {
+                        unused.shift_remove(name);
+                    }
+
+                    continue;
+                }
+
                 ctx.import_mut(import)
                     .declarations
                     .retain(|&(_, found)| found != declaration);

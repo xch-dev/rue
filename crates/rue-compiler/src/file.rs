@@ -379,7 +379,6 @@ impl FileTree {
                     // bound differently, unless something in the file hides it
                     entrypoints.extend(
                         scope_alternatives(ctx, scope, true)
-                            .into_iter()
                             .map(|(_, _, item)| Declaration::from(item)),
                     );
                 }

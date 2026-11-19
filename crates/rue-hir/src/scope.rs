@@ -57,6 +57,18 @@ impl Item {
     }
 }
 
+impl Item {
+    /// The item that a declaration is in a namespace, if it's one there.
+    pub fn from_declaration(namespace: Namespace, declaration: Declaration) -> Option<Self> {
+        match (namespace, declaration) {
+            (Namespace::Value, Declaration::Symbol(symbol)) => Some(Self::Value(symbol)),
+            (Namespace::Module, Declaration::Symbol(symbol)) => Some(Self::Module(symbol)),
+            (Namespace::Type, Declaration::Type(ty)) => Some(Self::Type(ty)),
+            _ => None,
+        }
+    }
+}
+
 impl From<Item> for Declaration {
     fn from(item: Item) -> Self {
         match item {

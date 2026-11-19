@@ -24,49 +24,34 @@ pub(crate) enum Place {
 /// Whether a name in a namespace is hidden in a scope from what the glob imports into it could
 /// bring in besides what they do (see
 /// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)), whichever way the
-/// names in their paths are bound. A declaration or a named import that binds it hides it (unless
-/// every named import of the name might bring in nothing with it if its path were bound
-/// differently, see
-/// [`Database::add_partial_import`](rue_hir::Database::add_partial_import)), and so does a named
-/// import that brings in something with its name in another namespace but could bring in
-/// something in this one if its path were bound differently. What a glob import binds
-/// doesn't, since what another one could bring in instead would collide with it, and neither does
-/// a failed import's error item (or a named import that fails), which only fills a name that
-/// nothing else brings in.
+/// names in their paths are bound. A declaration that binds it hides it, and so does a named
+/// import, unless what any named import of the name brings in is uncertain (see
+/// [`Database::add_uncertain_import`](rue_hir::Database::add_uncertain_import)), since in
+/// another order it might bring in something else, or nothing. What a glob import binds doesn't
+/// hide it, since what another one could bring in instead would collide with it, and neither does
+/// a failed import's error item, which only fills a name that nothing else brings in.
 pub(crate) fn hides_alternatives(
     ctx: &Compiler,
     scope: &Scope,
     namespace: Namespace,
     name: &str,
 ) -> bool {
-    // Whichever named import of the name binds it, every one of them could, so it's only left
-    // unhidden if each of them might bring in nothing with it
-    let partial = || {
-        scope
-            .imports()
-            .filter(|&import| matches!(&ctx.import(import).items, Items::Named(item) if item.text() == name))
-            .all(|import| ctx.is_partial_import(import, namespace))
+    let Some((item, via)) = scope.item_with_import(namespace, name) else {
+        return false;
     };
 
-    let bound = scope
-        .item_with_import(namespace, name)
-        .is_some_and(|(item, via)| {
-            !ctx.is_error_item(item)
-                && via.is_none_or(|via| !ctx.import(via).is_glob() && !partial())
-        });
+    if ctx.is_error_item(item) {
+        return false;
+    }
 
-    bound
-        || scope.imports().any(|import| {
-            !ctx.import(import).is_glob()
-                && ctx
-                    .import_alternatives(import, namespace, name)
-                    .next()
-                    .is_some()
-                && Namespace::ALL.into_iter().any(|namespace| {
-                    scope
-                        .item_with_import(namespace, name)
-                        .is_some_and(|(item, via)| via == Some(import) && !ctx.is_error_item(item))
-                })
+    let Some(via) = via else {
+        return true;
+    };
+
+    !ctx.import(via).is_glob()
+        && !scope.imports().any(|import| {
+            matches!(&ctx.import(import).items, Items::Named(item) if item.text() == name)
+                && ctx.is_uncertain_import(import)
         })
 }
 
@@ -83,8 +68,9 @@ fn is_hidden(
     ctx.import(import).is_glob() && hides_alternatives(ctx, scope, namespace, name)
 }
 
-/// The imports into a scope, or only the exported ones, which could bring in something besides
-/// what they do (see [`Database::import_alternatives`](rue_hir::Database::import_alternatives)).
+/// The imports into a scope, or only the exported ones, to collect what they could bring in
+/// besides what they do (see
+/// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)).
 fn alternative_imports<'a>(
     ctx: &'a Compiler,
     scope: &'a Scope,
@@ -116,13 +102,9 @@ pub(crate) fn scope_alternatives(
     ctx: &Compiler,
     scope: ScopeId,
     exported_only: bool,
-) -> Vec<(Namespace, String, Item)> {
+) -> impl Iterator<Item = (Namespace, &str, Item)> + '_ {
     alternative_imports(ctx, ctx.scope(scope), exported_only)
-        .flat_map(|import| {
-            unhidden_alternatives(ctx, scope, import)
-                .map(|(namespace, name, item)| (namespace, name.to_string(), item))
-        })
-        .collect()
+        .flat_map(move |import| unhidden_alternatives(ctx, scope, import))
 }
 
 /// What a name is bound to in one namespace where a segment of a path is looked up, if anything
@@ -141,16 +123,22 @@ fn lookup(
 
     let mut visit = |scope: &Scope| {
         // A private item hides what glob imports could bring in too, even where only what the
-        // scope exports counts
-        let hidden = hides_alternatives(ctx, scope, namespace, name);
+        // scope exports counts. Whether the name is hidden is only worked out once a glob import
+        // could bring in something with it.
+        let mut hidden = None;
 
         for import in alternative_imports(ctx, scope, exported_only) {
-            if !(hidden && ctx.import(import).is_glob()) {
-                others.extend(
-                    ctx.import_alternatives(import, namespace, name)
-                        .map(|item| (item, Some(import))),
-                );
+            let mut items = ctx.import_alternatives(import, namespace, name).peekable();
+
+            if items.peek().is_none()
+                || (ctx.import(import).is_glob()
+                    && *hidden
+                        .get_or_insert_with(|| hides_alternatives(ctx, scope, namespace, name)))
+            {
+                continue;
             }
+
+            others.extend(items.map(|item| (item, Some(import))));
         }
 
         scope

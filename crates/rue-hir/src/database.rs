@@ -57,14 +57,12 @@ pub struct Database {
     /// other modules. They aren't references, since the path is only compiled as referring to
     /// the one in the module the name is bound to.
     ambiguous_uses: IndexMap<Declaration, IndexSet<Declaration>>,
-    /// What each import could bring in with each name in each namespace, besides what it does,
-    /// if a name in its path, or in the path of an import that it brings in items through, were
-    /// bound to another module that glob imports bring in with it (see
-    /// [`Database::import_alternatives`]).
+    /// What each import could bring in with each name in each namespace, besides what it does, if
+    /// names were bound differently (see [`Database::import_alternatives`]).
     import_alternatives: HashMap<ImportId, IndexMap<Namespace, IndexMap<String, IndexSet<Item>>>>,
-    /// The named imports that bring in something with their name in a namespace, but might not if
-    /// their paths were bound differently (see [`Database::add_partial_import`]).
-    partial_imports: HashSet<(ImportId, Namespace)>,
+    /// The named imports whose names could refer to something else if names were bound
+    /// differently (see [`Database::add_uncertain_import`]).
+    uncertain_imports: HashSet<ImportId>,
     /// The glob imports that could bring in something under a name that nothing else in their
     /// scope hides (see [`Database::may_bring_in_more`]).
     globs_that_may_bring_in_more: HashSet<ImportId>,
@@ -536,9 +534,10 @@ impl Database {
     /// module a name that glob imports bring in different modules with is bound to depends on the
     /// order imports are resolved in, so a glob import through it could bring in what any of
     /// them export, and what glob imports bring in through that could differ too. A named import
-    /// through it could bring in an item in a namespace that it brings nothing in. A use of the
-    /// name counts as a use of each of these, so that which are reported as unused doesn't
-    /// depend on module names.
+    /// through it could bring in an item in a namespace that it brings nothing in. A glob import
+    /// that a named import hides could bring in what it hides, if what the named import brings in
+    /// is uncertain (see [`Database::add_uncertain_import`]). A use of the name counts as a use of
+    /// each of these, so that which are reported as unused doesn't depend on module names.
     pub fn import_alternatives(
         &self,
         import: ImportId,
@@ -580,18 +579,19 @@ impl Database {
         !self.import_alternatives.is_empty() || !self.ambiguous_alternatives.is_empty()
     }
 
-    /// Records that a named import brings in something with its name in a namespace, but might
-    /// not if a name in its path were bound to another module that glob imports bring in with it,
-    /// which has nothing with the name there. Then what glob imports in its scope bring in with
-    /// the name could be what it refers to. Returns whether it wasn't already recorded.
-    pub fn add_partial_import(&mut self, import: ImportId, namespace: Namespace) -> bool {
-        self.partial_imports.insert((import, namespace))
+    /// Records that what a named import brings in is uncertain: a name in its path could name
+    /// another module that glob imports bring in with it, or what it finds could refer to
+    /// something else, so in another order it might bring in something else, or nothing. A
+    /// binding by a named import then doesn't hide what glob imports could bring in with the
+    /// name. Returns whether it wasn't already recorded.
+    pub fn add_uncertain_import(&mut self, import: ImportId) -> bool {
+        self.uncertain_imports.insert(import)
     }
 
-    /// Whether a named import might bring in nothing with its name in a namespace (see
-    /// [`Database::add_partial_import`]).
-    pub fn is_partial_import(&self, import: ImportId, namespace: Namespace) -> bool {
-        self.partial_imports.contains(&(import, namespace))
+    /// Whether what a named import brings in is uncertain (see
+    /// [`Database::add_uncertain_import`]).
+    pub fn is_uncertain_import(&self, import: ImportId) -> bool {
+        self.uncertain_imports.contains(&import)
     }
 
     /// Records that a glob import could bring in something under a name that nothing else in
