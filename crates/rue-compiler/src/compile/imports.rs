@@ -658,6 +658,21 @@ fn error_item(
     item
 }
 
+/// Adds the failed imports that one error item comes from to another's, when the name that the
+/// other fills would have been bound to this one too (such as by a glob import of a module that
+/// has it), so that either explains what finds the name. Returns whether any were added.
+fn merge_error_origins(
+    error_origins: &mut HashMap<Item, IndexSet<ImportId>>,
+    into: Item,
+    from: Item,
+) -> bool {
+    let from = error_origins.get(&from).cloned().unwrap_or_default();
+    let into = error_origins.entry(into).or_default();
+    let count = into.len();
+    into.extend(from);
+    into.len() != count
+}
+
 /// Records that an import found an error item, which the failed imports it comes from explain.
 fn link_error(cache: &mut ImportCache, import_id: ImportId, item: Item) {
     if let Some(origins) = cache.error_origins.get(&item) {
@@ -1643,6 +1658,18 @@ fn resolve_glob_import(
         };
 
         for (name, item) in items {
+            // An error item that would have filled a name that another one fills explains what
+            // finds the name too, even where a named import of the name shadows this import
+            if ctx.is_error_item(item)
+                && let Some(existing) = ctx.scope(import_scope).item(namespace, &name)
+            {
+                if ctx.is_error_item(existing) && existing != item {
+                    updated |= merge_error_origins(&mut cache.error_origins, existing, item);
+                }
+
+                continue;
+            }
+
             // A named import of the name shadows the glob import in the namespaces that it
             // brings an item into, or could still
             if resolution
@@ -1865,7 +1892,11 @@ fn resolve_named_import(
 
         // A failed import's error item only fills a name that nothing else brought in, so it's
         // never a duplicate
-        if error && existing.is_some_and(|existing| existing != found) {
+        if error && let Some(existing) = existing.filter(|&existing| existing != found) {
+            if ctx.is_error_item(existing) {
+                updated |= merge_error_origins(&mut cache.error_origins, existing, found);
+            }
+
             continue;
         }
 
