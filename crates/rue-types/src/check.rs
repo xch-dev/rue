@@ -6,9 +6,9 @@ use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxIndexSet,
-    Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
-    stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet,
+    FxIndexSet, Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle,
+    step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -580,25 +580,48 @@ fn unless_too_large(result: Result<Check, CheckError>) -> Result<Option<Check>, 
 }
 
 fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
-    grow_stack(|| variants_of_inner(arena, builtins, id))
+    variants_of_seen(arena, builtins, id, &mut FxHashSet::default())
 }
 
-fn variants_of_inner(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
+/// Each walk over the variants of a type skips the types it has already seen, which only add the
+/// same variants again. A union that repeats a type at each level, such as `type U1 = U0 | U0`,
+/// would otherwise double the work at each level.
+fn variants_of_seen(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+    seen: &mut FxHashSet<TypeId>,
+) -> Vec<TypeId> {
+    step();
+
+    if !seen.insert(id) {
+        return vec![];
+    }
+
+    grow_stack(|| variants_of_inner(arena, builtins, id, seen))
+}
+
+fn variants_of_inner(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+    seen: &mut FxHashSet<TypeId>,
+) -> Vec<TypeId> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => variants_of(arena, builtins, id),
+        Type::Ref(id) => variants_of_seen(arena, builtins, id, seen),
         Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => {
             vec![id]
         }
         Type::Never => vec![],
-        Type::Alias(alias) => variants_of(arena, builtins, alias.inner),
-        Type::Struct(ty) => variants_of(arena, builtins, ty.inner),
+        Type::Alias(alias) => variants_of_seen(arena, builtins, alias.inner, seen),
+        Type::Struct(ty) => variants_of_seen(arena, builtins, ty.inner, seen),
         Type::Function(_) | Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
             for variant in ty.types {
-                variants.extend(variants_of(arena, builtins, variant));
+                variants.extend(variants_of_seen(arena, builtins, variant, seen));
             }
 
             variants
@@ -610,17 +633,34 @@ fn variants_of_inner(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -
 /// against, so generic types are an error since their values can't be known at runtime. Generic
 /// targets are still allowed if the value is already known to be assignable (see `check_each`).
 fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atoms>, CheckError> {
-    grow_stack(|| atoms_of_inner(arena, id, target))
+    atoms_of_seen(arena, id, target, &mut FxHashSet::default())
+}
+
+/// See [`variants_of_seen`] for why the types that have been seen are skipped.
+fn atoms_of_seen(
+    arena: &Arena<Type>,
+    id: TypeId,
+    target: bool,
+    seen: &mut FxHashSet<TypeId>,
+) -> Result<Option<Atoms>, CheckError> {
+    step();
+
+    if !seen.insert(id) {
+        return Ok(None);
+    }
+
+    grow_stack(|| atoms_of_inner(arena, id, target, seen))
 }
 
 fn atoms_of_inner(
     arena: &Arena<Type>,
     id: TypeId,
     target: bool,
+    seen: &mut FxHashSet<TypeId>,
 ) -> Result<Option<Atoms>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => atoms_of(arena, id, target)?,
+        Type::Ref(id) => atoms_of_seen(arena, id, target, seen)?,
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
         Type::Generic(_) if target => return Err(CheckError::GenericType),
         Type::Generic(_) => Some(Atoms::Unrestricted),
@@ -631,14 +671,14 @@ fn atoms_of_inner(
             };
             Some(Atoms::Restricted(indexset![restriction]))
         }
-        Type::Alias(alias) => atoms_of(arena, alias.inner, target)?,
-        Type::Struct(ty) => atoms_of(arena, ty.inner, target)?,
+        Type::Alias(alias) => atoms_of_seen(arena, alias.inner, target, seen)?,
+        Type::Struct(ty) => atoms_of_seen(arena, ty.inner, target, seen)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
             for variant in ty.types {
-                match atoms_of(arena, variant, target)? {
+                match atoms_of_seen(arena, variant, target, seen)? {
                     None => {}
                     Some(Atoms::Unrestricted) => return Ok(Some(Atoms::Unrestricted)),
                     Some(Atoms::Restricted(new)) => {
@@ -680,7 +720,24 @@ fn pairs_of(
     id: TypeId,
     target: bool,
 ) -> Result<Vec<Pair>, CheckError> {
-    grow_stack(|| pairs_of_inner(arena, builtins, id, target))
+    pairs_of_seen(arena, builtins, id, target, &mut FxHashSet::default())
+}
+
+/// See [`variants_of_seen`] for why the types that have been seen are skipped.
+fn pairs_of_seen(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+    target: bool,
+    seen: &mut FxHashSet<TypeId>,
+) -> Result<Vec<Pair>, CheckError> {
+    step();
+
+    if !seen.insert(id) {
+        return Ok(vec![]);
+    }
+
+    grow_stack(|| pairs_of_inner(arena, builtins, id, target, seen))
 }
 
 fn pairs_of_inner(
@@ -688,24 +745,25 @@ fn pairs_of_inner(
     builtins: &BuiltinTypes,
     id: TypeId,
     target: bool,
+    seen: &mut FxHashSet<TypeId>,
 ) -> Result<Vec<Pair>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => pairs_of(arena, builtins, id, target)?,
+        Type::Ref(id) => pairs_of_seen(arena, builtins, id, target, seen)?,
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
         Type::Pair(pair) => vec![pair],
         Type::Generic(_) if target => return Err(CheckError::GenericType),
         Type::Generic(_) | Type::Any => {
             vec![Pair::new(builtins.recursive_any, builtins.recursive_any)]
         }
-        Type::Alias(alias) => pairs_of(arena, builtins, alias.inner, target)?,
-        Type::Struct(ty) => pairs_of(arena, builtins, ty.inner, target)?,
+        Type::Alias(alias) => pairs_of_seen(arena, builtins, alias.inner, target, seen)?,
+        Type::Struct(ty) => pairs_of_seen(arena, builtins, ty.inner, target, seen)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
             for variant in ty.types {
-                pairs.extend(pairs_of(arena, builtins, variant, target)?);
+                pairs.extend(pairs_of_seen(arena, builtins, variant, target, seen)?);
             }
 
             pairs

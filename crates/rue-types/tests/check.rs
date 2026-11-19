@@ -686,6 +686,34 @@ fn test_check_size_limit() {
 }
 
 #[test]
+fn test_check_repeated_union() {
+    let mut t = Types::new();
+    let any = t.builtins.permissive_any;
+    let int = t.builtins.int;
+    let nil = t.builtins.nil;
+    let bytes32 = t.builtins.bytes32;
+    let one = t.int(1);
+    let two = t.int(2);
+
+    // Each level is a union of the previous level with itself, so walking the variants of a level
+    // without skipping the repeats would double the work at each level
+    let first = t.pair(int, nil);
+    let second = t.pair(bytes32, int);
+    let base = t.union(vec![first, second, one, two]);
+    let mut level = t.alias(base);
+    for _ in 0..32 {
+        let union = t.union(vec![level, level]);
+        level = t.alias(union);
+    }
+
+    let expected = t.check(any, base).unwrap();
+    let result = with_step_limit(100_000, || t.check(any, level));
+    assert_eq!(result, Ok(expected));
+    let result = with_step_limit(100_000, || t.check(level, base));
+    assert_eq!(result, Ok(Check::None));
+}
+
+#[test]
 fn test_check_size() {
     let atom = || Check::IsAtom {
         can_be_truthy: true,
