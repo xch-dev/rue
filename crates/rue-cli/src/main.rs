@@ -768,8 +768,9 @@ fn debug_metadata_path(program_path: &str) -> String {
     format!("{base}.debug.clvm.bin")
 }
 
-/// Where the sidecar of a single program is written when no path is given: next to the source
-/// file, named like the program would be with `--all` (after the export, or the file for `main`).
+/// Where the sidecar of a single program is written when no path is given: next to the file that's
+/// built (the main file, if an export is looked for in every file), named like the program would
+/// be with `--all` (after the export, or the file for `main`).
 fn single_debug_metadata_path(
     source: Option<&SourceKind>,
     export: Option<&str>,
@@ -1221,7 +1222,7 @@ mod tests {
             single_debug_metadata_path(Some(&source), Some("double"), base),
             Path::new("/project/src/double.rue.debug.clvm.bin")
         );
-        // An export found in any file is next to the project's sources
+        // Without a file, it's next to the project's sources
         assert_eq!(
             single_debug_metadata_path(None, Some("double"), base),
             Path::new("/project/double.rue.debug.clvm.bin")
@@ -1280,6 +1281,17 @@ mod tests {
             "fn main(value: Int) -> Int {\n    double(value) + 1\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n",
         );
         let dir = &project.0;
+
+        // Without the flag, no sidecars are written
+        run_build(dir, &["--all"]);
+        run_build(dir, &[]);
+        assert!(
+            fs::read_dir(dir).unwrap().all(|entry| !entry
+                .unwrap()
+                .path()
+                .to_string_lossy()
+                .ends_with(".bin"))
+        );
 
         // With `--all`, each program's sidecar is next to it, and is for the program's bytes
         run_build(dir, &["--all", "--debug-metadata"]);

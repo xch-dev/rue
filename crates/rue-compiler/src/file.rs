@@ -415,12 +415,7 @@ impl FileTree {
     ) -> Result<Option<(NodePtr, Vec<u8>)>, Error> {
         Ok(self
             .main_impl(ctx, allocator, path, base_path, true)?
-            .map(|program| {
-                let metadata = program
-                    .debug_metadata
-                    .expect("debug metadata was requested");
-                (program.ptr, metadata)
-            }))
+            .map(Generated::with_debug_metadata))
     }
 
     fn main_impl(
@@ -904,6 +899,14 @@ struct Generated {
     debug_metadata: Option<Vec<u8>>,
 }
 
+impl Generated {
+    /// The code and its debug metadata sidecar, which was requested.
+    fn with_debug_metadata(self) -> (NodePtr, Vec<u8>) {
+        let metadata = self.debug_metadata.expect("debug metadata was requested");
+        (self.ptr, metadata)
+    }
+}
+
 /// Generates the code for the symbol, along with its debug metadata sidecar if it's requested. The
 /// sidecar is built from what's recorded along the way, which doesn't change the code.
 fn codegen(
@@ -962,7 +965,6 @@ fn codegen(
     }
 
     let debug_info = lowerer.take_debug_info();
-    let base_path = lowerer.base_path().to_path_buf();
 
     let codegen_options = CodegenOptions {
         optimize_static_pairs: options.optimize_static_pairs,
@@ -979,6 +981,8 @@ fn codegen(
             debug_metadata: None,
         });
     };
+
+    let base_path = lowerer.base_path().to_path_buf();
 
     if options.optimize_lir {
         lir = rue_lir::optimize_with_tags(&mut arena, lir, &mut debug_info.tags);

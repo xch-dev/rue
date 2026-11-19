@@ -160,29 +160,31 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         Some(debug)
     }
 
-    /// Tags the node with the location, unless something more precise already tagged it.
-    fn tag_span(&mut self, lir: LirId, srcloc: SrcLoc) {
-        if let Some(debug) = &mut self.debug {
-            let span = debug.span(srcloc);
-            debug.tags.spans.entry(lir).or_insert(span);
-        }
-    }
-
     /// Lowers something with the nodes it allocates tagged with the location, unless something
     /// inside of it has a location of its own.
     fn with_span(&mut self, srcloc: SrcLoc, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
-        let Some(debug) = &mut self.debug else {
+        let span = self.debug.as_mut().map(|debug| debug.span(srcloc));
+        self.in_span(span, f)
+    }
+
+    /// Lowers something with the nodes it allocates tagged with the span, if there is one, unless
+    /// something inside of it has a span of its own.
+    fn in_span(&mut self, span: Option<usize>, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
+        let Some(span) = span else {
             return f(self);
         };
 
-        let span = debug.span(srcloc);
+        let debug = self
+            .debug
+            .as_mut()
+            .expect("spans are only found with debug info");
         debug.scopes.enter(self.arena.len(), span);
         let lir = f(self);
-        self.debug
+        let debug = self
+            .debug
             .as_mut()
-            .expect("debug info is kept while lowering")
-            .scopes
-            .exit(self.arena.len());
+            .expect("debug info is kept while lowering");
+        debug.scopes.exit(self.arena.len());
         lir
     }
 
@@ -352,8 +354,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// else would. It's evaluated with the environment that `main` is called with, rather than
     /// the one its body has once its captures are bound, so it isn't tagged as the function.
     fn tag_main_wrapper(&mut self, wrapper: LirId, body: HirId) {
-        if let Some(srcloc) = self.db.hir_srcloc(body).cloned() {
-            self.tag_span(wrapper, srcloc);
+        if let Some(debug) = &mut self.debug
+            && let Some(span) = debug.hir_span(self.db, body)
+        {
+            debug.tags.spans.entry(wrapper).or_insert(span);
         }
     }
 
@@ -396,21 +400,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             _ => None,
         };
 
-        if let (Some(debug), Some(span)) = (&mut self.debug, span) {
-            debug.scopes.enter(self.arena.len(), span);
-        }
-
-        self.path.push(frame);
-        // Every cycle of recursion in lowering passes through here, and each level can use a lot
-        // of stack in a debug build, so grow it rather than rely on the thread having enough
-        let lir = rue_types::grow_stack(|| f(self));
-        self.path.pop();
-
-        if let (Some(debug), Some(_)) = (&mut self.debug, span) {
-            debug.scopes.exit(self.arena.len());
-        }
-
-        lir
+        self.in_span(span, |this| {
+            this.path.push(frame);
+            // Every cycle of recursion in lowering passes through here, and each level can use a
+            // lot of stack in a debug build, so grow it rather than rely on the thread having
+            // enough
+            let lir = rue_types::grow_stack(|| f(this));
+            this.path.pop();
+            lir
+        })
     }
 
     fn lower_hir_inner(&mut self, env: &Environment, hir: HirId) -> LirId {
