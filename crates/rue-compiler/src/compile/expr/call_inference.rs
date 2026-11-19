@@ -913,12 +913,15 @@ impl ArgumentOrder {
     /// rather than what they narrow it to. That's a call with arguments and no lambda in it: what
     /// its own arguments give it adds to the generics once it's compiled against them, as `8`
     /// does in `let v: 7 | 8 = either(7, id(8));`. A call without arguments only has its expected
-    /// type to infer from, so it keeps the narrower mapping, and a lambda, even one a call passes
-    /// through, keeps it for its parameter types.
+    /// type to infer from, so a call with one anywhere in it keeps the narrower mapping, as `id(make())`
+    /// would otherwise only make the generic wider, and a lambda, even one a call passes through,
+    /// keeps it for its parameter types.
     fn widens_to_expected(&self, i: usize, expr: &AstExpr) -> bool {
         !self.arguments[i].has_lambda
             && matches!(expr, AstExpr::FunctionCallExpr(_))
-            && !is_call_without_arguments(expr)
+            && !expr.syntax().descendants().any(|node| {
+                AstExpr::cast(node).is_some_and(|expr| is_call_without_arguments(&expr))
+            })
     }
 
     /// Whether every argument has been compiled.
