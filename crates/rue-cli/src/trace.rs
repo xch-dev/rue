@@ -1,7 +1,6 @@
 //! Running programs with a stack trace when they fail, symbolized with their debug metadata
 //! sidecars (see `rue_compiler::debug_metadata`) by Chialisp's renderer.
 
-use anyhow::{Context, Result};
 use chialisp::compiler::debug_metadata::{
     DebugMetadataCollection, SerializedFrame, StackFrameStyle,
 };
@@ -21,23 +20,19 @@ pub struct Sidecars {
 }
 
 impl Sidecars {
-    pub fn insert(&mut self, sidecar: &[u8]) -> Result<()> {
-        self.collection
-            .insert(sidecar)
-            .map_err(anyhow::Error::msg)
-            .context("Invalid debug metadata")
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.collection.is_empty()
+    /// Adds a sidecar, unless it isn't valid debug metadata.
+    pub fn insert(&mut self, sidecar: &[u8]) -> Result<(), String> {
+        self.collection.insert(sidecar)
     }
 }
 
-/// A program that failed, along with the stack trace of where it was when it did.
+/// A program that failed, along with where it was when it did.
 #[derive(Debug)]
 pub struct Failure {
     pub error: EvalErr,
-    pub trace: String,
+    /// The stack trace, or why it couldn't be shown, which doesn't keep the failure itself from
+    /// being reported.
+    pub trace: Result<String, String>,
 }
 
 /// Runs the program like `run_program`, and if it fails, symbolizes the frames that were active
@@ -49,15 +44,16 @@ pub fn run_with_trace(
     env: NodePtr,
     max_cost: u64,
     sidecars: &Sidecars,
-) -> Result<std::result::Result<Reduction, Failure>> {
+) -> Result<Reduction, Failure> {
     let failure = match run_program_with_diagnostics(
         allocator, dialect, program, env, max_cost, MAX_FRAMES,
     ) {
-        Ok(reduction) => return Ok(Ok(reduction)),
+        Ok(reduction) => return Ok(reduction),
         Err(failure) => failure,
     };
 
-    let frames = failure
+    // A frame can hold a value too large to serialize, in which case there's no trace
+    let trace = failure
         .frames
         .iter()
         .map(|frame| {
@@ -66,24 +62,27 @@ pub fn run_with_trace(
                 environment: node_to_bytes(allocator, frame.environment)?,
             })
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>, EvalErr>>()
+        .map_err(|error| error.to_string())
+        .and_then(|frames| {
+            sidecars.collection.format_captured_stack(
+                &frames,
+                failure.truncated,
+                StackFrameStyle::Python,
+            )
+        });
 
-    let trace = sidecars
-        .collection
-        .format_captured_stack(&frames, failure.truncated, StackFrameStyle::Python)
-        .map_err(anyhow::Error::msg)
-        .context("Couldn't symbolize the stack trace")?;
-
-    Ok(Err(Failure {
+    Err(Failure {
         error: failure.error,
         trace,
-    }))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::{fmt::Write, fs, path::Path};
 
+    use chialisp::compiler::debug_metadata::DebugMetadata;
     use expect_test::expect_file;
     use rue_clvm::{assemble, disassemble_value};
     use rue_compiler::{Compiler, FileTree, normalize_path};
@@ -130,6 +129,12 @@ mod tests {
                     .unwrap()
                     .unwrap();
 
+                // Chialisp's reader accepts the sidecar, and it's for exactly this program
+                DebugMetadata::decode(&metadata)
+                    .unwrap()
+                    .verify_program(&node_to_bytes(&allocator, program).unwrap())
+                    .unwrap();
+
                 let mut sidecars = Sidecars::default();
                 sidecars.insert(&metadata).unwrap();
 
@@ -144,9 +149,7 @@ mod tests {
                         env,
                         11_000_000_000,
                         &sidecars,
-                    )
-                    .unwrap()
-                    {
+                    ) {
                         Ok(output) => {
                             writeln!(
                                 snapshot,
@@ -157,7 +160,7 @@ mod tests {
                         }
                         Err(failure) => {
                             writeln!(snapshot, "error: {}", failure.error).unwrap();
-                            writeln!(snapshot, "{}", failure.trace).unwrap();
+                            writeln!(snapshot, "{}", failure.trace.unwrap()).unwrap();
                         }
                     }
                 }

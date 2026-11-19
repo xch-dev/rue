@@ -566,7 +566,8 @@ impl FileTree {
         self.tests_impl(ctx, allocator, path, search_term, base_path, std, true)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    // Tests are found through the compiler rather than the tree, like `tests` finds them
+    #[allow(clippy::too_many_arguments, clippy::unused_self)]
     fn tests_impl(
         &self,
         ctx: &mut Compiler,

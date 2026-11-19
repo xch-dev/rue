@@ -16,7 +16,7 @@ use clvmr::{
 };
 use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
-use rue_compiler::{CompiledExport, Compiler, FileTree, normalize_path};
+use rue_compiler::{CompiledExport, CompiledTest, Compiler, FileTree, normalize_path};
 use rue_diagnostic::{
     Diagnostic, DiagnosticSeverity, ForbiddenBy, LineIndex, Lint, LintGroup, LintLevel, LintLevels,
     LintName, SourceKind,
@@ -832,9 +832,7 @@ fn test(args: TestArgs) -> Result<()> {
         process::exit(1);
     }
 
-    // Each test has a sidecar, so that a failure shows where in the source it happened
-    let tests =
-        tree.tests_with_debug_metadata(&mut ctx, &mut allocator, None, None, &base_path, false)?;
+    let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path, false)?;
 
     let len = tests.len();
 
@@ -852,13 +850,7 @@ fn test(args: TestArgs) -> Result<()> {
                 .bold()
         );
 
-        let mut sidecars = Sidecars::default();
-
-        if let Some(metadata) = &test.debug_metadata {
-            sidecars.insert(metadata)?;
-        }
-
-        if let Err(failure) = run_test(&mut allocator, test.ptr, args.cost, &sidecars)? {
+        if let Err(failure) = run_test(&mut allocator, test.ptr, args.cost) {
             eprintln!(
                 "{}",
                 format!("Test failed due to {}", failure.message)
@@ -866,8 +858,14 @@ fn test(args: TestArgs) -> Result<()> {
                     .bold()
             );
 
-            if let Some(trace) = failure.trace {
-                eprintln!("{trace}");
+            if failure.raised {
+                match trace_test(&tree, &mut ctx, &mut allocator, test, &base_path, args.cost) {
+                    Ok(trace) => eprintln!("{trace}"),
+                    Err(reason) => eprintln!(
+                        "{}",
+                        format!("Couldn't show where the test failed: {reason}").yellow()
+                    ),
+                }
             }
 
             failed = true;
@@ -885,50 +883,91 @@ fn test(args: TestArgs) -> Result<()> {
 #[derive(Debug)]
 struct TestFailure {
     message: String,
-    /// Where the test was when it failed, if it raised and has a sidecar.
-    trace: Option<String>,
+    /// Whether the program failed while it was running, rather than returning something other than
+    /// nil, so there's a stack to show.
+    raised: bool,
 }
 
-/// Runs a test, which passes if it returns nil, and otherwise returns why it failed. If the test
-/// has a sidecar, a failure is shown with where in the source it happened.
+/// Runs a test, which passes if it returns nil, and otherwise returns why it failed.
 fn run_test(
     allocator: &mut Allocator,
     program: NodePtr,
     cost: CostArgs,
-    sidecars: &Sidecars,
-) -> Result<Result<(), TestFailure>> {
-    let (error, trace) = match run_with_trace(
+) -> Result<(), TestFailure> {
+    let message = match run_program(
         allocator,
         &DebugDialect::new(CLVM_FLAGS, true),
         program,
         NodePtr::NIL,
         cost.max_cost,
-        sidecars,
-    )? {
+    ) {
         Ok(output) => {
             if let SExp::Atom = allocator.sexp(output.1)
                 && allocator.atom(output.1).is_empty()
             {
-                return Ok(Ok(()));
+                return Ok(());
             }
 
-            return Ok(Err(TestFailure {
+            return Err(TestFailure {
                 message: "non-nil output".to_string(),
-                trace: None,
-            }));
+                raised: false,
+            });
         }
-        Err(failure) => (failure.error, failure.trace),
+        Err(EvalErr::Raise(value)) => format!("raise: {}", disassemble_value(allocator, value)),
+        Err(error) => format!("error: {}", cost.describe_error(&error)),
     };
 
-    let message = match error {
-        EvalErr::Raise(value) => format!("raise: {}", disassemble_value(allocator, value)),
-        error => format!("error: {}", cost.describe_error(&error)),
-    };
-
-    Ok(Err(TestFailure {
+    Err(TestFailure {
         message,
-        trace: (!sidecars.is_empty()).then_some(trace),
-    }))
+        raised: true,
+    })
+}
+
+/// Where a test that failed was when it did, which is found by compiling it again with a debug
+/// metadata sidecar, and running it again with the frames kept. Programs run the same way each
+/// time, so it fails the same way, and tests that pass don't pay for the sidecar or the frames.
+fn trace_test(
+    tree: &FileTree,
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    test: &CompiledTest,
+    base_path: &Path,
+    cost: CostArgs,
+) -> Result<String, String> {
+    let compiled = tree
+        .tests_with_debug_metadata(
+            ctx,
+            allocator,
+            Some(&test.path),
+            test.name.as_deref(),
+            base_path,
+            true,
+        )
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|compiled| compiled.symbol == test.symbol)
+        .ok_or("the test couldn't be compiled again")?;
+
+    let mut sidecars = Sidecars::default();
+    sidecars.insert(
+        compiled
+            .debug_metadata
+            .as_deref()
+            .expect("debug metadata was requested"),
+    )?;
+
+    // What the test prints has already been shown, so it isn't printed again
+    match run_with_trace(
+        allocator,
+        &DebugDialect::new(CLVM_FLAGS, false),
+        compiled.ptr,
+        NodePtr::NIL,
+        cost.max_cost,
+        &sidecars,
+    ) {
+        Ok(_) => Err("it didn't fail when it was run again".to_string()),
+        Err(failure) => failure.trace,
+    }
 }
 
 /// Runs the program, and returns its output.
@@ -974,9 +1013,9 @@ fn debug(args: DebugArgs) -> Result<String> {
     for path in &args.debug_metadata {
         let metadata =
             fs::read(path).with_context(|| format!("Couldn't read {}", path.display()))?;
-        sidecars
-            .insert(&metadata)
-            .with_context(|| format!("Couldn't load {}", path.display()))?;
+        sidecars.insert(&metadata).map_err(|error| {
+            anyhow::anyhow!("{} isn't valid debug metadata: {error}", path.display())
+        })?;
     }
 
     match run_with_trace(
@@ -986,13 +1025,17 @@ fn debug(args: DebugArgs) -> Result<String> {
         solution,
         args.cost.max_cost,
         &sidecars,
-    )? {
+    ) {
         Ok(output) => Ok(disassemble_value(&allocator, output.1)),
-        Err(failure) => Err(anyhow::anyhow!(
-            "{}\n{}",
-            args.cost.describe_error(&failure.error),
-            failure.trace
-        )),
+        Err(failure) => {
+            let trace = failure
+                .trace
+                .unwrap_or_else(|reason| format!("Couldn't show where it failed: {reason}"));
+            Err(anyhow::anyhow!(
+                "{}\n{trace}",
+                args.cost.describe_error(&failure.error)
+            ))
+        }
     }
 }
 
@@ -1001,14 +1044,16 @@ mod tests {
     use std::{fs, path::Path};
 
     use super::{
-        Command, CostArgs, DEFAULT_MAX_COST, Sidecars, build, debug, debug_metadata_path, run_test,
-        single_debug_metadata_path,
+        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_metadata_path, run_test,
+        single_debug_metadata_path, trace_test,
     };
     use clap::{CommandFactory, Parser, error::ErrorKind};
     use clvmr::{Allocator, SExp, serde::node_from_bytes};
     use rue_clvm::assemble;
+    use rue_compiler::{Compiler, FileTree};
     use rue_diagnostic::SourceKind;
     use rue_diagnostic::{ForbiddenBy, Lint, LintGroup, LintLevel, LintLevels, LintName};
+    use rue_options::CompilerOptions;
     use sha2::{Digest, Sha256};
 
     #[test]
@@ -1408,6 +1453,88 @@ mod tests {
         );
     }
 
+    const FAILING_SOURCE: &str = "fn main(value: Int) -> Int {\n    check(value)\n}\n\ntest fn fails() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10;\n    value\n}\n";
+
+    #[test]
+    fn failing_tests_are_traced() {
+        let project = TempProject::new("trace-test", FAILING_SOURCE);
+        let path = project.0.join("main.rue");
+
+        let mut ctx = Compiler::new(CompilerOptions::debug());
+        let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
+        let mut allocator = Allocator::new();
+        let tests = tree
+            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .unwrap();
+        let cost = CostArgs {
+            max_cost: DEFAULT_MAX_COST,
+        };
+
+        let failure = run_test(&mut allocator, tests[0].ptr, cost).unwrap_err();
+        assert!(failure.raised);
+
+        // The trace shows the call to `check`, and the assertion in it with its argument
+        let trace =
+            trace_test(&tree, &mut ctx, &mut allocator, &tests[0], &project.0, cost).unwrap();
+        assert!(trace.contains("line 6, column 5"), "{trace}");
+        assert!(
+            trace.contains("line 10, column 5, in check\n  assert value > 10;"),
+            "{trace}"
+        );
+        assert!(trace.contains("value = 3"), "{trace}");
+
+        // A test that returns something other than nil has no stack to show
+        let program = assemble(&mut allocator, "(q . 1)").unwrap();
+        assert!(!run_test(&mut allocator, program, cost).unwrap_err().raised);
+    }
+
+    #[test]
+    fn debug_shows_where_a_program_failed() {
+        let project = TempProject::new("trace-debug", FAILING_SOURCE);
+        let path = project.0.join("main.rue");
+        let sidecar = project.0.join("main.bin");
+
+        let Ok(Command::Build(args)) = Command::try_parse_from([
+            "rue",
+            "build",
+            path.to_str().unwrap(),
+            "--all",
+            "--debug-metadata",
+        ]) else {
+            panic!("expected build command");
+        };
+        build(args).unwrap();
+        fs::rename(project.0.join("main.rue.debug.clvm.bin"), &sidecar).unwrap();
+
+        let hex = fs::read_to_string(project.0.join("main.rue.hex")).unwrap();
+        let hex = hex.trim();
+        let sidecar = sidecar.to_str().unwrap();
+
+        // The solution `(3)` fails the assertion, and `(30)` doesn't
+        let error = run_debug(&["-x", hex, "ff0380", "--debug-metadata", sidecar]).unwrap_err();
+        assert!(error.starts_with("clvm raise\n"), "{error}");
+        assert!(error.contains("line 10, column 5, in check"), "{error}");
+        assert!(error.contains("value = 3"), "{error}");
+        assert_eq!(
+            run_debug(&["-x", hex, "ff1e80", "--debug-metadata", sidecar]),
+            Ok("30".to_string())
+        );
+
+        // Without the sidecar, the failure is reported as before
+        assert_eq!(run_debug(&["-x", hex, "ff0380"]).unwrap_err(), "clvm raise");
+
+        // A file that isn't a sidecar is an error
+        let error = run_debug(&[
+            "-x",
+            hex,
+            "ff0380",
+            "--debug-metadata",
+            path.to_str().unwrap(),
+        ])
+        .unwrap_err();
+        assert!(error.contains("isn't valid debug metadata"), "{error}");
+    }
+
     #[test]
     fn build_long_help() {
         let err = Command::try_parse_from(["rue", "build", "--help"]).unwrap_err();
@@ -1469,17 +1596,7 @@ mod tests {
     fn run_test_with(program: &str, max_cost: u64) -> Result<(), String> {
         let mut allocator = Allocator::new();
         let program = assemble(&mut allocator, program).unwrap();
-        run_test(
-            &mut allocator,
-            program,
-            CostArgs { max_cost },
-            &Sidecars::default(),
-        )
-        .unwrap()
-        .map_err(|failure| {
-            assert!(failure.trace.is_none(), "there's no sidecar to trace with");
-            failure.message
-        })
+        run_test(&mut allocator, program, CostArgs { max_cost }).map_err(|failure| failure.message)
     }
 
     #[test]

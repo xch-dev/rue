@@ -146,7 +146,7 @@ fn main_capture_wrapper_is_located_at_the_body() {
     }
 }
 
-/// Exports have sidecars of their own, and are the same with and without them.
+/// Exports and tests have sidecars of their own, and are the same with and without them.
 #[test]
 fn exports() {
     let dir = std::env::temp_dir().join(format!("rue-debug-metadata-{}", std::process::id()));
@@ -154,7 +154,7 @@ fn exports() {
     let path = dir.join("exports.rue");
     fs::write(
         &path,
-        "export fn double(value: Int) -> Int {\n    value * 2\n}\n\nexport fn square(value: Int) -> Int {\n    value * value\n}\n",
+        "export fn double(value: Int) -> Int {\n    value * 2\n}\n\nexport fn square(value: Int) -> Int {\n    value * value\n}\n\ntest fn squares() {\n    assert square(3) == 9;\n}\n",
     )
     .unwrap();
 
@@ -194,6 +194,25 @@ fn exports() {
                 format!("{} (value@2: integer . _)", with.name)
             );
         }
+
+        // So do tests, which `rue test` compiles again with sidecars when they fail
+        let without = tree
+            .tests(&mut ctx, &mut allocator, Some(&kind), None, &dir, false)
+            .unwrap();
+        let with = tree
+            .tests_with_debug_metadata(&mut ctx, &mut allocator, Some(&kind), None, &dir, false)
+            .unwrap();
+
+        assert_eq!(with.len(), 1);
+        assert_eq!(without.len(), with.len());
+        assert!(without[0].debug_metadata.is_none());
+
+        let program = node_to_bytes(&allocator, with[0].ptr).unwrap();
+        assert_eq!(node_to_bytes(&allocator, without[0].ptr).unwrap(), program);
+        assert_eq!(
+            Metadata::program_sha256(with[0].debug_metadata.as_deref().unwrap()),
+            Sha256::digest(&program).to_vec()
+        );
     }
 
     fs::remove_dir_all(dir).unwrap();
