@@ -1,0 +1,19 @@
+diagnostics:
+- Can only spread the last field at non_final_spread.rue:2:5
+- |-
+  Field `first` of struct `Spread` is never read at non_final_spread.rue:2:8
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- Can only spread the last parameter at non_final_spread.rue:6:11
+- Unused parameter `first` at non_final_spread.rue:6:14
+- Can only spread the last item in a list at non_final_spread.rue:11:17
+- Can only spread the last item in a list at non_final_spread.rue:12:17
+- Can only spread the last item in a list at non_final_spread.rue:13:10
+- Unused binding `items` at non_final_spread.rue:13:13
+- Can only spread the last field at non_final_spread.rue:14:11
+- Unused binding `first` at non_final_spread.rue:14:14
+- Can only spread the last parameter at non_final_spread.rue:15:21
+- Unused binding `lambda_type` at non_final_spread.rue:16:9
+- Can only spread the last parameter at non_final_spread.rue:16:25
+- Can only spread the last argument at non_final_spread.rue:17:12
+- Expected 1 argument, but found 2 at non_final_spread.rue:17:25
+- Can only spread the last argument at non_final_spread.rue:17:29

@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::AstListExpr;
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_hir::{Hir, List, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
@@ -30,7 +30,10 @@ pub fn compile_list_expr(
             if i == len - 1 {
                 true
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(
+                    &spread,
+                    DiagnosticKind::NonFinalSpread(SpreadTarget::ListItem),
+                );
                 false
             }
         } else {

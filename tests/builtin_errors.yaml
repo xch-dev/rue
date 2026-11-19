@@ -8,18 +8,18 @@ diagnostics:
 - Spread operator cannot be used on this builtin at builtin_errors.rue:23:30
 - Expected 1 argument, but found 0 at builtin_errors.rue:26:13
 - Expected 1 argument, but found 2 at builtin_errors.rue:27:13
-- Cannot compare `Bytes` to `List<Bytes>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:27:20
+- Cannot assign `Bytes` to `List<Bytes>` without a type guard, since the value isn't always a valid `List<Bytes>` at builtin_errors.rue:27:20
 - Spread operator cannot be used on this builtin at builtin_errors.rue:28:20
 - Expected 1 argument, but found 2 at builtin_errors.rue:29:13
-- Cannot compare `Int` to `List<Int>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:29:17
+- Cannot assign `Int` to `List<Int>` without a type guard, since the value isn't always a valid `List<Int>` at builtin_errors.rue:29:17
 - Spread operator cannot be used on this builtin at builtin_errors.rue:30:17
 - Cannot assign `List<true | false>` to `List<Int>` without a cast, since they are semantically different at builtin_errors.rue:31:24
 - Expected 1 argument, but found 0 at builtin_errors.rue:32:13
 - Cannot assign `List<Int>` to `List<true | false>`, since they are incompatible at builtin_errors.rue:33:17
 - Spread operator cannot be used on this builtin at builtin_errors.rue:34:17
-- Cannot compare `List<Signature>` to `List<PublicKey>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:35:20
+- Cannot assign `List<Signature>` to `List<PublicKey>` without a type guard, since the value isn't always a valid `List<PublicKey>` at builtin_errors.rue:35:20
 - Cannot assign `PublicKey` to `List<PublicKey>`, since they are incompatible at builtin_errors.rue:36:27
-- Cannot compare `List<PublicKey>` to `List<Signature>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:37:20
+- Cannot assign `List<PublicKey>` to `List<Signature>` without a type guard, since the value isn't always a valid `List<Signature>` at builtin_errors.rue:37:20
 - Spread operator cannot be used on this builtin at builtin_errors.rue:38:27
 - Expected 3 arguments, but found 2 at builtin_errors.rue:41:13
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:42:32
@@ -55,13 +55,13 @@ diagnostics:
 - Cannot assign `PublicKey` to `Signature`, since they are incompatible at builtin_errors.rue:67:24
 - Expected 2 arguments, but found 3 at builtin_errors.rue:68:13
 - Cannot assign `List<PublicKey>` to `AlternatingList<PublicKey, Bytes>`, since they are incompatible at builtin_errors.rue:69:32
-- Cannot compare `List<PublicKey>` to `AlternatingList<PublicKey, Signature>` without a type guard, since the runtime value must be constrained at builtin_errors.rue:70:37
+- Cannot assign `List<PublicKey>` to `AlternatingList<PublicKey, Signature>` without a type guard, since the value isn't always a valid `AlternatingList<PublicKey, Signature>` at builtin_errors.rue:70:37
 - Expected 3 arguments, but found 2 at builtin_errors.rue:73:13
 - Cannot assign `R1PublicKey` to `K1PublicKey` without a cast, since they are semantically different at builtin_errors.rue:74:30
-- Cannot compare `Bytes` to `Bytes32` without a type guard, since the runtime value must be constrained at builtin_errors.rue:75:37
+- Cannot assign `Bytes` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at builtin_errors.rue:75:37
 - Cannot assign `K1Signature` to `R1Signature` without a cast, since they are semantically different at builtin_errors.rue:76:43
 - Expected 3 arguments, but found 1 at builtin_errors.rue:77:13
 - Spread operator cannot be used on this builtin at builtin_errors.rue:77:30
 - Expected 1 argument, but found 2 at builtin_errors.rue:80:13
-- Can only spread the last element in a list at builtin_errors.rue:80:20
-- Cannot compare `List<Int>` to `Bytes` without a type guard, since the runtime value must be constrained at builtin_errors.rue:80:23
+- Can only spread the last argument at builtin_errors.rue:80:20
+- Cannot assign `List<Int>` to `Bytes` without a type guard, since the value isn't always a valid `Bytes` at builtin_errors.rue:80:23

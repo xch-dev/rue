@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use indexmap::IndexSet;
 use log::debug;
 use rue_ast::{AstNode, AstStructItem, AstTypeItem};
-use rue_diagnostic::{DiagnosticKind, Name};
+use rue_diagnostic::{DiagnosticKind, Name, SpreadTarget};
 use rue_hir::{Declaration, Hir, ScopeId};
 use rue_types::{Generic, Pair, Struct, Type, TypeId};
 
@@ -43,7 +43,7 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
             if i == len - 1 {
                 true
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread(SpreadTarget::Field));
                 false
             }
         } else {

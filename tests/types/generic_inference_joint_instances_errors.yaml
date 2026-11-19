@@ -1,6 +1,6 @@
 diagnostics:
-- "Cannot compare `fn(y: Never) -> nil | fn(_value: Bytes) -> Int` to `Int` without a type guard, since the runtime value must be constrained at generic_inference_joint_instances_errors.rue:43:22"
-- "Cannot compare `fn(y: (Never, Never)) -> Bytes | fn(_y: Bytes) -> \"a\"` to `Int` without a type guard, since the runtime value must be constrained at generic_inference_joint_instances_errors.rue:47:23"
-- "Cannot compare `fn(y: (Never, Never)) -> Bytes | fn(_y: Bytes) -> \"a\"` to `Int` without a type guard, since the runtime value must be constrained at generic_inference_joint_instances_errors.rue:48:22"
-- "Cannot compare `fn(x: Never) -> nil | fn(_value: Bytes) -> Int` to `Int` without a type guard, since the runtime value must be constrained at generic_inference_joint_instances_errors.rue:56:23"
+- "Cannot assign `fn(y: Never) -> nil | fn(_value: Bytes) -> Int` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_joint_instances_errors.rue:43:22"
+- "Cannot assign `fn(y: (Never, Never)) -> Bytes | fn(_y: Bytes) -> \"a\"` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_joint_instances_errors.rue:47:23"
+- "Cannot assign `fn(y: (Never, Never)) -> Bytes | fn(_y: Bytes) -> \"a\"` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_joint_instances_errors.rue:48:22"
+- "Cannot assign `fn(x: Never) -> nil | fn(_value: Bytes) -> Int` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_joint_instances_errors.rue:56:23"
 - Cannot assign `1` to `Never`, since they are incompatible at generic_inference_joint_instances_errors.rue:58:48

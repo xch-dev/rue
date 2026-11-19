@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_hir::{BinaryOp, Builtin, Hir, HirId, UnaryOp, Value};
 use rue_lir::ClvmOp;
 use rue_parser::SyntaxToken;
@@ -192,7 +192,7 @@ impl<'a> BuiltinCall<'a> {
                 if i == len - 1 {
                     spread = Some(op);
                 } else {
-                    ctx.diagnostic(arg.syntax(), DiagnosticKind::NonFinalSpread);
+                    ctx.diagnostic(&op, DiagnosticKind::NonFinalSpread(SpreadTarget::Argument));
                 }
             }
 

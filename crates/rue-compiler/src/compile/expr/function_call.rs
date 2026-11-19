@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_hir::{FunctionCall, Hir, Symbol, Value};
 use rue_types::{FunctionType, Type, TypeId, Union, contains_generic, substitute_with_mappings};
 
@@ -74,7 +74,10 @@ pub fn compile_function_call_expr(
             if i == len - 1 {
                 nil_terminated = false;
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(
+                    &spread,
+                    DiagnosticKind::NonFinalSpread(SpreadTarget::Argument),
+                );
             }
         }
 

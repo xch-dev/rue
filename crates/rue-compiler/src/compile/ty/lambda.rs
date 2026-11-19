@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::{AstLambdaType, AstNode};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_types::{FunctionParameter, FunctionType, Type, TypeId};
 
 use crate::{Compiler, compile_generic_parameters, compile_type};
@@ -27,7 +27,10 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
             if i == len - 1 {
                 true
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(
+                    &spread,
+                    DiagnosticKind::NonFinalSpread(SpreadTarget::Parameter),
+                );
                 false
             }
         } else {
