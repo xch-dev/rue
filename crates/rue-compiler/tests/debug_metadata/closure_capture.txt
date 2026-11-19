@@ -1,6 +1,6 @@
 ===== debug =====
-program: (a (q 2 (q 2 5 (c 5 (c 23 2))) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q . 5) (q 8 (q . "assertion failed at closure_capture.rue:5:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (not (l 5)) (q) (q 16 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) 1))
-sidecar: 3098 bytes
+program: (a (q 2 (q 2 5 (c 5 (c 23 2))) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q . 5) (q 8 (q . "assertion failed at closure_capture.rue:5:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (not 5) (q) (q 16 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) 1))
+sidecar: 3054 bytes
 files:
   closure_capture.rue
 functions:
@@ -14,8 +14,8 @@ nodes:
       closure_capture.rue:4:17-7:6  (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q . 5) (q 8 (q ...
         closure_capture.rue:5:9-5:29 fn <lambda>  (a (i (> 2 5) (q . 5) (q 8 (q . "assertion failed at clos...
           closure_capture.rue:5:16-5:28  (> 2 5)
-    closure_capture.rue:11:60-16:2 fn total  (a (i (not (l 5)) (q) (q 16 (a 7 (c (f 5) ())) (a 2 (c 2 ...
-      closure_capture.rue:12:8-12:20  (not (l 5))
+    closure_capture.rue:11:60-16:2 fn total  (a (i (not 5) (q) (q 16 (a 7 (c (f 5) ())) (a 2 (c 2 (c (...
+      closure_capture.rue:12:8-12:20  (not 5)
       closure_capture.rue:15:5-15:42  (+ (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))
         closure_capture.rue:15:5-15:19  (a 7 (c (f 5) ()))
           closure_capture.rue:15:7-15:18  (f 5)
