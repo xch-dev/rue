@@ -134,7 +134,6 @@ fn narrow_inferred(
     fallback: &HashMap<TypeId, TypeId>,
     mappings: &mut HashMap<TypeId, TypeId>,
 ) {
-
     let inferred: HashSet<TypeId> = infer
         .generics
         .keys()
