@@ -4,3 +4,5 @@ diagnostics:
 - Cannot infer generic `T` for `external`; specify it explicitly, e.g. `external::<...>()` at inferred_operand_errors.rue:19:5
 - Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at inferred_operand_errors.rue:23:7
 - Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at inferred_operand_errors.rue:27:6
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at inferred_operand_errors.rue:31:6
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at inferred_operand_errors.rue:37:13

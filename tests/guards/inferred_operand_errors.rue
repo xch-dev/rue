@@ -27,10 +27,26 @@ fn pair_operand(value: Any) -> Bool {
     (unchecked_cast(value), 1) is (Bytes32, Int)
 }
 
+fn list_operand(value: Any) -> Bool {
+    [unchecked_cast(value)] is List<Bytes32>
+}
+
+fn if_operand(value: Any, condition: Bool) -> Bool {
+    (
+        if condition {
+            unchecked_cast(value)
+        } else {
+            1
+        }
+    ) is Int
+}
+
 fn main(value: Any) -> Bool {
     unchecked_cast_operand(value)
         && generic_return_operand(value)
         && extern_operand(value)
         && block_operand(value)
         && pair_operand(value)
+        && list_operand(value)
+        && if_operand(value, true)
 }

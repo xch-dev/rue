@@ -1,4 +1,5 @@
-// The value a guard checks is compiled on its own, without the guard's type expected of it
+// Guards whose value gets its type from elsewhere still check it at runtime, including the
+// explicit type argument that the error in `inferred_operand_errors.rue` asks for
 
 fn pick<T>(first: T, second: T) -> T {
     if first is Int {
