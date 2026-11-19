@@ -874,11 +874,13 @@ impl ArgumentOrder {
     /// for the generics the arguments map (`CallSolver::argument_mappings`). An argument without a
     /// lambda in it always can. One whose lambdas are all inside calls in it (see `has_own_lambda`)
     /// can once no argument still to be compiled can add to the generics it reads, since the call
-    /// can pass a lambda through, as `id(fn(x) => 1)` does. A lambda only can if no argument still to be compiled can add to
-    /// the generics its parameter types come from, counting every one, unlike the order's
-    /// readiness, and its own return type can't either. Otherwise a narrower parameter type could
-    /// stop a later addition, since parameters are contravariant. A lambda inside another
-    /// argument, such as a block or a pair, never takes them.
+    /// can pass a lambda through, as `id(fn(x) => 1)` does.
+    ///
+    /// A lambda only can if no argument still to be compiled can add to the generics its
+    /// parameter types come from, counting every one, unlike the order's readiness, and its own
+    /// return type can't either. Otherwise a narrower parameter type could stop a later addition,
+    /// since parameters are contravariant. A lambda inside another argument, such as a block or a
+    /// pair, never takes them.
     fn takes_expected_bounds(&self, i: usize) -> bool {
         let argument = &self.arguments[i];
 
@@ -1508,12 +1510,12 @@ fn is_call_without_arguments(expr: &AstExpr) -> bool {
 }
 
 /// Whether the expression is, or has in it, a lambda that isn't inside a call in it, in the call's
-/// arguments or its callee. A lambda in a call's arguments, such as in `map_reversed(5, fn(x) => 7)`,
-/// is compiled against that call's own generics, which the call's expected type only bounds
-/// through its return type, so the call takes the expected bounds much as a call without a lambda
-/// does, once nothing later can add to them (see `ArgumentOrder::takes_expected_bounds`). A lambda
-/// that's the callee, as in `(fn() => 7)()`, has its parameter types written out, so the
-/// expected bounds can't narrow them either.
+/// arguments or its callee. A lambda in a call's arguments, such as in
+/// `map_reversed(5, fn(x) => 7)`, is compiled against that call's own generics, which the call's
+/// expected type only bounds through its return type, so the call takes the expected bounds much
+/// as a call without a lambda does, once nothing later can add to them (see
+/// `ArgumentOrder::takes_expected_bounds`). A lambda that's the callee, as in `(fn() => 7)()`, has
+/// its parameter types written out, so the expected bounds can't narrow them either.
 fn has_own_lambda(expr: &AstExpr) -> bool {
     let mut stack = vec![expr.syntax().clone()];
 
