@@ -711,10 +711,13 @@ fn without_subsumed_functions(
 /// copies of (see `same_structure`), so that unions built from each other, such as those of
 /// generics inferred through a chain of others, don't double in size each time (#337).
 ///
-/// Two copies of a compound type are kept, since a union with one copy of `(5, 5)` doesn't type the
-/// same as one with two: a field of the first can be a lone `5`, which is widened to `Int`, where
-/// the second gives the union `5 | 5`, which isn't. Atoms already rely on that difference being
-/// made by the unions they're in, and a union of two copies says no more than one of any number.
+/// At most two copies of a compound type are kept, not one, since a union with one copy of `(5, 5)`
+/// doesn't type the same as one with two. A field of a union of pairs is the field of its only pair
+/// if it has one (`pairs.len() == 1` in the compiler's `field.rs`), so it's a lone `5`, which
+/// inference widens to `Int`, where two pairs give the union `5 | 5`, which it doesn't. Keeping one
+/// copy rejected the `x4.first` in a program that main compiles (infer-fuzz generator 1, seed 4600,
+/// pinned in `tests/types/generic_inference_union_copies.rue`). Two copies say the same as any
+/// number more, so the doubling still stops.
 ///
 /// The result is only a single type if it was given one. Otherwise it stays a union, even of one
 /// member, since a union isn't widened as a literal is (see `widen_literal`), which inference has

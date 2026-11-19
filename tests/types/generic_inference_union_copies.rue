@@ -1,0 +1,31 @@
+// A union that inference builds keeps at most two copies of a compound member, rather than one
+// copy for every path it was reached by (#362). One copy wouldn't type the same as two: a field of
+// a lone pair is a lone literal, which is widened, where a field of two copies is a union of the
+// literals, which isn't
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+fn either<T>(first: T, _second: T) -> T {
+    first
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn cycle<A, B>(forward: fn(a: A) -> B, _backward: fn(a: B) -> A, value: A) -> B {
+    forward(value)
+}
+
+test fn field_of_two_copies_stays_a_union() -> Int {
+    // `A` takes `(5, 5)` from the value and from `duplicate::<5>`, so it's two copies, and `x4.first`
+    // is `5 | 5`, which `B` isn't widened from. With one copy it would be `5`, widened to `Int`, and
+    // `either`'s result wouldn't be `5` (infer-fuzz generator 1, seed 4600)
+    let value: 5 = either(
+        cycle(fn(x4) => x4.first, duplicate::<5>, (5, 5)),
+        map(either(fn(x7: nil) => 5, fn(x8) => 5), nil),
+    );
+    value + 1
+}
