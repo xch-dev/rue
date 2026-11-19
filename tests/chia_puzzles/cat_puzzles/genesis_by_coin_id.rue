@@ -1,0 +1,99 @@
+// Regression test, not for production use. A port of `cat_puzzles/genesis_by_coin_id.clsp` from chia_puzzles,
+// checked against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./genesis_by_coin_id.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The facts about the CAT spend that the CAT layer passes to its TAIL.
+struct Truths {
+    puzzle: PuzzleTruths,
+    ...coin: CoinTruths,
+}
+
+struct PuzzleTruths {
+    inner_puzzle_hash: Bytes32,
+    ...cat_info: CatInfo,
+}
+
+struct CatInfo {
+    mod_hash: Bytes32,
+    mod_hash_hash: Bytes32,
+    tail_program_hash: Bytes32,
+}
+
+struct CoinTruths {
+    my_id: Bytes32,
+    ...my_coin: Coin,
+}
+
+struct Coin {
+    parent_coin_info: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+fn main(
+    genesis_id: Bytes32,
+    truths: Truths,
+    _parent_is_cat: Bool,
+    _lineage_proof: Any,
+    delta: Int,
+    _inner_conditions: List<Condition>,
+    _solution: Any,
+) -> List<Condition> {
+    assert delta == 0;
+    assert truths.coin.my_coin.parent_coin_info == genesis_id;
+    nil
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn truths(parent_coin_info: Bytes32) -> Truths {
+    Truths {
+        puzzle: PuzzleTruths {
+            inner_puzzle_hash: sha256("inner_puzzle"),
+            cat_info: CatInfo {
+                mod_hash: sha256("cat_mod"),
+                mod_hash_hash: tree_hash_atom(sha256("cat_mod")),
+                tail_program_hash: sha256("tail"),
+            },
+        },
+        coin: CoinTruths {
+            my_id: sha256("my_id"),
+            my_coin: Coin { parent_coin_info, puzzle_hash: sha256("cat_puzzle"), amount: 100 },
+        },
+    }
+}
+
+test fn issues_from_the_genesis_coin() -> Any {
+    check([sha256("genesis"), truths(sha256("genesis")), false, nil, 0, nil, nil])
+}
+
+fn nonzero_delta() -> Any {
+    [sha256("genesis"), truths(sha256("genesis")), false, nil, 1, nil, nil]
+}
+
+test fn rejects_a_nonzero_delta() -> Any {
+    run(main, nonzero_delta())
+}
+
+test fn reference_rejects_a_nonzero_delta() -> Any {
+    run(reference, nonzero_delta())
+}
+
+fn wrong_parent() -> Any {
+    [sha256("genesis"), truths(sha256("other")), false, nil, 0, nil, nil]
+}
+
+test fn rejects_the_wrong_parent() -> Any {
+    run(main, wrong_parent())
+}
+
+test fn reference_rejects_the_wrong_parent() -> Any {
+    run(reference, wrong_parent())
+}
