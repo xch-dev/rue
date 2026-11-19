@@ -34,7 +34,7 @@ nodes:
             captures.rue:16:34-16:37  (q . 100)
 ===== release =====
 program: (+ (a (c (q . 2) (c (c (q . 1) (q 2 (i (> (* 2 (q . 2)) 5) (q . 5) (q 8)) 1)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 10)) (i (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 (q . 5)) (q 21 2 (q . 100)) (q)) 1)) (c (c (q . 4) (c (c (q . 1) (/ 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) (q . 1) (q . 2)))
-sidecar: 3761 bytes
+sidecar: 3779 bytes
 files:
   captures.rue
 functions:
@@ -48,7 +48,7 @@ nodes:
         captures.rue:9:9-9:29 fn <lambda>  (a (i (> (* 2 (q . 2)) 5) (q . 5) (q 8)) 1)
           captures.rue:9:16-9:28  (> (* 2 (q . 2)) 5)
             captures.rue:7:17-7:22  (* 2 (q . 2))
-    captures.rue:17:5-21:6  (i (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 (q . 5)) (q 2...
+    captures.rue:17:5-21:6 label "helper (inlined)"  (i (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 (q . 5)) (q 2...
       captures.rue:17:8-17:11  (a (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 (q . 5)) (q 21 2...
         captures.rue:16:13-16:37  (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 (q . 5)) (q 21 2 (q...
           captures.rue:16:21-16:37 fn <lambda>  (a (i (> 5 (q . 5)) (q 21 2 (q . 100)) (q)) 1)

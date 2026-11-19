@@ -18,6 +18,9 @@ pub struct DebugTags {
     pub spans: HashMap<LirId, usize>,
     /// The function whose body each node is the root of.
     pub functions: HashMap<LirId, usize>,
+    /// A name for each node that's the root of something that isn't a function, such as the body
+    /// of a function that was inlined.
+    pub labels: HashMap<LirId, usize>,
 }
 
 /// The tags of the CLVM generated from tagged LIR. Only pairs are tagged: atoms that have the same
@@ -29,6 +32,8 @@ pub struct NodeTags {
     pub spans: HashMap<NodePtr, usize>,
     /// The function whose body each pair is the root of.
     pub functions: HashMap<NodePtr, usize>,
+    /// The name of each pair that's the root of something that isn't a function.
+    pub labels: HashMap<NodePtr, usize>,
 }
 
 /// Keeps track of the innermost span being generated as nodes are allocated in an arena, so that
@@ -95,6 +100,7 @@ mod tests {
         let tags = DebugTags {
             spans: HashMap::from([(add, 1), (five, 2)]),
             functions: HashMap::from([(add, 0), (path, 1)]),
+            labels: HashMap::from([(add, 2), (path, 3)]),
         };
 
         let mut allocator = Allocator::new();
@@ -132,6 +138,7 @@ mod tests {
 
         // Only pairs are marked as functions, since atoms can't be told apart
         assert_eq!(nodes.functions, HashMap::from([(ptr, 0)]));
+        assert_eq!(nodes.labels, HashMap::from([(ptr, 2)]));
     }
 
     #[test]
@@ -147,6 +154,7 @@ mod tests {
         let mut tags = DebugTags {
             spans: HashMap::from([(sum, 1), (body, 2)]),
             functions: HashMap::from([(body, 0)]),
+            labels: HashMap::from([(body, 1)]),
         };
 
         let plain = optimize(&mut arena, body);
@@ -175,6 +183,7 @@ mod tests {
 
         // The function's body is optimized to a new node, which is still the function
         assert_eq!(tags.functions.get(&optimized), Some(&0));
+        assert_eq!(tags.labels.get(&optimized), Some(&1));
         assert_eq!(tags.spans.get(&optimized), Some(&2));
         // The folded sum keeps its span, and the untagged node takes the span of the node it's in
         assert_eq!(tags.spans.get(&args[1]), Some(&1));

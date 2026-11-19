@@ -1,6 +1,6 @@
 ===== debug =====
 program: (a (q 2 (q 2 (i (= 23 (q . 3)) (q . 2) (q 8 (q . "assertion failed at std_function.rue:6:5"))) 1) (c (a 2 (c 2 5)) 1)) (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) 1))
-sidecar: 2883 bytes
+sidecar: 2935 bytes
 files:
   std_function.rue
   std/tree_hash.rue
@@ -16,10 +16,10 @@ nodes:
       std_function.rue:5:16-5:32  (a 2 (c 2 5))
     std/tree_hash.rue:2:5-6:6 fn tree_hash  (a (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat...
       std/tree_hash.rue:2:8-2:22  (not (l 3))
-      std/tree_hash.rue:10:5-10:31  (sha256 (concat (q . 1) 3))
+      std/tree_hash.rue:10:5-10:31 label "tree_hash_atom (inlined)"  (sha256 (concat (q . 1) 3))
         std/tree_hash.rue:10:12-10:30  (concat (q . 1) 3)
           std/tree_hash.rue:10:12-10:13  (q . 1)
-      std/tree_hash.rue:14:5-14:38  (sha256 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (...
+      std/tree_hash.rue:14:5-14:38 label "tree_hash_pair (inlined)"  (sha256 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (...
         std/tree_hash.rue:14:12-14:37  (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3...
           std/tree_hash.rue:14:12-14:30  (concat (q . 2) (a 2 (c 2 (f 3))))
             std/tree_hash.rue:14:12-14:13  (q . 2)
@@ -29,7 +29,7 @@ nodes:
             std/tree_hash.rue:5:58-5:68  (r 3)
 ===== release =====
 program: (a (q 2 (i (= 11 (q . 3)) (q 2 2 (c 2 5)) (q 8)) 1) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) 1))
-sidecar: 2321 bytes
+sidecar: 2373 bytes
 files:
   std_function.rue
   std/tree_hash.rue
@@ -44,9 +44,9 @@ nodes:
       std_function.rue:5:16-5:32  (a 2 (c 2 5))
     std/tree_hash.rue:2:5-6:6 fn tree_hash  (a (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q...
       std/tree_hash.rue:2:8-2:22  (l 3)
-      std/tree_hash.rue:14:5-14:38  (sha256 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7)))
+      std/tree_hash.rue:14:5-14:38 label "tree_hash_pair (inlined)"  (sha256 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7)))
         std/tree_hash.rue:14:12-14:13  (q . 2)
         std/tree_hash.rue:5:24-5:46  (a 2 (c 2 5))
         std/tree_hash.rue:5:48-5:69  (a 2 (c 2 7))
-      std/tree_hash.rue:10:5-10:31  (sha256 (q . 1) 3)
+      std/tree_hash.rue:10:5-10:31 label "tree_hash_atom (inlined)"  (sha256 (q . 1) 3)
         std/tree_hash.rue:10:12-10:13  (q . 1)

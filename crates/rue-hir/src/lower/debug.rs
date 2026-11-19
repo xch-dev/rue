@@ -20,6 +20,10 @@ pub struct LoweringDebugInfo {
     /// The names of the parameters of the functions that were lowered or inlined, which parameter
     /// symbols don't have themselves.
     pub parameter_names: HashMap<SymbolId, String>,
+    /// The names that the LIR's label tags refer to.
+    pub labels: Vec<String>,
+    /// The index of each label, so that it's only added once.
+    label_indices: HashMap<String, usize>,
     /// The span of each HIR node that's been entered, so that it's only added once.
     hir_spans: HashMap<HirId, usize>,
     /// The function of each symbol that's been lowered, so that it's only added once.
@@ -50,6 +54,13 @@ impl LoweringDebugInfo {
     pub(super) fn span(&mut self, srcloc: SrcLoc) -> usize {
         self.spans.push(srcloc);
         self.spans.len() - 1
+    }
+
+    pub(super) fn label(&mut self, label: String) -> usize {
+        *self.label_indices.entry(label.clone()).or_insert_with(|| {
+            self.labels.push(label);
+            self.labels.len() - 1
+        })
     }
 
     pub(super) fn function(&mut self, symbol: SymbolId, environment: &Environment) -> usize {

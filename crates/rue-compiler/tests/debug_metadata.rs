@@ -330,14 +330,9 @@ impl Metadata {
         &self,
         node: NodePtr,
         program: &mut Allocator,
-        annotations: &mut Vec<(NodePtr, Option<usize>, Option<usize>)>,
+        annotations: &mut Vec<(NodePtr, Annotation)>,
     ) -> NodePtr {
         let fields = items(&self.allocator, node);
-        assert_eq!(
-            reference(&self.allocator, fields[2]),
-            None,
-            "labels aren't used"
-        );
 
         match number(&self.allocator, fields[0]) {
             0 => program
@@ -349,8 +344,11 @@ impl Metadata {
                 let pair = program.new_pair(first, rest).unwrap();
                 annotations.push((
                     pair,
-                    reference(&self.allocator, fields[1]),
-                    reference(&self.allocator, fields[3]),
+                    Annotation {
+                        span: reference(&self.allocator, fields[1]),
+                        label: reference(&self.allocator, fields[2]),
+                        function: reference(&self.allocator, fields[3]),
+                    },
                 ));
                 pair
             }
@@ -393,13 +391,12 @@ fn describe(program_bytes: &[u8], bytes: &[u8]) -> String {
     writeln!(output, "nodes:").unwrap();
     let annotations = annotations
         .into_iter()
-        .map(|(node, span, function)| (node, (span, function)))
         .collect::<std::collections::HashMap<_, _>>();
     describe_nodes(
         &metadata,
         &program,
         root,
-        (None, None),
+        None,
         &annotations,
         0,
         &mut output,
@@ -408,13 +405,21 @@ fn describe(program_bytes: &[u8], bytes: &[u8]) -> String {
     output
 }
 
-type Annotations = std::collections::HashMap<NodePtr, (Option<usize>, Option<usize>)>;
+/// The span, label and function that a node of the shadow tree refers to.
+#[derive(Debug, Clone, Copy)]
+struct Annotation {
+    span: Option<usize>,
+    label: Option<usize>,
+    function: Option<usize>,
+}
+
+type Annotations = std::collections::HashMap<NodePtr, Annotation>;
 
 fn describe_nodes(
     metadata: &Metadata,
     program: &Allocator,
     node: NodePtr,
-    parent: (Option<usize>, Option<usize>),
+    parent_span: Option<usize>,
     annotations: &Annotations,
     depth: usize,
     output: &mut String,
@@ -423,10 +428,14 @@ fn describe_nodes(
         return;
     };
 
-    let (span, function) = annotations[&node];
+    let Annotation {
+        span,
+        label,
+        function,
+    } = annotations[&node];
     let mut depth = depth;
 
-    if function.is_some() || span != parent.0 {
+    if function.is_some() || label.is_some() || span != parent_span {
         let mut text = disassemble_program(program, node);
         if text.chars().count() > 60 {
             text = text.chars().take(57).collect::<String>() + "...";
@@ -437,29 +446,21 @@ fn describe_nodes(
             let fields = items(&metadata.allocator, metadata.functions[function]);
             format!(" fn {}", metadata.string(fields[0]))
         });
+        let label = label.map_or(String::new(), |label| {
+            format!(" label {:?}", metadata.text(metadata.strings[label]))
+        });
 
-        writeln!(output, "  {}{span}{function}  {text}", "  ".repeat(depth)).unwrap();
+        writeln!(
+            output,
+            "  {}{span}{function}{label}  {text}",
+            "  ".repeat(depth)
+        )
+        .unwrap();
         depth += 1;
     }
 
-    describe_nodes(
-        metadata,
-        program,
-        first,
-        (span, function),
-        annotations,
-        depth,
-        output,
-    );
-    describe_nodes(
-        metadata,
-        program,
-        rest,
-        (span, function),
-        annotations,
-        depth,
-        output,
-    );
+    describe_nodes(metadata, program, first, span, annotations, depth, output);
+    describe_nodes(metadata, program, rest, span, annotations, depth, output);
 }
 
 fn items(allocator: &Allocator, mut node: NodePtr) -> Vec<NodePtr> {

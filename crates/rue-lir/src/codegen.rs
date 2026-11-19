@@ -48,10 +48,14 @@ struct Trace<'a> {
 
 impl Trace<'_> {
     fn tag(&mut self, allocator: &Allocator, lir: LirId, ptr: NodePtr) {
-        if let Some(&function) = self.tags.functions.get(&lir)
-            && let SExp::Pair(..) = allocator.sexp(ptr)
-        {
-            self.nodes.functions.entry(ptr).or_insert(function);
+        if let SExp::Pair(..) = allocator.sexp(ptr) {
+            if let Some(&function) = self.tags.functions.get(&lir) {
+                self.nodes.functions.entry(ptr).or_insert(function);
+            }
+
+            if let Some(&label) = self.tags.labels.get(&lir) {
+                self.nodes.labels.entry(ptr).or_insert(label);
+            }
         }
 
         let Some(&span) = self.tags.spans.get(&lir) else {

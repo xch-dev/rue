@@ -64,6 +64,10 @@ fn optimize_node(arena: &mut Arena<Lir>, lir: LirId, trace: &mut Option<&mut Tra
         trace.tags.functions.entry(result).or_insert(function);
     }
 
+    if let Some(&label) = trace.tags.labels.get(&lir) {
+        trace.tags.labels.entry(result).or_insert(label);
+    }
+
     result
 }
 

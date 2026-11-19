@@ -1,6 +1,6 @@
 ===== debug =====
 program: (a (q 18 2 (q . 2)) (c (a (i (> (q . 10) 2) (q 8 (q . "raise called at inline_fail.rue:10:9") (q . "underflow")) (q 17 2 (q . 10))) 1) 1))
-sidecar: 1209 bytes
+sidecar: 1232 bytes
 files:
   inline_fail.rue
 functions:
@@ -9,7 +9,7 @@ nodes:
   inline_fail.rue:3:24-6:2 fn main  (a (q 18 2 (q . 2)) (c (a (i (> (q . 10) 2) (q 8 (q . "ra...
     inline_fail.rue:5:5-5:10  (* 2 (q . 2))
       inline_fail.rue:5:9-5:10  (q . 2)
-    inline_fail.rue:8:46-13:2  (a (i (> (q . 10) 2) (q 8 (q . "raise called at inline_fa...
+    inline_fail.rue:8:46-13:2 label "checked_sub (inlined)"  (a (i (> (q . 10) 2) (q 8 (q . "raise called at inline_fa...
       inline_fail.rue:9:8-9:13  (> (q . 10) 2)
         inline_fail.rue:4:28-4:30  (q . 10)
       inline_fail.rue:10:9-10:27  (x (q . "raise called at inline_fail.rue:10:9") (q . "und...
@@ -18,14 +18,14 @@ nodes:
         inline_fail.rue:4:28-4:30  (q . 10)
 ===== release =====
 program: (* (a (i (> (q . 10) 2) (q 8) (q 17 2 (q . 10))) 1) (q . 2))
-sidecar: 886 bytes
+sidecar: 909 bytes
 files:
   inline_fail.rue
 functions:
   0: main (x@2: integer . _)
 nodes:
   inline_fail.rue:5:5-5:10 fn main  (* (a (i (> (q . 10) 2) (q 8) (q 17 2 (q . 10))) 1) (q . 2))
-    inline_fail.rue:8:46-13:2  (a (i (> (q . 10) 2) (q 8) (q 17 2 (q . 10))) 1)
+    inline_fail.rue:8:46-13:2 label "checked_sub (inlined)"  (a (i (> (q . 10) 2) (q 8) (q 17 2 (q . 10))) 1)
       inline_fail.rue:9:8-9:13  (> (q . 10) 2)
         inline_fail.rue:4:28-4:30  (q . 10)
       inline_fail.rue:10:9-10:27  (x)

@@ -58,17 +58,23 @@ pub(crate) fn build_debug_metadata(
             .map(|&span| builder.span(metadata, span))
             .or(parent.span);
 
-        let function = match allocator.sexp(node) {
-            SExp::Pair(..) => nodes
-                .functions
-                .get(&node)
-                .map(|&function| builder.function(metadata, function)),
-            SExp::Atom => None,
+        let (function, label) = match allocator.sexp(node) {
+            SExp::Pair(..) => (
+                nodes
+                    .functions
+                    .get(&node)
+                    .map(|&function| builder.function(metadata, function)),
+                nodes
+                    .labels
+                    .get(&node)
+                    .map(|&label| metadata.string(&lowering.labels[label])),
+            ),
+            SExp::Atom => (None, None),
         };
 
         Annotation {
             span,
-            label: None,
+            label,
             function,
         }
     })

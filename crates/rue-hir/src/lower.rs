@@ -792,6 +792,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut result = self.lower_hir(&body_env, function.body);
         self.inline_symbols.pop().unwrap();
 
+        // The body has no frame of its own, so it's named after the function, which tells a
+        // debugger that it's running that function
+        if let Some(debug) = &mut self.debug
+            && let Some(name) = &function.name
+        {
+            let label = debug.label(format!("{} (inlined)", name.text()));
+            debug.tags.labels.entry(result).or_insert(label);
+        }
+
         // The arguments that are referenced some of the time are bound like a let statement
         if !bound.is_empty() {
             let bound_args = bound
