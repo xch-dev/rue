@@ -438,6 +438,13 @@ pub fn contained_generics(
     id: TypeId,
     generics: impl IntoIterator<Item = TypeId>,
 ) -> Vec<TypeId> {
+    let generics: Vec<TypeId> = generics.into_iter().collect();
+
+    // Most calls are to functions without generics, and there's nothing to substitute for them
+    if generics.is_empty() {
+        return generics;
+    }
+
     let root = substitute(arena, id);
 
     generics

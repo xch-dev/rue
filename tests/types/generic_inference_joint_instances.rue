@@ -32,6 +32,27 @@ test fn argument_upper_bound_reaches_the_instance() -> Int {
     result.first
 }
 
+fn map_counted<A, B>(function: fn(a: A) -> B, value: A, count: fn(b: B) -> Int) -> B {
+    let _ = count(function(value));
+    function(value)
+}
+
+test fn expected_type_reaches_the_instance_before_a_lambda() -> Int {
+    // The lambda's parameter takes what the arguments infer without the expected type, while the
+    // next argument's expected type takes the instance's bounds from `(7, 5)` too, so `p.first` is
+    // `7` and the guard always holds. The solves with and without the expected type are kept apart
+    let result: (7, 5) = map_counted(
+        swap,
+        (5, 7),
+        fn(p) => if p.first is 7 {
+            1
+        } else {
+            2
+        },
+    );
+    result.first
+}
+
 test fn expected_type_reaches_the_instance() -> Int {
     // `B ≤ (7, 5)` gives `U ≤ 7` and `T ≤ 5`, so the literals aren't widened to `Int`
     let result: (7, 5) = map(swap, (5, 7));

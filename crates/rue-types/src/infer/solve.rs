@@ -185,9 +185,9 @@ impl CallSolver {
         instantiated.take_instance_bounds(&bounded);
         instantiated.resolve_instances(arena, builtins);
 
-        self.instantiated.borrow_mut()[usize::from(expected)] =
-            Some((infer.clone(), instantiated.clone()));
+        let cached = &mut self.instantiated.borrow_mut()[usize::from(expected)];
+        let (_, output) = cached.insert((infer.clone(), instantiated));
 
-        Cow::Owned(instantiated)
+        Cow::Owned(output.clone())
     }
 }

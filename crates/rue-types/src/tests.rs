@@ -2670,6 +2670,36 @@ mod inference {
     }
 
     #[test]
+    fn identical_inferences_need_the_same_order_choices_and_vars() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        let mut infer = Inference::new([a, b]);
+        assert_eq!(db.infer(int, a, &mut infer), Comparison::Assign);
+        assert!(infer.is_identical(&infer.clone()));
+
+        // The same generics and candidates in another order give results in another order, which
+        // `IndexMap`'s own equality would ignore
+        let mut reordered = Inference::new([b, a]);
+        assert_eq!(db.infer(int, a, &mut reordered), Comparison::Assign);
+        assert!(!infer.is_identical(&reordered));
+
+        // A union that a value was compared against is recorded even when no candidate is
+        let mut with_choice = Inference::new([a, b]);
+        assert_eq!(db.infer(int, a, &mut with_choice), Comparison::Assign);
+        let union = db.alloc(Type::Union(Union::new(vec![int, nil])));
+        assert_eq!(db.infer(nil, union, &mut with_choice), Comparison::Assign);
+        assert!(!infer.is_identical(&with_choice));
+
+        // So is a var added along with the generics
+        let mut with_var = infer.clone();
+        let var = db.generic("V");
+        with_var.add_var(var, int);
+        assert!(!infer.is_identical(&with_var));
+    }
+
+    #[test]
     fn resolves_through_fallback_types() {
         let mut db = Db::new();
         let int = db.builtins.int;

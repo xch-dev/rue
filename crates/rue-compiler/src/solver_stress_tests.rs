@@ -47,9 +47,11 @@ fn steps(source: &str) -> usize {
 
 /// Each solve used to pass bounds on to the instances again for the same inference, up to three
 /// times before each argument, and the argument order substituted each mapping once per generic.
-/// Main took about 505,000 steps here, and 3,300,000 for 120 arguments.
+/// Main took about 505,000 steps here (3,300,000 for 120 arguments), about 447,000 with only the
+/// substitution put back, and about 162,000 with only the instances' cache turned off. Steps don't
+/// count the walks `Inference::resolve_instances` makes, so its index isn't measured here.
 #[test]
 fn passed_generic_functions_are_instantiated_once_per_inference() {
     let steps = steps(&passed_generic_functions(60));
-    assert!(steps < 150_000, "took {steps} steps");
+    assert!(steps < 125_000, "took {steps} steps");
 }

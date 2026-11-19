@@ -20,6 +20,13 @@ tests:
   runtime_cost: 1907
   byte_cost: 1236000
   total_cost: 1237907
+- name: expected_type_reaches_the_instance_before_a_lambda
+  program: (a (q 5 (a 2 (q (f . 7)))) (c (q 4 6 4) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 5) (q . 7)) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 2 (c 5 ()))) ()))
+  output: "7"
+  runtime_cost: 571
+  byte_cost: 468000
+  total_cost: 468571
 - name: expected_type_reaches_the_instance
   program: (a (q 5 (a 2 (q (f . 7)))) (c (q 4 6 4) ()))
   debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 5) (q . 7)))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 2 (c 3 ()))) ()))
@@ -132,3 +139,5 @@ tests:
   runtime_cost: 1663
   byte_cost: 1332000
   total_cost: 1333663
+diagnostics:
+- Unnecessary type guard from `7` to `7`, since they are already compatible types at generic_inference_joint_instances.rue:47:21

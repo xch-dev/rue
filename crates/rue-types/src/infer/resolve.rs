@@ -406,14 +406,9 @@ impl Inference {
         let mut mentions: HashMap<TypeId, BTreeSet<CandidateKey>> = HashMap::new();
 
         for (position, candidates) in self.generics.values().enumerate() {
-            for (kind_index, kind) in CANDIDATE_KINDS.into_iter().enumerate() {
+            for kind in CandidateKind::ALL {
                 for (index, &ty) in candidates.list(kind).iter().enumerate() {
-                    for var in mentioned_vars(arena, ty, &pending) {
-                        mentions
-                            .entry(var)
-                            .or_default()
-                            .insert((position, kind_index, index));
-                    }
+                    note_mentions(arena, &mut mentions, &pending, ty, (position, kind, index));
                 }
             }
         }
@@ -453,7 +448,7 @@ impl Inference {
                 substitute_with_mappings(arena, ty, &HashMap::from([(var, instantiated)]))
             };
 
-            for (position, kind_index, index) in mentions.remove(&var).unwrap_or_default() {
+            for (position, kind, index) in mentions.remove(&var).unwrap_or_default() {
                 let generic = order[position];
 
                 // The vars before this one have been removed, and their bounds with them
@@ -464,7 +459,6 @@ impl Inference {
                 // The bounds of the vars that are left are only used to pick what they are
                 let flips = joint && !pending.contains(&generic);
 
-                let kind = CANDIDATE_KINDS[kind_index];
                 let upper = kind == CandidateKind::Upper;
                 let key = (generic, kind, index);
                 let ty = &mut candidates.list_mut(kind)[index];
@@ -476,12 +470,13 @@ impl Inference {
                 {
                     *by_kind = instantiate(arena, *by_kind, upper);
 
-                    for other in mentioned_vars(arena, *by_kind, &pending) {
-                        mentions
-                            .entry(other)
-                            .or_default()
-                            .insert((position, kind_index, index));
-                    }
+                    note_mentions(
+                        arena,
+                        &mut mentions,
+                        &pending,
+                        *by_kind,
+                        (position, kind, index),
+                    );
                 }
 
                 if !references_generic(arena, *ty, var, |_| Vec::new()) {
@@ -502,22 +497,18 @@ impl Inference {
                     let by_kind = instantiate(arena, *ty, upper);
                     flipped.insert(key, by_kind);
 
-                    for other in mentioned_vars(arena, by_kind, &pending) {
-                        mentions
-                            .entry(other)
-                            .or_default()
-                            .insert((position, kind_index, index));
-                    }
+                    note_mentions(
+                        arena,
+                        &mut mentions,
+                        &pending,
+                        by_kind,
+                        (position, kind, index),
+                    );
                 }
 
                 *ty = instantiate(arena, *ty, upper || flip);
 
-                for other in mentioned_vars(arena, *ty, &pending) {
-                    mentions
-                        .entry(other)
-                        .or_default()
-                        .insert((position, kind_index, index));
-                }
+                note_mentions(arena, &mut mentions, &pending, *ty, (position, kind, index));
             }
         }
 
@@ -793,16 +784,22 @@ fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -
     }
 }
 
-/// The candidate kinds in the order `Inference::resolve_instances` visits them.
-const CANDIDATE_KINDS: [CandidateKind; 3] = [
-    CandidateKind::Lower,
-    CandidateKind::Upper,
-    CandidateKind::Held,
-];
+/// A candidate, as the position of its generic in the inference, its kind and its index in that
+/// kind's list, which sort in the order `Inference::resolve_instances` visits them.
+type CandidateKey = (usize, CandidateKind, usize);
 
-/// A candidate, as the position of its generic in the inference, the index of its kind in
-/// `CANDIDATE_KINDS` and its index in that kind's list.
-type CandidateKey = (usize, usize, usize);
+/// Records that the candidate can reference each of the vars that `ty` can (see `mentioned_vars`).
+fn note_mentions(
+    arena: &Arena<Type>,
+    mentions: &mut HashMap<TypeId, BTreeSet<CandidateKey>>,
+    vars: &HashSet<TypeId>,
+    ty: TypeId,
+    key: CandidateKey,
+) {
+    for var in mentioned_vars(arena, ty, vars) {
+        mentions.entry(var).or_default().insert(key);
+    }
+}
 
 /// The vars among `vars` that the type can reference, as `references_generic` finds them. This
 /// over-approximates them, since it also looks inside function types that bind them.

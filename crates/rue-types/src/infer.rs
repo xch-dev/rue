@@ -339,11 +339,7 @@ impl Inference {
                 self.added.push(generic);
             }
 
-            for kind in [
-                CandidateKind::Lower,
-                CandidateKind::Upper,
-                CandidateKind::Held,
-            ] {
+            for kind in CandidateKind::ALL {
                 for (&ty, branches) in candidates.list(kind).iter().zip(branches.list(kind)) {
                     self.push(generic, kind, ty, branches.iter().map(shift).collect());
                 }
@@ -607,11 +603,16 @@ impl Choices {
 }
 
 /// Which list of a generic's `InferenceCandidates` a candidate is in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum CandidateKind {
     Lower,
     Upper,
     Held,
+}
+
+impl CandidateKind {
+    /// Every kind, in the order they're declared, which is the order they're visited in.
+    pub(crate) const ALL: [Self; 3] = [Self::Lower, Self::Upper, Self::Held];
 }
 
 impl InferenceCandidates {
