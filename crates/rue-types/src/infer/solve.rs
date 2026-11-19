@@ -209,15 +209,25 @@ impl CallSolver {
         // `CallSolver::with_narrower_expected`)
         if let Some(expected) = &self.expected {
             if let Some(narrower) = &self.narrower {
-                let constrained = |generic: TypeId| {
-                    infer.candidates(generic).is_some_and(|candidates| {
-                        !candidates.lower.is_empty() || !candidates.upper.is_empty()
+                // A generic only takes the wide bounds where its arguments give it a lower bound
+                // that the narrower type doesn't hold, such as `8` where it's `7`
+                let wide_generics: Vec<TypeId> = infer
+                    .generics
+                    .iter()
+                    .filter(|(generic, candidates)| {
+                        !candidates.lower.is_empty()
+                            && self.fallback.get(*generic).is_none_or(|&narrow| {
+                                candidates.lower.iter().any(|&lower| {
+                                    compare(arena, builtins, lower, narrow) != Comparison::Assign
+                                })
+                            })
                     })
-                };
+                    .map(|(&generic, _)| generic)
+                    .collect();
                 let mut wide = expected.clone();
-                wide.retain_generics(constrained);
+                wide.retain_generics(|generic| wide_generics.contains(&generic));
                 let mut narrow = narrower.clone();
-                narrow.retain_generics(|generic| !constrained(generic));
+                narrow.retain_generics(|generic| !wide_generics.contains(&generic));
                 add_expected_bounds(arena, builtins, &mut infer, &wide);
                 add_expected_bounds(arena, builtins, &mut infer, &narrow);
             } else {

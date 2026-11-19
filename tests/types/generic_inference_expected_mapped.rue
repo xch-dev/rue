@@ -262,3 +262,39 @@ fn default_or<A>(value: A | nil) -> A {
 fn head<T>(list: List<T>) -> T {
     unchecked_cast(list)
 }
+
+fn pair<A, B>(first: A, rest: B) -> (A, B) {
+    (first, rest)
+}
+
+fn wrap<A>(value: A) -> (A, Int) {
+    (value, 1)
+}
+
+fn listy<A>(value: A) -> List<A> {
+    [value]
+}
+
+// Guards: a widened call's generic whose own arguments fit the narrower type keeps it, so
+// `pair(5, 5)` is a `(5, 5)` here, not a `(5 | Int, 5 | Int)` under the expected type's own
+// `(Int, Int)`, and `x.first` is `5`, as on main. Only a generic whose arguments don't fit it, such
+// as `id(8)`'s where `T` is narrowed to `7`, takes the wider bound
+test fn widened_call_keeps_what_fits_the_narrower_type() -> Int {
+    let paired: (Int, Int) = later((5, 5), pair(5, 5), fn(x) => only_five(x.first));
+    let wrapped: (Int, Int) = later((5, 5), wrap(5), fn(x) => only_five(x.first));
+    let _listed: List<Int> = later(
+        [5],
+        listy(5),
+        fn(x) => if x is List<5> {
+            1
+        } else {
+            2
+        },
+    );
+    paired.first + wrapped.first
+}
+
+test fn widened_pair_takes_a_value_the_narrower_type_doesnt_hold() -> Int {
+    let value: (5 | 6, Int) = later((5, 1), pair(6, 2), fn(_x) => 1);
+    value.first
+}
