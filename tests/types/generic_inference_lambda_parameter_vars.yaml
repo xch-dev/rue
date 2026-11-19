@@ -188,6 +188,27 @@ tests:
   runtime_cost: 2524
   byte_cost: 1692000
   total_cost: 1694524
+- name: union_expected_type
+  program: (a (q . 2) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "5"
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: optional_expected_type
+  program: (a (q . 2) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "5"
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: returned_binding
+  program: (a (q . 2) (q 5))
+  debug_program: (a (q 2 (q . 2) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c 3 ())) ()))
+  output: "5"
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
 diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:61:5
@@ -195,3 +216,4 @@ diagnostics:
 - |-
   Binding `y` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:63:13
     help: Return the value directly
+- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:340:5

@@ -321,3 +321,22 @@ test fn callback_of_an_enclosing_call_left_alone() -> Int {
         (5, five_only_callback),
     ))
 }
+
+test fn union_expected_type() -> 5 | Bytes {
+    // `B ≤ 5 | Bytes` reaches `x` through the lambda's return type, as `B ≤ 5` does in
+    // `issue_case`, though neither of `x`'s upper bounds, `Int` and `5 | Bytes`, is assignable to the
+    // other. `x` takes `A`'s value too, so `A` isn't widened to `Int`, as `map::<5, 5>` isn't
+    map(fn(x) => x, 5)
+}
+
+test fn optional_expected_type() -> 5 | nil {
+    // Likewise with `nil`, the shape most of the fuzzer's newly inferred programs take
+    map(fn(x) => x, 5)
+}
+
+test fn returned_binding() -> Int {
+    // `x` is resolved from the `5` that flows into it, so `result` holds the value's own `5`, as
+    // with `let result: 5 = 5;`, and `needless_let_return` doesn't offer to return it directly
+    let result: 5 = map(fn(x) => x, 5);
+    result
+}

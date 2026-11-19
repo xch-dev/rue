@@ -124,6 +124,43 @@ pub fn resolve_inference_with_bounds(
     mappings
 }
 
+/// Gives each var added along with the generics (see `Inference::add_var`), such as an untyped
+/// lambda parameter's type, the generics it's an upper candidate of as lower candidates, collected
+/// under the same union members.
+///
+/// `A ≤ X` is only recorded on `A`'s side when `A`'s value flows into the var `X`. So `X` was
+/// picked from its upper candidates alone, and with `Int` (the type the lambda was compiled with,
+/// where `A` had been widened) and `5 | Bytes` (passed on from the type expected of the call),
+/// neither assignable to the other, it was the first, `Int`, and `A` was widened to it. With `A` as
+/// a lower candidate, `X` and `A` are resolved together, from `A`'s value and all of `X`'s upper
+/// candidates, as the explicit instantiation would be.
+///
+/// A var's type is the parameter type the lambda was compiled with, never a union with the var in
+/// it, so `A ≤ X` isn't collected under a union member in practice. The members are carried over
+/// all the same, so that the candidate holds exactly when the one it came from does.
+pub(crate) fn add_lambda_var_lower_bounds(infer: &mut Inference) {
+    let mut derived = Vec::new();
+
+    for &var in infer.added() {
+        for (&generic, candidates) in &infer.generics {
+            for (index, &upper) in candidates.upper.iter().enumerate() {
+                if upper == var && generic != var {
+                    let branches = infer
+                        .branches(generic, CandidateKind::Upper, index)
+                        .to_vec();
+                    derived.push((var, generic, branches));
+                }
+            }
+        }
+    }
+
+    for (var, generic, branches) in derived {
+        if !infer.generics[&var].lower.contains(&generic) {
+            infer.push(var, CandidateKind::Lower, generic, branches);
+        }
+    }
+}
+
 /// Replaces the mapping of each generic that was inferred, as a type that doesn't reference one
 /// that wasn't, with what it's inferred as once the upper bounds of the generics it's inferred
 /// through are passed on to it, if that's narrower (see `resolve_inference_with_bounds`).

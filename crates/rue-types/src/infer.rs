@@ -199,6 +199,11 @@ impl Inference {
         self.is_instance(generic) || self.added.contains(&generic)
     }
 
+    /// The vars added along with the generics (see `Inference::add_var`).
+    pub(crate) fn added(&self) -> &[TypeId] {
+        &self.added
+    }
+
     pub(crate) fn has_undecided(&self) -> bool {
         !self.instances.is_empty() || !self.added.is_empty()
     }
