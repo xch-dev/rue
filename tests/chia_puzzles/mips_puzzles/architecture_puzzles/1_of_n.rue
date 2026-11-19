@@ -60,6 +60,14 @@ test fn runs_the_right_member() -> Any {
     check([root(), sha256("delegated_puzzle"), (1, [left_leaf()]), RIGHT_MEMBER, nil])
 }
 
+// A deeper tree, `(other . (right . left))`, so proving the right member takes the path 2: the
+// low bit puts it on the left of its first pair, then the shifted bit puts that pair on the right.
+test fn runs_a_member_two_levels_deep() -> Any {
+    let other_leaf = tree_hash_atom(sha256("other"));
+    let root = tree_hash_pair(other_leaf, tree_hash_pair(right_leaf(), left_leaf()));
+    check([root, sha256("delegated_puzzle"), (2, [left_leaf(), other_leaf]), RIGHT_MEMBER, nil])
+}
+
 fn wrong_path() -> Any {
     [root(), sha256("delegated_puzzle"), (1, [right_leaf()]), left_member(), nil]
 }

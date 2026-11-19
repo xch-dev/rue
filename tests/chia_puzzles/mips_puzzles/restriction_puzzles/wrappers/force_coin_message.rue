@@ -41,6 +41,20 @@ test fn finds_the_message() -> Any {
     ]])
 }
 
+// Skips the conditions before the first message to a coin, which only sets the parent bit (0x04).
+test fn finds_the_message_after_others() -> Any {
+    check([[
+        ReserveFee { amount: 1 },
+        SendMessage { mode: SENDER_COIN, message: "nobody", receiver: nil },
+        SendMessage {
+            mode: SENDER_COIN | RECEIVER_PARENT,
+            message: "parent",
+            receiver: [sha256("parent")],
+        },
+        ReserveFee { amount: 2 },
+    ]])
+}
+
 fn no_coin_message() -> Any {
     [[
         SendMessage { mode: SENDER_COIN, message: "nobody", receiver: nil },
