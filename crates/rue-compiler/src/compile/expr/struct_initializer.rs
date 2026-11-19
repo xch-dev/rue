@@ -220,10 +220,9 @@ pub fn compile_struct_initializer_expr(
     // placeholder comes after the error that explains it
     if !missing_fields.is_empty() {
         let type_name = ctx.type_name(ty);
-        let missing_fields = missing_fields.join(", ");
         ctx.diagnostic(
             expr.syntax(),
-            DiagnosticKind::MissingRequiredFields(type_name, missing_fields),
+            DiagnosticKind::MissingRequiredFields(type_name, missing_fields.join(", ")),
         );
     }
 

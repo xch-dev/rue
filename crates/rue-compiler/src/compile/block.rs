@@ -297,6 +297,7 @@ pub fn compile_block(
 
     if return_value.is_none() && require_return {
         ctx.diagnostic(block.syntax(), DiagnosticKind::MissingReturn);
+        ctx.note_placeholder();
         return_value = Some(Value::new(ctx.alloc_hir(Hir::Unresolved), return_type));
     }
 
