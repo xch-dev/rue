@@ -105,9 +105,10 @@ fn main() -> Int {{
 
 /// Each round of passing lower bounds down compared every member of each generic's expanded lower
 /// bounds again, though only the new ones can pass on anything new. Main took about 3,150,000
-/// steps here, and 684,000 for 12 generics.
+/// steps here (684,000 for 12 generics), about 2,890,000 with only the solver's instances cached,
+/// and about 1,450,000 without the cache of which bounds are equivalent.
 #[test]
 fn dense_compound_chain_compares_new_members_once() {
     let steps = steps(&dense_compound_chain(16));
-    assert!(steps < 1_800_000, "took {steps} steps");
+    assert!(steps < 1_380_000, "took {steps} steps");
 }
