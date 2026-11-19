@@ -912,8 +912,16 @@ fn test_held_by_revisit() {
 /// `type FL = fn<T>(p0: T) -> FR;`
 /// `type FR = fn<U>(p0: FL | fn(p0: U) -> FR | U, p1: ((WR, U), fn(p0: WR) -> WL)) -> nil;`
 /// `type WL = fn(p0: FR) -> Bytes; type WR = fn(p0: Bytes) -> Bytes;`
-/// Returns `FL` twice.
+/// Returns `FL` and a copy of it, declared again, since a type compared with itself is `Assign`
+/// without comparing any further.
 fn unmatched_member_bound(db: &mut Types) -> (TypeId, TypeId) {
+    let fl = unmatched_member_bound_module(db);
+    let copy = unmatched_member_bound_module(db);
+    (fl, copy)
+}
+
+/// Declares the types of `unmatched_member_bound` and returns `FL`.
+fn unmatched_member_bound_module(db: &mut Types) -> TypeId {
     let BuiltinTypes { bytes, nil, .. } = db.builtins;
     let [fl, wl, fr, wr] = ["FL", "WL", "FR", "WR"].map(|name| db.declare_alias(name, vec![]));
     let t = db.generic();
@@ -931,26 +939,23 @@ fn unmatched_member_bound(db: &mut Types) -> (TypeId, TypeId) {
     db.define(fr, function);
     let function = db.function(vec![], vec![bytes], bytes);
     db.define(wr, function);
-    (fl, fl)
+    fl
 }
 
-/// This records a known disagreement rather than what should happen: `FL` should be assignable to
-/// itself in every mode. Which union members match isn't monotone in their results (#360): when a
-/// member that bounds `U` gets worse, it stops matching and its bounds stop counting, which makes
-/// the union's result better. So comparing has no least fixed point here. Iterating in fixpoint
-/// mode only ever joins the results upward, so it ends at a fixed point that can reject more than
-/// exact mode, never accept more: inside `FL`, `FR` against itself is `Invalid` on its first
-/// round, which iterating keeps for it everywhere, while exact mode computes it again where it's
-/// reached and ends at `Assign`. Making the matched members monotone is a follow-up on #362 (next
-/// to §5, question 2), which this test shows as a diff when it lands.
+/// `FL` is assignable to its copy in every mode. Inside it, `FR`'s first parameter compares
+/// `fn(p0: U) -> FR` with both `fn(p0: U') -> FR`, which bounds `U' ≤ U`, and `U'`, which bounds
+/// `U' ≥ fn(p0: U) -> FR`. Both can match, and the two bounds conflict. They used to be checked
+/// against each other, so `FR` against itself failed if the first member matched, and the first
+/// member only matches if `FR` against itself holds (through the revisit in its return type).
+/// Whether a member matches isn't monotone in its result (#360), so that had no least fixed point:
+/// exact mode ended at `Assign` and iterating in fixpoint mode at `Invalid`. Bounds from different members of a
+/// union are alternatives, though, which are never checked against each other (see
+/// `Choices::exclusive`), so the conflict is gone and every mode gives `Assign`.
 #[test]
 fn test_unmatched_member_bound_modes() {
     with_large_stack(|| {
         let results = in_every_mode(unmatched_member_bound);
-        assert_eq!(
-            results,
-            [Comparison::Assign, Comparison::Invalid, Comparison::Invalid]
-        );
+        assert_eq!(results, [Comparison::Assign; 3]);
     });
 }
 
@@ -1671,8 +1676,10 @@ fn test_comparison_step_limit() {
     with_large_stack(|| {
         let mut db = Types::new();
         let (r, _) = merged_into_outer_function(&mut db);
+        // A copy, since a type compared with itself is `Assign` without comparing any further
+        let (copy, _) = merged_into_outer_function(&mut db);
 
-        let (result, steps) = count_steps(|| compare_limited(&mut db.arena, &db.builtins, r, r));
+        let (result, steps) = count_steps(|| compare_limited(&mut db.arena, &db.builtins, r, copy));
         assert_eq!(result, Ok(Comparison::Assign));
 
         // With a limit below what it takes, the comparison gives up, which `compare` treats as
@@ -1681,16 +1688,16 @@ fn test_comparison_step_limit() {
         assert!(steps > 2);
         let limit = 2;
         let limited = with_comparison_step_limit(limit, || {
-            compare_limited(&mut db.arena, &db.builtins, r, r)
+            compare_limited(&mut db.arena, &db.builtins, r, copy)
         });
         assert_eq!(limited, Err(TooComplex));
 
         let limited =
-            with_comparison_step_limit(limit, || compare(&mut db.arena, &db.builtins, r, r));
+            with_comparison_step_limit(limit, || compare(&mut db.arena, &db.builtins, r, copy));
         assert_eq!(limited, Comparison::Invalid);
 
         // Comparing again afterwards isn't affected
-        let result = compare_limited(&mut db.arena, &db.builtins, r, r);
+        let result = compare_limited(&mut db.arena, &db.builtins, r, copy);
         assert_eq!(result, Ok(Comparison::Assign));
     });
 }
@@ -1710,4 +1717,232 @@ fn test_check_step_limit() {
 
     let result = check(&mut db.arena, &db.builtins, n0, n1);
     assert_eq!(result, Err(CheckError::RecursiveType));
+}
+
+/// A random module shaped like `unmatched_member_bound`'s: `FL` and `FR` are functions, generic or
+/// not, and `WL` and `WR` aren't generic, with parameters and return types made of the atoms, the
+/// generic, the four aliases, and pairs, unions and functions of them. The unions are where members
+/// can bound an instance (#360). Returns two of the aliases, or `FL` and a copy of it, declared
+/// again, if `copy` is set.
+fn union_member_module(seed: u64, copy: bool) -> impl Fn(&mut Types) -> (TypeId, TypeId) {
+    move |db: &mut Types| {
+        let mut rng = Rng(seed);
+        let (lhs, rhs) = declare_union_member_module(db, &mut rng);
+
+        if copy {
+            let (copy, _) = declare_union_member_module(db, &mut Rng(seed));
+            (lhs, copy)
+        } else {
+            (lhs, rhs)
+        }
+    }
+}
+
+/// Declares the types of `union_member_module` and returns the two to compare.
+fn declare_union_member_module(db: &mut Types, rng: &mut Rng) -> (TypeId, TypeId) {
+    let [fl, wl, fr, wr] = ["FL", "WL", "FR", "WR"].map(|name| db.declare_alias(name, vec![]));
+    let aliases = [fl, wl, fr, wr];
+
+    let generic = db.generic();
+    let params: Vec<TypeId> = (0..=rng.below(2))
+        .map(|_| union_member_type(db, rng, 0, &[generic], &aliases))
+        .collect();
+    let ret = union_member_type(db, rng, 1, &[generic], &aliases);
+    let generics = if rng.chance(80) {
+        vec![generic]
+    } else {
+        vec![]
+    };
+    let function = db.function(generics, params, ret);
+    db.define(fl, function);
+
+    let param = union_member_type(db, rng, 1, &[], &aliases);
+    let ret = union_member_type(db, rng, 2, &[], &aliases);
+    let function = db.function(vec![], vec![param], ret);
+    db.define(wl, function);
+
+    let param_count = rng.below(2) + 1;
+    let generic = db.generic();
+    let generics = if rng.chance(30) {
+        vec![generic]
+    } else {
+        vec![]
+    };
+    let params: Vec<TypeId> = (0..param_count)
+        .map(|_| union_member_type(db, rng, 0, &generics, &aliases))
+        .collect();
+    let ret = union_member_type(db, rng, 1, &generics, &aliases);
+    let function = db.function(generics, params, ret);
+    db.define(fr, function);
+
+    let param = union_member_type(db, rng, 1, &[], &aliases);
+    let ret = union_member_type(db, rng, 2, &[], &aliases);
+    let function = db.function(vec![], vec![param], ret);
+    db.define(wr, function);
+
+    match rng.below(4) {
+        0 => (fl, fr),
+        1 => (fr, fl),
+        2 => (wl, wr),
+        _ => (fl, fl),
+    }
+}
+
+/// A random type for `union_member_module`, at the given depth.
+fn union_member_type(
+    db: &mut Types,
+    rng: &mut Rng,
+    depth: usize,
+    generics: &[TypeId],
+    aliases: &[TypeId],
+) -> TypeId {
+    let BuiltinTypes {
+        int, bytes, nil, ..
+    } = db.builtins;
+
+    if depth >= 2 || rng.chance(35) {
+        // The generics are twice as likely as each other leaf
+        let mut leaves = vec![int, bytes, nil];
+        leaves.extend(generics);
+        leaves.extend(generics);
+        leaves.extend(aliases);
+        return rng.pick(&leaves);
+    }
+
+    match rng.below(10) {
+        0..=4 => {
+            let first = union_member_type(db, rng, depth + 1, generics, aliases);
+            let rest = union_member_type(db, rng, depth + 1, generics, aliases);
+            db.pair(first, rest)
+        }
+        5..=8 => {
+            let members = (0..rng.below(2) + 2)
+                .map(|_| union_member_type(db, rng, depth + 1, generics, aliases))
+                .collect();
+            db.union(members)
+        }
+        _ => {
+            let param = union_member_type(db, rng, depth + 1, generics, aliases);
+            let ret = union_member_type(db, rng, depth + 1, generics, aliases);
+            db.function(vec![], vec![param], ret)
+        }
+    }
+}
+
+/// The seeds of `union_member_module` whose modes disagreed: comparing without the memo, with it,
+/// iterating from the start, and inferring with and without the memo. Cases that aren't regular or
+/// contractive, or that take too many steps, are left out.
+fn union_member_differential(seeds: impl IntoIterator<Item = u64>, copy: bool) -> Vec<String> {
+    let mut disagreements = Vec::new();
+
+    for seed in seeds {
+        let module = union_member_module(seed, copy);
+
+        let compare_in = |mode: usize| {
+            give_up_after(|| {
+                let mut db = Types::new();
+                let (lhs, rhs) = module(&mut db);
+
+                if is_non_regular(&db.arena, lhs)
+                    || is_non_contractive(&mut db.arena, lhs)
+                    || is_non_contractive(&mut db.arena, rhs)
+                {
+                    return None;
+                }
+
+                let mut infer = Inference::new([]);
+                let mut inferred = |db: &mut Types| {
+                    compare_with_inference(&mut db.arena, &db.builtins, lhs, rhs, Some(&mut infer))
+                };
+
+                Some(match mode {
+                    0 => without_compare_memo(|| compare(&mut db.arena, &db.builtins, lhs, rhs)),
+                    1 => compare(&mut db.arena, &db.builtins, lhs, rhs),
+                    2 => with_fixpoint_budget(0, 0, || {
+                        compare(&mut db.arena, &db.builtins, lhs, rhs)
+                    }),
+                    3 => inferred(&mut db),
+                    _ => without_compare_memo(|| inferred(&mut db)),
+                })
+            })
+        };
+
+        let results: Vec<Option<Option<Comparison>>> = (0..5).map(compare_in).collect();
+
+        // Left out if any mode found it irregular, and compared over the modes that finished
+        if results.iter().any(|result| matches!(result, Some(None))) {
+            continue;
+        }
+
+        let finished: Vec<Comparison> = results.iter().flatten().flatten().copied().collect();
+
+        if finished.windows(2).any(|pair| pair[0] != pair[1]) {
+            disagreements.push(format!("{seed}: {results:?}"));
+        }
+    }
+
+    disagreements
+}
+
+/// Which union members match decides which bounds count, which used to make modes disagree on
+/// types like `unmatched_member_bound`'s (#360), including these seeds. Each module is compared
+/// with a copy of it as well, since a type compared with itself is `Assign` without comparing
+/// any further.
+#[test]
+fn test_union_member_differential() {
+    with_large_stack(|| {
+        let seeds = || {
+            [13_695, 17_595, 34_632, 62_040, 106_084, 118_007]
+                .into_iter()
+                .chain(0..500)
+        };
+
+        for copy in [false, true] {
+            assert_eq!(
+                union_member_differential(seeds(), copy),
+                Vec::<String>::new()
+            );
+        }
+    });
+}
+
+/// A larger run of `test_union_member_differential`, which takes about a minute in release builds:
+/// `cargo test --release -p rue-types --test memo -- --ignored`
+#[test]
+#[ignore = "slow"]
+fn test_union_member_differential_large() {
+    with_large_stack(|| {
+        for copy in [false, true] {
+            assert_eq!(
+                union_member_differential(0..200_000, copy),
+                Vec::<String>::new()
+            );
+        }
+    });
+}
+
+/// `type FL = fn(p0: fn(p0: FR | Bytes) -> (T, Bytes)) -> (Bytes, FL);`, with `T` free,
+/// `type FR = fn<U>(p0: (WR, U) | U | fn(p0: U) -> WR) -> (Bytes, FL);`,
+/// `type WR = fn(p0: Bytes | FL) -> Bytes;`, from `union_member_module`'s seed 62040 (whose `WL`
+/// isn't used).
+///
+/// `FL` is assignable to itself, without comparing any further, in every mode. But it isn't to a
+/// copy of it: inside `FR` against itself, `(WR, U)` matches both `(WR, U')` and `U'`, and
+/// `fn(p0: U) -> WR` matches both `fn(p0: U') -> WR` and `U'`. Picking the first of each works
+/// (with `U'` as `U`), but every member that matches is kept, and bounds from members of different
+/// unions are checked against each other, such as `U' ≥ (WR, U)`, from `(WR, U)` against `U'`,
+/// and `U' ≤ U`, from the functions. Picking a member of each union so that they hold together
+/// would mean backtracking (#362, §5, question 2).
+#[test]
+fn test_compared_with_itself() {
+    with_large_stack(|| {
+        assert_eq!(
+            in_every_mode(union_member_module(62_040, false)),
+            [Comparison::Assign; 3]
+        );
+        assert_eq!(
+            in_every_mode(union_member_module(62_040, true)),
+            [Comparison::Invalid; 3]
+        );
+    });
 }

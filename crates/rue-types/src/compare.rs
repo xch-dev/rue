@@ -732,6 +732,23 @@ impl ComparisonContext<'_> {
         })
     }
 
+    /// Whether the type is the same on both sides: each generic it references is bound to the same
+    /// binder on both, which isn't being instantiated, or is free on both and not being inferred.
+    fn is_reflexive(&mut self, arena: &Arena<Type>, ty: TypeId) -> bool {
+        self.cache_references(arena, ty);
+        let generics = self.references[&ty].clone();
+
+        generics.into_iter().all(|generic| {
+            let binder = self.resolve(generic, self.lhs_env);
+
+            binder == self.resolve(generic, self.rhs_env)
+                && match binder {
+                    Some(binder) => self.instance_of(binder).is_none(),
+                    None => !self.is_target(generic, self.lhs_env),
+                }
+        })
+    }
+
     /// Whether the generic is being instantiated.
     fn is_instance(&self, generic: TypeId, env: Option<usize>) -> bool {
         self.resolve(generic, env)
@@ -1298,8 +1315,10 @@ pub fn compare_with_inference_limited(
     rhs: TypeId,
     infer: Option<&mut Inference>,
 ) -> Result<Comparison, TooComplex> {
+    // A type compared with itself stays the same type on both sides (see `is_reflexive`)
+    let same = lhs == rhs;
     let lhs = substitute(arena, lhs);
-    let rhs = substitute(arena, rhs);
+    let rhs = if same { lhs } else { substitute(arena, rhs) };
     let names = log_enabled!(Level::Trace).then(|| {
         (
             stringify_impl(arena, lhs, &mut IndexMap::new()),
@@ -1510,6 +1529,10 @@ fn compare_impl_inner(
 
     // The comparison that started from an empty stack is unwinding, to iterate instead
     if ctx.fixpoint && ctx.fixpoint_memo.abandoned() {
+        return Comparison::Assign;
+    }
+
+    if lhs == rhs && lhs_semantic == rhs_semantic && ctx.is_reflexive(arena, lhs) {
         return Comparison::Assign;
     }
 
@@ -2196,6 +2219,13 @@ fn check_bounds(
                 // pair with one doesn't decide the result (#360). It's still compared, under that
                 // member, since the candidates it collects are what a generic being inferred falls
                 // back to when nothing else gives it any (see `Inference::keep_matched`)
+                // Bounds collected under different members of a union are alternatives, only one
+                // of which is needed, so they don't have to hold together. Any one member of each
+                // union still has to hold with the others' and with the bounds outside of them,
+                // which are all checked against each other. Without this, two members that each
+                // hold could fail together, and whether a member matches isn't monotone in its
+                // result, so a comparison could have no least fixed point, on which exact and
+                // fixpoint mode disagreed (#360)
                 if let (Some(lhs), Some(rhs)) = (lower_branches.local, upper_branches.local)
                     && ctx.choices.exclusive(lhs, rhs)
                 {
