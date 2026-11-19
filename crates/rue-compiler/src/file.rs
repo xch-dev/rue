@@ -806,6 +806,14 @@ pub fn normalize_path(path: &Path) -> Result<SourceKind, Error> {
     ))
 }
 
+/// Whether code for the symbol would rely on a placeholder for code that couldn't be compiled,
+/// which is only expected when there are errors. A placeholder type is assignable to and from
+/// every type, so any placeholder counts, even if no placeholder value is reachable from the
+/// symbol.
+pub(crate) fn has_uncovered_placeholder(ctx: &Compiler, symbol: SymbolId) -> bool {
+    ctx.first_placeholder().is_some() || has_reachable_unresolved(ctx, symbol)
+}
+
 fn codegen(
     ctx: &mut Compiler,
     allocator: &mut Allocator,
@@ -818,23 +826,14 @@ fn codegen(
 
     let options = *ctx.options();
 
-    // Every placeholder for code that couldn't be compiled should be covered by an error, but if
-    // one isn't, refuse to generate code rather than panicking or producing an incorrect program.
-    // A placeholder type is assignable to and from every type, so this is checked even if no
-    // placeholder value is reachable from the symbol.
-    let placeholder = ctx.first_placeholder();
-
-    debug_assert!(
-        placeholder.is_none(),
-        "a placeholder was made at {} without an error",
-        placeholder.map_or_else(String::new, ToString::to_string)
-    );
-
-    let has_unresolved = placeholder.is_some() || has_reachable_unresolved(ctx, symbol);
+    // Unresolved code should always be accompanied by an error, but if it's not, refuse to
+    // generate code rather than panicking or producing an incorrect program
+    let has_unresolved = has_uncovered_placeholder(ctx, symbol);
 
     debug_assert!(
         !has_unresolved,
-        "unresolved code reached codegen without an error"
+        "unresolved code reached codegen without an error (the first placeholder was made at {:?})",
+        ctx.first_placeholder()
     );
 
     if has_unresolved {

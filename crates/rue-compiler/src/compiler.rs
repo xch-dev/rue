@@ -1,5 +1,4 @@
 use std::{
-    cell::Cell,
     cmp::Reverse,
     collections::{HashMap, HashSet},
     fmt, mem,
@@ -79,7 +78,7 @@ pub struct Compiler {
     cancelled: bool,
     /// Where the first placeholder for code that couldn't be compiled was made (see
     /// [`Self::unresolved`]), to check that it's covered by an error before generating code.
-    first_placeholder: Cell<Option<&'static Location<'static>>>,
+    first_placeholder: Option<&'static Location<'static>>,
 }
 
 /// Says whether a compile should stop partway, because nothing needs its result anymore (for
@@ -194,7 +193,7 @@ impl Compiler {
             unchecked_type_items: Vec::new(),
             cancel: None,
             cancelled: false,
-            first_placeholder: Cell::new(None),
+            first_placeholder: None,
         };
 
         if options.std {
@@ -318,7 +317,7 @@ impl Compiler {
     /// so every use of it must be covered by an error that has been or will be reported, since
     /// its type is assignable to and from every type and its value can't be generated.
     #[track_caller]
-    pub fn unresolved(&self) -> Value {
+    pub fn unresolved(&mut self) -> Value {
         self.note_placeholder();
         self.builtins.unresolved.clone()
     }
@@ -326,16 +325,14 @@ impl Compiler {
     /// Records that a placeholder for code that couldn't be compiled was made here, other than
     /// with [`Self::unresolved`] (see [`Self::first_placeholder`]).
     #[track_caller]
-    pub fn note_placeholder(&self) {
-        if self.first_placeholder.get().is_none() {
-            self.first_placeholder.set(Some(Location::caller()));
-        }
+    pub(crate) fn note_placeholder(&mut self) {
+        self.first_placeholder.get_or_insert(Location::caller());
     }
 
     /// Where the first placeholder for code that couldn't be compiled was made, if any. Code is
     /// only generated without errors, so there shouldn't be one by then.
     pub fn first_placeholder(&self) -> Option<&'static Location<'static>> {
-        self.first_placeholder.get()
+        self.first_placeholder
     }
 
     pub fn builtins(&self) -> &Builtins {

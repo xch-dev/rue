@@ -1,0 +1,4 @@
+diagnostics:
+- "Struct `Point` is missing required fields: x, w at struct_missing_fields_errors.rue:11:5"
+- Cannot assign `"1"` to `Int` without a cast, since they are semantically different at struct_missing_fields_errors.rue:11:13
+- Unknown field `q` on type `Point` at struct_missing_fields_errors.rue:11:21
