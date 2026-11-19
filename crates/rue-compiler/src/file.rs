@@ -365,11 +365,6 @@ impl FileTree {
 
                     for namespace in Namespace::ALL {
                         for (_, item) in ctx.scope(scope).exported_items(namespace) {
-                            // A failed import's name isn't anything that could be used
-                            if ctx.is_error_item(item) {
-                                continue;
-                            }
-
                             entrypoints.insert(item.into());
 
                             // A name that's ambiguous is exported along with everything it could
