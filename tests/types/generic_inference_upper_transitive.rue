@@ -246,3 +246,29 @@ fn run_three<A, B, C>(
 test fn inferred_generic_narrowed_through_a_compound_bound_and_another_generic() -> Int {
     run_three(wrap, identity, first_five, 5)
 }
+
+fn pair_of<P, Q>(first: P, rest: Q) -> (P, Q) {
+    (first, rest)
+}
+
+fn narrowed_then_paired<A, B, C, D>(
+    value: A,
+    first: fn(a: A) -> B,
+    second: fn(b: B) -> Int,
+    make: fn(a: A, d: D) -> C,
+    last: fn(c: C) -> Int,
+) -> C {
+    let _ = second(first(value));
+    let made = make(value, unchecked_cast(nil));
+    let _ = last(made);
+    made
+}
+
+test fn uninferred_generic_sees_a_narrowed_one() -> Int {
+    // `A` is narrowed to `5` through `B ≤ 5`. `C` is `(A, D)` with `D` not inferred until `last`
+    // gives it `Int`, and it's resolved through what `A` was narrowed to, so it's `(5, Int)`,
+    // which `last` takes, as `narrowed_then_paired::<5, 5, (5, Int), Int>` does. It used to see
+    // `A` as `Int` and be `(Int, Int)`, which `last` doesn't take
+    let result = narrowed_then_paired(5, identity, five_only, pair_of, fn(c: (5, Int)) => c.first);
+    result.first
+}
