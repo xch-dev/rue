@@ -137,8 +137,8 @@ impl<'a> Visitor<'a> {
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
-            // The value is only evaluated if the check it's lowered to uses it
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
+            // A guard evaluates its value if it may fail, even if its check doesn't use it
+            Hir::Guard(guard) => self.visit_hir(guard.value),
             Hir::FunctionCall(call) => {
                 (match *self.db.hir(self.db.without_casts(call.function)) {
                     Hir::Reference(symbol)
@@ -165,7 +165,9 @@ impl<'a> Visitor<'a> {
 mod tests {
     use rue_types::BuiltinTypes;
 
-    use crate::{BindingSymbol, Block, ConstantSymbol, Value};
+    use rue_types::Check;
+
+    use crate::{BindingSymbol, Block, ConstantSymbol, Guard, Value};
 
     use rue_diagnostic::{Source, SourceKind, SrcLoc};
 
@@ -225,6 +227,18 @@ mod tests {
             }));
 
             assert_eq!(may_raise(&db, block), !inline);
+        }
+    }
+
+    #[test]
+    fn guards_without_checks_evaluate_their_values() {
+        for check in [Check::None, Check::Impossible] {
+            let mut db = Database::new();
+            let ty = BuiltinTypes::new(db.types_mut()).int;
+            let value = raise(&mut db);
+            let guard = db.alloc_hir(Hir::Guard(Guard { value, ty, check }));
+
+            assert!(may_raise(&db, guard));
         }
     }
 

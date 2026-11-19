@@ -515,7 +515,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Cast(value) => self.lower_hir(env, value),
             Hir::Guard(guard) => {
                 let check = generate_check_hir(self.db, guard.runtime_check(), guard.value);
-                self.lower_hir(env, check)
+                let result = self.lower_hir(env, check);
+
+                // A check that doesn't use the value is a constant, but the value is still
+                // evaluated for its effect if it may fail, like a binding that's never referenced
+                if guard.value_uses() == 0 && self.is_lowered_guard_effect(hir) {
+                    let value = self.lower_hir(env, guard.value);
+                    self.effect(value, result)
+                } else {
+                    result
+                }
             }
             Hir::Const(expr) => {
                 let result = expr
@@ -1436,8 +1445,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 .fields
                 .iter()
                 .all(|field| self.is_static_hir(field.value)),
-            // Guards that don't use the value at runtime are lowered to a boolean
-            Hir::Guard(guard) => guard.value_uses() == 0,
+            // Guards that don't use the value at runtime are lowered to a boolean, unless the value
+            // may fail, in which case it's evaluated for its effect first
+            Hir::Guard(guard) => guard.value_uses() == 0 && !self.is_lowered_guard_effect(hir),
             Hir::Const(expr) => expr.result.is_some_and(|result| self.is_static_hir(result)),
             Hir::Reference(symbol) => {
                 if let Some(hir) = self.inline_argument(*symbol) {

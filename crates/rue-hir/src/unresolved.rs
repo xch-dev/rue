@@ -73,8 +73,8 @@ impl Visitor<'_> {
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
-            // The value is only evaluated if the check it's lowered to uses it
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
+            // The value is lowered if the check uses it, or if it may fail
+            Hir::Guard(guard) => self.visit_hir(guard.value),
             Hir::Block(block) => {
                 for stmt in block.reachable_statements().to_vec() {
                     match stmt {

@@ -154,6 +154,15 @@ inline fn closure_in_nested_block(value: Int) -> fn() -> Int {
     }
 }
 
+inline fn guard_of_parameter(value: Int) -> Bool {
+    value is Int
+}
+
+inline fn guard_of_parameter_in_closure(value: Int) -> Bool {
+    let closure = fn() => value is Int;
+    closure()
+}
+
 inline fn only_debugged(value: Int) -> Int {
     let copied = value;
     debug copied;
@@ -245,6 +254,13 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
     inline let ignored = ignore(check(x), 1);
     let w = ignored;
 
+    // Warns: only the value of a type guard with nothing to check at runtime, which isn't
+    // evaluated since the parameter can't fail as written
+    let y = guard_of_parameter(check(x));
+
+    // Warns: the same, in a closure, which doesn't capture the parameter
+    let z = guard_of_parameter_in_closure(check(x));
+
     // Doesn't warn: allowed or expected
     #[allow(inline_value_may_fail)]
     let m = pick(check(x), flag);
@@ -274,6 +290,13 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
         + u
         + v
         + w
+        + (
+            if y && z {
+                1
+            } else {
+                0
+            }
+        )
         + CHECKED
         + DOUBLED
         + NOT_INLINE

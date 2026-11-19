@@ -1,0 +1,139 @@
+// A type guard with nothing to check at runtime still evaluates its value if the value may fail,
+// the same way a binding that's never referenced does. Unless they say otherwise, the tests below
+// must fail for the given solution in both debug and release builds.
+
+struct A {
+    x: Int,
+}
+
+struct B {
+    x: Int,
+}
+
+fn check(x: Int) -> Int {
+    if x > 10 {
+        raise "too big";
+    }
+    x
+}
+
+fn validate(v: Int) -> A | B {
+    assert v > 0;
+    A { x: v }
+}
+
+fn bad() -> Int {
+    raise "no";
+}
+
+inline fn is_int(value: Int) -> Bool {
+    value is Int
+}
+
+fn is_int_called(value: Int) -> Bool {
+    value is Int
+}
+
+test fn division_by_zero(v: Int) -> Int {
+    let ok = (v / 0) is Int;
+    if ok {
+        1
+    } else {
+        2
+    }
+}
+
+test fn indistinguishable_structs(v: Int) -> Int {
+    if validate(v) is A {
+        1
+    } else {
+        2
+    }
+}
+
+test fn raise_in_operand() -> Int {
+    if bad() is Int {
+        1
+    } else {
+        2
+    }
+}
+
+test fn binding_only_used_by_guard(x: Int) -> Bool {
+    let y = check(x);
+    y is Int
+}
+
+test fn inlined_function_argument(x: Int) -> Bool {
+    is_int_called(check(x))
+}
+
+test fn guard_in_closure(x: Int) -> Bool {
+    let f = fn() => check(x) is Int;
+    f()
+}
+
+test fn guard_in_unused_binding(x: Int) -> Int {
+    let _ok = check(x) is Int;
+    1
+}
+
+// A value whose call of a function value fails is evaluated, once the call that passes it is known
+fn apply(f: fn(x: Int) -> Int, x: Int) -> Bool {
+    f(x) is Int
+}
+
+test fn failing_function_value(x: Int) -> Bool {
+    apply(check, x)
+}
+
+test fn nested_guards(x: Int) -> Bool {
+    (check(x) is Int) is Bool
+}
+
+test fn binding_in_operand(x: Int) -> Bool {
+    {
+        let _checked = check(x);
+        x
+    } is Int
+}
+
+// Guards in a function that isn't inlined, since it's called twice
+fn validate_twice(v: Int) -> Bool {
+    validate(v) is A
+}
+
+test fn guard_in_called_function(v: Int) -> Bool {
+    validate_twice(v) && validate_twice(v + 1)
+}
+
+// The argument of an `inline fn` is only evaluated where its parameter is, and reading the
+// parameter can't fail, so the guard doesn't evaluate it (`inline_value_may_fail` warns). These
+// return a value.
+test fn inline_function_argument_is_skipped(x: Int) -> Bool {
+    is_int(check(x))
+}
+
+// A value that can't fail isn't evaluated, so the guard is still a constant
+test fn pure_operand(x: Int) -> Bool {
+    (x + 1) is Int
+}
+
+test fn pure_binding(x: Int) -> Bool {
+    let y = x + 1;
+    y is Int
+}
+
+// A pure value doesn't count as a reference, so the binding is still inlined
+test fn pure_binding_used_again(x: Int) -> Int {
+    let y = x + 1;
+    if y is Int {
+        y
+    } else {
+        0
+    }
+}
+
+test fn pure_function_value(x: Int) -> Bool {
+    apply(fn(i: Int) => i + 1, x)
+}

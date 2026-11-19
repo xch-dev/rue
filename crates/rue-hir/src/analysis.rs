@@ -8,8 +8,8 @@
 //!
 //! # What this guarantees, and what it trusts
 //!
-//! Automatic inlining, and evaluating unused bindings for their effect, never skip a check that a
-//! build without them would run, as long as every value has the shape its type says it has. A
+//! Automatic inlining, and evaluating unused bindings (and the values of type guards with nothing
+//! to check at runtime) for their effect, never skip a check that a build without them would run, as long as every value has the shape its type says it has. A
 //! value has the wrong shape if it's an atom where its type says a pair, or a pair where its type
 //! says an atom, at any depth. The compiler can't check that for these values, so it trusts it:
 //!
@@ -43,8 +43,10 @@
 //! This is only about where the compiler decides to evaluate values. Checks can still be skipped,
 //! in debug and release alike, where the language says a value isn't evaluated: an argument of an
 //! `inline fn` whose parameter isn't referenced (or an `inline let` or `inline const` that isn't),
-//! which the `inline_value_may_fail` lint reports; a type guard with nothing to check at runtime,
-//! which doesn't evaluate its value; and a constant that's never referenced. `debug` statements
+//! which the `inline_value_may_fail` lint reports; and a constant that's never referenced. A type
+//! guard with nothing to check at runtime is a constant, but its value is evaluated for its effect
+//! if it may fail, by the same rule as a binding that's never referenced, so a parameter of an
+//! `inline fn` that's only the value of such a guard counts as not referenced. `debug` statements
 //! are only evaluated in debug builds. Running out of cost isn't counted as failing, since
 //! evaluating a value in a different place changes how much the program costs.
 
@@ -81,6 +83,15 @@ pub(crate) trait AnalysisContext {
     /// statement is, given that it references a value that may fail. The statements and body are
     /// the rest of the block after the let statement.
     fn let_evaluates(&self, binding: SymbolId, rest: &[Statement], body: Option<HirId>) -> bool;
+
+    /// Whether the value of the type guard, whose check doesn't use it, may be evaluated for its
+    /// effect. This is used to check whether the guard may fail, so it can include guards whose
+    /// values can't fail.
+    fn is_guard_evaluated(&self, guard: HirId) -> bool;
+
+    /// Whether the value of the type guard, whose check doesn't use it, is evaluated for its
+    /// effect, given that it references a value that may fail.
+    fn guard_evaluates(&self, guard: HirId, value: HirId) -> bool;
 
     /// Whether creating a closure for the function, or calling it directly, evaluates an argument
     /// of an inlined function that may fail, since the arguments it captures are evaluated then.
@@ -183,11 +194,15 @@ impl FailureAnalysis {
     /// rule that the dependency graph, the lints and the recursion check all decide effects by.
     pub(crate) fn effect(&self, db: &Database, symbol: SymbolId) -> Effect {
         match db.symbol(symbol) {
-            Symbol::Binding(binding) if !binding.inline => {
-                effect(&self.context(db), binding.value.hir)
-            }
+            Symbol::Binding(binding) if !binding.inline => self.value_effect(db, binding.value.hir),
             _ => Effect::Never,
         }
+    }
+
+    /// Whether a value that isn't referenced, such as that of a type guard whose check doesn't use
+    /// it, is evaluated for its effect, by the same rule as [`Self::effect`].
+    pub(crate) fn value_effect(&self, db: &Database, hir: HirId) -> Effect {
+        effect(&self.context(db), hir)
     }
 
     /// Whether calling the function value with arguments that aren't known may fail.
@@ -304,6 +319,18 @@ impl AnalysisContext for WrittenContext<'_> {
         true
     }
 
+    // A guard's value is evaluated for its effect if it may fail, so it's evaluated whenever that
+    // matters
+    fn is_guard_evaluated(&self, _guard: HirId) -> bool {
+        true
+    }
+
+    // The dependency graph only evaluates a guard's value if it may fail as written, the same
+    // way as a binding that's never referenced
+    fn guard_evaluates(&self, _guard: HirId, value: HirId) -> bool {
+        self.evaluated_unreferenced(value)
+    }
+
     fn is_parameter_used(&self, function: SymbolId, parameter: SymbolId) -> bool {
         self.body_uses(function)
             .is_none_or(|uses| uses.contains(&parameter))
@@ -378,6 +405,13 @@ impl<'a, 'c> Uses<'a, 'c> {
                 }
             }
             Hir::Block(block) => self.block(&block.statements, block.body),
+            // A guard whose check doesn't use its value only evaluates it for its effect, the
+            // same way as a binding that's never referenced
+            Hir::Guard(guard) => {
+                if guard.value_uses() > 0 || self.cx.evaluated_unreferenced(guard.value) {
+                    self.hir(guard.value);
+                }
+            }
             _ => {
                 for child in node.children() {
                     self.hir(child);
