@@ -1,9 +1,9 @@
 use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
-use clvmr::{Allocator, NodePtr};
+use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
 use num_bigint::BigUint;
 
-use crate::{ClvmOp, Lir, LirId, Result, path_to_atom, stack::grow_stack};
+use crate::{ClvmOp, DebugTags, Lir, LirId, NodeTags, Result, path_to_atom, stack::grow_stack};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CodegenOptions {
@@ -16,17 +16,89 @@ pub fn codegen(
     lir: LirId,
     options: CodegenOptions,
 ) -> Result<NodePtr> {
-    codegen_impl(arena, allocator, lir, options)
+    codegen_node(arena, allocator, lir, options, &mut None)
 }
 
-fn codegen_impl(
+/// Generates CLVM like [`codegen`], and carries the tags of the LIR over to the pairs that each
+/// node generates. A node's tag only applies to the pairs that aren't already tagged by the nodes
+/// inside of it, so the innermost tag wins.
+pub fn codegen_with_tags(
     arena: &Arena<Lir>,
     allocator: &mut Allocator,
     lir: LirId,
     options: CodegenOptions,
+    tags: &DebugTags,
+) -> Result<(NodePtr, NodeTags)> {
+    let mut trace = Some(Trace {
+        tags,
+        nodes: NodeTags::default(),
+    });
+    let ptr = codegen_node(arena, allocator, lir, options, &mut trace)?;
+    Ok((
+        ptr,
+        trace.expect("the trace is kept while generating").nodes,
+    ))
+}
+
+/// What codegen keeps track of to carry tags over to the pairs it generates.
+struct Trace<'a> {
+    tags: &'a DebugTags,
+    nodes: NodeTags,
+}
+
+impl Trace<'_> {
+    fn tag(&mut self, allocator: &Allocator, lir: LirId, ptr: NodePtr) {
+        if let Some(&function) = self.tags.functions.get(&lir)
+            && let SExp::Pair(..) = allocator.sexp(ptr)
+        {
+            self.nodes.functions.entry(ptr).or_insert(function);
+        }
+
+        let Some(&span) = self.tags.spans.get(&lir) else {
+            return;
+        };
+
+        // The pairs that inner nodes generated are already tagged, so this stops there, and only
+        // visits each pair once overall
+        let mut stack = vec![ptr];
+
+        while let Some(ptr) = stack.pop() {
+            if let SExp::Pair(first, rest) = allocator.sexp(ptr)
+                && !self.nodes.spans.contains_key(&ptr)
+            {
+                self.nodes.spans.insert(ptr, span);
+                stack.push(first);
+                stack.push(rest);
+            }
+        }
+    }
+}
+
+fn codegen_node(
+    arena: &Arena<Lir>,
+    allocator: &mut Allocator,
+    lir: LirId,
+    options: CodegenOptions,
+    trace: &mut Option<Trace<'_>>,
 ) -> Result<NodePtr> {
-    let codegen = |arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId| {
-        grow_stack(|| codegen_impl(arena, allocator, lir, options))
+    let ptr = codegen_step(arena, allocator, lir, options, trace)?;
+
+    if let Some(trace) = trace {
+        trace.tag(allocator, lir, ptr);
+    }
+
+    Ok(ptr)
+}
+
+fn codegen_step(
+    arena: &Arena<Lir>,
+    allocator: &mut Allocator,
+    lir: LirId,
+    options: CodegenOptions,
+    trace: &mut Option<Trace<'_>>,
+) -> Result<NodePtr> {
+    let mut codegen = |arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId| {
+        grow_stack(|| codegen_node(arena, allocator, lir, options, trace))
     };
 
     match &arena[lir] {
