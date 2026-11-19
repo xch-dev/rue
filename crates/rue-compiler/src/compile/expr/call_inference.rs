@@ -129,7 +129,7 @@ pub(crate) fn infer_call(
         // `ArgumentOrder::takes_expected_bounds` and `CallSolver::argument_mappings`)
         if !order.takes_expected_bounds(i) {
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
-        } else if order.widens_to_expected(i, expr) {
+        } else if order.widens_to_expected(i) {
             ctx.widen_to_expected(&solver, order.merged(), &mut mappings);
         }
 
@@ -651,6 +651,14 @@ struct Argument {
     has_lambda: bool,
     /// Whether it is, or has in it, a lambda that isn't inside a call in it (see `has_own_lambda`).
     has_own_lambda: bool,
+    /// Whether it's compiled against the expected type's own bounds (see
+    /// `ArgumentOrder::widens_to_expected`). It's a call, since its own arguments add to the
+    /// generics once it's compiled against them, as `8` does in `id(8)`. It has arguments and no
+    /// call without arguments in it, since such a call infers only from its expected type, so
+    /// widening that would only widen the call's result, as `make()` would become `5 | 6`. And it
+    /// has no lambda in it, even one a call passes through, since a lambda's parameter types keep
+    /// the narrower mappings.
+    widens: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
     reads: IndexSet<TypeId>,
     /// The callee's generics that comparing it with its parameter can add to: every one in the
@@ -750,6 +758,9 @@ impl ArgumentOrder {
                     kind,
                     has_lambda: has_lambda(arg),
                     has_own_lambda: has_own_lambda(arg),
+                    widens: matches!(arg, AstExpr::FunctionCallExpr(_))
+                        && !has_lambda(arg)
+                        && !has_call_without_arguments(arg),
                     reads,
                     writes: generics_in(ctx, function, param.ty),
                     bounds_above: bounded_above(ctx, function, param.ty),
@@ -908,20 +919,13 @@ impl ArgumentOrder {
         &self.arguments[i].writes
     }
 
-    /// Whether the argument, which takes the expected type's bounds, takes the expected type's own
-    /// bounds where what the arguments so far map fits them (see `CallSolver::widen_to_expected`),
-    /// rather than what they narrow it to. That's a call with arguments and no lambda in it: what
-    /// its own arguments give it adds to the generics once it's compiled against them, as `8`
-    /// does in `let v: 7 | 8 = either(7, id(8));`. A call without arguments only has its expected
-    /// type to infer from, so a call with one anywhere in it keeps the narrower mapping, as `id(make())`
-    /// would otherwise only make the generic wider, and a lambda, even one a call passes through,
-    /// keeps it for its parameter types.
-    fn widens_to_expected(&self, i: usize, expr: &AstExpr) -> bool {
-        !self.arguments[i].has_lambda
-            && matches!(expr, AstExpr::FunctionCallExpr(_))
-            && !expr.syntax().descendants().any(|node| {
-                AstExpr::cast(node).is_some_and(|expr| is_call_without_arguments(&expr))
-            })
+    /// Whether the argument is compiled against the expected type's own bounds, where the mappings
+    /// fit them, rather than what the arguments so far narrow the generics to (see
+    /// `CallSolver::widen_to_expected`, which also leaves the generics an argument bounds from
+    /// above as they are), such as `7 | 8` rather than `7` for `id(8)` in
+    /// `let v: 7 | 8 = either(7, id(8));` (see `Argument::widens`).
+    fn widens_to_expected(&self, i: usize) -> bool {
+        self.arguments[i].widens
     }
 
     /// Whether every argument has been compiled.
@@ -1551,6 +1555,14 @@ fn has_own_lambda(expr: &AstExpr) -> bool {
     }
 
     false
+}
+
+/// Whether the expression is, or has in it, a call without arguments.
+fn has_call_without_arguments(expr: &AstExpr) -> bool {
+    expr.syntax()
+        .descendants()
+        .filter_map(AstExpr::cast)
+        .any(|expr| is_call_without_arguments(&expr))
 }
 
 /// Whether the expression is, or has in it, a lambda.
