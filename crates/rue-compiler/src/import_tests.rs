@@ -993,7 +993,7 @@ fn crate_paths_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
         const HASH: Bytes32 = crate::sha256(1);
         const VALUE: Local = crate::LOCAL + crate::helper();
 
-        fn helper() -> Int {
+        export fn helper() -> Int {
             1
         }
 
@@ -1127,15 +1127,17 @@ fn crate_paths_into_other_modules_need_their_items_to_be_exported() {
 #[test]
 fn glob_and_exported_imports_of_crate_bring_in_private_items() {
     // `crate::*` brings in the root's private items, like `super::*` does from a module in it,
-    // and `export crate::...` re-exports one
+    // and `export crate::...` re-exports a public one (a private one can't be re-exported, see
+    // `reexports_of_private_items_through_crate_are_reported`)
     let compiled = compile(
         "
         const TOP: Int = 1;
+        export const SHARED: Int = 2;
 
         mod outer {
             export mod inner {
                 import crate::*;
-                export crate::TOP;
+                export crate::SHARED;
 
                 export fn value() -> Int {
                     TOP + main()
@@ -1144,13 +1146,13 @@ fn glob_and_exported_imports_of_crate_bring_in_private_items() {
         }
 
         fn main() -> Int {
-            outer::inner::TOP
+            outer::inner::SHARED
         }
         ",
     );
 
     compiled.assert_no_errors();
-    assert_eq!(compiled.symbol_origin("outer::inner::TOP"), "(root)");
+    assert_eq!(compiled.symbol_origin("outer::inner::SHARED"), "(root)");
 }
 
 #[test]
@@ -3862,4 +3864,40 @@ fn imports_that_find_a_public_item_after_reexports_are_reported_are_not_reported
             "module {module}"
         );
     }
+}
+
+#[test]
+fn reexports_of_private_items_through_crate_are_reported() {
+    let compiled = compile(
+        "
+        const SECRET: Int = 1;
+        const OTHER: Int = 2;
+        export crate::OTHER;
+
+        export mod a {
+            export super::SECRET;
+
+            export mod b {
+                export crate::SECRET;
+                export crate::a::SECRET;
+            }
+        }
+
+        fn main() -> Int {
+            OTHER + a::SECRET + a::b::SECRET
+        }
+        ",
+    );
+
+    // `crate` names the file, so the first re-export is of its own private item. `b`'s re-export
+    // through `crate` finds the file's private item too, but its re-export through `a` finds what
+    // `a` brought in, which is exported once `a` is reported.
+    assert_eq!(
+        compiled.errors(),
+        [
+            "4:23 PrivateReexport(\"OTHER\")",
+            "7:27 PrivateReexport(\"SECRET\")",
+            "10:31 PrivateReexport(\"SECRET\")",
+        ]
+    );
 }

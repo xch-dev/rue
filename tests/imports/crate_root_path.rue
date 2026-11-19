@@ -28,10 +28,12 @@ mod c {
     }
 }
 
-// `export crate::...` re-exports an item of the root, like `export super::...`
+// `export crate::...` re-exports a public item of the root, like `export super::...`
 mod d {
-    export crate::SECRET;
+    export crate::SHARED;
 }
+
+export const SHARED: Int = SECRET;
 
 // Types through `crate`, and `crate` from the top level of the file itself
 type Alias = crate::Num;
@@ -39,5 +41,5 @@ type Num = Int;
 
 fn main() -> Int {
     let x: Alias = crate::c::run();
-    x + d::SECRET
+    x + d::SHARED
 }
