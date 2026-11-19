@@ -179,3 +179,15 @@ test fn excluded_generic_next_to_a_wrapped_one() -> Int {
     let result: (5, Int) = mixed_map(fn(p, callback) => (p.first, p.rest + callback(p.rest)), 5, 6);
     result.first + result.rest
 }
+
+fn wrap<T>(value: T) -> (T, Int) {
+    (value, 1)
+}
+
+test fn argument_of_a_call_with_a_final_expected_type() -> Int {
+    // `wrap`'s `(5, Int)` is a type of its own, and no other argument can add to its `T`, so the
+    // `5` its argument is expected to be is what `T` has to be, and `map` is solved for it, as
+    // `wrap::<5>(map::<5, 5>(...))` is
+    let result: (5, Int) = wrap(map(fn(x) => x, 5));
+    result.first
+}

@@ -71,6 +71,9 @@ pub(crate) fn infer_call(
     // only uses the type expected of it for the generics its arguments don't give a type (see
     // `refine_element_expected`), so it isn't solved again for it either
     let fallback_only = ctx.is_expected_type_fallback() && !args.is_empty();
+    // Whether the type expected of the call is a type of its own, which it has to be assignable to
+    let expected_is_final = expected_type.is_some() && !ctx.is_expected_type_hint();
+
     let solver = ctx.call_solver(expected);
     let solver = Rc::new(if fallback_only {
         solver.fallback_only()
@@ -140,11 +143,15 @@ pub(crate) fn infer_call(
         }));
 
         // The parameter's type is only a hint while it references the callee's generics, since
-        // what they're inferred as so far can still widen
+        // what they're inferred as so far can still widen. Unless the call's own expected type is
+        // a type of its own and no argument still to be compiled can add to them: then it's what
+        // the call's solution will have to be, so `wrap(map(fn(x) => x, 5))` with `(5, Int)`
+        // expected solves `map` for `5`
         let hint = function
             .generics
             .iter()
-            .any(|&generic| contains_generic(ctx.types_mut(), param, generic));
+            .any(|&generic| contains_generic(ctx.types_mut(), param, generic))
+            && !(expected_is_final && order.settles(i));
 
         // A lambda expected to be exactly the parameter's function type wraps the callee's
         // generics in its parameters (see `ParameterWrap`)
@@ -739,6 +746,17 @@ impl ArgumentOrder {
         }
 
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
+    }
+
+    /// Whether no argument still to be compiled, other than this one, can add to the generics in
+    /// its parameter type.
+    fn settles(&self, i: usize) -> bool {
+        let writes = &self.arguments[i].writes;
+
+        self.pending
+            .iter()
+            .filter(|&&other| other != i)
+            .all(|&other| self.arguments[other].writes.is_disjoint(writes))
     }
 
     /// Whether every argument has been compiled.
