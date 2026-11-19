@@ -188,8 +188,27 @@ pub fn compile_struct_initializer_expr(
         return ctx.unresolved();
     }
 
+    // Missing fields are reported before they're filled in with placeholders, so that every
+    // placeholder comes after the error that explains it
+    let missing_fields = struct_type
+        .fields
+        .iter()
+        .rev()
+        .filter(|&name| {
+            !fields.contains_key(name) && ctx.default_field(struct_type.semantic, name).is_none()
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if !missing_fields.is_empty() {
+        let type_name = ctx.type_name(ty);
+        ctx.diagnostic(
+            expr.syntax(),
+            DiagnosticKind::MissingRequiredFields(type_name, missing_fields.join(", ")),
+        );
+    }
+
     let mut initializer_fields = Vec::new();
-    let mut missing_fields = vec![];
 
     for name in struct_type.fields.into_iter().rev() {
         let mut is_default = false;
@@ -206,7 +225,6 @@ pub fn compile_struct_initializer_expr(
             value
         } else {
             debug!("Unresolved struct initializer field");
-            missing_fields.push(name.clone());
             ctx.unresolved()
         };
 
@@ -224,14 +242,6 @@ pub fn compile_struct_initializer_expr(
         fields: initializer_fields,
         nil_terminated: struct_type.nil_terminated,
     }));
-
-    if !missing_fields.is_empty() {
-        let type_name = ctx.type_name(ty);
-        ctx.diagnostic(
-            expr.syntax(),
-            DiagnosticKind::MissingRequiredFields(type_name, missing_fields.join(", ")),
-        );
-    }
 
     Value::new(hir, ty)
 }
