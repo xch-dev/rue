@@ -43,6 +43,28 @@ fn reaching_the_pass_limit_reports_an_internal_error() {
 }
 
 #[test]
+fn reaching_the_pass_limit_skips_the_other_import_errors() {
+    // `import super::m0::X` only finds `X` once the chain has brought it in, so the imports'
+    // other errors would report it as unresolved, although it's only resolving that stopped
+    let source = "
+        mod a { export super::m0::X; }
+        mod m0 { export super::m1::*; }
+        mod m1 { export super::m2::*; }
+        mod m2 { export super::m3::*; }
+        mod m3 { export const X: Int = 1; }
+
+        fn main() -> Int {
+            a::X
+        }
+    ";
+
+    assert_eq!(
+        errors_with_limit(source, 1),
+        ["2:35 ImportPassLimit(1)", "9:16 UndeclaredSymbol(\"X\")"]
+    );
+}
+
+#[test]
 fn the_pass_limit_is_reported_once() {
     // Both calls to `resolve_imports` reach the limit, before resolving anything
     let errors = errors_with_limit(CHAIN, 0);

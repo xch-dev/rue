@@ -489,16 +489,16 @@ thread_local! {
     };
 }
 
-/// The most passes that [`resolve_imports`] makes before it gives up, which only a bug in it can
-/// reach. Each pass but the last changes something that the next one builds on, and a change moves
-/// on through at least one import per pass, so a change that a chain of imports passes along (such
-/// as a glob import of a module that glob-imports the next one) takes about a pass per import. The
-/// steps once nothing changes (reporting private re-exports, blocking failed names, removing stale
-/// blocks and forcing stuck lookups) start new changes, but only a few times. In the tests, and in
-/// generated projects with long chains and cycles of glob, named and private re-exports, nested
-/// glob imports through `super` and random imports, it never takes more than three passes more than
-/// there are imports. The settle steps aren't proven to start only a few rounds of changes, so no
-/// tight bound is practical, and this leaves a wide margin above that.
+/// The most passes that [`resolve_imports`] makes before it gives up. A pass is made again when the
+/// last one changed something, or when one of the steps once nothing changes (reporting private
+/// re-exports, blocking failed names, removing stale blocks and forcing stuck lookups) did. A
+/// change moves on through at least one import per pass, so one that a chain of imports passes
+/// along (such as a glob import of a module that glob-imports the next one) takes about a pass per
+/// import, and the settle steps start new changes only a few times. Nothing proves that they can't
+/// start more, so no tight bound is practical. Instead, this leaves a wide margin above what's been
+/// measured: in the tests, in generated projects with long chains and cycles of glob, named and
+/// private re-exports and nested glob imports through `super`, and in random generated projects,
+/// it never took more than two passes per import plus two.
 fn pass_limit(imports: usize) -> usize {
     #[cfg(test)]
     if let Some(limit) = PASS_LIMIT.get() {
