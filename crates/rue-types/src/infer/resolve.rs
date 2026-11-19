@@ -129,6 +129,11 @@ impl InferenceResolver<'_> {
             .generics
             .keys()
             .copied()
+            // A generic that's already resolved isn't resolved with it again. Without fixed ones
+            // (see `resolve_inference_around`) that can't happen, since it would have been resolved
+            // in the same component. A fixed generic can still reach the generic through a
+            // candidate its mapping doesn't use, such as an upper candidate next to lower ones, and
+            // it keeps its mapping then too. No test or fuzzer program has been found to reach it
             .filter(|&other| {
                 other == generic
                     || (reachable.contains(&other)
