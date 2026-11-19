@@ -74,19 +74,23 @@ fn solution(hidden: Any, puzzle_reveal: Any, solution: Any) -> Any {
 }
 
 test fn wraps_the_inner_puzzle_outputs() -> Any {
-    check(solution(
-        nil,
-        1,
-        [
-            CreateCoin {
-                puzzle_hash: sha256("destination"),
-                amount: 1,
-                memos: Memos { value: [sha256("hint")] },
-            },
-            AssertMyAmount { amount: 1 },
-            CreateCoin { puzzle_hash: sha256("other"), amount: 2 },
-        ],
-    ))
+    check(
+        solution(
+            nil,
+            1,
+            [
+                CreateCoin {
+                    puzzle_hash: sha256("destination"),
+                    amount: 1,
+                    memos: Memos { value: [sha256("hint")] },
+                },
+                AssertMyAmount { amount: 1 },
+                CreateCoin { puzzle_hash: sha256("other"), amount: 2 },
+                // A created coin with a field after its memos, which is kept.
+                [51 as Any, sha256("extra_fields"), 4, [sha256("hint")], "extra"],
+            ],
+        ),
+    )
 }
 
 test fn runs_the_hidden_puzzle() -> Any {

@@ -190,6 +190,16 @@ test fn transfers_with_the_same_transfer_program() -> Any {
     ))
 }
 
+test fn keeps_fields_after_the_memos() -> Any {
+    check(solution(
+        RETURN_SOLUTION,
+        [
+            [(-10) as Any, sha256("new_owner"), nil, nil],
+            [51 as Any, sha256("inner_puzzle"), 1, [sha256("hint")], "extra"],
+        ],
+    ))
+}
+
 test fn passes_the_metadata_and_conditions() -> Any {
     // A transfer program that keeps the transfer program and puts its arguments in a remark:
     // `(q () () ((1 . <arguments>)))`, built from `(c (q) (c (q) (c (c (c (q . 1) 1) ()) ())))`.
