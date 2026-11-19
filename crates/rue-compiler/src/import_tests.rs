@@ -1754,6 +1754,47 @@ fn named_imports_of_the_same_item_share_its_binding_in_mixed_cases() {
 }
 
 #[test]
+fn path_less_imports_through_another_import_of_the_same_item_share_its_binding() {
+    // `u`'s import of `super::X` finds `X` through the parent's import, not through the binding
+    // that the other import in `u` may have made, so the two share the binding: both are used if
+    // `X` is, and both (and the parent's import) are reported if it isn't, in either order
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (body, expected) in [
+            ("X", vec![]),
+            (
+                "1",
+                vec![
+                    "2:40 UnusedConstant",
+                    "4:28 UnusedImport",
+                    "6:39 UnusedImport",
+                    "6:60 UnusedImport",
+                ],
+            ),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {first} {{ export super::src::X; }}
+                import {first}::X;
+                mod {second} {{ export super::src::X; }}
+                mod u {{ import super::X; import super::{second}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("first: {first}, body: {body}");
+            let warnings = compiled
+                .warnings()
+                .into_iter()
+                .filter(|warning| warning.contains(" Unused"))
+                .collect::<Vec<_>>();
+
+            compiled.assert_no_errors();
+            assert_eq!(warnings, expected, "{context}");
+        }
+    }
+}
+
+#[test]
 fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others() {
     // The first module's `V` calls the function that uses `V`, which is only recursive if the
     // name is bound to it. The use counts as a use of the other `V` too, but isn't a reference to
