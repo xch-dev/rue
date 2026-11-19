@@ -1,0 +1,58 @@
+// Regression test, not for production use. A port of
+// `mips_puzzles/restriction_puzzles/wrappers/prevent_condition_opcode.clsp` from chia_puzzles, checked against the
+// compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./prevent_condition_opcode.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
+
+// Rejects conditions with the curried opcode.
+fn main(condition_opcode: Int, conditions: List<Condition>) -> List<Condition> {
+    assert check_conditions(condition_opcode, conditions);
+    conditions
+}
+
+fn check_conditions(condition_opcode: Int, conditions: List<Condition>) -> Bool {
+    if conditions is nil {
+        return true;
+    }
+
+    let opcode = unchecked_cast::<(Int, Any)>(conditions.first).first;
+    assert opcode != condition_opcode;
+    check_conditions(condition_opcode, conditions.rest)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn allows_other_conditions() -> Any {
+    check([
+        AGG_SIG_UNSAFE,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }, ReserveFee { amount: 1 }],
+    ])
+}
+
+test fn allows_no_conditions() -> Any {
+    check([AGG_SIG_UNSAFE, nil])
+}
+
+fn prevented_condition() -> Any {
+    [
+        AGG_SIG_UNSAFE,
+        [
+            ReserveFee { amount: 1 },
+            AggSigUnsafe { public_key: pubkey_for_exp(1), message: "message" },
+        ],
+    ]
+}
+
+test fn rejects_the_prevented_condition() -> Any {
+    run(main, prevented_condition())
+}
+
+test fn reference_rejects_the_prevented_condition() -> Any {
+    run(reference, prevented_condition())
+}

@@ -1,0 +1,30 @@
+// Regression test, not for production use. A port of `mips_puzzles/member_puzzles/fixed_puzzle_member.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./fixed_puzzle_member.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+fn main(fixed_puzzle_hash: Bytes32, delegated_puzzle_hash: Bytes32) -> nil {
+    assert fixed_puzzle_hash == delegated_puzzle_hash;
+    nil
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn approves_the_fixed_puzzle() -> Any {
+    check([sha256("fixed_puzzle"), sha256("fixed_puzzle")])
+}
+
+test fn rejects_another_puzzle() -> Any {
+    run(main, [sha256("fixed_puzzle"), sha256("delegated_puzzle")])
+}
+
+test fn reference_rejects_another_puzzle() -> Any {
+    run(reference, [sha256("fixed_puzzle"), sha256("delegated_puzzle")])
+}

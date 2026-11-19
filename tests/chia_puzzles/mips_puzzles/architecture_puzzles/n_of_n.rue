@@ -1,0 +1,75 @@
+// Regression test, not for production use. A port of `mips_puzzles/architecture_puzzles/n_of_n.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./n_of_n.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+type Member = fn(delegated_puzzle_hash: Bytes32, ...member_solution: Any) -> List<Condition>;
+
+// Runs every member with its solution, and combines their conditions.
+fn main(
+    members: (Member, List<Member>),
+    delegated_puzzle_hash: Bytes32,
+    member_solutions: List<Any>,
+) -> List<Condition> {
+    approve(members, member_solutions, delegated_puzzle_hash)
+}
+
+fn approve(
+    members: (Member, List<Member>),
+    member_solutions: List<Any>,
+    delegated_puzzle_hash: Bytes32,
+) -> List<Condition> {
+    // Like the original, this expects a solution for each member.
+    let solutions = unchecked_cast::<(Any, List<Any>)>(member_solutions);
+    let conditions = members.first(delegated_puzzle_hash, ...solutions.first);
+
+    if members.rest is (Member, List<Member>) {
+        merge_list(conditions, approve(members.rest, solutions.rest, delegated_puzzle_hash))
+    } else {
+        conditions
+    }
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn runs_every_member() -> Any {
+    check(
+        [
+            [
+                // `(c (c (q . 1) 2) 3)`
+                [4 as Any, [4 as Any, (1, 1), 2], 3],
+                1,
+                (1, [ReserveFee { amount: 5 }]),
+            ],
+            sha256("delegated_puzzle"),
+            [
+                [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+                [AssertHeightRelative { height: 10 }],
+                nil,
+            ],
+        ],
+    )
+}
+
+test fn runs_a_single_member() -> Any {
+    check([[1], sha256("delegated_puzzle"), [[ReserveFee { amount: 1 }]]])
+}
+
+fn missing_solution() -> Any {
+    [[1, 1], sha256("delegated_puzzle"), [nil]]
+}
+
+test fn rejects_a_missing_solution() -> Any {
+    run(main, missing_solution())
+}
+
+test fn reference_rejects_a_missing_solution() -> Any {
+    run(reference, missing_solution())
+}

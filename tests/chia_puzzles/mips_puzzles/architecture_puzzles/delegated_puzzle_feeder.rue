@@ -1,0 +1,44 @@
+// Regression test, not for production use. A port of `mips_puzzles/architecture_puzzles/delegated_puzzle_feeder.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./delegated_puzzle_feeder.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../run.hex";
+
+// Runs the inner puzzle with the delegated puzzle's hash, and appends the delegated puzzle's
+// conditions to its output.
+fn main(
+    inner_puzzle: fn(delegated_puzzle_hash: Bytes32, ...inner_solution: Any) -> List<Condition>,
+    delegated_puzzle: fn(...solution: Any) -> List<Condition>,
+    delegated_solution: Any,
+    ...inner_solution: Any,
+) -> List<Condition> {
+    merge_list(
+        inner_puzzle(tree_hash(delegated_puzzle), ...inner_solution),
+        delegated_puzzle(...delegated_solution),
+    )
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn feeds_the_delegated_puzzle_hash() -> Any {
+    // An inner puzzle that outputs a remark with the delegated puzzle hash, followed by the rest
+    // of its solution: `(c (c (q . 1) 2) 3)`.
+    let inner_puzzle = [4 as Any, [4 as Any, (1, 1), 2], 3];
+    check([
+        inner_puzzle,
+        1,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+        ReserveFee { amount: 1 },
+        AssertHeightRelative { height: 10 },
+    ])
+}
+
+test fn runs_with_no_inner_conditions() -> Any {
+    check([(1, nil), 1, [ReserveFee { amount: 1 }]])
+}

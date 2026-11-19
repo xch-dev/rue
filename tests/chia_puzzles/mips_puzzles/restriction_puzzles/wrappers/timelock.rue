@@ -1,0 +1,53 @@
+// Regression test, not for production use. A port of
+// `mips_puzzles/restriction_puzzles/wrappers/timelock.clsp` from chia_puzzles, checked against the
+// compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./timelock.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
+
+// Requires the conditions to include an `AssertSecondsRelative` with the curried timelock.
+fn main(timelock: Int, conditions: List<Condition>) -> List<Condition> {
+    check_conditions(timelock, conditions)
+}
+
+fn check_conditions(timelock: Int, conditions: List<Condition>) -> List<Condition> {
+    // Like the original, this fails when it reaches the end of the list.
+    let conditions = unchecked_cast::<(Condition, List<Condition>)>(conditions);
+    let condition = conditions.first;
+
+    if condition is AssertSecondsRelative && condition.seconds == timelock {
+        return conditions;
+    }
+
+    [condition, ...check_conditions(timelock, conditions.rest)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn finds_the_timelock() -> Any {
+    check([
+        3600,
+        [
+            AssertSecondsRelative { seconds: 60 },
+            AssertSecondsRelative { seconds: 3600 },
+            ReserveFee { amount: 1 },
+        ],
+    ])
+}
+
+fn shorter_timelock() -> Any {
+    [3600, [AssertSecondsRelative { seconds: 60 }, ReserveFee { amount: 1 }]]
+}
+
+test fn rejects_a_shorter_timelock() -> Any {
+    run(main, shorter_timelock())
+}
+
+test fn reference_rejects_a_shorter_timelock() -> Any {
+    run(reference, shorter_timelock())
+}
