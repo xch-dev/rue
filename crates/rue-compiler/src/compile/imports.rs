@@ -1917,7 +1917,7 @@ fn resolve_named_import(
         }
     }
 
-    for &(found, _) in &found {
+    for &(found, via) in &found {
         let namespace = found.namespace();
         let error = ctx.is_error_item(found);
         let existing = ctx.scope(import_scope).item(namespace, name);
@@ -1984,13 +1984,15 @@ fn resolve_named_import(
         // Another named import that brings in the same item may have bound the name, depending on
         // the order they're resolved in, and so on module names. Like glob imports that bring in
         // the name, this one shares its binding, so that it's used wherever that one is, rather
-        // than which of them is reported as unused depending on the order.
+        // than which of them is reported as unused depending on the order. An import that finds
+        // the item through that binding (such as `import X;` beside `import a::X;`) only ever
+        // re-imports it, so it doesn't.
         let bound_by = ctx
             .scope(import_scope)
             .item_import(found)
             .filter(|&bound_by| {
                 bound_by != import_id
-                    && existing == Some(found)
+                    && via != Some(bound_by)
                     && matches!(ctx.import(bound_by).items, Items::Named(_))
             });
 

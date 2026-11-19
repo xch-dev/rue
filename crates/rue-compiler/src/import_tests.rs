@@ -1686,6 +1686,74 @@ fn several_named_imports_of_the_same_item_share_its_binding() {
 }
 
 #[test]
+fn named_imports_of_the_same_item_share_its_binding_in_mixed_cases() {
+    // `src` has a constant and a type alias `X`, which both re-exports of it bring in. In each case
+    // the warnings are the same whichever module's import binds `X`:
+    // - A path-less `import X;` finds `X` through the import that's already there, so it only
+    //   re-imports it, and is reported whether or not `X` is used.
+    // - A private import beside an export of the same item shares the export's binding, so it's
+    //   used wherever that one is (here, from outside of `u`).
+    // - Using `X` only as a type uses both imports, which bring in the constant too.
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (items, main, expected) in [
+            (
+                "import super::{first}::X; import X; export fn value() -> Int { X }",
+                "u::value()",
+                vec!["2:64 UnusedTypeAlias", "5:53 UnusedImport"],
+            ),
+            (
+                "import super::{first}::X; import X; export fn value() -> Int { 1 }",
+                "u::value()",
+                vec![
+                    "2:40 UnusedConstant",
+                    "2:64 UnusedTypeAlias",
+                    "5:53 UnusedImport",
+                ],
+            ),
+            (
+                "import super::{second}::X; export super::{first}::X;",
+                "u::X",
+                vec!["2:64 UnusedTypeAlias"],
+            ),
+            (
+                "import super::{second}::X; export super::{first}::X;",
+                "1",
+                vec![
+                    "2:40 UnusedConstant",
+                    "2:64 UnusedTypeAlias",
+                    "5:43 UnusedImport",
+                ],
+            ),
+            (
+                "import super::{first}::X; import super::{second}::X; export fn value() -> Int { let x: X = 1; x }",
+                "u::value()",
+                vec!["2:40 UnusedConstant"],
+            ),
+        ] {
+            let items = items.replace("{first}", first).replace("{second}", second);
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; export type X = Int; }}
+                mod {first} {{ export super::src::X; }}
+                mod {second} {{ export super::src::X; }}
+                mod u {{ {items} }}
+                fn main() -> Int {{ {main} }}
+                "
+            ));
+            let context = format!("first: {first}, {items}, main: {main}");
+            let warnings = compiled
+                .warnings()
+                .into_iter()
+                .filter(|warning| warning.contains(" Unused"))
+                .collect::<Vec<_>>();
+
+            compiled.assert_no_errors();
+            assert_eq!(warnings, expected, "{context}");
+        }
+    }
+}
+
+#[test]
 fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others() {
     // The first module's `V` calls the function that uses `V`, which is only recursive if the
     // name is bound to it. The use counts as a use of the other `V` too, but isn't a reference to
