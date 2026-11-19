@@ -75,11 +75,13 @@ fn lookup(
     let mut others = Vec::new();
 
     let mut visit = |scope: &Scope| {
-        let binding = scope
-            .item_with_import(namespace, name)
-            .filter(|&(item, _)| !exported_only || scope.is_item_exported(item));
+        // A private item hides what glob imports could bring in too, even where only what the
+        // scope exports counts
+        let binding = scope.item_with_import(namespace, name);
+        let hidden = hides_glob_alternatives(ctx, binding);
+        let binding = binding.filter(|&(item, _)| !exported_only || scope.is_item_exported(item));
 
-        if !hides_glob_alternatives(ctx, binding) {
+        if !hidden {
             for import in glob_imports(ctx, scope, exported_only) {
                 others.extend(
                     ctx.glob_alternatives(import, namespace, name)

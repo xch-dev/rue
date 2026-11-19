@@ -509,11 +509,10 @@ pub fn resolve_imports(
     // What names and glob imports could refer to besides what they're bound to only matters
     // once something is ambiguous, and a glob import only passes on what it could bring in under
     // names that nothing hides where it's passed through. Names are still being bound in the
-    // passes above, so that's worked out once the bindings are settled, from nothing (only what
-    // glob imports bring in under ambiguous names is recorded in those passes). Only the
-    // alternatives change in these passes, and they only grow, so they settle.
+    // passes above, so what paths and glob imports could refer to is only worked out once the
+    // bindings are settled. Only the alternatives change in these passes, and they only grow, so
+    // they settle.
     if ctx.has_alternatives() {
-        ctx.clear_alternatives();
         resolution.settled = true;
 
         loop {
@@ -1675,11 +1674,6 @@ fn path_alternatives(
     let Some(path) = cache.paths.get(&import_id) else {
         return Vec::new();
     };
-
-    // Nothing could refer to anything else until a name is ambiguous
-    if !ctx.has_alternatives() {
-        return Vec::new();
-    }
 
     let mut alternatives = Vec::new();
 

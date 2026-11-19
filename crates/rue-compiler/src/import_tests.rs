@@ -2452,7 +2452,9 @@ fn imports_used_only_by_hidden_paths_through_ambiguous_modules_are_unused() {
 #[test]
 fn glob_imports_of_parent_modules_pass_on_what_their_private_glob_imports_could_bring_in() {
     // `c` glob-imports its parent `p`, which privately glob-imports `both::m`, so `c`'s use of
-    // `ONLY` could refer to `beta`'s, which only `beta`'s `m` has, whichever `m` is bound
+    // `ONLY` could refer to `beta`'s, which only `beta`'s `m` has, whichever `m` is bound. (`p`'s
+    // glob import is reported as it would be without the ambiguity: a use through a child's
+    // `super::*` doesn't count for it.)
     for first_binds in [true, false] {
         let compiled = compile(&colliding_modules(
             first_binds,
@@ -2471,6 +2473,53 @@ fn glob_imports_of_parent_modules_pass_on_what_their_private_glob_imports_could_
             unused_imports(&compiled),
             ["5:40 UnusedImport"],
             "{context}"
+        );
+    }
+}
+
+#[test]
+fn private_items_of_ambiguous_modules_are_used_through_paths() {
+    // `beta`'s `m` has a private `X` and `T`, which a path through `both::m` finds (and reports as
+    // private) when that `m` is bound, so it could refer to them either way
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const X: Int = 1; export type T = Int;",
+            "const X: Int = 2; type T = Int;",
+            "fn main() -> Int { let t: both::m::T = both::m::X; t }",
+        ));
+
+        assert_eq!(
+            unused_items(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn private_items_of_other_modules_hide_what_their_glob_imports_could_bring_in() {
+    // The first module's `m` has a private `X`, which hides the `X`s its glob export of `both2::k`
+    // could bring in, so `user`'s glob import of `both::m` never brings them in, whichever `m` or
+    // `k` is bound, and they're unused
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export super::super::both2::k::*; const X: Int = 5; export const Y: Int = X;",
+            "export const X: Int = 3; export const Y: Int = 3;",
+            "mod ka { export mod k { export const X: Int = 1; } } mod kb { export mod k { export const X: Int = 2; } } mod both2 { export super::ka::*; export super::kb::*; } mod user { import super::both::m::*; import super::beta::m::*; export fn value() -> Int { X } } fn main() -> Int { user::value() }",
+        ));
+        // The first module's own `X` and `Y` and `beta`'s `Y` are unused too
+        assert_eq!(
+            unused_items(&compiled),
+            [
+                "2:76 UnusedConstant",
+                "2:101 UnusedConstant",
+                "3:73 UnusedConstant",
+                "5:46 UnusedConstant",
+                "5:99 UnusedConstant",
+            ],
+            "first binds: {first_binds}"
         );
     }
 }

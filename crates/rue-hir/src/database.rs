@@ -576,14 +576,6 @@ impl Database {
         !self.glob_alternatives.is_empty() || !self.ambiguous_alternatives.is_empty()
     }
 
-    /// Forgets what every name could refer to besides what it's bound to, and what every glob
-    /// import could bring in besides what it does, so that they can be worked out again once the
-    /// imports' bindings are settled.
-    pub fn clear_alternatives(&mut self) {
-        self.ambiguous_alternatives.clear();
-        self.glob_alternatives.clear();
-    }
-
     /// Records that a glob import could bring in something under a name that nothing else in
     /// its scope hides, besides what it does (see [`Database::may_bring_in_more`]).
     pub fn add_glob_that_may_bring_in_more(&mut self, import: ImportId) {
