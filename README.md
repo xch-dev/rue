@@ -96,6 +96,7 @@ Useful `build` flags:
 - `--hash` - output the tree hash of the compiled program
 - `--debug` - include debug information such as assertion messages
 - `--all` - compile every export in the project and write each one to a file (next to its source, or in `dist_dir` if set in `Rue.toml`)
+- `--debug-metadata` - also write a debug metadata sidecar for each program (`<name>.rue.debug.clvm.bin`, in Chialisp's structural debug metadata format), which debuggers use to show where in the source a failing program was. It's written next to each program with `--all`, and otherwise next to the source file, or to `--debug-metadata=<path>`. The programs are the same either way
 
 `test` and `debug` stop a program once its cost passes 11,000,000,000 (the same as Chia's block cost limit), so a program that never ends fails instead of hanging. `--max-cost <cost>` changes the limit.
 
