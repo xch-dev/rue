@@ -1,0 +1,8 @@
+// `c.rue` and `w.rue` each export two different modules `m`, so `m` is ambiguous in each. `d.rue`
+// exports `X` through `c.rue`'s `m` by name, and `e.rue` through `w.rue`'s with a glob export. The
+// module names are in either order, so either glob export binds each `m`, and since the files'
+// exports could refer to the `X` in either module, none of the `X`s is reported as unused.
+
+fn main() -> Int {
+    3
+}

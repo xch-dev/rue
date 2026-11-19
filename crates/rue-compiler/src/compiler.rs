@@ -1305,6 +1305,23 @@ impl Compiler {
         }
     }
 
+    /// Records that the declaration being compiled could use a declaration through a path, in a
+    /// module other than the one the path is compiled as referring to, since glob imports bring
+    /// in different modules with a name in the path. Unlike [`Compiler::reference`], this isn't a
+    /// reference, so only the lints count it as a use, along with the import it's used through.
+    pub fn reference_alternative(&mut self, reference: Declaration, import: Option<ImportId>) {
+        let user = self.declaration_stack.last().copied();
+
+        if let Some(user) = user {
+            self.db.add_ambiguous_use(user, reference);
+        }
+
+        if let Some(import) = import {
+            let user = user.map_or(ImportUser::Other, ImportUser::Declaration);
+            self.db.add_import_reference(import, reference, user);
+        }
+    }
+
     /// Records that a glob import brought a declaration into a scope that another glob import
     /// brings a different declaration with the same name into, or that it brought in a
     /// declaration that was already ambiguous, so using it is ambiguous. Returns whether it

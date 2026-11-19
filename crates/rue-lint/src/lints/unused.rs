@@ -247,10 +247,19 @@ pub(crate) fn live_declarations(
 /// The declarations that use an ambiguous name, for each of the other declarations it could
 /// refer to. A use counts as a use of all of them, whichever one the glob import that bound the
 /// name brought in, so that which is reported as unused doesn't depend on the order imports are
-/// resolved in. The database only has a reference to the one the name is bound to, which is what's
-/// compiled, and the recursion check reads those references, so these are only added here.
+/// resolved in. The same goes for a path through an ambiguous module name, which could refer to
+/// the members of each module it could name. The database only has a reference to the one the
+/// name is bound to, which is what's compiled, and the recursion check reads those references, so
+/// these are only added here.
 fn ambiguous_parents(db: &Database) -> HashMap<Declaration, Vec<Declaration>> {
     let mut parents = HashMap::<Declaration, Vec<Declaration>>::new();
+
+    for (declaration, users) in db.ambiguous_uses() {
+        parents
+            .entry(declaration)
+            .or_default()
+            .extend(users.iter().copied());
+    }
 
     for (import, declaration, others) in db.ambiguous_bindings() {
         let users = db

@@ -1,0 +1,3 @@
+export mod m {
+    export const X: Int = 1;
+}

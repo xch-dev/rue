@@ -1,0 +1,56 @@
+// `both::m` is ambiguous, since both glob exports bring in a module `m`. Which one the name is
+// bound to depends on the order the imports are resolved in, which depends on module names, but
+// the rest of each path through it is resolved in both modules, so the members that any of them
+// could refer to are used in each, and only the ones that nothing uses are reported (see
+// ambiguous_module_members_a and ambiguous_module_members_z). `ONLY` is only in `beta`'s `m`, so
+// the path to it fails when the name is bound to the other one, but it's still used.
+mod a {
+    export mod m {
+        export const X: Int = 1;
+        export type T = Int;
+        export const UNUSED: Int = 3;
+
+        export mod n {
+            export const Y: Int = 1;
+        }
+    }
+}
+
+mod beta {
+    export mod m {
+        export const X: Int = 2;
+        export type T = Int;
+        export const UNUSED: Int = 4;
+        export const ONLY: Int = 5;
+
+        export mod n {
+            export const Y: Int = 2;
+        }
+    }
+}
+
+mod both {
+    export super::a::*;
+    export super::beta::*;
+}
+
+mod paths {
+    export fn value() -> Int {
+        let t: super::both::m::T = super::both::m::X;
+        t + super::both::m::n::Y + super::both::m::ONLY
+    }
+}
+
+mod imports {
+    import super::both::m::n::Y;
+    import super::both::m::*;
+
+    export fn value() -> Int {
+        let t: T = X;
+        t + Y
+    }
+}
+
+fn main() -> Int {
+    paths::value() + imports::value()
+}

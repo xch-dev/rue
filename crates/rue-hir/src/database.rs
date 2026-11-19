@@ -50,6 +50,11 @@ pub struct Database {
     /// declarations with it, keyed by the import that the name refers to a declaration through and
     /// that declaration.
     ambiguous_alternatives: IndexMap<(ImportId, Declaration), IndexSet<Declaration>>,
+    /// The declarations that use each declaration through a path that names a module that glob
+    /// imports bring in different modules with, where the path could refer to it in one of the
+    /// other modules. They aren't references, since the path is only compiled as referring to
+    /// the one in the module the name is bound to.
+    ambiguous_uses: IndexMap<Declaration, IndexSet<Declaration>>,
     tests: Vec<Test>,
 }
 
@@ -471,6 +476,24 @@ impl Database {
         self.ambiguous_alternatives
             .iter()
             .map(|(&(import, declaration), others)| (import, declaration, others))
+    }
+
+    /// Records that a declaration uses another one through a path that could refer to it, since
+    /// a module the path names is ambiguous (see [`Database::ambiguous_uses`]).
+    pub fn add_ambiguous_use(&mut self, user: Declaration, declaration: Declaration) {
+        self.ambiguous_uses
+            .entry(declaration)
+            .or_default()
+            .insert(user);
+    }
+
+    /// Each declaration that a path could refer to in a module other than the one it's compiled
+    /// as referring to, because glob imports bring in different modules with a name in the path,
+    /// along with the declarations that use it through such a path.
+    pub fn ambiguous_uses(&self) -> impl Iterator<Item = (Declaration, &IndexSet<Declaration>)> {
+        self.ambiguous_uses
+            .iter()
+            .map(|(&declaration, users)| (declaration, users))
     }
 
     pub fn add_test(&mut self, test: Test) {

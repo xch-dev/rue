@@ -1644,6 +1644,220 @@ fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others()
     }
 }
 
+/// Two modules each export a module `m` with a different `X`, `T` and `n::Y`, which `both` glob
+/// exports from both of them, so `both::m` is ambiguous, and `user` has `user_items`. The names
+/// are `alpha` and `beta` if `first_binds`, and otherwise `omega` and `beta`, so that either glob
+/// import binds `m`. `alpha` and `omega` have the same length, so the diagnostics are at the same
+/// places.
+fn colliding_glob_modules(first_binds: bool, user_items: &str) -> String {
+    let first = if first_binds { "alpha" } else { "omega" };
+
+    format!(
+        "
+        mod {first} {{ export mod m {{ export const X: Int = 1; export type T = Int; export mod n {{ export const Y: Int = 1; }} }} }}
+        mod beta {{ export mod m {{ export const X: Int = 2; export type T = Int; export mod n {{ export const Y: Int = 2; }} }} }}
+        mod both {{ export super::{first}::*; export super::beta::*; }}
+        mod user {{ {user_items} }}
+        fn main() -> Int {{ user::value() }}
+        "
+    )
+}
+
+/// The warnings about unused constants and type aliases.
+fn unused_items(compiled: &Compiled) -> Vec<String> {
+    compiled
+        .warnings()
+        .into_iter()
+        .filter(|warning| {
+            warning.ends_with("UnusedConstant") || warning.ends_with("UnusedTypeAlias")
+        })
+        .collect()
+}
+
+/// Asserts that every error is about an ambiguous name, and that there's at least one.
+fn assert_only_ambiguous(compiled: &Compiled, context: &str) {
+    let errors = compiled.errors();
+
+    assert!(
+        !errors.is_empty() && errors.iter().all(|error| error.contains("AmbiguousImport")),
+        "{context}: {errors:?}"
+    );
+}
+
+#[test]
+fn members_of_ambiguous_modules_are_used_in_each_module() {
+    // Whichever glob import bound `m`, the rest of a path through it is resolved in each module it
+    // could refer to, so neither module's members are reported as unused, whether they're used
+    // through expression and type paths, named or glob imports through the path, an import of the
+    // ambiguous module itself, or a re-export of its members
+    for user_items in [
+        "export fn value() -> Int { let t: super::both::m::T = super::both::m::X; t + super::both::m::n::Y }",
+        "import super::both::m::X; import super::both::m::T; import super::both::m::n::Y; export fn value() -> Int { let t: T = X; t + Y }",
+        "import super::both::m::*; export fn value() -> Int { let t: T = X; t + n::Y }",
+        "import super::both::m::n::*; export fn value() -> Int { let t: super::both::m::T = super::both::m::X; t + Y }",
+        "import super::both::m; export fn value() -> Int { let t: m::T = m::X; t + m::n::Y }",
+        "import super::both::*; export fn value() -> Int { let t: m::T = m::X; t + m::n::Y }",
+        "mod mid { export super::super::both::m::*; } export fn value() -> Int { let t: mid::T = mid::X; t + mid::n::Y }",
+        "mod mid { export super::super::both::m::X; export super::super::both::m::T; export super::super::both::m::n; } import mid::*; export fn value() -> Int { let t: T = X; t + n::Y }",
+    ] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_glob_modules(first_binds, user_items));
+            let context = format!("{user_items}, first binds: {first_binds}");
+
+            assert_only_ambiguous(&compiled, &context);
+            assert_eq!(unused_items(&compiled), Vec::<String>::new(), "{context}");
+        }
+    }
+}
+
+#[test]
+fn members_of_ambiguous_modules_used_by_neither_are_unused_in_each() {
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_glob_modules(
+            first_binds,
+            "import super::both::m::X; export fn value() -> Int { 1 + super::both::m::X }",
+        ));
+
+        assert_only_ambiguous(&compiled, &format!("first binds: {first_binds}"));
+        assert_eq!(
+            unused_items(&compiled),
+            [
+                "2:73 UnusedTypeAlias",
+                "2:110 UnusedConstant",
+                "3:72 UnusedTypeAlias",
+                "3:109 UnusedConstant",
+            ],
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn members_of_ambiguous_modules_exported_from_a_file_are_exported_from_each_module() {
+    // The file exports what `both::m::X` names, which counts as exporting the `X` in each module
+    // that `m` could refer to, whether it's exported by name or through a glob export
+    for export in ["export both::m::X;", "export both::m::*;"] {
+        for first_binds in [true, false] {
+            let first = if first_binds { "alpha" } else { "zeta" };
+            let compiled = compile(&format!(
+                "
+                mod {first} {{ export mod m {{ export const X: Int = 1; }} }}
+                mod beta {{ export mod m {{ export const X: Int = 2; }} }}
+                mod both {{ export super::{first}::*; export super::beta::*; }}
+                {export}
+                fn main() -> Int {{ 1 }}
+                "
+            ));
+            let context = format!("{export}, first binds: {first_binds}");
+
+            assert_only_ambiguous(&compiled, &context);
+            assert_eq!(unused_items(&compiled), Vec::<String>::new(), "{context}");
+        }
+    }
+}
+
+#[test]
+fn members_of_modules_ambiguous_at_several_segments_are_used_in_each_module() {
+    // `both::m` could be `{outer}::m` or `gamma::m`, and in `{outer}::m`, `n` could be
+    // `{first}::n` or `beta::n`, so `both::m::n::Y` could be any of the three `Y`s, whichever
+    // glob imports bound the names
+    for outer in ["aaa", "zzz"] {
+        for first in ["alpha", "zeta"] {
+            for user_items in [
+                "export fn value() -> Int { super::both::m::n::Y }",
+                "import super::both::m::n::Y; export fn value() -> Int { Y }",
+                "import super::both::m::n::*; export fn value() -> Int { Y }",
+                "import super::both::m::*; export fn value() -> Int { n::Y }",
+            ] {
+                let compiled = compile(&format!(
+                    "
+                    mod {first} {{ export mod n {{ export const Y: Int = 1; }} }}
+                    mod beta {{ export mod n {{ export const Y: Int = 2; }} }}
+                    mod {outer} {{ export mod m {{ export super::super::{first}::*; export super::super::beta::*; }} }}
+                    mod gamma {{ export mod m {{ export mod n {{ export const Y: Int = 3; }} }} }}
+                    mod both {{ export super::{outer}::*; export super::gamma::*; }}
+                    mod user {{ {user_items} }}
+                    fn main() -> Int {{ user::value() }}
+                    "
+                ));
+                let context = format!("{user_items}, outer: {outer}, first: {first}");
+
+                assert_only_ambiguous(&compiled, &context);
+                assert_eq!(unused_items(&compiled), Vec::<String>::new(), "{context}");
+            }
+        }
+    }
+}
+
+#[test]
+fn members_of_only_one_ambiguous_module_are_used_whichever_module_is_bound() {
+    // Only `beta`'s `m` has `ONLY`. When the first module's `m` is bound, the path fails, but
+    // `ONLY` could still be what it refers to, so it isn't reported as unused in either order.
+    // `X` is in both, and `MISSING` is in neither, which is only reported as undeclared.
+    for first_binds in [true, false] {
+        let first = if first_binds { "alpha" } else { "zeta" };
+        let compiled = compile(&format!(
+            "
+            mod {first} {{ export mod m {{ export const X: Int = 1; }} }}
+            mod beta {{ export mod m {{ export const X: Int = 2; export const ONLY: Int = 3; }} }}
+            mod both {{ export super::{first}::*; export super::beta::*; }}
+            fn main() -> Int {{ both::m::X + both::m::ONLY + both::m::MISSING }}
+            "
+        ));
+        let errors = compiled.errors();
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.ends_with("UndeclaredSymbol(\"MISSING\")")),
+            "first binds: {first_binds}: {errors:?}"
+        );
+        assert_eq!(
+            errors
+                .iter()
+                .any(|error| error.ends_with("UndeclaredSymbol(\"ONLY\")")),
+            first_binds,
+            "first binds: {first_binds}: {errors:?}"
+        );
+        assert_eq!(
+            unused_items(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn uses_of_members_of_ambiguous_modules_are_not_recursive_through_the_others() {
+    // The first module's `X` calls the function that uses `both::m::X`, which is only recursive if
+    // `m` is bound to the first module's. The use counts as a use of the other `X` too, but isn't
+    // a reference to it.
+    for first_binds in [true, false] {
+        let first = if first_binds { "alpha" } else { "zeta" };
+        let compiled = compile(&format!(
+            "
+            mod {first} {{ export mod m {{ export const X: Int = super::super::value(); }} }}
+            mod beta {{ export mod m {{ export const X: Int = 2; }} }}
+            mod both {{ export super::{first}::*; export super::beta::*; }}
+            fn value() -> Int {{ both::m::X }}
+            fn main() -> Int {{ value() }}
+            "
+        ));
+        let recursive = compiled
+            .errors()
+            .into_iter()
+            .filter(|error| error.contains("Recursive"))
+            .count();
+
+        assert_eq!(recursive > 0, first_binds, "first binds: {first_binds}");
+        assert_eq!(
+            unused_items(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
+        );
+    }
+}
+
 #[test]
 fn imports_from_a_parent_module_find_what_it_imports() {
     // `import super::V;` and `import super::m::W;` find what `inner` imports, rather than the

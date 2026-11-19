@@ -15,7 +15,7 @@ use rue_hir::{
 use rue_parser::SyntaxKind;
 use rue_types::Type;
 
-use crate::{Compiler, SyntaxItemKind};
+use crate::{Compiler, SyntaxItemKind, alternative_modules};
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
     let Some(path) = import.path() else {
@@ -1396,6 +1396,7 @@ fn resolve_import(
     }
 
     let base = cache.paths.get(&import_id).map(|path| path.scope);
+    let alternatives = path_alternatives(ctx, import_id, &import, cache);
 
     // The module the import's items are imported from, which other lookups can wait for. A name
     // that's looked up from the import's own scope doesn't come from a module.
@@ -1420,6 +1421,7 @@ fn resolve_import(
             &import,
             star,
             base,
+            &alternatives,
             cache,
             resolution,
         ),
@@ -1430,6 +1432,7 @@ fn resolve_import(
             &import,
             item,
             base,
+            &alternatives,
             cache,
             resolution,
         ),
@@ -1580,6 +1583,70 @@ fn resolve_path(
     true
 }
 
+/// The other modules that an import's resolved path could name, since glob imports bring in
+/// different modules with a name in it (see [`alternative_modules`]). What the import brings in
+/// could be what they have, so it's used and exported along with it (see
+/// [`add_path_alternatives`]). The imports they're found through are used by this one, like the
+/// ones in its path.
+fn path_alternatives(
+    ctx: &mut Compiler,
+    import_id: ImportId,
+    import: &Import,
+    cache: &ImportCache,
+) -> Vec<(SymbolId, Option<ImportId>)> {
+    let Some(path) = cache.paths.get(&import_id) else {
+        return Vec::new();
+    };
+
+    let mut alternatives = Vec::new();
+
+    for (index, (name, &symbol)) in import.path.iter().zip(&path.symbols).enumerate() {
+        let via = path
+            .references
+            .iter()
+            .find(|&&(segment, _, _)| segment == index)
+            .map(|&(_, via, _)| via);
+
+        alternatives = alternative_modules(ctx, &alternatives, name.text(), Some((symbol, via)));
+
+        for &(module, via) in &alternatives {
+            if let Some(via) = via {
+                let user = ImportUser::Import(import_id);
+                ctx.add_import_reference(via, Declaration::Symbol(module), user);
+            }
+        }
+    }
+
+    alternatives
+}
+
+/// Records that a name that an import binds, through the binding recorded on `recorded`, could
+/// also refer to the exported item with the name in each of the other modules its path could name
+/// (see [`path_alternatives`]), and to what that could refer to. Returns whether any of them
+/// weren't already recorded.
+fn add_path_alternatives(
+    ctx: &mut Compiler,
+    alternatives: &[(SymbolId, Option<ImportId>)],
+    recorded: ImportId,
+    binding: Item,
+    name: &str,
+) -> bool {
+    let mut updated = false;
+
+    for &(module, _) in alternatives {
+        let scope = ctx.scope(ctx.module(module).scope);
+
+        if let Some((item, via)) = scope.item_with_import(binding.namespace(), name)
+            && scope.is_item_exported(item)
+            && !ctx.is_error_item(item)
+        {
+            updated |= ctx.add_ambiguous_alternatives(recorded, binding.into(), via, item.into());
+        }
+    }
+
+    updated
+}
+
 /// Records the errors in an import's resolved path, and the names in it that refer to a
 /// declaration through another import.
 fn check_path(ctx: &Compiler, import_id: ImportId, import: &Import, cache: &mut ImportCache) {
@@ -1631,6 +1698,7 @@ fn resolve_glob_import(
     import: &Import,
     star: &Name,
     base: Option<ScopeId>,
+    alternatives: &[(SymbolId, Option<ImportId>)],
     cache: &mut ImportCache,
     resolution: &mut Resolution,
 ) -> bool {
@@ -1775,7 +1843,7 @@ fn resolve_glob_import(
                 if ctx.add_shared_glob_binding(bound_by, existing.into(), import_id, item.into()) {
                     ctx.import_mut(import_id)
                         .declarations
-                        .push((name, item.into()));
+                        .push((name.clone(), item.into()));
                     count += 1;
                 }
 
@@ -1797,6 +1865,17 @@ fn resolve_glob_import(
             } else if bind(ctx, import_scope, import_id, &name, item, exported) {
                 updated = true;
                 count += 1;
+            }
+
+            // The name could also refer to what the other modules that the path could name have
+            // with it, which is recorded on the glob import that bound it, whichever one did
+            if let Some(binding) = ctx.scope(import_scope).item(namespace, &name)
+                && let Some(recorded) = ctx
+                    .scope(import_scope)
+                    .item_import(binding)
+                    .filter(|&recorded| matches!(ctx.import(recorded).items, Items::All(_)))
+            {
+                updated |= add_path_alternatives(ctx, alternatives, recorded, binding, &name);
             }
         }
     }
@@ -1820,6 +1899,7 @@ fn resolve_named_import(
     import: &Import,
     item: &Name,
     base: Option<ScopeId>,
+    alternatives: &[(SymbolId, Option<ImportId>)],
     cache: &mut ImportCache,
     resolution: &mut Resolution,
 ) -> bool {
@@ -1992,6 +2072,12 @@ fn resolve_named_import(
                 .entry((import_id, error))
                 .or_insert_with(|| (item.clone(), kind));
             unused_imports.shift_remove(name);
+        }
+
+        // The name could also refer to what the other modules that the path could name have
+        // with it, where this import binds it
+        if ctx.scope(import_scope).item_import(found) == Some(import_id) {
+            updated |= add_path_alternatives(ctx, alternatives, import_id, found, name);
         }
     }
 
