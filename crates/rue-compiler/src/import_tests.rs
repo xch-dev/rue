@@ -931,8 +931,8 @@ fn super_refers_to_the_module_an_inline_module_is_in() {
 }
 
 #[test]
-fn crate_refers_to_the_file_of_a_single_file_program() {
-    // `crate` is the outermost module, the file here, from anywhere in it, so it reaches the
+fn project_refers_to_the_file_of_a_single_file_program() {
+    // `project` is the outermost module, the file here, from anywhere in it, so it reaches the
     // file's private items like `super` does from the modules directly in it. An item with the
     // same name in a module doesn't shadow it.
     let compiled = compile(
@@ -943,11 +943,11 @@ fn crate_refers_to_the_file_of_a_single_file_program() {
             const TOP: Int = 2;
 
             export mod inner {
-                import crate::TOP;
-                import crate::outer::ONE;
+                import project::TOP;
+                import project::outer::ONE;
 
                 export fn value() -> Int {
-                    TOP + crate::TOP + super::TOP + ONE
+                    TOP + project::TOP + super::TOP + ONE
                 }
             }
 
@@ -955,7 +955,7 @@ fn crate_refers_to_the_file_of_a_single_file_program() {
         }
 
         fn main() -> Int {
-            outer::inner::value() + crate::TOP
+            outer::inner::value() + project::TOP
         }
         ",
     );
@@ -966,32 +966,32 @@ fn crate_refers_to_the_file_of_a_single_file_program() {
         compiled.reference_origins("outer::inner::value", "TOP"),
         [
             "`TOP`: (root)",
-            "`crate::TOP`: (root)",
+            "`project::TOP`: (root)",
             "`super::TOP`: outer"
         ]
     );
     assert_eq!(
         compiled.reference_origins("main", "TOP"),
-        ["`crate::TOP`: (root)"]
+        ["`project::TOP`: (root)"]
     );
 }
 
 #[test]
-fn crate_paths_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
-    // At the top level of a single file, `crate` names the scope the code is in, but it's still
+fn project_paths_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
+    // At the top level of a single file, `project` names the scope the code is in, but it's still
     // only the file's own items (and imports): the prelude around the file isn't searched
     let compiled = compile(
         "
-        import crate::LOCAL;
-        export crate::helper;
+        import project::LOCAL;
+        export project::helper;
 
-        type Alias = crate::Int;
-        type Local = crate::Number;
+        type Alias = project::Int;
+        type Local = project::Number;
         type Number = Int;
 
         const LOCAL: Int = 1;
-        const HASH: Bytes32 = crate::sha256(1);
-        const VALUE: Local = crate::LOCAL + crate::helper();
+        const HASH: Bytes32 = project::sha256(1);
+        const VALUE: Local = project::LOCAL + project::helper();
 
         export fn helper() -> Int {
             1
@@ -1006,26 +1006,26 @@ fn crate_paths_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
     assert_eq!(
         compiled.errors(),
         [
-            "5:29 UndeclaredType(\"Int\")",
-            "10:38 UndeclaredSymbol(\"sha256\")",
+            "5:31 UndeclaredType(\"Int\")",
+            "10:40 UndeclaredSymbol(\"sha256\")",
         ]
     );
     assert_eq!(compiled.type_origin("Local"), "(root)");
 }
 
 #[test]
-fn crate_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
-    // An import through `crate` at the top of the file doesn't find the prelude's items either.
-    // Like any failed import, it blocks its name in the file, and `crate` names the file, so a
-    // later use through `crate` isn't reported again, nor is one without it.
+fn project_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
+    // An import through `project` at the top of the file doesn't find the prelude's items either.
+    // Like any failed import, it blocks its name in the file, and `project` names the file, so a
+    // later use through `project` isn't reported again, nor is one without it.
     let compiled = compile(
         "
-        import crate::Int;
-        import crate::sha256;
+        import project::Int;
+        import project::sha256;
 
-        type Alias = crate::Int;
+        type Alias = project::Int;
 
-        const HASH: Bytes32 = crate::sha256(1) + sha256(2);
+        const HASH: Bytes32 = project::sha256(1) + sha256(2);
 
         fn main() -> Int {
             1
@@ -1036,32 +1036,32 @@ fn crate_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
     assert_eq!(
         compiled.errors(),
         [
-            "2:23 UnresolvedImport(\"Int\")",
-            "3:23 UnresolvedImport(\"sha256\")",
+            "2:25 UnresolvedImport(\"Int\")",
+            "3:25 UnresolvedImport(\"sha256\")",
         ]
     );
 }
 
 #[test]
-fn failed_imports_at_the_root_block_their_name_through_crate() {
+fn failed_imports_at_the_root_block_their_name_through_project() {
     // A name that a failed import blocks in the root is blocked for imports and paths through
-    // `crate` from a nested module too, like through `super`, so only the failure is reported
+    // `project` from a nested module too, like through `super`, so only the failure is reported
     let compiled = compile(
         "
         import nope::X;
 
         mod m {
             export mod n {
-                import crate::X;
+                import project::X;
 
                 export fn f() -> Int {
-                    X + crate::X
+                    X + project::X
                 }
             }
         }
 
         fn main() -> Int {
-            m::n::f() + crate::X
+            m::n::f() + project::X
         }
         ",
     );
@@ -1070,12 +1070,12 @@ fn failed_imports_at_the_root_block_their_name_through_crate() {
 }
 
 #[test]
-fn glob_imports_of_crate_at_the_top_of_a_single_file_do_not_bring_in_the_prelude() {
-    // `import crate::*` at the top of the file imports the file into itself, which brings in
+fn glob_imports_of_project_at_the_top_of_a_single_file_do_not_bring_in_the_prelude() {
+    // `import project::*` at the top of the file imports the file into itself, which brings in
     // nothing new, and in particular nothing from the prelude, which is still found as usual
     let compiled = compile(
         "
-        import crate::*;
+        import project::*;
 
         const LOCAL: Int = 1;
 
@@ -1093,8 +1093,8 @@ fn glob_imports_of_crate_at_the_top_of_a_single_file_do_not_bring_in_the_prelude
 }
 
 #[test]
-fn crate_paths_into_other_modules_need_their_items_to_be_exported() {
-    // Through `crate`, an item inside another module is reached the same way as through `super`
+fn project_paths_into_other_modules_need_their_items_to_be_exported() {
+    // Through `project`, an item inside another module is reached the same way as through `super`
     // or the module's name, so it has to be exported, even from a module that the path is in
     let compiled = compile(
         "
@@ -1103,13 +1103,13 @@ fn crate_paths_into_other_modules_need_their_items_to_be_exported() {
 
             mod b {
                 export fn value() -> Int {
-                    crate::a::HIDDEN + super::super::a::HIDDEN + super::HIDDEN
+                    project::a::HIDDEN + super::super::a::HIDDEN + super::HIDDEN
                 }
             }
         }
 
         fn main() -> Int {
-            crate::a::b::value()
+            project::a::b::value()
         }
         ",
     );
@@ -1117,18 +1117,18 @@ fn crate_paths_into_other_modules_need_their_items_to_be_exported() {
     assert_eq!(
         compiled.errors(),
         [
-            "7:31 PrivateSymbol(\"HIDDEN\", \"a\")",
-            "7:57 PrivateSymbol(\"HIDDEN\", \"a\")",
-            "13:23 PrivateSymbol(\"b\", \"a\")",
+            "7:33 PrivateSymbol(\"HIDDEN\", \"a\")",
+            "7:59 PrivateSymbol(\"HIDDEN\", \"a\")",
+            "13:25 PrivateSymbol(\"b\", \"a\")",
         ]
     );
 }
 
 #[test]
-fn glob_and_exported_imports_of_crate_bring_in_private_items() {
-    // `crate::*` brings in the root's private items, like `super::*` does from a module in it,
-    // and `export crate::...` re-exports a public one (a private one can't be re-exported, see
-    // `reexports_of_private_items_through_crate_are_reported`)
+fn glob_and_exported_imports_of_project_bring_in_private_items() {
+    // `project::*` brings in the root's private items, like `super::*` does from a module in it,
+    // and `export project::...` re-exports a public one (a private one can't be re-exported, see
+    // `reexports_of_private_items_through_project_are_reported`)
     let compiled = compile(
         "
         const TOP: Int = 1;
@@ -1136,8 +1136,8 @@ fn glob_and_exported_imports_of_crate_bring_in_private_items() {
 
         mod outer {
             export mod inner {
-                import crate::*;
-                export crate::SHARED;
+                import project::*;
+                export project::SHARED;
 
                 export fn value() -> Int {
                     TOP + main()
@@ -1156,39 +1156,39 @@ fn glob_and_exported_imports_of_crate_bring_in_private_items() {
 }
 
 #[test]
-fn crate_errors_are_reported() {
+fn project_errors_are_reported() {
     let compiled = compile(
         "
-        import crate;
-        import crate::super::x;
-        import crate::{crate};
-        import a::crate::b;
+        import project;
+        import project::super::x;
+        import project::{project};
+        import a::project::b;
 
         mod a {
             export mod b {}
         }
 
         fn main() -> Int {
-            crate + crate::super::main() + a::crate::b + super::crate::main()
+            project + project::super::main() + a::project::b + super::project::main()
         }
         ",
     );
 
-    // An import that ends in `crate` imports nothing, and a `crate` after the start of a path is
-    // skipped in an import, like `super` after a name
+    // An import that ends in `project` imports nothing, and a `project` after the start of a path
+    // is skipped in an import, like `super` after a name
     assert_eq!(
         compiled.errors(),
         [
-            "2:16 CrateAtEnd",
-            "3:23 UnresolvedSuper",
-            "3:30 UnresolvedImport(\"x\")",
-            "4:24 CrateNotAtStart",
-            "5:19 CrateNotAtStart",
-            "12:13 CrateAtEnd",
-            "12:28 UnresolvedSuper",
-            "12:47 CrateNotAtStart",
-            "12:58 UnresolvedSuper",
-            "12:65 CrateNotAtStart",
+            "2:16 ProjectAtEnd",
+            "3:25 UnresolvedSuper",
+            "3:32 UnresolvedImport(\"x\")",
+            "4:26 ProjectNotAtStart",
+            "5:19 ProjectNotAtStart",
+            "12:13 ProjectAtEnd",
+            "12:32 UnresolvedSuper",
+            "12:51 ProjectNotAtStart",
+            "12:64 UnresolvedSuper",
+            "12:71 ProjectNotAtStart",
         ]
     );
 }
@@ -3867,19 +3867,19 @@ fn imports_that_find_a_public_item_after_reexports_are_reported_are_not_reported
 }
 
 #[test]
-fn reexports_of_private_items_through_crate_are_reported() {
+fn reexports_of_private_items_through_project_are_reported() {
     let compiled = compile(
         "
         const SECRET: Int = 1;
         const OTHER: Int = 2;
-        export crate::OTHER;
+        export project::OTHER;
 
         export mod a {
             export super::SECRET;
 
             export mod b {
-                export crate::SECRET;
-                export crate::a::SECRET;
+                export project::SECRET;
+                export project::a::SECRET;
             }
         }
 
@@ -3889,15 +3889,15 @@ fn reexports_of_private_items_through_crate_are_reported() {
         ",
     );
 
-    // `crate` names the file, so the first re-export is of its own private item. `b`'s re-export
-    // through `crate` finds the file's private item too, but its re-export through `a` finds what
+    // `project` names the file, so the first re-export is of its own private item. `b`'s re-export
+    // through `project` finds the file's private item too, but its re-export through `a` finds what
     // `a` brought in, which is exported once `a` is reported.
     assert_eq!(
         compiled.errors(),
         [
-            "4:23 PrivateReexport(\"OTHER\")",
+            "4:25 PrivateReexport(\"OTHER\")",
             "7:27 PrivateReexport(\"SECRET\")",
-            "10:31 PrivateReexport(\"SECRET\")",
+            "10:33 PrivateReexport(\"SECRET\")",
         ]
     );
 }

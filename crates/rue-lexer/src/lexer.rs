@@ -73,7 +73,7 @@ impl<'a> Lexer<'a> {
             "is" => TokenKind::Is,
             "as" => TokenKind::As,
             "super" => TokenKind::Super,
-            "crate" => TokenKind::Crate,
+            "project" => TokenKind::Project,
             _ => TokenKind::Ident,
         }
     }
@@ -763,9 +763,17 @@ mod tests {
         );
 
         check(
+            "project",
+            expect![[r#"
+                Project
+            "#]],
+        );
+
+        // `crate` was the keyword before `project`, and is an ordinary identifier again
+        check(
             "crate",
             expect![[r#"
-                Crate
+                Ident
             "#]],
         );
     }

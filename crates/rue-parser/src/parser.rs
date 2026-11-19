@@ -159,7 +159,7 @@ impl Parser {
                 TokenKind::Is => T![is],
                 TokenKind::As => T![as],
                 TokenKind::Super => T![super],
-                TokenKind::Crate => T![crate],
+                TokenKind::Project => T![project],
                 TokenKind::OpenParen => T!['('],
                 TokenKind::CloseParen => T![')'],
                 TokenKind::OpenBrace => T!['{'],

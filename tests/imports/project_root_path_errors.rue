@@ -1,0 +1,17 @@
+// `project` can only start a path, and a path can't end in it. The root has no parent, so `super`
+// can't follow it, and `project` doesn't reach the prelude
+mod a {
+    export const X: Int = 1;
+
+    import super::project::X;
+    import project;
+    import project::{project};
+}
+
+fn main() -> Int {
+    let _ = project;
+    let _ = project::super::X;
+    let _ = a::project::X;
+    let _: project::Int = 1;
+    project::a::X
+}

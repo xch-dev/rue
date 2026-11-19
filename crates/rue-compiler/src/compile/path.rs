@@ -77,7 +77,7 @@ enum SegmentBase {
     Module(ScopeId),
     /// From the scope the path is written in, and then each enclosing scope.
     Local(ScopeId),
-    /// In the module that `super` or `crate` names. It contains the code with the path, so its
+    /// In the module that `super` or `project` names. It contains the code with the path, so its
     /// private items can be used, and a file's sibling modules can be too.
     Parent(ScopeId),
 }
@@ -144,20 +144,20 @@ where
         ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
     }
 
-    // The last `super` or `crate` that the path starts with, and whether it named a module
+    // The last `super` or `project` that the path starts with, and whether it named a module
     let mut last_prefix = None;
-    // Whether the path starts with `super` or `crate` that named a module, which contains the code
+    // Whether the path starts with a `super` or `project` that named a module (containing the code)
     let mut from_parent = false;
-    // Whether a `super` can come next, which it can't after `crate`, since the root has no parent
+    // Whether a `super` can come next, which it can't after `project`, since the root has no parent
     let mut allow_super = true;
 
     if let Some(segment) = segments.first()
         && let Some(name) = segment.name()
-        && name.text() == "crate"
+        && name.text() == "project"
     {
         segments.remove(0);
 
-        let root = ctx.crate_root();
+        let root = ctx.project_root();
         base_scope = ctx.module(root).scope;
         module_stack = Some(Vec::new());
         path_completion_module = Some(root);
@@ -205,13 +205,13 @@ where
         }
     }
 
-    // A path that's only `super` or `crate` names a module, which can't be used as a value or a
+    // A path that's only `super` or `project` names a module, which can't be used as a value or a
     // type
     if segments.is_empty()
         && let Some((name, resolved)) = last_prefix
     {
-        if resolved && name.text() == "crate" {
-            ctx.diagnostic(&name, DiagnosticKind::CrateAtEnd);
+        if resolved && name.text() == "project" {
+            ctx.diagnostic(&name, DiagnosticKind::ProjectAtEnd);
         } else if resolved {
             ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
         }
@@ -238,9 +238,9 @@ where
         }
 
         if let Some(name) = segment.name()
-            && name.text() == "crate"
+            && name.text() == "project"
         {
-            ctx.diagnostic(&name, DiagnosticKind::CrateNotAtStart);
+            ctx.diagnostic(&name, DiagnosticKind::ProjectNotAtStart);
             return PathResult::Unresolved;
         }
 

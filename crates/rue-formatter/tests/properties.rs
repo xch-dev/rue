@@ -316,7 +316,7 @@ fn fragment() -> impl Strategy<Value = String> {
     const KEYWORDS: &[&str] = &[
         "nil", "true", "false", "import", "export", "extern", "from", "inline", "test", "mod",
         "fn", "const", "type", "struct", "let", "if", "else", "return", "assert", "raise", "debug",
-        "is", "as", "super", "crate", "Int", "Bytes", "Bool", "Any", "List",
+        "is", "as", "super", "project", "Int", "Bytes", "Bool", "Any", "List",
     ];
     const PUNCTUATION: &[&str] = &[
         "(", ")", "{", "}", "[", "]", "+", "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "~",

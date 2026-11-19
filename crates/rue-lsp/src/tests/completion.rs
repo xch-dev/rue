@@ -25,7 +25,7 @@ fn helper() -> Int {
 "#,
         expect![[r#"
             super [Module]
-            crate [Module]
+            project [Module]
             total [Variable] Int
             amount [Variable] Int
             LIMIT [Constant] Int
@@ -95,6 +95,7 @@ fn main(value: P$0) -> Int {
 }
 "#,
         expect![[r#"
+            project [Module]
             Point [Struct]
             Price [Struct] Int
             PublicKey [Struct]
@@ -120,7 +121,7 @@ fn main(value: $0) -> Int {
 "#,
         expect![[r#"
             super [Module]
-            crate [Module]
+            project [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -277,7 +278,7 @@ fn main() -> $0 {
 "#,
         expect![[r#"
             super [Module]
-            crate [Module]
+            project [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -313,7 +314,7 @@ fn main() -> Int {
 "#,
         expect![[r#"
             super [Module]
-            crate [Module]
+            project [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -348,7 +349,7 @@ fn main(value: Any) -> Int {
 "#,
         expect![[r#"
             super [Module]
-            crate [Module]
+            project [Module]
             Point [Struct]
             Atom [Struct]
             Bytes [Struct]
@@ -381,7 +382,7 @@ type Alias = $0;
 "#,
         expect![[r#"
             super [Module]
-            crate [Module]
+            project [Module]
             Point [Struct]
             Alias [Struct] {unresolved}
             Atom [Struct]
@@ -543,8 +544,8 @@ mod inner {
 }
 
 #[test]
-fn test_complete_crate_members() {
-    // `crate` names the project's directory from anywhere in it, even an inline module, so its
+fn test_complete_project_members() {
+    // `project` names the project's directory from anywhere in it, even an inline module, so its
     // files are offered (rather than the items of the file), but not `super`, since the root has
     // no parent
     check(
@@ -554,7 +555,7 @@ const PRIVATE: Int = 1;
 mod outer {
     mod inner {
         fn main() -> Int {
-            crate::$0
+            project::$0
         }
     }
 }
@@ -566,15 +567,15 @@ mod outer {
 }
 
 #[test]
-fn test_complete_crate_members_in_a_project() {
-    // In a project, `crate` is the root directory, whose files are offered, and only the exported
+fn test_complete_project_members_in_a_project() {
+    // In a project, `project` is the root directory, whose files are offered, and only the exported
     // items of a file after it
     let project = TestProject::new(&[
         (
             "main.rue",
             r#"
 fn main() -> Int {
-    crate::utils::$0
+    project::utils::$0
 }
 "#,
         ),
@@ -593,7 +594,7 @@ fn main() -> Int {
             "main.rue",
             r#"
 fn main() -> Int {
-    crate::$0
+    project::$0
 }
 "#,
         ),

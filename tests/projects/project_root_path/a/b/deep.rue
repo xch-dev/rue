@@ -1,0 +1,7 @@
+// `project` is the same module as the `super`s that reach the root from here, and a `super` can't
+// follow it, since the root has no parent
+import project::utils::{ONE, double};
+
+export fn total() -> Int {
+    double(project::main::BASE) + ONE + super::super::utils::ONE + project::a::b::sibling::TWO
+}

@@ -161,13 +161,13 @@ fn absolute_and_super_import_paths_sort_canonically() {
 }
 
 #[test]
-fn crate_import_paths_are_formatted_and_sorted() {
+fn project_import_paths_are_formatted_and_sorted() {
     check(
-        "import zeta::item;\nexport   crate :: { b,a };\nimport crate::super::x;\nimport crate::*;",
+        "import zeta::item;\nexport   project :: { b,a };\nimport project::super::x;\nimport project::*;",
         expect![[r#"
-            import crate::*;
-            import crate::super::x;
-            export crate::{a, b};
+            import project::*;
+            import project::super::x;
+            export project::{a, b};
             import zeta::item;
         "#]],
     );

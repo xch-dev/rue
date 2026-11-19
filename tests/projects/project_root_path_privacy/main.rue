@@ -1,0 +1,24 @@
+// Reaching an item through `project` follows the same rules as reaching it otherwise: a file's
+// private items can't be used from another file, even one deeper in the project
+import project::utils::hidden;
+
+export project::utils::shown;
+
+const LOCAL: Int = 4;
+
+// `project` is the project's directory, not this file, so this file's items aren't its members, and
+// through the file's name they have to be exported
+mod inner {
+    export fn value() -> Int {
+        project::LOCAL + project::main::LOCAL
+    }
+}
+
+fn main() -> Int {
+    hidden()
+        + shown()
+        + project::utils::HIDDEN
+        + project::a::nested::value()
+        + project::LOCAL
+        + inner::value()
+}

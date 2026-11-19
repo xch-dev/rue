@@ -51,7 +51,7 @@ fn construct_imports(
 ) -> Vec<ImportId> {
     let mut has_non_super = false;
 
-    // Only the first segment of the whole path can be `crate`, not the first one in braces
+    // Only the first segment of the whole path can be `project`, not the first one in braces
     let starts_path = segments
         .first()
         .and_then(|segment| segment.syntax().parent()?.parent())
@@ -65,9 +65,9 @@ fn construct_imports(
 
     for (index, segment) in segments.iter().take(segments.len() - 1).enumerate() {
         if let Some(name) = segment.name() {
-            if name.text() == "crate" {
+            if name.text() == "project" {
                 if starts_path && index == 0 {
-                    let root = ctx.crate_root();
+                    let root = ctx.project_root();
                     base_scope = ctx.module(root).scope;
                     from_parent = true;
 
@@ -76,7 +76,7 @@ fn construct_imports(
 
                     ctx.add_syntax(SyntaxItemKind::SymbolReference(root), name.text_range());
                 } else {
-                    ctx.diagnostic(&name, DiagnosticKind::CrateNotAtStart);
+                    ctx.diagnostic(&name, DiagnosticKind::ProjectNotAtStart);
                 }
             } else if name.text() == "super" {
                 if has_non_super {
@@ -109,13 +109,13 @@ fn construct_imports(
     }
 
     if let Some(name) = last.name()
-        && name.text() == "crate"
+        && name.text() == "project"
     {
         // Like `super`, a path that names the root module has nothing to import
         let kind = if starts_path && segments.len() == 1 {
-            DiagnosticKind::CrateAtEnd
+            DiagnosticKind::ProjectAtEnd
         } else {
-            DiagnosticKind::CrateNotAtStart
+            DiagnosticKind::ProjectNotAtStart
         };
         ctx.diagnostic(&name, kind);
         return vec![];
@@ -181,7 +181,7 @@ pub struct ImportCache {
     errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
     /// What each exported named import with no path re-exports: the scope it imports into, and
     /// each item it found, with whether it was found in the module it looks in (its own, or the
-    /// one that `super` or `crate` names) rather than outside of it, where items are public (a
+    /// one that `super` or `project` names) rather than outside of it, where items are public (a
     /// file's sibling modules and the prelude). See [`report_private_reexports`].
     reexports: IndexMap<ImportId, (ScopeId, IndexMap<Item, bool>)>,
     /// The lookups that were answered without waiting for a module to settle, since nothing else
@@ -494,9 +494,9 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
         .map(|(&import_id, _)| import_id)
         .collect::<Vec<_>>();
 
-    // An import through `super` (or `crate`, below the root) waits for the private re-exports into
-    // the module that it names, and is only reported if it still finds something private once they
-    // are, so a chain of re-exports is reported once, at its start. That module encloses the
+    // An import through `super` (or `project`, below the root) waits for the private re-exports
+    // into the module that it names, and is only reported if it still finds something private once
+    // they are, so a chain of re-exports is reported once, at its start. That module encloses the
     // import's own, so some import doesn't wait.
     let waits = |import_id: ImportId| {
         let base = ctx.import(import_id).base_scope;
@@ -1511,7 +1511,7 @@ fn resolve_glob_import(
         .1;
 
     // Glob imports bring in every exported item of a module. A glob import of a parent module
-    // (through `super` or `crate`) brings in its private items too, but doesn't export them.
+    // (through `super` or `project`) brings in its private items too, but doesn't export them.
     let source_scope = base.unwrap_or(import.base_scope);
 
     for namespace in Namespace::ALL {
@@ -1808,7 +1808,7 @@ fn resolve_named_import(
         let namespace = found.namespace();
 
         // An import with no path can find a private item of its own module, or of the one that
-        // `super` or `crate` names, which it only exports if it's public there
+        // `super` or `project` names, which it only exports if it's public there
         let mut exported = import.exported;
 
         if import.exported && base.is_none() {
