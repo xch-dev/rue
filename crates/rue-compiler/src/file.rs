@@ -75,11 +75,10 @@ impl CompiledTest {
         allocator: &mut Allocator,
         base_path: &Path,
     ) -> Result<(NodePtr, Vec<u8>), Error> {
-        let program = codegen(ctx, allocator, self.symbol, base_path.to_path_buf(), true)?;
-        let metadata = program
-            .debug_metadata
-            .expect("debug metadata was requested");
-        Ok((program.ptr, metadata))
+        Ok(
+            codegen(ctx, allocator, self.symbol, base_path.to_path_buf(), true)?
+                .with_debug_metadata(),
+        )
     }
 }
 

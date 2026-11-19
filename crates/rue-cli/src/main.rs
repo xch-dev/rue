@@ -1467,7 +1467,7 @@ mod tests {
         );
     }
 
-    const FAILING_SOURCE: &str = "fn main(value: Int) -> Int {\n    check(value)\n}\n\ntest fn fails() {\n    check(30);\n}\n\ntest fn fails_too() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10;\n    value\n}\n";
+    const FAILING_SOURCE: &str = "fn main(value: Int) -> Int {\n    check(value)\n}\n\ntest fn fails() {\n    check(30);\n}\n\ntest fn fails_too() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10;\n    value\n}\n\ntest fn divides() {\n    divide(1, 0);\n}\n\nfn divide(a: Int, b: Int) -> Int {\n    a / b\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n";
 
     #[test]
     fn failing_tests_are_traced() {
@@ -1508,6 +1508,15 @@ mod tests {
         assert_eq!(traced, Some(Ok(trace.clone())));
         assert_eq!(allocator.pair_count(), pairs);
         assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+
+        // A failure that isn't a raise is traced too
+        assert_eq!(tests[2].name.as_deref(), Some("divides"));
+        let (failure, traced) =
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[2], &project.0, cost).unwrap_err();
+        assert!(failure.raised);
+        let traced = traced.unwrap().unwrap();
+        assert!(traced.contains("line 23, column 5, in divide"), "{traced}");
+        assert!(traced.contains("b = ()"), "{traced}");
 
         // The test that passes doesn't fail when it's run again
         assert_eq!(
@@ -1550,6 +1559,23 @@ mod tests {
             run_debug(&["-x", hex, "ff1e80", "--debug-metadata", sidecar]),
             Ok("30".to_string())
         );
+
+        // Sidecars for other programs don't get in the way
+        let error = run_debug(&[
+            "-x",
+            hex,
+            "ff0380",
+            "--debug-metadata",
+            project
+                .0
+                .join("main.rue_double.rue.debug.clvm.bin")
+                .to_str()
+                .unwrap(),
+            "--debug-metadata",
+            sidecar,
+        ])
+        .unwrap_err();
+        assert!(error.contains("line 14, column 5, in check"), "{error}");
 
         // Without the sidecar, the failure is reported as before
         assert_eq!(run_debug(&["-x", hex, "ff0380"]).unwrap_err(), "clvm raise");
