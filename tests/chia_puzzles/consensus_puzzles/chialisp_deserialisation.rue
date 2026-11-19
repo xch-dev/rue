@@ -1,0 +1,91 @@
+// Regression test, not for production use. A port of `consensus_puzzles/chialisp_deserialisation.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./chialisp_deserialisation.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// Deserializes a CLVM value. Like the original, this rejects atoms with a length prefix longer
+// than two bytes, so atoms can be at most 8191 bytes long.
+fn main(input: Bytes) -> Any {
+    deserialize(input).first
+}
+
+// Deserializes the value at the start of the input, and returns it with the rest of the input.
+fn deserialize(input: Bytes) -> (Any, Bytes) {
+    if substr(input, 0, 1) == 0xff {
+        let first = deserialize(substr(input, 1));
+        let rest = deserialize(first.rest);
+        return ((first.first, rest.first), rest.rest);
+    }
+
+    deserialize_atom(substr(input, 1), substr(input, 0, 1))
+}
+
+fn deserialize_atom(input: Bytes, prefix: Bytes) -> (Any, Bytes) {
+    if prefix == 0x80 {
+        return (nil, input);
+    }
+
+    // A single byte is its own value.
+    if !(prefix > 0x7f) {
+        return (prefix, input);
+    }
+
+    let (size, input) = if prefix > 0xbf {
+        // Three byte length prefixes and longer aren't supported.
+        assert !(prefix > 0xdf);
+
+        // The length is the low 5 bits of the prefix, followed by the next byte.
+        (((31 & prefix as Int) as Bytes + substr(input, 0, 1)) as Int, substr(input, 1))
+    } else {
+        // The length is the low 6 bits of the prefix.
+        (63 & prefix as Int, input)
+    };
+
+    (substr(input, 0, size), substr(input, size))
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn deserializes_nil() -> Any {
+    check([0x80])
+}
+
+test fn deserializes_a_single_byte() -> Any {
+    check([0x05])
+}
+
+test fn deserializes_a_short_atom() -> Any {
+    check([0x83616263])
+}
+
+test fn deserializes_a_long_atom() -> Any {
+    // A 64 byte atom needs a two byte length prefix.
+    check([0xc040 + sha256("first") + sha256("second")])
+}
+
+test fn deserializes_an_atom_longer_than_255_bytes() -> Any {
+    // The length 256 uses the high bits of the prefix as well as the next byte.
+    let quarter = sha256("a") + sha256("b");
+    let half = quarter + quarter;
+    check([0xc100 + half + half + half + half])
+}
+
+test fn deserializes_a_tree() -> Any {
+    // `((1 . "abc") 0x00 (q . 0xff) ())`
+    check([0xffff0183616263ff00ffff0181ffff8080])
+}
+
+test fn rejects_a_three_byte_length_prefix() -> Any {
+    run(main, [0xe0000001ff])
+}
+
+test fn reference_rejects_a_three_byte_length_prefix() -> Any {
+    run(reference, [0xe0000001ff])
+}

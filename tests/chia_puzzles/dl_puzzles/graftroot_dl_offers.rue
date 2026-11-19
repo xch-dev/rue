@@ -1,0 +1,184 @@
+// Regression test, not for production use. A port of `dl_puzzles/graftroot_dl_offers.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./graftroot_dl_offers.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// A data layer store's metadata, which starts with its merkle root.
+struct Metadata {
+    root: Bytes32,
+    ...rest: Any,
+}
+
+fn main(
+    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    singleton_structs: List<SingletonStruct>,
+    metadata_layer_hashes: List<Bytes32>,
+    // For each store, the branches of its merkle tree that must be included.
+    values_to_prove: List<List<Bytes32>>,
+    proofs_of_inclusion: List<List<MerkleProof>>,
+    new_metadatas: List<Metadata>,
+    new_metadata_updaters: List<Any>,
+    new_inner_puzzle_hashes: List<Bytes32>,
+    inner_solution: Any,
+) -> List<Condition> {
+    let conditions = inner_puzzle(...inner_solution);
+
+    if proofs_of_inclusion is nil {
+        // A way to run the puzzle without proofs, which fails at consensus.
+        return [AssertMyAmount { amount: -1 }, ...conditions];
+    }
+
+    assert_stores(
+        singleton_structs,
+        metadata_layer_hashes,
+        values_to_prove,
+        proofs_of_inclusion,
+        new_metadatas,
+        new_metadata_updaters,
+        new_inner_puzzle_hashes,
+        conditions,
+    )
+}
+
+// Checks the proofs for each store, and prepends an assertion that the store was spent to its new
+// state. The assertions end up in the reverse order of the stores.
+fn assert_stores(
+    singleton_structs: List<SingletonStruct>,
+    metadata_layer_hashes: List<Bytes32>,
+    values_to_prove: List<List<Bytes32>>,
+    proofs_of_inclusion: List<List<MerkleProof>>,
+    new_metadatas: List<Metadata>,
+    new_metadata_updaters: List<Any>,
+    new_inner_puzzle_hashes: List<Bytes32>,
+    conditions: List<Condition>,
+) -> List<Condition> {
+    if singleton_structs is nil {
+        return conditions;
+    }
+
+    // Each list has an item for each store.
+    inline let metadata_layer_hashes = unchecked_cast::<(Bytes32, List<Bytes32>)>(
+        metadata_layer_hashes,
+    );
+    inline let values_to_prove = unchecked_cast::<(List<Bytes32>, List<List<Bytes32>>)>(
+        values_to_prove,
+    );
+    inline let proofs_of_inclusion = unchecked_cast::<(List<MerkleProof>, List<List<MerkleProof>>)>(
+        proofs_of_inclusion,
+    );
+    inline let new_metadatas = unchecked_cast::<(Metadata, List<Metadata>)>(new_metadatas);
+    inline let new_metadata_updaters = unchecked_cast::<(Any, List<Any>)>(new_metadata_updaters);
+    inline let new_inner_puzzle_hashes = unchecked_cast::<(Bytes32, List<Bytes32>)>(
+        new_inner_puzzle_hashes,
+    );
+
+    verify_proofs(new_metadatas.first.root, values_to_prove.first, proofs_of_inclusion.first);
+
+    let singleton_struct = singleton_structs.first;
+    let metadata_layer_hash = metadata_layer_hashes.first;
+    let metadata_layer_puzzle_hash = curry_tree_hash(
+        metadata_layer_hash,
+        [
+            tree_hash_atom(metadata_layer_hash),
+            tree_hash(new_metadatas.first),
+            tree_hash(new_metadata_updaters.first),
+            new_inner_puzzle_hashes.first,
+        ],
+    );
+    let singleton_puzzle_hash = curry_tree_hash(
+        singleton_struct.mod_hash,
+        [tree_hash(singleton_struct), metadata_layer_puzzle_hash],
+    );
+
+    assert_stores(
+        singleton_structs.rest,
+        metadata_layer_hashes.rest,
+        values_to_prove.rest,
+        proofs_of_inclusion.rest,
+        new_metadatas.rest,
+        new_metadata_updaters.rest,
+        new_inner_puzzle_hashes.rest,
+        [AssertPuzzleAnnouncement { id: sha256(singleton_puzzle_hash + "$") }, ...conditions],
+    )
+}
+
+// Checks that each value is in the merkle tree with the given root.
+fn verify_proofs(root: Bytes32, values: List<Bytes32>, proofs: List<MerkleProof>) {
+    if proofs is nil {
+        return;
+    }
+
+    // There's a value for each proof.
+    inline let values = unchecked_cast::<(Bytes32, List<Bytes32>)>(values);
+
+    assert root == calculate_merkle_root(proofs.first.path, values.first, proofs.first.hashes);
+    verify_proofs(root, values.rest, proofs.rest);
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn singleton_struct(name: Bytes) -> SingletonStruct {
+    SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256(name),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    }
+}
+
+// A merkle tree with the branches `a` and `b` on the left, and `c` on the right.
+fn branch(name: Bytes) -> Bytes32 {
+    sha256(name)
+}
+
+fn left() -> Bytes32 {
+    tree_hash_pair(branch("a"), branch("b"))
+}
+
+fn root() -> Bytes32 {
+    tree_hash_pair(left(), branch("c"))
+}
+
+fn two_stores(c_proof: MerkleProof) -> Any {
+    [
+        1,
+        [singleton_struct("first"), singleton_struct("second")],
+        [sha256("metadata_layer"), sha256("metadata_layer")],
+        [[branch("a"), branch("c")], [left()]],
+        [
+            [MerkleProof { path: 0, hashes: [branch("b"), branch("c")] }, c_proof],
+            [MerkleProof { path: 0, hashes: [branch("c")] }],
+        ],
+        [
+            Metadata { root: root(), rest: [("label", "first")] },
+            Metadata { root: root(), rest: nil },
+        ],
+        [11, 1],
+        [sha256("first_inner_puzzle"), sha256("second_inner_puzzle")],
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ]
+}
+
+test fn asserts_the_stores() -> Any {
+    check(two_stores(MerkleProof { path: 1, hashes: [left()] }))
+}
+
+test fn rejects_a_wrong_proof() -> Any {
+    run(main, two_stores(MerkleProof { path: 0, hashes: [left()] }))
+}
+
+test fn reference_rejects_a_wrong_proof() -> Any {
+    run(reference, two_stores(MerkleProof { path: 0, hashes: [left()] }))
+}
+
+test fn fails_at_consensus_without_proofs() -> Any {
+    check([1, nil, nil, nil, nil, nil, nil, nil, [ReserveFee { amount: 1 }]])
+}

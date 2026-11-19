@@ -1,0 +1,81 @@
+// Regression test, not for production use. A port of
+// `full_node_puzzles/decompress_coin_spend_entry_with_prefix.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+extern fn reference(
+    ...solution: Any,
+) -> Any from "./decompress_coin_spend_entry_with_prefix.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+extern fn deserialize(
+    input: Bytes,
+) -> Any from "../consensus_puzzles/chialisp_deserialisation.clsp.hex";
+extern fn decompress_puzzle(
+    deserialize: fn(input: Bytes) -> Any,
+    puzzle_prefix: Bytes,
+    public_key: Bytes,
+    suffix: Bytes,
+) -> Any from "./decompress_puzzle.clsp.hex";
+
+type Deserialize = fn(input: Bytes) -> Any;
+
+type DecompressPuzzle = fn(
+    deserialize: Deserialize,
+    puzzle_prefix: Bytes,
+    public_key: Bytes,
+    suffix: Bytes,
+) -> Any;
+
+struct Coin {
+    parent_coin_info: Bytes32,
+    amount: Int,
+}
+
+struct CompressedPuzzle {
+    public_key: Bytes,
+    ...solution: Any,
+}
+
+struct CompressedCoinSpendEntry {
+    coin: Coin,
+    puzzle: CompressedPuzzle,
+}
+
+// The serialization of the end of a puzzle curried with one argument, `1))`.
+inline const SUFFIX: Bytes = 0xff018080;
+
+// Decompresses a coin spend whose puzzle was compressed to its public key.
+fn main(
+    deserialize: Deserialize,
+    decompress_puzzle: DecompressPuzzle,
+    puzzle_prefix: Bytes,
+    entry: CompressedCoinSpendEntry,
+) -> (Bytes32, (Any, (Int, Any))) {
+    let puzzle = decompress_puzzle(deserialize, puzzle_prefix, entry.puzzle.public_key, SUFFIX);
+    (entry.coin.parent_coin_info, (puzzle, (entry.coin.amount, entry.puzzle.solution)))
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// The serialization of `(a (q . 1) (c (q . <public key>) 1))` before the public key, which stands
+// in for the standard transaction curried with a public key.
+inline const PUZZLE_PREFIX: Bytes = 0xff02ffff0101ffff04ffff01b0;
+
+test fn decompresses_a_coin_spend() -> Any {
+    check([
+        deserialize,
+        decompress_puzzle,
+        PUZZLE_PREFIX,
+        CompressedCoinSpendEntry {
+            coin: Coin { parent_coin_info: sha256("parent"), amount: 1 },
+            puzzle: CompressedPuzzle {
+                public_key: pubkey_for_exp(42) as Bytes,
+                solution: [[CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }]],
+            },
+        },
+    ])
+}

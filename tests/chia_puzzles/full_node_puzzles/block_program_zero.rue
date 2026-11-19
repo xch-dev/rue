@@ -1,0 +1,133 @@
+// Regression test, not for production use. A port of `full_node_puzzles/block_program_zero.clsp`
+// from chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+extern fn reference(...solution: Any) -> Any from "./block_program_zero.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+extern fn deserialize(
+    input: Bytes,
+) -> Any from "../consensus_puzzles/chialisp_deserialisation.clsp.hex";
+extern fn decompress_puzzle(...solution: Any) -> Any from "./decompress_puzzle.clsp.hex";
+extern fn decompress_coin_spend_entry(
+    ...solution: Any,
+) -> Any from "./decompress_coin_spend_entry_with_prefix.clsp.hex";
+
+type Deserialize = fn(input: Bytes) -> Any;
+
+type DecompressPuzzle = fn(
+    deserialize: Deserialize,
+    puzzle_prefix: Bytes,
+    public_key: Bytes,
+    suffix: Bytes,
+) -> Any;
+
+type DecompressCoinSpendEntry = fn(
+    deserialize: Deserialize,
+    decompress_puzzle: DecompressPuzzle,
+    puzzle_prefix: Bytes,
+    entry: Any,
+) -> Any;
+
+// Decompresses the coin spends of a block, whose puzzles were compressed to their public keys. The
+// puzzle prefix they share is in an earlier block, between `start` and `end`.
+fn main(
+    decompress_puzzle: DecompressPuzzle,
+    decompress_coin_spend_entry: DecompressCoinSpendEntry,
+    start: Int,
+    end: Int,
+    compressed_coin_spend_entries: List<Any>,
+    deserialize: Deserialize,
+    generators: (Bytes, Any),
+    _reserved: Any,
+) -> List<List<Any>> {
+    let puzzle_prefix = substr(generators.first, start, end);
+    [decompress_entries(
+        decompress_puzzle,
+        decompress_coin_spend_entry,
+        compressed_coin_spend_entries,
+        deserialize,
+        puzzle_prefix,
+    )]
+}
+
+fn decompress_entries(
+    decompress_puzzle: DecompressPuzzle,
+    decompress_coin_spend_entry: DecompressCoinSpendEntry,
+    entries: List<Any>,
+    deserialize: Deserialize,
+    puzzle_prefix: Bytes,
+) -> List<Any> {
+    if entries is nil {
+        return nil;
+    }
+
+    [
+        decompress_coin_spend_entry(deserialize, decompress_puzzle, puzzle_prefix, entries.first),
+        ...decompress_entries(
+            decompress_puzzle,
+            decompress_coin_spend_entry,
+            entries.rest,
+            deserialize,
+            puzzle_prefix,
+        ),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// An earlier block, which contains the serialization of `(a (q . 1) (c (q . <public key>) 1))`
+// before the public key, at bytes 4 to 17. It stands in for the standard transaction curried with a
+// public key.
+inline const GENERATOR: Bytes = 0xdeadbeefff02ffff0101ffff04ffff01b0cafe;
+
+fn entry(parent: Bytes, exponent: Int, amount: Int) -> Any {
+    [
+        [sha256(parent), amount],
+        (pubkey_for_exp(exponent), [[CreateCoin { puzzle_hash: sha256("destination"), amount }]]),
+    ]
+}
+
+test fn decompresses_the_coin_spends() -> Any {
+    check([
+        decompress_puzzle,
+        decompress_coin_spend_entry,
+        4,
+        17,
+        [entry("first", 1, 1), entry("second", 2, 3)],
+        deserialize,
+        [GENERATOR],
+        nil,
+    ])
+}
+
+test fn decompresses_no_coin_spends() -> Any {
+    check([
+        decompress_puzzle,
+        decompress_coin_spend_entry,
+        4,
+        17,
+        nil,
+        deserialize,
+        [GENERATOR],
+        nil,
+    ])
+}
+
+test fn rejects_a_prefix_past_the_end() -> Any {
+    run(
+        main,
+        [decompress_puzzle, decompress_coin_spend_entry, 4, 30, nil, deserialize, [GENERATOR], nil],
+    )
+}
+
+test fn reference_rejects_a_prefix_past_the_end() -> Any {
+    run(
+        reference,
+        [decompress_puzzle, decompress_coin_spend_entry, 4, 30, nil, deserialize, [GENERATOR], nil],
+    )
+}
