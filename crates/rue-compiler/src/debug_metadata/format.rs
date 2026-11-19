@@ -29,7 +29,7 @@ pub const TAB_WIDTH: usize = 8;
 
 /// A source file, with its full text, which readers display excerpts from.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceFile {
+struct SourceFile {
     /// A display name for the file, which doesn't need to be a path that can be read.
     pub path: String,
     pub source: String,
@@ -291,7 +291,7 @@ pub enum EncodeError {
 
 /// The display column (see [`Span`]) at each byte offset of a line, including its end, so there's
 /// one more column than there are bytes. Offsets inside of a character are at the character.
-pub fn line_columns(line: &str) -> Vec<usize> {
+pub(crate) fn line_columns(line: &str) -> Vec<usize> {
     let mut columns = Vec::with_capacity(line.len() + 1);
     let mut column = 1;
 

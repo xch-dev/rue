@@ -34,8 +34,16 @@ pub(crate) fn build_debug_metadata(
     nodes: &NodeTags,
     base_path: &Path,
 ) -> Result<Vec<u8>, EncodeError> {
+    // Values are checked against a list of anything, which is the same type for every parameter
+    let builtins = ctx.builtins().types;
+    let any_list = ctx.alloc_type(Type::Apply(Apply::new(
+        builtins.list,
+        HashMap::from([(builtins.list_generic, builtins.permissive_any)]),
+    )));
+
     let mut builder = SidecarBuilder {
         ctx,
+        any_list,
         lowering,
         base_path,
         spans: HashMap::new(),
@@ -68,6 +76,8 @@ pub(crate) fn build_debug_metadata(
 
 struct SidecarBuilder<'a> {
     ctx: &'a mut Compiler,
+    /// `List<Any>`, which proper lists are assignable to.
+    any_list: TypeId,
     lowering: &'a LoweringDebugInfo,
     base_path: &'a Path,
     /// The index in the metadata of each span recorded while lowering.
@@ -150,7 +160,7 @@ impl SidecarBuilder<'_> {
                     path: root
                         .path(*symbol)
                         .expect("a symbol in the environment has a path"),
-                    constraint: constraint(self.ctx, ty),
+                    constraint: constraint(self.ctx, ty, self.any_list),
                 },
                 None => Parameter::Nil,
             },
@@ -208,7 +218,7 @@ impl Positions {
 /// What a value of the type is expected to be at runtime, which debuggers use to display it. Types
 /// that don't correspond to one of the constraints, such as unions of atoms and pairs, generics
 /// and functions, are unknown.
-fn constraint(ctx: &mut Compiler, ty: TypeId) -> Constraint {
+fn constraint(ctx: &mut Compiler, ty: TypeId, any_list: TypeId) -> Constraint {
     let builtins = ctx.builtins().types;
     let types = ctx.types_mut();
 
@@ -254,11 +264,6 @@ fn constraint(ctx: &mut Compiler, ty: TypeId) -> Constraint {
             _ => Constraint::Atom,
         };
     }
-
-    let any_list = types.alloc(Type::Apply(Apply::new(
-        builtins.list,
-        HashMap::from([(builtins.list_generic, builtins.permissive_any)]),
-    )));
 
     if compare(types, &builtins, ty, any_list) == Comparison::Assign {
         return Constraint::ProperList;

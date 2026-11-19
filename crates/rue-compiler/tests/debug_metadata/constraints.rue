@@ -19,7 +19,18 @@ fn main(
     either: (Int, Int) | nil,
 ) -> Any {
     let point = Point { x: number, y: number };
-    let values = [number, maybe, key, flag, empty, hashes, anything, shapes, either, point.x + point.y];
+    let values = [
+        number,
+        maybe,
+        key,
+        flag,
+        empty,
+        hashes,
+        anything,
+        shapes,
+        either,
+        point.x + point.y,
+    ];
     [identity(number), identity(values)]
 }
 

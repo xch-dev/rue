@@ -515,6 +515,11 @@ fn build(args: BuildArgs) -> Result<()> {
             let file_path = Path::new(file_path);
             let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
 
+            let is_main = main_kind
+                .as_ref()
+                .is_some_and(|main| main == &file.source.kind);
+
+            // Only the exports of the main file are written, so the others don't need sidecars
             let exports = compile_exports(
                 &tree,
                 &mut ctx,
@@ -522,7 +527,7 @@ fn build(args: BuildArgs) -> Result<()> {
                 Some(&file.source.kind),
                 None,
                 &base_path,
-                debug_metadata,
+                debug_metadata && is_main,
             )?;
 
             let main = compile_main(
@@ -534,10 +539,7 @@ fn build(args: BuildArgs) -> Result<()> {
                 debug_metadata,
             )?;
 
-            let mut exports = if main_kind
-                .as_ref()
-                .is_some_and(|main| main == &file.source.kind)
-            {
+            let mut exports = if is_main {
                 exports
                     .into_iter()
                     .map(|export| {
@@ -1226,6 +1228,25 @@ mod tests {
         );
     }
 
+    /// A directory with a `main.rue` that has the source, which is removed when it's dropped.
+    struct TempProject(std::path::PathBuf);
+
+    impl TempProject {
+        fn new(name: &str, source: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("rue-cli-{name}-{}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            let dir = dir.canonicalize().unwrap();
+            fs::write(dir.join("main.rue"), source).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempProject {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// Builds the programs in the directory with the arguments.
     fn run_build(dir: &Path, args: &[&str]) {
         let file = dir.join("main.rue");
@@ -1254,18 +1275,14 @@ mod tests {
 
     #[test]
     fn build_writes_debug_metadata() {
-        let dir =
-            std::env::temp_dir().join(format!("rue-cli-debug-metadata-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let dir = dir.canonicalize().unwrap();
-        fs::write(
-            dir.join("main.rue"),
+        let project = TempProject::new(
+            "build",
             "fn main(value: Int) -> Int {\n    double(value) + 1\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n",
-        )
-        .unwrap();
+        );
+        let dir = &project.0;
 
         // With `--all`, each program's sidecar is next to it, and is for the program's bytes
-        run_build(&dir, &["--all", "--debug-metadata"]);
+        run_build(dir, &["--all", "--debug-metadata"]);
 
         for name in ["main", "main.rue_double"] {
             let hex = fs::read_to_string(dir.join(format!("{name}.rue.hex"))).unwrap();
@@ -1282,12 +1299,12 @@ mod tests {
         fs::remove_file(dir.join("main.rue.debug.clvm.bin")).unwrap();
 
         // A single program's sidecar is next to its source, or where it's asked for
-        run_build(&dir, &["--debug-metadata"]);
+        run_build(dir, &["--debug-metadata"]);
         assert_eq!(fs::read(dir.join("main.rue.debug.clvm.bin")).unwrap(), all);
 
         let path = dir.join("custom.bin");
         run_build(
-            &dir,
+            dir,
             &[
                 "--export",
                 "double",
@@ -1298,8 +1315,6 @@ mod tests {
             fs::read(&path).unwrap(),
             fs::read(dir.join("main.rue_double.rue.debug.clvm.bin")).unwrap()
         );
-
-        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
