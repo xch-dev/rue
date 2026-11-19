@@ -55,6 +55,20 @@ tests:
   runtime_cost: 151
   byte_cost: 180000
   total_cost: 180151
+- name: nested_call_with_a_lambda_takes_the_expected_bound
+  program: (a (q 16 (a 4 (c (q . 7) (a 6 (c (q . 5) (q 1 . 7))))) (a 4 (c (q . 7) (a 4 (c (a 6 (c (q . 5) (q 1 . 7))) (q . 7)))))) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
+  debug_program: (a (q 2 (q 16 4 6) (c (c (a 4 (c (q . 7) (a 6 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))))))) (a 4 (c (q . 7) (a 4 (c (a 6 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))))) (q . 7)))))) 1)) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
+  output: "14"
+  runtime_cost: 2911
+  byte_cost: 1452000
+  total_cost: 1454911
+- name: lambda_through_a_nested_call_before_a_later_value_keeps_it_wide
+  program: (a (q 16 (a 6 (c (q . 5) (c (a 4 (q 1 . 1)) (q . 6)))) (a 6 (c (q . 5) (c (a 4 (a 4 (q 1 . 1))) (q . 6)))) (a 6 (c (q . 5) (c (a 4 (q 1 . 1)) (q . 6))))) (c (c (q . 1) (q 3 () (a 5 (c 2 ())) 7)) ()))
+  debug_program: (a (q 2 (q 16 (+ 4 10) 14) (c (c (a 6 (c (q . 5) (c (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (q . 6)))) (c (a 6 (c (q . 5) (c (a 4 (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))))) (q . 6)))) (a 6 (c (q . 5) (c (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (q . 6)))))) 1)) (c (c (q . 1) (q 3 () (a 5 (c 2 ())) 7)) ()))
+  output: "18"
+  runtime_cost: 4347
+  byte_cost: 1860000
+  total_cost: 1864347
 diagnostics:
 - Unused parameter `second` at generic_inference_expected_mapped.rue:5:24
 - Binding `value` is returned directly after it's declared at generic_inference_expected_mapped.rue:20:5
