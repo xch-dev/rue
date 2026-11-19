@@ -109,3 +109,16 @@ fn same<T>(function: fn(a: T) -> T, produce: fn() -> T) -> T {
 test fn lambda_that_adds_to_its_parameter_type_keeps_it_wide() -> 5 | 7 {
     same(fn(x2) => 5, fn() => 7)
 }
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+// A call with a lambda only in its own arguments takes the expected bounds as a call without one
+// does, since its lambda is compiled against its own generics. So `T` is `7` for it, rather than
+// `7` widened to `Int`, and its `B` stays `7`, as with `map_reversed::<5, 7>`
+test fn nested_call_with_a_lambda_takes_the_expected_bound() -> Int {
+    let value: 7 = either(7, map_reversed(5, fn(x) => 7));
+    let deeper: 7 = either(7, either(map_reversed(5, fn(x) => 7), 7));
+    value + deeper
+}
