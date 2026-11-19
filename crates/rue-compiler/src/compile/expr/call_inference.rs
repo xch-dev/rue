@@ -642,6 +642,8 @@ struct ArgumentOrder {
 /// What `ArgumentOrder` knows about an argument.
 struct Argument {
     kind: ArgumentKind,
+    /// Whether it is, or has in it, a lambda.
+    has_lambda: bool,
     /// Whether it is, or has in it, a lambda that isn't inside a call in it (see `has_own_lambda`).
     has_own_lambda: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
@@ -741,6 +743,7 @@ impl ArgumentOrder {
 
                 Argument {
                     kind,
+                    has_lambda: has_lambda(arg),
                     has_own_lambda: has_own_lambda(arg),
                     reads,
                     writes: generics_in(ctx, function, param.ty),
@@ -869,8 +872,9 @@ impl ArgumentOrder {
 
     /// Whether the argument `next` just gave can be compiled against the expected type's bounds
     /// for the generics the arguments map (`CallSolver::argument_mappings`). An argument without a
-    /// lambda in it always can, and so can one whose lambdas are all inside calls in it (see
-    /// `has_own_lambda`). A lambda only can if no argument still to be compiled can add to
+    /// lambda in it always can. One whose lambdas are all inside calls in it (see `has_own_lambda`)
+    /// can once no argument still to be compiled can add to the generics it reads, since the call
+    /// can pass a lambda through, as `id(fn(x) => 1)` does. A lambda only can if no argument still to be compiled can add to
     /// the generics its parameter types come from, counting every one, unlike the order's
     /// readiness, and its own return type can't either. Otherwise a narrower parameter type could
     /// stop a later addition, since parameters are contravariant. A lambda inside another
@@ -878,8 +882,15 @@ impl ArgumentOrder {
     fn takes_expected_bounds(&self, i: usize) -> bool {
         let argument = &self.arguments[i];
 
-        if !argument.has_own_lambda {
+        if !argument.has_lambda {
             return true;
+        }
+
+        // A lambda inside a call in it is compiled against that call's own generics, but the call
+        // can pass it through, as `id(fn(x) => 1)` does, so like a lambda, it only takes them once
+        // nothing still to be compiled can add to the generics its expected type comes from
+        if !argument.has_own_lambda {
+            return self.last_settled;
         }
 
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
@@ -1499,8 +1510,9 @@ fn is_call_without_arguments(expr: &AstExpr) -> bool {
 /// Whether the expression is, or has in it, a lambda that isn't inside a call in it, in the call's
 /// arguments or its callee. A lambda in a call's arguments, such as in `map_reversed(5, fn(x) => 7)`,
 /// is compiled against that call's own generics, which the call's expected type only bounds
-/// through its return type, so the call takes the expected bounds as a call without a lambda does.
-/// A lambda that's the callee, as in `(fn() => 7)()`, has its parameter types written out, so the
+/// through its return type, so the call takes the expected bounds much as a call without a lambda
+/// does, once nothing later can add to them (see `ArgumentOrder::takes_expected_bounds`). A lambda
+/// that's the callee, as in `(fn() => 7)()`, has its parameter types written out, so the
 /// expected bounds can't narrow them either.
 fn has_own_lambda(expr: &AstExpr) -> bool {
     let mut stack = vec![expr.syntax().clone()];

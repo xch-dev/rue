@@ -62,6 +62,13 @@ tests:
   runtime_cost: 2911
   byte_cost: 1452000
   total_cost: 1454911
+- name: lambda_through_a_nested_call_before_a_later_value_keeps_it_wide
+  program: (a (q 16 (a 6 (c (q . 5) (c (a 4 (q 1 . 1)) (q . 6)))) (a 6 (c (q . 5) (c (a 4 (a 4 (q 1 . 1))) (q . 6)))) (a 6 (c (q . 5) (c (a 4 (q 1 . 1)) (q . 6))))) (c (c (q . 1) (q 3 () (a 5 (c 2 ())) 7)) ()))
+  debug_program: (a (q 2 (q 16 (+ 4 10) 14) (c (c (a 6 (c (q . 5) (c (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (q . 6)))) (c (a 6 (c (q . 5) (c (a 4 (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))))) (q . 6)))) (a 6 (c (q . 5) (c (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (q . 6)))))) 1)) (c (c (q . 1) (q 3 () (a 5 (c 2 ())) 7)) ()))
+  output: "18"
+  runtime_cost: 4347
+  byte_cost: 1860000
+  total_cost: 1864347
 diagnostics:
 - Unused parameter `second` at generic_inference_expected_mapped.rue:5:24
 - Binding `value` is returned directly after it's declared at generic_inference_expected_mapped.rue:20:5

@@ -122,3 +122,18 @@ test fn nested_call_with_a_lambda_takes_the_expected_bound() -> Int {
     let deeper: 7 = either(7, either(map_reversed(5, fn(x) => 7), 7));
     value + deeper
 }
+
+fn pass<U>(value: U) -> U {
+    value
+}
+
+// Guard: a call can pass its lambda through, so it only takes the expected bounds once nothing
+// later can add to them. Here `6` can, so the lambda keeps what the arguments infer, as a lambda
+// directly in the argument does. With `T` as `5`, it would be `fn(x: 5) -> 1`, which isn't a
+// `fn(x: 5 | 6) -> Int`
+test fn lambda_through_a_nested_call_before_a_later_value_keeps_it_wide() -> Int {
+    let value: 5 | 6 = three(5, pass(fn(x) => 1), 6);
+    let deeper: 5 | 6 = three(5, pass(pass(fn(x) => 1)), 6);
+    let block: 5 | 6 = three(5, { pass(fn(x) => 1) }, 6);
+    value + deeper + block
+}
