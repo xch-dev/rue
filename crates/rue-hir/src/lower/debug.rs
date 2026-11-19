@@ -80,10 +80,12 @@ impl LoweringDebugInfo {
         };
 
         for (&parameter, param) in function.parameters.iter().zip(&ty.params) {
-            if !param.name.is_empty() {
-                self.parameter_names
-                    .entry(parameter)
-                    .or_insert_with(|| param.name.clone());
+            // A destructured parameter is named after its pattern, which can span lines, but a
+            // name is shown on one line
+            let name = param.name.split_whitespace().collect::<Vec<_>>().join(" ");
+
+            if !name.is_empty() {
+                self.parameter_names.entry(parameter).or_insert(name);
             }
         }
     }
