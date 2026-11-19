@@ -13,6 +13,7 @@ use indexmap::IndexSet;
 use rue_types::{
     Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, CHECK_SIZE_LIMIT, Check, CheckError,
     FunctionType, Generic, Pair, Struct, Type, TypeId, Union, check, stringify, subtract,
+    with_step_limit,
 };
 
 struct Types {
@@ -647,7 +648,38 @@ fn test_check_size_limit() {
 
     // The next level is too large, as is every level past it, even though they aren't too deep
     assert_eq!(t.check(any, levels[12]), Err(CheckError::TooLarge));
-    assert_eq!(t.check(any, levels[24]), Err(CheckError::TooLarge));
+
+    // Every part of the check is limited, not just the result, so the work doesn't double at each
+    // level either (it takes around 130,000 steps, rather than tens of millions)
+    let result = with_step_limit(1_000_000, || t.check(any, levels[24]));
+    assert_eq!(result, Err(CheckError::TooLarge));
+
+    // A part that's too large doesn't matter if another pair accepts every pair
+    let any_pair = t.pair(any, any);
+    let either = t.union(vec![levels[13], any_pair]);
+    assert_eq!(
+        t.check(any, either),
+        Ok(Check::IsPair {
+            can_be_truthy: true
+        })
+    );
+    let either = t.union(vec![any_pair, levels[13]]);
+    assert_eq!(
+        t.check(any, either),
+        Ok(Check::IsPair {
+            can_be_truthy: true
+        })
+    );
+
+    // Or if the rest of the pair can never match, whichever of the first and rest is too large
+    let bytes32 = t.builtins.bytes32;
+    let nil = t.builtins.nil;
+    let from = t.pair(any, bytes32);
+    let to = t.pair(levels[12], nil);
+    assert_eq!(t.check(from, to), Ok(Check::Impossible));
+    let from = t.pair(bytes32, any);
+    let to = t.pair(nil, levels[12]);
+    assert_eq!(t.check(from, to), Ok(Check::Impossible));
 
     // A value already known to be of the type doesn't need a check, however large the type is
     assert_eq!(t.check(levels[24], levels[24]), Ok(Check::None));

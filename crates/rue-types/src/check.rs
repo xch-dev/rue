@@ -46,6 +46,8 @@ impl Check {
     }
 
     fn simplify_inner(self) -> Check {
+        step();
+
         match self {
             Check::None => Check::None,
             Check::Impossible => Check::Impossible,
@@ -202,7 +204,7 @@ pub enum CheckError {
     #[error("Comparing the types is too complex")]
     TooComplex,
 
-    #[error("Cannot check if value is of type at runtime, since the check would be too large")]
+    #[error("Cannot check if value is of this type at runtime, since the check would be too large")]
     TooLarge,
 }
 
@@ -477,14 +479,26 @@ fn check_each_impl_inner(
 
         let mut checks = Vec::new();
 
+        // Whether a pair's check was left out because it was too large. The error is only
+        // reported once the other pairs are known, since it doesn't matter if another pair's
+        // check accepts every pair.
+        let mut too_large = false;
+
         // For each target pair, the first check is exact for every possible first value. The rest
         // check only runs if the first check passes, so it must be exact for the rest of every pair
         // whose first could pass the first check (not just those whose first is assignable to the
         // target's first). Each check in the resulting union is therefore exact for every pair.
         for target_pair in &target_pairs {
-            let first = check_each(arena, builtins, ctx, depth, &firsts, target_pair.first)?;
+            let first = unless_too_large(check_each(
+                arena,
+                builtins,
+                ctx,
+                depth,
+                &firsts,
+                target_pair.first,
+            ))?;
 
-            if first == Check::Impossible {
+            if first == Some(Check::Impossible) {
                 continue;
             }
 
@@ -507,13 +521,32 @@ fn check_each_impl_inner(
                 continue;
             }
 
-            let rest = check_each(arena, builtins, ctx, depth, &rests, target_pair.rest)?;
+            let rest = unless_too_large(check_each(
+                arena,
+                builtins,
+                ctx,
+                depth,
+                &rests,
+                target_pair.rest,
+            ))?;
 
-            checks.push(Check::Pair(Box::new(first), Box::new(rest)));
+            // The rest is checked even if the first check is too large, since the pair can't
+            // match if the rest can't
+            match (first, rest) {
+                (_, Some(Check::Impossible)) => {}
+                (Some(first), Some(rest)) => {
+                    checks.push(Check::Pair(Box::new(first), Box::new(rest)));
+                }
+                (None, _) | (_, None) => too_large = true,
+            }
         }
 
         // If any target pair accepts every pair, this simplifies to `Check::None`
-        Some(Check::Or(checks).simplify())
+        match Check::Or(checks).simplify() {
+            Check::None => Some(Check::None),
+            _ if too_large => return Err(CheckError::TooLarge),
+            check => Some(check),
+        }
     };
 
     let check = match (atom_result, pair_result) {
@@ -535,6 +568,15 @@ fn check_each_impl_inner(
     };
 
     Ok(check.simplify())
+}
+
+/// Turns a check that's too large into `None`, so that the caller can decide whether it's needed.
+fn unless_too_large(result: Result<Check, CheckError>) -> Result<Option<Check>, CheckError> {
+    match result {
+        Ok(check) => Ok(Some(check)),
+        Err(CheckError::TooLarge) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {

@@ -316,12 +316,13 @@ fn test_growth_compare() {
 
 #[test]
 fn test_growth_check() {
+    // Checking `pairs` from `Any` isn't included, since the check itself doubles in size at each
+    // level until it's too large, so the work is bounded by the size limit instead (see
+    // `test_check_size_limit` in `check.rs`)
     assert_linear(|t, ints, ints_copy, _| {
         let nil = t.builtins.nil;
-        let any = t.builtins.permissive_any;
         let ints_or_nil = t.union(vec![ints, nil]);
         let _ = check(&mut t.arena, &t.builtins, ints_or_nil, ints_copy);
-        let _ = check(&mut t.arena, &t.builtins, any, ints);
     });
 }
 

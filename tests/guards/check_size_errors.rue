@@ -12,22 +12,43 @@ type T9 = (T8, T8);
 type T10 = (T9, T9);
 type T11 = (T10, T10);
 type T12 = (T11, T11);
-type T24 = (T12, T12);
+type T13 = (T12, T12);
 
 fn too_large(value: Any) -> Bool {
     value is T12
 }
 
-// The check is too large long before the nesting is too deep
-fn much_too_large(value: Any) -> Bool {
-    value is T24
+// Every level past the limit is too large as well
+fn larger(value: Any) -> Bool {
+    value is T13
 }
 
-// The value could still be guarded, so this isn't an incompatible assignment
-fn unguarded(value: Any) -> T12 {
+// The value could still be guarded, so these aren't incompatible
+fn unguarded_assign(value: Any) -> T12 {
     value
 }
 
-fn main() -> (Bool, T12) {
-    (too_large(nil) && much_too_large(nil), unguarded(nil))
+fn unguarded_cast(value: Any) -> T12 {
+    value as T12
+}
+
+// A check that's too large isn't needed if another pair matches every pair
+fn any_pair(value: Any) -> Bool {
+    value is (Any, Any) | T13
+}
+
+// Or if the rest of the pair can never match
+fn never_matches(value: (Any, Bytes32)) -> Bool {
+    value is (T12, nil)
+}
+
+fn incompatible_assign(value: (Any, Bytes32)) -> (T12, nil) {
+    value
+}
+
+fn main(pair: (Any, Bytes32)) -> (Bool, ((T12, T12), (T12, nil))) {
+    (
+        too_large(nil) && larger(nil) && any_pair(nil) && never_matches(pair),
+        ((unguarded_assign(nil), unguarded_cast(nil)), incompatible_assign(pair)),
+    )
 }
