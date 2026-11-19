@@ -1608,6 +1608,20 @@ fn resolve_glob_import(
                         (import_scope, existing),
                         (source_scope, item),
                     );
+
+                    // Like a name that several glob imports bring in (see below), it's exported if
+                    // any of them exports it, and each of them brings it in, whichever bound it
+                    let module = ctx.scope(source_scope);
+                    let exported = import.exported
+                        && (module.item(namespace, &name) != Some(item)
+                            || module.is_item_exported(item));
+
+                    if exported && !ctx.scope(import_scope).is_item_exported(existing) {
+                        ctx.scope_mut(import_scope).export_item(existing);
+                        updated = true;
+                    }
+
+                    *count = (*count).max(1);
                 }
 
                 continue;

@@ -1,0 +1,3 @@
+diagnostics:
+- Undeclared symbol `nope` at exported_failed_names_through_globs_a.rue:8:12
+- Undeclared symbol `nada` at exported_failed_names_through_globs_a.rue:12:12

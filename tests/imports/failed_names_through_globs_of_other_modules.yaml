@@ -1,4 +1,3 @@
 diagnostics:
 - Unresolved import `Z` at failed_names_through_globs_of_other_modules.rue:4:8
-- Unused import `*` at failed_names_through_globs_of_other_modules.rue:8:15
 - Undeclared symbol `nope` at failed_names_through_globs_of_other_modules.rue:12:12
