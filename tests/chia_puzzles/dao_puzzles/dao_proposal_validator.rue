@@ -184,3 +184,7 @@ test fn rejects_the_wrong_source() -> Any {
 test fn reference_rejects_the_wrong_source() -> Any {
     run(reference, spend(600, 1000, 10, 11))
 }
+
+test fn passes_with_exactly_enough_attendance() -> Any {
+    check(spend(500, 500, 10, 10))
+}

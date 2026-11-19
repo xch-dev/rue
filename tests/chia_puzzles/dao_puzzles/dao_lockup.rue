@@ -583,3 +583,116 @@ test fn rejects_the_wrong_announcement() -> Any {
 test fn reference_rejects_the_wrong_announcement() -> Any {
     run(reference, wrong_announcement())
 }
+
+fn change_without_a_vote() -> Any {
+    spend(
+        nil,
+        sha256("my_id"),
+        [CreateCoin { puzzle_hash: sha256("my_inner_puzzle"), amount: 40 }],
+        sha256("proposal"),
+        60,
+        nil,
+    )
+}
+
+test fn rejects_change_without_a_vote() -> Any {
+    run(main, change_without_a_vote())
+}
+
+test fn reference_rejects_change_without_a_vote() -> Any {
+    run(reference, change_without_a_vote())
+}
+
+fn full_vote_after_change() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: sha256("my_inner_puzzle"), amount: 40 },
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 100 },
+        ],
+        vote_id,
+        60,
+        nil,
+    )
+}
+
+test fn rejects_a_full_vote_after_change() -> Any {
+    run(main, full_vote_after_change())
+}
+
+test fn reference_rejects_a_full_vote_after_change() -> Any {
+    run(reference, full_vote_after_change())
+}
+
+fn second_change_coin() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 60 },
+            CreateCoin { puzzle_hash: sha256("my_inner_puzzle"), amount: 40 },
+            CreateCoin { puzzle_hash: sha256("my_inner_puzzle"), amount: 40 },
+        ],
+        vote_id,
+        60,
+        nil,
+    )
+}
+
+test fn rejects_a_second_change_coin() -> Any {
+    run(main, second_change_coin())
+}
+
+test fn reference_rejects_a_second_change_coin() -> Any {
+    run(reference, second_change_coin())
+}
+
+fn wrong_change_amount() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: sha256("my_inner_puzzle"), amount: 30 },
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 60 },
+        ],
+        vote_id,
+        60,
+        nil,
+    )
+}
+
+test fn rejects_the_wrong_change_amount() -> Any {
+    run(main, wrong_change_amount())
+}
+
+test fn reference_rejects_the_wrong_change_amount() -> Any {
+    run(reference, wrong_change_amount())
+}
+
+fn later_revote() -> Any {
+    let vote_id = sha256("proposal");
+    let active_votes = [sha256("other"), vote_id];
+    spend(
+        active_votes,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, active_votes), amount: 100 },
+            CreatePuzzleAnnouncement { message: vote_message(vote_id, 100) },
+        ],
+        vote_id,
+        100,
+        nil,
+    )
+}
+
+test fn rejects_a_revote_on_a_later_vote() -> Any {
+    run(main, later_revote())
+}
+
+test fn reference_rejects_a_revote_on_a_later_vote() -> Any {
+    run(reference, later_revote())
+}

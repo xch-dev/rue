@@ -495,3 +495,39 @@ test fn rejects_an_early_self_destruct() -> Any {
 test fn reference_rejects_an_early_self_destruct() -> Any {
     run(reference, early_self_destruct())
 }
+
+test fn adds_votes_after_only_no_votes() -> Any {
+    // With no yes votes but some total votes, the timer already exists.
+    check(add_votes_spend(0, 150, [30], nil, [sha256("first")], nil))
+}
+
+test fn self_destructs_with_a_soft_close() -> Any {
+    check(close_spend(600, 1000, 20, 1))
+}
+
+test fn passes_with_exactly_enough_yes_votes() -> Any {
+    check(close_spend(510, 1000, 20, nil))
+}
+
+test fn passes_with_exactly_enough_attendance() -> Any {
+    check(close_spend(500, 500, 20, nil))
+}
+
+fn later_duplicate_vote() -> Any {
+    add_votes_spend(
+        100,
+        150,
+        [10, 10, 10],
+        1,
+        [sha256("first"), sha256("second"), sha256("first")],
+        nil,
+    )
+}
+
+test fn rejects_a_later_duplicate_vote() -> Any {
+    run(main, later_duplicate_vote())
+}
+
+test fn reference_rejects_a_later_duplicate_vote() -> Any {
+    run(reference, later_duplicate_vote())
+}

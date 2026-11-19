@@ -385,3 +385,51 @@ test fn rejects_mismatched_tails() -> Any {
 test fn reference_rejects_mismatched_tails() -> Any {
     run(reference, mismatched_tails())
 }
+
+test fn overspends_xch() -> Any {
+    // No change coin is made when the conditions spend more than the coins hold.
+    check(spend(
+        [CreateCoin { puzzle_hash: sha256("payee"), amount: 100 }],
+        nil,
+        [ParentAmount { parent: sha256("first"), amount: 50 }],
+        nil,
+    ))
+}
+
+test fn overspends_xch_without_coins() -> Any {
+    check(spend([CreateCoin { puzzle_hash: sha256("payee"), amount: 70 }], nil, nil, nil))
+}
+
+test fn overspends_a_cat() -> Any {
+    check(spend(
+        nil,
+        [TailConditions {
+            tail_hash: sha256("first_tail"),
+            conditions: [CreateCoin { puzzle_hash: sha256("payee"), amount: 10 }],
+        }],
+        nil,
+        [TailCoins {
+            tail_hash: sha256("first_tail"),
+            coins: [ParentAmount { parent: sha256("first"), amount: 5 }],
+        }],
+    ))
+}
+
+test fn skips_a_later_duplicate_cat_coin() -> Any {
+    check(spend(
+        nil,
+        [TailConditions {
+            tail_hash: sha256("first_tail"),
+            conditions: [CreateCoin { puzzle_hash: sha256("payee"), amount: 5 }],
+        }],
+        nil,
+        [TailCoins {
+            tail_hash: sha256("first_tail"),
+            coins: [
+                ParentAmount { parent: sha256("first"), amount: 10 },
+                ParentAmount { parent: sha256("second"), amount: 20 },
+                ParentAmount { parent: sha256("first"), amount: 10 },
+            ],
+        }],
+    ))
+}

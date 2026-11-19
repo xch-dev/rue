@@ -170,3 +170,27 @@ test fn rejects_an_unannounced_puzzle() -> Any {
 test fn reference_rejects_an_unannounced_puzzle() -> Any {
     run(reference, spend((1, nil), nil))
 }
+
+test fn passes_its_arguments_on() -> Any {
+    // A validator and a delegated puzzle that return their arguments, so the output shows what
+    // each was given.
+    check([
+        sha256("treasury_mod"),
+        1,
+        4000,
+        20,
+        100000,
+        5100,
+        10000,
+        30,
+        ProposalAnnouncement {
+            announcement_source: sha256("proposal_coin"),
+            delegated_puzzle_hash: tree_hash(1),
+            announcement_args: nil,
+        },
+        [sha256("proposal_id"), 1000, 600],
+        1,
+        [CreateCoin { puzzle_hash: sha256("payee"), amount: 100 }],
+        nil,
+    ])
+}
