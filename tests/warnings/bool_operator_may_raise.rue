@@ -1,0 +1,104 @@
+// Right operands which can raise
+
+test fn and_assert() -> Bool {
+    and_assert_operator(false, 0)
+}
+
+fn and_assert_operator(a: Bool, x: Int) -> Bool {
+    a & check_positive(x)
+}
+
+test fn or_raise() -> Bool {
+    or_raise_operator(true, 0)
+}
+
+fn or_raise_operator(a: Bool, x: Int) -> Bool {
+    a
+        | {
+            if x == 0 {
+                raise "zero";
+            }
+            x > 1
+        }
+}
+
+test fn chained() -> Bool {
+    chained_operator(false, true, 0)
+}
+
+fn chained_operator(a: Bool, b: Bool, x: Int) -> Bool {
+    a & b & check_positive(x)
+}
+
+test fn nested_short_circuit() -> Bool {
+    nested_short_circuit_operator(false, true, 0)
+}
+
+// `&&` only skips the call when `b` is false, not when `a` is
+fn nested_short_circuit_operator(a: Bool, b: Bool, x: Int) -> Bool {
+    a & (b && check_positive(x))
+}
+
+fn check_positive(x: Int) -> Bool {
+    assert x > 0;
+    true
+}
+
+// Operands which can't raise
+
+test fn comparisons() -> Bool {
+    comparisons_operator(true, 0)
+}
+
+fn comparisons_operator(a: Bool, x: Int) -> Bool {
+    a & (x == 0) | (x > 1)
+}
+
+// The left operand is evaluated by `&&` and `||` too
+test fn left_raises() -> Bool {
+    left_raises_operator(1, true)
+}
+
+fn left_raises_operator(x: Int, b: Bool) -> Bool {
+    check_positive(x) & b
+}
+
+// Arithmetic only fails on malformed values, which `may_raise` doesn't consider
+test fn division() -> Bool {
+    division_operator(true, 1)
+}
+
+fn division_operator(a: Bool, x: Int) -> Bool {
+    a & (10 / x > 1)
+}
+
+test fn short_circuit() -> Bool {
+    short_circuit_operator(false, 0)
+}
+
+fn short_circuit_operator(a: Bool, x: Int) -> Bool {
+    a && check_positive(x) || check_positive(x + 1)
+}
+
+// `&` and `|` on `Int` are bitwise, and always evaluate both operands
+test fn bitwise() -> Int {
+    bitwise_operator(1, 2)
+}
+
+fn bitwise_operator(x: Int, y: Int) -> Int {
+    x & check_int(y) | check_int(y)
+}
+
+fn check_int(x: Int) -> Int {
+    assert x > 0;
+    x
+}
+
+test fn allowed() -> Bool {
+    allowed_operator(false, 1)
+}
+
+#[allow(bool_operator_may_raise)]
+fn allowed_operator(a: Bool, x: Int) -> Bool {
+    a & check_positive(x)
+}
