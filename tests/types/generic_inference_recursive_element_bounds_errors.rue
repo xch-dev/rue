@@ -135,18 +135,9 @@ fn expected_generic<T, U>(pair: (T, fn(value: T) -> U), depth: Int) -> U {
     pair.rest(pair.first)
 }
 
-// Only the elements before a lambda count. The lambda's `x` is the caller's `T`, which the body can
-// mix with the caller's other values of it, so it isn't checked as what the call's renamed `T` is
-// inferred as, though `lambda_before_its_value::<Int>` compiles
-fn lambda_before_its_value<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
-    if depth > 0 {
-        return lambda_before_its_value((fn(x) => x, 1), depth - 1);
-    }
-
-    pair.first(pair.rest)
-}
-
-// It would be unsound: `caller` takes the caller's `T`, which the lambda's `x` is, but `1` isn't one
+// The lambda's `x` is the caller's `T`, which its body passes to `caller`, a value from outside of it
+// that takes the caller's `T`, so it isn't checked as what the call's renamed `T` is inferred as:
+// that would be unsound, since `1` isn't a `T`
 fn passes_on_to_the_caller<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
     if depth > 0 {
         let caller = pair.first;
@@ -154,4 +145,79 @@ fn passes_on_to_the_caller<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int
     }
 
     pair.first(pair.rest)
+}
+
+fn apply<A>(function: fn(value: A) -> Int, value: A) -> Int {
+    function(value)
+}
+
+// The same where the value from outside is referenced in a binding or a nested lambda in the body
+fn captured_in_a_binding<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        return captured_in_a_binding(
+            (
+                fn(x) => {
+                    let caller = pair.first;
+                    caller(x)
+                },
+                1,
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.first(pair.rest)
+}
+
+fn captured_in_a_nested_lambda<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        return captured_in_a_nested_lambda(
+            (fn(x) => apply(fn(y) => pair.first(y), x), 1),
+            depth - 1,
+        );
+    }
+
+    pair.first(pair.rest)
+}
+
+fn ident<V>(value: V) -> V {
+    value
+}
+
+// The lambda's body names the caller's `T` itself, so it makes values of `T` that don't come from
+// `x` as far as its type says: it returns `T`, which `U` would be inferred as, while `x` is checked
+// as `Int`. That would be unsound, since `1` isn't a `T`, so `x` isn't checked as `Int`
+fn names_the_callers_generic<T, U>(pair: (fn(value: T) -> U, T), depth: Int) -> (U, T) {
+    if depth > 0 {
+        let annotated = names_the_callers_generic(
+            (
+                fn(x) => {
+                    let y: T = x;
+                    y
+                },
+                1,
+            ),
+            depth - 1,
+        );
+        let cast = names_the_callers_generic((fn(x) => x as T, 1), depth - 1);
+        let explicit = names_the_callers_generic((fn(x) => ident::<T>(x), 1), depth - 1);
+        let _unused = (annotated, (cast, explicit));
+        return (pair.first(pair.rest), pair.rest);
+    }
+
+    (pair.first(pair.rest), pair.rest)
+}
+
+// Each lambda counts on its own: `fn(x) => x` captures nothing, but `fn(y) => caller(y)` captures
+// `caller`, which takes the caller's `T`, so `y` isn't checked as `Int` because `x` is
+fn one_of_two_lambdas_captures<T>(
+    pair: ((fn(value: T) -> Int, fn(value: T) -> Int), T),
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        let caller = pair.first.first;
+        return one_of_two_lambdas_captures(((fn(x) => x, fn(y) => caller(y)), 1), depth - 1);
+    }
+
+    pair.first.rest(pair.rest)
 }

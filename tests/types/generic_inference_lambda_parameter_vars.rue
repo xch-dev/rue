@@ -292,3 +292,32 @@ test fn reference_in_a_struct_or_union_element() -> Int {
         wrapper.value
     }
 }
+
+fn apply_to<T>(pair: (fn(value: T) -> T, T)) -> T {
+    pair.first(pair.rest)
+}
+
+test fn nested_call_to_the_same_function() -> Any {
+    // The inner call shares the outer call's `T`, but the inner lambda's body has no values of `T`
+    // other than `y`, so it works for any `T`, and is checked as `fn(y: Int) -> Int`, as with
+    // `apply_to::<Int>`
+    apply_to((fn(_x) => apply_to((fn(y) => y, 1)), "hi"))
+}
+
+fn call_back<T>(
+    pair: (fn(value: T, callback: fn(v: T) -> Int) -> Int, (T, fn(v: T) -> Int)),
+) -> Int {
+    pair.first(pair.rest.first, pair.rest.rest)
+}
+
+fn five_only_callback(value: 5) -> Int {
+    value
+}
+
+test fn callback_of_an_enclosing_call_left_alone() -> Int {
+    // The same when the outer lambda's `callback` isn't used in the inner lambda
+    call_back((
+        fn(_x, _callback) => call_back((fn(y, _other) => y, (7, fn(_z) => 0))),
+        (5, five_only_callback),
+    ))
+}

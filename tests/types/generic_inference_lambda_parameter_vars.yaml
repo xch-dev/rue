@@ -174,6 +174,20 @@ tests:
   runtime_cost: 1752
   byte_cost: 948000
   total_cost: 949752
+- name: nested_call_to_the_same_function
+  program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (q . 2) (q . 1)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q . 26729))) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q . 26729))) (c (q 2 (f 1) (c (r 1) ())) ()))
+  output: "1"
+  runtime_cost: 2168
+  byte_cost: 1452000
+  total_cost: 1454168
+- name: callback_of_an_enclosing_call_left_alone
+  program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (q . 2) (c (q . 7) (q))))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . 5) (q . 2)))) (c (q 2 2 (c 5 (c 7 ()))) ()))
+  debug_program: (a (q 2 4 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 7) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))))))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))))) (c (c (q 2 (f 1) (c (f (r 1)) (c (r (r 1)) ()))) (q . 2)) ()))
+  output: "7"
+  runtime_cost: 2524
+  byte_cost: 1692000
+  total_cost: 1694524
 diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:61:5

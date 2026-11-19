@@ -305,3 +305,117 @@ fn recursive_other_part<T, U>(value: U, pair: ((U, T), fn(value: T) -> Int), dep
 test fn guard_element_that_fails_for_another_generic() -> Int {
     recursive_other_part(1, ((1, 2), fn(value) => value), 1)
 }
+
+// The lambda before its value is compiled with the caller's `T`, but its body has no other values
+// of `T`, so it works for any `T`, and is checked as what the call's renamed `T` is inferred as,
+// `Int`, as with `lambda_before_its_value::<Int>`
+fn lambda_before_its_value<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        return lambda_before_its_value((fn(x) => x, 1), depth - 1);
+    }
+
+    pair.first(pair.rest)
+}
+
+test fn lambda_before_its_value_in_a_recursive_call() -> Int {
+    lambda_before_its_value((fn(x) => x, 1), 1)
+}
+
+// Values from outside of the lambda without `T` in their types don't stop it, and neither does a
+// reference to the function itself, whose `T` the reference renames
+fn lambda_with_other_captures<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        return lambda_with_other_captures(
+            (
+                fn(x) => if depth > 1 {
+                    x
+                } else {
+                    lambda_with_other_captures((fn(y) => y, 2), 0)
+                },
+                1,
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.first(pair.rest)
+}
+
+test fn lambda_with_other_captures_in_a_recursive_call() -> Int {
+    lambda_with_other_captures((fn(x) => x, 1), 1)
+}
+
+// The lambda's own bindings aren't values from outside of it, even with `T` in their types
+fn lambda_with_its_own_binding<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        return lambda_with_its_own_binding(
+            (
+                fn(x) => {
+                    let y = (x, 1);
+                    y.first
+                },
+                1,
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.first(pair.rest)
+}
+
+test fn lambda_with_its_own_binding_in_a_recursive_call() -> Int {
+    lambda_with_its_own_binding((fn(x) => x, 1), 1)
+}
+
+// A generic the lambda returns is inferred as what it's checked as, so `U` is `5`, as with
+// `lambda_returning_its_value::<5, 5>`
+fn lambda_returning_its_value<T, U>(pair: (fn(value: T) -> U, T), depth: Int) -> U {
+    if depth > 0 {
+        let narrowed: 5 = lambda_returning_its_value((fn(x) => x, 5), depth - 1);
+        return unchecked_cast(narrowed);
+    }
+
+    pair.first(pair.rest)
+}
+
+test fn lambda_returning_its_value_in_a_recursive_call() -> Int {
+    lambda_returning_its_value((fn(x) => x, 1), 1)
+}
+
+// When the call is solved again for the type expected of it, so that `y` is `5`, the lambda before
+// its value is still checked as what the call's renamed `T` is inferred as, as with
+// `next_to_another_lambda::<Int, 5, 5>`
+fn next_to_another_lambda<T, A, B>(
+    pair: (fn(value: T) -> Int, T),
+    function: fn(a: A) -> B,
+    value: A,
+    depth: Int,
+) -> B {
+    if depth > 0 {
+        let narrowed: 5 = next_to_another_lambda((fn(x) => x, 1), fn(y) => y, 5, depth - 1);
+        return unchecked_cast(narrowed);
+    }
+
+    let _result = pair.first(pair.rest);
+    function(value)
+}
+
+test fn lambda_before_its_value_next_to_another_lambda() -> Int {
+    next_to_another_lambda((fn(x) => x, 1), fn(y) => y, 5, 1)
+}
+
+// Two lambdas before their value that capture nothing are both checked as `fn(value: Int) -> Int`
+fn two_lambdas_before_their_value<T>(
+    pair: ((fn(value: T) -> Int, fn(value: T) -> Int), T),
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        return two_lambdas_before_their_value(((fn(x) => x, fn(y) => y), 1), depth - 1);
+    }
+
+    pair.first.rest(pair.rest)
+}
+
+test fn two_lambdas_before_their_value_in_a_recursive_call() -> Int {
+    two_lambdas_before_their_value(((fn(x) => x, fn(y) => y), 1), 1)
+}

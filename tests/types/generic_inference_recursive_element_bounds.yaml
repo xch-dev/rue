@@ -111,6 +111,48 @@ tests:
   runtime_cost: 3735
   byte_cost: 1572000
   total_cost: 1575735
+- name: lambda_before_its_value_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 2) (q . 1)) (- 7 (q . 1))))) (q 2 9 (c 13 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (- 7 (q . 1))))) (q 2 (f 5) (c (r 5) ()))) 1) ()))
+  output: "1"
+  runtime_cost: 3780
+  byte_cost: 1428000
+  total_cost: 1431780
+- name: lambda_with_other_captures_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (q . 1))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 (q . 1)) (q . 11) (q 2 2 (c 2 (c () (c (q . 2) (q . 2)))))) 1)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) (q . 1))))) (q 2 11 (c 15 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 (q . 1)) (q . 11) (q 2 2 (c 2 (c () (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 2)))))) 1)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) (q . 1))))) (q 2 (f 7) (c (r 7) ()))) 1) ()))
+  output: "2"
+  runtime_cost: 7371
+  byte_cost: 3108000
+  total_cost: 3115371
+- name: lambda_with_its_own_binding_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 2) (q . 1)) (- 7 (q . 1))))) (q 2 9 (c 13 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q 2 (q 5 2) (c (c 2 (q . 1)) 1))) (c (q . 1) ()))) (q . 1)) (- 7 (q . 1))))) (q 2 (f 5) (c (r 5) ()))) 1) ()))
+  output: "1"
+  runtime_cost: 3780
+  byte_cost: 1428000
+  total_cost: 1431780
+- name: lambda_returning_its_value_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (q . 2) (q . 5)) (- 7 (q . 1))))) (q 2 9 (c 13 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 (q . 2) (c (a 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)) (- 7 (q . 1))))) 1)) (q 2 (f 5) (c (r 5) ()))) 1) ()))
+  output: "5"
+  runtime_cost: 3780
+  byte_cost: 1428000
+  total_cost: 1431780
+- name: lambda_before_its_value_next_to_another_lambda
+  program: (a (q 2 2 (c 2 (c (c (q . 2) (q . 1)) (c (q . 1) (c (q . 2) (q . 5)))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 2 (c (c (q . 2) (q . 1)) (c (- 11 (q . 1)) (c (q . 2) (q . 5)))))) (q 3 () (a 9 (c 13 ())) (a 23 (c 31 ())))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)))))) (c (q 2 (i (> 11 ()) (q 2 (q . 2) (c (a 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (- 11 (q . 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)))))) 1)) (q 3 () (a (f 5) (c (r 5) ())) (a 23 (c 31 ())))) 1) ()))
+  output: "5"
+  runtime_cost: 4508
+  byte_cost: 2052000
+  total_cost: 2056508
+- name: two_lambdas_before_their_value_in_a_recursive_call
+  program: (a (q 2 2 (c 2 (c (c (c (q . 2) (q . 2)) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (c (q . 2) (q . 2)) (q . 1)) (- 7 (q . 1))))) (q 2 25 (c 13 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (q . 1)) (q . 1)))) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (q . 1)) (- 7 (q . 1))))) (q 2 (r (f 5)) (c (r 5) ()))) 1) ()))
+  output: "1"
+  runtime_cost: 3926
+  byte_cost: 1620000
+  total_cost: 1623926
 diagnostics:
 - Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:132:23
 - Unused parameter `function` at generic_inference_recursive_element_bounds.rue:155:35

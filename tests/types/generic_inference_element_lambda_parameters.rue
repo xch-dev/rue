@@ -57,3 +57,20 @@ fn map<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
 test fn recursive_call_with_an_expected_type() -> Int {
     map(fn(x) => x, 1, 1)
 }
+
+fn before_another_lambda<T, A, B>(
+    pair: (fn(value: T) -> Int, T),
+    function: fn(a: A) -> B,
+    value: A,
+) -> B {
+    let _result = pair.first(pair.rest);
+    function(value)
+}
+
+test fn lambda_before_its_value_next_to_another_lambda() -> Int {
+    // The call is solved again for the type expected of it, so that `y` is `5`, and the lambda
+    // before its value is still checked as what `T` is inferred as, as with
+    // `before_another_lambda::<Int, 5, 5>`
+    let result: 5 = before_another_lambda((fn(x) => x, 1), fn(y) => y, 5);
+    result + 1
+}

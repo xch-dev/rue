@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Symbol, Value};
+use rue_hir::{FunctionKind, FunctionSymbol, Hir, HirId, ParameterSymbol, Symbol, Value};
 use rue_types::{
-    FunctionParameter, FunctionType, Generic, Type, TypeId, Union, contains_generic,
-    substitute_with_mappings,
+    FunctionParameter, FunctionType, Generic, Type, TypeId, Union, contained_generics,
+    contains_generic, substitute_with_mappings,
 };
 
 use crate::{
@@ -42,14 +42,65 @@ pub(crate) enum ParameterWrap<'a> {
     },
 }
 
+/// An untyped parameter of a lambda that's an argument of a call whose generics are being inferred,
+/// as the reference it was compiled as (see `ParameterWrap`) and the type that refers to.
+#[derive(Debug, Clone, Copy)]
+pub struct LambdaParameter {
+    pub reference: TypeId,
+    pub ty: TypeId,
+    pub lambda: LambdaBody,
+}
+
+/// The nodes and symbols that were allocated while a lambda was compiled, which are its own: its
+/// parameters, its body, and the bindings and lambdas in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LambdaBody {
+    first_hir: HirId,
+    end_hir: HirId,
+    first_symbol: usize,
+    /// The lambda's type.
+    pub(crate) ty: TypeId,
+}
+
+impl LambdaBody {
+    /// Whether the lambda's body references a value from outside of it whose type has any of the
+    /// generics in it, such as a parameter of the function or lambda it's in. Otherwise, the only
+    /// values of the generics the body has are the ones its parameters give it, and what it does
+    /// with them is the same whatever the generics are, so it works for any type in their place.
+    /// Functions and constants are declared outside of any function, so their types can't have
+    /// these generics, other than a function's own generics, which a reference to it renames. A
+    /// value's declared type is what counts, since narrowing it can't add a generic to it.
+    pub(crate) fn captures_generics(&self, ctx: &mut Compiler, generics: &[TypeId]) -> bool {
+        let captured: Vec<TypeId> = ctx
+            .hirs_between(self.first_hir, self.end_hir)
+            .filter_map(|node| match *node {
+                Hir::Reference(symbol) if symbol.index() < self.first_symbol => {
+                    match ctx.symbol(symbol) {
+                        Symbol::Parameter(parameter) => Some(parameter.ty),
+                        Symbol::Binding(binding) => Some(binding.value.ty),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            })
+            .collect();
+
+        captured
+            .into_iter()
+            .any(|ty| !contained_generics(ctx.types_mut(), ty, generics.iter().copied()).is_empty())
+    }
+}
+
 /// Compiles a lambda, with its untyped parameters wrapped as `wrap` says, if it's given. It returns
-/// the references and the types they refer to.
+/// the parameters it wrapped.
 pub(crate) fn compile_lambda(
     ctx: &mut Compiler,
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
     wrap: Option<&ParameterWrap<'_>>,
-) -> (Value, Vec<(TypeId, TypeId)>) {
+) -> (Value, Vec<LambdaParameter>) {
+    let first_hir = ctx.next_hir_id();
+    let first_symbol = ctx.symbol_count();
     let mut wrapped = Vec::new();
 
     // The reference for each of the callee's generics, with `ParameterWrap::Generics`
@@ -240,7 +291,23 @@ pub(crate) fn compile_lambda(
 
     let hir = ctx.alloc_hir(Hir::Lambda(symbol));
 
-    (Value::new(hir, ty), wrapped)
+    let lambda = LambdaBody {
+        first_hir,
+        end_hir: ctx.next_hir_id(),
+        first_symbol,
+        ty,
+    };
+
+    let parameters = wrapped
+        .into_iter()
+        .map(|(reference, ty)| LambdaParameter {
+            reference,
+            ty,
+            lambda,
+        })
+        .collect();
+
+    (Value::new(hir, ty), parameters)
 }
 
 /// What the body of a lambda without a return annotation is expected to be: the return type of
