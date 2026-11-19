@@ -55,6 +55,24 @@ fn callback_of_an_enclosing_call() -> Int {
     ))
 }
 
+fn callback_map<A, B>(function: fn(callback: fn(x: A) -> Int, y: A) -> B, value: A) -> B {
+    function(fn(_x) => 0, value)
+}
+
+// `A` is a parameter of `callback` too, which the lambda passes `5` to, so it isn't narrowed to the
+// `7` that `B ≤ 7` would give it through `y`
+#[expect(unused_function)]
+fn generic_in_a_callback_parameter() -> Int {
+    let result: 7 = callback_map(
+        fn(callback, y) => {
+            let _unused = callback(5);
+            y
+        },
+        7,
+    );
+    result
+}
+
 fn main() -> Int {
     // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
     let computed: 5 = map(fn(x) => x + 0, 5);

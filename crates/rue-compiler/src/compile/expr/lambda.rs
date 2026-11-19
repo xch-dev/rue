@@ -159,7 +159,9 @@ pub(crate) fn compile_lambda(
         params.push(FunctionParameter::new(name, ty));
     }
 
-    make_references(ctx, &references, &wrapped);
+    if matches!(wrap, Some(ParameterWrap::Generics { .. })) {
+        make_references(ctx, &wrapped);
+    }
 
     let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));
 
@@ -289,6 +291,16 @@ fn wrap_parameter(
             continue;
         }
 
+        // Only where values of the generic flow into the lambda, which can be narrower than the
+        // body was compiled against. Where the lambda passes them out, such as to `cb` in
+        // `cb: fn(x: A) -> Int`, a narrower type would let it pass what the caller doesn't accept
+        if params
+            .iter()
+            .any(|&param| occurs_contravariantly(ctx, param, generic))
+        {
+            continue;
+        }
+
         // It's a generic until every parameter is substituted with it (see `make_references`),
         // since a mapped type is substituted itself, which would see through a reference
         let reference = *references.entry(generic).or_insert_with(|| {
@@ -308,20 +320,53 @@ fn wrap_parameter(
     substitute_with_mappings(ctx.types_mut(), source, &substitution)
 }
 
-/// Turns the placeholders that `wrap_parameter` substituted for the callee's generics into the
-/// references they stand for, once every parameter has been substituted with them.
-fn make_references(
-    ctx: &mut Compiler,
-    references: &HashMap<TypeId, TypeId>,
-    wrapped: &[(TypeId, TypeId)],
-) {
+/// Turns the placeholders that `wrap_parameter` substituted for the callee's generics, with
+/// `ParameterWrap::Generics`, into the references they stand for, once every parameter has been
+/// substituted with them.
+fn make_references(ctx: &mut Compiler, wrapped: &[(TypeId, TypeId)]) {
     for &(reference, target) in wrapped {
-        if references
-            .values()
-            .any(|&placeholder| placeholder == reference)
-        {
-            *ctx.ty_mut(reference) = Type::Ref(target);
-            ctx.report_type_as(reference, target);
+        *ctx.ty_mut(reference) = Type::Ref(target);
+        ctx.report_type_as(reference, target);
+    }
+}
+
+/// Whether the generic occurs in the type where values flow out of whoever holds a value of it,
+/// such as a parameter of a function type in it.
+fn occurs_contravariantly(ctx: &mut Compiler, ty: TypeId, generic: TypeId) -> bool {
+    let ty = rue_types::substitute(ctx.types_mut(), ty);
+    let mut visited = std::collections::HashSet::new();
+    let mut stack = vec![(ty, true)];
+
+    while let Some((ty, covariant)) = stack.pop() {
+        if !visited.insert((ty, covariant)) {
+            continue;
+        }
+
+        if ty == generic {
+            if !covariant {
+                return true;
+            }
+            continue;
+        }
+
+        match ctx.ty(ty).clone() {
+            Type::Ref(inner) => stack.push((inner, covariant)),
+            Type::Pair(pair) => stack.extend([(pair.first, covariant), (pair.rest, covariant)]),
+            Type::Union(union) => stack.extend(union.types.into_iter().map(|ty| (ty, covariant))),
+            Type::Alias(alias) => stack.push((alias.inner, covariant)),
+            Type::Struct(ty) => stack.push((ty.inner, covariant)),
+            Type::Function(function) => {
+                stack.push((function.ret, covariant));
+                stack.extend(function.param_types().map(|ty| (ty, !covariant)));
+            }
+            Type::Apply(_)
+            | Type::Unresolved
+            | Type::Generic(_)
+            | Type::Any
+            | Type::Never
+            | Type::Atom(_) => {}
         }
     }
+
+    false
 }

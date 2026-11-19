@@ -158,3 +158,13 @@ test fn generic_in_the_second_parameter() -> Int {
     let result: 5 = two_pairs(fn(_p, q) => q.first, 5);
     result + 1
 }
+
+fn rest_map<A, B>(function: fn(pair: (Int, A)) -> B, value: A) -> B {
+    function((1, value))
+}
+
+test fn rest_of_a_compound_parameter() -> Int {
+    // `p.rest` keeps the reference to `A` too
+    let result: 5 = rest_map(fn(p) => p.rest, 5);
+    result + 1
+}
