@@ -1,0 +1,99 @@
+// CLVM's shifts read the shift amount as a signed integer of at most 4 bytes, and fail for a longer
+// atom even if its value is small, such as one with leading zeros. So a shift by a constant only
+// can't fail if its atom is short enough and its value is in range, and auto-inlining must keep
+// the others. With the solution `(5 ())`, the left shifts by a long constant must fail in both
+// debug and release builds. The others pass: the shorter constants are valid shift amounts, and
+// `>>` and `>>>` negate the amount before shifting, which writes it without the leading zeros.
+// They're still treated as possibly failing, which only costs an optimization.
+
+test fn left_shift_long_constant(x: Int, flag: Bool) -> Int {
+    let shifted = x << (0x0000000001 as Int);
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn right_shift_long_constant(x: Int, flag: Bool) -> Int {
+    let shifted = x >> (0x0000000001 as Int);
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn logical_shift_long_constant(x: Int, flag: Bool) -> Int {
+    let shifted = x >>> (0x0000000001 as Int);
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn left_shift_long_const_expr(x: Int, flag: Bool) -> Int {
+    let shifted = x << const { 0x0000000001 as Int };
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn shift_long_zero_constant(x: Int, flag: Bool) -> Int {
+    let shifted = x << (0x0000000000 as Int);
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn shift_two_byte_constant(x: Int, flag: Bool) -> Int {
+    let shifted = x << (0x0001 as Int);
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn shift_four_byte_constant(x: Int, flag: Bool) -> Int {
+    let shifted = x << (0x00000001 as Int);
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+test fn shift_four_byte_negative_constant(x: Int, flag: Bool) -> Int {
+    let shifted = x << (0xffffffff as Int);
+    if flag {
+        shifted
+    } else {
+        0
+    }
+}
+
+// Division reads its divisor at any length, so only a zero divisor fails, whatever its encoding.
+
+test fn divide_long_zero_constant(x: Int, flag: Bool) -> Int {
+    let quotient = x / (0x0000000000 as Int);
+    if flag {
+        quotient
+    } else {
+        0
+    }
+}
+
+test fn divide_long_one_constant(x: Int, flag: Bool) -> Int {
+    let quotient = x / (0x0000000001 as Int);
+    if flag {
+        quotient
+    } else {
+        0
+    }
+}
