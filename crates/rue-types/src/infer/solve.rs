@@ -3,9 +3,9 @@ use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 use id_arena::Arena;
 
 use crate::{
-    BuiltinTypes, Inference, Type, TypeId, add_expected_bounds, add_lambda_var_lower_bounds,
-    pass_lower_bounds, pass_upper_bounds, resolve_inference, resolve_inference_with_bounds,
-    upper_bounds,
+    BuiltinTypes, Comparison, Inference, Type, TypeId, add_expected_bounds,
+    add_lambda_var_lower_bounds, compare, pass_lower_bounds, pass_upper_bounds, resolve_inference,
+    resolve_inference_with_bounds, upper_bounds,
 };
 
 /// Solves the generics of a call, given the candidates its arguments contribute as they're
@@ -126,6 +126,27 @@ impl CallSolver {
         }
 
         mappings
+    }
+
+    /// Replaces each of the mappings that the type expected of the call bounds on its own (see
+    /// `CallSolver::new`'s fallback) with that bound, where the mapping is assignable to it. This
+    /// is for an argument that's a call, so it's compiled against what the expected type allows,
+    /// such as `7 | 8` for `T` in `let v: 7 | 8 = either(7, id(8));`, rather than what the
+    /// arguments so far narrowed it to (`7`), which the call's own value can't widen.
+    pub fn widen_to_expected(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        mappings: &mut HashMap<TypeId, TypeId>,
+    ) {
+        for (generic, ty) in mappings.iter_mut() {
+            if let Some(&bound) = self.fallback.get(generic)
+                && bound != *ty
+                && compare(arena, builtins, *ty, bound) == Comparison::Assign
+            {
+                *ty = bound;
+            }
+        }
     }
 
     /// The mappings the call is checked with, once every argument has been compiled. The expected

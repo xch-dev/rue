@@ -1132,6 +1132,16 @@ impl Compiler {
         )
     }
 
+    /// Widens the mappings to the bounds the call's expected type gives on its own (see
+    /// `CallSolver::widen_to_expected`).
+    pub fn widen_to_expected(
+        &mut self,
+        solver: &CallSolver,
+        mappings: &mut HashMap<TypeId, TypeId>,
+    ) {
+        solver.widen_to_expected(self.db.types_mut(), &self.builtins.types, mappings);
+    }
+
     /// The mappings a call is checked with, once its arguments have been compiled (see
     /// `CallSolver::solve`).
     pub fn solve_call(&mut self, solver: &CallSolver, infer: Inference) -> HashMap<TypeId, TypeId> {

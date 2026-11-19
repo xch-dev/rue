@@ -129,6 +129,10 @@ pub(crate) fn infer_call(
         // `ArgumentOrder::takes_expected_bounds` and `CallSolver::argument_mappings`)
         if !order.takes_expected_bounds(i) {
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
+        } else if matches!(expr, AstExpr::FunctionCallExpr(_)) {
+            // A call takes the expected type's own bounds where what the arguments so far map
+            // fits them, since its value adds to the generics after it's compiled against them
+            ctx.widen_to_expected(&solver, &mut mappings);
         }
 
         // Only a lambda that's an element of a pair or list that the argument is made of is
