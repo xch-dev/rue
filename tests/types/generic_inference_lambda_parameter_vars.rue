@@ -340,3 +340,144 @@ test fn returned_binding() -> Int {
     let result: 5 = map(fn(x) => x, 5);
     result
 }
+
+type Pairish<T> = (T, Int);
+
+fn alias_map<A, B>(function: fn(p: Pairish<A>) -> B, value: A) -> B {
+    function((value, 1))
+}
+
+fn list_map_first<A, B>(function: fn(list: List<A>) -> B, value: A) -> B {
+    function([value])
+}
+
+test fn element_through_an_alias() -> Int {
+    // An alias keeps the references to `A` in what it stands for, so `p.first` still has one, and
+    // so does `list.first` in a `List<A>`, once `list` is narrowed past `nil`
+    let pair: 5 = alias_map(fn(p) => p.first, 5);
+    let list: 5 = list_map_first(
+        fn(list) => if list is nil {
+            5
+        } else {
+            list.first
+        },
+        5,
+    );
+    pair + list
+}
+
+struct Optional<T> {
+    value: T,
+    other: Int | nil,
+}
+
+fn optional_struct_map<A, B>(function: fn(w: Optional<A> | nil) -> B, value: A) -> B {
+    function(Optional::<A> { value, other: 1 })
+}
+
+fn narrowed_struct_map<A, B>(function: fn(w: Optional<A>) -> B, value: A) -> B {
+    function(Optional::<A> { value, other: 1 })
+}
+
+test fn field_of_a_narrowed_struct() -> Int {
+    // Narrowing keeps the references to `A`: past `nil`, after narrowing another field too, and in
+    // the union of the copies that narrowing a field makes, in a pair or not
+    let past_nil: 5 = optional_struct_map(
+        fn(w) => if w is nil {
+            5
+        } else {
+            w.value
+        },
+        5,
+    );
+    let other_field: 5 = optional_struct_map(
+        fn(w) => if w is nil {
+            5
+        } else if w.other is nil {
+            w.value
+        } else {
+            5
+        },
+        5,
+    );
+    let first_copies: 5 = narrowed_struct_map(
+        fn(w) => {
+            let either = if w.other is nil {
+                (w, 0)
+            } else {
+                (w, 1)
+            };
+            either.first.value
+        },
+        5,
+    );
+    let rest_copies: 5 = narrowed_struct_map(
+        fn(w) => {
+            let either = if w.other is nil {
+                (0, w)
+            } else {
+                (1, w)
+            };
+            either.rest.value
+        },
+        5,
+    );
+    past_nil + other_field + first_copies + rest_copies
+}
+
+fn list_map_two<A, B>(function: fn(list: List<A>) -> B, value: A) -> B {
+    function([value, value])
+}
+
+test fn rest_of_a_narrowed_list() -> Int {
+    // The rest of a `List<A>` is the same `List<A>`, where the alias refers to itself, so narrowing
+    // it past `nil` keeps the reference too
+    let result: 5 = list_map_two(
+        fn(list) => if list is nil {
+            5
+        } else {
+            let tail = list.rest;
+            if tail is nil {
+                5
+            } else {
+                tail.first
+            }
+        },
+        5,
+    );
+    result
+}
+
+type TwoPairs<T> = (T, Int) | (T, Bytes);
+
+fn nested_union_map<A, B>(function: fn(p: TwoPairs<A> | (A, nil)) -> B, value: A) -> B {
+    function((value, 1))
+}
+
+test fn element_of_a_union_with_an_alias_in_it() -> Int {
+    // The pairs of a union with an alias of a union in it are all of its members
+    let result: 5 = nested_union_map(fn(p) => p.first, 5);
+    result
+}
+
+test fn narrowed_part_of_a_binding_in_a_lambda() -> Int {
+    // Narrowing a part of `p` keeps the rest of it as it was, with the reference to `A` in `x`, so
+    // `B ≤ (5, 1) | nil` still reaches it
+    let narrowed: (5, 1) | nil = map(
+        fn(x) => {
+            let p = (x, 1);
+            if p.rest is 1 {
+                p
+            } else {
+                nil
+            }
+        },
+        5,
+    );
+
+    if narrowed is (5, 1) {
+        narrowed.first
+    } else {
+        0
+    }
+}

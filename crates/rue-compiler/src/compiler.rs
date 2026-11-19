@@ -22,7 +22,9 @@ use rue_options::CompilerOptions;
 use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
-use crate::{FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind, SyntaxMap};
+use crate::{
+    FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind, SyntaxMap, narrowed_with_references,
+};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
@@ -64,6 +66,10 @@ pub struct Compiler {
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
     /// symbol doesn't need to walk every enclosing scope (and each `let` statement opens one).
     overridden_symbols: HashSet<SymbolId>,
+    /// The types that narrowing gave values whose types keep the references of untyped lambda
+    /// parameters' types, each with the parts of the type before it was narrowed that make it up,
+    /// which keep them (see `narrowed_with_references`).
+    narrowed_references: HashMap<TypeId, TypeId>,
     /// The type items compiled since their contractiveness was last rechecked, which happens once
     /// every type item in a tree has been compiled (see `recheck_contractive_types`).
     unchecked_type_items: Vec<TypeId>,
@@ -179,6 +185,7 @@ impl Compiler {
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
+            narrowed_references: HashMap::new(),
             unchecked_type_items: Vec::new(),
             cancel: None,
             cancelled: false,
@@ -694,9 +701,26 @@ impl Compiler {
             let mut paths = paths.into_iter().collect::<Vec<_>>();
             paths.sort_by_key(|(path, _)| (Reverse(path.len()), path.last().copied()));
 
+            // The same narrowing of the parts that keep the references of untyped lambda
+            // parameters' types, for a value that was narrowed before (see
+            // `narrowed_with_references`)
+            let original = self.with_narrowed_references(ty);
+            let has_raw = original != ty;
+            let mut raw = original;
+
             for (path, replacement) in paths {
                 ty = replace_type(&mut self.db, &builtins, ty, replacement, &path);
+
+                if has_raw {
+                    raw = replace_type(&mut self.db, &builtins, raw, replacement, &path);
+                }
             }
+
+            if !has_raw {
+                raw = ty;
+            }
+
+            narrowed_with_references(self, original, raw, ty);
 
             self.scope_mut(scope).override_symbol_type(symbol, ty);
             self.overridden_symbols.insert(symbol);
@@ -705,6 +729,20 @@ impl Compiler {
         let index = self.scope_stack.len();
         self.push_scope(scope, start);
         index
+    }
+
+    /// Records that narrowing gave a value the type, made up of the parts of the type before it was
+    /// narrowed in `raw`, which keep the references of untyped lambda parameters' types that the
+    /// type sees through (see `narrowed_with_references`). They're the same type.
+    pub fn add_narrowed_reference(&mut self, narrowed: TypeId, raw: TypeId) {
+        self.narrowed_references.insert(narrowed, raw);
+    }
+
+    /// The type that narrowing gave a value as the parts that make it up before they were
+    /// substituted, which keep the references in them, if it's one (see `add_narrowed_reference`),
+    /// or the type itself.
+    pub fn with_narrowed_references(&self, ty: TypeId) -> TypeId {
+        self.narrowed_references.get(&ty).copied().unwrap_or(ty)
     }
 
     pub fn merge_mappings(&mut self, a: &Mappings, b: &Mappings) -> Mappings {
