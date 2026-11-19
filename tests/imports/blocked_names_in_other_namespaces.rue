@@ -6,8 +6,9 @@ fn u() -> Int {
     1
 }
 
-// An import through `super` that finds a name in some namespaces passes on its block in the
-// others. `import h;` of the name blocked by `import nope::h;` isn't reported again either.
+// An import through `super` that finds a name in some namespaces brings in the error items of the
+// others. `import h;` of the name that `import nope::h;` fails to bring in isn't reported again
+// either.
 mod inner {
     import super::u;
 

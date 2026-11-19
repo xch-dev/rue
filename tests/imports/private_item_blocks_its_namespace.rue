@@ -1,9 +1,9 @@
 import m::sha256;
 import sha256;
 
-// `m::sha256` only finds a private type, so it blocks `sha256` in the type namespace alone. The
-// import of `sha256` without a path still finds the prelude's value while that block is pending,
-// so it's reported as unused rather than failing.
+// `m::sha256` only finds a private type, so it fails in the type namespace alone. The import of
+// `sha256` without a path still finds the prelude's value, so it's reported as unused rather than
+// failing.
 mod m {
     type Sha256 = Int;
     type sha256 = Sha256;
