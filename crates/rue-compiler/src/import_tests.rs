@@ -2015,7 +2015,10 @@ fn named_imports_through_ambiguous_modules_hide_other_kinds_they_could_bring_in(
     // The first module's `m` has a type alias `Y` and `beta`'s a function `Y`, so `import
     // both::m::Y` brings in one or the other, and could bring in either. Both hide what `u2`'s
     // glob export of `both::m` could bring in, so nothing uses either `Y`, in either order, and
-    // the import is unused.
+    // the import is unused. (The glob export never brings anything in either, since it's bound
+    // to the same `m` as the import, but since the import might not bring in a `Y` of each kind,
+    // the glob export counts as possibly bringing in the one it hides, so it isn't reported as
+    // bringing in nothing, in either order.)
     for first_binds in [true, false] {
         let compiled = compile(&colliding_modules(
             first_binds,
@@ -2035,7 +2038,6 @@ fn named_imports_through_ambiguous_modules_hide_other_kinds_they_could_bring_in(
             [
                 "2:48 UnusedTypeAlias",
                 "3:45 UnusedFunction",
-                "5:41 UnusedImport",
                 "5:67 UnusedImport",
                 "5:83 UnusedImport",
             ],
@@ -2107,6 +2109,30 @@ fn named_imports_that_fail_do_not_hide_what_glob_imports_could_bring_in() {
         !results[0].1.contains(&"3:71 UnusedConstant".to_string()),
         "{results:?}"
     );
+}
+
+#[test]
+fn named_imports_that_might_bring_in_nothing_do_not_hide_glob_imports() {
+    // The import of `Y` brings in the first module's type alias or `beta`'s constant. With the
+    // constant, it hides `other`'s constant `Y` that the glob import brings in; with the type
+    // alias, the use finds `other`'s. Either way, the use could refer to either constant, so
+    // both constants and both imports are used (the type alias isn't).
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export type Y = Int;",
+            "export const Y: Int = 2;",
+            "mod other { export const Y: Int = 5; } mod user { import super::both::m::Y; import super::other::*; export fn value() -> Int { Y } } fn main() -> Int { user::value() }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["2:48 UnusedTypeAlias"],
+            "{context}"
+        );
+        assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+    }
 }
 
 #[test]

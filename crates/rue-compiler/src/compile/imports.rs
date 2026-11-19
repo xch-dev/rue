@@ -1949,6 +1949,19 @@ fn resolve_glob_import(
                         )
                 })
             {
+                // A named import that brings in something with the name here might not if its
+                // path were bound differently, and then this one would bring the item in
+                if resolution.settled
+                    && !ctx.is_error_item(item)
+                    && resolution
+                        .named_imports_of(import_scope, &name)
+                        .into_iter()
+                        .flatten()
+                        .any(|&named| ctx.is_partial_import(named, namespace))
+                {
+                    updated |= ctx.add_import_alternative(import_id, namespace, name, item);
+                }
+
                 continue;
             }
 
@@ -2242,13 +2255,28 @@ fn resolve_named_import(
     }
 
     // In each namespace that it brings nothing in, it could bring in what the other modules its
-    // path could name export with the name, if the path were bound to one of them
+    // path could name export with the name, if the path were bound to one of them. In each that it
+    // does, it might bring in nothing if one of them doesn't export anything with the name.
     if !alternatives.is_empty() {
         for namespace in Namespace::ALL {
             if found
                 .iter()
                 .any(|&(found, _)| found.namespace() == namespace && !ctx.is_error_item(found))
             {
+                let partial = alternatives.iter().any(|&module| {
+                    let scope = ctx.scope(ctx.module(module).scope);
+
+                    scope
+                        .item_with_import(namespace, name)
+                        .is_none_or(|(item, _)| {
+                            !scope.is_item_exported(item) || ctx.is_error_item(item)
+                        })
+                });
+
+                if partial {
+                    updated |= ctx.add_partial_import(import_id, namespace);
+                }
+
                 continue;
             }
 

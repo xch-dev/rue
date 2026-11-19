@@ -62,6 +62,9 @@ pub struct Database {
     /// bound to another module that glob imports bring in with it (see
     /// [`Database::import_alternatives`]).
     import_alternatives: HashMap<ImportId, IndexMap<Namespace, IndexMap<String, IndexSet<Item>>>>,
+    /// The named imports that bring in something with their name in a namespace, but might not if
+    /// their paths were bound differently (see [`Database::add_partial_import`]).
+    partial_imports: HashSet<(ImportId, Namespace)>,
     /// The glob imports that could bring in something under a name that nothing else in their
     /// scope hides (see [`Database::may_bring_in_more`]).
     globs_that_may_bring_in_more: HashSet<ImportId>,
@@ -575,6 +578,20 @@ impl Database {
     /// else too.
     pub fn has_alternatives(&self) -> bool {
         !self.import_alternatives.is_empty() || !self.ambiguous_alternatives.is_empty()
+    }
+
+    /// Records that a named import brings in something with its name in a namespace, but might
+    /// not if a name in its path were bound to another module that glob imports bring in with it,
+    /// which has nothing with the name there. Then what glob imports in its scope bring in with
+    /// the name could be what it refers to. Returns whether it wasn't already recorded.
+    pub fn add_partial_import(&mut self, import: ImportId, namespace: Namespace) -> bool {
+        self.partial_imports.insert((import, namespace))
+    }
+
+    /// Whether a named import might bring in nothing with its name in a namespace (see
+    /// [`Database::add_partial_import`]).
+    pub fn is_partial_import(&self, import: ImportId, namespace: Namespace) -> bool {
+        self.partial_imports.contains(&(import, namespace))
     }
 
     /// Records that a glob import could bring in something under a name that nothing else in

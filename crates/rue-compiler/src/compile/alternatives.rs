@@ -24,9 +24,11 @@ pub(crate) enum Place {
 /// Whether a name in a namespace is hidden in a scope from what the glob imports into it could
 /// bring in besides what they do (see
 /// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)), whichever way the
-/// names in their paths are bound. A declaration or a named import that binds it hides it, and so
-/// does a named import that brings in something with its name in another namespace but could
-/// bring in something in this one if its path were bound differently. What a glob import binds
+/// names in their paths are bound. A declaration or a named import that binds it hides it (unless
+/// the named import might bring in nothing with it if its path were bound differently, see
+/// [`Database::add_partial_import`](rue_hir::Database::add_partial_import)), and so does a named
+/// import that brings in something with its name in another namespace but could bring in
+/// something in this one if its path were bound differently. What a glob import binds
 /// doesn't, since what another one could bring in instead would collide with it, and neither does
 /// a failed import's error item (or a named import that fails), which only fills a name that
 /// nothing else brings in.
@@ -39,7 +41,10 @@ pub(crate) fn hides_alternatives(
     let bound = scope
         .item_with_import(namespace, name)
         .is_some_and(|(item, via)| {
-            !ctx.is_error_item(item) && via.is_none_or(|via| !ctx.import(via).is_glob())
+            !ctx.is_error_item(item)
+                && via.is_none_or(|via| {
+                    !ctx.import(via).is_glob() && !ctx.is_partial_import(via, namespace)
+                })
         });
 
     bound
