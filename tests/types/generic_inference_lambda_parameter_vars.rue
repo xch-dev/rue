@@ -104,6 +104,11 @@ test fn pair_expected_with_a_generic_member() -> Int {
     let result = generic_member(nil);
 
     if result is (5, Int) {
+        result.first
+    } else {
+        0
+    }
+}
 
 fn pair_map<A, B>(function: fn(pair: (A, Int)) -> B, value: A) -> B {
     function((value, 1))
@@ -133,4 +138,23 @@ test fn list_parameter() -> Int {
     } else {
         0
     }
+}
+
+fn two<A, B>(function: fn(a: A, b: A) -> B, value: A) -> B {
+    function(value, value)
+}
+
+test fn generic_in_two_parameters() -> Int {
+    // Both parameters are `A`, which is one reference in both of them
+    let result: (5, 5) = two(fn(a, b) => (a, b), 5);
+    result.first + result.rest
+}
+
+fn two_pairs<A, B>(function: fn(x: (A, Int), y: (A, Int)) -> B, value: A) -> B {
+    function((value, 1), (value, 2))
+}
+
+test fn generic_in_the_second_parameter() -> Int {
+    let result: 5 = two_pairs(fn(_p, q) => q.first, 5);
+    result + 1
 }

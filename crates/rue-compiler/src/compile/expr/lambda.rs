@@ -159,6 +159,8 @@ pub(crate) fn compile_lambda(
         params.push(FunctionParameter::new(name, ty));
     }
 
+    make_references(ctx, &references, &wrapped);
+
     let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));
 
     // Without an annotation, the lambda returns whatever its body does, but the body is expected
@@ -287,9 +289,9 @@ fn wrap_parameter(
             continue;
         }
 
+        // It's a generic until every parameter is substituted with it (see `make_references`),
+        // since a mapped type is substituted itself, which would see through a reference
         let reference = *references.entry(generic).or_insert_with(|| {
-            // It's a generic while it's substituted, since a mapped type is substituted itself,
-            // which would see through a reference
             let target = mappings.get(&generic).copied().unwrap_or(generic);
             let reference = ctx.alloc_type(Type::Generic(Generic { name: None }));
             wrapped.push((reference, target));
@@ -303,15 +305,23 @@ fn wrap_parameter(
         return ty;
     }
 
-    let ty = substitute_with_mappings(ctx.types_mut(), source, &substitution);
+    substitute_with_mappings(ctx.types_mut(), source, &substitution)
+}
 
-    for (&generic, &reference) in &substitution {
-        if matches!(ctx.ty(reference), Type::Generic(_)) {
-            let target = mappings.get(&generic).copied().unwrap_or(generic);
+/// Turns the placeholders that `wrap_parameter` substituted for the callee's generics into the
+/// references they stand for, once every parameter has been substituted with them.
+fn make_references(
+    ctx: &mut Compiler,
+    references: &HashMap<TypeId, TypeId>,
+    wrapped: &[(TypeId, TypeId)],
+) {
+    for &(reference, target) in wrapped {
+        if references
+            .values()
+            .any(|&placeholder| placeholder == reference)
+        {
             *ctx.ty_mut(reference) = Type::Ref(target);
             ctx.report_type_as(reference, target);
         }
     }
-
-    ty
 }
