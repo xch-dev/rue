@@ -44,6 +44,26 @@ fn nested_call_to_the_same_function() -> Any {
     ))
 }
 
+fn call_back<T>(
+    pair: (fn(value: T, callback: fn(v: T) -> Int) -> Int, (T, fn(v: T) -> Int)),
+) -> Int {
+    pair.first(pair.rest.first, pair.rest.rest)
+}
+
+fn five_only(value: 5) -> Int {
+    value
+}
+
+// The inner call shares the outer call's `T`, and the outer lambda's `callback` takes it, so the inner
+// lambda's `y` isn't checked as `Int`: that would pass `7` to `five_only`
+#[expect(unused_function)]
+fn callback_of_an_enclosing_call() -> Int {
+    call_back((
+        fn(_x, callback) => call_back((fn(y, _other) => callback(y), (7, fn(_z) => 0))),
+        (5, five_only),
+    ))
+}
+
 fn main() -> Int {
     // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
     let computed: 5 = map(fn(x) => x + 0, 5);

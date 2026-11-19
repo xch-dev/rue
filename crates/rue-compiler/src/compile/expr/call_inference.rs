@@ -200,7 +200,8 @@ pub(crate) fn infer_call(
 
         // It's only used if it solves the call, so a call that still fails reports what it did, and
         // if it doesn't infer a generic as a type that references the callee's generics, which a
-        // call nested in an argument of a call to the same function shares with it
+        // call nested in an argument of a call to the same function shares with it. This is a
+        // safety net: no program has been found that reaches it
         if solves_call(ctx, function, &alternative, &solved, expected_type)
             && !solved
                 .values()
@@ -257,6 +258,11 @@ pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
 /// been inferred yet, such as `x: A` in `map_list([fn(x) => x], 5)`, with them as what they're
 /// inferred as. Its body was compiled with the generic as a type it knows nothing about, so it
 /// works for whatever the generic is.
+///
+/// That's only so if nothing else in the body's scope has the generic. A call nested in an argument
+/// of a call to the same function shares its generics, and the enclosing call's lambdas can have
+/// values of them in scope, such as `cb` in `ac((fn(x, cb) => ac((fn(y, _) => cb(y), …)), …))`,
+/// so it's left as is then.
 fn instantiate_generic_parameters(
     ctx: &mut Compiler,
     function: &FunctionType,
@@ -264,6 +270,16 @@ fn instantiate_generic_parameters(
     mappings: &HashMap<TypeId, TypeId>,
     checks: &mut [Option<(AstExpr, TypeId, TypeId)>],
 ) {
+    let enclosing = ctx.inferred_generics();
+
+    if function
+        .generics
+        .iter()
+        .any(|generic| enclosing.contains(generic))
+    {
+        return;
+    }
+
     for (check, parameters) in checks.iter_mut().zip(lambda_parameters) {
         let Some((_, ty, _)) = check else {
             continue;
