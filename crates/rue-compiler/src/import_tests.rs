@@ -2017,8 +2017,9 @@ fn named_and_glob_imports_through_the_same_ambiguous_module_are_order_independen
     // uncertain, and it doesn't hide what `u2`'s glob export of `both::m` could bring in. Neither
     // could the glob export ever bring in anything the import doesn't hide (it's bound to the
     // same `m`), but the two are treated separately, so it counts as possibly bringing in either
-    // `Y`. The results are the same in either order: with no use, both `Y`s and the import are
-    // unused, and a call of `Y` through `u2`'s glob export uses the function.
+    // `Y`. The results are the same in either order: with no use, both `Y`s, the named import and
+    // the root's glob import of `u2` are unused, and a call of `Y` through `u2`'s glob export uses
+    // the function.
     for (main, expected) in [
         (
             "fn main() -> Int { 1 }",
@@ -2128,6 +2129,68 @@ fn uncertain_named_imports_through_re_exports_are_order_independent() {
     }
 }
 
+#[test]
+fn uncertain_named_imports_only_stop_hiding_their_own_name() {
+    // The import of `Y` is uncertain, but the import of `Z` isn't, and still hides the first
+    // module's `Z` that the glob import could bring in, which is unused in either order
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const Y: Int = 1; export const Z: Int = 3;",
+            "export const Y: Int = 2;",
+            "mod other { export const Z: Int = 5; } mod user { import super::both::m::Y; import super::other::Z; import super::both::m::*; export fn value() -> Int { Y + Z } } fn main() -> Int { user::value() }",
+        ));
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["2:74 UnusedConstant"],
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn uncertain_named_imports_beside_glob_imports_of_the_same_item_are_used() {
+    // `other` re-exports `beta`'s constant `Y`, the same item that the import of `Y` brings in
+    // when that `m` is bound, so the import is used in either order, and only the first module's
+    // type alias isn't
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export type Y = Int;",
+            "export const Y: Int = 2;",
+            "mod other { export super::beta::m::Y; } mod user { import super::both::m::Y; import super::other::*; export fn value() -> Int { Y } } fn main() -> Int { user::value() }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["2:48 UnusedTypeAlias"],
+            "{context}"
+        );
+        assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+    }
+}
+
+#[test]
+fn path_less_imports_from_a_parent_find_what_its_glob_imports_could_bring_in() {
+    // The parent privately glob-imports `both::m`, whose `Y` is a constant and type alias or a
+    // function, and imports another constant `Y` by name, which hides the function. `c`'s import
+    // of `super::Y` could bring in the type alias through the glob import in either order, so the
+    // glob import is used.
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const Y: Int = 1; export type Y = Int;",
+            "export fn Y() -> Int { 1 }",
+            "mod o { export const Y: Int = 9; } mod p { import super::o::Y; import super::both::m::*; mod c { import super::Y; export fn g() -> Int { Y } } export fn g() -> Int { c::g() } } fn main() -> Int { p::g() }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+    }
+}
+
 /// Compiles a template with module names in braces (such as `{a}`) replaced with `names` in
 /// order, from `a` on, so that a program found by renaming modules can be checked with its module
 /// names in each order.
@@ -2204,8 +2267,8 @@ fn hiding_by_duplicate_named_imports_does_not_depend_on_which_binds() {
     // Found by renaming modules at random. `u` imports `T` twice, once through an unambiguous
     // path and once through the ambiguous `{f}::m`, which makes what `T` is uncertain. Which of
     // them binds `T` depends on module names, but neither hides what the glob imports could bring
-    // in with it either way, so `{h}`'s glob import (which could only bring in a `T`) counts as
-    // used in either order.
+    // in with it either way, so `{h}`'s glob import (whose only name the uses could refer to is
+    // `T`) counts as used in either order.
     let template = "
         mod {a} { export mod m { export const Y: Int = 1; export mod n { export const X: Int = 2; export const Y: Int = 3; export type T = Int; } } }
         mod {b} { export mod m { export const X: Int = 4; export const Y: Int = 5; export type T = Int; } }

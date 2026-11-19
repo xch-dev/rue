@@ -29,7 +29,9 @@ pub(crate) enum Place {
 /// [`Database::add_uncertain_import`](rue_hir::Database::add_uncertain_import)), since in
 /// another order it might bring in something else, or nothing. What a glob import binds doesn't
 /// hide it, since what another one could bring in instead would collide with it, and neither does
-/// a failed import's error item, which only fills a name that nothing else brings in.
+/// a failed import's error item, which only fills a name that nothing else brings in. Only what a
+/// glob import could bring in can be hidden, since anything else that binds a named import's name
+/// would be a duplicate of it.
 pub(crate) fn hides_alternatives(
     ctx: &Compiler,
     scope: &Scope,
@@ -55,19 +57,6 @@ pub(crate) fn hides_alternatives(
         })
 }
 
-/// Whether what an import into a scope could bring in with a name is hidden there (see
-/// [`hides_alternatives`]). Only what a glob import could bring in can be, since anything else
-/// that binds a named import's name would be a duplicate of it.
-fn is_hidden(
-    ctx: &Compiler,
-    scope: &Scope,
-    import: ImportId,
-    namespace: Namespace,
-    name: &str,
-) -> bool {
-    ctx.import(import).is_glob() && hides_alternatives(ctx, scope, namespace, name)
-}
-
 /// The imports into a scope, or only the exported ones, to collect what they could bring in
 /// besides what they do (see
 /// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)).
@@ -83,15 +72,17 @@ fn alternative_imports<'a>(
 
 /// What an import into a scope could bring in besides what it does (see
 /// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)) that nothing in the
-/// scope hides (see [`is_hidden`]), with the namespace and name of each.
+/// scope hides (see [`hides_alternatives`]), with the namespace and name of each.
 pub(crate) fn unhidden_alternatives(
     ctx: &Compiler,
     scope: ScopeId,
     import: ImportId,
 ) -> impl Iterator<Item = (Namespace, &str, Item)> + '_ {
+    let glob = ctx.import(import).is_glob();
+
     ctx.all_import_alternatives(import)
         .filter(move |&(namespace, name, _)| {
-            !is_hidden(ctx, ctx.scope(scope), import, namespace, name)
+            !glob || !hides_alternatives(ctx, ctx.scope(scope), namespace, name)
         })
 }
 
@@ -110,7 +101,7 @@ pub(crate) fn scope_alternatives(
 /// What a name is bound to in one namespace where a segment of a path is looked up, if anything
 /// other than a failed import's error item, along with what else the imports there could bring in
 /// with the name, if the modules their paths name were bound differently, unless it's hidden (see
-/// [`is_hidden`]). Those are returned with the import. With `exported_only`, only what the place
+/// [`hides_alternatives`]). Those are returned with the import. With `exported_only`, only what the place
 /// exports counts, as when another module imports it.
 fn lookup(
     ctx: &Compiler,

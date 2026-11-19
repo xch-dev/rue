@@ -32,6 +32,16 @@ pub enum Item {
 }
 
 impl Item {
+    /// The item that a declaration is in a namespace, if it's one there.
+    pub fn from_declaration(namespace: Namespace, declaration: Declaration) -> Option<Self> {
+        match (namespace, declaration) {
+            (Namespace::Value, Declaration::Symbol(symbol)) => Some(Self::Value(symbol)),
+            (Namespace::Module, Declaration::Symbol(symbol)) => Some(Self::Module(symbol)),
+            (Namespace::Type, Declaration::Type(ty)) => Some(Self::Type(ty)),
+            _ => None,
+        }
+    }
+
     /// The symbol, if it's a value or a module.
     pub fn symbol(self) -> Option<SymbolId> {
         match self {
@@ -53,18 +63,6 @@ impl Item {
             Self::Value(_) => Namespace::Value,
             Self::Type(_) => Namespace::Type,
             Self::Module(_) => Namespace::Module,
-        }
-    }
-}
-
-impl Item {
-    /// The item that a declaration is in a namespace, if it's one there.
-    pub fn from_declaration(namespace: Namespace, declaration: Declaration) -> Option<Self> {
-        match (namespace, declaration) {
-            (Namespace::Value, Declaration::Symbol(symbol)) => Some(Self::Value(symbol)),
-            (Namespace::Module, Declaration::Symbol(symbol)) => Some(Self::Module(symbol)),
-            (Namespace::Type, Declaration::Type(ty)) => Some(Self::Type(ty)),
-            _ => None,
         }
     }
 }

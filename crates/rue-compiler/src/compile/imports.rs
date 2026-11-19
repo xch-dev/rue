@@ -273,7 +273,7 @@ impl ImportCache {
 
             let by_glob = module
                 .item_import(item)
-                .is_some_and(|via| matches!(ctx.import(via).items, Items::All(_)));
+                .is_some_and(|via| ctx.import(via).is_glob());
 
             if !by_glob {
                 continue;
@@ -282,7 +282,7 @@ impl ImportCache {
             for glob in module.imports() {
                 let glob = ctx.import(glob);
 
-                if matches!(glob.items, Items::All(_))
+                if glob.is_glob()
                     && glob.exported
                     && glob.from_parent
                     && glob.path.is_empty()
@@ -997,9 +997,8 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
 
                 // A binding that a named import (other than this one) made takes precedence over
                 // what a glob import brings in, so it isn't this import's, whatever it brings in
-                let own = via.is_some_and(|via| {
-                    via == import || matches!(ctx.import(via).items, Items::All(_))
-                }) && brings_in(ctx, cache, import, forced, item);
+                let own = via.is_some_and(|via| via == import || ctx.import(via).is_glob())
+                    && brings_in(ctx, cache, import, forced, item);
 
                 ctx.is_ambiguous_import(via, item.into()) || (item != answer && !own)
             });
@@ -1282,7 +1281,7 @@ fn stuck_lookups(
                 return false;
             }
 
-            let shadowed = matches!(ctx.import(import).items, Items::All(_))
+            let shadowed = ctx.import(import).is_glob()
                 && resolution
                     .named_imports_of(lookup.forced.scope, lookup.forced.name.text())
                     .into_iter()
@@ -2292,7 +2291,14 @@ fn resolve_named_import(
                 continue;
             }
 
-            let place = base.map(Place::Scope);
+            // It finds its name in the module its path names, which only has what that exports
+            // for it, or without a path, in the module `super` or `project` names, or the scope
+            // it's in
+            let (place, exported_only) = match base {
+                Some(base) => (Place::Scope(base), true),
+                None if import.from_parent => (Place::Scope(import.base_scope), false),
+                None => (Place::Chain(import_scope), false),
+            };
             let namespaces = [namespace];
 
             // What another named import of the name brings in here is that one's, which this one
@@ -2305,8 +2311,23 @@ fn resolve_named_import(
                 })
                 .map(|(item, _)| item);
 
-            for (item, _) in alternative_items(ctx, place, alternatives, &namespaces, name, true) {
+            let found = alternative_items(
+                ctx,
+                Some(place),
+                alternatives,
+                &namespaces,
+                name,
+                exported_only,
+            );
+
+            for (item, via) in found {
                 uncertain = true;
+
+                // The import it's found through would be used by this one, like one it finds its
+                // name through
+                if let Some(via) = via.filter(|&via| via != import_id) {
+                    ctx.add_import_reference(via, item.into(), ImportUser::Import(import_id));
+                }
 
                 if Some(item) != binding {
                     updated |=
