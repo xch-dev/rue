@@ -855,7 +855,9 @@ fn test_nested_generic_functions_in_cycles(
             })
         });
         assert_eq!(result, expected);
-        assert!(steps < 100_000, "took {steps} steps");
+        // They each take a few thousand steps. Starting in a single pass, or not memoizing the
+        // comparisons that refer to instances, takes about ten times as many
+        assert!(steps < 10_000, "took {steps} steps");
     });
 }
 
@@ -896,6 +898,14 @@ fn test_held_by_revisit() {
     with_large_stack(|| {
         let results = in_every_mode(held_by_revisit);
         assert_eq!(results, [Comparison::Invalid; 3]);
+
+        // Inferring always compares in exact mode, which gives it the same result
+        let mut db = Types::new();
+        let (lhs, rhs) = held_by_revisit(&mut db);
+        let mut infer = Inference::new([]);
+        let result =
+            compare_with_inference(&mut db.arena, &db.builtins, lhs, rhs, Some(&mut infer));
+        assert_eq!(result, Comparison::Invalid);
     });
 }
 
@@ -1400,7 +1410,9 @@ fn test_memo_differential_nested() {
     let summary = with_large_stack(|| differential(0..150, 4, true, HEAVY_NESTING));
     println!("{summary:?}");
     assert!(summary.cases > 250, "{summary:?}");
-    assert!(summary.gave_up_with_memo <= 2, "{summary:?}");
+    // Comparisons of generic functions that nest their generics iterate in fixpoint mode, so none
+    // of these give up with the memo (#344)
+    assert_eq!(summary.gave_up_with_memo, 0, "{summary:?}");
     assert!(summary.gave_up_iterating <= 2, "{summary:?}");
 
     // These gave different results when generic functions that nest their generics were compared

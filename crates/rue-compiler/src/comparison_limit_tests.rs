@@ -4,7 +4,8 @@ use crate::test_utils::compile_with;
 
 /// A comparison gives up once it takes too many steps, and each place that compares types reports
 /// it as too complex. No program in the tests takes anywhere near the real limit since #362's step
-/// 13b.3 (`tests/types/comparison_too_complex.rue` used to), so this one runs with a low limit.
+/// 13b.3 (`tests/types/comparison_too_complex.rue` used to), so this one runs with a low limit:
+/// comparing `A` with `B` takes about 20 steps, and the other comparisons here at most about 7.
 #[test]
 fn comparisons_that_take_too_many_steps_are_too_complex() {
     let source = "
@@ -20,7 +21,7 @@ fn comparisons_that_take_too_many_steps_are_too_complex() {
         }
     ";
 
-    let compiled = with_comparison_step_limit(10, || compile_with(source, |_| {}));
+    let compiled = with_comparison_step_limit(15, || compile_with(source, |_| {}));
 
     assert_eq!(
         compiled.errors(),
