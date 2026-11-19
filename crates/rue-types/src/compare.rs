@@ -145,8 +145,9 @@ struct Binder {
 }
 
 /// The bounds collected for a generic being instantiated, which are checked against each other
-/// once the comparison that bound it has finished.
-#[derive(Debug, Default, Clone)]
+/// once the comparison that bound it has finished, and again by an enclosing function comparison
+/// if checking that one's bounds adds to them.
+#[derive(Debug, Default)]
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
@@ -277,7 +278,8 @@ pub(crate) struct ComparisonContext<'a> {
     rhs_env: Option<usize>,
     /// The bounds of the generics being instantiated, indexed by `Binder::instance`.
     instances: Vec<Instance>,
-    /// The instances before this index are rigid, since they belong to enclosing comparisons.
+    /// The instances before this index are rigid: they belong to enclosing comparisons, or to the
+    /// one whose bounds are being checked.
     instantiable_from: usize,
     /// What the generics referenced by the types in each `ComparisonKey` are bound to, for each
     /// side and generic.
@@ -1643,6 +1645,9 @@ fn compare_structure(
                 let own = ctx.instances.len();
                 ctx.lhs_env = ctx.bind(lhs_env, &lhs.generics, true);
                 ctx.rhs_env = ctx.bind(rhs_env, &rhs.generics, false);
+                // The instances of the generic functions compared inside of this one come after
+                // its own
+                let inner = ctx.instances.len();
 
                 // The return type is covariant, since the value returned by the function flows
                 // out to whoever expects the right hand side's return type.
@@ -1664,17 +1669,13 @@ fn compare_structure(
 
                 ctx.flipped = !ctx.flipped;
 
-                // The instances of the generic functions compared inside of this one come after
-                // its own, and keep their bounds, since they can still be instantiated while its
-                // own are checked (below)
-                let inner = own + lhs.generics.len();
-                let mut bounds = Vec::new();
-
+                // This one's own instances keep their bounds, since an enclosing comparison can
+                // instantiate them again while it checks its own (below)
                 for index in first..first + lhs.generics.len() {
-                    let instance = ctx.binders[index].instance.unwrap();
-                    let instance = ctx.instances[instance].clone();
+                    let slot = ctx.binders[index].instance.unwrap();
+                    let instance = mem::take(&mut ctx.instances[slot]);
                     ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
-                    bounds.push(instance);
+                    ctx.instances[slot] = instance;
                 }
 
                 // There is an instantiation of each generic if every type that flows into it is
@@ -1692,19 +1693,19 @@ fn compare_structure(
                     .map(|instance| (instance.lower.len(), instance.upper.len()))
                     .collect();
                 let instantiable_from = mem::replace(&mut ctx.instantiable_from, inner);
-                result = max(result, check_bounds(arena, builtins, ctx, &bounds));
+                result = max(result, check_bounds(arena, builtins, ctx, own..inner));
 
-                let grown: Vec<Instance> = ctx.instances[inner..end]
-                    .iter()
+                let grown: Vec<usize> = (inner..end)
                     .zip(before)
-                    .filter(|(instance, (lower, upper))| {
-                        instance.lower.len() > *lower || instance.upper.len() > *upper
+                    .filter(|&(index, (lower, upper))| {
+                        let instance = &ctx.instances[index];
+                        instance.lower.len() > lower || instance.upper.len() > upper
                     })
-                    .map(|(instance, _)| instance.clone())
+                    .map(|(index, _)| index)
                     .collect();
 
                 ctx.instantiable_from = ctx.instances.len();
-                result = max(result, check_bounds(arena, builtins, ctx, &grown));
+                result = max(result, check_bounds(arena, builtins, ctx, grown));
 
                 ctx.instantiable_from = instantiable_from;
                 ctx.lhs_env = lhs_env;
@@ -1981,13 +1982,16 @@ fn check_bounds(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut ComparisonContext<'_>,
-    instances: &[Instance],
+    instances: impl IntoIterator<Item = usize>,
 ) -> Comparison {
     let mut result = Comparison::Assign;
 
-    'bounds: for instance in instances {
-        for &(lower, lower_env, lower_branches) in &instance.lower {
-            for &(upper, upper_env, upper_branches) in &instance.upper {
+    // The instances are rigid while checking, so their bounds don't change
+    'bounds: for index in instances {
+        for lower in 0..ctx.instances[index].lower.len() {
+            for upper in 0..ctx.instances[index].upper.len() {
+                let (lower, lower_env, lower_branches) = ctx.instances[index].lower[lower];
+                let (upper, upper_env, upper_branches) = ctx.instances[index].upper[upper];
                 // There can be many bounds, so this stops once it's giving up
                 if ctx.spend() {
                     break 'bounds;
