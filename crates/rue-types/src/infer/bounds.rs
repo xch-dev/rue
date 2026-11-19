@@ -165,7 +165,9 @@ fn with_added_var_lower_bounds(
         for (&generic, candidates) in &infer.generics {
             for (index, &upper) in candidates.upper.iter().enumerate() {
                 if upper == var && generic != var {
-                    let branches = infer.branches(generic, CandidateKind::Upper, index).to_vec();
+                    let branches = infer
+                        .branches(generic, CandidateKind::Upper, index)
+                        .to_vec();
                     derived.push((var, generic, branches));
                 }
             }
