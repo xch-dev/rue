@@ -1175,9 +1175,9 @@
 31451.0: T2<nil> to T1<Bytes>, target ({generic 0}, T1<Bytes>)
     Invalid Invalid Invalid [["fn<{generic 1}>(p0: {generic 1}, p1: nil, p2: T2<{generic 1}>) -> nil | nil | Bytes32"], [], []] Ok(Impossible) Never
 31451.1: T2<Bytes> to T2<nil>, target ({generic 0}, T2<nil>)
-    Invalid Invalid Invalid [["fn<{generic 1}>(p0: {generic 1}, p1: Bytes, p2: T2<{generic 1}>) -> Bytes | Bytes | Bytes32 | nil"], [], []] Err(FunctionType) (fn<{generic 1}>(p0: {generic 1}, p1: nil, p2: T2<{generic 1}>) -> nil | nil | Bytes32, (T2<true>, T2<nil> | nil | T0))
+    gave up
 31451.2: T2<true | false> to T2<true>, target ({generic 0}, T2<true>)
-    Invalid Invalid Invalid [["fn<{generic 1}>(p0: {generic 1}, p1: true | false, p2: T2<{generic 1}>) -> true | false | true | false | Bytes32 | nil"], [], []] Err(FunctionType) (fn<{generic 1}>(p0: {generic 1}, p1: true, p2: T2<{generic 1}>) -> true | true | Bytes32 | nil | false, (T2<true>, T2<nil> | true | T0))
+    gave up
 31451.3: T2<Bytes> to T1<true | false>, target {generic 0} | T1<true | false>
     Invalid Invalid Assign [["(fn<{generic 1}>(p0: {generic 1}, p1: Bytes, p2: T2<{generic 1}>) -> Bytes | Bytes | Bytes32 | nil, (T2<true>, T2<nil> | Bytes | T0))"], [], []] Ok(Impossible) Never
 31451.4: T0 to T2<Int>, target {generic 0} | T2<Int>

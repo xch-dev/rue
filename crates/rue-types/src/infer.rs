@@ -647,6 +647,30 @@ impl Choices {
         self.matched_since(branch, 0)
     }
 
+    /// Whether the union members are alternatives: they're different members of one union, or
+    /// nested in different members of one.
+    pub(crate) fn exclusive(&self, lhs: BranchId, rhs: BranchId) -> bool {
+        let mut ancestors = Vec::new();
+        let mut next = Some(lhs);
+
+        while let Some(branch) = next {
+            ancestors.push(branch);
+            next = self.0[branch.choice].parent;
+        }
+
+        let mut next = Some(rhs);
+
+        while let Some(branch) = next {
+            if let Some(other) = ancestors.iter().find(|other| other.choice == branch.choice) {
+                return other.member != branch.member;
+            }
+
+            next = self.0[branch.choice].parent;
+        }
+
+        false
+    }
+
     /// The result of each choice, the best that any member or the fallback gave, or `None` if the
     /// member it's nested in doesn't hold. A choice is opened after the one it's nested in, so they
     /// can be worked out in order.
@@ -706,6 +730,49 @@ impl InferenceCandidates {
             CandidateKind::Lower => &mut self.lower,
             CandidateKind::Upper => &mut self.upper,
             CandidateKind::Held => &mut self.held,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exclusive_members() {
+        let mut choices = Choices::default();
+        let branch = |choice, member| BranchId { choice, member };
+
+        // `first` and `second` are nested in different members of `outer`, `other` in neither
+        let outer = choices.open(None, 2);
+        let first = choices.open(Some(branch(outer, 0)), 2);
+        let second = choices.open(Some(branch(outer, 1)), 2);
+        let other = choices.open(None, 2);
+
+        let exclusive = [
+            (branch(outer, 0), branch(outer, 1)),
+            (branch(first, 0), branch(second, 0)),
+            (branch(second, 0), branch(first, 0)),
+            (branch(outer, 1), branch(first, 0)),
+            (branch(first, 0), branch(outer, 1)),
+            (branch(first, 0), branch(first, 1)),
+            (branch(outer, FALLBACK), branch(first, 0)),
+        ];
+
+        let not_exclusive = [
+            (branch(outer, 0), branch(outer, 0)),
+            (branch(outer, 0), branch(first, 1)),
+            (branch(first, 1), branch(outer, 0)),
+            (branch(first, 0), branch(other, 1)),
+            (branch(outer, FALLBACK), branch(outer, FALLBACK)),
+        ];
+
+        for (lhs, rhs) in exclusive {
+            assert!(choices.exclusive(lhs, rhs), "{lhs:?} and {rhs:?}");
+        }
+
+        for (lhs, rhs) in not_exclusive {
+            assert!(!choices.exclusive(lhs, rhs), "{lhs:?} and {rhs:?}");
         }
     }
 }
