@@ -1,7 +1,7 @@
 tests:
 - name: shared_pairs
   program: ()
-  debug_program: (a (q 2 (q 7 (a 5 2)) (c () 1)) (c (q . 1) ()))
+  debug_program: (a (q 2 (q 32 (not (a 5 2))) (c () 1)) (c (q . 1) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000

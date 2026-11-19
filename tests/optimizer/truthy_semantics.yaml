@@ -48,7 +48,7 @@ tests:
   total_cost: 204590
 - name: pair_condition_raises
   program: (a (q 3 (c (a 2 5) ()) (q . 2) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 1 . 1) (q 1 . 2)) 1) (c (c (a 2 5) ()) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i (not 2) (q 1 . 1) (q 1 . 2)) 1) (c (c (a 2 5) ()) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 828000
   clvm_error: clvm raise ()
@@ -71,16 +71,48 @@ tests:
   debug_clvm_error: "InvalidOperatorArg: = used on list"
 - name: list_is_nil_atom
   program: (i 2 (q . 2) (q . 1))
-  debug_program: (a (i (not (l 2)) (q 1 . 1) (q 1 . 2)) 1)
+  debug_program: (a (i (not 2) (q 1 . 1) (q 1 . 2)) 1)
   solution: (5)
   output: "2"
-  debug_output: "1"
   runtime_cost: 122
   byte_cost: 156000
   total_cost: 156122
+- name: list_atom_terminator
+  program: (a (i 2 (q . 4) (q)) 1)
+  debug_program: (a (i (not 2) (q) (q 5 2)) 1)
+  solution: (5)
+  byte_cost: 228000
+  clvm_error: path into atom
+  debug_clvm_error: "InvalidOperatorArg: first of non-cons"
+- name: list_atom_terminator_raise
+  program: (a (i 2 (q 1 . 1) (q 8)) 1)
+  debug_program: (a (i (not 2) (q 8 (q . "raise called at truthy_semantics.rue:94:9")) (q 1 . 1)) 1)
+  solution: (5)
+  output: "1"
+  runtime_cost: 277
+  byte_cost: 276000
+  total_cost: 276277
+- name: list_atom_terminator_value
+  program: (not 2)
+  debug_program: (not 2)
+  solution: (5)
+  output: ()
+  runtime_cost: 249
+  byte_cost: 60000
+  total_cost: 60249
+- name: list_atom_terminator_walk
+  program: (a (q 2 2 (c 2 5)) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) (q)) 1) 1))
+  debug_program: (a (q 2 2 (c 2 5)) (c (q 2 (i (not 3) (q) (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) 1))
+  solution: ((1 2 . 5))
+  byte_cost: 780000
+  clvm_error: path into atom
+  debug_clvm_error: "InvalidOperatorArg: rest of non-cons"
 diagnostics:
 - |-
   Unnecessary comparison with `true` at truthy_semantics.rue:21:5
     help: Use the value directly
 - Value returned by statement is unused at truthy_semantics.rue:61:5
 - Value returned by statement is unused at truthy_semantics.rue:62:5
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at truthy_semantics.rue:93:5
+    help: Replace it with an `assert`

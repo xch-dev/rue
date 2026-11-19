@@ -8,7 +8,7 @@ tests:
   total_cost: 300706
 - name: alternating_count
   program: (a (q 2 2 (c 2 (c (q . 1) (c (sha256 (q . 97)) (q 2))))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) (q)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 (c 5 2)) (c (c (q . 1) (c (sha256 (q . 97)) (c (q . 2) ()))) 1)) (c (q 2 (i (not (l 3)) (q) (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 5 2)) (c (c (q . 1) (c (sha256 (q . 97)) (c (q . 2) ()))) 1)) (c (q 2 (i (not 3) (q) (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) ()))
   output: "3"
   runtime_cost: 5437
   byte_cost: 1092000
@@ -57,7 +57,7 @@ tests:
   total_cost: 228635
 - name: fixed_length
   program: (a (q 2 2 (c 2 (c (sha256 (q . 97)) (q 1 2)))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) (q)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 (c 5 2)) (c (c (sha256 (q . 97)) (c (q . 1) (c (q . 2) ()))) 1)) (c (q 2 (i (not (l 3)) (q) (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 5 2)) (c (c (sha256 (q . 97)) (c (q . 1) (c (q . 2) ()))) 1)) (c (q 2 (i (not 3) (q) (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) ()))
   output: "3"
   runtime_cost: 5366
   byte_cost: 1020000

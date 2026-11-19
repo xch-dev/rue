@@ -147,14 +147,17 @@ fn quoted_program_reading_the_environment_deep_inside() {
 fn deeply_nested_condition() {
     on_small_stack(|| {
         let mut arena = Arena::new();
-        let mut condition = path(&mut arena, 2);
+        let value = path(&mut arena, 2);
+        let mut condition = arena.alloc(Lir::Not(value));
+        condition = arena.alloc(Lir::Not(condition));
+        let nil = nil(&mut arena);
         for _ in 0..DEPTH {
-            condition = arena.alloc(Lir::Listp(condition, false));
+            let check = path(&mut arena, 5);
+            condition = arena.alloc(Lir::If(check, condition, nil, false));
         }
 
-        // The truthiness of a list check is that of the list, all the way down
+        // Only the truthiness of each branch is observed, all the way down
         let one = arena.alloc(Lir::Atom(vec![1]));
-        let nil = nil(&mut arena);
         let lir = arena.alloc(Lir::If(condition, one, nil, false));
 
         compile_all_ways(&mut arena, lir);

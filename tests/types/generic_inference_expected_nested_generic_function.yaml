@@ -28,12 +28,12 @@ tests:
   byte_cost: 2580000
   total_cost: 2584251
 - name: union_at_the_inner_level
-  program: (a (q 32 (a (i (l 2) (q) (q 9 2 ())) 1)) (c (a (q 4 (q . 2) (c (c (q . 1) (q 4 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 9)) 1))
+  program: (a (q 32 (a (i (l 2) (q) (q 32 2)) 1)) (c (a (q 4 (q . 2) (c (c (q . 1) (q 4 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 9)) 1))
   debug_program: (a (q 2 (q 2 (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q 1 . 1)) 1) (c (a 2 (c (q . 9) ())) 1)) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 (q . 2) (c (c (q . 1) (q 4 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) ()))
   output: "1"
   runtime_cost: 1523
-  byte_cost: 1500000
-  total_cost: 1501523
+  byte_cost: 1476000
+  total_cost: 1477523
 - name: guard_recursive_function_type
   program: (q . 10)
   debug_program: (q . 10)

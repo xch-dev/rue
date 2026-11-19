@@ -14,12 +14,12 @@ tests:
   byte_cost: 252000
   total_cost: 253199
 - name: passed_directly
-  program: (a (q 2 (a 2 (c (q 16 2 (q . 1)) (q 17 2 (q . 1)))) (q 4)) (c (q 2 (i (a (i (l 2) (q) (q 9 2 ())) 1) (q . 3) (q . 2)) 1) ()))
+  program: (a (q 2 (a 2 (c (q 16 2 (q . 1)) (q 17 2 (q . 1)))) (q 4)) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
   debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 17 2 (q . 1)) (c (q 16 2 (q . 1)) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1))) ()))
   output: "5"
   runtime_cost: 1969
-  byte_cost: 1260000
-  total_cost: 1261969
+  byte_cost: 1236000
+  total_cost: 1237969
 - name: nested_calls
   program: (a (q 16 2 (q . 1)) (q 9))
   debug_program: (a (q 2 (q 2 2 (c (q . 9) ())) (c (a 14 (a 10 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 1) (q . 1))) ()))
@@ -35,12 +35,12 @@ tests:
   byte_cost: 252000
   total_cost: 252955
 - name: guard_literal_alongside
-  program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (q 5 . 6)) ())) (c (q 2 (i (a (i (l 2) (q) (q 9 2 ())) 1) (q . 3) (q . 2)) 1) ()))
+  program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (q 5 . 6)) ())) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
   debug_program: (a (q 2 10 (c 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 5) (q . 6))))) (c (c (q 16 2 (q . 1)) (c (q 2 5 (c (a 2 (c 11 15)) ())) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1))) ()))
   output: "6"
-  runtime_cost: 2160
-  byte_cost: 1140000
-  total_cost: 1142160
+  runtime_cost: 2198
+  byte_cost: 1116000
+  total_cost: 1118198
 - name: generic_function
   program: (a (q . 2) (q 8))
   debug_program: (a (q 2 (q 2 2 (c (q . 8) ())) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q . 2) (q . 1)) ()))

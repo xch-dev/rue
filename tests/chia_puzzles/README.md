@@ -18,13 +18,14 @@ Their tree hashes are expected to differ from the reference, and to change as th
 ## Known differences from the originals
 
 The ports trust their parameter types, so on inputs that don't match those types they can accept a
-spend the original rejects, or the other way around. The tests only use inputs that match. There are
-two known cases:
+spend the original rejects, or the other way around. The tests only use inputs that match.
 
-- **Lists that end in an atom other than nil.** A port checks whether a `List` has ended with
-  `is nil`, which compiles to a check for a pair, while Chialisp's `(if list ...)` checks whether
-  the value is non-nil. On a list such as `(a b . 5)` the original fails on `(f 5)`, while the
-  port stops at `5` and carries on.
+A list that ends in an atom other than nil, such as `(a b . 5)`, isn't one of these cases. `is nil`
+on a `List` checks whether the value is nil, the same way Chialisp's `(if list ...)` does, so a port
+fails on `(f 5)` like the original, in debug and release builds alike.
+
+There is one known case:
+
 - **Coin ids.** Ports use the `coinid` operator where the original calls `calculate_coin_id`, which
   only checks lengths and that the amount isn't negative. `coinid` also rejects amounts with leading
   zero bytes or above the largest coin amount, which no real coin can have.
