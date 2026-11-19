@@ -43,9 +43,10 @@ pub struct Database {
     relevant_imports: IndexSet<ImportId>,
     /// The declarations referenced through each import, along with where they were referenced.
     import_references: HashMap<ImportId, IndexMap<Declaration, IndexSet<ImportUser>>>,
-    /// The bindings each glob import shares with the glob import that bound the name, as that
-    /// import, the declaration it bound, and the declaration this one brings in under the name.
-    shared_glob_bindings: HashMap<ImportId, IndexSet<(ImportId, Declaration, Declaration)>>,
+    /// The bindings each import shares with the import that bound the name (see
+    /// [`Database::add_shared_binding`]), as that import, the declaration it bound, and the
+    /// declaration this one brings in under the name.
+    shared_bindings: HashMap<ImportId, IndexSet<(ImportId, Declaration, Declaration)>>,
     /// The other declarations that a name could refer to, because glob imports bring in different
     /// declarations with it, keyed by the import that the name refers to a declaration through and
     /// that declaration.
@@ -367,17 +368,18 @@ impl Database {
             .copied()
     }
 
-    /// Records that a glob import brings a declaration in under a name that another glob import
-    /// bound, so that a reference through the binding is a reference through both of them,
-    /// whichever bound the name. Returns whether it wasn't already recorded.
-    pub fn add_shared_glob_binding(
+    /// Records that an import brings a declaration in under a name that another import of the same
+    /// kind bound (glob imports, which may bring in different declarations, or named imports of
+    /// the same declaration), so that a reference through the binding is a reference through both
+    /// of them, whichever bound the name. Returns whether it wasn't already recorded.
+    pub fn add_shared_binding(
         &mut self,
         bound_by: ImportId,
         bound: Declaration,
         import: ImportId,
         declaration: Declaration,
     ) -> bool {
-        self.shared_glob_bindings
+        self.shared_bindings
             .entry(import)
             .or_default()
             .insert((bound_by, bound, declaration))
@@ -407,7 +409,7 @@ impl Database {
             .flat_map(|(&declaration, users)| users.iter().map(move |&user| (declaration, user)));
 
         let shared = self
-            .shared_glob_bindings
+            .shared_bindings
             .get(&import)
             .into_iter()
             .flatten()

@@ -1614,6 +1614,78 @@ fn unused_colliding_glob_items_are_all_unused() {
 }
 
 #[test]
+fn named_imports_of_the_same_item_share_its_binding() {
+    // Two named imports bring in the same `X`. Whichever is resolved first binds the name, which
+    // depends on module names, so the other shares its binding, like glob imports that bring in
+    // the same name: both are used if it is, and both are unused if it isn't.
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (body, expected) in [
+            ("X", vec![]),
+            ("1", vec!["5:43 UnusedImport", "5:64 UnusedImport"]),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {first} {{ export super::src::X; }}
+                mod {second} {{ export super::src::X; }}
+                mod u {{ import super::{first}::X; import super::{second}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("first: {first}, body: {body}");
+
+            compiled.assert_no_errors();
+            assert_eq!(unused_imports(&compiled), expected, "{context}");
+        }
+    }
+}
+
+#[test]
+fn several_named_imports_of_the_same_item_share_its_binding() {
+    // Three named imports of the same `X`, with their modules named in every order, so that each
+    // of them binds the name in some order. The others share the binding either way.
+    let names = ["ma", "mm", "mz"];
+
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let [a, b, c] = order.map(|index| names[index]);
+
+        for (body, expected) in [
+            ("X", vec![]),
+            (
+                "1",
+                vec![
+                    "6:43 UnusedImport",
+                    "6:64 UnusedImport",
+                    "6:85 UnusedImport",
+                ],
+            ),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {a} {{ export super::src::X; }}
+                mod {b} {{ export super::src::X; }}
+                mod {c} {{ export super::src::X; }}
+                mod u {{ import super::{a}::X; import super::{b}::X; import super::{c}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("{a} {b} {c}, body: {body}");
+
+            compiled.assert_no_errors();
+            assert_eq!(unused_imports(&compiled), expected, "{context}");
+        }
+    }
+}
+
+#[test]
 fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others() {
     // The first module's `V` calls the function that uses `V`, which is only recursive if the
     // name is bound to it. The use counts as a use of the other `V` too, but isn't a reference to
