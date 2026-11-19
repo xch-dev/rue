@@ -1,0 +1,60 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+struct Size {
+    w: Int,
+    h: Int,
+}
+
+fn int_to_bytes32(x: Int) -> Bytes32 {
+    if (x as Bytes) is Bytes32 {
+        let y: Bytes32 = x;
+        return y;
+    }
+    sha256(x as Bytes)
+}
+
+fn int_to_bytes32_direct(x: Int) -> Bytes32 {
+    if x is Bytes32 {
+        return x;
+    }
+    sha256(x as Bytes)
+}
+
+fn bool_to_int(b: Bool) -> Int {
+    if (b as Int) is 1 {
+        let i: Int = b;
+        return i;
+    }
+    0
+}
+
+fn pair_to_struct(p: (Int, (Int, nil)) | nil) -> Point {
+    if (p as Point | nil) is Point {
+        return p;
+    }
+    Point { x: 0, y: 0 }
+}
+
+fn struct_to_struct(p: Point | nil) -> Size {
+    if (p as Size | nil) is Size {
+        return p;
+    }
+    Size { w: 0, h: 0 }
+}
+
+fn field_to_bytes32(p: Point) -> Bytes32 {
+    if (p.x as Bytes) is Bytes32 {
+        return p.x;
+    }
+    sha256(p.x as Bytes)
+}
+
+fn grouped_to_bytes32(x: Int) -> Bytes32 {
+    if ((x) as Bytes) is Bytes32 {
+        return x;
+    }
+    sha256(x as Bytes)
+}

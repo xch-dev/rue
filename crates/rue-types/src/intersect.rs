@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    BuiltinTypes, Comparison, ComparisonContext, FxIndexSet, Memo, OverlapMemo, Pair, Struct, Type,
+    Atom, BuiltinTypes, Comparison, ComparisonContext, FxIndexSet, Memo, OverlapMemo, Pair, Struct, Type,
     TypeId, Union, compare, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
     stringify_impl, substitute, types_may_overlap, unwrap_semantic_without_substitution,
 };
@@ -17,9 +17,14 @@ const MAX_DEPTH: usize = 25;
 /// sound to narrow a value to the result whenever it's known to be of both types at once (for
 /// example, if two type guards on the same path have both succeeded or both failed).
 ///
-/// Unions are distributed over, and pairs, atoms, and instances of the same struct are intersected
-/// element by element. If no better approximation can be found for some part of the type (such as
-/// for generic types), `rhs` is used for that part.
+/// `lhs` is the type being narrowed, so the result keeps its semantics: an `Int` intersected with
+/// `Bytes32` is an `Int` of length 32, and a pair intersected with a struct is a pair with the
+/// struct's fields. Changing the semantics of a value needs a cast, not a type guard.
+///
+/// Unions are distributed over, and pairs, atoms, and structs are intersected element by element.
+/// If no better approximation can be found for a recursive type, or past the maximum depth, `lhs`
+/// is used for that part. Generic, function and unresolved types have no structure to intersect,
+/// so `rhs` is used for them.
 pub fn intersect(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -93,12 +98,13 @@ fn intersect_impl_inner(
 
     let item = (lhs, rhs);
 
-    // Recursive types would otherwise be intersected forever. Falling back to `rhs` is sound,
-    // since it contains every value in the intersection. The checks below don't depend on the
-    // stack, so they would have returned early the first time if they were going to.
+    // Recursive types would otherwise be intersected forever. Falling back to `lhs` is sound,
+    // since it contains every value in the intersection, and unlike `rhs` it keeps the semantics
+    // of the value being narrowed. The checks below don't depend on the stack, so they would have
+    // returned early the first time if they were going to.
     if let Some(index) = ctx.stack.get_index_of(&item) {
         ctx.memo.reached(index);
-        return rhs;
+        return lhs;
     }
 
     let key = (lhs, rhs, ctx.stack.len());
@@ -149,9 +155,9 @@ fn intersect_uncached(
         return builtins.never;
     }
 
-    // Falling back to `rhs` is sound for the same reason as for recursive types
+    // Falling back to `lhs` is sound for the same reason as for recursive types
     if ctx.stack.len() >= MAX_DEPTH {
-        return rhs;
+        return lhs;
     }
 
     ctx.stack.insert((lhs, rhs));
@@ -196,24 +202,16 @@ fn intersect_structure(
         (Type::Struct(lhs_struct), Type::Struct(rhs_struct)) => {
             let inner = intersect_impl(arena, builtins, ctx, lhs_struct.inner, rhs_struct.inner);
 
-            if lhs_struct.semantic == rhs_struct.semantic {
-                repackage_struct(arena, builtins, lhs, lhs_struct, inner)
-            } else if is_never(arena, inner) {
-                builtins.never
-            } else {
-                // There's no way to represent a value which is an instance of two different
-                // structs at once, so the newer type is used as is
-                rhs
-            }
+            // The value keeps the struct it had before it was narrowed, even if it's checked
+            // against another one, since changing it needs a cast
+            repackage_struct(arena, builtins, lhs, lhs_struct, inner)
         }
         (Type::Struct(ty), _) => {
             let inner = intersect_impl(arena, builtins, ctx, ty.inner, rhs);
             repackage_struct(arena, builtins, lhs, ty, inner)
         }
-        (_, Type::Struct(ty)) => {
-            let inner = intersect_impl(arena, builtins, ctx, lhs, ty.inner);
-            repackage_struct(arena, builtins, rhs, ty, inner)
-        }
+        // Likewise, a value that wasn't an instance of the struct only takes on its structure
+        (_, Type::Struct(ty)) => intersect_impl(arena, builtins, ctx, lhs, ty.inner),
         (Type::Pair(lhs_pair), Type::Pair(rhs_pair)) => {
             let first = intersect_impl(arena, builtins, ctx, lhs_pair.first, rhs_pair.first);
             let rest = intersect_impl(arena, builtins, ctx, lhs_pair.rest, rhs_pair.rest);
@@ -228,14 +226,22 @@ fn intersect_structure(
                 arena.alloc(Type::Pair(Pair::new(first, rest)))
             }
         }
-        (Type::Atom(_), Type::Atom(_)) => {
+        (Type::Atom(lhs_atom), Type::Atom(rhs_atom)) => {
             // An atom's restriction is either a single value or a fixed length, so if both atoms
             // overlap, one restriction contains the other and only the semantics can differ. The
-            // atom with the narrower restriction is kept, preferring `lhs` if they're the same.
+            // narrower restriction is kept, with the semantic of `lhs`, since changing it needs a
+            // cast. For example, an `Int` checked against `Bytes32` is still an `Int`.
             if compare(arena, builtins, lhs, rhs) <= Comparison::Cast {
                 lhs
             } else if compare(arena, builtins, rhs, lhs) <= Comparison::Cast {
-                rhs
+                if lhs_atom.semantic == rhs_atom.semantic {
+                    rhs
+                } else {
+                    arena.alloc(Type::Atom(Atom::new(
+                        lhs_atom.semantic,
+                        rhs_atom.restriction,
+                    )))
+                }
             } else {
                 builtins.never
             }
@@ -344,6 +350,13 @@ mod tests {
             self.arena.alloc(Type::Atom(atom))
         }
 
+        fn atom_parts(&self, id: TypeId) -> (AtomSemantic, Option<AtomRestriction>) {
+            let Type::Atom(atom) = self.arena[id].clone() else {
+                panic!("expected an atom");
+            };
+            (atom.semantic, atom.restriction)
+        }
+
         fn strukt(&mut self, name: &str, inner: TypeId) -> TypeId {
             let id = self.arena.alloc(Type::Unresolved);
             *self.arena.get_mut(id).unwrap() = Type::Struct(Struct {
@@ -418,10 +431,24 @@ mod tests {
         let mut db = Db::new();
         let b = db.builtins;
 
-        // The narrower restriction is kept, even if the semantics differ
-        assert_eq!(db.intersect(b.int, b.bytes32), b.bytes32);
+        // The narrower restriction is kept, with the semantic of the value being narrowed
+        let int = db.intersect(b.int, b.bytes32);
+        assert_eq!(
+            db.atom_parts(int),
+            (AtomSemantic::Int, Some(AtomRestriction::Length(32)))
+        );
         assert_eq!(db.intersect(b.bytes32, b.int), b.bytes32);
         assert_eq!(db.intersect(b.public_key, b.bytes), b.public_key);
+        let bytes = db.intersect(b.bytes, b.public_key);
+        assert_eq!(
+            db.atom_parts(bytes),
+            (AtomSemantic::Bytes, Some(AtomRestriction::Length(48)))
+        );
+        let one = db.atom(Atom::new(
+            AtomSemantic::Int,
+            Some(AtomRestriction::Value(vec![1].into())),
+        ));
+        assert_eq!(db.intersect(b.bool, one), b.bool_true);
 
         // A value fits within a length restriction of the same length
         let value = db.atom(Atom::new(
@@ -581,15 +608,21 @@ mod tests {
         let other = db.strukt("Other", other_inner);
         assert_eq!(db.intersect(point, other), b.never);
 
-        // But different structs with overlapping fields fall back to the newer type
+        // But different structs with overlapping fields keep the older struct, with the fields
+        // of the newer one intersected into it
         let other_inner = db.pair(b.int, b.nil);
         let other = db.strukt("Other", other_inner);
         let ty = db.intersect(point, other);
         let Type::Struct(ty_struct) = db.arena[ty].clone() else {
             panic!("expected a struct");
         };
-        assert_eq!(ty_struct.semantic, other);
+        assert_eq!(ty_struct.semantic, point);
         assert_eq!(db.name(ty_struct.inner), "(Int, nil)");
+
+        // A value that isn't an instance of a struct only takes on the struct's fields
+        let pair = db.pair(first, rest);
+        let ty = db.intersect(pair, other);
+        assert_eq!(db.name(ty), "(Int, nil)");
     }
 
     #[test]
@@ -606,7 +639,7 @@ mod tests {
 
         // The alias is unwrapped to intersect its inner type
         let ty = db.intersect(alias, b.bytes32);
-        assert_eq!(db.name(ty), "Bytes32");
+        assert_eq!(db.name(ty), "Int");
 
         let ty = db.intersect(alias, b.nil);
         assert_eq!(ty, b.nil);
@@ -625,10 +658,10 @@ mod tests {
         let pairs_item = db.pair(b.int, b.int);
         let pairs = db.list("Pairs", pairs_item);
 
-        // The first item of the list is narrowed, and the rest falls back to the newer type
-        // since it would recurse forever otherwise
+        // The first item of the list is narrowed, keeping its semantic, and the rest falls back
+        // to the older type since it would recurse forever otherwise
         let ty = db.intersect(ints, bytes);
-        assert_eq!(db.name(ty), "nil | (Bytes32, Bytes32s)");
+        assert_eq!(db.name(ty), "nil | (Int, Ints)");
 
         // Only an empty list is in both
         let ty = db.intersect(ints, pairs);

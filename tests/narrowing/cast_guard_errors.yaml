@@ -1,0 +1,20 @@
+diagnostics:
+- Unused struct `Point` at cast_guard_errors.rue:1:8
+- Unused struct `Size` at cast_guard_errors.rue:6:8
+- Unused function `int_to_bytes32` at cast_guard_errors.rue:11:4
+- Cannot assign `Int` to `Bytes32` without a cast, since they are semantically different at cast_guard_errors.rue:13:26
+- Unused function `int_to_bytes32_direct` at cast_guard_errors.rue:19:4
+- Cannot assign `Int` to `Bytes32` without a cast, since they are semantically different at cast_guard_errors.rue:21:16
+- Unused function `bool_to_int` at cast_guard_errors.rue:26:4
+- Cannot assign `true` to `Int` without a cast, since they are semantically different at cast_guard_errors.rue:28:22
+- Unused function `pair_to_struct` at cast_guard_errors.rue:34:4
+- Cannot assign `(Int, (Int, nil))` to `Point` without a cast, since they are semantically different at cast_guard_errors.rue:36:16
+- Unused function `struct_to_struct` at cast_guard_errors.rue:41:4
+- Cannot assign `Point` to `Size` without a cast, since they are semantically different at cast_guard_errors.rue:43:16
+- Unused function `field_to_bytes32` at cast_guard_errors.rue:48:4
+- Cannot assign `Int` to `Bytes32` without a cast, since they are semantically different at cast_guard_errors.rue:50:16
+- Unused function `grouped_to_bytes32` at cast_guard_errors.rue:55:4
+- |-
+  Unnecessary parentheses at cast_guard_errors.rue:56:9
+    help: Remove the parentheses
+- Cannot assign `Int` to `Bytes32` without a cast, since they are semantically different at cast_guard_errors.rue:57:16

@@ -22,7 +22,9 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
 
     ctx.cast_type(cast.syntax(), expr.ty, ty);
 
-    // The cast keeps the value's reference and type guard mappings, since it's the same value
+    // The cast keeps the value's reference and type guard mappings, since it's the same value. A
+    // guard on the cast narrows the value within its own semantics (see `rue_types::intersect`),
+    // so the value still needs a cast to take on the semantics of the cast type.
     let hir = ctx.alloc_hir(Hir::Cast(expr.hir));
     expr.with_hir(hir).with_type(ty)
 }

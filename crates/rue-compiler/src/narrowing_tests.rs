@@ -172,6 +172,25 @@ fn guards_on_a_cast_or_parenthesized_value_narrow_the_value() {
 }
 
 #[test]
+fn guards_on_a_cast_value_keep_the_semantic_of_the_value() {
+    // The length is known, but `x` is still an `Int`, which needs a cast to become `Bytes32`
+    assert_eq!(
+        x_types(
+            "x: Int",
+            "Int",
+            "if (x as Bytes) is Bytes32 { x + (x as Bytes32 as Int) } else { 0 }",
+        ),
+        ["`x`: Int", "`x`: Int", "`x`: Int"]
+    );
+
+    // A `Bool` checked against `1` is `true`, not the `Int` literal
+    assert_eq!(
+        x_types("x: Bool", "Bool", "if (x as Int) is 1 { x } else { false }"),
+        ["`x`: Bool", "`x`: true"]
+    );
+}
+
+#[test]
 fn negating_a_value_does_not_narrow_it() {
     let mut compiled = compile(
         "
