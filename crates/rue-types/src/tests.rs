@@ -368,6 +368,223 @@ mod functions {
         assert_eq!(db.cmp(distinct, expected), Comparison::Assign);
     }
 
+    /// A generic function compared inside of another can still be instantiated while the other's
+    /// bounds are checked (#363): `fn<B>(f: fn() -> B) -> B` is assignable to
+    /// `fn(f: fn<T>() -> (T, T)) -> (Int, Int)`, since `B ≥ (T', T')` and `B ≤ (Int, Int)` hold
+    /// with `T'` as `Int`. But each such instance is instantiated once, along with its own bounds:
+    /// with `fn<T>(x: T) -> (T, T)` passed `Int`, `T' ≥ Int`, so `(Int, Bytes32)` doesn't hold.
+    #[test]
+    fn inner_instances_are_instantiated_for_outer_bounds() {
+        let mut db = Db::new();
+        let BuiltinTypes {
+            int, bytes32, nil, ..
+        } = db.builtins;
+
+        let compare = |db: &mut Db, param: Option<TypeId>, expected: TypeId| {
+            let b = db.generic("B");
+            let t = db.generic("T");
+            let both = db.pair(t, t);
+            let params: Vec<TypeId> = param.map(|_| t).into_iter().collect();
+            let pairs = db.function_with(&[t], &params, true, both);
+            let thunk_params: Vec<TypeId> = param.into_iter().collect();
+            let thunk = db.function(&thunk_params, b);
+            let call = db.function_with(&[b], &[thunk], true, b);
+            let target = db.function(&[pairs], expected);
+            db.cmp(call, target)
+        };
+
+        let ints = db.pair(int, int);
+        let mixed = db.pair(int, bytes32);
+        assert_eq!(compare(&mut db, None, ints), Comparison::Assign);
+        assert_eq!(compare(&mut db, None, mixed), Comparison::Assign);
+        assert_eq!(compare(&mut db, Some(int), ints), Comparison::Assign);
+        assert_eq!(compare(&mut db, Some(int), mixed), Comparison::Invalid);
+        assert_eq!(compare(&mut db, Some(int), nil), Comparison::Invalid);
+    }
+
+    /// An inner instance is instantiated once for all of the outer bounds: with
+    /// `fn<B>(f: fn() -> B) -> (B, B)` and `fn<T>() -> fn(x: T) -> T`, `B` flows into both of the
+    /// return type's functions, so one `T'` has to hold `Int` and be assignable to `Int | nil` for
+    /// the first, and hold `nil` and be assignable to `nil | Bytes32` for the second, which no
+    /// single type does, although each alone has one.
+    #[test]
+    fn inner_instances_are_instantiated_once() {
+        let mut db = Db::new();
+        let BuiltinTypes {
+            int, nil, bytes32, ..
+        } = db.builtins;
+
+        let compare = |db: &mut Db, second_ret: TypeId| {
+            let b = db.generic("B");
+            let t = db.generic("T");
+            let thunk = db.function(&[], b);
+            let both = db.pair(b, b);
+            let call = db.function_with(&[b], &[thunk], true, both);
+            let identity = db.function(&[t], t);
+            let inner = db.function_with(&[t], &[], true, identity);
+            let int_or_nil = db.union(&[int, nil]);
+            let first = db.function(&[int], int_or_nil);
+            let second = db.function(&[nil], second_ret);
+            let ret = db.pair(first, second);
+            let target = db.function(&[inner], ret);
+            db.cmp(call, target)
+        };
+
+        let nil_or_bytes32 = db.union(&[nil, bytes32]);
+        let int_or_nil = db.union(&[int, nil]);
+        assert_eq!(compare(&mut db, nil_or_bytes32), Comparison::Invalid);
+        assert_eq!(compare(&mut db, int_or_nil), Comparison::Assign);
+    }
+
+    /// Reopened instances stay rigid when a union member is checked without inference.
+    /// `fn<B>(f: fn(x: Int) -> B) -> B` against `fn(f: fn<T>(x: T) -> (H, Int)) -> R` holds with
+    /// `R` a union of a member that fails and `(H', Int)`, in either order and with inference as
+    /// well: checking the failing member without inference mustn't leave a bound on `T'`, next to
+    /// `T' ≥ Int`. With `H = T` and `(nil, nil)`, it would leave `T' ≤ nil`. With
+    /// `H = fn(g: fn(t: T, z: fn<Z>() -> Z) -> nil) -> nil` and
+    /// `(fn(g: fn<D>(t: D, z: fn() -> Int) -> D) -> nil, nil)`, the failing member's own function
+    /// comparison reopens `Z'` while `T'` is reopened, and it would leave `T' ≤ nil` through `D`.
+    #[test]
+    fn reopened_instances_stay_rigid_without_inference() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, nil, .. } = db.builtins;
+
+        let compare = |db: &mut Db, nested: bool, failing_first: bool| {
+            let ret_b = db.generic("B");
+            let item = db.generic("T");
+            let unused = db.generic("X");
+            let callback = db.function(&[int], ret_b);
+            let call = db.function_with(&[ret_b], &[callback], true, ret_b);
+
+            let (held, failing, holding) = if nested {
+                let any = db.generic("Z");
+                let given = db.generic("D");
+                let any_z = db.function_with(&[any], &[], true, any);
+                let takes_t = db.function(&[item, any_z], nil);
+                let held = db.function(&[takes_t], nil);
+                let give_int = db.function(&[], int);
+                let returns_d = db.function_with(&[given], &[given, give_int], true, given);
+                let failing = db.function(&[returns_d], nil);
+                let takes_int = db.function(&[int, give_int], nil);
+                let holding = db.function(&[takes_int], nil);
+                (held, db.pair(failing, nil), db.pair(holding, int))
+            } else {
+                (item, db.pair(nil, nil), db.pair(int, int))
+            };
+
+            let tagged = db.pair(held, int);
+            let tag = db.function_with(&[item], &[item], true, tagged);
+            let members = if failing_first {
+                [failing, holding]
+            } else {
+                [holding, failing]
+            };
+            let ret = db.union(&members);
+            let target = db.function(&[tag], ret);
+            let plain = db.cmp(call, target);
+            let mut infer = Inference::new([unused]);
+            (plain, db.infer(call, target, &mut infer))
+        };
+
+        let both = (Comparison::Assign, Comparison::Assign);
+
+        for nested in [false, true] {
+            assert_eq!(compare(&mut db, nested, true), both);
+            assert_eq!(compare(&mut db, nested, false), both);
+        }
+    }
+
+    /// The outer bounds can add lower bounds to an inner instance too, which are checked against
+    /// its own upper bounds: `fn<T>(x: fn(y: T) -> nil) -> fn(x: T) -> nil` passed a
+    /// `fn(y: Bytes32) -> nil` has `T' ≤ Bytes32`, so it isn't a `fn(x: Int) -> nil`.
+    #[test]
+    fn inner_instances_get_lower_bounds() {
+        let mut db = Db::new();
+        let BuiltinTypes {
+            int, nil, bytes32, ..
+        } = db.builtins;
+
+        let compare = |db: &mut Db, param: TypeId| {
+            let b = db.generic("B");
+            let t = db.generic("T");
+            let callback = db.function(&[bytes32], nil);
+            let given = db.function(&[callback], b);
+            let call = db.function_with(&[b], &[given], true, b);
+            let takes = db.function(&[t], nil);
+            let inner_param = db.function(&[t], nil);
+            let inner = db.function_with(&[t], &[inner_param], true, takes);
+            let ret = db.function(&[param], nil);
+            let target = db.function(&[inner], ret);
+            db.cmp(call, target)
+        };
+
+        assert_eq!(compare(&mut db, int), Comparison::Invalid);
+        assert_eq!(compare(&mut db, bytes32), Comparison::Assign);
+    }
+
+    /// Only the inner instances can be instantiated while the outer bounds are checked, not the
+    /// ones nested further in, which stay rigid while the inner ones' bounds are checked again.
+    /// With `fn<B>(f: fn(g: Q) -> B) -> B` against `fn(f: P) -> (R, R)`, where
+    /// `P = fn<T>(g: fn(..) -> T) -> (T, T)` and `Q = fn<U>(..) -> (U, U)`, `T' ≥ (U', U')` and
+    /// `T' ≤ R`. With `Q` taking an `Int` and `R` as `(Int, Bytes32)`, `U'` can't be both, so it
+    /// must stay rejected. Without parameters and with `R` as `(Int, Int)`, `U'` could be `Int`,
+    /// but it's rejected too: that's the limit of instantiating one level deep.
+    #[test]
+    fn deeper_instances_stay_rigid() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, bytes32, .. } = db.builtins;
+
+        let compare = |db: &mut Db, param: Option<TypeId>, result: TypeId| {
+            let [outer, inner, deeper] = [db.generic("B"), db.generic("T"), db.generic("U")];
+            let params: Vec<TypeId> = param.into_iter().collect();
+            let deepers = db.pair(deeper, deeper);
+            let q = db.function_with(&[deeper], &params, true, deepers);
+            let given = db.function(&[q], outer);
+            let call = db.function_with(&[outer], &[given], true, outer);
+            let callback = db.function(&params, inner);
+            let inners = db.pair(inner, inner);
+            let p = db.function_with(&[inner], &[callback], true, inners);
+            let ret = db.pair(result, result);
+            let target = db.function(&[p], ret);
+            db.cmp(call, target)
+        };
+
+        let mixed = db.pair(int, bytes32);
+        let ints = db.pair(int, int);
+        assert_eq!(compare(&mut db, Some(int), mixed), Comparison::Invalid);
+        assert_eq!(compare(&mut db, None, ints), Comparison::Invalid);
+    }
+
+    /// An inner instance compared with a type that refers to it, while an enclosing comparison
+    /// checks bounds that refer to it on both sides, isn't bounded by that type (an occurs check):
+    /// `fn<B>(function: fn(x: B, y: Int) -> B) -> Int` against `fn(function: F) -> Int`, with
+    /// `F = fn<T>(x: (T, X), y: T) -> (T, T)`, compares `(T', T') ≤ (T', X)`, which holds for `X`
+    /// as `T` or `T | nil` without bounding `T'` by itself, so its `T' ≥ Int` is still enough.
+    #[test]
+    fn inner_instances_compared_with_themselves() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, nil, .. } = db.builtins;
+
+        let compare = |db: &mut Db, optional: bool| {
+            let [outer, inner] = [db.generic("B"), db.generic("T")];
+            let second = if optional {
+                db.union(&[inner, nil])
+            } else {
+                inner
+            };
+            let param = db.pair(inner, second);
+            let ret = db.pair(inner, inner);
+            let function = db.function_with(&[inner], &[param, inner], true, ret);
+            let callback = db.function(&[outer, int], outer);
+            let apply = db.function_with(&[outer], &[callback], true, int);
+            let target = db.function(&[function], int);
+            db.cmp(apply, target)
+        };
+
+        assert_eq!(compare(&mut db, false), Comparison::Assign);
+        assert_eq!(compare(&mut db, true), Comparison::Assign);
+    }
+
     #[test]
     fn recursive_instantiations_are_checked() {
         let mut db = Db::new();

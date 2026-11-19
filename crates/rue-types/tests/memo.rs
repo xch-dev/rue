@@ -954,6 +954,71 @@ fn test_unmatched_member_bound_modes() {
     });
 }
 
+/// `fn<B>(f: fn() -> B, g: fn() -> B) -> B` and `fn(f: P, g: P) -> (Int, Int)`, where
+/// `P = fn<T>() -> (T, T)`, with each parameter list using one type twice.
+fn inner_instance_reused(db: &mut Types) -> (TypeId, TypeId) {
+    let int = db.builtins.int;
+    let [b, t] = [db.generic(), db.generic()];
+    let thunk = db.function(vec![], vec![], b);
+    let call = db.function(vec![b], vec![thunk, thunk], b);
+    let both = db.pair(t, t);
+    let pairs = db.function(vec![t], vec![], both);
+    let ints = db.pair(int, int);
+    let target = db.function(vec![], vec![pairs, pairs], ints);
+    (call, target)
+}
+
+/// The second comparison of `P` with `fn() -> B` is reused from the first, with its summary. The
+/// instance of `P`'s `T` is a local binder in that summary, which is applied as an instance with
+/// its bounds, so that `B`'s bounds can still instantiate it (#363) as when it's computed again
+/// without the memo.
+#[test]
+fn test_inner_instance_reused() {
+    with_large_stack(|| {
+        let results = in_every_mode(inner_instance_reused);
+        assert_eq!(results, [Comparison::Assign; 3]);
+    });
+}
+
+/// `(G, G)` against `(fn(y: (Int, Int)) -> F, fn(y: ((Int, Int), (Int, Int))) -> F)`, where
+/// `G = fn<Y>(y: Y) -> fn<B>(f: fn(x: Y) -> B) -> B`, `F = fn(f: P) -> (Int, Int)` and
+/// `P = fn<T>(x: (T, T)) -> (T, T)`.
+fn bound_added_inside_reused(db: &mut Types) -> (TypeId, TypeId) {
+    let int = db.builtins.int;
+    let [param, ret, item] = [db.generic(), db.generic(), db.generic()];
+    let callback = db.function(vec![], vec![param], ret);
+    let inner = db.function(vec![ret], vec![callback], ret);
+    let deferred = db.function(vec![param], vec![param], inner);
+    let both = db.pair(item, item);
+    let pairs = db.function(vec![item], vec![both], both);
+    let ints = db.pair(int, int);
+    let from_pairs = db.function(vec![], vec![pairs], ints);
+    let first = db.function(vec![], vec![ints], from_pairs);
+    let nested = db.pair(ints, ints);
+    let second = db.function(vec![], vec![nested], from_pairs);
+    let lhs = db.pair(deferred, deferred);
+    let rhs = db.pair(first, second);
+    (lhs, rhs)
+}
+
+/// The second element reuses `G`'s comparison with `fn(y: Y') -> F` from the first, whose
+/// summary has `Y' ≤ (L, L)` for the instance `L` of `P`'s `T`. Comparing `fn<B>(..) -> B` with
+/// `F` inside of it put `L ≤ Int` on `L` while checking `B`'s bounds, after `L`'s comparison
+/// finished, so the summary has to keep that bound for `L` too: with it, the second element's
+/// `L ≥ (Int, Int)` conflicts, as when it's computed again without the memo. Both elements are the
+/// same `G`, as in `(G, G)` in Rue, which the memo needs to reuse the comparison. That also makes
+/// `(G, G)` against `(fn(y: (Int, Int)) -> F, fn(y: (Int, Int)) -> F)` `Invalid` in every mode,
+/// although `G` against either is `Assign` (the compiler accepts the Rue equivalent), so the
+/// memo-off result here isn't only from the dropped bound. The type-level test pins the memo-on
+/// and fixpoint results, which were `Assign` with the bound dropped.
+#[test]
+fn test_bound_added_inside_reused() {
+    with_large_stack(|| {
+        let results = in_every_mode(bound_added_inside_reused);
+        assert_eq!(results, [Comparison::Invalid; 3]);
+    });
+}
+
 /// Compares the types without the memo, in a single pass, and iterating from the start, each in a
 /// new arena.
 fn in_every_mode(types: impl Fn(&mut Types) -> (TypeId, TypeId)) -> [Comparison; 3] {

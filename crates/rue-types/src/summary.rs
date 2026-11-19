@@ -19,7 +19,9 @@ pub(crate) enum Var {
     /// The binder that the comparison's key numbers this way, which is bound outside of it.
     Key(usize),
     /// A binder that's bound inside of the comparison. Each time the summary is applied, these are
-    /// new binders, since each place it's applied binds its own.
+    /// new binders, since each place it's applied binds its own. One that a constraint bounds is
+    /// the instance of a generic function compared inside of the comparison, which an enclosing
+    /// one can still instantiate, and the others are rigid.
     Local(usize),
 }
 
@@ -95,6 +97,11 @@ pub(crate) struct Summary {
 }
 
 impl Summary {
+    /// The number of local binders.
+    pub(crate) fn locals(&self) -> usize {
+        self.locals
+    }
+
     /// The bounds, in the order they were added until the summary is canonicalized.
     pub(crate) fn constraints(&self) -> &[Constraint] {
         &self.constraints
@@ -161,8 +168,14 @@ impl Summary {
     /// against each other, up to renaming the local binders: two bounds from one copy (with the
     /// same local binders), and two from different copies (with different ones). A third copy only
     /// adds more pairs like those. Keeping two copies relies on checking a pair not adding bounds
-    /// to other binders, which it doesn't, since the instances outside of the function whose bounds
-    /// are being checked are rigid while checking them.
+    /// to other binders, which it doesn't to the instances outside of the function whose bounds are
+    /// being checked, since they're rigid while checking them. It can add bounds to a local binder
+    /// that's an instance (one that a constraint bounds), which can still be instantiated then
+    /// (#363), and that one's bounds are checked against each other afterwards: a copy can get a
+    /// bound involving each of two other copies, and checking those against each other needs
+    /// three. A fourth only adds more like those, so a component that bounds a local binder keeps
+    /// at most three copies. That's kept on this argument: no test so far shows a result that
+    /// needs the third.
     ///
     /// A component that's too alike to be renumbered exactly (see `shape`) can be renumbered
     /// another way when it's canonicalized again.
@@ -210,7 +223,17 @@ impl Summary {
         self.locals = 0;
 
         for (index, (constraints, locals)) in shapes.iter().enumerate() {
-            if index >= 2 && shapes[index - 2].0 == *constraints {
+            // A component that bounds a local binder (an instance) keeps a third copy
+            let copies = if constraints
+                .iter()
+                .any(|constraint| matches!(constraint.var, Var::Local(_)))
+            {
+                3
+            } else {
+                2
+            };
+
+            if index >= copies && shapes[index - copies].0 == *constraints {
                 continue;
             }
 
@@ -553,19 +576,35 @@ mod tests {
         child.add(bound(x, true, b, vec![(b, y)]));
         child.add(bound(Var::Key(0), true, b, vec![(b, y)]));
 
+        // `x` is bounded, so it's an instance, and its component keeps up to three copies
         let mut summary = Summary::default();
 
-        for _ in 0..3 {
+        for _ in 0..4 {
             summary.apply(&child, &[Var::Key(0)]);
         }
 
         summary.canonicalize();
-        assert_eq!(summary.locals, 4);
-        assert_eq!(summary.constraints().len(), 6);
+        assert_eq!(summary.locals, 6);
+        assert_eq!(summary.constraints().len(), 9);
 
         for constraint in summary.constraints() {
-            assert!(constraint.locals().all(|local| local < 4));
+            assert!(constraint.locals().all(|local| local < 6));
         }
+
+        // Without a bound on a local binder, a component keeps two
+        let mut rigid = Summary::default();
+        let (x, y) = (rigid.local(), rigid.local());
+        rigid.add(bound(Var::Key(0), false, a, vec![(a, x)]));
+        rigid.add(bound(Var::Key(0), true, b, vec![(b, y), (a, x)]));
+        let mut summary = Summary::default();
+
+        for _ in 0..4 {
+            summary.apply(&rigid, &[Var::Key(0)]);
+        }
+
+        summary.canonicalize();
+        assert_eq!(summary.locals, 4);
+        assert_eq!(summary.constraints().len(), 4);
     }
 
     /// Local binders in a component that are only told apart by their positions in the

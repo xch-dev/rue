@@ -1,0 +1,83 @@
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+fn pairs<T>() -> (T, T) {
+    (unchecked_cast(1), unchecked_cast(2))
+}
+
+// `map`'s `A` is `pairs`'s type and `B` is `(Int, Int)`. Passing `call` then needs
+// `fn<T>() -> (T, T)` to be instantiated, as `fn() -> (Int, Int)`, while `call`'s own `B` is
+// checked (#363)
+test fn generic_function_instantiated_through_another() -> Int {
+    let result: (Int, Int) = map(call, pairs);
+    result.first + result.rest
+}
+
+type Pairs = fn<T>() -> (T, T);
+
+struct Two<X> {
+    first: X,
+    second: X,
+}
+
+fn call_first<B>(two: Two<fn() -> B>) -> B {
+    two.first()
+}
+
+// Comparing `Pairs` with `fn() -> B` the second time reuses the first, and `Pairs`' generic can
+// still be instantiated there
+test fn generic_function_instantiated_through_a_reused_comparison() -> Int {
+    let _call: fn(two: Two<Pairs>) -> (Int, Int) = call_first;
+    1
+}
+
+fn call_with_int<B>(function: fn(x: Int) -> B) -> B {
+    function(1)
+}
+
+fn pairs_of<T>(x: T) -> (T, T) {
+    (x, x)
+}
+
+// The same with a generic function whose generic is also bounded by its own parameter
+test fn generic_function_with_a_parameter_instantiated_through_another() -> Int {
+    let result: (Int, Int) = map(call_with_int, pairs_of);
+    result.first + result.rest
+}
+
+fn through<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    map(function, value)
+}
+
+// And through another generic call
+test fn generic_function_instantiated_through_two_calls() -> Int {
+    let result: (Int, Int) = through(call, pairs);
+    result.first + result.rest
+}
+
+type Twin = fn<T>(x: (T, T), y: T) -> (T, T);
+
+fn apply_twin<B>(function: fn(x: B, y: Int) -> B) -> Int {
+    function(unchecked_cast((1, 1)), 1);
+    1
+}
+
+// `B ≤ (T', T') ≤ B` compares `(T', T')` with itself while `T'` can be instantiated, which holds
+// without bounding `T'` by itself, so its `T' ≥ Int` is still enough
+test fn inner_instance_compared_with_itself() -> Int {
+    let _apply: fn(function: Twin) -> Int = apply_twin;
+    1
+}
+
+type Opt = fn<T>(x: (T, T | nil), y: T) -> (T, T);
+
+// The same with `T' ≤ T' | nil`, which isn't a bound on `T'` either
+test fn inner_instance_compared_with_a_union_of_itself() -> Int {
+    let _apply: fn(function: Opt) -> Int = apply_twin;
+    1
+}

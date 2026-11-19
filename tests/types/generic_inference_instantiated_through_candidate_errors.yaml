@@ -1,0 +1,15 @@
+diagnostics:
+- Unused function `both` at generic_inference_instantiated_through_candidate_errors.rue:1:4
+- Unused function `instantiated_once` at generic_inference_instantiated_through_candidate_errors.rue:7:4
+- "Cannot assign `fn<B, C>(f: fn(x: Int) -> (B, C)) -> (B, C)` to `fn(a: fn<T>(x: T) -> (T, T)) -> (Int, Bytes32)`, since they are incompatible at generic_inference_instantiated_through_candidate_errors.rue:8:73"
+- Unused function `map` at generic_inference_instantiated_through_candidate_errors.rue:12:4
+- Unused function `call_with_int` at generic_inference_instantiated_through_candidate_errors.rue:16:4
+- Unused function `pairs_of` at generic_inference_instantiated_through_candidate_errors.rue:20:4
+- Unused function `not_both` at generic_inference_instantiated_through_candidate_errors.rue:25:4
+- "Cannot assign `fn<B>(function: fn(x: Int) -> B) -> B` to `fn(a: fn<T>(x: T) -> (T, T)) -> (Int, Bytes32)`, since they are incompatible at generic_inference_instantiated_through_candidate_errors.rue:26:38"
+- Unused type alias `Pairs` at generic_inference_instantiated_through_candidate_errors.rue:30:6
+- Unused type alias `FromPairs` at generic_inference_instantiated_through_candidate_errors.rue:31:6
+- Unused type alias `Deferred` at generic_inference_instantiated_through_candidate_errors.rue:32:6
+- Unused function `deferred` at generic_inference_instantiated_through_candidate_errors.rue:34:4
+- Unused function `bound_kept_when_reused` at generic_inference_instantiated_through_candidate_errors.rue:40:4
+- "Cannot assign `(Deferred, Deferred)` to `(fn(y: (Int, Int)) -> FromPairs, fn(y: ((Int, Int), (Int, Int))) -> FromPairs)`, since they are incompatible at generic_inference_instantiated_through_candidate_errors.rue:45:9"
