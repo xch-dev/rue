@@ -306,20 +306,6 @@ impl InferenceResolver<'_> {
     }
 }
 
-/// The first of the types that's assignable to all of them, if there is one.
-pub(crate) fn most_specific(
-    arena: &mut Arena<Type>,
-    builtins: &BuiltinTypes,
-    renamed: &FxHashMap<TypeId, TypeId>,
-    types: &[TypeId],
-) -> Option<TypeId> {
-    types.iter().copied().find(|&ty| {
-        types.iter().all(|&other| {
-            compare_renamed(arena, builtins, renamed, ty, other) == Comparison::Assign
-        })
-    })
-}
-
 /// Picks a type for a generic from its candidates, or `None` if nothing constrains it. The
 /// `original` is the generic it was renamed from, if it was (see `Inference::rename`).
 pub(crate) fn pick_inferred_type(
@@ -365,7 +351,17 @@ pub(crate) fn pick_inferred_type(
         }
     } else if let Some(&first) = upper.first() {
         // Pick the most specific upper bound, if there is one
-        Some(most_specific(arena, builtins, renamed, &upper).unwrap_or(first))
+        Some(
+            upper
+                .iter()
+                .copied()
+                .find(|&ty| {
+                    upper.iter().all(|&other| {
+                        compare_renamed(arena, builtins, renamed, ty, other) == Comparison::Assign
+                    })
+                })
+                .unwrap_or(first),
+        )
     } else {
         // Nothing constrains the generic, so leave it as is
         None

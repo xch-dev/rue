@@ -4,10 +4,10 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, InferenceCandidates, Type,
-    TypeId, compare_renamed, compare_with_inference, free_generics, infer_from_expected,
-    most_specific, resolve_inference_around, resolve_inference_with_fallback,
-    strongly_connected_components, substitute_with_mappings, union_of,
+    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
+    compare_with_inference, free_generics, infer_from_expected, resolve_inference_around,
+    resolve_inference_with_fallback, strongly_connected_components, substitute_with_mappings,
+    union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -126,39 +126,22 @@ pub fn resolve_inference_with_bounds(
 
 /// Gives each var added along with the generics (see `Inference::add_var`), such as an untyped
 /// lambda parameter's type, the generics it's an upper candidate of as lower candidates, collected
-/// under the same union members, where it has no lower candidates and its upper candidates don't
-/// decide it: none of them is assignable to all the others, so `pick_inferred_type` would fall
-/// back to the first. Only the candidates of the union members that matched count, as they're the
-/// ones it's resolved from.
+/// under the same union members.
 ///
-/// `A ≤ X` is only recorded on `A`'s side when `A`'s value flows into the var `X`. So `X` would be
+/// `A ≤ X` is only recorded on `A`'s side when `A`'s value flows into the var `X`. So `X` was
 /// picked from its upper candidates alone, and with `Int` (the type the lambda was compiled with,
-/// where `A` had been widened) and `5 | Bytes` (passed on from the type expected of the call), it
-/// would be `Int`, and `A` would be widened to it. With `A` as a lower candidate, `X` and `A` are
-/// resolved together, from `A`'s value and all of `X`'s upper candidates, as the explicit
-/// instantiation would be.
-pub(crate) fn add_lambda_var_lower_bounds(
-    arena: &mut Arena<Type>,
-    builtins: &BuiltinTypes,
-    infer: &mut Inference,
-) {
+/// where `A` had been widened) and `5 | Bytes` (passed on from the type expected of the call),
+/// neither assignable to the other, it was the first, `Int`, and `A` was widened to it. With `A` as
+/// a lower candidate, `X` and `A` are resolved together, from `A`'s value and all of `X`'s upper
+/// candidates, as the explicit instantiation would be.
+///
+/// A var's type is the parameter type the lambda was compiled with, never a union with the var in
+/// it, so `A ≤ X` isn't collected under a union member in practice. The members are carried over
+/// all the same, so that the candidate holds exactly when the one it came from does.
+pub(crate) fn add_lambda_var_lower_bounds(infer: &mut Inference) {
     let mut derived = Vec::new();
 
     for &var in infer.added() {
-        // As `Inference::keep_matched` takes them, falling back to all of them if none matched
-        let matched = infer.matched_candidates(var).unwrap();
-        let candidates = if matched == InferenceCandidates::default() {
-            infer.generics[&var].clone()
-        } else {
-            matched
-        };
-
-        if !candidates.lower.is_empty()
-            || most_specific(arena, builtins, &infer.renamed, &candidates.upper).is_some()
-        {
-            continue;
-        }
-
         for (&generic, candidates) in &infer.generics {
             for (index, &upper) in candidates.upper.iter().enumerate() {
                 if upper == var && generic != var {

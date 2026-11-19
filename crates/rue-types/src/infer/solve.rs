@@ -149,7 +149,7 @@ impl CallSolver {
         }
 
         // After the expected type's bounds have reached the vars of untyped lambda parameters
-        add_lambda_var_lower_bounds(arena, builtins, &mut infer);
+        add_lambda_var_lower_bounds(&mut infer);
 
         resolve_inference_with_bounds(arena, builtins, &infer, &self.fallback)
     }
