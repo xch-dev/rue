@@ -2,6 +2,8 @@
 //! operations on types (`rue_types::count_steps`) while a generated program compiles, so a change
 //! that makes the solver repeat work fails here rather than only making the stress snapshots slow.
 
+use std::fmt::Write;
+
 use rue_types::count_steps;
 
 use crate::test_utils::compile;
@@ -66,14 +68,16 @@ fn dense_compound_chain(count: usize) -> String {
 
     for i in 0..count {
         for j in i + 1..count {
-            params.push_str(&format!("    f{i}_{j}: fn(a: G{i}) -> G{j},\n"));
+            writeln!(params, "    f{i}_{j}: fn(a: G{i}) -> G{j},").unwrap();
             args.push_str("        first_of,\n");
         }
     }
 
-    let pairs: String = (1..=count)
-        .map(|k| format!("    let p{k} = (p{}, p{});\n", k - 1, k - 1))
-        .collect();
+    let mut pairs = String::new();
+
+    for k in 1..=count {
+        writeln!(pairs, "    let p{k} = (p{}, p{});", k - 1, k - 1).unwrap();
+    }
 
     format!(
         "
