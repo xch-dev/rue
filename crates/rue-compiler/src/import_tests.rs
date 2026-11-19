@@ -2405,9 +2405,9 @@ fn names_hidden_by_named_imports_resolved_in_later_passes_are_not_passed_on() {
     // then hides the first module's `A` that its glob export of `both::m` could bring in. So
     // nothing can refer to that `A`, which is unused however the modules are named, even though
     // the name was still free in the passes before.
-    for user in ["aa", "zz"] {
+    for (user, first_binds) in [("aa", true), ("zz", true), ("aa", false), ("zz", false)] {
         let compiled = compile(&colliding_modules(
-            true,
+            first_binds,
             "export const A: Int = 1;",
             "export const B: Int = 2;",
             &format!(
@@ -2418,7 +2418,59 @@ fn names_hidden_by_named_imports_resolved_in_later_passes_are_not_passed_on() {
         assert_eq!(
             unused_items(&compiled),
             ["2:49 UnusedConstant", "3:48 UnusedConstant"],
-            "user: {user}"
+            "user: {user}, first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn imports_used_only_by_hidden_paths_through_ambiguous_modules_are_unused() {
+    // `beta`'s `m` exports `k` by name, from a chain of glob imports that resolves a few passes
+    // later, which hides the `k` that its glob import of `both2::n` could bring in. So that glob
+    // import is never used, whichever module either ambiguous name is bound to.
+    for first_binds in [true, false] {
+        for second_n in ["nb", "zb"] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                "export mod k { export const X: Int = 1; }",
+                "export super::super::s1::k; import super::super::both2::n::*;",
+                &format!(
+                    "mod qr {{ export mod k {{ export const X: Int = 3; }} }} mod s1 {{ export super::s2::*; }} mod s2 {{ export super::s3::*; }} mod s3 {{ export super::qr::*; }} mod nc {{ export mod n {{ export mod k {{ export const X: Int = 4; }} export const Z: Int = 1; }} }} mod {second_n} {{ export mod n {{ export const Z: Int = 2; }} }} mod both2 {{ export super::nc::*; export super::{second_n}::*; }} import both::m::k::X; fn main() -> Int {{ X }}"
+                ),
+            ));
+            let context = format!("first binds: {first_binds}, second n: {second_n}");
+
+            assert_eq!(
+                unused_imports(&compiled),
+                ["3:94 UnusedImport"],
+                "{context}"
+            );
+        }
+    }
+}
+
+#[test]
+fn glob_imports_of_parent_modules_pass_on_what_their_private_glob_imports_could_bring_in() {
+    // `c` glob-imports its parent `p`, which privately glob-imports `both::m`, so `c`'s use of
+    // `ONLY` could refer to `beta`'s, which only `beta`'s `m` has, whichever `m` is bound
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const X: Int = 1;",
+            "export const ONLY: Int = 2;",
+            "mod p { import super::both::m::*; export mod c { import super::*; export fn value() -> Int { ONLY } } } fn main() -> Int { p::c::value() }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["2:49 UnusedConstant"],
+            "{context}"
+        );
+        assert_eq!(
+            unused_imports(&compiled),
+            ["5:40 UnusedImport"],
+            "{context}"
         );
     }
 }

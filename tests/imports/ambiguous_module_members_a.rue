@@ -1,9 +1,10 @@
 // `both::m` is ambiguous, since both glob exports bring in a module `m`. Which one the name is
-// bound to depends on the order the imports are resolved in, which depends on module names, but
-// the rest of each path through it is resolved in both modules, so the members that any of them
-// could refer to are used in each, and only the ones that nothing uses are reported (see
-// ambiguous_module_members_a and ambiguous_module_members_z). `ONLY` is only in `beta`'s `m`, so
-// the path to it fails when the name is bound to the other one, but it's still used.
+// bound to depends on the order the imports are resolved in, which depends on module names, but the
+// rest of each path through it is resolved in both modules, so the members that any of them could
+// refer to are used in each, and only the ones that nothing uses are reported. Here, `a` sorts
+// before `beta`, so `m` is bound to `a`'s, where the path to `ONLY` fails, and
+// ambiguous_module_members_z has the module names in the other order. `ONLY` is only in `beta`'s
+// `m`, so the path to it fails when the name is bound to the other one, but it's still used.
 mod a {
     export mod m {
         export const X: Int = 1;

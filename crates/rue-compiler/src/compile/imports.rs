@@ -16,7 +16,7 @@ use rue_parser::SyntaxKind;
 use rue_types::Type;
 
 use crate::{
-    Compiler, Place, SyntaxItemKind, alternative_items, alternative_modules, glob_imports,
+    Compiler, Found, Place, SyntaxItemKind, alternative_items, alternative_modules, glob_imports,
     modules_of, unhidden_glob_alternatives,
 };
 
@@ -182,7 +182,7 @@ pub struct ImportCache {
     /// The items that each named import of a name that another named import into the same scope
     /// imports too finds, with the import that each is found through, if any (see
     /// [`resolve_duplicate_imports`]).
-    named_finds: HashMap<ImportId, IndexSet<(Item, Option<ImportId>)>>,
+    named_finds: HashMap<ImportId, IndexSet<Found>>,
     glob_import_counts: IndexMap<ImportId, (ScopeId, Name, usize)>,
     /// The errors in imports, keyed by where they are, so that each is reported once however
     /// many times the import is resolved.
@@ -436,8 +436,8 @@ pub fn resolve_imports(
         failed_paths: HashSet::new(),
         waiting: Vec::new(),
         failures: IndexMap::new(),
+        settled: false,
     };
-    let limit = pass_limit(imports.len());
     let mut passes = 0;
 
     for &(scope, import) in &imports {
@@ -458,21 +458,13 @@ pub fn resolve_imports(
     }
 
     loop {
-        if passes == limit {
-            report_pass_limit(ctx, &imports, cache, limit);
-            return;
-        }
-
-        passes += 1;
-        let mut updated = false;
         let bases = resolution.bases.len();
         let failed_paths = resolution.failed_paths.len();
-        resolution.waiting.clear();
-        resolution.failures.clear();
 
-        for &(import_scope, import) in &imports {
-            updated |= resolve_import(ctx, import_scope, import, cache, &mut resolution);
-        }
+        let Some(mut updated) = resolve_pass(ctx, &imports, cache, &mut resolution, &mut passes)
+        else {
+            return;
+        };
 
         // A lookup made before an import's path was resolved (or failed) in this pass waited for
         // it, so the lookups are only forced after a pass in which every resolved path was known
@@ -514,29 +506,21 @@ pub fn resolve_imports(
         }
     }
 
-    // What a glob import could bring in through an ambiguous name is only passed on under names
-    // that nothing hides where it's passed through, but those names were still being bound in
-    // the passes above, so something could have been passed on before it was hidden. The bindings
-    // are settled now, so what everything could refer to is worked out again from nothing. Only
-    // the alternatives change in these passes, and they only grow, so they settle.
+    // What names and glob imports could refer to besides what they're bound to only matters
+    // once something is ambiguous, and a glob import only passes on what it could bring in under
+    // names that nothing hides where it's passed through. Names are still being bound in the
+    // passes above, so that's worked out once the bindings are settled, from nothing (only what
+    // glob imports bring in under ambiguous names is recorded in those passes). Only the
+    // alternatives change in these passes, and they only grow, so they settle.
     if ctx.has_alternatives() {
         ctx.clear_alternatives();
+        resolution.settled = true;
 
         loop {
-            if passes == limit {
-                report_pass_limit(ctx, &imports, cache, limit);
+            let Some(updated) = resolve_pass(ctx, &imports, cache, &mut resolution, &mut passes)
+            else {
                 return;
-            }
-
-            passes += 1;
-            resolution.waiting.clear();
-            resolution.failures.clear();
-
-            let mut updated = false;
-
-            for &(import_scope, import) in &imports {
-                updated |= resolve_import(ctx, import_scope, import, cache, &mut resolution);
-            }
+            };
 
             if !updated {
                 break;
@@ -593,6 +577,35 @@ pub fn resolve_imports(
             }
         }
     }
+}
+
+/// Resolves each import once, as one pass. Returns whether anything changed, or nothing once the
+/// pass limit is reached, which is reported.
+fn resolve_pass(
+    ctx: &mut Compiler,
+    imports: &[(ScopeId, ImportId)],
+    cache: &mut ImportCache,
+    resolution: &mut Resolution,
+    passes: &mut usize,
+) -> Option<bool> {
+    let limit = pass_limit(imports.len());
+
+    if *passes == limit {
+        report_pass_limit(ctx, imports, cache, limit);
+        return None;
+    }
+
+    *passes += 1;
+    resolution.waiting.clear();
+    resolution.failures.clear();
+
+    let mut updated = false;
+
+    for &(import_scope, import) in imports {
+        updated |= resolve_import(ctx, import_scope, import, cache, resolution);
+    }
+
+    Some(updated)
 }
 
 #[cfg(test)]
@@ -1084,6 +1097,9 @@ struct Resolution {
     failed_paths: HashSet<ImportId>,
     /// The lookups that are waiting for a module to settle in this pass.
     waiting: Vec<WaitingLookup>,
+    /// Whether the bindings are settled, so that what names could refer to besides what they're
+    /// bound to through ambiguous paths is worked out (see [`resolve_imports`]).
+    settled: bool,
     /// The imports that failed in this pass, and how. They've failed for good once nothing else can
     /// be resolved (see [`bind_failed_imports`]).
     failures: IndexMap<ImportId, Failure>,
@@ -1453,7 +1469,11 @@ fn resolve_import(
     }
 
     let base = cache.paths.get(&import_id).map(|path| path.scope);
-    let alternatives = path_alternatives(ctx, import_scope, import_id, &import, cache);
+    let alternatives = if resolution.settled {
+        path_alternatives(ctx, import_scope, import_id, &import, cache)
+    } else {
+        Vec::new()
+    };
 
     // The module the import's items are imported from, which other lookups can wait for. A name
     // that's looked up from the import's own scope doesn't come from a module.
@@ -1855,7 +1875,8 @@ fn resolve_glob_import(
     cache: &mut ImportCache,
     resolution: &mut Resolution,
 ) -> bool {
-    let mut updated = add_glob_alternatives(ctx, import_id, import, base, alternatives);
+    let mut updated =
+        resolution.settled && add_glob_alternatives(ctx, import_id, import, base, alternatives);
 
     let mut count = cache
         .glob_import_counts
@@ -2022,8 +2043,9 @@ fn resolve_glob_import(
 
             // The name could also refer to what the other modules that the path could name have
             // with it, which is recorded on the glob import that bound it, whichever one did
-            if let Some((binding, Some(recorded))) =
-                ctx.scope(import_scope).item_with_import(namespace, &name)
+            if !alternatives.is_empty()
+                && let Some((binding, Some(recorded))) =
+                    ctx.scope(import_scope).item_with_import(namespace, &name)
                 && ctx.import(recorded).is_glob()
             {
                 updated |= add_path_alternatives(ctx, alternatives, recorded, binding, &name);
@@ -2241,8 +2263,9 @@ fn resolve_named_import(
         // The name could also refer to what the other modules that the path could name have
         // with it, which is recorded on the import that bound it, if another one brought in the
         // same item first
-        if let Some((binding, Some(recorded))) =
-            ctx.scope(import_scope).item_with_import(namespace, name)
+        if !alternatives.is_empty()
+            && let Some((binding, Some(recorded))) =
+                ctx.scope(import_scope).item_with_import(namespace, name)
             && binding == found
         {
             updated |= add_path_alternatives(ctx, alternatives, recorded, found, name);
