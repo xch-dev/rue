@@ -5,9 +5,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
-    compare_with_inference, free_generics, infer_from_expected, resolve_inference_around,
-    resolve_inference_with_fallback, strongly_connected_components, substitute_with_mappings,
-    union_of,
+    compare_with_inference, free_generics, infer_from_expected, most_specific,
+    resolve_inference_around, resolve_inference_with_fallback, strongly_connected_components,
+    substitute_with_mappings, union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -63,8 +63,6 @@ pub fn resolve_inference_with_bounds(
     infer: &Inference,
     fallback: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
-    let derived = with_added_var_lower_bounds(arena, builtins, infer);
-    let infer = derived.as_ref().unwrap_or(infer);
     let mut mappings = resolve_inference_with_fallback(arena, builtins, infer, fallback);
     narrow_inferred(arena, builtins, infer, fallback, &mut mappings);
 
@@ -126,38 +124,31 @@ pub fn resolve_inference_with_bounds(
     mappings
 }
 
-/// The inference with each var added along with the generics (see `Inference::add_var`), such as
-/// an untyped lambda parameter's type, given the generics it's an upper candidate of as lower
-/// candidates, collected under the same union members, where it has no lower candidates and none
-/// of its upper candidates is assignable to all the others. `None` if there are none.
+/// Gives each var added along with the generics (see `Inference::add_var`), such as an untyped
+/// lambda parameter's type, the generics it's an upper candidate of as lower candidates, collected
+/// under the same union members, where it has no lower candidates and its upper candidates don't
+/// decide it: none of them is assignable to all the others, so `pick_inferred_type` would fall
+/// back to the first. Only the candidates of the union members that matched count, as they're the
+/// ones it's resolved from.
 ///
 /// `A ≤ X` is only recorded on `A`'s side when `A`'s value flows into the var `X`. So `X` would be
-/// picked from its upper candidates alone, and with none the most specific, such as `Int` (the
-/// type the lambda was compiled with, where `A` had been widened) and `5 | Bytes` (passed on from
-/// the type expected of the call), the first one would be picked, and `A` would be widened to it.
-/// With `A` as a lower candidate, `X` and `A` are resolved together, from `A`'s value and all of
-/// `X`'s upper candidates, as the explicit instantiation would be.
-fn with_added_var_lower_bounds(
+/// picked from its upper candidates alone, and with `Int` (the type the lambda was compiled with,
+/// where `A` had been widened) and `5 | Bytes` (passed on from the type expected of the call), it
+/// would be `Int`, and `A` would be widened to it. With `A` as a lower candidate, `X` and `A` are
+/// resolved together, from `A`'s value and all of `X`'s upper candidates, as the explicit
+/// instantiation would be.
+pub(crate) fn add_lambda_var_lower_bounds(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    infer: &Inference,
-) -> Option<Inference> {
-    if infer.added.is_empty() {
-        return None;
-    }
-
+    infer: &mut Inference,
+) {
     let mut derived = Vec::new();
 
-    for &var in &infer.added {
-        let candidates = &infer.generics[&var];
+    for &var in infer.added() {
+        let candidates = infer.matched_candidates(var).unwrap();
 
         if !candidates.lower.is_empty()
-            || candidates.upper.iter().any(|&ty| {
-                candidates.upper.iter().all(|&other| {
-                    compare_renamed(arena, builtins, &infer.renamed, ty, other)
-                        == Comparison::Assign
-                })
-            })
+            || most_specific(arena, builtins, &infer.renamed, &candidates.upper).is_some()
         {
             continue;
         }
@@ -174,19 +165,11 @@ fn with_added_var_lower_bounds(
         }
     }
 
-    if derived.is_empty() {
-        return None;
-    }
-
-    let mut infer = infer.clone();
-
     for (var, generic, branches) in derived {
         if !infer.generics[&var].lower.contains(&generic) {
             infer.push(var, CandidateKind::Lower, generic, branches);
         }
     }
-
-    Some(infer)
 }
 
 /// Replaces the mapping of each generic that was inferred, as a type that doesn't reference one

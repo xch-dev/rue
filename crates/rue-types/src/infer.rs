@@ -57,7 +57,7 @@ pub struct Inference {
     /// How those vars are resolved.
     policy: InstancePolicy,
     /// The vars added along with the generics (see `Inference::add_var`).
-    pub(crate) added: Vec<TypeId>,
+    added: Vec<TypeId>,
 }
 
 /// How the vars for passed generic functions' instances are resolved (see
@@ -197,6 +197,11 @@ impl Inference {
     /// lower bound that references one (see `pass_upper_bounds`).
     pub(crate) fn is_undecided(&self, generic: TypeId) -> bool {
         self.is_instance(generic) || self.added.contains(&generic)
+    }
+
+    /// The vars added along with the generics (see `Inference::add_var`).
+    pub(crate) fn added(&self) -> &[TypeId] {
+        &self.added
     }
 
     pub(crate) fn has_undecided(&self) -> bool {

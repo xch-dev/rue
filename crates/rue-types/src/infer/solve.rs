@@ -3,8 +3,9 @@ use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 use id_arena::Arena;
 
 use crate::{
-    BuiltinTypes, Inference, Type, TypeId, add_expected_bounds, pass_lower_bounds,
-    pass_upper_bounds, resolve_inference, resolve_inference_with_bounds, upper_bounds,
+    BuiltinTypes, Inference, Type, TypeId, add_expected_bounds, add_lambda_var_lower_bounds,
+    pass_lower_bounds, pass_upper_bounds, resolve_inference, resolve_inference_with_bounds,
+    upper_bounds,
 };
 
 /// Solves the generics of a call, given the candidates its arguments contribute as they're
@@ -146,6 +147,9 @@ impl CallSolver {
         if let Some(expected) = &self.expected {
             add_expected_bounds(arena, builtins, &mut infer, expected);
         }
+
+        // After the expected type's bounds have reached the vars of untyped lambda parameters
+        add_lambda_var_lower_bounds(arena, builtins, &mut infer);
 
         resolve_inference_with_bounds(arena, builtins, &infer, &self.fallback)
     }
