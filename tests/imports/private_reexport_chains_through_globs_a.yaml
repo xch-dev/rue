@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot re-export `Y`, since it's private at private_reexport_chains_through_globs_a.rue:8:12
