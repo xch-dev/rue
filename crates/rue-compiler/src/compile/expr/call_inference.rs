@@ -16,7 +16,7 @@ use rue_types::{
     contains_generic, substitute_with_mappings,
 };
 
-use crate::{ArgumentFrame, Compiler, compile_expr, compile_lambda_argument};
+use crate::{ArgumentFrame, Compiler, ParameterWrap, compile_expr, compile_lambda_argument};
 
 /// What inferring a call's generics gave.
 pub(crate) struct InferredCall {
@@ -137,9 +137,27 @@ pub(crate) fn infer_call(
             .iter()
             .any(|&generic| contains_generic(ctx.types_mut(), param, generic));
 
+        // A lambda expected to be exactly the parameter's function type wraps each of the callee's
+        // generics in its parameters (see `ParameterWrap`)
+        let params = match ctx.ty(param).clone() {
+            Type::Function(function_param) if function_param.generics.is_empty() => {
+                Some(function_param.param_types().collect::<Vec<_>>())
+            }
+            _ => None,
+        };
+
         let (value, mut parameters) = ctx.with_expected_type_hint(hint, |ctx| {
             if let AstExpr::LambdaExpr(lambda) = expr {
-                compile_lambda_argument(ctx, expr, lambda, Some(expected))
+                let wrap = match &params {
+                    Some(params) => ParameterWrap::Generics {
+                        params,
+                        generics: &function.generics,
+                        mappings: &mappings,
+                    },
+                    None => ParameterWrap::Whole,
+                };
+
+                compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
             } else {
                 (compile_expr(ctx, expr, Some(expected)), Vec::new())
             }
@@ -1084,7 +1102,8 @@ pub(crate) fn compile_element(
         .unwrap_or_default();
 
     let value = if wrap && let AstExpr::LambdaExpr(lambda) = expr {
-        let (value, parameters) = compile_lambda_argument(ctx, expr, lambda, expected);
+        let (value, parameters) =
+            compile_lambda_argument(ctx, expr, lambda, expected, &ParameterWrap::Whole);
 
         if let Some(argument) = ctx.argument_frame_mut() {
             argument.lambda_parameters.extend(parameters);

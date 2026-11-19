@@ -112,6 +112,12 @@ impl Database {
         self.reported_types.insert(ty, reported);
     }
 
+    /// Whether nodes recorded with the type are reported as having another one (see
+    /// `Database::report_type_as`).
+    pub fn is_reported_as_another_type(&self, ty: TypeId) -> bool {
+        self.reported_types.contains_key(&ty)
+    }
+
     /// Records the location of the source expression that a HIR node was compiled from. Like
     /// [`set_hir_type`](Self::set_hir_type), this is the outermost expression, so the location of
     /// a parenthesized expression includes the parentheses.

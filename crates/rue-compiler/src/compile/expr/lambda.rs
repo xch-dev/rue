@@ -4,7 +4,10 @@ use log::debug;
 use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Symbol, Value};
-use rue_types::{FunctionParameter, FunctionType, Type, TypeId, Union, substitute_with_mappings};
+use rue_types::{
+    FunctionParameter, FunctionType, Generic, Type, TypeId, Union, contains_generic,
+    substitute_with_mappings,
+};
 
 use crate::{
     BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
@@ -16,21 +19,40 @@ pub fn compile_lambda_expr(
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
-    compile_lambda(ctx, expr, expected_type, false).0
+    compile_lambda(ctx, expr, expected_type, None).0
 }
 
-/// Compiles a lambda. With `wrap`, for a lambda that's an argument of a call whose generics are
-/// being inferred, each untyped parameter is compiled as a reference of its own to the type it
-/// would have, which is the same type to its body. Where the parameter flows into the lambda's
-/// return type unchanged, the return type has the reference, so the call can infer the parameter's
-/// type along with its generics (#335). It returns the references and the types they refer to.
+/// How a lambda that's an argument of a call whose generics are being inferred compiles its untyped
+/// parameters, so that the call can infer their types along with its generics (#335). A reference
+/// is the same type to the body as the type it refers to, and where the parameter flows into the
+/// lambda's return type unchanged, the return type has the reference.
+pub(crate) enum ParameterWrap<'a> {
+    /// Each untyped parameter is compiled as a reference of its own to the type it would have.
+    Whole,
+    /// The lambda is expected to be exactly the function type with these parameter types, before
+    /// the callee's generics in them are substituted with what they're inferred as so far
+    /// (`mappings`, or the generic itself if it isn't mapped). Each of those generics is a reference
+    /// of its own in them instead, so a part of a parameter, such as `p.first` with `p: (A, Int)`,
+    /// still has it.
+    Generics {
+        params: &'a [TypeId],
+        generics: &'a [TypeId],
+        mappings: &'a HashMap<TypeId, TypeId>,
+    },
+}
+
+/// Compiles a lambda, with its untyped parameters wrapped as `wrap` says, if it's given. It returns
+/// the references and the types they refer to.
 pub(crate) fn compile_lambda(
     ctx: &mut Compiler,
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
-    wrap: bool,
+    wrap: Option<&ParameterWrap<'_>>,
 ) -> (Value, Vec<(TypeId, TypeId)>) {
     let mut wrapped = Vec::new();
+
+    // The reference for each of the callee's generics, with `ParameterWrap::Generics`
+    let mut references = HashMap::new();
 
     let mut expected_functions = if let Some(ty) = expected_type {
         rue_types::extract_functions(ctx.types_mut(), ty, true)
@@ -111,18 +133,16 @@ pub(crate) fn compile_lambda(
         };
 
         // Not for a generic lambda or one expected to be a generic function
-        let ty = if wrap
-            && param.ty().is_none()
-            && !is_spread
-            && vars.is_empty()
-            && !matches!(ctx.ty(ty), Type::Unresolved)
-        {
-            let reference = ctx.alloc_type(Type::Ref(ty));
-            ctx.report_type_as(reference, ty);
-            wrapped.push((reference, ty));
-            reference
-        } else {
-            ty
+        let ty = match wrap {
+            Some(wrap)
+                if param.ty().is_none()
+                    && !is_spread
+                    && vars.is_empty()
+                    && !matches!(ctx.ty(ty), Type::Unresolved) =>
+            {
+                wrap_parameter(ctx, wrap, i, ty, &mut references, &mut wrapped)
+            }
+            _ => ty,
         };
 
         let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
@@ -232,4 +252,66 @@ fn expected_return_type(ctx: &mut Compiler, functions: &[FunctionType]) -> Optio
             Some(ctx.alloc_type(Type::Union(Union::new(types))))
         }
     }
+}
+
+/// The type an untyped parameter is compiled as (see `ParameterWrap`), given the type it would have,
+/// with each new reference added to `wrapped` along with the type it refers to.
+fn wrap_parameter(
+    ctx: &mut Compiler,
+    wrap: &ParameterWrap<'_>,
+    index: usize,
+    ty: TypeId,
+    references: &mut HashMap<TypeId, TypeId>,
+    wrapped: &mut Vec<(TypeId, TypeId)>,
+) -> TypeId {
+    let ParameterWrap::Generics {
+        params,
+        generics,
+        mappings,
+    } = wrap
+    else {
+        let reference = ctx.alloc_type(Type::Ref(ty));
+        ctx.report_type_as(reference, ty);
+        wrapped.push((reference, ty));
+        return reference;
+    };
+
+    let Some(&source) = params.get(index) else {
+        return ty;
+    };
+
+    let mut substitution = HashMap::new();
+
+    for &generic in *generics {
+        if !contains_generic(ctx.types_mut(), source, generic) {
+            continue;
+        }
+
+        let reference = *references.entry(generic).or_insert_with(|| {
+            // It's a generic while it's substituted, since a mapped type is substituted itself,
+            // which would see through a reference
+            let target = mappings.get(&generic).copied().unwrap_or(generic);
+            let reference = ctx.alloc_type(Type::Generic(Generic { name: None }));
+            wrapped.push((reference, target));
+            reference
+        });
+
+        substitution.insert(generic, reference);
+    }
+
+    if substitution.is_empty() {
+        return ty;
+    }
+
+    let ty = substitute_with_mappings(ctx.types_mut(), source, &substitution);
+
+    for (&generic, &reference) in &substitution {
+        if matches!(ctx.ty(reference), Type::Generic(_)) {
+            let target = mappings.get(&generic).copied().unwrap_or(generic);
+            *ctx.ty_mut(reference) = Type::Ref(target);
+            ctx.report_type_as(reference, target);
+        }
+    }
+
+    ty
 }

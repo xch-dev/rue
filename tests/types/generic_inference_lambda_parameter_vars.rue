@@ -104,6 +104,31 @@ test fn pair_expected_with_a_generic_member() -> Int {
     let result = generic_member(nil);
 
     if result is (5, Int) {
+
+fn pair_map<A, B>(function: fn(pair: (A, Int)) -> B, value: A) -> B {
+    function((value, 1))
+}
+
+test fn compound_parameter() -> Int {
+    // `p` is `(A, Int)`, and `B ≤ (5, Int)` reaches the `A` in it, so `A` isn't widened
+    let result: (5, Int) = pair_map(fn(p) => p, 5);
+    result.first
+}
+
+test fn element_of_a_compound_parameter() -> Int {
+    // `p.first` keeps the reference to `A`, so `B ≤ 5` reaches it too
+    let result: 5 = pair_map(fn(p) => p.first, 5);
+    result + 1
+}
+
+fn list_map<A, B>(function: fn(list: List<A>) -> B, value: A) -> B {
+    function([value])
+}
+
+test fn list_parameter() -> Int {
+    let result: List<5> = list_map(fn(list) => list, 5);
+
+    if result is (5, List<5>) {
         result.first
     } else {
         0
