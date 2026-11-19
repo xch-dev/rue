@@ -169,7 +169,8 @@ fn tail<T>(first: T, function: fn(x: T) -> Int) -> T {
 
 // Guards: a call's generic that only its expected type constrains keeps the narrower `5`, whether
 // the call has no arguments, has one without any inside it, or has arguments that don't constrain
-// it (`nothing(1)`, `default_or(nil)`), and so does a lambda that a call passes through. Either way, `x` is `5`, as on main,
+// it (`nothing(1)`, `default_or(nil)`, `head([])`), and so does a lambda that a call passes
+// through. A block isn't widened at all, only a call is Either way, `x` is `5`, as on main,
 // which the unnecessary guards show
 test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
     let made: 5 | 6 = later(
@@ -202,7 +203,25 @@ test fn narrower_mapping_kept_without_arguments_or_with_a_lambda() -> Int {
     );
     let unbound: 5 | 6 = later(5, nothing(1), fn(x) => only_five(x));
     let held: 5 | 6 = later(5, default_or(nil), fn(x) => only_five(x));
-    made + passed + inside + unbound + held
+    let empty: 5 | 6 = later(
+        5,
+        head([]),
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    let block: 5 | 6 = later(
+        5,
+        { head([]) },
+        fn(x) => if x is 5 {
+            1
+        } else {
+            2
+        },
+    );
+    made + passed + inside + unbound + held + empty + block
 }
 
 type Tree<T> = nil | (T, (Tree<T>, Tree<T>));
@@ -238,4 +257,8 @@ fn nothing<A>(value: Int) -> A {
 
 fn default_or<A>(value: A | nil) -> A {
     unchecked_cast(value)
+}
+
+fn head<T>(list: List<T>) -> T {
+    unchecked_cast(list)
 }

@@ -8,3 +8,7 @@ diagnostics:
 - Unused function `guard_against_a_union_with_a_repeated_literal` at generic_inference_expected_mapped_errors.rue:31:4
 - Binding `value` is returned directly after it's declared at generic_inference_expected_mapped_errors.rue:32:5
 - Cannot type guard from `5 | 6` to `7`, since they do not overlap at generic_inference_expected_mapped_errors.rue:35:21
+- Unused function `either` at generic_inference_expected_mapped_errors.rue:44:4
+- Unused function `call_in_a_block_isnt_widened` at generic_inference_expected_mapped_errors.rue:50:4
+- Binding `value` is returned directly after it's declared at generic_inference_expected_mapped_errors.rue:51:5
+- Cannot compare `Int` to `7 | 8` without a type guard, since the runtime value must be constrained at generic_inference_expected_mapped_errors.rue:51:24

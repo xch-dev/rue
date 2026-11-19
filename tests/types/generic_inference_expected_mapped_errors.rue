@@ -40,3 +40,14 @@ fn guard_against_a_union_with_a_repeated_literal() -> Int {
     );
     value
 }
+
+fn either<T>(_first: T, second: T) -> T {
+    second
+}
+
+// Only a call is compiled against the expected type's own bound, so the call in a block gets the
+// `7` that the first argument narrows `T` to, and `8` doesn't fit it
+fn call_in_a_block_isnt_widened() -> Int {
+    let value: 7 | 8 = either(7, { identity(8) });
+    value
+}
