@@ -671,7 +671,17 @@ fn test_check_size_limit() {
         })
     );
 
-    // Or if the rest of the pair can never match, whichever of the first and rest is too large
+    // But it does if it's needed, whichever of the first and rest is too large
+    let int = t.builtins.int;
+    let ints = t.pair(int, int);
+    let first_large = t.pair(levels[12], int);
+    let either = t.union(vec![first_large, ints]);
+    assert_eq!(t.check(any, either), Err(CheckError::TooLarge));
+    let rest_large = t.pair(int, levels[12]);
+    let either = t.union(vec![rest_large, ints]);
+    assert_eq!(t.check(any, either), Err(CheckError::TooLarge));
+
+    // Unless the rest of the pair can never match, whichever of the first and rest is too large
     let bytes32 = t.builtins.bytes32;
     let nil = t.builtins.nil;
     let from = t.pair(any, bytes32);

@@ -37,6 +37,15 @@ fn any_pair(value: Any) -> Bool {
     value is (Any, Any) | T13
 }
 
+// But it is needed alongside a pair that's small enough, whichever half is too large
+fn first_too_large(value: Any) -> Bool {
+    value is (T12, Int) | (Int, Int)
+}
+
+fn rest_too_large(value: Any) -> Bool {
+    value is (Int, T12) | (Int, Int)
+}
+
 // Or if the rest of the pair can never match
 fn never_matches(value: (Any, Bytes32)) -> Bool {
     value is (T12, nil)
@@ -48,7 +57,12 @@ fn incompatible_assign(value: (Any, Bytes32)) -> (T12, nil) {
 
 fn main(pair: (Any, Bytes32)) -> (Bool, ((T12, T12), (T12, nil))) {
     (
-        too_large(nil) && larger(nil) && any_pair(nil) && never_matches(pair),
+        too_large(nil)
+            && larger(nil)
+            && any_pair(nil)
+            && first_too_large(nil)
+            && rest_too_large(nil)
+            && never_matches(pair),
         ((unguarded_assign(nil), unguarded_cast(nil)), incompatible_assign(pair)),
     )
 }
