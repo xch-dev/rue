@@ -319,14 +319,11 @@ impl Inference {
             // The vars for the other's instances, and those added to it, are its own
             if other.is_instance(generic) && !self.is_instance(generic) {
                 self.add_instance(generic, &InferenceCandidates::default());
-            } else if !self.generics.contains_key(&generic) {
+            } else if other.added.contains(&generic) && !self.added.contains(&generic) {
                 self.generics
                     .insert(generic, InferenceCandidates::default());
                 self.branches.insert(generic, CandidateBranches::default());
-
-                if other.added.contains(&generic) {
-                    self.added.push(generic);
-                }
+                self.added.push(generic);
             }
 
             for kind in [

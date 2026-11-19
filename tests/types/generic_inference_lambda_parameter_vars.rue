@@ -54,3 +54,16 @@ test fn guarded_value_unchanged() -> Bool {
     // A guard's type is only a hint, so the call is solved as before and the guard still checks
     map(fn(x) => x, 5) is 5
 }
+
+test fn lint_sees_the_parameter_type() -> Int {
+    // The parameter is compiled as a reference to `Int`, which lints see as `Int`, so the binding's
+    // annotation is still redundant and the lint suggests returning the value directly
+    let result = map(
+        fn(x) => {
+            let y: Int = x;
+            y
+        },
+        5,
+    );
+    result
+}

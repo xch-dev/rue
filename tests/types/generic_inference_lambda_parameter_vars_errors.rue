@@ -37,9 +37,16 @@ fn main() -> Int {
     let spread: 5 = map_spread(fn(...values) => values, 5);
     let generic: 5 = map(fn<T>(x) => x, 5);
 
+    // The lambda's `1` doesn't fit the expected `2`, so the call is left as it was and reports
+    // `(Int, 1)`
+    let mismatched: (5, 2) = map(fn(x) => (x, 1), 5);
+
+    // A cast's type is only a hint, so the call is solved as before and the cast still fails
+    let cast = map(fn(x) => x, 5) as 5;
+
     // Without an expected type nothing bounds the return type, so `x` is `Int` as before
     let unbounded = map(fn(x) => x, 5);
     let five: 5 = unbounded;
 
-    computed + nested.first + unfitting + spread + generic + five
+    computed + nested.first + unfitting + spread + generic + mismatched.first + cast + five
 }

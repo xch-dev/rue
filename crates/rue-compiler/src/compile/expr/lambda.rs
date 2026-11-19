@@ -122,6 +122,7 @@ pub(crate) fn compile_lambda(
             && !references_call_generics(ctx, ty)
         {
             let reference = ctx.alloc_type(Type::Ref(ty));
+            ctx.report_type_as(reference, ty);
             wrapped.push((reference, ty));
             reference
         } else {
