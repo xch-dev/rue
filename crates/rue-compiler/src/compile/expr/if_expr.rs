@@ -16,7 +16,7 @@ pub fn compile_if_expr(
         value
     } else {
         debug!("Unresolved if condition");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let then_expr = if let Some(then_expr) = expr.then_expr() {
@@ -32,7 +32,7 @@ pub fn compile_if_expr(
         }
     } else {
         debug!("Unresolved if then expr");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let else_expr = if let Some(else_expr) = expr.else_expr() {
@@ -48,7 +48,7 @@ pub fn compile_if_expr(
         }
     } else {
         debug!("Unresolved if else expr");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let ty = ctx.alloc_type(Type::Union(Union::new(vec![then_expr.ty, else_expr.ty])));

@@ -11,7 +11,7 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
         compile_type(ctx, &ty)
     } else {
         debug!("Unresolved guard type");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     let expr = if let Some(expr) = guard.expr() {
@@ -19,7 +19,7 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
         ctx.with_expected_type_hint(true, |ctx| compile_expr(ctx, &expr, Some(ty)))
     } else {
         debug!("Unresolved guard expr");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let constraint = ctx.guard_type(guard.syntax(), expr.ty, ty);

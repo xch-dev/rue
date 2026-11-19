@@ -7,7 +7,7 @@ use crate::{Compiler, LiteralValue};
 pub fn compile_literal_type(ctx: &mut Compiler, literal: &AstLiteralType) -> TypeId {
     let Some(value) = literal.value() else {
         debug!("Unresolved literal type");
-        return ctx.builtins().unresolved.ty;
+        return ctx.unresolved().ty;
     };
 
     match LiteralValue::decode(&value) {

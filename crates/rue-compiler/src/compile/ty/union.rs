@@ -13,7 +13,7 @@ pub fn compile_union_type(ctx: &mut Compiler, union: &AstUnionType) -> TypeId {
 
     if types.is_empty() {
         debug!("Unresolved union type");
-        return ctx.builtins().unresolved.ty;
+        return ctx.unresolved().ty;
     }
 
     ctx.alloc_type(Type::Union(Union::new(types)))

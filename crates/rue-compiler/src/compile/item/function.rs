@@ -81,7 +81,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
             compile_type(ctx, &ty)
         } else {
             debug!("Unresolved function parameter type");
-            ctx.builtins().unresolved.ty
+            ctx.unresolved().ty
         };
 
         *ctx.symbol_mut(symbol) = Symbol::Parameter(ParameterSymbol { name: None, ty });
@@ -98,6 +98,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
 
     ctx.pop_scope(range.end());
 
+    // The body is compiled once every signature has been declared (see `compile_function`)
     let body = ctx.builtins().unresolved.hir;
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
@@ -187,7 +188,7 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
         value.hir
     } else {
         debug!("Unresolved function body");
-        ctx.builtins().unresolved.hir
+        ctx.unresolved().hir
     };
 
     ctx.pop_scope(range.end());
@@ -202,13 +203,12 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
 }
 
 fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> HirId {
-    let unresolved = ctx.builtins().unresolved.hir;
     let path_text = string_value(source_path.text());
     let relative_path = Path::new(&path_text);
 
     if relative_path.is_absolute() {
         ctx.diagnostic(source_path, DiagnosticKind::AbsoluteExternalPath);
-        return unresolved;
+        return ctx.unresolved().hir;
     }
 
     if relative_path
@@ -216,16 +216,16 @@ fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> H
         .is_none_or(|extension| extension != "hex")
     {
         ctx.diagnostic(source_path, DiagnosticKind::InvalidExternalExtension);
-        return unresolved;
+        return ctx.unresolved().hir;
     }
 
     let SourceKind::File(source_file) = &ctx.source().kind else {
         ctx.diagnostic(source_path, DiagnosticKind::ExternalFromNonFileSource);
-        return unresolved;
+        return ctx.unresolved().hir;
     };
     let Some(parent) = Path::new(source_file).parent() else {
         ctx.diagnostic(source_path, DiagnosticKind::ExternalFromNonFileSource);
-        return unresolved;
+        return ctx.unresolved().hir;
     };
     let unresolved_path = parent.join(relative_path);
     let resolved_path = match unresolved_path.canonicalize() {
@@ -235,7 +235,7 @@ fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> H
                 source_path,
                 DiagnosticKind::ExternalFileRead(format!("{path_text}: {error}")),
             );
-            return unresolved;
+            return ctx.unresolved().hir;
         }
     };
 
@@ -249,7 +249,7 @@ fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> H
                     source_path,
                     DiagnosticKind::ExternalFileRead(format!("{path_text}: {error}")),
                 );
-                return unresolved;
+                return ctx.unresolved().hir;
             }
         };
         let hex = contents
@@ -263,7 +263,7 @@ fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> H
                     source_path,
                     DiagnosticKind::InvalidExternalHex(error.to_string()),
                 );
-                return unresolved;
+                return ctx.unresolved().hir;
             }
         };
         (bytes, true)
@@ -277,7 +277,7 @@ fn compile_external_function(ctx: &mut Compiler, source_path: &SyntaxToken) -> H
                 source_path,
                 DiagnosticKind::InvalidExternalClvm(error.to_string()),
             );
-            return unresolved;
+            return ctx.unresolved().hir;
         }
     };
     if should_cache {

@@ -22,7 +22,7 @@ pub fn compile_struct_initializer_expr(
         ty
     } else {
         debug!("Unresolved struct initializer path");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
@@ -44,7 +44,7 @@ pub fn compile_struct_initializer_expr(
         debug!("Unresolved struct initializer due to non struct type");
         let name = ctx.type_name(ty);
         ctx.diagnostic(expr.syntax(), DiagnosticKind::NonStructInitializer(name));
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     let mut expected_field_types = HashMap::new();
@@ -125,7 +125,7 @@ pub fn compile_struct_initializer_expr(
                 value
             } else {
                 debug!("Unresolved field path in struct initializer");
-                ctx.builtins().unresolved.clone()
+                ctx.unresolved()
             }
         };
 
@@ -185,7 +185,7 @@ pub fn compile_struct_initializer_expr(
 
     if unresolved {
         debug!("Unresolved struct initializer due to unresolved struct type");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     }
 
     let mut initializer_fields = Vec::new();
@@ -207,7 +207,7 @@ pub fn compile_struct_initializer_expr(
         } else {
             debug!("Unresolved struct initializer field");
             missing_fields.push(name.clone());
-            ctx.builtins().unresolved.clone()
+            ctx.unresolved()
         };
 
         initializer_fields.push(StructField {

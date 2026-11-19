@@ -8,7 +8,7 @@ use crate::{Compiler, LiteralValue};
 pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value {
     let Some(value) = expr.value() else {
         debug!("Unresolved literal expr");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     let value = LiteralValue::decode(&value);

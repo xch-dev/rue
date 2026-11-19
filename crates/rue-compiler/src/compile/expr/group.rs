@@ -12,7 +12,7 @@ pub fn compile_group_expr(
 ) -> Value {
     let Some(expr) = group.expr() else {
         debug!("Unresolved group expr");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
     compile_expr(ctx, &expr, expected_type)
 }

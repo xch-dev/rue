@@ -61,7 +61,7 @@ pub fn create_struct_binding(
                     &name,
                     DiagnosticKind::UnknownField(name.text().to_string(), type_name),
                 );
-                ctx.builtins().unresolved.clone()
+                ctx.unresolved()
             }
             FieldResult::Error => {
                 debug!("Unresolved field access due to missing field in underlying struct type");
@@ -70,7 +70,7 @@ pub fn create_struct_binding(
                     &name,
                     DiagnosticKind::MissingField(name.text().to_string(), type_name),
                 );
-                ctx.builtins().unresolved.clone()
+                ctx.unresolved()
             }
         };
 

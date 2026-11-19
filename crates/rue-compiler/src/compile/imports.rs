@@ -721,6 +721,7 @@ fn bind_error_items(
     for &namespace in namespaces {
         let item = match ctx.scope(scope).item(namespace, name) {
             None => {
+                ctx.note_placeholder();
                 let item = match namespace {
                     Namespace::Value => Item::Value(ctx.alloc_symbol(Symbol::Unresolved)),
                     Namespace::Type => Item::Type(ctx.alloc_type(Type::Unresolved)),

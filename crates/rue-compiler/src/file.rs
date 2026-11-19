@@ -817,9 +817,20 @@ fn codegen(
     }
 
     let options = *ctx.options();
-    // Unresolved code should always be accompanied by an error, but if it's not, refuse to
-    // generate code rather than panicking or producing an incorrect program.
-    let has_unresolved = has_reachable_unresolved(ctx, symbol);
+
+    // Every placeholder for code that couldn't be compiled should be covered by an error, but if
+    // one isn't, refuse to generate code rather than panicking or producing an incorrect program.
+    // A placeholder type is assignable to and from every type, so this is checked even if no
+    // placeholder value is reachable from the symbol.
+    let placeholder = ctx.first_placeholder();
+
+    debug_assert!(
+        placeholder.is_none(),
+        "a placeholder was made at {} without an error",
+        placeholder.map_or_else(String::new, ToString::to_string)
+    );
+
+    let has_unresolved = placeholder.is_some() || has_reachable_unresolved(ctx, symbol);
 
     debug_assert!(
         !has_unresolved,

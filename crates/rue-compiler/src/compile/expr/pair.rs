@@ -45,7 +45,7 @@ pub fn compile_pair_expr(
         ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &first, expected_first))
     } else {
         debug!("Unresolved pair first");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     record_element(ctx, first.ty, expected_first);
@@ -54,7 +54,7 @@ pub fn compile_pair_expr(
         compile_refined_element(ctx, &rest, expected_rest, hint).0
     } else {
         debug!("Unresolved pair rest");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let hir = ctx.alloc_hir(Hir::Pair(first.hir, rest.hir));

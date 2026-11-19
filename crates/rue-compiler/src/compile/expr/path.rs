@@ -16,11 +16,11 @@ pub fn compile_path_value(ctx: &mut Compiler, path: &AstPathExpr, allow_builtin:
         compile_path(ctx, path.syntax(), path.segments(), PathKind::Symbol, true)
     else {
         debug!("Unresolved path expr");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     if !allow_builtin && !check_symbol_value(ctx, path.syntax(), symbol) {
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     }
 
     let ty = ctx.symbol_type(symbol);

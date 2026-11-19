@@ -13,14 +13,14 @@ use crate::{Compiler, compile_expr};
 pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value {
     let Some(expr) = prefix.expr() else {
         debug!("Unresolved prefix expr");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     let value = compile_expr(ctx, &expr, None);
 
     if ctx.is_unresolved(value.ty) {
         debug!("Unresolved prefix expr");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     }
 
     let Some(op) = prefix.op() else {
@@ -101,5 +101,5 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
         prefix.syntax(),
         DiagnosticKind::IncompatibleUnaryOp(op.text().to_string(), type_name),
     );
-    ctx.builtins().unresolved.clone()
+    ctx.unresolved()
 }

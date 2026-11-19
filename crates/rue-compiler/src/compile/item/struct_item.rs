@@ -129,7 +129,7 @@ pub fn compile_struct_item(
             }))
         } else {
             debug!("Unresolved struct item field type");
-            ctx.builtins().unresolved.ty
+            ctx.unresolved().ty
         };
 
         field_types.push(field_type);
@@ -213,7 +213,7 @@ pub fn compile_struct_defaults(
             && !ctx.is_assignable(value.ty, expected_type)
         {
             ctx.assign_type(expr.syntax(), value.ty, expected_type);
-            value = ctx.builtins().unresolved.clone();
+            value = ctx.unresolved();
         }
 
         // Without a type annotation, the field keeps the exact type of its default value. This is
@@ -230,7 +230,7 @@ pub fn compile_struct_defaults(
                 && rue_types::is_non_contractive(ctx.types_mut(), field_type)
             {
                 report_and_break_cycle(ctx, &item, struct_type, DiagnosticKind::NonContractiveType);
-                *ctx.ty_mut(field_type) = Type::Ref(ctx.builtins().unresolved.ty);
+                *ctx.ty_mut(field_type) = Type::Ref(ctx.unresolved().ty);
             }
         }
 

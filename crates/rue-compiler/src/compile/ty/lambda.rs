@@ -42,7 +42,7 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
             compile_type(ctx, &ty)
         } else {
             debug!("Unresolved lambda parameter type");
-            ctx.builtins().unresolved.ty
+            ctx.unresolved().ty
         };
 
         let name = param
@@ -55,7 +55,7 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
         compile_type(ctx, &ty)
     } else {
         debug!("Unresolved lambda return type");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     ctx.pop_scope(range.end());
