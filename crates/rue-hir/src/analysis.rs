@@ -37,10 +37,11 @@
 //! multiplication and division are only treated as unable to fail if every operand is a suitable
 //! constant, and a product or quotient of values that aren't known at compile time can fail.
 //! Without `operand_limits`, a release build can succeed under `LIMITS` where a debug build
-//! fails, since a check that only fails for a long operand can be skipped. Nothing relies on narrower facts about atoms, such as a
-//! `Bytes32` having 32 bytes, a `Bool` being 0 or 1, or a `PublicKey` being a valid point, since
-//! the operations that need those (`coinid`, the BLS and secp operations, and so on) are treated
-//! as able to fail.
+//! fails, since a check that only fails for a long operand can be skipped.
+//!
+//! Nothing relies on narrower facts about atoms, such as a `Bytes32` having 32 bytes, a `Bool`
+//! being 0 or 1, or a `PublicKey` being a valid point, since the operations that need those
+//! (`coinid`, the BLS and secp operations, and so on) are treated as able to fail.
 //!
 //! If one of the trusted values has the wrong shape, a release build can return a value where a
 //! debug build fails, such as when reading a field of it was moved into a branch that isn't taken.

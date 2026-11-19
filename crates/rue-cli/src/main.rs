@@ -72,11 +72,8 @@ pub struct BuildArgs {
     // Clap's way of a flag with an optional value: whether it's passed, and the value if it's given
     #[allow(clippy::option_option)]
     debug_metadata: Option<Option<PathBuf>>,
-    /// Target CLVM with the `LIMITS` flag that mainnet enforces until hard fork 2, which rejects
-    /// some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and `g2_multiply`.
-    /// This is the same as `operand_limits = true` in `Rue.toml`, and turns it on if it's off there
-    #[clap(long)]
-    operand_limits: bool,
+    #[clap(flatten)]
+    target: TargetArgs,
     #[clap(flatten)]
     lints: LintArgs,
     /// Print help
@@ -87,15 +84,28 @@ pub struct BuildArgs {
 #[derive(Debug, Parser)]
 pub struct TestArgs {
     file: Option<String>,
+    #[clap(flatten)]
+    target: TargetArgs,
+    #[clap(flatten)]
+    lints: LintArgs,
+    #[clap(flatten)]
+    cost: CostArgs,
+}
+
+/// How the compiled programs are targeted, which takes precedence over `Rue.toml`.
+#[derive(Debug, Clone, Copy, Args)]
+pub struct TargetArgs {
     /// Target CLVM with the `LIMITS` flag that mainnet enforces until hard fork 2, which rejects
     /// some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and `g2_multiply`.
     /// This is the same as `operand_limits = true` in `Rue.toml`, and turns it on if it's off there
     #[clap(long)]
     operand_limits: bool,
-    #[clap(flatten)]
-    lints: LintArgs,
-    #[clap(flatten)]
-    cost: CostArgs,
+}
+
+impl TargetArgs {
+    fn apply(self, project: &mut Project) {
+        project.options.operand_limits |= self.operand_limits;
+    }
 }
 
 /// The default cost limit for running a program, which is the same as Chia's block cost limit.
@@ -457,7 +467,7 @@ fn build(args: BuildArgs) -> Result<()> {
     };
 
     let lint_errors = configure_lints(&mut project, &args.lints);
-    project.options.operand_limits |= args.operand_limits;
+    args.target.apply(&mut project);
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -833,7 +843,7 @@ fn test(args: TestArgs) -> Result<()> {
     };
 
     let lint_errors = configure_lints(&mut project, &args.lints);
-    project.options.operand_limits |= args.operand_limits;
+    args.target.apply(&mut project);
 
     let mut ctx = Compiler::new(project.options);
 
@@ -1714,12 +1724,12 @@ mod tests {
         else {
             panic!("expected build command");
         };
-        assert!(args.operand_limits);
+        assert!(args.target.operand_limits);
         let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "--operand-limits"])
         else {
             panic!("expected test command");
         };
-        assert!(args.operand_limits);
+        assert!(args.target.operand_limits);
     }
 
     #[test]

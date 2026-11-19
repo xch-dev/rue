@@ -587,24 +587,25 @@ fn binary_may_fail(
     operand_limits: bool,
 ) -> bool {
     match op {
-        // Division reads its divisor at any length, so only a zero divisor fails
-        BinaryOp::Div | BinaryOp::Mod | BinaryOp::Divmod if !operand_limits => {
-            constant_atom(db, right).is_none_or(|divisor| atom_bigint(divisor) == BigInt::ZERO)
-        }
-        BinaryOp::Mul if !operand_limits => false,
+        // Without `operand_limits`, division reads operands of any length, so only a zero divisor
+        // fails
         BinaryOp::Div | BinaryOp::Mod | BinaryOp::Divmod => {
-            let dividend_fits =
-                constant_atom(db, left).is_some_and(|atom| atom.len() <= MAX_DIVIDEND_BYTES);
+            let dividend_fits = !operand_limits
+                || constant_atom(db, left).is_some_and(|atom| atom.len() <= MAX_DIVIDEND_BYTES);
             let divisor_fits = constant_atom(db, right).is_some_and(|atom| {
-                atom.len() <= MAX_DIVISOR_BYTES && atom_bigint(&atom) != BigInt::ZERO
+                (!operand_limits || atom.len() <= MAX_DIVISOR_BYTES)
+                    && atom_bigint(&atom) != BigInt::ZERO
             });
             !dividend_fits || !divisor_fits
         }
         // The product of two operands that fit is at most `2 * MAX_MUL_OPERAND_BYTES` long, which
         // is within `MAX_PRODUCT_BYTES`
-        BinaryOp::Mul => [left, right].into_iter().any(|operand| {
-            constant_atom(db, operand).is_none_or(|atom| atom.len() > MAX_MUL_OPERAND_BYTES)
-        }),
+        BinaryOp::Mul => {
+            operand_limits
+                && [left, right].into_iter().any(|operand| {
+                    constant_atom(db, operand).is_none_or(|atom| atom.len() > MAX_MUL_OPERAND_BYTES)
+                })
+        }
         BinaryOp::LeftArithmeticShift
         | BinaryOp::RightArithmeticShift
         | BinaryOp::RightLogicalShift => constant_atom(db, right).is_none_or(|shift| {

@@ -186,8 +186,15 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
 
     let mut allocator = Allocator::new();
 
-    let mut ctx = Compiler::new(CompilerOptions::default());
-    let mut debug_ctx = Compiler::new(CompilerOptions::debug());
+    let operand_limits = file.operand_limits;
+    let mut ctx = Compiler::new(CompilerOptions {
+        operand_limits,
+        ..CompilerOptions::default()
+    });
+    let mut debug_ctx = Compiler::new(CompilerOptions {
+        operand_limits,
+        ..CompilerOptions::debug()
+    });
 
     let unit = FileTree::empty(&mut ctx)?;
     let debug_unit = FileTree::empty(&mut debug_ctx)?;
@@ -213,7 +220,13 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         .transpose()?
         .unwrap_or_default();
 
-    handle_tests(&mut allocator, false, &mut file.tests, &tests, &debug_tests)?;
+    handle_tests(
+        &mut allocator,
+        operand_limits,
+        &mut file.tests,
+        &tests,
+        &debug_tests,
+    )?;
 
     compare_snapshot(&yaml_file, &file, update, &mut failed)?;
 
