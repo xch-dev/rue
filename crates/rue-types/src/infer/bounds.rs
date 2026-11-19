@@ -348,7 +348,7 @@ pub(crate) fn upper_bounds(infer: &Inference) -> Vec<Bound> {
 }
 
 /// Adds each of the `added` bounds to its generic if the generic's lower bounds satisfy it (or
-/// reference a var for a passed generic function's instance, which can't be checked yet), and
+/// reference a var that isn't decided yet, see `Inference::is_undecided`), and
 /// passes each bound that's added, as well as each of the `existing` ones (which the generics
 /// already have), on to the generics in the generic's lower bounds that `accepts` allows, in the
 /// same way. A lower bound that's a generic gets the bound directly, and one that references
@@ -446,14 +446,14 @@ pub(crate) fn pass_upper_bounds(
 
             given.push((upper, holds));
 
-            // Lower bounds that reference a var for a passed generic function's instance can't be
-            // checked until it's instantiated, which these bounds are passed on to decide (see
-            // `CallSolver::instantiate`)
+            // Lower bounds that reference a var for a passed generic function's instance, or for an
+            // untyped lambda parameter's type, can't be checked until it's decided, which these
+            // bounds are passed on to do (see `Inference::is_undecided`)
             if expanded[&generic].is_some_and(|lower| {
-                !(infer.has_instances()
+                !(infer.has_undecided()
                     && free_generics(arena, lower)
                         .iter()
-                        .any(|&other| infer.is_instance(other)))
+                        .any(|&other| infer.is_undecided(other)))
                     && compare_renamed(arena, builtins, &renamed, lower, upper)
                         != Comparison::Assign
             }) {

@@ -88,7 +88,7 @@ The built-in `code-review` skill is an alternative for the correctness focus on 
 Reviewers are sometimes confidently wrong. Before acting on a finding, check it:
 
 - For a claimed bug, reproduce it: write the Rue snippet the finding describes to the scratchpad and run it (`cargo run --quiet -p rue-cli -- build <file>` prints the diagnostics, suggestions and compiled program; `-W <lint>` turns a lint on), or add the failing test first. A finding you can't reproduce is rejected unless you can see from the code that it's right.
-- For a claimed missing test, check whether an existing case already covers it. If you break the compiler to see whether a test catches it, follow the mutant rule in the reviewer brief: a scratch worktree and a time limit on every run.
+- For a claimed missing test, check whether an existing case already covers it. If you break the compiler to see whether a test catches it, follow the mutant rule in the reviewer brief: a scratch worktree and `timeout 120` on every test command, `cargo test` included.
 - For a simplification, check that the suggested helper does what the reviewer thinks.
 - For a finding marked "for the user", it's confirmed if the choice really is open: neither the source nor Settled answers it. Handle it as in section 5.
 

@@ -31,7 +31,7 @@ pub use path::*;
 pub use prefix::*;
 pub use struct_initializer::*;
 
-use rue_ast::{AstExpr, AstNode};
+use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
 use rue_hir::Value;
 use rue_types::TypeId;
 
@@ -63,4 +63,21 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
     };
 
     ctx.record_value(expr.syntax(), value)
+}
+
+/// Compiles a lambda that's an argument of a call whose generics are being inferred, as
+/// `compile_expr` does, with its untyped parameters compiled as references (see `compile_lambda`).
+pub(crate) fn compile_lambda_argument(
+    ctx: &mut Compiler,
+    expr: &AstExpr,
+    lambda: &AstLambdaExpr,
+    expected_type: TypeId,
+) -> (Value, Vec<(TypeId, TypeId)>) {
+    ctx.add_syntax(
+        SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+        expr.syntax().text_range(),
+    );
+
+    let (value, parameters) = compile_lambda(ctx, lambda, Some(expected_type), true);
+    (ctx.record_value(expr.syntax(), value), parameters)
 }
