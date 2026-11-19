@@ -18,6 +18,8 @@ mod const_eval_tests;
 #[cfg(test)]
 mod hir_type_tests;
 #[cfg(test)]
+mod import_pass_limit_tests;
+#[cfg(test)]
 mod import_tests;
 #[cfg(test)]
 mod inference_order_tests;
