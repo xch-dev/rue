@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use clvmr::error::EvalErr;
-use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
+use clvmr::{Allocator, ChiaDialect, ClvmFlags, NodePtr, SExp, run_program};
 use id_arena::Arena;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
@@ -281,7 +281,9 @@ fn evaluate_const_expr(
         },
     )
     .map_err(|error| ConstEvalError::Failed(error.to_string()))?;
-    let dialect = ChiaDialect::new(CLVM_FLAGS);
+    // The value is computed at compile time and never on chain, so the operand limits that
+    // `LIMITS` puts on the operators don't apply to it
+    let dialect = ChiaDialect::new(CLVM_FLAGS.difference(ClvmFlags::LIMITS));
 
     let output = run_program(&mut allocator, &dialect, program, NodePtr::NIL, max_cost).map_err(
         |error| match error {

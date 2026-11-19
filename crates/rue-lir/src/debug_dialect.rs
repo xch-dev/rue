@@ -12,11 +12,35 @@ use rue_clvm::disassemble_value;
 
 use crate::ClvmOp;
 
-/// The flags used to run Rue programs. These match mempool mode, with keccak256 enabled, and
-/// with modpow left enabled (`DISABLE_OP` turns it off in newer versions of mempool mode).
+/// The flags used to run Rue programs. These don't exactly match any flags Chia uses. They're
+/// mempool mode with `LIMITS`, which mainnet enforces in both the mempool and blocks until hard
+/// fork 2, but with modpow and keccak256 enabled outside of the softfork guard as they are after
+/// hard fork 2 (`DISABLE_OP` turns modpow off until then). Costs use the cost model from before
+/// hard fork 2.
+///
+/// `LIMITS` rejects some large operands of `*`, `/`, `%`, `divmod` and `modpow` (see
+/// [`MAX_MUL_OPERAND_BYTES`] and the constants after it), so these operators can fail for
+/// operands that aren't known at compile time.
 pub const CLVM_FLAGS: ClvmFlags = MEMPOOL_MODE
+    .union(ClvmFlags::LIMITS)
     .union(ClvmFlags::ENABLE_KECCAK_OPS_OUTSIDE_GUARD)
     .difference(ClvmFlags::DISABLE_OP);
+
+/// The longest atom (in bytes, including any leading zeros) that `LIMITS` allows as an operand of
+/// `*`. The running product is limited by [`MAX_PRODUCT_BYTES`].
+pub const MAX_MUL_OPERAND_BYTES: usize = 256;
+
+/// The largest magnitude (in bytes) that `LIMITS` allows the running product of `*` to reach after
+/// each operand after the first.
+pub const MAX_PRODUCT_BYTES: usize = 1024;
+
+/// The longest atom (in bytes, including any leading zeros) that `LIMITS` allows as the dividend of
+/// `/`, `%` and `divmod`.
+pub const MAX_DIVIDEND_BYTES: usize = 256;
+
+/// The longest atom (in bytes, including any leading zeros) that `LIMITS` allows as the divisor of
+/// `/`, `%` and `divmod`.
+pub const MAX_DIVISOR_BYTES: usize = 1024;
 
 /// The cost charged for each byte of a serialized program. This is `cost_per_byte` in Chia's
 /// mainnet consensus constants, which aren't available from `clvmr` itself.
