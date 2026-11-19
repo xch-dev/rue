@@ -8,7 +8,9 @@ use std::{
 use indexmap::{IndexMap, IndexSet};
 
 use num_bigint::BigInt;
-use rue_lir::{ClvmOp, atom_bigint, bigint_atom};
+use rue_lir::{
+    ClvmOp, MAX_DIVIDEND_BYTES, MAX_DIVISOR_BYTES, MAX_MUL_OPERAND_BYTES, atom_bigint, bigint_atom,
+};
 
 use crate::{BinaryOp, Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 
@@ -26,8 +28,8 @@ const MAX_SHIFT_LEN: usize = 4;
 /// (see the [module docs](super) for exactly what's trusted).
 ///
 /// This is conservative, so it's `true` for anything that might fail: `raise` and `assert`,
-/// operations that fail for some well-typed operands (such as division by zero, `substr` out of
-/// range, or an invalid BLS point), and calls to functions whose bodies may fail, or that can't be
+/// operations that fail for some well-typed operands (such as division by zero, an operand of `*`
+/// or `/` that's too long for `LIMITS`, `substr` out of range, or an invalid BLS point), and calls to functions whose bodies may fail, or that can't be
 /// resolved. Reading a value doesn't fail, including a field of a parameter or of a value
 /// returned by a call that can't be resolved, since its shape is trusted to match its type.
 ///
@@ -227,8 +229,8 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
                 matches!(op, UnaryOp::G1Negate | UnaryOp::G2Negate)
                     || self.any(node.children(), in_body)
             }
-            Hir::Binary(op, _, right) => {
-                binary_may_fail(db, *op, *right) || self.any(node.children(), in_body)
+            Hir::Binary(op, left, right) => {
+                binary_may_fail(db, *op, *left, *right) || self.any(node.children(), in_body)
             }
             Hir::ClvmOp(op, _) => clvm_op_may_fail(*op) || self.any(node.children(), in_body),
             Hir::CoinId(..)
@@ -562,14 +564,26 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
     }
 }
 
-/// Whether the operation may fail for well-typed operands, given the right operand. Division
-/// and shifts only fail for some right operands, so they can't fail if it's a suitable constant.
-/// Division reads its divisor at any length, but a shift amount's atom must also be short enough.
-fn binary_may_fail(db: &Database, op: BinaryOp, right: HirId) -> bool {
+/// Whether the operation may fail for well-typed operands. Shifts only fail for some right
+/// operands, so they can't fail if it's a suitable constant, whose atom must also be short
+/// enough. `LIMITS` (see [`rue_lir::CLVM_FLAGS`])
+/// rejects operands of multiplication and division that are too long, so those can only be known
+/// not to fail if both operands are suitable constants.
+fn binary_may_fail(db: &Database, op: BinaryOp, left: HirId, right: HirId) -> bool {
     match op {
         BinaryOp::Div | BinaryOp::Mod | BinaryOp::Divmod => {
-            constant_atom(db, right).is_none_or(|divisor| atom_bigint(divisor) == BigInt::ZERO)
+            let dividend_fits =
+                constant_atom(db, left).is_some_and(|atom| atom.len() <= MAX_DIVIDEND_BYTES);
+            let divisor_fits = constant_atom(db, right).is_some_and(|atom| {
+                atom.len() <= MAX_DIVISOR_BYTES && atom_bigint(&atom) != BigInt::ZERO
+            });
+            !dividend_fits || !divisor_fits
         }
+        // The product of two operands that fit is at most `2 * MAX_MUL_OPERAND_BYTES` long, which
+        // is within `MAX_PRODUCT_BYTES`
+        BinaryOp::Mul => [left, right].into_iter().any(|operand| {
+            constant_atom(db, operand).is_none_or(|atom| atom.len() > MAX_MUL_OPERAND_BYTES)
+        }),
         BinaryOp::LeftArithmeticShift
         | BinaryOp::RightArithmeticShift
         | BinaryOp::RightLogicalShift => constant_atom(db, right).is_none_or(|shift| {
@@ -583,7 +597,6 @@ fn binary_may_fail(db: &Database, op: BinaryOp, right: HirId) -> bool {
         | BinaryOp::G2Multiply => true,
         BinaryOp::Add
         | BinaryOp::Sub
-        | BinaryOp::Mul
         | BinaryOp::Concat
         | BinaryOp::Gt
         | BinaryOp::Lt
@@ -606,7 +619,8 @@ fn binary_may_fail(db: &Database, op: BinaryOp, right: HirId) -> bool {
 }
 
 /// Whether the builtin operation may fail for well-typed arguments. These are only created for
-/// builtins that take a list of arguments.
+/// builtins that take a list of arguments. Multiplication may fail, since `LIMITS` rejects operands
+/// that are too long.
 fn clvm_op_may_fail(op: ClvmOp) -> bool {
     !matches!(
         op,
@@ -615,7 +629,6 @@ fn clvm_op_may_fail(op: ClvmOp) -> bool {
             | ClvmOp::Concat
             | ClvmOp::Add
             | ClvmOp::Sub
-            | ClvmOp::Mul
             | ClvmOp::Any
             | ClvmOp::All
     )
@@ -623,7 +636,7 @@ fn clvm_op_may_fail(op: ClvmOp) -> bool {
 
 /// The atom the integer is compiled to, if it's known at compile time. CLVM reads some operands
 /// differently depending on their length, so this keeps the bytes of a value such as
-/// `0x0001 as Int` rather than its numeric value.
+/// `0x0001 as Int` rather than its numeric value. `LIMITS` also counts any leading zeros.
 fn constant_atom(db: &Database, hir: HirId) -> Option<Vec<u8>> {
     match db.hir(db.without_casts(hir)) {
         Hir::Int(value) => Some(bigint_atom(value.clone())),

@@ -2051,7 +2051,7 @@ const ONCE: Int = 1;
 
 fn main(a: Int, flag: Bool) -> Int {
     inline // inline
-    let doubled = a * 2;
+    let doubled = a + 2;
 
     if (a == 1 // note
     ) == true {
@@ -2093,7 +2093,7 @@ const ONCE: Int = 1;
 
 fn main(a: Int, flag: Bool) -> Int {
     inline // inline
-    let doubled = a * 2;
+    let doubled = a + 2;
 
     if (a == 1 // note
     ) {

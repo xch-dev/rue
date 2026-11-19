@@ -1,3 +1,5 @@
+use std::mem;
+
 use id_arena::Arena;
 use num_bigint::{BigInt, BigUint, Sign};
 use num_integer::Integer;
@@ -5,7 +7,8 @@ use sha2::{Digest, Sha256};
 use sha3::Keccak256;
 
 use crate::{
-    ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
+    ClvmOp, Lir, LirId, MAX_DIVIDEND_BYTES, MAX_DIVISOR_BYTES, MAX_MUL_OPERAND_BYTES, atom_bigint,
+    bigint_atom, first_path,
     optimize::{
         ArgList, Truthiness, fold_atoms, is_atom, is_boolean, is_nil, is_pure, opt_truthy,
         reads_env,
@@ -249,42 +252,95 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Sub([vec![minuend], negative].concat()))
 }
 
-// If the value is an atom, we can add it to a product
-// We can collapse nested muls
+// Each run of adjacent constant operands is folded into its product. `LIMITS` checks the length of
+// each operand and of the running product after each one (see `MAX_MUL_OPERAND_BYTES`), so this
+// doesn't flatten nested products, whose inner product is checked as an operand, or move
+// constants, which would change the running products when an operand is zero at runtime.
+//
+// A run is only folded if each of its operands and its product fit in an operand, and none of them
+// are zero. Then each running product inside the run is at most the one after it, so folding it
+// doesn't change whether the product fails. A product of one is left out, since it doesn't change
+// the running products either.
 pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    let mut args = ArgList::new(args);
     let mut result = Vec::new();
-    let mut product = BigInt::from(1);
+    let mut run = Vec::new();
+    let mut folded = false;
 
-    while let Some(arg) = args.next() {
-        match arena[arg].clone() {
-            Lir::Atom(atom) => product *= atom_bigint(atom),
-            Lir::Mul(items) => args.prepend(items),
-            _ => result.push(arg),
+    for arg in args {
+        if matches!(arena[arg], Lir::Atom(_)) {
+            run.push(arg);
+        } else {
+            folded |= fold_mul_run(arena, &mut run, &mut result);
+            result.push(arg);
         }
     }
 
-    if product != BigInt::from(1) {
-        result.push(arena.alloc(Lir::Atom(bigint_atom(product))));
-    }
+    folded |= fold_mul_run(arena, &mut run, &mut result);
 
     if result.is_empty() {
         return arena.alloc(Lir::Atom(vec![1]));
     }
 
-    // A lone non-constant operand is kept as `(* x)`, since multiplication
-    // normalizes non-canonical integer atoms (e.g. `0x0001` to `1`)
-    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
+    // A lone product of constants is used directly, but anything else alone is kept as `(* x)`,
+    // since multiplication normalizes non-canonical integer atoms (e.g. `0x0001` to `1`), and
+    // fails for an operand that's too long
+    if folded && result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
     arena.alloc(Lir::Mul(result))
 }
 
-// If both values are atoms, we can perform the division (as long as the right value is not zero)
+/// Adds the product of a run of constant operands to the result if it can be folded, or else the
+/// operands themselves, and returns whether it was folded.
+fn fold_mul_run(arena: &mut Arena<Lir>, run: &mut Vec<LirId>, result: &mut Vec<LirId>) -> bool {
+    if run.is_empty() {
+        return false;
+    }
+
+    let run = mem::take(run);
+    let mut product = BigInt::from(1);
+
+    for &arg in &run {
+        let Lir::Atom(atom) = &arena[arg] else {
+            unreachable!("a run only contains atoms");
+        };
+
+        let value = atom_bigint(atom.clone());
+
+        if atom.len() > MAX_MUL_OPERAND_BYTES || value.sign() == Sign::NoSign {
+            result.extend(run);
+            return false;
+        }
+
+        product *= value;
+    }
+
+    let product = bigint_atom(product);
+
+    if product.len() > MAX_MUL_OPERAND_BYTES {
+        result.extend(run);
+        return false;
+    }
+
+    if product != [1] {
+        result.push(arena.alloc(Lir::Atom(product)));
+    }
+
+    true
+}
+
+/// Whether `LIMITS` allows the operands of `/`, `%` or `divmod`.
+fn division_within_limits(left: &[u8], right: &[u8]) -> bool {
+    left.len() <= MAX_DIVIDEND_BYTES && right.len() <= MAX_DIVISOR_BYTES
+}
+
+// If both values are atoms, we can perform the division (as long as the right value is not zero,
+// and `LIMITS` allows the operands)
 pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
+        && division_within_limits(&left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -295,10 +351,12 @@ pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     arena.alloc(Lir::Div(left, right))
 }
 
-// If both values are atoms, we can perform the division and remainder (as long as the right value is not zero)
+// If both values are atoms, we can perform the division and remainder (as long as the right value is
+// not zero, and `LIMITS` allows the operands)
 pub fn opt_divmod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
+        && division_within_limits(&left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -314,10 +372,12 @@ pub fn opt_divmod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     arena.alloc(Lir::Divmod(left, right))
 }
 
-// If both values are atoms, we can perform the remainder (as long as the right value is not zero)
+// If both values are atoms, we can perform the remainder (as long as the right value is not zero, and
+// `LIMITS` allows the operands)
 pub fn opt_mod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
+        && division_within_limits(&left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign

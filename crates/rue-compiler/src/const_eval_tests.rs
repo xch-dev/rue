@@ -38,6 +38,17 @@ fn integers_do_not_overflow() {
     );
 }
 
+/// Const expressions are never evaluated on chain, so the operand limits of `LIMITS` don't apply
+#[test]
+fn long_operands_are_not_limited() {
+    let long = format!("0x01{}", "00".repeat(299));
+
+    assert_eq!(
+        evaluate("Int", &format!("const {{ {long} as Int * 3 / 3 % 7 }}")),
+        "2"
+    );
+}
+
 #[test]
 fn division_rounds_toward_negative_infinity() {
     assert_eq!(evaluate("Int", "const { 7 / 2 }"), "3");

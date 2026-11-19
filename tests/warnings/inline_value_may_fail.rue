@@ -55,7 +55,7 @@ fn inline_binding_through_binding(x: Int, flag: Bool) -> Int {
 
 // Doesn't warn: can't fail
 fn safe_inline_binding(x: Int, flag: Bool) -> Int {
-    inline let doubled = x * 2;
+    inline let doubled = x + 2;
     if flag {
         doubled
     } else {
@@ -198,7 +198,7 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
     let g = sum(...[check(x), 1]);
 
     // Doesn't warn: can't fail
-    let h = pick(x * 2, flag);
+    let h = pick(x + 2, flag);
 
     // Doesn't warn: bound with `let`, so it's evaluated before the call
     let checked = check(x);

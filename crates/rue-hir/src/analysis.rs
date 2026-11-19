@@ -25,9 +25,12 @@
 //! Everything else follows from type checking: `as` can't change a value's shape, a type guard
 //! checks enough of the shape to rule out every other type its value could have (so a guard from
 //! `Any` checks the whole shape), and `==` only compiles for atoms. Given those shapes,
-//! the operations treated as unable to fail (reading a field, arithmetic, comparisons, `==`,
-//! hashing, `concat`, `strlen`, the bitwise and logical operators, and shifts and division by
-//! suitable constants) can't fail in CLVM. Nothing relies on narrower facts about atoms, such as a
+//! the operations treated as unable to fail (reading a field, addition and subtraction,
+//! comparisons, `==`, hashing, `concat`, `strlen`, the bitwise and logical operators, shifts by
+//! suitable constants, and multiplication and division of suitable constants) can't fail in CLVM.
+//! Multiplication and division of values that aren't known at compile time can fail, since the
+//! `LIMITS` flag that mainnet enforces rejects operands that are too long (see
+//! [`rue_lir::CLVM_FLAGS`]). Nothing relies on narrower facts about atoms, such as a
 //! `Bytes32` having 32 bytes, a `Bool` being 0 or 1, or a `PublicKey` being a valid point, since
 //! the operations that need those (`coinid`, the BLS and secp operations, and so on) are treated
 //! as able to fail.
