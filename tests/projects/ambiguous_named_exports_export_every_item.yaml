@@ -1,0 +1,3 @@
+diagnostics:
+- "`V` is ambiguous, since glob imports bring in different items with this name at z.rue:1:14"
+- "`V` is ambiguous, since glob imports bring in different items with this name at c.rue:1:14"

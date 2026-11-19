@@ -57,6 +57,27 @@ $ rue build
 (q . "Hello, world!")
 ```
 
+## Modules and Paths
+
+Every `.rue` file in a project is a module, every directory is a module containing its files and directories, and `mod name { ... }` declares a module inside a file. A path names an item in another module, such as `utils::greet`, and can start with:
+
+- **A name in scope:** a file sees the other files and directories next to it by name, while an inline module only sees its own items, its imports and the prelude.
+- **`super`:** from an inline module, the module it's in. From a file, the parent of the file's directory (since the file already sees its own directory's contents by name). Each further `super` goes up one more module.
+- **`crate`:** the root of the project, from anywhere in it: the entrypoint directory (such as `puzzles`), or the file itself when a single file is compiled. The standard library's root is its own directory. `crate` is only allowed at the start of a path, and since the root has no parent, `super` can't follow it.
+
+`super` and `crate` name a module that contains the code, so its private items can be used, and `import crate::*` brings them all in (like `import super::*`). Past that, the usual rules apply: an item inside another module (including a file reached through `crate`) has to be exported. `export crate::...` re-exports an item, like any other import path:
+
+```rs
+// puzzles/conditions/create.rue, where `crate` and `super` both name `puzzles`
+import crate::utils::greet;
+
+export fn hello() -> String {
+    greet(crate::main::NAME) + greet(super::main::NAME)
+}
+```
+
+The [Modules](https://rue-lang.com/docs/modules) page covers modules, imports and exports in more detail.
+
 ## CLI
 
 | Command                         | Description                                                            |

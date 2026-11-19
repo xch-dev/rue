@@ -1,0 +1,7 @@
+// `c.rue` and `z.rue` each export two different `V`s from modules inside of other files, which
+// only the binding of the name exports. The module names are in either order, so either glob
+// import binds `V`, and neither `V` is reported as unused.
+
+fn main() -> Int {
+    3
+}

@@ -1,0 +1,7 @@
+// `c.rue` and `z.rue` each export `V` with a named import of an ambiguous name, which two glob
+// imports bring in different items with. The module names are in either order, so either glob
+// import binds `V`, and neither of the `V`s in `defs.rue` or `more.rue` is reported as unused.
+
+fn main() -> Int {
+    3
+}

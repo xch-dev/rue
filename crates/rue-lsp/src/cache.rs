@@ -437,6 +437,7 @@ impl Cache<Compiler> {
         if let CompletionContext::ModuleExports {
             module,
             allow_super,
+            members,
         } = context.clone()
         {
             if allow_super && let Some(score) = fuzzy_match(&partial, "super") {
@@ -452,10 +453,10 @@ impl Cache<Compiler> {
 
             let scope = self.ctx.module(module).scope;
 
-            // Only a module that `super` names can be followed by `super`. It contains the code,
-            // so its private items and a file's sibling modules can be used too.
-            let members = |namespace| {
-                if allow_super {
+            // A module that `super` or `crate` names contains the code, so its private items and
+            // a file's sibling modules can be used too.
+            let items = |namespace| {
+                if members {
                     self.ctx.module_members(scope, namespace)
                 } else {
                     self.ctx.scope(scope).exported_items(namespace)
@@ -464,11 +465,11 @@ impl Cache<Compiler> {
 
             let symbols = [Namespace::Value, Namespace::Module]
                 .into_iter()
-                .flat_map(members)
+                .flat_map(items)
                 .filter_map(|(name, item)| symbol_item(name, item))
                 .collect::<Vec<_>>();
 
-            let types = members(Namespace::Type)
+            let types = items(Namespace::Type)
                 .into_iter()
                 .filter_map(|(name, item)| Some((name, item.ty()?)))
                 .collect::<Vec<_>>();
@@ -527,16 +528,22 @@ impl Cache<Compiler> {
             }
         }
 
-        if let Some(score) = fuzzy_match(&partial, "super")
-            && matches!(
-                context,
-                CompletionContext::Expression | CompletionContext::Type
-            )
-        {
-            scored_items.push((
-                score,
-                create_completion_item("super".to_string(), Some(CompletionItemKind::MODULE), None),
-            ));
+        if matches!(
+            context,
+            CompletionContext::Expression | CompletionContext::Type
+        ) {
+            for keyword in ["super", "crate"] {
+                if let Some(score) = fuzzy_match(&partial, keyword) {
+                    scored_items.push((
+                        score,
+                        create_completion_item(
+                            keyword.to_string(),
+                            Some(CompletionItemKind::MODULE),
+                            None,
+                        ),
+                    ));
+                }
+            }
         }
 
         for scope in &scopes.0 {

@@ -1282,7 +1282,7 @@ fn test_import_recovery() {
                 Block
         "#]],
         expect![[r#"
-            Expected one of `*`, `{`, `super`, identifier, found `;` at main.rue:1:13
+            Expected one of `*`, `{`, `super`, `crate`, identifier, found `;` at main.rue:1:13
             Expected one of `::`, `,`, `}`, found identifier at main.rue:2:16"#]],
     );
 }

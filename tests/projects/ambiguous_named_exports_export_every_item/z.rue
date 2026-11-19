@@ -1,0 +1,6 @@
+export both::V;
+
+mod both {
+    export super::more::y::*;
+    export super::more::x::*;
+}

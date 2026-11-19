@@ -2,5 +2,3 @@ diagnostics:
 - Unused function `apply_later` at generic_inference_element_bounds_errors.rue:1:4
 - Unused function `lambda_before_its_value` at generic_inference_element_bounds_errors.rue:7:4
 - "Cannot assign `(fn(x: T) -> T, 1)` to `(fn(value: Int) -> Int, Int)`, since they are incompatible at generic_inference_element_bounds_errors.rue:8:17"
-- Unused function `recursive` at generic_inference_element_bounds_errors.rue:13:4
-- "Cannot assign `(1, fn(x: T) -> T)` to `(Int, fn(value: Int) -> Int)`, since they are incompatible at generic_inference_element_bounds_errors.rue:15:26"

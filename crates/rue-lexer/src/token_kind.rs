@@ -37,6 +37,7 @@ pub enum TokenKind {
     Is,
     As,
     Super,
+    Crate,
 
     // Grouping
     OpenParen,

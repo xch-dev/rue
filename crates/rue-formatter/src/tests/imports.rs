@@ -161,6 +161,19 @@ fn absolute_and_super_import_paths_sort_canonically() {
 }
 
 #[test]
+fn crate_import_paths_are_formatted_and_sorted() {
+    check(
+        "import zeta::item;\nexport   crate :: { b,a };\nimport crate::super::x;\nimport crate::*;",
+        expect![[r#"
+            import crate::*;
+            import crate::super::x;
+            export crate::{a, b};
+            import zeta::item;
+        "#]],
+    );
+}
+
+#[test]
 fn import_and_export_of_the_same_path_have_stable_order() {
     check(
         "import shared::item; // import\nexport shared::item; // export",

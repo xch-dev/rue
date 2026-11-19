@@ -931,6 +931,267 @@ fn super_refers_to_the_module_an_inline_module_is_in() {
 }
 
 #[test]
+fn crate_refers_to_the_file_of_a_single_file_program() {
+    // `crate` is the outermost module, the file here, from anywhere in it, so it reaches the
+    // file's private items like `super` does from the modules directly in it. An item with the
+    // same name in a module doesn't shadow it.
+    let compiled = compile(
+        "
+        const TOP: Int = 1;
+
+        mod outer {
+            const TOP: Int = 2;
+
+            export mod inner {
+                import crate::TOP;
+                import crate::outer::ONE;
+
+                export fn value() -> Int {
+                    TOP + crate::TOP + super::TOP + ONE
+                }
+            }
+
+            export const ONE: Int = 3;
+        }
+
+        fn main() -> Int {
+            outer::inner::value() + crate::TOP
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("outer::inner::TOP"), "(root)");
+    assert_eq!(
+        compiled.reference_origins("outer::inner::value", "TOP"),
+        [
+            "`TOP`: (root)",
+            "`crate::TOP`: (root)",
+            "`super::TOP`: outer"
+        ]
+    );
+    assert_eq!(
+        compiled.reference_origins("main", "TOP"),
+        ["`crate::TOP`: (root)"]
+    );
+}
+
+#[test]
+fn crate_paths_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
+    // At the top level of a single file, `crate` names the scope the code is in, but it's still
+    // only the file's own items (and imports): the prelude around the file isn't searched
+    let compiled = compile(
+        "
+        import crate::LOCAL;
+        export crate::helper;
+
+        type Alias = crate::Int;
+        type Local = crate::Number;
+        type Number = Int;
+
+        const LOCAL: Int = 1;
+        const HASH: Bytes32 = crate::sha256(1);
+        const VALUE: Local = crate::LOCAL + crate::helper();
+
+        fn helper() -> Int {
+            1
+        }
+
+        fn main() -> Int {
+            VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "5:29 UndeclaredType(\"Int\")",
+            "10:38 UndeclaredSymbol(\"sha256\")",
+        ]
+    );
+    assert_eq!(compiled.type_origin("Local"), "(root)");
+}
+
+#[test]
+fn crate_imports_at_the_top_of_a_single_file_do_not_reach_the_prelude() {
+    // An import through `crate` at the top of the file doesn't find the prelude's items either.
+    // Like any failed import, it blocks its name in the file, and `crate` names the file, so a
+    // later use through `crate` isn't reported again, nor is one without it.
+    let compiled = compile(
+        "
+        import crate::Int;
+        import crate::sha256;
+
+        type Alias = crate::Int;
+
+        const HASH: Bytes32 = crate::sha256(1) + sha256(2);
+
+        fn main() -> Int {
+            1
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:23 UnresolvedImport(\"Int\")",
+            "3:23 UnresolvedImport(\"sha256\")",
+        ]
+    );
+}
+
+#[test]
+fn failed_imports_at_the_root_block_their_name_through_crate() {
+    // A name that a failed import blocks in the root is blocked for imports and paths through
+    // `crate` from a nested module too, like through `super`, so only the failure is reported
+    let compiled = compile(
+        "
+        import nope::X;
+
+        mod m {
+            export mod n {
+                import crate::X;
+
+                export fn f() -> Int {
+                    X + crate::X
+                }
+            }
+        }
+
+        fn main() -> Int {
+            m::n::f() + crate::X
+        }
+        ",
+    );
+
+    assert_eq!(compiled.errors(), ["2:16 UndeclaredSymbol(\"nope\")"]);
+}
+
+#[test]
+fn glob_imports_of_crate_at_the_top_of_a_single_file_do_not_bring_in_the_prelude() {
+    // `import crate::*` at the top of the file imports the file into itself, which brings in
+    // nothing new, and in particular nothing from the prelude, which is still found as usual
+    let compiled = compile(
+        "
+        import crate::*;
+
+        const LOCAL: Int = 1;
+
+        fn main() -> Int {
+            LOCAL
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_origins("main", "LOCAL"),
+        ["`LOCAL`: (root)"]
+    );
+}
+
+#[test]
+fn crate_paths_into_other_modules_need_their_items_to_be_exported() {
+    // Through `crate`, an item inside another module is reached the same way as through `super`
+    // or the module's name, so it has to be exported, even from a module that the path is in
+    let compiled = compile(
+        "
+        mod a {
+            const HIDDEN: Int = 1;
+
+            mod b {
+                export fn value() -> Int {
+                    crate::a::HIDDEN + super::super::a::HIDDEN + super::HIDDEN
+                }
+            }
+        }
+
+        fn main() -> Int {
+            crate::a::b::value()
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "7:31 PrivateSymbol(\"HIDDEN\", \"a\")",
+            "7:57 PrivateSymbol(\"HIDDEN\", \"a\")",
+            "13:23 PrivateSymbol(\"b\", \"a\")",
+        ]
+    );
+}
+
+#[test]
+fn glob_and_exported_imports_of_crate_bring_in_private_items() {
+    // `crate::*` brings in the root's private items, like `super::*` does from a module in it,
+    // and `export crate::...` re-exports one
+    let compiled = compile(
+        "
+        const TOP: Int = 1;
+
+        mod outer {
+            export mod inner {
+                import crate::*;
+                export crate::TOP;
+
+                export fn value() -> Int {
+                    TOP + main()
+                }
+            }
+        }
+
+        fn main() -> Int {
+            outer::inner::TOP
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("outer::inner::TOP"), "(root)");
+}
+
+#[test]
+fn crate_errors_are_reported() {
+    let compiled = compile(
+        "
+        import crate;
+        import crate::super::x;
+        import crate::{crate};
+        import a::crate::b;
+
+        mod a {
+            export mod b {}
+        }
+
+        fn main() -> Int {
+            crate + crate::super::main() + a::crate::b + super::crate::main()
+        }
+        ",
+    );
+
+    // An import that ends in `crate` imports nothing, and a `crate` after the start of a path is
+    // skipped in an import, like `super` after a name
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:16 CrateAtEnd",
+            "3:23 UnresolvedSuper",
+            "3:30 UnresolvedImport(\"x\")",
+            "4:24 CrateNotAtStart",
+            "5:19 CrateNotAtStart",
+            "12:13 CrateAtEnd",
+            "12:28 UnresolvedSuper",
+            "12:47 CrateNotAtStart",
+            "12:58 UnresolvedSuper",
+            "12:65 CrateNotAtStart",
+        ]
+    );
+}
+
+#[test]
 fn super_errors_are_reported() {
     let compiled = compile(
         "
@@ -1155,8 +1416,6 @@ fn exported_glob_imports_of_the_same_item_both_bring_it_in() {
 
 #[test]
 fn colliding_glob_imports_are_both_used() {
-    // Which of the two `X`s the ambiguous use counts as using still depends on which glob import
-    // bound the name
     for named_first in [true, false] {
         let compiled = compile(&overlapping_globs(
             named_first,
@@ -1195,6 +1454,189 @@ fn colliding_unused_glob_imports_are_both_unused() {
             unused_imports(&compiled),
             ["24:34 UnusedImport", "25:33 UnusedImport"],
             "named first: {named_first}"
+        );
+    }
+}
+
+/// Two modules each export a different `V`, which `both` glob exports from both of them, and
+/// `user` has `user_items`, in which `{first}` and `{second}` are replaced with the modules'
+/// names. The first module's `V` has the value `first_value`. The names are `alpha` and `beta` if
+/// `first_binds`, and otherwise `zeta` and `beta`, so that either glob import binds `V`, since
+/// that depends on the modules' names.
+fn colliding_glob_items(first_binds: bool, first_value: &str, user_items: &str) -> String {
+    let first = if first_binds { "alpha" } else { "zeta" };
+    let user_items = user_items
+        .replace("{first}", first)
+        .replace("{second}", "beta");
+
+    format!(
+        "
+        mod {first} {{ export const V: Int = {first_value}; }}
+        mod beta {{ export const V: Int = 2; }}
+        mod both {{ export super::{first}::*; export super::beta::*; }}
+        mod user {{ {user_items} }}
+        fn main() -> Int {{ user::value() }}
+        "
+    )
+}
+
+/// The warnings about unused constants.
+fn unused_constants(compiled: &Compiled) -> Vec<String> {
+    compiled
+        .warnings()
+        .into_iter()
+        .filter(|warning| warning.ends_with("UnusedConstant"))
+        .collect()
+}
+
+#[test]
+fn ambiguous_uses_of_colliding_glob_items_use_all_of_them() {
+    // Whichever glob import bound `V`, its use is a use of both `V`s, so neither is reported as
+    // unused, whether it's used directly, through a chain of glob imports, a named import, a
+    // glob import of a named import, or a path
+    for user_items in [
+        "import super::{first}::*; import super::{second}::*; export fn value() -> Int { V }",
+        "import super::both::*; export fn value() -> Int { V }",
+        "import super::both::V; export fn value() -> Int { V }",
+        "mod mid { export super::super::both::V; } import mid::*; export fn value() -> Int { V }",
+        "export fn value() -> Int { super::both::V }",
+    ] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_glob_items(first_binds, "1", user_items));
+            let errors = compiled.errors();
+
+            assert!(
+                errors.len() == 1 && errors[0].ends_with("AmbiguousImport(\"V\")"),
+                "{user_items}, first binds: {first_binds}: {errors:?}"
+            );
+            assert_eq!(
+                unused_constants(&compiled),
+                Vec::<String>::new(),
+                "{user_items}, first binds: {first_binds}"
+            );
+        }
+    }
+}
+
+#[test]
+fn ambiguous_uses_through_a_glob_import_that_collides_again_use_all_of_them() {
+    // `user` brings in a third `V`, which collides with the ambiguous `V` that `both` exports.
+    // Whichever of the three the name is bound to, the use counts as a use of all of them.
+    for third in ["aaa", "zzz"] {
+        for first_binds in [true, false] {
+            let source = colliding_glob_items(
+                first_binds,
+                "1",
+                &format!(
+                    "import super::{third}::*; import super::both::*; export fn value() -> Int {{ V }}"
+                ),
+            );
+            let compiled = compile(&format!(
+                "{source}mod {third} {{ export const V: Int = 3; }}"
+            ));
+            let errors = compiled.errors();
+
+            assert!(
+                errors.len() == 1 && errors[0].ends_with("AmbiguousImport(\"V\")"),
+                "third: {third}, first binds: {first_binds}: {errors:?}"
+            );
+            assert_eq!(
+                unused_constants(&compiled),
+                Vec::<String>::new(),
+                "third: {third}, first binds: {first_binds}"
+            );
+        }
+    }
+}
+
+#[test]
+fn ambiguous_uses_through_chains_resolved_in_later_passes_use_all_of_them() {
+    // `both` only finds that `V` is ambiguous once the chain of glob imports to `beta` is resolved,
+    // after the chain of named imports has already passed on `V`, so what else it could refer to
+    // is passed on in later passes
+    for first in ["alpha", "zeta"] {
+        let compiled = compile(&format!(
+            "
+            mod n1 {{ export super::n2::V; }}
+            mod n2 {{ export super::n3::V; }}
+            mod n3 {{ export super::n4::V; }}
+            mod n4 {{ export super::both::V; }}
+            mod {first} {{ export const V: Int = 1; }}
+            mod beta {{ export const V: Int = 2; }}
+            mod g1 {{ export super::g2::*; }}
+            mod g2 {{ export super::g3::*; }}
+            mod g3 {{ export super::g4::*; }}
+            mod g4 {{ export super::g5::*; }}
+            mod g5 {{ export super::beta::*; }}
+            mod both {{ export super::{first}::*; export super::g1::*; }}
+            mod user {{ import super::n1::V; export fn value() -> Int {{ V }} }}
+            mod globbed {{ import super::n1::*; export fn value() -> Int {{ V }} }}
+            fn main() -> Int {{ user::value() + globbed::value() }}
+            "
+        ));
+        let errors = compiled.errors();
+
+        assert!(
+            errors.len() == 1 && errors[0].ends_with("AmbiguousImport(\"V\")"),
+            "first: {first}: {errors:?}"
+        );
+        assert_eq!(
+            unused_constants(&compiled),
+            Vec::<String>::new(),
+            "first: {first}"
+        );
+    }
+}
+
+#[test]
+fn unused_colliding_glob_items_are_all_unused() {
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_glob_items(
+            first_binds,
+            "1",
+            "import super::{first}::*; import super::{second}::*; export fn value() -> Int { 1 }",
+        ));
+        let first = if first_binds { "2:34" } else { "2:33" };
+
+        compiled.assert_no_errors();
+        assert_eq!(
+            unused_constants(&compiled),
+            [
+                format!("{first} UnusedConstant"),
+                "3:33 UnusedConstant".to_string()
+            ],
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others() {
+    // The first module's `V` calls the function that uses `V`, which is only recursive if the
+    // name is bound to it. The use counts as a use of the other `V` too, but isn't a reference to
+    // it.
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_glob_items(
+            first_binds,
+            "super::user::value()",
+            "import super::{first}::*; import super::{second}::*; export fn value() -> Int { V }",
+        ));
+        let recursive = compiled
+            .errors()
+            .into_iter()
+            .filter(|error| error.contains("Recursive"))
+            .collect::<Vec<_>>();
+
+        if first_binds {
+            assert_eq!(recursive, ["2:34 RecursiveConstant(\"V\")"]);
+        } else {
+            assert_eq!(recursive, Vec::<String>::new());
+        }
+
+        assert_eq!(
+            unused_constants(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
         );
     }
 }

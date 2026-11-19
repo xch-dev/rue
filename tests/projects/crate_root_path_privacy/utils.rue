@@ -1,0 +1,9 @@
+fn hidden() -> Int {
+    1
+}
+
+const HIDDEN: Int = 2;
+
+export fn shown() -> Int {
+    3
+}

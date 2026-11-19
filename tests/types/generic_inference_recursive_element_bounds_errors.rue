@@ -1,0 +1,145 @@
+// The guards on what a lambda in a pair or list of a recursive call gets (see
+// `generic_inference_recursive_element_bounds.rue`). Each one keeps the type it had before, which
+// the diagnostics show
+
+fn make<X>() -> X {
+    unchecked_cast(1)
+}
+
+// A call with no arguments keeps the caller's `T`, so the call's `T` is `Int | T`, as before
+fn call_without_arguments<T>(pair: (T, T), depth: Int) -> T {
+    if depth > 0 {
+        let result = call_without_arguments((1, make()), depth - 1);
+        let _show: nil = result;
+        return pair.first;
+    }
+
+    pair.first
+}
+
+// So does a call in a lambda's body, where the caller's `T` is only the lambda's return type
+fn lambda_return_type<T>(pair: (T, fn() -> T), depth: Int) -> T {
+    if depth > 0 {
+        let result = lambda_return_type((1, fn() => make()), depth - 1);
+        let _show: nil = result;
+        return pair.first;
+    }
+
+    pair.first
+}
+
+// A typed parameter keeps the caller's `T` in the lambda's expected return type, so `make()` is
+// `Int | T`, as before
+fn typed_parameter<T>(pair: (T, fn(value: T) -> T), depth: Int) -> T {
+    if depth > 0 {
+        let result = typed_parameter((1, fn(_value: T | Int) => make()), depth - 1);
+        let _show: nil = result;
+        return pair.first;
+    }
+
+    pair.first
+}
+
+// A parameter type that's a union with the caller's `T` keeps it, since the lambda could compile
+// with it before
+fn union_parameter<T>(pair: (T, fn(value: T | Int) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        return union_parameter(
+            (
+                1,
+                fn(x) => {
+                    let _show: nil = x;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.rest(pair.first)
+}
+
+type Callback<X> = fn(value: X) -> Int;
+
+// With a union of function types expected, the parameter is `T | Int`, which keeps the caller's `T`
+fn union_of_functions<T>(pair: (T, Callback<T> | Callback<Int>), depth: Int) -> Int {
+    if depth > 0 {
+        return union_of_functions(
+            (
+                1,
+                fn(x) => {
+                    let _show: nil = x;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+fn wrap<F>(function: fn(value: F) -> Int) -> fn(value: F) -> Int {
+    function
+}
+
+// A lambda inside a call in the pair isn't the element itself, so it keeps the caller's `T`
+fn lambda_in_a_call<T>(pair: (T, fn(value: T) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        return lambda_in_a_call(
+            (
+                1,
+                wrap(
+                    fn(x) => {
+                        let _show: nil = x;
+                        0
+                    },
+                ),
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.rest(pair.first)
+}
+
+// The caller's `T` that another generic of the callee is inferred as is the caller's own, so the
+// lambda gets `T` there
+fn other_generic<T, U>(value: U, pair: (T, fn(value: U) -> Int), depth: Int) -> Int {
+    if depth > 0 {
+        let caller: T = unchecked_cast(1);
+        return other_generic(
+            caller,
+            (
+                1,
+                fn(x) => {
+                    let _show: nil = x;
+                    0
+                },
+            ),
+            depth - 1,
+        );
+    }
+
+    pair.rest(value)
+}
+
+// The same when the type expected of the call gives it: the caller's `T` can't be told apart
+// from the restored one, so the lambda still gets `T`
+fn expected_generic<T, U>(pair: (T, fn(value: T) -> U), depth: Int) -> U {
+    if depth > 0 {
+        let result: T = expected_generic((1, fn(x) => x), depth - 1);
+        return unchecked_cast(result);
+    }
+
+    pair.rest(pair.first)
+}
+
+// Only the elements before a lambda count
+fn lambda_before_its_value<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        return lambda_before_its_value((fn(x) => x, 1), depth - 1);
+    }
+
+    pair.first(pair.rest)
+}

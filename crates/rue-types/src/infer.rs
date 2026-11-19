@@ -54,6 +54,26 @@ pub struct Inference {
     /// rather than for a generic of the function being called (`VarKind::Instance` in #362), with
     /// the instance's bounds as their candidates (see `Inference::add_instance`).
     instances: Vec<TypeId>,
+    /// How those vars are resolved.
+    policy: InstancePolicy,
+}
+
+/// How the vars for passed generic functions' instances are resolved (see
+/// `Inference::add_instance`).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum InstancePolicy {
+    /// Each is resolved on its own from its bounds as soon as the comparison that instantiated it
+    /// has finished, and replaced in the candidates that reference it (see
+    /// `Inference::resolve_instances`). This is for the inferences that are only a step of
+    /// solving, such as the bounds implied by a call's expected type.
+    #[default]
+    Eager,
+    /// They stay in the inference, and each solve passes on to them the bounds that the generics of
+    /// the function being called imply, such as the type expected of the call, before they're
+    /// instantiated. One that's only contravariant in a lower or held candidate, such as `T` in
+    /// `fn(x: T) -> nil`, takes the greatest instantiation rather than the least (see
+    /// `Inference::resolve_instances`).
+    Joint,
 }
 
 /// One member of a union that a value was compared against while inferring, or the fallback that
@@ -134,6 +154,7 @@ impl Inference {
             renamed: FxHashMap::default(),
             choices: Choices::default(),
             instances: Vec::new(),
+            policy: InstancePolicy::Eager,
         }
     }
 
@@ -143,6 +164,33 @@ impl Inference {
     /// one is resolved through what it's inferred as, unlike one that references the other.
     pub fn rename(&mut self, generic: TypeId, from: TypeId) {
         self.renamed.insert(generic, from);
+    }
+
+    /// Sets how the vars for passed generic functions' instances are resolved.
+    pub fn set_instance_policy(&mut self, policy: InstancePolicy) {
+        self.policy = policy;
+    }
+
+    pub(crate) fn instance_policy(&self) -> InstancePolicy {
+        self.policy
+    }
+
+    pub(crate) fn has_instances(&self) -> bool {
+        !self.instances.is_empty()
+    }
+
+    /// Replaces the bounds of the vars for passed generic functions' instances with the ones they
+    /// have in the other inference, which has the same candidates with more added.
+    pub(crate) fn take_instance_bounds(&mut self, other: &Inference) {
+        for &var in &self.instances {
+            self.generics.insert(var, other.generics[&var].clone());
+            self.branches.insert(var, other.branches[&var].clone());
+        }
+    }
+
+    /// Whether the generic is a var for a passed generic function's instance.
+    pub(crate) fn is_instance(&self, generic: TypeId) -> bool {
+        self.instances.contains(&generic)
     }
 
     /// Every candidate collected for the generic, including those collected under a union member
@@ -243,6 +291,11 @@ impl Inference {
 
         for (&generic, candidates) in &other.generics {
             let branches = &other.branches[&generic];
+
+            // The vars for the other's instances are its own
+            if other.is_instance(generic) && !self.is_instance(generic) {
+                self.add_instance(generic, &InferenceCandidates::default());
+            }
 
             for kind in [
                 CandidateKind::Lower,
@@ -512,7 +565,7 @@ impl Choices {
 }
 
 /// Which list of a generic's `InferenceCandidates` a candidate is in.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CandidateKind {
     Lower,
     Upper,

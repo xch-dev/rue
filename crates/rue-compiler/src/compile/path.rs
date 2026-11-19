@@ -77,8 +77,8 @@ enum SegmentBase {
     Module(ScopeId),
     /// From the scope the path is written in, and then each enclosing scope.
     Local(ScopeId),
-    /// In the module that `super` names. It contains the code with the path, so its private items
-    /// can be used, and a file's sibling modules can be too.
+    /// In the module that `super` or `crate` names. It contains the code with the path, so its
+    /// private items can be used, and a file's sibling modules can be too.
     Parent(ScopeId),
 }
 
@@ -144,8 +144,29 @@ where
         ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
     }
 
-    // The last `super`, and whether it named a module
-    let mut last_super = None;
+    // The last `super` or `crate` that the path starts with, and whether it named a module
+    let mut last_prefix = None;
+    // Whether the path starts with `super` or `crate` that named a module, which contains the code
+    let mut from_parent = false;
+    // Whether a `super` can come next, which it can't after `crate`, since the root has no parent
+    let mut allow_super = true;
+
+    if let Some(segment) = segments.first()
+        && let Some(name) = segment.name()
+        && name.text() == "crate"
+    {
+        segments.remove(0);
+
+        let root = ctx.crate_root();
+        base_scope = ctx.module(root).scope;
+        module_stack = Some(Vec::new());
+        path_completion_module = Some(root);
+        from_parent = true;
+        allow_super = false;
+
+        ctx.add_syntax(SyntaxItemKind::SymbolReference(root), name.text_range());
+        last_prefix = Some((name, true));
+    }
 
     while let Some(segment) = segments.first()
         && let Some(name) = segment.name()
@@ -158,7 +179,8 @@ where
             ctx.add_syntax(
                 SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports {
                     module,
-                    allow_super: true,
+                    allow_super,
+                    members: true,
                 }),
                 TextRange::new(separator.end(), segment.text_range().end()),
             );
@@ -172,21 +194,25 @@ where
         {
             base_scope = ctx.module(module).scope;
             path_completion_module = Some(module);
+            from_parent = true;
 
             ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
-            last_super = Some((name, true));
+            last_prefix = Some((name, true));
         } else {
             ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
             completions = false;
-            last_super = Some((name, false));
+            last_prefix = Some((name, false));
         }
     }
 
-    // A path that's only `super` names a module, which can't be used as a value or a type
+    // A path that's only `super` or `crate` names a module, which can't be used as a value or a
+    // type
     if segments.is_empty()
-        && let Some((name, resolved)) = last_super
+        && let Some((name, resolved)) = last_prefix
     {
-        if resolved {
+        if resolved && name.text() == "crate" {
+            ctx.diagnostic(&name, DiagnosticKind::CrateAtEnd);
+        } else if resolved {
             ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
         }
 
@@ -204,10 +230,18 @@ where
             ctx.add_syntax(
                 SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports {
                     module,
-                    allow_super: index == 0,
+                    allow_super: allow_super && index == 0,
+                    members: index == 0,
                 }),
                 TextRange::new(separator.end(), segment.text_range().end()),
             );
+        }
+
+        if let Some(name) = segment.name()
+            && name.text() == "crate"
+        {
+            ctx.diagnostic(&name, DiagnosticKind::CrateNotAtStart);
+            return PathResult::Unresolved;
         }
 
         if let Some(name) = segment.name()
@@ -245,10 +279,10 @@ where
                 );
                 return PathResult::Unresolved;
             }
-        } else if base_scope == ctx.last_scope_id() {
-            SegmentBase::Local(base_scope)
-        } else {
+        } else if from_parent {
             SegmentBase::Parent(base_scope)
+        } else {
+            SegmentBase::Local(base_scope)
         };
 
         // A name whose import failed has already been reported at the import. It's checked in
