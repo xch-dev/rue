@@ -1,0 +1,37 @@
+import X;
+
+// Two glob imports that bring in error items with the same name would each have filled it, so a
+// failure of either import explains a use of the name
+mod k {
+    export nope::X;
+}
+
+mod l {
+    export missing::X;
+}
+
+mod a {
+    import super::k::*;
+    import super::l::*;
+
+    export fn f() -> Int {
+        X
+    }
+}
+
+// A named import of the name shadows the glob imports, so its own failure isn't explained by
+// theirs, and is reported. It would fail even if `k` and `l` had an `X`.
+mod s {
+    import super::k::*;
+
+    export X;
+}
+
+mod b {
+    import super::*;
+    import X::d::X;
+}
+
+fn main() -> Int {
+    a::f() + s::X
+}

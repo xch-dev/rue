@@ -198,8 +198,9 @@ pub struct ImportCache {
     /// [`bind_failed_imports`]). A failure is final, even once the import finds the error items
     /// of the imports it failed because of.
     failed: IndexMap<ImportId, Failure>,
-    /// The failed imports that each error item comes from: the one that bound it, and any other
-    /// failed import of the name into the same scope, whose own error item it stands for.
+    /// The imports that each error item stands for: the failed imports of the name into the scope
+    /// it was bound in, and the origins of the error items that met it in a name (see
+    /// [`merge_error_origins`]). Only failed imports are reported (see [`reported_failures`]).
     error_origins: HashMap<Item, IndexSet<ImportId>>,
     /// The imports whose error items each import found where it failed, or resolved its path or
     /// name through, which explain its failure (see [`reported_failures`]).
@@ -633,7 +634,7 @@ fn bind_error_items(
     let mut bound = false;
 
     for &namespace in namespaces {
-        match ctx.scope(scope).item(namespace, name) {
+        let item = match ctx.scope(scope).item(namespace, name) {
             None => {
                 let item = match namespace {
                     Namespace::Value => Item::Value(ctx.alloc_symbol(Symbol::Unresolved)),
@@ -642,41 +643,17 @@ fn bind_error_items(
                 };
 
                 ctx.add_error_item(item);
-                error_origins.entry(item).or_default().insert(import_id);
-                bound |= bind(ctx, scope, import_id, name, item, exported);
+                item
             }
-            Some(existing) if ctx.is_error_item(existing) => {
-                error_origins.entry(existing).or_default().insert(import_id);
-                bound |= export_error_item(ctx, scope, namespace, name, exported);
-            }
-            Some(_) => {}
-        }
+            Some(existing) if ctx.is_error_item(existing) => existing,
+            Some(_) => continue,
+        };
+
+        error_origins.entry(item).or_default().insert(import_id);
+        bound |= bind(ctx, scope, import_id, name, item, exported);
     }
 
     bound
-}
-
-/// Exports the error item with a name in a scope, if there is one, for an exported import that
-/// failed to bring the name in. Returns whether it wasn't exported already.
-fn export_error_item(
-    ctx: &mut Compiler,
-    scope: ScopeId,
-    namespace: Namespace,
-    name: &str,
-    exported: bool,
-) -> bool {
-    let target = ctx.scope(scope);
-
-    let Some(item) = target.item(namespace, name) else {
-        return false;
-    };
-
-    if !exported || !ctx.is_error_item(item) || target.is_item_exported(item) {
-        return false;
-    }
-
-    ctx.scope_mut(scope).export_item(item);
-    true
 }
 
 /// Adds the failed imports that one error item comes from to another's, when the name that the
@@ -694,7 +671,7 @@ fn merge_error_origins(
     into.len() != count
 }
 
-/// Records that an import found an error item, which the failed imports it comes from explain.
+/// Records that an import found an error item, which the imports it stands for explain.
 fn link_error(cache: &mut ImportCache, import_id: ImportId, item: Item) {
     if let Some(origins) = cache.error_origins.get(&item) {
         cache
@@ -858,7 +835,8 @@ fn check_forced_lookups(ctx: &mut Compiler, cache: &ImportCache) {
             .scope(forced.scope)
             .item_with_import(forced.namespace, forced.name.text())
             .is_some_and(|(item, via)| {
-                // A failed import's error item doesn't contradict anything
+                // A failed import's error item doesn't contradict anything. It only fills a name
+                // once nothing else can be resolved, so this is only a guard.
                 if ctx.is_error_item(item) {
                     return false;
                 }
@@ -1321,24 +1299,8 @@ fn resolve_import(
 ) -> bool {
     let import = ctx.import(import_id).clone();
 
-    match resolve_path(ctx, import_scope, import_id, &import, cache, resolution) {
-        PathState::Resolved => {}
-        PathState::Unresolved => return false,
-        // It's silently bound to error items too
-        PathState::Error => {
-            let Items::Named(name) = &import.items else {
-                return false;
-            };
-
-            return bind_error_items(
-                ctx,
-                &mut cache.error_origins,
-                (import_scope, import_id),
-                name.text(),
-                &Namespace::ALL,
-                import.exported,
-            );
-        }
+    if !resolve_path(ctx, import_scope, import_id, &import, cache, resolution) {
+        return false;
     }
 
     let base = cache.paths.get(&import_id).map(|path| path.scope);
@@ -1382,18 +1344,8 @@ fn resolve_import(
     }
 }
 
-/// What resolving an import's path found.
-enum PathState {
-    /// It's resolved and cached, or there's no path.
-    Resolved,
-    /// It isn't known yet, or it doesn't resolve.
-    Unresolved,
-    /// A segment names a failed import's error item (see [`Compiler::is_error_item`]), so the
-    /// import brings in error items too, without being reported.
-    Error,
-}
-
-/// Resolves an import's path, if it has one, and caches what it resolves to.
+/// Resolves an import's path, if it has one, and caches what it resolves to. Returns whether it's
+/// resolved, or has no path.
 fn resolve_path(
     ctx: &mut Compiler,
     import_scope: ScopeId,
@@ -1401,7 +1353,7 @@ fn resolve_path(
     import: &Import,
     cache: &mut ImportCache,
     resolution: &mut Resolution,
-) -> PathState {
+) -> bool {
     let diagnostics = resolution.diagnostics;
 
     // The path doesn't change once it's resolved, and looking it up again could find what the
@@ -1417,11 +1369,11 @@ fn resolve_path(
             }
         }
 
-        return PathState::Resolved;
+        return true;
     }
 
     if import.path.is_empty() {
-        return PathState::Resolved;
+        return true;
     }
 
     let mut base = None;
@@ -1448,7 +1400,7 @@ fn resolve_path(
             Namespace::Module,
         ) {
             Lookup::Found(module, via) => Some((module, via)),
-            Lookup::Undetermined => return PathState::Unresolved,
+            Lookup::Undetermined => return false,
             Lookup::NotFound => None,
         };
 
@@ -1487,25 +1439,22 @@ fn resolve_path(
                 DiagnosticKind::UndeclaredSymbol(name.text().to_string())
             };
 
-            // A named import fails to bring in its name in any namespace
-            let namespaces = match import.items {
-                Items::Named(_) => Namespace::ALL.to_vec(),
-                Items::All(_) => Vec::new(),
-            };
-
             resolution.failures.insert(
                 import_id,
                 Failure {
                     scope: import_scope,
-                    namespaces,
+                    namespaces: Namespace::ALL.to_vec(),
                     errors: vec![(name.clone(), kind)],
                 },
             );
-            return PathState::Unresolved;
+            return false;
         };
 
+        // It resolves to an error without being reported. It failed in the pass before the error
+        // item was bound, since nothing had the name, so its own name is bound to error items
+        // already.
         if ctx.is_error_item(module) {
-            return PathState::Error;
+            return false;
         }
 
         let symbol = module.symbol().expect("a module is a symbol");
@@ -1536,7 +1485,7 @@ fn resolve_path(
         },
     );
 
-    PathState::Resolved
+    true
 }
 
 /// Records the errors in an import's resolved path, and the names in it that refer to a
@@ -1638,12 +1587,19 @@ fn resolve_glob_import(
         };
 
         for (name, item) in items {
-            // An error item that would have filled a name that another one fills explains what
-            // finds the name too, even where a named import of the name shadows this import
-            if ctx.is_error_item(item)
-                && let Some(existing) = ctx.scope(import_scope).item(namespace, &name)
+            // A failed import's error item only fills a name that nothing else brought in. Error
+            // items are only bound once nothing else can be resolved, so nothing else brings in
+            // the name after one does, and the name is never ambiguous. Another glob import's
+            // error item with the name would have filled it too, so either explains what finds
+            // it. A named import's doesn't: it shadows this import, so it fails on its own.
+            if let Some(existing) = ctx.scope(import_scope).item(namespace, &name)
+                && (ctx.is_error_item(item) || ctx.is_error_item(existing))
             {
-                if ctx.is_error_item(existing) && existing != item {
+                if ctx.is_error_item(item)
+                    && ctx.is_error_item(existing)
+                    && existing != item
+                    && resolution.named_imports_of(import_scope, &name).is_none()
+                {
                     updated |= merge_error_origins(&mut cache.error_origins, existing, item);
                 }
 
@@ -1682,22 +1638,6 @@ fn resolve_glob_import(
                 && (module.item(namespace, &name) != Some(item) || module.is_item_exported(item));
 
             let existing = ctx.scope(import_scope).item(namespace, &name);
-
-            // A failed import's error item only fills a name that nothing else brought in. Error
-            // items are only bound once nothing else can be resolved, so nothing else brings in
-            // the name after one does, and the name is never ambiguous.
-            if ctx.is_error_item(item)
-                || existing.is_some_and(|existing| ctx.is_error_item(existing))
-            {
-                // It counts as something the import brings in, since uses of the name are
-                // explained by it
-                if existing.is_none() && bind(ctx, import_scope, import_id, &name, item, exported) {
-                    updated = true;
-                    *count += 1;
-                }
-
-                continue;
-            }
 
             // The glob import that the binding of the name was recorded on, if any
             let recorded = existing

@@ -1,3 +1,0 @@
-diagnostics:
-- Unresolved import `X` at failed_names_through_super_globs.rue:3:8
-- Unused import `*` at failed_names_through_super_globs.rue:6:19

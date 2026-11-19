@@ -661,6 +661,32 @@ fn main() -> Int {
 }
 
 #[test]
+fn test_complete_super_members_skip_sibling_files_hidden_by_failed_imports() {
+    // A failed import of `utils` binds the name in the file to an error item, which hides the
+    // sibling file, so neither is offered after `super::`
+    let project = TestProject::new(&[
+        (
+            "main.rue",
+            r#"
+import nope::utils;
+
+mod inner {
+    fn main() -> Int {
+        super::$0
+    }
+}
+"#,
+        ),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    expect![[r#"
+        super [Module]
+        inner [Module]
+    "#]]
+    .assert_eq(&project.completions());
+}
+
+#[test]
 fn test_complete_super_members_in_a_type() {
     // A file's sibling files and private types are offered after `super::` in a type too
     let project = TestProject::new(&[

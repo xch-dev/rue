@@ -568,8 +568,16 @@ impl Compiler {
     /// The names and items that a module (by its scope) has in a namespace, including a file's
     /// sibling modules. This is what `super::name` can name.
     pub fn module_members(&self, scope: ScopeId, namespace: Namespace) -> Vec<(String, Item)> {
-        let mut items = self.scope(scope).items(namespace);
-        items.extend(self.sibling_items(scope, namespace));
+        let module = self.scope(scope);
+        let mut items = module.items(namespace);
+
+        // An item of the file with the name hides the sibling (see [`Self::sibling_item`])
+        items.extend(
+            self.sibling_items(scope, namespace)
+                .into_iter()
+                .filter(|(name, _)| module.item(namespace, name).is_none()),
+        );
+
         items
     }
 
