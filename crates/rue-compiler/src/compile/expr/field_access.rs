@@ -14,12 +14,12 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
         compile_expr(ctx, &expr, None)
     } else {
         debug!("Unresolved field access expr");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let Some(dot) = access.dot() else {
         debug!("Unresolved field access dot");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     ctx.add_syntax(
@@ -32,7 +32,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
 
     let Some(name) = access.field() else {
         debug!("Unresolved field access name");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     match compile_field(ctx, expr.clone(), &Field::Named(name.text())) {
@@ -54,7 +54,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
                 &name,
                 DiagnosticKind::UnknownField(name.text().to_string(), type_name),
             );
-            ctx.builtins().unresolved.clone()
+            ctx.unresolved()
         }
         FieldResult::Error => {
             debug!("Unresolved field access due to missing field in underlying struct type");
@@ -63,7 +63,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
                 &name,
                 DiagnosticKind::MissingField(name.text().to_string(), type_name),
             );
-            ctx.builtins().unresolved.clone()
+            ctx.unresolved()
         }
     }
 }

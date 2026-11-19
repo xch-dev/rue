@@ -9,7 +9,7 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
         compile_type(ctx, &ty)
     } else {
         debug!("Unresolved cast type");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     let expr = if let Some(expr) = cast.expr() {
@@ -17,7 +17,7 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
         ctx.with_expected_type_hint(true, |ctx| compile_expr(ctx, &expr, Some(ty)))
     } else {
         debug!("Unresolved cast expr");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     ctx.cast_type(cast.syntax(), expr.ty, ty);

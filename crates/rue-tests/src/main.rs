@@ -468,6 +468,18 @@ fn handle_test_file(
         }
     }
 
+    // Every placeholder for code that couldn't be compiled must be covered by an error, which is
+    // also checked before generating code, but not every test generates code
+    if codegen {
+        for ctx in [&ctx, &debug_ctx] {
+            assert_eq!(
+                ctx.first_placeholder(),
+                None,
+                "a placeholder was made without an error"
+            );
+        }
+    }
+
     let main = kind
         .as_ref()
         .filter(|_| codegen)

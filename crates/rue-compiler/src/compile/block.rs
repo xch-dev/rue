@@ -95,7 +95,7 @@ pub fn compile_block(
                     compile_expr(ctx, &expr, None)
                 } else {
                     debug!("Unresolved expr stmt expr");
-                    ctx.builtins().unresolved.clone()
+                    ctx.unresolved()
                 };
 
                 Statement::Expr(ExprStatement {
@@ -120,7 +120,7 @@ pub fn compile_block(
                 } else {
                     debug!("Unresolved let binding value");
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::MissingLetValue);
-                    ctx.builtins().unresolved.clone()
+                    ctx.unresolved()
                 };
 
                 let ty = if let Some(expected_type) = expected_type {
@@ -159,7 +159,7 @@ pub fn compile_block(
                     value
                 } else {
                     debug!("Unresolved if stmt condition");
-                    ctx.builtins().unresolved.clone()
+                    ctx.unresolved()
                 };
 
                 let then_block = if let Some(then_block) = stmt.then_block() {
@@ -175,7 +175,7 @@ pub fn compile_block(
                     }
                 } else {
                     debug!("Unresolved if stmt then block");
-                    ctx.builtins().unresolved.clone()
+                    ctx.unresolved()
                 };
 
                 if stmt.inline().is_none() {
@@ -242,7 +242,7 @@ pub fn compile_block(
                     value
                 } else {
                     debug!("Unresolved assert expr");
-                    ctx.builtins().unresolved.clone()
+                    ctx.unresolved()
                 };
 
                 ctx.push_mappings(value.then_map, stmt.syntax().text_range().end());
@@ -269,7 +269,7 @@ pub fn compile_block(
                     compile_expr(ctx, &expr, None)
                 } else {
                     debug!("Unresolved print expr");
-                    ctx.builtins().unresolved.clone()
+                    ctx.unresolved()
                 };
 
                 Statement::Debug(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
@@ -297,6 +297,7 @@ pub fn compile_block(
 
     if return_value.is_none() && require_return {
         ctx.diagnostic(block.syntax(), DiagnosticKind::MissingReturn);
+        ctx.note_placeholder();
         return_value = Some(Value::new(ctx.alloc_hir(Hir::Unresolved), return_type));
     }
 

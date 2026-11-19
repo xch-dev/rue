@@ -15,7 +15,7 @@ pub fn compile_const_expr(
         compile_block(ctx, &block, BlockKind::Expr, expected_type, true)
     } else {
         debug!("Unresolved const expression block");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let loc = SrcLoc::new(ctx.source().clone(), expr.syntax().text_range().into());

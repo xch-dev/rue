@@ -7,7 +7,7 @@ use rue_hir::{Hir, StructField, StructInitializer, SymbolPath, Value};
 use rue_types::{Type, Union};
 
 use crate::{
-    Compiler, CompletionContext, PathKind, PathResult, SyntaxField, SyntaxItemKind,
+    Compiler, CompletionContext, PathKind, PathResult, PendingDefault, SyntaxField, SyntaxItemKind,
     check_symbol_value, compile_expr, compile_path,
 };
 
@@ -22,7 +22,7 @@ pub fn compile_struct_initializer_expr(
         ty
     } else {
         debug!("Unresolved struct initializer path");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
@@ -44,7 +44,7 @@ pub fn compile_struct_initializer_expr(
         debug!("Unresolved struct initializer due to non struct type");
         let name = ctx.type_name(ty);
         ctx.diagnostic(expr.syntax(), DiagnosticKind::NonStructInitializer(name));
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     let mut expected_field_types = HashMap::new();
@@ -125,7 +125,7 @@ pub fn compile_struct_initializer_expr(
                 value
             } else {
                 debug!("Unresolved field path in struct initializer");
-                ctx.builtins().unresolved.clone()
+                ctx.unresolved()
             }
         };
 
@@ -185,46 +185,46 @@ pub fn compile_struct_initializer_expr(
 
     if unresolved {
         debug!("Unresolved struct initializer due to unresolved struct type");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     }
 
-    let mut initializer_fields = Vec::new();
-    let mut missing_fields = vec![];
+    // Each field's value, and whether it's the default. A field without either is missing
+    let mut values = Vec::new();
 
     for name in struct_type.fields.into_iter().rev() {
-        let mut is_default = false;
-
         let value = if let Some(value) = fields.remove(&name) {
-            value
+            FieldValue::Given(value)
         } else if let Some(value) = ctx.default_field(struct_type.semantic, &name) {
             // Defaults are checked against the declared field type, but check them against the
             // field type of this instantiation as well, in case generics were substituted.
             if let Some(expected_type) = expected_field_types.get(&name) {
                 ctx.assign_type(expr.syntax(), value.ty, *expected_type);
             }
-            is_default = true;
-            value
+            ctx.record_default_use(struct_type.semantic, &name);
+            FieldValue::Default(value)
+        } else if ctx.has_declared_default(struct_type.semantic, &name) {
+            // This is in the default value of another field, and this field's default hasn't been
+            // compiled yet, so it's filled in once every default has been (see
+            // `resolve_pending_defaults`)
+            ctx.record_default_use(struct_type.semantic, &name);
+            FieldValue::Pending
         } else {
-            debug!("Unresolved struct initializer field");
-            missing_fields.push(name.clone());
-            ctx.builtins().unresolved.clone()
+            FieldValue::Missing
         };
 
-        initializer_fields.push(StructField {
-            name,
-            value: value.hir,
-            is_default,
-        });
+        values.push((name, value));
     }
 
-    initializer_fields.reverse();
+    values.reverse();
 
-    let hir = ctx.alloc_hir(Hir::Struct(StructInitializer {
-        ty,
-        fields: initializer_fields,
-        nil_terminated: struct_type.nil_terminated,
-    }));
+    let missing_fields = values
+        .iter()
+        .filter(|(_, value)| matches!(value, FieldValue::Missing))
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>();
 
+    // Missing fields are reported before they're filled in with placeholders, so that every
+    // placeholder comes after the error that explains it
     if !missing_fields.is_empty() {
         let type_name = ctx.type_name(ty);
         ctx.diagnostic(
@@ -233,5 +233,63 @@ pub fn compile_struct_initializer_expr(
         );
     }
 
+    let mut pending = Vec::new();
+
+    let initializer_fields = values
+        .into_iter()
+        .enumerate()
+        .map(|(index, (name, value))| {
+            let (hir, is_default) = match value {
+                FieldValue::Given(value) => (value.hir, false),
+                FieldValue::Default(value) => (value.hir, true),
+                FieldValue::Pending => {
+                    pending.push((index, name.clone()));
+                    (ctx.builtins().unresolved.hir, true)
+                }
+                FieldValue::Missing => {
+                    debug!("Unresolved struct initializer field");
+                    (ctx.unresolved().hir, false)
+                }
+            };
+
+            StructField {
+                name,
+                value: hir,
+                is_default,
+            }
+        })
+        .collect();
+
+    let hir = ctx.alloc_hir(Hir::Struct(StructInitializer {
+        ty,
+        fields: initializer_fields,
+        nil_terminated: struct_type.nil_terminated,
+    }));
+
+    for (index, name) in pending {
+        let srcloc = ctx.srcloc(expr.syntax());
+        let scope = ctx.last_scope_id();
+        let user = ctx.compiling_default();
+
+        ctx.push_pending_default(PendingDefault {
+            hir,
+            index,
+            ty: struct_type.semantic,
+            name,
+            srcloc,
+            scope,
+            user,
+        });
+    }
+
     Value::new(hir, ty)
+}
+
+/// The value of a field in a struct initializer.
+enum FieldValue {
+    Given(Value),
+    Default(Value),
+    /// The field has a default value that hasn't been compiled yet.
+    Pending,
+    Missing,
 }

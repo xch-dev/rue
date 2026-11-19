@@ -89,7 +89,7 @@ pub fn compile_list_expr(
             value
         } else {
             debug!("Unresolved list item expr");
-            ctx.builtins().unresolved.clone()
+            ctx.unresolved()
         };
 
         values.push(value);

@@ -484,7 +484,7 @@ where
                                 }
                                 Some(None) => {}
                                 None => {
-                                    map.insert(var, ctx.builtins().unresolved.ty);
+                                    map.insert(var, ctx.unresolved().ty);
                                 }
                             }
                         }
@@ -558,7 +558,7 @@ where
                     for (i, param) in params.into_iter().enumerate() {
                         let arg = args.get(i).copied().unwrap_or_else(|| {
                             debug!("Unresolved type due to missing generic argument");
-                            ctx.builtins().unresolved.ty
+                            ctx.unresolved().ty
                         });
                         map.insert(param, arg);
                     }

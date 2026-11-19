@@ -1,0 +1,8 @@
+tests:
+- name: forward_initializers
+  program: (a (q 16 8 36 84 18 38 86 (q . 17)) (c (q (f (r 7)) (g1_negate) (i 7)) 1))
+  debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (f (f 4)) (f (f (r (f 4))))) (f (r (f (r (f 4)))))) (f (f (r 4)))) (f (f (r (r 4))))) (f (r (f (r (r 4)))))) (f (f 10))) (f (f 14))) (c (c (c (c (q . 5) (c (c (q . 6) (c (q . 7) ())) ())) (c (c (q . 51) ()) (c (c (q . 3) (c (q . 7) ())) ()))) (c (c (c (q . 8) ()) ()) (c (c (q . 9) ()) ()))) 1))
+  output: "96"
+  runtime_cost: 2997
+  byte_cost: 660000
+  total_cost: 662997

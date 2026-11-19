@@ -86,6 +86,7 @@ pub(crate) fn infer_call(
         solver
     });
 
+    // Each argument's value, which is a placeholder until it's compiled
     let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
 
     // Each argument's check, by parameter, which are made in the order the arguments come in (see
@@ -224,8 +225,10 @@ pub(crate) fn infer_call(
 
     ctx.pop_call_frame();
 
+    // The missing arguments are left as placeholders, which the caller has reported
     if args.len() < function.params.len() {
         debug!("Unresolved function call argument");
+        ctx.note_placeholder();
     }
 
     let mut mappings = ctx.solve_call(&solver, order.merged().clone());

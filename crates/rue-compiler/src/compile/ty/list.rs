@@ -24,7 +24,7 @@ pub fn compile_list_type(ctx: &mut Compiler, list: &AstListType) -> TypeId {
             compile_type(ctx, &ty)
         } else {
             debug!("Unresolved list item type");
-            ctx.builtins().unresolved.ty
+            ctx.unresolved().ty
         };
 
         types.push(ty);

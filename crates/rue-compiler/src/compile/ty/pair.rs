@@ -9,14 +9,14 @@ pub fn compile_pair_type(ctx: &mut Compiler, pair: &AstPairType) -> TypeId {
         compile_type(ctx, &first)
     } else {
         debug!("Unresolved pair type first");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     let rest = if let Some(rest) = pair.rest() {
         compile_type(ctx, &rest)
     } else {
         debug!("Unresolved pair type rest");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     ctx.alloc_type(Type::Pair(Pair::new(first, rest)))

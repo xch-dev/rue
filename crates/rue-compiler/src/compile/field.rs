@@ -32,10 +32,7 @@ pub fn compile_pair_fields(
     let (FieldResult::Value(first), FieldResult::Value(rest)) = (first, rest) else {
         let name = ctx.type_name(expr.ty);
         ctx.diagnostic(node, DiagnosticKind::CannotDestructurePair(name));
-        return (
-            ctx.builtins().unresolved.clone(),
-            ctx.builtins().unresolved.clone(),
-        );
+        return (ctx.unresolved(), ctx.unresolved());
     };
 
     (first, rest)
@@ -84,7 +81,7 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
     match ctx.ty(ty).clone() {
         Type::Apply(_) | Type::Alias(_) | Type::Ref(_) => unreachable!(),
         // An error has already been reported for the unresolved type
-        Type::Unresolved => FieldResult::Value(ctx.builtins().unresolved.clone()),
+        Type::Unresolved => FieldResult::Value(ctx.unresolved()),
         Type::Generic(_) | Type::Function(_) | Type::Never | Type::Any => FieldResult::Unknown,
         Type::Atom(_) => {
             if let &Field::Named(name) = name
@@ -195,7 +192,7 @@ fn compile_struct_field(
     // The struct's underlying type couldn't be resolved (for example, because its declaration was
     // rejected), which has already been reported
     if ctx.is_unresolved(ty.inner) {
-        return FieldResult::Value(ctx.builtins().unresolved.clone());
+        return FieldResult::Value(ctx.unresolved());
     }
 
     let mut path = Vec::new();

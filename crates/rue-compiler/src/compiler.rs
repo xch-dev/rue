@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt, mem,
     ops::{Deref, DerefMut, Range},
+    panic::Location,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -14,8 +15,9 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Item, Items, Mappings,
-    Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
+    Builtins, Constraint, Database, Declaration, HirId, ImportId, ImportUser, Item, Items,
+    Mappings, Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings,
+    replace_type,
 };
 use rue_lint::{EnclosedPreludeReference, LintInput, LintSites};
 use rue_options::CompilerOptions;
@@ -48,6 +50,16 @@ pub struct Compiler {
     builtins: Builtins,
     field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
+    /// The fields of each struct that have a default value, which is known before the default
+    /// values are compiled.
+    declared_defaults: HashSet<(TypeId, String)>,
+    /// The field whose default value is being compiled, if any.
+    compiling_default: Option<(TypeId, String)>,
+    /// The defaults that each default value uses, by the field it belongs to.
+    default_uses: HashMap<(TypeId, String), Vec<(TypeId, String)>>,
+    /// The fields of struct initializers in default values whose own defaults hadn't been
+    /// compiled yet (see `resolve_pending_defaults`).
+    pending_defaults: Vec<PendingDefault>,
     declaration_stack: Vec<Declaration>,
     registered_scopes: HashSet<ScopeId>,
     external_programs: HashMap<PathBuf, Vec<u8>>,
@@ -75,6 +87,9 @@ pub struct Compiler {
     unchecked_type_items: Vec<TypeId>,
     cancel: Option<Cancel>,
     cancelled: bool,
+    /// Where the first placeholder for code that couldn't be compiled was made (see
+    /// [`Self::unresolved`]), to check that it's covered by an error before generating code.
+    first_placeholder: Option<&'static Location<'static>>,
 }
 
 /// Says whether a compile should stop partway, because nothing needs its result anymore (for
@@ -130,6 +145,24 @@ pub struct ArgumentFrame {
     pub lambda_parameters: Vec<LambdaParameter>,
 }
 
+/// A field of a struct initializer in a default value, whose own default value hadn't been compiled
+/// yet, so it's filled in once every default value has been (see `resolve_pending_defaults`).
+#[derive(Debug, Clone)]
+pub struct PendingDefault {
+    /// The struct initializer.
+    pub hir: HirId,
+    /// The index of the field in the struct initializer.
+    pub index: usize,
+    /// The struct whose default value it is.
+    pub ty: TypeId,
+    pub name: String,
+    /// Where the struct initializer is, and the scope it's in, for reporting errors.
+    pub srcloc: SrcLoc,
+    pub scope: ScopeId,
+    /// The field whose default value the struct initializer is in.
+    pub user: Option<(TypeId, String)>,
+}
+
 /// The function or lambda body that a `return` statement exits from.
 #[derive(Debug, Clone)]
 pub struct ReturnTarget {
@@ -174,6 +207,10 @@ impl Compiler {
             builtins,
             field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
+            declared_defaults: HashSet::new(),
+            compiling_default: None,
+            default_uses: HashMap::new(),
+            pending_defaults: Vec::new(),
             declaration_stack: Vec::new(),
             registered_scopes: HashSet::new(),
             external_programs: HashMap::new(),
@@ -189,6 +226,7 @@ impl Compiler {
             unchecked_type_items: Vec::new(),
             cancel: None,
             cancelled: false,
+            first_placeholder: None,
         };
 
         if options.std {
@@ -306,6 +344,28 @@ impl Compiler {
         self.diagnostics
             .iter()
             .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error)
+    }
+
+    /// The placeholder for code that couldn't be compiled. It doesn't report an error of its own,
+    /// so every use of it must be covered by an error that has been or will be reported, since
+    /// its type is assignable to and from every type and its value can't be generated.
+    #[track_caller]
+    pub fn unresolved(&mut self) -> Value {
+        self.note_placeholder();
+        self.builtins.unresolved.clone()
+    }
+
+    /// Records that a placeholder for code that couldn't be compiled was made here, other than
+    /// with [`Self::unresolved`] (see [`Self::first_placeholder`]).
+    #[track_caller]
+    pub(crate) fn note_placeholder(&mut self) {
+        self.first_placeholder.get_or_insert(Location::caller());
+    }
+
+    /// Where the first placeholder for code that couldn't be compiled was made, if any. Code is
+    /// only generated without errors, so there shouldn't be one by then.
+    pub fn first_placeholder(&self) -> Option<&'static Location<'static>> {
+        self.first_placeholder
     }
 
     pub fn builtins(&self) -> &Builtins {
@@ -1139,6 +1199,45 @@ impl Compiler {
 
     pub fn is_inferred_field(&self, ty: TypeId, name: &str) -> bool {
         self.inferred_fields.contains(&(ty, name.to_string()))
+    }
+
+    /// Marks a struct field that has a default value, before the default values are compiled.
+    pub(crate) fn insert_declared_default(&mut self, ty: TypeId, name: String) {
+        self.declared_defaults.insert((ty, name));
+    }
+
+    pub(crate) fn has_declared_default(&self, ty: TypeId, name: &str) -> bool {
+        self.declared_defaults.contains(&(ty, name.to_string()))
+    }
+
+    pub(crate) fn set_compiling_default(&mut self, field: Option<(TypeId, String)>) {
+        self.compiling_default = field;
+    }
+
+    pub(crate) fn compiling_default(&self) -> Option<(TypeId, String)> {
+        self.compiling_default.clone()
+    }
+
+    /// Records that the default value being compiled, if any, uses the given field's default.
+    pub(crate) fn record_default_use(&mut self, ty: TypeId, name: &str) {
+        if let Some(user) = self.compiling_default.clone() {
+            self.default_uses
+                .entry(user)
+                .or_default()
+                .push((ty, name.to_string()));
+        }
+    }
+
+    pub(crate) fn default_uses(&self, field: &(TypeId, String)) -> &[(TypeId, String)] {
+        self.default_uses.get(field).map_or(&[], Vec::as_slice)
+    }
+
+    pub(crate) fn push_pending_default(&mut self, pending: PendingDefault) {
+        self.pending_defaults.push(pending);
+    }
+
+    pub(crate) fn take_pending_defaults(&mut self) -> Vec<PendingDefault> {
+        mem::take(&mut self.pending_defaults)
     }
 
     pub fn push_declaration(&mut self, declaration: Declaration) {

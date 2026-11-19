@@ -19,7 +19,7 @@ pub fn compile_function_call_expr(
 ) -> Value {
     let Some(call_expr) = call.expr() else {
         debug!("Unresolved function call expr");
-        return ctx.builtins().unresolved.clone();
+        return ctx.unresolved();
     };
 
     // Builtins can only be referenced when they're called directly
@@ -135,7 +135,7 @@ pub fn compile_function_call_expr(
                 );
             }
 
-            mappings.insert(generic, ctx.builtins().unresolved.ty);
+            mappings.insert(generic, ctx.unresolved().ty);
         }
 
         // The function that's returned can stay generic over the generics of a function type
@@ -160,6 +160,7 @@ pub fn compile_function_call_expr(
 
     let ty = if expected_functions.is_empty() {
         debug!("Unresolved function call return type due to unresolved function type");
+        ctx.note_placeholder();
         ctx.alloc_type(Type::Unresolved)
     } else if expected_functions.len() == 1 {
         expected_functions[0].ret
@@ -507,7 +508,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(expr.syntax(), value.ty, ty);
                 value.hir
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let hir = match (builtin, spread) {
@@ -560,7 +561,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(expr.syntax(), value.ty, ty);
                 value.hir
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let hir = ctx.alloc_hir(Hir::ClvmOp(ClvmOp::Concat, value));
@@ -585,7 +586,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(args[2].1.syntax(), args[2].0.ty, ctx.builtins().types.int);
                 ctx.alloc_hir(Hir::CoinId(args[0].0.hir, args[1].0.hir, args[2].0.hir))
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             Value::new(hir, ctx.builtins().types.bytes32)
@@ -616,7 +617,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                     args.get(2).map(|arg| arg.0.hir),
                 ))
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             Value::new(hir, ctx.builtins().types.bytes)
@@ -645,7 +646,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(expr.syntax(), value.ty, ty);
                 value.hir
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let hir = ctx.alloc_hir(Hir::ClvmOp(
@@ -677,7 +678,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(args[1].1.syntax(), args[1].0.ty, ctx.builtins().types.int);
                 ctx.alloc_hir(Hir::Binary(BinaryOp::Divmod, args[0].0.hir, args[1].0.hir))
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let int = ctx.builtins().types.int;
@@ -703,7 +704,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(args[2].1.syntax(), args[2].0.ty, ctx.builtins().types.int);
                 ctx.alloc_hir(Hir::Modpow(args[0].0.hir, args[1].0.hir, args[2].0.hir))
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             Value::new(hir, ctx.builtins().types.int)
@@ -732,7 +733,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(expr.syntax(), value.ty, ty);
                 value.hir
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let hir = ctx.alloc_hir(Hir::ClvmOp(
@@ -767,7 +768,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(args[0].1.syntax(), args[0].0.ty, exponent);
                 ctx.alloc_hir(Hir::Unary(UnaryOp::PubkeyForExp, args[0].0.hir))
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             Value::new(hir, ctx.builtins().types.public_key)
@@ -796,7 +797,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(expr.syntax(), value.ty, ty);
                 value.hir
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let hir = ctx.alloc_hir(Hir::ClvmOp(
@@ -834,7 +835,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(expr.syntax(), value.ty, ty);
                 value.hir
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let hir = ctx.alloc_hir(Hir::ClvmOp(
@@ -864,7 +865,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.bytes);
                 value.hir
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             let dst = args.get(1).map(|(value, expr)| {
@@ -915,7 +916,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                     ctx.assign_type(expr.syntax(), value.ty, ty);
                     ctx.alloc_hir(Hir::ClvmOp(ClvmOp::BlsPairingIdentity, value.hir))
                 } else {
-                    ctx.builtins().unresolved.hir
+                    ctx.unresolved().hir
                 }
             } else {
                 if args.len() % 2 != 0 {
@@ -972,7 +973,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                     let pair = ctx.alloc_hir(Hir::Pair(args[0].0.hir, args[1].0.hir));
                     ctx.alloc_hir(Hir::ClvmOp(ClvmOp::BlsVerify, pair))
                 } else {
-                    ctx.builtins().unresolved.hir
+                    ctx.unresolved().hir
                 }
             } else {
                 if args.is_empty() || args.len() % 2 != 1 {
@@ -993,7 +994,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 }
 
                 if args.is_empty() {
-                    ctx.builtins().unresolved.hir
+                    ctx.unresolved().hir
                 } else {
                     ctx.alloc_hir(Hir::BlsVerify(
                         args[0].0.hir,
@@ -1055,7 +1056,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                     _ => unreachable!(),
                 }
             } else {
-                ctx.builtins().unresolved.hir
+                ctx.unresolved().hir
             };
 
             Value::new(hir, ctx.builtins().types.nil)

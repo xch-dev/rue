@@ -7,7 +7,7 @@ use crate::{Compiler, compile_type};
 pub fn compile_group_type(ctx: &mut Compiler, group: &AstGroupType) -> TypeId {
     let Some(ty) = group.ty() else {
         debug!("Unresolved group type");
-        return ctx.builtins().unresolved.ty;
+        return ctx.unresolved().ty;
     };
     compile_type(ctx, &ty)
 }

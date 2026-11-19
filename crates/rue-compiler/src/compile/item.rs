@@ -230,7 +230,7 @@ fn break_cycle(ctx: &mut Compiler, ty: TypeId) {
     };
 
     let inner = *inner;
-    let unresolved = ctx.builtins().unresolved.ty;
+    let unresolved = ctx.unresolved().ty;
 
     *ctx.ty_mut(inner) = Type::Ref(unresolved);
 }

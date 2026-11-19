@@ -1,0 +1,17 @@
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int = 0,
+    w: Int,
+}
+
+// Every missing field is listed in the order it's declared, and a field with a default isn't
+// missing. The fields that are given are still checked
+test fn missing_fields() -> Point {
+    Point { y: "1", q: 2 }
+}
+
+// Only the field with a default is left out, so nothing is missing
+test fn default_left_out() -> Point {
+    Point { x: 1, y: 2, w: 3 }
+}

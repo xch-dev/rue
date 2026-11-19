@@ -9,7 +9,7 @@ pub fn compile_path_type(ctx: &mut Compiler, path: &AstPathType) -> TypeId {
         compile_path(ctx, path.syntax(), path.segments(), PathKind::Type, true)
     else {
         debug!("Unresolved path type {}", path.syntax().text());
-        return ctx.builtins().unresolved.ty;
+        return ctx.unresolved().ty;
     };
 
     ty

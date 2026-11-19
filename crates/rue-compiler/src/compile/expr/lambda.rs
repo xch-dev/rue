@@ -185,7 +185,7 @@ pub(crate) fn compile_lambda(
         } else {
             debug!("Unresolved lambda parameter type due to missing inference");
             ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType);
-            ctx.builtins().unresolved.ty
+            ctx.unresolved().ty
         };
 
         // Not for a generic lambda or one expected to be a generic function
@@ -252,7 +252,7 @@ pub(crate) fn compile_lambda(
         result
     } else {
         debug!("Unresolved lambda body");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let early_return_types = ctx

@@ -16,9 +16,10 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: 
         compile_type(ctx, &ty)
     } else {
         debug!("Unresolved constant type");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
+    // The value is compiled once every signature has been declared (see `compile_constant`)
     let value = ctx.builtins().unresolved.hir;
 
     let name = constant.name().map(|name| ctx.local_name(&name));
@@ -51,7 +52,7 @@ pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: 
         value
     } else {
         debug!("Unresolved constant value");
-        ctx.builtins().unresolved.clone()
+        ctx.unresolved()
     };
 
     let Symbol::Constant(ConstantSymbol { value, .. }) = ctx.symbol_mut(symbol) else {

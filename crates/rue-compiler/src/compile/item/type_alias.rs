@@ -73,7 +73,7 @@ pub fn compile_type_alias(
         compile_type(ctx, &inner)
     } else {
         debug!("Unresolved type alias type");
-        ctx.builtins().unresolved.ty
+        ctx.unresolved().ty
     };
 
     ctx.pop_scope(range.end());

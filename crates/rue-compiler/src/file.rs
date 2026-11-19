@@ -26,7 +26,7 @@ use crate::{
     Compiler, ImportCache, SyntaxItemKind, check_recursion, compile_default_items,
     compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
     declare_module_items, declare_symbol_items, declare_type_items, recheck_contractive_types,
-    resolve_imports,
+    resolve_imports, resolve_pending_defaults,
 };
 
 #[derive(Debug, Error)]
@@ -318,6 +318,7 @@ impl FileTree {
         self.compile_types(ctx);
         recheck_contractive_types(ctx);
         self.compile_defaults(ctx);
+        resolve_pending_defaults(ctx);
         self.compile_symbols(ctx);
 
         if ctx.is_cancelled() {
@@ -806,6 +807,14 @@ pub fn normalize_path(path: &Path) -> Result<SourceKind, Error> {
     ))
 }
 
+/// Whether code for the symbol would rely on a placeholder for code that couldn't be compiled,
+/// which is only expected when there are errors. A placeholder type is assignable to and from
+/// every type, so any placeholder counts, even if no placeholder value is reachable from the
+/// symbol.
+pub(crate) fn has_uncovered_placeholder(ctx: &Compiler, symbol: SymbolId) -> bool {
+    ctx.first_placeholder().is_some() || has_reachable_unresolved(ctx, symbol)
+}
+
 fn codegen(
     ctx: &mut Compiler,
     allocator: &mut Allocator,
@@ -817,13 +826,15 @@ fn codegen(
     }
 
     let options = *ctx.options();
+
     // Unresolved code should always be accompanied by an error, but if it's not, refuse to
-    // generate code rather than panicking or producing an incorrect program.
-    let has_unresolved = has_reachable_unresolved(ctx, symbol);
+    // generate code rather than panicking or producing an incorrect program
+    let has_unresolved = has_uncovered_placeholder(ctx, symbol);
 
     debug_assert!(
         !has_unresolved,
-        "unresolved code reached codegen without an error"
+        "unresolved code reached codegen without an error (the first placeholder was made at {:?})",
+        ctx.first_placeholder()
     );
 
     if has_unresolved {

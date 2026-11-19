@@ -1,7 +1,5 @@
 use rue_diagnostic::Name;
-use rue_types::{
-    BuiltinTypes, FunctionParameter, FunctionType, Generic, Pair, Type, TypeId, Union,
-};
+use rue_types::{BuiltinTypes, FunctionParameter, FunctionType, Generic, Type, TypeId};
 
 use crate::{
     Builtin, ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, HirId, ParameterSymbol,
@@ -27,12 +25,6 @@ impl Builtins {
         let nil_hir = db.alloc_hir(Hir::Nil);
         let true_hir = db.alloc_hir(Hir::Bool(true));
         let false_hir = db.alloc_hir(Hir::Bool(false));
-
-        let function_inner = db.alloc_type(Type::Unresolved);
-        let function_inner_pair =
-            db.alloc_type(Type::Pair(Pair::new(function_inner, function_inner)));
-        *db.ty_mut(function_inner_pair) =
-            Type::Union(Union::new(vec![types.atom, function_inner_pair]));
 
         let mut scope = Scope::new(None);
 

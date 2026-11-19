@@ -1,0 +1,51 @@
+// A default value can't depend on itself, whether directly or through other defaults
+struct Node {
+    value: Int = 1,
+    next: Node | nil = Node {},
+}
+
+struct First {
+    second: Second = Second {},
+}
+
+struct Second {
+    first: First | nil = First {},
+}
+
+// A field declared later without a default is still missing
+struct Holder {
+    required: Required = Required {},
+}
+
+struct Required {
+    value: Int,
+}
+
+// A default that's declared later is still checked against the field's type
+struct Checked {
+    wrong: Int = Wrong {}.value,
+}
+
+struct Wrong {
+    value: Bytes = "hello",
+}
+
+// An inferred field type isn't known until its default has been compiled, so a field that's read
+// from a struct declared later can't depend on it
+struct ReadsInferred {
+    value: Int = Inferred {}.opcode + 1,
+}
+
+struct Inferred {
+    opcode = 51,
+}
+
+fn main() -> Int {
+    let node = Node {};
+    let first = First {};
+    let holder = Holder {};
+    let checked = Checked {};
+    let reads_inferred = ReadsInferred {};
+    let _first = first;
+    node.value + holder.required.value + checked.wrong + reads_inferred.value
+}
