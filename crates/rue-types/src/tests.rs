@@ -436,41 +436,62 @@ mod functions {
         assert_eq!(compare(&mut db, int_or_nil), Comparison::Assign);
     }
 
-    /// Reopened instances are only instantiable while the bounds check that reopened them is in
-    /// progress. `fn<B>(f: fn(x: Int) -> B) -> B` against
-    /// `fn(f: fn<T>(x: T) -> (T, Int)) -> R` with `R` a union of `(nil, nil)` and `(Int, Int)` holds
-    /// in either order, with inference as well: checking a union member without inference, which
-    /// fails for `(nil, nil)`, mustn't leave `T' ≤ nil` on the instance, next to `T' ≥ Int`.
+    /// Reopened instances stay rigid when a union member is checked without inference.
+    /// `fn<B>(f: fn(x: Int) -> B) -> B` against `fn(f: fn<T>(x: T) -> (H, Int)) -> R` holds with
+    /// `R` a union of a member that fails and `(H', Int)`, in either order and with inference as
+    /// well: checking the failing member without inference mustn't leave a bound on `T'`, next to
+    /// `T' ≥ Int`. With `H = T` and `(nil, nil)`, it would leave `T' ≤ nil`. With
+    /// `H = fn(g: fn(t: T, z: fn<Z>() -> Z) -> nil) -> nil` and
+    /// `(fn(g: fn<D>(t: D, z: fn() -> Int) -> D) -> nil, nil)`, the failing member's own function
+    /// comparison reopens `Z'` while `T'` is reopened, and it would leave `T' ≤ nil` through `D`.
     #[test]
     fn reopened_instances_stay_rigid_without_inference() {
         let mut db = Db::new();
         let BuiltinTypes { int, nil, .. } = db.builtins;
 
-        let compare = |db: &mut Db, nils_first: bool| {
-            let b = db.generic("B");
-            let t = db.generic("T");
-            let x = db.generic("X");
-            let callback = db.function(&[int], b);
-            let call = db.function_with(&[b], &[callback], true, b);
-            let tagged = db.pair(t, int);
-            let tag = db.function_with(&[t], &[t], true, tagged);
-            let nils = db.pair(nil, nil);
-            let ints = db.pair(int, int);
-            let members = if nils_first {
-                [nils, ints]
+        let compare = |db: &mut Db, nested: bool, failing_first: bool| {
+            let ret_b = db.generic("B");
+            let item = db.generic("T");
+            let unused = db.generic("X");
+            let callback = db.function(&[int], ret_b);
+            let call = db.function_with(&[ret_b], &[callback], true, ret_b);
+
+            let (held, failing, holding) = if nested {
+                let any = db.generic("Z");
+                let given = db.generic("D");
+                let any_z = db.function_with(&[any], &[], true, any);
+                let takes_t = db.function(&[item, any_z], nil);
+                let held = db.function(&[takes_t], nil);
+                let give_int = db.function(&[], int);
+                let returns_d = db.function_with(&[given], &[given, give_int], true, given);
+                let failing = db.function(&[returns_d], nil);
+                let takes_int = db.function(&[int, give_int], nil);
+                let holding = db.function(&[takes_int], nil);
+                (held, db.pair(failing, nil), db.pair(holding, int))
             } else {
-                [ints, nils]
+                (item, db.pair(nil, nil), db.pair(int, int))
+            };
+
+            let tagged = db.pair(held, int);
+            let tag = db.function_with(&[item], &[item], true, tagged);
+            let members = if failing_first {
+                [failing, holding]
+            } else {
+                [holding, failing]
             };
             let ret = db.union(&members);
             let target = db.function(&[tag], ret);
             let plain = db.cmp(call, target);
-            let mut infer = Inference::new([x]);
+            let mut infer = Inference::new([unused]);
             (plain, db.infer(call, target, &mut infer))
         };
 
         let both = (Comparison::Assign, Comparison::Assign);
-        assert_eq!(compare(&mut db, true), both);
-        assert_eq!(compare(&mut db, false), both);
+
+        for nested in [false, true] {
+            assert_eq!(compare(&mut db, nested, true), both);
+            assert_eq!(compare(&mut db, nested, false), both);
+        }
     }
 
     /// The outer bounds can add lower bounds to an inner instance too, which are checked against

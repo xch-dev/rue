@@ -707,10 +707,7 @@ impl ComparisonContext<'_> {
     /// Returns the instance of the binder, if it's being instantiated.
     fn instance_of(&self, binder: usize) -> Option<usize> {
         let instance = self.binders[binder].instance?;
-        // Reopened instances are only instantiable while the bounds check that reopened them is in
-        // progress, not in a context such as `holds_without_inference` that swaps them in rigid
-        (instance >= self.instantiable_from || (self.open > 0 && self.instances[instance].open))
-            .then_some(instance)
+        (instance >= self.instantiable_from || self.instances[instance].open).then_some(instance)
     }
 
     /// Whether the instance's bounds refer to no binder, so that it can be instantiated again
@@ -1251,6 +1248,11 @@ fn holds_without_inference(
     uninferred.lhs_env = ctx.lhs_env;
     uninferred.rhs_env = ctx.rhs_env;
     uninferred.instantiable_from = uninferred.instances.len();
+    // Including those that a bounds check in progress reopened (see `Instance::open`), which a
+    // function comparison checked without inference mustn't add to
+    let reopened: Vec<usize> = (0..uninferred.instances.len())
+        .filter(|&index| mem::take(&mut uninferred.instances[index].open))
+        .collect();
 
     let result = compare_impl(
         arena,
@@ -1261,6 +1263,11 @@ fn holds_without_inference(
         lhs_semantic,
         rhs_semantic,
     );
+
+    for index in reopened {
+        uninferred.instances[index].open = true;
+    }
+
     mem::swap(&mut uninferred.binders, &mut ctx.binders);
     mem::swap(&mut uninferred.instances, &mut ctx.instances);
     ctx.uninferred = Some(uninferred);

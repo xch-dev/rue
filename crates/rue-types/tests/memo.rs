@@ -1005,7 +1005,12 @@ fn bound_added_inside_reused(db: &mut Types) -> (TypeId, TypeId) {
 /// summary has `Y' ≤ (L, L)` for the instance `L` of `P`'s `T`. Comparing `fn<B>(..) -> B` with
 /// `F` inside of it put `L ≤ Int` on `L` while checking `B`'s bounds, after `L`'s comparison
 /// finished, so the summary has to keep that bound for `L` too: with it, the second element's
-/// `L ≥ (Int, Int)` conflicts, as when it's computed again without the memo.
+/// `L ≥ (Int, Int)` conflicts, as when it's computed again without the memo. Both elements are the
+/// same `G`, as in `(G, G)` in Rue, which the memo needs to reuse the comparison. That also makes
+/// `(G, G)` against `(fn(y: (Int, Int)) -> F, fn(y: (Int, Int)) -> F)` `Invalid` in every mode,
+/// although `G` against either is `Assign` (the compiler accepts the Rue equivalent), so the
+/// memo-off result here isn't only from the dropped bound. The type-level test pins the memo-on
+/// and fixpoint results, which were `Assign` with the bound dropped.
 #[test]
 fn test_bound_added_inside_reused() {
     with_large_stack(|| {
