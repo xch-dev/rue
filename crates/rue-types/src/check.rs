@@ -6,9 +6,9 @@ use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxIndexSet,
-    Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
-    stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet,
+    FxIndexSet, Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle,
+    step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,11 +25,29 @@ pub enum Check {
 }
 
 impl Check {
+    /// The number of nodes in the check, which is proportional to the size of the code it
+    /// generates. Repeated parts are counted every time, since they're generated every time.
+    pub fn size(&self) -> usize {
+        match self {
+            Check::None
+            | Check::Impossible
+            | Check::IsAtom { .. }
+            | Check::IsPair { .. }
+            | Check::Atom(_) => 1,
+            Check::Pair(first, rest) => 1 + first.size() + rest.size(),
+            Check::And(checks) | Check::Or(checks) => {
+                1 + checks.iter().map(Check::size).sum::<usize>()
+            }
+        }
+    }
+
     pub fn simplify(self) -> Check {
         grow_stack(|| self.simplify_inner())
     }
 
     fn simplify_inner(self) -> Check {
+        step();
+
         match self {
             Check::None => Check::None,
             Check::Impossible => Check::Impossible,
@@ -185,7 +203,15 @@ pub enum CheckError {
 
     #[error("Comparing the types is too complex")]
     TooComplex,
+
+    #[error("Cannot check if value is of this type at runtime, since the check would be too large")]
+    TooLarge,
 }
+
+/// The largest check that can be generated, in nodes (see [`Check::size`]). Each node generates
+/// around a dozen bytes of CLVM, and the checks for typical types are under a hundred nodes, so
+/// this only rejects checks whose size grows exponentially with the size of the type.
+pub const CHECK_SIZE_LIMIT: usize = 10_000;
 
 pub fn check(
     arena: &mut Arena<Type>,
@@ -283,6 +309,19 @@ fn check_each(
     }
 
     let result = check_each_impl(arena, builtins, ctx, depth + 1, &key.0, rhs);
+
+    // Each use of a repeated part copies its memoized check into the result, so a type that nests
+    // the same type twice at each level, such as `(T, T)`, doubles the size of the check each
+    // time. Limiting every memoized check, not just the final one, also bounds the work of
+    // building it.
+    let result = result.and_then(|check| {
+        if check.size() > CHECK_SIZE_LIMIT {
+            Err(CheckError::TooLarge)
+        } else {
+            Ok(check)
+        }
+    });
+
     ctx.path.pop();
     ctx.memo.insert(key, result.clone());
     result
@@ -442,14 +481,26 @@ fn check_each_impl_inner(
 
         let mut checks = Vec::new();
 
+        // Whether a pair's check was left out because it was too large. The error is only
+        // reported once the other pairs are known, since it doesn't matter if another pair's
+        // check accepts every pair.
+        let mut too_large = false;
+
         // For each target pair, the first check is exact for every possible first value. The rest
         // check only runs if the first check passes, so it must be exact for the rest of every pair
         // whose first could pass the first check (not just those whose first is assignable to the
         // target's first). Each check in the resulting union is therefore exact for every pair.
         for target_pair in &target_pairs {
-            let first = check_each(arena, builtins, ctx, depth, &firsts, target_pair.first)?;
+            let first = unless_too_large(check_each(
+                arena,
+                builtins,
+                ctx,
+                depth,
+                &firsts,
+                target_pair.first,
+            ))?;
 
-            if first == Check::Impossible {
+            if first == Some(Check::Impossible) {
                 continue;
             }
 
@@ -472,13 +523,32 @@ fn check_each_impl_inner(
                 continue;
             }
 
-            let rest = check_each(arena, builtins, ctx, depth, &rests, target_pair.rest)?;
+            let rest = unless_too_large(check_each(
+                arena,
+                builtins,
+                ctx,
+                depth,
+                &rests,
+                target_pair.rest,
+            ))?;
 
-            checks.push(Check::Pair(Box::new(first), Box::new(rest)));
+            // The rest is checked even if the first check is too large, since the pair can't
+            // match if the rest can't
+            match (first, rest) {
+                (_, Some(Check::Impossible)) => {}
+                (Some(first), Some(rest)) => {
+                    checks.push(Check::Pair(Box::new(first), Box::new(rest)));
+                }
+                (None, _) | (_, None) => too_large = true,
+            }
         }
 
         // If any target pair accepts every pair, this simplifies to `Check::None`
-        Some(Check::Or(checks).simplify())
+        match Check::Or(checks).simplify() {
+            Check::None => Some(Check::None),
+            _ if too_large => return Err(CheckError::TooLarge),
+            check => Some(check),
+        }
     };
 
     let check = match (atom_result, pair_result) {
@@ -502,26 +572,58 @@ fn check_each_impl_inner(
     Ok(check.simplify())
 }
 
-fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
-    grow_stack(|| variants_of_inner(arena, builtins, id))
+/// Turns a check that's too large into `None`, so that the caller can decide whether it's needed.
+fn unless_too_large(result: Result<Check, CheckError>) -> Result<Option<Check>, CheckError> {
+    match result {
+        Ok(check) => Ok(Some(check)),
+        Err(CheckError::TooLarge) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
-fn variants_of_inner(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
+fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
+    variants_of_impl(arena, builtins, id, &mut FxHashSet::default())
+}
+
+/// Each walk over the variants of a type skips the types it has already seen, which only add the
+/// same variants again. A union that repeats a type at each level, such as `type U1 = U0 | U0`,
+/// would otherwise double the work at each level.
+fn variants_of_impl(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+    seen: &mut FxHashSet<TypeId>,
+) -> Vec<TypeId> {
+    step();
+
+    if !seen.insert(id) {
+        return vec![];
+    }
+
+    grow_stack(|| variants_of_inner(arena, builtins, id, seen))
+}
+
+fn variants_of_inner(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+    seen: &mut FxHashSet<TypeId>,
+) -> Vec<TypeId> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => variants_of(arena, builtins, id),
+        Type::Ref(id) => variants_of_impl(arena, builtins, id, seen),
         Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => {
             vec![id]
         }
         Type::Never => vec![],
-        Type::Alias(alias) => variants_of(arena, builtins, alias.inner),
-        Type::Struct(ty) => variants_of(arena, builtins, ty.inner),
+        Type::Alias(alias) => variants_of_impl(arena, builtins, alias.inner, seen),
+        Type::Struct(ty) => variants_of_impl(arena, builtins, ty.inner, seen),
         Type::Function(_) | Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
             for variant in ty.types {
-                variants.extend(variants_of(arena, builtins, variant));
+                variants.extend(variants_of_impl(arena, builtins, variant, seen));
             }
 
             variants
@@ -533,17 +635,34 @@ fn variants_of_inner(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -
 /// against, so generic types are an error since their values can't be known at runtime. Generic
 /// targets are still allowed if the value is already known to be assignable (see `check_each`).
 fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atoms>, CheckError> {
-    grow_stack(|| atoms_of_inner(arena, id, target))
+    atoms_of_impl(arena, id, target, &mut FxHashSet::default())
+}
+
+/// See [`variants_of_impl`] for why the types that have been seen are skipped.
+fn atoms_of_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    target: bool,
+    seen: &mut FxHashSet<TypeId>,
+) -> Result<Option<Atoms>, CheckError> {
+    step();
+
+    if !seen.insert(id) {
+        return Ok(None);
+    }
+
+    grow_stack(|| atoms_of_inner(arena, id, target, seen))
 }
 
 fn atoms_of_inner(
     arena: &Arena<Type>,
     id: TypeId,
     target: bool,
+    seen: &mut FxHashSet<TypeId>,
 ) -> Result<Option<Atoms>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => atoms_of(arena, id, target)?,
+        Type::Ref(id) => atoms_of_impl(arena, id, target, seen)?,
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
         Type::Generic(_) if target => return Err(CheckError::GenericType),
         Type::Generic(_) => Some(Atoms::Unrestricted),
@@ -554,14 +673,14 @@ fn atoms_of_inner(
             };
             Some(Atoms::Restricted(indexset![restriction]))
         }
-        Type::Alias(alias) => atoms_of(arena, alias.inner, target)?,
-        Type::Struct(ty) => atoms_of(arena, ty.inner, target)?,
+        Type::Alias(alias) => atoms_of_impl(arena, alias.inner, target, seen)?,
+        Type::Struct(ty) => atoms_of_impl(arena, ty.inner, target, seen)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
             for variant in ty.types {
-                match atoms_of(arena, variant, target)? {
+                match atoms_of_impl(arena, variant, target, seen)? {
                     None => {}
                     Some(Atoms::Unrestricted) => return Ok(Some(Atoms::Unrestricted)),
                     Some(Atoms::Restricted(new)) => {
@@ -603,7 +722,24 @@ fn pairs_of(
     id: TypeId,
     target: bool,
 ) -> Result<Vec<Pair>, CheckError> {
-    grow_stack(|| pairs_of_inner(arena, builtins, id, target))
+    pairs_of_impl(arena, builtins, id, target, &mut FxHashSet::default())
+}
+
+/// See [`variants_of_impl`] for why the types that have been seen are skipped.
+fn pairs_of_impl(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+    target: bool,
+    seen: &mut FxHashSet<TypeId>,
+) -> Result<Vec<Pair>, CheckError> {
+    step();
+
+    if !seen.insert(id) {
+        return Ok(vec![]);
+    }
+
+    grow_stack(|| pairs_of_inner(arena, builtins, id, target, seen))
 }
 
 fn pairs_of_inner(
@@ -611,24 +747,25 @@ fn pairs_of_inner(
     builtins: &BuiltinTypes,
     id: TypeId,
     target: bool,
+    seen: &mut FxHashSet<TypeId>,
 ) -> Result<Vec<Pair>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => pairs_of(arena, builtins, id, target)?,
+        Type::Ref(id) => pairs_of_impl(arena, builtins, id, target, seen)?,
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
         Type::Pair(pair) => vec![pair],
         Type::Generic(_) if target => return Err(CheckError::GenericType),
         Type::Generic(_) | Type::Any => {
             vec![Pair::new(builtins.recursive_any, builtins.recursive_any)]
         }
-        Type::Alias(alias) => pairs_of(arena, builtins, alias.inner, target)?,
-        Type::Struct(ty) => pairs_of(arena, builtins, ty.inner, target)?,
+        Type::Alias(alias) => pairs_of_impl(arena, builtins, alias.inner, target, seen)?,
+        Type::Struct(ty) => pairs_of_impl(arena, builtins, ty.inner, target, seen)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
             for variant in ty.types {
-                pairs.extend(pairs_of(arena, builtins, variant, target)?);
+                pairs.extend(pairs_of_impl(arena, builtins, variant, target, seen)?);
             }
 
             pairs

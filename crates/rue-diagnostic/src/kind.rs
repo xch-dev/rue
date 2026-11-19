@@ -186,6 +186,9 @@ pub enum DiagnosticKind {
     #[error("Cannot check if value is of deeply nested type at runtime")]
     TypeCheckDepthExceeded,
 
+    #[error("Cannot check if value is of this type at runtime, since the check would be too large")]
+    TypeCheckTooLarge,
+
     #[error("Comparing `{0}` to `{1}` is too complex")]
     TypeComparisonTooComplex(String, String),
 

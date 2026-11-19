@@ -1,0 +1,9 @@
+diagnostics:
+- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:18:5
+- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:23:5
+- Cannot assign `Any` to `T12` without a type guard, since the value isn't always a valid `T12` at check_size_errors.rue:27:40
+- Cannot cast `Any` to `T12` without a type guard, since the value isn't always a valid `T12` at check_size_errors.rue:32:5
+- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:42:5
+- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:46:5
+- Cannot type guard from `(Any, Bytes32)` to `(T12, nil)`, since they do not overlap at check_size_errors.rue:51:5
+- Cannot assign `(Any, Bytes32)` to `(T12, nil)`, since they are incompatible at check_size_errors.rue:54:61

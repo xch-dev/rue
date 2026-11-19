@@ -11,8 +11,9 @@ use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_types::{
-    Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Check, CheckError, FunctionType,
-    Generic, Pair, Struct, Type, TypeId, Union, check, stringify, subtract,
+    Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, CHECK_SIZE_LIMIT, Check, CheckError,
+    FunctionType, Generic, Pair, Struct, Type, TypeId, Union, check, stringify, subtract,
+    with_step_limit,
 };
 
 struct Types {
@@ -615,6 +616,130 @@ fn list_value(a: &mut Allocator, items: &[NodePtr]) -> NodePtr {
     items.iter().rev().fold(NodePtr::NIL, |rest, &first| {
         a.new_pair(first, rest).unwrap()
     })
+}
+
+#[test]
+fn test_check_size_limit() {
+    let mut t = Types::new();
+    let mut a = Allocator::new();
+    let any = t.builtins.permissive_any;
+
+    // Each level nests the previous type twice through an alias, so the check doubles in size
+    let mut levels = vec![t.builtins.int];
+    for _ in 0..24 {
+        let previous = *levels.last().unwrap();
+        let pair = t.pair(previous, previous);
+        levels.push(t.alias(pair));
+    }
+
+    // The largest level within the limit still produces a correct check
+    let check = t.check(any, levels[11]).unwrap();
+    assert!(check.size() <= CHECK_SIZE_LIMIT, "{}", check.size());
+    assert!(check.size() > CHECK_SIZE_LIMIT / 2, "{}", check.size());
+    let one = a.new_small_number(1).unwrap();
+    let mut valid = one;
+    for _ in 0..11 {
+        valid = a.new_pair(valid, valid).unwrap();
+    }
+    assert_eq!(eval(&a, &check, valid), Ok(true));
+    let invalid = a.new_pair(valid, one).unwrap();
+    let wrapped = a.new_pair(invalid, invalid).unwrap();
+    assert_eq!(eval(&a, &check, wrapped), Ok(false));
+
+    // The next level is too large, as is every level past it, even though they aren't too deep
+    assert_eq!(t.check(any, levels[12]), Err(CheckError::TooLarge));
+
+    // Every part of the check is limited, not just the result, so the work doesn't double at each
+    // level either (it takes around 130,000 steps, rather than tens of millions)
+    let result = with_step_limit(1_000_000, || t.check(any, levels[24]));
+    assert_eq!(result, Err(CheckError::TooLarge));
+
+    // A part that's too large doesn't matter if another pair accepts every pair
+    let any_pair = t.pair(any, any);
+    let either = t.union(vec![levels[13], any_pair]);
+    assert_eq!(
+        t.check(any, either),
+        Ok(Check::IsPair {
+            can_be_truthy: true
+        })
+    );
+    let either = t.union(vec![any_pair, levels[13]]);
+    assert_eq!(
+        t.check(any, either),
+        Ok(Check::IsPair {
+            can_be_truthy: true
+        })
+    );
+
+    // But it does if it's needed, whichever of the first and rest is too large
+    let int = t.builtins.int;
+    let ints = t.pair(int, int);
+    let first_large = t.pair(levels[12], int);
+    let either = t.union(vec![first_large, ints]);
+    assert_eq!(t.check(any, either), Err(CheckError::TooLarge));
+    let rest_large = t.pair(int, levels[12]);
+    let either = t.union(vec![rest_large, ints]);
+    assert_eq!(t.check(any, either), Err(CheckError::TooLarge));
+
+    // Unless the rest of the pair can never match, whichever of the first and rest is too large
+    let bytes32 = t.builtins.bytes32;
+    let nil = t.builtins.nil;
+    let from = t.pair(any, bytes32);
+    let to = t.pair(levels[12], nil);
+    assert_eq!(t.check(from, to), Ok(Check::Impossible));
+    let from = t.pair(bytes32, any);
+    let to = t.pair(nil, levels[12]);
+    assert_eq!(t.check(from, to), Ok(Check::Impossible));
+
+    // A value already known to be of the type doesn't need a check, however large the type is
+    assert_eq!(t.check(levels[24], levels[24]), Ok(Check::None));
+}
+
+#[test]
+fn test_check_repeated_union() {
+    let mut t = Types::new();
+    let any = t.builtins.permissive_any;
+    let int = t.builtins.int;
+    let nil = t.builtins.nil;
+    let bytes32 = t.builtins.bytes32;
+    let one = t.int(1);
+    let two = t.int(2);
+
+    // Each level is a union of the previous level with itself, so walking the variants of a level
+    // without skipping the repeats would double the work at each level
+    let first = t.pair(int, nil);
+    let second = t.pair(bytes32, int);
+    let base = t.union(vec![first, second, one, two]);
+    let mut level = t.alias(base);
+    for _ in 0..32 {
+        let union = t.union(vec![level, level]);
+        level = t.alias(union);
+    }
+
+    let expected = t.check(any, base).unwrap();
+    let result = with_step_limit(100_000, || t.check(any, level));
+    assert_eq!(result, Ok(expected));
+    let result = with_step_limit(100_000, || t.check(level, base));
+    assert_eq!(result, Ok(Check::None));
+}
+
+#[test]
+fn test_check_size() {
+    let atom = || Check::IsAtom {
+        can_be_truthy: true,
+    };
+
+    assert_eq!(Check::None.size(), 1);
+    assert_eq!(length(32).size(), 1);
+    assert_eq!(
+        Check::Pair(Box::new(atom()), Box::new(length(32))).size(),
+        3
+    );
+    assert_eq!(Check::Or(vec![]).size(), 1);
+
+    // Repeated parts are counted every time, since they're generated every time
+    let pair = Check::Pair(Box::new(atom()), Box::new(atom()));
+    assert_eq!(Check::And(vec![pair.clone(), pair, value(&[1])]).size(), 8);
 }
 
 #[test]
