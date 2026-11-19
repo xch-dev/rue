@@ -37,5 +37,6 @@ thiserror = { workspace = true }
 include_dir = { workspace = true }
 
 [dev-dependencies]
+rue-types = { workspace = true, features = ["step-counter"] }
 rue-lexer = { workspace = true }
 expect-test = { workspace = true }

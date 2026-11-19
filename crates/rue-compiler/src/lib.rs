@@ -32,4 +32,6 @@ mod nesting_tests;
 #[cfg(test)]
 mod resolve_tests;
 #[cfg(test)]
+mod solver_stress_tests;
+#[cfg(test)]
 mod test_utils;
