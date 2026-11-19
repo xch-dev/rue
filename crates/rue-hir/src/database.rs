@@ -382,10 +382,12 @@ impl Database {
             .copied()
     }
 
-    /// Records that an import brings a declaration in under a name that another import of the same
-    /// kind bound (glob imports, which may bring in different declarations, or named imports of
-    /// the same declaration), so that a reference through the binding is a reference through both
-    /// of them, whichever bound the name. Returns whether it wasn't already recorded.
+    /// Records that an import brings a declaration in under a name that another import bound, so
+    /// that a reference through the binding is a reference through this import too. Glob imports
+    /// that bring in the name are all used wherever the binding is, whichever bound it. Of named
+    /// imports of the same declaration, the one that's picked as used gets the binding's uses,
+    /// and the one that bound it no longer brings it in. Returns whether it wasn't already
+    /// recorded.
     pub fn add_shared_binding(
         &mut self,
         bound_by: ImportId,
@@ -572,6 +574,14 @@ impl Database {
     /// else too.
     pub fn has_alternatives(&self) -> bool {
         !self.glob_alternatives.is_empty() || !self.ambiguous_alternatives.is_empty()
+    }
+
+    /// Forgets what every name could refer to besides what it's bound to, and what every glob
+    /// import could bring in besides what it does, so that they can be worked out again once the
+    /// imports' bindings are settled.
+    pub fn clear_alternatives(&mut self) {
+        self.ambiguous_alternatives.clear();
+        self.glob_alternatives.clear();
     }
 
     /// Records that a glob import could bring in something under a name that nothing else in

@@ -2344,7 +2344,8 @@ fn named_imports_of_the_same_item_through_ambiguous_modules_use_every_alternativ
 fn glob_re_exports_only_pass_on_what_their_module_does_not_hide() {
     // `relay2` has its own `X`, by declaration or named import, which hides the first module's
     // `X` that `relay`'s glob export could bring in, so `user`'s use of `X` never refers to it,
-    // whichever `m` is bound. (The declared `X` hides `other`'s, which is then unused too.)
+    // whichever `m` is bound. (With the declared `X`, nothing imports `other`'s, so it's unused
+    // too.)
     for (relay2, other) in [
         ("export const X: Int = 5;", vec!["5:138 UnusedConstant"]),
         ("export super::other::X;", vec![]),
@@ -2369,26 +2370,56 @@ fn glob_re_exports_only_pass_on_what_their_module_does_not_hide() {
 
 #[test]
 fn private_glob_imports_through_ambiguous_modules_pass_nothing_on() {
-    // `beta`'s `m` glob-imports `both2::k` privately, where only the first `k` has `ONLY`, so
-    // `user`'s glob import of `both::m` can't bring in `ONLY`, which is unused in every order
+    // `beta`'s `m` glob-imports `both2::k` privately, where only `kq`'s `k` has `ONLY`, so
+    // `user`'s glob import of `both::m` can't bring in `ONLY`, which is unused in every order of
+    // both ambiguous names (`kk` sorts before `kq` and `zz` after it). Neither can it bring in
+    // `beta`'s private `HIDDEN`.
     for first_binds in [true, false] {
-        for second_k in ["kk", "aa"] {
+        for second_k in ["kk", "zz"] {
             let compiled = compile(&colliding_modules(
                 first_binds,
                 "export const X: Int = 1;",
-                "export const X: Int = 2; import super::super::both2::k::*;",
+                "export const X: Int = 2; const HIDDEN: Int = 5; import super::super::both2::k::*;",
                 &format!(
-                    "mod kq {{ export mod k {{ export const ONLY: Int = 3; }} }} mod {second_k} {{ export mod k {{ export const Z: Int = 4; }} }} mod both2 {{ export super::kq::*; export super::{second_k}::*; }} mod user {{ import super::both::m::*; export fn value() -> Int {{ X + ONLY }} }} fn main() -> Int {{ user::value() }}"
+                    "mod kq {{ export mod k {{ export const ONLY: Int = 3; }} }} mod {second_k} {{ export mod k {{ export const Z: Int = 4; }} }} mod both2 {{ export super::kq::*; export super::{second_k}::*; }} mod user {{ import super::both::m::*; export fn value() -> Int {{ X + ONLY + HIDDEN }} }} fn main() -> Int {{ user::value() }}"
                 ),
             ));
-            let unused = unused_items(&compiled);
-            let context = format!("first binds: {first_binds}, second k: {second_k}: {unused:?}");
+            let context = format!("first binds: {first_binds}, second k: {second_k}");
 
-            assert!(
-                unused.contains(&"5:46 UnusedConstant".to_string()),
+            assert_eq!(
+                unused_items(&compiled),
+                [
+                    "3:66 UnusedConstant",
+                    "5:46 UnusedConstant",
+                    "5:102 UnusedConstant"
+                ],
                 "{context}"
             );
         }
+    }
+}
+
+#[test]
+fn names_hidden_by_named_imports_resolved_in_later_passes_are_not_passed_on() {
+    // `{user}`'s named import of `A` only resolves once `kk`'s glob import has, a pass later, and
+    // then hides the first module's `A` that its glob export of `both::m` could bring in. So
+    // nothing can refer to that `A`, which is unused however the modules are named, even though
+    // the name was still free in the passes before.
+    for user in ["aa", "zz"] {
+        let compiled = compile(&colliding_modules(
+            true,
+            "export const A: Int = 1;",
+            "export const B: Int = 2;",
+            &format!(
+                "mod kk {{ export super::k5::*; }} mod k5 {{ export mod c1 {{ export const A: Int = 3; }} }} mod t {{ export const A: Int = 4; }} mod {user} {{ import super::kk::c1::A; export super::both::m::*; export fn f() -> Int {{ A }} }} import {user}::*; import t::*; fn main() -> Int {{ A + f() }}"
+            ),
+        ));
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["2:49 UnusedConstant", "3:48 UnusedConstant"],
+            "user: {user}"
+        );
     }
 }
 

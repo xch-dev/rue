@@ -174,19 +174,16 @@ fn construct_imports(
     }
 }
 
-/// A named import, an item it finds with its name, and the import it finds the item through, if
-/// any.
-type NamedFind = (ImportId, Item, Option<ImportId>);
-
 #[derive(Debug, Default)]
 pub struct ImportCache {
     /// What each import's path resolves to, once it's resolved.
     paths: HashMap<ImportId, CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
-    /// The items each named import finds with its name, and the import that each is found
-    /// through, if any, by the scope it's in and the name (see [`resolve_duplicate_imports`]).
-    named_finds: IndexMap<ScopeId, IndexMap<String, IndexSet<NamedFind>>>,
-    glob_import_counts: IndexMap<ImportId, (Name, usize)>,
+    /// The items that each named import of a name that another named import into the same scope
+    /// imports too finds, with the import that each is found through, if any (see
+    /// [`resolve_duplicate_imports`]).
+    named_finds: HashMap<ImportId, IndexSet<(Item, Option<ImportId>)>>,
+    glob_import_counts: IndexMap<ImportId, (ScopeId, Name, usize)>,
     /// The errors in imports, keyed by where they are, so that each is reported once however
     /// many times the import is resolved.
     errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
@@ -517,6 +514,36 @@ pub fn resolve_imports(
         }
     }
 
+    // What a glob import could bring in through an ambiguous name is only passed on under names
+    // that nothing hides where it's passed through, but those names were still being bound in
+    // the passes above, so something could have been passed on before it was hidden. The bindings
+    // are settled now, so what everything could refer to is worked out again from nothing. Only
+    // the alternatives change in these passes, and they only grow, so they settle.
+    if ctx.has_alternatives() {
+        ctx.clear_alternatives();
+
+        loop {
+            if passes == limit {
+                report_pass_limit(ctx, &imports, cache, limit);
+                return;
+            }
+
+            passes += 1;
+            resolution.waiting.clear();
+            resolution.failures.clear();
+
+            let mut updated = false;
+
+            for &(import_scope, import) in &imports {
+                updated |= resolve_import(ctx, import_scope, import, cache, &mut resolution);
+            }
+
+            if !updated {
+                break;
+            }
+        }
+    }
+
     if diagnostics {
         let reported = reported_failures(cache);
 
@@ -543,7 +570,7 @@ pub fn resolve_imports(
             }
         }
 
-        resolve_duplicate_imports(ctx, cache);
+        resolve_duplicate_imports(ctx, cache, &resolution);
 
         for unused_imports in cache.unused_imports.values() {
             for name in unused_imports.values() {
@@ -552,23 +579,16 @@ pub fn resolve_imports(
         }
 
         // Only a name that's ambiguous somewhere could make a glob import bring in more
-        let scopes = ctx.has_alternatives().then(|| {
-            imports
-                .iter()
-                .map(|&(scope, import)| (import, scope))
-                .collect::<HashMap<_, _>>()
-        });
-
-        for (&import, (name, count)) in &cache.glob_import_counts {
+        for (&import, &(scope, ref name, count)) in &cache.glob_import_counts {
             // One that could bring in something if its path were bound differently is reported
             // as unused instead, unless any of that is used
-            if let Some(scopes) = &scopes
-                && unhidden_glob_alternatives(ctx, scopes[&import], import)
+            if ctx.has_alternatives()
+                && unhidden_glob_alternatives(ctx, scope, import)
                     .next()
                     .is_some()
             {
                 ctx.add_glob_that_may_bring_in_more(import);
-            } else if *count == 0 {
+            } else if count == 0 {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
             }
         }
@@ -1840,7 +1860,7 @@ fn resolve_glob_import(
     let mut count = cache
         .glob_import_counts
         .get(&import_id)
-        .map_or(0, |&(_, count)| count);
+        .map_or(0, |&(_, _, count)| count);
 
     // Glob imports bring in every exported item of a module. A glob import of a parent module
     // (through `super` or `project`) brings in its private items too, but doesn't export them.
@@ -2014,8 +2034,8 @@ fn resolve_glob_import(
     cache
         .glob_import_counts
         .entry(import_id)
-        .or_insert_with(|| (star.clone(), 0))
-        .1 = count;
+        .or_insert_with(|| (import_scope, star.clone(), 0))
+        .2 = count;
 
     updated
 }
@@ -2128,18 +2148,17 @@ fn resolve_named_import(
         }
     }
 
-    let finds = cache.named_finds.entry(import_scope).or_default();
-
-    for &(item, via) in &found {
-        if ctx.is_error_item(item) {
-            continue;
-        }
-
-        if let Some(finds) = finds.get_mut(name) {
-            finds.insert((import_id, item, via));
-        } else {
-            finds.insert(name.to_string(), IndexSet::from([(import_id, item, via)]));
-        }
+    // Another named import of the name could bring in the same items
+    if resolution
+        .named_imports_of(import_scope, name)
+        .is_some_and(|imports| imports.len() > 1)
+    {
+        cache.named_finds.entry(import_id).or_default().extend(
+            found
+                .iter()
+                .copied()
+                .filter(|&(item, _)| !ctx.is_error_item(item)),
+        );
     }
 
     for &(found, _) in &found {
@@ -2242,18 +2261,36 @@ fn resolve_named_import(
 /// Picks which of the named imports into a scope that bring in the same item with the same name
 /// is used. Whichever is resolved first binds the name, which depends on module names, so the
 /// exported one, or else the first one in the source, gets the uses of the binding instead, and
-/// the others don't bring it in, so they're reported as unused. An import that finds the item through another of them (such
-/// as `import X;` after `import a::X;`) needs that one, so it isn't one of them.
-fn resolve_duplicate_imports(ctx: &mut Compiler, cache: &mut ImportCache) {
-    for (scope, name, finds) in cache
-        .named_finds
+/// the others don't bring it in, so they're reported as unused. An import that finds the item
+/// through another of them (such as `import X;` after `import a::X;`) needs that one, so it isn't
+/// one of them.
+fn resolve_duplicate_imports(ctx: &mut Compiler, cache: &mut ImportCache, resolution: &Resolution) {
+    // The names that more than one named import imports into a scope, in a fixed order
+    let mut groups = resolution
+        .named_imports
         .iter()
-        .flat_map(|(scope, names)| names.iter().map(move |(name, finds)| (scope, name, finds)))
-    {
-        // Most names are only imported once
-        if finds.len() < 2 {
-            continue;
-        }
+        .flat_map(|(&scope, names)| {
+            names
+                .iter()
+                .filter(|(_, imports)| imports.len() > 1)
+                .map(move |(name, imports)| (scope, name, imports))
+        })
+        .collect::<Vec<_>>();
+
+    groups.sort_by_key(|&(_, _, imports)| imports[0].index());
+
+    for (scope, name, imports) in groups {
+        let finds = imports
+            .iter()
+            .flat_map(|&import| {
+                cache
+                    .named_finds
+                    .get(&import)
+                    .into_iter()
+                    .flatten()
+                    .map(move |&(item, via)| (import, item, via))
+            })
+            .collect::<IndexSet<_>>();
 
         let importers = finds
             .iter()
@@ -2279,7 +2316,7 @@ fn resolve_duplicate_imports(ctx: &mut Compiler, cache: &mut ImportCache) {
             }
 
             let Some(bound_by) = ctx
-                .scope(*scope)
+                .scope(scope)
                 .item_import(item)
                 .filter(|bound_by| candidates.contains(bound_by))
             else {
