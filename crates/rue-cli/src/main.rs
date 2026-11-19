@@ -5,7 +5,7 @@ use std::{
     process,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Args, FromArgMatches, Parser, value_parser};
 use clvm_utils::tree_hash;
 use clvmr::{
@@ -25,8 +25,10 @@ use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
 
 mod fmt;
+mod trace;
 
 use fmt::*;
+use trace::{Sidecars, run_with_trace};
 
 #[derive(Debug, Parser)]
 pub enum Command {
@@ -259,6 +261,10 @@ pub struct DebugArgs {
     solution: Option<String>,
     #[clap(short = 'x', long)]
     hex: bool,
+    /// A debug metadata sidecar (from `rue build --debug-metadata`), which is used to show where in
+    /// the source the program was if it fails (can be repeated)
+    #[clap(long, value_name = "PATH")]
+    debug_metadata: Vec<PathBuf>,
     #[clap(flatten)]
     cost: CostArgs,
 }
@@ -826,7 +832,9 @@ fn test(args: TestArgs) -> Result<()> {
         process::exit(1);
     }
 
-    let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path, false)?;
+    // Each test has a sidecar, so that a failure shows where in the source it happened
+    let tests =
+        tree.tests_with_debug_metadata(&mut ctx, &mut allocator, None, None, &base_path, false)?;
 
     let len = tests.len();
 
@@ -844,8 +852,24 @@ fn test(args: TestArgs) -> Result<()> {
                 .bold()
         );
 
-        if let Err(message) = run_test(&mut allocator, test.ptr, args.cost) {
-            eprintln!("{}", format!("Test failed due to {message}").red().bold());
+        let mut sidecars = Sidecars::default();
+
+        if let Some(metadata) = &test.debug_metadata {
+            sidecars.insert(metadata)?;
+        }
+
+        if let Err(failure) = run_test(&mut allocator, test.ptr, args.cost, &sidecars)? {
+            eprintln!(
+                "{}",
+                format!("Test failed due to {}", failure.message)
+                    .red()
+                    .bold()
+            );
+
+            if let Some(trace) = failure.trace {
+                eprintln!("{trace}");
+            }
+
             failed = true;
         }
     }
@@ -857,29 +881,54 @@ fn test(args: TestArgs) -> Result<()> {
     Ok(())
 }
 
-/// Runs a test, which passes if it returns nil, and otherwise returns why it failed.
-fn run_test(allocator: &mut Allocator, program: NodePtr, cost: CostArgs) -> Result<(), String> {
-    match run_program(
+/// Why a test failed.
+#[derive(Debug)]
+struct TestFailure {
+    message: String,
+    /// Where the test was when it failed, if it raised and has a sidecar.
+    trace: Option<String>,
+}
+
+/// Runs a test, which passes if it returns nil, and otherwise returns why it failed. If the test
+/// has a sidecar, a failure is shown with where in the source it happened.
+fn run_test(
+    allocator: &mut Allocator,
+    program: NodePtr,
+    cost: CostArgs,
+    sidecars: &Sidecars,
+) -> Result<Result<(), TestFailure>> {
+    let (error, trace) = match run_with_trace(
         allocator,
         &DebugDialect::new(CLVM_FLAGS, true),
         program,
         NodePtr::NIL,
         cost.max_cost,
-    ) {
+        sidecars,
+    )? {
         Ok(output) => {
             if let SExp::Atom = allocator.sexp(output.1)
                 && allocator.atom(output.1).is_empty()
             {
-                Ok(())
-            } else {
-                Err("non-nil output".to_string())
+                return Ok(Ok(()));
             }
+
+            return Ok(Err(TestFailure {
+                message: "non-nil output".to_string(),
+                trace: None,
+            }));
         }
-        Err(EvalErr::Raise(value)) => {
-            Err(format!("raise: {}", disassemble_value(allocator, value)))
-        }
-        Err(error) => Err(format!("error: {}", cost.describe_error(&error))),
-    }
+        Err(failure) => (failure.error, failure.trace),
+    };
+
+    let message = match error {
+        EvalErr::Raise(value) => format!("raise: {}", disassemble_value(allocator, value)),
+        error => format!("error: {}", cost.describe_error(&error)),
+    };
+
+    Ok(Err(TestFailure {
+        message,
+        trace: (!sidecars.is_empty()).then_some(trace),
+    }))
 }
 
 /// Runs the program, and returns its output.
@@ -904,17 +953,47 @@ fn debug(args: DebugArgs) -> Result<String> {
         NodePtr::NIL
     };
 
-    let output = run_program(
+    let dialect = DebugDialect::new(CLVM_FLAGS, true);
+
+    if args.debug_metadata.is_empty() {
+        let output = run_program(
+            &mut allocator,
+            &dialect,
+            program,
+            solution,
+            args.cost.max_cost,
+        )
+        .map_err(|error| anyhow::anyhow!(args.cost.describe_error(&error)))?
+        .1;
+
+        return Ok(disassemble_value(&allocator, output));
+    }
+
+    let mut sidecars = Sidecars::default();
+
+    for path in &args.debug_metadata {
+        let metadata =
+            fs::read(path).with_context(|| format!("Couldn't read {}", path.display()))?;
+        sidecars
+            .insert(&metadata)
+            .with_context(|| format!("Couldn't load {}", path.display()))?;
+    }
+
+    match run_with_trace(
         &mut allocator,
-        &DebugDialect::new(CLVM_FLAGS, true),
+        &dialect,
         program,
         solution,
         args.cost.max_cost,
-    )
-    .map_err(|error| anyhow::anyhow!(args.cost.describe_error(&error)))?
-    .1;
-
-    Ok(disassemble_value(&allocator, output))
+        &sidecars,
+    )? {
+        Ok(output) => Ok(disassemble_value(&allocator, output.1)),
+        Err(failure) => Err(anyhow::anyhow!(
+            "{}\n{}",
+            args.cost.describe_error(&failure.error),
+            failure.trace
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -922,7 +1001,7 @@ mod tests {
     use std::{fs, path::Path};
 
     use super::{
-        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_metadata_path, run_test,
+        Command, CostArgs, DEFAULT_MAX_COST, Sidecars, build, debug, debug_metadata_path, run_test,
         single_debug_metadata_path,
     };
     use clap::{CommandFactory, Parser, error::ErrorKind};
@@ -1390,7 +1469,17 @@ mod tests {
     fn run_test_with(program: &str, max_cost: u64) -> Result<(), String> {
         let mut allocator = Allocator::new();
         let program = assemble(&mut allocator, program).unwrap();
-        run_test(&mut allocator, program, CostArgs { max_cost })
+        run_test(
+            &mut allocator,
+            program,
+            CostArgs { max_cost },
+            &Sidecars::default(),
+        )
+        .unwrap()
+        .map_err(|failure| {
+            assert!(failure.trace.is_none(), "there's no sidecar to trace with");
+            failure.message
+        })
     }
 
     #[test]

@@ -1,0 +1,37 @@
+===== debug: (-1 5) =====
+error: clvm raise
+File "duplicate_bodies.rue", line 3, column 32
+  fn main(x: Int, y: Int) -> Int {
+                                 ^
+File "duplicate_bodies.rue", line 4, column 5, in main
+  first(x) + second(y)
+  ^^^^^^^^^^^^^^^^^^^^
+  x = -1
+  y = 5
+File "duplicate_bodies.rue", line 4, column 5
+  first(x) + second(y)
+  ^^^^^^^^
+File "duplicate_bodies.rue", line 8, column 5, in first
+  assert a > 0;
+  ^^^^^^^^^^^^^
+  a = -1
+File "duplicate_bodies.rue", line 8, column 5
+  assert a > 0;
+  ^^^^^^^^^^^^^
+===== release: (-1 5) =====
+error: clvm raise
+File "duplicate_bodies.rue", line 3, column 32
+  fn main(x: Int, y: Int) -> Int {
+                                 ^
+File "duplicate_bodies.rue", line 4, column 5, in main
+  first(x) + second(y)
+  ^^^^^^^^^^^^^^^^^^^^
+  x = -1
+  y = 5
+File "duplicate_bodies.rue", line 4, column 5
+  first(x) + second(y)
+  ^^^^^^^^
+in <ambiguous: first | second>
+  arguments = [-1]
+in <ambiguous>
+  arguments = [-1]

@@ -25,7 +25,8 @@ rue-formatter = { workspace = true }
 rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
 rue-lir = { workspace = true }
-clvmr = { workspace = true }
+clvmr = { workspace = true, features = ["pre-eval"] }
+chialisp = { workspace = true }
 clvm-utils = { workspace = true }
 rue-clvm = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
@@ -37,4 +38,5 @@ glob = { workspace = true }
 walkdir = { workspace = true }
 
 [dev-dependencies]
+expect-test = { workspace = true }
 sha2 = { workspace = true }

@@ -1,0 +1,48 @@
+===== debug: (3) =====
+error: clvm raise
+File "closure_no_params.rue", line 3, column 24
+  fn main(x: Int) -> Int {
+                         ^
+File "closure_no_params.rue", line 3, column 24, in main
+  fn main(x: Int) -> Int {
+                         ^
+  x = 3
+File "closure_no_params.rue", line 8, column 5
+  run(check) + 1
+  ^^^^^^^^^^^^^^
+File "closure_no_params.rue", line 8, column 5
+  run(check) + 1
+  ^^^^^^^^^^
+File "closure_no_params.rue", line 12, column 5, in run
+  f() * 2
+  ^^^^^^^
+  f = (2 (1 2 (...) 1) (4 (...) ()))
+File "closure_no_params.rue", line 12, column 5
+  f() * 2
+  ^^^
+File "closure_no_params.rue", line 5, column 9, in <lambda>  # bound: x
+  assert x > 5;
+  ^^^^^^^^^^^^^
+  x = 3
+File "closure_no_params.rue", line 5, column 9
+  assert x > 5;
+  ^^^^^^^^^^^^^
+===== release: (3) =====
+error: clvm raise
+File "closure_no_params.rue", line 8, column 5, in main
+  run(check) + 1
+  ^^^^^^^^^^^^^^
+  x = 3
+File "closure_no_params.rue", line 12, column 5
+  f() * 2
+  ^^^^^^^
+File "closure_no_params.rue", line 12, column 5
+  f() * 2
+  ^^^
+File "closure_no_params.rue", line 5, column 9, in <lambda>  # bound: x
+  assert x > 5;
+  ^^^^^^^^^^^^^
+  x = 3
+File "closure_no_params.rue", line 5, column 9
+  assert x > 5;
+  ^^^^^^^^^^^^^

@@ -1,0 +1,79 @@
+===== debug: (0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 100 "hello world" 1) =====
+error: clvm raise
+File "typed_param.rue", line 4, column 93
+  fn main(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+                                                                                              ^
+File "typed_param.rue", line 5, column 5, in main
+  validate(owner, target, amount, memo, enabled)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = 100
+  memo = "hello world"
+  enabled = 1
+File "typed_param.rue", line 9, column 5, in validate
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = 100
+  memo = "hello world"
+  enabled = 1
+File "typed_param.rue", line 10, column 5
+  assert target != sha256(owner as Bytes);
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "typed_param.rue", line 11, column 5
+  assert memo.length < 5;
+  ^^^^^^^^^^^^^^^^^^^^^^^
+===== debug: (0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 1751477356 "hi" 0) =====
+error: clvm raise
+File "typed_param.rue", line 4, column 93
+  fn main(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+                                                                                              ^
+File "typed_param.rue", line 5, column 5, in main
+  validate(owner, target, amount, memo, enabled)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = "hell"
+  memo = 26729
+  enabled = ()
+File "typed_param.rue", line 9, column 5, in validate
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = "hell"
+  memo = 26729
+  enabled = ()
+File "typed_param.rue", line 9, column 5
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+===== release: (0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 100 "hello world" 1) =====
+error: clvm raise
+File "typed_param.rue", line 9, column 5, in main
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = 100
+  memo = "hello world"
+  enabled = 1
+File "typed_param.rue", line 10, column 5
+  assert target != sha256(owner as Bytes);
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "typed_param.rue", line 11, column 5
+  assert memo.length < 5;
+  ^^^^^^^^^^^^^^^^^^^^^^^
+===== release: (0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 1751477356 "hi" 0) =====
+error: clvm raise
+File "typed_param.rue", line 9, column 5, in main
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = "hell"
+  memo = 26729
+  enabled = ()
+in <ambiguous>
+  arguments = [0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, "hell", 26729, ()]

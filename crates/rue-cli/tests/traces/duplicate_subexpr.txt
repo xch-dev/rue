@@ -1,0 +1,42 @@
+===== debug: (-1 5) =====
+error: clvm raise
+File "duplicate_subexpr.rue", line 3, column 32
+  fn main(x: Int, y: Int) -> Int {
+                                 ^
+File "duplicate_subexpr.rue", line 4, column 5, in main
+  first(x, y) + second(y, x)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  x = -1
+  y = 5
+File "duplicate_subexpr.rue", line 4, column 5
+  first(x, y) + second(y, x)
+  ^^^^^^^^^^^
+File "duplicate_subexpr.rue", line 8, column 5, in first
+  assert a > 0;
+  ^^^^^^^^^^^^^
+  a = -1
+  b = 5
+File "duplicate_subexpr.rue", line 8, column 5
+  assert a > 0;
+  ^^^^^^^^^^^^^
+===== release: (-1 5) =====
+error: clvm raise
+File "duplicate_subexpr.rue", line 3, column 32
+  fn main(x: Int, y: Int) -> Int {
+                                 ^
+File "duplicate_subexpr.rue", line 4, column 5, in main
+  first(x, y) + second(y, x)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  x = -1
+  y = 5
+File "duplicate_subexpr.rue", line 4, column 5
+  first(x, y) + second(y, x)
+  ^^^^^^^^^^^
+File "duplicate_subexpr.rue", line 8, column 5, in first
+  assert a > 0;
+  ^^^^^^^^^^^^^
+  a = -1
+  b = 5
+File "duplicate_subexpr.rue", line 8, column 5
+  assert a > 0;
+  ^^^^^^^^^^^^^

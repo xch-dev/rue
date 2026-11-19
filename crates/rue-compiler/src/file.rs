@@ -64,6 +64,9 @@ pub struct CompiledTest {
     pub path: SourceKind,
     pub symbol: SymbolId,
     pub ptr: NodePtr,
+    /// The debug metadata sidecar of the program, if it was requested (see
+    /// [`FileTree::tests_with_debug_metadata`]).
+    pub debug_metadata: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -545,6 +548,35 @@ impl FileTree {
         base_path: &Path,
         std: bool,
     ) -> Result<Vec<CompiledTest>, Error> {
+        self.tests_impl(ctx, allocator, path, search_term, base_path, std, false)
+    }
+
+    /// Compiles the tests like [`tests`](Self::tests), along with the debug metadata sidecar of
+    /// each (see [`crate::debug_metadata`]). The programs are the same as they would be without
+    /// the sidecars.
+    pub fn tests_with_debug_metadata(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: Option<&SourceKind>,
+        search_term: Option<&str>,
+        base_path: &Path,
+        std: bool,
+    ) -> Result<Vec<CompiledTest>, Error> {
+        self.tests_impl(ctx, allocator, path, search_term, base_path, std, true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn tests_impl(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: Option<&SourceKind>,
+        search_term: Option<&str>,
+        base_path: &Path,
+        std: bool,
+        debug_metadata: bool,
+    ) -> Result<Vec<CompiledTest>, Error> {
         let tests = ctx
             .tests()
             .filter(|test| {
@@ -574,12 +606,19 @@ impl FileTree {
         let mut outputs = Vec::new();
 
         for test in tests {
-            let ptr = codegen(ctx, allocator, test.symbol, base_path.to_path_buf(), false)?.ptr;
+            let program = codegen(
+                ctx,
+                allocator,
+                test.symbol,
+                base_path.to_path_buf(),
+                debug_metadata,
+            )?;
             outputs.push(CompiledTest {
                 name: test.name,
                 path: test.path,
                 symbol: test.symbol,
-                ptr,
+                ptr: program.ptr,
+                debug_metadata: program.debug_metadata,
             });
         }
 

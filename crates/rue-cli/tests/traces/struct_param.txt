@@ -1,0 +1,83 @@
+===== debug: ((0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100) (3 . 5)) =====
+error: clvm raise
+File "struct_param.rue", line 9, column 52
+  fn main(payment: Payment, pair: (Int, Int)) -> Int {
+                                                     ^
+File "struct_param.rue", line 10, column 5, in main
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+  pair = (3 . 5)
+File "struct_param.rue", line 10, column 5
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "struct_param.rue", line 10, column 26
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+                       ^^^^^^^^^^^^^^^^^^^^^^^
+File "struct_param.rue", line 18, column 5, in by_destructure
+  assert puzzle_hash != sha256("burn");
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  { puzzle_hash, amount } = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+File "struct_param.rue", line 18, column 5
+  assert puzzle_hash != sha256("burn");
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+===== debug: ((0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100) (5 . 3)) =====
+error: clvm raise
+File "struct_param.rue", line 9, column 52
+  fn main(payment: Payment, pair: (Int, Int)) -> Int {
+                                                     ^
+File "struct_param.rue", line 10, column 5, in main
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+  pair = (5 . 3)
+File "struct_param.rue", line 10, column 52
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+                                                 ^^^^^^^^^^^^^^
+File "struct_param.rue", line 23, column 5, in by_tuple
+  assert low < high;
+  ^^^^^^^^^^^^^^^^^^
+  (low, high) = (5 . 3)
+File "struct_param.rue", line 23, column 5
+  assert low < high;
+  ^^^^^^^^^^^^^^^^^^
+===== release: ((0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100) (3 . 5)) =====
+error: clvm raise
+File "struct_param.rue", line 9, column 52
+  fn main(payment: Payment, pair: (Int, Int)) -> Int {
+                                                     ^
+File "struct_param.rue", line 10, column 5, in main
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+  pair = (3 . 5)
+File "struct_param.rue", line 10, column 26
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+                       ^^^^^^^^^^^^^^^^^^^^^^^
+File "struct_param.rue", line 18, column 5, in by_destructure
+  assert puzzle_hash != sha256("burn");
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  { puzzle_hash, amount } = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+File "struct_param.rue", line 18, column 5
+  assert puzzle_hash != sha256("burn");
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+===== release: ((0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100) (5 . 3)) =====
+error: clvm raise
+File "struct_param.rue", line 9, column 52
+  fn main(payment: Payment, pair: (Int, Int)) -> Int {
+                                                     ^
+File "struct_param.rue", line 10, column 5, in main
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+  pair = (5 . 3)
+File "struct_param.rue", line 10, column 52
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+                                                 ^^^^^^^^^^^^^^
+File "struct_param.rue", line 23, column 5, in by_tuple
+  assert low < high;
+  ^^^^^^^^^^^^^^^^^^
+  (low, high) = (5 . 3)
+File "struct_param.rue", line 23, column 5
+  assert low < high;
+  ^^^^^^^^^^^^^^^^^^

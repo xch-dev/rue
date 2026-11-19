@@ -1,0 +1,105 @@
+===== debug: (10 (1 2 30 4)) =====
+error: clvm raise
+File "closure_capture.rue", line 3, column 46
+  fn main(limit: Int, items: List<Int>) -> Int {
+                                               ^
+File "closure_capture.rue", line 3, column 46, in main
+  fn main(limit: Int, items: List<Int>) -> Int {
+                                               ^
+  limit = 10
+  items = (1 2 30 4)
+File "closure_capture.rue", line 8, column 5
+  total(check, items)
+  ^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 11, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (1 2 30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 15, column 22
+  f(items.first) + total(f, items.rest)
+                   ^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 11, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (2 30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 15, column 22
+  f(items.first) + total(f, items.rest)
+                   ^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 11, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^
+File "closure_capture.rue", line 5, column 9, in <lambda>  # bound: limit
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+  limit = 10
+  item = 30
+File "closure_capture.rue", line 5, column 9
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+===== release: (10 (1 2 30 4)) =====
+error: clvm raise
+File "closure_capture.rue", line 3, column 46
+  fn main(limit: Int, items: List<Int>) -> Int {
+                                               ^
+File "closure_capture.rue", line 8, column 5, in main
+  total(check, items)
+  ^^^^^^^^^^^^^^^^^^^
+  limit = 10
+  items = (1 2 30 4)
+File "closure_capture.rue", line 11, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (1 2 30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 15, column 22
+  f(items.first) + total(f, items.rest)
+                   ^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 11, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (2 30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 15, column 22
+  f(items.first) + total(f, items.rest)
+                   ^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 11, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 15, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^
+File "closure_capture.rue", line 5, column 9, in <lambda>  # bound: limit
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+  limit = 10
+  item = 30
+File "closure_capture.rue", line 5, column 9
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^

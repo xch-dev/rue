@@ -1,0 +1,82 @@
+===== debug: (3) =====
+error: clvm raise
+File "recursion.rue", line 3, column 24
+  fn main(n: Int) -> Int {
+                         ^
+File "recursion.rue", line 4, column 5, in main
+  countdown(n, 0)
+  ^^^^^^^^^^^^^^^
+  n = 3
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 3
+  acc = ()
+File "recursion.rue", line 11, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 2
+  acc = 3
+File "recursion.rue", line 11, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 1
+  acc = 5
+File "recursion.rue", line 11, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = ()
+  acc = 6
+File "recursion.rue", line 9, column 9
+  raise "hit zero";
+  ^^^^^^^^^^^^^^^^^
+===== release: (3) =====
+error: clvm raise
+File "recursion.rue", line 3, column 24
+  fn main(n: Int) -> Int {
+                         ^
+File "recursion.rue", line 4, column 5, in main
+  countdown(n, 0)
+  ^^^^^^^^^^^^^^^
+  n = 3
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 3
+  acc = ()
+File "recursion.rue", line 11, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 2
+  acc = 3
+File "recursion.rue", line 11, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 1
+  acc = 5
+File "recursion.rue", line 11, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 7, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = ()
+  acc = 6
+File "recursion.rue", line 9, column 9
+  raise "hit zero";
+  ^^^^^^^^^^^^^^^^^

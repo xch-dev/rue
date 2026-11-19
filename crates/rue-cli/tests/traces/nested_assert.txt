@@ -1,0 +1,60 @@
+===== debug: (10) =====
+error: clvm raise
+File "nested_assert.rue", line 3, column 29
+  fn main(amount: Int) -> Int {
+                              ^
+File "nested_assert.rue", line 4, column 5, in main
+  outer(amount) + 1
+  ^^^^^^^^^^^^^^^^^
+  amount = 10
+File "nested_assert.rue", line 4, column 5
+  outer(amount) + 1
+  ^^^^^^^^^^^^^
+File "nested_assert.rue", line 7, column 29, in outer
+  fn outer(value: Int) -> Int {
+                              ^
+  value = 10
+File "nested_assert.rue", line 9, column 5
+  inner(doubled, value) + doubled
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "nested_assert.rue", line 9, column 5
+  inner(doubled, value) + doubled
+  ^^^^^^^^^^^^^^^^^^^^^
+File "nested_assert.rue", line 13, column 5, in inner
+  assert total > 100;
+  ^^^^^^^^^^^^^^^^^^^
+  total = 20
+  base = 10
+File "nested_assert.rue", line 13, column 5
+  assert total > 100;
+  ^^^^^^^^^^^^^^^^^^^
+===== release: (10) =====
+error: clvm raise
+File "nested_assert.rue", line 3, column 29
+  fn main(amount: Int) -> Int {
+                              ^
+File "nested_assert.rue", line 4, column 5, in main
+  outer(amount) + 1
+  ^^^^^^^^^^^^^^^^^
+  amount = 10
+File "nested_assert.rue", line 4, column 5
+  outer(amount) + 1
+  ^^^^^^^^^^^^^
+File "nested_assert.rue", line 7, column 29, in outer
+  fn outer(value: Int) -> Int {
+                              ^
+  value = 10
+File "nested_assert.rue", line 9, column 5
+  inner(doubled, value) + doubled
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "nested_assert.rue", line 9, column 5
+  inner(doubled, value) + doubled
+  ^^^^^^^^^^^^^^^^^^^^^
+File "nested_assert.rue", line 13, column 5, in inner
+  assert total > 100;
+  ^^^^^^^^^^^^^^^^^^^
+  total = 20
+  base = 10
+File "nested_assert.rue", line 13, column 5
+  assert total > 100;
+  ^^^^^^^^^^^^^^^^^^^
