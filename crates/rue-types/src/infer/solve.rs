@@ -23,9 +23,9 @@ pub struct CallSolver {
     /// What the expected type infers on its own, which `CallSolver::widen_to_expected` widens to.
     /// It's `fallback` unless a narrower one was given (see `CallSolver::with_fallback`).
     expected_bounds: HashMap<TypeId, TypeId>,
-    /// Whether `fallback` is narrower than the expected type, so it decides the generics that
-    /// nothing but the expected type constrains (see `CallSolver::with_fallback`).
-    narrower: bool,
+    /// The candidates inferred from a narrower type expected of the call, which bound the generics
+    /// that nothing but the expected type constrains in place of it (see `CallSolver::with_fallback`).
+    narrower: Option<Inference>,
     /// The last inference that `CallSolver::instantiate` was given for each value of its `expected`
     /// flag, with what it gave. The argument loop solves the same inference up to three times
     /// before each argument, and a nested call in an argument solves it again, so each one is
@@ -51,7 +51,7 @@ impl CallSolver {
             expected,
             expected_bounds: fallback.clone(),
             fallback,
-            narrower: false,
+            narrower: None,
             instantiated: RefCell::default(),
         }
     }
@@ -69,7 +69,7 @@ impl CallSolver {
     ) -> Self {
         if let Some(fallback) = fallback {
             self.fallback = resolve_inference(arena, builtins, fallback);
-            self.narrower = true;
+            self.narrower = Some(fallback.clone());
         }
 
         self
@@ -203,37 +203,32 @@ impl CallSolver {
             infer = self.instantiate(arena, builtins, &infer, true).into_owned();
         }
 
-        // With a narrower fallback, the generics that nothing but the expected type constrains
-        // take it rather than the expected type's bounds, as they would have before the expected
-        // type was widened (see `CallSolver::with_fallback`)
-        let unconstrained: Vec<TypeId> = if self.narrower {
-            infer
-                .generics
-                .iter()
-                .filter(|(_, candidates)| {
-                    candidates.lower.is_empty() && candidates.upper.is_empty()
-                })
-                .map(|(&generic, _)| generic)
-                .filter(|generic| self.fallback.contains_key(generic))
-                .collect()
-        } else {
-            Vec::new()
-        };
-
+        // With a narrower expected type, the generics that nothing but the expected type constrains
+        // are bounded by it rather than by the expected type, as they would have been before the
+        // expected type was widened, and the generics bounded through them follow (see
+        // `CallSolver::with_fallback`)
         if let Some(expected) = &self.expected {
-            add_expected_bounds(arena, builtins, &mut infer, expected);
+            if let Some(narrower) = &self.narrower {
+                let constrained = |generic: TypeId| {
+                    infer.candidates(generic).is_some_and(|candidates| {
+                        !candidates.lower.is_empty() || !candidates.upper.is_empty()
+                    })
+                };
+                let mut wide = expected.clone();
+                wide.retain_generics(constrained);
+                let mut narrow = narrower.clone();
+                narrow.retain_generics(|generic| !constrained(generic));
+                add_expected_bounds(arena, builtins, &mut infer, &wide);
+                add_expected_bounds(arena, builtins, &mut infer, &narrow);
+            } else {
+                add_expected_bounds(arena, builtins, &mut infer, expected);
+            }
         }
 
         // After the expected type's bounds have reached the vars of untyped lambda parameters
         add_lambda_var_lower_bounds(&mut infer);
 
-        let mut mappings = resolve_inference_with_bounds(arena, builtins, &infer, &self.fallback);
-
-        for generic in unconstrained {
-            mappings.insert(generic, self.fallback[&generic]);
-        }
-
-        mappings
+        resolve_inference_with_bounds(arena, builtins, &infer, &self.fallback)
     }
 
     /// The inference with the vars for passed generic functions' instances replaced with what

@@ -778,7 +778,9 @@ impl ArgumentOrder {
                     kind,
                     has_lambda: has_lambda(arg),
                     has_own_lambda: has_own_lambda(arg),
-                    widens: matches!(arg, AstExpr::FunctionCallExpr(_)) && !has_lambda(arg),
+                    widens: matches!(arg, AstExpr::FunctionCallExpr(_))
+                        && !is_call_without_arguments(arg)
+                        && !has_lambda(arg),
                     reads,
                     writes: generics_in(ctx, function, param.ty),
                     bounds_above: bounded_above(ctx, function, param.ty),
