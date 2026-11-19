@@ -47,14 +47,12 @@ pub(crate) fn compile_builtin(
         Builtin::G2Difference => {
             call.list_op(ctx, ClvmOp::G2Subtract, types.signature, types.signature)
         }
-        Builtin::CoinId => {
-            let hir = call.fixed(ctx, [types.bytes, types.bytes, types.int]).map(
-                |[parent, puzzle_hash, amount]| {
-                    ctx.alloc_hir(Hir::CoinId(parent, puzzle_hash, amount))
-                },
-            );
-            value_or_unresolved(ctx, hir, types.bytes32)
-        }
+        Builtin::CoinId => call.fixed(
+            ctx,
+            [types.bytes, types.bytes, types.int],
+            types.bytes32,
+            |[parent, puzzle_hash, amount]| Hir::CoinId(parent, puzzle_hash, amount),
+        ),
         Builtin::Substr => {
             call.expect_between(ctx, 2, 3);
             call.reject_spread(ctx);
@@ -69,26 +67,24 @@ pub(crate) fn compile_builtin(
             value_or_unresolved(ctx, hir, types.bytes)
         }
         Builtin::Divmod => {
-            let hir = call
-                .fixed(ctx, [types.int, types.int])
-                .map(|[left, right]| ctx.alloc_hir(Hir::Binary(BinaryOp::Divmod, left, right)));
             let pair = ctx.alloc_type(Type::Pair(Pair::new(types.int, types.int)));
-            value_or_unresolved(ctx, hir, pair)
+            call.fixed(ctx, [types.int, types.int], pair, |[left, right]| {
+                Hir::Binary(BinaryOp::Divmod, left, right)
+            })
         }
-        Builtin::Modpow => {
-            let hir = call.fixed(ctx, [types.int, types.int, types.int]).map(
-                |[base, exponent, modulus]| ctx.alloc_hir(Hir::Modpow(base, exponent, modulus)),
-            );
-            value_or_unresolved(ctx, hir, types.int)
-        }
+        Builtin::Modpow => call.fixed(
+            ctx,
+            [types.int, types.int, types.int],
+            types.int,
+            |[base, exponent, modulus]| Hir::Modpow(base, exponent, modulus),
+        ),
         Builtin::PubkeyForExp => {
             // The exponent is interpreted as a signed integer and reduced modulo the group
             // order, so both integers and 32 byte secret keys are accepted.
             let exponent = ctx.alloc_type(Type::Union(Union::new(vec![types.int, types.bytes32])));
-            let hir = call
-                .fixed(ctx, [exponent])
-                .map(|[exponent]| ctx.alloc_hir(Hir::Unary(UnaryOp::PubkeyForExp, exponent)));
-            value_or_unresolved(ctx, hir, types.public_key)
+            call.fixed(ctx, [exponent], types.public_key, |[exponent]| {
+                Hir::Unary(UnaryOp::PubkeyForExp, exponent)
+            })
         }
         Builtin::G1Map => call.map_to_curve(ctx, Hir::G1Map, types.public_key),
         Builtin::G2Map => call.map_to_curve(ctx, Hir::G2Map, types.signature),
@@ -100,7 +96,7 @@ pub(crate) fn compile_builtin(
                     .map(|pairs| ctx.alloc_hir(Hir::ClvmOp(ClvmOp::BlsPairingIdentity, pairs)))
             } else {
                 if !call.args.len().is_multiple_of(2) {
-                    ctx.diagnostic(call.call.syntax(), DiagnosticKind::ExpectedEvenArguments);
+                    call.report(ctx, DiagnosticKind::ExpectedEvenArguments);
                 }
 
                 let args = (0..call.args.len())
@@ -132,10 +128,7 @@ pub(crate) fn compile_builtin(
                 })
             } else {
                 if call.args.len() % 2 != 1 {
-                    ctx.diagnostic(
-                        call.call.syntax(),
-                        DiagnosticKind::ExpectedOneArgumentEvenAdditional,
-                    );
+                    call.report(ctx, DiagnosticKind::ExpectedOneArgumentEvenAdditional);
                 }
 
                 let args: Vec<HirId> = (0..call.args.len())
@@ -158,35 +151,25 @@ pub(crate) fn compile_builtin(
 
             value_or_unresolved(ctx, hir, types.nil)
         }
-        Builtin::Secp256K1Verify => {
-            let hir = call
-                .fixed(
-                    ctx,
-                    [types.k1_public_key, types.bytes32, types.k1_signature],
-                )
-                .map(|[public_key, message, signature]| {
-                    ctx.alloc_hir(Hir::Secp256K1Verify(public_key, message, signature))
-                });
-            value_or_unresolved(ctx, hir, types.nil)
-        }
-        Builtin::Secp256R1Verify => {
-            let hir = call
-                .fixed(
-                    ctx,
-                    [types.r1_public_key, types.bytes32, types.r1_signature],
-                )
-                .map(|[public_key, message, signature]| {
-                    ctx.alloc_hir(Hir::Secp256R1Verify(public_key, message, signature))
-                });
-            value_or_unresolved(ctx, hir, types.nil)
-        }
+        Builtin::Secp256K1Verify => call.fixed(
+            ctx,
+            [types.k1_public_key, types.bytes32, types.k1_signature],
+            types.nil,
+            |[public_key, message, signature]| Hir::Secp256K1Verify(public_key, message, signature),
+        ),
+        Builtin::Secp256R1Verify => call.fixed(
+            ctx,
+            [types.r1_public_key, types.bytes32, types.r1_signature],
+            types.nil,
+            |[public_key, message, signature]| Hir::Secp256R1Verify(public_key, message, signature),
+        ),
     }
 }
 
 /// The compiled arguments of a builtin call, before they're checked against the builtin's
 /// parameters.
 struct BuiltinCall<'a> {
-    call: &'a AstFunctionCallExpr,
+    ast: &'a AstFunctionCallExpr,
     args: Vec<(Value, AstExpr)>,
     /// The spread operator on the last argument, if there is one.
     spread: Option<SyntaxToken>,
@@ -201,7 +184,7 @@ impl<'a> BuiltinCall<'a> {
 
         for (i, arg) in call.args().enumerate() {
             let Some(expr) = arg.expr() else {
-                debug!("Unresolved clvm op argument");
+                debug!("Unresolved builtin argument");
                 continue;
             };
 
@@ -218,13 +201,22 @@ impl<'a> BuiltinCall<'a> {
             args.push((value, expr));
         }
 
-        Self { call, args, spread }
+        Self {
+            ast: call,
+            args,
+            spread,
+        }
+    }
+
+    /// Reports a diagnostic on the whole call.
+    fn report(&self, ctx: &mut Compiler, kind: DiagnosticKind) {
+        ctx.diagnostic(self.ast.syntax(), kind);
     }
 
     fn expect_count(&self, ctx: &mut Compiler, count: usize) {
         if self.args.len() != count {
-            ctx.diagnostic(
-                self.call.syntax(),
+            self.report(
+                ctx,
                 DiagnosticKind::ExpectedArguments(count, self.args.len()),
             );
         }
@@ -232,8 +224,8 @@ impl<'a> BuiltinCall<'a> {
 
     fn expect_between(&self, ctx: &mut Compiler, min: usize, max: usize) {
         if !(min..=max).contains(&self.args.len()) {
-            ctx.diagnostic(
-                self.call.syntax(),
+            self.report(
+                ctx,
                 DiagnosticKind::ExpectedArgumentsBetween(min, max, self.args.len()),
             );
         }
@@ -257,13 +249,26 @@ impl<'a> BuiltinCall<'a> {
         (index < self.args.len()).then(|| self.check(ctx, index, ty))
     }
 
-    /// Checks a call with exactly one argument per parameter and no spread. The arguments are
+    /// Compiles a call with exactly one argument per parameter and no spread. The arguments are
     /// only checked if there are the right number of them.
-    fn fixed<const N: usize>(&self, ctx: &mut Compiler, params: [TypeId; N]) -> Option<[HirId; N]> {
+    fn fixed<const N: usize>(
+        &self,
+        ctx: &mut Compiler,
+        params: [TypeId; N],
+        ret: TypeId,
+        hir: impl FnOnce([HirId; N]) -> Hir,
+    ) -> Value {
         self.expect_count(ctx, N);
         self.reject_spread(ctx);
 
-        (self.args.len() == N).then(|| std::array::from_fn(|i| self.check(ctx, i, params[i])))
+        let hir = if self.args.len() == N {
+            let args = std::array::from_fn(|i| self.check(ctx, i, params[i]));
+            ctx.alloc_hir(hir(args))
+        } else {
+            ctx.unresolved().hir
+        };
+
+        Value::new(hir, ret)
     }
 
     /// `sha256` and `keccak256` hash one value, or the concatenation of a spread list of values.
