@@ -11,8 +11,6 @@ use crate::{
     compile_expr, compile_generic_parameters, compile_type, create_binding,
 };
 
-use super::call_inference::references_call_generics;
-
 pub fn compile_lambda_expr(
     ctx: &mut Compiler,
     expr: &AstLambdaExpr,
@@ -112,14 +110,12 @@ pub(crate) fn compile_lambda(
             ctx.builtins().unresolved.ty
         };
 
-        // Not for a generic lambda or one expected to be a generic function, or when its type is
-        // still one of the call's generics, which aren't in scope outside of it
+        // Not for a generic lambda or one expected to be a generic function
         let ty = if wrap
             && param.ty().is_none()
             && !is_spread
             && vars.is_empty()
             && !matches!(ctx.ty(ty), Type::Unresolved)
-            && !references_call_generics(ctx, ty)
         {
             let reference = ctx.alloc_type(Type::Ref(ty));
             ctx.report_type_as(reference, ty);

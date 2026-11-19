@@ -110,6 +110,13 @@ pub struct ArgumentFrame {
     /// list argument with a lambda in it, and only while the pairs and lists it's made of are
     /// compiled (see `compile_element`).
     pub restored: HashMap<TypeId, TypeId>,
+    /// Whether the lambdas among the elements of the pairs and lists the argument is made of are
+    /// compiled with their untyped parameters as references (see `compile_lambda`), which is only
+    /// while those pairs and lists are compiled (see `compile_element`).
+    pub wrap_lambdas: bool,
+    /// The untyped parameters of those lambdas, as the references they were compiled as and the
+    /// types those refer to.
+    pub lambda_parameters: Vec<(TypeId, TypeId)>,
 }
 
 /// The function or lambda body that a `return` statement exits from.

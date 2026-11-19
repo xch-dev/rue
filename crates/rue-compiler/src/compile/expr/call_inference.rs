@@ -126,6 +126,8 @@ pub(crate) fn infer_call(
                 renamed.clone()
             },
             restored,
+            wrap_lambdas: matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)),
+            lambda_parameters: Vec::new(),
         }));
 
         // The parameter's type is only a hint while it references the callee's generics, since
@@ -135,13 +137,18 @@ pub(crate) fn infer_call(
             .iter()
             .any(|&generic| contains_generic(ctx.types_mut(), param, generic));
 
-        let (value, parameters) = ctx.with_expected_type_hint(hint, |ctx| {
+        let (value, mut parameters) = ctx.with_expected_type_hint(hint, |ctx| {
             if let AstExpr::LambdaExpr(lambda) = expr {
-                compile_lambda_argument(ctx, expr, lambda, expected)
+                compile_lambda_argument(ctx, expr, lambda, Some(expected))
             } else {
                 (compile_expr(ctx, expr, Some(expected)), Vec::new())
             }
         });
+
+        // The lambdas among the elements of a pair or list argument (see `compile_element`)
+        if let Some(argument) = ctx.argument_frame_mut() {
+            parameters.append(&mut argument.lambda_parameters);
+        }
 
         ctx.set_argument_frame(None);
         results[i] = value.hir;
@@ -171,6 +178,10 @@ pub(crate) fn infer_call(
     // as is
     let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint());
 
+    if renamed.is_empty() {
+        instantiate_generic_parameters(ctx, function, &lambda_parameters, &mappings, &mut checks);
+    }
+
     if renamed.is_empty()
         && lambda_parameters
             .iter()
@@ -180,6 +191,7 @@ pub(crate) fn infer_call(
         let mut alternative = checks.clone();
         let solved = solve_with_lambda_parameters(
             ctx,
+            function,
             &solver,
             &order,
             &lambda_parameters,
@@ -235,6 +247,46 @@ pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
     false
 }
 
+/// Checks each lambda whose untyped parameters were compiled as the callee's generics that hadn't
+/// been inferred yet, such as `x: A` in `map_list([fn(x) => x], 5)`, with them as what they're
+/// inferred as. Its body was compiled with the generic as a type it knows nothing about, so it
+/// works for whatever the generic is.
+fn instantiate_generic_parameters(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    lambda_parameters: &[Vec<(TypeId, TypeId)>],
+    mappings: &HashMap<TypeId, TypeId>,
+    checks: &mut [Option<(AstExpr, TypeId, TypeId)>],
+) {
+    for (check, parameters) in checks.iter_mut().zip(lambda_parameters) {
+        let Some((_, ty, _)) = check else {
+            continue;
+        };
+
+        let mut instantiated = HashMap::new();
+
+        for &(reference, parameter) in parameters {
+            if references_generics(ctx, parameter, &function.generics) {
+                instantiated.insert(
+                    reference,
+                    substitute_with_mappings(ctx.types_mut(), parameter, mappings),
+                );
+            }
+        }
+
+        if !instantiated.is_empty() {
+            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &instantiated);
+        }
+    }
+}
+
+/// Whether the type references any of the generics.
+fn references_generics(ctx: &mut Compiler, ty: TypeId, generics: &[TypeId]) -> bool {
+    generics
+        .iter()
+        .any(|&generic| contains_generic(ctx.types_mut(), ty, generic))
+}
+
 /// Whether the mappings solve the call: each argument is assignable to its parameter, and the
 /// call's return type to the type expected of it, if there is one.
 fn solves_call(
@@ -260,6 +312,7 @@ fn solves_call(
 /// `Int`, the widened `5`, but `B ≤ 5` makes it `5` (#335).
 fn solve_with_lambda_parameters(
     ctx: &mut Compiler,
+    function: &FunctionType,
     solver: &CallSolver,
     order: &ArgumentOrder,
     lambda_parameters: &[Vec<(TypeId, TypeId)>],
@@ -281,6 +334,12 @@ fn solve_with_lambda_parameters(
         let mut vars = Vec::new();
 
         for &(reference, upper) in parameters {
+            // A parameter compiled as the callee's generics is already instantiated (see
+            // `instantiate_generic_parameters`)
+            if references_generics(ctx, upper, &function.generics) {
+                continue;
+            }
+
             let var = ctx.alloc_type(Type::Generic(Generic { name: None }));
             infer.add_var(var, upper);
             references.insert(reference, var);
@@ -961,15 +1020,32 @@ pub(crate) fn compile_element(
         return compile_expr(ctx, expr, expected);
     }
 
-    let restored = ctx
+    // Only this element's own lambda is wrapped, not those in its body or in a block
+    let (restored, wrap) = ctx
         .argument_frame_mut()
-        .map(|argument| std::mem::take(&mut argument.restored))
+        .map(|argument| {
+            (
+                std::mem::take(&mut argument.restored),
+                std::mem::take(&mut argument.wrap_lambdas),
+            )
+        })
         .unwrap_or_default();
 
-    let value = compile_expr(ctx, expr, expected);
+    let value = if wrap && let AstExpr::LambdaExpr(lambda) = expr {
+        let (value, parameters) = compile_lambda_argument(ctx, expr, lambda, expected);
+
+        if let Some(argument) = ctx.argument_frame_mut() {
+            argument.lambda_parameters.extend(parameters);
+        }
+
+        value
+    } else {
+        compile_expr(ctx, expr, expected)
+    };
 
     if let Some(argument) = ctx.argument_frame_mut() {
         argument.restored = restored;
+        argument.wrap_lambdas = wrap;
     }
 
     value
