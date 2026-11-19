@@ -970,13 +970,47 @@ fn inner_instance_reused(db: &mut Types) -> (TypeId, TypeId) {
 
 /// The second comparison of `P` with `fn() -> B` is reused from the first, with its summary. The
 /// instance of `P`'s `T` is a local binder in that summary, which is applied as an instance with
-/// its own bounds, so that `B`'s bounds can still instantiate it (#363) as when it's computed
-/// again without the memo.
+/// its bounds, so that `B`'s bounds can still instantiate it (#363) as when it's computed again
+/// without the memo.
 #[test]
 fn test_inner_instance_reused() {
     with_large_stack(|| {
         let results = in_every_mode(inner_instance_reused);
         assert_eq!(results, [Comparison::Assign; 3]);
+    });
+}
+
+/// `(G, G)` against `(fn(y: (Int, Int)) -> F, fn(y: ((Int, Int), (Int, Int))) -> F)`, where
+/// `G = fn<Y>(y: Y) -> fn<B>(f: fn(x: Y) -> B) -> B`, `F = fn(f: P) -> (Int, Int)` and
+/// `P = fn<T>(x: (T, T)) -> (T, T)`.
+fn bound_added_inside_reused(db: &mut Types) -> (TypeId, TypeId) {
+    let int = db.builtins.int;
+    let [param, ret, item] = [db.generic(), db.generic(), db.generic()];
+    let callback = db.function(vec![], vec![param], ret);
+    let inner = db.function(vec![ret], vec![callback], ret);
+    let deferred = db.function(vec![param], vec![param], inner);
+    let both = db.pair(item, item);
+    let pairs = db.function(vec![item], vec![both], both);
+    let ints = db.pair(int, int);
+    let from_pairs = db.function(vec![], vec![pairs], ints);
+    let first = db.function(vec![], vec![ints], from_pairs);
+    let nested = db.pair(ints, ints);
+    let second = db.function(vec![], vec![nested], from_pairs);
+    let lhs = db.pair(deferred, deferred);
+    let rhs = db.pair(first, second);
+    (lhs, rhs)
+}
+
+/// The second element reuses `G`'s comparison with `fn(y: Y') -> F` from the first, whose
+/// summary has `Y' ≤ (L, L)` for the instance `L` of `P`'s `T`. Comparing `fn<B>(..) -> B` with
+/// `F` inside of it put `L ≤ Int` on `L` while checking `B`'s bounds, after `L`'s comparison
+/// finished, so the summary has to keep that bound for `L` too: with it, the second element's
+/// `L ≥ (Int, Int)` conflicts, as when it's computed again without the memo.
+#[test]
+fn test_bound_added_inside_reused() {
+    with_large_stack(|| {
+        let results = in_every_mode(bound_added_inside_reused);
+        assert_eq!(results, [Comparison::Invalid; 3]);
     });
 }
 

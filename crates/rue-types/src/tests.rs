@@ -436,6 +436,43 @@ mod functions {
         assert_eq!(compare(&mut db, int_or_nil), Comparison::Assign);
     }
 
+    /// Reopened instances are only instantiable while the bounds check that reopened them is in
+    /// progress. `fn<B>(f: fn(x: Int) -> B) -> B` against
+    /// `fn(f: fn<T>(x: T) -> (T, Int)) -> R` with `R` a union of `(nil, nil)` and `(Int, Int)` holds
+    /// in either order, with inference as well: checking a union member without inference, which
+    /// fails for `(nil, nil)`, mustn't leave `T' ≤ nil` on the instance, next to `T' ≥ Int`.
+    #[test]
+    fn reopened_instances_stay_rigid_without_inference() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, nil, .. } = db.builtins;
+
+        let compare = |db: &mut Db, nils_first: bool| {
+            let b = db.generic("B");
+            let t = db.generic("T");
+            let x = db.generic("X");
+            let callback = db.function(&[int], b);
+            let call = db.function_with(&[b], &[callback], true, b);
+            let tagged = db.pair(t, int);
+            let tag = db.function_with(&[t], &[t], true, tagged);
+            let nils = db.pair(nil, nil);
+            let ints = db.pair(int, int);
+            let members = if nils_first {
+                [nils, ints]
+            } else {
+                [ints, nils]
+            };
+            let ret = db.union(&members);
+            let target = db.function(&[tag], ret);
+            let plain = db.cmp(call, target);
+            let mut infer = Inference::new([x]);
+            (plain, db.infer(call, target, &mut infer))
+        };
+
+        let both = (Comparison::Assign, Comparison::Assign);
+        assert_eq!(compare(&mut db, true), both);
+        assert_eq!(compare(&mut db, false), both);
+    }
+
     /// The outer bounds can add lower bounds to an inner instance too, which are checked against
     /// its own upper bounds: `fn<T>(x: fn(y: T) -> nil) -> fn(x: T) -> nil` passed a
     /// `fn(y: Bytes32) -> nil` has `T' ≤ Bytes32`, so it isn't a `fn(x: Int) -> nil`.

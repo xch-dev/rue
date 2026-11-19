@@ -26,3 +26,22 @@ fn not_both() -> Int {
     let result: (Int, Bytes32) = map(call_with_int, pairs_of);
     result.first
 }
+
+type Pairs = fn<T>(x: (T, T)) -> (T, T);
+type FromPairs = fn(f: Pairs) -> (Int, Int);
+type Deferred = fn<Y>(y: Y) -> fn<B>(f: fn(x: Y) -> B) -> B;
+
+fn deferred<Y>(y: Y) -> fn<B>(f: fn(x: Y) -> B) -> B {
+    unchecked_cast(y)
+}
+
+// `Pairs`' `T` is `Int` for the first element, from `FromPairs`' return type, so the second
+// element's `T ≥ (Int, Int)` conflicts, even though its comparison is reused from the first's
+fn bound_kept_when_reused() -> Int {
+    let deferred_pair: (Deferred, Deferred) = (deferred, deferred);
+    let _pair: (
+        fn(y: (Int, Int)) -> FromPairs,
+        fn(y: ((Int, Int), (Int, Int))) -> FromPairs,
+    ) = deferred_pair;
+    1
+}

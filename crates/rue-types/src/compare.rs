@@ -151,11 +151,6 @@ struct Binder {
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
-    /// The numbers of lower and upper bounds it had when the comparison that bound it finished,
-    /// or when a summary bound it (see `apply_summary`): its own, without those that an enclosing
-    /// comparison added while checking its bounds, which are added again wherever a summary that
-    /// has it is applied (see `summary_since`).
-    own: Option<(usize, usize)>,
     /// Whether it can be instantiated again while an enclosing comparison checks its bounds,
     /// whatever `ComparisonContext::instantiable_from` is (see `ComparisonContext::is_closed`).
     open: bool,
@@ -712,22 +707,23 @@ impl ComparisonContext<'_> {
     /// Returns the instance of the binder, if it's being instantiated.
     fn instance_of(&self, binder: usize) -> Option<usize> {
         let instance = self.binders[binder].instance?;
-        (instance >= self.instantiable_from || self.instances[instance].open).then_some(instance)
+        // Reopened instances are only instantiable while the bounds check that reopened them is in
+        // progress, not in a context such as `holds_without_inference` that swaps them in rigid
+        (instance >= self.instantiable_from || (self.open > 0 && self.instances[instance].open))
+            .then_some(instance)
     }
 
-    /// Whether the instance's own bounds (see `Instance::own`) refer to no binder, so that it can
-    /// be instantiated again while an enclosing comparison checks bounds that refer to it (#363).
-    /// That's intrinsic to the instance, so it's the same wherever it's reached, including through
-    /// a summary, which has its own bounds then (see `summary_since`). An instance whose own bounds
-    /// refer to other binders stays rigid, which can only reject more.
+    /// Whether the instance's bounds refer to no binder, so that it can be instantiated again
+    /// while an enclosing comparison checks bounds that refer to it (#363). Its bounds are the
+    /// same wherever it's reached, including through a summary, which has every bound it had then
+    /// (see `summary_since`), and the bounds added after it are added again where it's applied.
+    /// An instance whose bounds refer to other binders stays rigid, which can only reject more.
     fn is_closed(&mut self, arena: &Arena<Type>, index: usize) -> bool {
         let instance = &self.instances[index];
-        let (lower, upper) = instance
-            .own
-            .unwrap_or((instance.lower.len(), instance.upper.len()));
-        let bounds: Vec<Bound> = instance.lower[..lower]
+        let bounds: Vec<Bound> = instance
+            .lower
             .iter()
-            .chain(&instance.upper[..upper])
+            .chain(&instance.upper)
             .copied()
             .collect();
 
@@ -817,9 +813,11 @@ impl ComparisonContext<'_> {
     ///
     /// A local binder that's the instance of a generic function compared inside of the comparison
     /// can still be instantiated while an enclosing comparison checks the bounds that refer to it
-    /// (#363), so the summary also has its own bounds, as constraints on the local binder, which is
-    /// what makes it an instance where the summary is applied. One without bounds of its own gets
-    /// `≤ Any`, which always holds. That's only for those that the bounds of the key's instances
+    /// (#363), so the summary also has its bounds, as constraints on the local binder, which is
+    /// what makes it an instance where the summary is applied. That's every bound it has, since
+    /// those that a function comparison inside of this one added while checking its bounds aren't
+    /// added again where the summary is applied. One without bounds gets `≤ Any`, which always
+    /// holds. That's only for those that the bounds of the key's instances
     /// refer to: their own bounds are checked again with every instance rigid, so the instances
     /// that those refer to don't need theirs.
     fn summary_since(
@@ -873,13 +871,14 @@ impl ComparisonContext<'_> {
 
         for (binder, target) in exported {
             let instance = &self.instances[self.binders[binder].instance.unwrap()];
-            let (lower, upper) = instance
-                .own
-                .unwrap_or((instance.lower.len(), instance.upper.len()));
-            let mut bounds: Vec<(Bound, bool)> = instance.lower[..lower]
+            // Every bound it has, including those that a function comparison inside of this one
+            // added while checking its bounds, which aren't added again where the summary is
+            // applied
+            let mut bounds: Vec<(Bound, bool)> = instance
+                .lower
                 .iter()
                 .map(|&bound| (bound, false))
-                .chain(instance.upper[..upper].iter().map(|&bound| (bound, true)))
+                .chain(instance.upper.iter().map(|&bound| (bound, true)))
                 .collect();
 
             if bounds.is_empty() {
@@ -1052,13 +1051,6 @@ impl ComparisonContext<'_> {
 
             if constraint.unmatched {
                 self.bounded = bounded;
-            }
-        }
-
-        for &binder in &locals {
-            if let Some(index) = self.binders[binder].instance {
-                let instance = &mut self.instances[index];
-                instance.own = Some((instance.lower.len(), instance.upper.len()));
             }
         }
     }
@@ -1859,9 +1851,8 @@ fn compare_structure(
                 // instantiate them again while it checks its own (below)
                 for index in first..first + lhs.generics.len() {
                     let slot = ctx.binders[index].instance.unwrap();
-                    let mut instance = mem::take(&mut ctx.instances[slot]);
+                    let instance = mem::take(&mut ctx.instances[slot]);
                     ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
-                    instance.own = Some((instance.lower.len(), instance.upper.len()));
                     ctx.instances[slot] = instance;
                 }
 
