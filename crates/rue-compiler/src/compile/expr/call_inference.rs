@@ -129,11 +129,7 @@ pub(crate) fn infer_call(
         // `ArgumentOrder::takes_expected_bounds` and `CallSolver::argument_mappings`)
         if !order.takes_expected_bounds(i) {
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
-        } else if matches!(expr, AstExpr::FunctionCallExpr(_)) && !is_call_without_arguments(expr) {
-            // A call with arguments takes the expected type's own bounds where what the arguments
-            // so far map fits them, since what its own arguments give it adds to the generics once
-            // it's compiled against them. A call without arguments only has its expected type to
-            // infer from, so it keeps the narrower mapping
+        } else if order.widens_to_expected(i, expr) {
             ctx.widen_to_expected(&solver, &mut mappings);
         }
 
@@ -910,6 +906,19 @@ impl ArgumentOrder {
     /// The callee's generics in the argument's parameter type (see `Argument::writes`).
     fn writes(&self, i: usize) -> &IndexSet<TypeId> {
         &self.arguments[i].writes
+    }
+
+    /// Whether the argument, which takes the expected type's bounds, takes the expected type's own
+    /// bounds where what the arguments so far map fits them (see `CallSolver::widen_to_expected`),
+    /// rather than what they narrow it to. That's a call with arguments and no lambda in it: what
+    /// its own arguments give it adds to the generics once it's compiled against them, as `8`
+    /// does in `let v: 7 | 8 = either(7, id(8));`. A call without arguments only has its expected
+    /// type to infer from, so it keeps the narrower mapping, and a lambda, even one a call passes
+    /// through, keeps it for its parameter types.
+    fn widens_to_expected(&self, i: usize, expr: &AstExpr) -> bool {
+        !self.arguments[i].has_lambda
+            && matches!(expr, AstExpr::FunctionCallExpr(_))
+            && !is_call_without_arguments(expr)
     }
 
     /// Whether every argument has been compiled.
