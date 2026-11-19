@@ -859,6 +859,46 @@ fn test_nested_generic_functions_in_cycles(
     });
 }
 
+/// `type FL = fn<T>(p0: (T, WR) | (Int, WL), p1: Bytes) -> T; type WL = fn(p0: FL) -> nil;`
+/// `type FR = fn(p0: (Int, WR), p1: Int) -> (nil, nil); type WR = fn(p0: FR) -> nil;`
+/// Returns `FL` and `FR`.
+fn held_by_revisit(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        int, bytes, nil, ..
+    } = db.builtins;
+    let [fl, wl, fr, wr] = ["FL", "WL", "FR", "WR"].map(|name| db.declare_alias(name, vec![]));
+    let t = db.generic();
+    let instantiated = db.pair(t, wr);
+    let other = db.pair(int, wl);
+    let param = db.union(vec![instantiated, other]);
+    let function = db.function(vec![t], vec![param, bytes], t);
+    db.define(fl, function);
+    let function = db.function(vec![], vec![fl], nil);
+    db.define(wl, function);
+    let param = db.pair(int, wr);
+    let ret = db.pair(nil, nil);
+    let function = db.function(vec![], vec![param, int], ret);
+    db.define(fr, function);
+    let function = db.function(vec![], vec![fr], nil);
+    db.define(wr, function);
+    (fl, fr)
+}
+
+/// Both members of `(T, WR) | (Int, WL)` hold `(Int, WR)` if comparing `FL` with `FR` again is
+/// `Assign`, and only the first bounds `T`, so its `Int ≤ T` is left out (see `Choices::is_held`),
+/// and the result is `Cast` (from the second parameters). But that makes the second member only
+/// `Cast`, so `Int ≤ T ≤ (nil, nil)` is checked after all, and the result is `Invalid`, which is
+/// its least fixed point. Exact mode used to stop after one round, so it gave `Cast`, while
+/// iterating in fixpoint mode gave `Invalid`. A revisit is given the previous round's result too
+/// in exact mode for types like these, so it gives `Invalid` as well.
+#[test]
+fn test_held_by_revisit() {
+    with_large_stack(|| {
+        let results = in_every_mode(held_by_revisit);
+        assert_eq!(results, [Comparison::Invalid; 3]);
+    });
+}
+
 /// Compares the types without the memo, in a single pass, and iterating from the start, each in a
 /// new arena.
 fn in_every_mode(types: impl Fn(&mut Types) -> (TypeId, TypeId)) -> [Comparison; 3] {

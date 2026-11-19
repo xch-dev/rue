@@ -174,6 +174,11 @@ struct StackFrame {
     /// under a union member that matches with fewer bounds and not with more: the summary keeps it
     /// as a bound that matched, which can only make a revisit's result worse, never better.
     approximation: Summary,
+    /// The result that a revisit of it is given while it's in progress: `Assign`, or in exact mode
+    /// for types that nest generic functions' generics (`ComparisonContext::started_from`), its
+    /// result from the previous round, computed again like `approximation` until it stops
+    /// changing.
+    value: Comparison,
     /// Whether it was revisited during the current round.
     revisited: bool,
 }
@@ -211,7 +216,7 @@ impl Join for Outcome {
 
 /// How a comparison that starts from a type can be computed (see `ComparisonContext::monotonicity`),
 /// from the most to the least that can be reused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Monotone {
     /// In fixpoint mode, starting in a single pass.
     Direct,
@@ -219,6 +224,7 @@ enum Monotone {
     /// refer to instances as part of their values.
     Nested,
     /// In exact mode.
+    #[default]
     No,
 }
 
@@ -235,9 +241,18 @@ pub(crate) struct ComparisonContext<'a> {
     /// For each comparison in `stack`, the binders it references and the summary that a revisit
     /// of it is given (see `StackFrame`).
     frames: Vec<StackFrame>,
-    /// The summary that each comparison's rounds last stopped at, which the first round starts
-    /// from the next time it's computed (see `StackFrame::approximation`).
-    approximations: FxHashMap<ComparisonKey, Summary>,
+    /// The result and summary that each comparison's rounds last stopped at, which the first round
+    /// starts from the next time it's computed (see `StackFrame::approximation`).
+    approximations: FxHashMap<ComparisonKey, (Comparison, Summary)>,
+    /// How the types that the comparison that started from an empty stack started from can be
+    /// computed (see `monotonicity`). If they nest generic functions' generics
+    /// (`Monotone::Nested`), a revisit in exact mode is given the previous round's result of the
+    /// comparison it revisits, rather than `Assign` (see `StackFrame::value`). That's needed then: a union member that holds by revisiting a comparison can
+    /// leave out another member's bounds (see `Choices::is_held`), so a comparison's result can
+    /// depend on what its revisits are given in more than one step, and `Assign` isn't its least
+    /// fixed point. Otherwise, comparing is built from `max`, `min` and constants, for which a
+    /// single round is (see `FixpointMemo`).
+    started_from: Monotone,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -916,7 +931,8 @@ impl ComparisonContext<'_> {
     /// A comparison that refers to an instance also puts bounds on it, which are part of its value
     /// (`Outcome`), and adding bounds only makes the results worse, so the equations are still
     /// monotone. But `FixpointMemo`'s single pass relies on values being a chain of three, which
-    /// summaries aren't, so it's only used when each generic function's parameters and return
+    /// summaries aren't, and on comparing being built from `max`, `min` and constants, which
+    /// `Choices::is_held` isn't once a union member can bound an instance, so it's only used when each generic function's parameters and return
     /// type either are one of its generics or don't reference them (`Monotone::Direct`). The
     /// comparisons that refer to instances are then only bounds on them, which reach no other
     /// comparison, so they're never revisited, and their summaries are never approximated.
@@ -1240,11 +1256,13 @@ fn compare_from_empty_stack(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
+    let monotonicity = ctx
+        .monotonicity(arena, lhs)
+        .max(ctx.monotonicity(arena, rhs));
+    ctx.started_from = monotonicity;
+
     let monotone = if ctx.infer.is_none() && ctx.lhs_env.is_none() && ctx.rhs_env.is_none() {
-        match ctx
-            .monotonicity(arena, lhs)
-            .max(ctx.monotonicity(arena, rhs))
-        {
+        match monotonicity {
             // Without the memo, iterating wouldn't reuse anything, and exact mode gives the same
             // results
             Monotone::Nested if !compare_memo_enabled() => Monotone::No,
@@ -1336,7 +1354,7 @@ fn compare_impl_inner(
                 .reached(index, key, (Comparison::Assign, None))
         } else {
             ctx.memo.reached(index);
-            (Comparison::Assign, None)
+            (ctx.frames[index].value, None)
         };
 
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
@@ -1397,15 +1415,23 @@ fn compare_impl_inner(
     let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
-    let snapshot = instances.then(|| ctx.snapshot(&binders));
+    // What it puts on its instances is its summary in either mode, but it's only computed again in
+    // rounds in exact mode
+    let rounds_needed = !ctx.fixpoint && (instances || ctx.started_from == Monotone::Nested);
+    let snapshot = (instances || rounds_needed).then(|| ctx.snapshot(&binders));
+    let (value, approximation) = if rounds_needed {
+        ctx.approximations
+            .get(&key)
+            .cloned()
+            .unwrap_or((Comparison::Assign, Summary::default()))
+    } else {
+        (Comparison::Assign, Summary::default())
+    };
     ctx.frames.push(StackFrame {
         entered: ctx.binders.len(),
         binders,
-        approximation: if instances && !ctx.fixpoint {
-            ctx.approximations.get(&key).cloned().unwrap_or_default()
-        } else {
-            Summary::default()
-        },
+        approximation,
+        value,
         revisited: false,
     });
 
@@ -1414,10 +1440,10 @@ fn compare_impl_inner(
     let result = loop {
         let result = compare_structure(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic);
 
-        // If it was revisited, the revisits were given its summary from the previous round, so
-        // it's computed again until this round's adds nothing to it
+        // If it was revisited, the revisits were given its summary (and maybe its result) from
+        // the previous round, so it's computed again until this round's adds nothing to them.
         // While iterating in fixpoint mode, `FixpointMemo` does this for every comparison
-        let Some(snapshot) = snapshot.as_ref().filter(|_| !ctx.fixpoint) else {
+        let Some(snapshot) = snapshot.as_ref().filter(|_| rounds_needed) else {
             break result;
         };
 
@@ -1426,12 +1452,18 @@ fn compare_impl_inner(
         }
 
         let summary = ctx.summary_since(arena, snapshot);
+        let iterate_values = ctx.started_from == Monotone::Nested;
         let frame = ctx.frames.last_mut().unwrap();
         let next = frame.approximation.join(&summary);
+        let value = if iterate_values {
+            frame.value.max(result)
+        } else {
+            frame.value
+        };
 
-        if next == frame.approximation {
-            if !next.constraints().is_empty() {
-                ctx.approximations.insert(key, next);
+        if next == frame.approximation && value == frame.value {
+            if !next.constraints().is_empty() || value != Comparison::Assign {
+                ctx.approximations.insert(key, (value, next));
             }
 
             break result;
@@ -1445,6 +1477,7 @@ fn compare_impl_inner(
         }
 
         frame.approximation = next;
+        frame.value = value;
         frame.revisited = false;
         ctx.restore(snapshot);
     };
