@@ -302,6 +302,9 @@ pub enum DiagnosticKind {
     #[error("Unresolved import `{0}`")]
     UnresolvedImport(String),
 
+    #[error("Internal compiler error: the imports didn't settle within {0} passes")]
+    ImportPassLimit(usize),
+
     #[error("Unresolved `super`, there is no parent module")]
     UnresolvedSuper,
 

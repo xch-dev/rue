@@ -198,6 +198,9 @@ pub struct ImportCache {
     /// [`Scope::block`]). Whether their errors are reported depends on whether those imports'
     /// failures are (see [`failure_is_reported`]).
     blocked_imports: HashMap<ImportId, HashSet<ImportId>>,
+
+    /// Whether the pass limit has been reported (see [`report_pass_limit`]).
+    pass_limit_reported: bool,
 }
 
 /// An error in an import, which is reported once all imports are resolved.
@@ -306,6 +309,8 @@ pub fn resolve_imports(
         .iter()
         .map(|&(scope, _)| scope)
         .collect::<IndexSet<_>>();
+    let limit = pass_limit(imports.len());
+    let mut passes = 0;
 
     for &(scope, import) in &imports {
         match &ctx.import(import).items {
@@ -325,6 +330,12 @@ pub fn resolve_imports(
     }
 
     loop {
+        if passes == limit {
+            report_pass_limit(ctx, &imports, cache, limit);
+            return;
+        }
+
+        passes += 1;
         let mut updated = false;
         let bases = resolution.bases.len();
         let failed_paths = resolution.failed_paths.len();
@@ -468,6 +479,55 @@ pub fn resolve_imports(
             }
         }
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A limit that replaces [`pass_limit`]'s in tests on this thread, so that they can reach it.
+    pub(crate) static PASS_LIMIT: std::cell::Cell<Option<usize>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+/// The most passes that [`resolve_imports`] makes before it gives up. A pass is made again when the
+/// last one changed something, or when one of the steps once nothing changes (reporting private
+/// re-exports, blocking failed names, removing stale blocks and forcing stuck lookups) did. A
+/// change moves on through at least one import per pass, so one that a chain of imports passes
+/// along (such as a glob import of a module that glob-imports the next one) takes about a pass per
+/// import, and the settle steps start new changes only a few times. Nothing proves that they can't
+/// start more, so no tight bound is practical. Instead, this leaves a wide margin above what's been
+/// measured: in the tests, in generated projects with long chains and cycles of glob, named and
+/// private re-exports and nested glob imports through `super`, and in random generated projects,
+/// it never took more than two passes per import plus two.
+fn pass_limit(imports: usize) -> usize {
+    #[cfg(test)]
+    if let Some(limit) = PASS_LIMIT.get() {
+        return limit;
+    }
+
+    64 + 16 * imports
+}
+
+/// Reports that the imports didn't settle within the pass limit (see [`pass_limit`]), at the first
+/// import, and once for both calls to [`resolve_imports`]. It's an error rather than a panic, even
+/// in debug builds, so that the language server keeps running, and the error fails any test that
+/// reaches it anyway.
+fn report_pass_limit(
+    ctx: &mut Compiler,
+    imports: &[(ScopeId, ImportId)],
+    cache: &mut ImportCache,
+    limit: usize,
+) {
+    if mem::replace(&mut cache.pass_limit_reported, true) {
+        return;
+    }
+
+    let Some(&(_, import)) = imports.first() else {
+        return;
+    };
+
+    let (Items::Named(name) | Items::All(name)) = ctx.import(import).items.clone();
+    ctx.diagnostic_name(&name, DiagnosticKind::ImportPassLimit(limit));
 }
 
 /// Reports each exported import that only found items that are private where it found them, since
