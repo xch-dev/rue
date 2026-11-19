@@ -4,35 +4,56 @@ use log::debug;
 use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Symbol, Value};
-use rue_types::{FunctionParameter, FunctionType, Type, TypeId, Union, substitute_with_mappings};
+use rue_types::{
+    FunctionParameter, FunctionType, Generic, Type, TypeId, Union, contains_generic,
+    substitute_with_mappings,
+};
 
 use crate::{
     BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
     compile_expr, compile_generic_parameters, compile_type, create_binding,
 };
 
-use super::call_inference::references_call_generics;
-
 pub fn compile_lambda_expr(
     ctx: &mut Compiler,
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
-    compile_lambda(ctx, expr, expected_type, false).0
+    compile_lambda(ctx, expr, expected_type, None).0
 }
 
-/// Compiles a lambda. With `wrap`, for a lambda that's an argument of a call whose generics are
-/// being inferred, each untyped parameter is compiled as a reference of its own to the type it
-/// would have, which is the same type to its body. Where the parameter flows into the lambda's
-/// return type unchanged, the return type has the reference, so the call can infer the parameter's
-/// type along with its generics (#335). It returns the references and the types they refer to.
+/// How a lambda that's an argument of a call whose generics are being inferred compiles its untyped
+/// parameters, so that the call can infer their types along with its generics (#335). A reference
+/// is the same type to the body as the type it refers to, and where the parameter flows into the
+/// lambda's return type unchanged, the return type has the reference.
+pub(crate) enum ParameterWrap<'a> {
+    /// Each untyped parameter is compiled as a reference of its own to the type it would have.
+    Whole,
+    /// The lambda is expected to be exactly the function type with these parameter types, before
+    /// the callee's generics in them are substituted with what they're inferred as so far
+    /// (`mappings`, or the generic itself if it isn't mapped). Each of those generics that only
+    /// occurs where values flow into the lambda (see `occurs_contravariantly`) is a reference of its
+    /// own in them instead, so a part of a parameter, such as `p.first` with `p: (A, Int)`, still has
+    /// it. The others are substituted with what they're inferred as so far, as they would be.
+    Generics {
+        params: &'a [TypeId],
+        generics: &'a [TypeId],
+        mappings: &'a HashMap<TypeId, TypeId>,
+    },
+}
+
+/// Compiles a lambda, with its untyped parameters wrapped as `wrap` says, if it's given. It returns
+/// the references and the types they refer to.
 pub(crate) fn compile_lambda(
     ctx: &mut Compiler,
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
-    wrap: bool,
+    wrap: Option<&ParameterWrap<'_>>,
 ) -> (Value, Vec<(TypeId, TypeId)>) {
     let mut wrapped = Vec::new();
+
+    // The reference for each of the callee's generics, with `ParameterWrap::Generics`
+    let mut references = HashMap::new();
 
     let mut expected_functions = if let Some(ty) = expected_type {
         rue_types::extract_functions(ctx.types_mut(), ty, true)
@@ -112,21 +133,17 @@ pub(crate) fn compile_lambda(
             ctx.builtins().unresolved.ty
         };
 
-        // Not for a generic lambda or one expected to be a generic function, or when its type is
-        // still one of the call's generics, which aren't in scope outside of it
-        let ty = if wrap
-            && param.ty().is_none()
-            && !is_spread
-            && vars.is_empty()
-            && !matches!(ctx.ty(ty), Type::Unresolved)
-            && !references_call_generics(ctx, ty)
-        {
-            let reference = ctx.alloc_type(Type::Ref(ty));
-            ctx.report_type_as(reference, ty);
-            wrapped.push((reference, ty));
-            reference
-        } else {
-            ty
+        // Not for a generic lambda or one expected to be a generic function
+        let ty = match wrap {
+            Some(wrap)
+                if param.ty().is_none()
+                    && !is_spread
+                    && vars.is_empty()
+                    && !matches!(ctx.ty(ty), Type::Unresolved) =>
+            {
+                wrap_parameter(ctx, wrap, i, ty, &mut references, &mut wrapped)
+            }
+            _ => ty,
         };
 
         let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
@@ -143,6 +160,10 @@ pub(crate) fn compile_lambda(
         params.push(FunctionParameter::new(name, ty));
     }
 
+    if matches!(wrap, Some(ParameterWrap::Generics { .. })) {
+        make_references(ctx, &wrapped);
+    }
+
     let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));
 
     // Without an annotation, the lambda returns whatever its body does, but the body is expected
@@ -155,16 +176,21 @@ pub(crate) fn compile_lambda(
         types: Vec::new(),
     }));
 
+    // An annotated return type is a type of its own that the body must be assignable to
+    let hint = ctx.is_expected_type_hint() && return_type.is_none();
+
     let body = if let Some(body) = expr.body() {
-        let result = if let AstExpr::Block(block) = &body {
-            ctx.add_syntax(
-                SyntaxItemKind::CompletionContext(CompletionContext::Expression),
-                block.syntax().text_range(),
-            );
-            compile_block(ctx, block, BlockKind::Body, body_type, true)
-        } else {
-            compile_expr(ctx, &body, body_type)
-        };
+        let result = ctx.with_expected_type_hint(hint, |ctx| {
+            if let AstExpr::Block(block) = &body {
+                ctx.add_syntax(
+                    SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+                    block.syntax().text_range(),
+                );
+                compile_block(ctx, block, BlockKind::Body, body_type, true)
+            } else {
+                compile_expr(ctx, &body, body_type)
+            }
+        });
         if let Some(return_type) = return_type {
             ctx.assign_type(expr.syntax(), result.ty, return_type);
         }
@@ -231,4 +257,122 @@ fn expected_return_type(ctx: &mut Compiler, functions: &[FunctionType]) -> Optio
             Some(ctx.alloc_type(Type::Union(Union::new(types))))
         }
     }
+}
+
+/// The type an untyped parameter is compiled as (see `ParameterWrap`), given the type it would have,
+/// with each new reference added to `wrapped` along with the type it refers to.
+fn wrap_parameter(
+    ctx: &mut Compiler,
+    wrap: &ParameterWrap<'_>,
+    index: usize,
+    ty: TypeId,
+    references: &mut HashMap<TypeId, TypeId>,
+    wrapped: &mut Vec<(TypeId, TypeId)>,
+) -> TypeId {
+    let ParameterWrap::Generics {
+        params,
+        generics,
+        mappings,
+    } = wrap
+    else {
+        let reference = ctx.alloc_type(Type::Ref(ty));
+        ctx.report_type_as(reference, ty);
+        wrapped.push((reference, ty));
+        return reference;
+    };
+
+    let Some(&source) = params.get(index) else {
+        return ty;
+    };
+
+    let mut substitution = HashMap::new();
+    let mut has_reference = false;
+
+    for &generic in *generics {
+        if !contains_generic(ctx.types_mut(), source, generic) {
+            continue;
+        }
+
+        // Only where values of the generic flow into the lambda, which can be narrower than the
+        // body was compiled against. Where the lambda passes them out, such as to `cb` in
+        // `cb: fn(x: A) -> Int`, a narrower type would let it pass what the caller doesn't accept
+        if params
+            .iter()
+            .any(|&param| occurs_contravariantly(ctx, param, generic))
+        {
+            let target = mappings.get(&generic).copied().unwrap_or(generic);
+            substitution.insert(generic, target);
+            continue;
+        }
+
+        // It's a generic until every parameter is substituted with it (see `make_references`),
+        // since a mapped type is substituted itself, which would see through a reference
+        let reference = *references.entry(generic).or_insert_with(|| {
+            let target = mappings.get(&generic).copied().unwrap_or(generic);
+            let reference = ctx.alloc_type(Type::Generic(Generic { name: None }));
+            wrapped.push((reference, target));
+            reference
+        });
+
+        substitution.insert(generic, reference);
+        has_reference = true;
+    }
+
+    // Without a reference in it, it's the type it would have
+    if !has_reference {
+        return ty;
+    }
+
+    substitute_with_mappings(ctx.types_mut(), source, &substitution)
+}
+
+/// Turns the placeholders that `wrap_parameter` substituted for the callee's generics, with
+/// `ParameterWrap::Generics`, into the references they stand for, once every parameter has been
+/// substituted with them.
+fn make_references(ctx: &mut Compiler, wrapped: &[(TypeId, TypeId)]) {
+    for &(reference, target) in wrapped {
+        *ctx.ty_mut(reference) = Type::Ref(target);
+        ctx.report_type_as(reference, target);
+    }
+}
+
+/// Whether the generic occurs in the type where values flow out of whoever holds a value of it,
+/// such as a parameter of a function type in it.
+fn occurs_contravariantly(ctx: &mut Compiler, ty: TypeId, generic: TypeId) -> bool {
+    let ty = rue_types::substitute(ctx.types_mut(), ty);
+    let mut visited = std::collections::HashSet::new();
+    let mut stack = vec![(ty, true)];
+
+    while let Some((ty, covariant)) = stack.pop() {
+        if !visited.insert((ty, covariant)) {
+            continue;
+        }
+
+        if ty == generic {
+            if !covariant {
+                return true;
+            }
+            continue;
+        }
+
+        match ctx.ty(ty).clone() {
+            Type::Ref(inner) => stack.push((inner, covariant)),
+            Type::Pair(pair) => stack.extend([(pair.first, covariant), (pair.rest, covariant)]),
+            Type::Union(union) => stack.extend(union.types.into_iter().map(|ty| (ty, covariant))),
+            Type::Alias(alias) => stack.push((alias.inner, covariant)),
+            Type::Struct(ty) => stack.push((ty.inner, covariant)),
+            Type::Function(function) => {
+                stack.push((function.ret, covariant));
+                stack.extend(function.param_types().map(|ty| (ty, !covariant)));
+            }
+            Type::Apply(_)
+            | Type::Unresolved
+            | Type::Generic(_)
+            | Type::Any
+            | Type::Never
+            | Type::Atom(_) => {}
+        }
+    }
+
+    false
 }

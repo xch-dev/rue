@@ -47,6 +47,14 @@ impl CallSolver {
         }
     }
 
+    /// The solver with the type expected of the call only used for the generics that nothing else
+    /// constrains (`CallSolver::fallback`), not as bounds for the others.
+    #[must_use]
+    pub fn fallback_only(mut self) -> Self {
+        self.expected = None;
+        self
+    }
+
     /// What the arguments compiled so far infer on their own, without the type expected of the
     /// call. This decides the order lambdas are compiled in, which #265 kept independent of the
     /// expected type.

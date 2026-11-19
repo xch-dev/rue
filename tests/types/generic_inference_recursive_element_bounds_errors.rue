@@ -135,10 +135,22 @@ fn expected_generic<T, U>(pair: (T, fn(value: T) -> U), depth: Int) -> U {
     pair.rest(pair.first)
 }
 
-// Only the elements before a lambda count
+// Only the elements before a lambda count. The lambda's `x` is the caller's `T`, which the body can
+// mix with the caller's other values of it, so it isn't checked as what the call's renamed `T` is
+// inferred as, though `lambda_before_its_value::<Int>` compiles
 fn lambda_before_its_value<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
     if depth > 0 {
         return lambda_before_its_value((fn(x) => x, 1), depth - 1);
+    }
+
+    pair.first(pair.rest)
+}
+
+// It would be unsound: `caller` takes the caller's `T`, which the lambda's `x` is, but `1` isn't one
+fn passes_on_to_the_caller<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        let caller = pair.first;
+        return passes_on_to_the_caller((fn(x) => caller(x), 1), depth - 1);
     }
 
     pair.first(pair.rest)

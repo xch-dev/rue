@@ -51,9 +51,12 @@ pub struct Compiler {
     return_count: usize,
     /// The calls whose generics are being inferred from their arguments, innermost last.
     call_frames: Vec<CallFrame>,
-    /// How many expressions enclose the one being compiled whose expected type is only a hint,
-    /// such as the type of a guard (see `Compiler::with_hinted_expected_type`).
-    hinted: usize,
+    /// Whether the type expected of the expression being compiled is only a hint, which it doesn't
+    /// have to be assignable to (see `Compiler::with_expected_type_hint`).
+    hinted: bool,
+    /// Whether the type expected of the expression being compiled is only for the generics of the
+    /// calls in it that nothing else gives a type (see `Compiler::with_expected_type_fallback`).
+    fallback: bool,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
@@ -94,7 +97,8 @@ struct CallFrame {
 
 /// An argument of a call being compiled, while the call's generics are inferred. The elements of
 /// a pair or list in it add what they infer to `infer`, so that a later element with a lambda in
-/// it, or a call with no arguments, can be compiled against it (#350).
+/// it, or a call with no arguments, or a pair or list with one in it, can be compiled against it
+/// (#350, see `refine_element_expected`).
 #[derive(Debug, Clone)]
 pub struct ArgumentFrame {
     /// The candidates of the arguments compiled before this one, and of this one's elements so far.
@@ -110,6 +114,13 @@ pub struct ArgumentFrame {
     /// list argument with a lambda in it, and only while the pairs and lists it's made of are
     /// compiled (see `compile_element`).
     pub restored: HashMap<TypeId, TypeId>,
+    /// Whether the lambdas among the elements of the pairs and lists the argument is made of are
+    /// compiled with their untyped parameters as references (see `compile_lambda`), which is only
+    /// while those pairs and lists are compiled (see `compile_element`).
+    pub wrap_lambdas: bool,
+    /// The untyped parameters of those lambdas, as the references they were compiled as and the
+    /// types those refer to.
+    pub lambda_parameters: Vec<(TypeId, TypeId)>,
 }
 
 /// The function or lambda body that a `return` statement exits from.
@@ -161,7 +172,8 @@ impl Compiler {
             return_stack: Vec::new(),
             return_count: 0,
             call_frames: Vec::new(),
-            hinted: 0,
+            hinted: false,
+            fallback: false,
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
@@ -782,18 +794,47 @@ impl Compiler {
     }
 
     /// Compiles with an expected type that's only a hint, which the value doesn't have to be
-    /// assignable to, such as the type of a guard or a cast.
-    pub fn with_hinted_expected_type<T>(&mut self, compile: impl FnOnce(&mut Self) -> T) -> T {
-        self.hinted += 1;
+    /// assignable to, or one that it does. A hint is the type of a guard or a cast, of an argument
+    /// whose parameter type references the generics of the call being inferred, which can still
+    /// widen it, or of an element of a pair or list that a member of its expected type, such as
+    /// `Any`, could hold as another pair (see `holds_other_pairs`). The
+    /// expressions it's passed down to, such as a pair's elements or an `if`'s branches, inherit
+    /// it, until one is compiled with an expected type of its own, such as a `let` annotation.
+    pub fn with_expected_type_hint<T>(
+        &mut self,
+        hint: bool,
+        compile: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let outer = mem::replace(&mut self.hinted, hint);
         let result = compile(self);
-        self.hinted -= 1;
+        self.hinted = outer;
         result
     }
 
-    /// Whether the expression being compiled is inside one whose expected type is only a hint (see
-    /// `Compiler::with_hinted_expected_type`).
-    pub fn is_expected_type_hinted(&self) -> bool {
-        self.hinted > 0
+    /// Whether the type expected of the expression being compiled is only a hint (see
+    /// `Compiler::with_expected_type_hint`).
+    pub fn is_expected_type_hint(&self) -> bool {
+        self.hinted
+    }
+
+    /// Compiles with an expected type that's only for the generics of the calls in the expression
+    /// that nothing else gives a type, or one that's for all of them. It's inherited by the
+    /// expressions it's passed down to, and an argument of a call is compiled with its own.
+    pub fn with_expected_type_fallback<T>(
+        &mut self,
+        fallback: bool,
+        compile: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let outer = mem::replace(&mut self.fallback, fallback);
+        let result = compile(self);
+        self.fallback = outer;
+        result
+    }
+
+    /// Whether the type expected of the expression being compiled is only a fallback (see
+    /// `Compiler::with_expected_type_fallback`).
+    pub fn is_expected_type_fallback(&self) -> bool {
+        self.fallback
     }
 
     /// Takes the argument of the innermost call being inferred that's being compiled, if there is

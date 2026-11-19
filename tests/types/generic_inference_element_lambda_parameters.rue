@@ -1,0 +1,59 @@
+// A lambda that's an element of a pair or list argument has its untyped parameters inferred along
+// with the call's generics, as a lambda argument does (#362, steps 13c and 13e)
+
+fn apply<A, B>(pair: (A, fn(a: A) -> B)) -> B {
+    pair.rest(pair.first)
+}
+
+test fn expected_type_reaches_an_element() -> Int {
+    // `B ≤ 5` reaches `x` through the lambda's return type, so `A` isn't widened to `Int`
+    let result: 5 = apply((5, fn(x) => x));
+    result + 1
+}
+
+fn apply_later<T>(pair: (fn(value: T) -> Int, T)) -> Int {
+    pair.first(pair.rest)
+}
+
+test fn lambda_before_its_value() -> Int {
+    // The lambda is compiled before the element after it, so its parameter is `T` itself, which its
+    // body knows nothing about, so it's checked as `fn(x: Int) -> Int` once `T` is inferred. This
+    // was rejected before, though `apply_later::<Int>` compiled
+    apply_later((fn(x) => x, 1))
+}
+
+fn apply_both<A, B>(pair: (fn(a: A) -> B, A)) -> B {
+    pair.first(pair.rest)
+}
+
+test fn lambda_before_its_value_with_an_expected_type() -> Int {
+    let result: 5 = apply_both((fn(x) => x, 5));
+    result + 1
+}
+
+fn map_list<A, B>(functions: List<fn(a: A) -> B>, value: A) -> B {
+    if functions is (fn(a: A) -> B, List<fn(a: A) -> B>) {
+        functions.first(value)
+    } else {
+        unchecked_cast(nil)
+    }
+}
+
+test fn list_of_lambdas() -> Int {
+    let result: 5 = map_list([fn(x) => x], 5);
+    result + map_list([fn(x) => x], 1)
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
+    if depth > 0 {
+        // The generics are renamed in a recursive call, and the expected bound still reaches `x`
+        let recursive: 5 = map(fn(x) => x, 5, depth - 1);
+        return unchecked_cast(recursive);
+    }
+
+    function(value)
+}
+
+test fn recursive_call_with_an_expected_type() -> Int {
+    map(fn(x) => x, 1, 1)
+}

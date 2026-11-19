@@ -13,16 +13,79 @@ fn map_spread<A, B>(function: fn(...a: A) -> B, value: A) -> B {
     function(...value)
 }
 
-// It's never called, since it would recurse forever, but it must still compile
+fn apply_to<T>(pair: (fn(value: T) -> T, T)) -> T {
+    pair.first(pair.rest)
+}
+
+// A call nested in an argument of a call to the same function shares the enclosing call's `T`, so
+// what it's inferred as here references that `T`, and the lambdas' `x` and `y` aren't checked as
+// that, which would let it leak out of `apply_to`
 #[expect(unused_function)]
-fn map_recursive<A, B>(function: fn(a: A) -> B, value: A) -> B {
-    // The generics are renamed in a recursive call, so it's left as is
-    let recursive: 5 = map_recursive(fn(x) => x, 5);
-    let _ = recursive;
-    function(value)
+fn nested_call_to_the_same_function() -> Any {
+    apply_to((
+        fn(x) => apply_to((
+            fn(y) => if false {
+                y
+            } else {
+                x
+            },
+            1,
+        )),
+        "hi",
+    ))
+}
+
+fn call_back<T>(
+    pair: (fn(value: T, callback: fn(v: T) -> Int) -> Int, (T, fn(v: T) -> Int)),
+) -> Int {
+    pair.first(pair.rest.first, pair.rest.rest)
+}
+
+fn five_only(value: 5) -> Int {
+    value
+}
+
+// The inner call shares the outer call's `T`, and the outer lambda's `callback` takes it, so the inner
+// lambda's `y` isn't checked as `Int`: that would pass `7` to `five_only`
+#[expect(unused_function)]
+fn callback_of_an_enclosing_call() -> Int {
+    call_back((
+        fn(_x, callback) => call_back((fn(y, _other) => callback(y), (7, fn(_z) => 0))),
+        (5, five_only),
+    ))
+}
+
+fn first<T>(pair: (T, T)) -> T {
+    pair.first
+}
+
+fn make<U>() -> U {
+    unchecked_cast(nil)
+}
+
+fn callback_map<A, B>(function: fn(callback: fn(x: A) -> Int, y: A) -> B, value: A) -> B {
+    function(fn(_x) => 0, value)
+}
+
+// `A` is a parameter of `callback` too, which the lambda passes `5` to, so it isn't narrowed to the
+// `7` that `B ≤ 7` would give it through `y`
+#[expect(unused_function)]
+fn generic_in_a_callback_parameter() -> Int {
+    let result: 7 = callback_map(
+        fn(callback, y) => {
+            let _unused = callback(5);
+            y
+        },
+        7,
+    );
+    result
 }
 
 fn main() -> Int {
+    // `T` is inferred from `[2]` as `(Int, nil)`, which `[3, make()]` can't be, so nothing gives
+    // `make` a type, as `first::<List<Int>>` would
+    let list = first(([2], [3, make()]));
+
     // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
     let computed: 5 = map(fn(x) => x + 0, 5);
 
@@ -48,5 +111,13 @@ fn main() -> Int {
     let unbounded = map(fn(x) => x, 5);
     let five: 5 = unbounded;
 
-    computed + nested.first + unfitting + spread + generic + mismatched.first + cast + five
+    computed
+        + list.first
+        + nested.first
+        + unfitting
+        + spread
+        + generic
+        + mismatched.first
+        + cast
+        + five
 }

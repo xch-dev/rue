@@ -1,7 +1,7 @@
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FieldAccess, FieldKind, Hir, HirId, TypePath, Value};
 use rue_lint::FieldRead;
-use rue_types::{Struct, Type, Union};
+use rue_types::{Pair, Struct, Type, TypeId, Union};
 
 use crate::{Compiler, GetTextRange};
 
@@ -99,7 +99,7 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                     );
 
                     let first = if pairs.len() == 1 {
-                        pairs[0].first
+                        wrapped_element(ctx, expr.ty, |pair| pair.first).unwrap_or(pairs[0].first)
                     } else {
                         ctx.alloc_type(Type::Union(Union::new(
                             pairs.iter().map(|pair| pair.first).collect(),
@@ -124,7 +124,7 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                     );
 
                     let rest = if pairs.len() == 1 {
-                        pairs[0].rest
+                        wrapped_element(ctx, expr.ty, |pair| pair.rest).unwrap_or(pairs[0].rest)
                     } else {
                         ctx.alloc_type(Type::Union(Union::new(
                             pairs.iter().map(|pair| pair.rest).collect(),
@@ -240,4 +240,21 @@ fn alloc_field_access(ctx: &mut Compiler, value: HirId, name: &str, kind: FieldK
         name: name.to_string(),
         kind,
     }))
+}
+
+/// The element of the value's pair type, if it's a pair whose element is a reference that an untyped
+/// lambda parameter's type is made of (see `ParameterWrap`), which the element keeps, so that the
+/// lambda's return type still shows where the parameter flows (#362, step 13e). Substituting the type
+/// would see through the reference.
+fn wrapped_element(
+    ctx: &Compiler,
+    ty: TypeId,
+    element: impl Fn(&Pair) -> TypeId,
+) -> Option<TypeId> {
+    let Type::Pair(pair) = ctx.ty(ty) else {
+        return None;
+    };
+
+    let element = element(pair);
+    ctx.is_reported_as_another_type(element).then_some(element)
 }
