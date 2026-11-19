@@ -8,7 +8,7 @@ use std::{
 use indexmap::{IndexMap, IndexSet};
 
 use num_bigint::BigInt;
-use rue_lir::{ClvmOp, atom_bigint};
+use rue_lir::{ClvmOp, atom_bigint, bigint_atom};
 
 use crate::{BinaryOp, Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 
@@ -16,6 +16,10 @@ use super::AnalysisContext;
 
 /// The largest shift that CLVM allows, in either direction.
 const MAX_SHIFT: u32 = 65535;
+
+/// The longest atom that CLVM accepts as a shift amount. It's read as a signed 32-bit integer, so
+/// a longer atom fails even if its value is small, such as one with leading zero bytes.
+const MAX_SHIFT_LEN: usize = 4;
 
 /// Whether evaluating the HIR may fail for values that have the shapes their types say, which the
 /// compiler trusts for the solution, the results of calls it can't see into, and `unchecked_cast`
@@ -560,16 +564,17 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 
 /// Whether the operation may fail for well-typed operands, given the right operand. Division
 /// and shifts only fail for some right operands, so they can't fail if it's a suitable constant.
+/// Division reads its divisor at any length, but a shift amount's atom must also be short enough.
 fn binary_may_fail(db: &Database, op: BinaryOp, right: HirId) -> bool {
     match op {
         BinaryOp::Div | BinaryOp::Mod | BinaryOp::Divmod => {
-            constant_int(db, right).is_none_or(|divisor| divisor == BigInt::ZERO)
+            constant_atom(db, right).is_none_or(|divisor| atom_bigint(divisor) == BigInt::ZERO)
         }
         BinaryOp::LeftArithmeticShift
         | BinaryOp::RightArithmeticShift
-        | BinaryOp::RightLogicalShift => {
-            constant_int(db, right).is_none_or(|shift| shift.magnitude() > &MAX_SHIFT.into())
-        }
+        | BinaryOp::RightLogicalShift => constant_atom(db, right).is_none_or(|shift| {
+            shift.len() > MAX_SHIFT_LEN || atom_bigint(shift).magnitude() > &MAX_SHIFT.into()
+        }),
         BinaryOp::G1Add
         | BinaryOp::G1Subtract
         | BinaryOp::G1Multiply
@@ -616,13 +621,15 @@ fn clvm_op_may_fail(op: ClvmOp) -> bool {
     )
 }
 
-/// The value of the integer, if it's known at compile time.
-fn constant_int(db: &Database, hir: HirId) -> Option<BigInt> {
+/// The atom the integer is compiled to, if it's known at compile time. CLVM reads some operands
+/// differently depending on their length, so this keeps the bytes of a value such as
+/// `0x0001 as Int` rather than its numeric value.
+fn constant_atom(db: &Database, hir: HirId) -> Option<Vec<u8>> {
     match db.hir(db.without_casts(hir)) {
-        Hir::Int(value) => Some(value.clone()),
-        Hir::Bytes(bytes) => Some(atom_bigint(bytes)),
-        Hir::Nil => Some(BigInt::ZERO),
-        Hir::Const(expr) => expr.result.and_then(|result| constant_int(db, result)),
+        Hir::Int(value) => Some(bigint_atom(value.clone())),
+        Hir::Bytes(bytes) => Some(bytes.clone()),
+        Hir::Nil => Some(Vec::new()),
+        Hir::Const(expr) => expr.result.and_then(|result| constant_atom(db, result)),
         _ => None,
     }
 }

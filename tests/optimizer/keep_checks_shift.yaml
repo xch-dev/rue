@@ -1,0 +1,104 @@
+tests:
+- name: left_shift_long_constant
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0000000001)) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0000000001)) 1))
+  solution: (5 ())
+  byte_cost: 552000
+  clvm_error: "InvalidOperatorArg: ash requires int32 args (with no leading zeros)"
+- name: right_shift_long_constant
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . -1)) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (- () (q . 0x0000000001))) 1))
+  solution: (5 ())
+  output: ()
+  runtime_cost: 1196
+  byte_cost: 504000
+  total_cost: 505196
+- name: logical_shift_long_constant
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (lsh 2 (q . -1)) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (lsh 2 (- () (q . 0x0000000001))) 1))
+  solution: (5 ())
+  output: ()
+  runtime_cost: 877
+  byte_cost: 504000
+  total_cost: 504877
+- name: shift_long_named_constant
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0000000001)) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (ash 5 2) 1)) (c (q . 0x0000000001) 1))
+  solution: (5 ())
+  byte_cost: 552000
+  clvm_error: "InvalidOperatorArg: ash requires int32 args (with no leading zeros)"
+- name: shift_long_zero_constant
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0000000000)) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0000000000)) 1))
+  solution: (5 ())
+  byte_cost: 552000
+  clvm_error: "InvalidOperatorArg: ash requires int32 args (with no leading zeros)"
+- name: shift_two_byte_constant
+  program: (a (i 5 (q 22 2 (q . 0x0001)) (q)) 1)
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x0001)) 1))
+  solution: (5 ())
+  output: ()
+  runtime_cost: 305
+  byte_cost: 348000
+  total_cost: 348305
+- name: shift_four_byte_constant
+  program: (a (i 5 (q 22 2 (q . 0x00000001)) (q)) 1)
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0x00000001)) 1))
+  solution: (5 ())
+  output: ()
+  runtime_cost: 305
+  byte_cost: 372000
+  total_cost: 372305
+- name: shift_four_byte_negative_constant
+  program: (a (i 5 (q 22 2 (q . 0xffffffff)) (q)) 1)
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (ash 2 (q . 0xffffffff)) 1))
+  solution: (5 ())
+  output: ()
+  runtime_cost: 305
+  byte_cost: 372000
+  total_cost: 372305
+- name: divide_long_zero_constant
+  program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (/ 2 (q . 0x0000000000)) 1))
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (/ 2 (q . 0x0000000000)) 1))
+  solution: (5 ())
+  byte_cost: 552000
+  clvm_error: Division by zero
+- name: divide_long_one_constant
+  program: (a (i 5 (q 19 2 (q . 0x0000000001)) (q)) 1)
+  debug_program: (a (q 2 (i 11 (q . 2) (q)) 1) (c (/ 2 (q . 0x0000000001)) 1))
+  solution: (5 ())
+  output: ()
+  runtime_cost: 305
+  byte_cost: 384000
+  total_cost: 384305
+diagnostics:
+- |-
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:9:23
+    help: Write the number `1` instead
+- |-
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:12:24
+    help: Write the number `1` instead
+- |-
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:21:24
+    help: Write the number `1` instead
+- |-
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:30:25
+    help: Write the number `1` instead
+- |-
+  `0x0000000000` has a leading zero byte, so it isn't equal to the `Int` `0`, since integers are compared by their bytes at keep_checks_shift.rue:48:24
+    help: Write the number `0` instead
+- |-
+  `0x0001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:57:24
+    help: Write the number `1` instead
+- |-
+  `0x00000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:66:24
+    help: Write the number `1` instead
+- |-
+  `0xffffffff` is the negative number `-1` as an `Int`, since integers are signed at keep_checks_shift.rue:75:24
+    help: Write the number `4294967295` instead
+- |-
+  `0x0000000000` has a leading zero byte, so it isn't equal to the `Int` `0`, since integers are compared by their bytes at keep_checks_shift.rue:86:24
+    help: Write the number `0` instead
+- |-
+  `0x0000000001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at keep_checks_shift.rue:95:24
+    help: Write the number `1` instead
