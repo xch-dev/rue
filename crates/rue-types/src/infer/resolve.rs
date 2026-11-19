@@ -7,8 +7,8 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, Inference,
-    InferenceCandidates, InstancePolicy, Type, TypeId, Union, compare, compare_renamed,
+    AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, FxHashSet,
+    Inference, InferenceCandidates, InstancePolicy, Type, TypeId, Union, compare, compare_renamed,
     free_generics, references_generic, substitute_with_mappings,
     unwrap_semantic_without_substitution,
 };
@@ -733,7 +733,7 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
     let mut atoms: Vec<(AtomSemantic, Option<AtomRestriction>)> = Vec::new();
     let mut stack: Vec<TypeId> = types.into_iter().rev().collect();
 
-    let mut flattened = HashSet::new();
+    let mut flattened = FxHashSet::default();
 
     while let Some(ty) = stack.pop() {
         match &arena[ty] {
@@ -742,6 +742,7 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
                     stack.extend(union.types.iter().rev().copied());
                 }
             }
+            // The same as `same_structure`'s check for atoms, by key, since there can be many
             Type::Atom(atom) => {
                 let key = (atom.semantic, atom.restriction.clone());
 
@@ -772,7 +773,7 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
 fn same_structure(arena: &Arena<Type>, lhs: TypeId, rhs: TypeId) -> bool {
     // The pairs of types that have been reached. One that's reached again is either being checked
     // further down, as with a recursive type that unfolds the same way, or has been checked
-    let mut reached: HashSet<(TypeId, TypeId)> = HashSet::new();
+    let mut reached: FxHashSet<(TypeId, TypeId)> = FxHashSet::default();
     let mut stack = vec![(lhs, rhs)];
 
     while let Some((lhs, rhs)) = stack.pop() {

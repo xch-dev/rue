@@ -1,0 +1,35 @@
+// What a union that inference builds prints as in errors, when its members are copies of each other
+// and when they only look alike (#362). At most two copies of a compound member are kept
+
+fn pick<T>(_first: T, second: T) -> T {
+    second
+}
+
+fn pick3<T>(_first: T, _second: T, third: T) -> T {
+    third
+}
+
+fn main() -> Int {
+    // `(Int, Int)` is reached twice, from each argument, and printed both times
+    let either: Int | (Int, Int) = 1;
+    let pair: (Int, Int) = (1, 2);
+    let _first: Bytes = pick(either, pair);
+
+    // Three copies of `(Int, Int)` are kept as two
+    let _second: Bytes = pick3(pair, either, pair);
+
+    // Pairs whose inner unions differ in length aren't copies, so a third pair is kept after two
+    // copies of another
+    let shorter: (Int, 1 | 2) = (1, 1);
+    let same: (Int, 1 | 2) = (1, 2);
+    let longer: (Int, 1 | 2 | 3) = (1, 3);
+    let _third: Bytes = pick3(shorter, same, longer);
+
+    // Nor are pairs whose inner unions have the same members in another order
+    let forward: (Int, 1 | 2) = (1, 1);
+    let again: (Int, 1 | 2) = (1, 2);
+    let backward: (Int, 2 | 1) = (1, 1);
+    let _fourth: Bytes = pick3(forward, again, backward);
+
+    1
+}

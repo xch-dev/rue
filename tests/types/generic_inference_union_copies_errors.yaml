@@ -1,0 +1,5 @@
+diagnostics:
+- Cannot compare `Int | (Int, Int) | (Int, Int)` to `Bytes` without a type guard, since the runtime value must be constrained at generic_inference_union_copies_errors.rue:16:25
+- Cannot compare `(Int, Int) | Int | (Int, Int)` to `Bytes` without a type guard, since the runtime value must be constrained at generic_inference_union_copies_errors.rue:19:26
+- Cannot assign `(Int, 1 | 2) | (Int, 1 | 2) | (Int, 1 | 2 | 3)` to `Bytes`, since they are incompatible at generic_inference_union_copies_errors.rue:26:25
+- Cannot assign `(Int, 1 | 2) | (Int, 1 | 2) | (Int, 2 | 1)` to `Bytes`, since they are incompatible at generic_inference_union_copies_errors.rue:32:26
