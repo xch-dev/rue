@@ -706,11 +706,10 @@ fn without_subsumed_functions(
     result
 }
 
-/// The union of the types. A member that's a union of atoms is replaced by its members, and an
-/// atom that's the same as an earlier one is left out, so that unions built from each other, such
-/// as those of generics inferred through a chain of others, don't double in size each time (#337).
-/// Unions with other members are kept whole, since one can be recursive, such as the runtime
-/// structure of a function.
+/// The union of the types. A member that's a union is replaced by its members, and one that's the
+/// same as an earlier one is left out (an atom with the same semantic and restriction, or a copy of
+/// a compound type, see `same_structure`), so that unions built from each other, such as those of
+/// generics inferred through a chain of others, don't double in size each time (#337).
 ///
 /// The result is only a single type if it was given one. Otherwise it stays a union, even of one
 /// member, since a union isn't widened as a literal is (see `widen_literal`), which inference has
@@ -726,15 +725,14 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
     let mut atoms: Vec<(AtomSemantic, Option<AtomRestriction>)> = Vec::new();
     let mut stack: Vec<TypeId> = types.into_iter().rev().collect();
 
+    let mut flattened = HashSet::new();
+
     while let Some(ty) = stack.pop() {
         match &arena[ty] {
-            Type::Union(union)
-                if union
-                    .types
-                    .iter()
-                    .all(|&member| matches!(arena[member], Type::Atom(_))) =>
-            {
-                stack.extend(union.types.iter().rev().copied());
+            Type::Union(union) => {
+                if flattened.insert(ty) {
+                    stack.extend(union.types.iter().rev().copied());
+                }
             }
             Type::Atom(atom) => {
                 let key = (atom.semantic, atom.restriction.clone());
@@ -745,12 +743,48 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
                 }
             }
             _ => {
-                members.insert(ty);
+                if !members
+                    .iter()
+                    .any(|&member| same_structure(arena, member, ty))
+                {
+                    members.insert(ty);
+                }
             }
         }
     }
 
     arena.alloc(Type::Union(Union::new(members.into_iter().collect())))
+}
+
+/// Whether the types are copies of each other: atoms with the same semantic and restriction, or
+/// pairs, unions and references whose parts are copies, member by member, or the same type. It's
+/// conservative, so other types are only copies if they're the same type.
+fn same_structure(arena: &Arena<Type>, lhs: TypeId, rhs: TypeId) -> bool {
+    // The pairs of types that have been reached. One that's reached again is either being checked
+    // further down, as with a recursive type that unfolds the same way, or has been checked
+    let mut reached: HashSet<(TypeId, TypeId)> = HashSet::new();
+    let mut stack = vec![(lhs, rhs)];
+
+    while let Some((lhs, rhs)) = stack.pop() {
+        if lhs == rhs || !reached.insert((lhs, rhs)) {
+            continue;
+        }
+
+        match (&arena[lhs], &arena[rhs]) {
+            (Type::Atom(lhs), Type::Atom(rhs))
+                if lhs.semantic == rhs.semantic && lhs.restriction == rhs.restriction => {}
+            (Type::Pair(lhs), Type::Pair(rhs)) => {
+                stack.extend([(lhs.first, rhs.first), (lhs.rest, rhs.rest)]);
+            }
+            (Type::Union(lhs), Type::Union(rhs)) if lhs.types.len() == rhs.types.len() => {
+                stack.extend(lhs.types.iter().copied().zip(rhs.types.iter().copied()));
+            }
+            (Type::Ref(lhs), Type::Ref(rhs)) => stack.push((*lhs, *rhs)),
+            _ => return false,
+        }
+    }
+
+    true
 }
 
 /// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`.
