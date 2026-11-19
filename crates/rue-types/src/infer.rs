@@ -647,6 +647,30 @@ impl Choices {
         self.matched_since(branch, 0)
     }
 
+    /// Whether the union members are alternatives: they're different members of one union, or
+    /// nested in different members of one.
+    pub(crate) fn exclusive(&self, lhs: BranchId, rhs: BranchId) -> bool {
+        let mut ancestors = Vec::new();
+        let mut next = Some(lhs);
+
+        while let Some(branch) = next {
+            ancestors.push(branch);
+            next = self.0[branch.choice].parent;
+        }
+
+        let mut next = Some(rhs);
+
+        while let Some(branch) = next {
+            if let Some(other) = ancestors.iter().find(|other| other.choice == branch.choice) {
+                return other.member != branch.member;
+            }
+
+            next = self.0[branch.choice].parent;
+        }
+
+        false
+    }
+
     /// The result of each choice, the best that any member or the fallback gave, or `None` if the
     /// member it's nested in doesn't hold. A choice is opened after the one it's nested in, so they
     /// can be worked out in order.

@@ -2196,6 +2196,12 @@ fn check_bounds(
                 // pair with one doesn't decide the result (#360). It's still compared, under that
                 // member, since the candidates it collects are what a generic being inferred falls
                 // back to when nothing else gives it any (see `Inference::keep_matched`)
+                if let (Some(lhs), Some(rhs)) = (lower_branches.local, upper_branches.local)
+                    && ctx.choices.exclusive(lhs, rhs)
+                {
+                    continue;
+                }
+
                 let unmatched = [lower_branches, upper_branches]
                     .into_iter()
                     .find(|branches| {
