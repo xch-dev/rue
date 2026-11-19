@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use rowan::TextRange;
 use rue_diagnostic::SourceKind;
-use rue_hir::{ScopeId, SymbolId};
+use rue_hir::{Declaration, ScopeId, SymbolId};
 use rue_types::TypeId;
 
 #[derive(Debug, Default, Clone)]
@@ -53,6 +53,16 @@ pub enum SyntaxItemKind {
     FieldInitializer(SyntaxField),
     Scope(ScopeId),
     CompletionContext(CompletionContext),
+}
+
+impl SyntaxItemKind {
+    /// A reference to a declaration.
+    pub fn reference(declaration: Declaration) -> Self {
+        match declaration {
+            Declaration::Symbol(symbol) => Self::SymbolReference(symbol),
+            Declaration::Type(ty) => Self::TypeReference(ty),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

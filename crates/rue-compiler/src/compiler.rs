@@ -1151,13 +1151,7 @@ impl Compiler {
     }
 
     pub fn reference_span(&mut self, reference: Declaration, span: TextRange) {
-        self.add_syntax(
-            match reference {
-                Declaration::Symbol(symbol) => SyntaxItemKind::SymbolReference(symbol),
-                Declaration::Type(ty) => SyntaxItemKind::TypeReference(ty),
-            },
-            span,
-        );
+        self.add_syntax(SyntaxItemKind::reference(reference), span);
     }
 
     pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
