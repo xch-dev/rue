@@ -1,0 +1,307 @@
+// Regression test, not for production use. A port of `nft_puzzles/nft_ownership_layer.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./nft_ownership_layer.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The royalty transfer program, used as a real transfer program in the tests.
+extern fn royalty_transfer_program(
+    ...solution: Any,
+) -> Any from "./nft_ownership_transfer_program_one_way_claim_with_royalties.clsp.hex";
+
+// The first two bytes of `sha256("Ownership Layer")`.
+inline const ANNOUNCEMENT_PREFIX: Bytes = 0xad4c;
+
+// A magic condition that runs the transfer program with the rest of the condition as its solution.
+struct NewOwner {
+    opcode = -10,
+    ...transfer_solution: Any,
+}
+
+type OwnershipCondition = Condition | NewOwner;
+
+struct TransferOutput {
+    new_owner: Bytes32 | nil,
+    // A new transfer program, or nil to keep the current one.
+    new_transfer_program: Any,
+    conditions: List<Condition>,
+}
+
+type TransferProgram = fn(
+    current_owner: Bytes32 | nil,
+    all_conditions: List<OwnershipCondition>,
+    solution: Any,
+) -> TransferOutput;
+
+fn main(
+    mod_hash: Bytes32,
+    current_owner: Bytes32 | nil,
+    transfer_program: TransferProgram,
+    inner_puzzle: fn(...solution: Any) -> List<OwnershipCondition>,
+    inner_solution: Any,
+) -> List<Condition> {
+    let conditions = inner_puzzle(...inner_solution);
+    wrap_conditions(mod_hash, transfer_program, current_owner, conditions, conditions, nil, nil)
+}
+
+// Removes the one output with an amount of 1 (the original checks `(logand amount)`, which is the
+// amount itself, rather than whether it's odd), runs the transfer program at most once, and then
+// recreates the output with the new owner, followed by the transfer program's conditions.
+fn wrap_conditions(
+    mod_hash: Bytes32,
+    transfer_program: TransferProgram,
+    current_owner: Bytes32 | nil,
+    all_conditions: List<OwnershipCondition>,
+    conditions: List<OwnershipCondition>,
+    odd_coin: CreateCoin | nil,
+    transfer: TransferOutput | nil,
+) -> List<Condition> {
+    if conditions is nil {
+        assert odd_coin is CreateCoin;
+
+        let output = if transfer is nil {
+            transfer_program(current_owner, all_conditions, nil)
+        } else {
+            transfer
+        };
+
+        let transfer_program_hash = if output.new_transfer_program is nil {
+            tree_hash(transfer_program)
+        } else {
+            tree_hash(output.new_transfer_program)
+        };
+
+        let puzzle_hash = curry_tree_hash(
+            mod_hash,
+            [
+                tree_hash_atom(mod_hash),
+                tree_hash_atom(output.new_owner),
+                transfer_program_hash,
+                odd_coin.puzzle_hash,
+            ],
+        );
+
+        return [
+            CreateCoin { puzzle_hash, amount: odd_coin.amount, memos: odd_coin.memos },
+            ...output.conditions,
+        ];
+    }
+
+    let condition = conditions.first;
+    let rest = conditions.rest;
+
+    if condition is CreateCoin && condition.amount == 1 {
+        assert odd_coin is nil;
+        return wrap_conditions(
+            mod_hash,
+            transfer_program,
+            current_owner,
+            all_conditions,
+            rest,
+            condition,
+            transfer,
+        );
+    }
+
+    if condition is NewOwner {
+        assert transfer is nil;
+
+        let new_transfer = transfer_program(
+            current_owner,
+            all_conditions,
+            condition.transfer_solution,
+        );
+
+        return [
+            CreatePuzzleAnnouncement {
+                message: ANNOUNCEMENT_PREFIX + tree_hash(condition.transfer_solution),
+            },
+            ...wrap_conditions(
+                mod_hash,
+                transfer_program,
+                current_owner,
+                all_conditions,
+                rest,
+                odd_coin,
+                new_transfer,
+            ),
+        ];
+    }
+
+    // The inner puzzle can't pretend to be the ownership layer.
+    assert !(
+        condition is CreatePuzzleAnnouncement
+            && (condition.message.length == 34)
+            && (substr(condition.message, 0, 2) == ANNOUNCEMENT_PREFIX)
+    );
+
+    [
+        condition,
+        ...wrap_conditions(
+            mod_hash,
+            transfer_program,
+            current_owner,
+            all_conditions,
+            rest,
+            odd_coin,
+            transfer,
+        ),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A transfer program that returns its solution as its output, or keeps the current owner if it has
+// no solution: `(a (i 11 (q . 11) (q 4 2 (q () ()))) 1)`.
+fn simple_transfer_program() -> Any {
+    [2 as Any, [3 as Any, 11, (1, 11), (1, [4 as Any, 2, (1, [nil, nil])])], 1]
+}
+
+// The royalty transfer program, curried with its singleton struct, royalty address and percentage.
+fn curried_royalty_transfer_program() -> Any {
+    let singleton_struct = SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256("nft_launcher_id"),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    };
+
+    [
+        2 as Any,
+        (1, royalty_transfer_program),
+        [
+            4 as Any,
+            (1, singleton_struct),
+            [4 as Any, (1, sha256("royalty")), [4 as Any, (1, 300), 1]],
+        ],
+    ]
+}
+
+fn odd_coin() -> CreateCoin {
+    CreateCoin {
+        puzzle_hash: sha256("inner_puzzle"),
+        amount: 1,
+        memos: Memos { value: [sha256("hint")] },
+    }
+}
+
+fn spend(transfer_program: Any, conditions: Any) -> Any {
+    [sha256("ownership_mod"), sha256("did"), transfer_program, 1, conditions]
+}
+
+test fn keeps_the_owner() -> Any {
+    check(spend(
+        simple_transfer_program(),
+        [
+            CreateCoin { puzzle_hash: sha256("other"), amount: 3 },
+            odd_coin(),
+            CreatePuzzleAnnouncement { message: ANNOUNCEMENT_PREFIX + sha256("short") + "x" },
+            CreatePuzzleAnnouncement { message: 0x0000 + sha256("not_prefixed") },
+            ReserveFee { amount: 1 },
+        ],
+    ))
+}
+
+test fn transfers_to_a_new_owner() -> Any {
+    check(spend(
+        simple_transfer_program(),
+        [
+            odd_coin(),
+            NewOwner {
+                transfer_solution: [sha256("new_did") as Any, 1, [ReserveFee { amount: 2 }]],
+            },
+        ],
+    ))
+}
+
+test fn removes_the_owner() -> Any {
+    check(spend(
+        simple_transfer_program(),
+        [NewOwner { transfer_solution: [nil, nil, nil] }, odd_coin()],
+    ))
+}
+
+test fn transfers_with_royalties() -> Any {
+    check(spend(
+        curried_royalty_transfer_program(),
+        [
+            odd_coin(),
+            NewOwner {
+                transfer_solution: [
+                    sha256("new_did") as Any,
+                    [[1000 as Any, sha256("settlement")]],
+                    sha256("new_did_inner"),
+                ],
+            },
+        ],
+    ))
+}
+
+test fn keeps_the_owner_with_royalties() -> Any {
+    check(spend(curried_royalty_transfer_program(), [odd_coin()]))
+}
+
+fn two_odd_coins() -> Any {
+    spend(simple_transfer_program(), [odd_coin(), odd_coin()])
+}
+
+test fn rejects_two_odd_coins() -> Any {
+    run(main, two_odd_coins())
+}
+
+test fn reference_rejects_two_odd_coins() -> Any {
+    run(reference, two_odd_coins())
+}
+
+fn no_odd_coin() -> Any {
+    spend(simple_transfer_program(), [CreateCoin { puzzle_hash: sha256("other"), amount: 3 }])
+}
+
+test fn rejects_no_odd_coin() -> Any {
+    run(main, no_odd_coin())
+}
+
+test fn reference_rejects_no_odd_coin() -> Any {
+    run(reference, no_odd_coin())
+}
+
+fn two_transfers() -> Any {
+    spend(
+        simple_transfer_program(),
+        [
+            odd_coin(),
+            NewOwner { transfer_solution: [sha256("new_did") as Any, nil, nil] },
+            NewOwner { transfer_solution: [sha256("other_did") as Any, nil, nil] },
+        ],
+    )
+}
+
+test fn rejects_two_transfers() -> Any {
+    run(main, two_transfers())
+}
+
+test fn reference_rejects_two_transfers() -> Any {
+    run(reference, two_transfers())
+}
+
+fn prefixed_announcement() -> Any {
+    spend(
+        simple_transfer_program(),
+        [odd_coin(), CreatePuzzleAnnouncement { message: ANNOUNCEMENT_PREFIX + sha256("fake") }],
+    )
+}
+
+test fn rejects_a_prefixed_announcement() -> Any {
+    run(main, prefixed_announcement())
+}
+
+test fn reference_rejects_a_prefixed_announcement() -> Any {
+    run(reference, prefixed_announcement())
+}

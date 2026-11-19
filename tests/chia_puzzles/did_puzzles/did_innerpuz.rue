@@ -1,0 +1,245 @@
+// Regression test, not for production use. A port of `did_puzzles/did_innerpuz.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./did_innerpuz.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The coin of a recovery DID that approved the recovery.
+struct RecoveryCoin {
+    parent_coin_id: Bytes32,
+    inner_puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+fn main(
+    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    recovery_did_list_hash: Bytes32,
+    num_verifications_required: Int,
+    singleton_struct: SingletonStruct,
+    _metadata: Any,
+    // 0 to recover the DID, or anything else to run the inner puzzle.
+    mode: Int,
+    my_amount_or_inner_solution: Any,
+    new_inner_puzzle_hash: Bytes32,
+    // The coin of each recovery DID that approved the recovery, or nil for the ones that didn't.
+    recovery_coins: List<RecoveryCoin | nil>,
+    public_key: PublicKey,
+    recovery_list_reveal: List<Bytes32>,
+    my_id: Bytes32,
+) -> List<Condition> {
+    if mode != 0 {
+        return inner_puzzle(...my_amount_or_inner_solution);
+    }
+
+    assert (tree_hash(recovery_list_reveal) == recovery_did_list_hash)
+        & (num_verifications_required > 0);
+
+    let my_amount = unchecked_cast::<Int>(my_amount_or_inner_solution);
+
+    [
+        AssertMyAmount { amount: my_amount },
+        CreateCoin {
+            puzzle_hash: new_inner_puzzle_hash,
+            amount: my_amount,
+            memos: Memos { value: [new_inner_puzzle_hash] },
+        },
+        AssertMyCoinId { coin_id: my_id },
+        ...check_approvals(
+            singleton_struct,
+            num_verifications_required,
+            recovery_list_reveal,
+            my_id,
+            new_inner_puzzle_hash,
+            recovery_coins,
+            public_key,
+            0,
+        ),
+    ]
+}
+
+// Asserts the approval message from each recovery DID that has a coin, and that there are enough.
+fn check_approvals(
+    singleton_struct: SingletonStruct,
+    num_verifications_required: Int,
+    identities: List<Bytes32>,
+    my_id: Bytes32,
+    new_inner_puzzle_hash: Bytes32,
+    recovery_coins: List<RecoveryCoin | nil>,
+    public_key: PublicKey,
+    num_verifications: Int,
+) -> List<Condition> {
+    if identities is nil {
+        assert num_verifications > num_verifications_required - 1;
+        return [AggSigUnsafe { public_key, message: new_inner_puzzle_hash }];
+    }
+
+    // There must be an entry for each identity.
+    let coins = unchecked_cast::<(RecoveryCoin | nil, List<RecoveryCoin | nil>)>(recovery_coins);
+    let coin = coins.first;
+
+    // The original skips an identity with a call that leaves out an argument, which shifts the rest
+    // of them into the wrong parameters, so skipping one fails (for any spend with a coin id).
+    assert coin is RecoveryCoin;
+
+    // The coin id of the recovery DID's singleton, hashed with `sha256` rather than `coinid`.
+    let did_struct = SingletonStruct {
+        mod_hash: singleton_struct.mod_hash,
+        launcher_id: identities.first,
+        launcher_puzzle_hash: singleton_struct.launcher_puzzle_hash,
+    };
+    let did_puzzle_hash = curry_tree_hash(
+        singleton_struct.mod_hash,
+        [tree_hash(did_struct), coin.inner_puzzle_hash],
+    );
+    let coin_id = sha256(coin.parent_coin_id + did_puzzle_hash + coin.amount as Bytes);
+
+    // The puzzle that the recovery DID spent to approve the recovery.
+    let message_puzzle = (
+        1,
+        [
+            CreateCoinAnnouncement { message: my_id } as Condition,
+            AggSigUnsafe { public_key, message: new_inner_puzzle_hash },
+        ],
+    );
+
+    [
+        AssertCoinAnnouncement { id: sha256(sha256(coin_id + tree_hash(message_puzzle)) + my_id) },
+        ...check_approvals(
+            singleton_struct,
+            num_verifications_required,
+            identities.rest,
+            my_id,
+            new_inner_puzzle_hash,
+            coins.rest,
+            public_key,
+            num_verifications + 1,
+        ),
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+fn singleton_struct() -> SingletonStruct {
+    SingletonStruct {
+        mod_hash: sha256("singleton_mod"),
+        launcher_id: sha256("my_did"),
+        launcher_puzzle_hash: sha256("launcher_puzzle"),
+    }
+}
+
+fn recovery_list() -> List<Bytes32> {
+    [sha256("first_did"), sha256("second_did")]
+}
+
+fn first_coin() -> RecoveryCoin {
+    RecoveryCoin {
+        parent_coin_id: sha256("first_parent"),
+        inner_puzzle_hash: sha256("first_inner"),
+        amount: 1,
+    }
+}
+
+fn second_coin() -> RecoveryCoin {
+    RecoveryCoin {
+        parent_coin_id: sha256("second_parent"),
+        inner_puzzle_hash: sha256("second_inner"),
+        amount: 3,
+    }
+}
+
+fn recovery_coins() -> List<RecoveryCoin | nil> {
+    [first_coin(), second_coin()]
+}
+
+fn recovery(
+    recovery_list_hash: Bytes32,
+    num_verifications_required: Int,
+    recovery_coins: List<RecoveryCoin | nil>,
+) -> Any {
+    [
+        1,
+        recovery_list_hash,
+        num_verifications_required,
+        singleton_struct(),
+        [("name", "Alice")],
+        0,
+        1,
+        sha256("new_inner"),
+        recovery_coins,
+        pubkey_for_exp(7),
+        recovery_list(),
+        sha256("my_id"),
+    ]
+}
+
+test fn runs_the_inner_puzzle() -> Any {
+    check([
+        1,
+        tree_hash(recovery_list()),
+        2,
+        singleton_struct(),
+        nil,
+        1,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
+test fn recovers_with_every_approval() -> Any {
+    check(recovery(tree_hash(recovery_list()), 2, recovery_coins()))
+}
+
+test fn recovers_with_more_approvals_than_required() -> Any {
+    check(recovery(tree_hash(recovery_list()), 1, recovery_coins()))
+}
+
+test fn rejects_the_wrong_recovery_list() -> Any {
+    run(main, recovery(sha256("wrong"), 2, recovery_coins()))
+}
+
+test fn reference_rejects_the_wrong_recovery_list() -> Any {
+    run(reference, recovery(sha256("wrong"), 2, recovery_coins()))
+}
+
+test fn rejects_zero_required_approvals() -> Any {
+    run(main, recovery(tree_hash(recovery_list()), 0, recovery_coins()))
+}
+
+test fn reference_rejects_zero_required_approvals() -> Any {
+    run(reference, recovery(tree_hash(recovery_list()), 0, recovery_coins()))
+}
+
+test fn rejects_too_few_approvals() -> Any {
+    run(main, recovery(tree_hash(recovery_list()), 3, recovery_coins()))
+}
+
+test fn reference_rejects_too_few_approvals() -> Any {
+    run(reference, recovery(tree_hash(recovery_list()), 3, recovery_coins()))
+}
+
+fn skipped_coins() -> List<RecoveryCoin | nil> {
+    [nil, second_coin()]
+}
+
+test fn rejects_a_skipped_identity() -> Any {
+    run(main, recovery(tree_hash(recovery_list()), 1, skipped_coins()))
+}
+
+test fn reference_rejects_a_skipped_identity() -> Any {
+    run(reference, recovery(tree_hash(recovery_list()), 1, skipped_coins()))
+}
+
+test fn rejects_missing_coins() -> Any {
+    run(main, recovery(tree_hash(recovery_list()), 1, [first_coin()]))
+}
+
+test fn reference_rejects_missing_coins() -> Any {
+    run(reference, recovery(tree_hash(recovery_list()), 1, [first_coin()]))
+}
