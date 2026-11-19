@@ -1746,9 +1746,18 @@ fn members_of_ambiguous_modules_exported_from_a_file_are_exported_from_each_modu
             "export both::m::*; const ONLY: Int = 4;",
             vec!["3:81 UnusedConstant", "5:42 UnusedConstant"],
         ),
+        // A glob import that isn't exported doesn't export anything
+        (
+            "import both::m::*;",
+            vec![
+                "2:57 UnusedConstant",
+                "3:56 UnusedConstant",
+                "3:81 UnusedConstant",
+            ],
+        ),
     ] {
         for first_binds in [true, false] {
-            let first = if first_binds { "alpha" } else { "zeta" };
+            let first = if first_binds { "alpha" } else { "omega" };
             let compiled = compile(&format!(
                 "
                 mod {first} {{ export mod m {{ export const X: Int = 1; }} }}
@@ -2151,6 +2160,37 @@ fn only_the_first_named_import_of_an_item_is_used() {
 }
 
 #[test]
+fn named_imports_that_also_bring_in_another_item_are_used_for_it() {
+    // Both imports bring in the same constant `X`, but only the second brings in a type `X`, so
+    // it's still used for that when it's used as a type, and only unused when it isn't
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (body, expected) in [
+            ("let x: X = X; x", vec![]),
+            ("X", vec!["4:60 UnusedTypeAlias", "5:64 UnusedImport"]),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {first} {{ export super::src::X; }}
+                mod {second} {{ export super::src::X; export type X = Int; }}
+                mod u {{ import super::{first}::X; import super::{second}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("first: {first}, body: {body}");
+            let warnings = compiled
+                .warnings()
+                .into_iter()
+                .filter(|warning| warning.contains(" Unused"))
+                .collect::<Vec<_>>();
+
+            compiled.assert_no_errors();
+            assert_eq!(warnings, expected, "{context}");
+        }
+    }
+}
+
+#[test]
 fn only_the_first_of_several_named_imports_of_an_item_is_used() {
     // Three named imports of the same `X`, with their modules named in every order, so that each
     // of them binds the name in some order. The first one in the source is always the one that's
@@ -2265,20 +2305,91 @@ fn private_named_imports_of_an_exported_item_are_unused() {
 
 #[test]
 fn named_imports_of_the_same_item_through_ambiguous_modules_use_every_alternative() {
-    // `beta` sorts before `both` and `omega`, so `import super::beta::m::X;` binds `X`, and
-    // `both::m` is bound to `beta`'s `m`, so the other import finds the same `X` and shares the
-    // binding. What else its path could refer to is recorded on the binding, so `omega`'s `X`
-    // is used too. (When `m` is bound to the first module's instead, the imports bring in
-    // different items, which is reported as a duplicate.)
-    let compiled = compile(&colliding_modules(
-        false,
-        "export const X: Int = 1;",
-        "export const X: Int = 2;",
-        "mod user { import super::beta::m::X; import super::both::m::X; export fn value() -> Int { X } } fn main() -> Int { user::value() }",
-    ));
+    // `beta` sorts before `both` and `omega`, so `import super::beta::m::X;` binds `X`. When
+    // `both::m` is bound to `beta`'s `m`, the other import finds the same `X`, and what else its
+    // path could refer to is recorded on the binding, so `omega`'s `X` is used too, and the
+    // other import is the unused one. When `m` is bound to the first module's, the imports bring
+    // in different items, which is reported as a duplicate. That import fails in that order
+    // only, so it's out of scope, like an import whose path fails: the first module's `X` is
+    // unused, and the failed import isn't reported.
+    for (first_binds, errors, unused, imports) in [
+        (
+            true,
+            vec!["5:66 AmbiguousImport(\"m\")", "5:69 DuplicateSymbol(\"X\")"],
+            vec!["2:49 UnusedConstant"],
+            vec![],
+        ),
+        (
+            false,
+            vec!["5:66 AmbiguousImport(\"m\")"],
+            vec![],
+            vec!["5:69 UnusedImport"],
+        ),
+    ] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const X: Int = 1;",
+            "export const X: Int = 2;",
+            "mod user { import super::beta::m::X; import super::both::m::X; export fn value() -> Int { X } } fn main() -> Int { user::value() }",
+        ));
+        let context = format!("first binds: {first_binds}");
 
-    assert_eq!(compiled.errors(), ["5:66 AmbiguousImport(\"m\")"]);
-    assert_eq!(unused_items(&compiled), Vec::<String>::new());
+        assert_eq!(compiled.errors(), errors, "{context}");
+        assert_eq!(unused_items(&compiled), unused, "{context}");
+        assert_eq!(unused_imports(&compiled), imports, "{context}");
+    }
+}
+
+#[test]
+fn glob_re_exports_only_pass_on_what_their_module_does_not_hide() {
+    // `relay2` has its own `X`, by declaration or named import, which hides the first module's
+    // `X` that `relay`'s glob export could bring in, so `user`'s use of `X` never refers to it,
+    // whichever `m` is bound. (The declared `X` hides `other`'s, which is then unused too.)
+    for (relay2, other) in [
+        ("export const X: Int = 5;", vec!["5:138 UnusedConstant"]),
+        ("export super::other::X;", vec![]),
+    ] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                "export const X: Int = 1;",
+                "export const Y: Int = 2;",
+                &format!(
+                    "mod relay {{ export super::both::m::*; }} mod relay2 {{ export super::relay::*; {relay2} }} mod other {{ export const X: Int = 6; }} mod user {{ import super::relay2::*; export fn value() -> Int {{ X }} }} fn main() -> Int {{ user::value() }}"
+                ),
+            ));
+            let context = format!("{relay2}, first binds: {first_binds}");
+            let mut expected = vec!["2:49 UnusedConstant", "3:48 UnusedConstant"];
+            expected.extend(other.iter().copied());
+
+            assert_eq!(unused_items(&compiled), expected, "{context}");
+        }
+    }
+}
+
+#[test]
+fn private_glob_imports_through_ambiguous_modules_pass_nothing_on() {
+    // `beta`'s `m` glob-imports `both2::k` privately, where only the first `k` has `ONLY`, so
+    // `user`'s glob import of `both::m` can't bring in `ONLY`, which is unused in every order
+    for first_binds in [true, false] {
+        for second_k in ["kk", "aa"] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                "export const X: Int = 1;",
+                "export const X: Int = 2; import super::super::both2::k::*;",
+                &format!(
+                    "mod kq {{ export mod k {{ export const ONLY: Int = 3; }} }} mod {second_k} {{ export mod k {{ export const Z: Int = 4; }} }} mod both2 {{ export super::kq::*; export super::{second_k}::*; }} mod user {{ import super::both::m::*; export fn value() -> Int {{ X + ONLY }} }} fn main() -> Int {{ user::value() }}"
+                ),
+            ));
+            let unused = unused_items(&compiled);
+            let context = format!("first binds: {first_binds}, second k: {second_k}: {unused:?}");
+
+            assert!(
+                unused.contains(&"5:46 UnusedConstant".to_string()),
+                "{context}"
+            );
+        }
+    }
 }
 
 #[test]

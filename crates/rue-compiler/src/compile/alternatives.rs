@@ -46,18 +46,18 @@ pub(crate) fn glob_imports<'a>(
 
 /// What a glob import into a scope could bring in besides what it does (see
 /// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)) under a name that
-/// nothing in the scope hides (see [`hides_glob_alternatives`]).
+/// nothing in the scope hides (see [`hides_glob_alternatives`]), with the namespace and name of
+/// each.
 pub(crate) fn unhidden_glob_alternatives(
     ctx: &Compiler,
     scope: ScopeId,
     import: ImportId,
-) -> impl Iterator<Item = Item> + '_ {
+) -> impl Iterator<Item = (Namespace, &str, Item)> + '_ {
     ctx.all_glob_alternatives(import)
         .filter(move |&(namespace, name, _)| {
             let binding = ctx.scope(scope).item_with_import(namespace, name);
             !hides_glob_alternatives(ctx, binding)
         })
-        .map(|(_, _, item)| item)
 }
 
 /// What a name is bound to in one namespace where a segment of a path is looked up, if anything

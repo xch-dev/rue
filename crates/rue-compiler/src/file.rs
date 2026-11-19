@@ -380,7 +380,8 @@ impl FileTree {
                     // were bound differently, unless something in the file hides it
                     for import in glob_imports(ctx, ctx.scope(scope), true) {
                         entrypoints.extend(
-                            unhidden_glob_alternatives(ctx, scope, import).map(Declaration::from),
+                            unhidden_glob_alternatives(ctx, scope, import)
+                                .map(|(_, _, item)| Declaration::from(item)),
                         );
                     }
                 }

@@ -2,9 +2,10 @@
 // exports `X` through `c.rue`'s `m` by name, and `e.rue` everything in `w.rue`'s with a glob
 // export. Whichever module each `m` is bound to (the one whose name sorts first, `a.rue`'s and
 // `l.rue`'s), the files' exports could refer to the `X` in either module, so none of the `X`s is
-// reported as unused (the unit tests cover the module names in both orders). Only `z.rue`'s `m` has a `W`, which `e.rue` exports only when `w.rue`'s
-// `m` is bound to it, but it could be either way, so it isn't reported either. `a.rue`'s `W` is
-// only in a module that `d.rue` doesn't export everything from, so it's reported.
+// reported as unused. The unit tests cover the module names in both orders. Only `z.rue`'s `m`
+// has a `W`, which `e.rue` exports only when `w.rue`'s `m` is bound to it, but it could be either
+// way, so it isn't reported either. `a.rue`'s `W` is only in a module that `d.rue` doesn't export
+// everything from, so it's reported.
 
 fn main() -> Int {
     3

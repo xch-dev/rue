@@ -48,10 +48,6 @@ pub struct Database {
     /// [`Database::add_shared_binding`]), as that import, the declaration it bound, and the
     /// declaration this one brings in under the name.
     shared_bindings: HashMap<ImportId, IndexSet<(ImportId, Declaration, Declaration)>>,
-    /// The declarations that named imports bring in that another named import of the same name
-    /// brings into the same scope, which is the one that's used (see
-    /// [`Database::add_redundant_import`]).
-    redundant_imports: IndexSet<(ImportId, Declaration)>,
     /// The other declarations that a name could refer to, because glob imports bring in different
     /// declarations with it, keyed by the import that the name refers to a declaration through and
     /// that declaration.
@@ -437,19 +433,6 @@ impl Database {
             });
 
         own.chain(shared)
-    }
-
-    /// Records that an import brings in a declaration under a name that another named import in
-    /// the same scope brings it in under too, which is the one that counts as using it, so this
-    /// one doesn't. Returns whether it wasn't already recorded.
-    pub fn add_redundant_import(&mut self, import: ImportId, declaration: Declaration) -> bool {
-        self.redundant_imports.insert((import, declaration))
-    }
-
-    /// Whether another named import is the one that counts as bringing in the declaration (see
-    /// [`Database::add_redundant_import`]).
-    pub fn is_redundant_import(&self, import: ImportId, declaration: Declaration) -> bool {
-        self.redundant_imports.contains(&(import, declaration))
     }
 
     /// Records that a name that refers to the declaration through the import could also refer to
