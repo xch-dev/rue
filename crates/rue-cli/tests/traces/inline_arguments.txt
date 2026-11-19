@@ -1,0 +1,28 @@
+===== debug: (5) =====
+error: clvm raise
+  inline_arguments.rue:6:24, in main
+    fn main(a: Int) -> Int {
+    a = 5
+  inline_arguments.rue:12:5, in wrap (inlined)
+    x * 2
+  inline_arguments.rue:7:18, in main
+    let r = wrap(check(a));
+  inline_arguments.rue:24:5, in check
+    assert v > 10;
+    v = 5
+===== debug: (50) =====
+output: 2600
+===== release: (5) =====
+error: clvm raise
+  inline_arguments.rue:8:5, in main
+    r + twice(check(a))
+    a = 5
+  inline_arguments.rue:16:5, in twice (inlined)
+    id(x) * x
+  inline_arguments.rue:8:15, in main
+    r + twice(check(a))
+  inline_arguments.rue:24:5, in check
+    assert v > 10;
+    v = 5
+===== release: (50) =====
+output: 2600

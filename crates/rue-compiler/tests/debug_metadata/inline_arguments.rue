@@ -1,0 +1,26 @@
+// solution: (5)
+// solution: (50)
+
+// An argument of an inlined function is the caller's code, so it's named after the caller where
+// it's substituted, and a failure in it goes back to the caller
+fn main(a: Int) -> Int {
+    let r = wrap(check(a));
+    r + twice(check(a))
+}
+
+inline fn wrap(x: Int) -> Int {
+    x * 2
+}
+
+inline fn twice(x: Int) -> Int {
+    id(x) * x
+}
+
+inline fn id(x: Int) -> Int {
+    x
+}
+
+fn check(v: Int) -> Int {
+    assert v > 10;
+    v
+}
