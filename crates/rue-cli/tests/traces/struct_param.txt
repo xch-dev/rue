@@ -4,16 +4,16 @@ error: clvm raise
     by_struct(payment) + by_destructure(payment) + by_tuple(pair)
     payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
     pair = (3 . 5)
-  struct_param.rue:18:5, in by_destructure
+  struct_param.rue:25:5, in by_destructure
     assert puzzle_hash != sha256("burn");
-    { puzzle_hash, amount } = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+    { puzzle_hash, amount, } = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
 ===== debug: ((0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100) (5 . 3)) =====
 error: clvm raise
   struct_param.rue:10:52, in main
     by_struct(payment) + by_destructure(payment) + by_tuple(pair)
     payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
     pair = (5 . 3)
-  struct_param.rue:23:5, in by_tuple
+  struct_param.rue:30:5, in by_tuple
     assert low < high;
     (low, high) = (5 . 3)
 ===== release: ((0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100) (3 . 5)) =====
@@ -22,15 +22,15 @@ error: clvm raise
     by_struct(payment) + by_destructure(payment) + by_tuple(pair)
     payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
     pair = (3 . 5)
-  struct_param.rue:18:5, in by_destructure
+  struct_param.rue:25:5, in by_destructure
     assert puzzle_hash != sha256("burn");
-    { puzzle_hash, amount } = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+    { puzzle_hash, amount, } = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
 ===== release: ((0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100) (5 . 3)) =====
 error: clvm raise
   struct_param.rue:10:52, in main
     by_struct(payment) + by_destructure(payment) + by_tuple(pair)
     payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
     pair = (5 . 3)
-  struct_param.rue:23:5, in by_tuple
+  struct_param.rue:30:5, in by_tuple
     assert low < high;
     (low, high) = (5 . 3)

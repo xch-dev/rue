@@ -1,10 +1,14 @@
 ===== debug: (5) =====
 error: clvm raise
-  inline_fail.rue:10:9, in main
-    raise "underflow";
+  inline_fail.rue:3:24, in main
+    fn main(x: Int) -> Int {
     x = 5
+  inline_fail.rue:10:9, in checked_sub (inlined)
+    raise "underflow";
 ===== release: (5) =====
 error: clvm raise
-  inline_fail.rue:10:9, in main
-    raise "underflow";
+  inline_fail.rue:5:5, in main
+    y * 2
     x = 5
+  inline_fail.rue:10:9, in checked_sub (inlined)
+    raise "underflow";
