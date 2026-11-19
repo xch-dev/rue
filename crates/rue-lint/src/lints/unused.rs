@@ -136,8 +136,13 @@ fn is_import_used(
                 .filter(|(name, _)| item.text() == name)
                 .peekable();
 
+            // It could also bring in something in another namespace if its path were bound
+            // differently, which is used if that is
             declarations.peek().is_none()
                 || declarations.any(|(_, declaration)| references.contains(declaration))
+                || db
+                    .all_import_alternatives(id)
+                    .any(|(_, _, item)| references.contains(&Declaration::from(item)))
         }
     }
 }

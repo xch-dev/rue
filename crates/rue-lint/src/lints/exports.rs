@@ -237,7 +237,18 @@ fn imported(db: &Database) -> HashMap<Declaration, Vec<SrcLoc>> {
             continue;
         };
 
-        for declaration in declarations {
+        // What it could bring in if a name in its path were bound to another module that glob
+        // imports bring in with it needs to be exported from there too
+        let alternatives = declarations
+            .iter()
+            .flat_map(|&declaration| db.ambiguous_alternatives(Some(id), declaration))
+            .chain(
+                db.all_import_alternatives(id)
+                    .map(|(_, _, item)| Declaration::from(item)),
+            )
+            .collect::<Vec<_>>();
+
+        for declaration in declarations.into_iter().chain(alternatives) {
             imported
                 .entry(declaration)
                 .or_default()

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{Declaration, ImportId, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, FunctionType, Type, TypeId};
@@ -150,21 +150,14 @@ where
 
 /// Where a path's first name is looked up, the names in the path from there, and the module that
 /// each name before the last one names, as far as it's resolved, with the import it's named
-/// through.
+/// through. The last name's location is kept if it's named through a module (and isn't in the
+/// standard library), for the `unused_export` lint.
 #[derive(Debug, Default)]
 struct PathTrail {
-    base: Option<SegmentBase>,
+    base: Option<Place>,
     names: Vec<String>,
     modules: Vec<(SymbolId, Option<ImportId>)>,
-}
-
-impl SegmentBase {
-    fn place(self) -> Place {
-        match self {
-            Self::Local(scope) => Place::Chain(scope),
-            Self::Module(scope) | Self::Parent(scope) => Place::Scope(scope),
-        }
-    }
+    qualified: Option<SrcLoc>,
 }
 
 /// Counts a path as a use of what it could refer to if the names in it were bound to the other
@@ -184,7 +177,7 @@ fn use_alternatives(ctx: &mut Compiler, trail: &PathTrail, kind: PathKind) {
     // Where each name is looked up in the module that the path names up to it
     let primary = |ctx: &Compiler, index: usize| {
         if index == 0 {
-            Some(base.place())
+            Some(base)
         } else {
             trail
                 .modules
@@ -217,6 +210,16 @@ fn use_alternatives(ctx: &mut Compiler, trail: &PathTrail, kind: PathKind) {
 
     for (item, via) in items {
         ctx.reference_alternative(item.into(), via);
+
+        // A use of what the path could refer to through another module needs it to be exported
+        // from there, like a use of what it refers to
+        if let Some(srcloc) = &trail.qualified {
+            ctx.lint_sites_mut()
+                .qualified_references
+                .entry(item.into())
+                .or_default()
+                .push(srcloc.clone());
+        }
     }
 }
 
@@ -322,14 +325,22 @@ where
 
     if let Some(trail) = trail.as_deref_mut() {
         trail.base = Some(if from_parent {
-            SegmentBase::Parent(base_scope)
+            Place::Scope(base_scope)
         } else {
-            SegmentBase::Local(base_scope)
+            Place::Chain(base_scope)
         });
         trail.names = segments
             .iter()
             .map_while(|segment| segment.name().map(|name| name.text().to_string()))
             .collect();
+
+        if trail.names.len() > 1
+            && trail.names.len() == segments.len()
+            && ctx.source().kind.check_unused()
+            && let Some(name) = segments.last().and_then(PathSegment::name)
+        {
+            trail.qualified = Some(ctx.srcloc(&name));
+        }
     }
 
     let mut value = None;

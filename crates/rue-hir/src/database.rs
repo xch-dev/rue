@@ -57,11 +57,11 @@ pub struct Database {
     /// other modules. They aren't references, since the path is only compiled as referring to
     /// the one in the module the name is bound to.
     ambiguous_uses: IndexMap<Declaration, IndexSet<Declaration>>,
-    /// What each glob import could bring in with each name in each namespace, besides what it
-    /// does, if a name in its path, or in the path of a glob import that it brings in items
-    /// through, were bound to another module that glob imports bring in with it (see
-    /// [`Database::glob_alternatives`]).
-    glob_alternatives: HashMap<ImportId, IndexMap<Namespace, IndexMap<String, IndexSet<Item>>>>,
+    /// What each import could bring in with each name in each namespace, besides what it does,
+    /// if a name in its path, or in the path of an import that it brings in items through, were
+    /// bound to another module that glob imports bring in with it (see
+    /// [`Database::import_alternatives`]).
+    import_alternatives: HashMap<ImportId, IndexMap<Namespace, IndexMap<String, IndexSet<Item>>>>,
     /// The glob imports that could bring in something under a name that nothing else in their
     /// scope hides (see [`Database::may_bring_in_more`]).
     globs_that_may_bring_in_more: HashSet<ImportId>,
@@ -509,17 +509,17 @@ impl Database {
             .map(|(&declaration, users)| (declaration, users))
     }
 
-    /// Records that a glob import could bring in an item with a name, if the names in its path
-    /// were bound differently (see [`Database::glob_alternatives`]). Returns whether it wasn't
+    /// Records that an import could bring in an item with a name, if the names in its path were
+    /// bound differently (see [`Database::import_alternatives`]). Returns whether it wasn't
     /// already recorded.
-    pub fn add_glob_alternative(
+    pub fn add_import_alternative(
         &mut self,
         import: ImportId,
         namespace: Namespace,
         name: String,
         item: Item,
     ) -> bool {
-        self.glob_alternatives
+        self.import_alternatives
             .entry(import)
             .or_default()
             .entry(namespace)
@@ -529,19 +529,20 @@ impl Database {
             .insert(item)
     }
 
-    /// What a glob import could bring in with a name in a namespace, besides what it does. Which
+    /// What an import could bring in with a name in a namespace, besides what it does. Which
     /// module a name that glob imports bring in different modules with is bound to depends on the
     /// order imports are resolved in, so a glob import through it could bring in what any of
-    /// them export, and what glob imports bring in through that could differ too. A use of the
+    /// them export, and what glob imports bring in through that could differ too. A named import
+    /// through it could bring in an item in a namespace that it brings nothing in. A use of the
     /// name counts as a use of each of these, so that which are reported as unused doesn't
     /// depend on module names.
-    pub fn glob_alternatives(
+    pub fn import_alternatives(
         &self,
         import: ImportId,
         namespace: Namespace,
         name: &str,
     ) -> impl Iterator<Item = Item> + '_ {
-        self.glob_alternatives
+        self.import_alternatives
             .get(&import)
             .and_then(|alternatives| alternatives.get(&namespace))
             .and_then(|alternatives| alternatives.get(name))
@@ -550,13 +551,13 @@ impl Database {
             .copied()
     }
 
-    /// Everything a glob import could bring in besides what it does (see
-    /// [`Database::glob_alternatives`]), with the namespace and name of each.
-    pub fn all_glob_alternatives(
+    /// Everything an import could bring in besides what it does (see
+    /// [`Database::import_alternatives`]), with the namespace and name of each.
+    pub fn all_import_alternatives(
         &self,
         import: ImportId,
     ) -> impl Iterator<Item = (Namespace, &str, Item)> + '_ {
-        self.glob_alternatives
+        self.import_alternatives
             .get(&import)
             .into_iter()
             .flatten()
@@ -569,11 +570,11 @@ impl Database {
             })
     }
 
-    /// Whether any glob import could bring in something besides what it does, or any name could
+    /// Whether any import could bring in something besides what it does, or any name could
     /// refer to something besides what it's bound to, so that paths could refer to something
     /// else too.
     pub fn has_alternatives(&self) -> bool {
-        !self.glob_alternatives.is_empty() || !self.ambiguous_alternatives.is_empty()
+        !self.import_alternatives.is_empty() || !self.ambiguous_alternatives.is_empty()
     }
 
     /// Records that a glob import could bring in something under a name that nothing else in

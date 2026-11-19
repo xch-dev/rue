@@ -16,8 +16,8 @@ use rue_parser::SyntaxKind;
 use rue_types::Type;
 
 use crate::{
-    Compiler, Found, Place, SyntaxItemKind, alternative_items, alternative_modules, glob_imports,
-    modules_of, unhidden_glob_alternatives,
+    Compiler, Found, Place, SyntaxItemKind, alternative_items, alternative_modules, modules_of,
+    scope_alternatives, unhidden_alternatives,
 };
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
@@ -565,10 +565,7 @@ pub fn resolve_imports(
         for (&import, &(scope, ref name, count)) in &cache.glob_import_counts {
             // One that could bring in something if its path were bound differently is reported
             // as unused instead, unless any of that is used
-            if ctx.has_alternatives()
-                && unhidden_glob_alternatives(ctx, scope, import)
-                    .next()
-                    .is_some()
+            if ctx.has_alternatives() && unhidden_alternatives(ctx, scope, import).next().is_some()
             {
                 ctx.add_glob_that_may_bring_in_more(import);
             } else if count == 0 {
@@ -1311,15 +1308,6 @@ enum Base {
 }
 
 impl Base {
-    /// Where the name is looked up, for finding what else it could refer to (see
-    /// [`path_alternatives`]).
-    fn place(self) -> Place {
-        match self {
-            Self::Local(scope) => Place::Chain(scope),
-            Self::Member(scope) | Self::Inner(scope) => Place::Scope(scope),
-        }
-    }
-
     /// The scope whose own items the name is looked up in first.
     fn scope(self) -> ScopeId {
         match self {
@@ -1686,7 +1674,10 @@ fn path_alternatives(
 
         // Where the name is looked up in the module the path names up to it
         let place = if index == 0 {
-            import_base(import, import_scope).place()
+            match import_base(import, import_scope) {
+                Base::Local(scope) => Place::Chain(scope),
+                Base::Member(scope) | Base::Inner(scope) => Place::Scope(scope),
+            }
         } else {
             Place::Scope(ctx.module(path.symbols[index - 1]).scope)
         };
@@ -1738,7 +1729,7 @@ fn add_path_alternatives(
 }
 
 /// Records what a glob import could bring in besides what it does (see
-/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)): what each of the other
+/// [`Database::import_alternatives`](rue_hir::Database::import_alternatives)): what each of the other
 /// modules its path could name exports, what the glob imports that they, or the module it imports
 /// from, export could bring in, and once any of that is recorded, what it does bring in, which a
 /// failed import's error item could hide one way but not another. Returns whether any of it
@@ -1763,12 +1754,12 @@ fn add_glob_alternatives(
             }
         }
 
-        found.extend(scope_glob_alternatives(ctx, scope, true));
+        found.extend(scope_alternatives(ctx, scope, true));
     }
 
     // A glob import of a parent module brings in its private items too
     let source = base.unwrap_or(import.base_scope);
-    found.extend(scope_glob_alternatives(ctx, source, base.is_some()));
+    found.extend(scope_alternatives(ctx, source, base.is_some()));
 
     // What it brings in from the module it imports from could be hidden by a failed import's
     // error item one way but not another, so that's included too, if anything else could be
@@ -1792,26 +1783,10 @@ fn add_glob_alternatives(
     let mut updated = false;
 
     for (namespace, name, item) in found {
-        updated |= ctx.add_glob_alternative(import_id, namespace, name, item);
+        updated |= ctx.add_import_alternative(import_id, namespace, name, item);
     }
 
     updated
-}
-
-/// What the glob imports into a scope (or only the exported ones) could bring in besides what they
-/// do (see [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)), under names
-/// that nothing in the scope hides, since it doesn't have the rest to pass on.
-fn scope_glob_alternatives(
-    ctx: &Compiler,
-    scope: ScopeId,
-    exported_only: bool,
-) -> Vec<(Namespace, String, Item)> {
-    glob_imports(ctx, ctx.scope(scope), exported_only)
-        .flat_map(|import| {
-            unhidden_glob_alternatives(ctx, scope, import)
-                .map(|(namespace, name, item)| (namespace, name.to_string(), item))
-        })
-        .collect()
 }
 
 /// Records the errors in an import's resolved path, and the names in it that refer to a
@@ -1936,7 +1911,7 @@ fn resolve_glob_import(
                 let by_glob = ctx
                     .scope(import_scope)
                     .item_import(existing)
-                    .is_some_and(|via| matches!(ctx.import(via).items, Items::All(_)));
+                    .is_some_and(|via| ctx.import(via).is_glob());
 
                 if ctx.is_error_item(item) && ctx.is_error_item(existing) && by_glob {
                     updated |= add_error_origins(
@@ -1982,7 +1957,7 @@ fn resolve_glob_import(
             // The glob import that the binding of the name was recorded on, if any
             let recorded = existing
                 .and_then(|existing| ctx.scope(import_scope).item_import(existing))
-                .filter(|&recorded| matches!(ctx.import(recorded).items, Items::All(_)));
+                .filter(|&recorded| ctx.import(recorded).is_glob());
 
             // A name that's ambiguous where it's imported from is ambiguous here too. The imports
             // are resolved again until nothing changes, so this reaches the end of any chain of
@@ -2263,6 +2238,25 @@ fn resolve_named_import(
             && binding == found
         {
             updated |= add_path_alternatives(ctx, alternatives, recorded, found, name);
+        }
+    }
+
+    // In each namespace that it brings nothing in, it could bring in what the other modules its
+    // path could name export with the name, if the path were bound to one of them
+    if !alternatives.is_empty() {
+        for namespace in Namespace::ALL {
+            if found
+                .iter()
+                .any(|&(found, _)| found.namespace() == namespace && !ctx.is_error_item(found))
+            {
+                continue;
+            }
+
+            let namespaces = [namespace];
+
+            for (item, _) in alternative_items(ctx, None, alternatives, &namespaces, name, true) {
+                updated |= ctx.add_import_alternative(import_id, namespace, name.to_string(), item);
+            }
         }
     }
 

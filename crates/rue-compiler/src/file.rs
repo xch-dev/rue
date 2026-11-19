@@ -25,9 +25,8 @@ use thiserror::Error;
 use crate::{
     Compiler, ImportCache, SyntaxItemKind, check_recursion, compile_default_items,
     compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
-    declare_module_items, declare_symbol_items, declare_type_items, glob_imports,
-    recheck_contractive_types, resolve_imports, resolve_pending_defaults,
-    unhidden_glob_alternatives,
+    declare_module_items, declare_symbol_items, declare_type_items, recheck_contractive_types,
+    resolve_imports, resolve_pending_defaults, scope_alternatives,
 };
 
 #[derive(Debug, Error)]
@@ -376,14 +375,13 @@ impl FileTree {
                         }
                     }
 
-                    // So is what an exported glob import could bring in if the names in its path
-                    // were bound differently, unless something in the file hides it
-                    for import in glob_imports(ctx, ctx.scope(scope), true) {
-                        entrypoints.extend(
-                            unhidden_glob_alternatives(ctx, scope, import)
-                                .map(|(_, _, item)| Declaration::from(item)),
-                        );
-                    }
+                    // So is what an exported import could bring in if the names in its path were
+                    // bound differently, unless something in the file hides it
+                    entrypoints.extend(
+                        scope_alternatives(ctx, scope, true)
+                            .into_iter()
+                            .map(|(_, _, item)| Declaration::from(item)),
+                    );
                 }
                 Self::Directory(directory) => {
                     directory.children.iter().for_each(|child| {
