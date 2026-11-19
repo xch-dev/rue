@@ -118,12 +118,17 @@ fn dense_compound_chain_compares_new_members_once() {
 /// bounds is built from the unions of all the ones before it.
 fn dense_pair_chain(count: usize) -> String {
     let generics: Vec<String> = (0..count).map(|i| format!("G{i}")).collect();
-    let mut params: String = (0..count).map(|i| format!("    v{i}: G{i},\n")).collect();
+    let mut params = String::new();
+
+    for i in 0..count {
+        writeln!(params, "    v{i}: G{i},").unwrap();
+    }
+
     let mut args = "        (5, 5),\n".repeat(count);
 
     for i in 0..count {
         for j in i + 1..count {
-            params.push_str(&format!("    f{i}_{j}: fn(a: G{i}) -> G{j},\n"));
+            writeln!(params, "    f{i}_{j}: fn(a: G{i}) -> G{j},").unwrap();
             args.push_str("        identity,\n");
         }
     }
