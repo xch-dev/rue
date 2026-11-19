@@ -5,8 +5,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
-    compare_with_inference, free_generics, infer_from_expected, resolve_inference_with_fallback,
-    strongly_connected_components, substitute_with_mappings, union_of,
+    compare_with_inference, free_generics, infer_from_expected, resolve_inference_around,
+    resolve_inference_with_fallback, strongly_connected_components, substitute_with_mappings,
+    union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -97,7 +98,18 @@ pub fn resolve_inference_with_bounds(
         uninferred.contains(&generic)
     });
 
-    let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
+    // The generics that were inferred keep their mappings, including what `narrow_inferred` narrowed
+    // them to, so that the ones resolved through them see those, rather than what they were inferred
+    // as before they were narrowed. Resolving them again would only give what they were first
+    // inferred as, since their own candidates are the same and don't depend on the ones being
+    // resolved here
+    let fixed: HashMap<TypeId, TypeId> = mappings
+        .iter()
+        .filter(|(generic, _)| !uninferred.contains(*generic))
+        .map(|(&generic, &ty)| (generic, ty))
+        .collect();
+
+    let resolved = resolve_inference_around(arena, builtins, &bounded, fallback, &fixed);
 
     for generic in uninferred {
         // A cycle through compound bounds can resolve a generic to a type that references itself,
@@ -227,6 +239,17 @@ pub(crate) fn pass_lower_bounds(
     // again: the ones that were given a lower bound, and the ones whose lower bounds reach them.
     let mut changed: Option<HashSet<TypeId>> = None;
 
+    // The members of each generic's expanded lower bounds that have been compared with each of its
+    // upper bounds, by the upper bound's index. A union is compared with a type one member at a
+    // time, so comparing the members again would only find the bounds they found before, which
+    // aren't passed on again. Only the ones that are new to an expansion are compared, including
+    // the ones that reach it through another generic's expansion
+    let mut compared: HashMap<(TypeId, usize), HashSet<TypeId>> = HashMap::new();
+
+    // Whether each pair of bounds that has been checked is equivalent. The same bound can be passed
+    // on from several generics, and again in later rounds
+    let mut equivalent: HashMap<(TypeId, TypeId), bool> = HashMap::new();
+
     for _ in 0..infer.generics.len() {
         let expanded = expanded_lower_bounds(arena, infer);
         let mut passed = Vec::new();
@@ -243,6 +266,8 @@ pub(crate) fn pass_lower_bounds(
                 continue;
             };
 
+            let members = union_members(arena, lower);
+
             for (index, &upper) in candidates.upper.iter().enumerate() {
                 if infer.passes_bounds(upper)
                     || !free_generics(arena, upper)
@@ -252,8 +277,14 @@ pub(crate) fn pass_lower_bounds(
                     continue;
                 }
 
+                let compared = compared.entry((generic, index)).or_default();
                 let mut inner = Inference::new(targets.iter().copied());
-                compare_with_inference(arena, builtins, lower, upper, Some(&mut inner));
+
+                for &member in &members {
+                    if compared.insert(member) {
+                        compare_with_inference(arena, builtins, member, upper, Some(&mut inner));
+                    }
+                }
                 let branches = infer.branches(generic, CandidateKind::Upper, index);
 
                 for (&other, implied) in &inner.generics {
@@ -279,9 +310,11 @@ pub(crate) fn pass_lower_bounds(
 
             if existing.contains(&ty)
                 || existing.iter().any(|&other| {
-                    compare_renamed(arena, builtins, &renamed, other, ty) == Comparison::Assign
-                        && compare_renamed(arena, builtins, &renamed, ty, other)
-                            == Comparison::Assign
+                    *equivalent.entry((other, ty)).or_insert_with(|| {
+                        compare_renamed(arena, builtins, &renamed, other, ty) == Comparison::Assign
+                            && compare_renamed(arena, builtins, &renamed, ty, other)
+                                == Comparison::Assign
+                    })
                 })
             {
                 continue;
@@ -297,6 +330,27 @@ pub(crate) fn pass_lower_bounds(
 
         changed = Some(reaching(arena, infer, grown));
     }
+}
+
+/// The members of the type if it's a union, and of the unions among them in turn, in the order
+/// comparing it with another type visits them, or the type itself if it isn't one.
+fn union_members(arena: &Arena<Type>, ty: TypeId) -> Vec<TypeId> {
+    let mut members = Vec::new();
+    let mut visited = HashSet::new();
+    let mut stack = vec![ty];
+
+    while let Some(ty) = stack.pop() {
+        if !visited.insert(ty) {
+            continue;
+        }
+
+        match &arena[ty] {
+            Type::Union(union) => stack.extend(union.types.iter().rev().copied()),
+            _ => members.push(ty),
+        }
+    }
+
+    members
 }
 
 /// The generics whose lower bounds, taken together (see `expanded_lower_bounds`), reach any of the

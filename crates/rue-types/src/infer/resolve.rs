@@ -7,8 +7,8 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, Inference,
-    InferenceCandidates, InstancePolicy, Type, TypeId, Union, compare, compare_renamed,
+    AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, FxHashSet,
+    Inference, InferenceCandidates, InstancePolicy, Type, TypeId, Union, compare, compare_renamed,
     free_generics, references_generic, substitute_with_mappings,
     unwrap_semantic_without_substitution,
 };
@@ -39,6 +39,19 @@ pub fn resolve_inference_with_fallback(
     builtins: &BuiltinTypes,
     infer: &Inference,
     fallback: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
+    resolve_inference_around(arena, builtins, infer, fallback, &HashMap::new())
+}
+
+/// Like `resolve_inference_with_fallback`, but the generics in `fixed` are already resolved, to
+/// the types they map to, so the others are resolved through those (see
+/// `resolve_inference_with_bounds`).
+pub(crate) fn resolve_inference_around(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &Inference,
+    fallback: &HashMap<TypeId, TypeId>,
+    fixed: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
     // Only the candidates collected under union members that matched are resolved from (#364)
     let infer = &infer.keep_matched();
@@ -82,8 +95,8 @@ pub fn resolve_inference_with_fallback(
         infer,
         fallback,
         reachable,
-        resolved: HashSet::new(),
-        mappings: HashMap::new(),
+        resolved: fixed.keys().copied().collect(),
+        mappings: fixed.clone(),
     };
 
     for &generic in infer.generics.keys() {
@@ -116,9 +129,16 @@ impl InferenceResolver<'_> {
             .generics
             .keys()
             .copied()
+            // A generic that's already resolved isn't resolved with it again. Without fixed ones
+            // (see `resolve_inference_around`) that can't happen, since it would have been resolved
+            // in the same component. A fixed generic can still reach the generic through a
+            // candidate its mapping doesn't use, such as an upper candidate next to lower ones, and
+            // it keeps its mapping then too. No test or fuzzer program has been found to reach it
             .filter(|&other| {
                 other == generic
-                    || (reachable.contains(&other) && self.reachable[&other].contains(&generic))
+                    || (reachable.contains(&other)
+                        && self.reachable[&other].contains(&generic)
+                        && !self.resolved.contains(&other))
             })
             .collect();
 
@@ -706,11 +726,18 @@ fn without_subsumed_functions(
     result
 }
 
-/// The union of the types. A member that's a union of atoms is replaced by its members, and an
-/// atom that's the same as an earlier one is left out, so that unions built from each other, such
-/// as those of generics inferred through a chain of others, don't double in size each time (#337).
-/// Unions with other members are kept whole, since one can be recursive, such as the runtime
-/// structure of a function.
+/// The union of the types. A member that's a union is replaced by its members, an atom that's the
+/// same as an earlier one is left out, and so is a compound type that two earlier members are
+/// copies of (see `same_structure`), so that unions built from each other, such as those of
+/// generics inferred through a chain of others, don't double in size each time (#337).
+///
+/// At most two copies of a compound type are kept, not one, since a union with one copy of `(5, 5)`
+/// doesn't type the same as one with two. A field of a union of pairs is the field of its only pair
+/// if it has one (`pairs.len() == 1` in the compiler's `field.rs`), so it's a lone `5`, which
+/// inference widens to `Int`, where two pairs give the union `5 | 5`, which it doesn't. Keeping one
+/// copy rejected the `x4.first` in a program that main compiles (infer-fuzz generator 1, seed 4600,
+/// pinned in `tests/types/generic_inference_union_copies.rue`). Two copies say the same as any
+/// number more, so the doubling still stops.
 ///
 /// The result is only a single type if it was given one. Otherwise it stays a union, even of one
 /// member, since a union isn't widened as a literal is (see `widen_literal`), which inference has
@@ -726,16 +753,16 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
     let mut atoms: Vec<(AtomSemantic, Option<AtomRestriction>)> = Vec::new();
     let mut stack: Vec<TypeId> = types.into_iter().rev().collect();
 
+    let mut flattened = FxHashSet::default();
+
     while let Some(ty) = stack.pop() {
         match &arena[ty] {
-            Type::Union(union)
-                if union
-                    .types
-                    .iter()
-                    .all(|&member| matches!(arena[member], Type::Atom(_))) =>
-            {
-                stack.extend(union.types.iter().rev().copied());
+            Type::Union(union) => {
+                if flattened.insert(ty) {
+                    stack.extend(union.types.iter().rev().copied());
+                }
             }
+            // The same as `same_structure`'s check for atoms, by key, since there can be many
             Type::Atom(atom) => {
                 let key = (atom.semantic, atom.restriction.clone());
 
@@ -745,12 +772,50 @@ pub(crate) fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = 
                 }
             }
             _ => {
-                members.insert(ty);
+                let copies = members
+                    .iter()
+                    .filter(|&&member| same_structure(arena, member, ty))
+                    .count();
+
+                if copies < 2 {
+                    members.insert(ty);
+                }
             }
         }
     }
 
     arena.alloc(Type::Union(Union::new(members.into_iter().collect())))
+}
+
+/// Whether the types are copies of each other: atoms with the same semantic and restriction, or
+/// pairs, unions and references whose parts are copies, member by member, or the same type. It's
+/// conservative, so other types are only copies if they're the same type.
+fn same_structure(arena: &Arena<Type>, lhs: TypeId, rhs: TypeId) -> bool {
+    // The pairs of types that have been reached. One that's reached again is either being checked
+    // further down, as with a recursive type that unfolds the same way, or has been checked
+    let mut reached: FxHashSet<(TypeId, TypeId)> = FxHashSet::default();
+    let mut stack = vec![(lhs, rhs)];
+
+    while let Some((lhs, rhs)) = stack.pop() {
+        if lhs == rhs || !reached.insert((lhs, rhs)) {
+            continue;
+        }
+
+        match (&arena[lhs], &arena[rhs]) {
+            (Type::Atom(lhs), Type::Atom(rhs))
+                if lhs.semantic == rhs.semantic && lhs.restriction == rhs.restriction => {}
+            (Type::Pair(lhs), Type::Pair(rhs)) => {
+                stack.extend([(lhs.first, rhs.first), (lhs.rest, rhs.rest)]);
+            }
+            (Type::Union(lhs), Type::Union(rhs)) if lhs.types.len() == rhs.types.len() => {
+                stack.extend(lhs.types.iter().copied().zip(rhs.types.iter().copied()));
+            }
+            (Type::Ref(lhs), Type::Ref(rhs)) => stack.push((*lhs, *rhs)),
+            _ => return false,
+        }
+    }
+
+    true
 }
 
 /// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`.
