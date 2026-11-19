@@ -5,7 +5,7 @@ fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
     function(value)
 }
 
-fn wrap<T>(value: T) -> (T, Int) {
+fn wrap_with<T>(_first: T, value: T) -> (T, Int) {
     (value, 1)
 }
 
@@ -17,9 +17,9 @@ fn apply_to<T>(pair: (fn(value: T) -> T, T)) -> T {
     pair.first(pair.rest)
 }
 
-// A call nested in an argument of a call to the same function shares the enclosing call's `T`, so
-// what it's inferred as here references that `T`, and the lambdas' `x` and `y` aren't checked as
-// that, which would let it leak out of `apply_to`
+// A call nested in an argument of a call to the same function shares the enclosing call's `T`, and
+// the inner lambda's body references `x`, which is that `T` too, so `y` isn't checked as what the
+// inner call infers `T` as: `x` would leak out of `apply_to` as that
 #[expect(unused_function)]
 fn nested_call_to_the_same_function() -> Any {
     apply_to((
@@ -45,22 +45,15 @@ fn five_only(value: 5) -> Int {
     value
 }
 
-// The inner call shares the outer call's `T`, and the outer lambda's `callback` takes it, so the inner
-// lambda's `y` isn't checked as `Int`: that would pass `7` to `five_only`
+// The inner call shares the outer call's `T`, and the inner lambda's body references the outer
+// lambda's `callback`, which takes it, so `y` isn't checked as `Int`: that would pass `7` to
+// `five_only`
 #[expect(unused_function)]
 fn callback_of_an_enclosing_call() -> Int {
     call_back((
         fn(_x, callback) => call_back((fn(y, _other) => callback(y), (7, fn(_z) => 0))),
         (5, five_only),
     ))
-}
-
-fn first<T>(pair: (T, T)) -> T {
-    pair.first
-}
-
-fn make<U>() -> U {
-    unchecked_cast(nil)
 }
 
 fn callback_map<A, B>(function: fn(callback: fn(x: A) -> Int, y: A) -> B, value: A) -> B {
@@ -81,17 +74,25 @@ fn generic_in_a_callback_parameter() -> Int {
     result
 }
 
+struct Wrapper<T> {
+    value: T,
+    other: Int,
+}
+
+fn struct_map<A, B>(function: fn(wrapper: Wrapper<A>) -> B, value: A) -> B {
+    function(Wrapper::<A> { value, other: 1 })
+}
+
 fn main() -> Int {
-    // `T` is inferred from `[2]` as `(Int, nil)`, which `[3, make()]` can't be, so nothing gives
-    // `make` a type, as `first::<List<Int>>` would
-    let list = first(([2], [3, make()]));
+    // `other` is `Int` whatever `A` is, so it doesn't reference `A`, and isn't narrowed to `1`
+    let other: 1 = struct_map(fn(wrapper) => wrapper.other, 5);
 
     // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
     let computed: 5 = map(fn(x) => x + 0, 5);
 
-    // A call that's an argument of an enclosing call is only expected to be what that call has
-    // inferred so far, which it can still widen, so it isn't solved again for it
-    let nested: (5, Int) = wrap(map(fn(x) => x, 5));
+    // `wrap_with`'s `T` has to hold the `1` too, so no instantiation gives `(5, Int)`, and `map` is
+    // solved as before
+    let nested: (5, Int) = wrap_with(1, map(fn(x) => x, 5));
 
     // `x` would have to be `6`, which `5` isn't, so the call is left as it was and reports `Int`
     let unfitting: 6 = map(fn(x) => x, 5);
@@ -111,13 +112,5 @@ fn main() -> Int {
     let unbounded = map(fn(x) => x, 5);
     let five: 5 = unbounded;
 
-    computed
-        + list.first
-        + nested.first
-        + unfitting
-        + spread
-        + generic
-        + mismatched.first
-        + cast
-        + five
+    other + computed + nested.first + unfitting + spread + generic + mismatched.first + cast + five
 }

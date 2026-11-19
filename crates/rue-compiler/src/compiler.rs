@@ -22,7 +22,7 @@ use rue_options::CompilerOptions;
 use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
-use crate::{FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
+use crate::{FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
@@ -118,9 +118,8 @@ pub struct ArgumentFrame {
     /// compiled with their untyped parameters as references (see `compile_lambda`), which is only
     /// while those pairs and lists are compiled (see `compile_element`).
     pub wrap_lambdas: bool,
-    /// The untyped parameters of those lambdas, as the references they were compiled as and the
-    /// types those refer to.
-    pub lambda_parameters: Vec<(TypeId, TypeId)>,
+    /// The untyped parameters of those lambdas (see `compile_lambda`).
+    pub lambda_parameters: Vec<LambdaParameter>,
 }
 
 /// The function or lambda body that a `return` statement exits from.

@@ -83,3 +83,17 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: call_without_arguments_past_the_end_of_a_list
+  program: (q . 2)
+  debug_program: (a (q 2 (q 2 (q 5 2) (c 2 1)) (c (a 6 (c (c (q . 2) ()) (c (q . 3) (c (a 4 ()) ())))) 1)) (c (c (q) (q 5 1)) ()))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: call_with_arguments_past_the_end_of_a_list
+  program: (q . 2)
+  debug_program: (a (q 2 (q 2 (q 5 2) (c 2 1)) (c (a 6 (c (c (q . 2) ()) (c (q . 3) (c (a 4 ()) ())))) 1)) (c (c (q . 1) (q 5 1)) ()))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

@@ -16,7 +16,10 @@ use rue_types::{
     contains_generic, substitute_with_mappings,
 };
 
-use crate::{ArgumentFrame, Compiler, ParameterWrap, compile_expr, compile_lambda_argument};
+use crate::{
+    ArgumentFrame, Compiler, LambdaBody, LambdaParameter, ParameterWrap, compile_expr,
+    compile_lambda_argument, occurs_contravariantly,
+};
 
 /// What inferring a call's generics gave.
 pub(crate) struct InferredCall {
@@ -71,6 +74,11 @@ pub(crate) fn infer_call(
     // only uses the type expected of it for the generics its arguments don't give a type (see
     // `refine_element_expected`), so it isn't solved again for it either
     let fallback_only = ctx.is_expected_type_fallback() && !args.is_empty();
+    // The type expected of the call, if it's a type of its own that the call has to be assignable
+    // to. One that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one
+    // that comes from what an enclosing call has inferred so far, which it can still widen
+    let final_expected = expected_type.filter(|_| !ctx.is_expected_type_hint() && !fallback_only);
+
     let solver = ctx.call_solver(expected);
     let solver = Rc::new(if fallback_only {
         solver.fallback_only()
@@ -86,7 +94,18 @@ pub(crate) fn infer_call(
 
     // The untyped parameters of each lambda argument, as the references they were compiled as and
     // the types those refer to (see `compile_lambda`)
-    let mut lambda_parameters: Vec<Vec<(TypeId, TypeId)>> = vec![Vec::new(); function.params.len()];
+    let mut lambda_parameters: Vec<Vec<LambdaParameter>> = vec![Vec::new(); function.params.len()];
+
+    // For each of those parameters, the type with the callee's generics in it that its lambda is
+    // checked with them as what they're inferred as, if it is (see `generic_parameter_types`)
+    let mut generic_types: Vec<Vec<Option<TypeId>>> = vec![Vec::new(); function.params.len()];
+
+    // Whether the callee's generics are an enclosing call's, which is calling the same function
+    let enclosing = ctx.inferred_generics();
+    let shared = function
+        .generics
+        .iter()
+        .any(|generic| enclosing.contains(generic));
 
     let mut order = ArgumentOrder::new(ctx, function, args, base.clone());
 
@@ -123,6 +142,7 @@ pub(crate) fn infer_call(
             HashMap::new()
         };
         restore_renamed(ctx, &mut mappings, renamed);
+        let restored_here = restored.clone();
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
@@ -140,11 +160,18 @@ pub(crate) fn infer_call(
         }));
 
         // The parameter's type is only a hint while it references the callee's generics, since
-        // what they're inferred as so far can still widen
-        let hint = function
-            .generics
-            .iter()
-            .any(|&generic| contains_generic(ctx.types_mut(), param, generic));
+        // what they're inferred as so far can still widen. It isn't one when the call's own expected
+        // type is final and those generics only occur where values flow out of the argument: then
+        // a solution that fits the call's expected type has the argument fit it, so
+        // `wrap(map(fn(x) => x, 5))` with `(5, Int)` expected solves `map` for `5`. Where values
+        // flow into the argument, such as `A` in `fn(a: A) -> B`, what they're inferred as so far
+        // can be wider than the solution, which would ask more of the argument
+        let writes = order.writes(i);
+        let hint = !writes.is_empty()
+            && (final_expected.is_none()
+                || writes
+                    .iter()
+                    .any(|&generic| occurs_contravariantly(ctx, param, generic)));
 
         // A lambda expected to be exactly the parameter's function type wraps the callee's
         // generics in its parameters (see `ParameterWrap`)
@@ -181,6 +208,10 @@ pub(crate) fn infer_call(
 
         ctx.set_argument_frame(None);
         results[i] = value.hir;
+
+        generic_types[i] =
+            generic_parameter_types(ctx, function, shared, &parameters, &restored_here);
+
         lambda_parameters[i] = parameters;
 
         // Candidates are collected against the unsubstituted parameter type, so that every
@@ -200,11 +231,9 @@ pub(crate) fn infer_call(
     let mut mappings = ctx.solve_call(&solver, order.merged().clone());
 
     // Only a call that the arguments don't solve otherwise is solved again with lambdas' untyped
-    // parameters as vars, so that nothing that compiled before changes. A type expected of the call
-    // that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one that
-    // comes from what an enclosing call has inferred so far, which it can still widen. The checks
-    // are made with the renamed generics restored, as the call is checked
-    let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint() && !fallback_only);
+    // parameters as vars, so that nothing that compiled before changes, and only for a final
+    // expected type. The checks are made with the renamed generics restored, as the call is checked
+    let expected_type = final_expected;
 
     restore_renamed(ctx, &mut mappings, renamed);
 
@@ -217,6 +246,7 @@ pub(crate) fn infer_call(
             ctx,
             function,
             &lambda_parameters,
+            &generic_types,
             &mappings,
             &mut instantiated,
         );
@@ -231,6 +261,7 @@ pub(crate) fn infer_call(
                 &solver,
                 &order,
                 &lambda_parameters,
+                &generic_types,
                 &mut alternative,
             );
 
@@ -240,14 +271,6 @@ pub(crate) fn infer_call(
             for (_, ty, _) in alternative.iter_mut().flatten() {
                 *ty = substitute_with_mappings(ctx.types_mut(), *ty, &restored);
             }
-
-            instantiate_generic_parameters(
-                ctx,
-                function,
-                &lambda_parameters,
-                &solved,
-                &mut alternative,
-            );
 
             // It's only used if it solves the call, so a call that still fails reports what it did,
             // and if it doesn't infer a generic as a type that references the callee's generics,
@@ -308,55 +331,151 @@ pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
 
 /// Checks each lambda whose untyped parameters were compiled as the callee's generics that hadn't
 /// been inferred yet, such as `x: A` in `map_list([fn(x) => x], 5)`, with them as what they're
-/// inferred as. Its body was compiled with the generic as a type it knows nothing about, so it
-/// works for whatever the generic is.
-///
-/// That's only so if nothing else in the body's scope has the generic. A call nested in an argument
-/// of a call to the same function shares its generics, and the enclosing call's lambdas can have
-/// values of them in scope, such as `cb` in `ac((fn(x, cb) => ac((fn(y, _) => cb(y), …)), …))`,
-/// so it's left as is then.
+/// inferred as (see `generic_parameter_types` for which ones are). Its body was compiled with the
+/// generic as a type it knows nothing about, so it works for whatever the generic is.
 fn instantiate_generic_parameters(
     ctx: &mut Compiler,
     function: &FunctionType,
-    lambda_parameters: &[Vec<(TypeId, TypeId)>],
+    lambda_parameters: &[Vec<LambdaParameter>],
+    generic_types: &[Vec<Option<TypeId>>],
     mappings: &HashMap<TypeId, TypeId>,
     checks: &mut [Option<(AstExpr, TypeId, TypeId)>],
 ) {
-    let enclosing = ctx.inferred_generics();
-
-    if function
-        .generics
-        .iter()
-        .any(|generic| enclosing.contains(generic))
+    for ((check, parameters), generic_types) in
+        checks.iter_mut().zip(lambda_parameters).zip(generic_types)
     {
-        return;
-    }
-
-    for (check, parameters) in checks.iter_mut().zip(lambda_parameters) {
         let Some((_, ty, _)) = check else {
             continue;
         };
 
-        let mut instantiated = HashMap::new();
-
-        for &(reference, parameter) in parameters {
-            if !references_generics(ctx, parameter, &function.generics) {
-                continue;
-            }
-
-            // A solution that still references the generics doesn't say what they are, such as in a
-            // call nested in an argument of a call to the same function, which shares them
-            let solution = substitute_with_mappings(ctx.types_mut(), parameter, mappings);
-
-            if !references_generics(ctx, solution, &function.generics) {
-                instantiated.insert(reference, solution);
-            }
-        }
+        let instantiated = instantiations(ctx, function, parameters, generic_types, mappings);
 
         if !instantiated.is_empty() {
             *ty = substitute_with_mappings(ctx.types_mut(), *ty, &instantiated);
         }
     }
+}
+
+/// What each lambda parameter with a type with the callee's generics in it is instantiated as with
+/// the mappings, keyed by its reference. A solution that still references the generics doesn't say
+/// what they are, such as in a call nested in an argument of a call to the same function, which
+/// shares them, so that parameter is left out.
+fn instantiations(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    parameters: &[LambdaParameter],
+    generic_types: &[Option<TypeId>],
+    mappings: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
+    let mut instantiated = HashMap::new();
+
+    for (parameter, &generic_type) in parameters.iter().zip(generic_types) {
+        let Some(generic_type) = generic_type else {
+            continue;
+        };
+
+        let solution = substitute_with_mappings(ctx.types_mut(), generic_type, mappings);
+
+        if !references_generics(ctx, solution, &function.generics) {
+            instantiated.insert(parameter.reference, solution);
+        }
+    }
+
+    instantiated
+}
+
+/// The type of each of an argument's lambda parameters with the callee's generics in it, with the
+/// caller's generics in `restored` that stand for renamed ones as those (see `unrestore`), if it
+/// has them and its lambda can be checked with them as what they're inferred as (see
+/// `instantiate_generic_parameters`). `shared` is whether the callee's generics are an enclosing
+/// call's.
+///
+/// That's only so if nothing else in the body's scope has the generics. A call nested in an
+/// argument of a call to the same function shares its generics, and the enclosing call's lambdas
+/// can have values of them in scope, such as `cb` in `ac((fn(x, cb) => ac((fn(y, _) => cb(y),
+/// …)), …))`. A parameter compiled as a caller's generic that stands for a renamed one (see
+/// `restorable`), such as `x: T` in `f((fn(x) => x, 1))` inside `f<T>`, is the caller's own `T`,
+/// which the caller's parameters have too, and which the body can name. Those lambdas are only
+/// checked this way if their bodies don't reference a value from outside of them with the
+/// generics (see `LambdaBody::captures_generics`), and their types don't name the caller's
+/// generics other than through these parameters (see `names_restored_generics`).
+fn generic_parameter_types(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    shared: bool,
+    parameters: &[LambdaParameter],
+    restored: &HashMap<TypeId, TypeId>,
+) -> Vec<Option<TypeId>> {
+    let originals: Vec<TypeId> = restored.keys().copied().collect();
+    let generics: Vec<TypeId> = function
+        .generics
+        .iter()
+        .copied()
+        .chain(originals.iter().copied())
+        .collect();
+
+    // Whether each lambda can be checked that way, once per lambda
+    let mut lambdas: Vec<(LambdaBody, bool)> = Vec::new();
+
+    parameters
+        .iter()
+        .map(|parameter| {
+            let ty = unrestore(ctx, restored, parameter.ty);
+
+            if !references_generics(ctx, ty, &function.generics) {
+                return None;
+            }
+
+            let is_restored = references_generics(ctx, parameter.ty, &originals);
+
+            if !shared && !is_restored {
+                return Some(ty);
+            }
+
+            let lambda = parameter.lambda;
+
+            let instantiable = if let Some(&(_, instantiable)) =
+                lambdas.iter().find(|(body, _)| *body == lambda)
+            {
+                instantiable
+            } else {
+                let instantiable = !lambda.captures_generics(ctx, &generics)
+                    && !names_restored_generics(ctx, lambda, parameters, restored, &originals);
+                lambdas.push((lambda, instantiable));
+                instantiable
+            };
+
+            instantiable.then_some(ty)
+        })
+        .collect()
+}
+
+/// Whether the lambda's type has the caller's generics in `restored` in it other than through its
+/// parameters, which it can have if its body names them, as in `fn(x) => x as T`. Then its body
+/// has values of them that don't come from its parameters, so it doesn't work for any type in
+/// their place.
+fn names_restored_generics(
+    ctx: &mut Compiler,
+    lambda: LambdaBody,
+    parameters: &[LambdaParameter],
+    restored: &HashMap<TypeId, TypeId>,
+    originals: &[TypeId],
+) -> bool {
+    if restored.is_empty() {
+        return false;
+    }
+
+    let own: HashMap<TypeId, TypeId> = parameters
+        .iter()
+        .filter(|parameter| parameter.lambda == lambda)
+        .map(|parameter| {
+            let ty = unrestore(ctx, restored, parameter.ty);
+            (parameter.reference, ty)
+        })
+        .collect();
+
+    let ty = substitute_with_mappings(ctx.types_mut(), lambda.ty, &own);
+    references_generics(ctx, ty, originals)
 }
 
 /// Whether the type references any of the generics.
@@ -394,7 +513,8 @@ fn solve_with_lambda_parameters(
     function: &FunctionType,
     solver: &CallSolver,
     order: &ArgumentOrder,
-    lambda_parameters: &[Vec<(TypeId, TypeId)>],
+    lambda_parameters: &[Vec<LambdaParameter>],
+    generic_types: &[Vec<Option<TypeId>>],
     checks: &mut [Option<(AstExpr, TypeId, TypeId)>],
 ) -> HashMap<TypeId, TypeId> {
     // Each lambda's parameters, as their references, the types they refer to and their vars
@@ -412,9 +532,17 @@ fn solve_with_lambda_parameters(
         let mut references = HashMap::new();
         let mut vars = Vec::new();
 
-        for &(reference, upper) in parameters {
-            // A parameter compiled as the callee's generics is already instantiated (see
-            // `instantiate_generic_parameters`)
+        for (parameter, generic_type) in parameters.iter().zip(&generic_types[i]) {
+            let (reference, upper) = (parameter.reference, parameter.ty);
+
+            // A parameter that's checked as what the callee's generics in its type are inferred as
+            // (see `generic_parameter_types`) is inferred as that type rather than as a var, and
+            // instantiated with this solve's mappings below
+            if let &Some(generic_type) = generic_type {
+                references.insert(reference, generic_type);
+                continue;
+            }
+
             if references_generics(ctx, upper, &function.generics) {
                 continue;
             }
@@ -433,6 +561,7 @@ fn solve_with_lambda_parameters(
 
     let mut mappings = ctx.solve_call(solver, order.merged_with(&replaced));
     let mut inferred_vars = HashMap::new();
+    let mut inferred_lambdas = Vec::new();
 
     for (i, vars) in lambdas {
         let mut inferred = HashMap::new();
@@ -449,14 +578,28 @@ fn solve_with_lambda_parameters(
             inferred_vars.insert(var, ty);
         }
 
-        if let Some((_, ty, _)) = &mut checks[i] {
-            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &inferred);
-        }
+        inferred_lambdas.push((i, inferred));
     }
 
     // The callee's generics can be inferred through the vars
     for ty in mappings.values_mut() {
         *ty = substitute_with_mappings(ctx.types_mut(), *ty, &inferred_vars);
+    }
+
+    // The parameters that weren't vars are instantiated with what the generics are inferred as
+    // here, since substituting the vars would see through their references
+    for (i, mut inferred) in inferred_lambdas {
+        inferred.extend(instantiations(
+            ctx,
+            function,
+            &lambda_parameters[i],
+            &generic_types[i],
+            &mappings,
+        ));
+
+        if let Some((_, ty, _)) = &mut checks[i] {
+            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &inferred);
+        }
     }
 
     mappings
@@ -739,6 +882,11 @@ impl ArgumentOrder {
         }
 
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
+    }
+
+    /// The callee's generics in the argument's parameter type (see `Argument::writes`).
+    fn writes(&self, i: usize) -> &IndexSet<TypeId> {
+        &self.arguments[i].writes
     }
 
     /// Whether every argument has been compiled.

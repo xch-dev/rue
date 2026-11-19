@@ -34,3 +34,10 @@ tests:
   runtime_cost: 3780
   byte_cost: 1428000
   total_cost: 1431780
+- name: lambda_before_its_value_next_to_another_lambda
+  program: (a (q 16 (a 2 (c (c (q . 2) (q . 1)) (c (q . 2) (q . 5)))) (q . 1)) (c (q 3 () (a 4 (c 6 ())) (a 5 (c 7 ()))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)))) 1)) (c (q 3 () (a (f 2) (c (r 2) ())) (a 5 (c 7 ()))) ()))
+  output: "6"
+  runtime_cost: 2128
+  byte_cost: 1068000
+  total_cost: 1070128

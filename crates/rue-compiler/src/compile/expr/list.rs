@@ -21,6 +21,10 @@ pub fn compile_list_expr(
 
     let len = list.items().count();
 
+    // The type the last item was expected to be, which an item past the end of the pairs the
+    // expected type has gets (see below)
+    let mut last_item_type = None;
+
     for (i, item) in list.items().enumerate() {
         let is_spread = if let Some(spread) = item.spread() {
             if i == len - 1 {
@@ -59,10 +63,24 @@ pub fn compile_list_expr(
             };
 
             expected_type = Some(rest);
+            last_item_type = Some(first);
 
             Some(first)
         } else {
-            None
+            // An item past the end of the expected type's pairs, such as `make()` in `[3, make()]`
+            // with `(2, nil)` expected, gets the type the item before it was expected to be: the
+            // list's expected type is often a list literal's inferred type, which only has as many
+            // items as that literal, such as `(2, nil)` for `[2]`, and that's what the type would
+            // be as a `List`. A list expected to be a type of its own that ends there can't be
+            // longer anyway, so this only matters for one whose expected type is a hint (see
+            // `Compiler::with_expected_type_hint`). Where the expected type goes on as something
+            // other than `nil`, such as `Any`, it isn't the end of a list
+            last_item_type.filter(|_| {
+                expected_type.is_some_and(|rest| {
+                    let nil = ctx.builtins().types.nil;
+                    ctx.is_assignable(rest, nil)
+                })
+            })
         };
 
         let value = if let Some(expr) = item.expr() {

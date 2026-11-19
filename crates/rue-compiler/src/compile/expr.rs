@@ -73,7 +73,7 @@ pub(crate) fn compile_lambda_argument(
     lambda: &AstLambdaExpr,
     expected_type: Option<TypeId>,
     wrap: &ParameterWrap<'_>,
-) -> (Value, Vec<(TypeId, TypeId)>) {
+) -> (Value, Vec<LambdaParameter>) {
     ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Expression),
         expr.syntax().text_range(),

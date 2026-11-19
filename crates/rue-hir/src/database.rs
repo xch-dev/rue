@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use id_arena::Arena;
+use id_arena::{Arena, ArenaBehavior, DefaultArenaBehavior};
 use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
@@ -71,6 +71,24 @@ impl Database {
 
     pub fn hir(&self, id: HirId) -> &Hir {
         &self.hir[id]
+    }
+
+    /// The id that the next node to be allocated will have.
+    pub fn next_hir_id(&self) -> HirId {
+        self.hir.next_id()
+    }
+
+    /// The nodes allocated from `start` up to `end`, both of which are from `next_hir_id`.
+    pub fn hirs_between(&self, start: HirId, end: HirId) -> impl Iterator<Item = &Hir> {
+        let arena = DefaultArenaBehavior::<Hir>::arena_id(start);
+
+        (start.index()..end.index())
+            .map(move |index| &self.hir[DefaultArenaBehavior::<Hir>::new_id(arena, index)])
+    }
+
+    /// How many symbols have been allocated, which is the index of the next one.
+    pub fn symbol_count(&self) -> usize {
+        self.symbols.len()
     }
 
     pub fn hir_mut(&mut self, id: HirId) -> &mut Hir {
