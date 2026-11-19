@@ -1,0 +1,4 @@
+diagnostics:
+- Undeclared symbol `nope` at private_failed_names_through_exported_globs.rue:4:8
+- Undeclared symbol `nada` at private_failed_names_through_exported_globs.rue:7:12
+- Undeclared symbol `X` at private_failed_names_through_exported_globs.rue:16:8

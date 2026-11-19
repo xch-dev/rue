@@ -720,10 +720,10 @@ fn link_errors(
 /// one of those. So the failures reported are those in the strongly connected components that
 /// don't link to any other, which doesn't depend on the order the imports are resolved in.
 fn reported_failures(cache: &ImportCache) -> HashSet<ImportId> {
+    // Error items only stand for failed imports, so the links only lead to them
     let links = cache
         .failed
         .keys()
-        .chain(cache.error_links.keys())
         .map(|&import| {
             let links = cache.error_links.get(&import).cloned().unwrap_or_default();
             (import, links)
@@ -735,7 +735,6 @@ fn reported_failures(cache: &ImportCache) -> HashSet<ImportId> {
     closed
         .into_iter()
         .flat_map(|index| components[index].iter().copied())
-        .filter(|import| cache.failed.contains_key(import))
         .collect()
 }
 
@@ -1452,8 +1451,8 @@ fn resolve_path(
         };
 
         // It resolves to an error without being reported. It failed in the pass before the error
-        // item was bound, since nothing had the name, so its own name is bound to error items
-        // already.
+        // item was bound, since nothing had the name, so a named import's own name is bound to
+        // error items already.
         if ctx.is_error_item(module) {
             return false;
         }
@@ -1588,6 +1587,16 @@ fn resolve_glob_import(
         };
 
         for (name, item) in items {
+            let module = ctx.scope(source_scope);
+
+            // The import the item was brought into the module by, if any
+            let via = module.item_import(item);
+
+            // Only an item that's public where it's imported from is exported. A file's sibling
+            // modules aren't items of the file, and they're public.
+            let exported = import.exported
+                && (module.item(namespace, &name) != Some(item) || module.is_item_exported(item));
+
             // A failed import's error item only fills a name that nothing else brought in. Error
             // items are only bound once nothing else can be resolved, so nothing else brings in
             // the name after one does, and the name is never ambiguous. Where this import already
@@ -1611,16 +1620,7 @@ fn resolve_glob_import(
 
                     // Like a name that several glob imports bring in (see below), it's exported if
                     // any of them exports it, and each of them brings it in, whichever bound it
-                    let module = ctx.scope(source_scope);
-                    let exported = import.exported
-                        && (module.item(namespace, &name) != Some(item)
-                            || module.is_item_exported(item));
-
-                    if exported && !ctx.scope(import_scope).is_item_exported(existing) {
-                        ctx.scope_mut(import_scope).export_item(existing);
-                        updated = true;
-                    }
-
+                    updated |= bind(ctx, import_scope, import_id, &name, existing, exported);
                     *count = (*count).max(1);
                 }
 
@@ -1647,16 +1647,6 @@ fn resolve_glob_import(
             {
                 continue;
             }
-
-            let module = ctx.scope(source_scope);
-
-            // The import the item was brought into the module by, if any
-            let via = module.item_import(item);
-
-            // Only an item that's public where it's imported from is exported. A file's sibling
-            // modules aren't items of the file, and they're public.
-            let exported = import.exported
-                && (module.item(namespace, &name) != Some(item) || module.is_item_exported(item));
 
             let existing = ctx.scope(import_scope).item(namespace, &name);
 
@@ -1714,12 +1704,6 @@ fn resolve_glob_import(
             } else if bind(ctx, import_scope, import_id, &name, item, exported) {
                 updated = true;
                 *count += 1;
-
-                add_error_origins(
-                    &mut cache.error_origins,
-                    (import_scope, item),
-                    (source_scope, item),
-                );
             }
         }
     }
