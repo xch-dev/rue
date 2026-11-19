@@ -109,3 +109,11 @@ test fn ignores_missing_url_entry() -> Any {
         Solution { new_url: "https://b", new_updater_puzzle_hash: nil },
     ])
 }
+
+test fn keeps_the_updater_for_a_long_hash() -> Any {
+    check([
+        metadata(),
+        sha256("updater"),
+        Solution { new_url: nil, new_updater_puzzle_hash: sha256("new_updater") + 0x00 },
+    ])
+}

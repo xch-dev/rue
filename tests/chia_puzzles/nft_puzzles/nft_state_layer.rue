@@ -252,3 +252,10 @@ test fn rejects_two_updates() -> Any {
 test fn reference_rejects_two_updates() -> Any {
     run(reference, two_updates())
 }
+
+test fn keeps_the_state_with_an_odd_amount_other_than_one() -> Any {
+    check(spend(
+        default_updater_hash(),
+        [CreateCoin { puzzle_hash: sha256("inner_puzzle"), amount: 3 }],
+    ))
+}

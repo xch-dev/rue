@@ -305,3 +305,48 @@ test fn rejects_a_prefixed_announcement() -> Any {
 test fn reference_rejects_a_prefixed_announcement() -> Any {
     run(reference, prefixed_announcement())
 }
+
+test fn transfers_to_a_new_transfer_program() -> Any {
+    check(spend(
+        simple_transfer_program(),
+        [
+            odd_coin(),
+            NewOwner {
+                transfer_solution: [sha256("new_did") as Any, (1, [ReserveFee { amount: 2 }]), nil],
+            },
+        ],
+    ))
+}
+
+// A transfer program that keeps the owner and outputs all of the conditions it's given in a
+// remark: `(c 2 (c () (c (c (c (q . 1) (c 5 ())) ()) ())))`.
+fn conditions_transfer_program() -> Any {
+    [
+        4 as Any,
+        2,
+        [4 as Any, nil, [4 as Any, [4 as Any, [4 as Any, (1, 1), [4 as Any, 5, nil]], nil], nil]],
+    ]
+}
+
+test fn passes_all_conditions_to_a_transfer() -> Any {
+    check(spend(
+        conditions_transfer_program(),
+        [
+            CreateCoin { puzzle_hash: sha256("other"), amount: 3 },
+            odd_coin(),
+            NewOwner { transfer_solution: [sha256("new_did") as Any, nil, nil] },
+            ReserveFee { amount: 1 },
+        ],
+    ))
+}
+
+test fn passes_all_conditions_without_a_transfer() -> Any {
+    check(spend(
+        conditions_transfer_program(),
+        [
+            CreateCoin { puzzle_hash: sha256("other"), amount: 3 },
+            odd_coin(),
+            ReserveFee { amount: 1 },
+        ],
+    ))
+}

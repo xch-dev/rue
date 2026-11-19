@@ -92,3 +92,7 @@ test fn ignores_an_empty_url() -> Any {
 test fn ignores_an_empty_key() -> Any {
     check([metadata(), sha256("updater"), (nil, "https://b")])
 }
+
+test fn updates_only_the_first_duplicate_key() -> Any {
+    check([[("u", ["https://a"]), ("u", ["https://b"])], sha256("updater"), ("u", "https://c")])
+}

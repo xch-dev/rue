@@ -190,3 +190,36 @@ test fn transfers_without_trades() -> Any {
         },
     ])
 }
+
+test fn rounds_a_negative_royalty_down() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        300,
+        sha256("did"),
+        nil,
+        Solution {
+            new_owner: sha256("new_did"),
+            trade_prices: [TradePrice {
+                amount: -12345,
+                settlement_puzzle_hash: sha256("xch_settlement"),
+            }],
+            new_did_inner_puzzle_hash: sha256("new_did_inner"),
+        },
+    ])
+}
+
+test fn rounds_a_negative_percentage_down() -> Any {
+    check([
+        singleton_struct(),
+        sha256("royalty"),
+        -1,
+        sha256("did"),
+        nil,
+        Solution {
+            new_owner: sha256("new_did"),
+            trade_prices: trade_prices(),
+            new_did_inner_puzzle_hash: sha256("new_did_inner"),
+        },
+    ])
+}
