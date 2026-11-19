@@ -1,0 +1,6 @@
+diagnostics:
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at inferred_operand_errors.rue:11:5
+- Cannot infer generic `T` for `wrap`; specify it explicitly, e.g. `wrap::<...>()` at inferred_operand_errors.rue:15:5
+- Cannot infer generic `T` for `external`; specify it explicitly, e.g. `external::<...>()` at inferred_operand_errors.rue:19:5
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at inferred_operand_errors.rue:23:7
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at inferred_operand_errors.rue:27:6

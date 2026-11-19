@@ -865,7 +865,7 @@ impl Compiler {
     }
 
     /// Compiles with an expected type that's only a hint, which the value doesn't have to be
-    /// assignable to, or one that it does. A hint is the type of a guard or a cast, of an argument
+    /// assignable to, or one that it does. A hint is the type of a cast, of an argument
     /// whose parameter type references the generics of the call being inferred, which can still
     /// widen it, or of an element of a pair or list that a member of its expected type, such as
     /// `Any`, could hold as another pair (see `holds_other_pairs`). The

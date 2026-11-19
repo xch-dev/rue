@@ -1,0 +1,28 @@
+// The value a guard checks is compiled on its own, without the guard's type expected of it
+
+fn pick<T>(first: T, second: T) -> T {
+    if first is Int {
+        return second;
+    }
+    first
+}
+
+test fn explicit_unchecked_cast() {
+    let value: Any = (1, 2);
+    assert !(unchecked_cast::<Any>(value) is Bytes32);
+    assert unchecked_cast::<Any>(value) is (Int, Int);
+}
+
+test fn generic_inferred_from_arguments() {
+    let pair: Any = (1, 2);
+    let number: Any = 5;
+    assert !(pick(pair, number) is Bytes32);
+    assert pick(number, pair) is (Int, Int);
+}
+
+test fn list_literal() {
+    let pair: Any = (1, 2);
+    let number: Any = 5;
+    assert !([pair] is List<Int>);
+    assert [number] is List<Int>;
+}

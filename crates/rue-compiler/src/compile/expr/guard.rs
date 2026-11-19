@@ -15,8 +15,10 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
     };
 
     let expr = if let Some(expr) = guard.expr() {
-        // The value only has to be guarded or cast to it
-        ctx.with_expected_type_hint(true, |ctx| compile_expr(ctx, &expr, Some(ty)))
+        // The guard's type isn't expected of the value, since it's what the value is checked
+        // against. Otherwise it would infer a call's generics, such as `T` in
+        // `unchecked_cast(value) is Bytes32`, which leaves nothing to check.
+        compile_expr(ctx, &expr, None)
     } else {
         debug!("Unresolved guard expr");
         ctx.unresolved()
