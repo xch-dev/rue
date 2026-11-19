@@ -178,17 +178,6 @@ pub(crate) fn infer_call(
     // as is
     let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint());
 
-    // A call nested in an argument of a call to the same function shares its generics, which an
-    // enclosing call is still inferring, so what they're inferred as here can stand for that call's
-    let shared = function
-        .generics
-        .iter()
-        .any(|generic| ctx.inferred_generics().contains(generic));
-
-    if shared {
-        lambda_parameters.iter_mut().for_each(Vec::clear);
-    }
-
     if renamed.is_empty() {
         instantiate_generic_parameters(ctx, function, &lambda_parameters, &mappings, &mut checks);
     }
@@ -209,8 +198,14 @@ pub(crate) fn infer_call(
             &mut alternative,
         );
 
-        // It's only used if it solves the call, so a call that still fails reports what it did
-        if solves_call(ctx, function, &alternative, &solved, expected_type) {
+        // It's only used if it solves the call, so a call that still fails reports what it did, and
+        // if it doesn't infer a generic as a type that references the callee's generics, which a
+        // call nested in an argument of a call to the same function shares with it
+        if solves_call(ctx, function, &alternative, &solved, expected_type)
+            && !solved
+                .values()
+                .any(|&ty| references_generics(ctx, ty, &function.generics))
+        {
             mappings = solved;
             checks = alternative;
         }
@@ -281,7 +276,8 @@ fn instantiate_generic_parameters(
                 continue;
             }
 
-            // A solution that still references the generics doesn't say what they are
+            // A solution that still references the generics doesn't say what they are, such as in a
+            // call nested in an argument of a call to the same function, which shares them
             let solution = substitute_with_mappings(ctx.types_mut(), parameter, mappings);
 
             if !references_generics(ctx, solution, &function.generics) {
