@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use clvmr::{Allocator, serde::node_from_bytes};
 use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
-use rue_diagnostic::{DiagnosticKind, SourceKind};
+use rue_diagnostic::{DiagnosticKind, SourceKind, SpreadTarget};
 use rue_hir::{
     Declaration, FunctionKind, FunctionSymbol, HirId, ParameterSymbol, Symbol, SymbolId, Test,
 };
@@ -62,7 +62,10 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
             if i == len - 1 {
                 true
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(
+                    &spread,
+                    DiagnosticKind::NonFinalSpread(SpreadTarget::Parameter),
+                );
                 false
             }
         } else {

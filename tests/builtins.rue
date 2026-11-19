@@ -138,6 +138,15 @@ test fn verifications() {
         0x39cb1950dba19a7bee9924b5bd2b29f190ffe4ef,
     );
 
+    let pk1 = 0x8b202593319bce41b090f3309986de59861ab1e2ff32aef871d83f9aac232c7253c01f1f649c6f69879c441286319de4 as PublicKey;
+    let sig1 = 0x942adad4dbeadcfd75aaa11940a5e5e16a8d8e91742029a3944610635ccc0572eceeb1c89d8a0e904c5d30b9497e700312dee7b833535effef24953dbf8f8aa770e2f1a8e01d3b6f6844e01a635ed95664babe9d62a2572651d0258461c8ba00 as Signature;
+    let pk2 = 0xb7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb as PublicKey;
+    let sig2 = 0x80c37921e62092ef55f85f9eccb21bd80cfaafc0bce9cbdd6999b1a8cabadc8f23720f0261efafaf53cbcc74580b9432007b66d824668900a94934f184bc41bf9ccf9ec141c6f7da610aa7296cd0a181ae8fe176b607aa4c367f15ee0cb985d7 as Signature;
+    let message = 0x39cb1950dba19a7bee9924b5bd2b29f190ffe4ef as Bytes;
+
+    bls_pairing_identity(...[pk1, sig1, pk2, sig2]);
+    bls_verify(sig2, ...[pk1, message]);
+
     secp256k1_verify(
         0x02390b19842e100324163334b16947f66125b76d4fa4a11b9ccdde9b7398e64076 as K1PublicKey,
         0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2,

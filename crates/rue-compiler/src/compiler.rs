@@ -1172,7 +1172,11 @@ impl Compiler {
                 let to = self.type_name(to);
 
                 if check != Check::Impossible {
-                    self.diagnostic(node, DiagnosticKind::UnconstrainableComparison(from, to));
+                    if cast {
+                        self.diagnostic(node, DiagnosticKind::UnguardedCast(from, to));
+                    } else {
+                        self.diagnostic(node, DiagnosticKind::UnguardedAssignment(from, to));
+                    }
                 } else if cast {
                     self.diagnostic(node, DiagnosticKind::IncompatibleCast(from, to));
                 } else {

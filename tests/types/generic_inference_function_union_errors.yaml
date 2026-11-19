@@ -1,4 +1,4 @@
 diagnostics:
-- "Cannot compare `fn(value: Int) -> Int` to `Int` without a type guard, since the runtime value must be constrained at generic_inference_function_union_errors.rue:18:22"
-- "Cannot compare `fn(value: Int) -> Int` to `(2 @ (Atom | (<2>, <2>)), Int) | nil` without a type guard, since the runtime value must be constrained at generic_inference_function_union_errors.rue:21:34"
-- Cannot compare `0 @ (Atom | (<0>, <0>))` to `Int` without a type guard, since the runtime value must be constrained at generic_inference_function_union_errors.rue:23:11
+- "Cannot assign `fn(value: Int) -> Int` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_function_union_errors.rue:18:22"
+- "Cannot assign `fn(value: Int) -> Int` to `(2 @ (Atom | (<2>, <2>)), Int) | nil` without a type guard, since the value isn't always a valid `(2 @ (Atom | (<2>, <2>)), Int) | nil` at generic_inference_function_union_errors.rue:21:34"
+- Cannot assign `0 @ (Atom | (<0>, <0>))` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_function_union_errors.rue:23:11

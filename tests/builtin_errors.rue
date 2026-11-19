@@ -1,0 +1,83 @@
+fn main(
+    bytes: Bytes,
+    hash: Bytes32,
+    int: Int,
+    ints: List<Int>,
+    bools: List<Bool>,
+    pk: PublicKey,
+    sig: Signature,
+    pks: List<PublicKey>,
+    sigs: List<Signature>,
+    k1_pk: K1PublicKey,
+    k1_sig: K1Signature,
+    r1_pk: R1PublicKey,
+    r1_sig: R1Signature,
+) -> nil {
+    // Hashes take one value, or one spread list
+    let _ = sha256();
+    let _ = sha256(bytes, bytes);
+    let _ = sha256(int);
+    let _ = sha256(...ints);
+    let _ = sha256_inline(...[bytes]);
+    let _ = keccak256(bytes, bytes);
+    let _ = keccak256_inline(...[bytes]);
+
+    // Builtins that take one list
+    let _ = concat();
+    let _ = concat(bytes, bytes);
+    let _ = concat(...[bytes]);
+    let _ = sum(int, int);
+    let _ = sum(...ints);
+    let _ = difference(bools);
+    let _ = product();
+    let _ = any(ints);
+    let _ = all(...bools);
+    let _ = g1_sum(sigs);
+    let _ = g1_difference(pk);
+    let _ = g2_sum(pks);
+    let _ = g2_difference(...sigs);
+
+    // Builtins with a fixed number of arguments
+    let _ = coinid(hash, hash);
+    let _ = coinid(hash, hash, bytes);
+    let _ = coinid(...[hash, hash, int]);
+    let _ = substr(bytes);
+    let _ = substr(bytes, int, int, int);
+    let _ = substr(int, bytes);
+    let _ = substr(bytes, ...[int]);
+    let _ = divmod(int);
+    let _ = divmod(int, bytes);
+    let _ = modpow(int, int);
+    let _ = modpow(int, int, bytes);
+    let _ = pubkey_for_exp();
+    let _ = pubkey_for_exp(pk);
+    let _ = pubkey_for_exp(...[int]);
+    let _ = g1_map();
+    let _ = g1_map(bytes, bytes, bytes);
+    let _ = g1_map(int);
+    let _ = g2_map(bytes, int);
+    let _ = g2_map(...[bytes]);
+
+    // Pairings take alternating arguments, or a spread alternating list
+    let _ = bls_pairing_identity(pk);
+    let _ = bls_pairing_identity(sig, pk);
+    let _ = bls_pairing_identity(pk, ...[sig]);
+    let _ = bls_verify();
+    let _ = bls_verify(sig, pk);
+    let _ = bls_verify(pk, pk, bytes);
+    let _ = bls_verify(sig, pk, ...[bytes]);
+    let _ = bls_verify(sig, ...pks);
+    let _ = bls_pairing_identity(...pks);
+
+    // Secp verification takes a key, a message hash and a signature of the same curve
+    let _ = secp256k1_verify(k1_pk, hash);
+    let _ = secp256k1_verify(r1_pk, hash, k1_sig);
+    let _ = secp256r1_verify(r1_pk, bytes, r1_sig);
+    let _ = secp256r1_verify(r1_pk, hash, k1_sig);
+    let _ = secp256r1_verify(...[r1_pk, hash, r1_sig]);
+
+    // Only the last argument can be spread
+    let _ = sha256(...ints, bytes);
+
+    nil
+}

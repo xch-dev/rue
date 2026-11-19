@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::AstListType;
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_types::{Pair, Type, TypeId};
 
 use crate::{Compiler, compile_type};
@@ -16,7 +16,10 @@ pub fn compile_list_type(ctx: &mut Compiler, list: &AstListType) -> TypeId {
             if i == len - 1 {
                 nil_terminated = false;
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(
+                    &spread,
+                    DiagnosticKind::NonFinalSpread(SpreadTarget::ListItem),
+                );
             }
         }
 

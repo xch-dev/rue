@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::{AstListBinding, AstNode};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_hir::{BindingSymbol, Declaration, Hir, Symbol, SymbolId, SymbolPath, Value};
 
 use crate::{Compiler, compile_pair_fields, create_binding};
@@ -22,7 +22,10 @@ pub fn create_list_binding(ctx: &mut Compiler, symbol: SymbolId, list_binding: &
             if i == len - 1 {
                 is_cons = false;
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(
+                    &spread,
+                    DiagnosticKind::NonFinalSpread(SpreadTarget::ListItem),
+                );
             }
         }
 

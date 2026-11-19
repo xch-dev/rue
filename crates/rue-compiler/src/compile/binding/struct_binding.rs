@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use log::debug;
 use rue_ast::{AstNode, AstStructBinding};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_hir::{BindingSymbol, Declaration, Hir, Symbol, SymbolId, SymbolPath, Value};
 
 use crate::{
@@ -30,7 +30,7 @@ pub fn create_struct_binding(
 
         if let Some(spread) = field.spread() {
             if i != len - 1 {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread(SpreadTarget::Field));
             }
 
             let binding_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {

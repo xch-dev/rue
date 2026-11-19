@@ -1,2 +1,2 @@
 diagnostics:
-- Can only spread the last element in a list at destructuring_errors.rue:2:10
+- Can only spread the last item in a list at destructuring_errors.rue:2:10

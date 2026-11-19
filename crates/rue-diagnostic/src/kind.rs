@@ -1,6 +1,28 @@
+use std::fmt;
+
 use thiserror::Error;
 
 use crate::{AttributeLevel, ForbiddenBy, Lint, LintGroup};
+
+/// What a spread operator that isn't on the last item was applied to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpreadTarget {
+    ListItem,
+    Argument,
+    Parameter,
+    Field,
+}
+
+impl fmt::Display for SpreadTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::ListItem => "item in a list",
+            Self::Argument => "argument",
+            Self::Parameter => "parameter",
+            Self::Field => "field",
+        })
+    }
+}
 
 #[derive(Debug, Clone, Error)]
 pub enum DiagnosticKind {
@@ -152,9 +174,14 @@ pub enum DiagnosticKind {
     IncompatibleGuard(String, String),
 
     #[error(
-        "Cannot compare `{0}` to `{1}` without a type guard, since the runtime value must be constrained"
+        "Cannot assign `{0}` to `{1}` without a type guard, since the value isn't always a valid `{1}`"
     )]
-    UnconstrainableComparison(String, String),
+    UnguardedAssignment(String, String),
+
+    #[error(
+        "Cannot cast `{0}` to `{1}` without a type guard, since the value isn't always a valid `{1}`"
+    )]
+    UnguardedCast(String, String),
 
     #[error("Cannot check if value is of deeply nested type at runtime")]
     TypeCheckDepthExceeded,
@@ -245,13 +272,13 @@ pub enum DiagnosticKind {
     #[error("Cannot call non-function value with type `{0}`")]
     InvalidFunctionCall(String),
 
-    #[error("Expected {0} arguments, but found {1}")]
+    #[error("Expected {0} {noun}, but found {1}", noun = if *.0 == 1 { "argument" } else { "arguments" })]
     ExpectedArguments(usize, usize),
 
     #[error("Cannot infer generic `{0}` for `{1}`; specify it explicitly, e.g. `{1}::<...>()`")]
     CannotInferGeneric(String, String),
 
-    #[error("Expected between {0} and {1} arguments, but found {1}")]
+    #[error("Expected between {0} and {1} arguments, but found {2}")]
     ExpectedArgumentsBetween(usize, usize, usize),
 
     #[error("Expected an even number of arguments")]
@@ -263,8 +290,8 @@ pub enum DiagnosticKind {
     #[error("Cannot destructure non-pair parameter with type `{0}`")]
     CannotDestructureParameter(String),
 
-    #[error("Can only spread the last element in a list")]
-    NonFinalSpread,
+    #[error("Can only spread the last {0}")]
+    NonFinalSpread(SpreadTarget),
 
     #[error("Cannot spread the last argument, since the function has no spread parameter")]
     UnexpectedSpread,

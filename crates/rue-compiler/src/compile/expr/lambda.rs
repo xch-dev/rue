@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use log::debug;
 use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, HirId, ParameterSymbol, Symbol, Value};
 use rue_types::{
     FunctionParameter, FunctionType, Generic, Type, TypeId, Union, contained_generics,
@@ -157,7 +157,10 @@ pub(crate) fn compile_lambda(
             if i == len - 1 {
                 true
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                ctx.diagnostic(
+                    &spread,
+                    DiagnosticKind::NonFinalSpread(SpreadTarget::Parameter),
+                );
                 false
             }
         } else {

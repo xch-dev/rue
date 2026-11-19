@@ -1,0 +1,18 @@
+struct Spread {
+    ...first: List<Int>,
+    last: Int,
+}
+
+fn params(...first: List<Int>, last: Int) -> Int {
+    last
+}
+
+fn main(pair: Spread) -> Int {
+    let list = [...[1], 2];
+    let typed: [...List<Int>, Int] = list;
+    let [...items, item] = typed;
+    let { ...first, last } = pair;
+    let lambda = fn(...rest: List<Int>, last: Int) => last;
+    let lambda_type: fn(...rest: List<Int>, last: Int) -> Int = lambda;
+    params(...[1], 2) + sum(...[1], 2) + item + last
+}
