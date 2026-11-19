@@ -1,0 +1,25 @@
+// A private type re-exported through `a::m` is reported once, even where signatures use it.
+// Signatures are declared between the two import passes, but the first pass already reports the
+// re-export and exports the type, so the signatures find it. That holds whichever module is
+// resolved first, which depends on module names (see private_reexported_types_in_signatures_a and
+// private_reexported_types_in_signatures_z).
+mod a {
+    type X = Int;
+
+    export mod m {
+        export super::X;
+    }
+}
+
+mod z {
+    import super::a::m::X;
+
+    export fn f(x: X) -> super::a::m::X {
+        x
+    }
+}
+
+fn main() -> Int {
+    let x: a::m::X = 1;
+    z::f(x)
+}

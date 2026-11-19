@@ -3900,3 +3900,60 @@ fn reexports_of_private_items_through_project_are_reported() {
         ]
     );
 }
+
+#[test]
+fn chains_of_private_reexports_through_project_globs_are_reported_at_their_start() {
+    let compiled = compile(
+        "
+        const Y: Int = 1;
+        export Y;
+
+        export mod p {
+            export mod a {
+                export project::*;
+
+                export mod d {
+                    export super::Y;
+                }
+            }
+        }
+
+        fn main() -> Int {
+            p::a::d::Y + p::a::Y
+        }
+        ",
+    );
+
+    // `a`'s glob import of `project` exports `Y` once the root's re-export is reported, so `d`
+    // waits for it
+    assert_eq!(compiled.errors(), ["3:16 PrivateReexport(\"Y\")"]);
+}
+
+#[test]
+fn chains_of_private_reexports_through_globs_beside_private_globs_are_reported_at_their_start() {
+    let compiled = compile(
+        "
+        export mod p {
+            const Y: Int = 1;
+            export Y;
+
+            export mod a {
+                import super::*;
+                export super::*;
+
+                export mod d {
+                    export super::Y;
+                }
+            }
+        }
+
+        fn main() -> Int {
+            p::a::d::Y + p::a::Y
+        }
+        ",
+    );
+
+    // The binding of `Y` in `a` is recorded on the glob import that doesn't export it, but the one
+    // that does exports it once `p`'s re-export is reported, so `d` waits for it
+    assert_eq!(compiled.errors(), ["4:20 PrivateReexport(\"Y\")"]);
+}

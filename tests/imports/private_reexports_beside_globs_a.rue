@@ -1,0 +1,50 @@
+// `m`'s named import of `X` shadows its glob import of `X` even though it only finds a private item
+// until the re-export at the start of its chain is reported and exports it, so the glob import
+// doesn't take the name first and the named import isn't reported as a duplicate. That holds
+// whichever module the glob import imports from is resolved first, which depends on module names
+// (see private_reexports_beside_globs_a and private_reexports_beside_globs_z). In `n`, the
+// re-export of `Y` exports the public value, so the private type it found is never exported, and
+// the glob import brings in the type instead. `m`'s glob import still brings in the type `Y`.
+mod a {
+    const X: Int = 1;
+    export const Y: Int = 2;
+    type Y = Int;
+
+    export fn g(y: Y) -> Y {
+        y
+    }
+
+    export mod inner {
+        export super::X;
+        export super::Y;
+    }
+}
+
+mod z {
+    export const X: Int = 3;
+    export type Y = Bytes;
+}
+
+mod m {
+    export super::a::inner::X;
+    import super::z::*;
+
+    export fn f(y: Y) -> Y {
+        y
+    }
+}
+
+mod n {
+    export super::a::inner::Y;
+    import super::z::*;
+
+    export fn f(y: Y) -> Y {
+        y
+    }
+}
+
+fn main() -> Int {
+    assert m::f("m") == "m";
+    assert n::f("n") == "n";
+    m::X + n::Y + z::X + a::g(4)
+}

@@ -212,6 +212,84 @@ pub struct ImportCache {
     pass_limit_reported: bool,
 }
 
+impl ImportCache {
+    /// Whether an exported named import with no path is a private re-export that hasn't been
+    /// reported yet: it only found items that are private where it found them.
+    fn is_private_reexport(&self, ctx: &Compiler, import_id: ImportId) -> bool {
+        let Some((_, found)) = self.reexports.get(&import_id) else {
+            return false;
+        };
+        let module = ctx.scope(ctx.import(import_id).base_scope);
+
+        !self
+            .errors
+            .contains_key(&(import_id, ImportError::PrivateReexport))
+            && !found
+                .iter()
+                .any(|(&item, &in_module)| !in_module || module.is_item_exported(item))
+    }
+
+    /// The private re-exports that would export an item that a module has with a name but doesn't
+    /// export, once they're reported, since a reported re-export exports what it found (see
+    /// [`report_private_reexports`]). They're those into the module the item was found in, and, if
+    /// a glob import brought it in, those that would export it in a module that an exported glob
+    /// import of `super` or `project` brings it in from, which then exports it too, as any glob
+    /// import that brings in a name exports it if it's exported.
+    fn exporters(
+        &self,
+        ctx: &Compiler,
+        scope: ScopeId,
+        name: &str,
+        item: Item,
+    ) -> IndexSet<ImportId> {
+        let mut exporters = IndexSet::new();
+        let mut visited = HashSet::new();
+        let mut stack = vec![scope];
+
+        while let Some(scope) = stack.pop() {
+            let module = ctx.scope(scope);
+
+            if !visited.insert(scope) || module.is_item_exported(item) {
+                continue;
+            }
+
+            exporters.extend(
+                self.reexports
+                    .iter()
+                    .filter(|&(&import_id, (into, found))| {
+                        *into == scope
+                            && found.contains_key(&item)
+                            && self.is_private_reexport(ctx, import_id)
+                    })
+                    .map(|(&import_id, _)| import_id),
+            );
+
+            let by_glob = module
+                .item_import(item)
+                .is_some_and(|via| matches!(ctx.import(via).items, Items::All(_)));
+
+            if !by_glob {
+                continue;
+            }
+
+            for glob in module.imports() {
+                let glob = ctx.import(glob);
+
+                if matches!(glob.items, Items::All(_))
+                    && glob.exported
+                    && glob.from_parent
+                    && glob.path.is_empty()
+                    && ctx.scope(glob.base_scope).item(item.namespace(), name) == Some(item)
+                {
+                    stack.push(glob.base_scope);
+                }
+            }
+        }
+
+        exporters
+    }
+}
+
 /// How an import failed: the errors it's reported with, and the namespaces that a named import
 /// binds its name to error items in, in the scope it's in.
 #[derive(Debug, Clone)]
@@ -529,35 +607,40 @@ fn report_pass_limit(
 fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool {
     let private = cache
         .reexports
-        .iter()
-        .filter(|&(&import_id, (_, found))| {
-            let module = ctx.scope(ctx.import(import_id).base_scope);
-
-            !cache
-                .errors
-                .contains_key(&(import_id, ImportError::PrivateReexport))
-                && !found
-                    .iter()
-                    .any(|(&item, &in_module)| !in_module || module.is_item_exported(item))
-        })
-        .map(|(&import_id, _)| import_id)
+        .keys()
+        .copied()
+        .filter(|&import_id| cache.is_private_reexport(ctx, import_id))
         .collect::<Vec<_>>();
 
-    // An import through `super` (or `project`, below the root) waits for the private re-exports
-    // into the module that it names, and is only reported if it still finds something private once
-    // they are, so a chain of re-exports is reported once, at its start. That module encloses the
-    // import's own, so some import doesn't wait.
-    let waits = |import_id: ImportId| {
-        let base = ctx.import(import_id).base_scope;
-
-        base != cache.reexports[&import_id].0
-            && private.iter().any(|other| cache.reexports[other].0 == base)
-    };
-
-    let reported = private
+    // An import waits for the other private re-exports that would export something it found once
+    // they're reported (see [`ImportCache::exporters`]), and is only reported if it still finds
+    // nothing public once they are, so a chain of re-exports is reported once, at its start. That
+    // includes a chain through an exported glob import of `super` or `project`, and a module's own
+    // re-export of a name that one brings in. Imports that only wait for each other, such as two
+    // re-exports of a name in one module, are all reported.
+    let edges = private
         .iter()
-        .copied()
-        .filter(|&import_id| !waits(import_id))
+        .map(|&import_id| {
+            let import = ctx.import(import_id);
+            let Items::Named(name) = &import.items else {
+                unreachable!("only named imports are recorded");
+            };
+            let mut waits_for = IndexSet::new();
+
+            for &item in cache.reexports[&import_id].1.keys() {
+                waits_for.extend(cache.exporters(ctx, import.base_scope, name.text(), item));
+            }
+
+            (import_id, waits_for)
+        })
+        .collect::<IndexMap<_, _>>();
+
+    let (_, component_of, closed) = closed_components(&edges);
+
+    // They're reported in the order they were recorded in
+    let reported = private
+        .into_iter()
+        .filter(|import_id| closed.contains(&component_of[import_id]))
         .collect::<Vec<_>>();
 
     for &import_id in &reported {
@@ -976,12 +1059,15 @@ struct Blockers {
 /// brought in what it imports, unless the module it imports from can't have the item. A glob
 /// import could until its path is resolved, and then if the module it imports from has the item
 /// or could still bring it in. With `exported`, only the items that the module would export count,
-/// as for a glob import of it. A cycle of modules that nothing else brings the item into can't
-/// bring it in. Every import that could is recorded in `blockers`.
+/// as for a glob import of it. With `cache`, an item that isn't exported yet counts if a private
+/// re-export that's still to be reported would export it (see [`ImportCache::exporters`]). A cycle
+/// of modules that nothing else brings the item into can't bring it in. Every import that could is
+/// recorded in `blockers`.
 #[allow(clippy::too_many_arguments)]
 fn may_gain(
     ctx: &Compiler,
     resolution: &Resolution,
+    cache: Option<&ImportCache>,
     scope: ScopeId,
     namespace: Namespace,
     name: &str,
@@ -996,7 +1082,9 @@ fn may_gain(
     let target = ctx.scope(scope);
 
     if let Some(item) = target.item(namespace, name)
-        && (!exported || target.is_item_exported(item))
+        && (!exported
+            || target.is_item_exported(item)
+            || cache.is_some_and(|cache| !cache.exporters(ctx, scope, name, item).is_empty()))
     {
         return true;
     }
@@ -1012,13 +1100,13 @@ fn may_gain(
         .flatten()
     {
         if relevant(import) {
-            gains |= may_bind(ctx, resolution, import, namespace, name, blockers);
+            gains |= may_bind(ctx, resolution, cache, import, namespace, name, blockers);
         }
     }
 
     for &import in resolution.glob_imports.get(&scope).into_iter().flatten() {
         if relevant(import) {
-            gains |= may_import(ctx, resolution, import, namespace, name, blockers);
+            gains |= may_import(ctx, resolution, cache, import, namespace, name, blockers);
         }
     }
 
@@ -1029,13 +1117,14 @@ fn may_gain(
 fn may_bind(
     ctx: &Compiler,
     resolution: &Resolution,
+    cache: Option<&ImportCache>,
     import: ImportId,
     namespace: Namespace,
     name: &str,
     blockers: &mut Blockers,
 ) -> bool {
     !resolution.bound.contains(&import)
-        && may_import(ctx, resolution, import, namespace, name, blockers)
+        && may_import(ctx, resolution, cache, import, namespace, name, blockers)
 }
 
 /// Whether a module will bind a name in a namespace to an error item once nothing else can be
@@ -1078,6 +1167,7 @@ fn fails_to_import(
 fn may_import(
     ctx: &Compiler,
     resolution: &Resolution,
+    cache: Option<&ImportCache>,
     import: ImportId,
     namespace: Namespace,
     name: &str,
@@ -1089,7 +1179,7 @@ fn may_import(
     };
 
     may_gain(
-        ctx, resolution, source, namespace, name, None, !members, blockers,
+        ctx, resolution, cache, source, namespace, name, None, !members, blockers,
     ) || (members && ctx.sibling_item(source, namespace, name).is_some())
 }
 
@@ -1266,6 +1356,7 @@ fn lookup(
         && may_gain(
             ctx,
             resolution,
+            None,
             scope,
             namespace,
             name,
@@ -1544,11 +1635,10 @@ fn resolve_glob_import(
 ) -> bool {
     let mut updated = false;
 
-    let count = &mut cache
+    let mut count = cache
         .glob_import_counts
-        .entry(import_id)
-        .or_insert_with(|| (star.clone(), 0))
-        .1;
+        .get(&import_id)
+        .map_or(0, |&(_, count)| count);
 
     // Glob imports bring in every exported item of a module. A glob import of a parent module
     // (through `super` or `project`) brings in its private items too, but doesn't export them.
@@ -1621,14 +1711,15 @@ fn resolve_glob_import(
                     // Like a name that several glob imports bring in (see below), it's exported if
                     // any of them exports it, and each of them brings it in, whichever bound it
                     updated |= bind(ctx, import_scope, import_id, &name, existing, exported);
-                    *count = (*count).max(1);
+                    count = count.max(1);
                 }
 
                 continue;
             }
 
             // A named import of the name shadows the glob import in the namespaces that it
-            // brings an item into, or could still
+            // brings an item into, or could still, including once a private re-export that's
+            // still to be reported exports what it imports
             if resolution
                 .named_imports_of(import_scope, &name)
                 .into_iter()
@@ -1638,6 +1729,7 @@ fn resolve_glob_import(
                         || may_bind(
                             ctx,
                             resolution,
+                            Some(cache),
                             named,
                             namespace,
                             &name,
@@ -1683,7 +1775,7 @@ fn resolve_glob_import(
                     ctx.import_mut(import_id)
                         .declarations
                         .push((name, item.into()));
-                    *count += 1;
+                    count += 1;
                 }
 
                 // The binding (or its ambiguity) is exported if any of the glob imports exports
@@ -1703,10 +1795,16 @@ fn resolve_glob_import(
                 }
             } else if bind(ctx, import_scope, import_id, &name, item, exported) {
                 updated = true;
-                *count += 1;
+                count += 1;
             }
         }
     }
+
+    cache
+        .glob_import_counts
+        .entry(import_id)
+        .or_insert_with(|| (star.clone(), 0))
+        .1 = count;
 
     updated
 }

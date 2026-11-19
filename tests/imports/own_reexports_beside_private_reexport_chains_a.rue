@@ -1,0 +1,30 @@
+// `a`'s own re-export of `X` finds its private constant and the type that its re-export through
+// `super` brings in, which is public once the start of that chain is reported. So it waits for the
+// start of the chain, and isn't reported, like a re-export that finds a public item in one namespace
+// and a private one in another. `z` re-exports `X` through `super` the same way. That holds
+// whichever of them is resolved first, which depends on module names (see
+// own_reexports_beside_private_reexport_chains_a and own_reexports_beside_private_reexport_chains_z).
+mod p {
+    type X = Int;
+    export X;
+
+    export mod a {
+        const X: Int = 1;
+        export super::X;
+        export X;
+
+        export fn f() -> Int {
+            X
+        }
+    }
+
+    export mod z {
+        export super::X;
+    }
+}
+
+fn main() -> Int {
+    let x: p::a::X = p::a::f();
+    let y: p::z::X = 2;
+    x + y
+}

@@ -1,0 +1,25 @@
+// A chain of re-exports of the private `Y` that passes through `a`'s glob import of `super` is
+// reported once, at its start: `d` waits for the start of the chain, since the glob import exports
+// `Y` once it's reported. So does `z`'s chain with no glob import. That holds whichever of them is
+// resolved first, which depends on module names (see private_reexport_chains_through_globs_a and
+// private_reexport_chains_through_globs_z).
+mod p {
+    const Y: Int = 1;
+    export Y;
+
+    export mod a {
+        export super::*;
+
+        export mod d {
+            export super::Y;
+        }
+    }
+
+    export mod z {
+        export super::Y;
+    }
+}
+
+fn main() -> Int {
+    p::a::d::Y + p::a::Y + p::z::Y
+}

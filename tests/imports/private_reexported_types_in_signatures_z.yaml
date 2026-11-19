@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot re-export `X`, since it's private at private_reexported_types_in_signatures_z.rue:10:23
