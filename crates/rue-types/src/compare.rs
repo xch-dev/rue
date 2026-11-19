@@ -146,7 +146,7 @@ struct Binder {
 
 /// The bounds collected for a generic being instantiated, which are checked against each other
 /// once the comparison that bound it has finished.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
@@ -1640,6 +1640,7 @@ fn compare_structure(
                 // function must work for any of them.
                 let (lhs_env, rhs_env) = (ctx.lhs_env, ctx.rhs_env);
                 let first = ctx.binders.len();
+                let own = ctx.instances.len();
                 ctx.lhs_env = ctx.bind(lhs_env, &lhs.generics, true);
                 ctx.rhs_env = ctx.bind(rhs_env, &rhs.generics, false);
 
@@ -1663,11 +1664,15 @@ fn compare_structure(
 
                 ctx.flipped = !ctx.flipped;
 
+                // The instances of the generic functions compared inside of this one come after
+                // its own, and keep their bounds, since they can still be instantiated while its
+                // own are checked (below)
+                let inner = own + lhs.generics.len();
                 let mut bounds = Vec::new();
 
                 for index in first..first + lhs.generics.len() {
                     let instance = ctx.binders[index].instance.unwrap();
-                    let instance = mem::take(&mut ctx.instances[instance]);
+                    let instance = ctx.instances[instance].clone();
                     ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
                     bounds.push(instance);
                 }
@@ -1675,52 +1680,31 @@ fn compare_structure(
                 // There is an instantiation of each generic if every type that flows into it is
                 // assignable to every type it flows into (such as their union, or `Never`).
                 // The bounds come from the other side, where the generics of any enclosing
-                // functions being instantiated are rigid, so they're hidden while checking.
-                let instantiable_from =
-                    mem::replace(&mut ctx.instantiable_from, ctx.instances.len());
+                // functions being instantiated are rigid, so they're hidden while checking. The
+                // generic functions compared inside of this one can still be instantiated, though:
+                // a bound such as `B ≥ (T, T)`, from `fn<T>() -> (T, T)` compared with
+                // `fn() -> B`, holds for `B ≤ (Int, Int)` with `T` as `Int` (#363). Each of them is
+                // instantiated once for all of the bounds, and its own bounds are checked again
+                // with what that adds to them
+                let end = ctx.instances.len();
+                let before: Vec<(usize, usize)> = ctx.instances[inner..end]
+                    .iter()
+                    .map(|instance| (instance.lower.len(), instance.upper.len()))
+                    .collect();
+                let instantiable_from = mem::replace(&mut ctx.instantiable_from, inner);
+                result = max(result, check_bounds(arena, builtins, ctx, &bounds));
 
-                'bounds: for instance in bounds {
-                    for &(lower, lower_env, lower_branches) in &instance.lower {
-                        for &(upper, upper_env, upper_branches) in &instance.upper {
-                            // There can be many bounds, so this stops once it's giving up
-                            if ctx.spend() {
-                                break 'bounds;
-                            }
+                let grown: Vec<Instance> = ctx.instances[inner..end]
+                    .iter()
+                    .zip(before)
+                    .filter(|(instance, (lower, upper))| {
+                        instance.lower.len() > *lower || instance.upper.len() > *upper
+                    })
+                    .map(|(instance, _)| instance.clone())
+                    .collect();
 
-                            // A bound collected under a union member that didn't match isn't
-                            // needed, so a pair with one doesn't decide the result (#360). It's
-                            // still compared, under that member, since the candidates it collects
-                            // are what a generic being inferred falls back to when nothing else
-                            // gives it any (see `Inference::keep_matched`)
-                            let unmatched =
-                                [lower_branches, upper_branches]
-                                    .into_iter()
-                                    .find(|branches| {
-                                        branches.local.is_some_and(|branch| {
-                                            !ctx.choices.matched_so_far(branch)
-                                        })
-                                    });
-                            let (branch, local_branch) = match unmatched {
-                                Some(branches) => (
-                                    mem::replace(&mut ctx.branch, branches.infer),
-                                    mem::replace(&mut ctx.local_branch, branches.local),
-                                ),
-                                None => (ctx.branch, ctx.local_branch),
-                            };
-
-                            ctx.lhs_env = lower_env;
-                            ctx.rhs_env = upper_env;
-                            let pair = compare_impl(arena, builtins, ctx, lower, upper, None, None);
-
-                            if unmatched.is_none() {
-                                result = max(result, pair);
-                            }
-
-                            ctx.branch = branch;
-                            ctx.local_branch = local_branch;
-                        }
-                    }
-                }
+                ctx.instantiable_from = ctx.instances.len();
+                result = max(result, check_bounds(arena, builtins, ctx, &grown));
 
                 ctx.instantiable_from = instantiable_from;
                 ctx.lhs_env = lhs_env;
@@ -1989,6 +1973,60 @@ fn compare_structure(
         (_, Type::Never) => Comparison::Invalid,
         (_, Type::Function(_)) => Comparison::Invalid,
     }
+}
+
+/// Checks each lower bound of each instance against each of its upper bounds, and returns the
+/// worst result of the pairs that decide anything (see `compare_structure`'s function arm).
+fn check_bounds(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    instances: &[Instance],
+) -> Comparison {
+    let mut result = Comparison::Assign;
+
+    'bounds: for instance in instances {
+        for &(lower, lower_env, lower_branches) in &instance.lower {
+            for &(upper, upper_env, upper_branches) in &instance.upper {
+                // There can be many bounds, so this stops once it's giving up
+                if ctx.spend() {
+                    break 'bounds;
+                }
+
+                // A bound collected under a union member that didn't match isn't needed, so a
+                // pair with one doesn't decide the result (#360). It's still compared, under that
+                // member, since the candidates it collects are what a generic being inferred falls
+                // back to when nothing else gives it any (see `Inference::keep_matched`)
+                let unmatched = [lower_branches, upper_branches]
+                    .into_iter()
+                    .find(|branches| {
+                        branches
+                            .local
+                            .is_some_and(|branch| !ctx.choices.matched_so_far(branch))
+                    });
+                let (branch, local_branch) = match unmatched {
+                    Some(branches) => (
+                        mem::replace(&mut ctx.branch, branches.infer),
+                        mem::replace(&mut ctx.local_branch, branches.local),
+                    ),
+                    None => (ctx.branch, ctx.local_branch),
+                };
+
+                ctx.lhs_env = lower_env;
+                ctx.rhs_env = upper_env;
+                let pair = compare_impl(arena, builtins, ctx, lower, upper, None, None);
+
+                if unmatched.is_none() {
+                    result = max(result, pair);
+                }
+
+                ctx.branch = branch;
+                ctx.local_branch = local_branch;
+            }
+        }
+    }
+
+    result
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

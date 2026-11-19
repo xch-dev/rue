@@ -368,6 +368,40 @@ mod functions {
         assert_eq!(db.cmp(distinct, expected), Comparison::Assign);
     }
 
+    /// A generic function compared inside of another can still be instantiated while the other's
+    /// bounds are checked (#363): `fn<B>(f: fn() -> B) -> B` is assignable to
+    /// `fn(f: fn<T>() -> (T, T)) -> (Int, Int)`, since `B ≥ (T', T')` and `B ≤ (Int, Int)` hold
+    /// with `T'` as `Int`. But each such instance is instantiated once, along with its own bounds:
+    /// with `fn<T>(x: T) -> (T, T)` passed `Int`, `T' ≥ Int`, so `(Int, Bytes32)` doesn't hold.
+    #[test]
+    fn inner_instances_are_instantiated_for_outer_bounds() {
+        let mut db = Db::new();
+        let BuiltinTypes {
+            int, bytes32, nil, ..
+        } = db.builtins;
+
+        let compare = |db: &mut Db, param: Option<TypeId>, expected: TypeId| {
+            let b = db.generic("B");
+            let t = db.generic("T");
+            let both = db.pair(t, t);
+            let params: Vec<TypeId> = param.map(|_| t).into_iter().collect();
+            let pairs = db.function_with(&[t], &params, true, both);
+            let thunk_params: Vec<TypeId> = param.into_iter().collect();
+            let thunk = db.function(&thunk_params, b);
+            let call = db.function_with(&[b], &[thunk], true, b);
+            let target = db.function(&[pairs], expected);
+            db.cmp(call, target)
+        };
+
+        let ints = db.pair(int, int);
+        let mixed = db.pair(int, bytes32);
+        assert_eq!(compare(&mut db, None, ints), Comparison::Assign);
+        assert_eq!(compare(&mut db, None, mixed), Comparison::Assign);
+        assert_eq!(compare(&mut db, Some(int), ints), Comparison::Assign);
+        assert_eq!(compare(&mut db, Some(int), mixed), Comparison::Invalid);
+        assert_eq!(compare(&mut db, Some(int), nil), Comparison::Invalid);
+    }
+
     #[test]
     fn recursive_instantiations_are_checked() {
         let mut db = Db::new();

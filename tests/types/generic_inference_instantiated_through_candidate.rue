@@ -1,0 +1,19 @@
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn call<B>(function: fn() -> B) -> B {
+    function()
+}
+
+fn pairs<T>() -> (T, T) {
+    (unchecked_cast(1), unchecked_cast(2))
+}
+
+// `map`'s `A` is `pairs`'s type and `B` is `(Int, Int)`. Passing `call` then needs
+// `fn<T>() -> (T, T)` to be instantiated, as `fn() -> (Int, Int)`, while `call`'s own `B` is
+// checked (#363)
+test fn generic_function_instantiated_through_another() -> Int {
+    let result: (Int, Int) = map(call, pairs);
+    result.first + result.rest
+}
