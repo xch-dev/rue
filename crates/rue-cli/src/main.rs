@@ -61,6 +61,14 @@ pub struct BuildArgs {
     split: bool,
     #[clap(short, long)]
     all: bool,
+    /// Write a debug metadata sidecar for each program, which debuggers use to show where a failing
+    /// program was in the source. With `--all`, it's written next to each program, and otherwise
+    /// to the path given (`--debug-metadata=<PATH>`), or next to the source file. The programs are
+    /// the same as without it.
+    #[clap(long, value_name = "PATH", num_args = 0..=1, require_equals = true)]
+    // Clap's way of a flag with an optional value: whether it's passed, and the value if it's given
+    #[allow(clippy::option_option)]
+    debug_metadata: Option<Option<PathBuf>>,
     #[clap(flatten)]
     lints: LintArgs,
     /// Print help
@@ -467,9 +475,21 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     }
 
+    let debug_metadata = args.debug_metadata.is_some();
+
     if args.all {
         if args.export.is_some() {
             eprintln!("{}", "Cannot use `--export` with `--all`".red().bold());
+            process::exit(1);
+        }
+
+        if let Some(Some(_)) = args.debug_metadata {
+            eprintln!(
+                "{}",
+                "Cannot give `--debug-metadata` a path with `--all`, since each program has its own"
+                    .red()
+                    .bold()
+            );
             process::exit(1);
         }
 
@@ -495,20 +515,41 @@ fn build(args: BuildArgs) -> Result<()> {
             let file_path = Path::new(file_path);
             let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
 
-            let exports = tree.exports(
-                &mut ctx,
-                &mut allocator,
-                Some(&file.source.kind),
-                None,
-                &base_path,
-            )?;
+            let exports = if debug_metadata {
+                tree.exports_with_debug_metadata(
+                    &mut ctx,
+                    &mut allocator,
+                    Some(&file.source.kind),
+                    None,
+                    &base_path,
+                )?
+            } else {
+                tree.exports(
+                    &mut ctx,
+                    &mut allocator,
+                    Some(&file.source.kind),
+                    None,
+                    &base_path,
+                )?
+            };
 
-            let main = tree.main(
-                &mut ctx,
-                &mut allocator,
-                &file.source.kind,
-                base_path.clone(),
-            )?;
+            let main = if debug_metadata {
+                tree.main_with_debug_metadata(
+                    &mut ctx,
+                    &mut allocator,
+                    &file.source.kind,
+                    base_path.clone(),
+                )?
+                .map(|(ptr, metadata)| (ptr, Some(metadata)))
+            } else {
+                tree.main(
+                    &mut ctx,
+                    &mut allocator,
+                    &file.source.kind,
+                    base_path.clone(),
+                )?
+                .map(|ptr| (ptr, None))
+            };
 
             let mut exports = if main_kind
                 .as_ref()
@@ -524,6 +565,7 @@ fn build(args: BuildArgs) -> Result<()> {
                                 format!("{file_name}_{}", export.name)
                             },
                             export.ptr,
+                            export.debug_metadata,
                         )
                     })
                     .collect::<Vec<_>>()
@@ -531,17 +573,18 @@ fn build(args: BuildArgs) -> Result<()> {
                 vec![]
             };
 
-            if let Some(main) = main {
+            if let Some((main, metadata)) = main {
                 exports.push((
                     file_name
                         .strip_suffix(".rue")
                         .unwrap_or(&file_name)
                         .to_string(),
                     main,
+                    metadata,
                 ));
             }
 
-            for (name, ptr) in exports {
+            for (name, ptr, metadata) in exports {
                 if dist_dir.is_some() && !file_names.insert(name.clone()) {
                     eprintln!(
                         "{}",
@@ -582,7 +625,11 @@ fn build(args: BuildArgs) -> Result<()> {
                         .to_string()
                 };
 
-                outputs.insert(PathBuf::from(path), output);
+                if let Some(metadata) = metadata {
+                    outputs.insert(PathBuf::from(debug_metadata_path(&path)), metadata);
+                }
+
+                outputs.insert(PathBuf::from(path), output.into_bytes());
 
                 if args.hash {
                     let hash = tree_hash(&allocator, ptr).to_string();
@@ -601,7 +648,7 @@ fn build(args: BuildArgs) -> Result<()> {
                             .to_string()
                     };
 
-                    outputs.insert(PathBuf::from(path), format!("{hash}\n"));
+                    outputs.insert(PathBuf::from(path), format!("{hash}\n").into_bytes());
                 }
             }
         }
@@ -610,27 +657,46 @@ fn build(args: BuildArgs) -> Result<()> {
             fs::write(path, output)?;
         }
     } else {
-        let program = if let Some(export) = args.export {
-            let Some(program) = tree
-                .exports(
+        let (program, metadata) = if let Some(export) = &args.export {
+            let exports = if debug_metadata {
+                tree.exports_with_debug_metadata(
                     &mut ctx,
                     &mut allocator,
                     file_kind.as_ref(),
-                    Some(&export),
+                    Some(export),
                     &base_path,
                 )?
-                .into_iter()
-                .next()
-            else {
+            } else {
+                tree.exports(
+                    &mut ctx,
+                    &mut allocator,
+                    file_kind.as_ref(),
+                    Some(export),
+                    &base_path,
+                )?
+            };
+
+            let Some(program) = exports.into_iter().next() else {
                 eprintln!("{}", format!("Export `{export}` not found").red().bold());
                 process::exit(1);
             };
 
-            program.ptr
-        } else if let Some(main_kind) = main_kind
-            && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind, base_path)?
+            (program.ptr, program.debug_metadata)
+        } else if let Some(main_kind) = &main_kind
+            && let Some((ptr, metadata)) = if debug_metadata {
+                tree.main_with_debug_metadata(
+                    &mut ctx,
+                    &mut allocator,
+                    main_kind,
+                    base_path.clone(),
+                )?
+                .map(|(ptr, metadata)| (ptr, Some(metadata)))
+            } else {
+                tree.main(&mut ctx, &mut allocator, main_kind, base_path.clone())?
+                    .map(|ptr| (ptr, None))
+            }
         {
-            ptr
+            (ptr, metadata)
         } else {
             eprintln!(
                 "{}",
@@ -669,9 +735,46 @@ fn build(args: BuildArgs) -> Result<()> {
         if !args.hex && !args.hash {
             println!("{}", disassemble_program(&allocator, program));
         }
+
+        if let Some(metadata) = metadata {
+            let path = if let Some(Some(path)) = args.debug_metadata {
+                path
+            } else {
+                // Next to the source file, named like the program would be with `--all`
+                let source = match file_kind.as_ref().or(main_kind.as_ref()) {
+                    Some(SourceKind::File(path)) => Some(PathBuf::from(path)),
+                    _ => None,
+                };
+                let dir = source
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .unwrap_or(&base_path)
+                    .to_path_buf();
+                let name = args.export.clone().unwrap_or_else(|| {
+                    source
+                        .as_deref()
+                        .and_then(Path::file_stem)
+                        .map_or("main".to_string(), |stem| {
+                            stem.to_string_lossy().to_string()
+                        })
+                });
+                PathBuf::from(debug_metadata_path(
+                    &dir.join(format!("{name}.rue.hex")).to_string_lossy(),
+                ))
+            };
+
+            fs::write(path, metadata)?;
+        }
     }
 
     Ok(())
+}
+
+/// The path of the debug metadata sidecar of a program, which is the path of the program with
+/// its `.hex` extension replaced, as Chialisp names them (`foo.rue.hex` has `foo.rue.debug.clvm.bin`).
+fn debug_metadata_path(program_path: &str) -> String {
+    let base = program_path.strip_suffix(".hex").unwrap_or(program_path);
+    format!("{base}.debug.clvm.bin")
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -796,7 +899,7 @@ fn debug(args: DebugArgs) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, CostArgs, DEFAULT_MAX_COST, debug, run_test};
+    use super::{Command, CostArgs, DEFAULT_MAX_COST, debug, debug_metadata_path, run_test};
     use clap::{CommandFactory, Parser, error::ErrorKind};
     use clvmr::Allocator;
     use rue_clvm::assemble;
@@ -1047,6 +1150,39 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::ValueValidation);
             assert!(err.to_string().contains("Unknown lint `unuse`"), "{err}");
         }
+    }
+
+    #[test]
+    fn debug_metadata_flag() {
+        let parse = |args: &[&str]| {
+            let Ok(Command::Build(args)) =
+                Command::try_parse_from(["rue", "build"].iter().chain(args))
+            else {
+                panic!("expected build command");
+            };
+            args
+        };
+
+        assert_eq!(parse(&[]).debug_metadata, None);
+        assert_eq!(parse(&["--debug-metadata"]).debug_metadata, Some(None));
+
+        // The path has to be given with `=`, so that the file to build isn't taken as the path
+        let args = parse(&["--debug-metadata", "main.rue"]);
+        assert_eq!(args.debug_metadata, Some(None));
+        assert_eq!(args.file.as_deref(), Some("main.rue"));
+
+        let args = parse(&["--debug-metadata=out.bin", "main.rue"]);
+        assert_eq!(args.debug_metadata, Some(Some("out.bin".into())));
+        assert_eq!(args.file.as_deref(), Some("main.rue"));
+    }
+
+    #[test]
+    fn debug_metadata_paths() {
+        assert_eq!(
+            debug_metadata_path("dist/foo.rue.hex"),
+            "dist/foo.rue.debug.clvm.bin"
+        );
+        assert_eq!(debug_metadata_path("foo"), "foo.debug.clvm.bin");
     }
 
     #[test]
