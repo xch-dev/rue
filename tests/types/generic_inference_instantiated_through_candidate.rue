@@ -35,3 +35,27 @@ test fn generic_function_instantiated_through_a_reused_comparison() -> Int {
     let _call: fn(two: Two<Pairs>) -> (Int, Int) = call_first;
     1
 }
+
+fn call_with_int<B>(function: fn(x: Int) -> B) -> B {
+    function(1)
+}
+
+fn pairs_of<T>(x: T) -> (T, T) {
+    (x, x)
+}
+
+// The same with a generic function whose generic is also bounded by its own parameter
+test fn generic_function_with_a_parameter_instantiated_through_another() -> Int {
+    let result: (Int, Int) = map(call_with_int, pairs_of);
+    result.first + result.rest
+}
+
+fn through<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    map(function, value)
+}
+
+// And through another generic call
+test fn generic_function_instantiated_through_two_calls() -> Int {
+    let result: (Int, Int) = through(call, pairs);
+    result.first + result.rest
+}

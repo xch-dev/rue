@@ -402,6 +402,68 @@ mod functions {
         assert_eq!(compare(&mut db, Some(int), nil), Comparison::Invalid);
     }
 
+    /// An inner instance is instantiated once for all of the outer bounds: with
+    /// `fn<B>(f: fn() -> B) -> (B, B)` and `fn<T>() -> fn(x: T) -> T`, `B` flows into both of the
+    /// return type's functions, so one `T'` has to hold `Int` and `nil` for the first and be
+    /// assignable to `Int | nil` and `nil | Bytes32` for the second, which no type is, although
+    /// each alone has one.
+    #[test]
+    fn inner_instances_are_instantiated_once() {
+        let mut db = Db::new();
+        let BuiltinTypes {
+            int, nil, bytes32, ..
+        } = db.builtins;
+
+        let compare = |db: &mut Db, second_ret: TypeId| {
+            let b = db.generic("B");
+            let t = db.generic("T");
+            let thunk = db.function(&[], b);
+            let both = db.pair(b, b);
+            let call = db.function_with(&[b], &[thunk], true, both);
+            let identity = db.function(&[t], t);
+            let inner = db.function_with(&[t], &[], true, identity);
+            let int_or_nil = db.union(&[int, nil]);
+            let first = db.function(&[int], int_or_nil);
+            let second = db.function(&[nil], second_ret);
+            let ret = db.pair(first, second);
+            let target = db.function(&[inner], ret);
+            db.cmp(call, target)
+        };
+
+        let nil_or_bytes32 = db.union(&[nil, bytes32]);
+        let int_or_nil = db.union(&[int, nil]);
+        assert_eq!(compare(&mut db, nil_or_bytes32), Comparison::Invalid);
+        assert_eq!(compare(&mut db, int_or_nil), Comparison::Assign);
+    }
+
+    /// The outer bounds can add lower bounds to an inner instance too, which are checked against
+    /// its own upper bounds: `fn<T>(x: fn(y: T) -> nil) -> fn(x: T) -> nil` passed a
+    /// `fn(y: Bytes32) -> nil` has `T' ≤ Bytes32`, so it isn't a `fn(x: Int) -> nil`.
+    #[test]
+    fn inner_instances_get_lower_bounds() {
+        let mut db = Db::new();
+        let BuiltinTypes {
+            int, nil, bytes32, ..
+        } = db.builtins;
+
+        let compare = |db: &mut Db, param: TypeId| {
+            let b = db.generic("B");
+            let t = db.generic("T");
+            let callback = db.function(&[bytes32], nil);
+            let given = db.function(&[callback], b);
+            let call = db.function_with(&[b], &[given], true, b);
+            let takes = db.function(&[t], nil);
+            let inner_param = db.function(&[t], nil);
+            let inner = db.function_with(&[t], &[inner_param], true, takes);
+            let ret = db.function(&[param], nil);
+            let target = db.function(&[inner], ret);
+            db.cmp(call, target)
+        };
+
+        assert_eq!(compare(&mut db, int), Comparison::Invalid);
+        assert_eq!(compare(&mut db, bytes32), Comparison::Assign);
+    }
+
     #[test]
     fn recursive_instantiations_are_checked() {
         let mut db = Db::new();

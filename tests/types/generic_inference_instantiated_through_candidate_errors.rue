@@ -8,3 +8,21 @@ fn instantiated_once() -> Int {
     let _instantiated: fn(a: fn<T>(x: T) -> (T, T)) -> (Int, Bytes32) = both;
     1
 }
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn call_with_int<B>(function: fn(x: Int) -> B) -> B {
+    function(1)
+}
+
+fn pairs_of<T>(x: T) -> (T, T) {
+    (x, x)
+}
+
+// `pairs_of`'s `T` is `Int`, from its parameter, so it can't give `Bytes32` as well
+fn not_both() -> Int {
+    let result: (Int, Bytes32) = map(call_with_int, pairs_of);
+    result.first
+}
