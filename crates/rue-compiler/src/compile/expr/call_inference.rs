@@ -210,7 +210,8 @@ pub(crate) fn infer_call(
 }
 
 /// Whether a member of the type expected of a pair or list could hold it as another pair than the
-/// ones its elements are expected to be, such as `Any` in `(5, Int) | Any`. The element types that
+/// ones its elements are expected to be, such as `Any` in `(5, Int) | Any`. A generic can't, since
+/// it's rigid where the value is compiled. The element types that
 /// the pairs give are then only a hint (see `Compiler::with_expected_type_hint`).
 pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
     let ty = rue_types::substitute(ctx.types_mut(), ty);
@@ -223,7 +224,7 @@ pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
         }
 
         match ctx.ty(ty).clone() {
-            Type::Any | Type::Generic(_) => return true,
+            Type::Any => return true,
             Type::Ref(inner) => stack.push(inner),
             Type::Alias(alias) => stack.push(alias.inner),
             Type::Struct(ty) => stack.push(ty.inner),

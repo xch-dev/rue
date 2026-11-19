@@ -69,6 +69,13 @@ tests:
   runtime_cost: 2168
   byte_cost: 1428000
   total_cost: 1430168
+- name: pair_expected_with_a_generic_member
+  program: (a (q 2 (i 2 (q . 4) (q)) 1) (c (c (a (q . 2) (q 5)) (q . 1)) 1))
+  debug_program: (a (q 2 (q 2 (i (l 2) (q 5 2) (q)) 1) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (q . 1)) (q 2 2 (c 3 ()))) ()))
+  output: "5"
+  runtime_cost: 765
+  byte_cost: 636000
+  total_cost: 636765
 diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:61:5

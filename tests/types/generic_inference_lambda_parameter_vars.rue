@@ -94,3 +94,18 @@ test fn annotated_lambda_return_type() -> Int {
     // So is a lambda's annotated return type
     map(fn(_y): 5 => map(fn(x) => x, 5), 1)
 }
+
+fn generic_member<T>(_value: T) -> (5, Int) | T {
+    // The caller's `T` can't hold the pair as another pair, so the element's expected `5` counts
+    (map(fn(x) => x, 5), 1)
+}
+
+test fn pair_expected_with_a_generic_member() -> Int {
+    let result = generic_member(nil);
+
+    if result is (5, Int) {
+        result.first
+    } else {
+        0
+    }
+}

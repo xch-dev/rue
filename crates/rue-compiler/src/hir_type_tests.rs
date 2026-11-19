@@ -175,3 +175,28 @@ fn call_in_a_pair_expected_to_be_any_keeps_its_type() {
               pair<34>: (5, Int) | Any at `pair`"#]],
     );
 }
+
+#[test]
+fn call_in_a_list_expected_to_be_any_keeps_its_type() {
+    // The same for a list's items
+    check(
+        "
+        fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+            function(value)
+        }
+
+        fn main() -> Any {
+            let list: List<5> | Any = [map(fn(x) => x, 5)];
+            list
+        }
+        ",
+        &expect![[r#"
+            { ... }: List<5> | Any at `{ let list: List<5> | Any = [map(fn(x) => x, 5)]; list }`
+              [map<30>(<36>, 5)]: (Int, nil) at `[map(fn(x) => x, 5)]`
+                map<30>(<36>, 5): Int at `map(fn(x) => x, 5)`
+                  map<30>: fn<A, B>(function: fn(a: A) -> B, value: A) -> B at `map`
+                  <36>: fn(x: Int) -> Int at `fn(x) => x`
+                  5: 5 at `5`
+              list<34>: List<5> | Any at `list`"#]],
+    );
+}
