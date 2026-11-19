@@ -26,7 +26,8 @@ use crate::{
     Compiler, EncodeError, ImportCache, SyntaxItemKind, build_debug_metadata, check_recursion,
     compile_default_items, compile_symbol_items, compile_type_items,
     const_eval::evaluate_const_exprs, declare_module_items, declare_symbol_items,
-    declare_type_items, recheck_contractive_types, resolve_imports, resolve_pending_defaults,
+    declare_type_items, entrypoint::entrypoint, recheck_contractive_types, resolve_imports,
+    resolve_pending_defaults,
 };
 
 #[derive(Debug, Error)]
@@ -952,16 +953,17 @@ fn codegen(
         return Err(Error::UnresolvedCodegen);
     }
 
-    let graph = DependencyGraph::build(ctx, symbol, options);
+    let root = entrypoint(ctx, symbol);
+    let graph = DependencyGraph::build(ctx, root, options);
 
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol, base_path);
+    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, root, base_path);
 
     if debug_metadata {
         lowerer = lowerer.with_debug_info();
     }
 
-    let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
+    let mut lir = lowerer.lower_symbol_value(&Environment::default(), root);
 
     if let Some(too_deep) = lowerer.too_deep() {
         let srcloc = too_deep.srcloc.clone();

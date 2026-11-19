@@ -1,0 +1,10 @@
+// A constant `main` that's a lambda is that lambda as the program, called with the solution as its
+// arguments
+#![allow(naming_convention)]
+
+fn f(x: Int) -> Int {
+    assert x > 0;
+    x * x + 1
+}
+
+const main: fn(x: Int, y: Int) -> Int = fn(x: Int, y: Int) => f(x) + y;
