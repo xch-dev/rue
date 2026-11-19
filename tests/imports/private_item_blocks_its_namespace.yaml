@@ -1,0 +1,8 @@
+diagnostics:
+- Cannot reference private type `sha256` in module `m` at private_item_blocks_its_namespace.rue:1:11
+- Unused import `sha256` at private_item_blocks_its_namespace.rue:2:8
+- Unused type alias `Sha256` at private_item_blocks_its_namespace.rue:8:10
+- Unused type alias `sha256` at private_item_blocks_its_namespace.rue:9:10
+- |-
+  Type alias `sha256` should be named in UpperCamelCase at private_item_blocks_its_namespace.rue:9:10
+    note: Consider renaming it to `Sha256`

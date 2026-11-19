@@ -1,0 +1,9 @@
+import foo::sha256;
+import sha256::foo;
+
+// The two imports fail at each other's blocks, so both are reported. The first segment of
+// `sha256::foo` is blocked, so the prelude's `sha256` value isn't found past the block, and the
+// segment is reported as undeclared rather than as a value with a path after it.
+fn main() -> Int {
+    1
+}
