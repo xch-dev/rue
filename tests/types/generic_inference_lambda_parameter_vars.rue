@@ -333,3 +333,10 @@ test fn optional_expected_type() -> 5 | nil {
     // Likewise with `nil`, the shape most of the fuzzer's newly inferred programs take
     map(fn(x) => x, 5)
 }
+
+test fn returned_binding() -> Int {
+    // `x` is resolved from the `5` that flows into it, so `result` holds the value's own `5`, as
+    // with `let result: 5 = 5;`, and `needless_let_return` doesn't offer to return it directly
+    let result: 5 = map(fn(x) => x, 5);
+    result
+}
