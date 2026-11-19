@@ -16,8 +16,17 @@ use crate::{
 pub enum Check {
     None,
     Impossible,
-    IsAtom { can_be_truthy: bool },
-    IsPair { can_be_truthy: bool },
+    /// Whether the value is an atom. If `can_be_truthy` is false, the only atom the value can be
+    /// is nil, so the check is generated as whether the value is nil rather than with `l`. An
+    /// atom other than nil is then treated as a pair, which is how Chialisp checks whether a list
+    /// has ended.
+    IsAtom {
+        can_be_truthy: bool,
+    },
+    /// Whether the value is a pair, generated the same way as [`Check::IsAtom`].
+    IsPair {
+        can_be_truthy: bool,
+    },
     Pair(Box<Check>, Box<Check>),
     Atom(AtomRestriction),
     And(Vec<Check>),

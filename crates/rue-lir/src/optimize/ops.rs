@@ -128,11 +128,11 @@ pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
 
 // If the value is an atom, we know the result
 // If the value is a pair that can't fail, we know the result too
-pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> LirId {
+pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Atom(_) => arena.alloc(Lir::Atom(vec![])),
         Lir::Cons(..) if is_pure(arena, value) => arena.alloc(Lir::Atom(vec![1])),
-        _ => arena.alloc(Lir::Listp(value, can_be_truthy)),
+        _ => arena.alloc(Lir::Listp(value)),
     }
 }
 
@@ -516,13 +516,24 @@ pub fn opt_if(
                     (replacement, then, otherwise)
                 };
 
-            let inline = inline
-                || (matches!(arena[then], Lir::Atom(_))
-                    && matches!(arena[otherwise], Lir::Atom(_)));
-
-            arena.alloc(Lir::If(condition, then, otherwise, inline))
+            alloc_if(arena, condition, then, otherwise, inline)
         }
     }
+}
+
+/// Allocates an `if` whose condition is already optimized, making it inline if both branches are
+/// atoms, since evaluating both is then the same as choosing one and is cheaper.
+pub fn alloc_if(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+    inline: bool,
+) -> LirId {
+    let inline =
+        inline || (matches!(arena[then], Lir::Atom(_)) && matches!(arena[otherwise], Lir::Atom(_)));
+
+    arena.alloc(Lir::If(condition, then, otherwise, inline))
 }
 
 // We can remove all arguments from raise, since the program fails either way

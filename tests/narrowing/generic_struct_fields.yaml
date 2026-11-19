@@ -25,7 +25,7 @@ tests:
   total_cost: 228321
 - name: call_generic_field
   program: (a (q 2 2 5) (c (q 2 (i 2 (q . 2) (q)) 1) 1))
-  debug_program: (a (q 2 2 5) (c (q 2 (i (l (f 1)) (q 2 (q . 2) (c (f 1) 1)) (q)) 1) 1))
+  debug_program: (a (q 2 2 5) (c (q 2 (i (not (not (f 1))) (q 2 (q . 2) (c (f 1) 1)) (q)) 1) 1))
   solution: (((1 . 2)))
   output: (1 . 2)
   runtime_cost: 722

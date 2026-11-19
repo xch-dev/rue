@@ -105,7 +105,7 @@ fn gen_lir(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
         }
         10 => {
             let value = gen_lir(arena, rng, d);
-            arena.alloc(Lir::Listp(value, true))
+            arena.alloc(Lir::Listp(value))
         }
         11 => {
             let args = (0..=rng.below(3)).map(|_| gen_lir(arena, rng, d)).collect();

@@ -22,7 +22,7 @@ tests:
   total_cost: 637562
 - name: list_of_lambdas
   program: (a (q 16 (a 2 (c (c (q . 2) ()) (q . 5))) (a 2 (c (c (q . 2) ()) (q . 1)))) (c (q 2 (i 2 (q 2 4 (c 3 ())) (q)) 1) ()))
-  debug_program: (a (q 2 (q 16 2 (a 5 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (q . 1)))) (c (a 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (q . 5))) 1)) (c (q 2 (i (l 2) (q 2 (f 2) (c 3 ())) (q)) 1) ()))
+  debug_program: (a (q 2 (q 16 2 (a 5 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (q . 1)))) (c (a 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (q . 5))) 1)) (c (q 2 (i (not (not 2)) (q 2 (f 2) (c 3 ())) (q)) 1) ()))
   output: "6"
   runtime_cost: 2814
   byte_cost: 1164000

@@ -52,9 +52,9 @@ fn optimize_step(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let rest = optimize(arena, rest);
             opt_cons(arena, first, rest)
         }
-        Lir::Listp(value, can_be_truthy) => {
+        Lir::Listp(value) => {
             let value = optimize(arena, value);
-            opt_listp(arena, value, can_be_truthy)
+            opt_listp(arena, value)
         }
         Lir::Add(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();

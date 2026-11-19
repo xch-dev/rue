@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId, stack::grow_stack};
+use crate::{Lir, LirId, optimize::alloc_if, stack::grow_stack};
 
 /// What is statically known about the truthiness of an already optimized value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,13 +21,15 @@ pub enum Truthiness {
 // They accept pairs (which are truthy) and any atom (only the empty atom is falsy,
 // so non-canonical atoms like `0x00` are truthy) without failing.
 //
-// Two of these rewrites assume that a value matches its static type, the same way opt_cons
-// does: `(l x)` on a `List` is truthy exactly when `x` is, and `(= x ())` is `(not x)` when `x`
-// is an atom type. If the solution doesn't match the declared types (an atom where a list is
-// expected, or a pair where an atom is expected), the optimized program can take a different
-// branch or skip the `=` failure. Rue doesn't check values against their types at runtime anyway,
-// so this doesn't give the spender anything that a wrongly shaped value couldn't, and it keeps
-// conditions cheaper. These rewrites are only applied where just the truthiness is observed.
+// One of these rewrites assumes that a value matches its static type, the same way opt_cons
+// does: `(= x ())` is `(not x)` when `x` is an atom type. If the solution has a pair where an atom
+// is expected, the optimized program skips the `=` failure. Rue doesn't check values against their
+// types at runtime anyway, so this doesn't give the spender anything that a wrongly shaped value
+// couldn't, and it keeps conditions cheaper. It's only applied where just the truthiness is
+// observed.
+//
+// A type guard between nil and a pair (such as `is nil` on a `List`) doesn't need a rewrite like
+// this, since it's already generated as a truthiness check (see `generate_check_hir`).
 pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     grow_stack(|| opt_truthy_step(arena, value))
 }
@@ -35,19 +37,23 @@ pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
 fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     match arena[value].clone() {
         Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
+        // A quote can't fail, and evaluates to the compiled code of its value: nil for the empty
+        // atom, and a pair for any other atom (which compiles to `(q . atom)`) or for a pair
+        Lir::Quote(inner) => match &arena[inner] {
+            Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
+            Lir::Cons(..) => Truthiness::Known(true),
+            _ => Truthiness::Unknown(value),
+        },
         // A pair is always truthy, but it can only be discarded if it can't fail
         Lir::Cons(..) if is_pure(arena, value) => Truthiness::Known(true),
         // `(l x)` of a pair is truthy, and fails exactly when the pair does
-        Lir::Listp(inner, _) if matches!(arena[inner], Lir::Cons(..)) => opt_truthy(arena, inner),
+        Lir::Listp(inner) if matches!(arena[inner], Lir::Cons(..)) => opt_truthy(arena, inner),
         // `all` and `any` of a single value have the same truthiness as it
         Lir::All(args) | Lir::Any(args) if args.len() == 1 => opt_truthy(arena, args[0]),
         Lir::All(args) if args.is_empty() => Truthiness::Known(true),
         Lir::Any(args) if args.is_empty() => Truthiness::Known(false),
         // Since `not` accepts any value, `(not x)` has the opposite truthiness of `x`
         Lir::Not(inner) => opt_negated_truthy(arena, inner, Some(value)),
-        // A list is either nil or a pair, so it's truthy exactly when it's a pair
-        // This assumes that the value matches its type (see above)
-        Lir::Listp(inner, false) => opt_truthy(arena, inner),
         // `(= x ())` is `(not x)` if `x` is an atom
         // This assumes that the value matches its type (see above)
         Lir::Eq(left, right) => {
@@ -61,7 +67,29 @@ fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
 
             Truthiness::Unknown(value)
         }
+        // Only the truthiness of the branch that's taken is observed, so each branch can be
+        // replaced by one with the same truthiness. A branch whose truthiness is known can't fail,
+        // so it can be replaced by an atom with that truthiness, even if the `if` is inline.
+        Lir::If(condition, then, otherwise, inline) => {
+            let new_then = truthiness_replacement(arena, then);
+            let new_otherwise = truthiness_replacement(arena, otherwise);
+
+            if new_then == then && new_otherwise == otherwise {
+                return Truthiness::Unknown(value);
+            }
+
+            Truthiness::Unknown(alloc_if(arena, condition, new_then, new_otherwise, inline))
+        }
         _ => Truthiness::Unknown(value),
+    }
+}
+
+// A value with the same truthiness as the given one, which fails exactly when it does
+fn truthiness_replacement(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+    match opt_truthy(arena, value) {
+        Truthiness::Known(true) => arena.alloc(Lir::Atom(vec![1])),
+        Truthiness::Known(false) => arena.alloc(Lir::Atom(vec![])),
+        Truthiness::Unknown(replacement) => replacement,
     }
 }
 

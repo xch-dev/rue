@@ -771,7 +771,7 @@ tests:
   clvm_error: Division by zero
 - name: recursive_map_of_safe_function_is_inlined
   program: (a (q 2 2 (c 2 (c (q 18 2 (q . 2)) 5))) (c (q 2 (i 7 (q 2 (q 2 (i (> 4 ()) (q 4 (a 11 (c 4 ())) (a 5 (c 5 (c 11 6)))) (q 2 5 (c 5 (c 11 6)))) 1) (c 7 1)) (q)) 1) 1))
-  debug_program: (a (q 2 4 (c 4 (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) 5))) (c (c (q 2 (i (not (l 7)) (q) (q 2 (q 2 (q 2 (i (> (f 5) ()) (q 4 2 (a 11 (c 11 (c 23 (r 5))))) (q 2 11 (c 11 (c 23 (r 5))))) 1) (c (a 11 (c (f 2) ())) 1)) (c 7 1))) 1) (q 18 2 (q . 2))) 1))
+  debug_program: (a (q 2 4 (c 4 (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) 5))) (c (c (q 2 (i (not 7) (q) (q 2 (q 2 (q 2 (i (> (f 5) ()) (q 4 2 (a 11 (c 11 (c 23 (r 5))))) (q 2 11 (c 11 (c 23 (r 5))))) 1) (c (a 11 (c (f 2) ())) 1)) (c 7 1))) 1) (q 18 2 (q . 2))) 1))
   solution: ((1 -2 3))
   output: (2 6)
   runtime_cost: 8908
@@ -779,7 +779,7 @@ tests:
   total_cost: 1868908
 - name: recursive_map_of_failing_function_is_kept
   program: (a (q 2 2 (c 2 (c (q 19 (q . 100) 2) 5))) (c (q 2 (i 7 (q 2 (q 2 (q 2 (i (> 9 ()) (q 4 2 (a 11 (c 11 (c 23 13)))) (q 2 11 (c 11 (c 23 13)))) 1) (c (a 11 (c 4 ())) 1)) (c 7 1)) (q)) 1) 1))
-  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 1) (q 19 (q . 100) 2)) (c (q . 1) ()))) 5))) (c (q 2 (i (not (l 7)) (q) (q 2 (q 2 (q 2 (i (> (f 5) ()) (q 4 2 (a 11 (c 11 (c 23 (r 5))))) (q 2 11 (c 11 (c 23 (r 5))))) 1) (c (a 11 (c (f 2) ())) 1)) (c 7 1))) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 1) (q 19 (q . 100) 2)) (c (q . 1) ()))) 5))) (c (q 2 (i (not 7) (q) (q 2 (q 2 (q 2 (i (> (f 5) ()) (q 4 2 (a 11 (c 11 (c 23 (r 5))))) (q 2 11 (c 11 (c 23 (r 5))))) 1) (c (a 11 (c (f 2) ())) 1)) (c 7 1))) 1) 1))
   solution: ((1 0 3))
   byte_cost: 2028000
   clvm_error: Division by zero

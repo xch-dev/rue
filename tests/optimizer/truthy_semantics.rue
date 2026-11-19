@@ -63,17 +63,80 @@ test fn pair_statement_raises(x: Int) -> Int {
     1
 }
 
-// These assume that values match their static types, which isn't checked at runtime
-// For ill-typed solutions like these, the optimized program intentionally differs from debug
+// This assumes that values match their static types, which isn't checked at runtime
+// For ill-typed solutions like this, the optimized program intentionally differs from debug
 test fn assert_ne_nil_pair(x: Bytes) -> Int {
     assert x != nil;
     2
 }
 
+// A list that ends in an atom other than nil has the right shape, so debug and release must agree
+// on it. Like Chialisp, `is nil` only checks whether the value is nil, so the atom is treated as
+// a pair, and reading from it fails
 test fn list_is_nil_atom(l: List<Int>) -> Int {
     if l is nil {
         1
     } else {
         2
     }
+}
+
+test fn list_atom_terminator(l: List<Int>) -> Int {
+    if l is nil {
+        0
+    } else {
+        l.first
+    }
+}
+
+test fn list_atom_terminator_raise(l: List<Int>) -> Int {
+    if l is nil {
+        raise;
+    }
+    1
+}
+
+test fn list_atom_terminator_value(l: List<Int>) -> Bool {
+    l is nil
+}
+
+test fn list_atom_terminator_pair(l: List<Int>) -> Int {
+    if l is (Int, List<Int>) {
+        l.first
+    } else {
+        0
+    }
+}
+
+test fn list_atom_terminator_not_nil(l: List<Int>) -> Int {
+    if !(l is nil) {
+        l.first
+    } else {
+        0
+    }
+}
+
+test fn list_atom_terminator_pair_value(l: List<Int>) -> Bool {
+    l is (Int, List<Int>)
+}
+
+// The list is checked as part of a larger check, from a type whose other member is an atom
+test fn list_atom_terminator_nested(value: (List<Int>, Int) | Int) -> Int {
+    if value is (nil, Int) {
+        1
+    } else {
+        2
+    }
+}
+
+fn sum(l: List<Int>) -> Int {
+    if l is nil {
+        0
+    } else {
+        l.first + sum(l.rest)
+    }
+}
+
+test fn list_atom_terminator_walk(l: List<Int>) -> Int {
+    sum(l)
 }

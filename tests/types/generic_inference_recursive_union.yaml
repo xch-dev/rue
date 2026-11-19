@@ -43,7 +43,7 @@ tests:
   total_cost: 1023309
 - name: guard_inside_a_list
   program: (a (q 2 (q 2 (i 2 (q . 4) (q)) 1) (c (a 2 (c 2 (q (x ()) . 1))) 1)) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c 5 (- 7 (q . 1))))) (q . 5)) 1) ()))
-  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q) (q 5 2)) 1) (c (a 2 (c 2 (c (c (q . 8) (c () ())) (q . 1)))) 1)) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c 5 (- 7 (q . 1))))) (q . 5)) 1) ()))
+  debug_program: (a (q 2 (q 2 (i (not 2) (q) (q 5 2)) 1) (c (a 2 (c 2 (c (c (q . 8) (c () ())) (q . 1)))) 1)) (c (q 2 (i (> 7 ()) (q 2 2 (c 2 (c 5 (- 7 (q . 1))))) (q . 5)) 1) ()))
   output: "8"
   runtime_cost: 3820
   byte_cost: 1428000

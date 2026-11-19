@@ -106,7 +106,7 @@ tests:
   total_cost: 12044
 - name: instances_bounded_by_each_other
   program: (a (q 2 (q 2 (i 2 (q . 4) (q)) 1) (c (a 2 (q (f . 5))) 1)) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q) (q 5 2)) 1) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))) 1)) (c (c (q 4 (q . 5) (q . 5)) (c (q 4 (r 2) (f 2)) (q 2 2 (c (a 3 ()) ())))) ()))
+  debug_program: (a (q 2 (q 2 (i (not 2) (q) (q 5 2)) 1) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))) 1)) (c (c (q 4 (q . 5) (q . 5)) (c (q 4 (r 2) (f 2)) (q 2 2 (c (a 3 ()) ())))) ()))
   output: "5"
   runtime_cost: 1055
   byte_cost: 804000

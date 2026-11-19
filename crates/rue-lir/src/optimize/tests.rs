@@ -71,7 +71,6 @@ const ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "((1 . 2))", "(5 7
 // Some rewrites assume that values match their static types, so these only contain
 // environments where the first argument is an atom or a list respectively
 const ATOM_ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "(5 7)"];
-const LIST_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)"];
 
 #[test]
 fn test_not_ne_nil_is_not_value() {
@@ -94,7 +93,7 @@ fn test_double_not() {
     check(&mut arena, lir, ENVS, expect!["(not (not 2))"]);
 
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, true));
+    let listp = arena.alloc(Lir::Listp(x));
     let inner = not(&mut arena, listp);
     let lir = not(&mut arena, inner);
     check(&mut arena, lir, ENVS, expect!["(l 2)"]);
@@ -112,7 +111,7 @@ fn test_not_eq_boolean_nil() {
     // (= (l x) ()) is (not (l x)), since (l x) is always an atom
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, true));
+    let listp = arena.alloc(Lir::Listp(x));
     let nil = atom(&mut arena, &[]);
     let eq = arena.alloc(Lir::Eq(listp, nil));
     let lir = not(&mut arena, eq);
@@ -134,14 +133,97 @@ fn test_eq_nil_condition() {
 
 #[test]
 fn test_listp_condition() {
-    // In a condition, (l x) is x, assuming that x is a list
+    // (l x) isn't x in a condition, since x may be an atom other than nil
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, false));
+    let listp = arena.alloc(Lir::Listp(x));
     let one = atom(&mut arena, &[1]);
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(listp, one, two, false));
-    check(&mut arena, lir, LIST_ENVS, expect!["(i 2 (q . 1) (q . 2))"]);
+    check(&mut arena, lir, ENVS, expect!["(i (l 2) (q . 1) (q . 2))"]);
+}
+
+#[test]
+fn test_if_in_condition() {
+    // Only the truthiness of each branch of an if in a condition is observed
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let y = path(&mut arena, 5);
+    let inner = not(&mut arena, y);
+    let truthy = not(&mut arena, inner);
+    let nil = atom(&mut arena, &[]);
+    let condition = arena.alloc(Lir::If(x, truthy, nil, false));
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let lir = arena.alloc(Lir::If(condition, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(i (a (i 2 (q . 5) (q)) 1) (q . 1) (q . 2))"],
+    );
+
+    // A branch that fails is kept, and one whose truthiness is known becomes an atom
+    let x = path(&mut arena, 2);
+    let fails = raise(&mut arena);
+    let one = atom(&mut arena, &[1]);
+    let pair = arena.alloc(Lir::Cons(one, one));
+    let condition = arena.alloc(Lir::If(x, fails, pair, false));
+    let lir = arena.alloc(Lir::If(condition, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(i (a (i 2 (q 8) (q 1 . 1)) 1) (q . 1) (q . 2))"],
+    );
+
+    // So does a branch of an inline if, since atoms can't fail
+    let x = path(&mut arena, 2);
+    let pair = arena.alloc(Lir::Cons(one, one));
+    let condition = arena.alloc(Lir::If(x, pair, nil, true));
+    let lir = arena.alloc(Lir::If(condition, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(i (i 2 (q . 1) ()) (q . 1) (q . 2))"],
+    );
+
+    // A lazy if becomes inline once both of its branches are atoms
+    let x = path(&mut arena, 2);
+    let pair = arena.alloc(Lir::Cons(one, one));
+    let falsy = not(&mut arena, one);
+    let condition = arena.alloc(Lir::If(x, pair, falsy, false));
+    let lir = arena.alloc(Lir::If(condition, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(i (i 2 (q . 1) ()) (q . 1) (q . 2))"],
+    );
+}
+
+#[test]
+fn test_quote_condition() {
+    // A quoted pair or non-empty atom compiles to a pair, and a quoted nil to nil
+    let mut arena = Arena::new();
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let x = path(&mut arena, 2);
+    let pair = arena.alloc(Lir::Cons(one, x));
+    let quoted = arena.alloc(Lir::Quote(pair));
+    let lir = arena.alloc(Lir::If(quoted, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 1)"]);
+
+    let five = atom(&mut arena, &[5]);
+    let quoted = arena.alloc(Lir::Quote(five));
+    let lir = arena.alloc(Lir::If(quoted, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 1)"]);
+
+    let nil = atom(&mut arena, &[]);
+    let quoted = arena.alloc(Lir::Quote(nil));
+    let lir = arena.alloc(Lir::If(quoted, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 2)"]);
 }
 
 #[test]
@@ -284,13 +366,13 @@ fn test_listp_of_pair() {
     let one = atom(&mut arena, &[1]);
     let nil = atom(&mut arena, &[]);
     let pair = arena.alloc(Lir::Cons(one, nil));
-    let lir = arena.alloc(Lir::Listp(pair, true));
+    let lir = arena.alloc(Lir::Listp(pair));
     check(&mut arena, lir, ENVS, expect!["(q . 1)"]);
 
     // In a condition, a pair that may fail is still evaluated
     let x = path(&mut arena, 2);
     let pair = arena.alloc(Lir::Cons(x, nil));
-    let listp = arena.alloc(Lir::Listp(pair, true));
+    let listp = arena.alloc(Lir::Listp(pair));
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(listp, one, two, false));
     check(
@@ -578,13 +660,14 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
             }
         }
         3 => Lir::Cons(next(), next()),
-        4 => Lir::Listp(next(), true),
-        // A value which is always either nil or a pair, as the type of a list says it is
+        4 => Lir::Listp(next()),
+        // Whether a value which is always either nil or a pair has ended, the way a type guard
+        // on a list is generated
         5 => {
             let pair = arena.alloc(Lir::Cons(next(), next()));
             let nil = atom(arena, &[]);
             let list = arena.alloc(Lir::If(next(), pair, nil, false));
-            Lir::Listp(list, false)
+            Lir::Not(list)
         }
         6 => Lir::If(next(), next(), next(), rng.below(2) == 0),
         7 => Lir::All(gen_args(arena, rng, 0)),

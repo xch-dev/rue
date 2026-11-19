@@ -388,9 +388,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Unary(op, hir) => {
                 let lir = self.lower_hir(env, hir);
                 match op {
-                    UnaryOp::Listp { can_be_truthy } => {
-                        self.arena.alloc(Lir::Listp(lir, can_be_truthy))
-                    }
+                    UnaryOp::Listp => self.arena.alloc(Lir::Listp(lir)),
                     UnaryOp::First => self.arena.alloc(Lir::First(lir)),
                     UnaryOp::Rest => self.arena.alloc(Lir::Rest(lir)),
                     UnaryOp::Strlen => self.arena.alloc(Lir::Strlen(lir)),

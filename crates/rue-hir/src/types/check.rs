@@ -24,13 +24,28 @@ pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId 
                 (None, None) => db.alloc_hir(Hir::Bool(true)),
             }
         }
-        Check::IsAtom { can_be_truthy } => {
-            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir));
+        // If the only atom the value can be is nil, it's checked the same way Chialisp checks
+        // whether a list has ended, by whether it's nil. This is also cheaper in conditions. A
+        // value that's some other atom is treated as a pair, so reading from it fails, the same
+        // way in debug and release builds.
+        Check::IsAtom {
+            can_be_truthy: false,
+        } => db.alloc_hir(Hir::Unary(UnaryOp::Not, hir)),
+        Check::IsPair {
+            can_be_truthy: false,
+        } => {
+            let not = db.alloc_hir(Hir::Unary(UnaryOp::Not, hir));
+            db.alloc_hir(Hir::Unary(UnaryOp::Not, not))
+        }
+        Check::IsAtom {
+            can_be_truthy: true,
+        } => {
+            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir));
             db.alloc_hir(Hir::Unary(UnaryOp::Not, listp))
         }
-        Check::IsPair { can_be_truthy } => {
-            db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir))
-        }
+        Check::IsPair {
+            can_be_truthy: true,
+        } => db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir)),
         Check::Atom(AtomRestriction::Length(length)) => {
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
             let length = db.alloc_hir(Hir::Int(length.into()));
