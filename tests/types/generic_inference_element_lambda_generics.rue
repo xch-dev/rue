@@ -88,3 +88,24 @@ test fn struct_field() -> Int {
 test fn whole_argument() -> Int {
     apply(fn(x) => identity(x), 5)
 }
+
+fn pair_any<T, U>(functions: (fn(x: T) -> U, Any), value: T) -> U {
+    functions.first(value)
+}
+
+// In a call nested in a call to the same function, the sibling that captures the outer call's
+// value of the shared generic keeps it in its type, and is held by `Any`, while the first lambda is
+// instantiated, as `pair_any::<Int, Int>` would be. It was rejected before, with the first lambda
+// returning the generic
+test fn sibling_next_to_any_keeps_the_shared_generic() -> Int {
+    pair_any(
+        (
+            fn(a) => {
+                let z: Int = pair_any((fn(x) => identity(x), fn(_y: Int) => a), 5);
+                z + 1
+            },
+            nil,
+        ),
+        "hi",
+    )
+}

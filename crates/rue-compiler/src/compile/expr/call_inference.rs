@@ -377,26 +377,23 @@ fn instantiate_generic_parameters(
         };
 
         let instantiated = instantiations(ctx, function, parameters, generic_types, mappings);
-
-        if !instantiated.is_empty() {
-            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &instantiated);
-        }
+        *ty = instantiated.apply(ctx, *ty, &HashMap::new());
     }
 }
 
 /// What each lambda parameter with a type with the callee's generics in it is instantiated as with
-/// the mappings, keyed by its reference, and what each of those generics is, keyed by the generic
-/// (a call in the body sees through the reference, see below). A solution that still references
-/// the generics doesn't say what they are, such as in a call nested in an argument of a call to the
-/// same function, which shares them, so that parameter is left out.
+/// the mappings, keyed by its reference, and what each of those generics is within its lambda's
+/// type (see `Instantiations`). A solution that still references the generics doesn't say what
+/// they are, such as in a call nested in an argument of a call to the same function, which shares
+/// them, so that parameter is left out.
 fn instantiations(
     ctx: &mut Compiler,
     function: &FunctionType,
     parameters: &[LambdaParameter],
     generic_types: &[Option<TypeId>],
     mappings: &HashMap<TypeId, TypeId>,
-) -> HashMap<TypeId, TypeId> {
-    let mut instantiated = HashMap::new();
+) -> Instantiations {
+    let mut instantiated = Instantiations::default();
 
     for (parameter, &generic_type) in parameters.iter().zip(generic_types) {
         let Some(generic_type) = generic_type else {
@@ -405,22 +402,78 @@ fn instantiations(
 
         let solution = substitute_with_mappings(ctx.types_mut(), generic_type, mappings);
 
-        if !references_generics(ctx, solution, &function.generics) {
-            instantiated.insert(parameter.reference, solution);
+        if references_generics(ctx, solution, &function.generics) {
+            continue;
+        }
 
-            // The lambda's type can have the generics where its parameter's reference doesn't,
-            // since a call in its body sees through the reference, as `id(x)` does in
-            // `[fn(x) => id(x)]`, whose return type is the generic itself. Its body was compiled
-            // with them as types it knows nothing about, so they're instantiated there too
-            for generic in generics_in(ctx, function, generic_type) {
-                if let Some(&ty) = mappings.get(&generic) {
-                    instantiated.insert(generic, ty);
-                }
+        instantiated
+            .references
+            .insert(parameter.reference, solution);
+
+        let lambda = match instantiated
+            .lambdas
+            .iter()
+            .position(|(ty, _)| *ty == parameter.lambda.ty)
+        {
+            Some(index) => index,
+            None => {
+                instantiated
+                    .lambdas
+                    .push((parameter.lambda.ty, HashMap::new()));
+                instantiated.lambdas.len() - 1
+            }
+        };
+
+        for generic in generics_in(ctx, function, generic_type) {
+            if let Some(&ty) = mappings.get(&generic) {
+                instantiated.lambdas[lambda].1.insert(generic, ty);
             }
         }
     }
 
     instantiated
+}
+
+/// What an argument's lambda parameters are instantiated as (see `instantiations`).
+#[derive(Default)]
+struct Instantiations {
+    /// What each parameter is, by its reference.
+    references: HashMap<TypeId, TypeId>,
+    /// For each lambda, by its type, what the callee's generics in its parameters' types are. A
+    /// call in its body sees through a parameter's reference, so its type can have the generic
+    /// itself, as the return type of `[fn(x) => id(x)]` does. Its body was compiled with the
+    /// generic as a type it knows nothing about, so the generic is instantiated there too, but only
+    /// in that lambda's type: another part of the argument, such as a lambda that captures a value
+    /// of the generic in a call nested in a call to the same function, can have the generic itself
+    lambdas: Vec<(TypeId, HashMap<TypeId, TypeId>)>,
+}
+
+impl Instantiations {
+    /// The argument's type with its lambdas' parameters, and the parameters in `others`, as what
+    /// they're instantiated as.
+    fn apply(&self, ctx: &mut Compiler, ty: TypeId, others: &HashMap<TypeId, TypeId>) -> TypeId {
+        let mut mappings = others.clone();
+        mappings.extend(self.references.iter().map(|(&key, &value)| (key, value)));
+
+        if mappings.is_empty() && self.lambdas.is_empty() {
+            return ty;
+        }
+
+        // Each lambda's type is substituted on its own, with its generics, and put in its place
+        let mut lambdas = HashMap::new();
+
+        for (lambda, generics) in &self.lambdas {
+            let mut within = mappings.clone();
+            within.extend(generics.iter().map(|(&key, &value)| (key, value)));
+            lambdas.insert(
+                *lambda,
+                substitute_with_mappings(ctx.types_mut(), *lambda, &within),
+            );
+        }
+
+        mappings.extend(lambdas);
+        substitute_with_mappings(ctx.types_mut(), ty, &mappings)
+    }
 }
 
 /// The type of each of an argument's lambda parameters with the callee's generics in it, with the
@@ -627,17 +680,17 @@ fn solve_with_lambda_parameters(
 
     // The parameters that weren't vars are instantiated with what the generics are inferred as
     // here, since substituting the vars would see through their references
-    for (i, mut inferred) in inferred_lambdas {
-        inferred.extend(instantiations(
+    for (i, inferred) in inferred_lambdas {
+        let instantiated = instantiations(
             ctx,
             function,
             &lambda_parameters[i],
             &generic_types[i],
             &mappings,
-        ));
+        );
 
         if let Some((_, ty, _)) = &mut checks[i] {
-            *ty = substitute_with_mappings(ctx.types_mut(), *ty, &inferred);
+            *ty = instantiated.apply(ctx, *ty, &inferred);
         }
     }
 

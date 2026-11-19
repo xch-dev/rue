@@ -76,6 +76,13 @@ tests:
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
+- name: sibling_next_to_any_keeps_the_shared_generic
+  program: (a (q 2 2 (c (c (c (q . 2) (c (c (q . 1) (q 16 (a 2 (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))) (q . 5))) (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()) (q . 26729))) (c (q 2 4 (c 3 ())) ()))
+  debug_program: (a (q 2 4 (c (c (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 (q . 1)) (c (a 5 (c (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 11) (c (q . 1) ()))) ())))) (q . 5))) 1))) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()) (q . 26729))) (c (c (q 2 (f 2) (c 3 ())) (q . 1)) ()))
+  output: "6"
+  runtime_cost: 3766
+  byte_cost: 2412000
+  total_cost: 2415766
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
