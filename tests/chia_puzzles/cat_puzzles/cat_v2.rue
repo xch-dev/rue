@@ -419,3 +419,50 @@ test fn rejects_a_ring_announcement() -> Any {
 test fn reference_rejects_a_ring_announcement() -> Any {
     run(reference, ring_announcement())
 }
+
+test fn allows_other_announcements_shaped_like_the_ring() -> Any {
+    let tail_program_hash = sha256("tail");
+    check(
+        solution(
+            tail_program_hash,
+            [
+                CreateCoin { puzzle_hash: sha256("alice"), amount: 100 },
+                // 33 bytes, but without the ring morph byte.
+                CreateCoinAnnouncement { message: 0x00 + sha256("x") },
+                // The ring morph byte and 33 bytes, but a puzzle announcement.
+                CreatePuzzleAnnouncement { message: 0xcb + sha256("x") },
+            ],
+            lineage_proof(),
+            cat_parent_id(tail_program_hash),
+            0,
+        ),
+    )
+}
+
+test fn keeps_fields_after_the_memos() -> Any {
+    let tail_program_hash = sha256("tail");
+    check(solution(
+        tail_program_hash,
+        [[51 as Any, sha256("alice"), 100, [sha256("alice")], "extra"]],
+        lineage_proof(),
+        cat_parent_id(tail_program_hash),
+        0,
+    ))
+}
+
+test fn runs_the_tail_with_a_wrong_lineage_proof() -> Any {
+    let tail_program_hash = tree_hash(echo_tail());
+    check(
+        solution(
+            tail_program_hash,
+            [
+                CreateCoin { puzzle_hash: sha256("alice"), amount: 150 },
+                [51 as Any, nil, -113, echo_tail(), "tail_solution"],
+            ],
+            lineage_proof(),
+            // The parent is a CAT with a different TAIL, so the TAIL sees `parent_is_cat` as false.
+            cat_parent_id(sha256("other_tail")),
+            50,
+        ),
+    )
+}
