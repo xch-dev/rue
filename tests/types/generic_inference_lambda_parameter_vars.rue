@@ -191,3 +191,38 @@ test fn argument_of_a_call_with_a_final_expected_type() -> Int {
     let result: (5, Int) = wrap(map(fn(x) => x, 5));
     result.first
 }
+
+fn wrap_after<T>(value: T, _last: T) -> (T, Int) {
+    (value, 1)
+}
+
+test fn argument_before_another_one_with_the_generic() -> Int {
+    // The `6` after it adds to `T` too, but `T` is still at most `5 | 6`, so `map` is solved for
+    // what fits that, as `wrap_after::<5 | 6>(map::<5, 5>(...), 6)` is
+    let result: (5 | 6, Int) = wrap_after(map(fn(x) => x, 5), 6);
+    result.first
+}
+
+test fn argument_of_a_guarded_call() -> Bool {
+    // The guard's type is only a hint, so `map` is solved as before and the guard still checks
+    wrap(map(fn(x) => x, 5)) is (5, Int)
+}
+
+fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(a: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+fn feed<A, B>(_first: fn(a: A) -> B, _second: fn(a: B) -> Int) -> fn(a: A) -> Int {
+    fn(_x) => 1
+}
+
+fn compose<A, B>(function: fn(a: A) -> B) -> fn(a: A) -> B {
+    function
+}
+
+test fn argument_whose_generic_takes_values() -> Int {
+    // `compose`'s `A` is where its argument takes values, so what it's inferred as so far is only a
+    // hint for `feed`'s: solving `feed` for it would give `fn(value: 5) -> Int`, which isn't the
+    // `fn(a: Int) -> Int` that `compose` ends up needing, and this compiles as before
+    chain::<Int | nil, 5, Int>(compose(fn(_x) => 5), compose(feed(fn(x) => x, five_only)), nil)
+}

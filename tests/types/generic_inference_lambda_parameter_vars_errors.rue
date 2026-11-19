@@ -5,10 +5,6 @@ fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
     function(value)
 }
 
-fn wrap<T>(value: T) -> (T, Int) {
-    (value, 1)
-}
-
 fn wrap_with<T>(_first: T, value: T) -> (T, Int) {
     (value, 1)
 }

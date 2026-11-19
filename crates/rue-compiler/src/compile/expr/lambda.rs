@@ -338,7 +338,7 @@ fn make_references(ctx: &mut Compiler, wrapped: &[(TypeId, TypeId)]) {
 
 /// Whether the generic occurs in the type where values flow out of whoever holds a value of it,
 /// such as a parameter of a function type in it.
-fn occurs_contravariantly(ctx: &mut Compiler, ty: TypeId, generic: TypeId) -> bool {
+pub(crate) fn occurs_contravariantly(ctx: &mut Compiler, ty: TypeId, generic: TypeId) -> bool {
     let ty = rue_types::substitute(ctx.types_mut(), ty);
     let mut visited = std::collections::HashSet::new();
     let mut stack = vec![(ty, true)];

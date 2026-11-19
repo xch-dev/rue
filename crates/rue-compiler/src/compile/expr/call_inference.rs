@@ -16,7 +16,10 @@ use rue_types::{
     contains_generic, substitute_with_mappings,
 };
 
-use crate::{ArgumentFrame, Compiler, ParameterWrap, compile_expr, compile_lambda_argument};
+use crate::{
+    ArgumentFrame, Compiler, ParameterWrap, compile_expr, compile_lambda_argument,
+    occurs_contravariantly,
+};
 
 /// What inferring a call's generics gave.
 pub(crate) struct InferredCall {
@@ -71,8 +74,10 @@ pub(crate) fn infer_call(
     // only uses the type expected of it for the generics its arguments don't give a type (see
     // `refine_element_expected`), so it isn't solved again for it either
     let fallback_only = ctx.is_expected_type_fallback() && !args.is_empty();
-    // Whether the type expected of the call is a type of its own, which it has to be assignable to
-    let expected_is_final = expected_type.is_some() && !ctx.is_expected_type_hint();
+    // The type expected of the call, if it's a type of its own that the call has to be assignable
+    // to. One that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one
+    // that comes from what an enclosing call has inferred so far, which it can still widen
+    let final_expected = expected_type.filter(|_| !ctx.is_expected_type_hint() && !fallback_only);
 
     let solver = ctx.call_solver(expected);
     let solver = Rc::new(if fallback_only {
@@ -143,15 +148,18 @@ pub(crate) fn infer_call(
         }));
 
         // The parameter's type is only a hint while it references the callee's generics, since
-        // what they're inferred as so far can still widen. Unless the call's own expected type is
-        // a type of its own and no argument still to be compiled can add to them: then it's what
-        // the call's solution will have to be, so `wrap(map(fn(x) => x, 5))` with `(5, Int)`
-        // expected solves `map` for `5`
-        let hint = function
-            .generics
-            .iter()
-            .any(|&generic| contains_generic(ctx.types_mut(), param, generic))
-            && !(expected_is_final && order.settles(i));
+        // what they're inferred as so far can still widen. It isn't one when the call's own expected
+        // type is final and those generics only occur where values flow out of the argument: then
+        // a solution that fits the call's expected type has the argument fit it, so
+        // `wrap(map(fn(x) => x, 5))` with `(5, Int)` expected solves `map` for `5`. Where values
+        // flow into the argument, such as `A` in `fn(a: A) -> B`, what they're inferred as so far
+        // can be wider than the solution, which would ask more of the argument
+        let writes = order.writes(i);
+        let hint = !writes.is_empty()
+            && (final_expected.is_none()
+                || writes
+                    .iter()
+                    .any(|&generic| occurs_contravariantly(ctx, param, generic)));
 
         // A lambda expected to be exactly the parameter's function type wraps the callee's
         // generics in its parameters (see `ParameterWrap`)
@@ -207,11 +215,9 @@ pub(crate) fn infer_call(
     let mut mappings = ctx.solve_call(&solver, order.merged().clone());
 
     // Only a call that the arguments don't solve otherwise is solved again with lambdas' untyped
-    // parameters as vars, so that nothing that compiled before changes. A type expected of the call
-    // that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one that
-    // comes from what an enclosing call has inferred so far, which it can still widen. The checks
-    // are made with the renamed generics restored, as the call is checked
-    let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint() && !fallback_only);
+    // parameters as vars, so that nothing that compiled before changes, and only for a final
+    // expected type. The checks are made with the renamed generics restored, as the call is checked
+    let expected_type = final_expected;
 
     restore_renamed(ctx, &mut mappings, renamed);
 
@@ -748,15 +754,9 @@ impl ArgumentOrder {
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
     }
 
-    /// Whether no argument still to be compiled, other than this one, can add to the generics in
-    /// its parameter type.
-    fn settles(&self, i: usize) -> bool {
-        let writes = &self.arguments[i].writes;
-
-        self.pending
-            .iter()
-            .filter(|&&other| other != i)
-            .all(|&other| self.arguments[other].writes.is_disjoint(writes))
+    /// The callee's generics in the argument's parameter type (see `Argument::writes`).
+    fn writes(&self, i: usize) -> &IndexSet<TypeId> {
+        &self.arguments[i].writes
     }
 
     /// Whether every argument has been compiled.
