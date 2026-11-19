@@ -40,6 +40,7 @@ pub(crate) fn infer_call(
     function: &FunctionType,
     args: &[AstExpr],
     expected_type: Option<TypeId>,
+    narrower: Option<TypeId>,
     renamed: &HashMap<TypeId, TypeId>,
 ) -> InferredCall {
     let mut base = Inference::new(function.generics.iter().copied());
@@ -51,7 +52,7 @@ pub(crate) fn infer_call(
     // The type expected of the call is used for the generics that the arguments don't
     // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
     // ones they do from being widened past it
-    let expected = expected_type.map(|expected_type| {
+    let infer_expected = |ctx: &mut Compiler, expected_type: TypeId| {
         let mut expected = base.clone();
         ctx.infer_from_expected(function.ret, expected_type, &mut expected);
 
@@ -65,7 +66,12 @@ pub(crate) fn infer_call(
         });
 
         expected
-    });
+    };
+    let expected = expected_type.map(|expected_type| infer_expected(ctx, expected_type));
+
+    // A narrower expected type is what the generics nothing else gives a type take, when the
+    // expected type was widened to an enclosing call's (see `ArgumentOrder::widens_to_expected`)
+    let narrower = narrower.map(|narrower| infer_expected(ctx, narrower));
 
     // The instances of generic functions passed as arguments are solved with the callee's generics
     base.set_instance_policy(InstancePolicy::Joint);
@@ -79,7 +85,7 @@ pub(crate) fn infer_call(
     // that comes from what an enclosing call has inferred so far, which it can still widen
     let final_expected = expected_type.filter(|_| !ctx.is_expected_type_hint() && !fallback_only);
 
-    let solver = ctx.call_solver(expected);
+    let solver = ctx.call_solver(expected, narrower.as_ref());
     let solver = Rc::new(if fallback_only {
         solver.fallback_only()
     } else {
@@ -129,7 +135,15 @@ pub(crate) fn infer_call(
         // `ArgumentOrder::takes_expected_bounds` and `CallSolver::argument_mappings`)
         if !order.takes_expected_bounds(i) {
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
-        } else if order.widens_to_expected(i) {
+        }
+
+        // A call that's widened to the expected type's own bounds takes what the arguments so far
+        // map as a narrower expected type, for its generics that nothing else gives a type, such
+        // as `A` in `nothing<A>(v: Int) -> A` (see `Compiler::with_narrower_expected_type`)
+        let mut narrower_mappings = None;
+
+        if order.widens_to_expected(i) {
+            narrower_mappings = Some(mappings.clone());
             ctx.widen_to_expected(&solver, order.merged(), &mut mappings);
         }
 
@@ -148,6 +162,10 @@ pub(crate) fn infer_call(
         let restored_here = restored.clone();
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
+        let narrower = narrower_mappings.map(|mut narrower_mappings| {
+            restore_renamed(ctx, &mut narrower_mappings, renamed);
+            substitute_with_mappings(ctx.types_mut(), param, &narrower_mappings)
+        });
 
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
@@ -185,22 +203,24 @@ pub(crate) fn infer_call(
             _ => None,
         };
 
-        let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
-            ctx.with_expected_type_hint(hint, |ctx| {
-                if let AstExpr::LambdaExpr(lambda) = expr {
-                    let wrap = match &params {
-                        Some(params) => ParameterWrap::Generics {
-                            params,
-                            generics: &function.generics,
-                            mappings: &mappings,
-                        },
-                        None => ParameterWrap::Whole,
-                    };
+        let (value, mut parameters) = ctx.with_narrower_expected_type(narrower, |ctx| {
+            ctx.with_expected_type_fallback(false, |ctx| {
+                ctx.with_expected_type_hint(hint, |ctx| {
+                    if let AstExpr::LambdaExpr(lambda) = expr {
+                        let wrap = match &params {
+                            Some(params) => ParameterWrap::Generics {
+                                params,
+                                generics: &function.generics,
+                                mappings: &mappings,
+                            },
+                            None => ParameterWrap::Whole,
+                        };
 
-                    compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
-                } else {
-                    (compile_expr(ctx, expr, Some(expected)), Vec::new())
-                }
+                        compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
+                    } else {
+                        (compile_expr(ctx, expr, Some(expected)), Vec::new())
+                    }
+                })
             })
         });
 
@@ -758,9 +778,7 @@ impl ArgumentOrder {
                     kind,
                     has_lambda: has_lambda(arg),
                     has_own_lambda: has_own_lambda(arg),
-                    widens: matches!(arg, AstExpr::FunctionCallExpr(_))
-                        && !has_lambda(arg)
-                        && !has_call_without_arguments(arg),
+                    widens: matches!(arg, AstExpr::FunctionCallExpr(_)) && !has_lambda(arg),
                     reads,
                     writes: generics_in(ctx, function, param.ty),
                     bounds_above: bounded_above(ctx, function, param.ty),
@@ -1555,14 +1573,6 @@ fn has_own_lambda(expr: &AstExpr) -> bool {
     }
 
     false
-}
-
-/// Whether the expression is, or has in it, a call without arguments.
-fn has_call_without_arguments(expr: &AstExpr) -> bool {
-    expr.syntax()
-        .descendants()
-        .filter_map(AstExpr::cast)
-        .any(|expr| is_call_without_arguments(&expr))
 }
 
 /// Whether the expression is, or has in it, a lambda.

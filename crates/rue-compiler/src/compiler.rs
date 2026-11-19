@@ -73,6 +73,10 @@ pub struct Compiler {
     /// Whether the type expected of the expression being compiled is only for the generics of the
     /// calls in it that nothing else gives a type (see `Compiler::with_expected_type_fallback`).
     fallback: bool,
+    /// A narrower type expected of the call being compiled, for the generics of it that nothing
+    /// else gives a type, where the expected type itself is only for bounds (see
+    /// `Compiler::with_narrower_expected_type`).
+    narrower: Option<TypeId>,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
@@ -219,6 +223,7 @@ impl Compiler {
             call_frames: Vec::new(),
             hinted: false,
             fallback: false,
+            narrower: None,
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             overridden_symbols: HashSet::new(),
@@ -902,6 +907,27 @@ impl Compiler {
         result
     }
 
+    /// Compiles a call with a narrower type expected of it than its expected type, which the call's
+    /// generics that nothing else gives a type take, while the expected type still bounds the others
+    /// (see `CallSolver::with_fallback`). Only the call itself takes it (see
+    /// `Compiler::take_narrower_expected_type`), not the expressions in it.
+    pub fn with_narrower_expected_type<T>(
+        &mut self,
+        narrower: Option<TypeId>,
+        compile: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let outer = mem::replace(&mut self.narrower, narrower);
+        let result = compile(self);
+        self.narrower = outer;
+        result
+    }
+
+    /// Takes the narrower type expected of the call being compiled (see
+    /// `Compiler::with_narrower_expected_type`), so that the expressions in it don't see it.
+    pub fn take_narrower_expected_type(&mut self) -> Option<TypeId> {
+        self.narrower.take()
+    }
+
     /// Whether the type expected of the expression being compiled is only a fallback (see
     /// `Compiler::with_expected_type_fallback`).
     pub fn is_expected_type_fallback(&self) -> bool {
@@ -1100,8 +1126,16 @@ impl Compiler {
     }
 
     /// A solver for a call's generics, given what was inferred from the type expected of it.
-    pub fn call_solver(&mut self, expected: Option<Inference>) -> CallSolver {
-        CallSolver::new(self.db.types_mut(), &self.builtins.types, expected)
+    pub fn call_solver(
+        &mut self,
+        expected: Option<Inference>,
+        narrower: Option<&Inference>,
+    ) -> CallSolver {
+        CallSolver::new(self.db.types_mut(), &self.builtins.types, expected).with_fallback(
+            self.db.types_mut(),
+            &self.builtins.types,
+            narrower,
+        )
     }
 
     /// What the arguments of a call compiled so far infer on their own (see

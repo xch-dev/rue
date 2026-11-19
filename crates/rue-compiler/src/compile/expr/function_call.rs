@@ -15,6 +15,9 @@ pub fn compile_function_call_expr(
     call: &AstFunctionCallExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
+    // Only this call takes a narrower expected type, not the expressions in it
+    let narrower = ctx.take_narrower_expected_type();
+
     let Some(call_expr) = call.expr() else {
         debug!("Unresolved function call expr");
         return ctx.unresolved();
@@ -105,7 +108,7 @@ pub fn compile_function_call_expr(
             results,
             checks,
             mut mappings,
-        } = infer_call(ctx, function, &args, expected_type, &renamed);
+        } = infer_call(ctx, function, &args, expected_type, narrower, &renamed);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
