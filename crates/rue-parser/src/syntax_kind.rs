@@ -107,8 +107,8 @@ pub enum SyntaxKind {
     #[display("`super`")]
     Super,
 
-    #[display("`crate`")]
-    Crate,
+    #[display("`project`")]
+    Project,
 
     // Grouping
     #[display("`(`")]
@@ -430,7 +430,7 @@ macro_rules! T {
     [is] => { $crate::SyntaxKind::Is };
     [as] => { $crate::SyntaxKind::As };
     [super] => { $crate::SyntaxKind::Super };
-    [crate] => { $crate::SyntaxKind::Crate };
+    [project] => { $crate::SyntaxKind::Project };
     ['('] => { $crate::SyntaxKind::OpenParen };
     [')'] => { $crate::SyntaxKind::CloseParen };
     ['{'] => { $crate::SyntaxKind::OpenBrace };
@@ -563,7 +563,7 @@ impl SyntaxKind {
             T![is] => &[T![is]],
             T![as] => &[T![as]],
             T![super] => &[T![super]],
-            T![crate] => &[T![crate]],
+            T![project] => &[T![project]],
             T!['('] => &[T!['(']],
             T![')'] => &[T![')']],
             T!['{'] => &[T!['{']],

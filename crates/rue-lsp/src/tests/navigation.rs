@@ -130,8 +130,8 @@ export fn greet(name: String) -> String {
 }
 
 #[test]
-fn test_definition_through_crate() {
-    // A path through `crate` reaches the same items as one through the files' names
+fn test_definition_through_project() {
+    // A path through `project` reaches the same items as one through the files' names
     check_definitions(
         &[
             (
@@ -139,7 +139,7 @@ fn test_definition_through_crate() {
                 r#"
 mod inner {
     export fn value() -> Int {
-        crate::utils::ON$0E
+        project::utils::ON$0E
     }
 }
 "#,
@@ -152,7 +152,7 @@ mod inner {
     );
     check_definitions(
         &[
-            ("main.rue", "import crate::util$0s::ONE;\n"),
+            ("main.rue", "import project::util$0s::ONE;\n"),
             ("utils.rue", "export const ONE: Int = 1;\n"),
         ],
         expect![[r#"

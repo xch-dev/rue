@@ -1,3 +1,0 @@
-export fn value() -> Int {
-    crate::utils::HIDDEN + crate::super::utils::shown() + crate::main::shown()
-}

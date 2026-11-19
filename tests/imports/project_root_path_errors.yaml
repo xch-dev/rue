@@ -1,0 +1,10 @@
+diagnostics:
+- "`project` can only be used at the start of a path at project_root_path_errors.rue:6:19"
+- Unresolved import `X` at project_root_path_errors.rue:6:28
+- Cannot end path in `project` at project_root_path_errors.rue:7:12
+- "`project` can only be used at the start of a path at project_root_path_errors.rue:8:22"
+- Cannot end path in `project` at project_root_path_errors.rue:12:13
+- Unresolved `super`, there is no parent module at project_root_path_errors.rue:13:22
+- Undeclared symbol `X` at project_root_path_errors.rue:13:29
+- "`project` can only be used at the start of a path at project_root_path_errors.rue:14:16"
+- Undeclared type `Int` at project_root_path_errors.rue:15:21

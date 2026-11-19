@@ -213,8 +213,8 @@ fn import_path_segment(p: &mut Parser, first: bool) -> bool {
     } else if p.at(T![super]) {
         p.expect(T![super]);
         false
-    } else if p.at(T![crate]) {
-        p.expect(T![crate]);
+    } else if p.at(T![project]) {
+        p.expect(T![project]);
         false
     } else {
         p.expect(SyntaxKind::Ident);
@@ -548,7 +548,7 @@ mod tests {
                   Semicolon@6..7 ";"
             "#]],
             expect![
-                "Expected one of `::`, `super`, `crate`, identifier, found `;` at main.rue:1:7"
+                "Expected one of `::`, `super`, `project`, identifier, found `;` at main.rue:1:7"
             ],
         );
 
@@ -565,7 +565,7 @@ mod tests {
                   Semicolon@8..9 ";"
             "#]],
             expect![
-                "Expected one of `::`, `super`, `crate`, identifier, found `*` at main.rue:1:8"
+                "Expected one of `::`, `super`, `project`, identifier, found `*` at main.rue:1:8"
             ],
         );
 
@@ -583,7 +583,7 @@ mod tests {
                   Semicolon@9..10 ";"
             "#]],
             expect![
-                "Expected one of `::`, `super`, `crate`, identifier, found `{` at main.rue:1:8"
+                "Expected one of `::`, `super`, `project`, identifier, found `{` at main.rue:1:8"
             ],
         );
 
@@ -605,7 +605,7 @@ mod tests {
                   Semicolon@13..14 ";"
             "#]],
             expect![
-                "Expected one of `::`, `super`, `crate`, identifier, found `{` at main.rue:1:8"
+                "Expected one of `::`, `super`, `project`, identifier, found `{` at main.rue:1:8"
             ],
         );
 
@@ -1161,18 +1161,18 @@ mod tests {
 
         check(
             item,
-            "import crate::value;",
+            "import project::value;",
             expect![[r#"
-                ImportItem@0..20
+                ImportItem@0..22
                   Import@0..6 "import"
                   Whitespace@6..7 " "
-                  ImportPath@7..19
-                    ImportPathSegment@7..12
-                      Crate@7..12 "crate"
-                    ImportPathSegment@12..19
-                      PathSeparator@12..14 "::"
-                      Ident@14..19 "value"
-                  Semicolon@19..20 ";"
+                  ImportPath@7..21
+                    ImportPathSegment@7..14
+                      Project@7..14 "project"
+                    ImportPathSegment@14..21
+                      PathSeparator@14..16 "::"
+                      Ident@16..21 "value"
+                  Semicolon@21..22 ";"
             "#]],
             expect![""],
         );

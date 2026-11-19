@@ -63,7 +63,7 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
     } else if !options.inline && p.at_quiet(T![::])
         || p.at_quiet(SyntaxKind::Ident)
         || p.at_quiet(T![super])
-        || p.at_quiet(T![crate])
+        || p.at_quiet(T![project])
     {
         path_expr(p, checkpoint);
 
@@ -300,7 +300,7 @@ fn path_expr_segment(p: &mut Parser, first: bool) {
     } else {
         p.expect(T![::]);
     }
-    if !p.try_eat(T![super]) && !p.try_eat(T![crate]) {
+    if !p.try_eat(T![super]) && !p.try_eat(T![project]) {
         p.expect(SyntaxKind::Ident);
     }
     if p.at(SyntaxKind::TurboFish) {
@@ -936,14 +936,14 @@ mod tests {
 
         check(
             expr,
-            "crate::value",
+            "project::value",
             expect![[r#"
-                PathExpr@0..12
-                  PathSegment@0..5
-                    Crate@0..5 "crate"
-                  PathSegment@5..12
-                    PathSeparator@5..7 "::"
-                    Ident@7..12 "value"
+                PathExpr@0..14
+                  PathSegment@0..7
+                    Project@0..7 "project"
+                  PathSegment@7..14
+                    PathSeparator@7..9 "::"
+                    Ident@9..14 "value"
             "#]],
             expect![""],
         );

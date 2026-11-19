@@ -73,7 +73,7 @@ impl<'a> Lexer<'a> {
             "is" => TokenKind::Is,
             "as" => TokenKind::As,
             "super" => TokenKind::Super,
-            "crate" => TokenKind::Crate,
+            "project" => TokenKind::Project,
             _ => TokenKind::Ident,
         }
     }
@@ -763,9 +763,9 @@ mod tests {
         );
 
         check(
-            "crate",
+            "project",
             expect![[r#"
-                Crate
+                Project
             "#]],
         );
     }

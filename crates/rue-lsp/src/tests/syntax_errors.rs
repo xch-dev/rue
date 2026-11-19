@@ -197,7 +197,7 @@ fn test_let_without_value() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -218,7 +218,7 @@ fn test_let_without_value_before_semicolon() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -239,7 +239,7 @@ fn test_return_without_value() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -260,7 +260,7 @@ fn test_if_without_condition() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -281,7 +281,7 @@ fn test_assert_without_condition() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -302,7 +302,7 @@ fn test_raise_without_value() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -324,7 +324,7 @@ fn test_constant_without_value() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             LIMIT [Constant] Int
             unchecked_cast [Function] fn<T>(value: Any) -> T
             ...
@@ -363,7 +363,7 @@ fn test_cursor_after_string() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -385,7 +385,7 @@ fn test_cursor_before_string() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -407,7 +407,7 @@ fn test_cursor_after_line_comment() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -428,7 +428,7 @@ fn test_cursor_after_line_comment_crlf() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] 42
             main [Function] fn() -> Int
             ...
@@ -573,7 +573,7 @@ fn test_unfinished_struct() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             Point [Struct]
             Atom [Struct]
             ...
@@ -594,7 +594,7 @@ fn test_unfinished_binary_expression() {
             <none>
             completions:
             super [Module]
-            crate [Module]
+            project [Module]
             value [Variable] Int
             main [Function] fn(value: Int) -> Int
             ...

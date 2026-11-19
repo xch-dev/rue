@@ -24,7 +24,7 @@ fn ty_with_inner(p: &mut Parser, allow_union: bool) {
 
     if p.at_quiet(SyntaxKind::Ident)
         || p.at_quiet(T![super])
-        || p.at_quiet(T![crate])
+        || p.at_quiet(T![project])
         || p.at_quiet(T![::])
     {
         path_type(p);
@@ -118,7 +118,7 @@ fn path_type_segment(p: &mut Parser, first: bool) {
     } else {
         p.expect(T![::]);
     }
-    if !p.try_eat(T![super]) && !p.try_eat(T![crate]) {
+    if !p.try_eat(T![super]) && !p.try_eat(T![project]) {
         p.expect(SyntaxKind::Ident);
     }
     if p.at(T![<]) {
@@ -538,14 +538,14 @@ mod tests {
 
         check(
             ty,
-            "crate::Type",
+            "project::Type",
             expect![[r#"
-                PathType@0..11
-                  PathSegment@0..5
-                    Crate@0..5 "crate"
-                  PathSegment@5..11
-                    PathSeparator@5..7 "::"
-                    Ident@7..11 "Type"
+                PathType@0..13
+                  PathSegment@0..7
+                    Project@0..7 "project"
+                  PathSegment@7..13
+                    PathSeparator@7..9 "::"
+                    Ident@9..13 "Type"
             "#]],
             expect![""],
         );

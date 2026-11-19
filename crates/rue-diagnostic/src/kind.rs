@@ -311,11 +311,11 @@ pub enum DiagnosticKind {
     #[error("Cannot end path in `super`")]
     SuperAtEnd,
 
-    #[error("`crate` can only be used at the start of a path")]
-    CrateNotAtStart,
+    #[error("`project` can only be used at the start of a path")]
+    ProjectNotAtStart,
 
-    #[error("Cannot end path in `crate`")]
-    CrateAtEnd,
+    #[error("Cannot end path in `project`")]
+    ProjectAtEnd,
 
     #[error("`{0}` is ambiguous, since glob imports bring in different items with this name")]
     AmbiguousImport(String),

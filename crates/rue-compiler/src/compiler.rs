@@ -399,10 +399,11 @@ impl Compiler {
         stack
     }
 
-    /// The module that `crate` refers to from the code being compiled: the root directory of the
-    /// project, or the file itself if it isn't in a directory (such as a program compiled from a
-    /// single file). The standard library's root is its own directory.
-    pub fn crate_root(&self) -> SymbolId {
+    /// The module that `project` refers to from the code being compiled: the module that the
+    /// project's entrypoint points to (its directory), or the file itself if it isn't in a
+    /// directory (such as a program compiled from a single file). The standard library is its own
+    /// project, whose module is its directory.
+    pub fn project_root(&self) -> SymbolId {
         self.module_stack
             .first()
             .copied()

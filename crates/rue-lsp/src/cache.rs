@@ -453,7 +453,7 @@ impl Cache<Compiler> {
 
             let scope = self.ctx.module(module).scope;
 
-            // A module that `super` or `crate` names contains the code, so its private items and
+            // A module that `super` or `project` names contains the code, so its private items and
             // a file's sibling modules can be used too.
             let items = |namespace| {
                 if members {
@@ -532,7 +532,7 @@ impl Cache<Compiler> {
             context,
             CompletionContext::Expression | CompletionContext::Type
         ) {
-            for keyword in ["super", "crate"] {
+            for keyword in ["super", "project"] {
                 if let Some(score) = fuzzy_match(&partial, keyword) {
                     scored_items.push((
                         score,

@@ -63,16 +63,16 @@ Every `.rue` file in a project is a module, every directory is a module containi
 
 - **A name in scope:** a file sees the other files and directories next to it by name, while an inline module only sees its own items, its imports and the prelude.
 - **`super`:** from an inline module, the module it's in. From a file, the parent of the file's directory (since the file already sees its own directory's contents by name). Each further `super` goes up one more module.
-- **`crate`:** the root of the project, from anywhere in it: the entrypoint directory (such as `puzzles`), or the file itself when a single file is compiled. The standard library's root is its own directory. `crate` is only allowed at the start of a path, and since the root has no parent, `super` can't follow it.
+- **`project`:** the module that the project's `entrypoint` in `Rue.toml` points to (such as the `puzzles` directory), from anywhere in the project. For a single file compiled on its own, that's the file itself, and the standard library is its own project. `project` is a keyword, only allowed at the start of a path, and since the project's module has no parent, `super` can't follow it.
 
-`super` and `crate` name a module that contains the code, so its private items can be used, and `import crate::*` brings them all in (like `import super::*`). Past that, the usual rules apply: an item inside another module (including a file reached through `crate`) has to be exported. `export crate::...` re-exports an item, like any other import path:
+`super` and `project` name a module that contains the code, so its private items can be used, and `import project::*` brings them all in (like `import super::*`). Past that, the usual rules apply: an item inside another module (including a file reached through `project`) has to be exported. `export project::...` re-exports an item, like any other import path:
 
 ```rs
-// puzzles/conditions/create.rue, where `crate` and `super` both name `puzzles`
-import crate::utils::greet;
+// puzzles/conditions/create.rue, where `project` and `super` both name `puzzles`
+import project::utils::greet;
 
 export fn hello() -> String {
-    greet(crate::main::NAME) + greet(super::main::NAME)
+    greet(project::main::NAME) + greet(super::main::NAME)
 }
 ```
 
