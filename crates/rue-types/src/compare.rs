@@ -733,7 +733,8 @@ impl ComparisonContext<'_> {
     }
 
     /// Whether the type is the same on both sides: each generic it references is bound to the same
-    /// binder on both, which isn't being instantiated, or is free on both and not being inferred.
+    /// binder on both, which isn't being instantiated, or is free on both and not being inferred
+    /// (see `compare_with_inference_limited`).
     fn is_reflexive(&mut self, arena: &Arena<Type>, ty: TypeId) -> bool {
         self.cache_references(arena, ty);
         let generics = self.references[&ty].clone();
@@ -1315,7 +1316,7 @@ pub fn compare_with_inference_limited(
     rhs: TypeId,
     infer: Option<&mut Inference>,
 ) -> Result<Comparison, TooComplex> {
-    // A type compared with itself stays the same type on both sides (see `is_reflexive`)
+    // A type compared with itself stays the same type on both sides
     let same = lhs == rhs;
     let lhs = substitute(arena, lhs);
     let rhs = if same { lhs } else { substitute(arena, rhs) };
@@ -1338,7 +1339,15 @@ pub fn compare_with_inference_limited(
         infer,
         ..Default::default()
     };
-    let result = compare_impl(arena, builtins, &mut ctx, lhs, rhs, None, None);
+    // A type is assignable to itself, unless it references generics being inferred, which this
+    // collects candidates for. That's only done here, rather than for every pair of types that are
+    // the same: comparisons are incomplete where union members bound instances (#360), and a
+    // shortcut that's only reached in some modes would make them disagree on how incomplete
+    let result = if same && ctx.is_reflexive(arena, lhs) {
+        Comparison::Assign
+    } else {
+        compare_impl(arena, builtins, &mut ctx, lhs, rhs, None, None)
+    };
     ctx.finish(arena, builtins);
 
     if let Some((lhs_name, rhs_name)) = &names {
@@ -1529,10 +1538,6 @@ fn compare_impl_inner(
 
     // The comparison that started from an empty stack is unwinding, to iterate instead
     if ctx.fixpoint && ctx.fixpoint_memo.abandoned() {
-        return Comparison::Assign;
-    }
-
-    if lhs == rhs && lhs_semantic == rhs_semantic && ctx.is_reflexive(arena, lhs) {
         return Comparison::Assign;
     }
 
