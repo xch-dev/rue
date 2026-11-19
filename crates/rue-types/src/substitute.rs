@@ -5,8 +5,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, FunctionParameter, FunctionType, FxHashMap, FxIndexMap, Pair, Struct, Type, TypeId,
-    Union, grow_stack, step, stringify_impl,
+    Alias, FunctionParameter, FunctionType, FxHashMap, FxIndexMap, FxIndexSet, Pair, Struct, Type,
+    TypeId, Union, grow_stack, step, stringify_impl,
 };
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
@@ -351,13 +351,13 @@ fn substitute_argument(
 
     let bindings = bindings
         .iter()
-        .filter(|(generic, _)| generics.contains(generic))
+        .filter(|&(generic, _)| generics.contains(generic))
         .map(|(&generic, binding)| (generic, binding.clone()))
         .collect();
 
     let map = map
         .iter()
-        .filter(|(generic, _)| generics.contains(generic))
+        .filter(|&(generic, _)| generics.contains(generic))
         .map(|(&generic, &ty)| (generic, ty))
         .collect();
 
@@ -370,8 +370,11 @@ fn substitute_argument(
 /// Returns the generics that may be replaced when substituting the type. This over-approximates
 /// them (for example, it includes generics bound by function types), but excludes the inner type
 /// of a generic application, since that is only substituted with the application's arguments.
-pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> HashSet<TypeId> {
-    let mut generics = HashSet::new();
+///
+/// They're in the order they're found, so that what's built from them, such as the order of a
+/// union's members, is the same from run to run.
+pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> FxIndexSet<TypeId> {
+    let mut generics = FxIndexSet::default();
     let mut visited = HashSet::new();
     let mut stack = vec![id];
 
