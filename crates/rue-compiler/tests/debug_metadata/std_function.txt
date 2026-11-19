@@ -5,7 +5,7 @@ files:
   std_function.rue
   std/tree_hash.rue
 functions:
-  0: main (_ . (value@6: unknown . (expected@14: integer . _)))
+  0: main (_ . (value@5: unknown . (expected@11: integer . _)))
   1: tree_hash (_ . value@3: unknown)
 nodes:
   std_function.rue:4:47-8:2  (a (q 2 (q 2 (i (= 23 (q . 3)) (q . 2) (q 8 (q . "asserti...
@@ -34,7 +34,7 @@ files:
   std_function.rue
   std/tree_hash.rue
 functions:
-  0: main (_ . (value@6: unknown . (expected@14: integer . _)))
+  0: main (_ . (value@5: unknown . (expected@11: integer . _)))
   1: tree_hash (_ . value@3: unknown)
 nodes:
   std_function.rue:4:47-8:2  (a (q 2 (i (= 11 (q . 3)) (q 2 2 (c 2 5)) (q 8)) 1) (c (q...

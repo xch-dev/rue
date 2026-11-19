@@ -16,7 +16,7 @@ use clvmr::{
 };
 use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
-use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_compiler::{CompiledExport, Compiler, FileTree, normalize_path};
 use rue_diagnostic::{
     Diagnostic, DiagnosticSeverity, ForbiddenBy, LineIndex, Lint, LintGroup, LintLevel, LintLevels,
     LintName, SourceKind,
@@ -515,41 +515,24 @@ fn build(args: BuildArgs) -> Result<()> {
             let file_path = Path::new(file_path);
             let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
 
-            let exports = if debug_metadata {
-                tree.exports_with_debug_metadata(
-                    &mut ctx,
-                    &mut allocator,
-                    Some(&file.source.kind),
-                    None,
-                    &base_path,
-                )?
-            } else {
-                tree.exports(
-                    &mut ctx,
-                    &mut allocator,
-                    Some(&file.source.kind),
-                    None,
-                    &base_path,
-                )?
-            };
+            let exports = compile_exports(
+                &tree,
+                &mut ctx,
+                &mut allocator,
+                Some(&file.source.kind),
+                None,
+                &base_path,
+                debug_metadata,
+            )?;
 
-            let main = if debug_metadata {
-                tree.main_with_debug_metadata(
-                    &mut ctx,
-                    &mut allocator,
-                    &file.source.kind,
-                    base_path.clone(),
-                )?
-                .map(|(ptr, metadata)| (ptr, Some(metadata)))
-            } else {
-                tree.main(
-                    &mut ctx,
-                    &mut allocator,
-                    &file.source.kind,
-                    base_path.clone(),
-                )?
-                .map(|ptr| (ptr, None))
-            };
+            let main = compile_main(
+                &tree,
+                &mut ctx,
+                &mut allocator,
+                &file.source.kind,
+                &base_path,
+                debug_metadata,
+            )?;
 
             let mut exports = if main_kind
                 .as_ref()
@@ -658,23 +641,15 @@ fn build(args: BuildArgs) -> Result<()> {
         }
     } else {
         let (program, metadata) = if let Some(export) = &args.export {
-            let exports = if debug_metadata {
-                tree.exports_with_debug_metadata(
-                    &mut ctx,
-                    &mut allocator,
-                    file_kind.as_ref(),
-                    Some(export),
-                    &base_path,
-                )?
-            } else {
-                tree.exports(
-                    &mut ctx,
-                    &mut allocator,
-                    file_kind.as_ref(),
-                    Some(export),
-                    &base_path,
-                )?
-            };
+            let exports = compile_exports(
+                &tree,
+                &mut ctx,
+                &mut allocator,
+                file_kind.as_ref(),
+                Some(export),
+                &base_path,
+                debug_metadata,
+            )?;
 
             let Some(program) = exports.into_iter().next() else {
                 eprintln!("{}", format!("Export `{export}` not found").red().bold());
@@ -683,20 +658,16 @@ fn build(args: BuildArgs) -> Result<()> {
 
             (program.ptr, program.debug_metadata)
         } else if let Some(main_kind) = &main_kind
-            && let Some((ptr, metadata)) = if debug_metadata {
-                tree.main_with_debug_metadata(
-                    &mut ctx,
-                    &mut allocator,
-                    main_kind,
-                    base_path.clone(),
-                )?
-                .map(|(ptr, metadata)| (ptr, Some(metadata)))
-            } else {
-                tree.main(&mut ctx, &mut allocator, main_kind, base_path.clone())?
-                    .map(|ptr| (ptr, None))
-            }
+            && let Some(program) = compile_main(
+                &tree,
+                &mut ctx,
+                &mut allocator,
+                main_kind,
+                &base_path,
+                debug_metadata,
+            )?
         {
-            (ptr, metadata)
+            program
         } else {
             eprintln!(
                 "{}",
@@ -737,31 +708,13 @@ fn build(args: BuildArgs) -> Result<()> {
         }
 
         if let Some(metadata) = metadata {
-            let path = if let Some(Some(path)) = args.debug_metadata {
-                path
-            } else {
-                // Next to the source file, named like the program would be with `--all`
-                let source = match file_kind.as_ref().or(main_kind.as_ref()) {
-                    Some(SourceKind::File(path)) => Some(PathBuf::from(path)),
-                    _ => None,
-                };
-                let dir = source
-                    .as_deref()
-                    .and_then(Path::parent)
-                    .unwrap_or(&base_path)
-                    .to_path_buf();
-                let name = args.export.clone().unwrap_or_else(|| {
-                    source
-                        .as_deref()
-                        .and_then(Path::file_stem)
-                        .map_or("main".to_string(), |stem| {
-                            stem.to_string_lossy().to_string()
-                        })
-                });
-                PathBuf::from(debug_metadata_path(
-                    &dir.join(format!("{name}.rue.hex")).to_string_lossy(),
-                ))
-            };
+            let path = args.debug_metadata.flatten().unwrap_or_else(|| {
+                single_debug_metadata_path(
+                    file_kind.as_ref().or(main_kind.as_ref()),
+                    args.export.as_deref(),
+                    &base_path,
+                )
+            });
 
             fs::write(path, metadata)?;
         }
@@ -770,11 +723,75 @@ fn build(args: BuildArgs) -> Result<()> {
     Ok(())
 }
 
+/// Compiles `main` in the file, along with its debug metadata sidecar if it's requested.
+fn compile_main(
+    tree: &FileTree,
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    path: &SourceKind,
+    base_path: &Path,
+    debug_metadata: bool,
+) -> Result<Option<(NodePtr, Option<Vec<u8>>)>> {
+    Ok(if debug_metadata {
+        tree.main_with_debug_metadata(ctx, allocator, path, base_path.to_path_buf())?
+            .map(|(ptr, metadata)| (ptr, Some(metadata)))
+    } else {
+        tree.main(ctx, allocator, path, base_path.to_path_buf())?
+            .map(|ptr| (ptr, None))
+    })
+}
+
+/// Compiles the exports (of the file, or of every file), along with their debug metadata sidecars
+/// if they're requested.
+fn compile_exports(
+    tree: &FileTree,
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    path: Option<&SourceKind>,
+    export: Option<&str>,
+    base_path: &Path,
+    debug_metadata: bool,
+) -> Result<Vec<CompiledExport>> {
+    Ok(if debug_metadata {
+        tree.exports_with_debug_metadata(ctx, allocator, path, export, base_path)?
+    } else {
+        tree.exports(ctx, allocator, path, export, base_path)?
+    })
+}
+
 /// The path of the debug metadata sidecar of a program, which is the path of the program with
 /// its `.hex` extension replaced, as Chialisp names them (`foo.rue.hex` has `foo.rue.debug.clvm.bin`).
 fn debug_metadata_path(program_path: &str) -> String {
     let base = program_path.strip_suffix(".hex").unwrap_or(program_path);
     format!("{base}.debug.clvm.bin")
+}
+
+/// Where the sidecar of a single program is written when no path is given: next to the source
+/// file, named like the program would be with `--all` (after the export, or the file for `main`).
+fn single_debug_metadata_path(
+    source: Option<&SourceKind>,
+    export: Option<&str>,
+    base_path: &Path,
+) -> PathBuf {
+    let source = match source {
+        Some(SourceKind::File(path)) => Some(Path::new(path)),
+        _ => None,
+    };
+
+    let dir = source.and_then(Path::parent).unwrap_or(base_path);
+
+    let name = export.map_or_else(
+        || {
+            source
+                .and_then(Path::file_stem)
+                .map_or("main".to_string(), |stem| {
+                    stem.to_string_lossy().to_string()
+                })
+        },
+        str::to_string,
+    );
+
+    dir.join(format!("{name}.rue.debug.clvm.bin"))
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -899,11 +916,18 @@ fn debug(args: DebugArgs) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, CostArgs, DEFAULT_MAX_COST, debug, debug_metadata_path, run_test};
+    use std::{fs, path::Path};
+
+    use super::{
+        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_metadata_path, run_test,
+        single_debug_metadata_path,
+    };
     use clap::{CommandFactory, Parser, error::ErrorKind};
-    use clvmr::Allocator;
+    use clvmr::{Allocator, SExp, serde::node_from_bytes};
     use rue_clvm::assemble;
+    use rue_diagnostic::SourceKind;
     use rue_diagnostic::{ForbiddenBy, Lint, LintGroup, LintLevel, LintLevels, LintName};
+    use sha2::{Digest, Sha256};
 
     #[test]
     fn cli_debug_asserts() {
@@ -1183,6 +1207,99 @@ mod tests {
             "dist/foo.rue.debug.clvm.bin"
         );
         assert_eq!(debug_metadata_path("foo"), "foo.debug.clvm.bin");
+
+        // A single program's sidecar is next to its source, named after the file or the export
+        let source = SourceKind::File("/project/src/main.rue".to_string());
+        let base = Path::new("/project");
+        assert_eq!(
+            single_debug_metadata_path(Some(&source), None, base),
+            Path::new("/project/src/main.rue.debug.clvm.bin")
+        );
+        assert_eq!(
+            single_debug_metadata_path(Some(&source), Some("double"), base),
+            Path::new("/project/src/double.rue.debug.clvm.bin")
+        );
+        // An export found in any file is next to the project's sources
+        assert_eq!(
+            single_debug_metadata_path(None, Some("double"), base),
+            Path::new("/project/double.rue.debug.clvm.bin")
+        );
+    }
+
+    /// Builds the programs in the directory with the arguments.
+    fn run_build(dir: &Path, args: &[&str]) {
+        let file = dir.join("main.rue");
+        let Ok(Command::Build(args)) = Command::try_parse_from(
+            ["rue", "build", file.to_str().unwrap()]
+                .into_iter()
+                .chain(args.iter().copied()),
+        ) else {
+            panic!("expected build command");
+        };
+        build(args).unwrap();
+    }
+
+    /// The program hash that a sidecar is for.
+    fn sidecar_program_hash(sidecar: &[u8]) -> Vec<u8> {
+        let mut allocator = Allocator::new();
+        let mut node = node_from_bytes(&mut allocator, sidecar).unwrap();
+        let mut fields = Vec::new();
+        while let SExp::Pair(first, rest) = allocator.sexp(node) {
+            fields.push(first);
+            node = rest;
+        }
+        assert_eq!(allocator.atom(fields[0]).as_ref(), b"CHIALISP_DEBUG");
+        allocator.atom(fields[3]).as_ref().to_vec()
+    }
+
+    #[test]
+    fn build_writes_debug_metadata() {
+        let dir =
+            std::env::temp_dir().join(format!("rue-cli-debug-metadata-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let dir = dir.canonicalize().unwrap();
+        fs::write(
+            dir.join("main.rue"),
+            "fn main(value: Int) -> Int {\n    double(value) + 1\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n",
+        )
+        .unwrap();
+
+        // With `--all`, each program's sidecar is next to it, and is for the program's bytes
+        run_build(&dir, &["--all", "--debug-metadata"]);
+
+        for name in ["main", "main.rue_double"] {
+            let hex = fs::read_to_string(dir.join(format!("{name}.rue.hex"))).unwrap();
+            let program = hex::decode(hex.trim()).unwrap();
+            let sidecar = fs::read(dir.join(format!("{name}.rue.debug.clvm.bin"))).unwrap();
+            assert_eq!(
+                sidecar_program_hash(&sidecar),
+                Sha256::digest(&program).to_vec(),
+                "{name}"
+            );
+        }
+
+        let all = fs::read(dir.join("main.rue.debug.clvm.bin")).unwrap();
+        fs::remove_file(dir.join("main.rue.debug.clvm.bin")).unwrap();
+
+        // A single program's sidecar is next to its source, or where it's asked for
+        run_build(&dir, &["--debug-metadata"]);
+        assert_eq!(fs::read(dir.join("main.rue.debug.clvm.bin")).unwrap(), all);
+
+        let path = dir.join("custom.bin");
+        run_build(
+            &dir,
+            &[
+                "--export",
+                "double",
+                &format!("--debug-metadata={}", path.display()),
+            ],
+        );
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            fs::read(dir.join("main.rue_double.rue.debug.clvm.bin")).unwrap()
+        );
+
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

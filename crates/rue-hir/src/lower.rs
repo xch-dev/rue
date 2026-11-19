@@ -170,12 +170,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     /// Lowers something with the nodes it allocates tagged with the location, unless something
     /// inside of it has a location of its own.
-    fn with_span(&mut self, srcloc: &SrcLoc, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
+    fn with_span(&mut self, srcloc: SrcLoc, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
         let Some(debug) = &mut self.debug else {
             return f(self);
         };
 
-        let span = debug.span(srcloc.clone());
+        let span = debug.span(srcloc);
         debug.scopes.enter(self.arena.len(), span);
         let lir = f(self);
         self.debug
@@ -1106,7 +1106,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let then_branch = self.lower_block(env, stmts, body);
 
         // The check and the failure are located at the statement, rather than the condition
-        self.with_span(&srcloc, |this| {
+        self.with_span(srcloc.clone(), |this| {
             let raise = if this.options.debug_symbols {
                 let error = this.arena.alloc(Lir::Atom(
                     format!("assertion failed at {}", srcloc.display(&this.base_path)).into_bytes(),
@@ -1123,7 +1123,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_raise(&mut self, env: &Environment, hir: Option<HirId>, srcloc: SrcLoc) -> LirId {
-        self.with_span(&srcloc.clone(), |this| {
+        self.with_span(srcloc.clone(), |this| {
             this.lower_raise_inner(env, hir, srcloc)
         })
     }

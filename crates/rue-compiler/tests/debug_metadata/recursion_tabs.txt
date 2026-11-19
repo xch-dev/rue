@@ -4,8 +4,8 @@ sidecar: 1638 bytes
 files:
   recursion_tabs.rue
 functions:
-  0: main (_ . (n@6: integer . _))
-  1: countdown (_ . (n@6: integer . acc@7: integer))
+  0: main (_ . (n@5: integer . _))
+  1: countdown (_ . (n@5: integer . acc@7: integer))
 nodes:
   recursion_tabs.rue:3:24-5:2  (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (= 5 ()) (q 8 (q . "...
     recursion_tabs.rue:4:8-4:23 fn main  (a 2 (c 2 (c 5 ())))
@@ -23,8 +23,8 @@ sidecar: 1402 bytes
 files:
   recursion_tabs.rue
 functions:
-  0: main (_ . (n@6: integer . _))
-  1: countdown (_ . (n@6: integer . acc@7: integer))
+  0: main (_ . (n@5: integer . _))
+  1: countdown (_ . (n@5: integer . acc@7: integer))
 nodes:
   recursion_tabs.rue:3:24-5:2  (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i 5 (q 2 2 (c 2 (c (- ...
     recursion_tabs.rue:4:8-4:23 fn main  (a 2 (c 2 (c 5 ())))

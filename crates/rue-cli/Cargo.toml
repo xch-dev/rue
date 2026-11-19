@@ -35,3 +35,6 @@ colored = { workspace = true }
 toml = { workspace = true }
 glob = { workspace = true }
 walkdir = { workspace = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }

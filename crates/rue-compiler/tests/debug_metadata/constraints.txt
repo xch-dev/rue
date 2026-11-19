@@ -4,7 +4,7 @@ sidecar: 2796 bytes
 files:
   constraints.rue
 functions:
-  0: main (_ . (number@6: integer . (maybe@14: atom . (key@30: atom . (flag@62: atom . (empty@126: atom . (hashes@254: list . (anything@510: unknown . (shapes@1022: pair . (either@2046: unknown . _))))))))))
+  0: main (_ . (number@5: integer . (maybe@11: atom . (key@23: atom . (flag@47: atom . (empty@95: atom . (hashes@191: list . (anything@383: unknown . (shapes@767: pair . (either@1535: unknown . _))))))))))
 nodes:
   constraints.rue:20:10-24:2  (a (q 2 (q 2 (q 4 (a 11 23) (c (a 11 2) ())) (c (c 11 (c ...
     constraints.rue:20:10-24:2 fn main  (a (q 2 (q 4 (a 11 23) (c (a 11 2) ())) (c (c 11 (c 23 (c...
@@ -22,7 +22,7 @@ sidecar: 2486 bytes
 files:
   constraints.rue
 functions:
-  0: main (_ . (number@6: integer . (maybe@14: atom . (key@30: atom . (flag@62: atom . (empty@126: atom . (hashes@254: list . (anything@510: unknown . (shapes@1022: pair . (either@2046: unknown . _))))))))))
+  0: main (_ . (number@5: integer . (maybe@11: atom . (key@23: atom . (flag@47: atom . (empty@95: atom . (hashes@191: list . (anything@383: unknown . (shapes@767: pair . (either@1535: unknown . _))))))))))
 nodes:
   constraints.rue:20:10-24:2  (a (q 2 (q 4 (a 5 11) (c (a 5 (c 11 (c 23 (c 47 (c 95 (c ...
     constraints.rue:20:10-24:2 fn main  (a (q 4 (a 5 11) (c (a 5 (c 11 (c 23 (c 47 (c 95 (c -65 (...

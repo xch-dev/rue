@@ -4,7 +4,7 @@ sidecar: 3201 bytes
 files:
   struct_param.rue
 functions:
-  0: main ((_ . (_ . _)) . (payment@6: list . (pair@14: pair . _)))
+  0: main ((_ . (_ . _)) . (payment@5: list . (pair@11: pair . _)))
   1: by_tuple (low, high)@1: pair
   2: by_destructure { puzzle_hash, amount }@1: list
   3: by_struct payment@1: list
@@ -35,7 +35,7 @@ sidecar: 2248 bytes
 files:
   struct_param.rue
 functions:
-  0: main ((_ . _) . (payment@6: list . (pair@14: pair . _)))
+  0: main ((_ . _) . (payment@5: list . (pair@11: pair . _)))
   1: by_tuple (low, high)@1: pair
   2: by_destructure { puzzle_hash, amount }@1: list
 nodes:

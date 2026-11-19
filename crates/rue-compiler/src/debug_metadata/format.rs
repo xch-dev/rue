@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use clvmr::{Allocator, NodePtr, SExp, serde::node_to_bytes};
+use clvmr::{Allocator, NodePtr, SExp, serde::node_to_bytes_limit};
 use num_bigint::{BigInt, BigUint};
 use sha2::{Digest, Sha256};
 
@@ -36,7 +36,7 @@ pub struct SourceFile {
 }
 
 /// A range of source text. Lines and columns start at 1, columns are counted in Unicode scalars
-/// with tabs expanded to the next multiple of [`TAB_WIDTH`] (see [`line_column`]), and the end is
+/// with tabs expanded to the next multiple of [`TAB_WIDTH`] (see [`line_columns`]), and the end is
 /// exclusive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
@@ -152,22 +152,6 @@ impl DebugMetadataBuilder {
         self.functions.len() - 1
     }
 
-    pub fn files(&self) -> &[SourceFile] {
-        &self.files
-    }
-
-    pub fn strings(&self) -> &[String] {
-        &self.strings
-    }
-
-    pub fn spans(&self) -> &[Span] {
-        &self.spans
-    }
-
-    pub fn functions(&self) -> &[Function] {
-        &self.functions
-    }
-
     /// Encodes the metadata for the program, which is in `program_allocator`. Each node of the
     /// program is annotated by `annotate`, which is given the builder (to add to its tables), the
     /// node, and the annotation of the pair the node is in (or the default for the root). Nodes
@@ -180,7 +164,7 @@ impl DebugMetadataBuilder {
     ) -> Result<Vec<u8>, EncodeError> {
         let mut a = Allocator::new();
 
-        let program_bytes = node_to_bytes(program_allocator, program)?;
+        let program_bytes = serialize(program_allocator, program)?;
         let program_sha256: [u8; 32] = Sha256::digest(&program_bytes).into();
 
         // The shadow tree comes first, since annotating it can add to the tables
@@ -249,7 +233,7 @@ impl DebugMetadataBuilder {
             ],
         )?;
 
-        Ok(node_to_bytes(&a, root)?)
+        serialize(&a, root)
     }
 
     /// Encodes the shadow tree, which mirrors the program with an annotation on each node:
@@ -303,29 +287,26 @@ impl DebugMetadataBuilder {
 pub enum EncodeError {
     #[error("CLVM error: {0}")]
     Clvm(#[from] clvmr::error::EvalErr),
-
-    #[error("Serialization error: {0}")]
-    Io(#[from] std::io::Error),
 }
 
-/// The line (starting at 1) and display column (see [`Span`]) at a byte offset in the text. A
-/// line ends at a line feed, so a carriage return before one is the last character of its line.
-pub fn line_column(text: &str, offset: usize) -> (usize, usize) {
-    let before = &text[..offset];
-    let line_start = before.rfind('\n').map_or(0, |index| index + 1);
-    let line = before.bytes().filter(|&byte| byte == b'\n').count() + 1;
-    (line, column(&before[line_start..]))
-}
+/// The display column (see [`Span`]) at each byte offset of a line, including its end, so there's
+/// one more column than there are bytes. Offsets inside of a character are at the character.
+pub fn line_columns(line: &str) -> Vec<usize> {
+    let mut columns = Vec::with_capacity(line.len() + 1);
+    let mut column = 1;
 
-/// The display column after the text, which is the start of a line.
-pub fn column(line: &str) -> usize {
-    line.chars().fold(1, |column, char| {
-        if char == '\t' {
+    for char in line.chars() {
+        columns.extend(std::iter::repeat_n(column, char.len_utf8()));
+
+        column = if char == '\t' {
             TAB_WIDTH * (column / TAB_WIDTH + 1)
         } else {
             column + 1
-        }
-    })
+        };
+    }
+
+    columns.push(column);
+    columns
 }
 
 fn shadow_node(
@@ -341,6 +322,12 @@ fn shadow_node(
     let mut fields = vec![tag, span, label, function];
     fields.extend_from_slice(children);
     list(a, &fields)
+}
+
+/// Serializes the value, without the size limit of [`clvmr::serde::node_to_bytes`], since a sidecar
+/// is many times larger than its program.
+fn serialize(a: &Allocator, node: NodePtr) -> Result<Vec<u8>, EncodeError> {
+    Ok(node_to_bytes_limit(a, node, usize::MAX)?)
 }
 
 /// An optional reference is encoded as its index plus one, with zero meaning there isn't one.
@@ -414,7 +401,7 @@ fn list(a: &mut Allocator, items: &[NodePtr]) -> Result<NodePtr, EncodeError> {
 
 #[cfg(test)]
 mod tests {
-    use clvmr::serde::node_from_bytes;
+    use clvmr::serde::{node_from_bytes, node_to_bytes};
 
     use super::*;
 
@@ -456,17 +443,15 @@ mod tests {
         let (allocator, program) = program("ff012a");
 
         let mut builder = DebugMetadataBuilder::default();
-        let source = "λ\tX\r\n";
-        let file = builder.file("demo.clsp", || source.to_string());
+        let file = builder.file("demo.clsp", || "λ\tX\r\n".to_string());
         let name = builder.string("f");
         let x = builder.string("X");
-        let (start_line, start_column) = line_column(source, source.find('X').unwrap());
         let span = builder.span(Span {
             file,
-            start_line,
-            start_column,
-            end_line: start_line,
-            end_column: start_column + 1,
+            start_line: 1,
+            start_column: 8,
+            end_line: 1,
+            end_column: 9,
         });
         let function = builder.function(Function {
             name,
@@ -503,6 +488,22 @@ mod tests {
     }
 
     #[test]
+    fn sidecars_can_be_larger_than_serialization_limits() {
+        // A list of many items, whose sidecar is over the 2 MB that `node_to_bytes` allows
+        let mut allocator = Allocator::new();
+        let mut program = NodePtr::NIL;
+        for i in 0..100_000 {
+            let item = allocator.new_small_number(i).unwrap();
+            program = allocator.new_pair(item, program).unwrap();
+        }
+
+        let metadata = DebugMetadataBuilder::default()
+            .encode(&allocator, program, |_, _, _| Annotation::default())
+            .unwrap();
+        assert!(metadata.len() > 2_000_000, "{}", metadata.len());
+    }
+
+    #[test]
     fn constraint_vectors() {
         for (constraint, expected) in [
             (Constraint::Unknown, "ff8080"),
@@ -533,18 +534,14 @@ mod tests {
             // A combining character is a scalar of its own
             ("e\u{301}\u{754c}\tX", "e\u{301}\u{754c}    X"),
         ] {
-            let offset = line.find('X').unwrap();
-            assert_eq!(
-                line_column(line, offset),
-                (1, expanded.chars().count()),
-                "{line:?}"
-            );
+            let x = line.find('X').unwrap();
+            let columns = line_columns(line);
+            assert_eq!(columns[x], expanded.chars().count(), "{line:?}");
+            assert_eq!(columns[x + 1], columns[x] + 1, "{line:?}");
+            assert_eq!(columns.len(), line.len() + 1);
         }
 
-        // Lines end at line feeds, and carriage returns are part of the line before one
-        let text = "a\r\n\tb\rc\nd";
-        assert_eq!(line_column(text, text.find('b').unwrap()), (2, 8));
-        assert_eq!(line_column(text, text.find('c').unwrap()), (2, 10));
-        assert_eq!(line_column(text, text.find('d').unwrap()), (3, 1));
+        // The bytes of a character are all at its column
+        assert_eq!(line_columns("λ"), [1, 1, 2]);
     }
 }

@@ -4,9 +4,9 @@ sidecar: 3098 bytes
 files:
   closure_capture.rue
 functions:
-  0: main (_ . (limit@6: integer . (items@14: list . _)))
-  1: <lambda> (limit@2: integer . (item@6: integer . _))
-  2: total (_ . (items@6: list . f@7: unknown))
+  0: main (_ . (limit@5: integer . (items@11: list . _)))
+  1: <lambda> (limit@2: integer . (item@5: integer . _))
+  2: total (_ . (items@5: list . f@7: unknown))
 nodes:
   closure_capture.rue:3:46-9:2  (a (q 2 (q 2 5 (c 5 (c 23 2))) (c (c (q . 2) (c (c (q . 1...
     closure_capture.rue:3:46-9:2 fn main  (a (q 2 5 (c 5 (c 23 2))) (c (c (q . 2) (c (c (q . 1) (q ...
@@ -27,9 +27,9 @@ sidecar: 2645 bytes
 files:
   closure_capture.rue
 functions:
-  0: main (_ . (limit@6: integer . (items@14: list . _)))
-  1: <lambda> (limit@2: integer . (item@6: integer . _))
-  2: total (_ . (items@6: list . f@7: unknown))
+  0: main (_ . (limit@5: integer . (items@11: list . _)))
+  1: <lambda> (limit@2: integer . (item@5: integer . _))
+  2: total (_ . (items@5: list . f@7: unknown))
 nodes:
   closure_capture.rue:3:46-9:2  (a (q 2 2 (c 2 (c 11 (c (q . 2) (c (c (q . 1) (q 2 (i (> ...
     closure_capture.rue:8:5-8:24 fn main  (a 2 (c 2 (c 11 (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) ...

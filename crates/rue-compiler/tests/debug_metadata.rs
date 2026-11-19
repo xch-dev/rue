@@ -271,10 +271,12 @@ impl Metadata {
         let fields = items(&self.allocator, self.functions[index]);
         let name = self.string(fields[0]);
         assert_eq!(number(&self.allocator, fields[1]), 0, "left_env");
-        format!("{name} {}", self.parameter(fields[2]))
+        format!("{name} {}", self.parameter(fields[2], &mut Vec::new()))
     }
 
-    fn parameter(&self, node: NodePtr) -> String {
+    /// Describes a parameter pattern, which is at the position in the environment that the steps
+    /// lead to (`false` for the first of a pair, and `true` for the rest).
+    fn parameter(&self, node: NodePtr, steps: &mut Vec<bool>) -> String {
         let fields = items(&self.allocator, node);
         match number(&self.allocator, fields[0]) {
             0 => "_".to_string(),
@@ -289,17 +291,27 @@ impl Metadata {
                     5 => "list".to_string(),
                     tag => panic!("unexpected constraint {tag}"),
                 };
-                format!(
-                    "{}@{}: {constraint}",
-                    self.string(fields[1]),
-                    number(&self.allocator, fields[2])
-                )
+                let path = number(&self.allocator, fields[2]);
+
+                // The pattern mirrors the environment, so the value is at the pattern's position,
+                // whose path has a bit for each step from the lowest up, below a final 1
+                let expected = steps
+                    .iter()
+                    .rev()
+                    .fold(1, |path, &rest| path * 2 + usize::from(rest));
+                assert_eq!(path, expected, "the path of {}", self.string(fields[1]));
+
+                format!("{}@{path}: {constraint}", self.string(fields[1]))
             }
-            2 => format!(
-                "({} . {})",
-                self.parameter(fields[1]),
-                self.parameter(fields[2])
-            ),
+            2 => {
+                steps.push(false);
+                let first = self.parameter(fields[1], steps);
+                steps.pop();
+                steps.push(true);
+                let rest = self.parameter(fields[2], steps);
+                steps.pop();
+                format!("({first} . {rest})")
+            }
             tag => panic!("unexpected parameter {tag}"),
         }
     }

@@ -10,8 +10,7 @@ pub use format::*;
 use std::{collections::HashMap, path::Path};
 
 use clvmr::{Allocator, NodePtr, SExp};
-use num_bigint::BigUint;
-use rue_diagnostic::{Name, SrcLoc};
+use rue_diagnostic::{Name, Source};
 use rue_hir::{Environment, LoweringDebugInfo, Symbol, SymbolId};
 use rue_lir::NodeTags;
 use rue_types::{
@@ -41,6 +40,7 @@ pub(crate) fn build_debug_metadata(
         base_path,
         spans: HashMap::new(),
         functions: HashMap::new(),
+        positions: Positions::default(),
     };
 
     DebugMetadataBuilder::default().encode(allocator, program, |metadata, node, parent| {
@@ -74,6 +74,7 @@ struct SidecarBuilder<'a> {
     spans: HashMap<usize, usize>,
     /// The index in the metadata of each function recorded while lowering.
     functions: HashMap<usize, usize>,
+    positions: Positions,
 }
 
 impl SidecarBuilder<'_> {
@@ -82,8 +83,22 @@ impl SidecarBuilder<'_> {
             return index;
         }
 
-        let source_span = source_span(metadata, &self.lowering.spans[span], self.base_path);
-        let index = metadata.span(source_span);
+        let srcloc = &self.lowering.spans[span];
+        let source = &srcloc.source;
+        let file = metadata.file(&source.kind.display(self.base_path), || {
+            source.text.to_string()
+        });
+
+        let (start_line, start_column) = self.positions.position(file, source, srcloc.span.start);
+        let (end_line, end_column) = self.positions.position(file, source, srcloc.span.end);
+
+        let index = metadata.span(Span {
+            file,
+            start_line,
+            start_column,
+            end_line,
+            end_column,
+        });
         self.spans.insert(span, index);
         index
     }
@@ -101,7 +116,7 @@ impl SidecarBuilder<'_> {
         };
         let name = metadata.string(name.unwrap_or("<lambda>"));
 
-        let parameters = self.parameters(metadata, &lowered.environment, BigUint::from(1u8));
+        let parameters = self.parameters(metadata, &lowered.environment, &lowered.environment);
 
         let index = metadata.function(Function {
             name,
@@ -112,26 +127,29 @@ impl SidecarBuilder<'_> {
         index
     }
 
-    /// The parameter pattern that mirrors the environment, with each value that's shown at its
-    /// path in it. Captured functions and constants are part of the environment, but aren't
+    /// The parameter pattern that mirrors the part of the function's environment, with each value
+    /// that's shown at its path in the whole environment, which is the path the function's body
+    /// reads it from. Captured functions and constants are part of the environment, but aren't
     /// shown.
     fn parameters(
         &mut self,
         metadata: &mut DebugMetadataBuilder,
+        root: &Environment,
         environment: &Environment,
-        path: BigUint,
     ) -> Parameter {
         rue_types::grow_stack(|| match environment {
             Environment::Nil => Parameter::Nil,
             Environment::Pair(first, rest) => {
-                let first = self.parameters(metadata, first, &path << 1);
-                let rest = self.parameters(metadata, rest, (path << 1) | BigUint::from(1u8));
+                let first = self.parameters(metadata, root, first);
+                let rest = self.parameters(metadata, root, rest);
                 Parameter::Pair(Box::new(first), Box::new(rest))
             }
             Environment::Leaf(symbol) => match self.value(*symbol) {
                 Some((name, ty)) => Parameter::Name {
                     name: metadata.string(&name),
-                    path,
+                    path: root
+                        .path(*symbol)
+                        .expect("a symbol in the environment has a path"),
                     constraint: constraint(self.ctx, ty),
                 },
                 None => Parameter::Nil,
@@ -154,34 +172,43 @@ impl SidecarBuilder<'_> {
     }
 }
 
-/// The span of a location, whose file is added to the metadata if it isn't there yet.
-fn source_span(metadata: &mut DebugMetadataBuilder, srcloc: &SrcLoc, base_path: &Path) -> Span {
-    let source = &srcloc.source;
-    let file = metadata.file(&source.kind.display(base_path), || source.text.to_string());
+/// The lines and display columns of byte offsets in sources. The columns of a line are found once,
+/// the first time an offset on it is needed, so that a long line isn't scanned again for each span
+/// on it.
+#[derive(Debug, Default)]
+struct Positions {
+    /// The column at each byte offset of each line, by the file's index in the metadata and the
+    /// line's index.
+    lines: HashMap<(usize, usize), Vec<usize>>,
+}
 
-    let lines = source.line_index();
-    let position = |offset: usize| {
+impl Positions {
+    /// The line (starting at 1) and display column of a byte offset in the source, which is the
+    /// file with the index in the metadata. Lines end at line feeds, as the format counts them.
+    fn position(&mut self, file: usize, source: &Source, offset: usize) -> (usize, usize) {
+        let lines = source.line_index();
         let line = lines.line(offset);
-        let start = lines.line_range(line).map_or(0, |range| range.start);
-        (line + 1, column(&source.text[start..offset]))
-    };
+        let range = lines
+            .line_range(line)
+            .expect("the line of an offset exists");
 
-    let (start_line, start_column) = position(srcloc.span.start);
-    let (end_line, end_column) = position(srcloc.span.end);
+        let columns = self
+            .lines
+            .entry((file, line))
+            .or_insert_with(|| line_columns(&source.text[range.clone()]));
 
-    Span {
-        file,
-        start_line,
-        start_column,
-        end_line,
-        end_column,
+        // An offset past the end of the line is at its line break
+        (
+            line + 1,
+            columns[(offset - range.start).min(columns.len() - 1)],
+        )
     }
 }
 
 /// What a value of the type is expected to be at runtime, which debuggers use to display it. Types
 /// that don't correspond to one of the constraints, such as unions of atoms and pairs, generics
 /// and functions, are unknown.
-pub(crate) fn constraint(ctx: &mut Compiler, ty: TypeId) -> Constraint {
+fn constraint(ctx: &mut Compiler, ty: TypeId) -> Constraint {
     let builtins = ctx.builtins().types;
     let types = ctx.types_mut();
 
@@ -242,4 +269,45 @@ pub(crate) fn constraint(ctx: &mut Compiler, ty: TypeId) -> Constraint {
     }
 
     Constraint::Unknown
+}
+
+#[cfg(test)]
+mod tests {
+    use rue_diagnostic::SourceKind;
+
+    use super::*;
+
+    fn positions(text: &str, offsets: &[usize]) -> Vec<(usize, usize)> {
+        let source = Source::new(text.into(), SourceKind::File("main.rue".to_string()));
+        let mut positions = Positions::default();
+        offsets
+            .iter()
+            .map(|&offset| positions.position(0, &source, offset))
+            .collect()
+    }
+
+    #[test]
+    fn positions_follow_the_format() {
+        // The example in the format's specification
+        let text = "λ\tX\r\n";
+        let x = text.find('X').unwrap();
+        assert_eq!(positions(text, &[x, x + 1]), [(1, 8), (1, 9)]);
+
+        // Lines end at line feeds, so a carriage return on its own is part of the line, and the
+        // end of a line (where its line break is) is after its last character
+        let text = "a\r\n\tb\rc\nd";
+        let offsets = [
+            0,
+            text.find('\r').unwrap(),
+            text.find('b').unwrap(),
+            text.find('c').unwrap(),
+            text.rfind('\n').unwrap(),
+            text.find('d').unwrap(),
+            text.len(),
+        ];
+        assert_eq!(
+            positions(text, &offsets),
+            [(1, 1), (1, 2), (2, 8), (2, 10), (2, 11), (3, 1), (3, 2)]
+        );
+    }
 }

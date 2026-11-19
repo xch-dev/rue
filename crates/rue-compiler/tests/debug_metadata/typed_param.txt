@@ -4,8 +4,8 @@ sidecar: 2919 bytes
 files:
   typed_param.rue
 functions:
-  0: main (_ . (owner@6: bytes48 . (target@14: bytes32 . (amount@30: integer . (memo@62: atom . (enabled@126: atom . _))))))
-  1: validate ((owner@4: bytes48 . target@5: bytes32) . (amount@6: integer . (memo@14: atom . enabled@15: atom)))
+  0: main (_ . (owner@5: bytes48 . (target@11: bytes32 . (amount@23: integer . (memo@47: atom . (enabled@95: atom . _))))))
+  1: validate ((owner@4: bytes48 . target@6: bytes32) . (amount@5: integer . (memo@11: atom . enabled@15: atom)))
 nodes:
   typed_param.rue:4:93-6:2  (a (q 2 2 (c (c 5 11) (c 23 (c 47 95)))) (c (q 2 (i 15 (q...
     typed_param.rue:5:5-5:51 fn main  (a 2 (c (c 5 11) (c 23 (c 47 95))))
@@ -23,7 +23,7 @@ sidecar: 1990 bytes
 files:
   typed_param.rue
 functions:
-  0: main (owner@2: bytes48 . (target@6: bytes32 . (amount@14: integer . (memo@30: atom . (enabled@62: atom . _)))))
+  0: main (owner@2: bytes48 . (target@5: bytes32 . (amount@11: integer . (memo@23: atom . (enabled@47: atom . _)))))
 nodes:
   typed_param.rue:9:5-9:20 fn main  (a (i 47 (q 2 (i (= 5 (sha256 2)) (q 8) (q 2 (i (> (q . 5...
     typed_param.rue:10:5-10:45  (a (i (= 5 (sha256 2)) (q 8) (q 2 (i (> (q . 5) (strlen 2...

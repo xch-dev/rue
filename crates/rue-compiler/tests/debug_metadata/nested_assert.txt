@@ -4,7 +4,7 @@ sidecar: 2049 bytes
 files:
   nested_assert.rue
 functions:
-  0: main ((_ . _) . (amount@6: integer . _))
+  0: main ((_ . _) . (amount@5: integer . _))
   1: outer (_ . value@3: integer)
   2: inner (total@2: integer . base@3: integer)
 nodes:
@@ -27,7 +27,7 @@ sidecar: 1939 bytes
 files:
   nested_assert.rue
 functions:
-  0: main ((_ . _) . (amount@6: integer . _))
+  0: main ((_ . _) . (amount@5: integer . _))
   1: outer (_ . value@3: integer)
   2: inner (total@2: integer . base@3: integer)
 nodes:

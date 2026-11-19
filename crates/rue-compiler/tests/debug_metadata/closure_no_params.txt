@@ -4,7 +4,7 @@ sidecar: 2191 bytes
 files:
   closure_no_params.rue
 functions:
-  0: main (_ . (x@6: integer . _))
+  0: main (_ . (x@5: integer . _))
   1: <lambda> (x@2: integer . _)
   2: run f@1: unknown
 nodes:

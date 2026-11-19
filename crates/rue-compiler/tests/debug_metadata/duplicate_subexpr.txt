@@ -4,7 +4,7 @@ sidecar: 2077 bytes
 files:
   duplicate_subexpr.rue
 functions:
-  0: main ((_ . _) . (x@6: integer . (y@14: integer . _)))
+  0: main ((_ . _) . (x@5: integer . (y@11: integer . _)))
   1: second (a@2: integer . b@3: integer)
   2: first (a@2: integer . b@3: integer)
 nodes:
@@ -24,7 +24,7 @@ sidecar: 1898 bytes
 files:
   duplicate_subexpr.rue
 functions:
-  0: main ((_ . _) . (x@6: integer . (y@14: integer . _)))
+  0: main ((_ . _) . (x@5: integer . (y@11: integer . _)))
   1: second (a@2: integer . b@3: integer)
   2: first (a@2: integer . b@3: integer)
 nodes:
