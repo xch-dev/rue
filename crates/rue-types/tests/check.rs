@@ -756,7 +756,7 @@ fn eval(a: &Allocator, check: &Check, node: NodePtr) -> Result<bool, String> {
     Ok(match check {
         Check::None => true,
         Check::Impossible => false,
-        // When an atom can't be truthy, `l` is optimized to a truthiness check
+        // When an atom can't be truthy, the check is generated as a truthiness check
         Check::IsAtom { can_be_truthy } => {
             if *can_be_truthy {
                 !is_pair

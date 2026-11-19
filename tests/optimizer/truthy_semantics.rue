@@ -100,6 +100,35 @@ test fn list_atom_terminator_value(l: List<Int>) -> Bool {
     l is nil
 }
 
+test fn list_atom_terminator_pair(l: List<Int>) -> Int {
+    if l is (Int, List<Int>) {
+        l.first
+    } else {
+        0
+    }
+}
+
+test fn list_atom_terminator_not_nil(l: List<Int>) -> Int {
+    if !(l is nil) {
+        l.first
+    } else {
+        0
+    }
+}
+
+test fn list_atom_terminator_pair_value(l: List<Int>) -> Bool {
+    l is (Int, List<Int>)
+}
+
+// The list is checked as part of a larger check, from a type whose other member is an atom
+test fn list_atom_terminator_nested(value: (List<Int>, Int) | Int) -> Int {
+    if value is (nil, Int) {
+        1
+    } else {
+        2
+    }
+}
+
 fn sum(l: List<Int>) -> Int {
     if l is nil {
         0

@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId, stack::grow_stack};
+use crate::{Lir, LirId, optimize::alloc_if, stack::grow_stack};
 
 /// What is statically known about the truthiness of an already optimized value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +37,8 @@ pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
 fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     match arena[value].clone() {
         Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
-        // A quoted value is that value as data, and quoting can't fail
+        // A quote can't fail, and evaluates to the compiled code of its value: nil for the empty
+        // atom, and a pair for any other atom (which compiles to `(q . atom)`) or for a pair
         Lir::Quote(inner) => match &arena[inner] {
             Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
             Lir::Cons(..) => Truthiness::Known(true),
@@ -77,12 +78,7 @@ fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
                 return Truthiness::Unknown(value);
             }
 
-            // Atoms can't fail, so evaluating both branches is the same as choosing one
-            let inline = inline
-                || (matches!(arena[new_then], Lir::Atom(_))
-                    && matches!(arena[new_otherwise], Lir::Atom(_)));
-
-            Truthiness::Unknown(arena.alloc(Lir::If(condition, new_then, new_otherwise, inline)))
+            Truthiness::Unknown(alloc_if(arena, condition, new_then, new_otherwise, inline))
         }
         _ => Truthiness::Unknown(value),
     }

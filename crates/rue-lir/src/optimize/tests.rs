@@ -188,6 +188,42 @@ fn test_if_in_condition() {
         ENVS,
         expect!["(i (i 2 (q . 1) ()) (q . 1) (q . 2))"],
     );
+
+    // A lazy if becomes inline once both of its branches are atoms
+    let x = path(&mut arena, 2);
+    let pair = arena.alloc(Lir::Cons(one, one));
+    let falsy = not(&mut arena, one);
+    let condition = arena.alloc(Lir::If(x, pair, falsy, false));
+    let lir = arena.alloc(Lir::If(condition, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(i (i 2 (q . 1) ()) (q . 1) (q . 2))"],
+    );
+}
+
+#[test]
+fn test_quote_condition() {
+    // A quoted pair or non-empty atom compiles to a pair, and a quoted nil to nil
+    let mut arena = Arena::new();
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let x = path(&mut arena, 2);
+    let pair = arena.alloc(Lir::Cons(one, x));
+    let quoted = arena.alloc(Lir::Quote(pair));
+    let lir = arena.alloc(Lir::If(quoted, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 1)"]);
+
+    let five = atom(&mut arena, &[5]);
+    let quoted = arena.alloc(Lir::Quote(five));
+    let lir = arena.alloc(Lir::If(quoted, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 1)"]);
+
+    let nil = atom(&mut arena, &[]);
+    let quoted = arena.alloc(Lir::Quote(nil));
+    let lir = arena.alloc(Lir::If(quoted, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 2)"]);
 }
 
 #[test]

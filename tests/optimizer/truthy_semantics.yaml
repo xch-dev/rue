@@ -100,6 +100,36 @@ tests:
   runtime_cost: 249
   byte_cost: 60000
   total_cost: 60249
+- name: list_atom_terminator_pair
+  program: (a (i 2 (q . 4) (q)) 1)
+  debug_program: (a (i (not (not 2)) (q 5 2) (q)) 1)
+  solution: (5)
+  byte_cost: 228000
+  clvm_error: path into atom
+  debug_clvm_error: "InvalidOperatorArg: first of non-cons"
+- name: list_atom_terminator_not_nil
+  program: (a (i 2 (q . 4) (q)) 1)
+  debug_program: (a (i (not (not 2)) (q 5 2) (q)) 1)
+  solution: (5)
+  byte_cost: 228000
+  clvm_error: path into atom
+  debug_clvm_error: "InvalidOperatorArg: first of non-cons"
+- name: list_atom_terminator_pair_value
+  program: (not (not 2))
+  debug_program: (not (not 2))
+  solution: (5)
+  output: "1"
+  runtime_cost: 450
+  byte_cost: 108000
+  total_cost: 108450
+- name: list_atom_terminator_nested
+  program: (i (a (i (l 2) (q 32 4) (q)) 1) (q . 1) (q . 2))
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (f 2)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 1 . 2)) 1)
+  solution: ((5 . 1))
+  output: "2"
+  runtime_cost: 604
+  byte_cost: 468000
+  total_cost: 468604
 - name: list_atom_terminator_walk
   program: (a (q 2 2 (c 2 5)) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) (q)) 1) 1))
   debug_program: (a (q 2 2 (c 2 5)) (c (q 2 (i (not 3) (q) (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) 1))

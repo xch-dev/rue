@@ -516,13 +516,24 @@ pub fn opt_if(
                     (replacement, then, otherwise)
                 };
 
-            let inline = inline
-                || (matches!(arena[then], Lir::Atom(_))
-                    && matches!(arena[otherwise], Lir::Atom(_)));
-
-            arena.alloc(Lir::If(condition, then, otherwise, inline))
+            alloc_if(arena, condition, then, otherwise, inline)
         }
     }
+}
+
+/// Allocates an `if` whose condition is already optimized, making it inline if both branches are
+/// atoms, since evaluating both is then the same as choosing one and is cheaper.
+pub fn alloc_if(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+    inline: bool,
+) -> LirId {
+    let inline =
+        inline || (matches!(arena[then], Lir::Atom(_)) && matches!(arena[otherwise], Lir::Atom(_)));
+
+    arena.alloc(Lir::If(condition, then, otherwise, inline))
 }
 
 // We can remove all arguments from raise, since the program fails either way
