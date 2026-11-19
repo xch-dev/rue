@@ -44,21 +44,6 @@ test fn list_of_lambdas() -> Int {
     result + map_list([fn(x) => x], 1)
 }
 
-fn lambda_before_its_value_recursive<T>(pair: (fn(value: T) -> Int, T), depth: Int) -> Int {
-    if depth > 0 {
-        // The lambda's `x` is the caller's `T`, which stands for the call's renamed `T` that isn't
-        // inferred yet, so it's checked as `fn(x: Int) -> Int` too. This was rejected before, though
-        // `lambda_before_its_value_recursive::<Int>` compiled
-        return lambda_before_its_value_recursive((fn(x) => x, 1), depth - 1);
-    }
-
-    pair.first(pair.rest)
-}
-
-test fn recursive_call() -> Int {
-    lambda_before_its_value_recursive((fn(x) => x, 1), 1)
-}
-
 fn map<A, B>(function: fn(a: A) -> B, value: A, depth: Int) -> B {
     if depth > 0 {
         // The generics are renamed in a recursive call, and the expected bound still reaches `x`

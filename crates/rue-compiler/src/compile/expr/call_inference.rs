@@ -117,10 +117,6 @@ pub(crate) fn infer_call(
 
         let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
-        // A lambda in the argument's pairs and lists can have the caller's generics that stand for
-        // the callee's renamed generics as its parameters' types, which are those generics to it
-        let stands_for = restored.clone();
-
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
             solver: solver.clone(),
@@ -152,10 +148,6 @@ pub(crate) fn infer_call(
         // The lambdas among the elements of a pair or list argument (see `compile_element`)
         if let Some(argument) = ctx.argument_frame_mut() {
             parameters.append(&mut argument.lambda_parameters);
-        }
-
-        for (_, parameter) in &mut parameters {
-            *parameter = unrestore(ctx, &stands_for, *parameter);
         }
 
         ctx.set_argument_frame(None);
