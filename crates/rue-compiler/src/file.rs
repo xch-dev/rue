@@ -64,9 +64,23 @@ pub struct CompiledTest {
     pub path: SourceKind,
     pub symbol: SymbolId,
     pub ptr: NodePtr,
-    /// The debug metadata sidecar of the program, if it was requested (see
-    /// [`FileTree::tests_with_debug_metadata`]).
-    pub debug_metadata: Option<Vec<u8>>,
+}
+
+impl CompiledTest {
+    /// Compiles the test again, along with its debug metadata sidecar (see
+    /// [`crate::debug_metadata`]). The program is the same as it was without the sidecar.
+    pub fn with_debug_metadata(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        base_path: &Path,
+    ) -> Result<(NodePtr, Vec<u8>), Error> {
+        let program = codegen(ctx, allocator, self.symbol, base_path.to_path_buf(), true)?;
+        let metadata = program
+            .debug_metadata
+            .expect("debug metadata was requested");
+        Ok((program.ptr, metadata))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -548,36 +562,6 @@ impl FileTree {
         base_path: &Path,
         std: bool,
     ) -> Result<Vec<CompiledTest>, Error> {
-        self.tests_impl(ctx, allocator, path, search_term, base_path, std, false)
-    }
-
-    /// Compiles the tests like [`tests`](Self::tests), along with the debug metadata sidecar of
-    /// each (see [`crate::debug_metadata`]). The programs are the same as they would be without
-    /// the sidecars.
-    pub fn tests_with_debug_metadata(
-        &self,
-        ctx: &mut Compiler,
-        allocator: &mut Allocator,
-        path: Option<&SourceKind>,
-        search_term: Option<&str>,
-        base_path: &Path,
-        std: bool,
-    ) -> Result<Vec<CompiledTest>, Error> {
-        self.tests_impl(ctx, allocator, path, search_term, base_path, std, true)
-    }
-
-    // Tests are found through the compiler rather than the tree, like `tests` finds them
-    #[allow(clippy::too_many_arguments, clippy::unused_self)]
-    fn tests_impl(
-        &self,
-        ctx: &mut Compiler,
-        allocator: &mut Allocator,
-        path: Option<&SourceKind>,
-        search_term: Option<&str>,
-        base_path: &Path,
-        std: bool,
-        debug_metadata: bool,
-    ) -> Result<Vec<CompiledTest>, Error> {
         let tests = ctx
             .tests()
             .filter(|test| {
@@ -607,19 +591,12 @@ impl FileTree {
         let mut outputs = Vec::new();
 
         for test in tests {
-            let program = codegen(
-                ctx,
-                allocator,
-                test.symbol,
-                base_path.to_path_buf(),
-                debug_metadata,
-            )?;
+            let ptr = codegen(ctx, allocator, test.symbol, base_path.to_path_buf(), false)?.ptr;
             outputs.push(CompiledTest {
                 name: test.name,
                 path: test.path,
                 symbol: test.symbol,
-                ptr: program.ptr,
-                debug_metadata: program.debug_metadata,
+                ptr,
             });
         }
 

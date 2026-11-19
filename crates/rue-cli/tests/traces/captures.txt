@@ -1,0 +1,47 @@
+===== debug: (3 1) =====
+error: clvm raise
+File "captures.rue", line 6, column 32
+  fn main(x: Int, y: Int) -> Int {
+                                 ^
+File "captures.rue", line 6, column 32, in main
+  fn main(x: Int, y: Int) -> Int {
+                                 ^
+  x = 3
+  y = 1
+File "captures.rue", line 12, column 5
+  check(10) + helper(x / y, x)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "captures.rue", line 12, column 5
+  check(10) + helper(x / y, x)
+  ^^^^^^^^^
+File "captures.rue", line 9, column 9, in <lambda>  # bound: limit, x
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+  limit = 6
+  x = 3
+  item = 10
+File "captures.rue", line 9, column 9
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+===== debug: (30 1) =====
+output: 12
+===== release: (3 1) =====
+error: clvm raise
+File "captures.rue", line 12, column 5, in main
+  check(10) + helper(x / y, x)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  x = 3
+  y = 1
+File "captures.rue", line 12, column 5
+  check(10) + helper(x / y, x)
+  ^^^^^^^^^
+File "captures.rue", line 9, column 9, in <lambda>  # bound: x
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+  x = 3
+  item = 10
+File "captures.rue", line 9, column 9
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+===== release: (30 1) =====
+output: 12

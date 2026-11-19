@@ -850,7 +850,9 @@ fn test(args: TestArgs) -> Result<()> {
                 .bold()
         );
 
-        if let Err(failure) = run_test(&mut allocator, test.ptr, args.cost) {
+        if let Err((failure, trace)) =
+            run_and_trace_test(&mut ctx, &mut allocator, test, &base_path, args.cost)
+        {
             eprintln!(
                 "{}",
                 format!("Test failed due to {}", failure.message)
@@ -858,14 +860,13 @@ fn test(args: TestArgs) -> Result<()> {
                     .bold()
             );
 
-            if failure.raised {
-                match trace_test(&tree, &mut ctx, &mut allocator, test, &base_path, args.cost) {
-                    Ok(trace) => eprintln!("{trace}"),
-                    Err(reason) => eprintln!(
-                        "{}",
-                        format!("Couldn't show where the test failed: {reason}").yellow()
-                    ),
-                }
+            match trace {
+                Some(Ok(trace)) => eprintln!("{trace}"),
+                Some(Err(reason)) => eprintln!(
+                    "{}",
+                    format!("Couldn't show where the test failed: {reason}").yellow()
+                ),
+                None => {}
             }
 
             failed = true;
@@ -923,44 +924,57 @@ fn run_test(
     })
 }
 
+/// Runs a test, and if it fails, returns why, along with where it was when it failed if it raised
+/// (see [`trace_test`]).
+fn run_and_trace_test(
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    test: &CompiledTest,
+    base_path: &Path,
+    cost: CostArgs,
+) -> Result<(), (TestFailure, Option<Result<String, String>>)> {
+    let checkpoint = allocator.checkpoint();
+
+    let failure = match run_test(allocator, test.ptr, cost) {
+        Ok(()) => return Ok(()),
+        Err(failure) => failure,
+    };
+
+    if !failure.raised {
+        return Err((failure, None));
+    }
+
+    // The test is run again with as much room as it had the first time, and what that allocates
+    // is freed afterwards, so that it doesn't affect the tests after it
+    allocator.restore_checkpoint(&checkpoint);
+    let trace = trace_test(ctx, allocator, test, base_path, cost);
+    allocator.restore_checkpoint(&checkpoint);
+
+    Err((failure, Some(trace)))
+}
+
 /// Where a test that failed was when it did, which is found by compiling it again with a debug
 /// metadata sidecar, and running it again with the frames kept. Programs run the same way each
 /// time, so it fails the same way, and tests that pass don't pay for the sidecar or the frames.
 fn trace_test(
-    tree: &FileTree,
     ctx: &mut Compiler,
     allocator: &mut Allocator,
     test: &CompiledTest,
     base_path: &Path,
     cost: CostArgs,
 ) -> Result<String, String> {
-    let compiled = tree
-        .tests_with_debug_metadata(
-            ctx,
-            allocator,
-            Some(&test.path),
-            test.name.as_deref(),
-            base_path,
-            true,
-        )
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .find(|compiled| compiled.symbol == test.symbol)
-        .ok_or("the test couldn't be compiled again")?;
+    let (program, metadata) = test
+        .with_debug_metadata(ctx, allocator, base_path)
+        .map_err(|error| error.to_string())?;
 
     let mut sidecars = Sidecars::default();
-    sidecars.insert(
-        compiled
-            .debug_metadata
-            .as_deref()
-            .expect("debug metadata was requested"),
-    )?;
+    sidecars.insert(&metadata)?;
 
     // What the test prints has already been shown, so it isn't printed again
     match run_with_trace(
         allocator,
         &DebugDialect::new(CLVM_FLAGS, false),
-        compiled.ptr,
+        program,
         NodePtr::NIL,
         cost.max_cost,
         &sidecars,
@@ -1044,13 +1058,13 @@ mod tests {
     use std::{fs, path::Path};
 
     use super::{
-        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_metadata_path, run_test,
-        single_debug_metadata_path, trace_test,
+        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_metadata_path, run_and_trace_test,
+        run_test, single_debug_metadata_path, trace_test,
     };
     use clap::{CommandFactory, Parser, error::ErrorKind};
     use clvmr::{Allocator, SExp, serde::node_from_bytes};
     use rue_clvm::assemble;
-    use rue_compiler::{Compiler, FileTree};
+    use rue_compiler::{CompiledTest, Compiler, FileTree};
     use rue_diagnostic::SourceKind;
     use rue_diagnostic::{ForbiddenBy, Lint, LintGroup, LintLevel, LintLevels, LintName};
     use rue_options::CompilerOptions;
@@ -1453,7 +1467,7 @@ mod tests {
         );
     }
 
-    const FAILING_SOURCE: &str = "fn main(value: Int) -> Int {\n    check(value)\n}\n\ntest fn fails() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10;\n    value\n}\n";
+    const FAILING_SOURCE: &str = "fn main(value: Int) -> Int {\n    check(value)\n}\n\ntest fn fails() {\n    check(30);\n}\n\ntest fn fails_too() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10;\n    value\n}\n";
 
     #[test]
     fn failing_tests_are_traced() {
@@ -1470,22 +1484,48 @@ mod tests {
             max_cost: DEFAULT_MAX_COST,
         };
 
-        let failure = run_test(&mut allocator, tests[0].ptr, cost).unwrap_err();
+        // The second test fails, and its name contains the first's, which passes
+        assert_eq!(tests[1].name.as_deref(), Some("fails_too"));
+        assert!(run_test(&mut allocator, tests[0].ptr, cost).is_ok());
+        let failure = run_test(&mut allocator, tests[1].ptr, cost).unwrap_err();
         assert!(failure.raised);
 
-        // The trace shows the call to `check`, and the assertion in it with its argument
-        let trace =
-            trace_test(&tree, &mut ctx, &mut allocator, &tests[0], &project.0, cost).unwrap();
-        assert!(trace.contains("line 6, column 5"), "{trace}");
+        // The trace shows the call to `check` in that test, and the assertion with its argument
+        let trace = trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap();
+        assert!(trace.contains("line 9, column 21, in fails_too"), "{trace}");
+        assert!(trace.contains("line 10, column 5\n  check(3);"), "{trace}");
         assert!(
-            trace.contains("line 10, column 5, in check\n  assert value > 10;"),
+            trace.contains("line 14, column 5, in check\n  assert value > 10;"),
             "{trace}"
         );
         assert!(trace.contains("value = 3"), "{trace}");
 
+        // When a failure is traced, what tracing allocates is freed, along with what the test did
+        let pairs = allocator.pair_count();
+        let (failure, traced) =
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+        assert!(failure.raised);
+        assert_eq!(traced, Some(Ok(trace.clone())));
+        assert_eq!(allocator.pair_count(), pairs);
+        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+
+        // The test that passes doesn't fail when it's run again
+        assert_eq!(
+            trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost),
+            Err("it didn't fail when it was run again".to_string())
+        );
+
         // A test that returns something other than nil has no stack to show
         let program = assemble(&mut allocator, "(q . 1)").unwrap();
         assert!(!run_test(&mut allocator, program, cost).unwrap_err().raised);
+        let returns_one = CompiledTest {
+            ptr: program,
+            ..tests[0].clone()
+        };
+        let (_, traced) =
+            run_and_trace_test(&mut ctx, &mut allocator, &returns_one, &project.0, cost)
+                .unwrap_err();
+        assert_eq!(traced, None);
     }
 
     #[test]
@@ -1494,16 +1534,7 @@ mod tests {
         let path = project.0.join("main.rue");
         let sidecar = project.0.join("main.bin");
 
-        let Ok(Command::Build(args)) = Command::try_parse_from([
-            "rue",
-            "build",
-            path.to_str().unwrap(),
-            "--all",
-            "--debug-metadata",
-        ]) else {
-            panic!("expected build command");
-        };
-        build(args).unwrap();
+        run_build(&project.0, &["--all", "--debug-metadata"]);
         fs::rename(project.0.join("main.rue.debug.clvm.bin"), &sidecar).unwrap();
 
         let hex = fs::read_to_string(project.0.join("main.rue.hex")).unwrap();
@@ -1513,7 +1544,7 @@ mod tests {
         // The solution `(3)` fails the assertion, and `(30)` doesn't
         let error = run_debug(&["-x", hex, "ff0380", "--debug-metadata", sidecar]).unwrap_err();
         assert!(error.starts_with("clvm raise\n"), "{error}");
-        assert!(error.contains("line 10, column 5, in check"), "{error}");
+        assert!(error.contains("line 14, column 5, in check"), "{error}");
         assert!(error.contains("value = 3"), "{error}");
         assert_eq!(
             run_debug(&["-x", hex, "ff1e80", "--debug-metadata", sidecar]),

@@ -196,21 +196,18 @@ fn exports() {
         }
 
         // So do tests, which `rue test` compiles again with sidecars when they fail
-        let without = tree
+        let tests = tree
             .tests(&mut ctx, &mut allocator, Some(&kind), None, &dir, false)
             .unwrap();
-        let with = tree
-            .tests_with_debug_metadata(&mut ctx, &mut allocator, Some(&kind), None, &dir, false)
+        assert_eq!(tests.len(), 1);
+
+        let (ptr, metadata) = tests[0]
+            .with_debug_metadata(&mut ctx, &mut allocator, &dir)
             .unwrap();
-
-        assert_eq!(with.len(), 1);
-        assert_eq!(without.len(), with.len());
-        assert!(without[0].debug_metadata.is_none());
-
-        let program = node_to_bytes(&allocator, with[0].ptr).unwrap();
-        assert_eq!(node_to_bytes(&allocator, without[0].ptr).unwrap(), program);
+        let program = node_to_bytes(&allocator, ptr).unwrap();
+        assert_eq!(node_to_bytes(&allocator, tests[0].ptr).unwrap(), program);
         assert_eq!(
-            Metadata::program_sha256(with[0].debug_metadata.as_deref().unwrap()),
+            Metadata::program_sha256(&metadata),
             Sha256::digest(&program).to_vec()
         );
     }
