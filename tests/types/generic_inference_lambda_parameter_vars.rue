@@ -67,3 +67,30 @@ test fn lint_sees_the_parameter_type() -> Int {
     );
     result
 }
+
+fn five_only_value(value: 5) -> Int {
+    value
+}
+
+test fn argument_of_a_call_without_generics() -> Int {
+    // `five_only_value`'s parameter doesn't reference generics, so the type it expects of the
+    // argument is final
+    five_only_value(map(fn(x) => x, 5))
+}
+
+test fn annotated_let_in_a_lambda_body() -> Int {
+    // The annotation is a type of its own, even inside a lambda that's an argument of a call whose
+    // generics are still being inferred
+    map(
+        fn(y) => {
+            let result: 5 = map(fn(x) => x, 5);
+            result + y
+        },
+        1,
+    )
+}
+
+test fn annotated_lambda_return_type() -> Int {
+    // So is a lambda's annotated return type
+    map(fn(_y): 5 => map(fn(x) => x, 5), 1)
+}

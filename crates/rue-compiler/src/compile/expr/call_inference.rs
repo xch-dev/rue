@@ -128,11 +128,21 @@ pub(crate) fn infer_call(
             restored,
         }));
 
-        let (value, parameters) = if let AstExpr::LambdaExpr(lambda) = expr {
-            compile_lambda_argument(ctx, expr, lambda, expected)
-        } else {
-            (compile_expr(ctx, expr, Some(expected)), Vec::new())
-        };
+        // The parameter's type is only a hint while it references the callee's generics, since
+        // what they're inferred as so far can still widen
+        let hint = function.generics.iter().any(|&generic| {
+            std::iter::once(generic)
+                .chain(renamed.get(&generic).copied())
+                .any(|generic| contains_generic(ctx.types_mut(), param, generic))
+        });
+
+        let (value, parameters) = ctx.with_expected_type_hint(hint, |ctx| {
+            if let AstExpr::LambdaExpr(lambda) = expr {
+                compile_lambda_argument(ctx, expr, lambda, expected)
+            } else {
+                (compile_expr(ctx, expr, Some(expected)), Vec::new())
+            }
+        });
 
         ctx.set_argument_frame(None);
         results[i] = value.hir;
@@ -155,13 +165,12 @@ pub(crate) fn infer_call(
     let mut mappings = ctx.solve_call(&solver, order.merged().clone());
 
     // Only a call that the arguments don't solve otherwise is solved again with lambdas' untyped
-    // parameters as vars, so that nothing that compiled before changes. The type expected of a call
-    // that's part of an enclosing call's argument comes from what that call has inferred so far,
-    // which it can still widen, and that of a guarded or cast value is only a hint, so they don't
-    // count. In a recursive call, the renamed generics would have to be restored in the vars too, so
-    // it's left as is
-    let expected_type =
-        expected_type.filter(|_| ctx.call_generics().is_none() && !ctx.is_expected_type_hinted());
+    // parameters as vars, so that nothing that compiled before changes. A type expected of the call
+    // that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one that
+    // comes from what an enclosing call has inferred so far, which it can still widen. In a
+    // recursive call, the renamed generics would have to be restored in the vars too, so it's left
+    // as is
+    let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint());
 
     if renamed.is_empty()
         && lambda_parameters
@@ -198,6 +207,32 @@ pub(crate) fn infer_call(
         checks,
         mappings,
     }
+}
+
+/// Whether a member of the type expected of a pair or list could hold it as another pair than the
+/// ones its elements are expected to be, such as `Any` in `(5, Int) | Any`. The element types that
+/// the pairs give are then only a hint (see `Compiler::with_expected_type_hint`).
+pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
+    let ty = rue_types::substitute(ctx.types_mut(), ty);
+    let mut stack = vec![ty];
+    let mut visited = std::collections::HashSet::new();
+
+    while let Some(ty) = stack.pop() {
+        if !visited.insert(ty) {
+            continue;
+        }
+
+        match ctx.ty(ty).clone() {
+            Type::Any | Type::Generic(_) => return true,
+            Type::Ref(inner) => stack.push(inner),
+            Type::Alias(alias) => stack.push(alias.inner),
+            Type::Struct(ty) => stack.push(ty.inner),
+            Type::Union(union) => stack.extend(union.types),
+            _ => {}
+        }
+    }
+
+    false
 }
 
 /// Whether the mappings solve the call: each argument is assignable to its parameter, and the

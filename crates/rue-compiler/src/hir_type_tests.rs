@@ -148,3 +148,30 @@ fn records_expression_types_and_locations() {
                     doubled<35>: Int at `doubled`"#]],
     );
 }
+
+#[test]
+fn call_in_a_pair_expected_to_be_any_keeps_its_type() {
+    // The `Any` member could hold the pair as any other pair, so the first element's expected `5`
+    // is only a hint, and the call isn't solved again for it (#362, step 13e)
+    check(
+        "
+        fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+            function(value)
+        }
+
+        fn main() -> Any {
+            let pair: (5, Int) | Any = (map(fn(x) => x, 5), 1);
+            pair
+        }
+        ",
+        &expect![[r#"
+            { ... }: (5, Int) | Any at `{ let pair: (5, Int) | Any = (map(fn(x) => x, 5), 1); pair }`
+              (map<30>(<36>, 5), 1): (Int, 1) at `(map(fn(x) => x, 5), 1)`
+                map<30>(<36>, 5): Int at `map(fn(x) => x, 5)`
+                  map<30>: fn<A, B>(function: fn(a: A) -> B, value: A) -> B at `map`
+                  <36>: fn(x: Int) -> Int at `fn(x) => x`
+                  5: 5 at `5`
+                1: 1 at `1`
+              pair<34>: (5, Int) | Any at `pair`"#]],
+    );
+}

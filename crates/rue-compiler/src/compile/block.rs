@@ -111,8 +111,12 @@ pub fn compile_block(
 
                 let expected_type = stmt.ty().map(|ty| compile_type(ctx, &ty));
 
+                // An annotation is a type of its own that the value must be assignable to
                 let value = if let Some(expr) = stmt.value() {
-                    compile_expr(ctx, &expr, expected_type)
+                    ctx.with_expected_type_hint(
+                        ctx.is_expected_type_hint() && expected_type.is_none(),
+                        |ctx| compile_expr(ctx, &expr, expected_type),
+                    )
                 } else {
                     debug!("Unresolved let binding value");
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::MissingLetValue);
@@ -193,8 +197,12 @@ pub fn compile_block(
                     .return_target_mut()
                     .and_then(|target| target.expected_type);
 
+                // The return type is a type of its own that the value must be assignable to
                 let value = if let Some(expr) = stmt.expr() {
-                    compile_expr(ctx, &expr, target_type)
+                    ctx.with_expected_type_hint(
+                        ctx.is_expected_type_hint() && target_type.is_none(),
+                        |ctx| compile_expr(ctx, &expr, target_type),
+                    )
                 } else {
                     ctx.builtins().nil.clone()
                 };

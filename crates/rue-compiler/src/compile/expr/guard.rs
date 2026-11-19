@@ -16,7 +16,7 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
 
     let expr = if let Some(expr) = guard.expr() {
         // The value only has to be guarded or cast to it
-        ctx.with_hinted_expected_type(|ctx| compile_expr(ctx, &expr, Some(ty)))
+        ctx.with_expected_type_hint(true, |ctx| compile_expr(ctx, &expr, Some(ty)))
     } else {
         debug!("Unresolved guard expr");
         ctx.builtins().unresolved.clone()

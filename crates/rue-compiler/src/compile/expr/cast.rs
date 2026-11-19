@@ -14,7 +14,7 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
 
     let expr = if let Some(expr) = cast.expr() {
         // The value only has to be guarded or cast to it
-        ctx.with_hinted_expected_type(|ctx| compile_expr(ctx, &expr, Some(ty)))
+        ctx.with_expected_type_hint(true, |ctx| compile_expr(ctx, &expr, Some(ty)))
     } else {
         debug!("Unresolved cast expr");
         ctx.builtins().unresolved.clone()

@@ -4,7 +4,9 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, List, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
-use super::call_inference::{compile_element, record_element, refine_element_expected};
+use super::call_inference::{
+    compile_element, holds_other_pairs, record_element, refine_element_expected,
+};
 use crate::Compiler;
 
 pub fn compile_list_expr(
@@ -14,6 +16,10 @@ pub fn compile_list_expr(
 ) -> Value {
     let mut values = Vec::new();
     let mut nil_terminated = true;
+
+    // Once the list could be held as other pairs than its elements are expected to make, the
+    // element types are only a hint, and so are those of the rest of the list
+    let mut hint = ctx.is_expected_type_hint();
 
     let len = list.items().count();
 
@@ -36,6 +42,8 @@ pub fn compile_list_expr(
             && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, false)
             && !pairs.is_empty()
         {
+            hint |= holds_other_pairs(ctx, ty);
+
             let first = if pairs.len() == 1 {
                 pairs[0].first
             } else {
@@ -61,7 +69,8 @@ pub fn compile_list_expr(
 
         let value = if let Some(expr) = item.expr() {
             let item_type = item_type.map(|expected| refine_element_expected(ctx, expected, &expr));
-            let value = compile_element(ctx, &expr, item_type);
+            let value =
+                ctx.with_expected_type_hint(hint, |ctx| compile_element(ctx, &expr, item_type));
             record_element(ctx, value.ty, item_type);
             value
         } else {
