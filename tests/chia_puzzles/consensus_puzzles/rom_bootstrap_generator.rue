@@ -125,3 +125,49 @@ test fn rejects_a_three_byte_length_prefix() -> Any {
 test fn reference_rejects_a_three_byte_length_prefix() -> Any {
     run(reference, [decompresser(), [0xffe0000001ff80]])
 }
+
+// A decompresser that returns no coin spends, with the deserialized historical blocks tree as the
+// block-level extras: `(c () (a 2 (c 5 ())))`. It's used to check the deserializer on its own.
+fn deserializing_decompresser() -> Any {
+    [4 as Any, nil, [2 as Any, 2, [4 as Any, 5, nil]]]
+}
+
+test fn deserializes_the_largest_single_byte() -> Any {
+    check([deserializing_decompresser(), [0x7f]])
+}
+
+test fn deserializes_the_longest_one_byte_length() -> Any {
+    // 63 bytes, the most a one byte length prefix can hold.
+    check([deserializing_decompresser(), [0xbf + sha256("a") + substr(sha256("b"), 0, 31)]])
+}
+
+test fn deserializes_an_empty_two_byte_length() -> Any {
+    check([deserializing_decompresser(), [0xc000]])
+}
+
+test fn deserializes_the_longest_two_byte_length() -> Bytes32 {
+    // 8191 bytes, the most a two byte length prefix can hold. The test returns the tree hash to
+    // keep the snapshot short.
+    let atom = sha256("a") + sha256("b");
+    let atom = atom + atom + atom + atom;
+    let atom = atom + atom + atom + atom;
+    let atom = atom + atom + atom + atom;
+    let atom = atom + atom;
+    tree_hash(check([deserializing_decompresser(), [0xdfff + substr(atom, 0, 8191)]]))
+}
+
+test fn rejects_a_truncated_atom() -> Any {
+    run(main, [deserializing_decompresser(), [0x8361]])
+}
+
+test fn reference_rejects_a_truncated_atom() -> Any {
+    run(reference, [deserializing_decompresser(), [0x8361]])
+}
+
+test fn rejects_a_truncated_pair() -> Any {
+    run(main, [deserializing_decompresser(), [0xff80]])
+}
+
+test fn reference_rejects_a_truncated_pair() -> Any {
+    run(reference, [deserializing_decompresser(), [0xff80]])
+}

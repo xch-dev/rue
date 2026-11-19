@@ -89,3 +89,43 @@ test fn rejects_a_three_byte_length_prefix() -> Any {
 test fn reference_rejects_a_three_byte_length_prefix() -> Any {
     run(reference, [0xe0000001ff])
 }
+
+test fn deserializes_the_largest_single_byte() -> Any {
+    check([0x7f])
+}
+
+test fn deserializes_the_longest_one_byte_length() -> Any {
+    // 63 bytes, the most a one byte length prefix can hold.
+    check([0xbf + sha256("a") + substr(sha256("b"), 0, 31)])
+}
+
+test fn deserializes_an_empty_two_byte_length() -> Any {
+    check([0xc000])
+}
+
+test fn deserializes_the_longest_two_byte_length() -> Bytes32 {
+    // 8191 bytes, the most a two byte length prefix can hold. The test returns the tree hash to
+    // keep the snapshot short.
+    let atom = sha256("a") + sha256("b");
+    let atom = atom + atom + atom + atom;
+    let atom = atom + atom + atom + atom;
+    let atom = atom + atom + atom + atom;
+    let atom = atom + atom;
+    tree_hash(check([0xdfff + substr(atom, 0, 8191)]))
+}
+
+test fn rejects_a_truncated_atom() -> Any {
+    run(main, [0x8361])
+}
+
+test fn reference_rejects_a_truncated_atom() -> Any {
+    run(reference, [0x8361])
+}
+
+test fn rejects_a_truncated_pair() -> Any {
+    run(main, [0xff80])
+}
+
+test fn reference_rejects_a_truncated_pair() -> Any {
+    run(reference, [0xff80])
+}

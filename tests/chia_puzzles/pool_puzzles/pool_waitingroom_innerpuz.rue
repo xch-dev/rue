@@ -102,3 +102,17 @@ test fn travels_to_a_new_pool() -> Any {
         sha256("new_puzzle"),
     ])
 }
+
+test fn masks_the_pool_reward_height() -> Any {
+    check([
+        sha256("pool_puzzle"),
+        sha256("p2_singleton"),
+        pubkey_for_exp(42),
+        POOL_REWARD_PREFIX,
+        100,
+        truths(),
+        nil,
+        1750000000000,
+        0x0100000000000000000000000000004c4b40,
+    ])
+}

@@ -179,6 +179,22 @@ test fn reference_rejects_a_wrong_proof() -> Any {
     run(reference, two_stores(MerkleProof { path: 0, hashes: [left()] }))
 }
 
+// A store whose root is `(c . (a . b))`, proving `a` two levels down, so the path is shifted and
+// read again.
+test fn asserts_a_proof_two_levels_down() -> Any {
+    check([
+        1,
+        [singleton_struct("first")],
+        [sha256("metadata_layer")],
+        [[branch("a")]],
+        [[MerkleProof { path: 2, hashes: [branch("b"), branch("c")] }]],
+        [Metadata { root: tree_hash_pair(branch("c"), left()), rest: nil }],
+        [1],
+        [sha256("first_inner_puzzle")],
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ])
+}
+
 test fn fails_at_consensus_without_proofs() -> Any {
     check([1, nil, nil, nil, nil, nil, nil, nil, [ReserveFee { amount: 1 }]])
 }
