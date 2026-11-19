@@ -112,3 +112,55 @@ fn dense_compound_chain_compares_new_members_once() {
     let steps = steps(&dense_compound_chain(16));
     assert!(steps < 1_380_000, "took {steps} steps");
 }
+
+/// A chain of `count` generics that each take the pair `(5, 5)` and are inferred through every
+/// earlier one by `identity`, with `five_pair` bounding the last, so each one's union of lower
+/// bounds is built from the unions of all the ones before it.
+fn dense_pair_chain(count: usize) -> String {
+    let generics: Vec<String> = (0..count).map(|i| format!("G{i}")).collect();
+    let mut params: String = (0..count).map(|i| format!("    v{i}: G{i},\n")).collect();
+    let mut args = "        (5, 5),\n".repeat(count);
+
+    for i in 0..count {
+        for j in i + 1..count {
+            params.push_str(&format!("    f{i}_{j}: fn(a: G{i}) -> G{j},\n"));
+            args.push_str("        identity,\n");
+        }
+    }
+
+    format!(
+        "
+fn identity<U>(value: U) -> U {{
+    value
+}}
+
+fn five_pair(value: (5, 5)) -> Int {{
+    value.first
+}}
+
+fn chain<{}>(
+{params}    last: fn(b: G{}) -> Int,
+) -> Int {{
+    1
+}}
+
+fn main() -> Int {{
+    chain(
+{args}        five_pair,
+    )
+}}
+",
+        generics.join(", "),
+        count - 1,
+    )
+}
+
+/// Each generic's union held a copy of `(5, 5)` for every path to it through the earlier ones, so
+/// it doubled in size with each generic, and comparing two of them compared every member of one
+/// with every member of the other. Main took about 3,040,000 steps here, and 269,000 for 8
+/// generics.
+#[test]
+fn dense_pair_chain_unions_stay_flat() {
+    let steps = steps(&dense_pair_chain(10));
+    assert!(steps < 100_000, "took {steps} steps");
+}
