@@ -383,7 +383,7 @@ fn instantiate_generic_parameters(
 }
 
 /// What each lambda parameter with a type with the callee's generics in it is instantiated as with
-/// the mappings, keyed by its reference. A solution that still references the generics doesn't say
+/// the mappings, keyed by its reference, along with what those generics are. A solution that still references the generics doesn't say
 /// what they are, such as in a call nested in an argument of a call to the same function, which
 /// shares them, so that parameter is left out.
 fn instantiations(
@@ -404,6 +404,18 @@ fn instantiations(
 
         if !references_generics(ctx, solution, &function.generics) {
             instantiated.insert(parameter.reference, solution);
+
+            // The lambda's type can have the generics where its parameter's reference doesn't,
+            // since a call in its body sees through the reference, as `id(x)` does in
+            // `[fn(x) => id(x)]`, whose return type is the generic itself. Its body was compiled
+            // with them as types it knows nothing about, so they're instantiated there too
+            let generics = function.generics.iter().copied();
+
+            for generic in contained_generics(ctx.types_mut(), generic_type, generics) {
+                if let Some(&ty) = mappings.get(&generic) {
+                    instantiated.insert(generic, ty);
+                }
+            }
         }
     }
 
