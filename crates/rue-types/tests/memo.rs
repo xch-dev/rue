@@ -948,9 +948,9 @@ fn unmatched_member_bound_module(db: &mut Types) -> TypeId {
 /// against each other, so `FR` against itself failed if the first member matched, and the first
 /// member only matches if `FR` against itself holds (through the revisit in its return type).
 /// Whether a member matches isn't monotone in its result (#360), so that had no least fixed point:
-/// exact mode ended at `Assign` and iterating in fixpoint mode at `Invalid`. Bounds from different members of a
-/// union are alternatives, though, which are never checked against each other (see
-/// `Choices::exclusive`), so the conflict is gone and every mode gives `Assign`.
+/// exact mode ended at `Assign` and iterating in fixpoint mode at `Invalid`. Bounds from
+/// different members of a union are alternatives, though, which are never checked against each
+/// other (see `Choices::exclusive`), so the conflict is gone and every mode gives `Assign`.
 #[test]
 fn test_unmatched_member_bound_modes() {
     with_large_stack(|| {
@@ -1683,7 +1683,7 @@ fn test_comparison_step_limit() {
         assert_eq!(result, Ok(Comparison::Assign));
 
         // With a limit below what it takes, the comparison gives up, which `compare` treats as
-        // `Invalid`. Since #362's step 13b.3 it takes few enough steps (about 20) that a fraction
+        // `Invalid`. Since #362's step 13b.3 it takes few enough steps (about 50 against a copy) that a fraction
         // of what it takes in all, including substituting and checking the types, isn't below it
         assert!(steps > 2);
         let limit = 2;
@@ -1722,8 +1722,8 @@ fn test_check_step_limit() {
 /// A random module shaped like `unmatched_member_bound`'s: `FL` and `FR` are functions, generic or
 /// not, and `WL` and `WR` aren't generic, with parameters and return types made of the atoms, the
 /// generic, the four aliases, and pairs, unions and functions of them. The unions are where members
-/// can bound an instance (#360). Returns two of the aliases, or `FL` and a copy of it, declared
-/// again, if `copy` is set.
+/// can bound an instance (#360). Returns two of the aliases (`FL`, `FR` or `WL` first), or the
+/// first and a copy of it, declared again, if `copy` is set.
 fn union_member_module(seed: u64, copy: bool) -> impl Fn(&mut Types) -> (TypeId, TypeId) {
     move |db: &mut Types| {
         let mut rng = Rng(seed);
@@ -1885,16 +1885,17 @@ fn union_member_differential(seeds: impl IntoIterator<Item = u64>, copy: bool) -
 }
 
 /// Which union members match decides which bounds count, which used to make modes disagree on
-/// types like `unmatched_member_bound`'s (#360), including these seeds. Each module is compared
-/// with a copy of it as well, since a type compared with itself is `Assign` without comparing
-/// any further.
+/// types like `unmatched_member_bound`'s (#360). The seeds listed are the ones that did, about one
+/// in 10,000, so they're what pin it, along with `test_union_member_differential_large`. Each
+/// module is compared with a copy of it as well, since a type compared with itself is `Assign`
+/// without comparing any further.
 #[test]
 fn test_union_member_differential() {
     with_large_stack(|| {
         let seeds = || {
-            [13_695, 17_595, 34_632, 62_040, 106_084, 118_007]
+            [5968, 13_695, 17_595, 34_632, 62_040, 106_084, 118_007]
                 .into_iter()
-                .chain(0..500)
+                .chain(0..2000)
         };
 
         for copy in [false, true] {
@@ -1911,8 +1912,10 @@ fn test_union_member_differential() {
 ///
 /// This records known disagreements as well: three modules whose `FL`, `FR` or `WL` is compared
 /// with a copy of it are still `Invalid` with the memo, in both modes, and `Assign` without it or
-/// while inferring. Before #362's step 13f, 20 of these seeds disagreed (6 compared with the same
-/// type and 14 with a copy), including these three.
+/// while inferring. A pair of bounds from members of different unions still only counts while
+/// both members match, which isn't monotone in their results, and iterating keeps an `Invalid`
+/// that exact mode drops. Before #362's step 13f, 20 of these seeds disagreed (6 compared with
+/// the same type and 14 with a copy), including these three.
 #[test]
 #[ignore = "slow"]
 fn test_union_member_differential_large() {

@@ -3,9 +3,10 @@
 // fixpoint mode now, which finishes. `Q1` should be assignable to `Q2`, since they're both `N0`,
 // and the guard unnecessary, but it isn't found to be, most likely because the union members that
 // match a value aren't monotone in their results (#360), so comparing has no least fixed point,
-// and iterating keeps a failure from an early round (see `test_unmatched_member_bound_modes` in
-// rue-types' memo tests).
-// A fix for that is expected to change the guard's diagnostic
+// and iterating keeps a failure from an early round. #362's step 13f stopped checking bounds from
+// members of one union against each other, which didn't change this, so it's likely bounds from
+// members of different unions (see `test_union_member_differential_large` in rue-types' memo
+// tests). A fix for that is expected to change the guard's diagnostic
 type N0 = Bytes
     | (((1, Bytes32), N0 | N1<2, Bytes32>))
     | (((N1<Bytes32, Bytes>, N1<1, nil>), N2 | N1<Bytes32, Bytes>));

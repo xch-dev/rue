@@ -1,4 +1,4 @@
 diagnostics:
-- Unused generic type `U31` at nested_generic_function_cycles.rue:20:14
-- Cannot assign `N2` to `N0`, since they are incompatible at nested_generic_function_cycles.rue:31:18
-- Cannot check if value is of function type at runtime at nested_generic_function_cycles.rue:34:8
+- Unused generic type `U31` at nested_generic_function_cycles.rue:21:14
+- Cannot assign `N2` to `N0`, since they are incompatible at nested_generic_function_cycles.rue:32:18
+- Cannot check if value is of function type at runtime at nested_generic_function_cycles.rue:35:8

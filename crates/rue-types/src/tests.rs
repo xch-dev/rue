@@ -1304,6 +1304,26 @@ mod inference {
         assert_eq!(mappings[&t], int);
     }
 
+    /// A type compared with itself is `Assign` without comparing it, unless it references a
+    /// generic being inferred, which comparing it collects candidates for.
+    #[test]
+    fn compared_with_itself() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let t = db.generic("T");
+        let union = db.union(&[t, int]);
+
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(union, union, &mut infer), Comparison::Assign);
+        let held = candidates(&infer, t).held;
+        let names: Vec<String> = held.iter().map(|&ty| db.name(ty)).collect();
+        assert_eq!(names, ["Int"]);
+
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(int, int, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t), InferenceCandidates::default());
+    }
+
     #[test]
     fn widens_covariant_candidates() {
         let mut db = Db::new();
