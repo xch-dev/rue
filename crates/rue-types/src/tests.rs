@@ -404,9 +404,9 @@ mod functions {
 
     /// An inner instance is instantiated once for all of the outer bounds: with
     /// `fn<B>(f: fn() -> B) -> (B, B)` and `fn<T>() -> fn(x: T) -> T`, `B` flows into both of the
-    /// return type's functions, so one `T'` has to hold `Int` and `nil` for the first and be
-    /// assignable to `Int | nil` and `nil | Bytes32` for the second, which no type is, although
-    /// each alone has one.
+    /// return type's functions, so one `T'` has to hold `Int` and be assignable to `Int | nil` for
+    /// the first, and hold `nil` and be assignable to `nil | Bytes32` for the second, which no
+    /// single type does, although each alone has one.
     #[test]
     fn inner_instances_are_instantiated_once() {
         let mut db = Db::new();
@@ -462,6 +462,39 @@ mod functions {
 
         assert_eq!(compare(&mut db, int), Comparison::Invalid);
         assert_eq!(compare(&mut db, bytes32), Comparison::Assign);
+    }
+
+    /// Only the inner instances can be instantiated while the outer bounds are checked, not the
+    /// ones nested further in, which stay rigid while the inner ones' bounds are checked again.
+    /// With `fn<B>(f: fn(g: Q) -> B) -> B` against `fn(f: P) -> (R, R)`, where
+    /// `P = fn<T>(g: fn(..) -> T) -> (T, T)` and `Q = fn<U>(..) -> (U, U)`, `T' ≥ (U', U')` and
+    /// `T' ≤ R`. With `Q` taking an `Int` and `R` as `(Int, Bytes32)`, `U'` can't be both, so it
+    /// must stay rejected. Without parameters and with `R` as `(Int, Int)`, `U'` could be `Int`,
+    /// but it's rejected too: that's the limit of instantiating one level deep.
+    #[test]
+    fn deeper_instances_stay_rigid() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, bytes32, .. } = db.builtins;
+
+        let compare = |db: &mut Db, param: Option<TypeId>, r: TypeId| {
+            let [b, t, u] = [db.generic("B"), db.generic("T"), db.generic("U")];
+            let params: Vec<TypeId> = param.into_iter().collect();
+            let us = db.pair(u, u);
+            let q = db.function_with(&[u], &params, true, us);
+            let given = db.function(&[q], b);
+            let call = db.function_with(&[b], &[given], true, b);
+            let g = db.function(&params, t);
+            let ts = db.pair(t, t);
+            let p = db.function_with(&[t], &[g], true, ts);
+            let ret = db.pair(r, r);
+            let target = db.function(&[p], ret);
+            db.cmp(call, target)
+        };
+
+        let mixed = db.pair(int, bytes32);
+        let ints = db.pair(int, int);
+        assert_eq!(compare(&mut db, Some(int), mixed), Comparison::Invalid);
+        assert_eq!(compare(&mut db, None, ints), Comparison::Invalid);
     }
 
     #[test]

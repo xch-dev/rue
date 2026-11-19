@@ -1805,6 +1805,8 @@ fn compare_structure(
                     .iter()
                     .map(|instance| (instance.lower.len(), instance.upper.len()))
                     .collect();
+                // This one's own instances, and those of enclosing comparisons, stay rigid: the
+                // pairs being checked are their own bounds
                 let instantiable_from = mem::replace(&mut ctx.instantiable_from, inner);
                 result = max(result, check_bounds(arena, builtins, ctx, own..inner));
 
