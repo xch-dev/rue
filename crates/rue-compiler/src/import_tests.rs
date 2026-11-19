@@ -2191,6 +2191,31 @@ fn path_less_imports_from_a_parent_find_what_its_glob_imports_could_bring_in() {
     }
 }
 
+#[test]
+fn path_less_imports_through_uncertain_bindings_use_what_could_be_found_instead() {
+    // Found by renaming modules at random. `u1` re-exports `both::m::X`, the first module's type
+    // alias or `beta`'s constant, and glob-imports `beta`'s `m`, which brings in the same constant
+    // unless the re-export hides it. `c`'s import of `super::X` could find the constant through
+    // either, and `c`'s glob import of its parent could bring in what the import does, so both
+    // glob imports are used in either order.
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export type X = Int;",
+            "export const X: Int = 2;",
+            "mod u1 { export super::both::m::X; import super::beta::m::*; mod c { import super::X; import super::*; export fn g() -> Int { X } } export fn f() -> Int { c::g() } } fn main() -> Int { u1::f() }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["2:48 UnusedTypeAlias"],
+            "{context}"
+        );
+        assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+    }
+}
+
 /// Compiles a template with module names in braces (such as `{a}`) replaced with `names` in
 /// order, from `a` on, so that a program found by renaming modules can be checked with its module
 /// names in each order.

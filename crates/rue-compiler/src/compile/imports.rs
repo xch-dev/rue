@@ -2269,10 +2269,10 @@ fn resolve_named_import(
     }
 
     // Once the bindings are settled, what it brings in is uncertain if a name in its path could
-    // name another module, or what it finds could refer to something else (or where it's found,
-    // something else could be brought in with the name instead, see below). In each namespace
-    // that it brings nothing in, it could bring in what those other modules export with the name,
-    // or what the imports in the module it imports from could bring in.
+    // name another module, or what it finds could refer to something else, or where it finds it,
+    // other imports could bring in something else with the name. What it could find through those
+    // imports is used by it, and in each namespace that it brings nothing in, it could bring in
+    // what the other modules export with the name, or what those imports could bring in.
     if resolution.settled {
         let mut uncertain = !alternatives.is_empty()
             || found.iter().any(|&(item, via)| {
@@ -2283,23 +2283,18 @@ fn resolve_named_import(
                         .is_some()
             });
 
-        for namespace in Namespace::ALL {
-            if found
-                .iter()
-                .any(|&(found, _)| found.namespace() == namespace && !ctx.is_error_item(found))
-            {
-                continue;
-            }
+        // It finds its name in the module its path names, which only has what that exports for it,
+        // or without a path, in the module `super` or `project` names, or the scope it's in
+        let (place, exported_only) = match base {
+            Some(base) => (Place::Scope(base), true),
+            None if import.from_parent => (Place::Scope(import.base_scope), false),
+            None => (Place::Chain(import_scope), false),
+        };
 
-            // It finds its name in the module its path names, which only has what that exports
-            // for it, or without a path, in the module `super` or `project` names, or the scope
-            // it's in
-            let (place, exported_only) = match base {
-                Some(base) => (Place::Scope(base), true),
-                None if import.from_parent => (Place::Scope(import.base_scope), false),
-                None => (Place::Chain(import_scope), false),
-            };
-            let namespaces = [namespace];
+        for namespace in Namespace::ALL {
+            let brings_in = found
+                .iter()
+                .any(|&(found, _)| found.namespace() == namespace && !ctx.is_error_item(found));
 
             // What another named import of the name brings in here is that one's, which this one
             // would duplicate rather than bring in
@@ -2311,7 +2306,9 @@ fn resolve_named_import(
                 })
                 .map(|(item, _)| item);
 
-            let found = alternative_items(
+            let namespaces = [namespace];
+
+            let others = alternative_items(
                 ctx,
                 Some(place),
                 alternatives,
@@ -2320,7 +2317,7 @@ fn resolve_named_import(
                 exported_only,
             );
 
-            for (item, via) in found {
+            for (item, via) in others {
                 uncertain = true;
 
                 // The import it's found through would be used by this one, like one it finds its
@@ -2329,7 +2326,7 @@ fn resolve_named_import(
                     ctx.add_import_reference(via, item.into(), ImportUser::Import(import_id));
                 }
 
-                if Some(item) != binding {
+                if !brings_in && Some(item) != binding {
                     updated |=
                         ctx.add_import_alternative(import_id, namespace, name.to_string(), item);
                 }
