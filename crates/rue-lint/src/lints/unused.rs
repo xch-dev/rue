@@ -124,7 +124,9 @@ fn is_import_used(
         .collect::<HashSet<_>>();
 
     match &import.items {
-        Items::All(_) => import.declarations.is_empty() || !references.is_empty(),
+        Items::All(_) => {
+            (import.declarations.is_empty() && !db.may_bring_in_more(id)) || !references.is_empty()
+        }
         // An item can import declarations from more than one namespace (such as a type and a
         // constant with the same name), so it's used if any of them are
         Items::Named(item) => {

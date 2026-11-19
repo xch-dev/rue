@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use indexmap::IndexMap;
-
 use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
@@ -11,8 +9,8 @@ use rue_parser::SyntaxToken;
 use rue_types::{Apply, FunctionType, Type, TypeId};
 
 use crate::{
-    Compiler, CompletionContext, GetTextRange, SyntaxItemKind, compile_function_generic_arguments,
-    compile_generic_arguments,
+    Compiler, CompletionContext, GetTextRange, Place, SyntaxItemKind, alternative_items,
+    alternative_modules, compile_function_generic_arguments, compile_generic_arguments, modules_of,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,98 +143,74 @@ where
     result
 }
 
-/// The names in a path after any `super` or `project` that it starts with, and the module that
-/// each one that has been resolved before the last one names, with the import it's named through.
+/// Where a path's first name is looked up, the names in the path from there, and the module that
+/// each name before the last one names, as far as it's resolved, with the import it's named through.
 #[derive(Debug, Default)]
 struct PathTrail {
+    base: Option<SegmentBase>,
     names: Vec<String>,
     modules: Vec<(SymbolId, Option<ImportId>)>,
 }
 
-/// The other modules that a segment of a path could name, besides the module it was resolved to
-/// (if it was), given the other modules the segment before it could name. A name that glob imports
-/// bring in different modules with could name any of them (see
-/// [`Database::ambiguous_alternatives`](rue_hir::Database::ambiguous_alternatives)), and so could
-/// the same name in any module that the segment before it could name. Each is returned with the
-/// import that it's found through, if it's found in one of those modules.
-pub(crate) fn alternative_modules(
-    ctx: &Compiler,
-    previous: &[(SymbolId, Option<ImportId>)],
-    name: &str,
-    resolved: Option<(SymbolId, Option<ImportId>)>,
-) -> Vec<(SymbolId, Option<ImportId>)> {
-    let found = previous.iter().filter_map(|&(module, _)| {
-        let scope = ctx.scope(ctx.module(module).scope);
-        let (item, via) = scope.item_with_import(Namespace::Module, name)?;
-        Some((item.symbol()?, via))
-    });
-
-    let mut modules = IndexMap::new();
-
-    for (module, via) in found.chain(resolved) {
-        modules.entry(module).or_insert(via);
-
-        for alternative in ctx.ambiguous_alternatives(via, Declaration::Symbol(module)) {
-            if let Declaration::Symbol(alternative) = alternative {
-                modules.entry(alternative).or_insert(None);
-            }
+impl SegmentBase {
+    fn place(self) -> Place {
+        match self {
+            Self::Local(scope) => Place::Chain(scope),
+            Self::Module(scope) | Self::Parent(scope) => Place::Scope(scope),
         }
     }
-
-    // The module it's resolved to is used by the path itself
-    if let Some((module, _)) = resolved {
-        modules.shift_remove(&module);
-    }
-
-    modules
-        .into_iter()
-        .filter(|&(module, _)| {
-            !ctx.is_error_item(Item::Module(module))
-                && matches!(ctx.symbol(module), Symbol::Module(_))
-        })
-        .collect()
 }
 
-/// Counts a path as a use of what it could refer to in the other modules that a name in it could
-/// name, since glob imports bring in different modules with the name. Which of them the name is
+/// Counts a path as a use of what it could refer to if the names in it were bound to the other
+/// modules that glob imports bring in with them (see [`alternative_items`]). Which one each is
 /// bound to depends on the order the imports are resolved in, and so on module names, so this
 /// keeps which of their members are reported as unused from depending on it. The rest of the path
-/// is resolved in each of them, including when it fails to resolve in the module that's bound.
+/// is resolved in each of them, including where it fails to resolve in the module that's bound.
 fn use_alternatives(ctx: &mut Compiler, trail: &PathTrail, kind: PathKind) {
+    let Some(base) = trail.base else {
+        return;
+    };
+
     let Some((last, names)) = trail.names.split_last() else {
         return;
     };
 
-    let mut alternatives = Vec::new();
+    // Where each name is looked up in the module that the path names up to it
+    let primary = |ctx: &Compiler, index: usize| {
+        if index == 0 {
+            Some(base.place())
+        } else {
+            trail
+                .modules
+                .get(index - 1)
+                .map(|&(module, _)| Place::Scope(ctx.module(module).scope))
+        }
+    };
+
+    let mut previous = Vec::new();
 
     for (index, name) in names.iter().enumerate() {
         let resolved = trail.modules.get(index).copied();
-        alternatives = alternative_modules(ctx, &alternatives, name, resolved);
+        let modules = alternative_modules(ctx, primary(ctx, index), &previous, name, resolved);
 
-        for &(module, via) in &alternatives {
+        for &(module, via) in &modules {
             ctx.reference_alternative(Declaration::Symbol(module), via);
         }
+
+        previous = modules_of(modules, resolved);
     }
 
-    // When a name is both a symbol and a type, the expected kind wins, as in the module it's
-    // bound to
+    // When a name is both a symbol and a type, the expected kind wins, as when it's resolved
     let namespaces = match kind {
         PathKind::Symbol => [Namespace::Value, Namespace::Type],
         PathKind::Type => [Namespace::Type, Namespace::Value],
     };
 
-    for (module, _) in alternatives {
-        let scope = ctx.scope(ctx.module(module).scope);
+    let place = primary(ctx, names.len());
+    let items = alternative_items(ctx, place, &previous, &namespaces, last, false);
 
-        let found = namespaces.into_iter().find_map(|namespace| {
-            scope
-                .item_with_import(namespace, last)
-                .filter(|&(item, _)| !ctx.is_error_item(item))
-        });
-
-        if let Some((item, via)) = found {
-            ctx.reference_alternative(item.into(), via);
-        }
+    for (item, via) in items {
+        ctx.reference_alternative(item.into(), via);
     }
 }
 
@@ -340,6 +314,11 @@ where
         return PathResult::Unresolved;
     }
 
+    trail.base = Some(if from_parent {
+        SegmentBase::Parent(base_scope)
+    } else {
+        SegmentBase::Local(base_scope)
+    });
     trail.names = segments
         .iter()
         .map_while(|segment| segment.name().map(|name| name.text().to_string()))

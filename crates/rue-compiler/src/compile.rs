@@ -1,3 +1,4 @@
+mod alternatives;
 mod binding;
 mod block;
 mod document;
@@ -10,6 +11,7 @@ mod literal;
 mod path;
 mod ty;
 
+pub(crate) use alternatives::*;
 pub use binding::*;
 pub use block::*;
 pub use document::*;

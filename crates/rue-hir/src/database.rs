@@ -6,7 +6,8 @@ use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{
-    Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value,
+    Hir, HirId, Import, ImportId, ImportUser, Item, ModuleSymbol, Namespace, Scope, ScopeId,
+    Symbol, SymbolId, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -55,6 +56,11 @@ pub struct Database {
     /// other modules. They aren't references, since the path is only compiled as referring to
     /// the one in the module the name is bound to.
     ambiguous_uses: IndexMap<Declaration, IndexSet<Declaration>>,
+    /// What each glob import could bring in with each name in each namespace, besides what it
+    /// does, if a name in its path, or in the path of a glob import that it brings in items
+    /// through, were bound to another module that glob imports bring in with it (see
+    /// [`Database::glob_alternatives`]).
+    glob_alternatives: HashMap<ImportId, IndexMap<(Namespace, String), IndexSet<Item>>>,
     tests: Vec<Test>,
 }
 
@@ -494,6 +500,68 @@ impl Database {
         self.ambiguous_uses
             .iter()
             .map(|(&declaration, users)| (declaration, users))
+    }
+
+    /// Records that a glob import could bring in an item with a name, if the names in its path
+    /// were bound differently (see [`Database::glob_alternatives`]). Returns whether it wasn't already
+    /// recorded.
+    pub fn add_glob_alternative(
+        &mut self,
+        import: ImportId,
+        namespace: Namespace,
+        name: &str,
+        item: Item,
+    ) -> bool {
+        self.glob_alternatives
+            .entry(import)
+            .or_default()
+            .entry((namespace, name.to_string()))
+            .or_default()
+            .insert(item)
+    }
+
+    /// What a glob import could bring in with a name in a namespace, besides what it does. Which
+    /// module a name that glob imports bring in different modules with is bound to depends on the
+    /// order imports are resolved in, so a glob import through it could bring in what any of
+    /// them export, and what glob imports bring in through that could differ too. A use of the
+    /// name counts as a use of each of these, so that which are reported as unused doesn't
+    /// depend on module names.
+    pub fn glob_alternatives(
+        &self,
+        import: ImportId,
+        namespace: Namespace,
+        name: &str,
+    ) -> impl Iterator<Item = Item> + '_ {
+        self.glob_alternatives
+            .get(&import)
+            .and_then(|alternatives| alternatives.get(&(namespace, name.to_string())))
+            .into_iter()
+            .flatten()
+            .copied()
+    }
+
+    /// Everything a glob import could bring in besides what it does (see
+    /// [`Database::glob_alternatives`]), with the namespace and name of each.
+    pub fn all_glob_alternatives(&self, import: ImportId) -> Vec<(Namespace, String, Item)> {
+        self.glob_alternatives
+            .get(&import)
+            .into_iter()
+            .flatten()
+            .flat_map(|((namespace, name), items)| {
+                items.iter().map(|&item| (*namespace, name.clone(), item))
+            })
+            .collect()
+    }
+
+    /// Whether any glob import could bring in something besides what it does.
+    pub fn has_glob_alternatives(&self) -> bool {
+        !self.glob_alternatives.is_empty()
+    }
+
+    /// Whether a glob import could bring in something besides what it does, so that it isn't
+    /// reported for bringing in nothing, and is used if any of it is.
+    pub fn may_bring_in_more(&self, import: ImportId) -> bool {
+        self.glob_alternatives.contains_key(&import)
     }
 
     pub fn add_test(&mut self, test: Test) {

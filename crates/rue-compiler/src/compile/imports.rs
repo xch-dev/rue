@@ -15,7 +15,7 @@ use rue_hir::{
 use rue_parser::SyntaxKind;
 use rue_types::Type;
 
-use crate::{Compiler, SyntaxItemKind, alternative_modules};
+use crate::{Compiler, Place, SyntaxItemKind, alternative_items, alternative_modules, modules_of};
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
     let Some(path) = import.path() else {
@@ -539,8 +539,10 @@ pub fn resolve_imports(
             }
         }
 
-        for (name, count) in cache.glob_import_counts.values() {
-            if *count == 0 {
+        for (&import, (name, count)) in &cache.glob_import_counts {
+            // One that could bring in something if its path were bound differently is reported
+            // as unused instead, unless any of that is used
+            if *count == 0 && !ctx.may_bring_in_more(import) {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
             }
         }
@@ -1396,7 +1398,7 @@ fn resolve_import(
     }
 
     let base = cache.paths.get(&import_id).map(|path| path.scope);
-    let alternatives = path_alternatives(ctx, import_id, &import, cache);
+    let alternatives = path_alternatives(ctx, import_scope, import_id, &import, cache);
 
     // The module the import's items are imported from, which other lookups can wait for. A name
     // that's looked up from the import's own scope doesn't come from a module.
@@ -1583,17 +1585,18 @@ fn resolve_path(
     true
 }
 
-/// The other modules that an import's resolved path could name, since glob imports bring in
-/// different modules with a name in it (see [`alternative_modules`]). What the import brings in
-/// could be what they have, so it's used and exported along with it (see
-/// [`add_path_alternatives`]). The imports they're found through are used by this one, like the
-/// ones in its path.
+/// The other modules that an import's resolved path could name, if the names in it were bound to
+/// the other modules that glob imports bring in with them (see [`alternative_modules`]). What the
+/// import brings in could be what they have, so it's used and exported along with what it does
+/// (see [`add_path_alternatives`] and [`add_glob_alternatives`]). The imports they're found
+/// through are used by this one, like the ones in its path.
 fn path_alternatives(
     ctx: &mut Compiler,
+    import_scope: ScopeId,
     import_id: ImportId,
     import: &Import,
     cache: &ImportCache,
-) -> Vec<(SymbolId, Option<ImportId>)> {
+) -> Vec<SymbolId> {
     let Some(path) = cache.paths.get(&import_id) else {
         return Vec::new();
     };
@@ -1607,44 +1610,136 @@ fn path_alternatives(
             .find(|&&(segment, _, _)| segment == index)
             .map(|&(_, via, _)| via);
 
-        alternatives = alternative_modules(ctx, &alternatives, name.text(), Some((symbol, via)));
+        // Where the name is looked up in the module the path names up to it
+        let place = if index == 0 {
+            match import_base(import, import_scope) {
+                Base::Local(scope) => Place::Chain(scope),
+                Base::Member(scope) | Base::Inner(scope) => Place::Scope(scope),
+            }
+        } else {
+            Place::Scope(ctx.module(path.symbols[index - 1]).scope)
+        };
 
-        for &(module, via) in &alternatives {
+        let modules = alternative_modules(
+            ctx,
+            Some(place),
+            &alternatives,
+            name.text(),
+            Some((symbol, via)),
+        );
+
+        for &(module, via) in &modules {
             if let Some(via) = via {
                 let user = ImportUser::Import(import_id);
                 ctx.add_import_reference(via, Declaration::Symbol(module), user);
             }
         }
+
+        alternatives = modules_of(modules, Some((symbol, via)));
     }
 
     alternatives
 }
 
 /// Records that a name that an import binds, through the binding recorded on `recorded`, could
-/// also refer to the exported item with the name in each of the other modules its path could name
-/// (see [`path_alternatives`]), and to what that could refer to. Returns whether any of them
-/// weren't already recorded.
+/// also refer to what each of the other modules its path could name exports with the name (see
+/// [`path_alternatives`]), and to what that could refer to. Returns whether any of them weren't
+/// already recorded.
 fn add_path_alternatives(
     ctx: &mut Compiler,
-    alternatives: &[(SymbolId, Option<ImportId>)],
+    alternatives: &[SymbolId],
     recorded: ImportId,
     binding: Item,
     name: &str,
 ) -> bool {
+    if alternatives.is_empty() {
+        return false;
+    }
+
+    let namespaces = [binding.namespace()];
     let mut updated = false;
 
-    for &(module, _) in alternatives {
-        let scope = ctx.scope(ctx.module(module).scope);
-
-        if let Some((item, via)) = scope.item_with_import(binding.namespace(), name)
-            && scope.is_item_exported(item)
-            && !ctx.is_error_item(item)
-        {
-            updated |= ctx.add_ambiguous_alternatives(recorded, binding.into(), via, item.into());
-        }
+    for (item, via) in alternative_items(ctx, None, alternatives, &namespaces, name, true) {
+        updated |= ctx.add_ambiguous_alternatives(recorded, binding.into(), via, item.into());
     }
 
     updated
+}
+
+/// Records what a glob import could bring in besides what it does (see
+/// [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)): what each of the other modules its path could name exports,
+/// and what the glob imports that they, or the module it imports from, export could bring in.
+/// Returns whether any of it wasn't already recorded.
+fn add_glob_alternatives(
+    ctx: &mut Compiler,
+    import_id: ImportId,
+    import: &Import,
+    base: Option<ScopeId>,
+    alternatives: &[SymbolId],
+) -> bool {
+    let mut found = Vec::new();
+
+    for &module in alternatives {
+        let scope = ctx.module(module).scope;
+
+        for namespace in Namespace::ALL {
+            for (name, item) in ctx.scope(scope).exported_items(namespace) {
+                if !ctx.is_error_item(item) {
+                    found.push((namespace, name, item));
+                }
+            }
+        }
+
+        found.extend(scope_glob_alternatives(ctx, scope, true));
+    }
+
+    // A glob import of a parent module brings in its private items too
+    let source = base.unwrap_or(import.base_scope);
+    found.extend(scope_glob_alternatives(ctx, source, base.is_some()));
+
+    // What it brings in from the module it imports from could be hidden by a failed import's
+    // error item one way but not another, so that's included too, if anything else could be
+    // different
+    if !found.is_empty() || !alternatives.is_empty() {
+        for namespace in Namespace::ALL {
+            let items = if base.is_some() {
+                ctx.scope(source).exported_items(namespace)
+            } else {
+                ctx.scope(source).items(namespace)
+            };
+
+            for (name, item) in items {
+                if !ctx.is_error_item(item) {
+                    found.push((namespace, name, item));
+                }
+            }
+        }
+    }
+
+    let mut updated = false;
+
+    for (namespace, name, item) in found {
+        updated |= ctx.add_glob_alternative(import_id, namespace, &name, item);
+    }
+
+    updated
+}
+
+/// What the glob imports into a scope (or only the exported ones) could bring in besides what they
+/// do (see [`Database::glob_alternatives`](rue_hir::Database::glob_alternatives)).
+fn scope_glob_alternatives(
+    ctx: &Compiler,
+    scope: ScopeId,
+    exported_only: bool,
+) -> Vec<(Namespace, String, Item)> {
+    ctx.scope(scope)
+        .imports()
+        .filter(|&import| {
+            let import = ctx.import(import);
+            matches!(import.items, Items::All(_)) && (import.exported || !exported_only)
+        })
+        .flat_map(|import| ctx.all_glob_alternatives(import))
+        .collect()
 }
 
 /// Records the errors in an import's resolved path, and the names in it that refer to a
@@ -1698,11 +1793,11 @@ fn resolve_glob_import(
     import: &Import,
     star: &Name,
     base: Option<ScopeId>,
-    alternatives: &[(SymbolId, Option<ImportId>)],
+    alternatives: &[SymbolId],
     cache: &mut ImportCache,
     resolution: &mut Resolution,
 ) -> bool {
-    let mut updated = false;
+    let mut updated = add_glob_alternatives(ctx, import_id, import, base, alternatives);
 
     let mut count = cache
         .glob_import_counts
@@ -1899,7 +1994,7 @@ fn resolve_named_import(
     import: &Import,
     item: &Name,
     base: Option<ScopeId>,
-    alternatives: &[(SymbolId, Option<ImportId>)],
+    alternatives: &[SymbolId],
     cache: &mut ImportCache,
     resolution: &mut Resolution,
 ) -> bool {
@@ -2075,9 +2170,12 @@ fn resolve_named_import(
         }
 
         // The name could also refer to what the other modules that the path could name have
-        // with it, where this import binds it
-        if ctx.scope(import_scope).item_import(found) == Some(import_id) {
-            updated |= add_path_alternatives(ctx, alternatives, import_id, found, name);
+        // with it, which is recorded on the import that bound it, if another one brought in the
+        // same item first
+        if ctx.scope(import_scope).item(namespace, name) == Some(found)
+            && let Some(recorded) = ctx.scope(import_scope).item_import(found)
+        {
+            updated |= add_path_alternatives(ctx, alternatives, recorded, found, name);
         }
     }
 
