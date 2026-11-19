@@ -497,6 +497,36 @@ mod functions {
         assert_eq!(compare(&mut db, None, ints), Comparison::Invalid);
     }
 
+    /// An inner instance compared with a type that refers to it, while an enclosing comparison
+    /// checks bounds that refer to it on both sides, isn't bounded by that type (an occurs check):
+    /// `fn<B>(function: fn(x: B, y: Int) -> B) -> Int` against `fn(function: F) -> Int`, with
+    /// `F = fn<T>(x: (T, X), y: T) -> (T, T)`, compares `(T', T') ≤ (T', X)`, which holds for `X`
+    /// as `T` or `T | nil` without bounding `T'` by itself, so its `T' ≥ Int` is still enough.
+    #[test]
+    fn inner_instances_compared_with_themselves() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, nil, .. } = db.builtins;
+
+        let compare = |db: &mut Db, optional: bool| {
+            let [outer, inner] = [db.generic("B"), db.generic("T")];
+            let second = if optional {
+                db.union(&[inner, nil])
+            } else {
+                inner
+            };
+            let param = db.pair(inner, second);
+            let ret = db.pair(inner, inner);
+            let function = db.function_with(&[inner], &[param, inner], true, ret);
+            let callback = db.function(&[outer, int], outer);
+            let apply = db.function_with(&[outer], &[callback], true, int);
+            let target = db.function(&[function], int);
+            db.cmp(apply, target)
+        };
+
+        assert_eq!(compare(&mut db, false), Comparison::Assign);
+        assert_eq!(compare(&mut db, true), Comparison::Assign);
+    }
+
     #[test]
     fn recursive_instantiations_are_checked() {
         let mut db = Db::new();

@@ -151,6 +151,14 @@ struct Binder {
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
+    /// The numbers of lower and upper bounds it had when the comparison that bound it finished,
+    /// or when a summary bound it (see `apply_summary`): its own, without those that an enclosing
+    /// comparison added while checking its bounds, which are added again wherever a summary that
+    /// has it is applied (see `summary_since`).
+    own: Option<(usize, usize)>,
+    /// Whether it can be instantiated again while an enclosing comparison checks its bounds,
+    /// whatever `ComparisonContext::instantiable_from` is (see `ComparisonContext::is_closed`).
+    open: bool,
 }
 
 /// A comparison in progress.
@@ -279,8 +287,11 @@ pub(crate) struct ComparisonContext<'a> {
     /// The bounds of the generics being instantiated, indexed by `Binder::instance`.
     instances: Vec<Instance>,
     /// The instances before this index are rigid: they belong to enclosing comparisons, or to the
-    /// one whose bounds are being checked.
+    /// one whose bounds are being checked. Those that are open can be instantiated anyway (see
+    /// `Instance::open`).
     instantiable_from: usize,
+    /// The number of instances that are open (see `Instance::open`).
+    open: usize,
     /// What the generics referenced by the types in each `ComparisonKey` are bound to, for each
     /// side and generic.
     bindings: FxIndexSet<Vec<(bool, TypeId, Binding)>>,
@@ -465,7 +476,7 @@ impl ComparisonContext<'_> {
         let parent = self.branch;
         OpenChoice {
             // Only a bound can depend on it, so it's left out while there are no instances
-            local: (self.instances.len() > self.instantiable_from)
+            local: (self.instances.len() > self.instantiable_from || self.open > 0)
                 .then(|| self.choices.open(self.local_branch, members)),
             infer: self
                 .infer
@@ -701,7 +712,31 @@ impl ComparisonContext<'_> {
     /// Returns the instance of the binder, if it's being instantiated.
     fn instance_of(&self, binder: usize) -> Option<usize> {
         let instance = self.binders[binder].instance?;
-        (instance >= self.instantiable_from).then_some(instance)
+        (instance >= self.instantiable_from || self.instances[instance].open).then_some(instance)
+    }
+
+    /// Whether the instance's own bounds (see `Instance::own`) refer to no binder, so that it can
+    /// be instantiated again while an enclosing comparison checks bounds that refer to it (#363).
+    /// That's intrinsic to the instance, so it's the same wherever it's reached, including through
+    /// a summary, which has its own bounds then (see `summary_since`). An instance whose own bounds
+    /// refer to other binders stays rigid, which can only reject more.
+    fn is_closed(&mut self, arena: &Arena<Type>, index: usize) -> bool {
+        let instance = &self.instances[index];
+        let (lower, upper) = instance
+            .own
+            .unwrap_or((instance.lower.len(), instance.upper.len()));
+        let bounds: Vec<Bound> = instance.lower[..lower]
+            .iter()
+            .chain(&instance.upper[..upper])
+            .copied()
+            .collect();
+
+        bounds.into_iter().all(|(ty, env, _)| {
+            self.cache_references(arena, ty);
+            self.references[&ty]
+                .iter()
+                .all(|&generic| self.resolve(generic, env).is_none())
+        })
     }
 
     /// Whether the generic is being instantiated.
@@ -824,7 +859,10 @@ impl ComparisonContext<'_> {
                 );
 
                 for local in referenced {
-                    if self.binders[local.0].instance.is_some() && !exported.contains(&local) {
+                    if let Some(index) = self.binders[local.0].instance
+                        && !exported.contains(&local)
+                        && self.is_closed(arena, index)
+                    {
                         exported.push(local);
                     }
                 }
@@ -835,11 +873,13 @@ impl ComparisonContext<'_> {
 
         for (binder, target) in exported {
             let instance = &self.instances[self.binders[binder].instance.unwrap()];
-            let mut bounds: Vec<(Bound, bool)> = instance
-                .lower
+            let (lower, upper) = instance
+                .own
+                .unwrap_or((instance.lower.len(), instance.upper.len()));
+            let mut bounds: Vec<(Bound, bool)> = instance.lower[..lower]
                 .iter()
                 .map(|&bound| (bound, false))
-                .chain(instance.upper.iter().map(|&bound| (bound, true)))
+                .chain(instance.upper[..upper].iter().map(|&bound| (bound, true)))
                 .collect();
 
             if bounds.is_empty() {
@@ -1012,6 +1052,13 @@ impl ComparisonContext<'_> {
 
             if constraint.unmatched {
                 self.bounded = bounded;
+            }
+        }
+
+        for &binder in &locals {
+            if let Some(index) = self.binders[binder].instance {
+                let instance = &mut self.instances[index];
+                instance.own = Some((instance.lower.len(), instance.upper.len()));
             }
         }
     }
@@ -1812,8 +1859,9 @@ fn compare_structure(
                 // instantiate them again while it checks its own (below)
                 for index in first..first + lhs.generics.len() {
                     let slot = ctx.binders[index].instance.unwrap();
-                    let instance = mem::take(&mut ctx.instances[slot]);
+                    let mut instance = mem::take(&mut ctx.instances[slot]);
                     ctx.instance_finished(arena, index, &instance.lower, &instance.upper);
+                    instance.own = Some((instance.lower.len(), instance.upper.len()));
                     ctx.instances[slot] = instance;
                 }
 
@@ -1826,23 +1874,31 @@ fn compare_structure(
                 // `fn() -> B`, holds for `B ≤ (Int, Int)` with `T` as `Int` (#363). Each of them is
                 // instantiated once for all of the bounds, and its own bounds are checked again
                 // with what that adds to them
-                let end = ctx.instances.len();
-                let before: Vec<(usize, usize)> = ctx.instances[inner..end]
-                    .iter()
-                    .map(|instance| (instance.lower.len(), instance.upper.len()))
-                    .collect();
                 // This one's own instances, and those of enclosing comparisons, stay rigid: the
                 // pairs being checked are their own bounds
-                let instantiable_from = mem::replace(&mut ctx.instantiable_from, inner);
+                let end = ctx.instances.len();
+                let mut reopened: Vec<(usize, (usize, usize))> = Vec::new();
+
+                for index in inner..end {
+                    if ctx.is_closed(arena, index) {
+                        ctx.open += 1;
+                        let instance = &mut ctx.instances[index];
+                        instance.open = true;
+                        reopened.push((index, (instance.lower.len(), instance.upper.len())));
+                    }
+                }
+                let instantiable_from = mem::replace(&mut ctx.instantiable_from, end);
                 result = max(result, check_bounds(arena, builtins, ctx, own..inner));
 
-                let grown: Vec<usize> = (inner..end)
-                    .zip(before)
-                    .filter(|&(index, (lower, upper))| {
-                        let instance = &ctx.instances[index];
-                        instance.lower.len() > lower || instance.upper.len() > upper
+                let grown: Vec<usize> = reopened
+                    .into_iter()
+                    .filter_map(|(index, (lower, upper))| {
+                        ctx.open -= 1;
+                        let instance = &mut ctx.instances[index];
+                        instance.open = false;
+                        (instance.lower.len() > lower || instance.upper.len() > upper)
+                            .then_some(index)
                     })
-                    .map(|(index, _)| index)
                     .collect();
 
                 ctx.instantiable_from = ctx.instances.len();
