@@ -2270,18 +2270,18 @@ fn resolve_named_import(
     }
 
     // Once the bindings are settled, what it brings in is uncertain if a name in its path could
-    // name another module, or what it finds could refer to something else. In each namespace
+    // name another module, or what it finds could refer to something else (or where it's found,
+    // something else could be brought in with the name instead, see below). In each namespace
     // that it brings nothing in, it could bring in what those other modules export with the name,
     // or what the imports in the module it imports from could bring in.
     if resolution.settled {
         let mut uncertain = !alternatives.is_empty()
             || found.iter().any(|&(item, via)| {
                 !ctx.is_error_item(item)
-                    && (ctx
+                    && ctx
                         .ambiguous_alternatives(via, item.into())
                         .next()
                         .is_some()
-                        || via.is_some_and(|via| ctx.is_uncertain_import(via)))
             });
 
         for namespace in Namespace::ALL {
