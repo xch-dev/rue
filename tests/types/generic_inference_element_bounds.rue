@@ -114,3 +114,21 @@ test fn call_with_arguments_deeper_next_to_a_call_without_them() -> Int {
     }
     1
 }
+
+// A list literal's inferred type only has as many items as the literal, such as `(2, nil)` for
+// `[2]`, so the item after the `3` gets the type the `3` was expected to be, as it would from a
+// `List`, and `make()` is `2`. With nothing for it, `make` couldn't be inferred, though
+// `first::<List<Int>>` compiles
+test fn call_without_arguments_past_the_end_of_a_list() -> Int {
+    let result = first(([2], [3, make()]));
+    let inferred: (2, nil) | (3, (2, nil)) = result;
+    inferred.first
+}
+
+// Guard: a call with arguments past the end still infers its own generics from them, so
+// `optional(nil)` is `nil`
+test fn call_with_arguments_past_the_end_of_a_list() -> Int {
+    let result = first(([2], [3, optional(nil)]));
+    let inferred: (2, nil) | (3, (nil, nil)) = result;
+    inferred.first
+}

@@ -1,0 +1,18 @@
+// Where an item of a list literal past the end of its expected type's pairs doesn't get the item
+// before's type (#362, step 13e)
+
+fn make<U>() -> U {
+    unchecked_cast(nil)
+}
+
+fn main() -> Any {
+    // The expected type goes on as `Any` rather than ending, so the list isn't past its end and
+    // nothing gives `make` a type, as before
+    let open: (Int, Any) = [1, make()];
+
+    // A type of its own that ends after one item can't hold a second one, whatever it is, so the
+    // list is still rejected
+    let ended: (Int, nil) = [1, make()];
+
+    (open, ended)
+}

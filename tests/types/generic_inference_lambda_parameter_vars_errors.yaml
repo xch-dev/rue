@@ -6,16 +6,15 @@ diagnostics:
 - Unused function `call_back` at generic_inference_lambda_parameter_vars_errors.rue:38:4
 - Unused function `five_only` at generic_inference_lambda_parameter_vars_errors.rue:44:4
 - "Cannot assign `(fn(y: T, _other: fn(v: T) -> Int) -> Int, (7, fn(_z: Int) -> 0))` to `(fn(value: Int, callback: fn(v: Int) -> Int) -> Int, (Int, fn(v: Int) -> Int))`, since they are incompatible at generic_inference_lambda_parameter_vars_errors.rue:53:39"
-- Unused function `callback_map` at generic_inference_lambda_parameter_vars_errors.rue:66:4
-- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars_errors.rue:74:5
-- Cannot compare `Int` to `7` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:74:21
-- Cannot infer generic `U` for `make`; specify it explicitly, e.g. `make::<...>()` at generic_inference_lambda_parameter_vars_errors.rue:87:32
-- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:90:23
-- Cannot compare `(Int, Int)` to `(5, Int)` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:94:28
-- Cannot compare `Int` to `6` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:97:24
-- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:100:21
-- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:101:22
-- Unused generic type `T` at generic_inference_lambda_parameter_vars_errors.rue:101:29
-- Cannot assign `(Int, 1)` to `(5, 2)`, since they are incompatible at generic_inference_lambda_parameter_vars_errors.rue:105:30
-- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:108:16
-- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:112:19
+- Unused function `callback_map` at generic_inference_lambda_parameter_vars_errors.rue:58:4
+- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars_errors.rue:66:5
+- Cannot compare `Int` to `7` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:66:21
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:78:23
+- Cannot compare `(Int, Int)` to `(5, Int)` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:82:28
+- Cannot compare `Int` to `6` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:85:24
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:88:21
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:89:22
+- Unused generic type `T` at generic_inference_lambda_parameter_vars_errors.rue:89:29
+- Cannot assign `(Int, 1)` to `(5, 2)`, since they are incompatible at generic_inference_lambda_parameter_vars_errors.rue:93:30
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:96:16
+- Cannot compare `Int` to `5` without a type guard, since the runtime value must be constrained at generic_inference_lambda_parameter_vars_errors.rue:100:19
