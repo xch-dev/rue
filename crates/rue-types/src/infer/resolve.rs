@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     mem,
 };
 
@@ -397,7 +397,27 @@ impl Inference {
         let mut flipped: IndexMap<(TypeId, CandidateKind, usize), TypeId> = IndexMap::new();
 
         // Each is replaced in the candidates that are left, including the bounds of the vars after
-        // it, so a var that a bound passed on to another var references is replaced in turn
+        // it, so a var that a bound passed on to another var references is replaced in turn. Only
+        // the candidates that can reference it are visited (`mentions`), in the order of the
+        // generics, their kinds and their indices, so the candidates are replaced in the same order
+        // as if each one were checked
+        let order: Vec<TypeId> = self.generics.keys().copied().collect();
+        let pending: HashSet<TypeId> = instances.iter().copied().collect();
+        let mut mentions: HashMap<TypeId, BTreeSet<CandidateKey>> = HashMap::new();
+
+        for (position, candidates) in self.generics.values().enumerate() {
+            for (kind_index, kind) in CANDIDATE_KINDS.into_iter().enumerate() {
+                for (index, &ty) in candidates.list(kind).iter().enumerate() {
+                    for var in mentioned_vars(arena, ty, &pending) {
+                        mentions
+                            .entry(var)
+                            .or_default()
+                            .insert((position, kind_index, index));
+                    }
+                }
+            }
+        }
+
         for &var in &instances {
             self.branches.shift_remove(&var);
             let mut bounds = self.generics.shift_remove(&var).unwrap();
@@ -433,48 +453,70 @@ impl Inference {
                 substitute_with_mappings(arena, ty, &HashMap::from([(var, instantiated)]))
             };
 
-            for (&generic, candidates) in &mut self.generics {
+            for (position, kind_index, index) in mentions.remove(&var).unwrap_or_default() {
+                let generic = order[position];
+
+                // The vars before this one have been removed, and their bounds with them
+                let Some(candidates) = self.generics.get_mut(&generic) else {
+                    continue;
+                };
+
                 // The bounds of the vars that are left are only used to pick what they are
-                let flips = joint && !instances.contains(&generic);
+                let flips = joint && !pending.contains(&generic);
 
-                for kind in [
-                    CandidateKind::Lower,
-                    CandidateKind::Upper,
-                    CandidateKind::Held,
-                ] {
-                    let upper = kind == CandidateKind::Upper;
+                let kind = CANDIDATE_KINDS[kind_index];
+                let upper = kind == CandidateKind::Upper;
+                let key = (generic, kind, index);
+                let ty = &mut candidates.list_mut(kind)[index];
 
-                    for (index, ty) in candidates.list_mut(kind).iter_mut().enumerate() {
-                        let key = (generic, kind, index);
+                // What it would be with each var instantiated for its kind can reference vars that
+                // it doesn't, through the other instantiation's bounds
+                if let Some(by_kind) = flipped.get_mut(&key)
+                    && references_generic(arena, *by_kind, var, |_| Vec::new())
+                {
+                    *by_kind = instantiate(arena, *by_kind, upper);
 
-                        // What it would be with each var instantiated for its kind can reference
-                        // vars that it doesn't, through the other instantiation's bounds
-                        if let Some(by_kind) = flipped.get_mut(&key)
-                            && references_generic(arena, *by_kind, var, |_| Vec::new())
-                        {
-                            *by_kind = instantiate(arena, *by_kind, upper);
-                        }
-
-                        if !references_generic(arena, *ty, var, |_| Vec::new()) {
-                            continue;
-                        }
-
-                        // Where it's only contravariant in a lower or held candidate, the greatest
-                        // instantiation gives the candidate its least type, as a parameter type in
-                        // `fn(x: T) -> nil` does (#358). An upper candidate keeps the greatest
-                        // instantiation wherever it is, since a generic with only upper candidates
-                        // is inferred as them, and a weaker bound would be a wider type
-                        let flip = flips && !upper && {
-                            let (covariant, contravariant) = polarity(arena, *ty, var);
-                            contravariant && !covariant
-                        };
-
-                        if flip && !flipped.contains_key(&key) {
-                            flipped.insert(key, instantiate(arena, *ty, upper));
-                        }
-
-                        *ty = instantiate(arena, *ty, upper || flip);
+                    for other in mentioned_vars(arena, *by_kind, &pending) {
+                        mentions
+                            .entry(other)
+                            .or_default()
+                            .insert((position, kind_index, index));
                     }
+                }
+
+                if !references_generic(arena, *ty, var, |_| Vec::new()) {
+                    continue;
+                }
+
+                // Where it's only contravariant in a lower or held candidate, the greatest
+                // instantiation gives the candidate its least type, as a parameter type in
+                // `fn(x: T) -> nil` does (#358). An upper candidate keeps the greatest
+                // instantiation wherever it is, since a generic with only upper candidates is
+                // inferred as them, and a weaker bound would be a wider type
+                let flip = flips && !upper && {
+                    let (covariant, contravariant) = polarity(arena, *ty, var);
+                    contravariant && !covariant
+                };
+
+                if flip && !flipped.contains_key(&key) {
+                    let by_kind = instantiate(arena, *ty, upper);
+                    flipped.insert(key, by_kind);
+
+                    for other in mentioned_vars(arena, by_kind, &pending) {
+                        mentions
+                            .entry(other)
+                            .or_default()
+                            .insert((position, kind_index, index));
+                    }
+                }
+
+                *ty = instantiate(arena, *ty, upper || flip);
+
+                for other in mentioned_vars(arena, *ty, &pending) {
+                    mentions
+                        .entry(other)
+                        .or_default()
+                        .insert((position, kind_index, index));
                 }
             }
         }
@@ -749,4 +791,52 @@ fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -
     } else {
         ty
     }
+}
+
+/// The candidate kinds in the order `Inference::resolve_instances` visits them.
+const CANDIDATE_KINDS: [CandidateKind; 3] = [
+    CandidateKind::Lower,
+    CandidateKind::Upper,
+    CandidateKind::Held,
+];
+
+/// A candidate, as the position of its generic in the inference, the index of its kind in
+/// `CANDIDATE_KINDS` and its index in that kind's list.
+type CandidateKey = (usize, usize, usize);
+
+/// The vars among `vars` that the type can reference, as `references_generic` finds them. This
+/// over-approximates them, since it also looks inside function types that bind them.
+fn mentioned_vars(arena: &Arena<Type>, id: TypeId, vars: &HashSet<TypeId>) -> Vec<TypeId> {
+    let mut found = Vec::new();
+    let mut visited = HashSet::new();
+    let mut stack = vec![id];
+
+    while let Some(id) = stack.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+
+        if vars.contains(&id) {
+            found.push(id);
+        }
+
+        match &arena[id] {
+            Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
+            Type::Ref(id) => stack.push(*id),
+            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
+            Type::Alias(alias) => stack.push(alias.inner),
+            Type::Struct(ty) => stack.push(ty.inner),
+            Type::Apply(apply) => {
+                stack.push(apply.inner);
+                stack.extend(apply.generics.values().copied());
+            }
+            Type::Function(function) => {
+                stack.push(function.ret);
+                stack.extend(function.param_types());
+            }
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+        }
+    }
+
+    found
 }
