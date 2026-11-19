@@ -1,5 +1,5 @@
 use rue_diagnostic::{Lint, SrcLoc};
-use rue_hir::{Block, Hir, HirId, Statement, may_raise, statements_may_raise};
+use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, may_raise, statements_may_raise};
 
 use crate::{HirLintPass, LintContext};
 
@@ -48,4 +48,48 @@ fn report(cx: &mut LintContext<'_>, srcloc: SrcLoc) {
         srcloc,
         "A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead",
     );
+}
+
+/// Both operands of `&` and `|` on `Bool` are evaluated eagerly, so a right operand which can
+/// raise will do so even when the left operand already decides the result. The left operand isn't
+/// checked, since `&&` and `||` evaluate it too. Like [`InlineIfMayRaise`], this runs after every
+/// function has been compiled, so that calls to functions which may raise can be detected.
+#[derive(Debug, Default)]
+pub(crate) struct BoolOperatorMayRaise;
+
+impl HirLintPass for BoolOperatorMayRaise {
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::BoolOperatorMayRaise]
+    }
+
+    fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
+        let (operator, short_circuit, deciding_value, right) = match *node {
+            Hir::Binary(BinaryOp::All, _, right) => ("&", "&&", "false", right),
+            Hir::Binary(BinaryOp::Any, _, right) => ("|", "||", "true", right),
+            _ => return,
+        };
+
+        if !may_raise(cx.db(), right) {
+            return;
+        }
+
+        // The right operand is reported rather than the whole expression, since in a chain like
+        // `a & b & c` every operator's expression starts at `a`
+        let Some(srcloc) = cx
+            .db()
+            .hir_srcloc(right)
+            .or_else(|| cx.db().hir_srcloc(hir))
+            .cloned()
+        else {
+            return;
+        };
+
+        cx.report(
+            Lint::BoolOperatorMayRaise,
+            srcloc,
+            format!(
+                "This operand can raise, but it's evaluated even when the left side of `{operator}` is `{deciding_value}`; use `{short_circuit}` to skip it"
+            ),
+        );
+    }
 }
