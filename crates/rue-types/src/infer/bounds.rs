@@ -5,8 +5,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
-    compare_with_inference, free_generics, infer_from_expected, resolve_inference_with_fallback,
-    strongly_connected_components, substitute_with_mappings, union_of,
+    compare_with_inference, free_generics, infer_from_expected, resolve_inference_around,
+    resolve_inference_with_fallback, strongly_connected_components, substitute_with_mappings,
+    union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -63,7 +64,7 @@ pub fn resolve_inference_with_bounds(
     fallback: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
     let mut mappings = resolve_inference_with_fallback(arena, builtins, infer, fallback);
-    narrow_inferred(arena, builtins, infer, fallback, &mut mappings);
+    let narrowed = narrow_inferred(arena, builtins, infer, fallback, &mut mappings);
 
     let uninferred: HashSet<TypeId> = infer
         .generics
@@ -97,7 +98,15 @@ pub fn resolve_inference_with_bounds(
         uninferred.contains(&generic)
     });
 
-    let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
+    // The generics that were narrowed keep what they were narrowed to, so that the ones resolved
+    // through them see it, rather than what they were inferred as before
+    let fixed: HashMap<TypeId, TypeId> = narrowed
+        .into_iter()
+        .filter(|generic| !uninferred.contains(generic))
+        .map(|generic| (generic, mappings[&generic]))
+        .collect();
+
+    let resolved = resolve_inference_around(arena, builtins, &bounded, fallback, &fixed);
 
     for generic in uninferred {
         // A cycle through compound bounds can resolve a generic to a type that references itself,
@@ -121,7 +130,9 @@ fn narrow_inferred(
     infer: &Inference,
     fallback: &HashMap<TypeId, TypeId>,
     mappings: &mut HashMap<TypeId, TypeId>,
-) {
+) -> Vec<TypeId> {
+    let mut narrowed = Vec::new();
+
     let inferred: HashSet<TypeId> = infer
         .generics
         .keys()
@@ -136,7 +147,7 @@ fn narrow_inferred(
         .collect();
 
     if inferred.is_empty() {
-        return;
+        return narrowed;
     }
 
     // Only the upper bounds that don't reference a generic being inferred are passed on. One that
@@ -152,7 +163,7 @@ fn narrow_inferred(
         .collect();
 
     if bounds.is_empty() {
-        return;
+        return narrowed;
     }
 
     let mut bounded = infer.clone();
@@ -172,7 +183,7 @@ fn narrow_inferred(
         .iter()
         .all(|generic| bounded.generics[generic].upper.len() == infer.generics[generic].upper.len())
     {
-        return;
+        return narrowed;
     }
 
     let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
@@ -187,8 +198,11 @@ fn narrow_inferred(
                 == Comparison::Assign
         {
             mappings.insert(generic, ty);
+            narrowed.push(generic);
         }
     }
+
+    narrowed
 }
 
 /// Gives the generics in each generic's compound upper bounds that `accepts` allows the lower

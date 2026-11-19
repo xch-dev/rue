@@ -40,6 +40,19 @@ pub fn resolve_inference_with_fallback(
     infer: &Inference,
     fallback: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
+    resolve_inference_around(arena, builtins, infer, fallback, &HashMap::new())
+}
+
+/// Like `resolve_inference_with_fallback`, but the generics in `fixed` are already resolved, to
+/// the types they map to, so the others are resolved through those (see
+/// `resolve_inference_with_bounds`).
+pub(crate) fn resolve_inference_around(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &Inference,
+    fallback: &HashMap<TypeId, TypeId>,
+    fixed: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
     // Only the candidates collected under union members that matched are resolved from (#364)
     let infer = &infer.keep_matched();
 
@@ -82,8 +95,8 @@ pub fn resolve_inference_with_fallback(
         infer,
         fallback,
         reachable,
-        resolved: HashSet::new(),
-        mappings: HashMap::new(),
+        resolved: fixed.keys().copied().collect(),
+        mappings: fixed.clone(),
     };
 
     for &generic in infer.generics.keys() {
@@ -118,7 +131,9 @@ impl InferenceResolver<'_> {
             .copied()
             .filter(|&other| {
                 other == generic
-                    || (reachable.contains(&other) && self.reachable[&other].contains(&generic))
+                    || (reachable.contains(&other)
+                        && self.reachable[&other].contains(&generic)
+                        && !self.resolved.contains(&other))
             })
             .collect();
 
