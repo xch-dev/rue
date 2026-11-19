@@ -2692,11 +2692,18 @@ mod inference {
         assert_eq!(db.infer(nil, union, &mut with_choice), Comparison::Assign);
         assert!(!infer.is_identical(&with_choice));
 
-        // So is a var added along with the generics
-        let mut with_var = infer.clone();
+        // So is a var added along with the generics, even next to the same generic with the same
+        // candidates that isn't one
         let var = db.generic("V");
-        with_var.add_var(var, int);
-        assert!(!infer.is_identical(&with_var));
+        let mut added = Inference::new([a, b]);
+        assert_eq!(db.infer(int, a, &mut added), Comparison::Assign);
+        added.add_var(var, int);
+        let mut plain = Inference::new([a, b, var]);
+        assert_eq!(db.infer(int, a, &mut plain), Comparison::Assign);
+        plain.push(var, CandidateKind::Upper, int, Vec::new());
+        assert_eq!(added.generics, plain.generics);
+        assert!(!added.is_identical(&plain));
+        assert!(added.is_identical(&added.clone()));
     }
 
     #[test]
