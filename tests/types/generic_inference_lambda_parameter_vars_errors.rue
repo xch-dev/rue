@@ -22,6 +22,28 @@ fn map_recursive<A, B>(function: fn(a: A) -> B, value: A) -> B {
     function(value)
 }
 
+fn apply_to<T>(pair: (fn(value: T) -> T, T)) -> T {
+    pair.first(pair.rest)
+}
+
+// A call nested in an argument of a call to the same function shares the enclosing call's `T`,
+// which that call is still inferring, so the lambdas' `x` and `y` aren't checked as what it's
+// inferred as, which would let that `T` leak out of `apply_to`
+#[expect(unused_function)]
+fn nested_call_to_the_same_function() -> Any {
+    apply_to((
+        fn(x) => apply_to((
+            fn(y) => if false {
+                y
+            } else {
+                x
+            },
+            1,
+        )),
+        "hi",
+    ))
+}
+
 fn main() -> Int {
     // The lambda returns `x + 0`, not `x`, so the expected bound doesn't reach `x`
     let computed: 5 = map(fn(x) => x + 0, 5);

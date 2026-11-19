@@ -178,6 +178,17 @@ pub(crate) fn infer_call(
     // as is
     let expected_type = expected_type.filter(|_| !ctx.is_expected_type_hint());
 
+    // A call nested in an argument of a call to the same function shares its generics, which an
+    // enclosing call is still inferring, so what they're inferred as here can stand for that call's
+    let shared = function
+        .generics
+        .iter()
+        .any(|generic| ctx.inferred_generics().contains(generic));
+
+    if shared {
+        lambda_parameters.iter_mut().for_each(Vec::clear);
+    }
+
     if renamed.is_empty() {
         instantiate_generic_parameters(ctx, function, &lambda_parameters, &mappings, &mut checks);
     }
@@ -266,11 +277,15 @@ fn instantiate_generic_parameters(
         let mut instantiated = HashMap::new();
 
         for &(reference, parameter) in parameters {
-            if references_generics(ctx, parameter, &function.generics) {
-                instantiated.insert(
-                    reference,
-                    substitute_with_mappings(ctx.types_mut(), parameter, mappings),
-                );
+            if !references_generics(ctx, parameter, &function.generics) {
+                continue;
+            }
+
+            // A solution that still references the generics doesn't say what they are
+            let solution = substitute_with_mappings(ctx.types_mut(), parameter, mappings);
+
+            if !references_generics(ctx, solution, &function.generics) {
+                instantiated.insert(reference, solution);
             }
         }
 
