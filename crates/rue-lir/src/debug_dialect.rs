@@ -12,19 +12,29 @@ use rue_clvm::disassemble_value;
 
 use crate::ClvmOp;
 
-/// The flags used to run Rue programs. These don't exactly match any flags Chia uses. They're
-/// mempool mode with `LIMITS`, which mainnet enforces in both the mempool and blocks until hard
-/// fork 2, but with modpow and keccak256 enabled outside of the softfork guard as they are after
-/// hard fork 2 (`DISABLE_OP` turns modpow off until then). Costs use the cost model from before
-/// hard fork 2.
+/// The flags used to run Rue programs, given whether the program is compiled with
+/// `operand_limits` (see `CompilerOptions::operand_limits` in `rue-options`). These don't exactly
+/// match any flags Chia uses. They're mempool mode, but with modpow and keccak256 enabled outside
+/// of the softfork guard as they are after hard fork 2 (`DISABLE_OP` turns modpow off until then).
+/// Costs use the cost model from before hard fork 2.
 ///
-/// `LIMITS` rejects some large operands of `*`, `/`, `%`, `divmod` and `modpow` (see
-/// [`MAX_MUL_OPERAND_BYTES`] and the constants after it), so these operators can fail for
-/// operands that aren't known at compile time.
-pub const CLVM_FLAGS: ClvmFlags = MEMPOOL_MODE
-    .union(ClvmFlags::LIMITS)
-    .union(ClvmFlags::ENABLE_KECCAK_OPS_OUTSIDE_GUARD)
-    .difference(ClvmFlags::DISABLE_OP);
+/// With `operand_limits`, they also include `LIMITS`, which mainnet enforces in both the mempool
+/// and blocks until hard fork 2. It rejects some large operands of `*`, `/`, `%`, `divmod`,
+/// `modpow`, `g1_multiply` and `g2_multiply` (see [`MAX_MUL_OPERAND_BYTES`] and the constants
+/// after it), so these operators can fail for operands that aren't known at compile time. Without
+/// it, operands aren't limited by their length, as they won't be after hard fork 2 (which also
+/// removes the 2048 byte limit that `DISABLE_OP` puts on the dividend of `/`, `%` and `divmod`).
+pub const fn clvm_flags(operand_limits: bool) -> ClvmFlags {
+    let flags = MEMPOOL_MODE
+        .union(ClvmFlags::ENABLE_KECCAK_OPS_OUTSIDE_GUARD)
+        .difference(ClvmFlags::DISABLE_OP);
+
+    if operand_limits {
+        flags.union(ClvmFlags::LIMITS)
+    } else {
+        flags
+    }
+}
 
 /// The longest atom (in bytes, including any leading zeros) that `LIMITS` allows as an operand of
 /// `*`. The running product is limited by [`MAX_PRODUCT_BYTES`].

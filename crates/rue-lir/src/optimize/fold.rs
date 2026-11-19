@@ -1,7 +1,7 @@
-use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program, serde::node_to_bytes};
+use clvmr::{Allocator, ChiaDialect, ClvmFlags, NodePtr, SExp, run_program, serde::node_to_bytes};
 use id_arena::Arena;
 
-use crate::{CLVM_FLAGS, COST_PER_BYTE, ClvmOp, Lir, LirId};
+use crate::{COST_PER_BYTE, ClvmOp, Lir, LirId, OptimizeOptions, clvm_flags};
 
 // The maximum cost spent evaluating a single operator at compile time
 const MAX_FOLD_COST: u64 = 100_000_000;
@@ -10,7 +10,32 @@ const MAX_FOLD_COST: u64 = 100_000_000;
 // This uses the same dialect as the runtime, so the result is always exactly the same
 // If the operator would fail, we leave it alone so that it still fails at runtime
 // We also only fold if it doesn't increase the total cost (for example, by producing a large atom)
+//
+// This runs the operator with `LIMITS`, which only adds failures, so whatever it folds is folded
+// the same way whether the program is compiled with `operand_limits` or not. Operators whose
+// operands `LIMITS` limits use `fold_limited_atoms` instead, so that they're folded without it
+// when it doesn't apply.
 pub fn fold_atoms(arena: &mut Arena<Lir>, op: ClvmOp, args: &[LirId]) -> Option<LirId> {
+    fold_atoms_with(arena, op, args, clvm_flags(true))
+}
+
+// Like `fold_atoms`, but runs the operator with the flags that the program is run with, for the
+// operators whose operands `LIMITS` limits (`modpow`, `g1_multiply` and `g2_multiply`)
+pub fn fold_limited_atoms(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    op: ClvmOp,
+    args: &[LirId],
+) -> Option<LirId> {
+    fold_atoms_with(arena, op, args, clvm_flags(options.operand_limits))
+}
+
+fn fold_atoms_with(
+    arena: &mut Arena<Lir>,
+    op: ClvmOp,
+    args: &[LirId],
+    flags: ClvmFlags,
+) -> Option<LirId> {
     let mut atoms = Vec::with_capacity(args.len());
 
     for &arg in args {
@@ -21,12 +46,12 @@ pub fn fold_atoms(arena: &mut Arena<Lir>, op: ClvmOp, args: &[LirId]) -> Option<
         atoms.push(atom.clone());
     }
 
-    let result = run_op(op, &atoms)?;
+    let result = run_op(op, &atoms, flags)?;
 
     Some(arena.alloc(Lir::Atom(result)))
 }
 
-fn run_op(op: ClvmOp, atoms: &[Vec<u8>]) -> Option<Vec<u8>> {
+fn run_op(op: ClvmOp, atoms: &[Vec<u8>], flags: ClvmFlags) -> Option<Vec<u8>> {
     let mut allocator = Allocator::new();
 
     let mut args = NodePtr::NIL;
@@ -39,7 +64,7 @@ fn run_op(op: ClvmOp, atoms: &[Vec<u8>]) -> Option<Vec<u8>> {
     let op = allocator.new_atom(&op.to_atom()).ok()?;
     let program = allocator.new_pair(op, args).ok()?;
 
-    let dialect = ChiaDialect::new(CLVM_FLAGS);
+    let dialect = ChiaDialect::new(flags);
     let reduction = run_program(
         &mut allocator,
         &dialect,

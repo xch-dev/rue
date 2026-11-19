@@ -1,0 +1,6 @@
+// Compiled with `operand_limits` (see `odd_check.yaml`). The solution is longer than the 256 bytes
+// that `LIMITS` allows for the dividend of `%`, so the release build fails like the debug build
+// does, rather than checking the low bit with `logand`, which doesn't limit its operands
+fn main(x: Int) -> Bool {
+    x % 2 == 1
+}

@@ -26,12 +26,18 @@
 //! Everything else follows from type checking: `as` can't change a value's shape, a type guard
 //! checks enough of the shape to rule out every other type its value could have (so a guard from
 //! `Any` checks the whole shape), and `==` only compiles for atoms. Given those shapes,
-//! the operations treated as unable to fail (reading a field, addition and subtraction,
-//! comparisons, `==`, hashing, `concat`, `strlen`, the bitwise and logical operators, shifts by
-//! suitable constants, and multiplication and division of suitable constants) can't fail in CLVM.
-//! Multiplication and division of values that aren't known at compile time can fail, since the
-//! `LIMITS` flag that mainnet enforces rejects operands that are too long (see
-//! [`rue_lir::CLVM_FLAGS`]). Nothing relies on narrower facts about atoms, such as a
+//! the operations treated as unable to fail (reading a field, addition, subtraction and
+//! multiplication, comparisons, `==`, hashing, `concat`, `strlen`, the bitwise and logical
+//! operators, shifts by suitable constants, and division by suitable constants) can't fail in
+//! CLVM.
+//!
+//! That's for CLVM without the `LIMITS` flag. With `operand_limits` (see
+//! `CompilerOptions::operand_limits`), programs target CLVM with `LIMITS`, which mainnet enforces
+//! today and which rejects operands that are too long (see [`rue_lir::clvm_flags`]). Then
+//! multiplication and division are only treated as unable to fail if every operand is a suitable
+//! constant, and a product or quotient of values that aren't known at compile time can fail.
+//! Without `operand_limits`, a release build can succeed under `LIMITS` where a debug build
+//! fails, since a check that only fails for a long operand can be skipped. Nothing relies on narrower facts about atoms, such as a
 //! `Bytes32` having 32 bytes, a `Bool` being 0 or 1, or a `PublicKey` being a valid point, since
 //! the operations that need those (`coinid`, the BLS and secp operations, and so on) are treated
 //! as able to fail.
@@ -70,6 +76,10 @@ pub(crate) use may_fail::*;
 /// What the checks need to know about how the HIR is lowered.
 pub(crate) trait AnalysisContext {
     fn db(&self) -> &Database;
+
+    /// Whether the program is compiled with `operand_limits`, so that `*`, `/`, `%` and `divmod`
+    /// can fail for an operand that's too long.
+    fn operand_limits(&self) -> bool;
 
     /// The value that's evaluated where the symbol is referenced, if it's substituted there rather
     /// than read from the environment.
@@ -138,6 +148,9 @@ pub(crate) trait AnalysisContext {
 /// can be moved or skipped.
 #[derive(Debug, Default, Clone)]
 pub struct FailureAnalysis {
+    /// Whether the program is compiled with `operand_limits`, so that operators can fail for an
+    /// operand that's too long.
+    operand_limits: bool,
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     let_evaluations: RefCell<HashMap<SymbolId, bool>>,
@@ -148,16 +161,23 @@ pub struct FailureAnalysis {
 }
 
 impl FailureAnalysis {
-    pub fn new() -> Self {
-        Self::default()
+    /// An analysis for a program compiled with or without `operand_limits`.
+    pub fn new(operand_limits: bool) -> Self {
+        Self {
+            operand_limits,
+            ..Self::default()
+        }
     }
 
     /// An analysis that treats reading any of the constants as unable to fail, since they're
     /// evaluated whenever the program runs anyway.
-    pub(crate) fn with_evaluated_constants(evaluated_constants: HashSet<SymbolId>) -> Self {
+    pub(crate) fn with_evaluated_constants(
+        operand_limits: bool,
+        evaluated_constants: HashSet<SymbolId>,
+    ) -> Self {
         Self {
             evaluated_constants,
-            ..Self::default()
+            ..Self::new(operand_limits)
         }
     }
 
@@ -272,6 +292,10 @@ impl WrittenContext<'_> {
 impl AnalysisContext for WrittenContext<'_> {
     fn db(&self) -> &Database {
         self.db
+    }
+
+    fn operand_limits(&self) -> bool {
+        self.analysis.operand_limits
     }
 
     fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {

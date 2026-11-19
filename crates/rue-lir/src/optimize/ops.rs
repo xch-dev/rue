@@ -7,11 +7,11 @@ use sha2::{Digest, Sha256};
 use sha3::Keccak256;
 
 use crate::{
-    ClvmOp, Lir, LirId, MAX_DIVIDEND_BYTES, MAX_DIVISOR_BYTES, MAX_MUL_OPERAND_BYTES, atom_bigint,
-    bigint_atom, first_path,
+    ClvmOp, Lir, LirId, MAX_DIVIDEND_BYTES, MAX_DIVISOR_BYTES, MAX_MUL_OPERAND_BYTES,
+    OptimizeOptions, atom_bigint, bigint_atom, first_path,
     optimize::{
-        ArgList, Truthiness, fold_atoms, is_atom, is_boolean, is_nil, is_pure, opt_truthy,
-        reads_env,
+        ArgList, Truthiness, fold_atoms, fold_limited_atoms, is_atom, is_boolean, is_nil, is_pure,
+        opt_truthy, reads_env,
     },
     parent_path, rest_path,
     stack::grow_stack,
@@ -78,11 +78,11 @@ pub fn opt_closure(
 // Path 0 is excluded, since it evaluates to nil rather than reading the environment
 // If the value is a cons, we can extract the first element out of it, as long as the rest can't fail
 // If the value is a divmod, we can optimize it to a div since that's the first output
-pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+pub fn opt_first(arena: &mut Arena<Lir>, options: OptimizeOptions, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(first_path(&path))),
         Lir::Cons(first, rest) if is_pure(arena, rest) => first,
-        Lir::Divmod(left, right) => opt_div(arena, left, right),
+        Lir::Divmod(left, right) => opt_div(arena, options, left, right),
         _ => arena.alloc(Lir::First(value)),
     }
 }
@@ -91,11 +91,11 @@ pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // Path 0 is excluded, since it evaluates to nil rather than reading the environment
 // If the value is a cons, we can extract the rest element out of it, as long as the first can't fail
 // If the value is a divmod, we can optimize it to a remainder since that's the rest output
-pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+pub fn opt_rest(arena: &mut Arena<Lir>, options: OptimizeOptions, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(rest_path(&path))),
         Lir::Cons(first, rest) if is_pure(arena, first) => rest,
-        Lir::Divmod(left, right) => opt_mod(arena, left, right),
+        Lir::Divmod(left, right) => opt_mod(arena, options, left, right),
         _ => arena.alloc(Lir::Rest(value)),
     }
 }
@@ -252,16 +252,23 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Sub([vec![minuend], negative].concat()))
 }
 
-// Each run of adjacent constant operands is folded into its product. `LIMITS` checks the length of
-// each operand and of the running product after each one (see `MAX_MUL_OPERAND_BYTES`), so this
-// doesn't flatten nested products, whose inner product is checked as an operand, or move
+// Without `operand_limits`, every constant operand is folded into one product, and nested products
+// are flattened, since multiplication only fails for an operand that's a pair
+//
+// With it, each run of adjacent constant operands is folded into its product. `LIMITS` checks the
+// length of each operand and of the running product after each one (see `MAX_MUL_OPERAND_BYTES`),
+// so this doesn't flatten nested products, whose inner product is checked as an operand, or move
 // constants, which would change the running products when an operand is zero at runtime.
 //
 // A run is only folded if each of its operands and its product fit in an operand, and none of them
 // are zero. Then each running product inside the run is at most the one after it, so folding it
 // doesn't change whether the product fails. A product of one is left out, since it doesn't change
 // the running products either.
-pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+pub fn opt_mul(arena: &mut Arena<Lir>, options: OptimizeOptions, args: Vec<LirId>) -> LirId {
+    if !options.operand_limits {
+        return opt_unlimited_mul(arena, args);
+    }
+
     let mut result = Vec::new();
     let mut run = Vec::new();
     let mut folded = false;
@@ -285,6 +292,37 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     // since multiplication normalizes non-canonical integer atoms (e.g. `0x0001` to `1`), and
     // fails for an operand that's too long
     if folded && result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
+        return result[0];
+    }
+
+    arena.alloc(Lir::Mul(result))
+}
+
+/// Folds every constant operand into one product, and flattens nested products.
+fn opt_unlimited_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    let mut args = ArgList::new(args);
+    let mut result = Vec::new();
+    let mut product = BigInt::from(1);
+
+    while let Some(arg) = args.next() {
+        match arena[arg].clone() {
+            Lir::Atom(atom) => product *= atom_bigint(atom),
+            Lir::Mul(items) => args.prepend(items),
+            _ => result.push(arg),
+        }
+    }
+
+    if product != BigInt::from(1) {
+        result.push(arena.alloc(Lir::Atom(bigint_atom(product))));
+    }
+
+    if result.is_empty() {
+        return arena.alloc(Lir::Atom(vec![1]));
+    }
+
+    // A lone non-constant operand is kept as `(* x)`, since multiplication normalizes
+    // non-canonical integer atoms (e.g. `0x0001` to `1`)
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
@@ -330,17 +368,24 @@ fn fold_mul_run(arena: &mut Arena<Lir>, run: &mut Vec<LirId>, result: &mut Vec<L
     true
 }
 
-/// Whether `LIMITS` allows the operands of `/`, `%` or `divmod`.
-fn division_within_limits(left: &[u8], right: &[u8]) -> bool {
-    left.len() <= MAX_DIVIDEND_BYTES && right.len() <= MAX_DIVISOR_BYTES
+/// Whether the operands of `/`, `%` or `divmod` are allowed, which they always are unless the
+/// program is compiled with `operand_limits`.
+fn division_within_limits(options: OptimizeOptions, left: &[u8], right: &[u8]) -> bool {
+    !options.operand_limits
+        || (left.len() <= MAX_DIVIDEND_BYTES && right.len() <= MAX_DIVISOR_BYTES)
 }
 
 // If both values are atoms, we can perform the division (as long as the right value is not zero,
-// and `LIMITS` allows the operands)
-pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+// and `operand_limits` allows the operands)
+pub fn opt_div(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    left: LirId,
+    right: LirId,
+) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
-        && division_within_limits(&left, &right)
+        && division_within_limits(options, &left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -352,11 +397,16 @@ pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
 }
 
 // If both values are atoms, we can perform the division and remainder (as long as the right value is
-// not zero, and `LIMITS` allows the operands)
-pub fn opt_divmod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+// not zero, and `operand_limits` allows the operands)
+pub fn opt_divmod(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    left: LirId,
+    right: LirId,
+) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
-        && division_within_limits(&left, &right)
+        && division_within_limits(options, &left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -373,11 +423,16 @@ pub fn opt_divmod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
 }
 
 // If both values are atoms, we can perform the remainder (as long as the right value is not zero, and
-// `LIMITS` allows the operands)
-pub fn opt_mod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+// `operand_limits` allows the operands)
+pub fn opt_mod(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    left: LirId,
+    right: LirId,
+) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
-        && division_within_limits(&left, &right)
+        && division_within_limits(options, &left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -388,8 +443,16 @@ pub fn opt_mod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     arena.alloc(Lir::Mod(left, right))
 }
 
-pub fn opt_modpow(arena: &mut Arena<Lir>, base: LirId, exponent: LirId, modulus: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::Modpow, &[base, exponent, modulus]) {
+pub fn opt_modpow(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    base: LirId,
+    exponent: LirId,
+    modulus: LirId,
+) -> LirId {
+    if let Some(folded) =
+        fold_limited_atoms(arena, options, ClvmOp::Modpow, &[base, exponent, modulus])
+    {
         return folded;
     }
 
@@ -398,12 +461,20 @@ pub fn opt_modpow(arena: &mut Arena<Lir>, base: LirId, exponent: LirId, modulus:
 
 // If the value is `(% x 2)`, the result is canonical `0` or `1`
 // Since `=` compares bytes, this only matches the canonical encoding of `1`
-fn is_odd_check(arena: &Arena<Lir>, value: LirId, one: LirId) -> Option<LirId> {
+// `logand` doesn't limit the length of its operands, so with `operand_limits`, where `%` fails for
+// a dividend longer than `MAX_DIVIDEND_BYTES`, this only matches if `x` is known to be short enough
+fn is_odd_check(
+    arena: &Arena<Lir>,
+    options: OptimizeOptions,
+    value: LirId,
+    one: LirId,
+) -> Option<LirId> {
     if let Lir::Mod(lhs, rhs) = arena[value].clone()
         && let Lir::Atom(rhs) = arena[rhs].clone()
         && atom_bigint(rhs) == BigInt::from(2)
         && let Lir::Atom(one) = &arena[one]
         && one.as_slice() == [1]
+        && (!options.operand_limits || fits_dividend(arena, lhs))
     {
         return Some(lhs);
     }
@@ -411,12 +482,26 @@ fn is_odd_check(arena: &Arena<Lir>, value: LirId, one: LirId) -> Option<LirId> {
     None
 }
 
-pub fn opt_eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if let Some(value) = is_odd_check(arena, left, right) {
+// Whether the value is known to be no longer than `MAX_DIVIDEND_BYTES`, so that `LIMITS` allows it
+// as a dividend
+fn fits_dividend(arena: &Arena<Lir>, value: LirId) -> bool {
+    match &arena[value] {
+        Lir::Atom(atom) => atom.len() <= MAX_DIVIDEND_BYTES,
+        _ => is_boolean(arena, value),
+    }
+}
+
+pub fn opt_eq(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    left: LirId,
+    right: LirId,
+) -> LirId {
+    if let Some(value) = is_odd_check(arena, options, left, right) {
         return opt_logand(arena, vec![value, right]);
     }
 
-    if let Some(value) = is_odd_check(arena, right, left) {
+    if let Some(value) = is_odd_check(arena, options, right, left) {
         return opt_logand(arena, vec![value, left]);
     }
 
@@ -791,8 +876,13 @@ pub fn opt_g1_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::G1Subtract(args))
 }
 
-pub fn opt_g1_multiply(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Multiply, &[left, right]) {
+pub fn opt_g1_multiply(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    left: LirId,
+    right: LirId,
+) -> LirId {
+    if let Some(folded) = fold_limited_atoms(arena, options, ClvmOp::G1Multiply, &[left, right]) {
         return folded;
     }
 
@@ -833,8 +923,13 @@ pub fn opt_g2_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::G2Subtract(args))
 }
 
-pub fn opt_g2_multiply(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Multiply, &[left, right]) {
+pub fn opt_g2_multiply(
+    arena: &mut Arena<Lir>,
+    options: OptimizeOptions,
+    left: LirId,
+    right: LirId,
+) -> LirId {
+    if let Some(folded) = fold_limited_atoms(arena, options, ClvmOp::G2Multiply, &[left, right]) {
         return folded;
     }
 
@@ -1061,9 +1156,17 @@ mod tests {
 
     use rue_clvm::disassemble_program;
 
-    use crate::{CLVM_FLAGS, CodegenOptions, codegen, optimize};
+    use crate::{CodegenOptions, clvm_flags, codegen, optimize};
 
     use super::*;
+
+    const UNLIMITED: OptimizeOptions = OptimizeOptions {
+        operand_limits: false,
+    };
+
+    const LIMITED: OptimizeOptions = OptimizeOptions {
+        operand_limits: true,
+    };
 
     fn atom(arena: &mut Arena<Lir>, value: i64) -> LirId {
         arena.alloc(Lir::Atom(bigint_atom(BigInt::from(value))))
@@ -1073,8 +1176,13 @@ mod tests {
         arena.alloc(Lir::Path(BigUint::from(value)))
     }
 
-    fn run(allocator: &mut Allocator, program: NodePtr, env: NodePtr) -> Option<Vec<u8>> {
-        let dialect = ChiaDialect::new(CLVM_FLAGS);
+    fn run(
+        allocator: &mut Allocator,
+        options: OptimizeOptions,
+        program: NodePtr,
+        env: NodePtr,
+    ) -> Option<Vec<u8>> {
+        let dialect = ChiaDialect::new(clvm_flags(options.operand_limits));
         let result = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
         Some(node_to_bytes(allocator, result.1).unwrap())
     }
@@ -1102,8 +1210,20 @@ mod tests {
         disassemble_program(&allocator, program)
     }
 
+    /// Checks that the LIR behaves the same after it's optimized, with and without
+    /// `operand_limits`, and returns what it's optimized to without them.
     fn assert_equivalent(arena: &mut Arena<Lir>, lir: LirId, envs: &[Vec<Vec<u8>>]) -> LirId {
-        let optimized = optimize(arena, lir);
+        assert_equivalent_with(arena, LIMITED, lir, envs);
+        assert_equivalent_with(arena, UNLIMITED, lir, envs)
+    }
+
+    fn assert_equivalent_with(
+        arena: &mut Arena<Lir>,
+        options: OptimizeOptions,
+        lir: LirId,
+        envs: &[Vec<Vec<u8>>],
+    ) -> LirId {
+        let optimized = optimize(arena, lir, options);
 
         let mut allocator = Allocator::new();
         let unoptimized_program = compile(arena, &mut allocator, lir, false);
@@ -1118,9 +1238,9 @@ mod tests {
             }
 
             assert_eq!(
-                run(&mut allocator, unoptimized_program, env_ptr),
-                run(&mut allocator, optimized_program, env_ptr),
-                "optimized program differs for environment {env:?}"
+                run(&mut allocator, options, unoptimized_program, env_ptr),
+                run(&mut allocator, options, optimized_program, env_ptr),
+                "optimized program differs for environment {env:?} with {options:?}"
             );
         }
 
@@ -1243,8 +1363,8 @@ mod tests {
             let constant = atom(&mut arena, constant);
             for args in [vec![value, constant], vec![value, other, constant]] {
                 let lir = arena.alloc(Lir::Sub(args));
-                let once = optimize(&mut arena, lir);
-                let twice = optimize(&mut arena, once);
+                let once = optimize(&mut arena, lir, UNLIMITED);
+                let twice = optimize(&mut arena, once, UNLIMITED);
 
                 let mut allocator = Allocator::new();
                 let once = compile(&arena, &mut allocator, once, true);
@@ -1266,13 +1386,13 @@ mod tests {
         let non_canonical_one = arena.alloc(Lir::Atom(vec![0, 1]));
 
         let modulo = arena.alloc(Lir::Mod(value, two));
-        let result = opt_eq(&mut arena, modulo, one);
+        let result = opt_eq(&mut arena, UNLIMITED, modulo, one);
         assert_eq!(disassemble(&arena, result), "(logand 2 (q . 1))");
 
-        let result = opt_eq(&mut arena, one, modulo);
+        let result = opt_eq(&mut arena, UNLIMITED, one, modulo);
         assert_eq!(disassemble(&arena, result), "(logand 2 (q . 1))");
 
-        let result = opt_eq(&mut arena, modulo, non_canonical_one);
+        let result = opt_eq(&mut arena, UNLIMITED, modulo, non_canonical_one);
         assert_eq!(
             disassemble(&arena, result),
             "(= (% 2 (q . 2)) (q . 0x0001))"
@@ -1280,6 +1400,48 @@ mod tests {
 
         let lir = arena.alloc(Lir::Eq(modulo, non_canonical_one));
         assert_equivalent(&mut arena, lir, &[int_env(&[3]), int_env(&[4])]);
+    }
+
+    // With `operand_limits`, `%` fails for a dividend longer than 256 bytes, but `logand` doesn't,
+    // so the odd check is only rewritten if the dividend is known to be short enough
+    #[test]
+    fn test_odd_check_with_operand_limits_requires_short_dividend() {
+        let mut arena = Arena::new();
+        let value = path(&mut arena, 2);
+        let two = atom(&mut arena, 2);
+        let one = atom(&mut arena, 1);
+
+        let modulo = arena.alloc(Lir::Mod(value, two));
+        let result = opt_eq(&mut arena, LIMITED, modulo, one);
+        assert_eq!(disassemble(&arena, result), "(= (% 2 (q . 2)) (q . 1))");
+
+        let result = opt_eq(&mut arena, LIMITED, one, modulo);
+        assert_eq!(disassemble(&arena, result), "(= (q . 1) (% 2 (q . 2)))");
+
+        let lir = arena.alloc(Lir::Eq(modulo, one));
+        let long = [vec![1], vec![0; 299]].concat();
+        let envs = [vec![long], int_env(&[3])[..].to_vec()];
+        assert_equivalent(&mut arena, lir, &envs);
+
+        // Without the limits, the long dividend is odd-checked with `logand` like any other
+        let optimized = assert_equivalent_with(&mut arena, UNLIMITED, lir, &envs);
+        assert_eq!(disassemble(&arena, optimized), "(logand 2 (q . 1))");
+
+        // A boolean is short enough, as is a constant
+        let five = path(&mut arena, 5);
+        let boolean = arena.alloc(Lir::Eq(value, five));
+        let modulo = arena.alloc(Lir::Mod(boolean, two));
+        let result = opt_eq(&mut arena, LIMITED, modulo, one);
+        assert_eq!(disassemble(&arena, result), "(logand (= 2 5) (q . 1))");
+
+        for (len, rewritten) in [(256, true), (257, false)] {
+            let constant = arena.alloc(Lir::Atom(vec![1; len]));
+            let modulo = arena.alloc(Lir::Mod(constant, two));
+            assert_eq!(
+                is_odd_check(&arena, LIMITED, modulo, one).is_some(),
+                rewritten
+            );
+        }
     }
 
     struct Rng(u64);
@@ -1307,6 +1469,8 @@ mod tests {
         &[0x80],
         &[7],
         &[0x01, 0x00],
+        // Longer than `LIMITS` allows for an operand of `*` or the dividend of `%`
+        &[0x01; 257],
     ];
 
     fn random_arith(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
@@ -1323,9 +1487,15 @@ mod tests {
             .map(|_| random_arith(arena, rng, depth - 1))
             .collect();
 
-        match rng.below(5) {
+        match rng.below(7) {
             0 | 1 => arena.alloc(Lir::Add(args)),
             2 | 3 => arena.alloc(Lir::Sub(args)),
+            4 => arena.alloc(Lir::Mul(args)),
+            5 => {
+                let value = random_arith(arena, rng, depth - 1);
+                let divisor = random_arith(arena, rng, depth - 1);
+                arena.alloc(Lir::Div(value, divisor))
+            }
             _ => {
                 let value = random_arith(arena, rng, depth - 1);
                 let two = atom(arena, 2);
@@ -1356,17 +1526,19 @@ mod tests {
                 })
                 .collect();
 
-            let optimized = assert_equivalent(&mut arena, lir, &envs);
+            for options in [UNLIMITED, LIMITED] {
+                let optimized = assert_equivalent_with(&mut arena, options, lir, &envs);
 
-            // Optimizing a second time shouldn't change the output
-            let twice = optimize(&mut arena, optimized);
-            let mut allocator = Allocator::new();
-            let once = compile(&arena, &mut allocator, optimized, true);
-            let twice = compile(&arena, &mut allocator, twice, true);
-            assert_eq!(
-                node_to_bytes(&allocator, once).unwrap(),
-                node_to_bytes(&allocator, twice).unwrap()
-            );
+                // Optimizing a second time shouldn't change the output
+                let twice = optimize(&mut arena, optimized, options);
+                let mut allocator = Allocator::new();
+                let once = compile(&arena, &mut allocator, optimized, true);
+                let twice = compile(&arena, &mut allocator, twice, true);
+                assert_eq!(
+                    node_to_bytes(&allocator, once).unwrap(),
+                    node_to_bytes(&allocator, twice).unwrap()
+                );
+            }
         }
     }
 
@@ -1375,7 +1547,7 @@ mod tests {
         let mut arena = Arena::new();
         let value = arena.alloc(Lir::Path(BigUint::from(2u8)));
         let one = arena.alloc(Lir::Atom(vec![1]));
-        let result = opt_mul(&mut arena, vec![value, one]);
+        let result = opt_mul(&mut arena, UNLIMITED, vec![value, one]);
         assert!(matches!(&arena[result], Lir::Mul(args) if *args == [value]));
     }
 
@@ -1384,7 +1556,7 @@ mod tests {
         let mut arena = Arena::new();
         let two = arena.alloc(Lir::Atom(vec![2]));
         let three = arena.alloc(Lir::Atom(vec![3]));
-        let result = opt_mul(&mut arena, vec![two, three]);
+        let result = opt_mul(&mut arena, UNLIMITED, vec![two, three]);
         assert!(matches!(&arena[result], Lir::Atom(atom) if *atom == [6]));
     }
 
@@ -1467,13 +1639,13 @@ mod tests {
         // Path 0 evaluates to nil, so `(f ())` fails rather than reading path 2
         let mut arena = Arena::new();
         let zero = path(&mut arena, 0);
-        let result = opt_first(&mut arena, zero);
+        let result = opt_first(&mut arena, UNLIMITED, zero);
         assert!(matches!(arena[result], Lir::First(_)));
-        let result = opt_rest(&mut arena, zero);
+        let result = opt_rest(&mut arena, UNLIMITED, zero);
         assert!(matches!(arena[result], Lir::Rest(_)));
 
         let five = path(&mut arena, 5);
-        let result = opt_first(&mut arena, five);
+        let result = opt_first(&mut arena, UNLIMITED, five);
         assert!(matches!(&arena[result], Lir::Path(p) if *p == BigUint::from(9u8)));
     }
 }

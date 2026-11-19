@@ -95,12 +95,41 @@ Useful `build` flags:
 - `--hex` - output serialized bytecode as hex
 - `--hash` - output the tree hash of the compiled program
 - `--debug` - include debug information such as assertion messages
+- `--operand-limits` - target CLVM with the `LIMITS` flag that mainnet enforces today (see [Operand Limits](#operand-limits)); `test` takes it too
 - `--all` - compile every export in the project and write each one to a file (next to its source, or in `dist_dir` if set in `Rue.toml`)
 - `--debug-metadata` - also write a debug metadata sidecar for each program (`<name>.rue.debug.clvm.bin`, in Chialisp's structural debug metadata format), which debuggers use to show where in the source a failing program was. It's written next to each program with `--all`, and otherwise next to the source file, or to `--debug-metadata=<path>`. The programs are the same either way
 
 `test` and `debug` stop a program once its cost passes 11,000,000,000 (the same as Chia's block cost limit), so a program that never ends fails instead of hanging. `--max-cost <cost>` changes the limit.
 
 When a test fails, `test` shows where it was in the source: the stack of calls that led to the failure, with the values of their parameters. `debug` does the same for a program built with `--debug-metadata` when it's given the sidecar with `--debug-metadata <path>` (which can be repeated, for programs that run other programs).
+
+## Operand Limits
+
+Chia mainnet runs programs with CLVM's `LIMITS` flag until hard fork 2, which makes some operators fail when an operand is too long (counting any leading zero bytes):
+
+| Operator                       | Fails when                                                                                   |
+| ------------------------------ | -------------------------------------------------------------------------------------------- |
+| `*`                            | an operand is longer than 256 bytes, or the running product grows past 1024 bytes            |
+| `/`, `%`, `divmod`             | the dividend is longer than 256 bytes, or the divisor is longer than 1024 bytes              |
+| `modpow`                       | the base, exponent or modulus is longer than 256 bytes                                       |
+| `g1_multiply`, `g2_multiply`   | the scalar is longer than 1024 bytes                                                         |
+
+By default, Rue targets CLVM without `LIMITS`, as mainnet will be after hard fork 2. To target it with `LIMITS`, turn on `operand_limits` in `Rue.toml`, or pass `--operand-limits` to `build` or `test`:
+
+```toml
+[compiler]
+operand_limits = true
+```
+
+With `operand_limits`:
+
+- A release build fails under `LIMITS` exactly when the debug build does. `*`, `/`, `%` and `divmod` are treated as able to fail unless every operand is a short enough constant (and the divisor isn't zero), so they're never dropped or moved into a branch, and no optimization removes or adds a failure caused by an operand's length. For example, `x % 2 == 1` keeps its `%`, rather than checking the low bit with `logand`, which doesn't limit `x`.
+- Lints that ask whether a value can fail, such as `inline_value_may_fail`, count these operators as able to fail.
+- `rue test` runs tests with `LIMITS`, so a test fails where mainnet would. `rue debug --operand-limits` runs a program with `LIMITS`.
+
+Without it, operands of any length are treated as allowed, so `*` can't fail and `/`, `%` and `divmod` only fail for a zero divisor. A program compiled this way can pass its tests and succeed in debug builds, yet fail on mainnet today when an operand is longer than a limit, and the optimizer may remove such a failure, so under `LIMITS` a release build can succeed where the debug build fails. Leave it off only if the operands can't be that long, or the program won't run before hard fork 2.
+
+Either way, `const` expressions are evaluated at compile time without `LIMITS`, since they're never run on chain, so they can use operands of any length.
 
 ## Lints
 

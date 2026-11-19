@@ -1,0 +1,41 @@
+operand_limits: true
+tests:
+- name: inline_product
+  program: (a (i 5 (q 18 2 (q . 2)) (q)) 1)
+  debug_program: (a (i 5 (q 18 2 (q . 2)) (q)) 1)
+  solution: (5 1)
+  output: "10"
+  runtime_cost: 1329
+  byte_cost: 324000
+  total_cost: 325329
+- name: inline_quotient
+  program: (a (i 5 (q 19 2 (q . 2)) (q)) 1)
+  debug_program: (a (i 5 (q 19 2 (q . 2)) (q)) 1)
+  solution: (5 1)
+  output: "2"
+  runtime_cost: 1336
+  byte_cost: 324000
+  total_cost: 325336
+- name: inline_constant_product
+  program: (i 2 (q . 42) ())
+  debug_program: (a (i 2 (q 18 (q . 6) (q . 7)) (q)) 1)
+  solution: (1)
+  output: "42"
+  runtime_cost: 146
+  byte_cost: 132000
+  total_cost: 132146
+- name: inline_sum
+  program: (a (i 5 (q 16 2 (q . 2)) (q)) 1)
+  debug_program: (a (i 5 (q 16 2 (q . 2)) (q)) 1)
+  solution: (5 1)
+  output: "7"
+  runtime_cost: 1085
+  byte_cost: 324000
+  total_cost: 325085
+diagnostics:
+- |-
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_value_may_fail.rue:6:5
+    note: Remove `inline` to always evaluate it here
+- |-
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_value_may_fail.rue:16:5
+    note: Remove `inline` to always evaluate it here

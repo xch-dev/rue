@@ -102,6 +102,9 @@ pub struct CompilerSection {
     pub std: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dist_dir: Option<String>,
+    /// Sets [`CompilerOptions::operand_limits`](crate::CompilerOptions::operand_limits).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operand_limits: Option<bool>,
 }
 
 impl Default for CompilerSection {
@@ -111,6 +114,7 @@ impl Default for CompilerSection {
             entrypoint: "puzzles".to_string(),
             std: None,
             dist_dir: None,
+            operand_limits: None,
         }
     }
 }

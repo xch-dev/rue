@@ -63,6 +63,17 @@ fn safe_inline_binding(x: Int, flag: Bool) -> Int {
     }
 }
 
+// Doesn't warn: without `operand_limits`, a product can't fail (it warns with them, see
+// `tests/operand_limits/inline_value_may_fail.rue`)
+fn safe_inline_product(x: Int, flag: Bool) -> Int {
+    inline let doubled = x * 2;
+    if flag {
+        doubled
+    } else {
+        0
+    }
+}
+
 // Doesn't warn: the program fails before it would matter
 fn inline_binding_before_raise(x: Int) -> Int {
     inline let _checked = check(x);
@@ -356,6 +367,7 @@ test fn tests() -> Int {
         + unconditional_inline_binding(1)
         + inline_binding_through_binding(1, true)
         + safe_inline_binding(1, true)
+        + safe_inline_product(1, true)
         + inline_arguments(1, true)
 }
 

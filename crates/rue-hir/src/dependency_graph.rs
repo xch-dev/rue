@@ -115,7 +115,7 @@ impl DependencyGraph {
             unvisited_guards: Vec::new(),
             calls: HashMap::new(),
             main,
-            failures: FailureAnalysis::new(),
+            failures: FailureAnalysis::new(options.operand_limits),
         };
 
         // The symbols are visited depth first, in the order they're referenced, like a recursive
@@ -859,7 +859,10 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) -> bool {
         .map(|(&symbol, _)| symbol)
         .collect();
 
-    graph.failures = FailureAnalysis::with_evaluated_constants(evaluated_constants);
+    graph.failures = FailureAnalysis::with_evaluated_constants(
+        graph.options.operand_limits,
+        evaluated_constants,
+    );
 
     let effects = std::mem::take(&mut graph.unvisited_effects);
     let mut added = false;

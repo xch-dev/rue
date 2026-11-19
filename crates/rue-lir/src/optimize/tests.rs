@@ -4,7 +4,7 @@ use id_arena::Arena;
 use num_bigint::BigUint;
 use rue_clvm::{disassemble_program, disassemble_value};
 
-use crate::{CLVM_FLAGS, CodegenOptions, Lir, LirId, codegen, optimize};
+use crate::{CodegenOptions, Lir, LirId, OptimizeOptions, clvm_flags, codegen, optimize};
 
 fn atom(arena: &mut Arena<Lir>, bytes: &[u8]) -> LirId {
     arena.alloc(Lir::Atom(bytes.to_vec()))
@@ -34,35 +34,55 @@ fn compile(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId, optimized:
     .unwrap()
 }
 
-fn run(allocator: &mut Allocator, program: NodePtr, env: NodePtr) -> Option<Vec<u8>> {
-    let dialect = ChiaDialect::new(CLVM_FLAGS);
+/// Each setting of `operand_limits`, which the optimizer must preserve the behavior under.
+const OPTIONS: [OptimizeOptions; 2] = [
+    OptimizeOptions {
+        operand_limits: false,
+    },
+    OptimizeOptions {
+        operand_limits: true,
+    },
+];
+
+fn run(
+    allocator: &mut Allocator,
+    options: OptimizeOptions,
+    program: NodePtr,
+    env: NodePtr,
+) -> Option<Vec<u8>> {
+    let dialect = ChiaDialect::new(clvm_flags(options.operand_limits));
     let output = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
     Some(node_to_bytes(allocator, output.1).unwrap())
 }
 
-// Optimizes the LIR, checks the generated code, and checks that the optimized
-// and unoptimized programs behave the same for each of the given environments
+// Optimizes the LIR, checks the code generated without `operand_limits`, and checks that the
+// optimized and unoptimized programs behave the same for each of the given environments, with and
+// without `operand_limits`
 #[allow(clippy::needless_pass_by_value)]
 fn check(arena: &mut Arena<Lir>, lir: LirId, envs: &[&str], expect: Expect) {
-    let optimized = optimize(arena, lir);
+    for options in OPTIONS {
+        let optimized = optimize(arena, lir, options);
 
-    let mut allocator = Allocator::new();
-    let unoptimized_ptr = compile(arena, &mut allocator, lir, false);
-    let optimized_ptr = compile(arena, &mut allocator, optimized, true);
+        let mut allocator = Allocator::new();
+        let unoptimized_ptr = compile(arena, &mut allocator, lir, false);
+        let optimized_ptr = compile(arena, &mut allocator, optimized, true);
 
-    expect.assert_eq(&disassemble_program(&allocator, optimized_ptr));
+        if !options.operand_limits {
+            expect.assert_eq(&disassemble_program(&allocator, optimized_ptr));
+        }
 
-    for env in envs {
-        let env_ptr = rue_clvm::assemble(&mut allocator, env).unwrap();
-        let expected = run(&mut allocator, unoptimized_ptr, env_ptr);
-        let actual = run(&mut allocator, optimized_ptr, env_ptr);
-        assert_eq!(
-            expected,
-            actual,
-            "{} and {} differ for env {env}",
-            disassemble_program(&allocator, unoptimized_ptr),
-            disassemble_program(&allocator, optimized_ptr),
-        );
+        for env in envs {
+            let env_ptr = rue_clvm::assemble(&mut allocator, env).unwrap();
+            let expected = run(&mut allocator, options, unoptimized_ptr, env_ptr);
+            let actual = run(&mut allocator, options, optimized_ptr, env_ptr);
+            assert_eq!(
+                expected,
+                actual,
+                "{} and {} differ for env {env} with {options:?}",
+                disassemble_program(&allocator, unoptimized_ptr),
+                disassemble_program(&allocator, optimized_ptr),
+            );
+        }
     }
 }
 
@@ -620,6 +640,8 @@ const FUZZ_ATOMS: &[&[u8]] = &[
     &[0xff],
     &[0x80],
     &[0x01, 0x00],
+    // Longer than `LIMITS` allows for the dividend of `/` and `%`
+    &[0x01; 257],
 ];
 
 // These paths never share a parent, since opt_cons intentionally collapses a pair of sibling
@@ -796,7 +818,8 @@ fn fuzz_optimizer_differential() {
     for _ in 0..20_000 {
         let mut arena = Arena::new();
         let lir = generate(&mut arena, &mut rng, 4);
-        let optimized = optimize(&mut arena, lir);
+        let options = rng.pick(&OPTIONS);
+        let optimized = optimize(&mut arena, lir, options);
 
         let mut allocator = Allocator::new();
         let unoptimized_ptr = compile(&arena, &mut allocator, lir, false);
@@ -804,8 +827,8 @@ fn fuzz_optimizer_differential() {
 
         for _ in 0..6 {
             let env = generate_env(&mut allocator, &mut rng);
-            let expected = run(&mut allocator, unoptimized_ptr, env);
-            let actual = run(&mut allocator, optimized_ptr, env);
+            let expected = run(&mut allocator, options, unoptimized_ptr, env);
+            let actual = run(&mut allocator, options, optimized_ptr, env);
 
             if expected != actual {
                 let show = |allocator: &mut Allocator, value: Option<Vec<u8>>| {
@@ -817,7 +840,7 @@ fn fuzz_optimizer_differential() {
                 let expected = show(&mut allocator, expected);
                 let actual = show(&mut allocator, actual);
                 panic!(
-                    "optimizer changed behavior for env {}\nunoptimized: {} => {expected}\noptimized: {} => {actual}",
+                    "optimizer changed behavior with {options:?} for env {}\nunoptimized: {} => {expected}\noptimized: {} => {actual}",
                     disassemble_value(&allocator, env),
                     disassemble_program(&allocator, unoptimized_ptr),
                     disassemble_program(&allocator, optimized_ptr),

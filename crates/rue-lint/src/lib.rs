@@ -49,6 +49,7 @@ impl<'a> LintInput<'a> {
         documents: Vec<(&'a Source, &'a AstDocument)>,
         entrypoints: &'a HashSet<Declaration>,
         has_errors: bool,
+        operand_limits: bool,
     ) -> Self {
         Self {
             sites,
@@ -56,7 +57,7 @@ impl<'a> LintInput<'a> {
             entrypoints,
             has_errors,
             live: OnceCell::new(),
-            failures: FailureAnalysis::new(),
+            failures: FailureAnalysis::new(operand_limits),
         }
     }
 

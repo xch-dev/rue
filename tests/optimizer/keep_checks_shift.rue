@@ -78,9 +78,9 @@ test fn shift_four_byte_negative_constant(x: Int, flag: Bool) -> Int {
     }
 }
 
-// Division reads a divisor of up to 1024 bytes, so a short divisor only fails if it's zero, whatever
-// its encoding. The dividend `x` isn't known at compile time, though, and `LIMITS` rejects one
-// that's longer than 256 bytes, so both divisions are kept (see `keep_checks.rue`).
+// Division reads its divisor at any length, so only a zero divisor fails, whatever its encoding.
+// With `operand_limits`, the dividend `x` can also be too long, so both divisions are kept (see
+// `tests/operand_limits/keep_checks.rue`).
 
 test fn divide_long_zero_constant(x: Int, flag: Bool) -> Int {
     let quotient = x / (0x0000000000 as Int);

@@ -105,7 +105,13 @@ mod tests {
         }
 
         let entrypoints = std::collections::HashSet::new();
-        let input = LintInput::new(crate::LintSites::default(), Vec::new(), &entrypoints, false);
+        let input = LintInput::new(
+            crate::LintSites::default(),
+            Vec::new(),
+            &entrypoints,
+            false,
+            false,
+        );
 
         for pass in hir_passes(&input) {
             lints.extend(pass.lints());

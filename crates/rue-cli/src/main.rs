@@ -21,7 +21,7 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticSeverity, ForbiddenBy, LineIndex, Lint, LintGroup, LintLevel, LintLevels,
     LintName, SourceKind,
 };
-use rue_lir::{CLVM_FLAGS, DebugDialect};
+use rue_lir::{DebugDialect, clvm_flags};
 use rue_options::{Manifest, Project, find_project};
 
 mod compact;
@@ -72,6 +72,11 @@ pub struct BuildArgs {
     // Clap's way of a flag with an optional value: whether it's passed, and the value if it's given
     #[allow(clippy::option_option)]
     debug_metadata: Option<Option<PathBuf>>,
+    /// Target CLVM with the `LIMITS` flag that mainnet enforces until hard fork 2, which rejects
+    /// some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and `g2_multiply`.
+    /// This is the same as `operand_limits = true` in `Rue.toml`, and turns it on if it's off there
+    #[clap(long)]
+    operand_limits: bool,
     #[clap(flatten)]
     lints: LintArgs,
     /// Print help
@@ -82,6 +87,11 @@ pub struct BuildArgs {
 #[derive(Debug, Parser)]
 pub struct TestArgs {
     file: Option<String>,
+    /// Target CLVM with the `LIMITS` flag that mainnet enforces until hard fork 2, which rejects
+    /// some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and `g2_multiply`.
+    /// This is the same as `operand_limits = true` in `Rue.toml`, and turns it on if it's off there
+    #[clap(long)]
+    operand_limits: bool,
     #[clap(flatten)]
     lints: LintArgs,
     #[clap(flatten)]
@@ -266,6 +276,11 @@ pub struct DebugArgs {
     /// the source the program was if it fails (can be repeated)
     #[clap(long, value_name = "PATH")]
     debug_metadata: Vec<PathBuf>,
+    /// Run the program with the `LIMITS` flag that mainnet enforces until hard fork 2, which
+    /// rejects some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and
+    /// `g2_multiply`. Use it for programs compiled with `operand_limits`
+    #[clap(long)]
+    operand_limits: bool,
     #[clap(flatten)]
     cost: CostArgs,
 }
@@ -442,6 +457,7 @@ fn build(args: BuildArgs) -> Result<()> {
     };
 
     let lint_errors = configure_lints(&mut project, &args.lints);
+    project.options.operand_limits |= args.operand_limits;
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -817,6 +833,7 @@ fn test(args: TestArgs) -> Result<()> {
     };
 
     let lint_errors = configure_lints(&mut project, &args.lints);
+    project.options.operand_limits |= args.operand_limits;
 
     let mut ctx = Compiler::new(project.options);
 
@@ -890,15 +907,17 @@ struct TestFailure {
     raised: bool,
 }
 
-/// Runs a test, which passes if it returns nil, and otherwise returns why it failed.
+/// Runs a test, which passes if it returns nil, and otherwise returns why it failed. It's run
+/// with `LIMITS` if it's compiled with `operand_limits`.
 fn run_test(
     allocator: &mut Allocator,
     program: NodePtr,
+    operand_limits: bool,
     cost: CostArgs,
 ) -> Result<(), TestFailure> {
     let message = match run_program(
         allocator,
-        &DebugDialect::new(CLVM_FLAGS, true),
+        &DebugDialect::new(clvm_flags(operand_limits), true),
         program,
         NodePtr::NIL,
         cost.max_cost,
@@ -936,7 +955,7 @@ fn run_and_trace_test(
 ) -> Result<(), (TestFailure, Option<Result<String, String>>)> {
     let checkpoint = allocator.checkpoint();
 
-    let failure = match run_test(allocator, test.ptr, cost) {
+    let failure = match run_test(allocator, test.ptr, ctx.options().operand_limits, cost) {
         Ok(()) => return Ok(()),
         Err(failure) => failure,
     };
@@ -974,7 +993,7 @@ fn trace_test(
     // What the test prints has already been shown, so it isn't printed again
     match run_with_trace(
         allocator,
-        &DebugDialect::new(CLVM_FLAGS, false),
+        &DebugDialect::new(clvm_flags(ctx.options().operand_limits), false),
         program,
         NodePtr::NIL,
         cost.max_cost,
@@ -1007,7 +1026,7 @@ fn debug(args: DebugArgs) -> Result<String> {
         NodePtr::NIL
     };
 
-    let dialect = DebugDialect::new(CLVM_FLAGS, true);
+    let dialect = DebugDialect::new(clvm_flags(args.operand_limits), true);
 
     if args.debug_metadata.is_empty() {
         let output = run_program(
@@ -1487,8 +1506,8 @@ mod tests {
 
         // The second test fails, and its name contains the first's, which passes
         assert_eq!(tests[1].name.as_deref(), Some("fails_too"));
-        assert!(run_test(&mut allocator, tests[0].ptr, cost).is_ok());
-        let failure = run_test(&mut allocator, tests[1].ptr, cost).unwrap_err();
+        assert!(run_test(&mut allocator, tests[0].ptr, false, cost).is_ok());
+        let failure = run_test(&mut allocator, tests[1].ptr, false, cost).unwrap_err();
         assert!(failure.raised);
 
         // The trace shows the test at its call to `check`, and the assertion with its argument
@@ -1524,7 +1543,11 @@ mod tests {
 
         // A test that returns something other than nil has no stack to show
         let program = assemble(&mut allocator, "(q . 1)").unwrap();
-        assert!(!run_test(&mut allocator, program, cost).unwrap_err().raised);
+        assert!(
+            !run_test(&mut allocator, program, false, cost)
+                .unwrap_err()
+                .raised
+        );
         let returns_one = CompiledTest {
             ptr: program,
             ..tests[0].clone()
@@ -1636,6 +1659,70 @@ mod tests {
     }
 
     #[test]
+    fn debug_runs_with_operand_limits_when_asked() {
+        // `%` limits its dividend to 256 bytes with `LIMITS`, and `logand` doesn't
+        let solution = format!("(0x01{})", "00".repeat(299));
+
+        for program in ["(% 2 (q . 2))", "(logand 2 (q . 1))"] {
+            assert_eq!(run_debug(&[program, &solution]).unwrap(), "()");
+        }
+
+        let error = run_debug(&["(% 2 (q . 2))", &solution, "--operand-limits"]).unwrap_err();
+        assert!(error.contains("mod"), "{error}");
+        assert_eq!(
+            run_debug(&["(logand 2 (q . 1))", &solution, "--operand-limits"]).unwrap(),
+            "()"
+        );
+    }
+
+    #[test]
+    fn tests_run_with_operand_limits_when_compiled_with_them() {
+        // The test passes without `LIMITS`, but `%` fails for the long dividend with them
+        let source = format!(
+            "test fn odd() {{\n    assert !is_odd(0x01{} as Int);\n}}\n\nfn is_odd(value: Int) -> Bool {{\n    value % 2 == 1\n}}\n",
+            "00".repeat(299)
+        );
+        let project = TempProject::new("operand-limits-test", &source);
+        let path = project.0.join("main.rue");
+        let cost = CostArgs {
+            max_cost: DEFAULT_MAX_COST,
+        };
+
+        for operand_limits in [false, true] {
+            let mut ctx = Compiler::new(CompilerOptions {
+                operand_limits,
+                ..CompilerOptions::debug()
+            });
+            let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
+            let mut allocator = Allocator::new();
+            let tests = tree
+                .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+                .unwrap();
+            let result = run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost);
+
+            if operand_limits {
+                let (failure, _) = result.unwrap_err();
+                assert!(failure.message.contains("mod"), "{}", failure.message);
+            } else {
+                assert!(result.is_ok());
+            }
+        }
+
+        // The flag turns the option on for `rue build` and `rue test`
+        let Ok(Command::Build(args)) =
+            Command::try_parse_from(["rue", "build", "--operand-limits"])
+        else {
+            panic!("expected build command");
+        };
+        assert!(args.operand_limits);
+        let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "--operand-limits"])
+        else {
+            panic!("expected test command");
+        };
+        assert!(args.operand_limits);
+    }
+
+    #[test]
     fn debug_enforces_the_cost_limit() {
         let program = "(+ 2 5)";
         assert_eq!(run_debug(&[program, "(1 2)"]).unwrap(), "3");
@@ -1651,7 +1738,8 @@ mod tests {
     fn run_test_with(program: &str, max_cost: u64) -> Result<(), String> {
         let mut allocator = Allocator::new();
         let program = assemble(&mut allocator, program).unwrap();
-        run_test(&mut allocator, program, CostArgs { max_cost }).map_err(|failure| failure.message)
+        run_test(&mut allocator, program, false, CostArgs { max_cost })
+            .map_err(|failure| failure.message)
     }
 
     #[test]

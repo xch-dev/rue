@@ -38,14 +38,27 @@ fn integers_do_not_overflow() {
     );
 }
 
-/// Const expressions are never evaluated on chain, so the operand limits of `LIMITS` don't apply
+/// Const expressions are never evaluated on chain, so the operand limits of `LIMITS` don't apply,
+/// even when compiling with `operand_limits`
 #[test]
 fn long_operands_are_not_limited() {
     let long = format!("0x01{}", "00".repeat(299));
+    let source = format!("fn main() -> Int {{\n    const {{ {long} as Int * 3 / 3 % 7 }}\n}}\n");
 
     assert_eq!(
         evaluate("Int", &format!("const {{ {long} as Int * 3 / 3 % 7 }}")),
         "2"
+    );
+
+    let compiled = compile_with(&source, |options| options.operand_limits = true);
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled
+            .const_results()
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect::<Vec<_>>(),
+        ["2"]
     );
 }
 

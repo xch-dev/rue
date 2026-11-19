@@ -17,7 +17,7 @@ use rue_compiler::normalize_path;
 use rue_compiler::{CompiledTest, Compiler, Error, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
-use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
+use rue_lir::{COST_PER_BYTE, DebugDialect, clvm_flags};
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -71,6 +71,11 @@ fn matches_filter(filter: Option<&str>, name: &str) -> bool {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 struct TestFile {
+    /// Whether the file is compiled with `operand_limits`, and run with `LIMITS`. Like a
+    /// `solution`, this is set by hand in the snapshot.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    operand_limits: bool,
+
     #[serde(flatten)]
     main: TestCase,
 
@@ -208,7 +213,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         .transpose()?
         .unwrap_or_default();
 
-    handle_tests(&mut allocator, &mut file.tests, &tests, &debug_tests)?;
+    handle_tests(&mut allocator, false, &mut file.tests, &tests, &debug_tests)?;
 
     compare_snapshot(&yaml_file, &file, update, &mut failed)?;
 
@@ -435,8 +440,15 @@ fn handle_test_file(
 
     let mut allocator = Allocator::new();
 
-    let mut ctx = Compiler::new(CompilerOptions::default());
-    let mut debug_ctx = Compiler::new(CompilerOptions::debug());
+    let operand_limits = file.operand_limits;
+    let mut ctx = Compiler::new(CompilerOptions {
+        operand_limits,
+        ..CompilerOptions::default()
+    });
+    let mut debug_ctx = Compiler::new(CompilerOptions {
+        operand_limits,
+        ..CompilerOptions::debug()
+    });
 
     let (unit, debug_unit, kind, base_path) = if is_dir {
         let rue_dir = parent.join(name);
@@ -519,7 +531,13 @@ fn handle_test_file(
         .transpose()?
         .unwrap_or_default();
 
-    handle_test_case(&mut allocator, &mut file.main, main, debug_main)?;
+    handle_test_case(
+        &mut allocator,
+        operand_limits,
+        &mut file.main,
+        main,
+        debug_main,
+    )?;
 
     file.puzzle_hashes = BTreeMap::new();
 
@@ -554,7 +572,13 @@ fn handle_test_file(
         }
     }
 
-    handle_tests(&mut allocator, &mut file.tests, &tests, &debug_tests)?;
+    handle_tests(
+        &mut allocator,
+        operand_limits,
+        &mut file.tests,
+        &tests,
+        &debug_tests,
+    )?;
 
     compare_snapshot(&yaml_file, &file, update, failed)?;
 
@@ -615,6 +639,7 @@ fn main_programs(
 /// Runs each test and its debug build, and records the results in the snapshot's test cases.
 fn handle_tests(
     allocator: &mut Allocator,
+    operand_limits: bool,
     test_cases: &mut Vec<TestCase>,
     tests: &[CompiledTest],
     debug_tests: &[CompiledTest],
@@ -627,7 +652,13 @@ fn handle_tests(
     );
 
     for ((test_case, test), debug_test) in test_cases.iter_mut().zip(tests).zip(debug_tests) {
-        handle_test_case(allocator, test_case, Some(test.ptr), Some(debug_test.ptr))?;
+        handle_test_case(
+            allocator,
+            operand_limits,
+            test_case,
+            Some(test.ptr),
+            Some(debug_test.ptr),
+        )?;
     }
 
     Ok(())
@@ -798,8 +829,11 @@ fn format_value(value: &Value) -> String {
     }
 }
 
+/// Runs the program and its debug build, with `LIMITS` if they're compiled with `operand_limits`,
+/// and records the results in the test case.
 fn handle_test_case(
     allocator: &mut Allocator,
+    operand_limits: bool,
     test_case: &mut TestCase,
     program: Option<NodePtr>,
     debug_program: Option<NodePtr>,
@@ -827,13 +861,13 @@ fn handle_test_case(
 
     let response = run_program(
         allocator,
-        &ChiaDialect::new(CLVM_FLAGS),
+        &ChiaDialect::new(clvm_flags(operand_limits)),
         ptr,
         env,
         100_000_000,
     );
 
-    let debug_dialect = DebugDialect::new(CLVM_FLAGS, false);
+    let debug_dialect = DebugDialect::new(clvm_flags(operand_limits), false);
     let debug_response = run_program(allocator, &debug_dialect, debug_ptr, env, 100_000_000);
     let print_messages = debug_dialect.log();
 
@@ -1070,6 +1104,47 @@ mod tests {
             }
         }
         Ok(files)
+    }
+
+    #[test]
+    fn operand_limits_compile_and_run_with_limits() -> Result<()> {
+        let dir = corpus("operand_limits")?;
+        let tests = dir.0.join("tests");
+        let source = "test fn product(x: Int, flag: Bool) -> Int {\n    let p = x * 3;\n    if flag {\n        p\n    } else {\n        0\n    }\n}\n";
+        let solution = format!("(0x{} ())", "01".repeat(257));
+
+        for operand_limits in [false, true] {
+            fs::write(tests.join("product.rue"), source)?;
+            fs::write(
+                tests.join("product.yaml"),
+                format!(
+                    "{}tests:\n- name: product\n  solution: {solution}\n",
+                    if operand_limits {
+                        "operand_limits: true\n"
+                    } else {
+                        ""
+                    }
+                ),
+            )?;
+
+            run_tests(None, &dir.0, true)?;
+
+            // The setting is kept, and with it, the product is kept and fails for the long operand
+            let file = read_snapshot(&tests.join("product.yaml"))?;
+            let test = &file.tests[0];
+            assert_eq!(file.operand_limits, operand_limits);
+            assert_eq!(test.solution.as_deref(), Some(solution.as_str()));
+            assert_eq!(test.debug_clvm_error, None);
+            assert_eq!(test.debug_output, None);
+
+            if operand_limits {
+                assert_eq!(test.clvm_error.as_deref(), Some("InvalidOperatorArg: *"));
+            } else {
+                assert_eq!(test.output.as_deref(), Some("()"));
+            }
+        }
+
+        Ok(())
     }
 
     #[test]

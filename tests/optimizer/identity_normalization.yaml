@@ -16,13 +16,13 @@ tests:
   byte_cost: 156000
   total_cost: 156291
 - name: mul_nested_one
-  program: (= (* (* 2 (q . 2))) (q . 2))
+  program: (= (* 2 (q . 2)) (q . 2))
   debug_program: (= (* (* 2 (q . 2)) (q . 1)) (q . 2))
   solution: (0x0001)
   output: "1"
-  runtime_cost: 1317
-  byte_cost: 252000
-  total_cost: 253317
+  runtime_cost: 1214
+  byte_cost: 204000
+  total_cost: 205214
 - name: add_zero
   program: (= (+ 2) (q . 1))
   debug_program: (= (+ 2 ()) (q . 1))

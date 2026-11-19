@@ -1,0 +1,42 @@
+// Compiled with `operand_limits` (see `inline_value_may_fail.yaml`), where `*`, `/` and `%` can
+// fail for an operand that's too long, unless every operand is a short enough constant
+
+// Warns: `x * 2` fails for an `x` longer than 256 bytes, and isn't evaluated if `flag` is false
+test fn inline_product(x: Int, flag: Bool) -> Int {
+    inline let doubled = x * 2;
+    if flag {
+        doubled
+    } else {
+        0
+    }
+}
+
+// Warns: the same goes for division by a constant
+test fn inline_quotient(x: Int, flag: Bool) -> Int {
+    inline let half = x / 2;
+    if flag {
+        half
+    } else {
+        0
+    }
+}
+
+// Doesn't warn: the operands are short constants
+test fn inline_constant_product(flag: Bool) -> Int {
+    inline let product = 6 * 7;
+    if flag {
+        product
+    } else {
+        0
+    }
+}
+
+// Doesn't warn: addition can't fail
+test fn inline_sum(x: Int, flag: Bool) -> Int {
+    inline let sum = x + 2;
+    if flag {
+        sum
+    } else {
+        0
+    }
+}

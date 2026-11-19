@@ -5,7 +5,8 @@ use clvmr::{
     serde::node_from_bytes,
 };
 use rue_clvm::{assemble, disassemble_value};
-use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
+use rue_lir::{COST_PER_BYTE, DebugDialect, clvm_flags};
+use rue_options::CompilerOptions;
 use wasm_bindgen::prelude::*;
 
 use crate::check;
@@ -152,7 +153,8 @@ fn execute(
     program: NodePtr,
     env: NodePtr,
 ) -> (Result<Reduction, EvalErr>, Vec<Print>) {
-    let dialect = DebugDialect::new(CLVM_FLAGS, false);
+    // The playground compiles with the default options, so it runs programs the same way
+    let dialect = DebugDialect::new(clvm_flags(CompilerOptions::default().operand_limits), false);
     let result = run_program(allocator, &dialect, program, env, MAX_COST);
 
     let prints = dialect
