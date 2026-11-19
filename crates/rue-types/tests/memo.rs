@@ -909,6 +909,51 @@ fn test_held_by_revisit() {
     });
 }
 
+/// `type FL = fn<T>(p0: T) -> FR;`
+/// `type FR = fn<U>(p0: FL | fn(p0: U) -> FR | U, p1: ((WR, U), fn(p0: WR) -> WL)) -> nil;`
+/// `type WL = fn(p0: FR) -> Bytes; type WR = fn(p0: Bytes) -> Bytes;`
+/// Returns `FL` twice.
+fn unmatched_member_bound(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes { bytes, nil, .. } = db.builtins;
+    let [fl, wl, fr, wr] = ["FL", "WL", "FR", "WR"].map(|name| db.declare_alias(name, vec![]));
+    let t = db.generic();
+    let function = db.function(vec![t], vec![t], fr);
+    db.define(fl, function);
+    let function = db.function(vec![], vec![fr], bytes);
+    db.define(wl, function);
+    let u = db.generic();
+    let inner = db.function(vec![], vec![u], fr);
+    let first = db.union(vec![fl, inner, u]);
+    let pair = db.pair(wr, u);
+    let callback = db.function(vec![], vec![wr], wl);
+    let second = db.pair(pair, callback);
+    let function = db.function(vec![u], vec![first, second], nil);
+    db.define(fr, function);
+    let function = db.function(vec![], vec![bytes], bytes);
+    db.define(wr, function);
+    (fl, fl)
+}
+
+/// This records a known disagreement rather than what should happen: `FL` should be assignable to
+/// itself in every mode. Which union members match isn't monotone in their results (#360): when a
+/// member that bounds `U` gets worse, it stops matching and its bounds stop counting, which makes
+/// the union's result better. So comparing has no least fixed point here. Iterating in fixpoint
+/// mode only ever joins the results upward, so it ends at a fixed point that can reject more than
+/// exact mode, never accept more: inside `FL`, `FR` against itself is `Invalid` on its first
+/// round, which iterating keeps for it everywhere, while exact mode computes it again where it's
+/// reached and ends at `Assign`. Making the matched members monotone is a follow-up on #362 (next
+/// to §5, question 2), which this test shows as a diff when it lands.
+#[test]
+fn test_unmatched_member_bound_modes() {
+    with_large_stack(|| {
+        let results = in_every_mode(unmatched_member_bound);
+        assert_eq!(
+            results,
+            [Comparison::Assign, Comparison::Invalid, Comparison::Invalid]
+        );
+    });
+}
+
 /// Compares the types without the memo, in a single pass, and iterating from the start, each in a
 /// new arena.
 fn in_every_mode(types: impl Fn(&mut Types) -> (TypeId, TypeId)) -> [Comparison; 3] {
