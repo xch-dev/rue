@@ -11,8 +11,8 @@ use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_types::{
-    Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Check, CheckError, FunctionType,
-    Generic, Pair, Struct, Type, TypeId, Union, check, stringify, subtract,
+    Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, CHECK_SIZE_LIMIT, Check, CheckError,
+    FunctionType, Generic, Pair, Struct, Type, TypeId, Union, check, stringify, subtract,
 };
 
 struct Types {
@@ -615,6 +615,61 @@ fn list_value(a: &mut Allocator, items: &[NodePtr]) -> NodePtr {
     items.iter().rev().fold(NodePtr::NIL, |rest, &first| {
         a.new_pair(first, rest).unwrap()
     })
+}
+
+#[test]
+fn test_check_size_limit() {
+    let mut t = Types::new();
+    let mut a = Allocator::new();
+    let any = t.builtins.permissive_any;
+
+    // Each level nests the previous type twice through an alias, so the check doubles in size
+    let mut levels = vec![t.builtins.int];
+    for _ in 0..24 {
+        let previous = *levels.last().unwrap();
+        let pair = t.pair(previous, previous);
+        levels.push(t.alias(pair));
+    }
+
+    // The largest level within the limit still produces a correct check
+    let check = t.check(any, levels[11]).unwrap();
+    assert!(check.size() <= CHECK_SIZE_LIMIT, "{}", check.size());
+    assert!(check.size() > CHECK_SIZE_LIMIT / 2, "{}", check.size());
+    let one = a.new_small_number(1).unwrap();
+    let mut valid = one;
+    for _ in 0..11 {
+        valid = a.new_pair(valid, valid).unwrap();
+    }
+    assert_eq!(eval(&a, &check, valid), Ok(true));
+    let invalid = a.new_pair(valid, one).unwrap();
+    let wrapped = a.new_pair(invalid, invalid).unwrap();
+    assert_eq!(eval(&a, &check, wrapped), Ok(false));
+
+    // The next level is too large, as is every level past it, even though they aren't too deep
+    assert_eq!(t.check(any, levels[12]), Err(CheckError::TooLarge));
+    assert_eq!(t.check(any, levels[24]), Err(CheckError::TooLarge));
+
+    // A value already known to be of the type doesn't need a check, however large the type is
+    assert_eq!(t.check(levels[24], levels[24]), Ok(Check::None));
+}
+
+#[test]
+fn test_check_size() {
+    let atom = || Check::IsAtom {
+        can_be_truthy: true,
+    };
+
+    assert_eq!(Check::None.size(), 1);
+    assert_eq!(length(32).size(), 1);
+    assert_eq!(
+        Check::Pair(Box::new(atom()), Box::new(length(32))).size(),
+        3
+    );
+    assert_eq!(Check::Or(vec![]).size(), 1);
+
+    // Repeated parts are counted every time, since they're generated every time
+    let pair = Check::Pair(Box::new(atom()), Box::new(atom()));
+    assert_eq!(Check::And(vec![pair.clone(), pair, value(&[1])]).size(), 8);
 }
 
 #[test]

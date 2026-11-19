@@ -25,6 +25,22 @@ pub enum Check {
 }
 
 impl Check {
+    /// The number of nodes in the check, which is proportional to the size of the code it
+    /// generates. Repeated parts are counted every time, since they're generated every time.
+    pub fn size(&self) -> usize {
+        match self {
+            Check::None
+            | Check::Impossible
+            | Check::IsAtom { .. }
+            | Check::IsPair { .. }
+            | Check::Atom(_) => 1,
+            Check::Pair(first, rest) => 1 + first.size() + rest.size(),
+            Check::And(checks) | Check::Or(checks) => {
+                1 + checks.iter().map(Check::size).sum::<usize>()
+            }
+        }
+    }
+
     pub fn simplify(self) -> Check {
         grow_stack(|| self.simplify_inner())
     }
@@ -185,7 +201,15 @@ pub enum CheckError {
 
     #[error("Comparing the types is too complex")]
     TooComplex,
+
+    #[error("Cannot check if value is of type at runtime, since the check would be too large")]
+    TooLarge,
 }
+
+/// The largest check that can be generated, in nodes (see [`Check::size`]). Each node generates
+/// around a dozen bytes of CLVM, and the checks for typical types are under a hundred nodes, so
+/// this only rejects checks whose size grows exponentially with the size of the type.
+pub const CHECK_SIZE_LIMIT: usize = 10_000;
 
 pub fn check(
     arena: &mut Arena<Type>,
@@ -283,6 +307,17 @@ fn check_each(
     }
 
     let result = check_each_impl(arena, builtins, ctx, depth + 1, &key.0, rhs);
+
+    // Repeated parts of a type are checked again at every use, so a type that nests the same
+    // type twice at each level, such as `(T, T)`, would double the size of the check each time
+    let result = result.and_then(|check| {
+        if check.size() > CHECK_SIZE_LIMIT {
+            Err(CheckError::TooLarge)
+        } else {
+            Ok(check)
+        }
+    });
+
     ctx.path.pop();
     ctx.memo.insert(key, result.clone());
     result

@@ -1036,6 +1036,10 @@ impl Compiler {
                 self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
                 return Constraint::new(Check::Impossible);
             }
+            Err(CheckError::TooLarge) => {
+                self.diagnostic(node, DiagnosticKind::TypeCheckTooLarge);
+                return Constraint::new(Check::Impossible);
+            }
             Err(CheckError::RecursiveType) => {
                 self.diagnostic(node, DiagnosticKind::RecursiveTypeCheck);
                 return Constraint::new(Check::Impossible);
@@ -1180,22 +1184,24 @@ impl Compiler {
                 }
             }
             Comparison::Invalid => {
-                let check =
+                let can_guard =
                     match rue_types::check(self.db.types_mut(), &self.builtins.types, from, to) {
-                        Ok(check) => check,
+                        Ok(check) => check != Check::Impossible,
+                        // A check exists, even though the guard would report that it's too large
+                        Err(CheckError::TooLarge) => true,
                         Err(
                             CheckError::DepthExceeded
                             | CheckError::RecursiveType
                             | CheckError::FunctionType
                             | CheckError::GenericType
                             | CheckError::TooComplex,
-                        ) => Check::Impossible,
+                        ) => false,
                     };
 
                 let from = self.type_name(from);
                 let to = self.type_name(to);
 
-                if check != Check::Impossible {
+                if can_guard {
                     if cast {
                         self.diagnostic(node, DiagnosticKind::UnguardedCast(from, to));
                     } else {

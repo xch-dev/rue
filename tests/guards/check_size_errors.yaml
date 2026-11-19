@@ -1,0 +1,4 @@
+diagnostics:
+- Cannot check if value is of type at runtime, since the check would be too large at check_size_errors.rue:18:5
+- Cannot check if value is of type at runtime, since the check would be too large at check_size_errors.rue:23:5
+- Cannot assign `Any` to `T12` without a type guard, since the value isn't always a valid `T12` at check_size_errors.rue:27:33
