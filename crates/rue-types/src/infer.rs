@@ -650,8 +650,6 @@ impl Choices {
     /// Whether the union members are alternatives: they're different members of one union, or
     /// nested in different members of one.
     pub(crate) fn exclusive(&self, lhs: BranchId, rhs: BranchId) -> bool {
-        debug_assert!(lhs.choice < self.0.len() && rhs.choice < self.0.len());
-
         let mut ancestors = Vec::new();
         let mut next = Some(lhs);
 

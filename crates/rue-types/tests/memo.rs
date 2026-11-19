@@ -1683,8 +1683,9 @@ fn test_comparison_step_limit() {
         assert_eq!(result, Ok(Comparison::Assign));
 
         // With a limit below what it takes, the comparison gives up, which `compare` treats as
-        // `Invalid`. Since #362's step 13b.3 it takes few enough steps (about 50 against a copy) that a fraction
-        // of what it takes in all, including substituting and checking the types, isn't below it
+        // `Invalid`. Since #362's step 13b.3 it takes few enough steps (about 50 against a copy)
+        // that a fraction of what it takes in all, including substituting and checking the types,
+        // isn't below it
         assert!(steps > 2);
         let limit = 2;
         let limited = with_comparison_step_limit(limit, || {
@@ -1885,8 +1886,9 @@ fn union_member_differential(seeds: impl IntoIterator<Item = u64>, copy: bool) -
 }
 
 /// Which union members match decides which bounds count, which used to make modes disagree on
-/// types like `unmatched_member_bound`'s (#360). The seeds listed are the ones that did, about one
-/// in 10,000, so they're what pin it, along with `test_union_member_differential_large`. Each
+/// types like `unmatched_member_bound`'s (#360). The seeds listed are some of the ones that did,
+/// about one in 10,000, so they're what pin it, along with `test_union_member_differential_large`,
+/// which has the rest. Each
 /// module is compared with a copy of it as well, since a type compared with itself is `Assign`
 /// without comparing any further.
 #[test]
@@ -1957,5 +1959,23 @@ fn test_compared_with_itself() {
             in_every_mode(union_member_module(62_040, true)),
             [Comparison::Invalid; 3]
         );
+
+        // Without comparing it at all, with the memo and without it: a comparison would give up
+        // with no steps
+        for memo in [true, false] {
+            let mut db = Types::new();
+            let (fl, _) = union_member_module(62_040, false)(&mut db);
+            let mut limited = || {
+                with_comparison_step_limit(0, || {
+                    compare_limited(&mut db.arena, &db.builtins, fl, fl)
+                })
+            };
+            let result = if memo {
+                limited()
+            } else {
+                without_compare_memo(limited)
+            };
+            assert_eq!(result, Ok(Comparison::Assign));
+        }
     });
 }

@@ -145,8 +145,9 @@ struct Binder {
 }
 
 /// The bounds collected for a generic being instantiated, which are checked against each other
-/// once the comparison that bound it has finished, and again by an enclosing function comparison
-/// if checking that one's bounds adds to them.
+/// (except those from different members of one union, see `check_bounds`) once the comparison
+/// that bound it has finished, and again by an enclosing function comparison if checking that
+/// one's bounds adds to them.
 #[derive(Debug, Default)]
 struct Instance {
     lower: Vec<Bound>,
@@ -263,9 +264,9 @@ pub(crate) struct ComparisonContext<'a> {
     /// more than one step, and one round with `Assign` doesn't settle it. Since which members
     /// match isn't monotone in their results (#360), the rounds settle at a fixed point, which
     /// isn't always the least, nor the one that iterating in fixpoint mode gets to (see
-    /// `test_union_member_differential_large`). Otherwise, comparing is built
-    /// from `max`, `min` and constants, for which one round, with a revisit given `Assign`, already
-    /// gives the least fixed point (see `FixpointMemo`).
+    /// `test_union_member_differential_large`). Otherwise, comparing is built from `max`, `min`
+    /// and constants, for which one round, with a revisit given `Assign`, already gives the least
+    /// fixed point (see `FixpointMemo`).
     root_monotonicity: Monotone,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
@@ -1312,10 +1313,10 @@ pub fn compare_with_inference_limited(
     rhs: TypeId,
     infer: Option<&mut Inference>,
 ) -> Result<Comparison, TooComplex> {
-    // A type compared with itself stays one type, so that the shortcut below sees it
+    // Whether a type is compared with itself, whatever substituting gives each side
     let same = lhs == rhs;
     let lhs = substitute(arena, lhs);
-    let rhs = if same { lhs } else { substitute(arena, rhs) };
+    let rhs = substitute(arena, rhs);
     let names = log_enabled!(Level::Trace).then(|| {
         (
             stringify_impl(arena, lhs, &mut IndexMap::new()),
@@ -1337,9 +1338,9 @@ pub fn compare_with_inference_limited(
     };
     // A type is assignable to itself. One that references generics being inferred is still
     // compared, for the candidates it collects. Only the comparison as a whole is shortcut, where
-    // nothing is bound, which is enough for a type compared with itself to be `Assign` in every
-    // mode, although comparisons are still incomplete where members of different unions bound
-    // instances (#360)
+    // nothing is bound, so a type that references no generic being inferred is `Assign` against
+    // itself in every mode, although comparisons are still incomplete where members of different
+    // unions bound instances, against a copy of the type (#360)
     let result = if same && ctx.collects_nothing_from(arena, lhs) {
         Comparison::Assign
     } else {
@@ -2217,6 +2218,23 @@ fn check_bounds(
                     break 'bounds;
                 }
 
+                // Bounds collected under different members of one union are alternatives, so
+                // they needn't hold together, and such a pair isn't compared (so it collects no
+                // candidates either, which each member's own pairs do). Every member that matched
+                // still has to hold with the bounds outside of the union, and with those of every
+                // member of another union that matched, which are all checked against each other.
+                // That's incomplete: a member that matched but whose bounds conflict fails the
+                // union, even if another member holds (#362, §5, question 2). Without this, two
+                // members of one union that each hold could fail together, and whether a member
+                // matches isn't monotone in its result, so a comparison could have no least fixed
+                // point, on which exact and fixpoint mode disagreed. That's still the case across
+                // unions (see `test_union_member_differential_large`)
+                if let (Some(lhs), Some(rhs)) = (lower_branches.local, upper_branches.local)
+                    && ctx.choices.exclusive(lhs, rhs)
+                {
+                    continue;
+                }
+
                 // A bound collected under a union member that didn't match isn't needed, so a
                 // pair with one doesn't decide the result (#360). It's still compared, under that
                 // member, since the candidates it collects are what a generic being inferred falls
@@ -2228,21 +2246,6 @@ fn check_bounds(
                             .local
                             .is_some_and(|branch| !ctx.choices.matched_so_far(branch))
                     });
-
-                // Bounds collected under different members of one union are alternatives, so
-                // they needn't hold together. Every member that matched still has to hold with the
-                // bounds outside of the union, and with those of every member of another union
-                // that matched, which are all checked against each other. Without this, two
-                // members of one union that each hold could fail together, and whether a member
-                // matches isn't monotone in its result, so a comparison could have no least fixed
-                // point, on which exact and fixpoint mode disagreed. That's still the case across
-                // unions (see `test_union_member_differential_large`)
-                if unmatched.is_none()
-                    && let (Some(lhs), Some(rhs)) = (lower_branches.local, upper_branches.local)
-                    && ctx.choices.exclusive(lhs, rhs)
-                {
-                    continue;
-                }
 
                 let (branch, local_branch) = match unmatched {
                     Some(branches) => (
