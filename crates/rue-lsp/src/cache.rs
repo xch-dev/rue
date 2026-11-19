@@ -455,12 +455,16 @@ impl Cache<Compiler> {
 
             // A module that `super` or `project` names contains the code, so its private items and
             // a file's sibling modules can be used too.
+            // A failed import's name isn't anything that could be used
             let items = |namespace| {
-                if members {
+                let mut items = if members {
                     self.ctx.module_members(scope, namespace)
                 } else {
                     self.ctx.scope(scope).exported_items(namespace)
-                }
+                };
+
+                items.retain(|&(_, item)| !self.ctx.is_error_item(item));
+                items
             };
 
             let symbols = [Namespace::Value, Namespace::Module]
@@ -549,15 +553,18 @@ impl Cache<Compiler> {
         for scope in &scopes.0 {
             let scope = self.ctx.scope(*scope);
 
+            // A failed import's name isn't anything that could be used
             let symbols = [Namespace::Value, Namespace::Module]
                 .into_iter()
                 .flat_map(|namespace| scope.items(namespace))
+                .filter(|&(_, item)| !self.ctx.is_error_item(item))
                 .filter_map(|(name, item)| symbol_item(name, item))
                 .collect::<Vec<_>>();
 
             let types = scope
                 .type_names()
                 .filter_map(|name| Some((name.to_string(), scope.ty(name)?)))
+                .filter(|&(_, ty)| !self.ctx.is_error_item(Item::Type(ty)))
                 .collect::<Vec<_>>();
 
             for (name, symbol, is_module) in symbols {
