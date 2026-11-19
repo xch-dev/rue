@@ -400,6 +400,21 @@ impl ComparisonContext<'_> {
             .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
     }
 
+    /// Whether the type, in its environment, refers to the binder that the generic resolves to in
+    /// its own.
+    fn refers_to(
+        &mut self,
+        arena: &Arena<Type>,
+        (ty, env): (TypeId, Option<usize>),
+        (generic, generic_env): (TypeId, Option<usize>),
+    ) -> bool {
+        let binder = self.resolve(generic, generic_env);
+        self.cache_references(arena, ty);
+        self.references[&ty]
+            .iter()
+            .any(|&other| self.resolve(other, env) == binder)
+    }
+
     /// Caches the generics that the type references (see `referenced_generics`) in `references`.
     fn cache_references(&mut self, arena: &Arena<Type>, ty: TypeId) {
         self.references
@@ -1670,19 +1685,15 @@ fn compare_structure(
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Any) => Comparison::Assign,
-        // A binder is assignable to itself, which is checked before an instance is bounded, since
-        // an inner instance can be instantiated while an enclosing comparison checks bounds that
-        // refer to it on both sides, and bounding it by itself would then conflict with its other
-        // bounds once it's rigid
-        (Type::Generic(_), Type::Generic(_))
-            if lhs == rhs
-                && ctx
-                    .resolve(lhs, ctx.lhs_env)
-                    .is_some_and(|binder| ctx.resolve(rhs, ctx.rhs_env) == Some(binder)) =>
+        // An instance isn't bounded by a type that refers to it, which an inner instance can be
+        // compared with while an enclosing comparison checks bounds that refer to it on both
+        // sides, such as `(T, T | nil)` against `(T, T)`. That would conflict with its other
+        // bounds once it's rigid, so it's compared like a rigid generic instead, which holds for
+        // `T ≤ T | nil`
+        (Type::Generic(_), _)
+            if ctx.is_instance(lhs, ctx.lhs_env)
+                && !ctx.refers_to(arena, (rhs, ctx.rhs_env), (lhs, ctx.lhs_env)) =>
         {
-            Comparison::Assign
-        }
-        (Type::Generic(_), _) if ctx.is_instance(lhs, ctx.lhs_env) => {
             ctx.add_bound(
                 lhs,
                 ctx.lhs_env,
@@ -1691,7 +1702,10 @@ fn compare_structure(
             );
             Comparison::Assign
         }
-        (_, Type::Generic(_)) if ctx.is_instance(rhs, ctx.rhs_env) => {
+        (_, Type::Generic(_))
+            if ctx.is_instance(rhs, ctx.rhs_env)
+                && !ctx.refers_to(arena, (lhs, ctx.lhs_env), (rhs, ctx.rhs_env)) =>
+        {
             ctx.add_bound(
                 rhs,
                 ctx.rhs_env,

@@ -34,6 +34,13 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: inner_instance_compared_with_a_union_of_itself
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - |-
   Field `second` of struct `Two` is never read at generic_inference_instantiated_through_candidate.rue:25:5

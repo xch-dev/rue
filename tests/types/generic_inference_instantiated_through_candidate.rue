@@ -73,3 +73,11 @@ test fn inner_instance_compared_with_itself() -> Int {
     let _apply: fn(function: Twin) -> Int = apply_twin;
     1
 }
+
+type Opt = fn<T>(x: (T, T | nil), y: T) -> (T, T);
+
+// The same with `T' ≤ T' | nil`, which isn't a bound on `T'` either
+test fn inner_instance_compared_with_a_union_of_itself() -> Int {
+    let _apply: fn(function: Opt) -> Int = apply_twin;
+    1
+}

@@ -174,7 +174,8 @@ impl Summary {
     /// (#363), and that one's bounds are checked against each other afterwards: a copy can get a
     /// bound involving each of two other copies, and checking those against each other needs
     /// three. A fourth only adds more like those, so a component that bounds a local binder keeps
-    /// at most three copies.
+    /// at most three copies. That's kept on this argument: no test so far shows a result that
+    /// needs the third.
     ///
     /// A component that's too alike to be renumbered exactly (see `shape`) can be renumbered
     /// another way when it's canonicalized again.
