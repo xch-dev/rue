@@ -1,0 +1,17 @@
+// The root's `export Z` fails on its own, since nothing in the root can bring `Z` in. `e`'s glob
+// imports bring in both the root's error item and `c`'s, which meet in `e`, but what that explains
+// in `e` doesn't explain the root's failure, so it's still reported.
+export Z;
+
+mod e {
+    import super::*;
+    import c::*;
+}
+
+mod c {
+    export nope::Z;
+}
+
+fn main() -> Int {
+    1
+}

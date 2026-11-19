@@ -1,0 +1,26 @@
+// The cycle of re-exports through `b`, `c` and `f` is reported whichever glob import of the root
+// brings in its error item first, which depends on module names (see failed_glob_cycles_a and
+// failed_glob_cycles_z). An error item that a glob import brings in stands for the same failures
+// in every module, so meeting `a`'s in the root doesn't explain the cycle.
+export a::*;
+export b::*;
+
+mod a {
+    export nope::X;
+}
+
+mod b {
+    export super::c::X;
+}
+
+mod c {
+    export super::f::X;
+}
+
+mod f {
+    export super::b::X;
+}
+
+fn main() -> Int {
+    1
+}

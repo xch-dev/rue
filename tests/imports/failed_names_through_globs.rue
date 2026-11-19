@@ -1,9 +1,11 @@
 import X;
 
 // Two glob imports that bring in error items with the same name would each have filled it, so a
-// failure of either import explains a use of the name
+// failure of either import explains what finds the name. `a`'s `X::Y` finds the error item that
+// `k` brings in, which is in a cycle with `k`'s own re-export, but `l`'s failure explains the name
+// too, so only `l`'s failure is reported.
 mod k {
-    export nope::X;
+    export super::a::Y::X;
 }
 
 mod l {
@@ -14,13 +16,11 @@ mod a {
     import super::k::*;
     import super::l::*;
 
-    export fn f() -> Int {
-        X
-    }
+    export X::Y;
 }
 
 // A named import of the name shadows the glob imports, so its own failure isn't explained by
-// theirs, and is reported. It would fail even if `k` and `l` had an `X`.
+// theirs, and is reported. It would fail even if `k` had an `X`.
 mod s {
     import super::k::*;
 
@@ -33,5 +33,5 @@ mod b {
 }
 
 fn main() -> Int {
-    a::f() + s::X
+    s::X
 }

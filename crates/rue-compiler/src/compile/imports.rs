@@ -198,10 +198,12 @@ pub struct ImportCache {
     /// [`bind_failed_imports`]). A failure is final, even once the import finds the error items
     /// of the imports it failed because of.
     failed: IndexMap<ImportId, Failure>,
-    /// The imports that each error item stands for: the failed imports of the name into the scope
-    /// it was bound in, and the origins of the error items that met it in a name (see
-    /// [`merge_error_origins`]). Only failed imports are reported (see [`reported_failures`]).
-    error_origins: HashMap<Item, IndexSet<ImportId>>,
+    /// The imports that each error item stands for in each scope it's bound in: the failed imports
+    /// of the name into the scope, what it stands for where it was imported from, and what the
+    /// error items that met it in the name there stand for (see [`add_error_origins`]). Only
+    /// failed imports are reported (see [`reported_failures`]). It's kept for each scope since an
+    /// error item can be imported into many, and what explains it in one doesn't in another.
+    error_origins: HashMap<(ScopeId, Item), IndexSet<ImportId>>,
     /// The imports whose error items each import found where it failed, or resolved its path or
     /// name through, which explain its failure (see [`reported_failures`]).
     error_links: HashMap<ImportId, IndexSet<ImportId>>,
@@ -625,7 +627,7 @@ fn bind_failed_imports(
 /// exported if either import is. Returns whether anything was bound or exported.
 fn bind_error_items(
     ctx: &mut Compiler,
-    error_origins: &mut HashMap<Item, IndexSet<ImportId>>,
+    error_origins: &mut HashMap<(ScopeId, Item), IndexSet<ImportId>>,
     (scope, import_id): (ScopeId, ImportId),
     name: &str,
     namespaces: &[Namespace],
@@ -649,21 +651,29 @@ fn bind_error_items(
             Some(_) => continue,
         };
 
-        error_origins.entry(item).or_default().insert(import_id);
+        error_origins
+            .entry((scope, item))
+            .or_default()
+            .insert(import_id);
         bound |= bind(ctx, scope, import_id, name, item, exported);
     }
 
     bound
 }
 
-/// Adds the failed imports that one error item comes from to another's, when the name that the
-/// other fills would have been bound to this one too (such as by a glob import of a module that
-/// has it), so that either explains what finds the name. Returns whether any were added.
-fn merge_error_origins(
-    error_origins: &mut HashMap<Item, IndexSet<ImportId>>,
-    into: Item,
-    from: Item,
+/// Adds what an error item stands for in the scope it's imported from to what an error item in
+/// the name it's imported into stands for, which is the same item, or one that another import
+/// would have filled the name with too, so that either explains what finds the name. Returns
+/// whether anything was added.
+fn add_error_origins(
+    error_origins: &mut HashMap<(ScopeId, Item), IndexSet<ImportId>>,
+    into: (ScopeId, Item),
+    from: (ScopeId, Item),
 ) -> bool {
+    if into == from {
+        return false;
+    }
+
     let from = error_origins.get(&from).cloned().unwrap_or_default();
     let into = error_origins.entry(into).or_default();
     let count = into.len();
@@ -671,9 +681,10 @@ fn merge_error_origins(
     into.len() != count
 }
 
-/// Records that an import found an error item, which the imports it stands for explain.
-fn link_error(cache: &mut ImportCache, import_id: ImportId, item: Item) {
-    if let Some(origins) = cache.error_origins.get(&item) {
+/// Records that an import found an error item in a scope, which the imports it stands for there
+/// explain.
+fn link_error(cache: &mut ImportCache, import_id: ImportId, scope: ScopeId, item: Item) {
+    if let Some(origins) = cache.error_origins.get(&(scope, item)) {
         cache
             .error_links
             .entry(import_id)
@@ -682,8 +693,9 @@ fn link_error(cache: &mut ImportCache, import_id: ImportId, item: Item) {
     }
 }
 
-/// Records the failed imports whose error items an import finds where it looks a name up, in any
-/// namespace, since they explain why the import failed there or resolved to an error.
+/// Records the failed imports whose error items an import finds in the scope where it looks a
+/// name up, in any namespace, since they explain why the import failed there or resolved to an
+/// error. Error items are only ever in a module's own scope, not outside of it.
 fn link_errors(
     ctx: &Compiler,
     cache: &mut ImportCache,
@@ -691,9 +703,11 @@ fn link_errors(
     base: Base,
     name: &str,
 ) {
+    let scope = base.scope();
+
     for namespace in Namespace::ALL {
-        if let Some((item, _)) = base.find(ctx, namespace, name) {
-            link_error(cache, import_id, item);
+        if let Some(item) = ctx.scope(scope).item(namespace, name) {
+            link_error(cache, import_id, scope, item);
         }
     }
 }
@@ -1168,19 +1182,6 @@ impl Base {
             Self::Inner(_) => None,
         }
     }
-
-    /// Finds a name in the scope's own items, and then outside of them, without waiting for
-    /// anything.
-    fn find(
-        self,
-        ctx: &Compiler,
-        namespace: Namespace,
-        name: &str,
-    ) -> Option<(Item, Option<ImportId>)> {
-        ctx.scope(self.scope())
-            .item_with_import(namespace, name)
-            .or_else(|| self.outside(ctx, namespace, name))
-    }
 }
 
 /// What an import's lookup of a name found.
@@ -1589,18 +1590,24 @@ fn resolve_glob_import(
         for (name, item) in items {
             // A failed import's error item only fills a name that nothing else brought in. Error
             // items are only bound once nothing else can be resolved, so nothing else brings in
-            // the name after one does, and the name is never ambiguous. Another glob import's
-            // error item with the name would have filled it too, so either explains what finds
-            // it. A named import's doesn't: it shadows this import, so it fails on its own.
+            // the name after one does, and the name is never ambiguous. Where this import already
+            // brought it in, or another glob import's error item fills the name, which this one
+            // would have filled too, what the item stands for here explains what finds the name
+            // too. A named import's doesn't: it shadows this import, so it fails on its own.
             if let Some(existing) = ctx.scope(import_scope).item(namespace, &name)
                 && (ctx.is_error_item(item) || ctx.is_error_item(existing))
             {
-                if ctx.is_error_item(item)
-                    && ctx.is_error_item(existing)
-                    && existing != item
-                    && resolution.named_imports_of(import_scope, &name).is_none()
-                {
-                    updated |= merge_error_origins(&mut cache.error_origins, existing, item);
+                let by_glob = ctx
+                    .scope(import_scope)
+                    .item_import(existing)
+                    .is_some_and(|via| matches!(ctx.import(via).items, Items::All(_)));
+
+                if ctx.is_error_item(item) && ctx.is_error_item(existing) && by_glob {
+                    updated |= add_error_origins(
+                        &mut cache.error_origins,
+                        (import_scope, existing),
+                        (source_scope, item),
+                    );
                 }
 
                 continue;
@@ -1693,6 +1700,12 @@ fn resolve_glob_import(
             } else if bind(ctx, import_scope, import_id, &name, item, exported) {
                 updated = true;
                 *count += 1;
+
+                add_error_origins(
+                    &mut cache.error_origins,
+                    (import_scope, item),
+                    (source_scope, item),
+                );
             }
         }
     }
@@ -1727,7 +1740,7 @@ fn resolve_named_import(
                 // An exported error item comes from a failed import in the module, which explains
                 // why this one brings in an error
                 for &(found, _) in &found {
-                    link_error(cache, import_id, found);
+                    link_error(cache, import_id, base, found);
                 }
 
                 found
@@ -1813,10 +1826,28 @@ fn resolve_named_import(
         let existing = ctx.scope(import_scope).item(namespace, name);
 
         // A failed import's error item only fills a name that nothing else brought in, so it's
-        // never a duplicate
-        if error && let Some(existing) = existing.filter(|&existing| existing != found) {
-            if ctx.is_error_item(existing) {
-                updated |= merge_error_origins(&mut cache.error_origins, existing, found);
+        // never a duplicate. What it stands for where it's found explains what finds the name
+        // here too, whether it fills it or another failed import's error item does.
+        if error {
+            if existing.is_none_or(|existing| existing == found)
+                && bind(ctx, import_scope, import_id, name, found, import.exported)
+            {
+                updated = true;
+                unused_imports.shift_remove(name);
+            }
+
+            if let Some(target) = ctx
+                .scope(import_scope)
+                .item(namespace, name)
+                .filter(|&target| ctx.is_error_item(target))
+            {
+                let source = base.unwrap_or(lookup_base.scope());
+
+                updated |= add_error_origins(
+                    &mut cache.error_origins,
+                    (import_scope, target),
+                    (source, found),
+                );
             }
 
             continue;
@@ -1826,7 +1857,7 @@ fn resolve_named_import(
         // `super` or `project` names, which it only exports if it's public there
         let mut exported = import.exported;
 
-        if import.exported && base.is_none() && !error {
+        if import.exported && base.is_none() {
             let module = ctx.scope(import.base_scope);
             let in_module = module.item(namespace, name) == Some(found);
 
@@ -1849,7 +1880,7 @@ fn resolve_named_import(
             }
         }
 
-        if diagnostics && !error {
+        if diagnostics {
             add_reference(ctx, &import.source, item, found.into());
         }
 
@@ -1916,7 +1947,9 @@ fn named_items(module: &Scope, name: &str) -> NamedItems {
 
 /// Binds a name in a scope to an item that an import brings in, or if it's already bound to the
 /// item, exports the binding when the import exports it and it isn't yet. Either way, the
-/// declaration is recorded on the import. Returns whether it did either.
+/// declaration is recorded on the import, unless it's an error item (see
+/// [`Compiler::is_error_item`]), which isn't anything that could be used. Returns whether it did
+/// either.
 fn bind(
     ctx: &mut Compiler,
     scope: ScopeId,

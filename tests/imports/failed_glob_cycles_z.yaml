@@ -1,0 +1,6 @@
+diagnostics:
+- Unused import `*` at failed_glob_cycles_z.rue:6:11
+- Undeclared symbol `nope` at failed_glob_cycles_z.rue:9:12
+- Unresolved import `X` at failed_glob_cycles_z.rue:13:22
+- Unresolved import `X` at failed_glob_cycles_z.rue:17:22
+- Unresolved import `X` at failed_glob_cycles_z.rue:21:22

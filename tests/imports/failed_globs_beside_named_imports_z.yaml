@@ -1,0 +1,5 @@
+diagnostics:
+- Unused import `*` at failed_globs_beside_named_imports_z.rue:2:11
+- Cannot reference private symbol `X` in module `t` at failed_globs_beside_named_imports_z.rue:8:11
+- Unused constant `X` at failed_globs_beside_named_imports_z.rue:11:11
+- Undeclared symbol `nope` at failed_globs_beside_named_imports_z.rue:15:12
