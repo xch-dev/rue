@@ -4,10 +4,10 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, Type, TypeId, compare_renamed,
-    compare_with_inference, free_generics, infer_from_expected, most_specific,
-    resolve_inference_around, resolve_inference_with_fallback, strongly_connected_components,
-    substitute_with_mappings, union_of,
+    BranchId, BuiltinTypes, CandidateKind, Comparison, Inference, InferenceCandidates, Type,
+    TypeId, compare_renamed, compare_with_inference, free_generics, infer_from_expected,
+    most_specific, resolve_inference_around, resolve_inference_with_fallback,
+    strongly_connected_components, substitute_with_mappings, union_of,
 };
 
 /// An upper bound for a generic, along with the union members it was collected under.
@@ -145,7 +145,13 @@ pub(crate) fn add_lambda_var_lower_bounds(
     let mut derived = Vec::new();
 
     for &var in infer.added() {
-        let candidates = infer.matched_candidates(var).unwrap();
+        // As `Inference::keep_matched` takes them, falling back to all of them if none matched
+        let matched = infer.matched_candidates(var).unwrap();
+        let candidates = if matched == InferenceCandidates::default() {
+            infer.generics[&var].clone()
+        } else {
+            matched
+        };
 
         if !candidates.lower.is_empty()
             || most_specific(arena, builtins, &infer.renamed, &candidates.upper).is_some()
