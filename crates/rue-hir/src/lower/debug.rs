@@ -24,6 +24,12 @@ pub struct LoweringDebugInfo {
     pub labels: Vec<String>,
     /// The index of each label, so that it's only added once.
     label_indices: HashMap<String, usize>,
+    /// The label of the code being lowered, from the outermost to the innermost: a function's
+    /// name, or the name of the inlined function.
+    pub(super) owners: Vec<Option<usize>>,
+    /// The owner of each inlined call's arguments, which is the code that called it, by the index
+    /// of its substitutions.
+    pub(super) inline_owners: Vec<Option<usize>>,
     /// The span of each HIR node that's been entered, so that it's only added once.
     hir_spans: HashMap<HirId, usize>,
     /// The function of each symbol that's been lowered, so that it's only added once.
@@ -56,6 +62,11 @@ impl LoweringDebugInfo {
         self.spans.len() - 1
     }
 
+    /// The label of the code being lowered.
+    pub(super) fn owner(&self) -> Option<usize> {
+        self.owners.last().copied().flatten()
+    }
+
     pub(super) fn label(&mut self, label: String) -> usize {
         *self.label_indices.entry(label.clone()).or_insert_with(|| {
             self.labels.push(label);
@@ -80,13 +91,50 @@ impl LoweringDebugInfo {
         };
 
         for (&parameter, param) in function.parameters.iter().zip(&ty.params) {
-            // A destructured parameter is named after its pattern, which can span lines, but a
-            // name is shown on one line
-            let name = param.name.split_whitespace().collect::<Vec<_>>().join(" ");
+            let name = one_line(&param.name);
 
             if !name.is_empty() {
                 self.parameter_names.entry(parameter).or_insert(name);
             }
         }
+    }
+}
+
+/// The source text of a parameter's pattern on one line, since a destructured parameter is named
+/// after its pattern, which can span lines. Line comments are left out, since they would comment
+/// out the rest of the line, and so are the trailing commas before a closing bracket.
+fn one_line(pattern: &str) -> String {
+    let text = pattern
+        .lines()
+        .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(", }", " }")
+        .replace(", )", " )")
+        .replace(", ]", " ]")
+        .replace(",}", "}")
+        .replace(",)", ")")
+        .replace(",]", "]")
+        .replace("( ", "(")
+        .replace(" )", ")")
+        .replace("[ ", "[")
+        .replace(" ]", "]")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::one_line;
+
+    #[test]
+    fn patterns_are_named_on_one_line() {
+        assert_eq!(one_line("value"), "value");
+        assert_eq!(one_line("{ x, y }"), "{ x, y }");
+        assert_eq!(one_line("{\n    x, // the first\n    y,\n}"), "{ x, y }");
+        assert_eq!(one_line("(\n    low,\n    high,\n)"), "(low, high)");
+        assert_eq!(one_line("[first, ...rest]"), "[first, ...rest]");
     }
 }

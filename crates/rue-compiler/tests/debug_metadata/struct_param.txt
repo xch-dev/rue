@@ -1,12 +1,12 @@
 ===== debug =====
 program: (a (q 16 (+ (a 14 5) (a 10 5)) (a 4 11)) (c (c (q 2 (i (> (r 1) (f 1)) (q 17 (r 1) (f 1)) (q 8 (q . "assertion failed at struct_param.rue:30:5"))) 1) (c (q 2 (i (not (= (f 1) (sha256 (q . "burn")))) (q 5 (r 1)) (q 8 (q . "assertion failed at struct_param.rue:25:5"))) 1) (q 5 (r 1)))) 1))
-sidecar: 3373 bytes
+sidecar: 3372 bytes
 files:
   struct_param.rue
 functions:
   0: main ((_ . (_ . _)) . (payment@5: list . (pair@11: pair . _)))
   1: by_tuple (low, high)@1: pair
-  2: by_destructure { puzzle_hash, amount, }@1: list
+  2: by_destructure { puzzle_hash, amount }@1: list
   3: by_struct payment@1: list
 nodes:
   struct_param.rue:9:52-11:2  (a (q 16 (+ (a 14 5) (a 10 5)) (a 4 11)) (c (c (q 2 (i (>...
@@ -31,13 +31,13 @@ nodes:
     struct_param.rue:14:5-14:19 fn by_struct  (f (r 1))
 ===== release =====
 program: (a (q 16 21 (a 6 5) (a 4 11)) (c (c (q 2 (i (> 3 2) (q 17 3 2) (q 8)) 1) (q 2 (i (= 2 (sha256 (q . "burn"))) (q 8) (q . 5)) 1)) 1))
-sidecar: 2420 bytes
+sidecar: 2419 bytes
 files:
   struct_param.rue
 functions:
   0: main ((_ . _) . (payment@5: list . (pair@11: pair . _)))
   1: by_tuple (low, high)@1: pair
-  2: by_destructure { puzzle_hash, amount, }@1: list
+  2: by_destructure { puzzle_hash, amount }@1: list
 nodes:
   struct_param.rue:9:52-11:2  (a (q 16 21 (a 6 5) (a 4 11)) (c (c (q 2 (i (> 3 2) (q 17...
     struct_param.rue:10:5-10:66 fn main  (+ 21 (a 6 5) (a 4 11))

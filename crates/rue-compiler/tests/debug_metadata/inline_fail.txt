@@ -11,11 +11,11 @@ nodes:
       inline_fail.rue:5:9-5:10  (q . 2)
     inline_fail.rue:8:46-13:2 label "checked_sub (inlined)"  (a (i (> (q . 10) 2) (q 8 (q . "raise called at inline_fa...
       inline_fail.rue:9:8-9:13  (> (q . 10) 2)
-        inline_fail.rue:4:28-4:30  (q . 10)
+        inline_fail.rue:4:28-4:30 label "main"  (q . 10)
       inline_fail.rue:10:9-10:27  (x (q . "raise called at inline_fail.rue:10:9") (q . "und...
         inline_fail.rue:10:15-10:26  (q . "underflow")
       inline_fail.rue:12:5-12:10  (- 2 (q . 10))
-        inline_fail.rue:4:28-4:30  (q . 10)
+        inline_fail.rue:4:28-4:30 label "main"  (q . 10)
 ===== release =====
 program: (* (a (i (> (q . 10) 2) (q 8) (q 17 2 (q . 10))) 1) (q . 2))
 sidecar: 909 bytes
@@ -27,6 +27,6 @@ nodes:
   inline_fail.rue:5:5-5:10 fn main  (* (a (i (> (q . 10) 2) (q 8) (q 17 2 (q . 10))) 1) (q . 2))
     inline_fail.rue:8:46-13:2 label "checked_sub (inlined)"  (a (i (> (q . 10) 2) (q 8) (q 17 2 (q . 10))) 1)
       inline_fail.rue:9:8-9:13  (> (q . 10) 2)
-        inline_fail.rue:4:28-4:30  (q . 10)
+        inline_fail.rue:4:28-4:30 label "main"  (q . 10)
       inline_fail.rue:10:9-10:27  (x)
       inline_fail.rue:12:5-12:10  (- 2 (q . 10))

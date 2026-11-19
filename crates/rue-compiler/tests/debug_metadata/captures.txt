@@ -56,6 +56,6 @@ nodes:
               captures.rue:16:25-16:26  (q . 5)
             captures.rue:16:30-16:37  (> 2 (q . 100))
               captures.rue:16:34-16:37  (q . 100)
-          captures.rue:12:24-12:29  (/ 2 5)
+          captures.rue:12:24-12:29 label "main"  (/ 2 5)
       captures.rue:18:9-18:10  (q . 1)
       captures.rue:20:9-20:10  (q . 2)

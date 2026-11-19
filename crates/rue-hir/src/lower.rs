@@ -160,6 +160,49 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         Some(debug)
     }
 
+    /// The argument that's substituted for the symbol, if it's the parameter of a function that's
+    /// being inlined, along with the index of the inlined call it's for.
+    fn inline_substitution(&self, symbol: SymbolId) -> Option<(usize, HirId)> {
+        self.inline_symbols
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(frame, symbols)| Some((frame, *symbols.get(&symbol)?)))
+    }
+
+    /// Lowers an argument where it's substituted into a function that's inlined. It's the caller's
+    /// code, so it's named after the caller, rather than the function that it's substituted into.
+    fn lower_substitution(&mut self, env: &Environment, frame: usize, hir: HirId) -> LirId {
+        let owner = self
+            .debug
+            .as_ref()
+            .and_then(|debug| debug.inline_owners.get(frame).copied().flatten());
+
+        let lir = self.with_owner(owner, |this| this.lower_hir(env, hir));
+
+        if let (Some(debug), Some(owner)) = (&mut self.debug, owner) {
+            debug.tags.labels.entry(lir).or_insert(owner);
+        }
+
+        lir
+    }
+
+    /// Lowers code that the owner (a label) is running, if debug info is being recorded.
+    fn with_owner(&mut self, owner: Option<usize>, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
+        let Some(debug) = &mut self.debug else {
+            return f(self);
+        };
+
+        debug.owners.push(owner);
+        let lir = f(self);
+        self.debug
+            .as_mut()
+            .expect("debug info is kept while lowering")
+            .owners
+            .pop();
+        lir
+    }
+
     /// Lowers something with the nodes it allocates tagged with the location, unless something
     /// inside of it has a location of its own.
     fn with_span(&mut self, srcloc: SrcLoc, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
@@ -214,10 +257,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        for inline_symbols in self.inline_symbols.iter().rev() {
-            if let Some(hir) = inline_symbols.get(&symbol) {
-                return self.lower_hir(env, *hir);
-            }
+        if let Some((frame, hir)) = self.inline_substitution(symbol) {
+            return self.lower_substitution(env, frame, hir);
         }
 
         match self.db.symbol(symbol).clone() {
@@ -288,7 +329,26 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             })
             .collect();
         let inline_symbols = std::mem::replace(&mut self.inline_symbols, vec![static_arguments]);
-        let mut expr = self.lower_hir(&function_env, function.body);
+
+        // The body is the function's own code, and the static arguments are only values
+        let owner = self.debug.as_mut().map(|debug| {
+            let name = match &function.name {
+                Some(name) => name.text().to_string(),
+                None => "<lambda>".to_string(),
+            };
+            let owner = debug.label(name);
+            let inline_owners = std::mem::replace(&mut debug.inline_owners, vec![None]);
+            (owner, inline_owners)
+        });
+
+        let mut expr = self.with_owner(owner.as_ref().map(|(owner, _)| *owner), |this| {
+            this.lower_hir(&function_env, function.body)
+        });
+
+        if let (Some(debug), Some((_, inline_owners))) = (&mut self.debug, owner) {
+            debug.inline_owners = inline_owners;
+        }
+
         self.inline_symbols = inline_symbols;
 
         if let Some(debug) = &mut self.debug {
@@ -788,17 +848,26 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let group = SymbolGroup::Sequential(bound.iter().map(|&(symbol, _)| symbol).collect());
         let body_env = Self::apply_group(env.clone(), &group, true);
 
+        // The body has no frame of its own, so it's named after the function, which tells a
+        // debugger that it's running that function. The arguments are the caller's code, so
+        // they're named after the caller where they're substituted (see `lower_substitution`).
+        let owner = self.debug.as_mut().and_then(|debug| {
+            let caller = debug.owner();
+            debug.inline_owners.push(caller);
+            let name = function.name.as_ref()?;
+            Some(debug.label(format!("{} (inlined)", name.text())))
+        });
+
         self.inline_symbols.push(args);
-        let mut result = self.lower_hir(&body_env, function.body);
+        let mut result = self.with_owner(owner, |this| this.lower_hir(&body_env, function.body));
         self.inline_symbols.pop().unwrap();
 
-        // The body has no frame of its own, so it's named after the function, which tells a
-        // debugger that it's running that function
-        if let Some(debug) = &mut self.debug
-            && let Some(name) = &function.name
-        {
-            let label = debug.label(format!("{} (inlined)", name.text()));
-            debug.tags.labels.entry(result).or_insert(label);
+        if let Some(debug) = &mut self.debug {
+            debug.inline_owners.pop();
+
+            if let Some(owner) = owner {
+                debug.tags.labels.entry(result).or_insert(owner);
+            }
         }
 
         // The arguments that are referenced some of the time are bound like a let statement
@@ -832,10 +901,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_symbol_reference(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        for inline_symbols in self.inline_symbols.iter().rev() {
-            if let Some(hir) = inline_symbols.get(&symbol) {
-                return self.lower_hir(env, *hir);
-            }
+        if let Some((frame, hir)) = self.inline_substitution(symbol) {
+            return self.lower_substitution(env, frame, hir);
         }
 
         self.lower_path(env, symbol)
