@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot re-export `n`, since it's private at main.rue:9:23

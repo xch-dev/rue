@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot re-export `SECRET`, since it's private at utils.rue:5:19
+- Cannot reference private symbol `SECRET` in module `globbed` at main.rue:6:27

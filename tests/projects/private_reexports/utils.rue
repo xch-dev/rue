@@ -1,0 +1,20 @@
+const SECRET: Int = 1;
+
+// Re-exporting a private item would make it public, so it's reported, as in Rust
+export mod a {
+    export super::SECRET;
+}
+
+// Sibling files are public, so they can be re-exported by name
+export mod named {
+    export super::helpers;
+}
+
+// A glob import re-exports sibling files too, but not the private items of the file
+export mod globbed {
+    export super::*;
+
+    export fn secret() -> Int {
+        SECRET
+    }
+}

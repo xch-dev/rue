@@ -1,0 +1,7 @@
+fn main() -> Int {
+    utils::a::SECRET
+        + utils::named::helpers::HELP
+        + utils::globbed::helpers::HELP
+        + utils::globbed::secret()
+        + utils::globbed::SECRET
+}

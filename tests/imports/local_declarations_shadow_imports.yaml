@@ -6,12 +6,5 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
-- name: reexports_use_the_local_declaration
-  program: (q . 3)
-  debug_program: (a (q 2 2 ()) (c (q 1 . 3) ()))
-  output: "3"
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
 diagnostics:
 - Unused import `*` at local_declarations_shadow_imports.rue:1:11

@@ -1,9 +1,12 @@
 import module::X;
 
 mod module {
-    const X: X = 42;
-    type X = 42;
-    export X;
+    export inner::X;
+
+    mod inner {
+        export const X: X = 42;
+        export type X = 42;
+    }
 }
 
 fn main() -> X {
