@@ -357,8 +357,10 @@ pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
 
 /// Checks each lambda whose untyped parameters were compiled as the callee's generics that hadn't
 /// been inferred yet, such as `x: A` in `map_list([fn(x) => x], 5)`, with them as what they're
-/// inferred as (see `generic_parameter_types` for which ones are). Its body was compiled with the
-/// generic as a type it knows nothing about, so it works for whatever the generic is.
+/// inferred as (see `generic_parameter_types` for which ones are), and with the generics in them as
+/// those wherever else they are in its type, such as its return type when a call in its body sees
+/// through a parameter (see `instantiations`). Its body was compiled with the generic as a type it
+/// knows nothing about, so it works for whatever the generic is.
 fn instantiate_generic_parameters(
     ctx: &mut Compiler,
     function: &FunctionType,
@@ -383,9 +385,10 @@ fn instantiate_generic_parameters(
 }
 
 /// What each lambda parameter with a type with the callee's generics in it is instantiated as with
-/// the mappings, keyed by its reference, along with what those generics are. A solution that still references the generics doesn't say
-/// what they are, such as in a call nested in an argument of a call to the same function, which
-/// shares them, so that parameter is left out.
+/// the mappings, keyed by its reference, and what each of those generics is, keyed by the generic
+/// (a call in the body sees through the reference, see below). A solution that still references
+/// the generics doesn't say what they are, such as in a call nested in an argument of a call to the
+/// same function, which shares them, so that parameter is left out.
 fn instantiations(
     ctx: &mut Compiler,
     function: &FunctionType,
@@ -409,9 +412,7 @@ fn instantiations(
             // since a call in its body sees through the reference, as `id(x)` does in
             // `[fn(x) => id(x)]`, whose return type is the generic itself. Its body was compiled
             // with them as types it knows nothing about, so they're instantiated there too
-            let generics = function.generics.iter().copied();
-
-            for generic in contained_generics(ctx.types_mut(), generic_type, generics) {
+            for generic in generics_in(ctx, function, generic_type) {
                 if let Some(&ty) = mappings.get(&generic) {
                     instantiated.insert(generic, ty);
                 }
