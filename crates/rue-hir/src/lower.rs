@@ -1,6 +1,9 @@
 #![allow(clippy::needless_pass_by_value)]
 
+mod debug;
 mod substitution;
+
+pub use debug::*;
 
 use std::{
     cell::{OnceCell, RefCell},
@@ -83,6 +86,8 @@ pub struct Lowerer<'d, 'a, 'g> {
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     /// What's always evaluated when the program is run, which constants are checked against.
     constant_roots: OnceCell<Vec<HirId>>,
+    /// What's recorded for a debug sidecar, if one was requested.
+    debug: Option<LoweringDebugInfo>,
 }
 
 /// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.
@@ -133,7 +138,52 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
+            debug: None,
         }
+    }
+
+    /// Records where each LIR node comes from in the source, and which nodes are the bodies of
+    /// functions, for a debug sidecar (see [`take_debug_info`](Self::take_debug_info)). This
+    /// doesn't change the LIR that's generated.
+    #[must_use]
+    pub fn with_debug_info(mut self) -> Self {
+        self.debug = Some(LoweringDebugInfo::default());
+        self
+    }
+
+    /// What was recorded for a debug sidecar, if it was requested with
+    /// [`with_debug_info`](Self::with_debug_info). Each node is tagged with the location of the
+    /// innermost HIR that it was lowered for, if any.
+    pub fn take_debug_info(&mut self) -> Option<LoweringDebugInfo> {
+        let mut debug = self.debug.take()?;
+        debug.scopes.apply(self.arena, 0, &mut debug.tags.spans);
+        Some(debug)
+    }
+
+    /// Tags the node with the location, unless something more precise already tagged it.
+    fn tag_span(&mut self, lir: LirId, srcloc: SrcLoc) {
+        if let Some(debug) = &mut self.debug {
+            let span = debug.span(srcloc);
+            debug.tags.spans.entry(lir).or_insert(span);
+        }
+    }
+
+    /// Lowers something with the nodes it allocates tagged with the location, unless something
+    /// inside of it has a location of its own.
+    fn with_span(&mut self, srcloc: &SrcLoc, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
+        let Some(debug) = &mut self.debug else {
+            return f(self);
+        };
+
+        let span = debug.span(srcloc.clone());
+        debug.scopes.enter(self.arena.len(), span);
+        let lir = f(self);
+        self.debug
+            .as_mut()
+            .expect("debug info is kept while lowering")
+            .scopes
+            .exit(self.arena.len());
+        lir
     }
 
     /// The symbols that the symbol depends on, as given by [`DependencyGraph::dependencies`].
@@ -239,12 +289,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut expr = self.lower_hir(&function_env, function.body);
         self.inline_symbols = inline_symbols;
 
+        if let Some(debug) = &mut self.debug {
+            debug.add_parameter_names(self.db, &function);
+            let index = debug.function(symbol, &function_env);
+            // If the body is the body of a function inside of it, the innermost one is kept, as
+            // with locations
+            debug.tags.functions.entry(expr).or_insert(index);
+        }
+
         if symbol == self.main && function.kind == FunctionKind::External {
             let entire_env = self.arena.alloc(Lir::Path(1u8.into()));
-            return self.arena.alloc(Lir::Run(expr, entire_env));
+            let wrapper = self.arena.alloc(Lir::Run(expr, entire_env));
+            self.tag_main_wrapper(wrapper, function.body);
+            return wrapper;
         }
 
         if symbol == self.main {
+            let body = expr;
             let mut map = HashMap::new();
 
             if self.dependencies(symbol, true).contains(&symbol) {
@@ -275,11 +336,24 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 expr = self.arena.alloc(Lir::Run(expr, group_env));
             }
 
+            if expr != body {
+                self.tag_main_wrapper(expr, function.body);
+            }
+
             expr
         } else if function.kind == FunctionKind::External {
             expr
         } else {
             self.arena.alloc(Lir::Quote(expr))
+        }
+    }
+
+    /// Tags the setup that binds `main`'s captures with the location of its body, since nothing
+    /// else would. It's evaluated with the environment that `main` is called with, rather than
+    /// the one its body has once its captures are bound, so it isn't tagged as the function.
+    fn tag_main_wrapper(&mut self, wrapper: LirId, body: HirId) {
+        if let Some(srcloc) = self.db.hir_srcloc(body).cloned() {
+            self.tag_span(wrapper, srcloc);
         }
     }
 
@@ -315,11 +389,27 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             return self.arena.alloc(Lir::Atom(vec![]));
         }
 
+        // The nodes allocated for HIR are tagged with its location, unless the HIR inside of it
+        // has one of its own
+        let span = match (&mut self.debug, &frame) {
+            (Some(debug), Frame::Hir(hir)) => debug.hir_span(self.db, *hir),
+            _ => None,
+        };
+
+        if let (Some(debug), Some(span)) = (&mut self.debug, span) {
+            debug.scopes.enter(self.arena.len(), span);
+        }
+
         self.path.push(frame);
         // Every cycle of recursion in lowering passes through here, and each level can use a lot
         // of stack in a debug build, so grow it rather than rely on the thread having enough
         let lir = rue_types::grow_stack(|| f(self));
         self.path.pop();
+
+        if let (Some(debug), Some(_)) = (&mut self.debug, span) {
+            debug.scopes.exit(self.arena.len());
+        }
+
         lir
     }
 
@@ -693,6 +783,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
         }
 
+        if let Some(debug) = &mut self.debug {
+            debug.add_parameter_names(self.db, function);
+        }
+
         let group = SymbolGroup::Sequential(bound.iter().map(|&(symbol, _)| symbol).collect());
         let body_env = Self::apply_group(env.clone(), &group, true);
 
@@ -1008,23 +1102,38 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     ) -> LirId {
         stmts.remove(0);
 
-        let raise = if self.options.debug_symbols {
-            let error = self.arena.alloc(Lir::Atom(
-                format!("assertion failed at {}", srcloc.display(&self.base_path)).into_bytes(),
-            ));
-            vec![error]
-        } else {
-            vec![]
-        };
-
         let condition = self.lower_hir(env, condition);
         let then_branch = self.lower_block(env, stmts, body);
-        let else_branch = self.arena.alloc(Lir::Raise(raise));
-        self.arena
-            .alloc(Lir::If(condition, then_branch, else_branch, false))
+
+        // The check and the failure are located at the statement, rather than the condition
+        self.with_span(&srcloc, |this| {
+            let raise = if this.options.debug_symbols {
+                let error = this.arena.alloc(Lir::Atom(
+                    format!("assertion failed at {}", srcloc.display(&this.base_path)).into_bytes(),
+                ));
+                vec![error]
+            } else {
+                vec![]
+            };
+
+            let else_branch = this.arena.alloc(Lir::Raise(raise));
+            this.arena
+                .alloc(Lir::If(condition, then_branch, else_branch, false))
+        })
     }
 
     fn lower_raise(&mut self, env: &Environment, hir: Option<HirId>, srcloc: SrcLoc) -> LirId {
+        self.with_span(&srcloc.clone(), |this| {
+            this.lower_raise_inner(env, hir, srcloc)
+        })
+    }
+
+    fn lower_raise_inner(
+        &mut self,
+        env: &Environment,
+        hir: Option<HirId>,
+        srcloc: SrcLoc,
+    ) -> LirId {
         if !self.options.debug_symbols {
             return self.arena.alloc(Lir::Raise(vec![]));
         }
