@@ -1,0 +1,140 @@
+use std::collections::HashMap;
+
+use rue_diagnostic::SrcLoc;
+use rue_lir::{DebugTags, SpanScopes};
+use rue_types::Type;
+
+use crate::{Database, Environment, FunctionSymbol, HirId, SymbolId};
+
+/// What lowering records for a debug sidecar: where each LIR node came from in the source, and
+/// which nodes are the bodies of functions, along with how their environments are laid out. It's
+/// only recorded when it's requested (see [`Lowerer::with_debug_info`](crate::Lowerer)).
+#[derive(Debug, Default, Clone)]
+pub struct LoweringDebugInfo {
+    /// The source locations that the LIR's span tags refer to.
+    pub spans: Vec<SrcLoc>,
+    /// The functions that the LIR's function tags refer to.
+    pub functions: Vec<LoweredFunction>,
+    /// The tags of the LIR nodes.
+    pub tags: DebugTags,
+    /// The names of the parameters of the functions that were lowered or inlined, which parameter
+    /// symbols don't have themselves.
+    pub parameter_names: HashMap<SymbolId, String>,
+    /// The names that the LIR's label tags refer to.
+    pub labels: Vec<String>,
+    /// The index of each label, so that it's only added once.
+    label_indices: HashMap<String, usize>,
+    /// The label of the code being lowered, from the outermost to the innermost: a function's
+    /// name, or the name of the inlined function.
+    pub(super) owners: Vec<Option<usize>>,
+    /// The owner of each inlined call's arguments, which is the code that called it, by the index
+    /// of its substitutions.
+    pub(super) inline_owners: Vec<Option<usize>>,
+    /// The span of each HIR node that's been entered, so that it's only added once.
+    hir_spans: HashMap<HirId, usize>,
+    /// The function of each symbol that's been lowered, so that it's only added once.
+    function_indices: HashMap<SymbolId, usize>,
+    pub(super) scopes: SpanScopes,
+}
+
+/// A function whose body was lowered, rather than inlined.
+#[derive(Debug, Clone)]
+pub struct LoweredFunction {
+    pub symbol: SymbolId,
+    /// The environment that the body is evaluated in, which includes its captures.
+    pub environment: Environment,
+}
+
+impl LoweringDebugInfo {
+    /// The span of the HIR node, if it has a location.
+    pub(super) fn hir_span(&mut self, db: &Database, hir: HirId) -> Option<usize> {
+        if let Some(&span) = self.hir_spans.get(&hir) {
+            return Some(span);
+        }
+
+        let span = self.span(db.hir_srcloc(hir)?.clone());
+        self.hir_spans.insert(hir, span);
+        Some(span)
+    }
+
+    pub(super) fn span(&mut self, srcloc: SrcLoc) -> usize {
+        self.spans.push(srcloc);
+        self.spans.len() - 1
+    }
+
+    /// The label of the code being lowered.
+    pub(super) fn owner(&self) -> Option<usize> {
+        self.owners.last().copied().flatten()
+    }
+
+    pub(super) fn label(&mut self, label: String) -> usize {
+        *self.label_indices.entry(label.clone()).or_insert_with(|| {
+            self.labels.push(label);
+            self.labels.len() - 1
+        })
+    }
+
+    pub(super) fn function(&mut self, symbol: SymbolId, environment: &Environment) -> usize {
+        *self.function_indices.entry(symbol).or_insert_with(|| {
+            self.functions.push(LoweredFunction {
+                symbol,
+                environment: environment.clone(),
+            });
+            self.functions.len() - 1
+        })
+    }
+
+    /// Remembers the names of the function's parameters, which are only kept in its type.
+    pub(super) fn add_parameter_names(&mut self, db: &Database, function: &FunctionSymbol) {
+        let Type::Function(ty) = db.ty(function.ty) else {
+            return;
+        };
+
+        for (&parameter, param) in function.parameters.iter().zip(&ty.params) {
+            let name = one_line(&param.name);
+
+            if !name.is_empty() {
+                self.parameter_names.entry(parameter).or_insert(name);
+            }
+        }
+    }
+}
+
+/// The source text of a parameter's pattern on one line, since a destructured parameter is named
+/// after its pattern, which can span lines. Line comments are left out, since they would comment
+/// out the rest of the line, and so are the trailing commas before a closing bracket.
+fn one_line(pattern: &str) -> String {
+    let text = pattern
+        .lines()
+        .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(", }", " }")
+        .replace(", )", " )")
+        .replace(", ]", " ]")
+        .replace(",}", "}")
+        .replace(",)", ")")
+        .replace(",]", "]")
+        .replace("( ", "(")
+        .replace(" )", ")")
+        .replace("[ ", "[")
+        .replace(" ]", "]")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::one_line;
+
+    #[test]
+    fn patterns_are_named_on_one_line() {
+        assert_eq!(one_line("value"), "value");
+        assert_eq!(one_line("{ x, y }"), "{ x, y }");
+        assert_eq!(one_line("{\n    x, // the first\n    y,\n}"), "{ x, y }");
+        assert_eq!(one_line("(\n    low,\n    high,\n)"), "(low, high)");
+        assert_eq!(one_line("[first, ...rest]"), "[first, ...rest]");
+    }
+}

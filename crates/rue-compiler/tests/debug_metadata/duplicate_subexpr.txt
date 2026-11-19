@@ -1,0 +1,40 @@
+===== debug =====
+program: (a (q 16 (a 6 (c 5 11)) (a 4 (c 11 5))) (c (c (q 2 (i (> 2 ()) (q 18 2 3) (q 8 (q . "assertion failed at duplicate_subexpr.rue:13:5"))) 1) (q 2 (i (> 2 ()) (q 16 2 3) (q 8 (q . "assertion failed at duplicate_subexpr.rue:8:5"))) 1)) 1))
+sidecar: 2077 bytes
+files:
+  duplicate_subexpr.rue
+functions:
+  0: main ((_ . _) . (x@5: integer . (y@11: integer . _)))
+  1: second (a@2: integer . b@3: integer)
+  2: first (a@2: integer . b@3: integer)
+nodes:
+  duplicate_subexpr.rue:3:32-5:2  (a (q 16 (a 6 (c 5 11)) (a 4 (c 11 5))) (c (c (q 2 (i (> ...
+    duplicate_subexpr.rue:4:5-4:31 fn main  (+ (a 6 (c 5 11)) (a 4 (c 11 5)))
+      duplicate_subexpr.rue:4:5-4:16  (a 6 (c 5 11))
+      duplicate_subexpr.rue:4:19-4:31  (a 4 (c 11 5))
+    duplicate_subexpr.rue:13:5-13:18 fn second  (a (i (> 2 ()) (q 18 2 3) (q 8 (q . "assertion failed at ...
+      duplicate_subexpr.rue:13:12-13:17  (> 2 ())
+      duplicate_subexpr.rue:14:5-14:10  (* 2 3)
+    duplicate_subexpr.rue:8:5-8:18 fn first  (a (i (> 2 ()) (q 16 2 3) (q 8 (q . "assertion failed at ...
+      duplicate_subexpr.rue:8:12-8:17  (> 2 ())
+      duplicate_subexpr.rue:9:5-9:10  (+ 2 3)
+===== release =====
+program: (a (q 16 (a 6 (c 5 11)) (a 4 (c 11 5))) (c (c (q 2 (i (> 2 ()) (q 18 2 3) (q 8)) 1) (q 2 (i (> 2 ()) (q 16 2 3) (q 8)) 1)) 1))
+sidecar: 1898 bytes
+files:
+  duplicate_subexpr.rue
+functions:
+  0: main ((_ . _) . (x@5: integer . (y@11: integer . _)))
+  1: second (a@2: integer . b@3: integer)
+  2: first (a@2: integer . b@3: integer)
+nodes:
+  duplicate_subexpr.rue:3:32-5:2  (a (q 16 (a 6 (c 5 11)) (a 4 (c 11 5))) (c (c (q 2 (i (> ...
+    duplicate_subexpr.rue:4:5-4:31 fn main  (+ (a 6 (c 5 11)) (a 4 (c 11 5)))
+      duplicate_subexpr.rue:4:5-4:16  (a 6 (c 5 11))
+      duplicate_subexpr.rue:4:19-4:31  (a 4 (c 11 5))
+    duplicate_subexpr.rue:13:5-13:18 fn second  (a (i (> 2 ()) (q 18 2 3) (q 8)) 1)
+      duplicate_subexpr.rue:13:12-13:17  (> 2 ())
+      duplicate_subexpr.rue:14:5-14:10  (* 2 3)
+    duplicate_subexpr.rue:8:5-8:18 fn first  (a (i (> 2 ()) (q 16 2 3) (q 8)) 1)
+      duplicate_subexpr.rue:8:12-8:17  (> 2 ())
+      duplicate_subexpr.rue:9:5-9:10  (+ 2 3)

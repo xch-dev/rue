@@ -1,0 +1,4 @@
+===== debug: ((1 2) 3) =====
+output: 0x47b84b887e3aa3adaabc104120d0c2d617b5e0c8d569932b5292a8ec359d0c28
+===== release: ((1 2) 3) =====
+output: 0x47b84b887e3aa3adaabc104120d0c2d617b5e0c8d569932b5292a8ec359d0c28

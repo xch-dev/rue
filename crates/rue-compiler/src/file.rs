@@ -23,10 +23,10 @@ use rue_parser::Parser;
 use thiserror::Error;
 
 use crate::{
-    Compiler, ImportCache, SyntaxItemKind, check_recursion, compile_default_items,
-    compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
-    declare_module_items, declare_symbol_items, declare_type_items, recheck_contractive_types,
-    resolve_imports, resolve_pending_defaults,
+    Compiler, EncodeError, ImportCache, SyntaxItemKind, build_debug_metadata, check_recursion,
+    compile_default_items, compile_symbol_items, compile_type_items,
+    const_eval::evaluate_const_exprs, declare_module_items, declare_symbol_items,
+    declare_type_items, recheck_contractive_types, resolve_imports, resolve_pending_defaults,
 };
 
 #[derive(Debug, Error)]
@@ -53,6 +53,9 @@ pub enum Error {
     /// this is an error that's already formatted as one.
     #[error("{0}")]
     LoweringTooDeep(String),
+
+    #[error("Debug metadata error: {0}")]
+    DebugMetadata(#[from] EncodeError),
 }
 
 #[derive(Debug, Clone)]
@@ -63,11 +66,30 @@ pub struct CompiledTest {
     pub ptr: NodePtr,
 }
 
+impl CompiledTest {
+    /// Compiles the test again, along with its debug metadata sidecar (see
+    /// [`crate::debug_metadata`]). The program is the same as it was without the sidecar.
+    pub fn with_debug_metadata(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        base_path: &Path,
+    ) -> Result<(NodePtr, Vec<u8>), Error> {
+        Ok(
+            codegen(ctx, allocator, self.symbol, base_path.to_path_buf(), true)?
+                .with_debug_metadata(),
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CompiledExport {
     pub name: String,
     pub symbol: SymbolId,
     pub ptr: NodePtr,
+    /// The debug metadata sidecar of the program, if it was requested (see
+    /// [`FileTree::exports_with_debug_metadata`]).
+    pub debug_metadata: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -393,6 +415,33 @@ impl FileTree {
         path: &SourceKind,
         base_path: PathBuf,
     ) -> Result<Option<NodePtr>, Error> {
+        Ok(self
+            .main_impl(ctx, allocator, path, base_path, false)?
+            .map(|program| program.ptr))
+    }
+
+    /// Compiles `main` like [`main`](Self::main), along with its debug metadata sidecar (see
+    /// [`crate::debug_metadata`]). The program is the same as it would be without the sidecar.
+    pub fn main_with_debug_metadata(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: &SourceKind,
+        base_path: PathBuf,
+    ) -> Result<Option<(NodePtr, Vec<u8>)>, Error> {
+        Ok(self
+            .main_impl(ctx, allocator, path, base_path, true)?
+            .map(Generated::with_debug_metadata))
+    }
+
+    fn main_impl(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: &SourceKind,
+        base_path: PathBuf,
+        debug_metadata: bool,
+    ) -> Result<Option<Generated>, Error> {
         let tree = self
             .find(path)
             .ok_or_else(|| Error::SourceNotFound(path.clone()))?;
@@ -402,7 +451,13 @@ impl FileTree {
             return Ok(None);
         };
 
-        Ok(Some(codegen(ctx, allocator, main, base_path)?))
+        Ok(Some(codegen(
+            ctx,
+            allocator,
+            main,
+            base_path,
+            debug_metadata,
+        )?))
     }
 
     pub fn exports(
@@ -413,17 +468,44 @@ impl FileTree {
         export_name: Option<&str>,
         base_path: &Path,
     ) -> Result<Vec<CompiledExport>, Error> {
+        self.exports_impl(ctx, allocator, path, export_name, base_path, false)
+    }
+
+    /// Compiles the exports like [`exports`](Self::exports), along with the debug metadata
+    /// sidecar of each (see [`crate::debug_metadata`]). The programs are the same as they would
+    /// be without the sidecars.
+    pub fn exports_with_debug_metadata(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: Option<&SourceKind>,
+        export_name: Option<&str>,
+        base_path: &Path,
+    ) -> Result<Vec<CompiledExport>, Error> {
+        self.exports_impl(ctx, allocator, path, export_name, base_path, true)
+    }
+
+    fn exports_impl(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: Option<&SourceKind>,
+        export_name: Option<&str>,
+        base_path: &Path,
+        debug_metadata: bool,
+    ) -> Result<Vec<CompiledExport>, Error> {
         let Some(path) = path else {
             return Ok(self
                 .all_files()
                 .iter()
                 .map(|file| {
-                    self.exports(
+                    self.exports_impl(
                         ctx,
                         allocator,
                         Some(&file.source.kind),
                         export_name,
                         base_path,
+                        debug_metadata,
                     )
                 })
                 .collect::<Result<Vec<_>, Error>>()?
@@ -452,8 +534,19 @@ impl FileTree {
                 continue;
             }
 
-            let ptr = codegen(ctx, allocator, symbol, base_path.to_path_buf())?;
-            exports.push(CompiledExport { name, symbol, ptr });
+            let program = codegen(
+                ctx,
+                allocator,
+                symbol,
+                base_path.to_path_buf(),
+                debug_metadata,
+            )?;
+            exports.push(CompiledExport {
+                name,
+                symbol,
+                ptr: program.ptr,
+                debug_metadata: program.debug_metadata,
+            });
         }
 
         Ok(exports)
@@ -497,7 +590,7 @@ impl FileTree {
         let mut outputs = Vec::new();
 
         for test in tests {
-            let ptr = codegen(ctx, allocator, test.symbol, base_path.to_path_buf())?;
+            let ptr = codegen(ctx, allocator, test.symbol, base_path.to_path_buf(), false)?.ptr;
             outputs.push(CompiledTest {
                 name: test.name,
                 path: test.path,
@@ -815,12 +908,30 @@ pub(crate) fn has_uncovered_placeholder(ctx: &Compiler, symbol: SymbolId) -> boo
     ctx.first_placeholder().is_some() || has_reachable_unresolved(ctx, symbol)
 }
 
+/// The code generated for a symbol.
+struct Generated {
+    ptr: NodePtr,
+    /// The debug metadata sidecar of the code, if it was requested.
+    debug_metadata: Option<Vec<u8>>,
+}
+
+impl Generated {
+    /// The code and its debug metadata sidecar, which was requested.
+    fn with_debug_metadata(self) -> (NodePtr, Vec<u8>) {
+        let metadata = self.debug_metadata.expect("debug metadata was requested");
+        (self.ptr, metadata)
+    }
+}
+
+/// Generates the code for the symbol, along with its debug metadata sidecar if it's requested. The
+/// sidecar is built from what's recorded along the way, which doesn't change the code.
 fn codegen(
     ctx: &mut Compiler,
     allocator: &mut Allocator,
     symbol: SymbolId,
     base_path: PathBuf,
-) -> Result<NodePtr, Error> {
+    debug_metadata: bool,
+) -> Result<Generated, Error> {
     if ctx.has_errors() {
         return Err(Error::CompilationFailed);
     }
@@ -845,6 +956,11 @@ fn codegen(
 
     let mut arena = Arena::new();
     let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol, base_path);
+
+    if debug_metadata {
+        lowerer = lowerer.with_debug_info();
+    }
+
     let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
 
     if let Some(too_deep) = lowerer.too_deep() {
@@ -864,16 +980,37 @@ fn codegen(
         }));
     }
 
+    let debug_info = lowerer.take_debug_info();
+
+    let codegen_options = CodegenOptions {
+        optimize_static_pairs: options.optimize_static_pairs,
+    };
+
+    let Some(mut debug_info) = debug_info else {
+        if options.optimize_lir {
+            lir = rue_lir::optimize(&mut arena, lir);
+        }
+
+        let ptr = rue_lir::codegen(&arena, allocator, lir, codegen_options)?;
+        return Ok(Generated {
+            ptr,
+            debug_metadata: None,
+        });
+    };
+
+    let base_path = lowerer.base_path().to_path_buf();
+
     if options.optimize_lir {
-        lir = rue_lir::optimize(&mut arena, lir);
+        lir = rue_lir::optimize_with_tags(&mut arena, lir, &mut debug_info.tags);
     }
 
-    Ok(rue_lir::codegen(
-        &arena,
-        allocator,
-        lir,
-        CodegenOptions {
-            optimize_static_pairs: options.optimize_static_pairs,
-        },
-    )?)
+    let (ptr, nodes) =
+        rue_lir::codegen_with_tags(&arena, allocator, lir, codegen_options, &debug_info.tags)?;
+
+    let metadata = build_debug_metadata(ctx, allocator, ptr, &debug_info, &nodes, &base_path)?;
+
+    Ok(Generated {
+        ptr,
+        debug_metadata: Some(metadata),
+    })
 }

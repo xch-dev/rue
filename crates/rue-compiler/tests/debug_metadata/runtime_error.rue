@@ -1,0 +1,11 @@
+// solution: (3 0)
+// solution: (6 2)
+
+// A failure that isn't a raise, dividing by zero
+fn main(x: Int, y: Int) -> Int {
+    divide(x, y) + divide(y, x)
+}
+
+fn divide(a: Int, b: Int) -> Int {
+    a / b
+}

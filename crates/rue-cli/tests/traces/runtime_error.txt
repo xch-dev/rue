@@ -1,0 +1,24 @@
+===== debug: (3 0) =====
+error: Division by zero
+  runtime_error.rue:6:5, in main
+    divide(x, y) + divide(y, x)
+    x = 3
+    y = ()
+  runtime_error.rue:10:5, in divide
+    a / b
+    a = 3
+    b = ()
+===== debug: (6 2) =====
+output: 3
+===== release: (3 0) =====
+error: Division by zero
+  runtime_error.rue:6:5, in main
+    divide(x, y) + divide(y, x)
+    x = 3
+    y = ()
+  runtime_error.rue:10:5, in divide
+    a / b
+    a = 3
+    b = ()
+===== release: (6 2) =====
+output: 3

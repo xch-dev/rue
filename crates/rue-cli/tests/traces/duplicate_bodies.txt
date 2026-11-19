@@ -1,0 +1,19 @@
+===== debug: (-1 5) =====
+error: clvm raise
+  duplicate_bodies.rue:4:5, in main
+    first(x) + second(y)
+    x = -1
+    y = 5
+  duplicate_bodies.rue:8:5, in first
+    assert a > 0;
+    a = -1
+===== release: (-1 5) =====
+error: clvm raise
+  duplicate_bodies.rue:4:5, in main
+    first(x) + second(y)
+    x = -1
+    y = 5
+  in <ambiguous: first | second>
+    arguments = [-1]
+  in <ambiguous>
+    arguments = [-1]

@@ -1,0 +1,39 @@
+// solution: (500 () 0x00 () () (1 2) 7 ((1 2 3) . 4) (5 . 6))
+
+type Number = Int;
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(
+    number: Number,
+    maybe: Int | nil,
+    key: Bytes32 | PublicKey,
+    flag: Bool,
+    empty: nil,
+    hashes: List<Bytes32>,
+    anything: Any,
+    shapes: (List<Int>, Int),
+    either: (Int, Int) | nil,
+) -> Any {
+    let point = Point { x: number, y: number };
+    let values = [
+        number,
+        maybe,
+        key,
+        flag,
+        empty,
+        hashes,
+        anything,
+        shapes,
+        either,
+        point.x + point.y,
+    ];
+    [identity(number), identity(values)]
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}

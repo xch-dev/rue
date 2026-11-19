@@ -1,0 +1,21 @@
+===== debug: (3) =====
+error: clvm raise
+  closure_no_params.rue:8:5, in main
+    run(check) + 1
+    x = 3
+  closure_no_params.rue:12:5, in run
+    f() * 2
+    f = (2 (1 2 (...) 1) (4 (...) ()))
+  closure_no_params.rue:5:9, in <lambda>
+    assert x > 5;
+    x = 3
+===== release: (3) =====
+error: clvm raise
+  closure_no_params.rue:8:5, in main
+    run(check) + 1
+    x = 3
+  closure_no_params.rue:12:5, in run (inlined)
+    f() * 2
+  closure_no_params.rue:5:9, in <lambda>
+    assert x > 5;
+    x = 3

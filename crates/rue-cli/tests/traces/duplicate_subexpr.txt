@@ -1,0 +1,20 @@
+===== debug: (-1 5) =====
+error: clvm raise
+  duplicate_subexpr.rue:4:5, in main
+    first(x, y) + second(y, x)
+    x = -1
+    y = 5
+  duplicate_subexpr.rue:8:5, in first
+    assert a > 0;
+    a = -1
+    b = 5
+===== release: (-1 5) =====
+error: clvm raise
+  duplicate_subexpr.rue:4:5, in main
+    first(x, y) + second(y, x)
+    x = -1
+    y = 5
+  duplicate_subexpr.rue:8:5, in first
+    assert a > 0;
+    a = -1
+    b = 5

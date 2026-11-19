@@ -1,5 +1,6 @@
 mod atom;
 mod codegen;
+mod debug;
 mod debug_dialect;
 mod error;
 mod lir;
@@ -9,6 +10,7 @@ mod stack;
 
 pub use atom::*;
 pub use codegen::*;
+pub use debug::*;
 pub use debug_dialect::*;
 pub use error::*;
 pub use lir::*;

@@ -1,0 +1,25 @@
+===== debug: (3 1) =====
+error: clvm raise
+  captures.rue:12:5, in main
+    check(10) + helper(x / y, x)
+    x = 3
+    y = 1
+  captures.rue:9:9, in <lambda>
+    assert item < limit;
+    limit = 6
+    x = 3
+    item = 10
+===== debug: (30 1) =====
+output: 12
+===== release: (3 1) =====
+error: clvm raise
+  captures.rue:12:5, in main
+    check(10) + helper(x / y, x)
+    x = 3
+    y = 1
+  captures.rue:9:9, in <lambda>
+    assert item < limit;
+    x = 3
+    item = 10
+===== release: (30 1) =====
+output: 12

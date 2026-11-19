@@ -1,0 +1,26 @@
+===== debug: (1) =====
+error: clvm raise
+  recursion_tabs.rue:4:8, in main
+    countdown(n, 0)
+    n = 1
+  recursion_tabs.rue:11:8, in countdown
+    countdown(n - 1, acc + n)
+    n = 1
+    acc = ()
+  recursion_tabs.rue:9:16, in countdown
+    raise "hit zero";
+    n = ()
+    acc = 1
+===== release: (1) =====
+error: clvm raise
+  recursion_tabs.rue:4:8, in main
+    countdown(n, 0)
+    n = 1
+  recursion_tabs.rue:11:8, in countdown
+    countdown(n - 1, acc + n)
+    n = 1
+    acc = ()
+  recursion_tabs.rue:9:16, in countdown
+    raise "hit zero";
+    n = ()
+    acc = 1

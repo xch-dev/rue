@@ -5,7 +5,7 @@ use std::{
     process,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Args, FromArgMatches, Parser, value_parser};
 use clvm_utils::tree_hash;
 use clvmr::{
@@ -16,7 +16,7 @@ use clvmr::{
 };
 use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
-use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_compiler::{CompiledExport, CompiledTest, Compiler, FileTree, normalize_path};
 use rue_diagnostic::{
     Diagnostic, DiagnosticSeverity, ForbiddenBy, LineIndex, Lint, LintGroup, LintLevel, LintLevels,
     LintName, SourceKind,
@@ -24,9 +24,12 @@ use rue_diagnostic::{
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
 
+mod compact;
 mod fmt;
+mod trace;
 
 use fmt::*;
+use trace::{Sidecars, run_with_trace};
 
 #[derive(Debug, Parser)]
 pub enum Command {
@@ -61,6 +64,14 @@ pub struct BuildArgs {
     split: bool,
     #[clap(short, long)]
     all: bool,
+    /// Write a debug metadata sidecar for each program, which debuggers use to show where a failing
+    /// program was in the source. With `--all`, it's written next to each program, and otherwise
+    /// to the path given (`--debug-metadata=<PATH>`), or next to the source file. The programs are
+    /// the same as without it.
+    #[clap(long, value_name = "PATH", num_args = 0..=1, require_equals = true)]
+    // Clap's way of a flag with an optional value: whether it's passed, and the value if it's given
+    #[allow(clippy::option_option)]
+    debug_metadata: Option<Option<PathBuf>>,
     #[clap(flatten)]
     lints: LintArgs,
     /// Print help
@@ -251,6 +262,10 @@ pub struct DebugArgs {
     solution: Option<String>,
     #[clap(short = 'x', long)]
     hex: bool,
+    /// A debug metadata sidecar (from `rue build --debug-metadata`), which is used to show where in
+    /// the source the program was if it fails (can be repeated)
+    #[clap(long, value_name = "PATH")]
+    debug_metadata: Vec<PathBuf>,
     #[clap(flatten)]
     cost: CostArgs,
 }
@@ -467,9 +482,21 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     }
 
+    let debug_metadata = args.debug_metadata.is_some();
+
     if args.all {
         if args.export.is_some() {
             eprintln!("{}", "Cannot use `--export` with `--all`".red().bold());
+            process::exit(1);
+        }
+
+        if let Some(Some(_)) = args.debug_metadata {
+            eprintln!(
+                "{}",
+                "Cannot give `--debug-metadata` a path with `--all`, since each program has its own"
+                    .red()
+                    .bold()
+            );
             process::exit(1);
         }
 
@@ -495,25 +522,31 @@ fn build(args: BuildArgs) -> Result<()> {
             let file_path = Path::new(file_path);
             let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
 
-            let exports = tree.exports(
+            let is_main = main_kind
+                .as_ref()
+                .is_some_and(|main| main == &file.source.kind);
+
+            // Only the exports of the main file are written, so the others don't need sidecars
+            let exports = compile_exports(
+                &tree,
                 &mut ctx,
                 &mut allocator,
                 Some(&file.source.kind),
                 None,
                 &base_path,
+                debug_metadata && is_main,
             )?;
 
-            let main = tree.main(
+            let main = compile_main(
+                &tree,
                 &mut ctx,
                 &mut allocator,
                 &file.source.kind,
-                base_path.clone(),
+                &base_path,
+                debug_metadata,
             )?;
 
-            let mut exports = if main_kind
-                .as_ref()
-                .is_some_and(|main| main == &file.source.kind)
-            {
+            let mut exports = if is_main {
                 exports
                     .into_iter()
                     .map(|export| {
@@ -524,6 +557,7 @@ fn build(args: BuildArgs) -> Result<()> {
                                 format!("{file_name}_{}", export.name)
                             },
                             export.ptr,
+                            export.debug_metadata,
                         )
                     })
                     .collect::<Vec<_>>()
@@ -531,17 +565,18 @@ fn build(args: BuildArgs) -> Result<()> {
                 vec![]
             };
 
-            if let Some(main) = main {
+            if let Some((main, metadata)) = main {
                 exports.push((
                     file_name
                         .strip_suffix(".rue")
                         .unwrap_or(&file_name)
                         .to_string(),
                     main,
+                    metadata,
                 ));
             }
 
-            for (name, ptr) in exports {
+            for (name, ptr, metadata) in exports {
                 if dist_dir.is_some() && !file_names.insert(name.clone()) {
                     eprintln!(
                         "{}",
@@ -582,7 +617,11 @@ fn build(args: BuildArgs) -> Result<()> {
                         .to_string()
                 };
 
-                outputs.insert(PathBuf::from(path), output);
+                if let Some(metadata) = metadata {
+                    outputs.insert(PathBuf::from(debug_metadata_path(&path)), metadata);
+                }
+
+                outputs.insert(PathBuf::from(path), output.into_bytes());
 
                 if args.hash {
                     let hash = tree_hash(&allocator, ptr).to_string();
@@ -601,7 +640,7 @@ fn build(args: BuildArgs) -> Result<()> {
                             .to_string()
                     };
 
-                    outputs.insert(PathBuf::from(path), format!("{hash}\n"));
+                    outputs.insert(PathBuf::from(path), format!("{hash}\n").into_bytes());
                 }
             }
         }
@@ -610,27 +649,34 @@ fn build(args: BuildArgs) -> Result<()> {
             fs::write(path, output)?;
         }
     } else {
-        let program = if let Some(export) = args.export {
-            let Some(program) = tree
-                .exports(
-                    &mut ctx,
-                    &mut allocator,
-                    file_kind.as_ref(),
-                    Some(&export),
-                    &base_path,
-                )?
-                .into_iter()
-                .next()
-            else {
+        let (program, metadata) = if let Some(export) = &args.export {
+            let exports = compile_exports(
+                &tree,
+                &mut ctx,
+                &mut allocator,
+                file_kind.as_ref(),
+                Some(export),
+                &base_path,
+                debug_metadata,
+            )?;
+
+            let Some(program) = exports.into_iter().next() else {
                 eprintln!("{}", format!("Export `{export}` not found").red().bold());
                 process::exit(1);
             };
 
-            program.ptr
-        } else if let Some(main_kind) = main_kind
-            && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind, base_path)?
+            (program.ptr, program.debug_metadata)
+        } else if let Some(main_kind) = &main_kind
+            && let Some(program) = compile_main(
+                &tree,
+                &mut ctx,
+                &mut allocator,
+                main_kind,
+                &base_path,
+                debug_metadata,
+            )?
         {
-            ptr
+            program
         } else {
             eprintln!(
                 "{}",
@@ -669,9 +715,93 @@ fn build(args: BuildArgs) -> Result<()> {
         if !args.hex && !args.hash {
             println!("{}", disassemble_program(&allocator, program));
         }
+
+        if let Some(metadata) = metadata {
+            let path = args.debug_metadata.flatten().unwrap_or_else(|| {
+                single_debug_metadata_path(
+                    file_kind.as_ref().or(main_kind.as_ref()),
+                    args.export.as_deref(),
+                    &base_path,
+                )
+            });
+
+            fs::write(path, metadata)?;
+        }
     }
 
     Ok(())
+}
+
+/// Compiles `main` in the file, along with its debug metadata sidecar if it's requested.
+fn compile_main(
+    tree: &FileTree,
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    path: &SourceKind,
+    base_path: &Path,
+    debug_metadata: bool,
+) -> Result<Option<(NodePtr, Option<Vec<u8>>)>> {
+    Ok(if debug_metadata {
+        tree.main_with_debug_metadata(ctx, allocator, path, base_path.to_path_buf())?
+            .map(|(ptr, metadata)| (ptr, Some(metadata)))
+    } else {
+        tree.main(ctx, allocator, path, base_path.to_path_buf())?
+            .map(|ptr| (ptr, None))
+    })
+}
+
+/// Compiles the exports (of the file, or of every file), along with their debug metadata sidecars
+/// if they're requested.
+fn compile_exports(
+    tree: &FileTree,
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    path: Option<&SourceKind>,
+    export: Option<&str>,
+    base_path: &Path,
+    debug_metadata: bool,
+) -> Result<Vec<CompiledExport>> {
+    Ok(if debug_metadata {
+        tree.exports_with_debug_metadata(ctx, allocator, path, export, base_path)?
+    } else {
+        tree.exports(ctx, allocator, path, export, base_path)?
+    })
+}
+
+/// The path of the debug metadata sidecar of a program, which is the path of the program with
+/// its `.hex` extension replaced, as Chialisp names them (`foo.rue.hex` has `foo.rue.debug.clvm.bin`).
+fn debug_metadata_path(program_path: &str) -> String {
+    let base = program_path.strip_suffix(".hex").unwrap_or(program_path);
+    format!("{base}.debug.clvm.bin")
+}
+
+/// Where the sidecar of a single program is written when no path is given: next to the file that's
+/// built (the main file, if an export is looked for in every file), named like the program would
+/// be with `--all` (after the export, or the file for `main`).
+fn single_debug_metadata_path(
+    source: Option<&SourceKind>,
+    export: Option<&str>,
+    base_path: &Path,
+) -> PathBuf {
+    let source = match source {
+        Some(SourceKind::File(path)) => Some(Path::new(path)),
+        _ => None,
+    };
+
+    let dir = source.and_then(Path::parent).unwrap_or(base_path);
+
+    let name = export.map_or_else(
+        || {
+            source
+                .and_then(Path::file_stem)
+                .map_or("main".to_string(), |stem| {
+                    stem.to_string_lossy().to_string()
+                })
+        },
+        str::to_string,
+    );
+
+    dir.join(format!("{name}.rue.debug.clvm.bin"))
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -721,8 +851,25 @@ fn test(args: TestArgs) -> Result<()> {
                 .bold()
         );
 
-        if let Err(message) = run_test(&mut allocator, test.ptr, args.cost) {
-            eprintln!("{}", format!("Test failed due to {message}").red().bold());
+        if let Err((failure, trace)) =
+            run_and_trace_test(&mut ctx, &mut allocator, test, &base_path, args.cost)
+        {
+            eprintln!(
+                "{}",
+                format!("Test failed due to {}", failure.message)
+                    .red()
+                    .bold()
+            );
+
+            match trace {
+                Some(Ok(trace)) => eprintln!("{trace}"),
+                Some(Err(reason)) => eprintln!(
+                    "{}",
+                    format!("Couldn't show where the test failed: {reason}").yellow()
+                ),
+                None => {}
+            }
+
             failed = true;
         }
     }
@@ -734,9 +881,22 @@ fn test(args: TestArgs) -> Result<()> {
     Ok(())
 }
 
+/// Why a test failed.
+#[derive(Debug)]
+struct TestFailure {
+    message: String,
+    /// Whether the program failed while it was running, rather than returning something other than
+    /// nil, so there's a stack to show.
+    raised: bool,
+}
+
 /// Runs a test, which passes if it returns nil, and otherwise returns why it failed.
-fn run_test(allocator: &mut Allocator, program: NodePtr, cost: CostArgs) -> Result<(), String> {
-    match run_program(
+fn run_test(
+    allocator: &mut Allocator,
+    program: NodePtr,
+    cost: CostArgs,
+) -> Result<(), TestFailure> {
+    let message = match run_program(
         allocator,
         &DebugDialect::new(CLVM_FLAGS, true),
         program,
@@ -747,15 +907,81 @@ fn run_test(allocator: &mut Allocator, program: NodePtr, cost: CostArgs) -> Resu
             if let SExp::Atom = allocator.sexp(output.1)
                 && allocator.atom(output.1).is_empty()
             {
-                Ok(())
-            } else {
-                Err("non-nil output".to_string())
+                return Ok(());
             }
+
+            return Err(TestFailure {
+                message: "non-nil output".to_string(),
+                raised: false,
+            });
         }
-        Err(EvalErr::Raise(value)) => {
-            Err(format!("raise: {}", disassemble_value(allocator, value)))
-        }
-        Err(error) => Err(format!("error: {}", cost.describe_error(&error))),
+        Err(EvalErr::Raise(value)) => format!("raise: {}", disassemble_value(allocator, value)),
+        Err(error) => format!("error: {}", cost.describe_error(&error)),
+    };
+
+    Err(TestFailure {
+        message,
+        raised: true,
+    })
+}
+
+/// Runs a test, and if it fails, returns why, along with where it was when it failed if it raised
+/// (see [`trace_test`]).
+fn run_and_trace_test(
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    test: &CompiledTest,
+    base_path: &Path,
+    cost: CostArgs,
+) -> Result<(), (TestFailure, Option<Result<String, String>>)> {
+    let checkpoint = allocator.checkpoint();
+
+    let failure = match run_test(allocator, test.ptr, cost) {
+        Ok(()) => return Ok(()),
+        Err(failure) => failure,
+    };
+
+    if !failure.raised {
+        return Err((failure, None));
+    }
+
+    // The test is run again with as much room as it had the first time, and what that allocates
+    // is freed afterwards, so that it doesn't affect the tests after it
+    allocator.restore_checkpoint(&checkpoint);
+    let trace = trace_test(ctx, allocator, test, base_path, cost);
+    allocator.restore_checkpoint(&checkpoint);
+
+    Err((failure, Some(trace)))
+}
+
+/// Where a test that failed was when it did, which is found by compiling it again with a debug
+/// metadata sidecar, and running it again with the frames kept. Programs run the same way each
+/// time, so it fails the same way, and tests that pass don't pay for the sidecar or the frames.
+fn trace_test(
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    test: &CompiledTest,
+    base_path: &Path,
+    cost: CostArgs,
+) -> Result<String, String> {
+    let (program, metadata) = test
+        .with_debug_metadata(ctx, allocator, base_path)
+        .map_err(|error| error.to_string())?;
+
+    let mut sidecars = Sidecars::default();
+    sidecars.insert(&metadata)?;
+
+    // What the test prints has already been shown, so it isn't printed again
+    match run_with_trace(
+        allocator,
+        &DebugDialect::new(CLVM_FLAGS, false),
+        program,
+        NodePtr::NIL,
+        cost.max_cost,
+        &sidecars,
+    ) {
+        Ok(_) => Err("it didn't fail when it was run again".to_string()),
+        Err(failure) => failure.trace,
     }
 }
 
@@ -781,26 +1007,69 @@ fn debug(args: DebugArgs) -> Result<String> {
         NodePtr::NIL
     };
 
-    let output = run_program(
+    let dialect = DebugDialect::new(CLVM_FLAGS, true);
+
+    if args.debug_metadata.is_empty() {
+        let output = run_program(
+            &mut allocator,
+            &dialect,
+            program,
+            solution,
+            args.cost.max_cost,
+        )
+        .map_err(|error| anyhow::anyhow!(args.cost.describe_error(&error)))?
+        .1;
+
+        return Ok(disassemble_value(&allocator, output));
+    }
+
+    let mut sidecars = Sidecars::default();
+
+    for path in &args.debug_metadata {
+        let metadata =
+            fs::read(path).with_context(|| format!("Couldn't read {}", path.display()))?;
+        sidecars.insert(&metadata).map_err(|error| {
+            anyhow::anyhow!("{} isn't valid debug metadata: {error}", path.display())
+        })?;
+    }
+
+    match run_with_trace(
         &mut allocator,
-        &DebugDialect::new(CLVM_FLAGS, true),
+        &dialect,
         program,
         solution,
         args.cost.max_cost,
-    )
-    .map_err(|error| anyhow::anyhow!(args.cost.describe_error(&error)))?
-    .1;
-
-    Ok(disassemble_value(&allocator, output))
+        &sidecars,
+    ) {
+        Ok(output) => Ok(disassemble_value(&allocator, output.1)),
+        Err(failure) => {
+            let trace = failure
+                .trace
+                .unwrap_or_else(|reason| format!("Couldn't show where it failed: {reason}"));
+            Err(anyhow::anyhow!(
+                "{}\n{trace}",
+                args.cost.describe_error(&failure.error)
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, CostArgs, DEFAULT_MAX_COST, debug, run_test};
+    use std::{fs, path::Path};
+
+    use super::{
+        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_metadata_path, run_and_trace_test,
+        run_test, single_debug_metadata_path, trace_test,
+    };
     use clap::{CommandFactory, Parser, error::ErrorKind};
-    use clvmr::Allocator;
+    use clvmr::{Allocator, SExp, serde::node_from_bytes};
     use rue_clvm::assemble;
+    use rue_compiler::{CompiledTest, Compiler, FileTree};
+    use rue_diagnostic::SourceKind;
     use rue_diagnostic::{ForbiddenBy, Lint, LintGroup, LintLevel, LintLevels, LintName};
+    use rue_options::CompilerOptions;
+    use sha2::{Digest, Sha256};
 
     #[test]
     fn cli_debug_asserts() {
@@ -1050,6 +1319,278 @@ mod tests {
     }
 
     #[test]
+    fn debug_metadata_flag() {
+        let parse = |args: &[&str]| {
+            let Ok(Command::Build(args)) =
+                Command::try_parse_from(["rue", "build"].iter().chain(args))
+            else {
+                panic!("expected build command");
+            };
+            args
+        };
+
+        assert_eq!(parse(&[]).debug_metadata, None);
+        assert_eq!(parse(&["--debug-metadata"]).debug_metadata, Some(None));
+
+        // The path has to be given with `=`, so that the file to build isn't taken as the path
+        let args = parse(&["--debug-metadata", "main.rue"]);
+        assert_eq!(args.debug_metadata, Some(None));
+        assert_eq!(args.file.as_deref(), Some("main.rue"));
+
+        let args = parse(&["--debug-metadata=out.bin", "main.rue"]);
+        assert_eq!(args.debug_metadata, Some(Some("out.bin".into())));
+        assert_eq!(args.file.as_deref(), Some("main.rue"));
+    }
+
+    #[test]
+    fn debug_metadata_paths() {
+        assert_eq!(
+            debug_metadata_path("dist/foo.rue.hex"),
+            "dist/foo.rue.debug.clvm.bin"
+        );
+        assert_eq!(debug_metadata_path("foo"), "foo.debug.clvm.bin");
+
+        // A single program's sidecar is next to its source, named after the file or the export
+        let source = SourceKind::File("/project/src/main.rue".to_string());
+        let base = Path::new("/project");
+        assert_eq!(
+            single_debug_metadata_path(Some(&source), None, base),
+            Path::new("/project/src/main.rue.debug.clvm.bin")
+        );
+        assert_eq!(
+            single_debug_metadata_path(Some(&source), Some("double"), base),
+            Path::new("/project/src/double.rue.debug.clvm.bin")
+        );
+        // Without a file, it's next to the project's sources
+        assert_eq!(
+            single_debug_metadata_path(None, Some("double"), base),
+            Path::new("/project/double.rue.debug.clvm.bin")
+        );
+    }
+
+    /// A directory with a `main.rue` that has the source, which is removed when it's dropped.
+    struct TempProject(std::path::PathBuf);
+
+    impl TempProject {
+        fn new(name: &str, source: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("rue-cli-{name}-{}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            let dir = dir.canonicalize().unwrap();
+            fs::write(dir.join("main.rue"), source).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempProject {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Builds the programs in the directory with the arguments.
+    fn run_build(dir: &Path, args: &[&str]) {
+        let file = dir.join("main.rue");
+        let Ok(Command::Build(args)) = Command::try_parse_from(
+            ["rue", "build", file.to_str().unwrap()]
+                .into_iter()
+                .chain(args.iter().copied()),
+        ) else {
+            panic!("expected build command");
+        };
+        build(args).unwrap();
+    }
+
+    /// The program hash that a sidecar is for.
+    fn sidecar_program_hash(sidecar: &[u8]) -> Vec<u8> {
+        let mut allocator = Allocator::new();
+        let mut node = node_from_bytes(&mut allocator, sidecar).unwrap();
+        let mut fields = Vec::new();
+        while let SExp::Pair(first, rest) = allocator.sexp(node) {
+            fields.push(first);
+            node = rest;
+        }
+        assert_eq!(allocator.atom(fields[0]).as_ref(), b"CHIALISP_DEBUG");
+        allocator.atom(fields[3]).as_ref().to_vec()
+    }
+
+    #[test]
+    fn build_writes_debug_metadata() {
+        let project = TempProject::new(
+            "build",
+            "fn main(value: Int) -> Int {\n    double(value) + 1\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n",
+        );
+        let dir = &project.0;
+
+        // Without the flag, no sidecars are written
+        run_build(dir, &["--all"]);
+        run_build(dir, &[]);
+        assert!(
+            fs::read_dir(dir).unwrap().all(|entry| !entry
+                .unwrap()
+                .path()
+                .to_string_lossy()
+                .ends_with(".bin"))
+        );
+
+        // With `--all`, each program's sidecar is next to it, and is for the program's bytes
+        run_build(dir, &["--all", "--debug-metadata"]);
+
+        for name in ["main", "main.rue_double"] {
+            let hex = fs::read_to_string(dir.join(format!("{name}.rue.hex"))).unwrap();
+            let program = hex::decode(hex.trim()).unwrap();
+            let sidecar = fs::read(dir.join(format!("{name}.rue.debug.clvm.bin"))).unwrap();
+            assert_eq!(
+                sidecar_program_hash(&sidecar),
+                Sha256::digest(&program).to_vec(),
+                "{name}"
+            );
+        }
+
+        let all = fs::read(dir.join("main.rue.debug.clvm.bin")).unwrap();
+        fs::remove_file(dir.join("main.rue.debug.clvm.bin")).unwrap();
+
+        // A single program's sidecar is next to its source, or where it's asked for
+        run_build(dir, &["--debug-metadata"]);
+        assert_eq!(fs::read(dir.join("main.rue.debug.clvm.bin")).unwrap(), all);
+
+        let path = dir.join("custom.bin");
+        run_build(
+            dir,
+            &[
+                "--export",
+                "double",
+                &format!("--debug-metadata={}", path.display()),
+            ],
+        );
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            fs::read(dir.join("main.rue_double.rue.debug.clvm.bin")).unwrap()
+        );
+    }
+
+    const FAILING_SOURCE: &str = "fn main(value: Int) -> Int {\n    check(value)\n}\n\ntest fn fails() {\n    check(30);\n}\n\ntest fn fails_too() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10;\n    value\n}\n\ntest fn divides() {\n    divide(1, 0);\n}\n\nfn divide(a: Int, b: Int) -> Int {\n    a / b\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n";
+
+    #[test]
+    fn failing_tests_are_traced() {
+        let project = TempProject::new("trace-test", FAILING_SOURCE);
+        let path = project.0.join("main.rue");
+
+        let mut ctx = Compiler::new(CompilerOptions::debug());
+        let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
+        let mut allocator = Allocator::new();
+        let tests = tree
+            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .unwrap();
+        let cost = CostArgs {
+            max_cost: DEFAULT_MAX_COST,
+        };
+
+        // The second test fails, and its name contains the first's, which passes
+        assert_eq!(tests[1].name.as_deref(), Some("fails_too"));
+        assert!(run_test(&mut allocator, tests[0].ptr, cost).is_ok());
+        let failure = run_test(&mut allocator, tests[1].ptr, cost).unwrap_err();
+        assert!(failure.raised);
+
+        // The trace shows the test at its call to `check`, and the assertion with its argument
+        let trace = trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap();
+        assert_eq!(
+            trace,
+            "  main.rue:10:5, in fails_too\n    check(3);\n  main.rue:14:5, in check\n    assert value > 10;\n    value = 3"
+        );
+
+        // When a failure is traced, what tracing allocates is freed, along with what the test did
+        let pairs = allocator.pair_count();
+        let (failure, traced) =
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+        assert!(failure.raised);
+        assert_eq!(traced, Some(Ok(trace.clone())));
+        assert_eq!(allocator.pair_count(), pairs);
+        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+
+        // A failure that isn't a raise is traced too
+        assert_eq!(tests[2].name.as_deref(), Some("divides"));
+        let (failure, traced) =
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[2], &project.0, cost).unwrap_err();
+        assert!(failure.raised);
+        let traced = traced.unwrap().unwrap();
+        assert!(traced.contains("main.rue:23:5, in divide"), "{traced}");
+        assert!(traced.contains("b = ()"), "{traced}");
+
+        // The test that passes doesn't fail when it's run again
+        assert_eq!(
+            trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost),
+            Err("it didn't fail when it was run again".to_string())
+        );
+
+        // A test that returns something other than nil has no stack to show
+        let program = assemble(&mut allocator, "(q . 1)").unwrap();
+        assert!(!run_test(&mut allocator, program, cost).unwrap_err().raised);
+        let returns_one = CompiledTest {
+            ptr: program,
+            ..tests[0].clone()
+        };
+        let (_, traced) =
+            run_and_trace_test(&mut ctx, &mut allocator, &returns_one, &project.0, cost)
+                .unwrap_err();
+        assert_eq!(traced, None);
+    }
+
+    #[test]
+    fn debug_shows_where_a_program_failed() {
+        let project = TempProject::new("trace-debug", FAILING_SOURCE);
+        let path = project.0.join("main.rue");
+        let sidecar = project.0.join("main.bin");
+
+        run_build(&project.0, &["--all", "--debug-metadata"]);
+        fs::rename(project.0.join("main.rue.debug.clvm.bin"), &sidecar).unwrap();
+
+        let hex = fs::read_to_string(project.0.join("main.rue.hex")).unwrap();
+        let hex = hex.trim();
+        let sidecar = sidecar.to_str().unwrap();
+
+        // The solution `(3)` fails the assertion, and `(30)` doesn't
+        let error = run_debug(&["-x", hex, "ff0380", "--debug-metadata", sidecar]).unwrap_err();
+        assert!(error.starts_with("clvm raise\n"), "{error}");
+        assert!(error.contains("main.rue:14:5, in check"), "{error}");
+        assert!(error.contains("value = 3"), "{error}");
+        assert_eq!(
+            run_debug(&["-x", hex, "ff1e80", "--debug-metadata", sidecar]),
+            Ok("30".to_string())
+        );
+
+        // Sidecars for other programs don't get in the way
+        let error = run_debug(&[
+            "-x",
+            hex,
+            "ff0380",
+            "--debug-metadata",
+            project
+                .0
+                .join("main.rue_double.rue.debug.clvm.bin")
+                .to_str()
+                .unwrap(),
+            "--debug-metadata",
+            sidecar,
+        ])
+        .unwrap_err();
+        assert!(error.contains("main.rue:14:5, in check"), "{error}");
+
+        // Without the sidecar, the failure is reported as before
+        assert_eq!(run_debug(&["-x", hex, "ff0380"]).unwrap_err(), "clvm raise");
+
+        // A file that isn't a sidecar is an error
+        let error = run_debug(&[
+            "-x",
+            hex,
+            "ff0380",
+            "--debug-metadata",
+            path.to_str().unwrap(),
+        ])
+        .unwrap_err();
+        assert!(error.contains("isn't valid debug metadata"), "{error}");
+    }
+
+    #[test]
     fn build_long_help() {
         let err = Command::try_parse_from(["rue", "build", "--help"]).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::DisplayHelp);
@@ -1110,7 +1651,7 @@ mod tests {
     fn run_test_with(program: &str, max_cost: u64) -> Result<(), String> {
         let mut allocator = Allocator::new();
         let program = assemble(&mut allocator, program).unwrap();
-        run_test(&mut allocator, program, CostArgs { max_cost })
+        run_test(&mut allocator, program, CostArgs { max_cost }).map_err(|failure| failure.message)
     }
 
     #[test]

@@ -1,0 +1,40 @@
+===== debug =====
+program: (a (q 2 (q 16 2 (* (a 5 11) (a 5 11))) (c (* (a 2 5) (q . 2)) 1)) (c (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_arguments.rue:24:5"))) 1) 1))
+sidecar: 1938 bytes
+files:
+  inline_arguments.rue
+functions:
+  0: main (_ . (a@5: integer . _))
+  1: check v@1: integer
+nodes:
+  inline_arguments.rue:6:24-9:2  (a (q 2 (q 16 2 (* (a 5 11) (a 5 11))) (c (* (a 2 5) (q ....
+    inline_arguments.rue:6:24-9:2 fn main  (a (q 16 2 (* (a 5 11) (a 5 11))) (c (* (a 2 5) (q . 2)) 1))
+      inline_arguments.rue:8:5-8:24  (+ 2 (* (a 5 11) (a 5 11)))
+        inline_arguments.rue:16:5-16:14 label "twice (inlined)"  (* (a 5 11) (a 5 11))
+          inline_arguments.rue:8:15-8:23 label "main"  (a 5 11)
+          inline_arguments.rue:8:15-8:23 label "main"  (a 5 11)
+      inline_arguments.rue:12:5-12:10 label "wrap (inlined)"  (* (a 2 5) (q . 2))
+        inline_arguments.rue:7:18-7:26 label "main"  (a 2 5)
+        inline_arguments.rue:12:9-12:10  (q . 2)
+    inline_arguments.rue:24:5-24:19 fn check  (a (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed ...
+      inline_arguments.rue:24:12-24:18  (> 1 (q . 10))
+        inline_arguments.rue:24:16-24:18  (q . 10)
+===== release =====
+program: (a (q 16 (* (a 2 5) (q . 2)) (* (a 2 5) (a 2 5))) (c (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1) 1))
+sidecar: 1683 bytes
+files:
+  inline_arguments.rue
+functions:
+  0: main (_ . (a@5: integer . _))
+  1: check v@1: integer
+nodes:
+  inline_arguments.rue:6:24-9:2  (a (q 16 (* (a 2 5) (q . 2)) (* (a 2 5) (a 2 5))) (c (q 2...
+    inline_arguments.rue:8:5-8:24 fn main  (+ (* (a 2 5) (q . 2)) (* (a 2 5) (a 2 5)))
+      inline_arguments.rue:12:5-12:10 label "wrap (inlined)"  (* (a 2 5) (q . 2))
+        inline_arguments.rue:7:18-7:26 label "main"  (a 2 5)
+      inline_arguments.rue:16:5-16:14 label "twice (inlined)"  (* (a 2 5) (a 2 5))
+        inline_arguments.rue:8:15-8:23 label "main"  (a 2 5)
+        inline_arguments.rue:8:15-8:23 label "main"  (a 2 5)
+    inline_arguments.rue:24:5-24:19 fn check  (a (i (> 1 (q . 10)) (q . 1) (q 8)) 1)
+      inline_arguments.rue:24:12-24:18  (> 1 (q . 10))
+        inline_arguments.rue:24:16-24:18  (q . 10)

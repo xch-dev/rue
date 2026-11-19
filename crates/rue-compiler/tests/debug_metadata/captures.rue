@@ -1,0 +1,22 @@
+// solution: (3 1)
+// solution: (30 1)
+
+// A closure captures a `let` binding, and in a release build, `helper` is inlined, so the closure
+// in it captures its parameters, which are named after `helper`'s
+fn main(x: Int, y: Int) -> Int {
+    let limit = x * 2;
+    let check = fn(item: Int) => {
+        assert item < limit;
+        item
+    };
+    check(10) + helper(x / y, x)
+}
+
+fn helper(a: Int, b: Int) -> Int {
+    let f = fn() => b > 5 && a > 100;
+    if f() {
+        1
+    } else {
+        2
+    }
+}
