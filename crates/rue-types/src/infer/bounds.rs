@@ -64,7 +64,7 @@ pub fn resolve_inference_with_bounds(
     fallback: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
     let mut mappings = resolve_inference_with_fallback(arena, builtins, infer, fallback);
-    let narrowed = narrow_inferred(arena, builtins, infer, fallback, &mut mappings);
+    narrow_inferred(arena, builtins, infer, fallback, &mut mappings);
 
     let uninferred: HashSet<TypeId> = infer
         .generics
@@ -98,12 +98,15 @@ pub fn resolve_inference_with_bounds(
         uninferred.contains(&generic)
     });
 
-    // The generics that were narrowed keep what they were narrowed to, so that the ones resolved
-    // through them see it, rather than what they were inferred as before
-    let fixed: HashMap<TypeId, TypeId> = narrowed
-        .into_iter()
-        .filter(|generic| !uninferred.contains(generic))
-        .map(|generic| (generic, mappings[&generic]))
+    // The generics that were inferred keep their mappings, including what `narrow_inferred` narrowed
+    // them to, so that the ones resolved through them see those, rather than what they were inferred
+    // as before they were narrowed. Resolving them again would only give what they were first
+    // inferred as, since their own candidates are the same and don't depend on the ones being
+    // resolved here
+    let fixed: HashMap<TypeId, TypeId> = mappings
+        .iter()
+        .filter(|(generic, _)| !uninferred.contains(*generic))
+        .map(|(&generic, &ty)| (generic, ty))
         .collect();
 
     let resolved = resolve_inference_around(arena, builtins, &bounded, fallback, &fixed);
@@ -130,8 +133,7 @@ fn narrow_inferred(
     infer: &Inference,
     fallback: &HashMap<TypeId, TypeId>,
     mappings: &mut HashMap<TypeId, TypeId>,
-) -> Vec<TypeId> {
-    let mut narrowed = Vec::new();
+) {
 
     let inferred: HashSet<TypeId> = infer
         .generics
@@ -147,7 +149,7 @@ fn narrow_inferred(
         .collect();
 
     if inferred.is_empty() {
-        return narrowed;
+        return;
     }
 
     // Only the upper bounds that don't reference a generic being inferred are passed on. One that
@@ -163,7 +165,7 @@ fn narrow_inferred(
         .collect();
 
     if bounds.is_empty() {
-        return narrowed;
+        return;
     }
 
     let mut bounded = infer.clone();
@@ -183,7 +185,7 @@ fn narrow_inferred(
         .iter()
         .all(|generic| bounded.generics[generic].upper.len() == infer.generics[generic].upper.len())
     {
-        return narrowed;
+        return;
     }
 
     let resolved = resolve_inference_with_fallback(arena, builtins, &bounded, fallback);
@@ -198,11 +200,8 @@ fn narrow_inferred(
                 == Comparison::Assign
         {
             mappings.insert(generic, ty);
-            narrowed.push(generic);
         }
     }
-
-    narrowed
 }
 
 /// Gives the generics in each generic's compound upper bounds that `accepts` allows the lower
