@@ -1,0 +1,90 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_proposal_timer.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./dao_proposal_timer.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(
+    proposal_self_hash: Bytes32,
+    my_parent_singleton_struct: SingletonStruct,
+    proposal_yes_votes: Int,
+    proposal_total_votes: Int,
+    proposal_inner_puzzle_hash: Bytes32,
+    proposal_timelock: Int,
+    parent_parent: Bytes32,
+    parent_amount: Int,
+) -> List<Condition> {
+    let proposal_puzzle_hash = calculate_proposal_puzzle_hash(
+        my_parent_singleton_struct,
+        proposal_self_hash,
+        proposal_yes_votes,
+        proposal_total_votes,
+        proposal_inner_puzzle_hash,
+    );
+    // The timer is created by the proposal's first vote, before it had any votes.
+    let parent_puzzle_hash = calculate_proposal_puzzle_hash(
+        my_parent_singleton_struct,
+        proposal_self_hash,
+        0,
+        0,
+        proposal_inner_puzzle_hash,
+    );
+
+    [
+        AssertHeightRelative { height: proposal_timelock },
+        CreatePuzzleAnnouncement { message: my_parent_singleton_struct.launcher_id },
+        AssertPuzzleAnnouncement { id: sha256(proposal_puzzle_hash + proposal_timelock as Bytes) },
+        AssertMyParentId {
+            parent_id: sha256(parent_parent + parent_puzzle_hash + parent_amount as Bytes),
+        },
+    ]
+}
+
+fn calculate_proposal_puzzle_hash(
+    singleton_struct: SingletonStruct,
+    proposal_self_hash: Bytes32,
+    yes_votes: Int,
+    total_votes: Int,
+    inner_puzzle_hash: Bytes32,
+) -> Bytes32 {
+    let proposal_inner_puzzle_hash = curry_tree_hash(
+        proposal_self_hash,
+        [
+            tree_hash_atom(proposal_self_hash),
+            tree_hash_atom(singleton_struct.launcher_id),
+            tree_hash_atom(inner_puzzle_hash),
+            tree_hash_atom(yes_votes as Bytes),
+            tree_hash_atom(total_votes as Bytes),
+        ],
+    );
+    curry_tree_hash(
+        singleton_struct.mod_hash,
+        [tree_hash(singleton_struct), proposal_inner_puzzle_hash],
+    )
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn pairs_with_the_proposal() -> Any {
+    check([
+        sha256("proposal_self_hash"),
+        SingletonStruct {
+            mod_hash: sha256("singleton_mod"),
+            launcher_id: sha256("proposal_id"),
+            launcher_puzzle_hash: sha256("launcher_puzzle"),
+        },
+        700,
+        1000,
+        sha256("proposed_puzzle"),
+        100,
+        sha256("parent_parent"),
+        1,
+    ])
+}

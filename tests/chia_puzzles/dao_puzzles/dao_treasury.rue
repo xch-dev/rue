@@ -1,0 +1,172 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_treasury.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./dao_treasury.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The announcement from a proposal that the treasury is checking.
+struct ProposalAnnouncement {
+    announcement_source: Bytes32,
+    delegated_puzzle_hash: Bytes32,
+    announcement_args: Any,
+}
+
+// The curried proposal validator.
+type ProposalValidator = fn(
+    attendance_required: Int,
+    pass_margin: Int,
+    proposal_announcement: ProposalAnnouncement,
+    proposal_validator_solution: Any,
+    conditions: List<Condition>,
+) -> List<Condition>;
+
+fn main(
+    treasury_mod_hash: Bytes32,
+    proposal_validator: ProposalValidator,
+    proposal_length: Int,
+    proposal_softclose_length: Int,
+    attendance_required: Int,
+    // A percentage from 0 to 10,000, so 51% is 5100.
+    pass_margin: Int,
+    proposal_self_destruct_time: Int,
+    oracle_spend_delay: Int,
+    proposal_announcement: ProposalAnnouncement,
+    proposal_validator_solution: Any,
+    // The puzzle the proposal announced, or nil for the oracle spend.
+    delegated_puzzle_reveal: Any,
+    delegated_solution: Any,
+    my_singleton_struct: SingletonStruct | nil,
+) -> List<Condition> {
+    // The arguments are secured implicitly by the treasury's puzzle.
+    let announcement = CreatePuzzleAnnouncement { message: nil };
+
+    if !(delegated_puzzle_reveal is nil) {
+        // Check whether the proposal has passed.
+        assert tree_hash(delegated_puzzle_reveal) == proposal_announcement.delegated_puzzle_hash;
+
+        let delegated_puzzle = unchecked_cast::<fn(...solution: Any) -> List<Condition>>(
+            delegated_puzzle_reveal,
+        );
+
+        return [
+            announcement,
+            AssertCoinAnnouncement {
+                id: sha256(
+                    proposal_announcement.announcement_source
+                        + tree_hash([
+                            proposal_announcement.delegated_puzzle_hash as Any,
+                            proposal_announcement.announcement_args,
+                        ]),
+                ),
+            },
+            AssertHeightRelative { height: 1 },
+            ...proposal_validator(
+                attendance_required,
+                pass_margin,
+                proposal_announcement,
+                proposal_validator_solution,
+                delegated_puzzle(...delegated_solution),
+            ),
+        ];
+    }
+
+    // The oracle spend recreates the treasury.
+    let my_inner_puzzle_hash = curry_tree_hash(
+        treasury_mod_hash,
+        [
+            tree_hash_atom(treasury_mod_hash),
+            tree_hash(proposal_validator),
+            tree_hash_atom(proposal_length as Bytes),
+            tree_hash_atom(proposal_softclose_length as Bytes),
+            tree_hash_atom(attendance_required as Bytes),
+            tree_hash_atom(pass_margin as Bytes),
+            tree_hash_atom(proposal_self_destruct_time as Bytes),
+            tree_hash_atom(oracle_spend_delay as Bytes),
+        ],
+    );
+
+    let timing: Condition = if my_singleton_struct is nil {
+        AssertHeightRelative { height: oracle_spend_delay }
+    } else {
+        // This is the eve spend.
+        AssertMyCoinId {
+            coin_id: coinid(
+                my_singleton_struct.launcher_id,
+                curry_tree_hash(
+                    my_singleton_struct.mod_hash,
+                    [tree_hash(my_singleton_struct), my_inner_puzzle_hash],
+                ),
+                1,
+            ),
+        }
+    };
+
+    [announcement, timing, CreateCoin { puzzle_hash: my_inner_puzzle_hash, amount: 1 }]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// A proposal validator that returns the conditions it's given (the fifth argument).
+inline const VALIDATOR: 47 = 47;
+
+// The delegated puzzle the proposal announces.
+inline const DELEGATED_PUZZLE: (1, List<CreateCoin>) = (
+    1,
+    [CreateCoin { puzzle_hash: sha256("payee"), amount: 100 }],
+);
+
+fn spend(delegated_puzzle_reveal: Any, my_singleton_struct: SingletonStruct | nil) -> Any {
+    [
+        sha256("treasury_mod"),
+        VALIDATOR,
+        4000,
+        20,
+        100000,
+        5100,
+        10000,
+        30,
+        ProposalAnnouncement {
+            announcement_source: sha256("proposal_coin"),
+            delegated_puzzle_hash: tree_hash(DELEGATED_PUZZLE),
+            announcement_args: nil,
+        },
+        [sha256("proposal_id"), 1000, 600],
+        delegated_puzzle_reveal,
+        nil,
+        my_singleton_struct,
+    ]
+}
+
+test fn runs_a_passed_proposal() -> Any {
+    check(spend(DELEGATED_PUZZLE, nil))
+}
+
+test fn spends_as_an_oracle() -> Any {
+    check(spend(nil, nil))
+}
+
+test fn spends_as_the_eve_oracle() -> Any {
+    check(spend(
+        nil,
+        SingletonStruct {
+            mod_hash: sha256("singleton_mod"),
+            launcher_id: sha256("treasury_id"),
+            launcher_puzzle_hash: sha256("launcher_puzzle"),
+        },
+    ))
+}
+
+test fn rejects_an_unannounced_puzzle() -> Any {
+    run(main, spend((1, nil), nil))
+}
+
+test fn reference_rejects_an_unannounced_puzzle() -> Any {
+    run(reference, spend((1, nil), nil))
+}

@@ -1,0 +1,497 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_proposal.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./dao_proposal.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The curried values that adding votes needs.
+struct Constants {
+    proposal_timer_mod_hash: Bytes32,
+    cat_mod_hash: Bytes32,
+    lockup_self_hash: Bytes32,
+    cat_tail_hash: Bytes32,
+    treasury_id: Bytes32,
+    self_hash: Bytes32,
+    singleton_id: Bytes32,
+    proposed_puzzle_hash: Bytes32,
+}
+
+// Each solution parameter except `vote_info` and `innerpuz_reveal` has two meanings: one when
+// adding votes, and one when closing the proposal (which also reveals the treasury's rules).
+fn main(
+    proposal_timer_mod_hash: Bytes32,
+    singleton_mod_hash: Bytes32,
+    launcher_puzzle_hash: Bytes32,
+    cat_mod_hash: Bytes32,
+    dao_finished_state_mod_hash: Bytes32,
+    treasury_mod_hash: Bytes32,
+    lockup_self_hash: Bytes32,
+    cat_tail_hash: Bytes32,
+    treasury_id: Bytes32,
+    self_hash: Bytes32,
+    singleton_id: Bytes32,
+    proposed_puzzle_hash: Bytes32,
+    yes_votes: Int,
+    total_votes: Int,
+    vote_amounts_or_proposal_validator_hash: Any,
+    vote_info: Any,
+    vote_coin_ids_or_proposal_timelock_length: Any,
+    previous_votes_or_pass_margin: Any,
+    lockup_inner_puzzle_hashes_or_attendance_required: Any,
+    innerpuz_reveal: Any,
+    soft_close_length: Int,
+    self_destruct_time: Int,
+    oracle_spend_delay: Int,
+    self_destruct_flag: Any,
+    my_amount: Int,
+) -> List<Condition> {
+    let constants = Constants {
+        proposal_timer_mod_hash,
+        cat_mod_hash,
+        lockup_self_hash,
+        cat_tail_hash,
+        treasury_id,
+        self_hash,
+        singleton_id,
+        proposed_puzzle_hash,
+    };
+    let my_singleton_struct = SingletonStruct {
+        mod_hash: singleton_mod_hash,
+        launcher_id: singleton_id,
+        launcher_puzzle_hash,
+    };
+
+    if soft_close_length == 0 && self_destruct_flag is nil {
+        return add_votes(
+            constants,
+            my_singleton_struct,
+            yes_votes,
+            total_votes,
+            unchecked_cast::<List<Int>>(vote_amounts_or_proposal_validator_hash),
+            vote_info,
+            unchecked_cast::<List<Bytes32>>(vote_coin_ids_or_proposal_timelock_length),
+            unchecked_cast::<List<List<Bytes32>>>(previous_votes_or_pass_margin),
+            unchecked_cast::<List<Bytes32>>(lockup_inner_puzzle_hashes_or_attendance_required),
+            innerpuz_reveal,
+            my_amount,
+        );
+    }
+
+    let proposal_validator_hash = unchecked_cast::<Bytes32>(
+        vote_amounts_or_proposal_validator_hash,
+    );
+    let proposal_timelock_length = unchecked_cast::<Int>(vote_coin_ids_or_proposal_timelock_length);
+    let pass_margin = unchecked_cast::<Int>(previous_votes_or_pass_margin);
+    let attendance_required = unchecked_cast::<Int>(
+        lockup_inner_puzzle_hashes_or_attendance_required,
+    );
+
+    // The treasury's puzzle hash, which checks the values it was revealed with.
+    let treasury_struct = SingletonStruct {
+        mod_hash: singleton_mod_hash,
+        launcher_id: treasury_id,
+        launcher_puzzle_hash,
+    };
+    let treasury_puzzle_hash = singleton_puzzle_hash(
+        treasury_struct,
+        curry_tree_hash(
+            treasury_mod_hash,
+            [
+                tree_hash_atom(treasury_mod_hash),
+                proposal_validator_hash,
+                tree_hash_atom(proposal_timelock_length as Bytes),
+                tree_hash_atom(soft_close_length as Bytes),
+                tree_hash_atom(attendance_required as Bytes),
+                tree_hash_atom(pass_margin as Bytes),
+                tree_hash_atom(self_destruct_time as Bytes),
+                tree_hash_atom(oracle_spend_delay as Bytes),
+            ],
+        ),
+    );
+
+    let finish = CreateCoin {
+        puzzle_hash: finished_state_puzzle_hash(my_singleton_struct, dao_finished_state_mod_hash),
+        amount: 1,
+        memos: Memos { value: [treasury_id] },
+    };
+
+    if !(self_destruct_flag is nil) {
+        // The proposal hasn't been accepted by the treasury for a long time, so it can destroy
+        // itself.
+        assert self_destruct_time > proposal_timelock_length;
+
+        return [
+            finish,
+            AssertHeightRelative { height: self_destruct_time },
+            // The treasury's arguments are secured implicitly by its puzzle hash.
+            AssertPuzzleAnnouncement { id: sha256(treasury_puzzle_hash) },
+        ];
+    }
+
+    // Close the proposal, after the soft close length has passed without it being spent.
+    let (required_yes_votes, _) = divmod(total_votes * pass_margin, 10000);
+    let passed = (total_votes >= attendance_required) & (yes_votes >= required_yes_votes);
+
+    [
+        AssertHeightRelative { height: soft_close_length },
+        finish,
+        AssertPuzzleAnnouncement {
+            id: sha256(
+                timer_puzzle_hash(proposal_timer_mod_hash, self_hash, my_singleton_struct)
+                    + singleton_id,
+            ),
+        },
+        CreatePuzzleAnnouncement { message: proposal_timelock_length as Bytes },
+        ...if passed {
+            [
+                // This lets the proposal validator check this coin. The nil is the announcement's
+                // arguments.
+                CreateCoinAnnouncement { message: tree_hash([proposed_puzzle_hash, nil]) },
+                AssertPuzzleAnnouncement { id: sha256(treasury_puzzle_hash + singleton_id) },
+            ]
+        } else {
+            [AssertPuzzleAnnouncement { id: sha256(treasury_puzzle_hash) }]
+        },
+    ]
+}
+
+fn singleton_puzzle_hash(singleton_struct: SingletonStruct, inner_puzzle_hash: Bytes32) -> Bytes32 {
+    curry_tree_hash(singleton_struct.mod_hash, [tree_hash(singleton_struct), inner_puzzle_hash])
+}
+
+fn finished_state_puzzle_hash(
+    singleton_struct: SingletonStruct,
+    dao_finished_state_mod_hash: Bytes32,
+) -> Bytes32 {
+    curry_tree_hash(
+        dao_finished_state_mod_hash,
+        [tree_hash(singleton_struct), tree_hash_atom(dao_finished_state_mod_hash)],
+    )
+}
+
+fn timer_puzzle_hash(
+    proposal_timer_mod_hash: Bytes32,
+    self_hash: Bytes32,
+    my_singleton_struct: SingletonStruct,
+) -> Bytes32 {
+    curry_tree_hash(
+        proposal_timer_mod_hash,
+        [tree_hash_atom(self_hash), tree_hash(my_singleton_struct)],
+    )
+}
+
+// Adds the votes from each lockup coin, and recreates the proposal with them.
+fn add_votes(
+    constants: Constants,
+    my_singleton_struct: SingletonStruct,
+    yes_votes: Int,
+    total_votes: Int,
+    vote_amounts: List<Int>,
+    vote_info: Any,
+    vote_coin_ids: List<Bytes32>,
+    previous_votes: List<List<Bytes32>>,
+    lockup_inner_puzzle_hashes: List<Bytes32>,
+    innerpuz_reveal: Any,
+    my_amount: Int,
+) -> List<Condition> {
+    // The first vote creates the timer, and reveals the proposed puzzle. The timer isn't created if
+    // the proposal was created with fake votes.
+    let output = if yes_votes != 0 || total_votes != 0 {
+        nil
+    } else {
+        assert tree_hash(innerpuz_reveal) == constants.proposed_puzzle_hash;
+        [CreateCoin {
+            puzzle_hash: timer_puzzle_hash(
+                constants.proposal_timer_mod_hash,
+                constants.self_hash,
+                my_singleton_struct,
+            ),
+            amount: 0,
+        }]
+    };
+
+    loop_over_vote_coins(
+        constants,
+        yes_votes,
+        total_votes,
+        vote_coin_ids,
+        vote_amounts,
+        previous_votes,
+        lockup_inner_puzzle_hashes,
+        vote_info,
+        0,
+        output,
+        my_amount,
+        nil,
+    )
+}
+
+fn loop_over_vote_coins(
+    constants: Constants,
+    yes_votes: Int,
+    total_votes: Int,
+    coin_ids: List<Bytes32>,
+    vote_amounts: List<Int>,
+    previous_votes: List<List<Bytes32>>,
+    lockup_inner_puzzle_hashes: List<Bytes32>,
+    vote_info: Any,
+    sum: Int,
+    output: List<Condition>,
+    my_amount: Int,
+    distinct_ids: List<Bytes32>,
+) -> List<Condition> {
+    if coin_ids is nil {
+        let new_yes_votes = if vote_info is nil {
+            yes_votes
+        } else {
+            yes_votes + sum
+        };
+        let new_inner_puzzle_hash = curry_tree_hash(
+            constants.self_hash,
+            [
+                tree_hash_atom(constants.self_hash),
+                tree_hash_atom(constants.singleton_id),
+                tree_hash_atom(constants.proposed_puzzle_hash),
+                tree_hash_atom(new_yes_votes as Bytes),
+                tree_hash_atom((total_votes + sum) as Bytes),
+            ],
+        );
+
+        return [
+            // The hint lets people find the proposal from the treasury.
+            CreateCoin {
+                puzzle_hash: new_inner_puzzle_hash,
+                amount: my_amount,
+                memos: Memos { value: [constants.treasury_id] },
+            },
+            AssertMyAmount { amount: my_amount },
+            ...if total_votes != 0 {
+                [AssertHeightRelative { height: 1 }, ...output]
+            } else {
+                output
+            },
+        ];
+    }
+
+    // These lists must be as long as the coin ids.
+    let amounts = unchecked_cast::<(Int, List<Int>)>(vote_amounts);
+    let previous = unchecked_cast::<(List<Bytes32>, List<List<Bytes32>>)>(previous_votes);
+    let inner_puzzle_hashes = unchecked_cast::<(Bytes32, List<Bytes32>)>(
+        lockup_inner_puzzle_hashes,
+    );
+
+    let coin_id = coin_ids.first;
+    let vote_amount = amounts.first;
+
+    assert vote_amount > 0;
+    // A coin can only vote once per spend.
+    assert !contains(coin_id, distinct_ids);
+
+    let lockup_puzzle_hash = curry_tree_hash(
+        constants.lockup_self_hash,
+        [
+            tree_hash_atom(constants.lockup_self_hash),
+            tree_hash(previous.first),
+            inner_puzzle_hashes.first,
+        ],
+    );
+    let lockup_cat_puzzle_hash = curry_tree_hash(
+        constants.cat_mod_hash,
+        [
+            tree_hash_atom(constants.cat_mod_hash),
+            tree_hash_atom(constants.cat_tail_hash),
+            lockup_puzzle_hash,
+        ],
+    );
+
+    [
+        CreatePuzzleAnnouncement { message: coin_id },
+        // Take the vote.
+        AssertPuzzleAnnouncement {
+            id: sha256(
+                lockup_cat_puzzle_hash
+                    + tree_hash([constants.singleton_id as Any, vote_amount, vote_info, coin_id]),
+            ),
+        },
+        ...loop_over_vote_coins(
+            constants,
+            yes_votes,
+            total_votes,
+            coin_ids.rest,
+            amounts.rest,
+            previous.rest,
+            inner_puzzle_hashes.rest,
+            vote_info,
+            vote_amount + sum,
+            output,
+            my_amount,
+            [coin_id, ...distinct_ids],
+        ),
+    ]
+}
+
+fn contains(item: Bytes32, items: List<Bytes32>) -> Bool {
+    if items is nil {
+        return false;
+    }
+    item == items.first || contains(item, items.rest)
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// The proposal's curried values, with its vote counts.
+fn curried(yes_votes: Int, total_votes: Int) -> List<Any> {
+    [
+        sha256("timer_mod"),
+        sha256("singleton_mod"),
+        sha256("launcher_puzzle"),
+        sha256("cat_mod"),
+        sha256("finished_state_mod"),
+        sha256("treasury_mod"),
+        sha256("lockup_self_hash"),
+        sha256("cat_tail"),
+        sha256("treasury_id"),
+        sha256("proposal_self_hash"),
+        sha256("proposal_id"),
+        tree_hash(PROPOSED_PUZZLE),
+        yes_votes,
+        total_votes,
+    ]
+}
+
+inline const PROPOSED_PUZZLE: (1, List<ReserveFee>) = (1, [ReserveFee { amount: 1 }]);
+
+fn add_votes_spend(
+    yes_votes: Int,
+    total_votes: Int,
+    vote_amounts: List<Int>,
+    vote_info: Any,
+    coin_ids: List<Bytes32>,
+    innerpuz_reveal: Any,
+) -> Any {
+    merge_list(
+        curried(yes_votes, total_votes),
+        [
+            vote_amounts,
+            vote_info,
+            coin_ids,
+            [nil, [sha256("previous_vote")]],
+            [sha256("first_owner"), sha256("second_owner")],
+            innerpuz_reveal,
+            0,
+            0,
+            0,
+            nil,
+            1,
+        ],
+    )
+}
+
+// A spend that reveals the treasury's rules: a timelock of 100, a pass margin of 51%, 500 votes
+// required, a soft close length of 20, and a self destruct time of 1000.
+fn close_spend(
+    yes_votes: Int,
+    total_votes: Int,
+    soft_close_length: Int,
+    self_destruct_flag: Any,
+) -> Any {
+    merge_list(
+        curried(yes_votes, total_votes),
+        [
+            sha256("validator"),
+            nil,
+            100,
+            5100,
+            500,
+            nil,
+            soft_close_length,
+            1000,
+            30,
+            self_destruct_flag,
+            1,
+        ],
+    )
+}
+
+test fn adds_the_first_votes() -> Any {
+    check(add_votes_spend(0, 0, [100, 50], 1, [sha256("first"), sha256("second")], PROPOSED_PUZZLE))
+}
+
+test fn adds_no_votes() -> Any {
+    check(add_votes_spend(100, 150, [30], nil, [sha256("first")], nil))
+}
+
+test fn passes() -> Any {
+    check(close_spend(600, 1000, 20, nil))
+}
+
+test fn fails_without_enough_yes_votes() -> Any {
+    check(close_spend(500, 1000, 20, nil))
+}
+
+test fn fails_without_enough_attendance() -> Any {
+    check(close_spend(400, 400, 20, nil))
+}
+
+test fn self_destructs() -> Any {
+    check(close_spend(600, 1000, 0, 1))
+}
+
+fn wrong_reveal() -> Any {
+    add_votes_spend(0, 0, [100], 1, [sha256("first")], (1, nil))
+}
+
+test fn rejects_the_wrong_reveal() -> Any {
+    run(main, wrong_reveal())
+}
+
+test fn reference_rejects_the_wrong_reveal() -> Any {
+    run(reference, wrong_reveal())
+}
+
+fn zero_vote() -> Any {
+    add_votes_spend(100, 150, [0], 1, [sha256("first")], nil)
+}
+
+test fn rejects_a_zero_vote() -> Any {
+    run(main, zero_vote())
+}
+
+test fn reference_rejects_a_zero_vote() -> Any {
+    run(reference, zero_vote())
+}
+
+fn duplicate_vote() -> Any {
+    add_votes_spend(100, 150, [10, 10], 1, [sha256("first"), sha256("first")], nil)
+}
+
+test fn rejects_a_duplicate_vote() -> Any {
+    run(main, duplicate_vote())
+}
+
+test fn reference_rejects_a_duplicate_vote() -> Any {
+    run(reference, duplicate_vote())
+}
+
+fn early_self_destruct() -> Any {
+    merge_list(
+        curried(600, 1000),
+        [sha256("validator"), nil, 1000, 5100, 500, nil, 0, 1000, 30, 1, 1],
+    )
+}
+
+test fn rejects_an_early_self_destruct() -> Any {
+    run(main, early_self_destruct())
+}
+
+test fn reference_rejects_an_early_self_destruct() -> Any {
+    run(reference, early_self_destruct())
+}

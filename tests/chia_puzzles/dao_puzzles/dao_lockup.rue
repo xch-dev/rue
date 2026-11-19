@@ -1,0 +1,585 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_lockup.clsp` from
+// chia_puzzles, checked against the compiled original in the tests below (see
+// tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./dao_lockup.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// The voting mode of a DAO CAT, which locks it in while it has active votes.
+fn main(
+    singleton_mod_hash: Bytes32,
+    singleton_launcher_puzzle_hash: Bytes32,
+    dao_finished_state_mod_hash: Bytes32,
+    cat_mod_hash: Bytes32,
+    cat_tail_hash: Bytes32,
+    self_hash: Bytes32,
+    active_votes: List<Bytes32>,
+    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    // Nil to leave voting mode, or to remove finished proposals from the active votes.
+    my_id: Bytes32 | nil,
+    inner_solution: Any,
+    my_amount: Int,
+    // The proposal to vote on when voting, or the list of finished proposals to remove.
+    new_proposal_vote_id_or_removal_id: Any,
+    proposal_inner_puzzle_hash: Bytes32,
+    vote_info: Any,
+    vote_amount: Int,
+    my_inner_puzzle_hash: Bytes32,
+    // Only when changing owners.
+    new_inner_puzzle_hash: Bytes32 | nil,
+) -> List<Condition> {
+    if my_id is nil {
+        if active_votes is nil {
+            // Leave voting mode.
+            return inner_puzzle(...inner_solution);
+        }
+
+        return remove_finished_proposals(
+            singleton_mod_hash,
+            singleton_launcher_puzzle_hash,
+            self_hash,
+            dao_finished_state_mod_hash,
+            active_votes,
+            tree_hash(inner_puzzle),
+            unchecked_cast::<List<Bytes32>>(new_proposal_vote_id_or_removal_id),
+            my_amount,
+            nil,
+        );
+    }
+
+    let voting = !(new_proposal_vote_id_or_removal_id is nil);
+    let new_vote_id = unchecked_cast::<Bytes32>(new_proposal_vote_id_or_removal_id);
+
+    let vote_added_puzzle_hash = lockup_puzzle_hash(
+        self_hash,
+        if voting {
+            [new_vote_id, ...active_votes]
+        } else {
+            active_votes
+        },
+        if new_inner_puzzle_hash is nil {
+            tree_hash(inner_puzzle)
+        } else {
+            new_inner_puzzle_hash
+        },
+    );
+
+    let vote_condition: Condition = if voting {
+        check_not_previously_voted(
+            singleton_mod_hash,
+            singleton_launcher_puzzle_hash,
+            my_id,
+            new_vote_id,
+            active_votes,
+            proposal_inner_puzzle_hash,
+        )
+    } else {
+        Remark { rest: nil }
+    };
+
+    [
+        AssertMyPuzzleHash {
+            puzzle_hash: curry_tree_hash(
+                cat_mod_hash,
+                [tree_hash_atom(cat_mod_hash), tree_hash_atom(cat_tail_hash), my_inner_puzzle_hash],
+            ),
+        },
+        AssertMyAmount { amount: my_amount },
+        AssertMyCoinId { coin_id: my_id },
+        vote_condition,
+        ...check_conditions(
+            inner_puzzle(...inner_solution),
+            vote_added_puzzle_hash,
+            my_amount,
+            tree_hash([new_proposal_vote_id_or_removal_id, vote_amount, vote_info, my_id]),
+            vote_amount,
+            my_inner_puzzle_hash,
+            false,
+            false,
+        ),
+    ]
+}
+
+fn singleton_puzzle_hash(singleton_struct: SingletonStruct, inner_puzzle_hash: Bytes32) -> Bytes32 {
+    curry_tree_hash(singleton_struct.mod_hash, [tree_hash(singleton_struct), inner_puzzle_hash])
+}
+
+fn lockup_puzzle_hash(
+    self_hash: Bytes32,
+    active_votes: List<Bytes32>,
+    inner_puzzle_hash: Bytes32,
+) -> Bytes32 {
+    curry_tree_hash(
+        self_hash,
+        [tree_hash_atom(self_hash), tree_hash(active_votes), inner_puzzle_hash],
+    )
+}
+
+// Checks that the inner puzzle creates the coin with the vote added, and the change if it doesn't
+// vote with all of its value, and nothing else.
+fn check_conditions(
+    conditions: List<Condition>,
+    vote_added_puzzle_hash: Bytes32,
+    my_amount: Int,
+    message: Bytes32,
+    vote_amount: Int,
+    my_inner_puzzle_hash: Bytes32,
+    seen_vote: Bool,
+    seen_change: Bool,
+) -> List<Condition> {
+    if conditions is nil {
+        // All of the value must be accounted for.
+        assert seen_vote & seen_change;
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    if condition is CreateCoin {
+        if condition.puzzle_hash == vote_added_puzzle_hash {
+            assert !seen_vote;
+
+            if condition.amount == my_amount {
+                // Vote with all of the value.
+                assert !seen_change;
+                return [
+                    condition,
+                    ...check_conditions(
+                        conditions.rest,
+                        vote_added_puzzle_hash,
+                        my_amount,
+                        message,
+                        vote_amount,
+                        my_inner_puzzle_hash,
+                        true,
+                        true,
+                    ),
+                ];
+            }
+
+            // Vote with part of the value.
+            assert condition.amount == vote_amount;
+            return [
+                condition,
+                ...check_conditions(
+                    conditions.rest,
+                    vote_added_puzzle_hash,
+                    my_amount,
+                    message,
+                    vote_amount,
+                    my_inner_puzzle_hash,
+                    true,
+                    seen_change,
+                ),
+            ];
+        }
+
+        // Recreate the coin with the unused value.
+        assert (condition.puzzle_hash == my_inner_puzzle_hash)
+            & !seen_change
+            & (condition.amount == my_amount - vote_amount);
+        return [
+            condition,
+            ...check_conditions(
+                conditions.rest,
+                vote_added_puzzle_hash,
+                my_amount,
+                message,
+                vote_amount,
+                my_inner_puzzle_hash,
+                seen_vote,
+                true,
+            ),
+        ];
+    }
+
+    // The only puzzle announcement allowed is the one that secures the vote.
+    assert !(condition is CreatePuzzleAnnouncement) || condition.message == message;
+
+    [
+        condition,
+        ...check_conditions(
+            conditions.rest,
+            vote_added_puzzle_hash,
+            my_amount,
+            message,
+            vote_amount,
+            my_inner_puzzle_hash,
+            seen_vote,
+            seen_change,
+        ),
+    ]
+}
+
+// Checks that the coin hasn't already voted on the proposal, and asserts the proposal's
+// announcement.
+fn check_not_previously_voted(
+    singleton_mod_hash: Bytes32,
+    singleton_launcher_puzzle_hash: Bytes32,
+    my_id: Bytes32,
+    new_vote_id: Bytes32,
+    active_votes: List<Bytes32>,
+    proposal_inner_puzzle_hash: Bytes32,
+) -> AssertPuzzleAnnouncement {
+    if active_votes is nil {
+        let proposal_struct = SingletonStruct {
+            mod_hash: singleton_mod_hash,
+            launcher_id: new_vote_id,
+            launcher_puzzle_hash: singleton_launcher_puzzle_hash,
+        };
+        return AssertPuzzleAnnouncement {
+            id: sha256(singleton_puzzle_hash(proposal_struct, proposal_inner_puzzle_hash) + my_id),
+        };
+    }
+
+    assert new_vote_id != active_votes.first;
+
+    check_not_previously_voted(
+        singleton_mod_hash,
+        singleton_launcher_puzzle_hash,
+        my_id,
+        new_vote_id,
+        active_votes.rest,
+        proposal_inner_puzzle_hash,
+    )
+}
+
+// Asserts that each proposal has finished, and recreates the coin without them.
+fn remove_finished_proposals(
+    singleton_mod_hash: Bytes32,
+    singleton_launcher_puzzle_hash: Bytes32,
+    self_hash: Bytes32,
+    dao_finished_state_mod_hash: Bytes32,
+    active_votes: List<Bytes32>,
+    inner_puzzle_hash: Bytes32,
+    removal_ids: List<Bytes32>,
+    my_amount: Int,
+    unused_votes: List<Bytes32>,
+) -> List<Condition> {
+    if removal_ids is nil {
+        return [
+            AssertMyAmount { amount: my_amount },
+            CreateCoin {
+                puzzle_hash: lockup_puzzle_hash(
+                    self_hash,
+                    remove_all(unused_votes, active_votes),
+                    inner_puzzle_hash,
+                ),
+                amount: my_amount,
+            },
+        ];
+    }
+
+    let proposal_struct = SingletonStruct {
+        mod_hash: singleton_mod_hash,
+        launcher_id: removal_ids.first,
+        launcher_puzzle_hash: singleton_launcher_puzzle_hash,
+    };
+    let finished_state_puzzle_hash = curry_tree_hash(
+        dao_finished_state_mod_hash,
+        [tree_hash(proposal_struct), tree_hash_atom(dao_finished_state_mod_hash)],
+    );
+
+    [
+        AssertPuzzleAnnouncement {
+            id: sha256(singleton_puzzle_hash(proposal_struct, finished_state_puzzle_hash)),
+        },
+        ...remove_finished_proposals(
+            singleton_mod_hash,
+            singleton_launcher_puzzle_hash,
+            self_hash,
+            dao_finished_state_mod_hash,
+            active_votes,
+            inner_puzzle_hash,
+            removal_ids.rest,
+            my_amount,
+            [removal_ids.first, ...unused_votes],
+        ),
+    ]
+}
+
+// Removes each item of the first list from the second.
+fn remove_all(items: List<Bytes32>, list: List<Bytes32>) -> List<Bytes32> {
+    if items is nil {
+        return list;
+    }
+    remove(items.first, remove_all(items.rest, list))
+}
+
+// Removes the first occurrence of the item, or returns nil if it isn't in the list.
+fn remove(item: Bytes32, list: List<Bytes32>) -> List<Bytes32> {
+    if list is nil {
+        return nil;
+    }
+
+    if list.first == item {
+        return list.rest;
+    }
+
+    [list.first, ...remove(item, list.rest)]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+// The inner puzzle used by the tests, which returns its solution as conditions.
+inline const INNER_PUZZLE: 1 = 1;
+
+fn spend(
+    active_votes: List<Bytes32>,
+    my_id: Bytes32 | nil,
+    conditions: List<Condition>,
+    new_proposal_vote_id_or_removal_id: Any,
+    vote_amount: Int,
+    new_inner_puzzle_hash: Bytes32 | nil,
+) -> Any {
+    [
+        sha256("singleton_mod"),
+        sha256("launcher_puzzle"),
+        sha256("finished_state_mod"),
+        sha256("cat_mod"),
+        sha256("cat_tail"),
+        sha256("lockup_self_hash"),
+        active_votes,
+        INNER_PUZZLE,
+        my_id,
+        conditions,
+        100,
+        new_proposal_vote_id_or_removal_id,
+        sha256("proposal_inner_puzzle"),
+        1,
+        vote_amount,
+        sha256("my_inner_puzzle"),
+        new_inner_puzzle_hash,
+    ]
+}
+
+// The puzzle hash of the coin after voting on `vote_id`.
+fn voted_puzzle_hash(vote_id: Bytes32, active_votes: List<Bytes32>) -> Bytes32 {
+    lockup_puzzle_hash(
+        sha256("lockup_self_hash"),
+        [vote_id, ...active_votes],
+        tree_hash(INNER_PUZZLE),
+    )
+}
+
+// The announcement that secures the vote.
+fn vote_message(vote_id: Bytes32, vote_amount: Int) -> Bytes32 {
+    tree_hash([vote_id as Any, vote_amount, 1, sha256("my_id")])
+}
+
+test fn votes_with_all_of_its_value() -> Any {
+    let vote_id = sha256("proposal");
+    check(spend(
+        [sha256("other_proposal")],
+        sha256("my_id"),
+        [
+            CreateCoin {
+                puzzle_hash: voted_puzzle_hash(vote_id, [sha256("other_proposal")]),
+                amount: 100,
+            },
+            CreatePuzzleAnnouncement { message: vote_message(vote_id, 100) },
+            ReserveFee { amount: 0 },
+        ],
+        vote_id,
+        100,
+        nil,
+    ))
+}
+
+test fn votes_with_part_of_its_value() -> Any {
+    let vote_id = sha256("proposal");
+    check(spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: sha256("my_inner_puzzle"), amount: 40 },
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 60 },
+        ],
+        vote_id,
+        60,
+        nil,
+    ))
+}
+
+test fn changes_owner_without_voting() -> Any {
+    let new_inner_puzzle_hash = sha256("new_owner");
+    check(spend(
+        [sha256("proposal")],
+        sha256("my_id"),
+        [CreateCoin {
+            puzzle_hash: lockup_puzzle_hash(
+                sha256("lockup_self_hash"),
+                [sha256("proposal")],
+                new_inner_puzzle_hash,
+            ),
+            amount: 100,
+        }],
+        nil,
+        0,
+        new_inner_puzzle_hash,
+    ))
+}
+
+test fn removes_finished_proposals() -> Any {
+    check(spend(
+        [sha256("first"), sha256("second"), sha256("third")],
+        nil,
+        nil,
+        [sha256("first"), sha256("third")],
+        0,
+        nil,
+    ))
+}
+
+test fn leaves_voting_mode() -> Any {
+    check(spend(
+        nil,
+        nil,
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 100 }],
+        nil,
+        0,
+        nil,
+    ))
+}
+
+fn revote() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        [vote_id],
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, [vote_id]), amount: 100 },
+            CreatePuzzleAnnouncement { message: vote_message(vote_id, 100) },
+        ],
+        vote_id,
+        100,
+        nil,
+    )
+}
+
+test fn rejects_a_revote() -> Any {
+    run(main, revote())
+}
+
+test fn reference_rejects_a_revote() -> Any {
+    run(reference, revote())
+}
+
+fn wrong_vote_amount() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: sha256("my_inner_puzzle"), amount: 40 },
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 50 },
+        ],
+        vote_id,
+        60,
+        nil,
+    )
+}
+
+test fn rejects_the_wrong_vote_amount() -> Any {
+    run(main, wrong_vote_amount())
+}
+
+test fn reference_rejects_the_wrong_vote_amount() -> Any {
+    run(reference, wrong_vote_amount())
+}
+
+fn missing_change() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 60 }],
+        vote_id,
+        60,
+        nil,
+    )
+}
+
+test fn rejects_missing_change() -> Any {
+    run(main, missing_change())
+}
+
+test fn reference_rejects_missing_change() -> Any {
+    run(reference, missing_change())
+}
+
+fn two_votes() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 60 },
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 60 },
+        ],
+        vote_id,
+        60,
+        nil,
+    )
+}
+
+test fn rejects_two_votes() -> Any {
+    run(main, two_votes())
+}
+
+test fn reference_rejects_two_votes() -> Any {
+    run(reference, two_votes())
+}
+
+fn other_coin() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 100 },
+            CreateCoin { puzzle_hash: sha256("thief"), amount: 0 },
+        ],
+        vote_id,
+        100,
+        nil,
+    )
+}
+
+test fn rejects_another_coin() -> Any {
+    run(main, other_coin())
+}
+
+test fn reference_rejects_another_coin() -> Any {
+    run(reference, other_coin())
+}
+
+fn wrong_announcement() -> Any {
+    let vote_id = sha256("proposal");
+    spend(
+        nil,
+        sha256("my_id"),
+        [
+            CreateCoin { puzzle_hash: voted_puzzle_hash(vote_id, nil), amount: 100 },
+            CreatePuzzleAnnouncement { message: sha256("lie") },
+        ],
+        vote_id,
+        100,
+        nil,
+    )
+}
+
+test fn rejects_the_wrong_announcement() -> Any {
+    run(main, wrong_announcement())
+}
+
+test fn reference_rejects_the_wrong_announcement() -> Any {
+    run(reference, wrong_announcement())
+}

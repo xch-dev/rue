@@ -1,0 +1,97 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_update_proposal.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./dao_update_proposal.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+// A proposal that recreates the treasury with new rules.
+fn main(
+    treasury_mod_hash: Bytes32,
+    validator_mod_hash: Bytes32,
+    singleton_struct: SingletonStruct,
+    proposal_self_hash: Bytes32,
+    proposal_minimum_amount: Int,
+    proposal_excess_payout_puzzle_hash: Bytes32,
+    proposal_length: Int,
+    proposal_softclose_length: Int,
+    attendance_required: Int,
+    pass_margin: Int,
+    proposal_self_destruct_time: Int,
+    oracle_spend_delay: Int,
+) -> List<Condition> {
+    let validator_puzzle_hash = curry_tree_hash(
+        validator_mod_hash,
+        [
+            tree_hash(singleton_struct),
+            tree_hash_atom(proposal_self_hash),
+            tree_hash_atom(proposal_minimum_amount as Bytes),
+            tree_hash_atom(proposal_excess_payout_puzzle_hash),
+        ],
+    );
+    let treasury_puzzle_hash = curry_tree_hash(
+        treasury_mod_hash,
+        [
+            tree_hash_atom(treasury_mod_hash),
+            validator_puzzle_hash,
+            tree_hash_atom(proposal_length as Bytes),
+            tree_hash_atom(proposal_softclose_length as Bytes),
+            tree_hash_atom(attendance_required as Bytes),
+            tree_hash_atom(pass_margin as Bytes),
+            tree_hash_atom(proposal_self_destruct_time as Bytes),
+            tree_hash_atom(oracle_spend_delay as Bytes),
+        ],
+    );
+
+    [CreateCoin { puzzle_hash: treasury_puzzle_hash, amount: 1 }]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn recreates_the_treasury() -> Any {
+    check([
+        sha256("treasury_mod"),
+        sha256("validator_mod"),
+        SingletonStruct {
+            mod_hash: sha256("singleton_mod"),
+            launcher_id: sha256("treasury_id"),
+            launcher_puzzle_hash: sha256("launcher_puzzle"),
+        },
+        sha256("proposal_self_hash"),
+        1000,
+        sha256("excess_payout"),
+        4000,
+        20,
+        100000,
+        5100,
+        10000,
+        30,
+    ])
+}
+
+test fn recreates_the_treasury_with_zeroes() -> Any {
+    check([
+        sha256("treasury_mod"),
+        sha256("validator_mod"),
+        SingletonStruct {
+            mod_hash: sha256("singleton_mod"),
+            launcher_id: sha256("treasury_id"),
+            launcher_puzzle_hash: sha256("launcher_puzzle"),
+        },
+        sha256("proposal_self_hash"),
+        0,
+        sha256("excess_payout"),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ])
+}

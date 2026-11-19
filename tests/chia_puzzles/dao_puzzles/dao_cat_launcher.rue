@@ -1,0 +1,56 @@
+// Regression test, not for production use. A port of `dao_puzzles/dao_cat_launcher.clsp` from chia_puzzles, checked
+// against the compiled original in the tests below (see tests/chia_puzzles/README.md).
+
+import std::singleton::SingletonStruct;
+
+extern fn reference(...solution: Any) -> Any from "./dao_cat_launcher.clsp.hex";
+extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
+
+fn main(
+    treasury_singleton_struct: SingletonStruct,
+    treasury_inner_puzzle_hash: Bytes32,
+    parent_parent: Bytes32,
+    // The full CAT puzzle hash.
+    new_puzzle_hash: Bytes32,
+    amount: Int,
+) -> List<Condition> {
+    let treasury_puzzle_hash = curry_tree_hash(
+        treasury_singleton_struct.mod_hash,
+        [tree_hash(treasury_singleton_struct), treasury_inner_puzzle_hash],
+    );
+    let parent_id = sha256(parent_parent + treasury_puzzle_hash + 1 as Bytes);
+
+    [
+        CreateCoin {
+            puzzle_hash: new_puzzle_hash,
+            amount,
+            memos: Memos { value: [new_puzzle_hash] },
+        },
+        AssertMyAmount { amount },
+        AssertCoinAnnouncement {
+            id: sha256(parent_id + tree_hash(["m" as Bytes, new_puzzle_hash])),
+        },
+        AssertMyParentId { parent_id },
+    ]
+}
+
+// Runs the port and the reference with the same solution, and checks that they agree.
+fn check(solution: Any) -> Any {
+    let output = run(main, solution);
+    assert tree_hash(output) == tree_hash(run(reference, solution));
+    output
+}
+
+test fn launches_the_cat() -> Any {
+    check([
+        SingletonStruct {
+            mod_hash: sha256("singleton_mod"),
+            launcher_id: sha256("treasury_id"),
+            launcher_puzzle_hash: sha256("launcher_puzzle"),
+        },
+        sha256("treasury_inner_puzzle"),
+        sha256("parent_parent"),
+        sha256("cat_puzzle"),
+        1000,
+    ])
+}
