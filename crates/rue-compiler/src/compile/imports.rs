@@ -551,14 +551,20 @@ pub fn resolve_imports(
             }
         }
 
-        for unused_imports in cache.unused_imports.values() {
+        // An import through an ambiguous name could bring in something else, so it isn't reported
+        // for bringing in nothing either
+        for (&import, unused_imports) in &cache.unused_imports {
+            if ctx.is_import_through_ambiguous_name(import) {
+                continue;
+            }
+
             for name in unused_imports.values() {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
             }
         }
 
-        for (name, count) in cache.glob_import_counts.values() {
-            if *count == 0 {
+        for (&import, (name, count)) in &cache.glob_import_counts {
+            if *count == 0 && !ctx.is_import_through_ambiguous_name(import) {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
             }
         }

@@ -1767,6 +1767,52 @@ fn ambiguous_modules_that_nothing_goes_through_are_unused_in_each() {
 }
 
 #[test]
+fn what_ambiguous_modules_only_import_privately_is_still_unused() {
+    // The first module's `m` privately glob-imports `lib`, which a path through `both::m` can't
+    // reach, so `lib`'s items are still reported in either order, and so is the glob import
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "import super::super::lib::*; export const X: Int = 1;",
+            "export const X: Int = 2;",
+            "mod lib { export const DEAD: Int = 1; export mod sub { export const DEEP: Int = 2; } } fn main() -> Int { both::m::X }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["5:32 UnusedConstant", "5:77 UnusedConstant"],
+            "{context}"
+        );
+        assert_eq!(
+            unused_imports(&compiled),
+            ["2:62 UnusedImport"],
+            "{context}"
+        );
+    }
+}
+
+#[test]
+fn glob_imports_through_ambiguous_modules_that_bring_in_nothing_are_used() {
+    // The first module's `m` is empty, so the glob import brings in nothing when `m` is bound to
+    // it, but it goes through an ambiguous name, so it's used in either order
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "",
+            "export const X: Int = 2;",
+            "mod user { export super::both::m::*; } fn main() -> Int { 1 }",
+        ));
+
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
 fn paths_through_ambiguous_modules_at_several_segments_use_everything_in_each() {
     // `both::m` could be `{outer}::m` or `gamma::m`, and in `{outer}::m`, `n` could be
     // `{first}::n` or `beta::n`, so every `Y` is used, whichever glob imports bound the names

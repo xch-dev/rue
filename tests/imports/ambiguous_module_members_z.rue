@@ -1,8 +1,9 @@
 // `both::m` is ambiguous, since both glob exports bring in a module `m`. Which one the name is
 // bound to depends on the order the imports are resolved in, which depends on module names, so a
-// path or import through it counts everything in both modules as used, including what nothing
-// uses, such as `UNUSED`. Here, `beta` sorts before `z`, so `m` is bound to `beta`'s (ambiguous_module_members_a has the module names in the
-// other order). `other`'s `UNUSED` isn't in either, so it's reported.
+// path or import through it counts everything in both modules as used, including what nothing uses,
+// such as `UNUSED`. Here, `beta` sorts before `z`, so `m` is bound to `beta`'s
+// (ambiguous_module_members_a has the module names in the other order). `other`'s `UNUSED` isn't in
+// either, so it's reported.
 mod z {
     export mod m {
         export const X: Int = 1;
