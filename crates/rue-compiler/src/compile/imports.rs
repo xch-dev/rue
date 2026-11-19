@@ -492,19 +492,6 @@ fn report_private_reexports(ctx: &mut Compiler, cache: &mut ImportCache) -> bool
             .insert((import_id, ImportError::PrivateReexport), (name, kind));
     }
 
-    // Every import is resolved again, so the errors for private items are cleared, and recorded
-    // again by the imports that still find something private.
-    if !reported.is_empty() {
-        cache.errors.retain(|(_, error), _| {
-            !matches!(
-                error,
-                ImportError::PrivateModule(_)
-                    | ImportError::PrivateSymbol
-                    | ImportError::PrivateType
-            )
-        });
-    }
-
     !reported.is_empty()
 }
 
@@ -1348,6 +1335,9 @@ fn resolve_import(
             let parent = ctx.module(symbols[index - 1]).scope;
 
             if ctx.scope(parent).is_module_exported(symbols[index]) {
+                cache
+                    .errors
+                    .shift_remove(&(import_id, ImportError::PrivateModule(index)));
                 continue;
             }
 
@@ -1567,6 +1557,12 @@ fn resolve_import(
                 // module by an import that's resolved in a later pass, so a private item imported
                 // now would stay imported.
                 if items.iter().any(|&(_, _, public)| public) {
+                    // It may have found only private items in an earlier pass, before a reported
+                    // re-export exported one (see `report_private_reexports`)
+                    for error in [ImportError::PrivateSymbol, ImportError::PrivateType] {
+                        cache.errors.shift_remove(&(import_id, error));
+                    }
+
                     items
                         .into_iter()
                         .filter(|&(_, _, public)| public)

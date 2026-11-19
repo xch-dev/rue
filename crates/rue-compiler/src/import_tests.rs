@@ -3384,3 +3384,40 @@ fn super_imports_of_a_name_blocked_by_a_private_type_are_not_reported_again() {
 
     assert_eq!(compiled.errors(), ["6:19 PrivateType(\"T\", \"m\")"]);
 }
+
+#[test]
+fn imports_that_find_a_public_item_after_reexports_are_reported_are_not_reported_as_private() {
+    for module in ["y", "zz"] {
+        let compiled = compile(&format!(
+            "
+            import {module}::X;
+
+            mod z {{
+                fn X() -> Int {{
+                    1
+                }}
+
+                export X;
+            }}
+
+            mod {module} {{
+                export super::z::X;
+                type X = Int;
+            }}
+
+            fn main() -> Int {{
+                X()
+            }}
+            "
+        ));
+
+        // Once the re-export in `z` is reported, the import may first find only the private type
+        // `X`, depending on the order the imports are resolved in, before the re-export of the
+        // public function in `{module}`, which is then what it imports
+        assert_eq!(
+            compiled.errors(),
+            ["9:24 PrivateReexport(\"X\")"],
+            "module {module}"
+        );
+    }
+}
