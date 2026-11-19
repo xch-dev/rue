@@ -2069,6 +2069,20 @@ fn named_imports_through_ambiguous_modules_are_used_through_other_kinds() {
     }
 }
 
+/// Compiles a template with module names in braces (such as `{a}`) replaced with `names` in
+/// order, from `a` on, so that a program found by renaming modules can be checked with its module
+/// names in each order.
+fn compile_renamed(template: &str, names: &[&str]) -> Compiled {
+    let source = names
+        .iter()
+        .zip('a'..)
+        .fold(template.to_string(), |source, (name, key)| {
+            source.replace(&format!("{{{key}}}"), name)
+        });
+
+    compile(&source)
+}
+
 #[test]
 fn named_imports_that_fail_do_not_hide_what_glob_imports_could_bring_in() {
     // Found by renaming modules at random. `u`'s import of `Y` fails in either order, since the
@@ -2090,19 +2104,10 @@ fn named_imports_that_fail_do_not_hide_what_glob_imports_could_bring_in() {
         ["hx", "dx", "hk", "bk", "ck", "dz", "fz"],
         ["dx", "dz", "fz", "hx", "hk", "hj", "ck"],
     ];
-    let mut results = Vec::new();
-
-    for names in orders {
-        let source = ["a", "b", "c", "d", "e", "f", "g"]
-            .into_iter()
-            .zip(names)
-            .fold(template.to_string(), |source, (key, name)| {
-                source.replace(&format!("{{{key}}}"), name)
-            });
-        let compiled = compile(&source);
-
-        results.push((compiled.errors(), unused_items(&compiled)));
-    }
+    let results = orders.map(|names| {
+        let compiled = compile_renamed(template, &names);
+        (compiled.errors(), unused_items(&compiled))
+    });
 
     assert_eq!(results[0], results[1]);
     assert!(
@@ -2158,23 +2163,49 @@ fn hiding_by_duplicate_named_imports_does_not_depend_on_which_binds() {
         ["fj", "bj", "hj", "gz", "cj", "fk", "bx", "fz"],
         ["cj", "fz", "hj", "bj", "bx", "fj", "fk", "gz"],
     ];
-    let mut results = Vec::new();
-
-    for names in orders {
-        let source = ["a", "b", "c", "d", "e", "f", "g", "h"]
-            .into_iter()
-            .zip(names)
-            .fold(template.to_string(), |source, (key, name)| {
-                source.replace(&format!("{{{key}}}"), name)
-            });
-        let compiled = compile(&source);
-
-        results.push((compiled.errors(), compiled.warnings()));
-    }
+    let results = orders.map(|names| {
+        let compiled = compile_renamed(template, &names);
+        (compiled.errors(), compiled.warnings())
+    });
 
     assert_eq!(results[0], results[1]);
     assert!(
         results[0].1.contains(&"10:125 UnusedImport".to_string()),
+        "{results:?}"
+    );
+}
+
+#[test]
+fn glob_imports_shadowed_by_partial_named_imports_could_bring_in_what_they_could_refer_to() {
+    // Found by renaming modules at random. `u`'s import of `X` through `{g}::m` might bring in
+    // nothing, so `{h}`'s `X`, which `u`'s glob import of `{h}` brings in but the import hides,
+    // could be what the uses refer to, and so could what that `X` could refer to (it's a re-export
+    // through the ambiguous `{f}::m`), so `{b}`'s `X` is used whichever module each `m` is
+    // bound to.
+    let template = "
+        mod {a} { export mod m { export const Y: Int = 1; export mod n { export const X: Int = 2; export const Y: Int = 3; export type T = Int; } } }
+        mod {b} { export mod m { export const X: Int = 4; export const Y: Int = 5; export type T = Int; export super::super::{c}::m::*; } }
+        mod {c} { export mod m { export const X: Int = 6; export const Y: Int = 7; export type T = Int; export mod n { export const X: Int = 8; export const Y: Int = 9; export type T = Int; } } }
+        mod {d} { export mod m { export const X: Int = 10; export const Y: Int = 11; export type T = Int; export mod n { export const Y: Int = 12; export type T = Int; } export super::super::{a}::m::*; } }
+        mod {e} { export super::{c}::*; export super::{d}::*; export super::{a}::*; }
+        mod {f} { export super::{c}::*; export super::{b}::*; }
+        mod {g} { export super::{a}::*; export super::{d}::*; }
+        mod {h} { export super::{f}::m::X; export super::{f}::m::n; }
+        mod u { import super::{g}::m::X; import super::{c}::*; import super::{h}::*; export super::{e}::m::*; export fn value() -> Int { X + m::n::Y + super::{f}::m::n::X + X } }
+        fn main() -> Int { u::value() }
+    ";
+    let orders = [
+        ["hz", "fx", "hj", "bj", "fk", "cz", "dz", "gz"],
+        ["fk", "hj", "fx", "cz", "gz", "hz", "dz", "bj"],
+    ];
+    let results = orders.map(|names| {
+        let compiled = compile_renamed(template, &names);
+        (compiled.errors(), unused_items(&compiled))
+    });
+
+    assert_eq!(results[0], results[1]);
+    assert!(
+        !results[0].1.contains(&"3:46 UnusedConstant".to_string()),
         "{results:?}"
     );
 }

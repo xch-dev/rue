@@ -1950,7 +1950,8 @@ fn resolve_glob_import(
                 })
             {
                 // A named import that brings in something with the name here might not if its
-                // path were bound differently, and then this one would bring the item in
+                // path were bound differently, and then this one would bring the item in, which
+                // could refer to what it could where it's imported from
                 if resolution.settled
                     && !ctx.is_error_item(item)
                     && resolution
@@ -1959,7 +1960,15 @@ fn resolve_glob_import(
                         .flatten()
                         .any(|&named| ctx.is_partial_import(named, namespace))
                 {
-                    updated |= ctx.add_import_alternative(import_id, namespace, name, item);
+                    let others = ctx
+                        .ambiguous_alternatives(via, item.into())
+                        .filter_map(|other| item_of(namespace, other))
+                        .collect::<Vec<_>>();
+
+                    for item in std::iter::once(item).chain(others) {
+                        updated |=
+                            ctx.add_import_alternative(import_id, namespace, name.clone(), item);
+                    }
                 }
 
                 continue;
@@ -2042,6 +2051,16 @@ fn resolve_glob_import(
         .2 = count;
 
     updated
+}
+
+/// The item that a declaration is in a namespace, if it's one there.
+fn item_of(namespace: Namespace, declaration: Declaration) -> Option<Item> {
+    match (namespace, declaration) {
+        (Namespace::Value, Declaration::Symbol(symbol)) => Some(Item::Value(symbol)),
+        (Namespace::Module, Declaration::Symbol(symbol)) => Some(Item::Module(symbol)),
+        (Namespace::Type, Declaration::Type(ty)) => Some(Item::Type(ty)),
+        _ => None,
+    }
 }
 
 /// Brings in the items with the name that a named import imports, from `base`, the module its path
