@@ -129,9 +129,11 @@ pub(crate) fn infer_call(
         // `ArgumentOrder::takes_expected_bounds` and `CallSolver::argument_mappings`)
         if !order.takes_expected_bounds(i) {
             mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, false);
-        } else if matches!(expr, AstExpr::FunctionCallExpr(_)) {
-            // A call takes the expected type's own bounds where what the arguments so far map
-            // fits them, since its value adds to the generics after it's compiled against them
+        } else if matches!(expr, AstExpr::FunctionCallExpr(_)) && !is_call_without_arguments(expr) {
+            // A call with arguments takes the expected type's own bounds where what the arguments
+            // so far map fits them, since what its own arguments give it adds to the generics once
+            // it's compiled against them. A call without arguments only has its expected type to
+            // infer from, so it keeps the narrower mapping
             ctx.widen_to_expected(&solver, &mut mappings);
         }
 
