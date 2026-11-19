@@ -3,7 +3,7 @@
 //! `CallSolver` in `rue-types`.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use indexmap::IndexSet;
@@ -17,8 +17,9 @@ use rue_types::{
 };
 
 use crate::{
-    ArgumentFrame, Compiler, LambdaBody, LambdaParameter, ParameterWrap, compile_call_argument,
-    compile_expr, compile_lambda_argument, occurs_contravariantly,
+    ArgumentFrame, Compiler, LambdaBody, LambdaParameter, MAX_GENERALIZED_LEVELS, ParameterWrap,
+    compile_call_argument, compile_expr, compile_lambda_argument, is_type_in_scope,
+    occurs_contravariantly,
 };
 
 /// What inferring a call's generics gave.
@@ -52,9 +53,9 @@ pub(crate) fn infer_call(
     // The type expected of the call is used for the generics that the arguments don't
     // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
     // ones they do from being widened past it
-    let infer_expected = |ctx: &mut Compiler, expected_type: TypeId| {
+    let infer_expected = |ctx: &mut Compiler, ty: TypeId, bound: &HashMap<TypeId, usize>| {
         let mut expected = base.clone();
-        ctx.infer_from_expected(function.ret, expected_type, &mut expected);
+        ctx.infer_from_expected(function.ret, ty, &mut expected);
 
         // The generics of an enclosing call that are still being inferred can't be inferred
         // from this call, so they're no help in inferring its generics either
@@ -65,13 +66,52 @@ pub(crate) fn infer_call(
                 .any(|&generic| contains_generic(ctx.types_mut(), ty, generic))
         });
 
+        // A generic of a function type expected of the call is only in scope inside of it, so a
+        // callee's generic can only be inferred as a type that references it if the function
+        // returned at that depth can be generalized over it (see `generalize`). It can't be if a
+        // parameter further out references the callee's generic: `B` can't be `List<T>` in
+        // `let f: fn<T>(a: T) -> (T, List<T>) = make(nil);` with
+        // `fn make<A, B>(v: B) -> fn(a: A) -> (A, B)`, since `v` is passed before there's a `T`.
+        // Nor if the call doesn't return a function there, as with a pair of functions
+        if !bound.is_empty() {
+            let fixed = fixed_depths(ctx, function);
+
+            expected.retain_bounds_of(|generic, ty| {
+                let depth = fixed.get(&generic).copied().unwrap_or(usize::MAX);
+
+                rue_types::referenced_generics(ctx.types_mut(), ty)
+                    .into_iter()
+                    .all(|other| bound.get(&other).is_none_or(|&bound_at| bound_at <= depth))
+            });
+        }
+
         expected
     };
-    let expected = expected_type.map(|expected_type| infer_expected(ctx, expected_type));
+    let mut bound = expected_type
+        .map(|expected_type| expected_generic_depths(ctx, expected_type))
+        .unwrap_or_default();
+
+    // A function type can bind a generic that's also in scope here, such as `T` in the type of
+    // `foo` inside of `fn foo<T>`, which is then still the caller's own where it's free
+    bound.retain(|&generic, _| !is_type_in_scope(ctx, generic));
+
+    let expected = expected_type.map(|expected_type| infer_expected(ctx, expected_type, &bound));
 
     // A narrower expected type is what the generics nothing else gives a type take, when the
-    // expected type was widened to an enclosing call's (see `ArgumentOrder::widens_to_expected`)
-    let narrower = narrower.map(|narrower| infer_expected(ctx, narrower));
+    // expected type was widened to an enclosing call's (see `ArgumentOrder::widens_to_expected`).
+    // Only the expected type is generalized over (see `generalize`), so the narrower one's own
+    // generics are never in scope for what the call returns
+    let narrower = narrower.map(|narrower| {
+        let mut bound = bound;
+
+        for generic in rue_types::function_type_generics(ctx.types_mut(), narrower) {
+            if !is_type_in_scope(ctx, generic) {
+                bound.entry(generic).or_insert(usize::MAX);
+            }
+        }
+
+        infer_expected(ctx, narrower, &bound)
+    });
 
     // The instances of generic functions passed as arguments are solved with the callee's generics
     base.set_instance_policy(InstancePolicy::Joint);
@@ -328,6 +368,86 @@ pub(crate) fn infer_call(
         checks,
         mappings,
     }
+}
+
+/// The depth of the first function, from the callee (0) through the functions it returns, whose
+/// parameters reference each of the callee's generics. A generic that none of them do has the depth
+/// of the last function returned, since `generalize` stops there.
+fn fixed_depths(ctx: &mut Compiler, function: &FunctionType) -> HashMap<TypeId, usize> {
+    let mut depths = HashMap::new();
+    let mut current = function.clone();
+    let mut reached = 0;
+
+    for depth in 0..=MAX_GENERALIZED_LEVELS {
+        reached = depth;
+
+        for &generic in &function.generics {
+            if !depths.contains_key(&generic)
+                && current
+                    .param_types()
+                    .any(|param| contains_generic(ctx.types_mut(), param, generic))
+            {
+                depths.insert(generic, depth);
+            }
+        }
+
+        let returned = rue_types::unwrap_semantic(ctx.types_mut(), current.ret, true);
+
+        let Type::Function(returned) = ctx.ty(returned).clone() else {
+            break;
+        };
+
+        current = returned;
+    }
+
+    for &generic in &function.generics {
+        depths.entry(generic).or_insert(reached);
+    }
+
+    depths
+}
+
+/// The generics of the function types expected of a call, and of those that they return, each with
+/// the depth of the outermost function type that binds it, from 1 for the expected function types.
+/// Those of the function types anywhere else in the expected type, such as in a pair, have no depth
+/// (`usize::MAX`), since `generalize` never generalizes over them.
+fn expected_generic_depths(ctx: &mut Compiler, expected_type: TypeId) -> HashMap<TypeId, usize> {
+    let mut bound = HashMap::new();
+    let mut expected = vec![expected_type];
+    let mut visited = HashSet::from([expected_type]);
+
+    for depth in 1..=MAX_GENERALIZED_LEVELS {
+        let functions: Vec<FunctionType> = expected
+            .iter()
+            .flat_map(|&ty| rue_types::extract_functions(ctx.types_mut(), ty, false))
+            .collect();
+
+        if functions.is_empty() {
+            break;
+        }
+
+        // A recursive function type binds the same generic again at each depth, where the
+        // outermost one is what `generalize` copies
+        for function in &functions {
+            for &generic in &function.generics {
+                bound.entry(generic).or_insert(depth);
+            }
+        }
+
+        // A type that was already walked, such as a recursive alias returned by several of its
+        // members, only binds generics that it bound further out, so the walk doesn't repeat it
+        expected = functions
+            .iter()
+            .map(|function| function.ret)
+            .filter(|&ret| visited.insert(ret))
+            .collect();
+    }
+
+    for generic in rue_types::function_type_generics(ctx.types_mut(), expected_type) {
+        bound.entry(generic).or_insert(usize::MAX);
+    }
+
+    bound
 }
 
 /// Whether a member of the type expected of a pair or list could hold it as another pair than the

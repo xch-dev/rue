@@ -302,6 +302,11 @@ impl Inference {
     /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
     /// if nothing else constrains the generic, they're dropped along with any bound.
     pub fn retain_bounds(&mut self, mut f: impl FnMut(TypeId) -> bool) {
+        self.retain_bounds_of(|_, ty| f(ty));
+    }
+
+    /// Like `retain_bounds`, with the generic that each bound is a bound of.
+    pub fn retain_bounds_of(&mut self, mut f: impl FnMut(TypeId, TypeId) -> bool) {
         for (generic, candidates) in &mut self.generics {
             let branches = self.branches.get_mut(generic).unwrap();
             let len = candidates.lower.len() + candidates.upper.len();
@@ -312,7 +317,7 @@ impl Inference {
                 (*types, *lists) = mem::take(types)
                     .into_iter()
                     .zip(mem::take(lists))
-                    .filter(|&(ty, _)| f(ty))
+                    .filter(|&(ty, _)| f(*generic, ty))
                     .unzip();
             }
 

@@ -48,3 +48,10 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: guard_recursive_union_of_function_types
+  program: (q . 12)
+  debug_program: (q . 12)
+  output: "12"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

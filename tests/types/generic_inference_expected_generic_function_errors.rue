@@ -21,7 +21,131 @@ fn make_from_parameter<A, B>(_value: A) -> fn(a: A) -> B {
     unchecked_cast(nil)
 }
 
+fn make_list<A>(_value: List<A>) -> fn(a: A) -> List<A> {
+    unchecked_cast(nil)
+}
+
+fn make_nested<A>() -> fn(a: A) -> fn(c: Int) -> A {
+    unchecked_cast(nil)
+}
+
+fn make_pair<A>() -> (fn(a: A) -> A, Int) {
+    unchecked_cast(nil)
+}
+
+fn make_functions<A>() -> List<fn(a: A) -> A> {
+    unchecked_cast(nil)
+}
+
+fn make_optional<A>() -> (fn(a: A) -> A) | nil {
+    unchecked_cast(nil)
+}
+
+fn make_from_lambda<A>(_function: fn(x: A) -> A) -> fn(a: A) -> A {
+    unchecked_cast(nil)
+}
+
+fn make_returning_pair<A, B>() -> fn(a: A) -> (fn(u: B) -> B, Int) {
+    unchecked_cast(nil)
+}
+
+fn make_returning_optional<A>() -> fn(a: Int) -> (fn(c: Int) -> A) | nil {
+    unchecked_cast(nil)
+}
+
+type Chain<X> = fn<T>(a: T) -> (X, Chain<T>);
+
+type Curried<X> = fn<T>(a: X) -> Curried<T>;
+
+fn chain_value() -> Chain<Int> {
+    unchecked_cast(nil)
+}
+
+fn make_chain_pair<A>() -> (fn(a: Int) -> (Int, fn(b: A) -> (Int, Any)), Int) {
+    unchecked_cast(nil)
+}
+
+fn make_chain<A>() -> fn(a: Int) -> (Int, fn(b: A) -> (Int, Any)) {
+    unchecked_cast(nil)
+}
+
+fn make_curried<A>() -> fn(a: Int) -> fn(b: Int) -> fn(c: A) -> Any {
+    unchecked_cast(nil)
+}
+
+fn either<X>(_first: X, second: X) -> X {
+    second
+}
+
+fn make_list_from_int<G>(_value: Int) -> fn(a: G) -> List<G> {
+    unchecked_cast(nil)
+}
+
+fn singleton<S>(value: S) -> List<S> {
+    [value]
+}
+
+fn first_of<R>(_function: (fn<T>(a: T) -> T, Int) | Any, value: R) -> R {
+    value
+}
+
 fn main() -> Int {
+    // `A` depends on the parameter, so it can't be the expected type's `T`, which is only in scope
+    // inside of the function type, and `nil` doesn't give it a type either
+    let _from_list: fn<T>(a: T) -> List<T> = make_list(nil);
+
+    // Breaking change for correctness (#362, step 13j): this compiled, with `make_list(nil)` as
+    // `fn(a: T) -> List<T>`, which names the `T` of the function type in the annotation outside of
+    // it, unbound, and was only accepted through `Any`. As above, nothing gives `A` a type, as with
+    // `make_list(nil) is Any`; `make_list::<Int>(nil)` still compiles
+    let _through_any: (fn<T>(a: T) -> List<T>) | Any = make_list(nil);
+
+    // Breaking change for correctness (#362, step 13j): as above, with the lambda's `x` as the
+    // unbound `T` as well; `make_from_lambda::<Int>(fn(x) => x)` still compiles
+    let _lambda_through_any: (fn<T>(a: T) -> T) | Any = make_from_lambda(fn(x) => x);
+
+    // Breaking changes for correctness (#362, step 13j): these compiled the same way, with `A` as
+    // the `T` of a function type in a pair, a list or a union. Only a function that a call
+    // returns is generalized over an expected type's generics, so `T` was named outside of where
+    // it's bound. Nothing else gives `A` a type, so they're rejected as `make_pair() is Any` is,
+    // and the same calls with `::<Int>` still compile
+    let _in_pair: (fn<T>(a: T) -> T, Int) | Any = make_pair();
+    let _in_list: List<fn<T>(a: T) -> T> | Any = make_functions();
+    let _in_union: (fn<T>(a: T) -> T) | Any = make_optional();
+    let _in_argument = first_of(make_pair(), 1);
+
+    // Breaking changes for correctness (#362, step 13j): the same, in what a function returned by
+    // the call returns, with `B` as the `U` of the function type in the pair, and with `A` as the
+    // `U` of a function that the returned function returns in a union rather than as itself. Both
+    // calls with explicit generics still compile
+    let _in_returned_pair: (fn<T>(a: T) -> (fn<U>(u: U) -> U, Int)) | Any = make_returning_pair();
+    let _in_returned_union: (fn(a: Int) -> fn<U>(c: Int) -> U) | Any = make_returning_optional();
+
+    // Breaking changes for correctness (#362, step 13j): the same, where the function types are
+    // in the expansion of a recursive generic alias, whose generics are renamed to fresh copies
+    // each time it's expanded. `A` was inferred as such a copy of `T`, which isn't the one that the
+    // call's type is checked against or generalized over, so it was named outside of where it's
+    // bound. That's so wherever the expected type comes from, including an enclosing call with no
+    // annotation. The calls with `::<Int>` still compile
+    let _alias_in_pair: (Chain<Int>, Int) | Any = make_chain_pair();
+    let _alias_in_returned_pair: Chain<Int> | Any = make_chain();
+    let _alias_from_a_call = either(chain_value(), make_chain());
+
+    // `A` is the copy of `T` that the function returned at the same depth is generalized over,
+    // rather than another one that would be named outside of where it's bound, but that function
+    // takes an `Int` rather than the outer `T`
+    let _alias_generalized: Curried<Int> = make_curried();
+
+    // The type expected of `make_list_from_int(1)` is widened to what `either` infers, and the
+    // narrower `fn<S>(value: S) -> List<S>` from `singleton` isn't generalized over, so `G` isn't
+    // its `S`
+    let _narrower: (fn<T>(x: T) -> List<T>) | Int = either(singleton, make_list_from_int(1));
+
+    // The inner `U` is only in scope inside of the inner function type, which `A`, a parameter of
+    // the outer one, isn't, so `A` is generalized as the outer `T` instead and the result is
+    // `fn<A>(a: A) -> fn(c: Int) -> A`, rather than naming `U` outside of where it's bound
+    let _inner: (fn<T>(a: T) -> fn<U>(c: Int) -> U) | Bytes32 = make_nested();
+
     // `B` is `(A, A)`, where `A` is the generic that the result is generalized over, but `nil`
     // still isn't an `Int`
     let wrong_member: fn<T>(a: T) -> ((T, T), Int) = make_with_nil();
@@ -32,20 +156,21 @@ fn main() -> Int {
     // `B` is `(A, U)`, where `U` is a copy of the expected one
     let _wrong_copied: fn<T, U>(a: T) -> ((T, U), Int) = make_with_nil();
 
-    // `A` depends on a parameter, so it isn't generalized and still names `T`. `T` isn't copied
-    // into `B` either, since it leaks regardless
-    let leaked: fn<T>(a: T) -> (T, T) = make_from_parameter(unchecked_cast(nil));
+    // `A` depends on a parameter, so it isn't generalized, and the expected type's `T`, which is
+    // only in scope inside of it, isn't what `A` is inferred as either: nothing else gives it a
+    // type
+    let parameter_dependent: fn<T>(a: T) -> (T, T) = make_from_parameter(unchecked_cast(nil));
 
     // The returned function only takes `Int`, which isn't any `T`
     let only_int: fn<T>(a: T) -> (T, T) = make_from_int();
 
-    // `B` is inferred from the argument, which is typed by the expected type, so it isn't
-    // generalized and still names the expected type's `T`
+    // `B` depends on the parameter, so it isn't generalized, and it isn't inferred as the expected
+    // type's `T`, which is only in scope inside of it, so nothing gives the argument a type
     let from_argument: fn<T>(a: T) -> (T, T) = make_with(unchecked_cast(nil));
 
     only_int(1).first
         + from_argument(1).first
         + wrong_member(1).rest
         + wrong_binary(1, 2).rest
-        + leaked(1).first
+        + parameter_dependent(1).first
 }

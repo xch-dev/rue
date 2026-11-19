@@ -167,3 +167,59 @@ test fn guard_generics_inferred_as_the_same_one() -> Int {
     let function: fn<T>(a: T) -> T = make_identity();
     function(7)
 }
+
+fn make_with_value<A, B>(value: B) -> fn(a: A) -> (A, B) {
+    fn(a: A): (A, B) => (a, value)
+}
+
+test fn expected_generic_not_inferred_for_a_parameter() -> Int {
+    // `B` depends on the parameter, so it can't be the `List<T>` that the expected type gives it,
+    // whose `T` is only in scope inside of the function type: it's `nil`, from the argument, and
+    // the result is `fn<A>(a: A) -> (A, nil)`, which is a `fn<T>(a: T) -> (T, List<T>)`
+    let function: fn<T>(a: T) -> (T, List<T>) = make_with_value(nil);
+    let exact: fn<T>(a: T) -> (T, nil) = make_with_value(nil);
+    let (first, _) = function(1);
+    let (second, _) = exact(2);
+    first + second
+}
+
+fn make_pair<A>(function: fn(a: A) -> A) -> (fn(a: A) -> A, Int) {
+    (function, 4)
+}
+
+fn add_one(value: Int) -> Int {
+    value + 1
+}
+
+test fn function_in_a_pair() -> Int {
+    // A function type that's in a pair isn't generalized over, so `A` isn't inferred from its `T`,
+    // but it still is from the argument, or explicitly
+    let (function, number): (fn(a: Int) -> Int, Int) = make_pair(add_one);
+    let _inferred: (fn<T>(a: T) -> T, Int) | Any = make_pair(add_one);
+    let _explicit: (fn<T>(a: T) -> T, Int) | Any = make_pair::<Int>(add_one);
+    function(number)
+}
+
+fn pick<X>(_first: X, second: X) -> X {
+    second
+}
+
+fn make_two<A, B>(_value: Int) -> (A, B) {
+    unchecked_cast((8, nil))
+}
+
+fn make_two_without_arguments<A, B>() -> (A, B) {
+    unchecked_cast((9, nil))
+}
+
+fn recursive_pair<T>(value: T) -> T {
+    // The type of `recursive_pair` here binds the `T` that's in scope, which is still the
+    // function's own `T` where it's free, so `A` can be it, through the expected type
+    let widened = pick((value, recursive_pair), make_two(1));
+    let expected = pick((value, recursive_pair), make_two_without_arguments());
+    pick(widened.first, expected.first)
+}
+
+test fn generic_in_scope_bound_by_an_expected_function_type() -> Int {
+    recursive_pair(7)
+}

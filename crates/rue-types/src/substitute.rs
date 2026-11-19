@@ -453,6 +453,54 @@ pub fn contained_generics(
         .collect()
 }
 
+/// The generics bound by the function types anywhere in the type, such as `T` in
+/// `(fn<T>(a: T) -> T, Int)`, in the order they're found.
+pub fn function_type_generics(arena: &mut Arena<Type>, id: TypeId) -> Vec<TypeId> {
+    // Substitution expands generic applications, such as an alias of a list of function types
+    let root = substitute(arena, id);
+    let mut generics = Vec::new();
+    let mut visited = HashSet::new();
+    let mut stack = vec![root];
+
+    while let Some(id) = stack.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+
+        match &arena[id] {
+            Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
+            Type::Ref(id) => stack.push(*id),
+            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
+            Type::Alias(alias) => stack.push(alias.inner),
+            Type::Struct(ty) => stack.push(ty.inner),
+            Type::Apply(apply) => {
+                stack.push(apply.inner);
+                stack.extend(apply.generics.values().copied());
+            }
+            Type::Function(function) => {
+                generics.extend(function.generics.iter().copied());
+                stack.push(function.ret);
+                stack.extend(function.param_types());
+            }
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+        }
+    }
+
+    generics
+}
+
+/// The generics that the type references other than where a function type in it binds them, as
+/// `contains_generic` finds them, such as `T` but not `U` in `(T, fn<U>(a: U) -> U)`. The type is
+/// only substituted once.
+pub fn referenced_generics(arena: &mut Arena<Type>, id: TypeId) -> Vec<TypeId> {
+    let root = substitute(arena, id);
+
+    free_generics(arena, root)
+        .into_iter()
+        .filter(|&generic| references_generic(arena, root, generic, |_| Vec::new()))
+        .collect()
+}
+
 /// Returns `true` if the type is unresolved, or contains an unresolved type anywhere inside of it
 /// (such as an element of a pair or a field of a struct), because an error has already been
 /// reported for it.

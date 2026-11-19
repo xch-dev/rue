@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
@@ -101,6 +101,17 @@ pub fn compile_function_call_expr(
                 DiagnosticKind::ExpectedArguments(function.params.len(), args.len()),
             );
         }
+
+        // Substituting a generic alias's expansion renames the generics of the function types in
+        // it to fresh copies (see `rue_types::substitute`), so the expected type is substituted
+        // once here, for inference and `generalize` to see the same copies. Otherwise, the generics
+        // that the callee's are inferred as wouldn't be the ones generalized over, and would leak.
+        // A narrower expected type is a parameter type that's already been substituted
+        let expected_type = if function.generics.is_empty() {
+            expected_type
+        } else {
+            expected_type.map(|ty| rue_types::substitute(ctx.types_mut(), ty))
+        };
 
         let InferredCall {
             results,
@@ -227,7 +238,8 @@ fn callee_name(call: &AstFunctionCallExpr) -> String {
 /// `(T, T)` for `B` in `let f: fn<T>(a: T) -> (T, T) = make();` with
 /// `fn make<A, B>() -> fn(a: A) -> B`, references the copy of the first generic inferred as each
 /// one instead, so it doesn't leak them (#340). `A` is inferred as `T`, so `B` is `(A, A)`. If no
-/// generic is inferred as one of them, it's copied as well, unless it leaks through a parameter.
+/// generic is inferred as one of them, it's copied as well. A generic that a parameter depends on
+/// is never inferred as a type that references them (see `infer_call`).
 ///
 /// The same goes for the function types nested in the return types, at the same depth on each
 /// side, such as `fn<U>(b: U) -> (T, U)` in `fn<T>(a: T) -> fn<U>(b: U) -> (T, U)` (#359).
@@ -241,12 +253,10 @@ fn generalize(
     let mut returned = function.ret;
     let mut expected = vec![expected_type];
 
-    // The generics that no parameter so far references, and the ones that a parameter does
-    let (mut free, mut fixed) = split_by_params(
-        ctx,
-        &function.generics,
-        &function.param_types().collect::<Vec<_>>(),
-    );
+    // The generics that no parameter so far references. Those that one does aren't inferred as a
+    // type that references the expected generics at the levels below it (see `infer_call`), so
+    // leaving them out is only a backstop
+    let mut free = unreferenced_by_params(ctx, &function.generics, function);
 
     // A generic only ever stops being free, and one that's still in what's returned eventually
     // turns up in a parameter or behind a return type that isn't a function, so the walk ends. The
@@ -276,25 +286,18 @@ fn generalize(
             .flat_map(|expected| expected.generics.iter().copied())
             .collect();
 
-        levels.push(generalize_level(
-            ctx,
-            &free,
-            &fixed,
-            &expected_generics,
-            mappings,
-        ));
+        levels.push(generalize_level(ctx, &free, &expected_generics, mappings));
 
-        let (still_free, now_fixed) = split_by_params(
-            ctx,
-            &free,
-            &returned_function.param_types().collect::<Vec<_>>(),
-        );
-        free = still_free;
-        fixed.extend(now_fixed);
+        free = unreferenced_by_params(ctx, &free, &returned_function);
         returned = returned_function.ret;
+
+        // Several of the expected functions can return the same type, such as a recursive alias
+        // that's a union of them, which would otherwise be walked once for each at every level
+        let mut seen = HashSet::new();
         expected = expected_functions
             .iter()
             .map(|expected| expected.ret)
+            .filter(|&ret| seen.insert(ret))
             .collect();
     }
 
@@ -306,29 +309,30 @@ fn generalize(
 }
 
 /// How deeply nested the functions returned by a call can be generalized (see `generalize`).
-const MAX_GENERALIZED_LEVELS: usize = 25;
+pub(crate) const MAX_GENERALIZED_LEVELS: usize = 25;
 
-/// Splits the generics into the ones that none of the parameter types reference and the ones that
-/// one does, keeping their order.
-fn split_by_params(
+/// The generics that none of the function's parameter types reference, in order.
+fn unreferenced_by_params(
     ctx: &mut Compiler,
     generics: &[TypeId],
-    params: &[TypeId],
-) -> (Vec<TypeId>, Vec<TypeId>) {
-    generics.iter().copied().partition(|&generic| {
-        !params
-            .iter()
-            .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
-    })
+    function: &FunctionType,
+) -> Vec<TypeId> {
+    generics
+        .iter()
+        .copied()
+        .filter(|&generic| {
+            !function
+                .param_types()
+                .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+        })
+        .collect()
 }
 
 /// Generalizes one level of the functions returned by a call (see `generalize`), over the expected
-/// generics at that level, for the `free` generics that no parameter above it references. The
-/// `fixed` ones are referenced by one.
+/// generics at that level, for the `free` generics that no parameter above it references.
 fn generalize_level(
     ctx: &mut Compiler,
     free: &[TypeId],
-    fixed: &[TypeId],
     expected_generics: &[TypeId],
     mappings: &mut HashMap<TypeId, TypeId>,
 ) -> Vec<TypeId> {
@@ -337,20 +341,6 @@ fn generalize_level(
     if expected_generics.is_empty() {
         return generalized;
     }
-
-    // An expected generic that a generic which a parameter depends on references leaks regardless,
-    // so it isn't copied, since the error would then name the same type on both sides
-    let leaked: Vec<TypeId> = expected_generics
-        .iter()
-        .copied()
-        .filter(|&other| {
-            fixed.iter().any(|generic| {
-                mappings
-                    .get(generic)
-                    .is_some_and(|&ty| contains_generic(ctx.types_mut(), ty, other))
-            })
-        })
-        .collect();
 
     // The copy that each of the expected generics is generalized as
     let mut copies = HashMap::new();
@@ -381,11 +371,11 @@ fn generalize_level(
 
             references = true;
 
-            if !copies.contains_key(&other) && !leaked.contains(&other) {
+            copies.entry(other).or_insert_with(|| {
                 let copy = copy_generic(ctx, other);
                 generalized.push(copy);
-                copies.insert(other, copy);
-            }
+                copy
+            });
         }
 
         if references {
@@ -456,7 +446,7 @@ fn copy_generic(ctx: &mut Compiler, generic: TypeId) -> TypeId {
     ctx.alloc_type(copy)
 }
 
-fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {
+pub(crate) fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {
     let mut current = Some(ctx.last_scope_id());
 
     while let Some(scope) = current {

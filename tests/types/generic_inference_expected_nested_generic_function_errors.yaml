@@ -1,4 +1,4 @@
 diagnostics:
-- "Cannot assign `fn(a: U) -> fn(b: U) -> U` to `fn(a: Int) -> fn<U>(b: U) -> U`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:21:50"
-- "Cannot assign `fn(a: Int) -> fn<U>(b: Int) -> (U, U)` to `fn(a: Int) -> fn<U>(b: U) -> (U, U)`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:24:56"
-- "Cannot assign `fn<T>(x: T) -> (T, PairLoop<T>)` to `Recursive`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:28:33"
+- "Cannot assign `fn(a: Int) -> fn(b: Int) -> Int` to `fn(a: Int) -> fn<U>(b: U) -> U`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:23:50"
+- "Cannot assign `fn(a: Int) -> fn<U>(b: Int) -> (U, U)` to `fn(a: Int) -> fn<U>(b: U) -> (U, U)`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:26:56"
+- "Cannot assign `fn<T>(x: T) -> (T, PairLoop<T>)` to `Recursive`, since they are incompatible at generic_inference_expected_nested_generic_function_errors.rue:30:33"

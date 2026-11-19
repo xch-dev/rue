@@ -3284,6 +3284,7 @@ mod inference {
 
 mod substitution {
     use super::*;
+    use crate::{function_type_generics, referenced_generics};
 
     #[test]
     fn apply() {
@@ -3404,6 +3405,77 @@ mod substitution {
         let outer = db.pair(int, inner);
         let captured = db.function_with(&[v], &[v], true, outer);
         assert_eq!(db.cmp(p_int, captured), Comparison::Invalid);
+    }
+
+    #[test]
+    fn referenced_generics_skip_bound_ones() {
+        let mut db = Db::new();
+        let t = db.generic("T");
+        let u = db.generic("U");
+
+        // `(T, fn<U>(p0: U) -> U)`
+        let function = db.function_with(&[u], &[u], true, u);
+        let pair = db.pair(t, function);
+
+        assert_eq!(referenced_generics(&mut db.arena, pair), vec![t]);
+    }
+
+    #[test]
+    fn function_type_generics_anywhere() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (u, v, w) = (db.generic("U"), db.generic("V"), db.generic("W"));
+
+        // `(fn<U>(p0: U) -> U, fn<W>(p0: fn<V>(p0: V) -> V) -> Int)`
+        let first = db.function_with(&[u], &[u], true, u);
+        let parameter = db.function_with(&[v], &[v], true, v);
+        let second = db.function_with(&[w], &[parameter], true, int);
+        let pair = db.pair(first, second);
+
+        let mut generics = function_type_generics(&mut db.arena, pair);
+        generics.sort_unstable();
+        let mut expected = vec![u, v, w];
+        expected.sort_unstable();
+        assert_eq!(generics, expected);
+    }
+
+    #[test]
+    fn substituted_function_generics_are_kept() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+
+        // type P<T> = fn<U>(x: U) -> (T, P<U>);
+        let t = db.generic("T");
+        let u = db.generic("U");
+        let alias = db.declare_alias("P", &[t]);
+        let p_u = db.apply(alias, &[(t, u)]);
+        let ret = db.pair(t, p_u);
+        let function = db.function_with(&[u], &[u], true, ret);
+        db.define(alias, function);
+        let p_int = db.apply(alias, &[(t, int)]);
+
+        // Each substitution of `P<Int>` renames the generic that the `P<U>` in its expansion binds,
+        // but a substituted type keeps it, so every walk of that type sees the same one
+        let substituted = substitute(&mut db.arena, p_int);
+        let inner = inner_generics(&mut db, substituted);
+        assert_eq!(inner, inner_generics(&mut db, substituted));
+        assert!(function_type_generics(&mut db.arena, substituted).contains(&inner[0]));
+        assert_ne!(
+            inner_generics(&mut db, p_int),
+            inner_generics(&mut db, p_int)
+        );
+    }
+
+    /// The generics of the function type in the rest of the pair that a function type returns.
+    fn inner_generics(db: &mut Db, ty: TypeId) -> Vec<TypeId> {
+        let outer = extract_functions(&mut db.arena, ty, false);
+        let ret = unwrap_semantic(&mut db.arena, outer[0].ret, true);
+        let Type::Pair(pair) = db.arena[ret].clone() else {
+            panic!("expected a pair");
+        };
+        extract_functions(&mut db.arena, pair.rest, false)[0]
+            .generics
+            .clone()
     }
 
     #[test]
