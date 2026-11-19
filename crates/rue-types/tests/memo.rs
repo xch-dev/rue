@@ -985,6 +985,235 @@ fn test_inner_instance_reused() {
     });
 }
 
+/// `fn<B>(f: F, h: F) -> B` against `fn(f: P, h: P) -> (R, R)`, where `F = fn(g: Q) -> B`,
+/// `P = fn<T>(g: fn(x: Int) -> T) -> (T, T)` and `Q = fn<U>(x: U) -> (U, U)`, as in
+/// `deeper_instances_are_instantiated` with two parameters.
+fn deeper_instance_reused(
+    result: fn(&mut Types) -> TypeId,
+) -> impl Fn(&mut Types) -> (TypeId, TypeId) {
+    move |db: &mut Types| {
+        let int = db.builtins.int;
+        let [outer, inner, deeper] = [db.generic(), db.generic(), db.generic()];
+        let deepers = db.pair(deeper, deeper);
+        let q = db.function(vec![deeper], vec![deeper], deepers);
+        let given = db.function(vec![], vec![q], outer);
+        let call = db.function(vec![outer], vec![given, given], outer);
+        let callback = db.function(vec![], vec![int], inner);
+        let inners = db.pair(inner, inner);
+        let p = db.function(vec![inner], vec![callback], inners);
+        let r = result(db);
+        let ret = db.pair(r, r);
+        let target = db.function(vec![], vec![p, p], ret);
+        (call, target)
+    }
+}
+
+/// The second comparison of `P` with `F` is reused from the first, with its summary, which has the
+/// bounds of `P`'s instance `T'` and of `Q`'s instance `U'`, which `T'`'s bounds refer to, so
+/// that both can still be instantiated where it's applied, as when it's computed again without
+/// the memo: `U'` is `Int` for `R` as `(Int, Int)`, and can't be for `(Int, Bytes32)`.
+#[test]
+fn test_deeper_instance_reused() {
+    with_large_stack(|| {
+        let ints = in_every_mode(deeper_instance_reused(|db| {
+            let int = db.builtins.int;
+            db.pair(int, int)
+        }));
+        assert_eq!(ints, [Comparison::Assign; 3]);
+
+        let mixed = in_every_mode(deeper_instance_reused(|db| {
+            let BuiltinTypes { int, bytes32, .. } = db.builtins;
+            db.pair(int, bytes32)
+        }));
+        assert_eq!(mixed, [Comparison::Invalid; 3]);
+    });
+}
+
+/// `fn<B>(f: F, h: F) -> B` (or with `f` alone) against `fn(f: P, h: P) -> (R, R)`, where
+/// `F = fn(g: Q) -> B`, `P = fn<T>(g: fn(k: S) -> T) -> (T, T)`,
+/// `Q = fn<U>(k: fn(y: Int) -> U) -> (U, U)`, `S = fn<V>(y: V) -> (V, V)` and `R` is `(L, L)` for
+/// `L` as `(Int, Int)` or `(Int, Bytes32)`, which makes a chain `B ≥ (T', T')`, `T' ≥ (U', U')`,
+/// `U' ≥ (V', V')` and `V' ≥ Int` three levels deep.
+fn three_levels(twice: bool, mixed: bool) -> impl Fn(&mut Types) -> (TypeId, TypeId) {
+    move |db: &mut Types| {
+        let BuiltinTypes { int, bytes32, .. } = db.builtins;
+        let [outer, item, deeper, deepest] =
+            [db.generic(), db.generic(), db.generic(), db.generic()];
+        let deepests = db.pair(deepest, deepest);
+        let s = db.function(vec![deepest], vec![deepest], deepests);
+        let callback = db.function(vec![], vec![int], deeper);
+        let deepers = db.pair(deeper, deeper);
+        let q = db.function(vec![deeper], vec![callback], deepers);
+        let given = db.function(vec![], vec![q], outer);
+        let params = if twice {
+            vec![given, given]
+        } else {
+            vec![given]
+        };
+        let call = db.function(vec![outer], params, outer);
+        let takes = db.function(vec![], vec![s], item);
+        let items = db.pair(item, item);
+        let p = db.function(vec![item], vec![takes], items);
+        let leaf = if mixed {
+            db.pair(int, bytes32)
+        } else {
+            db.pair(int, int)
+        };
+        let r = db.pair(leaf, leaf);
+        let ret = db.pair(r, r);
+        let target_params = if twice { vec![p, p] } else { vec![p] };
+        let target = db.function(vec![], target_params, ret);
+        (call, target)
+    }
+}
+
+/// The second comparison of `P` with `F` is reused from the first, and the summary's locals for
+/// `T'`, `U'` and `V'` are numbered in its own order, which needn't be the order they're made in.
+/// Where it's applied, they're made in that order again, so that each can still be instantiated
+/// with those after it, as when it's computed again without the memo: `V'` is `Int` for `L` as
+/// `(Int, Int)`, and can't be for `(Int, Bytes32)`.
+#[test]
+fn test_three_levels_reused() {
+    with_large_stack(|| {
+        for twice in [false, true] {
+            assert_eq!(
+                in_every_mode(three_levels(twice, false)),
+                [Comparison::Assign; 3]
+            );
+            assert_eq!(
+                in_every_mode(three_levels(twice, true)),
+                [Comparison::Invalid; 3]
+            );
+        }
+    });
+}
+
+/// `fn<B>(f: F, h: F) -> B` (or with `f` alone) against `fn<Z>(f: P, h: P) -> (R, R)`, where
+/// `F = fn(g: Q) -> B`, `P = fn<T>(g: fn(x: Z) -> T) -> (T, T)`, `Q = fn<U>(x: U) -> (U, U)` and
+/// `R = (Any, Any)`.
+fn rigid_deeper_instance(twice: bool) -> impl Fn(&mut Types) -> (TypeId, TypeId) {
+    move |db: &mut Types| {
+        let any = db.builtins.recursive_any;
+        let [outer, inner, deeper, rigid] =
+            [db.generic(), db.generic(), db.generic(), db.generic()];
+        let deepers = db.pair(deeper, deeper);
+        let q = db.function(vec![deeper], vec![deeper], deepers);
+        let given = db.function(vec![], vec![q], outer);
+        let params = if twice {
+            vec![given, given]
+        } else {
+            vec![given]
+        };
+        let call = db.function(vec![outer], params, outer);
+        let callback = db.function(vec![], vec![rigid], inner);
+        let inners = db.pair(inner, inner);
+        let p = db.function(vec![inner], vec![callback], inners);
+        let anys = db.pair(any, any);
+        let ret = db.pair(anys, anys);
+        let target_params = if twice { vec![p, p] } else { vec![p] };
+        let target = db.function(vec![rigid], target_params, ret);
+        (call, target)
+    }
+}
+
+/// `Q`'s instance `U'` has `U' ≥ Z`, for the target's own `Z`, which is rigid, so `U'` can't be
+/// instantiated again, and neither can `P`'s `T'`, whose bounds refer to it: `T'` stays rigid, and
+/// `(T', T') ≤ (R, R)` doesn't hold, with the memo or without it.
+#[test]
+fn test_rigid_deeper_instance() {
+    with_large_stack(|| {
+        for twice in [false, true] {
+            let results = in_every_mode(rigid_deeper_instance(twice));
+            assert_eq!(results, [Comparison::Invalid; 3]);
+        }
+    });
+}
+
+/// `fn<B>(f: F, h: F) -> B` (or with `f` alone) against `fn(f: P, h: P) -> R`, with `F`, `P` and
+/// `Q` as in `deeper_instance_reused`, and `R = Tree | ((Bytes32, Bytes32), (Bytes32, Bytes32))`
+/// with `type Tree = Atom | (Tree, Tree)`.
+fn deeper_instance_in_a_union(twice: bool) -> impl Fn(&mut Types) -> (TypeId, TypeId) {
+    move |db: &mut Types| {
+        let BuiltinTypes { int, bytes32, .. } = db.builtins;
+        let [outer, inner, deeper] = [db.generic(), db.generic(), db.generic()];
+        let deepers = db.pair(deeper, deeper);
+        let q = db.function(vec![deeper], vec![deeper], deepers);
+        let given = db.function(vec![], vec![q], outer);
+        let params = if twice {
+            vec![given, given]
+        } else {
+            vec![given]
+        };
+        let call = db.function(vec![outer], params, outer);
+        let callback = db.function(vec![], vec![int], inner);
+        let inners = db.pair(inner, inner);
+        let p = db.function(vec![inner], vec![callback], inners);
+        let bytes = db.pair(bytes32, bytes32);
+        let pairs = db.pair(bytes, bytes);
+        let tree = db.declare_alias("Tree", vec![]);
+        let branches = db.pair(tree, tree);
+        let atom = db.builtins.atom;
+        let body = db.union(vec![atom, branches]);
+        db.define(tree, body);
+        let r = db.union(vec![tree, pairs]);
+        let target_params = if twice { vec![p, p] } else { vec![p] };
+        let target = db.function(vec![], target_params, r);
+        (call, target)
+    }
+}
+
+/// Holds with `T'` rigid, through `R`'s `Tree`, as it did before instances nested further in could
+/// be instantiated: instantiating `T'` and `U'` too gives them bounds under both of `R`'s members,
+/// and the `Bytes32` ones conflict with `U' ≥ Int`, so that isn't used instead (#362).
+#[test]
+fn test_deeper_instance_in_a_union() {
+    with_large_stack(|| {
+        for twice in [false, true] {
+            assert_eq!(
+                in_every_mode(deeper_instance_in_a_union(twice)),
+                [Comparison::Assign; 3]
+            );
+        }
+    });
+}
+
+/// `fn<T>(a: T, z: Int) -> T` against `B_depth | fn(a: Int, z: X) -> Int`, where
+/// `B_0 = fn(a: Int, z: X) -> Bytes32` and `B_k = fn(a: A, z: X) -> B_{k-1}` for that first
+/// function type `A`, with `X` being inferred: comparing `A` with each `B_k` checks `T'`'s bounds,
+/// which compares `A` with `B_{k-1}`, and each of those fails without being memoized, because of
+/// what it infers for `X`.
+fn nested_failing_checks(db: &mut Types, depth: usize) -> (TypeId, TypeId, TypeId) {
+    let BuiltinTypes { int, bytes32, .. } = db.builtins;
+    let [item, inferred] = [db.generic(), db.generic()];
+    let first = db.function(vec![item], vec![item, int], item);
+    let mut nested = db.function(vec![], vec![int, inferred], bytes32);
+
+    for _ in 0..depth {
+        nested = db.function(vec![], vec![first, inferred], nested);
+    }
+
+    let holds = db.function(vec![], vec![int, inferred], int);
+    let target = db.union(vec![nested, holds]);
+    (first, target, inferred)
+}
+
+/// Nothing is nested further in than the instances checked at each level, so none of those
+/// checks is made again for instances that could be instantiated deeper, which would take time
+/// exponential in the depth and give up before the union's other member holds.
+#[test]
+fn test_nested_failing_checks_are_made_once() {
+    with_large_stack(|| {
+        let mut db = Types::new();
+        let (lhs, rhs, inferred) = nested_failing_checks(&mut db, 24);
+        let mut infer = Inference::new([inferred]);
+        let (result, steps) = count_steps(|| {
+            compare_with_inference(&mut db.arena, &db.builtins, lhs, rhs, Some(&mut infer))
+        });
+        assert_eq!(result, Comparison::Assign);
+        assert!(steps < 1000, "{steps} steps");
+    });
+}
+
 /// `(G, G)` against `(fn(y: (Int, Int)) -> F, fn(y: ((Int, Int), (Int, Int))) -> F)`, where
 /// `G = fn<Y>(y: Y) -> fn<B>(f: fn(x: Y) -> B) -> B`, `F = fn(f: P) -> (Int, Int)` and
 /// `P = fn<T>(x: (T, T)) -> (T, T)`.
@@ -1011,16 +1240,43 @@ fn bound_added_inside_reused(db: &mut Types) -> (TypeId, TypeId) {
 /// `F` inside of it put `L ≤ Int` on `L` while checking `B`'s bounds, after `L`'s comparison
 /// finished, so the summary has to keep that bound for `L` too: with it, the second element's
 /// `L ≥ (Int, Int)` conflicts, as when it's computed again without the memo. Both elements are the
-/// same `G`, as in `(G, G)` in Rue, which the memo needs to reuse the comparison. That also makes
-/// `(G, G)` against `(fn(y: (Int, Int)) -> F, fn(y: (Int, Int)) -> F)` `Invalid` in every mode,
-/// although `G` against either is `Assign` (the compiler accepts the Rue equivalent), so the
-/// memo-off result here isn't only from the dropped bound. The type-level test pins the memo-on
-/// and fixpoint results, which were `Assign` with the bound dropped.
+/// same `G`, as in `(G, G)` in Rue, which the memo needs to reuse the comparison. `G` against the
+/// second element alone is `Invalid` too, for the same conflict, and the memo-on and fixpoint
+/// results were `Assign` with the bound dropped.
 #[test]
 fn test_bound_added_inside_reused() {
     with_large_stack(|| {
         let results = in_every_mode(bound_added_inside_reused);
         assert_eq!(results, [Comparison::Invalid; 3]);
+    });
+}
+
+/// `(G, G)` against `(fn(y: (Int, Int)) -> F, fn(y: (Int, Int)) -> F)`, with `G`, `F` and `P` as
+/// in `bound_added_inside_reused`, and the two function types built separately.
+fn same_function_twice(db: &mut Types) -> (TypeId, TypeId) {
+    let int = db.builtins.int;
+    let [param, ret, item] = [db.generic(), db.generic(), db.generic()];
+    let callback = db.function(vec![], vec![param], ret);
+    let inner = db.function(vec![ret], vec![callback], ret);
+    let deferred = db.function(vec![param], vec![param], inner);
+    let both = db.pair(item, item);
+    let pairs = db.function(vec![item], vec![both], both);
+    let ints = db.pair(int, int);
+    let from_pairs = db.function(vec![], vec![pairs], ints);
+    let first = db.function(vec![], vec![ints], from_pairs);
+    let second = db.function(vec![], vec![ints], from_pairs);
+    let lhs = db.pair(deferred, deferred);
+    let rhs = db.pair(first, second);
+    (lhs, rhs)
+}
+
+/// The same `G` against two function types it's each assignable to is `Assign`, with the second
+/// element's comparison reused from the first or computed again.
+#[test]
+fn test_same_function_twice() {
+    with_large_stack(|| {
+        let results = in_every_mode(same_function_twice);
+        assert_eq!(results, [Comparison::Assign; 3]);
     });
 }
 

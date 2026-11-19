@@ -81,3 +81,45 @@ test fn inner_instance_compared_with_a_union_of_itself() -> Int {
     let _apply: fn(function: Opt) -> Int = apply_twin;
     1
 }
+
+type Duplicate = fn<U>(x: U) -> (U, U);
+type CallsBack = fn<T>(callback: fn(x: Int) -> T) -> (T, T);
+
+fn duplicate<U>(x: U) -> (U, U) {
+    (x, x)
+}
+
+fn call_duplicate<B>(function: fn(callback: Duplicate) -> B) -> B {
+    function(duplicate)
+}
+
+// `CallsBack`' `T` is at least `Duplicate`'s `(U, U)`, which is nested a level further in, so its
+// `U` is instantiated as `Int` while `T`'s own bounds are checked again, as `T` is for `B`'s
+test fn generic_function_instantiated_two_levels_in() -> Int {
+    let instantiated: fn(function: CallsBack) -> ((Int, Int), (Int, Int)) = call_duplicate;
+    let result = instantiated(fn(callback) => (callback(1), callback(2)));
+    result.first.first + result.rest.rest
+}
+
+fn take_rest<X>(function: fn(function: CallsBack) -> ((Int, X), (Int, X))) -> X {
+    let result = function(fn(callback) => (callback(1), callback(2)));
+    result.rest.rest
+}
+
+// The same through a call that infers `X`, which is `Int`: checking `CallsBack`' `T` again first
+// with `Duplicate`'s `U` rigid fails and is undone, so it leaves nothing for `X`
+test fn inferred_through_a_generic_function_two_levels_in() -> Int {
+    take_rest(call_duplicate) + 1
+}
+
+type Tree = Atom | (Tree, Tree);
+type TreeOrBytes = Tree | ((Bytes32, Bytes32), (Bytes32, Bytes32));
+
+// `CallsBack`' `T` stays rigid where that's enough, as before, here through `Tree`: instantiating
+// `Duplicate`'s `U` as well would give it bounds under both of `TreeOrBytes`' members, and the
+// `Bytes32` ones would conflict with its `U ≥ Int`
+test fn generic_function_kept_rigid_where_that_is_enough() -> Int {
+    let instantiated: fn(function: CallsBack) -> TreeOrBytes = call_duplicate;
+    let _result = instantiated(fn(callback) => (callback(1), callback(2)));
+    1
+}

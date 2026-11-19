@@ -522,26 +522,25 @@ mod functions {
         assert_eq!(compare(&mut db, bytes32), Comparison::Assign);
     }
 
-    /// Only the inner instances can be instantiated while the outer bounds are checked, not the
-    /// ones nested further in, which stay rigid while the inner ones' bounds are checked again.
-    /// With `fn<B>(f: fn(g: Q) -> B) -> B` against `fn(f: P) -> (R, R)`, where
-    /// `P = fn<T>(g: fn(..) -> T) -> (T, T)` and `Q = fn<U>(..) -> (U, U)`, `T' ≥ (U', U')` and
-    /// `T' ≤ R`. With `Q` taking an `Int` and `R` as `(Int, Bytes32)`, `U'` can't be both, so it
-    /// must stay rejected. Without parameters and with `R` as `(Int, Int)`, `U'` could be `Int`,
-    /// but it's rejected too: that's the limit of instantiating one level deep.
+    /// The instances nested further in can be instantiated too, as the inner ones' bounds are
+    /// checked again. With `fn<B>(f: fn(g: Q) -> B) -> B` against `fn(f: P) -> (R, R)`, where
+    /// `P = fn<T>(g: fn(x: Int) -> T) -> (T, T)` and `Q = fn<U>(x: X) -> (U, U)`, `T' ≥ (U', U')`
+    /// and `T' ≤ R`. With `X` as `U`, so that `U' ≥ Int`, it holds for `R` as `(Int, Int)`, with
+    /// `U'` as `Int`, and not for `(Int, Bytes32)`, which `U'` can't be both of. With `X` as `Int`,
+    /// `U'` can be `Never`, which is both, as when `Q` is compared with `fn(x: Int) -> R` itself.
     #[test]
-    fn deeper_instances_stay_rigid() {
+    fn deeper_instances_are_instantiated() {
         let mut db = Db::new();
         let BuiltinTypes { int, bytes32, .. } = db.builtins;
 
-        let compare = |db: &mut Db, param: Option<TypeId>, result: TypeId| {
+        let compare = |db: &mut Db, bounded: bool, result: TypeId| {
             let [outer, inner, deeper] = [db.generic("B"), db.generic("T"), db.generic("U")];
-            let params: Vec<TypeId> = param.into_iter().collect();
+            let param = if bounded { deeper } else { int };
             let deepers = db.pair(deeper, deeper);
-            let q = db.function_with(&[deeper], &params, true, deepers);
+            let q = db.function_with(&[deeper], &[param], true, deepers);
             let given = db.function(&[q], outer);
             let call = db.function_with(&[outer], &[given], true, outer);
-            let callback = db.function(&params, inner);
+            let callback = db.function(&[int], inner);
             let inners = db.pair(inner, inner);
             let p = db.function_with(&[inner], &[callback], true, inners);
             let ret = db.pair(result, result);
@@ -551,8 +550,72 @@ mod functions {
 
         let mixed = db.pair(int, bytes32);
         let ints = db.pair(int, int);
-        assert_eq!(compare(&mut db, Some(int), mixed), Comparison::Invalid);
-        assert_eq!(compare(&mut db, None, ints), Comparison::Invalid);
+        assert_eq!(compare(&mut db, true, ints), Comparison::Assign);
+        assert_eq!(compare(&mut db, true, mixed), Comparison::Invalid);
+        assert_eq!(compare(&mut db, false, mixed), Comparison::Assign);
+    }
+
+    /// An instance made while another one's bounds are checked again is rigid while the next ones'
+    /// are, since its own check has finished. `fn<B>(f: fn(g: Q, b: B) -> Int, w: B) -> Int`
+    /// against `fn(f: P, w: W) -> Int`, where `W = fn<V>(v: V) -> V`,
+    /// `Q = fn<U>(h: fn(v: U) -> (Int, Int), k: U) -> Int` and
+    /// `P = fn<T>(g: fn(h: T, k: Int) -> Int, b: T) -> Int`, needs `Int ≤ U' ≤ V' ≤ (Int, Int)`
+    /// for the instance `V'` that checking `T'`'s bounds again makes, which has no instantiation.
+    #[test]
+    fn instances_made_while_checking_again_stay_rigid() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let [outer, item, deeper, value] = [
+            db.generic("B"),
+            db.generic("T"),
+            db.generic("U"),
+            db.generic("V"),
+        ];
+        let identity = db.function_with(&[value], &[value], true, value);
+        let ints = db.pair(int, int);
+        let gives = db.function(&[deeper], ints);
+        let gives_pair = db.function_with(&[deeper], &[gives, deeper], true, int);
+        let takes = db.function(&[item, int], int);
+        let takes_int = db.function_with(&[item], &[takes, item], true, int);
+        let given = db.function(&[gives_pair, outer], int);
+        let call = db.function_with(&[outer], &[given, outer], true, int);
+        let target = db.function(&[takes_int, identity], int);
+        assert_eq!(db.cmp(call, target), Comparison::Invalid);
+    }
+
+    /// Whether each instance can be instantiated again is found once, so that many instances that
+    /// each refer to the next one twice don't take exponentially long:
+    /// `A_k = fn<Z>(a: Z, b: Z, k: B_{k-1}<Z>) -> Int` and `B_k<X> = fn(a: X, b: X, k: A_{k-1}) -> Int`.
+    #[test]
+    fn deep_instances_are_checked_once() {
+        type Build = Box<dyn Fn(&mut Db, TypeId) -> TypeId>;
+
+        // `A_depth`, and what builds `B_depth<X>` from `X`
+        fn nested(db: &mut Db, depth: usize) -> (TypeId, Build) {
+            let int = db.builtins.int;
+            let z = db.generic("Z");
+
+            if depth == 0 {
+                let a = db.function_with(&[z], &[z, z], true, int);
+                let b: Build = Box::new(move |db, x| db.function(&[x, x], int));
+                (a, b)
+            } else {
+                let (a_prev, b_prev) = nested(db, depth - 1);
+                let bz = b_prev(db, z);
+                let a = db.function_with(&[z], &[z, z, bz], true, int);
+                let b: Build = Box::new(move |db, x| db.function(&[x, x, a_prev], int));
+                (a, b)
+            }
+        }
+
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = nested(&mut db, 32);
+        let y = db.generic("Y");
+        let by = b(&mut db, y);
+        let top = db.function_with(&[y], &[by], true, int);
+        let target = db.function(&[a], int);
+        assert_eq!(db.cmp(top, target), Comparison::Assign);
     }
 
     /// An inner instance compared with a type that refers to it, while an enclosing comparison
