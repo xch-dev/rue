@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
 use id_arena::Arena;
 
@@ -19,6 +19,11 @@ pub struct CallSolver {
     /// What the expected type infers on its own, for the generics that nothing else constrains,
     /// such as `T` in `let value: Int = unchecked_cast(nil);`.
     fallback: HashMap<TypeId, TypeId>,
+    /// The last inference that `CallSolver::instantiate` was given for each value of its `expected`
+    /// flag, with what it gave. The argument loop solves the same inference up to three times
+    /// before each argument, and a nested call in an argument solves it again, so each one is
+    /// only instantiated once.
+    instantiated: RefCell<[Option<(Inference, Inference)>; 2]>,
 }
 
 impl CallSolver {
@@ -35,7 +40,11 @@ impl CallSolver {
             .map(|expected| resolve_inference(arena, builtins, expected))
             .unwrap_or_default();
 
-        Self { expected, fallback }
+        Self {
+            expected,
+            fallback,
+            instantiated: RefCell::default(),
+        }
     }
 
     /// What the arguments compiled so far infer on their own, without the type expected of the
@@ -151,6 +160,15 @@ impl CallSolver {
             return Cow::Borrowed(infer);
         }
 
+        // Without an expected type, both values of the flag give the same result
+        let expected = expected && self.expected.is_some();
+
+        if let Some((input, output)) = &self.instantiated.borrow()[usize::from(expected)]
+            && input.is_identical(infer)
+        {
+            return Cow::Owned(output.clone());
+        }
+
         let mut bounded = infer.clone();
 
         if expected && let Some(expected) = &self.expected {
@@ -166,6 +184,10 @@ impl CallSolver {
         let mut instantiated = infer.clone();
         instantiated.take_instance_bounds(&bounded);
         instantiated.resolve_instances(arena, builtins);
+
+        self.instantiated.borrow_mut()[usize::from(expected)] =
+            Some((infer.clone(), instantiated.clone()));
+
         Cow::Owned(instantiated)
     }
 }

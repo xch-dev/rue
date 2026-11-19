@@ -93,11 +93,11 @@ pub(crate) const FALLBACK: usize = usize::MAX;
 
 /// The unions that values were compared against, indexed by `BranchId::choice`, and what each of
 /// their members gave, which decides which members' candidates or bounds hold.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Choices(Vec<Choice>);
 
 /// A comparison of a value with the members of a union, any one of which can hold it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Choice {
     /// The member that the union itself was compared under, if any.
     parent: Option<BranchId>,
@@ -159,6 +159,19 @@ impl Inference {
             policy: InstancePolicy::Eager,
             added: Vec::new(),
         }
+    }
+
+    /// Whether the two hold the same candidates, in the same order, with the same union members and
+    /// vars, so that anything computed from one gives the same result for the other.
+    /// `IndexMap`'s own equality ignores the order, which the result can depend on.
+    pub(crate) fn is_identical(&self, other: &Self) -> bool {
+        self.generics.iter().eq(other.generics.iter())
+            && self.branches.iter().eq(other.branches.iter())
+            && self.renamed == other.renamed
+            && self.choices == other.choices
+            && self.instances == other.instances
+            && self.policy == other.policy
+            && self.added == other.added
     }
 
     /// Records that a generic being inferred was renamed from another generic. They're compared as
