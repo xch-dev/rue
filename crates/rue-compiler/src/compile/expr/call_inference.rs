@@ -675,12 +675,12 @@ struct Argument {
     /// Whether it's compiled against the expected type's own bounds (see
     /// `ArgumentOrder::widens_to_expected`). It's a call, since its own arguments add to the
     /// generics once it's compiled against them, as `8` does in `id(8)`, and its generics that
-    /// only its expected type constrains, such as `A` in `nothing<A>(v: Int) -> A` or the `T` of
-    /// a call without arguments, still take the narrower type (see
-    /// `compile_call_argument`). It has no lambda in it, even one a call passes
-    /// through, since a lambda's parameter types keep the narrower mappings. That's defensive: a call
-    /// that passes a lambda through leaves its generic to its expected type, which the narrower
-    /// type covers, and no program has been found where the two differ.
+    /// only its expected type constrains, such as `A` in `nothing<A>(v: Int) -> A`, still take the
+    /// narrower type (see `compile_call_argument`). It isn't a call without arguments, which has
+    /// nothing of its own to add (infer-fuzz generator 2, seed 2855). It has no lambda in it, even
+    /// one a call passes through, since a lambda's parameter types keep the narrower mappings.
+    /// That's defensive: a call that passes a lambda through leaves its generic to its expected
+    /// type, which the narrower type covers, and no program has been found where the two differ.
     widens: bool,
     /// The callee's generics whose solution compiling it depends on (see `reads_of`).
     reads: IndexSet<TypeId>,
