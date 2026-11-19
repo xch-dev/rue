@@ -176,7 +176,8 @@ fn finish_const(
 
 /// A function that returns the value of a const expression, which it's evaluated as.
 fn const_root(ctx: &mut Compiler, value: HirId) -> SymbolId {
-    synthetic_function(ctx, Vec::new(), true, value)
+    let unresolved = ctx.builtins().unresolved.ty;
+    synthetic_function(ctx, None, unresolved, Vec::new(), true, value)
 }
 
 /// Const expressions are always optimized, regardless of the options they're compiled with.

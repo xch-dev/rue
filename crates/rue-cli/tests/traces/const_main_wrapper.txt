@@ -1,0 +1,20 @@
+===== debug: (1 2) =====
+error: clvm raise
+  const_main_wrapper.rue:12:41, in main
+    const main: fn(x: Int, y: Int) -> Int = ADD;
+    x = 1
+    y = 2
+  const_main_wrapper.rue:8:5, in <lambda>
+    assert x > y;
+    x = 1
+    y = 2
+===== release: (1 2) =====
+error: clvm raise
+  const_main_wrapper.rue:12:41, in main
+    const main: fn(x: Int, y: Int) -> Int = ADD;
+    x = 1
+    y = 2
+  const_main_wrapper.rue:8:5, in <lambda>
+    assert x > y;
+    x = 1
+    y = 2

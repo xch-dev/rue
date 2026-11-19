@@ -1,13 +1,14 @@
 //! Constants as the program: `main` and the exports can be constants as well as functions.
 
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
-use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
-use rue_diagnostic::{DiagnosticSeverity, Source, SourceKind};
+use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
+use rue_clvm::{assemble, disassemble_program, disassemble_value};
+use rue_diagnostic::SourceKind;
 use rue_lir::CLVM_FLAGS;
 use rue_options::CompilerOptions;
 
-use crate::{Compiler, File, FileTree};
+use crate::test_utils::{Compiled, compile_with};
 
 const SOURCE: &str = "
 fn main() -> Int { 1 }
@@ -28,113 +29,83 @@ export const REST_LAMBDA: fn(...xs: List<Int>) -> List<Int> = fn(...xs: List<Int
 export const VALUE: Any = f;
 ";
 
-/// Each export of [`SOURCE`] with its serialized program, compiled with the options.
-fn exports(options: CompilerOptions) -> (Allocator, Vec<(String, NodePtr)>) {
-    let mut ctx = Compiler::new(CompilerOptions {
-        std: false,
-        ..options
+/// [`SOURCE`], compiled with the options.
+fn compile(options: CompilerOptions) -> Compiled {
+    let compiled = compile_with(SOURCE, |o| {
+        *o = CompilerOptions {
+            std: false,
+            ..options
+        };
     });
+    compiled.assert_no_errors();
+    compiled
+}
+
+/// The program of the export.
+fn export(compiled: &mut Compiled, allocator: &mut Allocator, name: &str) -> NodePtr {
     let kind = SourceKind::File("main.rue".to_string());
-    let tree = FileTree::File(File::new(
-        &mut ctx,
-        "main".to_string(),
-        Source::new(Arc::from(SOURCE), kind.clone()),
-    ));
-    tree.compile(&mut ctx);
-
-    let errors: Vec<_> = ctx
-        .take_diagnostics()
-        .into_iter()
-        .filter(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error)
-        .collect();
-    assert!(errors.is_empty(), "{errors:?}");
-
-    let mut allocator = Allocator::new();
-    let exports = tree
-        .exports(&mut ctx, &mut allocator, Some(&kind), None, Path::new("."))
-        .unwrap()
-        .into_iter()
-        .map(|export| (export.name, export.ptr))
-        .collect();
-
-    (allocator, exports)
+    let exports = compiled
+        .tree
+        .exports(
+            &mut compiled.ctx,
+            allocator,
+            Some(&kind),
+            Some(name),
+            Path::new("."),
+        )
+        .unwrap();
+    let [export] = exports.as_slice() else {
+        panic!("`{name}` is exported once");
+    };
+    export.ptr
 }
 
-fn program<'a>(exports: &'a [(String, NodePtr)], name: &str) -> NodePtr {
-    exports
-        .iter()
-        .find(|(export, _)| export == name)
-        .unwrap_or_else(|| panic!("`{name}` is exported"))
-        .1
-}
-
-/// Runs the program with the solution, and returns its output.
-fn run(allocator: &mut Allocator, program: NodePtr, solution: &[i64]) -> Option<Vec<u8>> {
-    let mut env = NodePtr::NIL;
-    for &value in solution.iter().rev() {
-        let value = allocator.new_number(value.into()).unwrap();
-        env = allocator.new_pair(value, env).unwrap();
-    }
-
-    let output = run_program(
-        allocator,
-        &ChiaDialect::new(CLVM_FLAGS),
-        program,
-        env,
-        u64::MAX,
+/// Runs the program with the solution, and returns its output, or `None` if it fails.
+fn run(allocator: &mut Allocator, program: NodePtr, solution: &str) -> Option<NodePtr> {
+    let solution = assemble(allocator, solution).unwrap();
+    let dialect = ChiaDialect::new(CLVM_FLAGS);
+    Some(
+        run_program(allocator, &dialect, program, solution, u64::MAX)
+            .ok()?
+            .1,
     )
-    .ok()?
-    .1;
-
-    Some(node_to_bytes(allocator, output).unwrap())
 }
 
-fn serialized(allocator: &mut Allocator, f: impl FnOnce(&mut Allocator) -> NodePtr) -> Vec<u8> {
-    let node = f(allocator);
-    node_to_bytes(allocator, node).unwrap()
-}
-
-fn int(allocator: &mut Allocator, value: i64) -> Vec<u8> {
-    serialized(allocator, |allocator| {
-        allocator.new_number(value.into()).unwrap()
-    })
+/// Runs the export with the solution, and returns its output, or `None` if it fails.
+fn output(compiled: &mut Compiled, name: &str, solution: &str) -> Option<String> {
+    let mut allocator = Allocator::new();
+    let program = export(compiled, &mut allocator, name);
+    let output = run(&mut allocator, program, solution)?;
+    Some(disassemble_value(&allocator, output))
 }
 
 #[test]
 fn constant_exports_evaluate_to_their_values() {
     for options in [CompilerOptions::default(), CompilerOptions::debug()] {
-        let (mut allocator, exports) = exports(options);
+        let mut compiled = compile(options);
 
-        let sq = program(&exports, "SQ");
-        let expected = int(&mut allocator, 25);
-        assert_eq!(run(&mut allocator, sq, &[]), Some(expected));
-
-        let pair = program(&exports, "PAIR");
-        let expected = serialized(&mut allocator, |allocator| {
-            let first = allocator.new_number(4.into()).unwrap();
-            let rest = allocator.new_number(5.into()).unwrap();
-            allocator.new_pair(first, rest).unwrap()
-        });
-        assert_eq!(run(&mut allocator, pair, &[]), Some(expected));
+        assert_eq!(output(&mut compiled, "SQ", "()").as_deref(), Some("25"));
+        assert_eq!(
+            output(&mut compiled, "PAIR", "()").as_deref(),
+            Some("(4 . 5)")
+        );
     }
 }
 
 #[test]
 fn function_constant_exports_behave_like_the_function() {
     for options in [CompilerOptions::default(), CompilerOptions::debug()] {
-        let (mut allocator, exports) = exports(options);
+        let mut compiled = compile(options);
 
-        for (name, solution, expected) in [
-            ("F", 3, 10),
-            ("ALIAS", 3, 10),
-            ("G", 3, 5),
-            ("LAMBDA", 3, 19),
-            ("f", 3, 10),
+        for (name, expected) in [
+            ("f", "10"),
+            ("F", "10"),
+            ("ALIAS", "10"),
+            ("G", "5"),
+            ("LAMBDA", "19"),
         ] {
-            let ptr = program(&exports, name);
-            let expected = int(&mut allocator, expected);
             assert_eq!(
-                run(&mut allocator, ptr, &[solution]),
+                output(&mut compiled, name, "(3)").as_deref(),
                 Some(expected),
                 "{name} ({options:?})"
             );
@@ -142,49 +113,37 @@ fn function_constant_exports_behave_like_the_function() {
 
         // The function's assertion still fails the program
         for name in ["F", "ALIAS", "LAMBDA"] {
-            let ptr = program(&exports, name);
-            assert_eq!(run(&mut allocator, ptr, &[0]), None, "{name} ({options:?})");
+            assert_eq!(output(&mut compiled, name, "(0)"), None, "{name}");
         }
 
+        // The rest parameter takes the rest of the solution
+        for name in ["REST", "REST_LAMBDA"] {
+            assert_eq!(
+                output(&mut compiled, name, "(1 2 3)").as_deref(),
+                Some("(1 2 3)"),
+                "{name} ({options:?})"
+            );
+        }
+
+        let mut allocator = Allocator::new();
+
         // A constant that names a function is that function's program
-        let f = node_to_bytes(&allocator, program(&exports, "f")).unwrap();
+        let f = export(&mut compiled, &mut allocator, "f");
+        let constant = export(&mut compiled, &mut allocator, "F");
         assert_eq!(
-            node_to_bytes(&allocator, program(&exports, "F")).unwrap(),
-            f
+            disassemble_program(&allocator, constant),
+            disassemble_program(&allocator, f)
         );
 
         // A constant that isn't a function evaluates to its value, even if that's a function,
         // which can then be called
-        let value = program(&exports, "VALUE");
-        assert_ne!(node_to_bytes(&allocator, value).unwrap(), f);
-        let closure = run_program(
-            &mut allocator,
-            &ChiaDialect::new(CLVM_FLAGS),
-            value,
-            NodePtr::NIL,
-            u64::MAX,
-        )
-        .unwrap()
-        .1;
-        let expected = int(&mut allocator, 10);
-        assert_eq!(run(&mut allocator, closure, &[3]), Some(expected));
-
-        // The rest parameter takes the rest of the solution
-        let expected = serialized(&mut allocator, |allocator| {
-            let mut list = NodePtr::NIL;
-            for value in [3, 2, 1] {
-                let value = allocator.new_number(value.into()).unwrap();
-                list = allocator.new_pair(value, list).unwrap();
-            }
-            list
-        });
-        for name in ["REST", "REST_LAMBDA"] {
-            let ptr = program(&exports, name);
-            assert_eq!(
-                run(&mut allocator, ptr, &[1, 2, 3]),
-                Some(expected.clone()),
-                "{name} ({options:?})"
-            );
-        }
+        let value = export(&mut compiled, &mut allocator, "VALUE");
+        assert_ne!(
+            disassemble_program(&allocator, value),
+            disassemble_program(&allocator, f)
+        );
+        let closure = run(&mut allocator, value, "()").unwrap();
+        let output = run(&mut allocator, closure, "(3)").unwrap();
+        assert_eq!(disassemble_value(&allocator, output), "10");
     }
 }
