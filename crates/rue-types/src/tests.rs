@@ -476,17 +476,17 @@ mod functions {
         let mut db = Db::new();
         let BuiltinTypes { int, bytes32, .. } = db.builtins;
 
-        let compare = |db: &mut Db, param: Option<TypeId>, r: TypeId| {
-            let [b, t, u] = [db.generic("B"), db.generic("T"), db.generic("U")];
+        let compare = |db: &mut Db, param: Option<TypeId>, result: TypeId| {
+            let [outer, inner, deeper] = [db.generic("B"), db.generic("T"), db.generic("U")];
             let params: Vec<TypeId> = param.into_iter().collect();
-            let us = db.pair(u, u);
-            let q = db.function_with(&[u], &params, true, us);
-            let given = db.function(&[q], b);
-            let call = db.function_with(&[b], &[given], true, b);
-            let g = db.function(&params, t);
-            let ts = db.pair(t, t);
-            let p = db.function_with(&[t], &[g], true, ts);
-            let ret = db.pair(r, r);
+            let deepers = db.pair(deeper, deeper);
+            let q = db.function_with(&[deeper], &params, true, deepers);
+            let given = db.function(&[q], outer);
+            let call = db.function_with(&[outer], &[given], true, outer);
+            let callback = db.function(&params, inner);
+            let inners = db.pair(inner, inner);
+            let p = db.function_with(&[inner], &[callback], true, inners);
+            let ret = db.pair(result, result);
             let target = db.function(&[p], ret);
             db.cmp(call, target)
         };
