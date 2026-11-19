@@ -1948,6 +1948,33 @@ fn glob_imports_that_could_bring_in_the_same_module_are_both_used() {
 }
 
 #[test]
+fn named_imports_of_the_same_item_share_its_binding() {
+    // Two named imports bring in the same `X`. Whichever is resolved first binds the name, which
+    // depends on module names, so the other shares its binding: both are used if it is, and both
+    // are unused if it isn't.
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (body, expected) in [
+            ("X", vec![]),
+            ("1", vec!["5:43 UnusedImport", "5:64 UnusedImport"]),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {first} {{ export super::src::X; }}
+                mod {second} {{ export super::src::X; }}
+                mod u {{ import super::{first}::X; import super::{second}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("first: {first}, body: {body}");
+
+            compiled.assert_no_errors();
+            assert_eq!(unused_imports(&compiled), expected, "{context}");
+        }
+    }
+}
+
+#[test]
 fn named_imports_of_the_same_item_through_ambiguous_modules_use_every_alternative() {
     // `beta` sorts before `both` and `omega`, so `import super::beta::m::X;` binds `X`, and
     // `both::m` is bound to `beta`'s `m`, so the other import finds the same `X` and shares the
