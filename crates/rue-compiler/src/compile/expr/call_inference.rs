@@ -410,18 +410,17 @@ fn instantiations(
             .references
             .insert(parameter.reference, solution);
 
-        let lambda = match instantiated
+        let lambda = if let Some(index) = instantiated
             .lambdas
             .iter()
             .position(|(ty, _)| *ty == parameter.lambda.ty)
         {
-            Some(index) => index,
-            None => {
-                instantiated
-                    .lambdas
-                    .push((parameter.lambda.ty, HashMap::new()));
-                instantiated.lambdas.len() - 1
-            }
+            index
+        } else {
+            instantiated
+                .lambdas
+                .push((parameter.lambda.ty, HashMap::new()));
+            instantiated.lambdas.len() - 1
         };
 
         for generic in generics_in(ctx, function, generic_type) {
