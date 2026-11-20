@@ -44,3 +44,25 @@ fn map_and_call<T, U, V>(functions: List<fn(x: T) -> U>, function: fn(y: Int) ->
 fn rejected_for_another_reason() -> (List<Int>, 1) {
     map_and_call([fn(x) => identity(x)], fn(_y) => "x", 5)
 }
+
+fn recursive<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> List<U> {
+    if depth > 0 {
+        // A body that names the caller's `T` has a value of it that doesn't come from its
+        // parameter, so it isn't checked as what the call's renamed `T` is inferred as, and the
+        // call returns `List<T>`
+        let _named_in_a_call: List<Int> = recursive([fn(x) => identity::<T>(x)], 5, 0);
+        let _named_in_a_binding: List<Int> = recursive(
+            [
+                fn(x) => {
+                    let y: T = x;
+                    identity(y)
+                },
+            ],
+            5,
+            0,
+        );
+        return map_list(functions, value);
+    }
+
+    map_list(functions, value)
+}

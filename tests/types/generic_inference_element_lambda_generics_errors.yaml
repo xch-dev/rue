@@ -7,3 +7,8 @@ diagnostics:
 - Unused function `map_and_call` at generic_inference_element_lambda_generics_errors.rue:35:4
 - Unused function `rejected_for_another_reason` at generic_inference_element_lambda_generics_errors.rue:44:4
 - Cannot assign `(List<Int>, String)` to `(List<Int>, 1)` without a type guard, since the value isn't always a valid `(List<Int>, 1)` at generic_inference_element_lambda_generics_errors.rue:44:52
+- Unused function `recursive` at generic_inference_element_lambda_generics_errors.rue:48:4
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:53:43
+- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:53:53"
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:54:46
+- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:55:13"

@@ -75,6 +75,9 @@ pub struct Compiler {
     fallback: bool,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
+    /// Every type a path has named, in the order they were compiled, so that what's compiled between
+    /// two points can be told to name a type (see `LambdaBody::names_types`).
+    named_types: Vec<TypeId>,
     /// The symbols whose type is overridden in any scope, so that looking up the type of any other
     /// symbol doesn't need to walk every enclosing scope (and each `let` statement opens one).
     overridden_symbols: HashSet<SymbolId>,
@@ -221,6 +224,7 @@ impl Compiler {
             fallback: false,
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
+            named_types: Vec::new(),
             overridden_symbols: HashSet::new(),
             narrowed_references: HashMap::new(),
             unchecked_type_items: Vec::new(),
@@ -1288,6 +1292,21 @@ impl Compiler {
 
     pub fn pop_declaration(&mut self) {
         self.declaration_stack.pop().unwrap();
+    }
+
+    /// Records that a path named the type (see `named_types_between`).
+    pub fn name_type(&mut self, ty: TypeId) {
+        self.named_types.push(ty);
+    }
+
+    /// How many types paths have named so far, to give to `named_types_between`.
+    pub fn named_type_count(&self) -> usize {
+        self.named_types.len()
+    }
+
+    /// The types paths named from `start` up to `end`, both of which are from `named_type_count`.
+    pub fn named_types_between(&self, start: usize, end: usize) -> &[TypeId] {
+        &self.named_types[start..end]
     }
 
     pub fn reference(&mut self, reference: Declaration, import: Option<ImportId>) {

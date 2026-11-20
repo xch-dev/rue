@@ -139,3 +139,37 @@ test fn instantiated_in_the_second_solve() -> (List<Int>, 5) {
     let r: (List<Int>, 5) = map_and_apply([fn(x) => identity(x)], fn(y) => y, 5, 5);
     r
 }
+
+fn recursive<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> (List<Int>, List<U>) {
+    if depth > 0 {
+        // In a call to the function it's in, the element lambda's parameter is compiled as the
+        // caller's `T`, standing for the call's renamed one, so `identity(x)` returns the caller's
+        // `T`. Its body doesn't name `T`, so there it's the renamed one, which is inferred as `Int`
+        let results: (List<Int>, List<Int>) = recursive([fn(x) => identity(x), fn(x) => x], 5, 0);
+        return (results.rest, map_list(functions, value));
+    }
+
+    (nil, map_list(functions, value))
+}
+
+test fn element_of_a_recursive_call() -> (List<Int>, List<Int>) {
+    recursive([fn(x: Int) => x + 1], 5, 1)
+}
+
+fn recursive_swapped<T, U>(
+    functions: List<fn(x: T) -> U>,
+    value: T,
+    other: U,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        // The same with the caller's `U` as the call's `T`
+        return recursive_swapped([fn(x) => identity(x)], other, other, 0);
+    }
+
+    map_list(functions, value)
+}
+
+test fn element_of_a_recursive_call_with_the_generics_swapped() -> List<Int> {
+    recursive_swapped([fn(x: String) => 1], "a", 2, 1)
+}

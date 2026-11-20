@@ -97,6 +97,20 @@ tests:
   runtime_cost: 2236
   byte_cost: 1404000
   total_cost: 1406236
+- name: element_of_a_recursive_call
+  program: (a (q 2 6 (c 2 (c (c (q 16 2 (q . 1)) ()) (q 5 . 1)))) (c (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) (q 2 (i (> 15 ()) (q 4 (r (a 6 (c 2 (c (c (q . 2) (c (q . 2) ())) (q 5))))) (a 4 (c 4 (c 5 11)))) (q 4 () (a 4 (c 4 (c 5 11))))) 1)) ()))
+  debug_program: (a (q 2 10 (c (c 4 (c 10 14)) (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()) (c (q . 5) (q . 1))))) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (c (q 2 (i (> 15 ()) (q 2 (q 4 (r 2) (a 9 (c 9 (c 11 23)))) (c (a 10 (c (c 4 (c 10 14)) (c (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ())) (c (q . 5) ())))) 1)) (q 4 () (a 4 (c 4 (c 5 11))))) 1) (q . 1))) ()))
+  output: ((5 5) 6)
+  runtime_cost: 8368
+  byte_cost: 2772000
+  total_cost: 2780368
+- name: element_of_a_recursive_call_with_the_generics_swapped
+  program: (a (q 2 4 (c (c 6 4) (c (q . 2) (c (c (q 1 . 1) ()) (q 97 . 1))))) (c (c (q 2 (i (> 31 ()) (q 2 6 (c 2 (c 5 (c (c (q . 2) ()) (c 5 ()))))) (q 2 4 (c 4 (c 11 23)))) 1) (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 10 (c 4 14)) (c (q . 2) (c (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) ()) (c (q . 97) (q . 1)))))) (c (c (q 2 (i (> 31 ()) (q 2 10 (c (c 4 (c 10 14)) (c 5 (c (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) ()) (c 5 ()))))) (q 2 4 (c 4 (c 11 23)))) 1) (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q . 1))) ()))
+  output: (2)
+  runtime_cost: 4956
+  byte_cost: 2460000
+  total_cost: 2464956
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
