@@ -581,6 +581,19 @@ fn test_checks_are_kept_apart() {
         expect!["(a (i (all 2 11) (q 2 (i (/ (q . 1) 5) (q 16 2 5) (q 8)) 1) (q 8)) 1)"],
     );
 
+    // A condition that's too large for what's left of the budget is part of the result too
+    let large = arena.alloc(Lir::Add(vec![a; 30]));
+    let third = arena.alloc(Lir::If(large, result, fail, false));
+    let second = arena.alloc(Lir::If(c, third, fail, false));
+    let lir = arena.alloc(Lir::If(a, second, fail, false));
+    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(a (i (all 2 11) (q 2 (i (+ 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2) (q 16 2 5) (q 8)) 1) (q 8)) 1)"]);
+
+    // A check whose branches both reach the result has nothing to merge, and would only keep
+    // its condition between two constants
+    let both = arena.alloc(Lir::If(b, result, result, false));
+    let lir = arena.alloc(Lir::If(a, fail, both, false));
+    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(a (i 2 (q 8) (q 2 (i 5 (q 16 2 5) (q 16 2 5)) 1)) 1)"]);
+
     // Checks that raise differently fail differently
     let message = arena.alloc(Lir::Raise(vec![one]));
     let other = arena.alloc(Lir::Raise(vec![two]));
@@ -671,6 +684,13 @@ fn test_if_in_condition() {
         ENVS,
         expect!["(a (i 2 (q 3 (x) (q . 1) (q . 2)) (q 1 . 1)) 1)"],
     );
+
+    // An `if` between a false and a true constant has the opposite truthiness of its condition
+    let x = path(&mut arena, 2);
+    let pair = arena.alloc(Lir::Cons(one, one));
+    let condition = arena.alloc(Lir::If(x, nil, pair, false));
+    let lir = arena.alloc(Lir::If(condition, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 2) (q . 1))"]);
 
     // So does a branch of an inline if, since atoms can't fail
     let x = path(&mut arena, 2);

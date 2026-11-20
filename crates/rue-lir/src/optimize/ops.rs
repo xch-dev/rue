@@ -851,17 +851,28 @@ fn pass_condition(
         let result_before = *result;
         let budget_before = *budget;
 
-        let branches = grow_stack(|| {
-            if !is_cheap_check(arena, target, condition, budget) {
-                return None;
-            }
+        // The budget bounds how deep this goes
+        let branches = if is_cheap_check(arena, target, condition, budget) {
+            pass_condition(arena, target, then, failure, result, budget).and_then(|then| {
+                let otherwise = pass_condition(arena, target, otherwise, failure, result, budget)?;
+                Some((then, otherwise))
+            })
+        } else {
+            None
+        };
 
-            let then = pass_condition(arena, target, then, failure, result, budget)?;
-            let otherwise = pass_condition(arena, target, otherwise, failure, result, budget)?;
-            Some((then, otherwise))
-        });
+        // If both branches reach the result, or both fail, the condition would only be kept to
+        // be evaluated, between two constants that are larger than what they stand for
+        let same = |arena: &Arena<Lir>, then: LirId, otherwise: LirId| {
+            matches!(
+                (&arena[then], &arena[otherwise]),
+                (Lir::Atom(then), Lir::Atom(otherwise)) if then.is_empty() == otherwise.is_empty()
+            )
+        };
 
-        if let Some((then, otherwise)) = branches {
+        if let Some((then, otherwise)) = branches
+            && !same(arena, then, otherwise)
+        {
             return Some(opt_if(arena, target, condition, then, otherwise, false));
         }
 
@@ -878,9 +889,11 @@ fn pass_condition(
 }
 
 /// Whether the condition has no more nodes than the budget, which is reduced by them, and is
-/// only made of values and of operators that can't fail for operands of the right types, the
-/// same ones the failure analysis of the HIR treats as unable to fail. That leaves out anything
-/// that runs other code, which could run for as long as it likes.
+/// only made of values and of operators that can't fail for operands of the right types. These
+/// are among the ones the failure analysis of the HIR treats as unable to fail, which leaves
+/// out anything that runs other code, which could run for as long as it likes. It also leaves
+/// out the operators that only can't fail for some constants (division and shifts), and the
+/// ones that cost far more to run than a check does (`pubkey_for_exp`, `keccak256`).
 fn is_cheap_check(
     arena: &Arena<Lir>,
     target: ClvmTarget,
@@ -893,10 +906,11 @@ fn is_cheap_check(
 
     *budget = rest;
 
+    // The budget bounds how deep this goes
     let mut all = |values: &[LirId]| {
         values
             .iter()
-            .all(|&value| grow_stack(|| is_cheap_check(arena, target, value, budget)))
+            .all(|&value| is_cheap_check(arena, target, value, budget))
     };
 
     match &arena[condition] {
@@ -1529,11 +1543,12 @@ fn same_value_step(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
             same_value(arena, *a, *c) && same_value(arena, *b, *d)
         }
         (Lir::Add(left), Lir::Add(right))
-        | (Lir::Raise(left), Lir::Raise(right))
         | (Lir::Sub(left), Lir::Sub(right))
         | (Lir::Mul(left), Lir::Mul(right))
         | (Lir::Concat(left), Lir::Concat(right))
-        | (Lir::Sha256(left), Lir::Sha256(right)) => {
+        | (Lir::Sha256(left), Lir::Sha256(right))
+        // Two raises with the same arguments fail the same way, which `merge_checks` relies on
+        | (Lir::Raise(left), Lir::Raise(right)) => {
             left.len() == right.len()
                 && left
                     .iter()

@@ -163,3 +163,88 @@ test fn raise_statements_that_fail(a: Int, b: Int) -> Int {
     assert a > 0;
     b - a
 }
+
+// The same checks with a solution that fails each one
+test fn call_is_not_made_after_a_failed_assert(items: List<Int>, limit: Int) -> Int {
+    assert limit > 0;
+    assert is_sorted(items);
+    assert limit < 100;
+    limit
+}
+
+test fn inlined_asserts_that_fail(value: Int) -> Int {
+    check_range(value, 0, 10);
+    value
+}
+
+test fn asserts_before_nil_that_fail(a: Bytes32, b: Bytes32, c: Bytes32) {
+    assert a == b;
+    assert b == c;
+}
+
+test fn asserts_of_conjunctions_that_fail(a: Int, b: Int, c: Int) -> Int {
+    assert c > b && c > a;
+    assert c > 0 && c < 100;
+    c
+}
+
+test fn assert_before_a_let_fails(a: Int, b: Int) -> Int {
+    assert a > 0;
+    let sum = a + b;
+    assert sum > a;
+    assert sum > b;
+    sum * sum
+}
+
+test fn assert_after_a_let_fails(a: Int, b: Int) -> Int {
+    assert a > 0;
+    let sum = a + b;
+    assert sum > a;
+    assert sum > b;
+    sum * sum
+}
+
+// Branches that return the same value aren't checks, so there's nothing to merge with the assert
+test fn branches_that_return_the_same_value(a: Bool, b: Bool, c: Bool, x: Int) -> Int {
+    assert !a;
+
+    if b {
+        return x;
+    }
+
+    if c {
+        return x;
+    }
+
+    x
+}
+
+// A condition that's too large is checked on its own, after the ones before it
+test fn large_condition(a: Int, b: Int) -> Int {
+    assert a > 0;
+    assert b > 0;
+    assert a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+            + a
+            + b
+        > 100;
+    a
+}
