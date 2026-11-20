@@ -631,18 +631,46 @@ test fn element_reads_a_field_of_its_parameter_under_an_expected_type() -> (Int,
 
 // Guard: a binding with the parameter's name shadows it, so the field it reads isn't the
 // parameter's, and the lambda is compiled where it is, as before, which a lambda whose return type
-// adds to what its parameter reads needs (see `element_adds_to_what_it_reads`)
-test fn element_reads_a_field_of_a_shadowing_binding() -> Int | nil {
-    self_feeding(
+// another element reads needs (see `element_returns_what_a_sibling_reads`)
+test fn element_reads_a_field_of_a_shadowing_binding() -> Int {
+    two_steps(
         (
-            1,
             fn(p) => {
-                let p = (5, nil);
+                let p = (7, 1);
                 p.first
             },
+            fn(y) => y + 1,
         ),
-        nil,
+        5,
     )
+}
+
+fn steps_between<T, U>(value: T, pair: (fn(x: T) -> U, fn(y: U) -> Int), other: T) -> Int {
+    pair.rest(pair.first(value)) + pair.rest(pair.first(other))
+}
+
+// Guard: `T` has a type when the pair is compiled, so `p` reads its field where the lambda is, and
+// the lambda is compiled there, since the lambda next to it reads what its return type adds to
+test fn element_reads_a_field_of_a_mapped_parameter_that_a_sibling_needs() -> Int {
+    let start: (Int, Int) = (7, 1);
+    steps_between(start, (fn(p) => p.first, fn(y) => y + 1), (8, 2))
+}
+
+mod paths {
+    export const ONE: (Int, Int) = (7, 1);
+
+    export mod first {
+        export const PAIR: (Int, Int) = (8, 2);
+    }
+}
+
+// Guard: a path with more than one segment isn't the parameter, even where its first or last
+// segment has the parameter's name, so the lambda is compiled where it is, as a lambda whose return
+// type another element reads needs
+test fn element_reads_a_field_of_a_path() -> (Int, Int) {
+    let a = two_steps((fn(ONE) => paths::ONE.first, fn(y) => y + 1), 5);
+    let b = two_steps((fn(paths) => paths::first::PAIR.first, fn(y) => y + 1), 5);
+    (a, b)
 }
 
 // Guard: where the expected type already gives `T` a type when the pair is compiled, `p` is that
