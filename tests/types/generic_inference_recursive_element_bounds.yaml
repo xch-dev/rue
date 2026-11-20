@@ -230,6 +230,20 @@ tests:
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
+- name: first_element_lambdas_count_as_the_renamed_generics
+  program: (a (q 4 (a 6 (c 6 (c (c (c (q 16 2 (q . 1)) (q . 1)) ()) (q 1 . 6)))) (a 4 (c 4 (c (q . 1) (c (c (q 16 2 (q . 2)) (c (c (q . 2) (q . 1)) ())) (q . 6)))))) (c (c (q 2 (i (> 5 ()) (q 3 () (a 2 (c 2 (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 2) (q . 1)) ())) (q . 5))))) ()) (q 2 19 (c 15 ()))) 1) (q 2 (i (> 11 ()) (q 3 () (a 2 (c 2 (c (c (c (q . 2) (q . 1)) (c (c (q . 2) (q . 1)) ())) (c (- 11 (q . 1)) (q . 5))))) ()) (q 2 (i 5 (q 2 17 (c 15 ())) (q)) 1)) 1)) ()))
+  debug_program: (a (q 4 (a 6 (c 6 (c (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 1)) ()) (c (q . 1) (q . 6))))) (a 4 (c 4 (c (q . 1) (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 2))) (c (q . 1) ()))) (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) ())) (q . 6)))))) (c (c (q 2 (i (> 5 ()) (q 3 () (a 2 (c 2 (c (- 5 (q . 1)) (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) ())) (q . 5))))) ()) (q 2 (f 11) (c 15 ()))) 1) (q 2 (i (> 11 ()) (q 3 () (a 2 (c 2 (c (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) ())) (c (- 11 (q . 1)) (q . 5))))) ()) (q 2 (i (not (not 5)) (q 2 (f (f 5)) (c 15 ())) (q)) 1)) 1)) ()))
+  output: (())
+  runtime_cost: 8874
+  byte_cost: 4404000
+  total_cost: 4412874
+- name: parameters_returned_on_both_branches
+  program: (a (q 2 2 (c 2 (c (q . 2) (c (q . 1) (c (q . 2) (c (q 16 2 5) ())))))) (c (q 2 (i (> 5 ()) (q 3 () (a 2 (c 2 (c (- 5 (q . 1)) (c 11 (c 23 (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 1)) (q . 5) (q . 5)) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ())))))) (a 2 (c 2 (c (- 5 (q . 1)) (c 11 (c 23 (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 1)) (q . 5) (q . 11)) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))))))) (q 2 (i 31 (q 2 47 (c 11 (c 23 ()))) (q . 11)) 1)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 2) (c (q . 1) (c (q . 2) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) ())))))) (c (q 2 (i (> 5 ()) (q 2 (q 3 () (a 5 (c 5 (c (- 11 (q . 1)) (c 23 (c 47 (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 1)) (q . 5) (q . 5)) 1)) (c (c (q . 4) (c (c (q . 1) 11) (c (q . 1) ()))) ()))) ())))))) 2) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 11 (c 23 (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 1)) (q . 5) (q . 11)) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ())))))) 1)) (q 2 (i (not (not 31)) (q 2 (f 31) (c 11 (c 23 ()))) (q . 11)) 1)) 1) ()))
+  output: "2"
+  runtime_cost: 26192
+  byte_cost: 4740000
+  total_cost: 4766192
 diagnostics:
 - Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:132:23
 - Unused parameter `function` at generic_inference_recursive_element_bounds.rue:155:35
@@ -242,13 +256,17 @@ diagnostics:
 - Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:531:5
 - Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:596:35
 - Unused parameter `p` at generic_inference_recursive_element_bounds.rue:621:33
-- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:658:5
-- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:659:5
-- Unused parameter `u0` at generic_inference_recursive_element_bounds.rue:837:5
-- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:888:5
-- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:889:5
-- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:926:5
-- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:967:5
-- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:968:5
-- Unused parameter `after` at generic_inference_recursive_element_bounds.rue:969:5
-- Unused parameter `later` at generic_inference_recursive_element_bounds.rue:970:5
+- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:659:5
+- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:660:5
+- Unused parameter `u0` at generic_inference_recursive_element_bounds.rue:838:5
+- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:889:5
+- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:890:5
+- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:927:5
+- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:968:5
+- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:969:5
+- Unused parameter `after` at generic_inference_recursive_element_bounds.rue:970:5
+- Unused parameter `later` at generic_inference_recursive_element_bounds.rue:971:5
+- |-
+  Both branches of this `if` are the same, so the condition has no effect at generic_inference_recursive_element_bounds.rue:1072:30
+    note: The `else` branch is the same at generic_inference_recursive_element_bounds.rue:1074:24
+    help: Replace the `if` with one of its branches

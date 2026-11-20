@@ -247,3 +247,39 @@ fn own_and_standing_in_seen_through<T, U, V>(p: (T, fn(a: T, b: U) -> V), u0: U,
 
     p.rest(p.first, u0)
 }
+
+// Guard: an untyped lambda that's the first element of a pair isn't refined, so its body has the
+// caller's `T` that `x7` stands for, which `+` doesn't take, even where the call's inference counts it
+// as the renamed `T` (see `first_element_lambdas_count_as_the_renamed_generics`)
+fn first_element_lambda_body<T, U>(p: List<(fn(a: T) -> U, Int)>, value: T, depth: Int) -> U {
+    if depth > 0 {
+        let _listed = first_element_lambda_body(
+            [(fn(x6: Int) => x6, 1), (fn(x7) => x7 + 1, 1)],
+            5,
+            depth - 1,
+        );
+        return unchecked_cast::<U>(nil);
+    }
+
+    if p is ((fn(a: T) -> U, Int), List<(fn(a: T) -> U, Int)>) {
+        p.first.first(value)
+    } else {
+        unchecked_cast::<U>(nil)
+    }
+}
+
+// Guard: with both lambdas' parameters counting as the renamed generics, each of those would be a
+// candidate for the other, so the argument's candidates are what they are with the caller's
+// generics they stand for, and only the argument is reported, as without that
+fn renamed_generics_naming_each_other<T, U>(
+    p: List<((fn(a: T) -> U, Int), (fn(b: U) -> T, Int))>,
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let r = renamed_generics_naming_each_other([((fn(a) => a, 1), (fn(b) => b, 1))], depth - 1);
+        let _r: T = r;
+        return unchecked_cast::<U>(nil);
+    }
+
+    unchecked_cast::<U>(nil)
+}

@@ -633,9 +633,10 @@ test fn values_keep_the_renamed_generics_around_a_lambda() -> (Int, Int) {
     values_around_a_lambda((1, (2, (fn(x: Int) => x, (3, nil)))), 1)
 }
 
-// The same where the untyped lambda is the first element of a pair, which isn't refined on its own,
-// so it has the first part of what the pair it's in was refined with. The result's `U` is the
-// caller's own in both elements. Its `T` comes from `x7` there, whose type the pair doesn't refine
+// A typed lambda that names the caller's `U` before a pair whose first element is an untyped lambda.
+// That element isn't refined, so its body has the caller's `U` that `x7` stands for, but the call's
+// inference counts `x7` as the renamed one, so the result is exactly the caller's own `(5, U)`
+// (#362, 13k6)
 fn typed_before_a_pair_of_untyped<T, U>(
     p: (fn(a: T) -> U, (fn(a: T) -> U, fn(a: T) -> U)),
     value: T,
@@ -647,7 +648,7 @@ fn typed_before_a_pair_of_untyped<T, U>(
             (5, unchecked_cast::<U>(nil)),
             depth - 1,
         );
-        let _r: (5, U) | T = r;
+        let _r: (5, U) = r;
         return p.first(value);
     }
 
@@ -665,7 +666,7 @@ fn typed_in_a_list_of_pairs<T, U>(
             (5, unchecked_cast::<U>(nil)),
             depth - 1,
         );
-        let _r: List<(5, U) | T> = r;
+        let _r: List<(5, U)> = r;
         return nil;
     }
 
@@ -1001,4 +1002,94 @@ fn arguments_after_own_generics<T, U>(
 
 test fn arguments_after_own_generics_are_as_without_them() -> List<Int> {
     arguments_after_own_generics([fn(x: List<Int>, _y: Int) => x], 1, [2], nil, 1)
+}
+
+// An untyped lambda that's the first element of a pair after one whose typed lambda gives the
+// renamed `T` a type: the call's inference counts its `x7` as the renamed `T` it stands for, not the
+// caller's own `T`, so the result is `Int` rather than `Int | T` (#362, 13k6)
+fn pairs_of_a_lambda_and_a_value<T, U>(p: List<(fn(a: T) -> U, Int)>, value: T, depth: Int) -> U {
+    if depth > 0 {
+        let listed = pairs_of_a_lambda_and_a_value(
+            [(fn(x6: Int) => x6, 1), (fn(x7) => x7, 1)],
+            5,
+            depth - 1,
+        );
+        let _listed: Int = listed;
+        return unchecked_cast::<U>(nil);
+    }
+
+    if p is ((fn(a: T) -> U, Int), List<(fn(a: T) -> U, Int)>) {
+        p.first.first(value)
+    } else {
+        unchecked_cast::<U>(nil)
+    }
+}
+
+fn nested_pairs_of_a_lambda<T, U>(
+    p: (fn(a: T) -> U, ((fn(a: T) -> U, Int), nil)),
+    value: T,
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let nested = nested_pairs_of_a_lambda(
+            (fn(x6: Int) => x6, ((fn(x7) => x7, 1), nil)),
+            5,
+            depth - 1,
+        );
+        let _nested: Int = nested;
+        return unchecked_cast::<U>(nil);
+    }
+
+    p.first(value)
+}
+
+test fn first_element_lambdas_count_as_the_renamed_generics() -> (Int, Int) {
+    (
+        pairs_of_a_lambda_and_a_value([(fn(x: Int) => x + 1, 1)], 6, 1),
+        nested_pairs_of_a_lambda((fn(x: Int) => x + 2, ((fn(x: Int) => x, 1), nil)), 6, 1),
+    )
+}
+
+// Guard: a body that returns its parameter on both branches returns the renamed generic twice once
+// the parameter counts as it, which would give that generic a candidate with itself in it, so the
+// argument's candidates are what they are with the caller's generic it stands for, as without that
+fn pick_one<T>(functions: List<fn(a: T, b: T) -> T>, x: T, y: T, depth: Int) -> T {
+    if depth > 0 {
+        let picked = pick_one(
+            [
+                fn(a, b) => if depth > 1 {
+                    a
+                } else {
+                    b
+                },
+            ],
+            x,
+            y,
+            depth - 1,
+        );
+        let same = pick_one(
+            [
+                fn(a, _b) => if depth > 1 {
+                    a
+                } else {
+                    a
+                },
+            ],
+            x,
+            y,
+            depth - 1,
+        );
+        let _same: T = same;
+        return picked;
+    }
+
+    if functions is (fn(a: T, b: T) -> T, List<fn(a: T, b: T) -> T>) {
+        functions.first(x, y)
+    } else {
+        x
+    }
+}
+
+test fn parameters_returned_on_both_branches() -> Int {
+    pick_one([fn(a: Int, b: Int) => a + b], 1, 2, 2)
 }
