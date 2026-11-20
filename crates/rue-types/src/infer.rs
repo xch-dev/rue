@@ -585,6 +585,29 @@ impl Choices {
                 .is_none_or(|parent| self.matched_since(parent, from))
     }
 
+    /// Whether the union member, and every member it's nested in from the choice opened at index
+    /// `from` on, either gave a result other than `Invalid` or hasn't given one yet. A member that
+    /// gave `Invalid` never holds the value, whatever the bounds collected under it are, so they
+    /// can't decide anything (see `Choices::attributed`).
+    pub(crate) fn can_hold_since(&self, branch: BranchId, from: usize) -> bool {
+        if branch.choice < from {
+            return true;
+        }
+
+        let choice = &self.0[branch.choice];
+
+        let result = if branch.member == FALLBACK {
+            choice.fallback
+        } else {
+            choice.members[branch.member]
+        };
+
+        result != Some(Comparison::Invalid)
+            && choice
+                .parent
+                .is_none_or(|parent| self.can_hold_since(parent, from))
+    }
+
     /// Whether the bounds collected under the union member can decide anything, as far as the
     /// choices opened in the range do: no union it's nested in from there on (nor its own) is held
     /// by another member, one that gave `Assign` without collecting bounds. Such a union is
