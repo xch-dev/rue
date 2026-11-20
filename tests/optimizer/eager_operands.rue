@@ -1,0 +1,189 @@
+// The right operand of `&&` and `||` is evaluated whether or not the left one decides the result
+// when nothing can tell the difference: it doesn't rely on a type the left operand narrows, it
+// can't fail, and it's cheap. Then both operands are the arguments of an `all` or `any`, which is
+// about 14 bytes smaller than branching on the left operand.
+
+// The parameters of a function that's only called directly are always in its environment, and
+// the right operand reads a field that the left one already read
+fn count_between(items: List<Int>, low: Int, high: Int) -> Int {
+    if items is nil {
+        return 0;
+    }
+
+    let rest = count_between(items.rest, low, high);
+
+    if items.first > low && items.first < high {
+        rest + 1
+    } else {
+        rest
+    }
+}
+
+test fn all_in_a_condition(items: List<Int>) -> Int {
+    count_between(items, 1, 5)
+}
+
+fn flags(items: List<Int>, low: Int, high: Int) -> List<Bool> {
+    if items is nil {
+        return nil;
+    }
+
+    [
+        items.first < low || items.first > high || low > high,
+        items.first > low && items.first < high && low < high,
+        ...flags(items.rest, low, high),
+    ]
+}
+
+test fn any_and_all_as_values(items: List<Int>) -> List<Bool> {
+    flags(items, 1, 5)
+}
+
+// The parameters of `main` come from the solution, which can leave out the ones at the end that
+// aren't read. A parameter can only be read if the ones before it are there, so `hash` being
+// read by the left operand means that `b` and `c` can be read too.
+test fn any_of_three(a: Bytes32, b: Bytes32, c: Bytes32, hash: Bytes32) -> Bool {
+    a == hash || b == hash || c == hash
+}
+
+// But `c` comes after what the left operand read, so it's only read when it's needed
+test fn either_is_equal(a: Bytes32, b: Bytes32, c: Bytes32) {
+    assert a == b || a == c;
+}
+
+test fn either_is_equal_without_the_last_argument(a: Bytes32, b: Bytes32, c: Bytes32) {
+    assert a == b || a == c;
+}
+
+struct Extra {
+    value: Bytes32,
+}
+
+// A field that the left operand didn't read might not be there either
+test fn field_that_is_not_there(a: Bytes32, b: Bytes32, extra: Extra) -> Bool {
+    a == b || a == extra.value
+}
+
+test fn field_that_was_read(a: Bytes32, extra: Extra) -> Bool {
+    extra.value == a || extra.value == sha256(a)
+}
+
+test fn all_of_three(a: Int, b: Int, c: Int) -> Bool {
+    a > 0 && b > a && c > b
+}
+
+// The right operand reads a field that only exists if the left operand is true, so it's only
+// evaluated then
+test fn guard_narrows_the_right_operand(x: Any) -> Bool {
+    x is (Int, Int) && x.first == 1
+}
+
+test fn guard_narrows_the_right_operand_of_a_pair(x: Any) -> Bool {
+    x is (Int, Int) && x.first == 1
+}
+
+test fn negated_guard_narrows_the_right_operand(x: (Int, Int) | nil) -> Bool {
+    x is nil || x.first == 1
+}
+
+// A guard in the right operand checks its own value, so it doesn't rely on the left one
+test fn guard_in_the_right_operand(flag: Bool, x: Any) -> Bool {
+    flag || x is nil
+}
+
+// Division by zero fails, so the divisor is only divided by once it's known not to be zero
+test fn right_operand_may_fail(a: Int) -> Bool {
+    a != 0 && 10 / a > 2
+}
+
+fn check_positive(value: Int) -> Bool {
+    assert value > 0;
+    true
+}
+
+// A call that may fail isn't made when the left operand decides the result
+test fn call_that_may_fail_is_skipped(flag: Bool, value: Int) -> Bool {
+    flag || check_positive(value)
+}
+
+test fn call_that_may_fail_is_made(flag: Bool, value: Int) -> Bool {
+    flag || check_positive(value)
+}
+
+fn contains(item: Int, items: List<Int>) -> Bool {
+    if items is nil {
+        return false;
+    }
+
+    item == items.first || contains(item, items.rest)
+}
+
+// A call can run for as long as it likes, so it's only made when it's needed
+test fn call_is_only_made_when_needed(item: Int, items: List<Int>) -> Bool {
+    contains(item, items)
+}
+
+// The operators trust that a `Bool` is `true` or `false`, so a right operand that isn't known to
+// be one of them is the result as it is, as it was when it was only evaluated when needed
+test fn right_operand_outside_of_its_type(a: Bool, b: Bool) -> Bool {
+    a || b
+}
+
+test fn right_operand_outside_of_its_type_compared(a: Bool, b: Bool) -> Bool {
+    let both = a && b;
+    both == b
+}
+
+inline fn either(a: Bool, b: Bool) -> Bool {
+    a || b
+}
+
+// The argument of an `inline fn` is evaluated where its parameter is referenced, so one that may
+// fail is still only evaluated when it's needed
+test fn inline_argument_that_may_fail(flag: Bool, value: Int) -> Bool {
+    either(flag, check_positive(value))
+}
+
+test fn inline_argument_that_cannot_fail(flag: Bool, value: Int) -> Bool {
+    either(flag, value > 0)
+}
+
+// A binding that may fail is evaluated at its let statement, so reading it can't fail
+test fn binding_that_may_fail(flag: Bool, value: Int) -> Bool {
+    let positive = check_positive(value);
+    flag || positive
+}
+
+// When the right operand is only evaluated when needed, and the branch that's taken when the left
+// operand decides the result is small, the left operand branches there directly
+test fn branches_directly(flag: Bool, x: Any) -> Int | nil {
+    if flag || (x is Int && x > 5) {
+        nil
+    } else {
+        7
+    }
+}
+
+test fn branches_directly_to_the_other_branch(flag: Bool, x: Any) -> Int | nil {
+    if flag || (x is Int && x > 5) {
+        nil
+    } else {
+        7
+    }
+}
+
+type Mode = 0 | 1 | 5;
+
+// Narrowing an atom to the atoms that are left doesn't change what the right operand can read
+test fn narrows_an_atom(mode: Mode) -> Bool {
+    mode is 5 || mode is 1
+}
+
+// But a value that could be a pair is only compared once the left operand says it's an atom
+test fn narrows_to_an_atom(x: Any) -> Bool {
+    !(x is Int) || x > 5
+}
+
+test fn narrows_to_an_atom_that_is_compared(x: Any) -> Bool {
+    !(x is Int) || x > 5
+}

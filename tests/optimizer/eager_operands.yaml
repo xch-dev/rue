@@ -1,0 +1,211 @@
+tests:
+- name: all_in_a_condition
+  program: (a (q 2 2 (c 2 (c 5 (q 1 . 5)))) (c (q 2 (i 5 (q 2 (q 2 (i (all (> 19 23) (> 31 19)) (q 16 2 (q . 1)) (q . 2)) 1) (c (a 2 (c 2 (c 13 7))) 1)) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c 5 (c (q . 1) (q . 5))))) (c (q 2 (i (not 5) () (q 2 (q 2 (i (a (i (> (f 11) 23) (q 21 31 (f 11)) ()) 1) (q 16 2 (q . 1)) (q . 2)) 1) (c (a 2 (c 2 (c (r 5) (c 11 15)))) 1))) 1) 1))
+  solution: ((0 2 3 9))
+  output: "2"
+  runtime_cost: 15229
+  byte_cost: 1572000
+  total_cost: 1587229
+- name: any_and_all_as_values
+  program: (a (q 2 2 (c 2 (c 5 (q 1 . 5)))) (c (q 2 (i 5 (q 4 (any (> 11 9) (> 9 15) (> 11 15)) (c (all (> 9 11) (> 15 9) (> 15 11)) (a 2 (c 2 (c 13 7))))) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c 5 (c (q . 1) (q . 5))))) (c (q 2 (i (not 5) () (q 4 (a (i (a (i (> 11 (f 5)) (q 1 . 1) (q 21 (f 5) 15)) 1) (q 1 . 1) (q 21 11 15)) 1) (c (a (i (a (i (> (f 5) 11) (q 21 15 (f 5)) ()) 1) (q 21 15 11) ()) 1) (a 2 (c 2 (c (r 5) (c 11 15))))))) 1) 1))
+  solution: ((0 2 9))
+  output: (1 () () 1 1 ())
+  runtime_cost: 20936
+  byte_cost: 1644000
+  total_cost: 1664936
+- name: any_of_three
+  program: (any (= 2 23) (= 5 23) (= 11 23))
+  debug_program: (a (i (a (i (= 2 23) (q 1 . 1) (q 9 5 23)) 1) (q 1 . 1) (q 9 11 23)) 1)
+  solution: (1 2 3 2)
+  output: "1"
+  runtime_cost: 1797
+  byte_cost: 324000
+  total_cost: 325797
+- name: either_is_equal
+  program: (a (i (= 2 5) () (q 2 (i (= 2 11) () (q 8)) 1)) 1)
+  debug_program: (a (i (a (i (= 2 5) (q 1 . 1) (q 9 2 11)) 1) () (q 8 (q . "assertion failed at eager_operands.rue:51:5"))) 1)
+  solution: (1 2 1)
+  output: ()
+  runtime_cost: 954
+  byte_cost: 564000
+  total_cost: 564954
+- name: either_is_equal_without_the_last_argument
+  program: (a (i (= 2 5) () (q 2 (i (= 2 11) () (q 8)) 1)) 1)
+  debug_program: (a (i (a (i (= 2 5) (q 1 . 1) (q 9 2 11)) 1) () (q 8 (q . "assertion failed at eager_operands.rue:55:5"))) 1)
+  solution: (1 1)
+  output: ()
+  runtime_cost: 497
+  byte_cost: 564000
+  total_cost: 564497
+- name: field_that_is_not_there
+  program: (a (i (= 2 5) (q 1 . 1) (q 9 2 19)) 1)
+  debug_program: (a (i (= 2 5) (q 1 . 1) (q 9 2 (f 11))) 1)
+  solution: (1 1 ())
+  output: "1"
+  runtime_cost: 449
+  byte_cost: 396000
+  total_cost: 396449
+- name: field_that_was_read
+  program: (any (= 9 2) (= 9 (sha256 2)))
+  debug_program: (a (i (= (f 5) 2) (q 1 . 1) (q 9 (f 5) (sha256 2))) 1)
+  solution: (1 (1))
+  output: "1"
+  runtime_cost: 1824
+  byte_cost: 276000
+  total_cost: 277824
+- name: all_of_three
+  program: (a (i (> 2 ()) (q 2 (i (> 5 2) (q 21 11 5) ()) 1) ()) 1)
+  debug_program: (a (i (a (i (> 2 ()) (q 21 5 2) ()) 1) (q 21 11 5) ()) 1)
+  solution: (1 2 3)
+  output: "1"
+  runtime_cost: 2273
+  byte_cost: 612000
+  total_cost: 614273
+- name: guard_narrows_the_right_operand
+  program: (a (i (l 2) (q 2 (i (l 4) () (q 2 (i (l 6) () (q 9 4 (q . 1))) 1)) 1) ()) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 32 (l (r 2))) ()) 1) ()) 1) (q 9 (f 2) (q . 1)) ()) 1)
+  solution: (5)
+  output: ()
+  runtime_cost: 345
+  byte_cost: 828000
+  total_cost: 828345
+- name: guard_narrows_the_right_operand_of_a_pair
+  program: (a (i (l 2) (q 2 (i (l 4) () (q 2 (i (l 6) () (q 9 4 (q . 1))) 1)) 1) ()) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 32 (l (r 2))) ()) 1) ()) 1) (q 9 (f 2) (q . 1)) ()) 1)
+  solution: ((1 . 2))
+  output: "1"
+  runtime_cost: 1103
+  byte_cost: 828000
+  total_cost: 829103
+- name: negated_guard_narrows_the_right_operand
+  program: (a (i 2 (q 9 4 (q . 1)) (q 1 . 1)) 1)
+  debug_program: (a (i (not 2) (q 1 . 1) (q 9 (f 2) (q . 1))) 1)
+  solution: (())
+  output: "1"
+  runtime_cost: 277
+  byte_cost: 348000
+  total_cost: 348277
+- name: guard_in_the_right_operand
+  program: (a (i 2 (q 1 . 1) (q 32 5)) 1)
+  debug_program: (a (i 2 (q 1 . 1) (q 2 (i (not (l 5)) (q 9 5 ()) ()) 1)) 1)
+  solution: (() (1 . 2))
+  output: ()
+  runtime_cost: 510
+  byte_cost: 300000
+  total_cost: 300510
+- name: right_operand_may_fail
+  program: (a (i 2 (q 21 (/ (q . 10) 2) (q . 2)) ()) 1)
+  debug_program: (a (i (not (= 2 ())) (q 21 (/ (q . 10) 2) (q . 2)) ()) 1)
+  solution: (0)
+  output: ()
+  runtime_cost: 325
+  byte_cost: 396000
+  total_cost: 396325
+- name: call_that_may_fail_is_skipped
+  program: (a (i 2 (q 1 . 1) (q 2 (i (> 5 ()) (q 1 . 1) (q 8)) 1)) 1)
+  debug_program: (a (q 2 (i 5 (q 1 . 1) (q 2 2 11)) 1) (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at eager_operands.rue:100:5"))) 1) 1))
+  solution: (1 0)
+  output: "1"
+  runtime_cost: 277
+  byte_cost: 588000
+  total_cost: 588277
+- name: call_that_may_fail_is_made
+  program: (a (i 2 (q 1 . 1) (q 2 (i (> 5 ()) (q 1 . 1) (q 8)) 1)) 1)
+  debug_program: (a (q 2 (i 5 (q 1 . 1) (q 2 2 11)) 1) (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at eager_operands.rue:100:5"))) 1) 1))
+  solution: (() 0)
+  byte_cost: 588000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at eager_operands.rue:100:5"
+- name: call_is_only_made_when_needed
+  program: (a (q 2 2 (c 2 (c 11 5))) (c (q 2 (i 5 (q 2 (i (= 7 9) (q 1 . 1) (q 2 2 (c 2 (c 13 7)))) 1) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c 11 5))) (c (q 2 (i (not 5) () (q 2 (i (= 7 (f 5)) (q 1 . 1) (q 2 2 (c 2 (c (r 5) 7)))) 1)) 1) 1))
+  solution: (2 (1 2 . 3))
+  output: "1"
+  runtime_cost: 2484
+  byte_cost: 1140000
+  total_cost: 1142484
+- name: right_operand_outside_of_its_type
+  program: (a (i 2 (q 1 . 1) (q . 5)) 1)
+  debug_program: (a (i 2 (q 1 . 1) (q . 5)) 1)
+  solution: (() 2)
+  output: "2"
+  runtime_cost: 309
+  byte_cost: 252000
+  total_cost: 252309
+- name: right_operand_outside_of_its_type_compared
+  program: (= (a (i 2 (q . 5) ()) 1) 5)
+  debug_program: (a (q 9 2 11) (c (a (i 2 (q . 5) ()) 1) 1))
+  solution: (1 2)
+  output: "1"
+  runtime_cost: 505
+  byte_cost: 276000
+  total_cost: 276505
+- name: inline_argument_that_may_fail
+  program: (a (i 2 (q 1 . 1) (q 2 (i (> 5 ()) (q 1 . 1) (q 8)) 1)) 1)
+  debug_program: (a (q 2 (i 5 (q 1 . 1) (q 2 2 11)) 1) (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at eager_operands.rue:100:5"))) 1) 1))
+  solution: (1 0)
+  output: "1"
+  runtime_cost: 277
+  byte_cost: 588000
+  total_cost: 588277
+- name: inline_argument_that_cannot_fail
+  program: (a (i 2 (q 1 . 1) (q 21 5 ())) 1)
+  debug_program: (a (i 2 (q 1 . 1) (q 21 5 ())) 1)
+  solution: (() 5)
+  output: "1"
+  runtime_cost: 854
+  byte_cost: 324000
+  total_cost: 324854
+- name: binding_that_may_fail
+  program: (a (q 3 5 (q . 1) 2) (c (a (i (> 5 ()) (q 1 . 1) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 11 (q 1 . 1) (q . 2)) 1) (c (a 2 11) 1)) (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at eager_operands.rue:100:5"))) 1) 1))
+  solution: (1 0)
+  byte_cost: 636000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at eager_operands.rue:100:5"
+- name: branches_directly
+  program: (a (i 2 () (q 3 (a (i (l 5) () (q 21 5 (q . 5))) 1) () (q . 7))) 1)
+  debug_program: (a (i (a (i 2 (q 1 . 1) (q 2 (i (not (l 5)) (q 21 5 (q . 5)) ()) 1)) 1) () (q 1 . 7)) 1)
+  solution: (1 (1 . 2))
+  output: ()
+  runtime_cost: 325
+  byte_cost: 660000
+  total_cost: 660325
+- name: branches_directly_to_the_other_branch
+  program: (a (i 2 () (q 3 (a (i (l 5) () (q 21 5 (q . 5))) 1) () (q . 7))) 1)
+  debug_program: (a (i (a (i 2 (q 1 . 1) (q 2 (i (not (l 5)) (q 21 5 (q . 5)) ()) 1)) 1) () (q 1 . 7)) 1)
+  solution: (() 3)
+  output: "7"
+  runtime_cost: 1259
+  byte_cost: 660000
+  total_cost: 661259
+- name: narrows_an_atom
+  program: (any (= 2 (q . 5)) (= 2 (q . 1)))
+  debug_program: (a (i (= 2 (q . 5)) (q 1 . 1) (q 9 2 (q . 1))) 1)
+  solution: (1)
+  output: "1"
+  runtime_cost: 1177
+  byte_cost: 276000
+  total_cost: 277177
+- name: narrows_to_an_atom
+  program: (a (i (l 2) (q 1 . 1) (q 21 2 (q . 5))) 1)
+  debug_program: (a (i (not (not (l 2))) (q 1 . 1) (q 21 2 (q . 5))) 1)
+  solution: ((1 . 2))
+  output: "1"
+  runtime_cost: 297
+  byte_cost: 396000
+  total_cost: 396297
+- name: narrows_to_an_atom_that_is_compared
+  program: (a (i (l 2) (q 1 . 1) (q 21 2 (q . 5))) 1)
+  debug_program: (a (i (not (not (l 2))) (q 1 . 1) (q 21 2 (q . 5))) 1)
+  solution: (3)
+  output: ()
+  runtime_cost: 848
+  byte_cost: 396000
+  total_cost: 396848
+diagnostics:
+- |-
+  This argument can fail, but `either` is an `inline fn` that doesn't always evaluate its parameter `b`, so its check can be skipped at eager_operands.rue:144:18
+    note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function
