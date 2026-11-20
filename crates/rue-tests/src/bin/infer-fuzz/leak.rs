@@ -178,9 +178,11 @@ pub(crate) fn free_generics(
         return;
     }
 
-    // An applied alias or struct is walked as it's written, its generic arguments and the
-    // declaration they're applied to, rather than substituted, which makes new types each time a
-    // recursive alias such as `Tree<T>` is expanded
+    // An applied type is walked as it's written, its generic arguments and the type they're
+    // applied to, with the generics they stand for bound in it, rather than substituted, which
+    // makes new types each time a recursive alias such as `Tree<T>` is expanded. That's an alias
+    // or struct, which binds its own generics too, or a generic function's type, as
+    // `wrap_maybe::<Int>`'s is `fn(value: T) -> Maybe<T>` with `T` as `Int`
     match ctx.ty(ty).clone() {
         Type::Generic(_) => unreachable!("checked above"),
         Type::Ref(inner) => free_generics(ctx, inner, bound, visited, free),
@@ -219,7 +221,10 @@ pub(crate) fn free_generics(
             for &arg in apply.generics.values() {
                 free_generics(ctx, arg, bound, visited, free);
             }
+            let depth = bound.len();
+            bound.extend(apply.generics.keys());
             free_generics(ctx, apply.inner, bound, visited, free);
+            bound.truncate(depth);
         }
         Type::Unresolved | Type::Any | Type::Never | Type::Atom(_) => {}
     }

@@ -1184,6 +1184,15 @@ fn leak_oracle_allows_a_functions_own_generics() {
         oracle::compile(inside),
         Compiled::Ok { leak: None, .. }
     ));
+
+    // A generic function's type with its generic arguments applied, whose `T` the arguments stand
+    // for (infer-fuzz generator 3, seed 1889)
+    let applied = "type Maybe<T> = T | nil;\n\nfn wrap_maybe<T>(value: T) -> Maybe<T> {\n    nil\n}\n\nfn main() -> Any {\n    let v0 = wrap_maybe::<Int>;\n    nil\n}\n";
+    let compiled = oracle::compile(applied);
+    assert!(
+        matches!(compiled, Compiled::Ok { leak: None, .. }),
+        "{compiled:?}"
+    );
 }
 
 fn record(seed: u64, outcomes: &[(&str, Category, &[&str])]) -> report::SeedRecord {
