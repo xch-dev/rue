@@ -185,6 +185,21 @@ test fn element_of_a_pair_reads_a_later_argument() -> Int {
     apply_first((fn(x) => x + 1, 1), 5)
 }
 
+// The lambdas in a list spread in it too
+test fn element_of_a_spread_list_reads_a_later_argument() -> List<Int> {
+    map_list([fn(x) => x, ...[fn(x) => x + 1]], 5)
+}
+
+fn apply_with<T, U>(functions: (fn(x: T) -> U, Int), values: (T, U)) -> U {
+    functions.first(values.first)
+}
+
+// What the lambda's return type adds to `U` isn't widened by the later argument, which adds to it
+// too, so the later argument still goes ahead of the pair
+test fn element_returns_what_a_later_argument_adds_to() -> Int {
+    apply_with((fn(x) => x + 1, 0), (5, 7))
+}
+
 fn with_the_callers_generic<A>(value: A) -> (List<A>, List<A>) {
     (
         map_list([fn(x) => identity::<A>(x)], value),

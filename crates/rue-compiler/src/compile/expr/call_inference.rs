@@ -972,8 +972,9 @@ struct Elements {
     /// The generics in the types expected of the untyped parameters of the lambdas among its
     /// elements, which are compiled against what those generics are inferred as so far.
     lambda_reads: IndexSet<TypeId>,
-    /// The generics in the types expected of its other elements, which compiling them can add
-    /// to. Where the pairs can't be followed, every generic in the type expected there.
+    /// The generics in the types expected of its elements other than lambdas, which compiling
+    /// them can add to, and which a later argument going ahead of them could widen. Where the pairs
+    /// can't be followed, every generic in the type expected there.
     other_writes: IndexSet<TypeId>,
 }
 
@@ -998,28 +999,20 @@ impl Elements {
 
     fn add(&mut self, ctx: &mut Compiler, function: &FunctionType, expr: &AstExpr, ty: TypeId) {
         match expr {
+            // What a lambda adds to the generics, through its return type or a typed parameter,
+            // isn't widened by what a later argument infers, which a lambda that's the whole
+            // argument is always compiled after too
             AstExpr::LambdaExpr(lambda) => {
                 let untyped = untyped_parameters(lambda);
-                let mut reads = IndexSet::new();
 
                 for expected in rue_types::extract_functions(ctx.types_mut(), ty, true) {
                     for &index in &untyped {
                         if let Some(parameter) = expected.params.get(index) {
-                            reads.extend(generics_in(ctx, function, parameter.ty));
+                            self.lambda_reads
+                                .extend(generics_in(ctx, function, parameter.ty));
                         }
                     }
                 }
-
-                // A lambda can write the generics in its return type and in the types expected of
-                // its typed parameters, which those types bound from above, so it counts as
-                // writing every generic other than those its untyped parameters read
-                for generic in generics_in(ctx, function, ty) {
-                    if !reads.contains(&generic) {
-                        self.other_writes.insert(generic);
-                    }
-                }
-
-                self.lambda_reads.extend(reads);
             }
             AstExpr::PairExpr(pair) => {
                 let Some((first, rest)) = pair_parts(ctx, ty) else {
@@ -1041,8 +1034,9 @@ impl Elements {
                         continue;
                     };
 
+                    // A spread item is the rest of the list
                     if item.spread().is_some() {
-                        self.other_writes.extend(generics_in(ctx, function, ty));
+                        self.add(ctx, function, &expr, ty);
                         return;
                     }
 
@@ -1258,44 +1252,55 @@ impl ArgumentOrder {
     /// That argument would have been compiled first, against that mapping, which can come from
     /// the type expected of the call, so this one waits for it rather than widen a literal the
     /// expected type keeps.
+    ///
+    /// For a pair or list whose lambdas wait for it (see `waits_for`), only the generics its other
+    /// elements write count, since its lambdas are compiled against what this one infers.
     fn would_change_earlier(&self, i: usize, state: &State<'_>) -> bool {
         self.earlier_others(i).any(|other| {
-            self.reads_now(other, state).iter().any(|generic| {
+            let changes = |generic: &TypeId| {
                 state.mappings.contains_key(generic) && self.arguments[i].writes.contains(generic)
-            })
+            };
+
+            match &self.arguments[other].elements {
+                Some(elements) if self.waits_for(other, i) => {
+                    elements.other_writes.iter().any(changes)
+                }
+                _ => self.reads_now(other, state).iter().any(changes),
+            }
         })
+    }
+
+    /// Whether the argument `other` is a pair or list whose lambdas' parameters read a generic the
+    /// argument `i` writes, while its other elements write none of the generics `i` does, such as
+    /// the list in `map_list([fn(x) => x + 1], 5)`. Then `i` goes ahead of it, and its lambdas are
+    /// compiled against what `i` infers, as a lambda that's the whole argument is, rather than
+    /// against the generic itself, and nothing in it can be widened.
+    fn waits_for(&self, other: usize, i: usize) -> bool {
+        let writes = &self.arguments[i].writes;
+
+        self.arguments[other]
+            .elements
+            .as_ref()
+            .is_some_and(|elements| {
+                writes
+                    .iter()
+                    .any(|generic| elements.lambda_reads.contains(generic))
+                    && !writes
+                        .iter()
+                        .any(|generic| elements.other_writes.contains(generic))
+            })
     }
 
     /// Whether the argument isn't a lambda, and would go ahead of an earlier argument that isn't
     /// one either, other than a call with no arguments, which only its expected type can infer
     /// (#352). Any other earlier argument infers its own generics, and going ahead of it can only
     /// widen a literal in its expected type.
-    ///
-    /// The exception is a pair or list whose lambdas' parameters read a generic this argument
-    /// writes, while its other elements write none of the generics this one does, such as the list
-    /// in `map_list([fn(x) => x + 1], 5)`. Its lambdas are then compiled against what this
-    /// argument infers, as a lambda that's the whole argument is, rather than against the generic
-    /// itself, and nothing in it can be widened.
+    /// A pair or list whose lambdas wait for it doesn't count (see `waits_for`).
     fn would_go_ahead_of_others(&self, i: usize) -> bool {
-        let argument = &self.arguments[i];
-
-        !argument.is_lambda()
-            && self.earlier_others(i).any(|other| {
-                let other = &self.arguments[other];
-
-                let waits_for_this = other.elements.as_ref().is_some_and(|elements| {
-                    argument
-                        .writes
-                        .iter()
-                        .any(|generic| elements.lambda_reads.contains(generic))
-                        && !argument
-                            .writes
-                            .iter()
-                            .any(|generic| elements.other_writes.contains(generic))
-                });
-
-                !other.needs_expected() && !waits_for_this
-            })
+        !self.arguments[i].is_lambda()
+            && self
+                .earlier_others(i)
+                .any(|other| !self.arguments[other].needs_expected() && !self.waits_for(other, i))
     }
 
     /// The arguments that aren't lambdas and are before this one in `pending`.
