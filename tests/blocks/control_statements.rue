@@ -504,6 +504,25 @@ test fn delegates_fails() {
     delegates(12);
 }
 
+// So can a function without a return type that ends with an `else if`
+fn ends_with_else_if(value: Int) {
+    if value > 10 {
+        return;
+    } else if value > 5 {
+        assert value != 6;
+    }
+}
+
+test fn ends_with_else_if_results() {
+    ends_with_else_if(20);
+    ends_with_else_if(7);
+    ends_with_else_if(1);
+}
+
+test fn ends_with_else_if_fails() {
+    ends_with_else_if(6);
+}
+
 // An `else if` statement can leave out the `else`, even with several of them
 fn three_levels(value: Int) -> Int {
     if value > 10 {

@@ -313,3 +313,40 @@ fn statement_without_return_branch(x: Int) -> Int {
     assert x > 3;
     x
 }
+
+// An `inline if` statement in a branch of another statement evaluates the rest of the block after
+// that statement too
+test fn nested_statement_rest_raises() -> Int {
+    nested_statement_rest_raises_branch(1, true)
+}
+
+fn nested_statement_rest_raises_branch(x: Int, flag: Bool) -> Int {
+    if flag {
+        inline if x == 1 {
+            return 1;
+        }
+    } else {
+        debug x;
+    }
+
+    assert x != 1;
+    2
+}
+
+// Only the condition can raise, which is evaluated either way
+fn checked_value(x: Int) -> Int {
+    assert x < 100;
+    x
+}
+
+test fn condition_raises() -> Int {
+    condition_raises_branch(1)
+}
+
+fn condition_raises_branch(x: Int) -> Int {
+    inline if checked_value(x) > 5 {
+        debug x;
+    }
+
+    x
+}

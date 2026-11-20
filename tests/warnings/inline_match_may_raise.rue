@@ -120,3 +120,25 @@ fn statement_without_return_branch(x: Int | nil, y: Int) -> Int {
     assert y != 1;
     y
 }
+
+// An `inline match` statement in a branch of another statement evaluates the rest of the block
+// after that statement too
+test fn nested_statement_rest_raises() -> Int {
+    nested_statement_rest_raises_branch(nil, 1, true)
+}
+
+fn nested_statement_rest_raises_branch(x: Int | nil, y: Int, flag: Bool) -> Int {
+    if flag {
+        inline match x {
+            nil => {
+                return 0;
+            }
+            Int => {}
+        }
+    } else {
+        debug y;
+    }
+
+    assert y != 1;
+    y
+}

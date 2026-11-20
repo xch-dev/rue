@@ -52,7 +52,14 @@ tests:
   total_cost: 853078
   print_messages:
   - ()
+- name: nested_statement_rest_raises
+  program: (a (q 2 2 (q 1 () . 1)) (c (q 2 (q 2 (i 31 (q 3 23 (a 2 5) ()) (q 2 2 5)) 1) (c (q 2 (i (= 2 (q . 1)) (q 8) (q . 2)) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c () (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 (= 23 ()) () (a 2 5)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:139:9") 11) (q) (q 2 2 5)) 1)) 1) (c (q 2 (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:142:5"))) 1) (c 1 1))) ()))
+  byte_cost: 1404000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:142:5"
 diagnostics:
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:8:5
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:21:5
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:96:5
+- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:132:9

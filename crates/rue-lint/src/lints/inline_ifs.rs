@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rue_diagnostic::{Lint, SrcLoc};
 use rue_hir::{
-    BinaryOp, Block, ControlStatement, Hir, HirId, Statement, may_raise, statements_may_raise,
+    BinaryOp, Block, ControlStatement, Database, Hir, HirId, Statement, may_raise,
+    statements_may_raise, statements_terminate,
 };
 
 use crate::{HirLintPass, LintContext, LintInput};
@@ -11,7 +12,11 @@ use crate::{HirLintPass, LintContext, LintInput};
 /// regardless of the condition. This runs after every function has been compiled, so that calls
 /// to functions which may raise can be detected.
 #[derive(Debug, Default)]
-pub(crate) struct InlineIfMayRaise;
+pub(crate) struct InlineIfMayRaise {
+    /// The statements that have been reported, by their node, since one inside the branch of
+    /// another statement can be found from both.
+    reported: HashSet<HirId>,
+}
 
 impl HirLintPass for InlineIfMayRaise {
     fn lints(&self) -> &'static [Lint] {
@@ -35,46 +40,107 @@ impl HirLintPass for InlineIfMayRaise {
     }
 
     fn check_statement(&mut self, cx: &mut LintContext<'_>, block: &Block, index: usize) {
+        let rest_may_raise =
+            statements_may_raise(cx.db(), &block.statements[index + 1..], block.body);
+
         match &block.statements[index] {
             // The rest of the block is the else branch of an `inline if` statement
             Statement::If(statement)
                 if statement.inline
-                    && (may_raise(cx.db(), statement.then)
-                        || statements_may_raise(
-                            cx.db(),
-                            &block.statements[index + 1..],
-                            block.body,
-                        )) =>
+                    && (may_raise(cx.db(), statement.then) || rest_may_raise)
+                    && self.reported.insert(statement.condition) =>
             {
                 report(cx, statement.srcloc.clone());
             }
-            // The branches of an `inline if` chain with a location are checked as an expression,
-            // but an `if` statement without an `else` whose block falls through doesn't have one
-            Statement::Control(statement)
+            Statement::Control(statement) => {
+                // The branches of an `inline if` chain with a location are checked as an
+                // expression, but an `if` statement without an `else` whose block falls through
+                // doesn't have one
                 if statement.inline
-                    && matches!(cx.db().hir(statement.hir), Hir::If(..))
+                    && let Hir::If(_, then, else_, _) = *cx.db().hir(statement.hir)
                     && ((cx.db().hir_srcloc(statement.hir).is_none()
-                        && may_raise(cx.db(), statement.hir))
-                        || rest_may_raise(cx, statement, block, index)) =>
-            {
-                report(cx, statement.srcloc.clone());
+                        && (may_raise(cx.db(), then) || may_raise(cx.db(), else_)))
+                        || (evaluates_rest(statement) && rest_may_raise))
+                    && self.reported.insert(statement.hir)
+                {
+                    report(cx, statement.srcloc.clone());
+                }
+
+                if rest_may_raise {
+                    for (hir, srcloc, is_match) in eager_statements(cx.db(), statement.hir) {
+                        if !is_match && self.reported.insert(hir) {
+                            report(cx, srcloc);
+                        }
+                    }
+                }
             }
             _ => {}
         }
     }
 }
 
-/// Whether the rest of the block after an `inline` statement can raise when a branch of the
-/// statement returns, since the branch that falls through to it is evaluated too.
-fn rest_may_raise(
-    cx: &LintContext<'_>,
-    statement: &ControlStatement,
-    block: &Block,
-    index: usize,
-) -> bool {
-    statement.may_return
-        && statement.fallthroughs > 0
-        && statements_may_raise(cx.db(), &block.statements[index + 1..], block.body)
+/// Whether the branch of an `inline` statement that falls through evaluates the rest of the block
+/// when another branch returns, since every branch is evaluated.
+fn evaluates_rest(statement: &ControlStatement) -> bool {
+    statement.inline && statement.may_return && statement.fallthroughs > 0
+}
+
+/// The `inline` statements in the branches of a statement that can reach the end of their branch,
+/// and so continue with the rest of the block after the statement. Each one that evaluates the rest
+/// of its block when a branch returns (an `inline if` statement without an `else`, or see
+/// [`evaluates_rest`]) evaluates that too. Each is given with its node, its location and whether
+/// it's an `inline match`.
+fn eager_statements(db: &Database, hir: HirId) -> Vec<(HirId, SrcLoc, bool)> {
+    let mut found = Vec::new();
+    collect_eager_statements(db, hir, &mut found);
+    found
+}
+
+fn collect_eager_statements(db: &Database, hir: HirId, found: &mut Vec<(HirId, SrcLoc, bool)>) {
+    match db.hir(hir) {
+        Hir::If(_, then, else_, _) => {
+            collect_eager_statements(db, *then, found);
+            collect_eager_statements(db, *else_, found);
+        }
+        // The block that binds a `match` statement's value has its `if` chain as its body
+        Hir::Block(Block {
+            body: Some(body), ..
+        }) => collect_eager_statements(db, *body, found),
+        Hir::Block(Block {
+            statements,
+            body: None,
+        }) => {
+            for (index, statement) in statements.iter().enumerate() {
+                // A statement that's followed by a `return` or `raise` in its branch doesn't
+                // continue with what comes after the branch
+                if statements_terminate(&statements[index + 1..]) {
+                    break;
+                }
+
+                match statement {
+                    Statement::If(statement) if statement.inline => {
+                        found.push((statement.condition, statement.srcloc.clone(), false));
+                    }
+                    Statement::Control(statement) => {
+                        if evaluates_rest(statement) {
+                            let is_match = matches!(db.hir(statement.hir), Hir::Block(_));
+                            found.push((statement.hir, statement.srcloc.clone(), is_match));
+                        }
+
+                        collect_eager_statements(db, statement.hir, found);
+                    }
+                    Statement::If(_)
+                    | Statement::Expr(_)
+                    | Statement::Let(..)
+                    | Statement::Return(..)
+                    | Statement::Assert(..)
+                    | Statement::Raise(..)
+                    | Statement::Debug(..) => {}
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Every arm of an `inline match` is evaluated eagerly, like the branches of an `inline if`, so an
@@ -82,12 +148,16 @@ fn rest_may_raise(
 /// chain with no location of its own, so they're recorded by the compiler.
 pub(crate) struct InlineMatchMayRaise<'a> {
     arms: &'a HashMap<HirId, Vec<HirId>>,
+    /// The statements that have been reported, by their node, since one inside the branch of
+    /// another statement can be found from both.
+    reported: HashSet<HirId>,
 }
 
 impl<'a> InlineMatchMayRaise<'a> {
     pub(crate) fn new(input: &'a LintInput<'a>) -> Self {
         Self {
             arms: &input.sites.inline_match_arms,
+            reported: HashSet::new(),
         }
     }
 }
@@ -114,14 +184,27 @@ impl HirLintPass for InlineMatchMayRaise<'_> {
     }
 
     fn check_statement(&mut self, cx: &mut LintContext<'_>, block: &Block, index: usize) {
+        let Statement::Control(statement) = &block.statements[index] else {
+            return;
+        };
+
+        if !statements_may_raise(cx.db(), &block.statements[index + 1..], block.body) {
+            return;
+        }
+
         // A `match` statement's arms are checked as an expression, but when one returns, the rest
         // of the block is evaluated too, by the arm that falls through to it
-        if let Statement::Control(statement) = &block.statements[index]
-            && statement.inline
+        if evaluates_rest(statement)
             && matches!(cx.db().hir(statement.hir), Hir::Block(_))
-            && rest_may_raise(cx, statement, block, index)
+            && self.reported.insert(statement.hir)
         {
             report_match(cx, statement.srcloc.clone());
+        }
+
+        for (hir, srcloc, is_match) in eager_statements(cx.db(), statement.hir) {
+            if is_match && self.reported.insert(hir) {
+                report_match(cx, srcloc);
+            }
         }
     }
 }
