@@ -177,7 +177,7 @@ pub enum DiagnosticKind {
     NonExhaustiveMatch(String, String),
 
     #[error(
-        "Match arm `{0}` would also handle {1}, since they can't be told apart from it at runtime; add them to the pattern if that's intended"
+        "Match arm `{0}` would also handle {1}, since they can't be told apart from it at runtime; handle them in an earlier arm, or add them to this pattern"
     )]
     IndistinguishableMatchArm(String, String),
 

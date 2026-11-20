@@ -7,3 +7,6 @@ diagnostics:
 - Undeclared symbol `_` at match_errors.rue:35:9
 - Expected one of `;`, `}`, found `=` at match_errors.rue:35:11
 - Expected `{`, found `}` at match_errors.rue:37:1
+- Undeclared symbol `foo` at match_errors.rue:50:14
+- Expected one of `,`, `)`, found `=` at match_errors.rue:51:11
+- Expected one of `)`, `...`, expression, found `}` at match_errors.rue:52:5

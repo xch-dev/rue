@@ -208,3 +208,19 @@ test fn no_arms(value: Int) -> Int {
     }
     value
 }
+
+// A pattern narrower than an untyped atom checks it, even inside a pair
+test fn nested_atoms(values: List<Atom>) -> Int {
+    match values {
+        nil => 0,
+        (Int, List<Atom>) => values.first + nested_atoms(values.rest),
+    }
+}
+
+// `nil` is handled before `Int`, since it's also the `Int` zero
+test fn nil_before_int(value: Int | nil) -> Int {
+    match value {
+        nil => -1,
+        Int => value,
+    }
+}

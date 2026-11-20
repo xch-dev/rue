@@ -8,7 +8,7 @@ use crate::{
         delimited_list,
         generics::{generic_arguments, generic_parameters},
         recover, skip_unexpected,
-        ty::ty,
+        ty::{at_type_start, ty},
     },
 };
 
@@ -315,7 +315,7 @@ fn match_expr(p: &mut Parser, checkpoint: Checkpoint) {
 
             // An arm on the next line most likely only needs the comma, so it's parsed as the next
             // arm rather than skipped as part of the error
-            while !p.at(T![,]) && !p.at(T!['}']) && p.at_line_start() && at_match_arm_start(p) {
+            while !p.at(T![,]) && !p.at(T!['}']) && p.at_line_start() && at_type_start(p) {
                 p.expect(T![,]);
                 match_arm(p);
             }
@@ -330,16 +330,6 @@ fn match_arm(p: &mut Parser) {
     p.expect(T![=>]);
     expr(p);
     p.finish();
-}
-
-/// Whether the next token could start a match arm's pattern.
-fn at_match_arm_start(p: &mut Parser) -> bool {
-    p.at_quiet(SyntaxKind::Ident)
-        || p.at_quiet(T![::])
-        || p.at_quiet(T!['('])
-        || p.at_quiet(T!['['])
-        || p.at_quiet(T![fn])
-        || p.at_any_quiet(SyntaxKind::LITERAL).is_some()
 }
 
 fn path_expr(p: &mut Parser, checkpoint: Checkpoint) {

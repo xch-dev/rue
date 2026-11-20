@@ -5,7 +5,7 @@ use rue_ast::{AstMatchArm, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{BindingSymbol, Block, Guard, Hir, HirId, Statement, Symbol, SymbolPath, Value};
 use rue_lint::UnreachableMatchArm;
-use rue_types::{AtomSemantic, Check, Type, TypeId, Union};
+use rue_types::{Check, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr, compile_type};
 
@@ -53,6 +53,7 @@ pub fn compile_match_expr(
     // The values that the arms so far haven't handled, which is what subtracting each pattern from
     // the value's type leaves, like the `else` branch of an `is` guard
     let mut remaining = rue_types::substitute(ctx.types_mut(), scrutinee.ty);
+    let mut remaining_members = members(ctx, remaining);
     let mut catch_all = None;
     let mut branches = Vec::new();
     let mut else_branch = None;
@@ -83,7 +84,7 @@ pub fn compile_match_expr(
         };
 
         // Once an arm has handled every value that's left, the ones after it are never taken
-        if catch_all.is_some() || is_empty(ctx, remaining) {
+        if catch_all.is_some() || remaining_members.is_empty() {
             if !has_error {
                 report_unreachable(ctx, pattern_srcloc, catch_all.clone());
             }
@@ -146,9 +147,14 @@ pub fn compile_match_expr(
             _ => builtins.never,
         };
 
-        if !has_error && let Some(ty) = pattern {
-            check_distinguishable(ctx, remaining, ty, pattern_srcloc);
+        if !has_error
+            && let Some(ty) = pattern
+            && !check_distinguishable(ctx, &remaining_members, ty, pattern_srcloc)
+        {
+            has_error = true;
         }
+
+        let else_members = members(ctx, else_type);
 
         // A wildcard arm sees the value as the earlier arms left it, which is already in scope
         let body = compile_arm(ctx, &arm, &reference, pattern, expected_type);
@@ -156,7 +162,7 @@ pub fn compile_match_expr(
 
         // An arm that handles every value that's left is the `else` branch, which doesn't need to
         // check anything
-        if check == Check::None || is_empty(ctx, else_type) {
+        if check == Check::None || else_members.is_empty() {
             else_branch = Some(body.hir);
             catch_all = Some(arm_srcloc);
             continue;
@@ -175,16 +181,17 @@ pub fn compile_match_expr(
             arm.syntax().text_range().end(),
         );
         remaining = else_type;
+        remaining_members = else_members;
     }
 
     ctx.revert_mappings(checkpoint, expr.syntax().text_range().end());
 
     let else_branch = if let Some(else_branch) = else_branch {
         else_branch
-    } else if has_error || !is_empty(ctx, remaining) {
+    } else if has_error || !remaining_members.is_empty() {
         if !has_error {
             let ty = ctx.type_name(scrutinee.ty);
-            let missing = list_members(ctx, remaining);
+            let missing = format_members(ctx, remaining_members);
             let node = expr.expr().map_or_else(
                 || expr.syntax().clone(),
                 |scrutinee| scrutinee.syntax().clone(),
@@ -267,28 +274,31 @@ fn report_unreachable(ctx: &mut Compiler, pattern: SrcLoc, catch_all: Option<Src
 }
 
 /// Reports the members of what's left that the arm's check lets through, although they aren't
-/// values of its type. They're the same at runtime, so there's no way to check which one a value
-/// is, and the arm would see them as its type. An `is` guard warns about this when it doesn't
-/// check anything (see `indistinguishable_guard`), but a match must handle each member on purpose.
-fn check_distinguishable(ctx: &mut Compiler, remaining: TypeId, ty: TypeId, srcloc: SrcLoc) {
+/// values of its type, and returns whether there were none. They're the same at runtime as the
+/// pattern, so there's no way to check which one a value is, and the arm would see them as its
+/// type. An `is` guard warns about this when it doesn't check anything (see
+/// `indistinguishable_guard`), but a match must handle each member on purpose.
+fn check_distinguishable(
+    ctx: &mut Compiler,
+    remaining: &[TypeId],
+    ty: TypeId,
+    srcloc: SrcLoc,
+) -> bool {
     // Each member is compared on its own, rather than comparing the whole union with the pattern,
-    // since the members of a large union are mostly the same few types (see #496)
-    let mut members = Vec::new();
-    collect_members(ctx, remaining, &mut HashSet::new(), &mut members);
-
-    let indistinguishable: Vec<TypeId> = members
-        .into_iter()
+    // since the members of a large union are mostly the same few types (see #496). A member that
+    // the pattern is narrower than, such as `Atom` for an `Int` pattern, is what checking is for.
+    let indistinguishable: Vec<TypeId> = remaining
+        .iter()
+        .copied()
         .filter(|&member| {
-            // An atom that has no meaning of its own (such as one of `Any`'s) can be read as any
-            // kind of atom, which is what checking it is for
-            !matches!(ctx.ty(member), Type::Atom(atom) if atom.semantic == AtomSemantic::Any)
-                && ctx.is_castable(member, ty)
+            ctx.is_castable(member, ty)
                 && !ctx.is_assignable(member, ty)
+                && !ctx.is_assignable(ty, member)
         })
         .collect();
 
     if indistinguishable.is_empty() {
-        return;
+        return true;
     }
 
     let name = ctx.type_name(ty);
@@ -297,6 +307,7 @@ fn check_distinguishable(ctx: &mut Compiler, remaining: TypeId, ty: TypeId, srcl
         srcloc,
         DiagnosticKind::IndistinguishableMatchArm(name, members),
     );
+    false
 }
 
 /// The value that an arm's type guard checks. Each guard has a node of its own, like the guards of
@@ -321,13 +332,6 @@ fn overlaps(ctx: &mut Compiler, from: TypeId, to: TypeId) -> bool {
 
 fn contains_unresolved(ctx: &Compiler, ty: TypeId) -> bool {
     rue_types::contains_unresolved(ctx.types(), ty)
-}
-
-/// The members of the union that the arms didn't handle, as a list for a diagnostic.
-fn list_members(ctx: &mut Compiler, ty: TypeId) -> String {
-    let mut members = Vec::new();
-    collect_members(ctx, ty, &mut HashSet::new(), &mut members);
-    format_members(ctx, members)
 }
 
 /// A list of types for a diagnostic, such as "`A`, `B` and `C`".
@@ -361,9 +365,17 @@ fn format_members(ctx: &mut Compiler, members: Vec<TypeId>) -> String {
 
 /// The members of a union, with aliases looked through, since an alias that's been narrowed by
 /// the arms is only part of what its name means. `Any` is split into an atom and a pair, as
-/// subtracting from it does.
+/// subtracting from it does. There are none if the type has no values, which is what's left once
+/// every member has been subtracted. This is quicker than comparing the type with `Never`, which
+/// compares each member of a union, even when they're the same type.
+fn members(ctx: &Compiler, ty: TypeId) -> Vec<TypeId> {
+    let mut members = Vec::new();
+    collect_members(ctx, ty, &mut HashSet::new(), &mut members);
+    members
+}
+
 fn collect_members(
-    ctx: &mut Compiler,
+    ctx: &Compiler,
     ty: TypeId,
     visited: &mut HashSet<TypeId>,
     members: &mut Vec<TypeId>,
@@ -372,15 +384,11 @@ fn collect_members(
         return;
     }
 
-    match ctx.ty(ty).clone() {
-        Type::Ref(inner) => collect_members(ctx, inner, visited, members),
+    match ctx.ty(ty) {
+        Type::Ref(inner) => collect_members(ctx, *inner, visited, members),
         Type::Alias(alias) => collect_members(ctx, alias.inner, visited, members),
-        Type::Apply(_) => {
-            let ty = rue_types::substitute(ctx.types_mut(), ty);
-            collect_members(ctx, ty, visited, members);
-        }
         Type::Union(union) => {
-            for ty in union.types {
+            for &ty in &union.types {
                 collect_members(ctx, ty, visited, members);
             }
         }
@@ -390,45 +398,14 @@ fn collect_members(
             members.push(builtins.recursive_any_pair);
         }
         Type::Never => {}
-        Type::Unresolved
-        | Type::Generic(_)
-        | Type::Atom(_)
-        | Type::Pair(_)
-        | Type::Struct(_)
-        | Type::Function(_) => members.push(ty),
-    }
-}
-
-/// Whether the type has no values, judging by its structure, which is what's left when every
-/// member of a union has been subtracted. This is quicker than comparing the type with `Never`,
-/// which compares each member of a union, even when they're the same type.
-fn is_empty(ctx: &Compiler, ty: TypeId) -> bool {
-    is_empty_inner(ctx, ty, &mut HashSet::new())
-}
-
-fn is_empty_inner(ctx: &Compiler, ty: TypeId, visited: &mut HashSet<TypeId>) -> bool {
-    // A union that contains itself (through an alias) is empty if its other members are
-    if !visited.insert(ty) {
-        return true;
-    }
-
-    match ctx.ty(ty) {
-        Type::Never => true,
-        Type::Ref(inner) => is_empty_inner(ctx, *inner, visited),
-        Type::Alias(alias) => is_empty_inner(ctx, alias.inner, visited),
-        Type::Union(union) => union
-            .types
-            .iter()
-            .all(|&ty| is_empty_inner(ctx, ty, visited)),
         // The types here have already been substituted, so an application is only kept as a
         // member, rather than being looked inside of
         Type::Unresolved
         | Type::Generic(_)
-        | Type::Any
         | Type::Atom(_)
         | Type::Pair(_)
         | Type::Struct(_)
         | Type::Function(_)
-        | Type::Apply(_) => false,
+        | Type::Apply(_) => members.push(ty),
     }
 }

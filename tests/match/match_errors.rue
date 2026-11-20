@@ -150,6 +150,23 @@ fn indistinguishable_nil(value: Bool | nil) -> Int {
     }
 }
 
+// `nil` is also the `Int` zero, so it has to be handled first
+fn indistinguishable_order(value: Int | nil) -> Int {
+    match value {
+        Int => value,
+        nil => 0,
+    }
+}
+
+// The arms after an arm that's reported aren't checked
+fn after_indistinguishable(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        SameShapeA => 1,
+        nil => 0,
+        SameShapeB => 3,
+    }
+}
+
 // Handling both members in one arm is fine
 fn distinguishable_union(value: SameShapeA | SameShapeB | nil) -> Int {
     match value {
@@ -192,6 +209,26 @@ fn nested_unknown_pattern(value: (Int, Int) | (Bytes32, nil) | nil) -> Int {
     }
 }
 
+// A repeated pattern after an unknown one isn't reported either
+fn repeated_after_unknown_pattern(value: U) -> Int {
+    match value {
+        Missing => 0,
+        A => 1,
+        A => 2,
+        _ => 3,
+    }
+}
+
+// Members that are written the same are listed once
+type FirstPair = (Int, Int);
+type SecondPair = (Int, Int);
+
+fn missing_same_names(value: FirstPair | SecondPair | nil) -> Int {
+    match value {
+        nil => 0,
+    }
+}
+
 // A pattern that doesn't overlap the value doesn't also make the match non-exhaustive
 fn incompatible_only(value: Int | nil) -> Int {
     match value {
@@ -225,4 +262,8 @@ fn main() -> Int {
         + pair_parts((A {}, 1))
         + nested_unknown_pattern(nil)
         + incompatible_only(nil)
+        + indistinguishable_order(nil)
+        + after_indistinguishable(nil)
+        + repeated_after_unknown_pattern(C {})
+        + missing_same_names(nil)
 }

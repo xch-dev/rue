@@ -36,7 +36,24 @@ fn missing_value() -> Int {
     }
 }
 
+struct A {
+    kind = 1,
+}
+
+struct B {
+    kind = 2,
+}
+
+// An unclosed delimiter in an arm hides the arms after it, so nothing is said about them
+fn unclosed_arm(value: A | B) -> Int {
+    match value {
+        A => foo(1,
+        B => 2,
+    }
+}
+
 fn main() -> Int {
     missing_arrow(nil) + missing_comma(nil) + missing_body(nil) + missing_pattern(nil)
         + missing_brace(nil) + missing_value()
+        + unclosed_arm(A {})
 }

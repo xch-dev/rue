@@ -158,3 +158,19 @@ tests:
   runtime_cost: 305
   byte_cost: 372000
   total_cost: 372305
+- name: nested_atoms
+  program: (a (q 2 2 1) (c (q 2 (i 5 (q 16 9 (a 2 (c 2 (c 13 ())))) (q)) 1) 1))
+  debug_program: (a (q 2 2 1) (c (q 2 (i (not 5) (q) (q 16 (f 5) (a 2 (c 2 (c (r 5) ()))))) 1) 1))
+  solution: ((1 2 3))
+  output: "6"
+  runtime_cost: 5097
+  byte_cost: 780000
+  total_cost: 785097
+- name: nil_before_int
+  program: (a (i 2 (q . 2) (q 1 . -1)) 1)
+  debug_program: (a (i (= 2 ()) (q 17 () (q . 1)) (q . 2)) 1)
+  solution: (())
+  output: "-1"
+  runtime_cost: 277
+  byte_cost: 264000
+  total_cost: 264277

@@ -804,8 +804,8 @@ impl AstMatchExpr {
         self.syntax().children().filter_map(AstMatchArm::cast)
     }
 
-    /// Whether the arms were parsed without skipping anything, between both braces. Otherwise
-    /// some of them could be missing.
+    /// Whether the arms were parsed without errors, between both braces. Otherwise some of them
+    /// could be missing, such as after an arm with an unclosed delimiter.
     pub fn arms_are_complete(&self) -> bool {
         let mut open = false;
         let mut close = false;
@@ -814,25 +814,24 @@ impl AstMatchExpr {
             match element.kind() {
                 T!['{'] => open = true,
                 T!['}'] => close = true,
-                SyntaxKind::Error => return false,
                 _ => {}
             }
         }
 
         open && close
+            && !self
+                .arms()
+                .flat_map(|arm| arm.syntax().descendants_with_tokens().collect::<Vec<_>>())
+                .chain(self.syntax().children_with_tokens())
+                .any(|element| element.kind() == SyntaxKind::Error)
     }
 }
 
 impl AstMatchArm {
-    /// The type that the value is checked against, unless the arm is a wildcard (see
-    /// [`Self::is_wildcard`]).
+    /// The type that the value is checked against, or `_` (see [`AstType::is_placeholder`]) for
+    /// every value that's left.
     pub fn ty(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
-    }
-
-    /// Whether the arm's pattern is `_`, which matches every value that's left.
-    pub fn is_wildcard(&self) -> bool {
-        self.ty().is_some_and(|ty| ty.is_placeholder())
     }
 
     pub fn expr(&self) -> Option<AstExpr> {
