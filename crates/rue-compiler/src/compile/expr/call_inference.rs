@@ -220,7 +220,12 @@ pub(crate) fn infer_call(
             substitute_with_mappings(ctx.types_mut(), param, &narrower_mappings)
         });
 
-        let depends = mapping_dependencies(ctx, function, &inferred);
+        // Only worked out for an argument with element lambdas, which is all it's used for
+        let depends = if renamed.is_empty() && order.has_element_lambdas(i) {
+            mapping_dependencies(ctx, function, &inferred)
+        } else {
+            HashMap::new()
+        };
 
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
@@ -317,7 +322,7 @@ pub(crate) fn infer_call(
         // waits if no argument still to be compiled reads what its return type adds to (see
         // `ArgumentOrder::deferred`), and a pair or list with a lambda in it reads every generic
         // in its parameter type (see `reads_of`)
-        loop {
+        while !waiting.is_empty() {
             let inferred = ctx.solve_arguments(&solver, order.merged());
             let depends = mapping_dependencies(ctx, function, &inferred);
 
@@ -1472,6 +1477,12 @@ impl ArgumentOrder {
             })
             .map(|(&range, lambda)| (range, lambda.clone()))
             .collect()
+    }
+
+    /// Whether the argument is a pair or list with element lambdas that could wait (see
+    /// `element_lambdas`).
+    fn has_element_lambdas(&self, i: usize) -> bool {
+        !self.arguments[i].element_lambdas.is_empty()
     }
 
     /// The callee's generics in the argument's parameter type (see `Argument::writes`).
