@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use rue_diagnostic::{Lint, SrcLoc};
 use rue_hir::{
-    BinaryOp, Block, ControlStatement, Database, Hir, HirId, Statement, may_raise,
-    statements_may_raise, statements_terminate,
+    BinaryOp, Block, ControlStatement, Database, Hir, HirId, Statement, control_fallthroughs,
+    control_may_return, may_raise, statements_may_raise, statements_terminate,
 };
 
 use crate::{HirLintPass, LintContext, LintInput};
@@ -34,7 +34,7 @@ impl HirLintPass for InlineIfMayRaise {
 
         let srcloc = srcloc.clone();
 
-        if may_raise(cx.db(), then) || may_raise(cx.db(), else_) {
+        if (may_raise(cx.db(), then) || may_raise(cx.db(), else_)) && self.reported.insert(hir) {
             report(cx, srcloc);
         }
     }
@@ -92,20 +92,37 @@ fn evaluates_rest(statement: &ControlStatement) -> bool {
 /// it's an `inline match`.
 fn eager_statements(db: &Database, hir: HirId) -> Vec<(HirId, SrcLoc, bool)> {
     let mut found = Vec::new();
-    collect_eager_statements(db, hir, &mut found);
+    collect_eager_statements(db, hir, true, &mut found);
     found
 }
 
-fn collect_eager_statements(db: &Database, hir: HirId, found: &mut Vec<(HirId, SrcLoc, bool)>) {
+fn collect_eager_statements(
+    db: &Database,
+    hir: HirId,
+    is_root: bool,
+    found: &mut Vec<(HirId, SrcLoc, bool)>,
+) {
+    // A branch that's an `inline if` or `inline match` itself, rather than a block, is one too.
+    // The `else if` expressions of the statement's own chain can't be inline, and its `match`
+    // chain has no location.
+    if !is_root
+        && let Some(is_match) = inline_branch(db, hir)
+        && control_may_return(db, hir)
+        && control_fallthroughs(db, hir) > 0
+        && let Some(srcloc) = db.hir_srcloc(hir)
+    {
+        found.push((hir, srcloc.clone(), is_match));
+    }
+
     match db.hir(hir) {
         Hir::If(_, then, else_, _) => {
-            collect_eager_statements(db, *then, found);
-            collect_eager_statements(db, *else_, found);
+            collect_eager_statements(db, *then, false, found);
+            collect_eager_statements(db, *else_, false, found);
         }
         // The block that binds a `match` statement's value has its `if` chain as its body
         Hir::Block(Block {
             body: Some(body), ..
-        }) => collect_eager_statements(db, *body, found),
+        }) => collect_eager_statements(db, *body, true, found),
         Hir::Block(Block {
             statements,
             body: None,
@@ -127,7 +144,7 @@ fn collect_eager_statements(db: &Database, hir: HirId, found: &mut Vec<(HirId, S
                             found.push((statement.hir, statement.srcloc.clone(), is_match));
                         }
 
-                        collect_eager_statements(db, statement.hir, found);
+                        collect_eager_statements(db, statement.hir, true, found);
                     }
                     Statement::If(_)
                     | Statement::Expr(_)
@@ -140,6 +157,18 @@ fn collect_eager_statements(db: &Database, hir: HirId, found: &mut Vec<(HirId, S
             }
         }
         _ => {}
+    }
+}
+
+/// Whether the node is an `inline if` (with a location) or the block of an `inline match`, and if
+/// so, whether it's a `match`.
+fn inline_branch(db: &Database, hir: HirId) -> Option<bool> {
+    match db.hir(hir) {
+        Hir::If(_, _, _, true) => db.hir_srcloc(hir).is_some().then_some(false),
+        Hir::Block(Block {
+            body: Some(body), ..
+        }) => matches!(db.hir(*body), Hir::If(_, _, _, true)).then_some(true),
+        _ => None,
     }
 }
 
@@ -180,7 +209,9 @@ impl HirLintPass for InlineMatchMayRaise<'_> {
             return;
         };
 
-        report_match(cx, srcloc);
+        if self.reported.insert(hir) {
+            report_match(cx, srcloc);
+        }
     }
 
     fn check_statement(&mut self, cx: &mut LintContext<'_>, block: &Block, index: usize) {

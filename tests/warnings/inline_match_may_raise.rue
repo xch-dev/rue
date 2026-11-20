@@ -142,3 +142,25 @@ fn nested_statement_rest_raises_branch(x: Int | nil, y: Int, flag: Bool) -> Int 
     assert y != 1;
     y
 }
+
+// An `inline match` that's an arm of a `match` statement evaluates the rest of the block after it
+test fn arm_rest_raises() -> Int {
+    arm_rest_raises_branch(nil, nil, 1)
+}
+
+fn arm_rest_raises_branch(x: Int | nil, z: Int | nil, y: Int) -> Int {
+    match x {
+        nil => inline match z {
+            nil => {
+                return 1;
+            }
+            Int => {}
+        }
+        Int => {
+            debug y;
+        }
+    }
+
+    assert y != 1;
+    2
+}
