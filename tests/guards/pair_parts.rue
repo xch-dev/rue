@@ -1,0 +1,143 @@
+struct A {
+    kind: 1,
+}
+
+struct B {
+    kind: 2,
+}
+
+struct Tagged<T> {
+    tag: Int,
+    value: T,
+}
+
+// A pair is split by the part that differs from the guard's type, when the other part is covered
+fn first_part(value: (A | B, Int)) -> B {
+    if value is (A, Int) {
+        return B { kind: 2 };
+    }
+
+    value.first
+}
+
+fn rest_part(value: (Int, A | B)) -> B {
+    if value is (Int, A) {
+        return B { kind: 2 };
+    }
+
+    value.rest
+}
+
+fn nested_part(value: (Int, (A | B, nil))) -> B {
+    if value is (Int, (A, nil)) {
+        return B { kind: 2 };
+    }
+
+    value.rest.first
+}
+
+// Each pair in a union is subtracted in turn
+fn union_of_pairs(value: (A | B | nil, Int)) -> nil {
+    if value is (A, Int) | (B, Int) {
+        return nil;
+    }
+
+    value.first
+}
+
+// When both parts differ, the pair is split in two, so every combination can be handled
+fn every_combination(value: (A | B, A | B)) -> (B, B) {
+    if value is (A, A) | (A, B) | (B, A) {
+        return (B { kind: 2 }, B { kind: 2 });
+    }
+
+    value
+}
+
+struct Both {
+    first: A | B,
+    second: A | B,
+}
+
+// A struct whose pair is split in two becomes two copies of the struct, so its fields can be read
+fn split_struct(value: Both) -> A | B {
+    if value is (A, (A, nil)) {
+        return A { kind: 1 };
+    }
+
+    value.second
+}
+
+fn split_struct_every_combination(value: Both) -> B {
+    if value is (A, (A, nil)) | (A, (B, nil)) | (B, (A, nil)) {
+        return B { kind: 2 };
+    }
+
+    value.second
+}
+
+struct Tagged3 {
+    kind = 1,
+    first: A | B,
+    second: A | B,
+}
+
+// A split below the first field also gives each pair its own copy of the struct
+fn split_below_first_field(value: Tagged3) -> A | B {
+    if value is (1, (A, (A, nil))) {
+        return A { kind: 1 };
+    }
+
+    let { first, second } = value;
+    let _ = first;
+    second
+}
+
+fn split_below_first_field_match(value: Tagged3) -> B {
+    match value {
+        (1, (A, (A, nil))) | (1, (A, (B, nil))) | (1, (B, (A, nil))) => B { kind: 2 },
+        _ => value.second,
+    }
+}
+
+// The rest of a list is the list itself, which is covered
+fn list_item(value: List<A | B>) -> (B, List<A | B>) | nil {
+    if value is (A, List<A | B>) {
+        return nil;
+    }
+
+    value
+}
+
+// Struct fields follow from the struct's inner pairs
+fn struct_field(value: Tagged<A | B>) -> Tagged<B> {
+    if value is Tagged<A> {
+        return Tagged::<B> { tag: 0, value: B { kind: 2 } };
+    }
+
+    value
+}
+
+test fn guard_values() {
+    let a = A { kind: 1 };
+    let b = B { kind: 2 };
+
+    assert first_part((a, 5)).kind == 2;
+    assert first_part((b, 5)).kind == 2;
+    assert rest_part((5, b)).kind == 2;
+    assert nested_part((5, (b, nil))).kind == 2;
+    assert union_of_pairs((nil, 5)) == nil;
+    assert every_combination((a, b)).first.kind == 2;
+    assert every_combination((b, b)).rest.kind == 2;
+    assert split_struct(Both { first: a, second: b }) is B;
+    assert split_struct(Both { first: a, second: a }) is A;
+    assert split_struct_every_combination(Both { first: b, second: b }).kind == 2;
+    assert split_below_first_field(Tagged3 { first: a, second: b }) is B;
+    assert split_below_first_field(Tagged3 { first: a, second: a }) is A;
+    assert split_below_first_field_match(Tagged3 { first: b, second: b }).kind == 2;
+    assert list_item([a, b]) is nil;
+    assert list_item([b, a]) is (B, List<A | B>);
+    assert list_item(nil) is nil;
+    assert struct_field(Tagged::<A | B> { tag: 1, value: b }).tag == 1;
+    assert struct_field(Tagged::<A | B> { tag: 1, value: a }).tag == 0;
+}

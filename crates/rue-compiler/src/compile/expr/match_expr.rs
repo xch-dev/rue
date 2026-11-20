@@ -5,7 +5,7 @@ use rue_ast::{AstMatchArm, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{BindingSymbol, Block, Guard, Hir, HirId, Statement, Symbol, SymbolPath, Value};
 use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
-use rue_types::{Check, Type, TypeId, Union};
+use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr, compile_type};
 
@@ -157,9 +157,7 @@ pub fn compile_match_expr(
         // Nothing is left after an arm that doesn't need to check anything, so there's nothing
         // to subtract, which can be slow for large unions
         let else_type = match pattern {
-            Some(ty) if check != Check::None => {
-                rue_types::subtract(ctx.types_mut(), &builtins, remaining, ty)
-            }
+            Some(ty) if check != Check::None => ctx.subtract_type(&pattern_srcloc, remaining, ty),
             _ => builtins.never,
         };
 
@@ -442,16 +440,7 @@ fn format_members(ctx: &mut Compiler, members: Vec<TypeId>) -> String {
     let mut names: Vec<String> = Vec::new();
 
     for member in members {
-        // What's left of `Any` once its atoms are handled is written as the pair it checks for,
-        // rather than the recursive type that it's made of
-        let name = if matches!(ctx.ty(member), Type::Pair(_))
-            && ctx.is_assignable(member, builtins.recursive_any_pair)
-            && ctx.is_assignable(builtins.recursive_any_pair, member)
-        {
-            "`(Any, Any)`".to_string()
-        } else {
-            format!("`{}`", ctx.type_name(member))
-        };
+        let name = format!("`{}`", member_name(ctx, &builtins, member));
 
         if !names.contains(&name) {
             names.push(name);
@@ -463,6 +452,52 @@ fn format_members(ctx: &mut Compiler, members: Vec<TypeId>) -> String {
         Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
         None => "every value".to_string(),
     }
+}
+
+/// The name of a member in a diagnostic. What's left of `Any` once some of it is handled is written
+/// in terms of `Any`, rather than the recursive type that it's made of. For example, `(Int, Any)`
+/// leaves the pairs `((Any, Any), Any)`, since every atom is an `Int`.
+fn member_name(ctx: &mut Compiler, builtins: &BuiltinTypes, ty: TypeId) -> String {
+    member_name_impl(ctx, builtins, ty, &mut HashSet::new())
+}
+
+fn member_name_impl(
+    ctx: &mut Compiler,
+    builtins: &BuiltinTypes,
+    ty: TypeId,
+    visited: &mut HashSet<TypeId>,
+) -> String {
+    let equivalent = |ctx: &mut Compiler, other: TypeId| {
+        ctx.is_assignable(ty, other) && ctx.is_assignable(other, ty)
+    };
+
+    if equivalent(ctx, builtins.recursive_any) {
+        return "Any".to_string();
+    }
+
+    // The parts of a recursive type lead back to it, and are named as a whole there
+    if !visited.insert(ty) {
+        return ctx.type_name(ty);
+    }
+
+    let name = match ctx.ty(ty).clone() {
+        Type::Pair(_) if equivalent(ctx, builtins.recursive_any_pair) => "(Any, Any)".to_string(),
+        Type::Pair(pair) => {
+            let first = member_name_impl(ctx, builtins, pair.first, visited);
+            let rest = member_name_impl(ctx, builtins, pair.rest, visited);
+            format!("({first}, {rest})")
+        }
+        Type::Union(union) => union
+            .types
+            .iter()
+            .map(|&member| member_name_impl(ctx, builtins, member, visited))
+            .collect::<Vec<_>>()
+            .join(" | "),
+        _ => ctx.type_name(ty),
+    };
+
+    visited.remove(&ty);
+    name
 }
 
 /// The members of a union, with aliases looked through, since an alias that's been narrowed by

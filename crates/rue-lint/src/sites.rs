@@ -39,6 +39,20 @@ pub struct LintSites {
     /// The arms of each `inline match` that are evaluated, by the node of the `match`. Its arms
     /// are generated as an `inline if` chain, which has no location of its own.
     pub inline_match_arms: HashMap<HirId, Vec<HirId>>,
+    /// The type guards and `match` arms that leave too many combinations of a struct's fields to
+    /// narrow it by, so its fields are merged instead. The types are subtracted while compiling,
+    /// and not again by the lints.
+    pub imprecise_narrowings: Vec<ImpreciseNarrowing>,
+}
+
+/// A type guard or `match` arm after which a struct is wider than it could be (see
+/// [`LintSites::imprecise_narrowings`]).
+#[derive(Debug, Clone)]
+pub struct ImpreciseNarrowing {
+    /// The guard's type, or the arm's pattern.
+    pub srcloc: SrcLoc,
+    /// The name of the struct that's merged.
+    pub struct_name: String,
 }
 
 /// A read of a struct's field. The struct is identified by its name, which every copy of it (such

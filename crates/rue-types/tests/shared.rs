@@ -336,6 +336,87 @@ fn test_growth_subtract() {
 }
 
 #[test]
+fn test_growth_subtract_split() {
+    // Each pair is split by the part that differs from the target (#502)
+    assert_linear(|t, ints, ints_copy, _| {
+        let nil = t.builtins.nil;
+        let ints_or_nil = t.union(vec![ints, nil]);
+        let lhs = t.pair(ints_or_nil, ints);
+        let rhs = t.pair(ints_copy, ints_copy);
+        subtract(&mut t.arena, &t.builtins, lhs, rhs);
+        let lhs = t.pair(ints, ints_or_nil);
+        let rhs = t.pair(ints_copy, nil);
+        subtract(&mut t.arena, &t.builtins, lhs, rhs);
+    });
+}
+
+/// `type T0 = true | false; type T1 = (T0, T0); ...` and
+/// `type R0 = true; type R1 = (T0, R0) | (R0, T0); ...`
+///
+/// Subtracting `R_n` from `T_n` splits both parts of the pair by `T_{n-1} - R_{n-1}`, so it's
+/// exponential unless that's only worked out once, and quadratic unless the comparisons of each
+/// level's parts share a memo.
+fn split_both_ways(depth: usize) -> usize {
+    let mut t = Types::new();
+    let (yes, no) = (t.builtins.bool_true, t.builtins.bool_false);
+    let mut lhs = t.union(vec![yes, no]);
+    let mut rhs = yes;
+
+    for _ in 0..depth {
+        let pair = t.pair(lhs, lhs);
+        let first = t.pair(lhs, rhs);
+        let rest = t.pair(rhs, lhs);
+        let union = t.union(vec![first, rest]);
+        lhs = t.alias(pair);
+        rhs = t.alias(union);
+    }
+
+    count_steps(|| subtract(&mut t.arena, &t.builtins, lhs, rhs)).1
+}
+
+#[test]
+fn test_growth_subtract_split_both_ways() {
+    // Doubling the depth at most doubles the steps if they're linear, as in `assert_linear`
+    let small = split_both_ways(8);
+    let large = split_both_ways(16);
+    assert!(
+        large <= small * 3,
+        "{small} steps at depth 8, but {large} at depth 16"
+    );
+}
+
+/// `type U0 = Int | (Int | nil, Int); type U1 = U0 | U0; ...`, from #496
+#[test]
+fn test_subtract_split_repeated_variant() {
+    let mut t = Types::new();
+    let (int, nil) = (t.builtins.int, t.builtins.nil);
+    let optional = t.union(vec![int, nil]);
+    let pair = t.pair(optional, int);
+    let mut ty = t.union(vec![int, pair]);
+
+    for _ in 0..8 {
+        ty = t.union(vec![ty, ty]);
+    }
+
+    let nil_pair = t.pair(nil, int);
+    let narrowed = subtract(&mut t.arena, &t.builtins, ty, nil_pair);
+
+    // Each copy of the pair is narrowed to the same type, so the comparisons on the result are
+    // shared rather than repeated for each copy
+    let Type::Union(union) = t.arena[narrowed].clone() else {
+        panic!("expected a union");
+    };
+    let mut pairs = union
+        .types
+        .iter()
+        .copied()
+        .filter(|&id| matches!(t.arena[id], Type::Pair(_)))
+        .collect::<Vec<_>>();
+    pairs.dedup();
+    assert_eq!(pairs.len(), 1);
+}
+
+#[test]
 fn test_growth_intersect() {
     assert_linear(|t, ints, _, bytes32| {
         let nil = t.builtins.nil;

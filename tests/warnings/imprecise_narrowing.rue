@@ -1,0 +1,299 @@
+struct A {
+    kind: 1,
+}
+
+struct B {
+    kind: 2,
+}
+
+struct Eight {
+    f0: A | B,
+    f1: A | B,
+    f2: A | B,
+    f3: A | B,
+    f4: A | B,
+    f5: A | B,
+    f6: A | B,
+    f7: A | B,
+}
+
+struct Seven {
+    f0: A | B,
+    f1: A | B,
+    f2: A | B,
+    f3: A | B,
+    f4: A | B,
+    f5: A | B,
+    f6: A | B,
+}
+
+// The values of `Eight` with an even number of `B` fields, which leaves 128 combinations
+type EvenEight = (A, (A, (A, (A, (A, (A, (A, (A, nil))))))))
+    | (A, (A, (A, (A, (A, (A, (B, (B, nil))))))))
+    | (A, (A, (A, (A, (A, (B, (A, (B, nil))))))))
+    | (A, (A, (A, (A, (A, (B, (B, (A, nil))))))))
+    | (A, (A, (A, (A, (B, (A, (A, (B, nil))))))))
+    | (A, (A, (A, (A, (B, (A, (B, (A, nil))))))))
+    | (A, (A, (A, (A, (B, (B, (A, (A, nil))))))))
+    | (A, (A, (A, (A, (B, (B, (B, (B, nil))))))))
+    | (A, (A, (A, (B, (A, (A, (A, (B, nil))))))))
+    | (A, (A, (A, (B, (A, (A, (B, (A, nil))))))))
+    | (A, (A, (A, (B, (A, (B, (A, (A, nil))))))))
+    | (A, (A, (A, (B, (A, (B, (B, (B, nil))))))))
+    | (A, (A, (A, (B, (B, (A, (A, (A, nil))))))))
+    | (A, (A, (A, (B, (B, (A, (B, (B, nil))))))))
+    | (A, (A, (A, (B, (B, (B, (A, (B, nil))))))))
+    | (A, (A, (A, (B, (B, (B, (B, (A, nil))))))))
+    | (A, (A, (B, (A, (A, (A, (A, (B, nil))))))))
+    | (A, (A, (B, (A, (A, (A, (B, (A, nil))))))))
+    | (A, (A, (B, (A, (A, (B, (A, (A, nil))))))))
+    | (A, (A, (B, (A, (A, (B, (B, (B, nil))))))))
+    | (A, (A, (B, (A, (B, (A, (A, (A, nil))))))))
+    | (A, (A, (B, (A, (B, (A, (B, (B, nil))))))))
+    | (A, (A, (B, (A, (B, (B, (A, (B, nil))))))))
+    | (A, (A, (B, (A, (B, (B, (B, (A, nil))))))))
+    | (A, (A, (B, (B, (A, (A, (A, (A, nil))))))))
+    | (A, (A, (B, (B, (A, (A, (B, (B, nil))))))))
+    | (A, (A, (B, (B, (A, (B, (A, (B, nil))))))))
+    | (A, (A, (B, (B, (A, (B, (B, (A, nil))))))))
+    | (A, (A, (B, (B, (B, (A, (A, (B, nil))))))))
+    | (A, (A, (B, (B, (B, (A, (B, (A, nil))))))))
+    | (A, (A, (B, (B, (B, (B, (A, (A, nil))))))))
+    | (A, (A, (B, (B, (B, (B, (B, (B, nil))))))))
+    | (A, (B, (A, (A, (A, (A, (A, (B, nil))))))))
+    | (A, (B, (A, (A, (A, (A, (B, (A, nil))))))))
+    | (A, (B, (A, (A, (A, (B, (A, (A, nil))))))))
+    | (A, (B, (A, (A, (A, (B, (B, (B, nil))))))))
+    | (A, (B, (A, (A, (B, (A, (A, (A, nil))))))))
+    | (A, (B, (A, (A, (B, (A, (B, (B, nil))))))))
+    | (A, (B, (A, (A, (B, (B, (A, (B, nil))))))))
+    | (A, (B, (A, (A, (B, (B, (B, (A, nil))))))))
+    | (A, (B, (A, (B, (A, (A, (A, (A, nil))))))))
+    | (A, (B, (A, (B, (A, (A, (B, (B, nil))))))))
+    | (A, (B, (A, (B, (A, (B, (A, (B, nil))))))))
+    | (A, (B, (A, (B, (A, (B, (B, (A, nil))))))))
+    | (A, (B, (A, (B, (B, (A, (A, (B, nil))))))))
+    | (A, (B, (A, (B, (B, (A, (B, (A, nil))))))))
+    | (A, (B, (A, (B, (B, (B, (A, (A, nil))))))))
+    | (A, (B, (A, (B, (B, (B, (B, (B, nil))))))))
+    | (A, (B, (B, (A, (A, (A, (A, (A, nil))))))))
+    | (A, (B, (B, (A, (A, (A, (B, (B, nil))))))))
+    | (A, (B, (B, (A, (A, (B, (A, (B, nil))))))))
+    | (A, (B, (B, (A, (A, (B, (B, (A, nil))))))))
+    | (A, (B, (B, (A, (B, (A, (A, (B, nil))))))))
+    | (A, (B, (B, (A, (B, (A, (B, (A, nil))))))))
+    | (A, (B, (B, (A, (B, (B, (A, (A, nil))))))))
+    | (A, (B, (B, (A, (B, (B, (B, (B, nil))))))))
+    | (A, (B, (B, (B, (A, (A, (A, (B, nil))))))))
+    | (A, (B, (B, (B, (A, (A, (B, (A, nil))))))))
+    | (A, (B, (B, (B, (A, (B, (A, (A, nil))))))))
+    | (A, (B, (B, (B, (A, (B, (B, (B, nil))))))))
+    | (A, (B, (B, (B, (B, (A, (A, (A, nil))))))))
+    | (A, (B, (B, (B, (B, (A, (B, (B, nil))))))))
+    | (A, (B, (B, (B, (B, (B, (A, (B, nil))))))))
+    | (A, (B, (B, (B, (B, (B, (B, (A, nil))))))))
+    | (B, (A, (A, (A, (A, (A, (A, (B, nil))))))))
+    | (B, (A, (A, (A, (A, (A, (B, (A, nil))))))))
+    | (B, (A, (A, (A, (A, (B, (A, (A, nil))))))))
+    | (B, (A, (A, (A, (A, (B, (B, (B, nil))))))))
+    | (B, (A, (A, (A, (B, (A, (A, (A, nil))))))))
+    | (B, (A, (A, (A, (B, (A, (B, (B, nil))))))))
+    | (B, (A, (A, (A, (B, (B, (A, (B, nil))))))))
+    | (B, (A, (A, (A, (B, (B, (B, (A, nil))))))))
+    | (B, (A, (A, (B, (A, (A, (A, (A, nil))))))))
+    | (B, (A, (A, (B, (A, (A, (B, (B, nil))))))))
+    | (B, (A, (A, (B, (A, (B, (A, (B, nil))))))))
+    | (B, (A, (A, (B, (A, (B, (B, (A, nil))))))))
+    | (B, (A, (A, (B, (B, (A, (A, (B, nil))))))))
+    | (B, (A, (A, (B, (B, (A, (B, (A, nil))))))))
+    | (B, (A, (A, (B, (B, (B, (A, (A, nil))))))))
+    | (B, (A, (A, (B, (B, (B, (B, (B, nil))))))))
+    | (B, (A, (B, (A, (A, (A, (A, (A, nil))))))))
+    | (B, (A, (B, (A, (A, (A, (B, (B, nil))))))))
+    | (B, (A, (B, (A, (A, (B, (A, (B, nil))))))))
+    | (B, (A, (B, (A, (A, (B, (B, (A, nil))))))))
+    | (B, (A, (B, (A, (B, (A, (A, (B, nil))))))))
+    | (B, (A, (B, (A, (B, (A, (B, (A, nil))))))))
+    | (B, (A, (B, (A, (B, (B, (A, (A, nil))))))))
+    | (B, (A, (B, (A, (B, (B, (B, (B, nil))))))))
+    | (B, (A, (B, (B, (A, (A, (A, (B, nil))))))))
+    | (B, (A, (B, (B, (A, (A, (B, (A, nil))))))))
+    | (B, (A, (B, (B, (A, (B, (A, (A, nil))))))))
+    | (B, (A, (B, (B, (A, (B, (B, (B, nil))))))))
+    | (B, (A, (B, (B, (B, (A, (A, (A, nil))))))))
+    | (B, (A, (B, (B, (B, (A, (B, (B, nil))))))))
+    | (B, (A, (B, (B, (B, (B, (A, (B, nil))))))))
+    | (B, (A, (B, (B, (B, (B, (B, (A, nil))))))))
+    | (B, (B, (A, (A, (A, (A, (A, (A, nil))))))))
+    | (B, (B, (A, (A, (A, (A, (B, (B, nil))))))))
+    | (B, (B, (A, (A, (A, (B, (A, (B, nil))))))))
+    | (B, (B, (A, (A, (A, (B, (B, (A, nil))))))))
+    | (B, (B, (A, (A, (B, (A, (A, (B, nil))))))))
+    | (B, (B, (A, (A, (B, (A, (B, (A, nil))))))))
+    | (B, (B, (A, (A, (B, (B, (A, (A, nil))))))))
+    | (B, (B, (A, (A, (B, (B, (B, (B, nil))))))))
+    | (B, (B, (A, (B, (A, (A, (A, (B, nil))))))))
+    | (B, (B, (A, (B, (A, (A, (B, (A, nil))))))))
+    | (B, (B, (A, (B, (A, (B, (A, (A, nil))))))))
+    | (B, (B, (A, (B, (A, (B, (B, (B, nil))))))))
+    | (B, (B, (A, (B, (B, (A, (A, (A, nil))))))))
+    | (B, (B, (A, (B, (B, (A, (B, (B, nil))))))))
+    | (B, (B, (A, (B, (B, (B, (A, (B, nil))))))))
+    | (B, (B, (A, (B, (B, (B, (B, (A, nil))))))))
+    | (B, (B, (B, (A, (A, (A, (A, (B, nil))))))))
+    | (B, (B, (B, (A, (A, (A, (B, (A, nil))))))))
+    | (B, (B, (B, (A, (A, (B, (A, (A, nil))))))))
+    | (B, (B, (B, (A, (A, (B, (B, (B, nil))))))))
+    | (B, (B, (B, (A, (B, (A, (A, (A, nil))))))))
+    | (B, (B, (B, (A, (B, (A, (B, (B, nil))))))))
+    | (B, (B, (B, (A, (B, (B, (A, (B, nil))))))))
+    | (B, (B, (B, (A, (B, (B, (B, (A, nil))))))))
+    | (B, (B, (B, (B, (A, (A, (A, (A, nil))))))))
+    | (B, (B, (B, (B, (A, (A, (B, (B, nil))))))))
+    | (B, (B, (B, (B, (A, (B, (A, (B, nil))))))))
+    | (B, (B, (B, (B, (A, (B, (B, (A, nil))))))))
+    | (B, (B, (B, (B, (B, (A, (A, (B, nil))))))))
+    | (B, (B, (B, (B, (B, (A, (B, (A, nil))))))))
+    | (B, (B, (B, (B, (B, (B, (A, (A, nil))))))))
+    | (B, (B, (B, (B, (B, (B, (B, (B, nil))))))));
+
+// The values of `Seven` with an even number of `B` fields, which leaves 64 combinations
+type EvenSeven = (A, (A, (A, (A, (A, (A, (A, nil)))))))
+    | (A, (A, (A, (A, (A, (B, (B, nil)))))))
+    | (A, (A, (A, (A, (B, (A, (B, nil)))))))
+    | (A, (A, (A, (A, (B, (B, (A, nil)))))))
+    | (A, (A, (A, (B, (A, (A, (B, nil)))))))
+    | (A, (A, (A, (B, (A, (B, (A, nil)))))))
+    | (A, (A, (A, (B, (B, (A, (A, nil)))))))
+    | (A, (A, (A, (B, (B, (B, (B, nil)))))))
+    | (A, (A, (B, (A, (A, (A, (B, nil)))))))
+    | (A, (A, (B, (A, (A, (B, (A, nil)))))))
+    | (A, (A, (B, (A, (B, (A, (A, nil)))))))
+    | (A, (A, (B, (A, (B, (B, (B, nil)))))))
+    | (A, (A, (B, (B, (A, (A, (A, nil)))))))
+    | (A, (A, (B, (B, (A, (B, (B, nil)))))))
+    | (A, (A, (B, (B, (B, (A, (B, nil)))))))
+    | (A, (A, (B, (B, (B, (B, (A, nil)))))))
+    | (A, (B, (A, (A, (A, (A, (B, nil)))))))
+    | (A, (B, (A, (A, (A, (B, (A, nil)))))))
+    | (A, (B, (A, (A, (B, (A, (A, nil)))))))
+    | (A, (B, (A, (A, (B, (B, (B, nil)))))))
+    | (A, (B, (A, (B, (A, (A, (A, nil)))))))
+    | (A, (B, (A, (B, (A, (B, (B, nil)))))))
+    | (A, (B, (A, (B, (B, (A, (B, nil)))))))
+    | (A, (B, (A, (B, (B, (B, (A, nil)))))))
+    | (A, (B, (B, (A, (A, (A, (A, nil)))))))
+    | (A, (B, (B, (A, (A, (B, (B, nil)))))))
+    | (A, (B, (B, (A, (B, (A, (B, nil)))))))
+    | (A, (B, (B, (A, (B, (B, (A, nil)))))))
+    | (A, (B, (B, (B, (A, (A, (B, nil)))))))
+    | (A, (B, (B, (B, (A, (B, (A, nil)))))))
+    | (A, (B, (B, (B, (B, (A, (A, nil)))))))
+    | (A, (B, (B, (B, (B, (B, (B, nil)))))))
+    | (B, (A, (A, (A, (A, (A, (B, nil)))))))
+    | (B, (A, (A, (A, (A, (B, (A, nil)))))))
+    | (B, (A, (A, (A, (B, (A, (A, nil)))))))
+    | (B, (A, (A, (A, (B, (B, (B, nil)))))))
+    | (B, (A, (A, (B, (A, (A, (A, nil)))))))
+    | (B, (A, (A, (B, (A, (B, (B, nil)))))))
+    | (B, (A, (A, (B, (B, (A, (B, nil)))))))
+    | (B, (A, (A, (B, (B, (B, (A, nil)))))))
+    | (B, (A, (B, (A, (A, (A, (A, nil)))))))
+    | (B, (A, (B, (A, (A, (B, (B, nil)))))))
+    | (B, (A, (B, (A, (B, (A, (B, nil)))))))
+    | (B, (A, (B, (A, (B, (B, (A, nil)))))))
+    | (B, (A, (B, (B, (A, (A, (B, nil)))))))
+    | (B, (A, (B, (B, (A, (B, (A, nil)))))))
+    | (B, (A, (B, (B, (B, (A, (A, nil)))))))
+    | (B, (A, (B, (B, (B, (B, (B, nil)))))))
+    | (B, (B, (A, (A, (A, (A, (A, nil)))))))
+    | (B, (B, (A, (A, (A, (B, (B, nil)))))))
+    | (B, (B, (A, (A, (B, (A, (B, nil)))))))
+    | (B, (B, (A, (A, (B, (B, (A, nil)))))))
+    | (B, (B, (A, (B, (A, (A, (B, nil)))))))
+    | (B, (B, (A, (B, (A, (B, (A, nil)))))))
+    | (B, (B, (A, (B, (B, (A, (A, nil)))))))
+    | (B, (B, (A, (B, (B, (B, (B, nil)))))))
+    | (B, (B, (B, (A, (A, (A, (B, nil)))))))
+    | (B, (B, (B, (A, (A, (B, (A, nil)))))))
+    | (B, (B, (B, (A, (B, (A, (A, nil)))))))
+    | (B, (B, (B, (A, (B, (B, (B, nil)))))))
+    | (B, (B, (B, (B, (A, (A, (A, nil)))))))
+    | (B, (B, (B, (B, (A, (B, (B, nil)))))))
+    | (B, (B, (B, (B, (B, (A, (B, nil)))))))
+    | (B, (B, (B, (B, (B, (B, (A, nil)))))));
+
+// What's left is merged, so the else branch is any `Eight`
+fn guard(value: Eight) -> Int {
+    if value is EvenEight {
+        return 1;
+    }
+    2
+}
+
+fn match_arm(value: Eight) -> Int {
+    match value {
+        EvenEight => 1,
+        _ => 2,
+    }
+}
+
+// Up to 64 combinations can be left, so this isn't reported
+fn at_limit(value: Seven) -> Int {
+    if value is EvenSeven {
+        return 1;
+    }
+    2
+}
+
+// The other part of the pair isn't narrowed, so the pair is left as it was, and nothing is merged
+fn part_left_as_is(value: (Eight, Int)) -> Int {
+    if value is (EvenEight, 5) {
+        return 1;
+    }
+    2
+}
+
+enum Many<T> {
+    None,
+    Eight { f0: T, f1: T, f2: T, f3: T, f4: T, f5: T, f6: T, f7: T },
+}
+
+// An enum variant with fields is a struct, so it's merged the same way
+fn enum_variant(value: Many<A | B>) -> Int {
+    match value {
+        Many::None<A | B> => 0,
+        (1, EvenEight) => 1,
+        _ => 2,
+    }
+}
+
+#[expect(imprecise_narrowing)]
+fn expected(value: Eight) -> Int {
+    if value is EvenEight {
+        return 1;
+    }
+    2
+}
+
+#[allow(imprecise_narrowing)]
+fn allowed(value: Eight) -> Int {
+    if value is EvenEight {
+        return 1;
+    }
+    2
+}
+
+fn main() -> Int {
+    let a = A { kind: 1 };
+    let b = B { kind: 2 };
+    let even = Eight { f0: a, f1: a, f2: a, f3: a, f4: a, f5: a, f6: b, f7: b };
+    let odd = Seven { f0: a, f1: a, f2: a, f3: a, f4: a, f5: a, f6: b };
+    guard(even)
+        + match_arm(even)
+        + at_limit(odd)
+        + part_left_as_is((even, 5))
+        + enum_variant(Many::None)
+        + expected(even)
+        + allowed(even)
+}

@@ -60,8 +60,20 @@ pub fn intersect(
     result
 }
 
+/// Like `intersect`, for types that have already been substituted and checked for non-contractive
+/// cycles, sharing the context with other intersections (such as those of a `subtract`).
+pub(crate) fn intersect_substituted(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> TypeId {
+    intersect_impl(arena, builtins, ctx, lhs, rhs)
+}
+
 #[derive(Debug, Default)]
-struct IntersectContext {
+pub(crate) struct IntersectContext {
     stack: FxIndexSet<(TypeId, TypeId)>,
     /// Completed intersections, keyed by the types and the depth (since the result falls back to
     /// `lhs` past a certain depth). The same intersections are reached through every reference to

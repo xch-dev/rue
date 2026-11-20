@@ -19,7 +19,7 @@ use rue_hir::{
     Mappings, Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings,
     replace_type,
 };
-use rue_lint::{EnclosedPreludeReference, LintInput, LintSites};
+use rue_lint::{EnclosedPreludeReference, ImpreciseNarrowing, LintInput, LintSites};
 use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
@@ -1155,9 +1155,30 @@ impl Compiler {
             self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));
         }
 
-        let else_id = rue_types::subtract(self.db.types_mut(), &self.builtins.types, from, to);
+        let srcloc = self.srcloc(node);
+        let else_id = self.subtract_type(&srcloc, from, to);
 
         Constraint::new(check).with_else(else_id)
+    }
+
+    /// The values of `from` that aren't a `to`, which is what's left after a type guard or `match`
+    /// arm at the given location fails. A struct with too many combinations of its fields left to
+    /// narrow it by is merged instead, which is recorded for the `imprecise_narrowing` lint.
+    pub fn subtract_type(&mut self, srcloc: &SrcLoc, from: TypeId, to: TypeId) -> TypeId {
+        let subtracted =
+            rue_types::subtract_detailed(self.db.types_mut(), &self.builtins.types, from, to);
+
+        for struct_id in subtracted.merged_structs {
+            let struct_name = self.type_name(struct_id);
+            self.lint_sites
+                .imprecise_narrowings
+                .push(ImpreciseNarrowing {
+                    srcloc: srcloc.clone(),
+                    struct_name,
+                });
+        }
+
+        subtracted.type_id
     }
 
     /// The check that a value of type `from` needs at runtime to tell whether it's a `to`, or

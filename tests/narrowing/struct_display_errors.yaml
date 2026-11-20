@@ -21,14 +21,14 @@ diagnostics:
 - "Cannot assign `Pair { left: nil, right: (Int, Int) | nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:45:16"
 - "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:48:16"
 - Unused function `correlated` at struct_display_errors.rue:54:4
-- Cannot assign `Pair` to `Bytes32`, since they are incompatible at struct_display_errors.rue:54:35
+- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:54:35"
 - "Cannot assign `Pair { left: nil, right: (Int, Int) | nil } | Pair { left: (Int, Int) | nil, right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:56:16"
 - Unused function `spread` at struct_display_errors.rue:62:4
 - "Cannot assign `Wrapper { ...value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:62:34"
 - "Cannot assign `Wrapper { ...value: Int }` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at struct_display_errors.rue:64:16"
 - Unused struct `Triple` at struct_display_errors.rue:69:8
 - Unused function `correlated_rest` at struct_display_errors.rue:76:4
-- Cannot assign `Triple` to `Bytes32`, since they are incompatible at struct_display_errors.rue:76:42
+- "Cannot assign `Triple { first: Int, second: (Int, Int), ...rest: (Int, Int) } | Triple { first: Int, second: nil, ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:76:42"
 - "Cannot assign `Triple { first: Int, second: nil, ...rest: (Int, Int) } | Triple { first: Int, second: (Int, Int), ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:78:16"
 - Unused struct `Node` at struct_display_errors.rue:83:8
 - Unused function `unchanged` at struct_display_errors.rue:89:4
@@ -44,3 +44,8 @@ diagnostics:
     note: The `else` branch is the same at struct_display_errors.rue:110:12
     help: Replace the `if` with one of its branches
 - Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15
+- Unused function `split_pair` at struct_display_errors.rue:116:4
+- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) | nil } | Pair { left: nil, right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:116:35"
+- Unused struct `Spread` at struct_display_errors.rue:123:8
+- Unused function `spread_union` at struct_display_errors.rue:128:4
+- "Cannot assign `Spread { ...value: 1 | 2 }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:128:39"

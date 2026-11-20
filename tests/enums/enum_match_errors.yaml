@@ -8,3 +8,4 @@ diagnostics:
   Unreachable match arm, since an earlier arm also handles `Mode::Off`, which it can't tell apart from its own type at runtime at enum_match_errors.rue:39:9
     note: This arm also handles `Mode::Off` at enum_match_errors.rue:37:9
 - Cannot type guard from `Mode` to `Shape::Empty`, since they do not overlap at enum_match_errors.rue:46:9
+- "Match on `Both<Dir, Dir>` is not exhaustive, since it doesn't handle `Both::Two { x: Dir::Down, y: Dir::Down }` and `Both::Two { x: Dir::Up, y: Dir::Down }` at enum_match_errors.rue:63:11"

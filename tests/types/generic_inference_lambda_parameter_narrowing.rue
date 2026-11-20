@@ -79,8 +79,8 @@ test fn inferred_from_a_narrowed_value() -> Int {
 }
 
 test fn narrowed_value_returned_whole() -> Int {
-    // A lambda that returns the narrowed `list` itself infers the call's result as `5 | List<Int>`,
-    // as it would otherwise
+    // A lambda that returns the narrowed `list` itself infers the call's result as
+    // `5 | (Int, List<Int>)`, as it would otherwise
     let result = list_map(
         fn(list) => if list is nil {
             5
