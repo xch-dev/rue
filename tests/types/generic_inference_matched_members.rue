@@ -366,3 +366,90 @@ test fn nested_call_into_a_lambda() -> Int {
         },
     )
 }
+
+fn keep_both<U>(a: U, b: U) -> U {
+    unchecked_cast((a, b))
+}
+
+// `first_of(value)` is an argument whose parameter type is the enclosing call's `U`, which the `5`
+// before it has inferred as `5` so far. That's only a hint, which `U` can still widen past, so
+// `T` isn't narrowed for it and stays `Int | (5, 5)`, and the guard on the result can be a pair.
+// Narrowing for the hint would make `T` and `U` `5`, and the guard redundant, which is an error
+test fn hint_from_an_enclosing_call() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result = keep_both(5, first_of(value));
+    if result is (Int, Int) {
+        return result.first;
+    }
+    1
+}
+
+fn first_and_paired<T>(value: T | (T, T)) -> (T, (T, nil)) {
+    unchecked_cast(value)
+}
+
+// Only the expected type's `T ≤ 5` from the first element, outside of any union member, has to
+// hold, which `Int | (5, 5)` breaks and `5` satisfies, so `T` is narrowed to `5`, and the second
+// element is held by the `(5, nil)` member. The `T ≤ 4` from the `(4, nil)` member is only one
+// alternative, so it doesn't keep `T` from being narrowed
+test fn narrowed_for_a_bound_outside_of_a_union() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, (4, nil) | (5, nil)) = first_and_paired(value);
+    1
+}
+
+fn apply_after<U>(_start: U, value: U, f: fn(y: U) -> Int) -> Int {
+    f(value)
+}
+
+fn apply_thunk<U>(_start: U, value: fn() -> U, f: fn(y: U) -> Int) -> Int {
+    f(value())
+}
+
+fn apply_pair<U>(_start: U, value: (U, Int), f: fn(y: U) -> Int) -> Int {
+    f(value.first)
+}
+
+// `first_of(value)` has to be assignable to `U`, which is `Int` so far, but it's checked against
+// what `U` is finally inferred as, which its own value widens. So `T` isn't narrowed for it, `U`
+// is `Int | (5, 5)`, and the lambda's guard isn't redundant
+test fn provisional_expected_type() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_after(
+        5,
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
+}
+
+// The same through a lambda's body
+test fn provisional_expected_type_of_a_lambda_body() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_thunk(
+        5,
+        fn() => first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
+}
+
+// The same through a pair's element
+test fn provisional_expected_type_of_a_pair_element() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_pair(
+        5,
+        (first_of(value), 1),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
+}

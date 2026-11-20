@@ -30,6 +30,21 @@ use crate::{
     SyntaxMap, narrowed_with_references,
 };
 
+/// How the type expected of the expression being compiled is used, which the expressions it's
+/// passed down to inherit.
+#[derive(Debug, Default, Clone, Copy)]
+struct ExpectedTypeUse {
+    /// Whether it's only a hint, which the value doesn't have to be assignable to (see
+    /// `Compiler::with_expected_type_hint`).
+    hinted: bool,
+    /// Whether it could still be widened before the value is checked against it (see
+    /// `Compiler::with_expected_type_provisional`).
+    provisional: bool,
+    /// Whether it's only for the generics of the calls in it that nothing else gives a type (see
+    /// `Compiler::with_expected_type_fallback`).
+    fallback: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct Compiler {
     options: CompilerOptions,
@@ -69,12 +84,8 @@ pub struct Compiler {
     return_count: usize,
     /// The calls whose generics are being inferred from their arguments, innermost last.
     call_frames: Vec<CallFrame>,
-    /// Whether the type expected of the expression being compiled is only a hint, which it doesn't
-    /// have to be assignable to (see `Compiler::with_expected_type_hint`).
-    hinted: bool,
-    /// Whether the type expected of the expression being compiled is only for the generics of the
-    /// calls in it that nothing else gives a type (see `Compiler::with_expected_type_fallback`).
-    fallback: bool,
+    /// How the type expected of the expression being compiled is used.
+    expected: ExpectedTypeUse,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// Every type a path has named, in the order they were compiled, so that what's compiled between
@@ -248,8 +259,7 @@ impl Compiler {
             return_stack: Vec::new(),
             return_count: 0,
             call_frames: Vec::new(),
-            hinted: false,
-            fallback: false,
+            expected: ExpectedTypeUse::default(),
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             named_types: Vec::new(),
@@ -913,16 +923,42 @@ impl Compiler {
         hint: bool,
         compile: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        let outer = mem::replace(&mut self.hinted, hint);
+        let outer = mem::replace(&mut self.expected.hinted, hint);
         let result = compile(self);
-        self.hinted = outer;
+        self.expected.hinted = outer;
         result
     }
 
     /// Whether the type expected of the expression being compiled is only a hint (see
     /// `Compiler::with_expected_type_hint`).
     pub fn is_expected_type_hint(&self) -> bool {
-        self.hinted
+        self.expected.hinted
+    }
+
+    /// Compiles with an expected type that could still be widened before the value is checked
+    /// against it, or one that can't. That's the type of an argument whose parameter type
+    /// references the generics of the call being inferred: it's what they're inferred as so far,
+    /// and the argument is checked against what they're finally inferred as, which a later
+    /// argument can widen. Even when the value has to be assignable to it (it isn't a hint), a
+    /// call in it isn't narrowed to satisfy it (see `CallSolver::requiring_expected`), since the
+    /// wider type could be what the program needs. It's inherited like a hint, until an
+    /// expression is compiled with an expected type of its own, such as a `let` annotation, or
+    /// the argument of a parameter that doesn't reference the call's generics.
+    pub fn with_expected_type_provisional<T>(
+        &mut self,
+        provisional: bool,
+        compile: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let outer = mem::replace(&mut self.expected.provisional, provisional);
+        let result = compile(self);
+        self.expected.provisional = outer;
+        result
+    }
+
+    /// Whether the type expected of the expression being compiled could still be widened before
+    /// it's checked (see `Compiler::with_expected_type_provisional`).
+    pub fn is_expected_type_provisional(&self) -> bool {
+        self.expected.provisional
     }
 
     /// Compiles with an expected type that's only for the generics of the calls in the expression
@@ -933,16 +969,16 @@ impl Compiler {
         fallback: bool,
         compile: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        let outer = mem::replace(&mut self.fallback, fallback);
+        let outer = mem::replace(&mut self.expected.fallback, fallback);
         let result = compile(self);
-        self.fallback = outer;
+        self.expected.fallback = outer;
         result
     }
 
     /// Whether the type expected of the expression being compiled is only a fallback (see
     /// `Compiler::with_expected_type_fallback`).
     pub fn is_expected_type_fallback(&self) -> bool {
-        self.fallback
+        self.expected.fallback
     }
 
     /// Takes the argument of the innermost call being inferred that's being compiled, if there is

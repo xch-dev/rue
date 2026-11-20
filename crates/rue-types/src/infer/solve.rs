@@ -82,11 +82,12 @@ impl CallSolver {
         self
     }
 
-    /// The solver for a call that has to be assignable to the type expected of it. Where the
-    /// generics resolved as usual break a bound the expected type gives them outside of any union
-    /// member, so that the call can't be, `CallSolver::solve` leaves out the candidates of union
-    /// members that another member's implied candidates make unneeded, and takes that if it
-    /// satisfies them (#362, §5, question 2). For example, `let result: 5 = first(value);` with
+    /// The solver for a call that has to be assignable to the type expected of it, as that type
+    /// is (not one an enclosing call can still widen). Where the generics resolved as usual break
+    /// a bound the expected type gives them outside of any union member, so that the call can't
+    /// be, `CallSolver::solve` leaves out the candidates of union members that another member's
+    /// implied candidates make unneeded, and takes that if it satisfies them (#362, §5, question
+    /// 2). For example, `let result: 5 = first(value);` with
     /// `fn first<T>(value: T | (T, T)) -> T` and a `5 | (5, 5)`, where `T` would be `Int | (5, 5)`.
     /// Only then, so that a call that's accepted as usual is solved as it always was: a narrower
     /// generic could reject what follows, such as a type guard on the call's value.

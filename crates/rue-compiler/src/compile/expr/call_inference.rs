@@ -132,7 +132,9 @@ pub(crate) fn infer_call(
     let solver = ctx.call_solver(expected, narrower.as_ref());
     let solver = Rc::new(if fallback_only {
         solver.fallback_only()
-    } else if final_expected.is_some() {
+    } else if final_expected.is_some() && !ctx.is_expected_type_provisional() {
+        // Its generics can be narrowed to satisfy the expected type, which it's checked against
+        // as it is
         solver.requiring_expected()
     } else {
         solver
@@ -295,24 +297,26 @@ pub(crate) fn infer_call(
         };
 
         let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
-            ctx.with_expected_type_hint(hint, |ctx| match expr {
-                AstExpr::LambdaExpr(lambda) => {
-                    let wrap = match &params {
-                        Some(params) => ParameterWrap::Generics {
-                            params,
-                            generics: &function.generics,
-                            mappings: &mappings,
-                        },
-                        None => ParameterWrap::Whole,
-                    };
+            ctx.with_expected_type_provisional(!writes.is_empty(), |ctx| {
+                ctx.with_expected_type_hint(hint, |ctx| match expr {
+                    AstExpr::LambdaExpr(lambda) => {
+                        let wrap = match &params {
+                            Some(params) => ParameterWrap::Generics {
+                                params,
+                                generics: &function.generics,
+                                mappings: &mappings,
+                            },
+                            None => ParameterWrap::Whole,
+                        };
 
-                    compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
-                }
-                AstExpr::FunctionCallExpr(call) if narrower.is_some() => (
-                    compile_call_argument(ctx, expr, call, Some(expected), narrower),
-                    Vec::new(),
-                ),
-                _ => (compile_expr(ctx, expr, Some(expected)), Vec::new()),
+                        compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
+                    }
+                    AstExpr::FunctionCallExpr(call) if narrower.is_some() => (
+                        compile_call_argument(ctx, expr, call, Some(expected), narrower),
+                        Vec::new(),
+                    ),
+                    _ => (compile_expr(ctx, expr, Some(expected)), Vec::new()),
+                })
             })
         });
 
