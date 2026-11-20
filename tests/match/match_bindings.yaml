@@ -68,6 +68,20 @@ tests:
   runtime_cost: 20
   byte_cost: 132000
   total_cost: 132020
+- name: generic_and_nested_matches
+  program: (q 2 1 4 () 6 1)
+  debug_program: (a (q 4 (a 14 (c (c (q . 1) (c (q . 2) ())) (q . 1))) (c (a 14 (c (c () ()) (q . 1))) (c (a 10 (c (q . 1) (c (c (q . 2) (c (q . 4) ())) ()))) (c (a 10 (c () ())) (c (a 4 (c (q . 1) (c (c (q . 1) (c (q . 6) ())) ()))) (c (a 4 (c (q . 1) (c (c (q . 3) ()) ()))) ())))))) (c (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f (f (r 1))) (q . 1)) (q 5 (r (f (r 1)))) (q 1 . 1)) 1)) 1) (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f (f (r 1))) (q . 1)) (q 5 (r (f (r 1)))) (q 2 (i (= (f (f (r 1))) (q . 2)) (q 5 (r (f (r 1)))) (q 1 . 1)) 1)) 1)) 1) (q 2 (i (= (f 2) ()) (q . 3) (q 5 (r 2))) 1))) ()))
+  output: (2 1 4 () 6 1)
+  runtime_cost: 20
+  byte_cost: 180000
+  total_cost: 180020
+- name: untyped_lambda_parameter
+  program: (q . 10)
+  debug_program: (a (q 2 (q 16 4 6) (c (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1)) (c (q . 1) ()))) (q . 5))) (a 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1)) (c (q . 1) ()))) (q . 5)))) 1)) (c (q 2 2 (c (c 3 ()) ())) ()))
+  output: "10"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: shadowing_and_captures
   program: (c (q . 7) (c (q . 8) (c (a (q 18 2 (q . 2)) (q 5)) ())))
   debug_program: (a (q 4 (a 4 (c (q . 1) (c (q . 7) ()))) (c (a 4 (c (q . 2) (c (q . 8) ()))) (c (a (a 6 (c (q . 2) (c (q . 2) ()))) (c (q . 5) ())) ()))) (c (c (q 2 (i (= (f 1) (q . 1)) (q 5 (r 1)) (q 2 (i (= (f 1) (q . 2)) (q 5 (r 1)) ()) 1)) 1) (q 2 (i (= (f 1) (q . 1)) (q 4 (q . 2) (c (c (q . 1) (q 18 (f (r 2)) 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) (q 2 (i (= (f 1) (q . 2)) (q 4 (q . 2) (c (c (q . 1) (q 18 (f (r 2)) 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) 1)) 1)) ()))
@@ -77,7 +91,7 @@ tests:
   total_cost: 517436
 - name: statements
   program: (q 2 12 10 5 10 ())
-  debug_program: (a (q 4 (a 6 (c (q . 1) (c (q . 2) ()))) (c (a 6 (c (q . 2) (c (q . 3) ()))) (c (a 4 (c (q . 1) (c (q . 20) ()))) (c (a 4 (c (q . 1) (c (q . 5) ()))) (c (a 4 (c (q . 2) (c (q . 20) ()))) (c (a 4 (c (q . 3) ())) ())))))) (c (c (q 2 (i (= (f 1) (q . 1)) (q 2 (i (> (f (r 1)) (q . 10)) (q 1 . 10) (q 5 (r 1))) 1) (q 2 (i (= (f 1) (q . 2)) (q 2 (i (> (f (r 1)) (q . 10)) (q 1 . 10) (q 5 (r 1))) 1) ()) 1)) 1) (q 2 (i (= (f 1) (q . 1)) (q 5 (r 1)) (q 2 (i (= (f 1) (q . 2)) (q 2 (i (> (f (r 1)) ()) (q 18 (f (r 1)) (q . 4)) (q 8 (q . "assertion failed at match_bindings.rue:334:13"))) 1) (q 8 (q . "raise called at match_bindings.rue:337:13") (q . "a point has no side"))) 1)) 1)) ()))
+  debug_program: (a (q 4 (a 6 (c (q . 1) (c (q . 2) ()))) (c (a 6 (c (q . 2) (c (q . 3) ()))) (c (a 4 (c (q . 1) (c (q . 20) ()))) (c (a 4 (c (q . 1) (c (q . 5) ()))) (c (a 4 (c (q . 2) (c (q . 20) ()))) (c (a 4 (c (q . 3) ())) ())))))) (c (c (q 2 (i (= (f 1) (q . 1)) (q 2 (i (> (f (r 1)) (q . 10)) (q 1 . 10) (q 5 (r 1))) 1) (q 2 (i (= (f 1) (q . 2)) (q 2 (i (> (f (r 1)) (q . 10)) (q 1 . 10) (q 5 (r 1))) 1) ()) 1)) 1) (q 2 (i (= (f 1) (q . 1)) (q 5 (r 1)) (q 2 (i (= (f 1) (q . 2)) (q 2 (i (> (f (r 1)) ()) (q 18 (f (r 1)) (q . 4)) (q 8 (q . "assertion failed at match_bindings.rue:399:13"))) 1) (q 8 (q . "raise called at match_bindings.rue:402:13") (q . "a point has no side"))) 1)) 1)) ()))
   output: (2 12 10 5 10 ())
   runtime_cost: 20
   byte_cost: 180000

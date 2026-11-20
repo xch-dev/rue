@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstBinding, AstMatchArm, AstMatchExpr, AstNode};
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Note, SrcLoc};
+use rue_diagnostic::{DiagnosticKind, Note, SrcLoc};
 use rue_hir::{
     BindingSymbol, Block, Declaration, Guard, Hir, HirId, Mappings, Statement, Symbol, SymbolPath,
     Value, control_fallthroughs,
@@ -407,28 +407,28 @@ fn compile_arm(
         // that it can't be destructured like the arm's type
         if matched.inline
             && let Some(ty) = pattern
+            && ctx.diagnostic_count() > count
+            && !ctx.is_assignable(matched.scrutinee.ty, ty)
         {
             note_unnarrowed(ctx, count, ty);
         }
     }
 
-    let Some(body) = body else {
-        debug!("Unresolved match arm body");
-        ctx.revert_mappings(index, range.end());
-        return ctx.unresolved();
-    };
-
     let expected_type = matched.expected_type;
 
-    let value = match matched.branches {
-        Some(branches) if arm.ends_with_brace() => {
+    let value = match (body, matched.branches) {
+        (None, _) => {
+            debug!("Unresolved match arm body");
+            ctx.unresolved()
+        }
+        (Some(body), Some(branches)) if arm.ends_with_brace() => {
             compile_branching_expr(ctx, &body, expected_type, branches).0
         }
-        Some(branches) if branches.is_statement() => {
+        (Some(body), Some(branches)) if branches.is_statement() => {
             ctx.diagnostic(body.syntax(), DiagnosticKind::StatementMatchArmValue);
             compile_expr(ctx, &body, expected_type)
         }
-        _ => compile_expr(ctx, &body, expected_type),
+        (Some(body), _) => compile_expr(ctx, &body, expected_type),
     };
 
     ctx.revert_mappings(index, range.end());
@@ -481,7 +481,10 @@ fn compile_arm_binding(
             None => remaining,
         }
     } else {
-        // The mappings of the arm are in scope here, so this is the value's narrowed type
+        // The mappings of the arm are in scope here, so this is the value's narrowed type. It's
+        // the type that a field access in the arm reads from, which keeps the references that an
+        // untyped lambda parameter's type is made of (see `narrowed_with_references`), unlike
+        // narrowing the type again would.
         type_at_path(ctx, ctx.symbol_type(reference.symbol), &reference.path)
             .unwrap_or(scrutinee.ty)
     };
@@ -503,26 +506,18 @@ fn compile_arm_binding(
 /// out of the diagnostics reported since there were `count` of them, since the value isn't
 /// narrowed to the arm's type there.
 fn note_unnarrowed(ctx: &mut Compiler, count: usize, ty: TypeId) {
-    let is_destructuring = |diagnostic: &Diagnostic| {
-        matches!(
-            diagnostic.kind,
-            DiagnosticKind::UnknownField(..)
-                | DiagnosticKind::MissingField(..)
-                | DiagnosticKind::CannotDestructurePair(..)
-        )
-    };
-
-    if !ctx.diagnostics_since(count).iter().any(is_destructuring) {
-        return;
-    }
-
     let name = ctx.type_name(ty);
     let note = Note::new(format!(
         "Every arm of an `inline match` is evaluated, so the value isn't narrowed to `{name}` before it's destructured"
     ));
 
     for diagnostic in ctx.diagnostics_since_mut(count) {
-        if is_destructuring(diagnostic) {
+        if matches!(
+            diagnostic.kind,
+            DiagnosticKind::UnknownField(..)
+                | DiagnosticKind::MissingField(..)
+                | DiagnosticKind::CannotDestructurePair(..)
+        ) {
             diagnostic.notes.push(note.clone());
         }
     }

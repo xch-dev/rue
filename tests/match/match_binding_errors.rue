@@ -87,8 +87,42 @@ fn wildcard(shape: Shape) -> Int {
 fn inline_arm(shape: Shape) -> Int {
     inline match shape {
         Circle { radius } => radius,
-        Square (first, rest) => first + rest,
+        Square { side: (first, rest) } => first + rest,
         _ { side } => side,
+    }
+}
+
+fn inline_pair(value: (Int, Int) | Int) -> Int {
+    inline match value {
+        (Int, Int) (first, rest) => first + rest,
+        Int => 0,
+    }
+}
+
+struct Renamed {
+    width: Int,
+    height: Int,
+}
+
+// Nor do the arms narrow the type that a value was cast to, so an arm after the first one
+// destructures all of it too
+fn inline_cast(pair: (Int, (Int, nil)) | nil) -> Int {
+    let wildcard = inline match pair as Renamed | nil {
+        nil => 0,
+        _ { width } => width,
+    };
+
+    wildcard
+        + inline match pair as Renamed | nil {
+            nil => 0,
+            Renamed { width } => width,
+        }
+}
+
+// The note isn't added if the value is already of the arm's type, since narrowing it wouldn't help
+fn inline_same_type(circle: Circle) -> Int {
+    inline match circle {
+        Circle { side } => side,
     }
 }
 
@@ -171,6 +205,9 @@ fn main(shape: Shape, value: (Int, Int) | Int, other: (Int, Int) | Square) -> In
         + union_arm(shape)
         + wildcard(shape)
         + inline_arm(shape)
+        + inline_pair(value)
+        + inline_cast(nil)
+        + inline_same_type(Circle { radius: 1 })
         + inline_arm_other_errors((0, 1), shape)
         + list_before_nil(nil)
         + unreachable(shape)

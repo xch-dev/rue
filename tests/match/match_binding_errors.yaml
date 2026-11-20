@@ -14,24 +14,34 @@ diagnostics:
 - |-
   Unknown field `radius` on type `Shape` at match_binding_errors.rue:89:18
     note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Circle` before it's destructured
-- Cannot assign `(Int, nil) | (Int, nil) | nil` to `Int` without a type guard, since the value isn't always a valid `Int` at match_binding_errors.rue:90:39
+- |-
+  Unknown field `side` on type `Shape` at match_binding_errors.rue:90:18
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Square` before it's destructured
 - Unknown field `side` on type `Shape` at match_binding_errors.rue:91:13
-- Duplicate symbol `part` found in scope at match_binding_errors.rue:98:25
 - |-
-  Unreachable match arm, since an earlier arm handles every value that's left at match_binding_errors.rue:105:13
-    note: This arm handles every value that's left at match_binding_errors.rue:104:13
+  Cannot destructure type `(Int, Int) | Int` into a pair at match_binding_errors.rue:97:20
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `(Int, Int)` before it's destructured
+- Unknown field `width` on type `Renamed | nil` at match_binding_errors.rue:112:13
 - |-
-  Unknown field `radius` on type `Shape` at match_binding_errors.rue:105:22
+  Unknown field `width` on type `Renamed | nil` at match_binding_errors.rue:118:23
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Renamed` before it's destructured
+- Unknown field `side` on type `Circle` at match_binding_errors.rue:125:18
+- Duplicate symbol `part` found in scope at match_binding_errors.rue:132:25
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at match_binding_errors.rue:139:13
+    note: This arm handles every value that's left at match_binding_errors.rue:138:13
+- |-
+  Unknown field `radius` on type `Shape` at match_binding_errors.rue:139:22
     note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Circle` before it's destructured
-- Unreachable match arm, since the earlier arms handle every value it matches at match_binding_errors.rue:115:9
-- Unknown field `radius` on type `Never` at match_binding_errors.rue:115:18
+- Unreachable match arm, since the earlier arms handle every value it matches at match_binding_errors.rue:149:9
+- Unknown field `radius` on type `Never` at match_binding_errors.rue:149:18
 - |-
-  Unreachable match arm, since an earlier arm handles every value that's left at match_binding_errors.rue:117:9
-    note: This arm handles every value that's left at match_binding_errors.rue:116:9
-- Unknown field `kind` on type `Never` at match_binding_errors.rue:117:13
-- Match on `Shape` is not exhaustive, since it doesn't handle `Point` at match_binding_errors.rue:122:11
-- Cannot type guard from `Shape` to `Int`, since they do not overlap at match_binding_errors.rue:130:9
-- Unknown field `length` on type `Never` at match_binding_errors.rue:130:15
-- Unused binding `radius` at match_binding_errors.rue:138:18
-- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_binding_errors.rue:147:30
-- Cannot assign `1` to `2`, since they are incompatible at match_binding_errors.rue:158:26
+  Unreachable match arm, since an earlier arm handles every value that's left at match_binding_errors.rue:151:9
+    note: This arm handles every value that's left at match_binding_errors.rue:150:9
+- Unknown field `kind` on type `Never` at match_binding_errors.rue:151:13
+- Match on `Shape` is not exhaustive, since it doesn't handle `Point` at match_binding_errors.rue:156:11
+- Cannot type guard from `Shape` to `Int`, since they do not overlap at match_binding_errors.rue:164:9
+- Unknown field `length` on type `Never` at match_binding_errors.rue:164:15
+- Unused binding `radius` at match_binding_errors.rue:172:18
+- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_binding_errors.rue:181:30
+- Cannot assign `1` to `2`, since they are incompatible at match_binding_errors.rue:192:26

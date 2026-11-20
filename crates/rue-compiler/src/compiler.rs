@@ -402,16 +402,13 @@ impl Compiler {
         diagnostics
     }
 
-    /// The number of diagnostics reported so far, which [`Self::diagnostics_since`] takes.
+    /// The number of diagnostics reported so far, which [`Self::diagnostics_since_mut`] takes.
     pub fn diagnostic_count(&self) -> usize {
         self.diagnostics.len()
     }
 
-    /// The diagnostics that have been reported since there were `count` of them.
-    pub fn diagnostics_since(&self, count: usize) -> &[Diagnostic] {
-        &self.diagnostics[count..]
-    }
-
+    /// The diagnostics that have been reported since there were `count` of them, so that notes
+    /// can be added to them.
     pub fn diagnostics_since_mut(&mut self, count: usize) -> &mut [Diagnostic] {
         &mut self.diagnostics[count..]
     }

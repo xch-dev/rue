@@ -300,6 +300,71 @@ test fn casts() -> List<Int> {
     [cast((2, (3, nil))), cast(nil), cast_wildcard((2, (3, nil))), cast_inline((5, (3, nil)))]
 }
 
+// A binding works with the type parameters of a generic function
+fn unwrap_generic<T>(option: Option<T>, default: T) -> T {
+    match option {
+        Option::None<T> => default,
+        Option::Some<T> { value } => value,
+    }
+}
+
+// A binding can be matched on in turn, as can a field of one
+fn nested_match(option: Option<Shape>) -> Int {
+    match option {
+        Option::None<Shape> => 0,
+        Option::Some<Shape> { value } => match value {
+            Circle { radius } => radius,
+            Square { side } => side,
+            Point => 1,
+        }
+    }
+}
+
+fn nested_rest(option: Option<Shape>) -> Int {
+    match option {
+        Option::None<Shape> => 0,
+        Option::Some<Shape> { ...some } => match some.value {
+            Circle { radius } => radius,
+            _ => 1,
+        }
+    }
+}
+
+test fn generic_and_nested_matches() -> List<Int> {
+    [
+        unwrap_generic(Option::Some::<Int> { value: 2 }, 1),
+        unwrap_generic(Option::None, 1),
+        nested_match(Option::Some::<Shape> { value: Square { side: 4 } }),
+        nested_match(Option::None),
+        nested_rest(Option::Some::<Shape> { value: Circle { radius: 6 } }),
+        nested_rest(Option::Some::<Shape> { value: Point {} }),
+    ]
+}
+
+fn first_of<A, B>(function: fn(list: List<A>) -> B, value: A) -> B {
+    function([value])
+}
+
+// The type of an untyped lambda parameter is inferred from how it's used, which a binding
+// keeps track of like a field access does: both of these are a `5`, rather than an `Int`
+test fn untyped_lambda_parameter() -> Int {
+    let field: 5 = first_of(
+        fn(list) => match list {
+            nil => 5,
+            _ => list.first,
+        },
+        5,
+    );
+    let bound: 5 = first_of(
+        fn(list) => match list {
+            nil => 5,
+            _ [first, ..._rest] => first,
+        },
+        5,
+    );
+    field + bound
+}
+
 // A binding can shadow the value being matched on, like a `let` can, and is only in scope in its
 // own arm
 fn shadow(shape: Shape) -> Int {
