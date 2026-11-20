@@ -79,7 +79,7 @@ impl Atom {
     pub const R1_PUBLIC_KEY: Self =
         Self::new(AtomSemantic::R1PublicKey, Some(AtomRestriction::Length(33)));
     pub const R1_SIGNATURE: Self =
-        Self::new(AtomSemantic::Signature, Some(AtomRestriction::Length(64)));
+        Self::new(AtomSemantic::R1Signature, Some(AtomRestriction::Length(64)));
     pub const INT: Self = Self::new(AtomSemantic::Int, None);
 
     pub const fn new(semantic: AtomSemantic, restriction: Option<AtomRestriction>) -> Self {

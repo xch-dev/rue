@@ -73,3 +73,4 @@ diagnostics:
 - Expected 1 argument, but found 2 at builtin_errors.rue:83:13
 - Can only spread the last argument at builtin_errors.rue:83:20
 - Cannot assign `List<Int>` to `Bytes` without a type guard, since the value isn't always a valid `Bytes` at builtin_errors.rue:83:23
+- Cannot assign `(R1Signature, 1)` to `(Int, Int)` without a cast, since they are semantically different at builtin_errors.rue:86:25
