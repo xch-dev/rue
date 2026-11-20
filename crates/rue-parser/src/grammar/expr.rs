@@ -154,6 +154,12 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
         if options.allow_statement {
             return ends_statement(p);
         }
+    } else if !options.inline && p.at_quiet(T![for]) {
+        for_expr(p, checkpoint);
+
+        if options.allow_statement {
+            return ends_statement(p);
+        }
     } else if !options.inline && p.at_quiet(T![fn]) && p.lookahead(1) != SyntaxKind::Ident {
         p.start_at(checkpoint, SyntaxKind::LambdaExpr);
         p.expect(T![fn]);
@@ -394,6 +400,51 @@ fn if_expr_with(
         p.finish();
         false
     }
+}
+
+/// A `for` expression, which goes through the items of a list, such as `for x in xs { x + 1 }`.
+/// After the list, it can have a filter (`if x > 0`), which only keeps the items that pass it, and
+/// a fold (`fold sum = 0`), which names the result for the rest of the list and what it is at the
+/// end of it. `in` and `fold` are only keywords here.
+fn for_expr(p: &mut Parser, checkpoint: Checkpoint) {
+    let condition = ExprOptions {
+        minimum_binding_power: 0,
+        allow_statement: false,
+        allow_struct_initializer: false,
+        inline: false,
+    };
+
+    p.start_at(checkpoint, SyntaxKind::ForExpr);
+    p.expect(T![for]);
+    binding(p);
+    p.expect_word("in");
+
+    let child = p.checkpoint();
+    expr_with(p, child, condition);
+
+    if p.at(T![if]) {
+        p.start(SyntaxKind::ForFilter);
+        p.expect(T![if]);
+        let child = p.checkpoint();
+        expr_with(p, child, condition);
+        p.finish();
+    }
+
+    if p.at_word("fold") {
+        p.start(SyntaxKind::ForFold);
+        p.expect_word("fold");
+        binding(p);
+        if p.try_eat(T![:]) {
+            ty(p);
+        }
+        p.expect(T![=]);
+        let child = p.checkpoint();
+        expr_with(p, child, condition);
+        p.finish();
+    }
+
+    block(p);
+    p.finish();
 }
 
 /// A `match` expression, such as `match value { Int => 1, _ => 2 }`, or an `inline match`. Each

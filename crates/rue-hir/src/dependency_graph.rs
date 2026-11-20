@@ -7,7 +7,7 @@ use indexmap::{IndexSet, set::Slice};
 use rue_options::CompilerOptions;
 
 use crate::{
-    Database, FailureAnalysis, Hir, HirId, Statement, Symbol, SymbolId,
+    Database, FailureAnalysis, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
     analysis::{Callee, Effect, resolve_callee},
 };
 
@@ -26,6 +26,11 @@ pub struct DependencyGraph {
 
     // Keeps track of whether a symbol is ever used as a closure
     closures: HashSet<SymbolId>,
+    /// The functions that `for` expressions are compiled to (see `FunctionKind::Loop`).
+    loops: HashSet<SymbolId>,
+    /// The symbols that are referenced inside of a loop they're defined outside of, which
+    /// evaluates what references them once for each item.
+    loop_captures: HashSet<SymbolId>,
 
     // Keeps track of the const expressions that are reachable
     const_exprs: IndexSet<HirId>,
@@ -103,6 +108,8 @@ impl DependencyGraph {
             owners: HashMap::new(),
             references: HashMap::new(),
             closures: HashSet::new(),
+            loops: HashSet::new(),
+            loop_captures: HashSet::new(),
             const_exprs: IndexSet::new(),
             current: None,
             pending: vec![main],
@@ -146,6 +153,8 @@ impl DependencyGraph {
         for symbol in std::mem::take(&mut graph.visited) {
             assign_destructured_owner(db, &mut graph, symbol);
         }
+
+        graph.find_loop_captures();
 
         graph
     }
@@ -260,6 +269,54 @@ impl DependencyGraph {
         self.closures.contains(&symbol)
     }
 
+    /// Whether the symbol is the function a `for` expression is compiled to.
+    pub fn is_loop(&self, symbol: SymbolId) -> bool {
+        self.loops.contains(&symbol)
+    }
+
+    /// Whether the symbol is referenced inside of a loop that it's defined outside of, such as
+    /// `k` in `for x in xs { x * k }`. What references it is evaluated once for each item, so its
+    /// value isn't substituted there unless that's as cheap as referring to it.
+    pub fn is_loop_capture(&self, symbol: SymbolId) -> bool {
+        self.loop_captures.contains(&symbol)
+    }
+
+    fn find_loop_captures(&mut self) {
+        if self.loops.is_empty() {
+            return;
+        }
+
+        let mut captures = HashSet::new();
+
+        for (&from, dependencies) in &self.dependencies {
+            // The loops that the reference is inside of
+            let loops: Vec<SymbolId> = iter::once(from)
+                .chain(self.owners(from))
+                .filter(|symbol| self.loops.contains(symbol))
+                .collect();
+
+            if loops.is_empty() {
+                continue;
+            }
+
+            for &dependency in dependencies {
+                // Only the values defined in a function are evaluated where they're substituted
+                if !self.owners.contains_key(&dependency) || self.loops.contains(&dependency) {
+                    continue;
+                }
+
+                if loops
+                    .iter()
+                    .any(|&function| !self.is_defined_in(dependency, function))
+                {
+                    captures.insert(dependency);
+                }
+            }
+        }
+
+        self.loop_captures = captures;
+    }
+
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
         self.const_exprs.iter().copied()
     }
@@ -306,13 +363,16 @@ impl DependencyGraph {
             }
 
             for dependency in self.dependencies.get(&current).cloned().unwrap_or_default() {
-                // Any other local can only be reached through the scope it's defined in
-                let is_local = self.owners.get(&dependency).is_some_and(|owner| {
-                    scopes
-                        .iter()
-                        .position(|scope| scope == owner)
-                        .is_none_or(|index| entered[index])
-                });
+                // Any other local can only be reached through the scope it's defined in. A loop is
+                // defined in a function, so that it captures the function's values, but it's a
+                // function of the program like one that's declared, which anything can capture
+                let is_local = !self.loops.contains(&dependency)
+                    && self.owners.get(&dependency).is_some_and(|owner| {
+                        scopes
+                            .iter()
+                            .position(|scope| scope == owner)
+                            .is_none_or(|index| entered[index])
+                    });
 
                 stack.push((dependency, !captures_only || !is_local, entered.clone()));
             }
@@ -338,16 +398,22 @@ impl DependencyGraph {
         symbols: &IndexSet<SymbolId>,
         bound_after: impl Fn(SymbolId) -> bool,
     ) -> Vec<Option<usize>> {
+        // A loop is defined in the function its `for` expression is in, but it's captured like
+        // the functions that are declared (see `Self::dependencies`), so the symbols main captures
+        // aren't in one scope if there's a loop among them
+        let has_loop = symbols.iter().any(|symbol| self.loops.contains(symbol));
+
         let owner = symbols
             .first()
             .and_then(|symbol| self.owners.get(symbol).copied());
 
-        let same_owner = symbols
-            .iter()
-            .all(|symbol| self.owners.get(symbol).copied() == owner);
+        let same_owner = !has_loop
+            && symbols
+                .iter()
+                .all(|symbol| self.owners.get(symbol).copied() == owner);
 
         debug_assert!(
-            same_owner,
+            same_owner || has_loop,
             "grouped symbols are defined in different scopes"
         );
 
@@ -638,6 +704,18 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if !is_call {
                 graph.closures.insert(*symbol);
             }
+
+            // A loop is defined where it's first called, which is in the function that the `for`
+            // expression is in, like a lambda is. Its calls to itself come after that
+            if let Symbol::Function(function) = db.symbol(*symbol)
+                && function.kind == FunctionKind::Loop
+                && let Some(current) = graph.current
+                && current != *symbol
+                && graph.loops.insert(*symbol)
+            {
+                graph.owners.insert(*symbol, current);
+            }
+
             visit_symbol_reference(graph, *symbol);
         }
         Hir::Block(block) => {

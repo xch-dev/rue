@@ -1,0 +1,32 @@
+// What a `for` expression rejects
+
+fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
+    // The list must be a list
+    let a = for x in value { x };
+    let b = for x in pair { x };
+
+    // The filter must be a condition
+    let c = for x in xs if x { x };
+
+    // The body can't return from the function
+    let d = for x in xs {
+        return x;
+    };
+
+    // A fold's body must give the fold's type, which is `Int` for a literal like `0`
+    let e = for x in xs fold sum = 0 { "text" };
+
+    // A fold from nil needs a type to build a list, or an expected type
+    let f = for x in xs fold rest = nil { [x, ...rest] };
+
+    // The fold's value must be its type
+    let g = for x in xs fold sum: Int = "text" { sum + x };
+
+    // The item is only in the body, and the result for the rest of the list too
+    let h = for x in xs fold sum = 0 { sum + x } + x + sum;
+
+    // A list of the body's values isn't an `Int`
+    let i: Int = for x in xs { x };
+
+    length(a) + length(b) + length(c) + length(d) + e + length(f) + g + h + i
+}

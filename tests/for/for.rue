@@ -1,0 +1,233 @@
+// A `for` expression goes through the items of a list. Each list goes through `runtime`, which the
+// compiler can't fold, so the loops are run.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// Without a fold, the result is a list of the body's value for each item
+test fn list() -> List<Int> {
+    for x in runtime([1, 2, 3]) { x + 1 }
+}
+
+test fn empty_list() -> List<Int> {
+    for x in runtime([] as List<Int>) { x + 1 }
+}
+
+// The body is a block, which can have statements
+test fn body_with_statements() -> List<Int> {
+    for x in runtime([1, 2, 3]) {
+        let doubled = x * 2;
+        assert doubled > 0;
+        doubled + 1
+    }
+}
+
+// A filter leaves out the items that don't pass it
+test fn filter() -> List<Int> {
+    for x in runtime([1, 5, 2, 7]) if x > 2 { x }
+}
+
+// The body sees what the filter narrows the item to, and so does the list's type
+test fn filter_narrows() -> List<Int> {
+    let values: List<Int | (Int, Int)> = runtime([1, (2, 3), 4]);
+    for value in values if value is Int { value + 1 }
+}
+
+// The item can be destructured
+test fn patterns() -> List<Int> {
+    let points = runtime([Point { x: 1, y: 2 }, Point { x: 3, y: 4 }]);
+    let pairs = runtime([(1, 2), (3, 4)]);
+    [...for { x, y } in points { x + y }, ...for (a, b) in pairs { a * b }]
+}
+
+// A fold gives one value: the body's value from the item and the result for the rest of the list
+test fn fold() -> Int {
+    for x in runtime([1, 2, 3, 4]) fold sum = 0 { sum + x }
+}
+
+// At the end of the list, the result is the fold's value
+test fn fold_of_an_empty_list() -> Int {
+    for x in runtime([] as List<Int>) fold sum = 100 { sum + x }
+}
+
+// A body that refers to the result for the rest of the list once only evaluates it if it gets to
+// it, so this stops at the first item that matches: the second item would fail
+test fn fold_stops_early() -> Bool {
+    for x in runtime([1, 0]) fold found = false { x == 1 || positive(x) == 5 || found }
+}
+
+// A body that refers to it more than once has it evaluated before the body
+test fn fold_with_two_references() -> Int {
+    for x in runtime([1, 2, 3, 4]) fold sum = 0 {
+        if x > 2 {
+            sum + x
+        } else {
+            sum
+        }
+    }
+}
+
+// A filter skips the items that don't pass it, which leaves the result for the rest of the list
+test fn fold_with_a_filter() -> Int {
+    for x in runtime([1, 2, 3, 4]) if x > 2 fold sum = 0 { sum + x }
+}
+
+// A fold can build a list, with a type for the result
+test fn fold_building_a_list() -> List<Int> {
+    for x in runtime([1, 2]) fold rest: List<Int> = [9] { [x, x, ...rest] }
+}
+
+// Without a type, the result is what the expression is expected to be
+test fn fold_with_an_expected_type() -> List<Int> {
+    for x in runtime([1, 2]) fold rest = nil { [x + 1, ...rest] }
+}
+
+// A body without a value is only evaluated for each item
+test fn body_without_a_value() -> Int {
+    let xs = runtime([1, 2]);
+    for x in xs {
+        assert x > 0;
+    }
+    5
+}
+
+test fn body_without_a_value_fails() -> Int {
+    let xs = runtime([1, 0]);
+    for x in xs {
+        assert x > 0;
+    }
+    5
+}
+
+// A `for` whose value isn't used is a loop too, with or without a semicolon
+test fn statement() -> Int {
+    let xs = runtime([1, 2]);
+    for x in xs { positive(x) };
+    for x in xs { positive(x) }
+    5
+}
+
+// A function that returns nothing can end with a loop
+fn check_all(xs: List<Int>) {
+    for x in xs {
+        assert x > 0;
+    }
+}
+
+test fn loop_at_the_end_of_a_function() -> Int {
+    let xs = runtime([1, 2]);
+    check_all(xs);
+    check_all(xs);
+    5
+}
+
+// A value from outside of the body is captured, rather than evaluated again for each item
+test fn captured_value() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(10);
+    for x in xs { x * k }
+}
+
+// A literal is used where it's referred to
+test fn captured_literal() -> List<Int> {
+    let limit = 2;
+    for x in runtime([1, 2, 3]) if x > limit { x }
+}
+
+// A `for` can be in another one, and refer to its item
+test fn nested() -> List<List<Int>> {
+    let xs = runtime([1, 2]);
+    let ys = runtime([10, 20]);
+    for x in xs { for y in ys { x + y } }
+}
+
+// A fold in a fold, which builds one list
+test fn nested_folds() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let ys = runtime([10, 20]);
+    for x in xs fold rest: List<Int> = nil {
+        for y in ys fold inner: List<Int> = rest { [x + y, ...inner] }
+    }
+}
+
+// A `for` in a lambda captures the lambda's parameter and what the lambda captures
+test fn in_a_lambda() -> List<Int> {
+    let k = positive(2);
+    let f = fn(xs: List<Int>, offset: Int) => for x in xs { x + k + offset };
+    [...f(runtime([1]), 10), ...f(runtime([2]), 20)]
+}
+
+// A lambda in a `for` captures the item
+test fn lambda_in_the_body() -> Int {
+    let functions = for x in runtime([1, 2, 3]) { fn(y: Int) => x + y };
+    for f in functions fold sum = 0 { f(10) + sum }
+}
+
+// A `for` in a function that's inlined gets the arguments of each call, whether they're static or
+// not, though it's only in the program once
+inline fn scale(xs: List<Int>, k: Int) -> List<Int> {
+    for x in xs { x * k }
+}
+
+test fn in_an_inline_function() -> (List<Int>, List<Int>) {
+    let seven = positive(7);
+    (scale(runtime([1, 2]), 5), scale(runtime([3]), seven))
+}
+
+fn scale_once(xs: List<Int>, k: Int) -> List<Int> {
+    for x in xs { x * k }
+}
+
+test fn in_a_function_inlined_automatically() -> List<Int> {
+    scale_once(runtime([1, 2]), positive(4) + 1)
+}
+
+// A binding that's only static with the arguments of an inlined call is captured too
+inline fn offset_all(xs: List<Int>, k: Int) -> List<Int> {
+    let pair = (k, 1);
+    for x in xs { x + pair.first + pair.rest }
+}
+
+test fn binding_of_an_inline_argument() -> (List<Int>, List<Int>) {
+    let seven = positive(7);
+    (offset_all(runtime([1, 2]), 5), offset_all(runtime([3]), seven))
+}
+
+// The list can be a list literal
+test fn static_list() -> List<Int> {
+    for x in [1, 2, 3] { x + 1 }
+}
+
+// `in` and `fold` are only keywords in a `for`
+test fn names() -> Int {
+    let in = runtime([1, 2]);
+    let fold = 10;
+    for x in in fold fold = fold { fold + x }
+}
+
+// A `for` can be spread into a list, and be an argument
+test fn in_expressions() -> Int {
+    let xs = runtime([1, 2]);
+    let list = [0, ...for x in xs { x + 1 }];
+    length(list) + length(for x in xs if x > 1 { x })
+}
+
+// A constant can be a `for`, which is evaluated when the program starts
+const SQUARES: List<Int> = for x in [1, 2, 3] { x * x };
+
+test fn in_a_constant() -> Int {
+    let squares = runtime(SQUARES);
+    length(squares) + length(SQUARES)
+}

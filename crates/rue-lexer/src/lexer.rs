@@ -67,6 +67,7 @@ impl<'a> Lexer<'a> {
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
+            "for" => TokenKind::For,
             "match" => TokenKind::Match,
             "return" => TokenKind::Return,
             "assert" => TokenKind::Assert,

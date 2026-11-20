@@ -268,7 +268,7 @@ fn prepend(ctx: &mut Compiler, pending: &mut Vec<HirId>, rest: HirId) -> HirId {
 /// each member of a union are followed separately. A type whose pairs go on for longer than that,
 /// such as a very long tuple, has `Any` for the items past the limit, so the list's type is never
 /// narrower than what it holds.
-fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
+pub(crate) fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
     let mut item_types = Vec::new();
     // The types the pairs have gone through, other than plain pairs: a type the pairs come back to
     // is an alias or other type with pairs inside of it, such as `List<T>`, whose rest is itself,

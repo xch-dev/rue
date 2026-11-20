@@ -26,7 +26,11 @@ pub fn stmt(p: &mut Parser) -> StatementKind {
     // Expressions start after the attributes, so that the attributes belong to the statement
     // rather than to its expression. An `if` or `match` statement is the statement node itself,
     // so it includes them.
-    let expr_cp = if p.at_quiet(T![if]) || p.at_quiet(T![match]) || p.at_quiet(T![inline]) {
+    let expr_cp = if p.at_quiet(T![if])
+        || p.at_quiet(T![match])
+        || p.at_quiet(T![inline])
+        || p.at_quiet(T![for])
+    {
         cp
     } else {
         p.checkpoint()

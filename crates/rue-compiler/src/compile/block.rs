@@ -10,7 +10,7 @@ use rue_types::{Type, TypeId, Union};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItemKind, compile_branching_expr, compile_expr,
-    compile_type, create_binding,
+    compile_for_expr, compile_type, create_binding,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +127,20 @@ pub fn compile_block(
 
                 continue;
             }
+            // A `for` before the end of the block is a statement too, as is one that ends a
+            // statement block. Its value isn't used, so it's only a loop
+            AstStmtOrExpr::Expr(AstExpr::ForExpr(expr)) if !is_last || !is_expr => {
+                let value = compile_for_expr(ctx, &expr, None, true);
+                let value = ctx.record_value(expr.syntax(), value);
+
+                statements.push(Statement::Expr(ExprStatement {
+                    hir: value.hir,
+                    always_nil: true,
+                    srcloc: ctx.trimmed_srcloc(expr.syntax()),
+                }));
+
+                continue;
+            }
             AstStmtOrExpr::Expr(expr) => {
                 if !is_expr {
                     ctx.diagnostic(expr.syntax(), DiagnosticKind::UnexpectedImplicitReturn);
@@ -163,11 +177,17 @@ pub fn compile_block(
 
         let compiled = match stmt {
             AstStmt::ExprStmt(stmt) => {
-                let value = if let Some(expr) = stmt.expr() {
-                    compile_expr(ctx, &expr, None)
-                } else {
-                    debug!("Unresolved expr stmt expr");
-                    ctx.unresolved()
+                let value = match stmt.expr() {
+                    // The value of a `for` that's a statement isn't used, so it's only a loop
+                    Some(AstExpr::ForExpr(expr)) => {
+                        let value = compile_for_expr(ctx, &expr, None, true);
+                        ctx.record_value(expr.syntax(), value)
+                    }
+                    Some(expr) => compile_expr(ctx, &expr, None),
+                    None => {
+                        debug!("Unresolved expr stmt expr");
+                        ctx.unresolved()
+                    }
                 };
 
                 Statement::Expr(ExprStatement {
