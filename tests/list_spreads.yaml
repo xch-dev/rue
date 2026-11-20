@@ -83,3 +83,24 @@ tests:
   runtime_cost: 14897
   byte_cost: 4308000
   total_cost: 4322897
+- name: lambda_after_an_item_and_a_spread
+  program: (a (q 2 10 (c 10 (c (c (q 16 2 (q . 1)) (a 4 (c 4 (c (a 14 ()) (c (q 18 2 (q . 2)) ()))))) (q . 5)))) (c (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (a 9 (c 7 ()))))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 43 (c 43 (c 2 (q . 5)))) (c (a 61 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (a 9 (c 9 (c 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) ())))))) 1)) (c (a 22 ()) 1)) (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (c (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (a (f 5) (c 7 ()))))) (q . 7)) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at list_spreads.rue:5:5"))) 1) (q . 1)))) ()))
+  output: "12"
+  runtime_cost: 6729
+  byte_cost: 3228000
+  total_cost: 3234729
+- name: spread_with_the_expected_type
+  program: (a (q 2 2 (c 2 (q () 1))) (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) ()))
+  debug_program: (a (q 2 4 (c 4 (c (a 6 ()) (c (q . 1) ())))) (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q . 1)) ()))
+  output: (1)
+  runtime_cost: 797
+  byte_cost: 924000
+  total_cost: 924797
+- name: alternating_item_types
+  program: (a (q 2 4 (c 4 (c (a 6 (q 1 97)) (a 4 (c 4 (c (a 6 (q 1 2 98)) (q 3))))))) (c (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 (c 4 (a 9 (c 9 (c 6 (c (q . 3) ()))))))) (c (c (a 6 (c (q . 1) (c (q . 97) ()))) (a 6 (c (q . 1) (c (q . 2) (c (q . 98) ()))))) 1)) (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at list_spreads.rue:5:5"))) 1)) ()))
+  output: (1 97 1 2 98 3)
+  runtime_cost: 6780
+  byte_cost: 2436000
+  total_cost: 2442780

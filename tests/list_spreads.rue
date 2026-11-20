@@ -102,3 +102,28 @@ test fn literal_ending_in_a_spread() {
     let a = runtime([1, 2]);
     assert deep_equal([...[0, ...a], 3], [0, 1, 2, 3]);
 }
+
+// An item before a spread infers the generic for a later lambda, too
+test fn lambda_after_an_item_and_a_spread() -> Int {
+    let empty: List<fn(value: Int) -> Int> = runtime(nil);
+    let functions = same_list([fn(value: Int) => value + 1, ...empty, fn(value) => value * 2]);
+    apply_all(functions, 5)
+}
+
+fn same_list<T>(list: List<T>) -> List<T> {
+    list
+}
+
+// A spread is compiled against the list's expected type, which infers a generic call's generic
+test fn spread_with_the_expected_type() -> List<Int> {
+    [...same_list(nil), 1]
+}
+
+// The item types of a list whose pairs alternate are found, with or without a pair before them
+type Alternating = nil | (Int, (Bytes, Alternating));
+
+test fn alternating_item_types() -> List<Int | Bytes | Bool> {
+    let alternating: Alternating = runtime([1, "a"]);
+    let prefixed: (Bool, Alternating) = runtime((true, [2, "b"]));
+    [...alternating, ...prefixed, 3]
+}

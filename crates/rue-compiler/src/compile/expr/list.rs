@@ -114,7 +114,8 @@ fn compile_list_with_spreads(
         .map(|(first, _)| first);
 
     // As in a list without these spreads, each item can refine what the later ones are expected
-    // to be, such as a lambda's parameter type in a generic call's argument
+    // to be, such as a lambda's parameter type in a generic call's argument. The expected type is
+    // only a hint where it is for the rest of the list (see `compile_list_expr`)
     let hint =
         ctx.is_expected_type_hint() || expected_type.is_some_and(|ty| holds_other_pairs(ctx, ty));
 
@@ -214,13 +215,18 @@ fn prepend(ctx: &mut Compiler, pending: &mut Vec<HirId>, rest: HirId) -> HirId {
     }))
 }
 
-/// The types of the items of a list type, following its pairs until they end or repeat, such as
-/// `T` for `List<T>`, or `1` and `2` for `[1, 2]`. A type whose pairs go on for longer without
-/// repeating, such as a recursive type whose pairs cycle through more than two types, or a very
-/// long tuple, has `Any` for the items past that, so the list's type is never narrower than what
-/// it holds.
+/// The types of the items of a list type, following its pairs until they end or come back to a
+/// type they've already been, such as `T` for `List<T>`, or `1` and `2` for `[1, 2]`. A type whose
+/// pairs go on for longer than that, such as a very long tuple, has `Any` for the items past the
+/// limit, so the list's type is never narrower than what it holds.
 fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
     let mut item_types = Vec::new();
+    // The types the pairs have gone through, other than plain pairs: a type the pairs come back to
+    // is an alias or other type with pairs inside of it, such as `List<T>`, whose rest is itself,
+    // or an alternating list, which comes back after two pairs. A plain pair, such as the rest of
+    // a tuple, can't be one, so leaving them out keeps a long tuple from being compared with every
+    // type before it
+    let mut seen = vec![ty];
     let mut current = ty;
 
     for _ in 0..MAX_LIST_ITEM_TYPES {
@@ -230,13 +236,15 @@ fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
 
         item_types.push(first);
 
-        // A `List<T>`'s rest is the same list again, and an alternating list's comes back to it
-        // after two pairs
-        if [current, ty]
-            .into_iter()
-            .any(|seen| ctx.is_assignable(rest, seen) && ctx.is_assignable(seen, rest))
-        {
-            return item_types;
+        if !matches!(ctx.ty(rest), Type::Pair(_)) {
+            if seen
+                .iter()
+                .any(|&seen| ctx.is_assignable(rest, seen) && ctx.is_assignable(seen, rest))
+            {
+                return item_types;
+            }
+
+            seen.push(rest);
         }
 
         current = rest;
