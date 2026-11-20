@@ -1,0 +1,97 @@
+// A function that's called more than once is inlined into each call if the program is smaller
+// that way, which is measured by compiling it both ways.
+
+fn twice(x: Int) -> Int {
+    x + x
+}
+
+test fn called_twice(a: Int, b: Int) -> Int {
+    twice(a) + twice(b)
+}
+
+// The argument of the outer call is the inner call
+test fn nested_calls(a: Int) -> Int {
+    twice(twice(a)) + twice(a)
+}
+
+fn check_positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+fn pick(flag: Bool, value: Int) -> Int {
+    if flag {
+        value
+    } else {
+        0
+    }
+}
+
+// An argument that may fail is still evaluated at the call, whether or not the branch that reads
+// its parameter is taken
+test fn argument_that_may_fail(flag: Bool, a: Int, b: Int) -> Int {
+    pick(flag, check_positive(a)) + pick(flag, check_positive(b))
+}
+
+test fn argument_that_fails_in_a_branch_that_is_not_taken(flag: Bool, a: Int, b: Int) -> Int {
+    pick(flag, check_positive(a)) + pick(flag, check_positive(b))
+}
+
+fn first_of(first: Int, _second: Int) -> Int {
+    first
+}
+
+// So is one whose parameter is never read
+test fn argument_that_fails_and_is_not_read(a: Int, b: Int) -> Int {
+    first_of(a, check_positive(b)) + first_of(b, check_positive(a))
+}
+
+// An argument whose parameter is read twice is only evaluated once
+test fn argument_that_is_not_a_path(a: Int, b: Int) -> Int {
+    twice(sha256(a as Bytes) as Int) + twice(a * b)
+}
+
+fn sum_of_squares(a: Int, b: Int, c: Int) -> Int {
+    a * a + b * b + c * c + a * b * c
+}
+
+// A body that's larger than a call is only in the program once
+test fn larger_function(a: Int, b: Int, c: Int) -> Int {
+    sum_of_squares(a, b, c) + sum_of_squares(c, b, a) + sum_of_squares(b, a, c)
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+// A function that's also used as a value has to be in the program anyway
+test fn used_as_a_value(a: Int, flag: Bool) -> Int {
+    let f: fn(value: Int) -> Int = if flag {
+        increment
+    } else {
+        twice
+    };
+    f(increment(a)) + increment(a)
+}
+
+fn count_down(value: Int) -> Int {
+    if value > 0 {
+        count_down(value - 1)
+    } else {
+        value
+    }
+}
+
+// A function that calls itself can't be inlined
+test fn recursive_function(a: Int, b: Int) -> Int {
+    count_down(a) + count_down(b)
+}
+
+fn double_sum(a: Int, b: Int) -> Int {
+    twice(a) + twice(b)
+}
+
+// A function that's inlined can call another one that is
+test fn calls_inside_inlined_functions(a: Int, b: Int) -> Int {
+    double_sum(a, b) + double_sum(b, a)
+}
