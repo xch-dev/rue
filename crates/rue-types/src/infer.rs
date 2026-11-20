@@ -1001,6 +1001,92 @@ impl InferenceCandidates {
 mod tests {
     use super::*;
 
+    fn reopened(choices: &mut Choices, parent: Option<BranchId>, members: &[Comparison]) -> usize {
+        let members: Vec<Option<Comparison>> = members.iter().copied().map(Some).collect();
+        choices.reopen(parent, &members, None, &vec![true; members.len() + 1])
+    }
+
+    /// A failed pair across two unions charges both members, so a member that conflicts with
+    /// every member of the other union is ruled out, and one that conflicts with only some of
+    /// them is too, since which to give up would need backtracking.
+    #[test]
+    fn attributed_charges_both_members_across_unions() {
+        use Comparison::{Assign, Cast, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let first = reopened(&mut choices, None, &[Assign, Cast]);
+        let second = reopened(&mut choices, None, &[Assign, Assign]);
+
+        // The first union's first member conflicts with both of the second's. Picking its second
+        // member would give `Cast`, but both members of each pair are charged, so the second union
+        // is ruled out as well, which rejects more than picking would (#362, §5, question 2)
+        let pairs = [
+            (Some(branch(first, 0)), Some(branch(second, 0)), Invalid),
+            (Some(branch(first, 0)), Some(branch(second, 1)), Invalid),
+        ];
+        assert_eq!(choices.attributed(0..2, &pairs), Invalid);
+
+        // With one conflict, the second union still has a member, and the first gives `Cast`
+        assert_eq!(choices.attributed(0..2, &pairs[..1]), Cast);
+
+        // A bound outside of any union charges the member in full
+        let pairs = [
+            (Some(branch(second, 0)), None, Invalid),
+            (None, Some(branch(second, 1)), Invalid),
+        ];
+        assert_eq!(choices.attributed(0..2, &pairs), Invalid);
+    }
+
+    /// A pair whose bounds are under a member and a union nested in it charges the nested member,
+    /// which the union it's in can avoid.
+    #[test]
+    fn attributed_charges_the_enclosed_member() {
+        use Comparison::{Assign, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let outer = reopened(&mut choices, None, &[Assign, Invalid]);
+        let inner = reopened(&mut choices, Some(branch(outer, 0)), &[Assign, Assign]);
+
+        for pair in [
+            (Some(branch(outer, 0)), Some(branch(inner, 0)), Invalid),
+            (Some(branch(inner, 0)), Some(branch(outer, 0)), Invalid),
+        ] {
+            assert_eq!(choices.attributed(0..2, &[pair]), Assign);
+        }
+    }
+
+    /// A union with a member that gave `Assign` without collecting bounds is held by it, so what's
+    /// under its other members decides nothing, while one whose members all collected bounds isn't.
+    #[test]
+    fn needed_in_held_unions() {
+        use Comparison::{Assign, Cast};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let held = choices.reopen(
+            None,
+            &[Some(Assign), Some(Assign)],
+            None,
+            &[true, false, false],
+        );
+        let bounded = reopened(&mut choices, None, &[Assign, Assign]);
+        let cast = choices.reopen(
+            None,
+            &[Some(Assign), Some(Cast)],
+            None,
+            &[true, false, false],
+        );
+
+        assert!(!choices.needed_in(branch(held, 0), &(0..3)));
+        assert!(choices.needed_in(branch(bounded, 0), &(0..3)));
+        // Held only by a member that gave `Assign`, so a result getting worse can't make it held
+        assert!(choices.needed_in(branch(cast, 0), &(0..3)));
+        // Outside of the range, it isn't the function comparison's to decide
+        assert!(choices.needed_in(branch(held, 0), &(1..3)));
+    }
+
     #[test]
     fn exclusive_members() {
         let mut choices = Choices::default();

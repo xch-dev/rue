@@ -1598,6 +1598,141 @@ mod tests {
         assert_eq!(first, canonical);
     }
 
+    fn union(
+        choice: Var,
+        parent: Option<Branch>,
+        members: &[Comparison],
+        bounded: &[bool],
+    ) -> ChoiceRecord {
+        ChoiceRecord {
+            choice,
+            parent,
+            members: members.iter().copied().map(Some).collect(),
+            fallback: None,
+            bounded: bounded.to_vec(),
+        }
+    }
+
+    /// Members of a union that gave the same result and have the same bounds under them are
+    /// alternatives that are the same to pick, so all but one are left out.
+    #[test]
+    fn test_canonicalize_merges_alike_members() {
+        let mut types = Types::new();
+        let (a, b) = (types.generic(), types.generic());
+        let mut summary = Summary::default();
+        let choice = summary.local();
+        let assign = [Comparison::Assign, Comparison::Assign];
+        summary.add_choice(union(choice, None, &assign, &[true, true, false]));
+
+        for member in 0..2 {
+            summary.add(Constraint {
+                branch: Some((choice, member)),
+                ..bound(Var::Key(0), true, a, vec![])
+            });
+        }
+
+        // A different bound under a third member keeps the union
+        let mut other = summary.clone();
+        let mut members = assign.to_vec();
+        members.push(Comparison::Assign);
+        other.choices[0] = union(choice, None, &members, &[true, true, true, false]);
+        other.add(Constraint {
+            branch: Some((choice, 2)),
+            ..bound(Var::Key(0), true, b, vec![])
+        });
+
+        other.canonicalize();
+        assert_eq!(other.choices().len(), 1);
+        assert_eq!(other.constraints().len(), 2);
+        assert!(!other.is_approximate());
+
+        summary.canonicalize();
+        assert_eq!(summary.choices().len(), 1);
+        assert_eq!(summary.constraints().len(), 1);
+    }
+
+    /// A union with two copies of it under the same member is left out, like a third copy of a
+    /// component.
+    #[test]
+    fn test_canonicalize_leaves_out_a_third_copy_of_a_union() {
+        let mut types = Types::new();
+        let (a, b, c) = (types.generic(), types.generic(), types.generic());
+        let assign = [Comparison::Assign, Comparison::Assign];
+        let mut summary = Summary::default();
+        let outer = summary.local();
+        summary.add_choice(union(outer, None, &assign, &[true, true, false]));
+        summary.add(Constraint {
+            branch: Some((outer, 1)),
+            ..bound(Var::Key(0), true, c, vec![])
+        });
+
+        for _ in 0..3 {
+            let inner = summary.local();
+            summary.add_choice(union(
+                inner,
+                Some((outer, 0)),
+                &assign,
+                &[true, true, false],
+            ));
+            summary.add(Constraint {
+                branch: Some((inner, 0)),
+                ..bound(Var::Key(0), false, a, vec![])
+            });
+            summary.add(Constraint {
+                branch: Some((inner, 1)),
+                ..bound(Var::Key(0), true, b, vec![])
+            });
+        }
+
+        summary.canonicalize();
+        assert_eq!(summary.choices().len(), 3);
+        assert_eq!(summary.constraints().len(), 5);
+        assert!(!summary.is_approximate());
+    }
+
+    /// A union held by a member that gave `Assign` without collecting bounds is left out, with
+    /// what's under its other members, which decides nothing. One held only by a member that gave
+    /// `Cast` is kept.
+    #[test]
+    fn test_canonicalize_leaves_out_held_unions() {
+        let mut types = Types::new();
+        let a = types.generic();
+
+        for (second, kept) in [(Comparison::Assign, 0), (Comparison::Cast, 1)] {
+            let mut summary = Summary::default();
+            let choice = summary.local();
+            summary.add_choice(union(
+                choice,
+                None,
+                &[Comparison::Assign, second],
+                &[true, false, false],
+            ));
+            summary.add(Constraint {
+                branch: Some((choice, 0)),
+                ..bound(Var::Key(0), true, a, vec![])
+            });
+
+            summary.canonicalize();
+            assert_eq!(summary.choices().len(), kept, "{second:?}");
+            assert_eq!(summary.constraints().len(), kept, "{second:?}");
+        }
+    }
+
+    /// Adding to a canonical summary drops the components it cached, so joining it afterwards
+    /// keeps what was added.
+    #[test]
+    fn test_join_after_adding_keeps_it() {
+        let mut types = Types::new();
+        let (a, b) = (types.generic(), types.generic());
+        let mut summary = Summary::default();
+        summary.add(bound(Var::Key(0), true, a, vec![]));
+        summary.canonicalize();
+        summary.add(bound(Var::Key(0), true, b, vec![]));
+
+        let joined = summary.join(&Summary::default());
+        assert_eq!(joined.constraints().len(), 2);
+    }
+
     /// Unions nested more deeply than `MAX_UNION_DEPTH` are left out, with what's under them put
     /// under the member they're nested in, which then needs all of it to hold, and the summary is
     /// approximate (see `Summary::is_approximate`), so it's never reused from the memo. Each union
