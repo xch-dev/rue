@@ -1447,7 +1447,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 .all(|field| self.is_static_hir(field.value)),
             // Guards that don't use the value at runtime are lowered to a boolean, unless the value
             // may fail, in which case it's evaluated for its effect first
-            Hir::Guard(guard) => guard.value_uses() == 0 && !self.is_lowered_guard_effect(hir, guard.value),
+            Hir::Guard(guard) => {
+                guard.value_uses() == 0 && !self.is_lowered_guard_effect(hir, guard.value)
+            }
             Hir::Const(expr) => expr.result.is_some_and(|result| self.is_static_hir(result)),
             Hir::Reference(symbol) => {
                 if let Some(hir) = self.inline_argument(*symbol) {
