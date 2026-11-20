@@ -12,12 +12,15 @@ use crate::{Compiler, compile_expr, compile_type};
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
 /// equivalent to, so that it's checked, narrowed and generated the same way. Each arm checks the
 /// value against its pattern's type, out of the values that the arms before it didn't handle, and
-/// an arm that handles every value that's left is the chain's `else` branch.
+/// an arm that handles every value that's left is the chain's `else` branch. An `inline match` is an
+/// `inline if` chain, so every arm is evaluated and none of them narrow the value.
 pub fn compile_match_expr(
     ctx: &mut Compiler,
     expr: &AstMatchExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
+    let inline = expr.inline().is_some();
+
     let scrutinee = if let Some(scrutinee) = expr.expr() {
         compile_expr(ctx, &scrutinee, None)
     } else {
@@ -53,6 +56,7 @@ pub fn compile_match_expr(
     // The values that the arms so far haven't handled, which is what subtracting each pattern from
     // the value's type leaves, like the `else` branch of an `is` guard
     let mut remaining = rue_types::substitute(ctx.types_mut(), scrutinee.ty);
+    let substituted = remaining;
     let mut remaining_members = members(ctx, remaining);
     let mut catch_all = None;
     let mut branches = Vec::new();
@@ -92,7 +96,7 @@ pub fn compile_match_expr(
                     .map_or(UnreachableReason::Handled, UnreachableReason::CatchAll);
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
             }
-            compile_unreachable_arm(ctx, &arm, &reference, pattern, expected_type);
+            compile_unreachable_arm(ctx, &arm, &reference, pattern, inline, expected_type);
             continue;
         }
 
@@ -107,7 +111,7 @@ pub fn compile_match_expr(
             if ctx.is_assignable(ty, earlier) {
                 let reason = UnreachableReason::Handled;
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
-                compile_unreachable_arm(ctx, &arm, &reference, pattern, expected_type);
+                compile_unreachable_arm(ctx, &arm, &reference, pattern, inline, expected_type);
                 continue;
             }
         }
@@ -144,7 +148,7 @@ pub fn compile_match_expr(
                     has_error = true;
                 }
             }
-            compile_unreachable_arm(ctx, &arm, &reference, pattern, expected_type);
+            compile_unreachable_arm(ctx, &arm, &reference, pattern, inline, expected_type);
             continue;
         }
 
@@ -173,7 +177,13 @@ pub fn compile_match_expr(
         let else_members = members(ctx, else_type);
 
         // A wildcard arm sees the value as the earlier arms left it, which is already in scope
-        let body = compile_arm(ctx, &arm, &reference, pattern, expected_type);
+        let body = compile_arm(
+            ctx,
+            &arm,
+            &reference,
+            pattern.filter(|_| !inline),
+            expected_type,
+        );
         types.push(body.ty);
 
         // An arm that handles every value that's left is the `else` branch, which doesn't need to
@@ -185,17 +195,36 @@ pub fn compile_match_expr(
         }
 
         let ty = pattern.expect("only a pattern with a type has a check");
+
+        // Every check of an `inline match` is evaluated, even on the values that the arms before
+        // it handle, so it can't rely on them being left out
+        let check = if inline {
+            let node = ty_node
+                .as_ref()
+                .expect("only a pattern with a type has a check");
+            if let Some(check) = ctx.runtime_check(node.syntax(), substituted, ty) {
+                check
+            } else {
+                has_error = true;
+                check
+            }
+        } else {
+            check
+        };
+
         let value = guard_value(ctx, &scrutinee, &reference);
         let condition = ctx.alloc_hir(Hir::Guard(Guard { value, ty, check }));
         branches.push((condition, body.hir));
         handled.push(ty);
 
         // The arms after this one only see the values that it didn't handle, like the `else`
-        // branch of an `is` guard
-        ctx.push_mappings(
-            reference.narrowed_to(else_type),
-            arm.syntax().text_range().end(),
-        );
+        // branch of an `is` guard, unless they're evaluated eagerly
+        if !inline {
+            ctx.push_mappings(
+                reference.narrowed_to(else_type),
+                arm.syntax().text_range().end(),
+            );
+        }
         remaining = else_type;
         remaining_members = else_members;
     }
@@ -220,6 +249,13 @@ pub fn compile_match_expr(
                 });
         }
     }
+
+    // The arms that are evaluated, which are all of them for an `inline match`
+    let arms: Vec<HirId> = branches
+        .iter()
+        .map(|&(_, then)| then)
+        .chain(else_branch)
+        .collect();
 
     let else_branch = if let Some(else_branch) = else_branch {
         else_branch
@@ -249,7 +285,7 @@ pub fn compile_match_expr(
         .into_iter()
         .rev()
         .fold(else_branch, |else_branch, (condition, then)| {
-            ctx.alloc_hir(Hir::If(condition, then, else_branch, false))
+            ctx.alloc_hir(Hir::If(condition, then, else_branch, inline))
         });
 
     let ty = match types.len() {
@@ -264,6 +300,10 @@ pub fn compile_match_expr(
         statements,
         body: Some(chain),
     }));
+
+    if inline {
+        ctx.lint_sites_mut().inline_match_arms.insert(hir, arms);
+    }
 
     Value::new(hir, ty)
 }
@@ -290,16 +330,18 @@ fn compile_arm(
 }
 
 /// Compiles the body of an arm that's never taken, so that its errors are still reported. It's
-/// left out of the HIR, so it isn't generated.
+/// left out of the HIR, so it isn't generated. The arms of an `inline match` don't narrow the
+/// value, so it isn't narrowed here either.
 fn compile_unreachable_arm(
     ctx: &mut Compiler,
     arm: &AstMatchArm,
     reference: &SymbolPath,
     pattern: Option<TypeId>,
+    inline: bool,
     expected_type: Option<TypeId>,
 ) {
-    let ty = pattern.unwrap_or(ctx.builtins().types.never);
-    let _ = compile_arm(ctx, arm, reference, Some(ty), expected_type);
+    let ty = (!inline).then(|| pattern.unwrap_or(ctx.builtins().types.never));
+    let _ = compile_arm(ctx, arm, reference, ty, expected_type);
 }
 
 /// An arm whose check also lets through members it can't tell apart from its own type.

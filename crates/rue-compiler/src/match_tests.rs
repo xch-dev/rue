@@ -155,3 +155,39 @@ fn generic_wildcard() {
         "fn main(x: Int | nil) -> Int { f(x) } fn f<T>(x: T | nil) -> Int { if x is nil { 0 } else { 1 } }",
     );
 }
+
+/// Every `if` of the chain is inline, while only the first `if` of an `else if` chain written out
+/// is, so the chain is nested in blocks instead.
+#[test]
+fn inline_match() {
+    check(
+        "fn main(u: U, n: Int) -> Int {
+            let a = inline match u { A => 1, B => 2, C => 3 };
+            let b = inline match n { 0 => 1, _ => n };
+            a + b
+        }",
+        "fn main(u: U, n: Int) -> Int {
+            let a = inline if u is A { 1 } else { inline if u is B { 2 } else { 3 } };
+            let b = inline if n is 0 { 1 } else { n };
+            a + b
+        }",
+    );
+}
+
+#[test]
+fn inline_match_expression_scrutinee() {
+    check(
+        "fn main() -> Int { inline match make() { A | B => 1, C => 2 } }",
+        "fn main() -> Int { let u = make(); inline if u is A | B { 1 } else { 2 } }",
+    );
+}
+
+/// Every check of an `inline match` is evaluated, so each one checks the value's whole type, like
+/// an `inline if` does, rather than only the values that the arms before it leave.
+#[test]
+fn inline_match_checks_whole_type() {
+    check(
+        "fn main(x: nil | (Int, Int)) -> Int { inline match x { nil => 0, (1, Int) => 1, _ => 2 } }",
+        "fn main(x: nil | (Int, Int)) -> Int { inline if x is nil { 0 } else { inline if x is (1, Int) { 1 } else { 2 } } }",
+    );
+}

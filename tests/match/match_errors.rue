@@ -173,6 +173,27 @@ fn missing_same_names(value: FirstPair | SecondPair | nil) -> Int {
     }
 }
 
+// The arms of an `inline match` are all evaluated, so they don't narrow the value, but the match
+// still has to be exhaustive
+struct WithValue {
+    kind = 4,
+    value: Int,
+}
+
+fn inline_no_narrowing(value: WithValue | A) -> Int {
+    inline match value {
+        WithValue => value.value,
+        A => 0,
+    }
+}
+
+fn inline_missing(value: U) -> Int {
+    inline match value {
+        A => 1,
+        B => 2,
+    }
+}
+
 // An arm that takes members it can't tell apart isn't reported once there's an error
 struct SameShapeA {
     value: Int,
@@ -222,4 +243,6 @@ fn main() -> Int {
         + indistinguishable_then_unknown(nil)
         + repeated_after_unknown_pattern(C {})
         + missing_same_names(nil)
+        + inline_no_narrowing(A {})
+        + inline_missing(C {})
 }

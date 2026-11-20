@@ -244,3 +244,41 @@ test fn inline_if_arm_without_comma(value: (Int, Int) | Int) -> Int {
         (Int, Int) => value.first,
     }
 }
+
+// Every arm of an `inline match` is evaluated, and the one that matches is picked, like the
+// branches of an `inline if`
+test fn inline_match(value: Shape) -> Int {
+    inline match value {
+        Circle => 1,
+        Square => 2,
+        Point => 3,
+    }
+}
+
+test fn inline_match_literals(value: Int) -> Int {
+    inline match value {
+        0 => 10,
+        1 => 20,
+        _ => value,
+    }
+}
+
+// The comma after an `inline match` arm can be left out too
+test fn inline_match_arm_without_comma(value: Int | nil) -> Int {
+    match value {
+        nil => inline match 1 {
+            _ => 0,
+        }
+        Int => value,
+    }
+}
+
+// Every check of an `inline match` is evaluated, so the check for the pair also checks that the
+// value is a pair, although the arm before it handles `nil`
+test fn inline_match_checks_whole_type(value: nil | (Int, Int)) -> Int {
+    inline match value {
+        nil => 0,
+        (1, Int) => 1,
+        _ => 2,
+    }
+}

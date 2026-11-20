@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rue_diagnostic::{Name, SrcLoc};
-use rue_hir::{Declaration, SymbolId};
+use rue_hir::{Declaration, HirId, SymbolId};
 
 /// Facts recorded by the compiler while compiling, for lints that need something that isn't kept
 /// in the HIR. The compiler records every site; the lints decide what to report.
@@ -36,6 +36,9 @@ pub struct LintSites {
     /// The arms of `match` expressions that also handle members they can't tell apart from their
     /// own type.
     pub indistinguishable_match_arms: Vec<IndistinguishableMatchArm>,
+    /// The arms of each `inline match` that are evaluated, by the node of the `match`. Its arms
+    /// are generated as an `inline if` chain, which has no location of its own.
+    pub inline_match_arms: HashMap<HirId, Vec<HirId>>,
 }
 
 /// A read of a struct's field. The struct is identified by its name, which every copy of it (such

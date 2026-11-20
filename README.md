@@ -112,6 +112,18 @@ Members that are the same at runtime can't be told apart, such as two structs wi
 
 A match compiles to the same code as the `if` and `else if` chain it's equivalent to. The arm that handles everything that's left is the chain's `else` branch, so it doesn't check anything at runtime.
 
+An `inline match` is to `match` what `inline if` is to `if`: every arm that can match is evaluated, and the value of the one that matches is picked, which avoids the cost of branching at the cost of evaluating every arm. Since they're evaluated whatever the value is, the arms don't narrow it, and an arm that can raise always does, which the `inline_match_may_raise` lint reports. It still has to handle every value:
+
+```rs
+fn code(shape: Shape) -> Int {
+    inline match shape {
+        Circle => 1,
+        Square => 2,
+        Point => 3,
+    }
+}
+```
+
 ## CLI
 
 | Command                         | Description                                                            |

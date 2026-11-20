@@ -190,3 +190,35 @@ tests:
   runtime_cost: 996
   byte_cost: 444000
   total_cost: 444996
+- name: inline_match
+  program: (i (= 4 (q . 1)) (q . 1) (i (= 4 (q . 2)) (q . 2) (q . 3)))
+  debug_program: (i (= (f 2) (q . 1)) (q . 1) (i (= (f 2) (q . 2)) (q . 2) (q . 3)))
+  solution: ((2 3))
+  output: "2"
+  runtime_cost: 512
+  byte_cost: 468000
+  total_cost: 468512
+- name: inline_match_literals
+  program: (i 2 (i (= 2 (q . 1)) (q . 20) 2) (q . 10))
+  debug_program: (i (= 2 ()) (q . 10) (i (= 2 (q . 1)) (q . 20) 2))
+  solution: (1)
+  output: "20"
+  runtime_cost: 392
+  byte_cost: 348000
+  total_cost: 348392
+- name: inline_match_arm_without_comma
+  program: (a (i 2 (q . 2) (q)) 1)
+  debug_program: (a (i (= 2 ()) (q) (q . 2)) 1)
+  solution: (5)
+  output: "5"
+  runtime_cost: 305
+  byte_cost: 228000
+  total_cost: 228305
+- name: inline_match_checks_whole_type
+  program: (i 2 (i (a (i 2 (q 9 4 (q . 1)) (q)) 1) (q . 1) (q . 2)) ())
+  debug_program: (i (not 2) () (i (a (i (not (not 2)) (q 2 (i (= (f 2) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1) (q . 1) (q . 2)))
+  solution: (())
+  output: ()
+  runtime_cost: 501
+  byte_cost: 564000
+  total_cost: 564501

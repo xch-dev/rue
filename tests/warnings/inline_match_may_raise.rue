@@ -1,0 +1,87 @@
+// Arms which can raise are evaluated whichever arm matches
+
+test fn raise_arm() -> Int | nil {
+    raise_arm_branch(1)
+}
+
+fn raise_arm_branch(x: Int | nil) -> Int | nil {
+    inline match x {
+        nil => {
+            raise "missing";
+        }
+        Int => x,
+    }
+}
+
+test fn assert_arm() -> Int {
+    assert_arm_branch(1)
+}
+
+fn assert_arm_branch(x: Int) -> Int {
+    inline match x {
+        0 => 1,
+        _ => {
+            assert x > 5;
+            x
+        }
+    }
+}
+
+// A normal `match` only evaluates the arm that matches
+
+test fn normal_match() -> Int {
+    normal_match_branch(1)
+}
+
+fn normal_match_branch(x: Int | nil) -> Int {
+    match x {
+        nil => {
+            raise "missing";
+        }
+        Int => x,
+    }
+}
+
+// An arm that can't raise isn't reported
+
+test fn no_raise() -> Int {
+    no_raise_branch(1)
+}
+
+fn no_raise_branch(x: Int | nil) -> Int {
+    inline match x {
+        nil => 0,
+        Int => 1,
+    }
+}
+
+// The only arm is the one that's evaluated
+
+test fn single_arm() -> Int {
+    single_arm_branch(1)
+}
+
+fn single_arm_branch(x: Int) -> Int {
+    inline match x {
+        _ => {
+            assert x > 5;
+            x
+        }
+    }
+}
+
+// The lint can be allowed
+
+test fn allowed() -> Int | nil {
+    allowed_branch(1)
+}
+
+#[allow(inline_match_may_raise)]
+fn allowed_branch(x: Int | nil) -> Int | nil {
+    inline match x {
+        nil => {
+            raise "missing";
+        }
+        Int => x,
+    }
+}

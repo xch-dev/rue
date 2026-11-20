@@ -74,6 +74,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(conditions::ConstantCondition),
         Box::new(statements::UnusedValue),
         Box::new(inline_ifs::InlineIfMayRaise),
+        Box::new(inline_ifs::InlineMatchMayRaise::new(input)),
         Box::new(inline_ifs::BoolOperatorMayRaise),
         Box::new(inline_values::InlineValueMayFail::new(input)),
         Box::new(returns::UnnecessaryReturn),

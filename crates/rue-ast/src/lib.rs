@@ -795,6 +795,14 @@ impl AstIfExpr {
 }
 
 impl AstMatchExpr {
+    /// The `inline` keyword, which makes every arm evaluated eagerly, like an `inline if`.
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![inline])
+    }
+
     /// The value being matched on.
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)

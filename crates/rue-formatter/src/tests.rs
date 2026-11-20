@@ -1735,6 +1735,28 @@ fn match_arm_comments() {
 }
 
 #[test]
+fn inline_match_expressions() {
+    check(
+        "fn main(x: Int | nil) -> Int {\n    let y = inline   match x { nil => 0, Int => 1 };\n    match x { nil => inline match y { 0 => 1, _ => 2 }, Int => 3 }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                let y = inline match x {
+                    nil => 0,
+                    Int => 1,
+                };
+                match x {
+                    nil => inline match y {
+                        0 => 1,
+                        _ => 2,
+                    }
+                    Int => 3,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn match_commas_after_braces_are_removed() {
     check(
         "fn main(x: Int | nil, b: Bool) -> Int {\n    let y = match x {\n        nil => { 0 },\n        Int => {\n            let z = x + 1;\n            z\n        }, // after\n    };\n    let w = match b { true => if y > 0 { 1 } else { 2 } false => match x { nil => 0, _ => 1 } };\n    match x {\n        nil => {\n            1\n        } // comment\n        // own line\n        Int => x\n    }\n}\n",
