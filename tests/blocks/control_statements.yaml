@@ -145,12 +145,12 @@ tests:
   print_messages:
   - (2 . 3)
 - name: narrows_to_last_arm_results
-  program: (a (q 4 (a 2 (q 3)) (c (a 2 (q 2 3)) ())) (c (q 2 (i (= 2 (q . 3)) () (q 2 (i (= 2 (q . 1)) (q 8) (q 2 (i (> 5 ()) (q 18 5 (q . 4)) (q 8)) 1)) 1)) 1) ()))
+  program: (a (q 4 (a 2 (q 3)) (c (a 2 (q 2 3)) ())) (c (q 2 (i (= 2 (q . 3)) () (q 2 (i (all (not (= 2 (q . 1))) (> 5 ())) (q 18 5 (q . 4)) (q 8)) 1)) 1) ()))
   debug_program: (a (q 4 (a 2 (c (q . 3) ())) (c (a 2 (c (q . 2) (c (q . 3) ()))) ())) (c (q 2 (i (= (f 1) (q . 3)) () (q 2 (i (= (f 1) (q . 1)) (q 8 (q . "raise called at control_statements.rue:372:13") (q . "a circle has no sides")) (q 2 (i (> (f (r 1)) ()) (q 18 (f (r 1)) (q . 4)) (q 8 (q . "assertion failed at control_statements.rue:375:13"))) 1)) 1)) 1) ()))
   output: (() 12)
-  runtime_cost: 3851
-  byte_cost: 1644000
-  total_cost: 1647851
+  runtime_cost: 4644
+  byte_cost: 1524000
+  total_cost: 1528644
 - name: inline_statement_result
   program: (a (q 2 2 (q . 1)) (c (q 3 () (i 1 () ()) 1) ()))
   debug_program: (a (q 2 2 (q . 1)) (c (q 3 () (i (= 1 ()) (a (i ("debug_print" (q . "control_statements.rue:390:13") 1) () ()) 1) ()) 1) ()))
@@ -297,16 +297,16 @@ tests:
   - (3 . 4)
   - (1 . 2)
 - name: charge_results
-  program: (a (q 4 (a 2 (q ())) (c (a 2 (q 1 5)) ())) (c (q 2 (i 2 (q 2 (i (= 2 (q . 2)) (q 8) (q 2 (i (> 5 ()) (q . 5) (q 8)) 1)) 1) ()) 1) ()))
+  program: (a (q 4 (a 2 (q ())) (c (a 2 (q 1 5)) ())) (c (q 2 (i 2 (q 2 (i (all (not (= 2 (q . 2))) (> 5 ())) (q . 5) (q 8)) 1) ()) 1) ()))
   debug_program: (a (q 4 (a 2 (c () ())) (c (a 2 (c (q . 1) (c (q . 5) ()))) ())) (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f 1) (q . 2)) (q 8 (q . "raise called at control_statements.rue:774:13") (q . "refunds aren't charged")) (q 2 (i (> (f (r 1)) ()) (q 5 (r 1)) (q 8 (q . "assertion failed at control_statements.rue:777:13"))) 1)) 1)) 1) ()))
   output: (() 5)
-  runtime_cost: 2551
-  byte_cost: 1452000
-  total_cost: 1454551
+  runtime_cost: 3344
+  byte_cost: 1332000
+  total_cost: 1335344
 - name: charge_refund
-  program: (a (q 2 2 (q 2 5)) (c (q 2 (i 2 (q 2 (i (= 2 (q . 2)) (q 8) (q 2 (i (> 5 ()) (q . 5) (q 8)) 1)) 1) ()) 1) ()))
+  program: (a (q 2 2 (q 2 5)) (c (q 2 (i 2 (q 2 (i (all (not (= 2 (q . 2))) (> 5 ())) (q . 5) (q 8)) 1) ()) 1) ()))
   debug_program: (a (q 2 2 (c (q . 2) (c (q . 5) ()))) (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f 1) (q . 2)) (q 8 (q . "raise called at control_statements.rue:774:13") (q . "refunds aren't charged")) (q 2 (i (> (f (r 1)) ()) (q 5 (r 1)) (q 8 (q . "assertion failed at control_statements.rue:777:13"))) 1)) 1)) 1) ()))
-  byte_cost: 1188000
+  byte_cost: 1068000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at control_statements.rue:774:13" "refunds aren't charged")
 - name: exits_through_statement_results

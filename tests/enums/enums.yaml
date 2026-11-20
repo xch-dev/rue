@@ -7,12 +7,12 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: unit_equality
-  program: (a (q 2 (i (= 2 (q . 5)) (q 2 (i (= 2 (q . 6)) (q 8) ()) 1) (q 8)) 1) (c (q . 5) 1))
+  program: (a (q 2 (i (all (= 2 (q . 5)) (not (= 2 (q . 6)))) () (q 8)) 1) (c (q . 5) 1))
   debug_program: (a (q 2 (i (= 2 (q . 5)) (q 2 (i (not (= 2 (q . 6))) (q 2 (i (not (= () (q . 1))) () (q 8 (q . "assertion failed at enums.rue:81:5"))) 1) (q 8 (q . "assertion failed at enums.rue:80:5"))) 1) (q 8 (q . "assertion failed at enums.rue:79:5"))) 1) (c (q . 5) 1))
   output: ()
-  runtime_cost: 1088
-  byte_cost: 852000
-  total_cost: 853088
+  runtime_cost: 1881
+  byte_cost: 732000
+  total_cost: 733881
 - name: layout
   program: (a (q 2 (i (= (a 2 (c 2 (q . 5))) (a 2 (c 2 (q . 5)))) (q 2 (i (= (a 2 (c 2 (q ()))) (a 2 (c 2 (q ())))) (q 2 (i (= (a 2 (c 2 (q 1 3))) (a 2 (c 2 (q 1 3)))) (q 2 (i (= (a 2 (c 2 (q 10 2 4))) (a 2 (c 2 (q 10 2 4)))) (q 2 (i (= (a 2 (c 2 (q 52 7))) (a 2 (c 2 (q 52 7)))) (q 2 (i (= (a 2 (c 2 (q ()))) (a 2 (c 2 (q ())))) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
   debug_program: (a (q 2 (i (= (a 2 (c 2 (q . 5))) (a 2 (c 2 (q . 5)))) (q 2 (i (= (a 2 (c 2 (c () ()))) (a 2 (c 2 (c () ())))) (q 2 (i (= (a 2 (c 2 (c (q . 1) (c (q . 3) ())))) (a 2 (c 2 (c (q . 1) (c (q . 3) ()))))) (q 2 (i (= (a 2 (c 2 (c (q . 10) (c (q . 2) (c (q . 4) ()))))) (a 2 (c 2 (c (q . 10) (c (q . 2) (c (q . 4) ())))))) (q 2 (i (= (a 2 (c 2 (c (q . 52) (c (q . 7) ())))) (a 2 (c 2 (c (q . 52) (c (q . 7) ()))))) (q 2 (i (= (a 2 (c 2 (c () ()))) (a 2 (c 2 (c () ())))) (q 2 (i (= (q . 5) (q . 5)) () (q 8 (q . "assertion failed at enums.rue:93:5"))) 1) (q 8 (q . "assertion failed at enums.rue:92:5"))) 1) (q 8 (q . "assertion failed at enums.rue:89:5"))) 1) (q 8 (q . "assertion failed at enums.rue:88:5"))) 1) (q 8 (q . "assertion failed at enums.rue:87:5"))) 1) (q 8 (q . "assertion failed at enums.rue:86:5"))) 1) (q 8 (q . "assertion failed at enums.rue:85:5"))) 1) (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) ()))
