@@ -415,6 +415,10 @@ async fn test_protocol_session() {
     assert_eq!(capabilities["definitionProvider"], json!(true));
     assert_eq!(capabilities["referencesProvider"], json!(true));
     assert_eq!(capabilities["renameProvider"], json!(true));
+    assert_eq!(
+        capabilities["signatureHelpProvider"],
+        json!({ "triggerCharacters": ["(", ",", "{"] })
+    );
     assert_eq!(capabilities["documentFormattingProvider"], json!(true));
     assert_eq!(capabilities["textDocumentSync"], json!(1));
     assert_eq!(
@@ -624,6 +628,52 @@ async fn test_rename_session() {
 }
 
 #[tokio::test]
+async fn test_signature_help_session() {
+    let text = "fn add(first: Int, second: \"\u{1F600}\") -> Int {\n    first\n}\n\nfn main() -> Int {\n    add(1, \"\u{1F600}\")\n}\n";
+    let project = TempProject::new(&[("main.rue", text)]);
+    let uri = project.uri("main.rue");
+
+    let mut client = Client::initialized().await;
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, text).await;
+    client.sync().await;
+
+    let response = client
+        .request("textDocument/signatureHelp", Some(position(&uri, 5, 11)))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({
+            "signatures": [{
+                "label": "fn add(first: Int, second: \"\u{1F600}\") -> Int",
+                "parameters": [{ "label": [7, 17] }, { "label": [19, 31] }],
+                "activeParameter": 1,
+            }],
+            "activeSignature": 0,
+            "activeParameter": 1,
+        })
+    );
+
+    // The signature is for the text as it is when the request is sent, though the server hasn't
+    // compiled it yet
+    let compiles = client.compiles();
+    client
+        .change(&uri, 2, &[&text.replace("add(1, ", "add(")])
+        .await;
+
+    let response = client
+        .request("textDocument/signatureHelp", Some(position(&uri, 5, 8)))
+        .await;
+    assert_eq!(response.result().unwrap()["activeParameter"], json!(0));
+    assert_eq!(client.compiles(), compiles + 1);
+
+    let response = client
+        .request("textDocument/signatureHelp", Some(position(&uri, 4, 3)))
+        .await;
+    assert_eq!(response.result(), Some(&Value::Null));
+}
+
+#[tokio::test]
 async fn test_rename_file_without_client_support() {
     let main = "fn main() -> Int {\n    utils::ONE\n}\n";
     let project = TempProject::new(&[
@@ -734,6 +784,11 @@ async fn test_query_panics_are_caught() {
             rename(&uri, 2, 6, "other"),
         ),
         (
+            Task::SignatureHelp,
+            "textDocument/signatureHelp",
+            position(&uri, 2, 6),
+        ),
+        (
             Task::Formatting,
             "textDocument/formatting",
             formatting(&uri),
@@ -773,8 +828,12 @@ async fn test_query_panics_are_caught() {
         client.inject_panic(None);
 
         let response = client.request(method, Some(params)).await;
-        assert_ne!(response.result(), Some(&Value::Null), "{method}");
         assert!(response.is_ok(), "{method}");
+
+        // The source has no call for a signature to be shown for
+        if task != Task::SignatureHelp {
+            assert_ne!(response.result(), Some(&Value::Null), "{method}");
+        }
     }
 
     client.assert_no_messages().await;

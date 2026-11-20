@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use rowan::TextRange;
 use rue_diagnostic::SourceKind;
 use rue_hir::{Declaration, ScopeId, SymbolId};
-use rue_types::TypeId;
+use rue_types::{FunctionType, TypeId};
 
 #[derive(Debug, Default, Clone)]
 pub struct SyntaxMap {
@@ -51,6 +51,7 @@ pub enum SyntaxItemKind {
     FieldDeclaration(SyntaxField),
     FieldReference(SyntaxField),
     FieldInitializer(SyntaxField),
+    Call(SyntaxCall),
     Scope(ScopeId),
     CompletionContext(CompletionContext),
 }
@@ -70,6 +71,15 @@ pub struct SyntaxField {
     pub name: String,
     pub container: TypeId,
     pub ty: TypeId,
+}
+
+/// A call to a function, whose span is the whole call.
+#[derive(Debug, Clone)]
+pub struct SyntaxCall {
+    /// The type of the function that's called, as it's declared.
+    pub function: FunctionType,
+    /// The function's generics that were inferred from the call, and what they were inferred as.
+    pub generics: Vec<(TypeId, TypeId)>,
 }
 
 #[derive(Debug, Clone)]

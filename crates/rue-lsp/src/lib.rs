@@ -36,15 +36,16 @@ use tower_lsp_server::ls_types::{
     DocumentFormattingParams, FileSystemWatcher, GlobPattern, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
     InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
-    MessageType, NumberOrString, OneOf, OptionalVersionedTextDocumentIdentifier, Position,
-    PrepareRenameResponse, Range, ReferenceParams, Registration, RenameFile, RenameOptions,
-    RenameParams, ResourceOp, ResourceOperationKind, ServerCapabilities, TextDocumentEdit,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri,
-    WorkDoneProgressOptions, WorkspaceEdit,
+    MessageType, NumberOrString, OneOf, OptionalVersionedTextDocumentIdentifier,
+    ParameterInformation, ParameterLabel, Position, PrepareRenameResponse, Range, ReferenceParams,
+    Registration, RenameFile, RenameOptions, RenameParams, ResourceOp, ResourceOperationKind,
+    ServerCapabilities, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+    SignatureInformation, TextDocumentEdit, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgressOptions, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
-use crate::cache::{HoverInfo, Rename, SymbolHoverKind, field_declarations};
+use crate::cache::{HoverInfo, Rename, Signatures, SymbolHoverKind, field_declarations};
 use crate::paths::{Paths, document, file_name, uri_to_path};
 use crate::position::{offset_to_position, offsets_to_range, source_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
@@ -71,6 +72,7 @@ enum Task {
     References,
     Completion,
     Rename,
+    SignatureHelp,
     Formatting,
     CodeAction,
 }
@@ -84,6 +86,7 @@ impl fmt::Display for Task {
             Self::References => "finding references",
             Self::Completion => "computing completions",
             Self::Rename => "renaming",
+            Self::SignatureHelp => "computing signature help",
             Self::Formatting => "formatting",
             Self::CodeAction => "computing code actions",
         })
@@ -170,6 +173,14 @@ impl LanguageServer for Backend {
                     })
                 } else {
                     OneOf::Left(true)
+                }),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec![
+                        "(".to_string(),
+                        ",".to_string(),
+                        "{".to_string(),
+                    ]),
+                    ..Default::default()
                 }),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
@@ -394,6 +405,24 @@ impl LanguageServer for Backend {
         })
         .await
         .map_or(Ok(None), |result| result.map_err(request_failed))
+    }
+
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let SignatureHelpParams {
+            text_document_position_params: params,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        Ok(self
+            .query(Task::SignatureHelp, move |state| {
+                signature_help(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.position,
+                )
+            })
+            .await)
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
@@ -718,6 +747,51 @@ fn request_failed(message: String) -> Error {
         message: message.into(),
         data: None,
     }
+}
+
+fn signature_help(cache: &mut Cache<Compiler>, position: Position) -> Option<SignatureHelp> {
+    let position = cache.position(position);
+
+    let scopes = cache.scopes(position);
+    let Signatures { signatures, active } = cache.signature_help(&scopes, position)?;
+
+    let active_parameter = signatures
+        .get(active)
+        .and_then(|signature| signature.active_parameter)
+        .map(|parameter| parameter as u32);
+
+    let signatures = signatures
+        .into_iter()
+        .map(|signature| {
+            // The parameters are parts of the label, which are counted in UTF-16 code units
+            let offset = |index: usize| signature.label[..index].encode_utf16().count() as u32;
+
+            SignatureInformation {
+                parameters: Some(
+                    signature
+                        .parameters
+                        .iter()
+                        .map(|parameter| ParameterInformation {
+                            label: ParameterLabel::LabelOffsets([
+                                offset(parameter.start),
+                                offset(parameter.end),
+                            ]),
+                            documentation: None,
+                        })
+                        .collect(),
+                ),
+                active_parameter: signature.active_parameter.map(|parameter| parameter as u32),
+                documentation: None,
+                label: signature.label,
+            }
+        })
+        .collect();
+
+    Some(SignatureHelp {
+        signatures,
+        active_signature: Some(active as u32),
+        active_parameter,
+    })
 }
 
 fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {

@@ -18,8 +18,10 @@ use tower_lsp_server::ls_types::{
 };
 
 mod rename;
+mod signature;
 
 pub use rename::Rename;
+pub use signature::Signatures;
 
 use crate::paths::path_to_uri;
 use crate::position::{position_to_offset, source_range};
@@ -206,7 +208,9 @@ impl Cache<Compiler> {
             SyntaxItemKind::FieldReference(used) | SyntaxItemKind::FieldInitializer(used) => {
                 Some((field(used), Role::Reference))
             }
-            SyntaxItemKind::Scope(_) | SyntaxItemKind::CompletionContext(_) => None,
+            SyntaxItemKind::Call(_)
+            | SyntaxItemKind::Scope(_)
+            | SyntaxItemKind::CompletionContext(_) => None,
         }
     }
 
@@ -749,7 +753,8 @@ impl Cache<Compiler> {
                         type_name: self.type_name(scopes, field.ty),
                     }));
                 }
-                SyntaxItemKind::Scope(_)
+                SyntaxItemKind::Call(_)
+                | SyntaxItemKind::Scope(_)
                 | SyntaxItemKind::CompletionContext(_)
                 | SyntaxItemKind::FileModule(_) => {}
             }
@@ -816,6 +821,7 @@ impl Cache<Compiler> {
                         | SyntaxItemKind::FieldReference(_)
                         | SyntaxItemKind::FieldInitializer(_) => true,
                         SyntaxItemKind::FileModule(_)
+                        | SyntaxItemKind::Call(_)
                         | SyntaxItemKind::Scope(_)
                         | SyntaxItemKind::CompletionContext(_) => false,
                     }
@@ -879,6 +885,19 @@ impl Cache<Compiler> {
         }
 
         rue_types::stringify(self.ctx.types_mut(), ty)
+    }
+
+    /// The name of a type like [`Self::type_name`], but if it isn't named by anything in scope,
+    /// only its first `parts` parts are written, and the rest are shown as `...`. A type that
+    /// was inferred can be far too large to write in full.
+    fn bounded_type_name(&mut self, scopes: &Scopes, ty: TypeId, parts: usize) -> String {
+        for &scope in &scopes.0 {
+            if let Some(name) = self.ctx.scope(scope).type_name(ty) {
+                return name.to_string();
+            }
+        }
+
+        rue_types::stringify_bounded(self.ctx.types_mut(), ty, parts)
     }
 
     /// The name of a type along with its generic parameters, e.g. `List<T>`.
@@ -1196,6 +1215,21 @@ impl Cache<Compiler> {
         scopes: &Scopes,
         ty: TypeId,
     ) -> Option<(Vec<FieldHoverInfo>, bool)> {
+        let (fields, nil_terminated) = self.struct_field_types(ty)?;
+
+        let fields = fields
+            .into_iter()
+            .map(|(name, ty)| FieldHoverInfo {
+                name,
+                type_name: self.type_name(scopes, ty),
+            })
+            .collect();
+
+        Some((fields, nil_terminated))
+    }
+
+    /// The names and types of a struct's fields, and whether it's nil terminated.
+    fn struct_field_types(&mut self, ty: TypeId) -> Option<(Vec<(String, TypeId)>, bool)> {
         let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
         let mut fields = Vec::new();
@@ -1237,10 +1271,7 @@ impl Cache<Compiler> {
                 continue;
             }
 
-            fields.push(FieldHoverInfo {
-                name: name.clone(),
-                type_name: self.type_name(scopes, next),
-            });
+            fields.push((name.clone(), next));
         }
 
         Some((fields, ty.nil_terminated))

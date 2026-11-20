@@ -10,6 +10,7 @@ mod navigation;
 mod protocol;
 mod rename;
 mod shadowing;
+mod signature_help;
 mod std_library;
 mod sweep;
 mod syntax_errors;
@@ -29,10 +30,10 @@ use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
     Diagnostic, DocumentChangeOperation, DocumentChanges, DocumentFormattingParams,
     FormattingOptions, GotoDefinitionParams, GotoDefinitionResponse, HoverContents, HoverParams,
-    Location, MarkedString, NumberOrString, OneOf, PartialResultParams, Position,
+    Location, MarkedString, NumberOrString, OneOf, ParameterLabel, PartialResultParams, Position,
     PrepareRenameResponse, Range, ReferenceContext, ReferenceParams, RenameParams, ResourceOp,
-    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams,
-    WorkspaceEdit,
+    SignatureHelpParams, TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri,
+    WorkDoneProgressParams, WorkspaceEdit,
 };
 
 use crate::paths::{path_to_uri, uri_to_path};
@@ -336,6 +337,68 @@ impl TestProject {
                 .unwrap_or_default();
 
             writeln!(output, "{} [{kind}]{detail}", item.label).unwrap();
+        }
+
+        output
+    }
+
+    /// Renders the signatures at the cursor, with the active parameter of each in brackets and
+    /// the active signature marked, or `<none>`.
+    pub fn signature_help(&self) -> String {
+        let (uri, position) = self.cursor();
+
+        let Some(help) = block_on(self.backend().signature_help(SignatureHelpParams {
+            context: None,
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri),
+                position,
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        }))
+        .unwrap() else {
+            return "<none>\n".to_string();
+        };
+
+        let active = help.active_signature.unwrap() as usize;
+        assert_eq!(
+            help.active_parameter,
+            help.signatures[active].active_parameter
+        );
+
+        let mut output = String::new();
+
+        for (i, signature) in help.signatures.into_iter().enumerate() {
+            // The parameters are parts of the label, in UTF-16 code units
+            let units = signature.label.encode_utf16().collect::<Vec<_>>();
+            let text = |range: std::ops::Range<u32>| {
+                String::from_utf16(&units[range.start as usize..range.end as usize]).unwrap()
+            };
+
+            let mut label = String::new();
+            let mut end = 0;
+
+            for (j, parameter) in signature.parameters.unwrap().into_iter().enumerate() {
+                let ParameterLabel::LabelOffsets([start, stop]) = parameter.label else {
+                    panic!("unexpected label: {:?}", parameter.label);
+                };
+
+                assert!(end <= start && start < stop, "parameters are in order");
+
+                label.push_str(&text(end..start));
+
+                if signature.active_parameter == Some(j as u32) {
+                    write!(label, "[{}]", text(start..stop)).unwrap();
+                } else {
+                    label.push_str(&text(start..stop));
+                }
+
+                end = stop;
+            }
+
+            label.push_str(&text(end..units.len() as u32));
+
+            let marker = if i == active { ">" } else { " " };
+            writeln!(output, "{marker} {label}").unwrap();
         }
 
         output

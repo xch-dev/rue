@@ -8,7 +8,9 @@ use rue_types::{FunctionType, Type, TypeId, Union, contains_generic, substitute_
 
 use super::builtin::compile_builtin;
 use super::call_inference::{InferredCall, infer_call};
-use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_path_value};
+use crate::{
+    Compiler, CompletionContext, SyntaxCall, SyntaxItemKind, compile_expr, compile_path_value,
+};
 
 pub fn compile_function_call_expr(
     ctx: &mut Compiler,
@@ -55,6 +57,9 @@ pub fn compile_function_call_expr(
         let name = ctx.type_name(expr.ty);
         ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidFunctionCall(name));
     }
+
+    // The function as it's declared, which is what the language server shows
+    let declared = expected_functions.first().cloned();
 
     // The callee's generics that are also in scope, as in a recursive call, are renamed to fresh
     // ones, so that they aren't confused with the caller's generics with the same ids (#334)
@@ -163,6 +168,29 @@ pub fn compile_function_call_expr(
             let unresolved = ctx.unresolved().ty;
             mappings.insert(generic, unresolved);
             uninferred.insert(generic, unresolved);
+        }
+
+        // The language server shows what the call's generics were inferred as, which leaves out
+        // the ones that weren't. They're the generics as they're declared, rather than the copies
+        // that a recursive call's are renamed to
+        if let Some(declared) = declared {
+            let inferred = function
+                .generics
+                .iter()
+                .filter(|generic| !uninferred.contains_key(*generic))
+                .filter_map(|generic| {
+                    let ty = *mappings.get(generic)?;
+                    Some((*renamed.get(generic).unwrap_or(generic), ty))
+                })
+                .collect();
+
+            ctx.add_syntax(
+                SyntaxItemKind::Call(SyntaxCall {
+                    function: declared,
+                    generics: inferred,
+                }),
+                call.syntax().text_range(),
+            );
         }
 
         // The other generics can be inferred as types with these in them, such as `U` as `T` in

@@ -1,10 +1,11 @@
 //! Crash sweep: opens every `.rue` file under `examples/` and `tests/` and makes sure the
 //! language server never panics on it, whether it's complete or half-typed.
 //!
-//! For each file, it (a) requests hover, go to definition, references, completion and rename at many
-//! cursor positions, and (b) recompiles edited versions of the file, as if it were being typed,
-//! and makes the same requests where the edit happened. The edits are: everything after the
-//! cursor removed, the rest of the cursor's line removed, and a chunk removed from the cursor on.
+//! For each file, it (a) makes every request that's about a position (hover, go to definition,
+//! references, completion, rename and signature help) at many cursor positions, and (b) recompiles
+//! edited versions of the file, as if it were being typed, and makes the same requests where the
+//! edit happened. The edits are: everything after the cursor removed, the rest of the cursor's
+//! line removed, and a chunk removed from the cursor on.
 //!
 //! [`crash_sweep_sampled`] runs with `cargo test` on a deterministic sample, so that it takes a few
 //! seconds. [`crash_sweep_exhaustive`] makes requests at every character boundary and edits at
@@ -33,7 +34,7 @@ use futures::executor::block_on;
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
     CompletionParams, GotoDefinitionParams, HoverParams, PartialResultParams, Position,
-    ReferenceContext, ReferenceParams, RenameParams, TextDocumentIdentifier,
+    ReferenceContext, ReferenceParams, RenameParams, SignatureHelpParams, TextDocumentIdentifier,
     TextDocumentPositionParams, Uri, WorkDoneProgressParams,
 };
 
@@ -190,16 +191,18 @@ enum Request {
     Completion,
     PrepareRename,
     Rename,
+    SignatureHelp,
 }
 
 impl Request {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::Hover,
         Self::GotoDefinition,
         Self::References,
         Self::Completion,
         Self::PrepareRename,
         Self::Rename,
+        Self::SignatureHelp,
     ];
 
     fn name(self) -> &'static str {
@@ -210,6 +213,7 @@ impl Request {
             Self::Completion => "completion",
             Self::PrepareRename => "prepare rename",
             Self::Rename => "rename",
+            Self::SignatureHelp => "signature help",
         }
     }
 
@@ -247,6 +251,14 @@ impl Request {
                     partial_result_params: PartialResultParams::default(),
                     context: None,
                 });
+            }
+            Self::SignatureHelp => {
+                block_on(backend.signature_help(SignatureHelpParams {
+                    context: None,
+                    text_document_position_params: document,
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                }))
+                .ok();
             }
             // A rename that's refused is an error, which isn't a panic
             Self::PrepareRename => {
