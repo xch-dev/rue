@@ -12,24 +12,25 @@ use std::path::{Path, PathBuf};
 use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_ast::{
-    AstEnumItem, AstGenericParameters, AstNode, AstStructFieldBinding, AstStructInitializerField,
+    AstEnumItem, AstFunctionItem, AstGenericParameters, AstNode, AstStructFieldBinding,
+    AstStructInitializerField,
 };
 use rue_compiler::{Compiler, File, FileTree};
 use rue_diagnostic::SourceKind;
 use rue_hir::{Declaration, Item, Namespace, Scope, ScopeId, Symbol, SymbolId};
-use rue_lexer::{Lexer, TokenKind};
+use rue_lexer::{Lexer, TokenKind, string_value};
 use rue_parser::{SyntaxKind, SyntaxToken};
 use rue_types::Type;
 use tower_lsp_server::ls_types::TextEdit;
 
 use super::{Cache, Role, SyntaxItemKind, Target};
+use crate::paths::file_name;
 use crate::position::source_range;
 
 /// A name that can be renamed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Renamable {
-    /// The name's byte offsets in the file the query is about.
-    pub span: Range<usize>,
+    pub range: tower_lsp_server::ls_types::Range,
     pub name: String,
 }
 
@@ -47,8 +48,6 @@ pub struct Rename {
 pub struct Moved {
     pub from: PathBuf,
     pub to: PathBuf,
-    /// A file of the project that's the one renamed, or is inside the directory that is.
-    pub file: SourceKind,
 }
 
 /// A place that names what's being renamed.
@@ -72,9 +71,8 @@ struct Plan<'a> {
 struct ModulePath {
     path: PathBuf,
     directory: bool,
-    /// A file that's the module, or is inside of it.
-    file: SourceKind,
-    /// The module of the directory it's in, unless it's the project's entrypoint.
+    /// The module of the directory it's in, unless it's the directory or file that the project
+    /// is compiled from.
     parent: Option<SymbolId>,
 }
 
@@ -83,7 +81,11 @@ impl Cache<Compiler> {
     /// can't be, and nothing if it isn't a name.
     pub fn prepare_rename(&self, index: usize) -> Result<Option<Renamable>, String> {
         Ok(self.plan(index)?.map(|plan| Renamable {
-            span: plan.span.start().into()..plan.span.end().into(),
+            range: source_range(
+                &self.source,
+                plan.span.start().into(),
+                plan.span.end().into(),
+            ),
             name: plan.name,
         }))
     }
@@ -102,7 +104,7 @@ impl Cache<Compiler> {
 
         self.check_conflicts(&plan, new_name)?;
 
-        let mut replacements = IndexMap::<&SourceKind, Vec<(TextRange, String)>>::new();
+        let mut replacements = IndexMap::<&SourceKind, (&File, Vec<(TextRange, String)>)>::new();
 
         for site in &plan.sites {
             let replacement = match (shorthand_field(&site.token), plan.target) {
@@ -116,21 +118,18 @@ impl Cache<Compiler> {
 
             replacements
                 .entry(&site.file.source.kind)
-                .or_default()
+                .or_insert_with(|| (site.file, Vec::new()))
+                .1
                 .push((site.span, replacement));
         }
 
         let mut edits = IndexMap::new();
 
-        for (kind, mut replacements) in replacements {
+        for (kind, (file, mut replacements)) in replacements {
             // The same place can be recorded more than once, such as when code is compiled for
             // each place it's used
             replacements.sort_by_key(|(span, _)| (span.start(), span.end()));
             replacements.dedup();
-
-            let Some(file) = self.tree.find(kind) else {
-                continue;
-            };
 
             edits.insert(
                 kind.clone(),
@@ -147,28 +146,72 @@ impl Cache<Compiler> {
         }
 
         let moved = match &plan.module {
-            Some(module) => {
-                let to = module.path.with_file_name(match module.path.extension() {
-                    Some(extension) if !module.directory => {
-                        format!("{new_name}.{}", extension.to_string_lossy())
-                    }
-                    _ => new_name.to_string(),
-                });
-
-                if to.exists() {
-                    return Err(format!("`{}` already exists", file_name(&to)));
-                }
-
-                Some(Moved {
-                    from: module.path.clone(),
-                    to,
-                    file: module.file.clone(),
-                })
-            }
+            Some(module) => Some(self.moved(module, &plan.name, new_name)?),
             None => None,
         };
 
         Ok(Some(Rename { edits, moved }))
+    }
+
+    /// The file or directory to rename along with the module that it is.
+    fn moved(&self, module: &ModulePath, name: &str, new_name: &str) -> Result<Moved, String> {
+        let from = &module.path;
+
+        let to = from.with_file_name(match from.extension() {
+            Some(extension) if !module.directory => {
+                format!("{new_name}.{}", extension.to_string_lossy())
+            }
+            _ => new_name.to_string(),
+        });
+
+        // A name that only differs in case is the same file on some file systems
+        if to.exists() && to.canonicalize().ok() != from.canonicalize().ok() {
+            return Err(format!("`{}` already exists", file_name(&to)));
+        }
+
+        if !module.directory {
+            return Ok(Moved {
+                from: from.clone(),
+                to,
+            });
+        }
+
+        // An external function's file is found from the directory of the file it's declared in,
+        // so the path to it breaks if only one of them is in the directory that's renamed
+        for file in self.tree.all_files() {
+            let SourceKind::File(path) = &file.source.kind else {
+                continue;
+            };
+
+            let Some(directory) = Path::new(path).parent() else {
+                continue;
+            };
+
+            for path in file
+                .document
+                .syntax()
+                .descendants()
+                .filter_map(AstFunctionItem::cast)
+                .filter_map(|function| function.source_path())
+            {
+                let external = directory.join(string_value(path.text()));
+                let external = external.canonicalize().unwrap_or(external);
+
+                if directory.starts_with(from) != external.starts_with(from) {
+                    return Err(format!(
+                        "`{name}` can't be renamed, since the path of the external function at \
+                        {}:{} would no longer lead to its file",
+                        file_name(Path::new(&file.source.kind.display(Path::new("")))),
+                        file.source.line_col(path.text_range().start().into())
+                    ));
+                }
+            }
+        }
+
+        Ok(Moved {
+            from: from.clone(),
+            to,
+        })
     }
 
     fn plan(&self, index: usize) -> Result<Option<Plan<'_>>, String> {
@@ -213,17 +256,7 @@ impl Cache<Compiler> {
 
             // Only the places that are written with the name are changed, which leaves out a
             // `super` or `project` that refers to a module
-            if file.source.text.get(Range::<usize>::from(item.span)) != Some(name) {
-                continue;
-            }
-
-            let Some(token) = file
-                .document
-                .syntax()
-                .token_at_offset(item.span.start())
-                .right_biased()
-                .filter(|token| token.text_range() == item.span)
-            else {
+            let Some(token) = name_token(file, item.span, name) else {
                 continue;
             };
 
@@ -244,8 +277,13 @@ impl Cache<Compiler> {
             _ => None,
         };
 
+        // The project is compiled from its directory or file, and built from the `main` file in
+        // its directory
         if let Some(module) = &module
-            && module.parent.is_none()
+            && (module.parent.is_none()
+                || (module.parent == Some(self.tree.module())
+                    && !module.directory
+                    && name == "main"))
         {
             return Err(format!(
                 "`{name}` is the project's entrypoint, so it can't be renamed"
@@ -420,18 +458,7 @@ impl Cache<Compiler> {
                 continue;
             };
 
-            if file.source.text.get(Range::<usize>::from(item.span)) != Some(new_name) {
-                continue;
-            }
-
-            let unqualified = file
-                .document
-                .syntax()
-                .token_at_offset(item.span.start())
-                .right_biased()
-                .is_some_and(|token| token.text_range() == item.span && is_unqualified(&token));
-
-            if !unqualified {
+            if !name_token(file, item.span, new_name).is_some_and(|token| is_unqualified(&token)) {
                 continue;
             }
 
@@ -485,24 +512,25 @@ impl Cache<Compiler> {
 
     /// What a reference to an item in a scope is about.
     fn item_target(&self, item: Item) -> Target<'static> {
-        let declaration = match item {
-            Item::Value(symbol) | Item::Module(symbol) => Declaration::Symbol(symbol),
-            Item::Type(ty) => Declaration::Type(ty),
-        };
-
-        match self.ctx.reference_target(declaration) {
+        match self.ctx.reference_target(Declaration::from(item)) {
             Declaration::Symbol(symbol) => Target::Symbol(symbol),
             Declaration::Type(ty) => Target::Type(ty),
         }
     }
 }
 
-/// The last part of a path, which is how a file is shown in a message.
-pub fn file_name(path: &Path) -> String {
-    path.file_name()
-        .unwrap_or(path.as_os_str())
-        .to_string_lossy()
-        .into_owned()
+/// The token of a file that's the name at a span. The text is compared first, since it rules out
+/// nearly every span without looking for its token.
+fn name_token(file: &File, span: TextRange, name: &str) -> Option<SyntaxToken> {
+    if file.source.text.get(Range::<usize>::from(span)) != Some(name) {
+        return None;
+    }
+
+    file.document
+        .syntax()
+        .token_at_offset(span.start())
+        .right_biased()
+        .filter(|token| token.text_range() == span)
 }
 
 /// Checks that a name can be given to a declaration.
@@ -566,20 +594,9 @@ fn is_unqualified(token: &SyntaxToken) -> bool {
 /// The path of a module that's a file or a directory of the project.
 fn module_path(tree: &FileTree, module: SymbolId, parent: Option<SymbolId>) -> Option<ModulePath> {
     if tree.module() == module {
-        let file = first_file(tree)?;
-        let SourceKind::File(path) = &file.source.kind else {
-            return None;
-        };
-
-        let path = match tree {
-            FileTree::File(_) => PathBuf::from(path),
-            FileTree::Directory(_) => directory_path(tree)?,
-        };
-
         return Some(ModulePath {
-            path,
+            path: tree_path(tree)?,
             directory: matches!(tree, FileTree::Directory(_)),
-            file: file.source.kind.clone(),
             parent,
         });
     }
@@ -594,15 +611,8 @@ fn module_path(tree: &FileTree, module: SymbolId, parent: Option<SymbolId>) -> O
         .find_map(|child| module_path(child, module, Some(directory.module)))
 }
 
-fn first_file(tree: &FileTree) -> Option<&File> {
-    match tree {
-        FileTree::File(file) => Some(file),
-        FileTree::Directory(directory) => directory.children.iter().find_map(first_file),
-    }
-}
-
-/// The path of a directory, which is worked out from a file in it.
-fn directory_path(tree: &FileTree) -> Option<PathBuf> {
+/// The path of a file, or of a directory, which is worked out from a file in it.
+fn tree_path(tree: &FileTree) -> Option<PathBuf> {
     match tree {
         FileTree::File(file) => match &file.source.kind {
             SourceKind::File(path) => Some(PathBuf::from(path)),
@@ -611,7 +621,7 @@ fn directory_path(tree: &FileTree) -> Option<PathBuf> {
         FileTree::Directory(directory) => directory
             .children
             .iter()
-            .find_map(directory_path)
+            .find_map(tree_path)
             .and_then(|path| path.parent().map(Path::to_path_buf)),
     }
 }

@@ -122,16 +122,7 @@ impl Paths {
             })
             .unwrap_or_default();
 
-        let client = lock(&self.roots)
-            .iter()
-            .filter_map(|(canonical, client)| {
-                let rest = path.strip_prefix(canonical).ok()?;
-                Some((canonical.components().count(), client.join(rest)))
-            })
-            .max_by_key(|(depth, _)| *depth)
-            .map(|(_, client)| client);
-
-        if let Some(client) = client
+        if let Some(client) = self.client_path(path)
             && !paths.contains(&client)
         {
             paths.push(client);
@@ -142,6 +133,30 @@ impl Paths {
         }
 
         paths.iter().filter_map(|path| path_to_uri(path)).collect()
+    }
+
+    /// The path that the client uses for a canonical path, which is its path in the innermost
+    /// directory the client used.
+    fn client_path(&self, path: &Path) -> Option<PathBuf> {
+        lock(&self.roots)
+            .iter()
+            .filter_map(|(canonical, client)| {
+                let rest = path.strip_prefix(canonical).ok()?;
+                Some((canonical.components().count(), client.join(rest)))
+            })
+            .max_by_key(|(depth, _)| *depth)
+            .map(|(_, client)| client)
+    }
+
+    /// The URIs that the client uses for a file or directory that's renamed, before and after.
+    /// It's the file or directory itself that's renamed, rather than a symlink to it that the
+    /// editor may have opened it through.
+    pub fn moved(&self, from: &Path, to: &Path) -> Option<(Uri, Uri)> {
+        let from = self.client_path(from).unwrap_or_else(|| from.to_path_buf());
+
+        let to = from.with_file_name(to.file_name()?);
+
+        Some((path_to_uri(&from)?, path_to_uri(&to)?))
     }
 
     /// The URIs to publish a file's diagnostics to, and those that it was published to last time
@@ -173,6 +188,14 @@ impl Paths {
 
         Location::new(uri, location.range)
     }
+}
+
+/// The last part of a path, which is how a file is shown in a message.
+pub fn file_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// The path of a file URI, or `None` if it isn't one (such as `untitled:Untitled-1`). Windows

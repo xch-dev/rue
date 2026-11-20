@@ -25,6 +25,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rue_options::{Project, find_project};
 use tower_lsp_server::jsonrpc::{Error, ErrorCode, Result};
+use tower_lsp_server::ls_types::error_codes::REQUEST_FAILED;
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
@@ -43,14 +44,11 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{Client, LanguageServer};
 
-use crate::cache::{HoverInfo, Moved, Rename, SymbolHoverKind, field_declarations, file_name};
-use crate::paths::{Paths, document, path_to_uri, uri_to_path};
+use crate::cache::{HoverInfo, Rename, SymbolHoverKind, field_declarations};
+use crate::paths::{Paths, document, file_name, uri_to_path};
 use crate::position::{offset_to_position, offsets_to_range, source_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
 use tokio::sync::oneshot;
-
-/// The code of the error for a request that failed for a reason that's shown to the user.
-const REQUEST_FAILED: i64 = -32803;
 
 /// Logged once the client says it's initialized.
 const INITIALIZED: &str = "Rue language server initialized.";
@@ -650,7 +648,7 @@ fn prepare_rename(
     Ok(cache
         .prepare_rename(position)?
         .map(|name| PrepareRenameResponse::RangeWithPlaceholder {
-            range: cache.range(name.span),
+            range: name.range,
             placeholder: name.name,
         }))
 }
@@ -682,7 +680,7 @@ fn rename(
         ));
     }
 
-    let Some((old_uri, new_uri)) = moved_uris(&moved, &shared.paths) else {
+    let Some((old_uri, new_uri)) = shared.paths.moved(&moved.from, &moved.to) else {
         return Err(format!("`{}` can't be renamed", file_name(&moved.from)));
     };
 
@@ -708,27 +706,6 @@ fn rename(
         document_changes: Some(DocumentChanges::Operations(operations)),
         ..WorkspaceEdit::default()
     }))
-}
-
-/// The URIs that the client uses for a file or directory that's renamed. The compiler has the
-/// canonical paths, so the client's path is worked out from the one it uses for a file that's
-/// renamed or inside of what is.
-fn moved_uris(moved: &Moved, paths: &Paths) -> Option<(Uri, Uri)> {
-    let SourceKind::File(file) = &moved.file else {
-        return None;
-    };
-
-    let inside = Path::new(file).strip_prefix(&moved.from).ok()?;
-
-    let mut from = uri_to_path(&paths.uri(&moved.file)?)?;
-
-    for _ in inside.components() {
-        from.pop();
-    }
-
-    let to = from.with_file_name(moved.to.file_name()?);
-
-    Some((path_to_uri(&from)?, path_to_uri(&to)?))
 }
 
 /// The error for a request that can't be answered, with the reason to show to the user.

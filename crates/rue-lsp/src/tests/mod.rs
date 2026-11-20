@@ -335,6 +335,12 @@ impl TestProject {
         output
     }
 
+    /// Renders the diagnostics of the project as it was created.
+    pub fn diagnostics(&self) -> String {
+        let (name, text) = &self.files[0];
+        self.change(name, Some(text))
+    }
+
     /// Renders the name at the cursor that would be renamed, or why it can't be.
     pub fn prepare_rename(&self) -> String {
         let (uri, position) = self.cursor();

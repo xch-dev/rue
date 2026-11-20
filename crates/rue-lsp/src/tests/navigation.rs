@@ -882,17 +882,17 @@ struct Wrap<T> {
 }
 
 fn main(wrap: Wrap<Int>) -> Int {
-    let other = Wrap { value: "a" };
-    let { value } = Wrap { value: 1 };
+    let other = Wrap::<String> { value: "a" };
+    let { value } = Wrap::<Int> { value: 1 };
     wrap.value + other.value.length + value
 }
 "#,
         )],
         expect![[r#"
             main.rue:2:4-2:9
-            main.rue:6:23-6:28
+            main.rue:6:33-6:38
             main.rue:7:10-7:15
-            main.rue:7:27-7:32
+            main.rue:7:34-7:39
             main.rue:8:9-8:14
             main.rue:8:23-8:28
         "#]],

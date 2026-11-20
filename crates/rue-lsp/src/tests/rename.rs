@@ -7,14 +7,33 @@ use expect_test::{Expect, expect};
 
 use super::TestProject;
 
-#[allow(clippy::needless_pass_by_value)]
-fn check(files: &[(&str, &str)], new_name: &str, expect: Expect) {
+/// A project whose client can rename files.
+fn project(files: &[(&str, &str)]) -> TestProject {
     let project = TestProject::new(files);
     project
         .backend()
         .shared
         .rename_files
         .store(true, Ordering::Relaxed);
+    project
+}
+
+/// Renames what's at the cursor of code that compiles, so that a test is about what it means to
+/// be, rather than what's left of code that was rejected.
+#[allow(clippy::needless_pass_by_value)]
+fn check(files: &[(&str, &str)], new_name: &str, expect: Expect) {
+    let project = project(files);
+    let diagnostics = project.diagnostics();
+    assert!(!diagnostics.contains(" Error"), "{diagnostics}");
+    expect.assert_eq(&project.rename(new_name));
+}
+
+/// Renames what's at the cursor of code that has errors.
+#[allow(clippy::needless_pass_by_value)]
+fn check_with_errors(files: &[(&str, &str)], new_name: &str, expect: Expect) {
+    let project = project(files);
+    let diagnostics = project.diagnostics();
+    assert!(diagnostics.contains(" Error"), "{diagnostics}");
     expect.assert_eq(&project.rename(new_name));
 }
 
@@ -335,8 +354,9 @@ struct Wrap<T> {
 }
 
 fn main(wrap: Wrap<Int>) -> Int {
-    let other = Wrap { value: "a" };
-    wrap.val$0ue + other.value.length
+    let other = Wrap::<String> { value: "a" };
+    let { value } = Wrap::<Int> { value: 1 };
+    wrap.val$0ue + other.value.length + value
 }
 "#,
         )],
@@ -349,8 +369,9 @@ fn main(wrap: Wrap<Int>) -> Int {
             }
 
             fn main(wrap: Wrap<Int>) -> Int {
-                let other = Wrap { inner: "a" };
-                wrap.inner + other.inner.length
+                let other = Wrap::<String> { inner: "a" };
+                let { inner: value } = Wrap::<Int> { inner: 1 };
+                wrap.inner + other.inner.length + value
             }
         "#]],
     );
@@ -435,12 +456,14 @@ enum Shape {
 }
 
 fn main(shape: Shape) -> Int {
-    let empty = Shape::Empty;
+    let empty: Shape = Shape::Empty;
     let circle = Shape::Circle { radius: 1 };
     if shape is Shape::Circle {
         shape.radius + circle.radius
+    } else if empty is Shape::Empty {
+        0
     } else {
-        empty as Int
+        1
     }
 }
 "#;
@@ -460,12 +483,14 @@ fn main(shape: Shape) -> Int {
             }
 
             fn main(shape: Figure) -> Int {
-                let empty = Figure::Empty;
+                let empty: Figure = Figure::Empty;
                 let circle = Figure::Circle { radius: 1 };
                 if shape is Figure::Circle {
                     shape.radius + circle.radius
+                } else if empty is Figure::Empty {
+                    0
                 } else {
-                    empty as Int
+                    1
                 }
             }
         "#]],
@@ -486,12 +511,14 @@ fn main(shape: Shape) -> Int {
             }
 
             fn main(shape: Shape) -> Int {
-                let empty = Shape::Nothing;
+                let empty: Shape = Shape::Nothing;
                 let circle = Shape::Circle { radius: 1 };
                 if shape is Shape::Circle {
                     shape.radius + circle.radius
+                } else if empty is Shape::Nothing {
+                    0
                 } else {
-                    empty as Int
+                    1
                 }
             }
         "#]],
@@ -512,12 +539,14 @@ fn main(shape: Shape) -> Int {
             }
 
             fn main(shape: Shape) -> Int {
-                let empty = Shape::Empty;
+                let empty: Shape = Shape::Empty;
                 let circle = Shape::Round { radius: 1 };
                 if shape is Shape::Round {
                     shape.radius + circle.radius
+                } else if empty is Shape::Empty {
+                    0
                 } else {
-                    empty as Int
+                    1
                 }
             }
         "#]],
@@ -538,12 +567,14 @@ fn main(shape: Shape) -> Int {
             }
 
             fn main(shape: Shape) -> Int {
-                let empty = Shape::Empty;
+                let empty: Shape = Shape::Empty;
                 let circle = Shape::Circle { size: 1 };
                 if shape is Shape::Circle {
                     shape.size + circle.size
+                } else if empty is Shape::Empty {
+                    0
                 } else {
-                    empty as Int
+                    1
                 }
             }
         "#]],
@@ -583,6 +614,49 @@ fn main() -> Int {
 
             fn main() -> Int {
                 numbers::double(21) + double(1)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_module_named_by_super() {
+    // A `super` that refers to the module doesn't name it, so it's left alone
+    check(
+        &[(
+            "main.rue",
+            r#"
+mod ou$0ter {
+    export const ONE: Int = 1;
+
+    export mod inner {
+        export fn one() -> Int {
+            super::ONE
+        }
+    }
+}
+
+fn main() -> Int {
+    outer::inner::one()
+}
+"#,
+        )],
+        "wrapper",
+        expect![[r#"
+            main.rue:
+
+            mod wrapper {
+                export const ONE: Int = 1;
+
+                export mod inner {
+                    export fn one() -> Int {
+                        super::ONE
+                    }
+                }
+            }
+
+            fn main() -> Int {
+                wrapper::inner::one()
             }
         "#]],
     );
@@ -737,26 +811,35 @@ fn main() -> Int {
 
 #[test]
 fn test_rename_directory_module() {
+    // A `super` that refers to the directory doesn't name it, so it's left alone
     check(
         &[
             (
                 "main.rue",
-                "fn main() -> Int {\n    mat$0h::ops::double(1) + math::ONE\n}\n",
+                "fn main() -> Int {\n    mat$0h::ops::double(1) + math::consts::ONE\n}\n",
             ),
             (
                 "math/ops.rue",
-                "export fn double(num: Int) -> Int {\n    num * super::ONE\n}\n",
+                "export fn double(num: Int) -> Int {\n    num * super::math::consts::ONE\n}\n",
             ),
             (
                 "math/consts.rue",
                 "export const ONE: Int = 1;\n\nfn two() -> Int {\n    project::math::ops::double(ONE)\n}\n",
+            ),
+            (
+                "math/deep/two.rue",
+                "export fn two() -> Int {\n    super::ops::double(1)\n}\n",
             ),
         ],
         "numbers",
         expect![[r#"
             main.rue:
             fn main() -> Int {
-                numbers::ops::double(1) + numbers::ONE
+                numbers::ops::double(1) + numbers::consts::ONE
+            }
+            math/ops.rue:
+            export fn double(num: Int) -> Int {
+                num * super::numbers::consts::ONE
             }
             math/consts.rue:
             export const ONE: Int = 1;
@@ -767,6 +850,174 @@ fn test_rename_directory_module() {
             renamed: math -> numbers
         "#]],
     );
+}
+
+#[test]
+fn test_rename_nested_directory_module() {
+    let files = [
+        (
+            "main.rue",
+            "fn main() -> Int {\n    outer::fi$0rst::a::ONE + outer::second::b::TWO\n}\n",
+        ),
+        ("outer/first/a.rue", "export const ONE: Int = 1;\n"),
+        ("outer/second/b.rue", "export const TWO: Int = 2;\n"),
+    ];
+
+    check(
+        &files,
+        "third",
+        expect![[r#"
+        main.rue:
+        fn main() -> Int {
+            outer::third::a::ONE + outer::second::b::TWO
+        }
+        renamed: outer/first -> outer/third
+    "#]],
+    );
+
+    // The directory it's in already has a module with the name
+    check(
+        &files,
+        "second",
+        expect![[r#"
+        error: `second` is already used in a scope that has `first`
+    "#]],
+    );
+}
+
+#[test]
+fn test_rename_entrypoint() {
+    // The project is built from its `main` file
+    check(
+        &[
+            ("main.rue", "export fn helper() -> Int {\n    1\n}\n"),
+            (
+                "other.rue",
+                "export fn go() -> Int {\n    ma$0in::helper()\n}\n",
+            ),
+        ],
+        "start",
+        expect![[r#"
+            error: `main` is the project's entrypoint, so it can't be renamed
+        "#]],
+    );
+
+    // A `main` file in another directory is like any other
+    check(
+        &[
+            (
+                "main.rue",
+                "fn main() -> Int {\n    inner::ma$0in::ONE\n}\n",
+            ),
+            ("inner/main.rue", "export const ONE: Int = 1;\n"),
+        ],
+        "start",
+        expect![[r#"
+            main.rue:
+            fn main() -> Int {
+                inner::start::ONE
+            }
+            renamed: inner/main.rue -> inner/start.rue
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_module_that_only_differs_in_case() {
+    // The new name is the same file on a file system that ignores case
+    check(
+        &[
+            ("main.rue", "fn main() -> Int {\n    uti$0ls::ONE\n}\n"),
+            ("utils.rue", "export const ONE: Int = 1;\n"),
+        ],
+        "Utils",
+        expect![[r#"
+            main.rue:
+            fn main() -> Int {
+                Utils::ONE
+            }
+            renamed: utils.rue -> Utils.rue
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_directory_with_external_function() {
+    let files = |main: &'static str, a: &'static str| {
+        [
+            ("main.rue", main),
+            ("lib/a.rue", a),
+            ("lib/run.hex", "01"),
+            ("run.hex", "01"),
+        ]
+    };
+
+    let external = "extern fn run(value: Any) -> Any from \"./lib/run.hex\";\n\n";
+    let main = "fn main() -> Any {\n    li$0b::a::go()\n}\n";
+    let go = "export fn go() -> Any {\n    1\n}\n";
+
+    // The path of an external function isn't rewritten, so the rename is refused if it would
+    // stop leading to its file
+    let outside = format!("{external}{main}");
+    check(
+        &files(outside.leak(), go),
+        "core",
+        expect![[r#"
+        error: `lib` can't be renamed, since the path of the external function at main.rue:1:39 would no longer lead to its file
+    "#]],
+    );
+
+    let inside = format!("extern fn run(value: Any) -> Any from \"../run.hex\";\n\n{go}");
+    check(
+        &files(main, inside.leak()),
+        "core",
+        expect![[r#"
+        error: `lib` can't be renamed, since the path of the external function at a.rue:1:39 would no longer lead to its file
+    "#]],
+    );
+
+    // A file that's renamed along with the function still leads to it
+    let together = format!("extern fn run(value: Any) -> Any from \"./run.hex\";\n\n{go}");
+    check(
+        &files(main, together.leak()),
+        "core",
+        expect![[r#"
+        main.rue:
+        fn main() -> Any {
+            core::a::go()
+        }
+        renamed: lib -> core
+    "#]],
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rename_file_module_open_through_a_symlink() {
+    // The file itself is renamed, rather than the symlink the editor opened it through
+    let utils = "export const ONE: Int = 1;\n";
+    let project = project(&[
+        ("main.rue", "fn main() -> Int {\n    uti$0ls::ONE\n}\n"),
+        ("utils.rue", utils),
+    ]);
+
+    let links = super::TempDir::new("rue-lsp-rename-links");
+    let link = links.path().join("link.rue");
+    std::os::unix::fs::symlink(project.path("utils.rue"), &link).unwrap();
+
+    let backend = project.backend();
+    let uri = crate::paths::path_to_uri(&link).unwrap();
+    backend.shared.paths.open(&uri);
+    backend.on_change_impl(&uri, Some(utils.to_string()));
+
+    expect![[r#"
+        main.rue:
+        fn main() -> Int {
+            helpers::ONE
+        }
+        renamed: utils.rue -> helpers.rue
+    "#]]
+    .assert_eq(&project.rename("helpers"));
 }
 
 #[test]
@@ -896,10 +1147,10 @@ fn test_rename_standard_library() {
         "#]],
     );
     check(
-        "fn main(payment: Payment) -> Int {\n    payment.amo$0unt\n}\n",
+        "fn main(proof: MerkleProof) -> Int {\n    proof.pa$0th\n}\n",
         expect![[r#"
-            error: `amount` isn't declared in the project, so it can't be renamed
-            error: `amount` isn't declared in the project, so it can't be renamed
+            error: `path` is part of the standard library, so it can't be renamed
+            error: `path` is part of the standard library, so it can't be renamed
         "#]],
     );
 
@@ -980,7 +1231,7 @@ fn test_rename_conflicts_in_the_same_scope() {
     check(
         &[(
             "main.rue",
-            "fn fi$0rst() -> Int {\n    1\n}\n\ntype second = Int;\n",
+            "fn fi$0rst() -> Int {\n    1\n}\n\ntype second = Int;\n\nfn main(num: second) -> Int {\n    num + first()\n}\n",
         )],
         "second",
         expect![[r#"
@@ -990,6 +1241,10 @@ fn test_rename_conflicts_in_the_same_scope() {
             }
 
             type second = Int;
+
+            fn main(num: second) -> Int {
+                num + second()
+            }
         "#]],
     );
 
@@ -1234,6 +1489,38 @@ fn main() -> Int {
 }
 
 #[test]
+fn test_rename_to_a_name_that_only_other_scopes_have() {
+    // The scope that has the new name isn't the one that the renamed binding is in, though it
+    // has another binding with the old name
+    check(
+        &[(
+            "main.rue",
+            r#"
+fn main(value: Int, other: Int) -> Int {
+    let inner = {
+        let value = 2;
+        val$0ue + 1
+    };
+    value + inner + other
+}
+"#,
+        )],
+        "other",
+        expect![[r#"
+            main.rue:
+
+            fn main(value: Int, other: Int) -> Int {
+                let inner = {
+                    let other = 2;
+                    other + 1
+                };
+                value + inner + other
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn test_rename_conflicts_with_an_import() {
     // The name is imported into a file that already has the new one
     let files = |main: &'static str| {
@@ -1279,7 +1566,7 @@ fn test_rename_conflicts_with_an_import() {
 #[test]
 fn test_rename_with_syntax_errors() {
     // The parts that still parse are renamed
-    check(
+    check_with_errors(
         &[(
             "main.rue",
             "fn main() -> Int {\n    let value = 42;\n    let other = value +;\n    val$0ue\n",
@@ -1294,7 +1581,7 @@ fn test_rename_with_syntax_errors() {
         "#]],
     );
 
-    check(
+    check_with_errors(
         &[
             (
                 "main.rue",
@@ -1325,7 +1612,7 @@ fn test_rename_with_syntax_errors() {
     );
 
     // Nothing is renamed where there's no name
-    check(
+    check_with_errors(
         &[("main.rue", "fn main() -> Int {\n    let = $0;\n")],
         "number",
         expect![[r#"

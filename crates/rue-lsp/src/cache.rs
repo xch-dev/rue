@@ -1,6 +1,5 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::ops::Range;
 use std::path::Path;
 
 use indexmap::IndexMap;
@@ -20,7 +19,7 @@ use tower_lsp_server::ls_types::{
 
 mod rename;
 
-pub use rename::{Moved, Rename, file_name};
+pub use rename::Rename;
 
 use crate::paths::path_to_uri;
 use crate::position::{position_to_offset, source_range};
@@ -218,11 +217,6 @@ impl Cache<Compiler> {
             &self.source.text,
             position,
         )
-    }
-
-    /// The range of byte offsets in the file that queries are about.
-    pub fn range(&self, span: Range<usize>) -> tower_lsp_server::ls_types::Range {
-        source_range(&self.source, span.start, span.end)
     }
 
     /// The scopes that are visible at the index, innermost first, so that a name that's shadowed
@@ -1472,6 +1466,40 @@ mod tests {
         assert_eq!(before.2.len(), 3);
         assert_eq!(duplicated, before);
         assert_eq!(widened, before);
+    }
+
+    #[test]
+    fn test_rename_with_duplicate_items() {
+        // Each place is only edited once, even if it's in the syntax map more than once
+        let project = TestProject::new(&[(
+            "main.rue",
+            "struct Point {\n    x: Int,\n}\n\nfn main(point: Point) -> Int {\n    point.$0x + point.x\n}\n",
+        )]);
+
+        let (uri, position) = project.cursor();
+
+        let (before, duplicated) = project
+            .backend()
+            .worker
+            .run(None, move |state| {
+                let cache = state.cache(&uri, None).unwrap();
+                let index = cache.position(position);
+
+                let before = cache.rename(index, "left");
+
+                for item in cache.syntax_map.items().cloned().collect::<Vec<_>>() {
+                    cache.syntax_map.add_item(item);
+                }
+
+                (before, cache.rename(index, "left"))
+            })
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+
+        let edits = before.clone().unwrap().unwrap().edits;
+        assert_eq!(edits.values().map(Vec::len).sum::<usize>(), 3);
+        assert_eq!(duplicated, before);
     }
 
     #[test]

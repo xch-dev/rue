@@ -624,6 +624,52 @@ async fn test_rename_session() {
 }
 
 #[tokio::test]
+async fn test_rename_file_without_client_support() {
+    let main = "fn main() -> Int {\n    utils::ONE\n}\n";
+    let project = TempProject::new(&[
+        ("main.rue", main),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    let uri = project.uri("main.rue");
+
+    // The client can create files as part of an edit, but not rename them, and doesn't ask
+    // whether a name can be renamed first
+    let mut client = Client::new();
+    let response = client
+        .request(
+            "initialize",
+            Some(json!({
+                "capabilities": {
+                    "workspace": {
+                        "workspaceEdit": {
+                            "documentChanges": true,
+                            "resourceOperations": ["create"],
+                        },
+                    },
+                },
+            })),
+        )
+        .await;
+    assert_eq!(
+        response.result().unwrap()["capabilities"]["renameProvider"],
+        json!(true)
+    );
+
+    client.notify("initialized", json!({})).await;
+    client.open(&uri, main).await;
+
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 1, 6, "helpers")))
+        .await;
+    let error = response.error().unwrap();
+    assert_eq!(error.code.code(), -32803);
+    assert_eq!(
+        error.message,
+        "`utils.rue` would have to be renamed, which the editor doesn't support"
+    );
+}
+
+#[tokio::test]
 async fn test_compile_panic_is_caught() {
     let project = TempProject::new(&[("main.rue", SOURCE), ("other.rue", "")]);
     let main = project.uri("main.rue");

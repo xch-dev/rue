@@ -225,12 +225,12 @@ When a test fails, `test` shows where it was in the source: the stack of calls t
 
 ## Language Server
 
-`rue-lsp` is a language server for editors that speak the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/). It talks over standard input and output, and compiles the project that each open file belongs to as you type, and provides:
+`rue-lsp` is a language server for editors that speak the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/). It talks over standard input and output, and compiles the project that each open file belongs to as you type. It provides:
 
-- **Diagnostics:** errors and lint warnings as you type, with quick fixes for the ones that have a suggestion.
-- **Hover:** the type of a binding, the signature of a function, and the fields of a struct or the variants of an enum.
+- **Diagnostics:** errors and lint warnings, with quick fixes for the ones that have a suggestion.
+- **Hover:** the type of a binding or a field, the signature of a function, and the fields of a struct or the variants of an enum.
 - **Go to definition and find references:** for functions, constants, bindings, types, struct fields, enum variants, generic parameters and modules, across the files of the project.
-- **Rename:** renames a function, constant, binding, parameter, type, struct field, enum variant, generic parameter or module, everywhere in the project that names it. A field or binding used as a shorthand (`Point { x }` or `let { x } = point;`) is written out, so the other keeps its name. A module that's a file or a directory is renamed with it. A rename is refused if the name is built in or part of the standard library, if the new name isn't a valid one, or if it would be declared twice or change what a name refers to.
+- **Rename:** renames a function, constant, binding, type, struct field, enum variant, generic parameter or module everywhere in the project, along with the file or directory of a module that's one. A shorthand field (`Point { x }`) is written out, so the field or the binding keeps its name. Names that are built in or from the standard library can't be renamed, and a new name that's invalid, already used, or would change what a name refers to is refused.
 - **Completion:** names in scope, the fields of a struct after a `.`, and the items of a module after `::`.
 - **Formatting:** the same as `rue fmt`, with the options from `Rue.toml`.
 
