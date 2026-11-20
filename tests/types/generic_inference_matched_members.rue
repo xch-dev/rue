@@ -236,3 +236,27 @@ test fn lambda_takes_both() -> Int {
         },
     )
 }
+
+fn first_of_three<T>(value: T | (T, T) | (T, (T, T))) -> T {
+    unchecked_cast(value)
+}
+
+fn first_of_three_reversed<T>(value: (T, (T, T)) | (T, T) | T) -> T {
+    unchecked_cast(value)
+}
+
+// Each union is decided from the candidates no union leaves out, here the `T ≥ 5` that `5` gives,
+// so the order of the members doesn't matter. `(5, (5, 5))` matches all three members, and only
+// `(T, (T, T))`'s are all implied. When the unions were decided one after another, the first
+// order made `T` `Int | (5, 5)`
+test fn three_members_match() -> Int {
+    let value: 5 | (5, 5) | (5, (5, 5)) = 5;
+    let result: 5 = first_of_three(value);
+    result + 0
+}
+
+test fn three_members_match_reversed() -> Int {
+    let value: 5 | (5, 5) | (5, (5, 5)) = 5;
+    let result: 5 = first_of_three_reversed(value);
+    result + 0
+}
