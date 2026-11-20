@@ -40,3 +40,21 @@ test fn inline_sum(x: Int, flag: Bool) -> Int {
         0
     }
 }
+
+inline fn pick(value: Int, flag: Bool) -> Int {
+    if flag {
+        value
+    } else {
+        0
+    }
+}
+
+// Warns: the argument `x * 2` can fail, and `pick` doesn't always evaluate it
+test fn inline_product_argument(x: Int, flag: Bool) -> Int {
+    pick(x * 2, flag)
+}
+
+// Doesn't warn: addition can't fail
+test fn inline_sum_argument(x: Int, flag: Bool) -> Int {
+    pick(x + 2, flag)
+}

@@ -1711,20 +1711,28 @@ mod tests {
             let result = run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost);
 
             if operand_limits {
-                let (failure, _) = result.unwrap_err();
+                // The trace runs it again with `LIMITS`, so it fails in the same place
+                let (failure, trace) = result.unwrap_err();
                 assert!(failure.message.contains("mod"), "{}", failure.message);
+                let trace = trace.unwrap().unwrap();
+                assert!(trace.contains("is_odd"), "{trace}");
             } else {
                 assert!(result.is_ok());
             }
         }
 
         // The flag turns the option on for `rue build` and `rue test`
+        let mut project = rue_options::find_project(&project.0, true)
+            .unwrap()
+            .unwrap();
+        assert!(!project.options.operand_limits);
         let Ok(Command::Build(args)) =
             Command::try_parse_from(["rue", "build", "--operand-limits"])
         else {
             panic!("expected build command");
         };
-        assert!(args.target.operand_limits);
+        args.target.apply(&mut project);
+        assert!(project.options.operand_limits);
         let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "--operand-limits"])
         else {
             panic!("expected test command");

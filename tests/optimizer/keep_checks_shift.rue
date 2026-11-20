@@ -80,7 +80,7 @@ test fn shift_four_byte_negative_constant(x: Int, flag: Bool) -> Int {
 
 // Division reads its divisor at any length, so only a zero divisor fails, whatever its encoding.
 // With `operand_limits`, the dividend `x` can also be too long, so both divisions are kept (see
-// `tests/operand_limits/keep_checks.rue`).
+// `tests/operand_limits/keep_checks.rue`, which has these two tests).
 
 test fn divide_long_zero_constant(x: Int, flag: Bool) -> Int {
     let quotient = x / (0x0000000000 as Int);

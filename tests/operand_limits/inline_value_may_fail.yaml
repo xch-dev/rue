@@ -32,6 +32,22 @@ tests:
   runtime_cost: 1085
   byte_cost: 324000
   total_cost: 325085
+- name: inline_product_argument
+  program: (a (i 5 (q 18 2 (q . 2)) (q)) 1)
+  debug_program: (a (i 5 (q 18 2 (q . 2)) (q)) 1)
+  solution: (5 1)
+  output: "10"
+  runtime_cost: 1329
+  byte_cost: 324000
+  total_cost: 325329
+- name: inline_sum_argument
+  program: (a (i 5 (q 16 2 (q . 2)) (q)) 1)
+  debug_program: (a (i 5 (q 16 2 (q . 2)) (q)) 1)
+  solution: (5 1)
+  output: "7"
+  runtime_cost: 1085
+  byte_cost: 324000
+  total_cost: 325085
 diagnostics:
 - |-
   This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_value_may_fail.rue:6:5
@@ -39,3 +55,6 @@ diagnostics:
 - |-
   This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_value_may_fail.rue:16:5
     note: Remove `inline` to always evaluate it here
+- |-
+  This argument can fail, but `pick` is an `inline fn` that doesn't always evaluate its parameter `value`, so its check can be skipped at inline_value_may_fail.rue:54:10
+    note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function

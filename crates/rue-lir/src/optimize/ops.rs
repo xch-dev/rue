@@ -1444,6 +1444,40 @@ mod tests {
         }
     }
 
+    // `LIMITS` limits the operands of `modpow` to 256 bytes and the scalar of `g1_multiply` and
+    // `g2_multiply` to 1024 bytes, so they're only folded past those lengths without
+    // `operand_limits`
+    #[test]
+    fn test_limited_operators_only_fold_without_operand_limits() {
+        let mut arena = Arena::new();
+        let long_base = arena.alloc(Lir::Atom(vec![1; 257]));
+        let two = atom(&mut arena, 2);
+        let seven = atom(&mut arena, 7);
+        // The generator of G1
+        let generator = "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb";
+        let point = arena.alloc(Lir::Atom(
+            (0..generator.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&generator[i..i + 2], 16).unwrap())
+                .collect(),
+        ));
+        let long_scalar = arena.alloc(Lir::Atom(vec![1; 1025]));
+
+        for (options, folded) in [(UNLIMITED, true), (LIMITED, false)] {
+            let result = opt_modpow(&mut arena, options, long_base, two, seven);
+            assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
+
+            let result = opt_g1_multiply(&mut arena, options, point, long_scalar);
+            assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
+        }
+
+        // Short operands fold either way
+        for options in [UNLIMITED, LIMITED] {
+            let result = opt_modpow(&mut arena, options, two, two, seven);
+            assert!(matches!(&arena[result], Lir::Atom(atom) if *atom == [4]));
+        }
+    }
+
     struct Rng(u64);
 
     impl Rng {

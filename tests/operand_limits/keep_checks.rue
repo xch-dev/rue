@@ -86,3 +86,33 @@ test fn long_const_expression() -> Int {
             % 7
     }
 }
+
+// The `product` builtin is checked like `*`
+test fn conditional_builtin_product(x: Int, flag: Bool) -> Int {
+    let p = product([x, 3]);
+    if flag {
+        p
+    } else {
+        0
+    }
+}
+
+// A short divisor is allowed whatever its encoding, but the dividend `x` isn't known at compile
+// time, so both divisions are kept (see `tests/optimizer/keep_checks_shift.rue`)
+test fn divide_long_zero_constant(x: Int, flag: Bool) -> Int {
+    let quotient = x / (0x0000000000 as Int);
+    if flag {
+        quotient
+    } else {
+        0
+    }
+}
+
+test fn divide_long_one_constant(x: Int, flag: Bool) -> Int {
+    let quotient = x / (0x0000000001 as Int);
+    if flag {
+        quotient
+    } else {
+        0
+    }
+}

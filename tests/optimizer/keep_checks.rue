@@ -1658,3 +1658,13 @@ test fn long_constant_product(flag: Bool) -> Int {
         0
     }
 }
+
+// The `product` builtin can't fail either, so it's moved into the branch
+test fn conditional_builtin_product(x: Int, flag: Bool) -> Int {
+    let p = product([x, 3]);
+    if flag {
+        p
+    } else {
+        0
+    }
+}
