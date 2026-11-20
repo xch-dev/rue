@@ -311,6 +311,10 @@ impl Cache<Compiler> {
                     CompletionContext::Document
                         | CompletionContext::Item
                         | CompletionContext::Statement
+                        | CompletionContext::StructFields {
+                            specified_fields: Some(_),
+                            ..
+                        }
                 ) =>
             {
                 (CompletionContext::Expression, first)
@@ -385,6 +389,11 @@ impl Cache<Compiler> {
             T![,] if parent == Some(SyntaxKind::AssertStmt) => Some(CompletionContext::Expression),
             // The list of a `for` comes after `in`, which is an identifier there
             SyntaxKind::Ident if parent == Some(SyntaxKind::ForExpr) && token.text() == "in" => {
+                Some(CompletionContext::Expression)
+            }
+            // A spread in a struct initializer is the value it's updated from, rather than the
+            // name of a field
+            T![...] if parent == Some(SyntaxKind::StructInitializerSpread) => {
                 Some(CompletionContext::Expression)
             }
             _ => None,
@@ -464,9 +473,10 @@ impl Cache<Compiler> {
             return vec![];
         }
 
-        // A `.` is followed by a field, unless it's the end of the `..` of a slice, which is
-        // followed by an expression
+        // A `.` is followed by a field, unless it's the end of a spread or of the `..` of a
+        // slice, which are followed by an expression
         if before.ends_with('.')
+            && !before.ends_with("...")
             && !matches!(context, CompletionContext::StructFields { .. })
             && !self.after_range(index)
         {

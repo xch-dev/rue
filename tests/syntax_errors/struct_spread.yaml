@@ -1,0 +1,6 @@
+diagnostics:
+- Unused parameter `point` at struct_spread.rue:7:26
+- Undeclared symbol `z` at struct_spread.rue:8:16
+- Expected one of `,`, `}`, found `:` at struct_spread.rue:8:17
+- Unused parameter `point` at struct_spread.rue:11:30
+- Expected expression, found `,` at struct_spread.rue:12:16

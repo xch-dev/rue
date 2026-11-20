@@ -1457,3 +1457,124 @@ fn test_complete_in_for() {
         "fn main(items: List<Int>) -> Int { for item in items fold total = 0 { total } + $0 }";
     assert_eq!(offered(after, &names), "items sha256");
 }
+
+#[test]
+fn test_complete_struct_initializer_fields_after_spread() {
+    // The fields that aren't written yet are suggested, though the spread provides them.
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+fn main(point: Point) -> Point {
+    Point { ...point, x: 1, $0 }
+}
+"#,
+        expect![[r#"
+            y [Field] Int
+            z [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_struct_initializer_spread() {
+    // A spread is followed by an expression, rather than the name of a field.
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(point: Point) -> Point {
+    Point { ...$0 }
+}
+"#,
+        expect![[r#"
+            super [Module]
+            project [Module]
+            point [Variable] Point
+            main [Function] fn(point: Point) -> Point
+            Point [Struct]
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            sha256 [Function] fn(value: Bytes) -> Bytes32
+            sha256_inline [Function] fn(value: Bytes) -> Bytes32
+            keccak256 [Function] fn(value: Bytes) -> Bytes32
+            keccak256_inline [Function] fn(value: Bytes) -> Bytes32
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
+            substr [Function] fn(value: Bytes, start: Int) -> Bytes
+            sum [Function] fn(values: List<Int>) -> Int
+            difference [Function] fn(values: List<Int>) -> Int
+            product [Function] fn(values: List<Int>) -> Int
+            divmod [Function] fn(numerator: Int, denominator: Int) -> (Int, Int)
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            any [Function] fn(values: List<Bool>) -> Bool
+            all [Function] fn(values: List<Bool>) -> Bool
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
+            g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_map [Function] fn(data: Bytes) -> PublicKey
+            g2_sum [Function] fn(values: List<Signature>) -> Signature
+            g2_difference [Function] fn(values: List<Signature>) -> Signature
+            g2_map [Function] fn(data: Bytes) -> Signature
+            bls_pairing_identity [Function] fn(g1: PublicKey, g2: Signature, ...) -> nil
+            bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
+            secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
+            secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
+            keccak256_verify [Function] fn(value: Bytes, hash: Bytes32) -> nil
+            INFINITY_G1 [Constant] PublicKey
+            INFINITY_G2 [Constant] Signature
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_struct_initializer_spread_value() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(point: Point) -> Point {
+    Point { ...po$0 }
+}
+"#,
+        expect![[r#"
+            point [Variable] Point
+            Point [Struct]
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            project [Module]
+            product [Function] fn(values: List<Int>) -> Int
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_struct_initializer_spread_field() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+struct Line {
+    start: Point,
+    end: Point,
+}
+
+fn main(line: Line) -> Point {
+    Point { ...line.$0 }
+}
+"#,
+        expect![[r#"
+            start [Field] Point
+            end [Field] Point
+        "#]],
+    );
+}

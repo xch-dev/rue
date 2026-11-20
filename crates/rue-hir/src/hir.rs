@@ -55,7 +55,7 @@ impl Hir {
     /// The nodes directly inside of this one, in the order they're written. A block's statements
     /// are included (see [`Statement::hirs`]), but the values of its bindings and a lambda's body
     /// are stored in their symbols, so they aren't. A struct initializer includes the default
-    /// values of the fields that were left out.
+    /// values of the fields that were left out, and the tail of the struct it updates.
     pub fn children(&self) -> impl Iterator<Item = HirId> + '_ {
         let children = match self {
             Self::Unresolved
@@ -73,6 +73,7 @@ impl Hir {
             Self::List(list) => Children::list(None, &list.items),
             Self::Struct(initializer) => Children {
                 fields: &initializer.fields,
+                body: initializer.tail,
                 ..Children::default()
             },
             Self::FieldAccess(access) => Children::fixed([Some(access.value), None, None]),
@@ -152,8 +153,14 @@ pub struct List {
 #[derive(Debug, Clone)]
 pub struct StructInitializer {
     pub ty: TypeId,
-    /// Every field of the struct, in the order they're declared.
+    /// The fields of the struct, in the order they're declared. This is every field, unless
+    /// there's a tail.
     pub fields: Vec<StructField>,
+    /// The rest of the struct after the fields, which is the part of the value being updated
+    /// (`...base`) that comes after the last field that was written. It's used as it is, rather
+    /// than each of its fields being copied.
+    pub tail: Option<HirId>,
+    /// Whether the fields end in nil. A struct with a tail ends however the tail does.
     pub nil_terminated: bool,
 }
 
@@ -166,6 +173,17 @@ impl StructInitializer {
             .iter()
             .filter(|field| !field.is_default)
             .map(|field| field.value)
+            .chain(self.tail)
+    }
+
+    /// The values the struct is made of, which are its fields followed by its tail.
+    pub fn values(&self) -> impl Iterator<Item = HirId> + '_ {
+        self.fields.iter().map(|field| field.value).chain(self.tail)
+    }
+
+    /// Whether the values end in nil, rather than the last of them being the rest of the struct.
+    pub fn values_nil_terminated(&self) -> bool {
+        self.nil_terminated && self.tail.is_none()
     }
 }
 

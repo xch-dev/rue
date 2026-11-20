@@ -1,0 +1,17 @@
+diagnostics:
+- A struct can only be spread at the start of an initializer, before its fields at struct_update_errors.rue:25:19
+- A struct can only be spread at the start of an initializer, before its fields at struct_update_errors.rue:29:19
+- Only one struct can be spread in an initializer at struct_update_errors.rue:34:23
+- Undeclared symbol `missing` at struct_update_errors.rue:34:26
+- Cannot spread a value of type `Other` in an initializer of `Point`, since it isn't a `Point` at struct_update_errors.rue:39:13
+- Cannot spread a value of type `(Int, (Int, (Int, nil)))` in an initializer of `Point`, since it isn't a `Point` at struct_update_errors.rue:43:13
+- Cannot spread a value of type `Point | nil` in an initializer of `Point`, since it isn't a `Point` at struct_update_errors.rue:48:13
+- Cannot spread a value of type `Shape` in an initializer of `Shape::Rect`, since it isn't a `Shape::Rect` at struct_update_errors.rue:53:19
+- Cannot spread a value of type `Shape::Square` in an initializer of `Shape::Rect`, since it isn't a `Shape::Rect` at struct_update_errors.rue:57:19
+- Cannot copy field `value` from the spread value, since its type `Int` isn't assignable to `Bytes`; specify the field instead at struct_update_errors.rue:62:20
+- Cannot assign `"1"` to `Int` without a cast, since they are semantically different at struct_update_errors.rue:67:23
+- Unknown field `w` on type `Point` at struct_update_errors.rue:67:31
+- Duplicate field `y` specified at struct_update_errors.rue:67:43
+- Undeclared symbol `missing` at struct_update_errors.rue:72:16
+- Unused parameter `point` at struct_update_errors.rue:76:27
+- Cannot initialize non-struct type `Int` at struct_update_errors.rue:77:5

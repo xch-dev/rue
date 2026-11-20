@@ -1,0 +1,82 @@
+tests:
+- name: every_field
+  program: (q 1 2)
+  debug_program: (c (q . 1) (c (q . 2) ()))
+  output: (1 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: every_field_out_of_order
+  program: (q 1 2)
+  debug_program: (c (q . 1) (c (q . 2) ()))
+  output: (1 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: only_field
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: no_fields
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: every_field_of_call
+  program: (a (q 3 () (a 2 5) (q 1 2)) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 ())) (q 8)) 1) 1))
+  debug_program: (a (q 3 () (a 2 5) (c (q . 1) (c (q . 2) ()))) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 ())) (q 8 (q . "assertion failed at unused_struct_spread.rue:13:5"))) 1) 1))
+  byte_cost: 900000
+  clvm_error: path into atom
+- name: every_field_on_lines
+  program: (c (+ 4 4 4 4 4 4 4 4) (c (+ 10 10 10 10 10 10 10 10) ()))
+  debug_program: (c (+ (+ (+ (+ (+ (+ (+ (f 2) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (c (+ (+ (+ (+ (+ (+ (+ (f (r 2)) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) ()))
+  byte_cost: 588000
+  clvm_error: path into atom
+- name: one_field
+  program: (c (q . 1) 6)
+  debug_program: (c (q . 1) (r 2))
+  byte_cost: 108000
+  clvm_error: path into atom
+- name: no_fields_written
+  program: "2"
+  debug_program: "2"
+  byte_cost: 12000
+  clvm_error: path into atom
+- name: allowed
+  program: (q 1 2)
+  debug_program: (c (q . 1) (c (q . 2) ()))
+  output: (1 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: expected
+  program: (a (q 16 4 10) (c (q 1 2) 1))
+  debug_program: (a (q 16 (f 2) (f (r 2))) (c (c (q . 1) (c (q . 2) ())) 1))
+  output: "3"
+  runtime_cost: 1090
+  byte_cost: 324000
+  total_cost: 325090
+diagnostics:
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:19:13
+    help: Remove the spread
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:23:13
+    help: Remove the spread
+- |-
+  Every field of `Wrapper` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:27:15
+    help: Remove the spread
+- |-
+  Every field of `Empty` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:32:13
+    help: Remove the spread
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:37:13
+    help: Remove the spread
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:42:9
+    help: Remove the spread

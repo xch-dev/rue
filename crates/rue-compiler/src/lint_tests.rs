@@ -1863,6 +1863,92 @@ fn main(value: Bytes, other: Bytes, index: Int) -> Bytes {
 }
 
 #[test]
+fn unused_struct_spread_is_removed() {
+    let source = "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+struct Empty {}
+
+fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
+    let lines = Point {
+        ...point,
+        x: 1,
+        y: 2,
+    };
+    let call = Point { ...make(n), x: 1, y: 2 };
+    let comment = Point { ...point /* why */, x: 1, y: 2 };
+    let trailing = Point {
+        ...point, // why
+        x: 1,
+        y: 2,
+    };
+    let tight = Point {...point,x: 1, y: 2 };
+    let used = Point { ...point, x: 1 };
+    ([Point { ...point, x: 1, y: 2 }, lines, call, comment, trailing, tight, used], Empty { ...empty })
+}
+
+fn make(n: Int) -> Point {
+    assert n > 0;
+    Point { x: n, y: n }
+}
+";
+
+    let fixed = fix(source);
+
+    // The call is still evaluated, since it can fail, and the comment before the comma would be
+    // removed with the spread, so those are left for the user. A comment after the comma is kept
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+struct Empty {}
+
+fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
+    let lines = Point {
+        x: 1,
+        y: 2,
+    };
+    let call = Point { ...make(n), x: 1, y: 2 };
+    let comment = Point { ...point /* why */, x: 1, y: 2 };
+    let trailing = Point {
+        // why
+        x: 1,
+        y: 2,
+    };
+    let tight = Point {x: 1, y: 2 };
+    let used = Point { ...point, x: 1 };
+    ([Point { x: 1, y: 2 }, lines, call, comment, trailing, tight, used], Empty { })
+}
+
+fn make(n: Int) -> Point {
+    assert n > 0;
+    Point { x: n, y: n }
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    // Nothing else used `empty`, which only the spread that was removed referred to
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 8: Unused parameter `empty`",
+            "Warning 13: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 14: Every field of `Point` is specified, so nothing is copied from the spread value",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
 fn unreachable_code_is_reported_once_at_its_start() {
     let source = "\
 fn main() -> Int {
