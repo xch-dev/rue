@@ -1,7 +1,7 @@
 use rue_diagnostic::{Applicability, Lint, SrcLoc, Suggestion};
 use rue_lexer::{Lexer, TokenKind};
 
-use crate::{LintContext, LintInput, text::comment_count};
+use crate::{LintContext, LintInput, UnusedSpreadReason, text::comment_count};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedStructSpread];
 
@@ -10,16 +10,17 @@ pub(crate) const LINTS: &[Lint] = &[Lint::UnusedStructSpread];
 /// these are recorded as sites then.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     for site in &input.sites.unused_struct_spreads {
-        let message = if site.constants {
-            format!(
-                "Every other field of `{}` is a constant, so nothing is read from the spread value",
-                site.struct_name
-            )
-        } else {
-            format!(
-                "Every field of `{}` is specified, so nothing is copied from the spread value",
-                site.struct_name
-            )
+        let name = &site.struct_name;
+        let message = match site.reason {
+            UnusedSpreadReason::Written => format!(
+                "Every field of `{name}` is specified, so nothing is copied from the spread value"
+            ),
+            UnusedSpreadReason::OtherConstants => format!(
+                "Every other field of `{name}` is a constant, so nothing is read from the spread value"
+            ),
+            UnusedSpreadReason::Constants => format!(
+                "Every field of `{name}` is a constant, so nothing is read from the spread value"
+            ),
         };
 
         let Some(diagnostic) = cx.report(Lint::UnusedStructSpread, site.srcloc.clone(), message)
