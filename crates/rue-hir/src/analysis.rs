@@ -9,9 +9,10 @@
 //! # What this guarantees, and what it trusts
 //!
 //! Automatic inlining, and evaluating unused bindings (and the values of type guards with nothing
-//! to check at runtime) for their effect, never skip a check that a build without them would run, as long as every value has the shape its type says it has. A
-//! value has the wrong shape if it's an atom where its type says a pair, or a pair where its type
-//! says an atom, at any depth. The compiler can't check that for these values, so it trusts it:
+//! to check at runtime) for their effect, never skip a check that a build without them would run,
+//! as long as every value has the shape its type says it has. A value has the wrong shape if it's
+//! an atom where its type says a pair, or a pair where its type says an atom, at any depth. The
+//! compiler can't check that for these values, so it trusts it:
 //!
 //! - The solution, which must match the parameter types of `main`, including every element of a
 //!   list and every field of a struct.
@@ -408,7 +409,7 @@ impl<'a, 'c> Uses<'a, 'c> {
             // A guard whose check doesn't use its value only evaluates it for its effect, the
             // same way as a binding that's never referenced
             Hir::Guard(guard) => {
-                if guard.value_uses() > 0 || self.cx.evaluated_unreferenced(guard.value) {
+                if guard.value_uses() > 0 || self.cx.guard_evaluates(hir, guard.value) {
                     self.hir(guard.value);
                 }
             }

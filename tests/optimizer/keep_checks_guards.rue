@@ -87,6 +87,34 @@ test fn failing_function_value(x: Int) -> Bool {
     apply(check, x)
 }
 
+// The failing call is only found after the binding that guards the call of the pure one has been
+// decided, so the guard in `apply` waits until then
+test fn failing_function_value_found_later(x: Int) -> Bool {
+    let a = apply(fn(i: Int) => i + 1, x);
+    let _e = apply(check, x);
+    a
+}
+
+// The same guard is lowered for a call where its value can't fail and one where it can
+inline fn call_is_int(f: fn() -> Int) -> Bool {
+    f() is Int
+}
+
+test fn inline_function_value(x: Int) -> Bool {
+    call_is_int(fn() => 1) && call_is_int(fn() => check(x))
+}
+
+// A guard whose value is evaluated isn't a static value, so the argument it's passed as is captured
+// rather than lowered again in the closure
+inline fn wrap(b: Bool) -> fn() -> Bool {
+    fn() => b
+}
+
+test fn guard_as_captured_argument(x: Int) -> Bool {
+    let f = wrap(check(x) is Int);
+    f()
+}
+
 test fn nested_guards(x: Int) -> Bool {
     (check(x) is Int) is Bool
 }

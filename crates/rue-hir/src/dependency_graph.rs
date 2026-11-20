@@ -63,7 +63,7 @@ pub struct DependencyGraph {
     // Keeps track of the type guards whose checks don't use their values that haven't been
     // decided yet, along with the symbol whose body they're in. They're decided in
     // `visit_effects`, the same way as unreferenced bindings
-    unvisited_guards: Vec<(Option<SymbolId>, HirId)>,
+    unvisited_guards: Vec<UnvisitedGuard>,
 
     // Keeps track of the direct calls to each function, so that a binding that calls the value of
     // one of its parameters can find the function values it's passed
@@ -74,6 +74,25 @@ pub struct DependencyGraph {
 
     // Finds whether the values of let statements may fail
     failures: FailureAnalysis,
+}
+
+/// A type guard whose check doesn't use its value, along with the symbol whose body it's in, which
+/// hasn't been decided by [`visit_effects`] yet.
+#[derive(Debug, Clone, Copy)]
+struct UnvisitedGuard {
+    current: Option<SymbolId>,
+    guard: HirId,
+    value: HirId,
+}
+
+/// What [`visit_effects`] does with a value that's only evaluated for its effect.
+enum Decision {
+    /// It can't fail, so it's never evaluated.
+    Never,
+    /// It's decided again once more calls are known.
+    Wait,
+    /// It's evaluated for its effect.
+    Evaluate,
 }
 
 impl DependencyGraph {
@@ -146,6 +165,17 @@ impl DependencyGraph {
     /// evaluated for its effect. Such a guard's value is otherwise not evaluated at all.
     pub fn is_guard_effect(&self, guard: HirId) -> bool {
         self.guard_effects.contains(&guard)
+    }
+
+    /// What [`visit_effects`] does with a value that's only evaluated for its effect. A value that
+    /// only fails if a function value that a parameter is passed fails is decided once the calls
+    /// that pass them have been visited.
+    fn decide(&self, db: &Database, effect: Effect) -> Decision {
+        match effect {
+            Effect::Never => Decision::Never,
+            Effect::IfCallsMayFail(calls) if !self.calls_may_fail(db, &calls) => Decision::Wait,
+            Effect::Always | Effect::IfCallsMayFail(_) => Decision::Evaluate,
+        }
     }
 
     /// Whether calling the function value of the parameter may fail, given every call of its
@@ -569,7 +599,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             let uses = guard.value_uses();
 
             if uses == 0 {
-                graph.unvisited_guards.push((graph.current, hir));
+                graph.unvisited_guards.push(UnvisitedGuard {
+                    current: graph.current,
+                    guard: hir,
+                    value: guard.value,
+                });
             }
 
             for _ in 0..uses {
@@ -835,15 +869,13 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) -> bool {
             continue;
         }
 
-        // A value that only fails if a function value that a parameter is passed fails is decided
-        // once the calls that pass them have been visited
-        match graph.failures.effect(db, symbol) {
-            Effect::Never => continue,
-            Effect::IfCallsMayFail(calls) if !graph.calls_may_fail(db, &calls) => {
+        match graph.decide(db, graph.failures.effect(db, symbol)) {
+            Decision::Never => continue,
+            Decision::Wait => {
                 graph.unvisited_effects.push((current, symbol));
                 continue;
             }
-            Effect::Always | Effect::IfCallsMayFail(_) => {}
+            Decision::Evaluate => {}
         }
 
         graph.effects.insert(symbol);
@@ -866,25 +898,21 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) -> bool {
     let guards = std::mem::take(&mut graph.unvisited_guards);
     let mut waiting = Vec::new();
 
-    for (current, hir) in guards {
-        let Hir::Guard(guard) = db.hir(hir) else {
-            unreachable!("only type guards are recorded");
-        };
-
-        match graph.failures.value_effect(db, guard.value) {
-            Effect::Never => continue,
-            Effect::IfCallsMayFail(calls) if !graph.calls_may_fail(db, &calls) => {
-                waiting.push((current, hir));
+    for unvisited in guards {
+        match graph.decide(db, graph.failures.value_effect(db, unvisited.value)) {
+            Decision::Never => continue,
+            Decision::Wait => {
+                waiting.push(unvisited);
                 continue;
             }
-            Effect::Always | Effect::IfCallsMayFail(_) => {}
+            Decision::Evaluate => {}
         }
 
-        graph.guard_effects.insert(hir);
+        graph.guard_effects.insert(unvisited.guard);
         added = true;
 
-        let outer = std::mem::replace(&mut graph.current, current);
-        visit_hir(db, graph, guard.value, false);
+        let outer = std::mem::replace(&mut graph.current, unvisited.current);
+        visit_hir(db, graph, unvisited.value, false);
         graph.current = outer;
 
         let referenced = std::mem::take(&mut graph.referenced);

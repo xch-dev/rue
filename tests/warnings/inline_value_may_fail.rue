@@ -163,6 +163,14 @@ inline fn guard_of_parameter_in_closure(value: Int) -> Bool {
     closure()
 }
 
+inline fn guard_of_failing_call(value: Int) -> Bool {
+    check(value) is Int
+}
+
+inline fn guard_of_failing_call_in_closure(value: Int) -> fn() -> Bool {
+    fn() => check(value) is Int
+}
+
 inline fn only_debugged(value: Int) -> Int {
     let copied = value;
     debug copied;
@@ -261,6 +269,13 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
     // Warns: the same, in a closure, which doesn't capture the parameter
     let z = guard_of_parameter_in_closure(check(x));
 
+    // Doesn't warn: the value of a type guard with nothing to check at runtime, which is
+    // evaluated since it may fail
+    let aa = guard_of_failing_call(check(x));
+
+    // Doesn't warn: the same, in a closure that's returned and captures the parameter
+    let ab = guard_of_failing_call_in_closure(check(x))();
+
     // Doesn't warn: allowed or expected
     #[allow(inline_value_may_fail)]
     let m = pick(check(x), flag);
@@ -291,7 +306,7 @@ fn inline_arguments(x: Int, flag: Bool) -> Int {
         + v
         + w
         + (
-            if y && z {
+            if y && z && aa && ab {
                 1
             } else {
                 0

@@ -162,12 +162,8 @@ impl Lowerer<'_, '_, '_> {
     /// Whether the value of the type guard, whose check doesn't use it, is evaluated for its
     /// effect where it's lowered. Like a binding that's never referenced, the dependency graph
     /// decides which guards may need to be, and the value must still be able to fail here.
-    pub(super) fn is_lowered_guard_effect(&self, guard: HirId) -> bool {
-        let Hir::Guard(value) = self.db.hir(guard) else {
-            return false;
-        };
-
-        self.graph.is_guard_effect(guard) && may_fail(self, value.value)
+    pub(super) fn is_lowered_guard_effect(&self, guard: HirId, value: HirId) -> bool {
+        self.graph.is_guard_effect(guard) && may_fail(self, value)
     }
 }
 
@@ -237,8 +233,8 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
         self.graph.is_guard_effect(guard)
     }
 
-    fn guard_evaluates(&self, guard: HirId, _value: HirId) -> bool {
-        self.is_lowered_guard_effect(guard)
+    fn guard_evaluates(&self, guard: HirId, value: HirId) -> bool {
+        self.is_lowered_guard_effect(guard, value)
     }
 
     fn is_parameter_used(&self, _function: SymbolId, parameter: SymbolId) -> bool {

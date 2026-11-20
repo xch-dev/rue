@@ -163,9 +163,7 @@ impl<'a> Visitor<'a> {
 
 #[cfg(test)]
 mod tests {
-    use rue_types::BuiltinTypes;
-
-    use rue_types::Check;
+    use rue_types::{BuiltinTypes, Check};
 
     use crate::{BindingSymbol, Block, ConstantSymbol, Guard, Value};
 
