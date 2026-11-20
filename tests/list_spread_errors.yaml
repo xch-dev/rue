@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot assign `Int` to `List<Any>` without a type guard, since the value isn't always a valid `List<Any>` at list_spread_errors.rue:5:17
+- Cannot assign `(Int, Int)` to `List<Any>` without a type guard, since the value isn't always a valid `List<Any>` at list_spread_errors.rue:6:26

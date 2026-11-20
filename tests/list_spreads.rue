@@ -1,0 +1,64 @@
+// A list can spread items before its last one, which puts the spread list's items in front of the
+// rest. Each list goes through `runtime`, which the compiler can't fold, so the spreads are run.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+test fn two_lists() {
+    let a = runtime([1, 2]);
+    let b = runtime([3, 4]);
+    assert deep_equal([...a, ...b], [1, 2, 3, 4]);
+}
+
+test fn items_between() {
+    let a = runtime([1, 2]);
+    let b = runtime([5]);
+    assert deep_equal([0, ...a, 3, 4, ...b], [0, 1, 2, 3, 4, 5]);
+}
+
+test fn ending_in_nil() {
+    let a = runtime([1, 2]);
+    assert deep_equal([...a, 3], [1, 2, 3]);
+}
+
+test fn empty_lists() {
+    let empty = runtime([] as List<Int>);
+    assert deep_equal([...empty, 1, ...empty], [1]);
+    assert deep_equal([...empty, ...empty], nil);
+}
+
+test fn three_lists() {
+    let a = runtime([1]);
+    let b = runtime([2, 3]);
+    let c = runtime([4]);
+    assert deep_equal([...a, ...b, ...c], [1, 2, 3, 4]);
+}
+
+// Every spread before the last item calls the same function, which is in the program once
+test fn shared() -> List<Int> {
+    let a = runtime([1]);
+    let b = runtime([2]);
+    let first = [...a, ...b];
+    let second = [...b, ...a];
+    [...first, ...second]
+}
+
+// A list literal's items are put in the list directly
+test fn literal() -> List<Int> {
+    let a = runtime([3]);
+    [...[1, 2], ...a]
+}
+
+// The list is a `List` of every item's type
+test fn item_types() -> List<Int | Bytes> {
+    let numbers = runtime([1, 2]);
+    let names = runtime(["a"]);
+    [...numbers, "b", ...names]
+}
+
+// With an expected type, the items are checked against its item type
+test fn expected_type() -> List<Int> {
+    [...runtime([1, 2]), 3]
+}

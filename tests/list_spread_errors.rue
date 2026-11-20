@@ -1,0 +1,8 @@
+// What's spread before the last item must be a list, and so must the last item if it's spread too,
+// since the list's type is a `List` of their items
+
+fn main(value: Int, pair: (Int, Int), list: List<Int>) -> List<Int> {
+    let a = [...value, 1];
+    let b = [...list, ...pair];
+    [...a, ...b]
+}

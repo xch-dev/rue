@@ -1,13 +1,14 @@
+use std::collections::HashMap;
+
 use log::debug;
-use rue_ast::AstListExpr;
-use rue_diagnostic::{DiagnosticKind, SpreadTarget};
-use rue_hir::{Hir, List, Value};
-use rue_types::{Pair, Type, TypeId};
+use rue_ast::{AstListExpr, AstNode};
+use rue_hir::{FunctionCall, Hir, HirId, List, Value};
+use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
 
 use super::call_inference::{
     compile_refined_element, holds_other_pairs, pair_parts, record_element,
 };
-use crate::Compiler;
+use crate::{Compiler, compile_expr};
 
 pub fn compile_list_expr(
     ctx: &mut Compiler,
@@ -23,24 +24,22 @@ pub fn compile_list_expr(
 
     let len = list.items().count();
 
+    if list
+        .items()
+        .take(len.saturating_sub(1))
+        .any(|item| item.spread().is_some())
+    {
+        return compile_list_with_spreads(ctx, list, expected_type);
+    }
+
     // The type the last item was expected to be, which an item past the end of the pairs the
     // expected type has gets (see below)
     let mut last_item_type = None;
 
-    for (i, item) in list.items().enumerate() {
-        let is_spread = if let Some(spread) = item.spread() {
-            if i == len - 1 {
-                true
-            } else {
-                ctx.diagnostic(
-                    &spread,
-                    DiagnosticKind::NonFinalSpread(SpreadTarget::ListItem),
-                );
-                false
-            }
-        } else {
-            false
-        };
+    for item in list.items() {
+        // Only the last item can be spread here, since a list that spreads an earlier one is
+        // compiled by `compile_list_with_spreads`
+        let is_spread = item.spread().is_some();
 
         let item_type = if is_spread {
             nil_terminated = false;
@@ -98,4 +97,132 @@ pub fn compile_list_expr(
     }));
 
     Value::new(hir, ty)
+}
+
+/// Compiles a list that spreads an item before its last one, such as `[...items, last]`. Each
+/// such spread is a call to the builtin function that puts a list's items in front of the rest
+/// of the list (see `Builtins::spread_list`), unless what's spread is a list literal, whose items
+/// are put in the list directly. The list's type is a `List` of every item's type and every
+/// spread list's item types, so the spread lists, including a spread last item, must be lists.
+fn compile_list_with_spreads(
+    ctx: &mut Compiler,
+    list: &AstListExpr,
+    expected_type: Option<TypeId>,
+) -> Value {
+    let types = ctx.builtins().types;
+    let any_list = list_of(ctx, types.permissive_any);
+    let expected_item = expected_type
+        .and_then(|ty| pair_parts(ctx, ty))
+        .map(|(first, _)| first);
+
+    let mut items = Vec::new();
+    let mut item_types = Vec::new();
+
+    for item in list.items() {
+        let Some(expr) = item.expr() else {
+            debug!("Unresolved list item expr");
+            items.push((ctx.unresolved().hir, item.spread().is_some()));
+            continue;
+        };
+
+        if item.spread().is_some() {
+            let value = compile_expr(ctx, &expr, expected_type);
+            ctx.assign_type(expr.syntax(), value.ty, any_list);
+            item_types.extend(list_item_types(ctx, value.ty));
+            items.push((value.hir, true));
+        } else {
+            let value = compile_expr(ctx, &expr, expected_item);
+            item_types.push(value.ty);
+            items.push((value.hir, false));
+        }
+    }
+
+    // The list is built from the end: the items after each spread are the rest it's put in
+    // front of
+    let mut rest = match items.last() {
+        Some(&(hir, true)) => {
+            items.pop();
+            hir
+        }
+        _ => ctx.builtins().nil.hir,
+    };
+    let mut pending: Vec<HirId> = Vec::new();
+
+    for (hir, spread) in items.into_iter().rev() {
+        if !spread {
+            pending.push(hir);
+            continue;
+        }
+
+        if let Hir::List(literal) = ctx.hir(hir).clone()
+            && literal.nil_terminated
+        {
+            pending.extend(literal.items.into_iter().rev());
+            continue;
+        }
+
+        rest = prepend(ctx, &mut pending, rest);
+
+        let spread_list = ctx.builtins().spread_list;
+        let function = ctx.alloc_hir(Hir::Reference(spread_list));
+        rest = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
+            function,
+            args: vec![hir, rest],
+            nil_terminated: true,
+        }));
+    }
+
+    let hir = prepend(ctx, &mut pending, rest);
+
+    let item_type = ctx.alloc_type(Type::Union(Union::new(item_types)));
+    let ty = list_of(ctx, item_type);
+
+    Value::new(hir, ty)
+}
+
+/// A list of the pending items, which were collected in reverse, in front of the rest.
+fn prepend(ctx: &mut Compiler, pending: &mut Vec<HirId>, rest: HirId) -> HirId {
+    if pending.is_empty() {
+        return rest;
+    }
+
+    let mut items: Vec<HirId> = pending.drain(..).rev().collect();
+    items.push(rest);
+
+    ctx.alloc_hir(Hir::List(List {
+        items,
+        nil_terminated: false,
+    }))
+}
+
+/// The types of the items of a list type, following its pairs until they repeat, such as `T` for
+/// `List<T>`, or `1` and `2` for `[1, 2]`.
+fn list_item_types(ctx: &mut Compiler, mut ty: TypeId) -> Vec<TypeId> {
+    let mut item_types = Vec::new();
+
+    // A `List<T>`'s rest is the same list again, which ends the loop, so this only bounds a
+    // type whose pairs go on differently, such as a long tuple
+    for _ in 0..MAX_LIST_ITEM_TYPES {
+        let Some((first, rest)) = pair_parts(ctx, ty) else {
+            break;
+        };
+
+        item_types.push(first);
+
+        if ctx.is_assignable(rest, ty) && ctx.is_assignable(ty, rest) {
+            break;
+        }
+
+        ty = rest;
+    }
+
+    item_types
+}
+
+const MAX_LIST_ITEM_TYPES: usize = 256;
+
+fn list_of(ctx: &mut Compiler, item: TypeId) -> TypeId {
+    let types = ctx.builtins().types;
+    let mappings = HashMap::from([(types.list_generic, item)]);
+    substitute_with_mappings(ctx.types_mut(), types.list, &mappings)
 }
