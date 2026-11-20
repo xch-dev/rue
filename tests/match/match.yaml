@@ -128,7 +128,7 @@ tests:
   total_cost: 781922
 - name: every_combination
   program: (a (i (a (i (= 8 (q . 1)) (q 9 10 (q . 1)) (q)) 1) (q 1 . 1) (q 2 (i (= 8 (q . 1)) (q 1 . 2) (q 3 (= 10 (q . 1)) (q . 3) (q . 4))) 1)) 1)
-  debug_program: (a (i (a (i (= (f (f 2)) (q . 1)) (q 2 (i (= (f (r 2)) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 2 (i (= (f (f 2)) (q . 1)) (q 1 . 2) (q 2 (i (= (f (r 2)) (q . 1)) (q 1 . 3) (q 1 . 4)) 1)) 1)) 1)
+  debug_program: (a (i (a (i (= (f (f 2)) (q . 1)) (q 9 (f (r 2)) (q . 1)) (q)) 1) (q 1 . 1) (q 2 (i (= (f (f 2)) (q . 1)) (q 1 . 2) (q 2 (i (= (f (r 2)) (q . 1)) (q 1 . 3) (q 1 . 4)) 1)) 1)) 1)
   solution: (((2 3) 1 2))
   output: "3"
   runtime_cost: 1333
