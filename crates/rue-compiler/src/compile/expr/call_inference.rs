@@ -1253,20 +1253,15 @@ impl ArgumentOrder {
     /// the type expected of the call, so this one waits for it rather than widen a literal the
     /// expected type keeps.
     ///
-    /// For a pair or list whose lambdas wait for it (see `waits_for`), only the generics its other
-    /// elements write count, since its lambdas are compiled against what this one infers.
+    /// A pair or list whose lambdas wait for it doesn't count (see `waits_for`): its lambdas are
+    /// compiled against what this one infers, and this one writes nothing its other elements do.
     fn would_change_earlier(&self, i: usize, state: &State<'_>) -> bool {
         self.earlier_others(i).any(|other| {
-            let changes = |generic: &TypeId| {
-                state.mappings.contains_key(generic) && self.arguments[i].writes.contains(generic)
-            };
-
-            match &self.arguments[other].elements {
-                Some(elements) if self.waits_for(other, i) => {
-                    elements.other_writes.iter().any(changes)
-                }
-                _ => self.reads_now(other, state).iter().any(changes),
-            }
+            !self.waits_for(other, i)
+                && self.reads_now(other, state).iter().any(|generic| {
+                    state.mappings.contains_key(generic)
+                        && self.arguments[i].writes.contains(generic)
+                })
         })
     }
 
