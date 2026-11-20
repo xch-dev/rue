@@ -58,7 +58,47 @@ test fn item_types() -> List<Int | Bytes> {
     [...numbers, "b", ...names]
 }
 
-// With an expected type, the items are checked against its item type
-test fn expected_type() -> List<Int> {
-    [...runtime([1, 2]), 3]
+// With an expected type, the items are compiled against its item type, which gives an untyped
+// lambda its parameter type
+test fn expected_type() -> Int {
+    let increments: List<fn(value: Int) -> Int> = runtime([fn(value: Int) => value + 1]);
+    let functions: List<fn(value: Int) -> Int> = [...increments, fn(value) => value * 2];
+    apply_all(functions, 5)
+}
+
+fn apply_all(functions: List<fn(value: Int) -> Int>, value: Int) -> Int {
+    if functions is (fn(value: Int) -> Int, List<fn(value: Int) -> Int>) {
+        apply_all(functions.rest, functions.first(value))
+    } else {
+        value
+    }
+}
+
+// In a generic call's argument, the spread list's items infer the call's generic, which gives a
+// later lambda its parameter type, as they would in a list without the spread
+test fn lambda_after_a_spread_in_a_generic_call() -> Int {
+    let increments: List<fn(value: Int) -> Int> = runtime([fn(value: Int) => value + 1]);
+    let f = first_or([...increments, fn(value) => value * 2], fn(value: Int) => value);
+    f(5)
+}
+
+fn first_or<T>(list: List<T>, default: T) -> T {
+    if list is (T, List<T>) {
+        list.first
+    } else {
+        default
+    }
+}
+
+// A spread tuple adds each of its items' types
+test fn tuple_item_types() -> List<Int | Bytes> {
+    let tuple: (Int, (Bytes, nil)) = runtime((1, ("a", nil)));
+    [...tuple, 3]
+}
+
+// A spread list literal that ends in a spread itself puts its items in the list, and spreads its
+// last one
+test fn literal_ending_in_a_spread() {
+    let a = runtime([1, 2]);
+    assert deep_equal([...[0, ...a], 3], [0, 1, 2, 3]);
 }

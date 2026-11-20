@@ -2455,6 +2455,13 @@ fn field_generics(
 
 /// The types of the first and rest of the pairs the type can be, each a union if there are
 /// several, which a pair or list expected to be the type is compiled against.
+/// `List<T>` with the item type in place of `T`.
+pub(crate) fn list_of(ctx: &mut Compiler, item: TypeId) -> TypeId {
+    let types = ctx.builtins().types;
+    let mappings = HashMap::from([(types.list_generic, item)]);
+    substitute_with_mappings(ctx.types_mut(), types.list, &mappings)
+}
+
 pub(crate) fn pair_parts(ctx: &mut Compiler, ty: TypeId) -> Option<(TypeId, TypeId)> {
     let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, false);
 

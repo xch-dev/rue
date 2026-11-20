@@ -6,3 +6,16 @@ fn main(value: Int, pair: (Int, Int), list: List<Int>) -> List<Int> {
     let b = [...list, ...pair];
     [...a, ...b]
 }
+
+// The spread lists' item types are part of the list's type
+export fn names(names: List<Bytes>) -> List<Int> {
+    [...names, 1]
+}
+
+// A type whose pairs go on without repeating where they started has `Any` for the items past the
+// first 1024, so the list's type can't be narrower than what it holds
+type Cycle = nil | (Int, (Bytes, (Bool, Cycle)));
+
+export fn cycle(value: (Int, Cycle)) -> List<Int | Bytes | Bool> {
+    [...value, 1]
+}

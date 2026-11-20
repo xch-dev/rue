@@ -1,3 +1,5 @@
 diagnostics:
 - Cannot assign `Int` to `List<Any>` without a type guard, since the value isn't always a valid `List<Any>` at list_spread_errors.rue:5:17
 - Cannot assign `(Int, Int)` to `List<Any>` without a type guard, since the value isn't always a valid `List<Any>` at list_spread_errors.rue:6:26
+- Cannot assign `List<Bytes | 1>` to `List<Int>` without a cast, since they are semantically different at list_spread_errors.rue:11:50
+- Cannot assign `List<Int | Bytes | true | false | Atom | 2 @ (Atom | <2>, Atom | <2>) | 1>` to `List<Int | Bytes | true | false>`, since they are incompatible at list_spread_errors.rue:19:66

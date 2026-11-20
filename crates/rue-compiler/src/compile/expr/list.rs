@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-
 use log::debug;
 use rue_ast::{AstListExpr, AstNode};
 use rue_hir::{FunctionCall, Hir, HirId, List, Value};
-use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
+use rue_types::{Pair, Type, TypeId, Union};
 
 use super::call_inference::{
-    compile_refined_element, holds_other_pairs, pair_parts, record_element,
+    compile_refined_element, holds_other_pairs, list_of, pair_parts, record_element,
 };
 use crate::{Compiler, compile_expr};
 
@@ -115,6 +113,11 @@ fn compile_list_with_spreads(
         .and_then(|ty| pair_parts(ctx, ty))
         .map(|(first, _)| first);
 
+    // As in a list without these spreads, each item can refine what the later ones are expected
+    // to be, such as a lambda's parameter type in a generic call's argument
+    let hint =
+        ctx.is_expected_type_hint() || expected_type.is_some_and(|ty| holds_other_pairs(ctx, ty));
+
     let mut items = Vec::new();
     let mut item_types = Vec::new();
 
@@ -126,12 +129,15 @@ fn compile_list_with_spreads(
         };
 
         if item.spread().is_some() {
-            let value = compile_expr(ctx, &expr, expected_type);
+            let value =
+                ctx.with_expected_type_hint(hint, |ctx| compile_expr(ctx, &expr, expected_type));
+            record_element(ctx, value.ty, expected_type);
             ctx.assign_type(expr.syntax(), value.ty, any_list);
             item_types.extend(list_item_types(ctx, value.ty));
             items.push((value.hir, true));
         } else {
-            let value = compile_expr(ctx, &expr, expected_item);
+            let (value, item_type) = compile_refined_element(ctx, &expr, expected_item, hint);
+            record_element(ctx, value.ty, item_type);
             item_types.push(value.ty);
             items.push((value.hir, false));
         }
@@ -174,7 +180,20 @@ fn compile_list_with_spreads(
 
     let hir = prepend(ctx, &mut pending, rest);
 
-    let item_type = ctx.alloc_type(Type::Union(Union::new(item_types)));
+    // The same type is only in the union once, so that a union of the same function type, which
+    // can't be called, isn't made from a list of functions
+    let mut members: Vec<TypeId> = Vec::new();
+
+    for ty in item_types {
+        if !members
+            .iter()
+            .any(|&member| ctx.is_assignable(ty, member) && ctx.is_assignable(member, ty))
+        {
+            members.push(ty);
+        }
+    }
+
+    let item_type = ctx.alloc_type(Type::Union(Union::new(members)));
     let ty = list_of(ctx, item_type);
 
     Value::new(hir, ty)
@@ -195,34 +214,36 @@ fn prepend(ctx: &mut Compiler, pending: &mut Vec<HirId>, rest: HirId) -> HirId {
     }))
 }
 
-/// The types of the items of a list type, following its pairs until they repeat, such as `T` for
-/// `List<T>`, or `1` and `2` for `[1, 2]`.
-fn list_item_types(ctx: &mut Compiler, mut ty: TypeId) -> Vec<TypeId> {
+/// The types of the items of a list type, following its pairs until they end or repeat, such as
+/// `T` for `List<T>`, or `1` and `2` for `[1, 2]`. A type whose pairs go on for longer without
+/// repeating, such as a recursive type whose pairs cycle through more than two types, or a very
+/// long tuple, has `Any` for the items past that, so the list's type is never narrower than what
+/// it holds.
+fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
     let mut item_types = Vec::new();
+    let mut current = ty;
 
-    // A `List<T>`'s rest is the same list again, which ends the loop, so this only bounds a
-    // type whose pairs go on differently, such as a long tuple
     for _ in 0..MAX_LIST_ITEM_TYPES {
-        let Some((first, rest)) = pair_parts(ctx, ty) else {
-            break;
+        let Some((first, rest)) = pair_parts(ctx, current) else {
+            return item_types;
         };
 
         item_types.push(first);
 
-        if ctx.is_assignable(rest, ty) && ctx.is_assignable(ty, rest) {
-            break;
+        // A `List<T>`'s rest is the same list again, and an alternating list's comes back to it
+        // after two pairs
+        if [current, ty]
+            .into_iter()
+            .any(|seen| ctx.is_assignable(rest, seen) && ctx.is_assignable(seen, rest))
+        {
+            return item_types;
         }
 
-        ty = rest;
+        current = rest;
     }
 
+    item_types.push(ctx.builtins().types.recursive_any);
     item_types
 }
 
-const MAX_LIST_ITEM_TYPES: usize = 256;
-
-fn list_of(ctx: &mut Compiler, item: TypeId) -> TypeId {
-    let types = ctx.builtins().types;
-    let mappings = HashMap::from([(types.list_generic, item)]);
-    substitute_with_mappings(ctx.types_mut(), types.list, &mappings)
-}
+const MAX_LIST_ITEM_TYPES: usize = 1024;
