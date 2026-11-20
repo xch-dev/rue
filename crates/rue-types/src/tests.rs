@@ -4143,10 +4143,24 @@ mod subtraction {
         let pair = db.pair(two, list);
         let expected = db.union(&[nil, pair]);
 
-        // The alias keeps its name, so the narrowing is only visible by comparing the result
+        // The narrowed alias is left out, so it isn't displayed by its old name
         let result = subtract(&mut db.arena, &db.builtins, list, rhs);
         assert_eq!(db.cmp(result, expected), Comparison::Assign);
         assert_eq!(db.cmp(list, result), Comparison::Invalid);
+        assert_eq!(db.name(result), "nil | (2, List<1 | 2>)");
+    }
+
+    #[test]
+    fn keeps_alias_that_is_not_narrowed() {
+        let mut db = Db::new();
+        let [one, two, three] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let alias = db.alias("Either", &[], either);
+        let lhs = db.union(&[alias, three]);
+
+        // The alias is rebuilt around its variants, which are all left, so it keeps its name
+        assert_eq!(sub(&mut db, lhs, three), "Either");
+        assert_eq!(sub(&mut db, lhs, one), "2 | 3");
     }
 
     #[test]

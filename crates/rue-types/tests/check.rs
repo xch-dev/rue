@@ -419,13 +419,18 @@ fn test_structs_and_aliases() {
     assert_eq!(t.check(from, alias), Ok(length(32)));
     assert_eq!(t.check(from, nil), Ok(value(&[])));
 
-    // Subtracting from an alias keeps the alias around the remaining variants
-    let alias = t.alias(from);
-    let else_type = t.subtract(alias, nil);
+    // Subtracting from an alias leaves out the alias it narrows, but keeps an alias inside of it
+    // whose variants are all left
+    let outer = t.alias(from);
+    let else_type = t.subtract(outer, nil);
     let Type::Alias(remaining) = t.arena[else_type].clone() else {
         panic!("expected alias, found {}", t.name(else_type));
     };
+    let Type::Alias(inner) = t.arena[alias].clone() else {
+        unreachable!();
+    };
     assert_eq!(t.name(remaining.inner), "Bytes32");
+    assert_eq!(remaining.inner, inner.inner);
 
     // Struct variants are repackaged separately from other variants
     let structure = t.structure(bytes32);
