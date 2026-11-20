@@ -96,6 +96,19 @@ impl LambdaBody {
             .any(|ty| !contained_generics(ctx.types_mut(), ty, generics.iter().copied()).is_empty())
     }
 
+    /// Whether the lambda's body references its parameter that was compiled as the reference (see
+    /// `LambdaParameter`), directly or through a binding destructured from it.
+    pub(crate) fn references_parameter(&self, ctx: &Compiler, reference: TypeId) -> bool {
+        ctx.hirs_between(self.first_hir, self.end_hir)
+            .any(|node| match *node {
+                Hir::Reference(symbol) if symbol.index() >= self.first_symbol => matches!(
+                    ctx.symbol(symbol),
+                    Symbol::Parameter(parameter) if parameter.ty == reference
+                ),
+                _ => false,
+            })
+    }
+
     /// Whether the lambda names any of the types, in an annotation in its parameters, its return
     /// type or its body, such as `T` in `fn(x) => x as T`. Otherwise, a type it has them in only
     /// has them through its parameters or a value it captures. As with `captures_generics`, the

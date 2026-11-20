@@ -419,3 +419,586 @@ fn two_lambdas_before_their_value<T>(
 test fn two_lambdas_before_their_value_in_a_recursive_call() -> Int {
     two_lambdas_before_their_value(((fn(x) => x, fn(y) => y), 1), 1)
 }
+
+fn same<Q>(value: Q) -> Q {
+    value
+}
+
+// A typed lambda before an untyped one names the caller's own `U`, which `T` is inferred with, so
+// from then on `U` is the caller's in the list, not the callee's renamed `U` it stood for. `x7`
+// gets `(5, U)` with the caller's `U`, and so does the result, rather than a copy of it that
+// prints the same and nothing binds (infer-fuzz generator 3, seed 3641)
+fn typed_before_untyped<T, U>(functions: List<fn(a: T) -> U>, value: T, depth: Int) -> List<U> {
+    if depth > 0 {
+        let through_a_call = typed_before_untyped(
+            [fn(x6: (5, U)) => x6, fn(x7) => same(x7)],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _through_a_call: List<(5, U)> = through_a_call;
+
+        let returned = typed_before_untyped(
+            [fn(x6: (5, U)) => x6, fn(x7) => x7],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _returned: List<(5, U)> = returned;
+
+        let several = typed_before_untyped(
+            [fn(x6: (5, U)) => x6, fn(x7) => x7, fn(x8) => same(x8)],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _several: List<(5, U)> = several;
+
+        // Guard: with the untyped lambda first, `U` still stands for the renamed one there
+        let untyped_first = typed_before_untyped(
+            [fn(x7) => same(x7), fn(x6: (5, U)) => x6],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _untyped_first: List<(5, U)> = untyped_first;
+        return nil;
+    }
+
+    if functions is (fn(a: T) -> U, List<fn(a: T) -> U>) {
+        [functions.first(value)]
+    } else {
+        nil
+    }
+}
+
+test fn typed_lambda_names_the_callers_generic_before_an_untyped_one() -> (List<Int>, List<Int>) {
+    (
+        typed_before_untyped([fn(x: Int) => x + 1], 6, 0),
+        typed_before_untyped([fn(x: Int) => x], 6, 1),
+    )
+}
+
+// The same in a pair, and in nested lists
+fn typed_before_untyped_in_a_pair<T, U>(
+    functions: (fn(a: T) -> U, fn(a: T) -> U),
+    value: T,
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let returned = typed_before_untyped_in_a_pair(
+            (fn(x6: (5, U)) => x6, fn(x7) => x7),
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _returned: (5, U) = returned;
+
+        let through_a_call = typed_before_untyped_in_a_pair(
+            (fn(x6: (5, U)) => x6, fn(x7) => same(x7)),
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _through_a_call: (5, U) = through_a_call;
+        return functions.first(value);
+    }
+
+    functions.rest(value)
+}
+
+fn typed_before_untyped_in_nested_lists<T, U>(
+    functions: List<List<fn(a: T) -> U>>,
+    value: T,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let apart = typed_before_untyped_in_nested_lists(
+            [[fn(x6: (5, U)) => x6], [fn(x7) => x7]],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _apart: List<(5, U)> = apart;
+
+        let together = typed_before_untyped_in_nested_lists(
+            [[fn(x6: (5, U)) => x6, fn(x7) => x7]],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _together: List<(5, U)> = together;
+        return nil;
+    }
+
+    nil
+}
+
+// The same with the caller's `T`, which the typed lambda names, and the value has
+fn typed_names_the_callers_parameter_generic<T, U>(
+    functions: List<fn(a: T) -> U>,
+    value: T,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let names_t = typed_names_the_callers_parameter_generic(
+            [fn(x6: (5, T)) => x6, fn(x7) => x7],
+            (5, value),
+            depth - 1,
+        );
+        let _names_t: List<(5, T)> = names_t;
+        return nil;
+    }
+
+    nil
+}
+
+test fn typed_lambda_names_the_callers_generic_in_other_arguments() -> (
+    Int,
+    (List<Int>, List<Int>),
+) {
+    (
+        typed_before_untyped_in_a_pair((fn(x: Int) => x, fn(x: Int) => x + 2), 6, 1),
+        (
+            typed_before_untyped_in_nested_lists([[fn(x: Int) => x]], 6, 1),
+            typed_names_the_callers_parameter_generic([fn(x: Int) => x], 6, 1),
+        ),
+    )
+}
+
+// Guard: untyped lambdas compiled with the caller's generic standing for the renamed one infer
+// the renamed one, not the caller's, for the lambdas after them, so they still stand for it there
+fn untyped_lambdas_only<T, U>(functions: List<fn(a: T) -> U>, value: T, depth: Int) -> List<U> {
+    if depth > 0 {
+        let same_type = untyped_lambdas_only([fn(x1) => x1, fn(x2) => x2], 7, depth - 1);
+        let _same_type: List<Int> = same_type;
+
+        let different = untyped_lambdas_only([fn(x) => x, fn(x) => (5, x)], 7, depth - 1);
+        let _different: List<Int | (5, Int)> = different;
+        return nil;
+    }
+
+    if functions is (fn(a: T) -> U, List<fn(a: T) -> U>) {
+        [functions.first(value)]
+    } else {
+        nil
+    }
+}
+
+fn untyped_lambdas_in_a_pair<T, U>(
+    pair: (fn(a: T) -> U, fn(a: T) -> U),
+    value: T,
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let inner = untyped_lambdas_in_a_pair((fn(x) => x, fn(y) => y), 7, depth - 1);
+        let _inner: Int = inner;
+        return pair.rest(value);
+    }
+
+    pair.first(value)
+}
+
+// Guard: a typed lambda that names the caller's `T` only makes it the caller's own in the lambdas
+// whose types take it from there, so the later lambdas still get `T` for the renamed `U`
+fn typed_first_then_untyped<T, U>(functions: List<fn(a: U) -> T>, depth: Int) -> List<T> {
+    if depth > 0 {
+        let t = unchecked_cast::<T>(nil);
+        let u = unchecked_cast::<U>(nil);
+        let inner = typed_first_then_untyped([fn(_x: T) => u, fn(_x) => t, fn(_x) => t], depth - 1);
+        let _inner: List<U | T> = inner;
+        return nil;
+    }
+
+    nil
+}
+
+test fn untyped_lambdas_keep_standing_for_the_renamed_generics() -> (List<Int>, (Int, List<Int>)) {
+    (
+        untyped_lambdas_only([fn(x: Int) => x + 1], 6, 1),
+        (
+            untyped_lambdas_in_a_pair((fn(x: Int) => x + 1, fn(x: Int) => x), 6, 1),
+            typed_first_then_untyped([fn(x: Int) => x], 1),
+        ),
+    )
+}
+
+// Guard: the `(5, u)` after the lambda has the caller's `U` as itself, but the lambda's expected
+// type doesn't take it from what the elements before it infer, so `x` still stands for the
+// renamed `U` there
+fn values_around_a_lambda<T, U>(p: (T, (T, (fn(a: U) -> T, (U, nil)))), depth: Int) -> (T, U) {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = values_around_a_lambda([u, 1, fn(x) => (5, x), (5, u)], depth - 1);
+        let _r: (U | Int | (5, (5, U)), (5, U)) = r;
+        return unchecked_cast::<(T, U)>(nil);
+    }
+
+    unchecked_cast::<(T, U)>(nil)
+}
+
+test fn values_keep_the_renamed_generics_around_a_lambda() -> (Int, Int) {
+    values_around_a_lambda((1, (2, (fn(x: Int) => x, (3, nil)))), 1)
+}
+
+// The same where the untyped lambda is the first element of a pair, which isn't refined on its own,
+// so it has the first part of what the pair it's in was refined with. The result's `U` is the
+// caller's own in both elements. Its `T` comes from `x7` there, whose type the pair doesn't refine
+fn typed_before_a_pair_of_untyped<T, U>(
+    p: (fn(a: T) -> U, (fn(a: T) -> U, fn(a: T) -> U)),
+    value: T,
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let r = typed_before_a_pair_of_untyped(
+            (fn(x6: (5, U)) => x6, (fn(x7) => x7, fn(x8) => x8)),
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _r: (5, U) | T = r;
+        return p.first(value);
+    }
+
+    p.first(value)
+}
+
+fn typed_in_a_list_of_pairs<T, U>(
+    functions: List<(fn(a: T) -> U, fn(a: T) -> U)>,
+    value: T,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let r = typed_in_a_list_of_pairs(
+            [(fn(x6: (5, U)) => x6, fn(x0) => x0), (fn(x7) => x7, fn(x8) => x8)],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _r: List<(5, U) | T> = r;
+        return nil;
+    }
+
+    nil
+}
+
+test fn typed_lambda_names_the_callers_generic_before_pairs() -> (Int, List<Int>) {
+    (
+        typed_before_a_pair_of_untyped(
+            (fn(x: Int) => x + 3, (fn(x: Int) => x, fn(x: Int) => x)),
+            1,
+            1,
+        ),
+        typed_in_a_list_of_pairs([(fn(x: Int) => x, fn(x: Int) => x)], 1, 1),
+    )
+}
+
+// A lambda whose first parameter has the caller's own `U` and whose second stands for the renamed
+// one: a call in its body that sees through the first one returns the caller's `U`, and one that
+// only sees through the second returns the renamed one, which `7` makes `Int` (infer-fuzz generator
+// 3 review, reduced)
+fn own_and_standing_in_parameters<T, U, V>(
+    p: (fn(a: T) -> T, fn(a: T, b: U) -> V),
+    u0: U,
+    depth: Int,
+) -> V {
+    if depth > 0 {
+        let first = own_and_standing_in_parameters(
+            (fn(x6: (5, U)) => x6, fn(x7, _y7) => same(x7)),
+            7,
+            depth - 1,
+        );
+        let _first: (5, U) = first;
+        let second = own_and_standing_in_parameters(
+            (fn(x6: (5, U)) => x6, fn(_x7, y7) => same(y7)),
+            7,
+            depth - 1,
+        );
+        let _second: Int = second;
+        return p.rest(p.first(unchecked_cast::<T>(nil)), u0);
+    }
+
+    p.rest(p.first(unchecked_cast::<T>(nil)), u0)
+}
+
+test fn own_and_standing_in_parameters_of_one_lambda() -> Int {
+    own_and_standing_in_parameters((fn(x: Int) => x, fn(x: Int, y: Int) => x + y), 1, 1)
+}
+
+// Guard: `x` stands for the renamed `U`, which `fn(x) => x` returns as the renamed `T`, so what the
+// renamed `T` is inferred as for `y` is the renamed `U` there, not the caller's own `U`, and `5`
+// makes both of them `Int` (infer-fuzz generator 3, seed 1667, and review)
+fn swapped_generics<T, U>(p: (fn(a: U) -> T, fn(b: T) -> T), v: U, depth: Int) -> List<(T, U)> {
+    if depth > 0 {
+        let inner = swapped_generics((fn(x) => x, fn(y) => y), 5, depth - 1);
+        let _inner: List<(Int, Int)> = inner;
+
+        // The same through a call that sees through `x`
+        let through_a_call = swapped_generics((fn(x) => same(x), fn(y) => y), 5, depth - 1);
+        let _through_a_call: List<(Int, Int)> = through_a_call;
+        return nil;
+    }
+
+    [(p.rest(p.first(v)), v)]
+}
+
+fn swapped_generics_twice<T, U>(
+    p: (fn(a: U) -> T, fn(b: T, c: U) -> T),
+    v: U,
+    depth: Int,
+) -> List<(T, U)> {
+    if depth > 0 {
+        let inner = swapped_generics_twice((fn(x) => x, fn(y, _z) => y), 5, depth - 1);
+        let _inner: List<(Int, Int)> = inner;
+        return nil;
+    }
+
+    [(p.rest(p.first(v), v), v)]
+}
+
+test fn stand_ins_returned_as_another_renamed_generic() -> (List<(Int, Int)>, List<(Int, Int)>) {
+    (
+        swapped_generics((fn(x: Int) => x + 1, fn(y: Int) => y * 2), 3, 1),
+        swapped_generics_twice((fn(x: Int) => x + 1, fn(y: Int, z: Int) => y + z), 3, 1),
+    )
+}
+
+// Guard: `y1`'s type takes the caller's own `U` from `x1`'s annotation, but the body only
+// references `y`, which stands for the renamed `U`, so `identity(y)` returns that (infer-fuzz
+// generator 3 review, reduced)
+fn unreferenced_parameter_with_its_own_generic<T, U>(
+    functions: List<fn(a: List<U>, b: T) -> List<U>>,
+    value: T,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let inner = unreferenced_parameter_with_its_own_generic(
+            [fn(x: List<(5, U)>, _x1: List<(6, U)>) => x, fn(y, _y1) => same(y)],
+            nil,
+            depth - 1,
+        );
+        let _inner: List<(5, U)> = inner;
+
+        // A body that uses `_y1` without returning it, such as in a guard, or that destructures
+        // it, references it too, so `U` is the caller's own in the lambda's whole type. That doesn't
+        // solve the call, so it's solved as if nothing were the caller's own, as without the fix
+        let guarded = unreferenced_parameter_with_its_own_generic(
+            [
+                fn(x: List<(5, U)>, _x1: List<(6, U)>) => x,
+                fn(y, y1) => {
+                    let _guard = y1 is nil;
+                    same(y)
+                },
+            ],
+            nil,
+            depth - 1,
+        );
+        let _guarded: List<(5, U)> = guarded;
+        let destructured = unreferenced_parameter_with_its_own_generic(
+            [fn(x: List<(5, U)>, _x1: List<(6, U)>) => x, fn(y, [..._rest]) => same(y)],
+            nil,
+            depth - 1,
+        );
+        let _destructured: List<(5, U)> = destructured;
+        return nil;
+    }
+
+    if functions is (fn(a: List<U>, b: T) -> List<U>, List<fn(a: List<U>, b: T) -> List<U>>) {
+        functions.first(nil, value)
+    } else {
+        nil
+    }
+}
+
+test fn only_referenced_parameters_count_for_the_lambda() -> List<Int> {
+    unreferenced_parameter_with_its_own_generic([fn(x: List<Int>, _y: Int) => x], 1, 1)
+}
+
+// The same with the caller's own `U` in the second parameter's type, and the first one standing
+// for the renamed `U`
+fn own_in_the_second_parameter<T, U, V>(
+    p: (fn(a: T) -> T, fn(a: U, b: T) -> V),
+    u0: U,
+    depth: Int,
+) -> V {
+    if depth > 0 {
+        let own = own_in_the_second_parameter(
+            (fn(x6: (5, U)) => x6, fn(_x7, y7) => same(y7)),
+            7,
+            depth - 1,
+        );
+        let _own: (5, U) = own;
+        let standing_in = own_in_the_second_parameter(
+            (fn(x6: (5, U)) => x6, fn(x7, _y7) => same(x7)),
+            7,
+            depth - 1,
+        );
+        let _standing_in: Int = standing_in;
+        return p.rest(u0, p.first(unchecked_cast::<T>(nil)));
+    }
+
+    p.rest(u0, p.first(unchecked_cast::<T>(nil)))
+}
+
+// The same with another generic, `W`, standing for its renamed one in the second parameter, whether
+// the call that sees through them takes one of them or both
+fn own_and_another_standing_in<T, U, W, V>(
+    p: (fn(a: T) -> T, fn(a: T, b: W) -> V),
+    u0: U,
+    w0: W,
+    depth: Int,
+) -> V {
+    if depth > 0 {
+        let apart = own_and_another_standing_in(
+            (fn(x6: (5, U)) => x6, fn(x7, y7) => (x7, same(y7))),
+            8,
+            7,
+            depth - 1,
+        );
+        let _apart: ((5, U), Int) = apart;
+        let together = own_and_another_standing_in(
+            (fn(x6: (5, U)) => x6, fn(x7, y7) => same((x7, y7))),
+            8,
+            7,
+            depth - 1,
+        );
+        let _together: ((5, U), Int) = together;
+
+        // A body that names the caller's own `U` there still sees through `y7`, whose `W` stands
+        // for the renamed one
+        let named = own_and_another_standing_in(
+            (fn(x6: (5, U)) => x6, fn(x7, y7) => (same::<(5, U)>(x7), same(y7))),
+            8,
+            7,
+            depth - 1,
+        );
+        let _named: ((5, U), Int) = named;
+        let annotated = own_and_another_standing_in(
+            (
+                fn(x6: (5, U)) => x6,
+                fn(x7, y7) => {
+                    let _k: (5, U) = x7;
+                    same(y7)
+                },
+            ),
+            8,
+            7,
+            depth - 1,
+        );
+        let _annotated: Int = annotated;
+        return p.rest(p.first(unchecked_cast::<T>(nil)), w0);
+    }
+
+    p.rest(p.first(unchecked_cast::<T>(nil)), w0)
+}
+
+// The same with a spread parameter, which isn't wrapped, so each of the others counts the own
+// generics of all of them
+fn own_with_a_spread<T, U>(
+    functions: List<fn(a: T, ...b: List<T>) -> U>,
+    value: T,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let through_a_call = own_with_a_spread(
+            [fn(x6: (5, U), ..._r6: List<(5, U)>) => x6, fn(x7, ..._r7) => same(x7)],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _through_a_call: List<(5, U)> = through_a_call;
+        let returned = own_with_a_spread(
+            [fn(x6: (5, U), ..._r6: List<(5, U)>) => x6, fn(x7, ..._r7) => x7],
+            (5, unchecked_cast::<U>(nil)),
+            depth - 1,
+        );
+        let _returned: List<(5, U)> = returned;
+        return nil;
+    }
+
+    nil
+}
+
+test fn own_generics_in_other_parameters() -> (Int, (Int, List<Int>)) {
+    (
+        own_in_the_second_parameter((fn(x: Int) => x, fn(x: Int, y: Int) => x + y), 1, 1),
+        (
+            own_and_another_standing_in((fn(x: Int) => x, fn(x: Int, y: Int) => x + y), 1, 2, 1),
+            own_with_a_spread([fn(x: Int, ..._r: List<Int>) => x], 6, 1),
+        ),
+    )
+}
+
+// Only the renamed generics that the elements before it give a type count. `T` in the first
+// lambda's `(V, V)` stands for the renamed one, which nothing gives a type, so `y30_1` still stands
+// for it, and the caller's own `T` in `(5, T)` is only `y79_2`'s (infer-fuzz generator 3 review,
+// reduced)
+fn only_inferred_renamed_generics<T, U, V>(
+    functions: List<fn(a1: T, a2: U) -> U>,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let returned = only_inferred_renamed_generics(
+            [
+                fn(_x38_1: (V, V), x1_2: (5, T)) => x1_2,
+                fn(_x55_1: (V, V), x7_2) => x7_2,
+                fn(_y30_1, y79_2) => y79_2,
+            ],
+            depth - 1,
+        );
+        let _returned: List<(5, T)> = returned;
+        let through_a_call = only_inferred_renamed_generics(
+            [
+                fn(_x38_1: (V, V), x1_2: (5, T)) => x1_2,
+                fn(_x55_1: (V, V), x7_2) => same(x7_2),
+                fn(_y30_1, y79_2) => same(y79_2),
+            ],
+            depth - 1,
+        );
+        let _through_a_call: List<(5, T)> = through_a_call;
+        return nil;
+    }
+
+    nil
+}
+
+test fn only_renamed_generics_given_a_type_count() -> List<Int> {
+    only_inferred_renamed_generics::<Int, Int, Int>([fn(_a: Int, b: Int) => b], 1)
+}
+
+fn make_value<M>() -> M {
+    unchecked_cast::<M>(nil)
+}
+
+// Guard: the arguments after one whose lambda's parameter has the caller's own `U` are compiled
+// against what the arguments before them infer as if it didn't, as without the fix, so when the
+// call is then solved as if it didn't, it's what it is without the fix too (infer-fuzz generator 3
+// review, reduced)
+fn arguments_after_own_generics<T, U>(
+    functions: List<fn(a: List<U>, b: T) -> List<U>>,
+    value: T,
+    after: List<U>,
+    later: List<fn(a: List<U>, b: T) -> List<U>>,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let call_after = arguments_after_own_generics(
+            [fn(x: List<(5, U)>, _x1: List<(6, U)>) => x, fn(y, [..._rest]) => same(y)],
+            nil,
+            make_value(),
+            nil,
+            depth - 1,
+        );
+        let _call_after: List<(5, U)> = call_after;
+        let lambda_after = arguments_after_own_generics(
+            [
+                fn(x: List<(5, U)>, _x1: List<(6, U)>) => x,
+                fn(y, y1) => {
+                    let _guard = y1 is nil;
+                    same(y)
+                },
+            ],
+            nil,
+            nil,
+            [fn(w, _w1) => w],
+            depth - 1,
+        );
+        let _lambda_after: List<(5, U)> = lambda_after;
+        return nil;
+    }
+
+    nil
+}
+
+test fn arguments_after_own_generics_are_as_without_them() -> List<Int> {
+    arguments_after_own_generics([fn(x: List<Int>, _y: Int) => x], 1, [2], nil, 1)
+}
