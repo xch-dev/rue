@@ -162,7 +162,7 @@ fn enclosing<N: AstNode>(document: &AstDocument, span: TextRange) -> Option<Text
 
 /// The generics in the type that no function type in it binds, in the order they're found. A
 /// generic alias or struct binds its own generics, which its generic arguments stand for.
-fn free_generics(
+pub(crate) fn free_generics(
     ctx: &mut Compiler,
     ty: TypeId,
     bound: &mut Vec<TypeId>,

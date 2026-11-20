@@ -13,14 +13,15 @@
 //! diagnostic, warnings included, and the CLVM, so a change that should keep the compiler's
 //! behaviour identical can be checked with no changes at all. Outputs and fingerprints are only
 //! compared when both runs recorded them. A change is a
-//! **regression** when the variant was inferred and no longer is, or becomes unsound, slow or
-//! crashed.
+//! **regression** when the variant was inferred and no longer is, or becomes unsound, leaked,
+//! slow or crashed.
 //!
 //! An explicit program whose status or fingerprint changes is a change of its own, with the
 //! variant `explicit`.
 //! It's a regression if it compiled and no longer does, or newly crashes. When it compiles in only
 //! one of the runs, its variants can't be compared, but a variant of a newly compiling program
-//! that's unsound, slow or crashed is reported as a regression, with `none` as its before side.
+//! that's unsound, leaked, slow or crashed is reported as a regression, with `none` as its before
+//! side.
 //! Seeds and variants that are only in one run, or whose source differs, count as not comparable.
 //! Variants and explicit programs that are compared, but whose fingerprint is missing from either
 //! run, are counted as without fingerprints, so a baseline from before fingerprints were recorded

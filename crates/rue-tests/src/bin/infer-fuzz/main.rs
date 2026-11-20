@@ -7,6 +7,10 @@
 //! - **Rejected**: it doesn't compile, although the explicit arguments are a valid instantiation.
 //! - **Unsound**: it compiles, but `main` gives a different output, or fails where the explicit
 //!   program didn't. This should never happen.
+//! - **Leaked**: it compiles, and `main` gives the same output, but a binding's or parameter's
+//!   type names a generic outside of where it's bound, such as a callee's generic that inference
+//!   left in it, or the `T` of an expected `fn<T>(a: T) -> T` named outside of it (`leak.rs`).
+//!   This should never happen either.
 //! - **Slow**: compiling takes more than 10 times as long as the explicit program (and at least
 //!   250 ms), or times out.
 //! - **Crashed**: the compiler panicked, or its process died.
@@ -15,6 +19,9 @@
 //! a random subset of them (`some`, sometimes written as `_`), and the arguments of one site
 //! (`one`). Generator version 2 adds a fourth, `expected`, which removes only the arguments
 //! that nothing but the expected type gives a type to, such as `let x: Int | nil = none();`.
+//! Version 3 adds `probe`, which removes only the arguments of calls that nothing gives a type
+//! to, as `let f: (fn<T>(a: T) -> T) | Any = make_from_lambda(fn(x) => x);`: rejecting it is
+//! right, so it counts as inferred, but compiling it must not leak a generic.
 //! Failures are grouped by category and the first diagnostic, and a few of each group are shrunk
 //! to a small reproduction.
 //!
@@ -39,7 +46,10 @@
 //!   program in each version. Version 2
 //!   adds generic structs and aliases, unions of function types, generic structs and literals,
 //!   generic function types in annotations and return types, longer chains and cycles, `std`'s
-//!   `merge_list`, and the `expected` variant. The versions are listed in `generate.rs`.
+//!   `merge_list`, and the `expected` variant. Version 3 adds lists, pairs and boxes of untyped
+//!   lambdas, recursive functions that pass them to themselves, lambdas whose bodies call generic
+//!   functions, wider unions in expected types, and the `probe` variant. The versions are listed
+//!   in `generate.rs`.
 //! - `--print SEED`: print the explicit program and the variants for one seed, and exit.
 //! - `--compare BASELINE NEW`: compare two runs of the same seeds, each a `results.jsonl` or the
 //!   `--out` directory that holds it. It prints how many variants went from each status to each

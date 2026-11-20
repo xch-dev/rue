@@ -1667,6 +1667,89 @@ fn version_2_programs_never_change() {
     assert_eq!(programs_hash(2), VERSION_2_HASH, "{:#x}", programs_hash(2));
 }
 
+/// The same as `VERSION_1_HASH`, for generator version 3.
+const VERSION_3_HASH: u64 = 0x3447_b31e_3d05_9920;
+
+#[test]
+fn version_3_programs_never_change() {
+    assert_eq!(programs_hash(3), VERSION_3_HASH, "{:#x}", programs_hash(3));
+}
+
+#[test]
+fn version_3_is_deterministic_and_its_explicit_programs_compile() {
+    let mut valid = 0;
+    let mut probes = 0;
+    for seed in 0..40 {
+        let first = Generator::versioned(seed, 3).generate();
+        let second = Generator::versioned(seed, 3).generate();
+        let explicit = first.program.print(&Variant::default());
+        assert_eq!(explicit, second.program.print(&Variant::default()));
+        assert_eq!(first.variants, second.variants);
+        if matches!(
+            oracle::compile_with(&explicit, first.program.uses_std()),
+            Compiled::Ok { leak: None, .. }
+        ) {
+            valid += 1;
+        }
+        // Only the probe variant removes a probe's generic arguments
+        for (name, variant) in &first.variants {
+            let removes_probes = first
+                .program
+                .probes
+                .iter()
+                .any(|site| variant.stripped.contains_key(site));
+            assert_eq!(
+                removes_probes,
+                name == "probe",
+                "seed {seed}, variant `{name}`"
+            );
+        }
+        probes += usize::from(!first.program.probes.is_empty());
+    }
+    assert!(valid >= 37, "only {valid} of 40 explicit programs compile");
+    assert!(probes >= 10, "only {probes} of 40 programs have a probe");
+}
+
+/// The leak oracle's walk over a type finds a generic that no function type binds, and none that
+/// one does, as `T` in `fn<T>(a: T) -> T`.
+#[test]
+fn leak_oracle_finds_unbound_generics() {
+    use rue_options::CompilerOptions;
+    use rue_types::{FunctionParameter, FunctionType, Generic, Pair, Type};
+
+    let mut ctx = rue_compiler::Compiler::new(CompilerOptions::default());
+    let generic = ctx.alloc_type(Type::Generic(Generic { name: None }));
+    let int = ctx.builtins().types.int;
+
+    let free_in = |ctx: &mut rue_compiler::Compiler, ty| {
+        let mut free = Vec::new();
+        crate::leak::free_generics(
+            ctx,
+            ty,
+            &mut Vec::new(),
+            &mut std::collections::HashSet::new(),
+            &mut free,
+        );
+        free
+    };
+
+    let pair = ctx.alloc_type(Type::Pair(Pair::new(generic, int)));
+    assert_eq!(free_in(&mut ctx, pair), vec![generic]);
+
+    let function = |generics: Vec<_>| {
+        Type::Function(FunctionType {
+            generics,
+            params: vec![FunctionParameter::new("a", generic)],
+            nil_terminated: true,
+            ret: generic,
+        })
+    };
+    let bound = ctx.alloc_type(function(vec![generic]));
+    assert_eq!(free_in(&mut ctx, bound), Vec::new());
+    let unbound = ctx.alloc_type(function(Vec::new()));
+    assert_eq!(free_in(&mut ctx, unbound), vec![generic]);
+}
+
 #[test]
 fn version_2_is_deterministic_and_its_explicit_programs_compile() {
     let mut valid = 0;

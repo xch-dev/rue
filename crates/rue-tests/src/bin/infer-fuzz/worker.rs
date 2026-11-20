@@ -227,6 +227,9 @@ fn shrink_command(
     let message = match compile_program(&program, &variant) {
         Compiled::Rejected { diag, .. } => diag.located(),
         Compiled::Panicked { message } => message,
+        Compiled::Ok {
+            leak: Some(leak), ..
+        } => leak,
         Compiled::Ok { run, .. } => format!("{run:?}"),
     };
 
