@@ -1,0 +1,49 @@
+// Compiled with `hard_fork_2` (see `builtins.yaml`), which allows `modpow` and `keccak256`, since
+// mainnet has them once hard fork 2 activates
+
+test fn keccak256_hashes() {
+    assert keccak256("hello") == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;
+    assert keccak256(...[
+        "hel",
+        "lo",
+    ]) == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;
+    assert keccak256_inline(
+        "hello",
+    ) == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;
+}
+
+// Run on values from the solution, so they aren't folded at compile time
+test fn keccak256_of_solution(value: Bytes) -> Bytes32 {
+    keccak256(value)
+}
+
+test fn modpow_computes() {
+    assert modpow(2, 3, 5) == 3;
+}
+
+test fn modpow_num() -> Int {
+    modpow(3, 200, 1000)
+}
+
+test fn modpow_zero_modulus() -> Int {
+    modpow(3, 200, 0)
+}
+
+test fn modpow_of_solution(base: Int, exponent: Int, modulus: Int) -> Int {
+    modpow(base, exponent, modulus)
+}
+
+// `modpow` fails for a zero modulus, so it isn't moved into the branch
+test fn modpow_moved_into_branch(base: Int, exponent: Int, modulus: Int, flag: Bool) -> Int {
+    let result = modpow(base, exponent, modulus);
+    if flag {
+        result
+    } else {
+        0
+    }
+}
+
+// Const expressions are evaluated at compile time, with the new cost model
+test fn modpow_in_const() -> Int {
+    const { modpow(2, 10, 1000) }
+}

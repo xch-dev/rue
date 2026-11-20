@@ -105,6 +105,9 @@ pub struct CompilerSection {
     /// Sets [`CompilerOptions::operand_limits`](crate::CompilerOptions::operand_limits).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operand_limits: Option<bool>,
+    /// Sets [`CompilerOptions::hard_fork_2`](crate::CompilerOptions::hard_fork_2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hard_fork_2: Option<bool>,
 }
 
 impl Default for CompilerSection {
@@ -115,6 +118,7 @@ impl Default for CompilerSection {
             std: None,
             dist_dir: None,
             operand_limits: None,
+            hard_fork_2: None,
         }
     }
 }

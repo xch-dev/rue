@@ -7,7 +7,7 @@
 
 use clvmr::{Allocator, serde::node_to_bytes};
 use id_arena::Arena;
-use rue_lir::{CodegenOptions, Lir, LirId, OptimizeOptions, codegen, optimize};
+use rue_lir::{ClvmTarget, CodegenOptions, Lir, LirId, codegen, optimize};
 
 /// How deeply each test nests LIR. Without growing the stack, this overflows a 2 MiB stack in
 /// both debug and release builds.
@@ -30,7 +30,7 @@ fn on_small_stack(f: impl FnOnce() + Send + 'static) {
 /// Generates code for `lir` with and without optimization, with each set of options, and returns
 /// the serialized output of the unoptimized code generated without static pairs.
 fn compile_all_ways(arena: &mut Arena<Lir>, lir: LirId) -> Vec<u8> {
-    let optimized = optimize(arena, lir, OptimizeOptions::default());
+    let optimized = optimize(arena, lir, ClvmTarget::default());
 
     let mut unoptimized_output = None;
 
@@ -43,6 +43,7 @@ fn compile_all_ways(arena: &mut Arena<Lir>, lir: LirId) -> Vec<u8> {
                 root,
                 CodegenOptions {
                     optimize_static_pairs,
+                    hard_fork_2: false,
                 },
             )
             .unwrap();

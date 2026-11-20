@@ -20,6 +20,21 @@ pub(crate) fn compile_builtin(
     let call = BuiltinCall::new(ctx, call);
     let types = ctx.builtins().types;
 
+    // Mainnet disables `modpow` and doesn't know `keccak256` outside of the softfork guard until
+    // hard fork 2. They're rejected wherever they're written, and their arguments are still
+    // checked, so that every error is reported at once.
+    if matches!(builtin, Builtin::Modpow | Builtin::Keccak256 { .. }) && !ctx.options().hard_fork_2
+    {
+        let node = call
+            .ast
+            .expr()
+            .map_or_else(|| call.ast.syntax().clone(), |expr| expr.syntax().clone());
+        ctx.diagnostic(
+            &node,
+            DiagnosticKind::RequiresHardFork2(builtin.to_string()),
+        );
+    }
+
     match builtin {
         Builtin::Sha256 { inline } => call.hash(
             ctx,

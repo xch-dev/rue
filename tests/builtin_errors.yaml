@@ -4,7 +4,9 @@ diagnostics:
 - Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:19:20
 - Cannot assign `List<Int>` to `List<Bytes>` without a cast, since they are semantically different at builtin_errors.rue:20:23
 - Spread operator cannot be used on this builtin at builtin_errors.rue:21:27
+- "`keccak256` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:22:13"
 - Expected 1 argument, but found 2 at builtin_errors.rue:22:13
+- "`keccak256_inline` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:23:13"
 - Spread operator cannot be used on this builtin at builtin_errors.rue:23:30
 - Expected 1 argument, but found 0 at builtin_errors.rue:26:13
 - Expected 1 argument, but found 2 at builtin_errors.rue:27:13
@@ -33,7 +35,9 @@ diagnostics:
 - Cannot assign `(Int, nil)` to `Int`, since they are incompatible at builtin_errors.rue:47:30
 - Expected 2 arguments, but found 1 at builtin_errors.rue:48:13
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:49:25
+- "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:50:13"
 - Expected 3 arguments, but found 2 at builtin_errors.rue:50:13
+- "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:51:13"
 - Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:51:30
 - Expected 1 argument, but found 0 at builtin_errors.rue:52:13
 - Cannot assign `PublicKey` to `Int | Bytes32` without a cast, since they are semantically different at builtin_errors.rue:53:28

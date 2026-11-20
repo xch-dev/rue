@@ -122,6 +122,17 @@ pub enum ClvmOp {
 }
 
 impl ClvmOp {
+    /// The opcode of the operator for programs run after hard fork 2 or not. Hard fork 2 makes the
+    /// secp operators available as the one byte opcodes 64 and 65, which are shorter than the four
+    /// byte opcodes that encode their cost, and are the same otherwise.
+    pub fn to_target_atom(self, hard_fork_2: bool) -> Vec<u8> {
+        match self {
+            Self::Secp256K1Verify if hard_fork_2 => vec![64],
+            Self::Secp256R1Verify if hard_fork_2 => vec![65],
+            _ => self.to_atom(),
+        }
+    }
+
     pub fn to_atom(self) -> Vec<u8> {
         let num = match self {
             Self::Quote => 1,

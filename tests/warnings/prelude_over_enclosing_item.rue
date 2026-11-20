@@ -122,7 +122,7 @@ mod not_reported {
 
     // Prelude items that no enclosing module has a name for
     export fn unrelated(value: Bytes) -> Bytes32 {
-        keccak256(value)
+        sha256_inline(value)
     }
 
     #[allow(prelude_over_enclosing_item)]

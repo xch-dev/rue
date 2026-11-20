@@ -4,7 +4,7 @@ use id_arena::Arena;
 use num_bigint::BigUint;
 use rue_clvm::{disassemble_program, disassemble_value};
 
-use crate::{CodegenOptions, Lir, LirId, OptimizeOptions, clvm_flags, codegen, optimize};
+use crate::{ClvmTarget, CodegenOptions, Lir, LirId, codegen, optimize};
 
 fn atom(arena: &mut Arena<Lir>, bytes: &[u8]) -> LirId {
     arena.alloc(Lir::Atom(bytes.to_vec()))
@@ -29,28 +29,36 @@ fn compile(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId, optimized:
         lir,
         CodegenOptions {
             optimize_static_pairs: optimized,
+            hard_fork_2: false,
         },
     )
     .unwrap()
 }
 
-/// Each setting of `operand_limits`, which the optimizer must preserve the behavior under.
-const OPTIONS: [OptimizeOptions; 2] = [
-    OptimizeOptions {
+/// Each target, which the optimizer must preserve the behavior under: with and without
+/// `operand_limits` before hard fork 2, and after it.
+const OPTIONS: [ClvmTarget; 3] = [
+    ClvmTarget {
         operand_limits: false,
+        hard_fork_2: false,
     },
-    OptimizeOptions {
+    ClvmTarget {
         operand_limits: true,
+        hard_fork_2: false,
+    },
+    ClvmTarget {
+        operand_limits: false,
+        hard_fork_2: true,
     },
 ];
 
 fn run(
     allocator: &mut Allocator,
-    options: OptimizeOptions,
+    options: ClvmTarget,
     program: NodePtr,
     env: NodePtr,
 ) -> Option<Vec<u8>> {
-    let dialect = ChiaDialect::new(clvm_flags(options.operand_limits));
+    let dialect = ChiaDialect::new(options.flags());
     let output = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
     Some(node_to_bytes(allocator, output.1).unwrap())
 }

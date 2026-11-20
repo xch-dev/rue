@@ -12,7 +12,7 @@ use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
 use rue_clvm::{disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, File, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
-use rue_lir::clvm_flags;
+use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 
@@ -259,7 +259,7 @@ fn run(allocator: &mut Allocator, ptr: NodePtr) -> Run {
     let env = allocator.nil();
     match run_program(
         allocator,
-        &ChiaDialect::new(clvm_flags(false)),
+        &ChiaDialect::new(ClvmTarget::default().flags()),
         ptr,
         env,
         MAX_COST,

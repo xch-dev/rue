@@ -9,10 +9,10 @@ use rue_hir::{
     DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol, SymbolId,
     has_reachable_unresolved,
 };
-use rue_lir::{CodegenOptions, OptimizeOptions, clvm_flags, codegen, optimize};
+use rue_lir::{CodegenOptions, codegen, optimize};
 use rue_options::CompilerOptions;
 
-use crate::{Compiler, entrypoint::synthetic_function};
+use crate::{Compiler, clvm_target, entrypoint::synthetic_function};
 
 pub(crate) fn evaluate_const_exprs(ctx: &mut Compiler) {
     if ctx.has_errors() {
@@ -191,8 +191,10 @@ fn const_options(ctx: &Compiler) -> CompilerOptions {
         debug_symbols: false,
         optimize_static_pairs: true,
         const_eval_max_cost: outer_options.const_eval_max_cost,
-        // Const expressions are run without `LIMITS`, since they're never run on chain
+        // Const expressions are run without `LIMITS`, since they're never run on chain, but with
+        // the cost model of the target, which `const_eval_max_cost` is measured in
         operand_limits: false,
+        hard_fork_2: outer_options.hard_fork_2,
         lints: outer_options.lints,
     }
 }
@@ -259,13 +261,8 @@ fn evaluate_const_expr(
 
         lir
     };
-    let lir = optimize(
-        &mut arena,
-        lir,
-        OptimizeOptions {
-            operand_limits: options.operand_limits,
-        },
-    );
+    let target = clvm_target(&options);
+    let lir = optimize(&mut arena, lir, target);
 
     let mut allocator = Allocator::new();
     let program = codegen(
@@ -274,10 +271,11 @@ fn evaluate_const_expr(
         lir,
         CodegenOptions {
             optimize_static_pairs: options.optimize_static_pairs,
+            hard_fork_2: options.hard_fork_2,
         },
     )
     .map_err(|error| ConstEvalError::Failed(error.to_string()))?;
-    let dialect = ChiaDialect::new(clvm_flags(options.operand_limits));
+    let dialect = ChiaDialect::new(target.flags());
 
     let output = run_program(&mut allocator, &dialect, program, NodePtr::NIL, max_cost).map_err(
         |error| match error {

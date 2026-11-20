@@ -88,7 +88,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        CodegenOptions, OptimizeOptions, codegen, codegen_with_tags, optimize, optimize_with_tags,
+        ClvmTarget, CodegenOptions, codegen, codegen_with_tags, optimize, optimize_with_tags,
     };
 
     #[test]
@@ -159,8 +159,8 @@ mod tests {
             labels: HashMap::from([(body, 1)]),
         };
 
-        let plain = optimize(&mut arena, body, OptimizeOptions::default());
-        let optimized = optimize_with_tags(&mut arena, body, OptimizeOptions::default(), &mut tags);
+        let plain = optimize(&mut arena, body, ClvmTarget::default());
+        let optimized = optimize_with_tags(&mut arena, body, ClvmTarget::default(), &mut tags);
 
         // The LIR is the same as without tags
         let mut allocator = Allocator::new();

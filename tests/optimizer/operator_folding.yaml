@@ -101,18 +101,6 @@ tests:
   debug_program: (substr (q . "hello") (q . 2) (q . 10))
   byte_cost: 240000
   clvm_error: "InvalidOperatorArg: Invalid Indices for Substring"
-- name: modpow_num
-  program: (q . 1)
-  debug_program: (modpow (q . 3) (q . 200) (q . 1000))
-  output: "1"
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
-- name: modpow_zero_modulus
-  program: (modpow (q . 3) (q . 200) ())
-  debug_program: (modpow (q . 3) (q . 200) ())
-  byte_cost: 180000
-  clvm_error: Division by zero
 - name: coinid_num
   program: (q . 0x54ee3f3823e93f6246abf4285c9dd75c2f6779f371543b6831cf391a1bc0f18c)
   debug_program: (coinid (q . 0x0000000000000000000000000000000000000000000000000000000000000001) (q . 0x0000000000000000000000000000000000000000000000000000000000000002) (q . 1000))

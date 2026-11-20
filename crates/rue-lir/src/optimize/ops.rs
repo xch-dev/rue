@@ -7,11 +7,11 @@ use sha2::{Digest, Sha256};
 use sha3::Keccak256;
 
 use crate::{
-    ClvmOp, Lir, LirId, MAX_DIVIDEND_BYTES, MAX_DIVISOR_BYTES, MAX_MUL_OPERAND_BYTES,
-    OptimizeOptions, atom_bigint, bigint_atom, first_path,
+    ClvmOp, ClvmTarget, Lir, LirId, MAX_DIVIDEND_BYTES, MAX_DIVISOR_BYTES, MAX_MUL_OPERAND_BYTES,
+    atom_bigint, bigint_atom, first_path,
     optimize::{
-        ArgList, Truthiness, fold_atoms, fold_limited_atoms, is_atom, is_boolean, is_nil, is_pure,
-        opt_truthy, reads_env,
+        ArgList, Truthiness, fold_atoms, is_atom, is_boolean, is_nil, is_pure, opt_truthy,
+        reads_env,
     },
     parent_path, rest_path,
     stack::grow_stack,
@@ -78,11 +78,11 @@ pub fn opt_closure(
 // Path 0 is excluded, since it evaluates to nil rather than reading the environment
 // If the value is a cons, we can extract the first element out of it, as long as the rest can't fail
 // If the value is a divmod, we can optimize it to a div since that's the first output
-pub fn opt_first(arena: &mut Arena<Lir>, options: OptimizeOptions, value: LirId) -> LirId {
+pub fn opt_first(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(first_path(&path))),
         Lir::Cons(first, rest) if is_pure(arena, rest) => first,
-        Lir::Divmod(left, right) => opt_div(arena, options, left, right),
+        Lir::Divmod(left, right) => opt_div(arena, target, left, right),
         _ => arena.alloc(Lir::First(value)),
     }
 }
@@ -91,11 +91,11 @@ pub fn opt_first(arena: &mut Arena<Lir>, options: OptimizeOptions, value: LirId)
 // Path 0 is excluded, since it evaluates to nil rather than reading the environment
 // If the value is a cons, we can extract the rest element out of it, as long as the first can't fail
 // If the value is a divmod, we can optimize it to a remainder since that's the rest output
-pub fn opt_rest(arena: &mut Arena<Lir>, options: OptimizeOptions, value: LirId) -> LirId {
+pub fn opt_rest(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(rest_path(&path))),
         Lir::Cons(first, rest) if is_pure(arena, first) => rest,
-        Lir::Divmod(left, right) => opt_mod(arena, options, left, right),
+        Lir::Divmod(left, right) => opt_mod(arena, target, left, right),
         _ => arena.alloc(Lir::Rest(value)),
     }
 }
@@ -264,8 +264,8 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // are zero. Then each running product inside the run is at most the one after it, so folding it
 // doesn't change whether the product fails. A product of one is left out, since it doesn't change
 // the running products either.
-pub fn opt_mul(arena: &mut Arena<Lir>, options: OptimizeOptions, args: Vec<LirId>) -> LirId {
-    if !options.operand_limits {
+pub fn opt_mul(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
+    if !target.limits_operands() {
         return opt_unlimited_mul(arena, args);
     }
 
@@ -370,22 +370,17 @@ fn fold_mul_run(arena: &mut Arena<Lir>, run: &mut Vec<LirId>, result: &mut Vec<L
 
 /// Whether the operands of `/`, `%` or `divmod` are allowed, which they always are unless the
 /// program is compiled with `operand_limits`.
-fn division_within_limits(options: OptimizeOptions, left: &[u8], right: &[u8]) -> bool {
-    !options.operand_limits
+fn division_within_limits(target: ClvmTarget, left: &[u8], right: &[u8]) -> bool {
+    !target.limits_operands()
         || (left.len() <= MAX_DIVIDEND_BYTES && right.len() <= MAX_DIVISOR_BYTES)
 }
 
 // If both values are atoms, we can perform the division (as long as the right value is not zero,
 // and `operand_limits` allows the operands)
-pub fn opt_div(
-    arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
-    left: LirId,
-    right: LirId,
-) -> LirId {
+pub fn opt_div(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
-        && division_within_limits(options, &left, &right)
+        && division_within_limits(target, &left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -398,15 +393,10 @@ pub fn opt_div(
 
 // If both values are atoms, we can perform the division and remainder (as long as the right value is
 // not zero, and `operand_limits` allows the operands)
-pub fn opt_divmod(
-    arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
-    left: LirId,
-    right: LirId,
-) -> LirId {
+pub fn opt_divmod(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
-        && division_within_limits(options, &left, &right)
+        && division_within_limits(target, &left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -424,15 +414,10 @@ pub fn opt_divmod(
 
 // If both values are atoms, we can perform the remainder (as long as the right value is not zero, and
 // `operand_limits` allows the operands)
-pub fn opt_mod(
-    arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
-    left: LirId,
-    right: LirId,
-) -> LirId {
+pub fn opt_mod(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
-        && division_within_limits(options, &left, &right)
+        && division_within_limits(target, &left, &right)
         && let left = atom_bigint(left)
         && let right = atom_bigint(right)
         && right.sign() != Sign::NoSign
@@ -445,14 +430,12 @@ pub fn opt_mod(
 
 pub fn opt_modpow(
     arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
+    target: ClvmTarget,
     base: LirId,
     exponent: LirId,
     modulus: LirId,
 ) -> LirId {
-    if let Some(folded) =
-        fold_limited_atoms(arena, options, ClvmOp::Modpow, &[base, exponent, modulus])
-    {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Modpow, &[base, exponent, modulus]) {
         return folded;
     }
 
@@ -463,18 +446,13 @@ pub fn opt_modpow(
 // Since `=` compares bytes, this only matches the canonical encoding of `1`
 // `logand` doesn't limit the length of its operands, so with `operand_limits`, where `%` fails for
 // a dividend longer than `MAX_DIVIDEND_BYTES`, this only matches if `x` is known to be short enough
-fn is_odd_check(
-    arena: &Arena<Lir>,
-    options: OptimizeOptions,
-    value: LirId,
-    one: LirId,
-) -> Option<LirId> {
+fn is_odd_check(arena: &Arena<Lir>, target: ClvmTarget, value: LirId, one: LirId) -> Option<LirId> {
     if let Lir::Mod(lhs, rhs) = arena[value].clone()
         && let Lir::Atom(rhs) = arena[rhs].clone()
         && atom_bigint(rhs) == BigInt::from(2)
         && let Lir::Atom(one) = &arena[one]
         && one.as_slice() == [1]
-        && (!options.operand_limits || fits_dividend(arena, lhs))
+        && (!target.limits_operands() || fits_dividend(arena, lhs))
     {
         return Some(lhs);
     }
@@ -492,37 +470,32 @@ fn fits_dividend(arena: &Arena<Lir>, value: LirId) -> bool {
     }
 }
 
-pub fn opt_eq(
-    arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
-    left: LirId,
-    right: LirId,
-) -> LirId {
-    if let Some(value) = is_odd_check(arena, options, left, right) {
+pub fn opt_eq(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
+    if let Some(value) = is_odd_check(arena, target, left, right) {
         return opt_logand(arena, vec![value, right]);
     }
 
-    if let Some(value) = is_odd_check(arena, options, right, left) {
+    if let Some(value) = is_odd_check(arena, target, right, left) {
         return opt_logand(arena, vec![value, left]);
     }
 
-    if let Some(folded) = fold_atoms(arena, ClvmOp::Eq, &[left, right]) {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Eq, &[left, right]) {
         return folded;
     }
 
     arena.alloc(Lir::Eq(left, right))
 }
 
-pub fn opt_gt(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::Gt, &[left, right]) {
+pub fn opt_gt(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Gt, &[left, right]) {
         return folded;
     }
 
     arena.alloc(Lir::Gt(left, right))
 }
 
-pub fn opt_gtbytes(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::GtBytes, &[left, right]) {
+pub fn opt_gtbytes(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::GtBytes, &[left, right]) {
         return folded;
     }
 
@@ -732,13 +705,14 @@ pub fn opt_strlen(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 
 pub fn opt_substr(
     arena: &mut Arena<Lir>,
+    target: ClvmTarget,
     string: LirId,
     start: LirId,
     end: Option<LirId>,
 ) -> LirId {
     let args: Vec<LirId> = [string, start].into_iter().chain(end).collect();
 
-    if let Some(folded) = fold_atoms(arena, ClvmOp::Substr, &args) {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Substr, &args) {
         return folded;
     }
 
@@ -829,48 +803,48 @@ pub fn opt_logxor(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Logxor(result))
 }
 
-pub fn opt_lognot(arena: &mut Arena<Lir>, value: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::Lognot, &[value]) {
+pub fn opt_lognot(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Lognot, &[value]) {
         return folded;
     }
 
     arena.alloc(Lir::Lognot(value))
 }
 
-pub fn opt_ash(arena: &mut Arena<Lir>, value: LirId, shift: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::Ash, &[value, shift]) {
+pub fn opt_ash(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId, shift: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Ash, &[value, shift]) {
         return folded;
     }
 
     arena.alloc(Lir::Ash(value, shift))
 }
 
-pub fn opt_lsh(arena: &mut Arena<Lir>, value: LirId, shift: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::Lsh, &[value, shift]) {
+pub fn opt_lsh(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId, shift: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Lsh, &[value, shift]) {
         return folded;
     }
 
     arena.alloc(Lir::Lsh(value, shift))
 }
 
-pub fn opt_pubkey_for_exp(arena: &mut Arena<Lir>, exp: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::PubkeyForExp, &[exp]) {
+pub fn opt_pubkey_for_exp(arena: &mut Arena<Lir>, target: ClvmTarget, exp: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::PubkeyForExp, &[exp]) {
         return folded;
     }
 
     arena.alloc(Lir::PubkeyForExp(exp))
 }
 
-pub fn opt_g1_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Add, &args) {
+pub fn opt_g1_add(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Add, &args) {
         return folded;
     }
 
     arena.alloc(Lir::G1Add(args))
 }
 
-pub fn opt_g1_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Subtract, &args) {
+pub fn opt_g1_subtract(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Subtract, &args) {
         return folded;
     }
 
@@ -879,45 +853,50 @@ pub fn opt_g1_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 
 pub fn opt_g1_multiply(
     arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
+    target: ClvmTarget,
     left: LirId,
     right: LirId,
 ) -> LirId {
-    if let Some(folded) = fold_limited_atoms(arena, options, ClvmOp::G1Multiply, &[left, right]) {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Multiply, &[left, right]) {
         return folded;
     }
 
     arena.alloc(Lir::G1Multiply(left, right))
 }
 
-pub fn opt_g1_negate(arena: &mut Arena<Lir>, value: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Negate, &[value]) {
+pub fn opt_g1_negate(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Negate, &[value]) {
         return folded;
     }
 
     arena.alloc(Lir::G1Negate(value))
 }
 
-pub fn opt_g1_map(arena: &mut Arena<Lir>, value: LirId, map: Option<LirId>) -> LirId {
+pub fn opt_g1_map(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    value: LirId,
+    map: Option<LirId>,
+) -> LirId {
     let args: Vec<LirId> = [value].into_iter().chain(map).collect();
 
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Map, &args) {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Map, &args) {
         return folded;
     }
 
     arena.alloc(Lir::G1Map(value, map))
 }
 
-pub fn opt_g2_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Add, &args) {
+pub fn opt_g2_add(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Add, &args) {
         return folded;
     }
 
     arena.alloc(Lir::G2Add(args))
 }
 
-pub fn opt_g2_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Subtract, &args) {
+pub fn opt_g2_subtract(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Subtract, &args) {
         return folded;
     }
 
@@ -926,47 +905,61 @@ pub fn opt_g2_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 
 pub fn opt_g2_multiply(
     arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
+    target: ClvmTarget,
     left: LirId,
     right: LirId,
 ) -> LirId {
-    if let Some(folded) = fold_limited_atoms(arena, options, ClvmOp::G2Multiply, &[left, right]) {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Multiply, &[left, right]) {
         return folded;
     }
 
     arena.alloc(Lir::G2Multiply(left, right))
 }
 
-pub fn opt_g2_negate(arena: &mut Arena<Lir>, value: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Negate, &[value]) {
+pub fn opt_g2_negate(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Negate, &[value]) {
         return folded;
     }
 
     arena.alloc(Lir::G2Negate(value))
 }
 
-pub fn opt_g2_map(arena: &mut Arena<Lir>, value: LirId, map: Option<LirId>) -> LirId {
+pub fn opt_g2_map(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    value: LirId,
+    map: Option<LirId>,
+) -> LirId {
     let args: Vec<LirId> = [value].into_iter().chain(map).collect();
 
-    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Map, &args) {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Map, &args) {
         return folded;
     }
 
     arena.alloc(Lir::G2Map(value, map))
 }
 
-pub fn opt_bls_pairing_identity(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, ClvmOp::BlsPairingIdentity, &args) {
+pub fn opt_bls_pairing_identity(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    args: Vec<LirId>,
+) -> LirId {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::BlsPairingIdentity, &args) {
         return folded;
     }
 
     arena.alloc(Lir::BlsPairingIdentity(args))
 }
 
-pub fn opt_bls_verify(arena: &mut Arena<Lir>, sig: LirId, args: Vec<LirId>) -> LirId {
+pub fn opt_bls_verify(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    sig: LirId,
+    args: Vec<LirId>,
+) -> LirId {
     let fold_args: Vec<LirId> = [sig].into_iter().chain(args.iter().copied()).collect();
 
-    if let Some(folded) = fold_atoms(arena, ClvmOp::BlsVerify, &fold_args) {
+    if let Some(folded) = fold_atoms(arena, target, ClvmOp::BlsVerify, &fold_args) {
         return folded;
     }
 
@@ -1051,12 +1044,14 @@ pub fn opt_keccak256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> 
 
 pub fn opt_coin_id(
     arena: &mut Arena<Lir>,
+    target: ClvmTarget,
     parent_coin_info: LirId,
     puzzle_hash: LirId,
     amount: LirId,
 ) -> LirId {
     if let Some(folded) = fold_atoms(
         arena,
+        target,
         ClvmOp::CoinId,
         &[parent_coin_info, puzzle_hash, amount],
     ) {
@@ -1068,12 +1063,14 @@ pub fn opt_coin_id(
 
 pub fn opt_k1_verify(
     arena: &mut Arena<Lir>,
+    target: ClvmTarget,
     public_key: LirId,
     message: LirId,
     signature: LirId,
 ) -> LirId {
     if let Some(folded) = fold_atoms(
         arena,
+        target,
         ClvmOp::Secp256K1Verify,
         &[public_key, message, signature],
     ) {
@@ -1085,12 +1082,14 @@ pub fn opt_k1_verify(
 
 pub fn opt_r1_verify(
     arena: &mut Arena<Lir>,
+    target: ClvmTarget,
     public_key: LirId,
     message: LirId,
     signature: LirId,
 ) -> LirId {
     if let Some(folded) = fold_atoms(
         arena,
+        target,
         ClvmOp::Secp256R1Verify,
         &[public_key, message, signature],
     ) {
@@ -1157,16 +1156,23 @@ mod tests {
 
     use rue_clvm::disassemble_program;
 
-    use crate::{CodegenOptions, clvm_flags, codegen, optimize};
+    use crate::{CodegenOptions, codegen, optimize};
 
     use super::*;
 
-    const UNLIMITED: OptimizeOptions = OptimizeOptions {
+    const UNLIMITED: ClvmTarget = ClvmTarget {
         operand_limits: false,
+        hard_fork_2: false,
     };
 
-    const LIMITED: OptimizeOptions = OptimizeOptions {
+    const LIMITED: ClvmTarget = ClvmTarget {
         operand_limits: true,
+        hard_fork_2: false,
+    };
+
+    const HARD_FORK_2: ClvmTarget = ClvmTarget {
+        operand_limits: false,
+        hard_fork_2: true,
     };
 
     fn atom(arena: &mut Arena<Lir>, value: i64) -> LirId {
@@ -1179,11 +1185,11 @@ mod tests {
 
     fn run(
         allocator: &mut Allocator,
-        options: OptimizeOptions,
+        options: ClvmTarget,
         program: NodePtr,
         env: NodePtr,
     ) -> Option<Vec<u8>> {
-        let dialect = ChiaDialect::new(clvm_flags(options.operand_limits));
+        let dialect = ChiaDialect::new(options.flags());
         let result = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
         Some(node_to_bytes(allocator, result.1).unwrap())
     }
@@ -1200,6 +1206,7 @@ mod tests {
             lir,
             CodegenOptions {
                 optimize_static_pairs: optimize,
+                hard_fork_2: false,
             },
         )
         .unwrap()
@@ -1211,16 +1218,17 @@ mod tests {
         disassemble_program(&allocator, program)
     }
 
-    /// Checks that the LIR behaves the same after it's optimized, with and without
-    /// `operand_limits`, and returns what it's optimized to without them.
+    /// Checks that the LIR behaves the same after it's optimized, for each target, and returns
+    /// what it's optimized to for the default one.
     fn assert_equivalent(arena: &mut Arena<Lir>, lir: LirId, envs: &[Vec<Vec<u8>>]) -> LirId {
         assert_equivalent_with(arena, LIMITED, lir, envs);
+        assert_equivalent_with(arena, HARD_FORK_2, lir, envs);
         assert_equivalent_with(arena, UNLIMITED, lir, envs)
     }
 
     fn assert_equivalent_with(
         arena: &mut Arena<Lir>,
-        options: OptimizeOptions,
+        options: ClvmTarget,
         lir: LirId,
         envs: &[Vec<Vec<u8>>],
     ) -> LirId {
@@ -1446,7 +1454,7 @@ mod tests {
 
     // `LIMITS` limits the operands of `modpow` to 256 bytes and the scalar of `g1_multiply` and
     // `g2_multiply` to 1024 bytes, so they're only folded past those lengths without
-    // `operand_limits`
+    // `operand_limits`, or after hard fork 2, which removes `LIMITS`
     #[test]
     fn test_limited_operators_only_fold_without_operand_limits() {
         let mut arena = Arena::new();
@@ -1472,7 +1480,7 @@ mod tests {
                 .collect(),
         ));
 
-        for (options, folded) in [(UNLIMITED, true), (LIMITED, false)] {
+        for (options, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
             let result = opt_modpow(&mut arena, options, long_base, two, seven);
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
 
@@ -1483,10 +1491,14 @@ mod tests {
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
         }
 
-        // Short operands fold either way
-        for options in [UNLIMITED, LIMITED] {
+        // Short operands fold, unless `modpow` is disabled, as `DISABLE_OP` does with
+        // `operand_limits` before hard fork 2
+        for (options, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
             let result = opt_modpow(&mut arena, options, two, two, seven);
-            assert!(matches!(&arena[result], Lir::Atom(atom) if *atom == [4]));
+            assert_eq!(
+                matches!(&arena[result], Lir::Atom(atom) if *atom == [4]),
+                folded
+            );
         }
     }
 
@@ -1572,7 +1584,7 @@ mod tests {
                 })
                 .collect();
 
-            for options in [UNLIMITED, LIMITED] {
+            for options in [UNLIMITED, LIMITED, HARD_FORK_2] {
                 let optimized = assert_equivalent_with(&mut arena, options, lir, &envs);
 
                 // Optimizing a second time shouldn't change the output

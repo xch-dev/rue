@@ -234,18 +234,25 @@ fn tests_must_return_nil() {
     );
 }
 
-/// Programs run with the same flags as the CLI, which enable `keccak256`.
+/// Programs are compiled and run for mainnet before hard fork 2, as the CLI does by default, so
+/// `keccak256` is rejected, and its operator is unknown when a program uses it anyway.
 #[test]
 fn runs_with_the_cli_flags() {
-    let source = "fn main() -> Bytes32 {\n    keccak256(\"hello\")\n}\n\ntest fn hashes() {\n    assert main() == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;\n}\n";
+    let source = "fn main() -> Bytes32 {\n    keccak256(\"hello\")\n}\n";
     let compilation = compile(source.to_string(), false).unwrap();
-    let execution = run(compilation.hex.as_ref().unwrap(), "()").unwrap();
 
-    assert_eq!(
-        execution.output.as_deref(),
-        Some("0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8")
+    assert!(compilation.hex.is_none());
+    assert!(
+        compilation
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("hard fork 2")),
     );
-    assert_eq!(run_tests(source.to_string()).unwrap()[0].error, None);
+
+    // `(62 (q . "hello"))`, which is `keccak256` outside of the softfork guard
+    let execution = run("ff3effff018568656c6c6f80", "()").unwrap();
+    assert_eq!(execution.output, None);
+    assert!(execution.error.is_some());
 }
 
 #[test]

@@ -1,0 +1,18 @@
+hard_fork_2: true
+tests:
+- name: k1_verify
+  program: (i () (64 2 5 11) ())
+  debug_program: (i (q . 1) () (64 2 5 11))
+  solution: (0x02390b19842e100324163334b16947f66125b76d4fa4a11b9ccdde9b7398e64076 0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2 0x481477e62a1d02268127ae89cc58929e09ad5d30229721965ae35965d098a5f630205a7e69f4cb8084f16c7407ed7312994ffbf87ba5eb1aee16682dd324943e)
+  output: ()
+  runtime_cost: 1300576
+  byte_cost: 204000
+  total_cost: 1504576
+- name: r1_verify
+  program: (i () (65 2 5 11) ())
+  debug_program: (i (q . 1) () (65 2 5 11))
+  solution: (0x033e1a1b2ccbc35883c60fdfc3f4a02175096ade6271fe85517ca5772594bbd0dc 0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2 0xeae2f488080919bd0a7069c24cdd9c6ce2db423861b0c9d4236cdadbd0005f6d8f3709e6eb19249fd9c8bea664aba35218e67ea4b0f2239488dc3147f336e1e6)
+  output: ()
+  runtime_cost: 1850576
+  byte_cost: 204000
+  total_cost: 2054576

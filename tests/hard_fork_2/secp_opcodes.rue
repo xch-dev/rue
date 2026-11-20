@@ -1,0 +1,10 @@
+// Compiled with `hard_fork_2` (see `secp_opcodes.yaml`), where the secp operators are the one
+// byte opcodes 64 and 65. `tests/secp_opcodes.rue` has the same tests compiled without it.
+
+test fn k1_verify(public_key: K1PublicKey, message: Bytes32, signature: K1Signature) {
+    secp256k1_verify(public_key, message, signature);
+}
+
+test fn r1_verify(public_key: R1PublicKey, message: Bytes32, signature: R1Signature) {
+    secp256r1_verify(public_key, message, signature);
+}

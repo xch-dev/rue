@@ -173,7 +173,7 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
     }
 
     fn operand_limits(&self) -> bool {
-        self.options.operand_limits
+        self.options.enforces_operand_limits()
     }
 
     /// This is the value of an inline binding or constant, or of one that's inlined automatically,

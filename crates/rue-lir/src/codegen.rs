@@ -8,6 +8,11 @@ use crate::{ClvmOp, DebugTags, Lir, LirId, NodeTags, Result, path_to_atom, stack
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CodegenOptions {
     pub optimize_static_pairs: bool,
+
+    /// Whether the program is run after hard fork 2, which makes the secp operators available as
+    /// the one byte opcodes 64 and 65 (see [`ClvmTarget`](crate::ClvmTarget)). Before it, they're
+    /// the four byte opcodes that encode their cost.
+    pub hard_fork_2: bool,
 }
 
 pub fn codegen(
@@ -460,19 +465,17 @@ fn codegen_step(
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(
-                clvm_list!(ClvmOp::Secp256K1Verify, pubkey, message, signature)
-                    .to_clvm(allocator)?,
-            )
+            let op =
+                allocator.new_atom(&ClvmOp::Secp256K1Verify.to_target_atom(options.hard_fork_2))?;
+            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
         }
         Lir::R1Verify(pubkey, message, signature) => {
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(
-                clvm_list!(ClvmOp::Secp256R1Verify, pubkey, message, signature)
-                    .to_clvm(allocator)?,
-            )
+            let op =
+                allocator.new_atom(&ClvmOp::Secp256R1Verify.to_target_atom(options.hard_fork_2))?;
+            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
         }
         Lir::Op(op, args) => {
             let args = codegen(arena, allocator, *args)?;
@@ -555,6 +558,7 @@ mod tests {
             lir,
             CodegenOptions {
                 optimize_static_pairs,
+                hard_fork_2: false,
             },
         )
         .unwrap();

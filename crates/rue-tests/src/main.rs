@@ -17,7 +17,7 @@ use rue_compiler::normalize_path;
 use rue_compiler::{CompiledTest, Compiler, Error, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
-use rue_lir::{COST_PER_BYTE, DebugDialect, clvm_flags};
+use rue_lir::{COST_PER_BYTE, ClvmTarget, DebugDialect};
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -75,6 +75,11 @@ struct TestFile {
     /// `solution`, this is set by hand in the snapshot.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     operand_limits: bool,
+
+    /// Whether the file is compiled with `hard_fork_2`, and run as it would be after hard fork 2.
+    /// Like a `solution`, this is set by hand in the snapshot.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    hard_fork_2: bool,
 
     #[serde(flatten)]
     main: TestCase,
@@ -186,15 +191,8 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
 
     let mut allocator = Allocator::new();
 
-    let operand_limits = file.operand_limits;
-    let mut ctx = Compiler::new(CompilerOptions {
-        operand_limits,
-        ..CompilerOptions::default()
-    });
-    let mut debug_ctx = Compiler::new(CompilerOptions {
-        operand_limits,
-        ..CompilerOptions::debug()
-    });
+    let (mut ctx, mut debug_ctx) = compilers(&file)?;
+    let target = ctx.target();
 
     let unit = FileTree::empty(&mut ctx)?;
     let debug_unit = FileTree::empty(&mut debug_ctx)?;
@@ -222,7 +220,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
 
     handle_tests(
         &mut allocator,
-        operand_limits,
+        target,
         &mut file.tests,
         &tests,
         &debug_tests,
@@ -453,15 +451,8 @@ fn handle_test_file(
 
     let mut allocator = Allocator::new();
 
-    let operand_limits = file.operand_limits;
-    let mut ctx = Compiler::new(CompilerOptions {
-        operand_limits,
-        ..CompilerOptions::default()
-    });
-    let mut debug_ctx = Compiler::new(CompilerOptions {
-        operand_limits,
-        ..CompilerOptions::debug()
-    });
+    let (mut ctx, mut debug_ctx) = compilers(&file)?;
+    let target = ctx.target();
 
     let (unit, debug_unit, kind, base_path) = if is_dir {
         let rue_dir = parent.join(name);
@@ -544,13 +535,7 @@ fn handle_test_file(
         .transpose()?
         .unwrap_or_default();
 
-    handle_test_case(
-        &mut allocator,
-        operand_limits,
-        &mut file.main,
-        main,
-        debug_main,
-    )?;
+    handle_test_case(&mut allocator, target, &mut file.main, main, debug_main)?;
 
     file.puzzle_hashes = BTreeMap::new();
 
@@ -587,7 +572,7 @@ fn handle_test_file(
 
     handle_tests(
         &mut allocator,
-        operand_limits,
+        target,
         &mut file.tests,
         &tests,
         &debug_tests,
@@ -649,10 +634,30 @@ fn main_programs(
     Ok((main, debug_main))
 }
 
+/// The release and debug compilers for a snapshot, with the target it sets by hand.
+fn compilers(file: &TestFile) -> Result<(Compiler, Compiler)> {
+    if file.operand_limits && file.hard_fork_2 {
+        anyhow::bail!(
+            "`operand_limits` has no effect with `hard_fork_2`, since hard fork 2 removes `LIMITS`"
+        );
+    }
+
+    let target = |options: CompilerOptions| CompilerOptions {
+        operand_limits: file.operand_limits,
+        hard_fork_2: file.hard_fork_2,
+        ..options
+    };
+
+    Ok((
+        Compiler::new(target(CompilerOptions::default())),
+        Compiler::new(target(CompilerOptions::debug())),
+    ))
+}
+
 /// Runs each test and its debug build, and records the results in the snapshot's test cases.
 fn handle_tests(
     allocator: &mut Allocator,
-    operand_limits: bool,
+    target: ClvmTarget,
     test_cases: &mut Vec<TestCase>,
     tests: &[CompiledTest],
     debug_tests: &[CompiledTest],
@@ -667,7 +672,7 @@ fn handle_tests(
     for ((test_case, test), debug_test) in test_cases.iter_mut().zip(tests).zip(debug_tests) {
         handle_test_case(
             allocator,
-            operand_limits,
+            target,
             test_case,
             Some(test.ptr),
             Some(debug_test.ptr),
@@ -842,11 +847,11 @@ fn format_value(value: &Value) -> String {
     }
 }
 
-/// Runs the program and its debug build, with `LIMITS` if they're compiled with `operand_limits`,
-/// and records the results in the test case.
+/// Runs the program and its debug build with the flags of the target they're compiled for, and
+/// records the results in the test case.
 fn handle_test_case(
     allocator: &mut Allocator,
-    operand_limits: bool,
+    target: ClvmTarget,
     test_case: &mut TestCase,
     program: Option<NodePtr>,
     debug_program: Option<NodePtr>,
@@ -874,13 +879,13 @@ fn handle_test_case(
 
     let response = run_program(
         allocator,
-        &ChiaDialect::new(clvm_flags(operand_limits)),
+        &ChiaDialect::new(target.flags()),
         ptr,
         env,
         100_000_000,
     );
 
-    let debug_dialect = DebugDialect::new(clvm_flags(operand_limits), false);
+    let debug_dialect = DebugDialect::new(target.flags(), false);
     let debug_response = run_program(allocator, &debug_dialect, debug_ptr, env, 100_000_000);
     let print_messages = debug_dialect.log();
 
@@ -1117,6 +1122,59 @@ mod tests {
             }
         }
         Ok(files)
+    }
+
+    #[test]
+    fn hard_fork_2_compiles_and_runs_for_hard_fork_2() -> Result<()> {
+        let dir = corpus("hard_fork_2")?;
+        let tests = dir.0.join("tests");
+        let source = "test fn hash(value: Bytes) -> Bytes32 {\n    keccak256(value)\n}\n";
+
+        for hard_fork_2 in [false, true] {
+            fs::write(tests.join("hash.rue"), source)?;
+            fs::write(
+                tests.join("hash.yaml"),
+                format!(
+                    "{}tests:\n- name: hash\n  solution: (\"hello\")\n",
+                    if hard_fork_2 {
+                        "hard_fork_2: true\n"
+                    } else {
+                        ""
+                    }
+                ),
+            )?;
+
+            run_tests(None, &dir.0, true)?;
+
+            // The setting is kept, and `keccak256` is only allowed with it
+            let file = read_snapshot(&tests.join("hash.yaml"))?;
+            assert_eq!(file.hard_fork_2, hard_fork_2);
+
+            if hard_fork_2 {
+                assert!(file.diagnostics.is_empty(), "{:?}", file.diagnostics);
+                assert_eq!(
+                    file.tests[0].output.as_deref(),
+                    Some("0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8")
+                );
+            } else {
+                assert!(
+                    file.diagnostics
+                        .iter()
+                        .any(|diagnostic| diagnostic.contains("hard fork 2")),
+                    "{:?}",
+                    file.diagnostics
+                );
+            }
+        }
+
+        // `operand_limits` has no effect with it, so setting both is an error
+        fs::write(
+            tests.join("hash.yaml"),
+            "operand_limits: true\nhard_fork_2: true\n",
+        )?;
+        assert!(run_tests(None, &dir.0, true).is_err());
+
+        Ok(())
     }
 
     #[test]

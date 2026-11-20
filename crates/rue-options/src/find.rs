@@ -76,6 +76,10 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             options.operand_limits = operand_limits;
         }
 
+        if let Some(hard_fork_2) = manifest.compiler.hard_fork_2 {
+            options.hard_fork_2 = hard_fork_2;
+        }
+
         let problems = manifest.apply_lints(&mut options.lints);
 
         return Ok(Some(Project {
@@ -272,6 +276,22 @@ mod tests {
         // Enabling it explicitly is the same as leaving it out
         dir.write("Rue.toml", "[compiler]\nstd = true\n");
         assert!(find(&dir.0, false).options.std);
+    }
+
+    #[test]
+    fn manifest_sets_hard_fork_2() {
+        let dir = TempDir::new();
+        dir.write("Rue.toml", "[compiler]\n");
+
+        for debug in [false, true] {
+            assert!(!find(&dir.0, debug).options.hard_fork_2);
+        }
+
+        dir.write("Rue.toml", "[compiler]\nhard_fork_2 = true\n");
+
+        for debug in [false, true] {
+            assert!(find(&dir.0, debug).options.hard_fork_2);
+        }
     }
 
     #[test]

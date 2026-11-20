@@ -1,0 +1,10 @@
+// Before hard fork 2, the secp operators are the four byte opcodes that encode their cost.
+// `tests/hard_fork_2/secp_opcodes.rue` has the same tests compiled with `hard_fork_2`.
+
+test fn k1_verify(public_key: K1PublicKey, message: Bytes32, signature: K1Signature) {
+    secp256k1_verify(public_key, message, signature);
+}
+
+test fn r1_verify(public_key: R1PublicKey, message: Bytes32, signature: R1Signature) {
+    secp256r1_verify(public_key, message, signature);
+}
