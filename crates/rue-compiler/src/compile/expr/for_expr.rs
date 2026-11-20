@@ -7,9 +7,18 @@ use rue_hir::{
 };
 use rue_types::{FunctionParameter, FunctionType, Pair, Type, TypeId};
 
-use super::call_inference::{list_of, pair_parts, references_call_generics};
+use super::call_inference::{list_of, pair_parts};
 use super::list::{list_item_types, union_of};
 use crate::{BlockKind, Compiler, compile_block, compile_expr, compile_type, create_binding};
+
+/// The result of a fold for the rest of the list.
+struct Accumulator {
+    /// The binding for it in the body.
+    symbol: SymbolId,
+    /// The result at the end of the list.
+    init: HirId,
+    ty: TypeId,
+}
 
 /// What a `for` expression makes of the items of its list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,8 +49,9 @@ enum ForKind {
 ///   it's evaluated once, before the body.
 /// - With a filter, such as `if x > 0`, the items that don't pass it are left out of the list, or
 ///   skipped by the fold.
-/// - If the body has no value, or its value is nil, or the expression is a statement, whose value
-///   isn't used, the body is only evaluated for each item, and the result is nil.
+/// - Without a fold, if the body has no value, or the expression is a statement, whose value
+///   isn't used, the body is only evaluated for each item, and the result is nil. So it is if the
+///   body's value is nil, unless the expression is expected to be a list.
 pub fn compile_for_expr(
     ctx: &mut Compiler,
     expr: &AstForExpr,
@@ -96,13 +106,12 @@ pub fn compile_for_expr(
         };
 
         let ty = annotation.unwrap_or_else(|| match expected_type {
-            // Not a type that's only a hint, or that still has the generics of a call being
-            // inferred, which the fold can't be
+            // Not a type that's only a hint, such as one with the generics of a call that's
+            // being inferred, which the fold can't be
             Some(expected)
                 if ctx.is_assignable(init.ty, types.nil)
                     && ctx.is_assignable(init.ty, expected)
-                    && !ctx.is_expected_type_hint()
-                    && !references_call_generics(ctx, expected) =>
+                    && !ctx.is_expected_type_hint() =>
             {
                 expected
             }
@@ -134,10 +143,20 @@ pub fn compile_for_expr(
         }))
     };
 
-    // The item is in scope after the list, in the filter and the body
+    let body_start = expr
+        .body()
+        .map_or(range.end(), |body| body.syntax().text_range().start());
+
+    // The item is in scope after the list, in the filter and the body. It isn't in scope in the
+    // fold's value, which is between them, so its scope ends before that. The body sees it from
+    // the scopes of the fold and of its block, which are inside of this one
+    let item_end = fold
+        .as_ref()
+        .map_or(body_start, |fold| fold.syntax().text_range().start());
+
     let item_start = expr
         .list()
-        .map_or(range.start(), |list| list.syntax().text_range().end());
+        .map_or(item_end, |list| list.syntax().text_range().end());
 
     let scope = ctx.alloc_child_scope();
     ctx.push_scope(scope, item_start);
@@ -169,15 +188,8 @@ pub fn compile_for_expr(
     // The result for the rest of the list is only in scope in the body. Its let statement is
     // inside the filter, so that an item that's skipped doesn't evaluate it
     let mut accumulator_statements = Vec::new();
-    let body_start = expr
-        .body()
-        .map_or(range.end(), |body| body.syntax().text_range().start());
 
-    // The item isn't in scope in the fold's value, which is between the filter and the body, so
-    // its scope ends before that. The scopes of the fold and the body are inside of it
-    let item_end = fold
-        .as_ref()
-        .map_or(body_start, |fold| fold.syntax().text_range().start());
+    // Only the range up to here is recorded for the item's scope, which stays open for the body
     ctx.pop_scope(item_end);
     ctx.push_scope(scope, body_start);
 
@@ -196,22 +208,17 @@ pub fn compile_for_expr(
             &mut accumulator_statements,
         );
 
-        (
-            symbol,
-            init,
-            ty,
-            matches!(pattern, Some(AstBinding::NamedBinding(_))),
-        )
+        Accumulator { symbol, init, ty }
     });
 
-    let expected_body = if let Some(&(_, _, ty, _)) = accumulator.as_ref() {
-        Some(ty)
-    } else if statement || !has_value {
-        None
-    } else {
-        expected_type
-            .and_then(|ty| pair_parts(ctx, ty))
-            .map(|(first, _)| first)
+    // The type of an item of the list that the expression is expected to be, if it's one
+    let expected_item = expected_type
+        .and_then(|ty| pair_parts(ctx, ty))
+        .map(|(first, _)| first);
+
+    let expected_body = match &accumulator {
+        Some(accumulator) => Some(accumulator.ty),
+        None => expected_item,
     };
 
     let body = if let Some(body) = expr.body() {
@@ -225,8 +232,8 @@ pub fn compile_for_expr(
             ctx.revert_mappings(index, body.syntax().text_range().end());
         }
 
-        if let Some(&(_, _, ty, _)) = accumulator.as_ref() {
-            ctx.assign_type(body.syntax(), value.ty, ty);
+        if let Some(accumulator) = &accumulator {
+            ctx.assign_type(body.syntax(), value.ty, accumulator.ty);
         }
 
         value
@@ -235,10 +242,9 @@ pub fn compile_for_expr(
         ctx.unresolved()
     };
 
-    if let Some(&(symbol, _, _, named)) = accumulator.as_ref()
-        && named
-        && is_lazy(ctx, symbol, body.hir, first_hir)
-        && let Symbol::Binding(binding) = ctx.symbol_mut(symbol)
+    if let Some(accumulator) = &accumulator
+        && is_lazy(ctx, accumulator.symbol, body.hir, first_hir)
+        && let Symbol::Binding(binding) = ctx.symbol_mut(accumulator.symbol)
     {
         binding.inline = true;
     }
@@ -250,10 +256,14 @@ pub fn compile_for_expr(
     ctx.pop_scope(range.end());
 
     // A body whose value is nil has nothing to make a list of, as with a call to a function that
-    // returns nothing, or another loop, so it's a loop too
+    // returns nothing, or another loop, so it's a loop too, unless the expression is expected to
+    // be a list, which it's then a list of nils for
     let kind = if fold.is_some() {
         ForKind::Fold
-    } else if statement || !has_value || ctx.is_assignable(body.ty, types.nil) {
+    } else if statement
+        || !has_value
+        || (expected_item.is_none() && ctx.is_assignable(body.ty, types.nil))
+    {
         ForKind::Loop
     } else {
         ForKind::List
@@ -307,8 +317,8 @@ pub fn compile_for_expr(
         body: Some(step),
     }));
 
-    let (end, return_type) = match (kind, accumulator.as_ref()) {
-        (ForKind::Fold, Some(&(_, init, ty, _))) => (init, ty),
+    let (end, return_type) = match (kind, &accumulator) {
+        (ForKind::Fold, Some(accumulator)) => (accumulator.init, accumulator.ty),
         (ForKind::List, _) => (ctx.builtins().nil.hir, list_of(ctx, body.ty)),
         _ => (ctx.builtins().nil.hir, types.nil),
     };

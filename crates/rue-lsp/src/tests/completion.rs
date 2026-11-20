@@ -1306,6 +1306,10 @@ fn test_complete_in_for() {
     let list = "fn main(items: List<Int>) -> Int { for item in $0 fold total = 0 { total } }";
     assert_eq!(offered(list, &names), "items sha256");
 
+    // Before the list is written
+    let no_list = "fn main(items: List<Int>) -> Int { for item in $0 }";
+    assert_eq!(offered(no_list, &names), "items sha256");
+
     let filter =
         "fn main(items: List<Int>) -> Int { for item in items if $0 fold total = 0 { total } }";
     assert_eq!(offered(filter, &names), "item items sha256");

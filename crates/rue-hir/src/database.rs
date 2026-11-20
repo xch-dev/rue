@@ -117,7 +117,6 @@ impl Database {
         self.const_exprs.iter().copied()
     }
 
-    /// The value inside of any casts, which is what's evaluated at runtime.
     /// Whether the node is the call of a loop to itself with the rest of its list (see
     /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
     /// list. A binding for it is either `inline`, and evaluated where the body refers to it, or
@@ -150,6 +149,7 @@ impl Database {
             )
     }
 
+    /// The value inside of any casts, which is what's evaluated at runtime.
     pub fn without_casts(&self, mut hir: HirId) -> HirId {
         while let Hir::Cast(value) = self.hir(hir) {
             hir = *value;

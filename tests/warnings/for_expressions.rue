@@ -61,7 +61,7 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
 
     // The result of a fold that's evaluated where the body refers to it isn't an `inline let`,
     // though it may fail and isn't always evaluated
-    let h = for y in xs fold found = false { y == 1 || increment(y) == 5 || found };
+    let h = for y in xs fold found = false { y == 1 || positive(y) == 5 || found };
 
     // An `inline let` whose value is a `for` that may fail is still one
     inline let i = for y in xs fold sum = 0 { sum + positive(y) };
