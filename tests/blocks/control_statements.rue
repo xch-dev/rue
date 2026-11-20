@@ -757,3 +757,34 @@ test fn narrows_to_branch_results() -> List<Int> {
         narrows_to_earlier_arm(nil),
     ]
 }
+
+// A `match` statement on an enum narrows the rest of the block to the variants that fall through
+enum Payment {
+    Free,
+    Card { amount: Int },
+    Refund { amount: Int },
+}
+
+fn charge(payment: Payment) -> Int {
+    match payment {
+        Payment::Free => {
+            return 0;
+        }
+        Payment::Refund => {
+            raise "refunds aren't charged";
+        }
+        Payment::Card => {
+            assert payment.amount > 0;
+        }
+    }
+
+    payment.amount
+}
+
+test fn charge_results() -> List<Int> {
+    [charge(Payment::Free), charge(Payment::Card { amount: 5 })]
+}
+
+test fn charge_refund() -> Int {
+    charge(Payment::Refund { amount: 5 })
+}
