@@ -1,6 +1,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 mod debug;
+mod eager;
 mod measure;
 mod path_binding;
 mod substitution;
@@ -623,9 +624,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     UnaryOp::PubkeyForExp => self.arena.alloc(Lir::PubkeyForExp(lir)),
                 }
             }
-            Hir::Binary(op, left, right) => {
-                let left = self.lower_hir(env, left);
-                let right = self.lower_hir(env, right);
+            Hir::Binary(op, left_hir, right_hir) => {
+                let left = self.lower_hir(env, left_hir);
+                let right = self.lower_hir(env, right_hir);
                 match op {
                     BinaryOp::Add => self.arena.alloc(Lir::Add(vec![left, right])),
                     BinaryOp::Sub => self.arena.alloc(Lir::Sub(vec![left, right])),
@@ -680,14 +681,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                         self.arena.alloc(Lir::Not(eq))
                     }
                     // The right operand is a `Bool`, so it's the result as it is, without
-                    // being turned into `1` or `()` again
+                    // being turned into `1` or `()` again. It's only evaluated if the left
+                    // operand doesn't decide the result, unless evaluating it either way is
+                    // smaller and can't be told apart (see [`Self::is_eager_operand`]).
                     BinaryOp::And => {
                         let false_atom = self.arena.alloc(Lir::Atom(vec![]));
-                        self.arena.alloc(Lir::If(left, right, false_atom, false))
+                        let eager = self.is_eager_operand(hir, left_hir, right_hir);
+                        self.arena.alloc(Lir::If(left, right, false_atom, eager))
                     }
                     BinaryOp::Or => {
                         let true_atom = self.arena.alloc(Lir::Atom(vec![1]));
-                        self.arena.alloc(Lir::If(left, true_atom, right, false))
+                        let eager = self.is_eager_operand(hir, left_hir, right_hir);
+                        self.arena.alloc(Lir::If(left, true_atom, right, eager))
                     }
                     BinaryOp::All => self.arena.alloc(Lir::All(vec![left, right])),
                     BinaryOp::Any => self.arena.alloc(Lir::Any(vec![left, right])),
