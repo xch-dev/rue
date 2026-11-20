@@ -221,3 +221,29 @@ fn one_of_two_lambdas_captures<T>(
 
     pair.first.rest(pair.rest)
 }
+
+fn second_of<A, B>(_first: A, second: B) -> B {
+    second
+}
+
+// By design: `x7`'s type takes the caller's own `U` from the pair's `(5, u)`, while `y7` stands for
+// the renamed one. The body references both, and a call that sees through them returns a `U` that
+// could come from either, so telling which would mean tracking it through the call: in the
+// lambda's whole type, `U` is the caller's own. The result is that `U` rather than the `Int` that
+// `7` gives the renamed one, so the binding is rejected. It's sound, and the program is rejected
+// without the fix as well, where the call itself is. A body that only references one of them is
+// typed exactly (see `own_and_standing_in_parameters` in `generic_inference_recursive_element_bounds.rue`)
+fn own_and_standing_in_seen_through<T, U, V>(p: (T, fn(a: T, b: U) -> V), u0: U, depth: Int) -> V {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let inner = own_and_standing_in_seen_through(
+            ((5, u), fn(x7, y7) => second_of(x7, y7)),
+            7,
+            depth - 1,
+        );
+        let _inner: Int = inner;
+        return p.rest(p.first, u0);
+    }
+
+    p.rest(p.first, u0)
+}

@@ -131,6 +131,12 @@ struct CallFrame {
 pub struct ArgumentFrame {
     /// The candidates of the arguments compiled before this one, and of this one's elements so far.
     pub infer: Inference,
+    /// The same, but with what the elements infer from their types with the caller's generics that
+    /// their lambdas' untyped parameters were compiled as in place of the callee's renamed ones (see
+    /// `restored`) as those (see `unrestore_lambdas`), so that it only names a caller's generic
+    /// where that's the caller's own. It's only used to tell which those are (see
+    /// `own_generics_of`).
+    pub own_infer: Inference,
     pub solver: Rc<CallSolver>,
     /// The callee's renamed generics (see `rename_generics_in_scope`), and the caller's generics
     /// they were renamed from, to restore them again after refining an element. It's only filled
@@ -142,6 +148,17 @@ pub struct ArgumentFrame {
     /// list argument with a lambda in it, and only while the pairs and lists it's made of are
     /// compiled (see `compile_element`).
     pub restored: HashMap<TypeId, TypeId>,
+    /// The caller's generics in `restored` that are the caller's own in the type of an untyped
+    /// parameter of a lambda among those elements, by the parameter's reference, rather than the
+    /// renamed ones they stand for, since what the elements before it infer for the renamed
+    /// generics in its expected type names them (see `own_infer` and `own_generics_of`).
+    pub own_generics: Vec<(TypeId, Vec<TypeId>)>,
+    /// What the element about to be compiled was refined from (see `refine_element_expected`): the
+    /// type it was expected to have with the callee's renamed generics in it, and what `own_infer`
+    /// infers for those of them that the refinement gives a type, which a lambda's untyped
+    /// parameters get their own generics from (see `own_generics_of`). The element takes it when
+    /// it's compiled (see `compile_element`).
+    pub element_refinement: Option<(TypeId, HashMap<TypeId, TypeId>)>,
     /// Whether the lambdas among the elements of the pairs and lists the argument is made of are
     /// compiled with their untyped parameters as references (see `compile_lambda`), which is only
     /// while those pairs and lists are compiled (see `compile_element`).

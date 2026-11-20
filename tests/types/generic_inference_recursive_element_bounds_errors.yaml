@@ -40,3 +40,6 @@ diagnostics:
 - "Cannot assign `(fn(x: T) -> T, 1)` to `(fn(value: Int) -> T, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:203:50"
 - Unused function `one_of_two_lambdas_captures` at generic_inference_recursive_element_bounds_errors.rue:213:4
 - "Cannot assign `((fn(x: Int) -> Int, fn(y: T) -> Int), 1)` to `((fn(value: Int) -> Int, fn(value: Int) -> Int), Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:219:44"
+- Unused function `second_of` at generic_inference_recursive_element_bounds_errors.rue:225:4
+- Unused function `own_and_standing_in_seen_through` at generic_inference_recursive_element_bounds_errors.rue:236:4
+- Cannot assign `U` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_recursive_element_bounds_errors.rue:244:27
