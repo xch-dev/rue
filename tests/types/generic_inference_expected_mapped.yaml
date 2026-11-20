@@ -84,12 +84,12 @@ tests:
   byte_cost: 4980000
   total_cost: 4988208
 - name: generic_bounded_from_above_keeps_its_mapping
-  program: (a (q 2 (q 2 (i 2 (q . 2) (q)) 1) (c (a 4 (c 2 (c (q . 1) (c (q) (q . 2))))) 1)) (c (c (q 2 (i (> 5 ()) (q 2 4 (c 2 (c (- 5 (q . 1)) (c 11 (a 6 (q . 2)))))) (q)) 1) (q 4 (q . 2) (c (q 1 2 2 (c (a 2 (c 5 ())) ())) (c (c (q . 4) (c (c (q . 1) 1) (q 1))) ())))) ()))
-  debug_program: (a (q 2 (q 2 (i (= 2 ()) (q) (q . 2)) 1) (c (a 4 (c (c 4 (c 10 14)) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) 1)) (c (c (q 2 (i (> 5 ()) (q 2 4 (c (c 4 (c 10 14)) (c (- 5 (q . 1)) (c 11 (a 14 (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ())))))))) (q)) 1) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
+  program: (a (q 2 (q 2 (i 2 (q . 2) ()) 1) (c (a 4 (c 2 (c (q . 1) (c () (q . 2))))) 1)) (c (c (q 2 (i (> 5 ()) (q 2 4 (c 2 (c (- 5 (q . 1)) (c 11 (a 6 (q . 2)))))) ()) 1) (q 4 (q . 2) (c (q 1 2 2 (c (a 2 (c 5 ())) ())) (c (c (q . 4) (c (c (q . 1) 1) (q 1))) ())))) ()))
+  debug_program: (a (q 2 (q 2 (i (= 2 ()) () (q . 2)) 1) (c (a 4 (c (c 4 (c 10 14)) (c (q . 1) (c (c (q . 2) (c () (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) 1)) (c (c (q 2 (i (> 5 ()) (q 2 4 (c (c 4 (c 10 14)) (c (- 5 (q . 1)) (c 11 (a 14 (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ())))))))) ()) 1) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
   output: ()
-  runtime_cost: 4737
-  byte_cost: 2700000
-  total_cost: 2704737
+  runtime_cost: 4833
+  byte_cost: 2628000
+  total_cost: 2632833
 - name: widened_call_keeps_what_fits_the_narrower_type
   program: (a (q 16 (f (a 6 (c (q 5 . 5) (c (q 5 . 5) (c (q . 2) (c (q 1 2 2 9) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ()))))))) (f (a 6 (c (q 5 . 1) (c (q 5 . 5) (c (q . 2) (c (q 1 2 2 9) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ())))))))) (c (c (q . 1) (q . 2)) ()))
   debug_program: (a (q 2 (q 16 (f 4) (f 6)) (c (c (a 10 (c (a 30 (c (q . 5) (q . 5))) (c (c (q . 5) (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 (f 5))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ())))))) (a 10 (c (a 22 (q . 5)) (c (c (q . 5) (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 (f 5))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))))))) 1)) (c (c (q . 1) (c (q . 2) (c (q 4 1 (q . 1)) (q 4 2 3)))) ()))

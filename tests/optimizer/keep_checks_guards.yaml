@@ -62,7 +62,7 @@ tests:
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: inline_function_value
   program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
-  debug_program: (a (q 2 (i (q . 1) (q 3 () (a (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) (q . 1)) (q)) 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (i (q . 1) (q 3 () (a (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) (q . 1)) ()) 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 732000
   clvm_error: clvm raise ()
@@ -89,10 +89,10 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: guard_in_called_function
-  program: (a (q 2 (i (a 4 (c 6 5)) (q 2 4 (c 6 (+ 5 (q . 1)))) (q)) 1) (c (c (q 3 () (a 2 3) (q . 1)) (q 2 (i (> 1 ()) (q 4 1 ()) (q 8)) 1)) 1))
-  debug_program: (a (q 2 (i (a 4 (c 6 5)) (q 2 4 (c 6 (+ 5 (q . 1)))) (q)) 1) (c (c (q 3 () (a 2 3) (q . 1)) (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:21:5"))) 1)) 1))
+  program: (a (q 2 (i (a 4 (c 6 5)) (q 2 4 (c 6 (+ 5 (q . 1)))) ()) 1) (c (c (q 3 () (a 2 3) (q . 1)) (q 2 (i (> 1 ()) (q 4 1 ()) (q 8)) 1)) 1))
+  debug_program: (a (q 2 (i (a 4 (c 6 5)) (q 2 4 (c 6 (+ 5 (q . 1)))) ()) 1) (c (c (q 3 () (a 2 3) (q . 1)) (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:21:5"))) 1)) 1))
   solution: (0)
-  byte_cost: 1476000
+  byte_cost: 1452000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:21:5"
 - name: inline_function_argument_is_skipped
@@ -121,7 +121,7 @@ tests:
   total_cost: 36020
 - name: pure_binding_used_again
   program: (+ 2 (q . 1))
-  debug_program: (a (q 2 (i (q . 1) (q . 2) (q)) 1) (c (+ 2 (q . 1)) 1))
+  debug_program: (a (q 2 (i (q . 1) (q . 2) ()) 1) (c (+ 2 (q . 1)) 1))
   solution: (50)
   output: "51"
   runtime_cost: 824

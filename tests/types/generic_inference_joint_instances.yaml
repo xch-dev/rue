@@ -14,12 +14,12 @@ tests:
   byte_cost: 468000
   total_cost: 468571
 - name: argument_upper_bound_reaches_the_instance
-  program: (a (q 5 (a 6 (c 4 (c (q 5 . 7) (q))))) (c (c (q 4 6 4) (q 3 () (a 7 (c (a 2 (c 5 ())) ())) (a 2 (c 5 ())))) ()))
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 5) (q . 7)) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))))) 1)) (c (c (q 4 (r 2) (f 2)) (q 3 (q . 1) (a 2 (c 5 ())) (a 7 (c (a 2 (c 5 ())) ())))) ()))
+  program: (a (q 5 (a 6 (c 4 (c (q 5 . 7) ())))) (c (c (q 4 6 4) (q 3 () (a 7 (c (a 2 (c 5 ())) ())) (a 2 (c 5 ())))) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 5) (q . 7)) (c (q . 2) (c () (c (q . 1) ())))))) 1)) (c (c (q 4 (r 2) (f 2)) (q 3 (q . 1) (a 2 (c 5 ())) (a 7 (c (a 2 (c 5 ())) ())))) ()))
   output: "7"
-  runtime_cost: 1907
-  byte_cost: 1236000
-  total_cost: 1237907
+  runtime_cost: 1931
+  byte_cost: 1212000
+  total_cost: 1213931
 - name: expected_type_reaches_the_instance_before_a_lambda
   program: (a (q 5 (a 2 (q (f . 7)))) (c (q 4 6 4) ()))
   debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 5) (q . 7)) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 2 (c 5 ()))) ()))
@@ -70,19 +70,19 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: contravariant_instance
-  program: (i () (a (q) (q 1)) ())
-  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) (q 2 1 ())) ()))
+  program: (i () (a () (q 1)) ())
+  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 2) (c () (c (q . 1) ()))) (q 2 1 ())) ()))
   output: ()
-  runtime_cost: 297
-  byte_cost: 252000
-  total_cost: 252297
+  runtime_cost: 321
+  byte_cost: 228000
+  total_cost: 228321
 - name: contravariant_instance_unannotated
-  program: (i () (a (q) (q 1)) ())
-  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) (q 2 1 ())) ()))
+  program: (i () (a () (q 1)) ())
+  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 2) (c () (c (q . 1) ()))) (q 2 1 ())) ()))
   output: ()
-  runtime_cost: 297
-  byte_cost: 252000
-  total_cost: 252297
+  runtime_cost: 321
+  byte_cost: 228000
+  total_cost: 228321
 - name: contravariant_instance_next_to_a_value
   program: ()
   debug_program: ()
@@ -91,12 +91,12 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: contravariant_instance_in_an_upper_candidate
-  program: (i () (a (q) (q 1)) ())
-  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q) (q 4 (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))) ()))
+  program: (i () (a () (q 1)) ())
+  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c () (q 4 (q . 2) (c () (c (q . 1) ())))) ()))
   output: ()
-  runtime_cost: 297
-  byte_cost: 252000
-  total_cost: 252297
+  runtime_cost: 321
+  byte_cost: 228000
+  total_cost: 228321
 - name: instance_bounded_by_another_in_a_parameter_type
   program: ()
   debug_program: ()
@@ -105,12 +105,12 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: instances_bounded_by_each_other
-  program: (a (q 2 (q 2 (i 2 (q . 4) (q)) 1) (c (a 2 (q (f . 5))) 1)) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 2 (i (not 2) (q) (q 5 2)) 1) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))) 1)) (c (c (q 4 (q . 5) (q . 5)) (c (q 4 (r 2) (f 2)) (q 2 2 (c (a 3 ()) ())))) ()))
+  program: (a (q 2 (q 2 (i 2 (q . 4) ()) 1) (c (a 2 (q (f . 5))) 1)) (c (q 4 6 4) ()))
+  debug_program: (a (q 2 (q 2 (i (not 2) () (q 5 2)) 1) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))) 1)) (c (c (q 4 (q . 5) (q . 5)) (c (q 4 (r 2) (f 2)) (q 2 2 (c (a 3 ()) ())))) ()))
   output: "5"
-  runtime_cost: 1055
-  byte_cost: 804000
-  total_cost: 805055
+  runtime_cost: 1079
+  byte_cost: 780000
+  total_cost: 781079
 - name: kind_instantiation_next_to_a_function
   program: (i () (a (q 2 (q 2 2 (c 5 ())) (c (q 4 (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) 1)) (q 98)) ())
   debug_program: (a (q 2 (q 3 () (a 2 (c (q . 98) ())) ()) (c (a 14 (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 97)) (c (q . 1) ())))) (c (q . 1) ())))))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))

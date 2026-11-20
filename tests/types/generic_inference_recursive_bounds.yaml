@@ -21,12 +21,12 @@ tests:
   byte_cost: 996000
   total_cost: 999189
 - name: guard_expected_union_only
-  program: (a (q 9 (a 2 (c 2 (q . 1))) ()) (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q)) 1) ()))
-  debug_program: (a (q 9 (a 2 (c 2 (q . 1))) ()) (c (q 2 (i (> 3 ()) (q 2 (q . 2) (c (a 2 (c 2 (- 3 (q . 1)))) 1)) (q)) 1) ()))
+  program: (a (q 9 (a 2 (c 2 (q . 1))) ()) (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) ()) 1) ()))
+  debug_program: (a (q 9 (a 2 (c 2 (q . 1))) ()) (c (q 2 (i (> 3 ()) (q 2 (q . 2) (c (a 2 (c 2 (- 3 (q . 1)))) 1)) ()) 1) ()))
   output: "1"
-  runtime_cost: 3344
-  byte_cost: 972000
-  total_cost: 975344
+  runtime_cost: 3392
+  byte_cost: 948000
+  total_cost: 951392
 - name: guard_bound_held_by_the_original
   program: (a (q 2 2 (c 2 (c (q . 3) (c (q . 1) (c (q . 2) (q . 2)))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q . 2) (q 1 . 1)))))) (q . 5)) 1) ()))
   debug_program: (a (q 2 4 (c (c 4 6) (c (q . 3) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q 2 (i (> 11 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c 5 (c (- 11 (q . 1)) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q . 5)) 1) (q . 2)) ()))
@@ -49,12 +49,12 @@ tests:
   byte_cost: 1620000
   total_cost: 1623950
 - name: guard_given_directly
-  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 5) (q . 2))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (q 3 (a (i (l 2) (q) (q 32 2)) 1) (q . 1) (q . 2)))))) (q . 11)) 1) ()))
-  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (q . 11)) 1) ()))
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 5) (q . 2))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (q 3 2 (q . 2) (q . 1)))))) (q . 11)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) ()) 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (q . 11)) 1) ()))
   output: ()
   runtime_cost: 3514
-  byte_cost: 1716000
-  total_cost: 1719514
+  byte_cost: 1404000
+  total_cost: 1407514
 - name: guard_given_after_passed
   program: (q . 1)
   debug_program: (q . 1)

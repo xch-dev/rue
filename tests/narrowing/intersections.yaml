@@ -1,41 +1,41 @@
 tests:
 - name: pair_elements
-  program: (a (i (a (i (a (i (l 2) (q 32 (l 4)) (q)) 1) (q 32 (l 6)) (q)) 1) (q 16 4 6) (q)) 1)
-  debug_program: (a (i (a (i (a (i (l 2) (q 32 (l (f 2))) (q)) 1) (q 32 (l (r 2))) (q)) 1) (q 16 (f 2) (r 2)) (q)) 1)
+  program: (a (i (a (i (a (i (l 2) (q 32 (l 4)) ()) 1) (q 32 (l 6)) ()) 1) (q 16 4 6) ()) 1)
+  debug_program: (a (i (a (i (a (i (l 2) (q 32 (l (f 2))) ()) 1) (q 32 (l (r 2))) ()) 1) (q 16 (f 2) (r 2)) ()) 1)
   solution: ((3 . 4))
   output: "7"
-  runtime_cost: 2101
-  byte_cost: 972000
-  total_cost: 974101
+  runtime_cost: 2173
+  byte_cost: 900000
+  total_cost: 902173
 - name: pair_elements_merged
-  program: (a (i (all (a (i (l 2) (q 32 (l 4)) (q)) 1) (a (i (l 2) (q 32 (l 6)) (q)) 1)) (q 16 4 6) (q)) 1)
-  debug_program: (a (i (all (a (i (l 2) (q 32 (l (f 2))) (q)) 1) (a (i (l 2) (q 32 (l (r 2))) (q)) 1)) (q 16 (f 2) (r 2)) (q)) 1)
+  program: (a (i (all (a (i (l 2) (q 32 (l 4)) ()) 1) (a (i (l 2) (q 32 (l 6)) ()) 1)) (q 16 4 6) ()) 1)
+  debug_program: (a (i (all (a (i (l 2) (q 32 (l (f 2))) ()) 1) (a (i (l 2) (q 32 (l (r 2))) ()) 1)) (q 16 (f 2) (r 2)) ()) 1)
   solution: ((3 . 4))
   output: "7"
-  runtime_cost: 2970
-  byte_cost: 1092000
-  total_cost: 1094970
+  runtime_cost: 3042
+  byte_cost: 1020000
+  total_cost: 1023042
 - name: pair_variants
-  program: (a (i (a (i 2 (q 32 (l 6)) (q)) 1) (q . 6) (q)) 1)
-  debug_program: (a (i (a (i (not (not 2)) (q 32 (l (r 2))) (q)) 1) (q 6 2) (q)) 1)
+  program: (a (i (a (i 2 (q 32 (l 6)) ()) 1) (q . 6) ()) 1)
+  debug_program: (a (i (a (i (not (not 2)) (q 32 (l (r 2))) ()) 1) (q 6 2) ()) 1)
   solution: ((0x0000000000000000000000000000000000000000000000000000000000000000 . 5))
   output: "5"
-  runtime_cost: 791
-  byte_cost: 540000
-  total_cost: 540791
+  runtime_cost: 839
+  byte_cost: 492000
+  total_cost: 492839
 - name: struct_fields
-  program: (a (i (a (i 2 (q 32 (l 10)) (q)) 1) (q 16 4 10) (q)) 1)
-  debug_program: (a (i (a (i (not (not 2)) (q 32 (l (f (r 2)))) (q)) 1) (q 16 (f 2) (f (r 2))) (q)) 1)
+  program: (a (i (a (i 2 (q 32 (l 10)) ()) 1) (q 16 4 10) ()) 1)
+  debug_program: (a (i (a (i (not (not 2)) (q 32 (l (f (r 2)))) ()) 1) (q 16 (f 2) (f (r 2))) ()) 1)
   solution: ((3 4))
   output: "7"
-  runtime_cost: 1607
-  byte_cost: 612000
-  total_cost: 613607
+  runtime_cost: 1655
+  byte_cost: 564000
+  total_cost: 565655
 - name: recursive_alias
-  program: (a (i (a (i 2 (q 32 6) (q)) 1) (q . 4) (q)) 1)
-  debug_program: (a (i (a (i (not (not 2)) (q 32 (r 2)) (q)) 1) (q 2 (q 5 2) (c 2 1)) (q)) 1)
+  program: (a (i (a (i 2 (q 32 6) ()) 1) (q . 4) ()) 1)
+  debug_program: (a (i (a (i (not (not 2)) (q 32 (r 2)) ()) 1) (q 2 (q 5 2) (c 2 1)) ()) 1)
   solution: ((7))
   output: "7"
-  runtime_cost: 771
-  byte_cost: 492000
-  total_cost: 492771
+  runtime_cost: 819
+  byte_cost: 444000
+  total_cost: 444819

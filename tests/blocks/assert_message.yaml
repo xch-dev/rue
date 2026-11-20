@@ -88,14 +88,14 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:99:5" ("a must be larger than b" 1 1))
 - name: in_branch_fails_inline
-  program: (a (q 2 2 (q -3)) (c (q 2 (i 2 (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (q 2 (i 3 (q) (q 8)) 1)) 1) ()))
-  debug_program: (a (q 2 2 (c (- () (q . 3)) ())) (c (q 2 (i (= 2 ()) (q 2 (i 3 (q) (q 8 (q . "assertion failed at assert_message.rue:123:9") (q . "no value"))) 1) (q 2 (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at assert_message.rue:117:5") (c (q . "not positive") (c 2 ())))) 1)) 1) ()))
-  byte_cost: 1104000
+  program: (a (q 2 2 (q -3)) (c (q 2 (i 2 (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (q 2 (i 3 () (q 8)) 1)) 1) ()))
+  debug_program: (a (q 2 2 (c (- () (q . 3)) ())) (c (q 2 (i (= 2 ()) (q 2 (i 3 () (q 8 (q . "assertion failed at assert_message.rue:123:9") (q . "no value"))) 1) (q 2 (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at assert_message.rue:117:5") (c (q . "not positive") (c 2 ())))) 1)) 1) ()))
+  byte_cost: 1080000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:117:5" ("not positive" -3))
 - name: in_branch_fails
-  program: (a (q 2 2 (q ())) (c (q 2 (i 2 (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (q 2 (i 3 (q) (q 8)) 1)) 1) ()))
-  debug_program: (a (q 2 2 (c () ())) (c (q 2 (i (= 2 ()) (q 2 (i 3 (q) (q 8 (q . "assertion failed at assert_message.rue:123:9") (q . "no value"))) 1) (q 2 (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at assert_message.rue:117:5") (c (q . "not positive") (c 2 ())))) 1)) 1) ()))
-  byte_cost: 1092000
+  program: (a (q 2 2 (q ())) (c (q 2 (i 2 (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (q 2 (i 3 () (q 8)) 1)) 1) ()))
+  debug_program: (a (q 2 2 (c () ())) (c (q 2 (i (= 2 ()) (q 2 (i 3 () (q 8 (q . "assertion failed at assert_message.rue:123:9") (q . "no value"))) 1) (q 2 (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at assert_message.rue:117:5") (c (q . "not positive") (c 2 ())))) 1)) 1) ()))
+  byte_cost: 1068000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:123:9" "no value")

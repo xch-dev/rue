@@ -1,12 +1,12 @@
 hard_fork_2: true
 tests:
 - name: keccak256_hashes
-  program: (a (i (= (keccak256 (q . "hello")) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q 2 (i (= (a (c (c (q . 62) ()) (q "hel" 27759)) ()) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q) (q 8)) 1) (q 8)) 1)
-  debug_program: (a (i (= (keccak256 (q . "hello")) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q 2 (i (= (a (c (c (q . 62) ()) (c (q . "hel") (c (q . 27759) ()))) ()) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q 2 (i (= (keccak256 (q . "hello")) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q) (q 8 (q . "assertion failed at builtins.rue:10:5"))) 1) (q 8 (q . "assertion failed at builtins.rue:6:5"))) 1) (q 8 (q . "assertion failed at builtins.rue:5:5"))) 1)
+  program: (a (i (= (keccak256 (q . "hello")) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q 2 (i (= (a (c (c (q . 62) ()) (q "hel" 27759)) ()) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) () (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (= (keccak256 (q . "hello")) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q 2 (i (= (a (c (c (q . 62) ()) (c (q . "hel") (c (q . 27759) ()))) ()) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q 2 (i (= (keccak256 (q . "hello")) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) () (q 8 (q . "assertion failed at builtins.rue:10:5"))) 1) (q 8 (q . "assertion failed at builtins.rue:6:5"))) 1) (q 8 (q . "assertion failed at builtins.rue:5:5"))) 1)
   output: ()
-  runtime_cost: 7632
-  byte_cost: 1956000
-  total_cost: 1963632
+  runtime_cost: 7656
+  byte_cost: 1932000
+  total_cost: 1939656
 - name: keccak256_of_solution
   program: (keccak256 2)
   debug_program: (keccak256 2)
@@ -17,7 +17,7 @@ tests:
   total_cost: 62869
 - name: modpow_computes
   program: ()
-  debug_program: (a (i (= (modpow (q . 2) (q . 3) (q . 5)) (q . 3)) (q) (q 8 (q . "assertion failed at builtins.rue:21:5"))) 1)
+  debug_program: (a (i (= (modpow (q . 2) (q . 3) (q . 5)) (q . 3)) () (q 8 (q . "assertion failed at builtins.rue:21:5"))) 1)
   output: ()
   runtime_cost: 44
   byte_cost: 12000
@@ -43,10 +43,10 @@ tests:
   byte_cost: 108000
   total_cost: 189293
 - name: modpow_moved_into_branch
-  program: (a (q 2 (i 47 (q . 2) (q)) 1) (c (modpow 2 5 11) 1))
-  debug_program: (a (q 2 (i 47 (q . 2) (q)) 1) (c (modpow 2 5 11) 1))
+  program: (a (q 2 (i 47 (q . 2) ()) 1) (c (modpow 2 5 11) 1))
+  debug_program: (a (q 2 (i 47 (q . 2) ()) 1) (c (modpow 2 5 11) 1))
   solution: (2 3 0 ())
-  byte_cost: 492000
+  byte_cost: 468000
   clvm_error: Division by zero
 - name: modpow_in_const
   program: (q . 24)

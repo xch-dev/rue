@@ -1,10 +1,10 @@
-program: (a (q 4 (a 10 (c (q) (a 10 (c (a 4 (c (q 1 . 7) (q 1 . 5))) (a 4 (c (q . 2) ())))))) (c (a 4 (q ())) (a 4 (c (c (r (c (a 10 (q 7 . 7)) (q . 7))) ()) ())))) (c (c (q . 2) (c (q . 2) (q 4 1 (c 1 ())))) ()))
-debug_program: (a (q 2 (q 4 4 6) (c (c (a 10 (c (a 62 ()) (a 10 (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))))) (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ())))))) (a 46 (c 4 (c (c (a 10 (c (q . 7) (q . 7))) (q . 7)) (c (a 22 (a 4 (c (c (q . 8) (q . 7)) ()))) (c (a 10 (c (q . 7) (q . 7))) (c (q . 7) ()))))))) 1)) (c (c (q . 2) (c (q . 2) (c (q 4 1 (c 1 ())) (c (q 4 (a 2 (c () ())) (a 2 (c (c (r 5) ()) ()))) (q 4 (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))))))) ()))
+program: (a (q 4 (a 10 (c () (a 10 (c (a 4 (c (q 1 . 7) (q 1 . 5))) (a 4 (c (q . 2) ())))))) (c (a 4 (q ())) (a 4 (c (c (r (c (a 10 (q 7 . 7)) (q . 7))) ()) ())))) (c (c (q . 2) (c (q . 2) (q 4 1 (c 1 ())))) ()))
+debug_program: (a (q 2 (q 4 4 6) (c (c (a 10 (c (a 62 ()) (a 10 (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))))) (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ())))))) (a 46 (c 4 (c (c (a 10 (c (q . 7) (q . 7))) (q . 7)) (c (a 22 (a 4 (c (c (q . 8) (q . 7)) ()))) (c (a 10 (c (q . 7) (q . 7))) (c (q . 7) ()))))))) 1)) (c (c (q . 2) (c (q . 2) (c (q 4 1 (c 1 ())) (c (q 4 (a 2 (c () ())) (a 2 (c (c (r 5) ()) ()))) (q 4 (q . 2) (c () (c (q . 1) ()))))))) ()))
 output: (() () 7)
-debug_output: ((2 (1) 1) () 7)
-runtime_cost: 2479
-byte_cost: 2004000
-total_cost: 2006479
+debug_output: ((2 () 1) () 7)
+runtime_cost: 2503
+byte_cost: 1980000
+total_cost: 1982503
 diagnostics:
 - Unused function `duplicate` at generic_inference_expected_wide_seed_2855.rue:6:4
 - Unused parameter `value` at generic_inference_expected_wide_seed_2855.rue:14:15

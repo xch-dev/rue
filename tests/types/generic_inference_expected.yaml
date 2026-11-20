@@ -1,14 +1,14 @@
 tests:
 - name: infer_from_let_type
   program: ()
-  debug_program: (a (q 2 (q . 2) (c (a 2 ()) 1)) (c (q) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 2 ()) 1)) (c () ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
 - name: infer_from_return_type
   program: ()
-  debug_program: (a (q 2 2 ()) (c (q) ()))
+  debug_program: (a (q 2 2 ()) (c () ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000
@@ -36,7 +36,7 @@ tests:
   total_cost: 60020
 - name: explicit_generic_arguments
   program: ()
-  debug_program: (a (q 2 (q . 2) (c (a 2 ()) 1)) (c (q) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 2 ()) 1)) (c () ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000

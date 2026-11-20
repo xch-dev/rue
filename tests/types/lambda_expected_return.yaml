@@ -50,7 +50,7 @@ tests:
   total_cost: 36020
 - name: generic_function_type_from_expected_type_alone
   program: ()
-  debug_program: (a (q 2 2 (c (q . 1) ())) (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) 1))
+  debug_program: (a (q 2 2 (c (q . 1) ())) (c (c (q . 2) (c () (c (q . 1) ()))) 1))
   output: ()
   runtime_cost: 44
   byte_cost: 12000

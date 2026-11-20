@@ -70,12 +70,12 @@ tests:
   byte_cost: 1308000
   total_cost: 1310002
 - name: pair_expected_with_a_generic_member
-  program: (a (q 2 (i 2 (q . 4) (q)) 1) (c (q 5 . 1) 1))
-  debug_program: (a (q 2 (q 2 (i (not (not 2)) (q 5 2) (q)) 1) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (q . 1)) (q 2 2 (c 3 ()))) ()))
+  program: (a (q 2 (i 2 (q . 4) ()) 1) (c (q 5 . 1) 1))
+  debug_program: (a (q 2 (q 2 (i (not (not 2)) (q 5 2) ()) 1) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (q . 1)) (q 2 2 (c 3 ()))) ()))
   output: "5"
-  runtime_cost: 535
-  byte_cost: 444000
-  total_cost: 444535
+  runtime_cost: 559
+  byte_cost: 420000
+  total_cost: 420559
 - name: compound_parameter
   program: (q . 5)
   debug_program: (a (q 2 (q 5 2) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c (c 3 (q . 1)) ())) ()))
@@ -91,12 +91,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: list_parameter
-  program: (a (q 2 (i 2 (q . 4) (q)) 1) (c (q 5) 1))
-  debug_program: (a (q 2 (q 2 (i (not (not 2)) (q 5 2) (q)) 1) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c (c 3 ()) ())) ()))
+  program: (a (q 2 (i 2 (q . 4) ()) 1) (c (q 5) 1))
+  debug_program: (a (q 2 (q 2 (i (not (not 2)) (q 5 2) ()) 1) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c (c 3 ()) ())) ()))
   output: "5"
-  runtime_cost: 535
-  byte_cost: 444000
-  total_cost: 444535
+  runtime_cost: 559
+  byte_cost: 420000
+  total_cost: 420559
 - name: generic_in_two_parameters
   program: (a (q 2 (q 16 4 6) (c (a 2 (c (q . 5) (q 4 2 5))) 1)) (c (q 2 3 (c 2 (c 2 ()))) ()))
   debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 4 2 5)) (c (q . 1) ()))))) 1)) (c (q 2 3 (c 2 (c 2 ()))) ()))
@@ -120,7 +120,7 @@ tests:
   total_cost: 36020
 - name: excluded_generic_next_to_a_wrapped_one
   program: (a (q 16 4 6) (c (q 5 . 6) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (f 2) (+ (r 2) (a 5 (c (r 2) ()))))) (c (q . 1) ()))) (c (q . 5) (q . 6)))) 1)) (c (q 2 2 (c (c 5 7) (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (f 2) (+ (r 2) (a 5 (c (r 2) ()))))) (c (q . 1) ()))) (c (q . 5) (q . 6)))) 1)) (c (q 2 2 (c (c 5 7) (c (c (q . 2) (c () (c (q . 1) ()))) ()))) ()))
   output: "11"
   runtime_cost: 1086
   byte_cost: 300000
@@ -182,12 +182,12 @@ tests:
   byte_cost: 1332000
   total_cost: 1334002
 - name: callback_of_an_enclosing_call_left_alone
-  program: (a (q 2 2 (c (c (q . 2) (c (q 1 2 2 (c (q . 2) (c (q . 7) (q)))) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q . 5) (q . 2)))) (c (q 2 2 (c 5 (c 7 ()))) ()))
-  debug_program: (a (q 2 4 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 7) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))))))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))))) (c (c (q 2 (f 1) (c (f (r 1)) (c (r (r 1)) ()))) (q . 2)) ()))
+  program: (a (q 2 2 (c (c (q . 2) (c (q 1 2 2 (c (q . 2) (c (q . 7) ()))) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q . 5) (q . 2)))) (c (q 2 2 (c 5 (c 7 ()))) ()))
+  debug_program: (a (q 2 4 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 7) (c (q . 2) (c () (c (q . 1) ()))))))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))))) (c (c (q 2 (f 1) (c (f (r 1)) (c (r (r 1)) ()))) (q . 2)) ()))
   output: "7"
-  runtime_cost: 2358
-  byte_cost: 1572000
-  total_cost: 1574358
+  runtime_cost: 2382
+  byte_cost: 1548000
+  total_cost: 1550382
 - name: union_expected_type
   program: (q . 5)
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
@@ -224,12 +224,12 @@ tests:
   byte_cost: 3396000
   total_cost: 3401790
 - name: rest_of_a_narrowed_list
-  program: (a (q 2 2 (c (q . 5) (q 2 (i 2 (q 2 (q 2 (i 2 (q . 4) (q 1 . 5)) 1) (c 6 1)) (q 1 . 5)) 1))) (c (q 2 3 (c (c 2 (c 2 ())) ())) ()))
+  program: (a (q 2 2 (c (q . 5) (q 2 (i 2 (q 2 (i 6 (q . 10) (q 1 . 5)) 1) (q 1 . 5)) 1))) (c (q 2 3 (c (c 2 (c 2 ())) ())) ()))
   debug_program: (a (q 2 (q . 2) (c (a 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 2 (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1) (c (r 2) 1))) 1)) (c (q . 1) ()))))) 1)) (c (q 2 3 (c (c 2 (c 2 ())) ())) ()))
   output: "5"
-  runtime_cost: 1756
-  byte_cost: 1332000
-  total_cost: 1333756
+  runtime_cost: 1506
+  byte_cost: 1164000
+  total_cost: 1165506
 - name: element_of_a_union_with_an_alias_in_it
   program: (q . 5)
   debug_program: (a (q 2 (q . 2) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c (c 3 (q . 1)) ())) ()))
@@ -238,12 +238,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: narrowed_part_of_a_binding_in_a_lambda
-  program: (a (q 2 (i 2 (q . 4) (q)) 1) (c (q 5 . 1) 1))
-  debug_program: (a (q 2 (q 2 (i (not (not 2)) (q 5 2) (q)) 1) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 2 (q 2 (i (q . 1) (q . 2) (q)) 1) (c (c 2 (q . 1)) 1))) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c 3 ())) ()))
+  program: (a (q 2 (i 2 (q . 4) ()) 1) (c (q 5 . 1) 1))
+  debug_program: (a (q 2 (q 2 (i (not (not 2)) (q 5 2) ()) 1) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 2 (q 2 (i (q . 1) (q . 2) ()) 1) (c (c 2 (q . 1)) 1))) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c 3 ())) ()))
   output: "5"
-  runtime_cost: 535
-  byte_cost: 444000
-  total_cost: 444535
+  runtime_cost: 559
+  byte_cost: 420000
+  total_cost: 420559
 diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:61:5

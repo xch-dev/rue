@@ -1,5 +1,5 @@
 program: (a (q 2 (q 3 () (a 5 2) (+ 2 (q . 111))) (c (q . 1) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-debug_program: (a (q 2 (q 3 () (a 17 2) (i (q . 1) (i (q . 1) (+ (+ (+ 21 57) 2) 41) (a 45 ())) (a 61 ()))) (c (q . 1) 1)) (c (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at unused_symbols.rue:43:5"))) 1) (c () (q . 69))) (c (q . 42) (c (q) (q)))) ()))
+debug_program: (a (q 2 (q 3 () (a 17 2) (i (q . 1) (i (q . 1) (+ (+ (+ 21 57) 2) 41) (a 45 ())) (a 61 ()))) (c (q . 1) 1)) (c (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at unused_symbols.rue:43:5"))) 1) (c () (q . 69))) (c (q . 42) (c () ()))) ()))
 output: "112"
 runtime_cost: 2387
 byte_cost: 972000
@@ -7,7 +7,7 @@ total_cost: 974387
 tests:
 - name: tests
   program: (q . 104)
-  debug_program: (a (q 2 (q 3 (q . 1) (i (q . 1) (+ (+ 25 17) 2) (a 21 ())) (a 29 ())) (c (q . 1) 1)) (c (c (c (q . 69) (q . 34)) (c (q) (q))) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (i (q . 1) (+ (+ 25 17) 2) (a 21 ())) (a 29 ())) (c (q . 1) 1)) (c (c (c (q . 69) (q . 34)) (c () ())) ()))
   output: "104"
   runtime_cost: 20
   byte_cost: 36000

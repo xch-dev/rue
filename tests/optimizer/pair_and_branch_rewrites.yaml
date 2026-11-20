@@ -31,7 +31,7 @@ tests:
   clvm_error: Division by zero
 - name: boolean_branches
   program: (> 2 5)
-  debug_program: (a (i (> 2 5) (q 1 . 1) (q)) 1)
+  debug_program: (a (i (> 2 5) (q 1 . 1) ()) 1)
   solution: (5 3)
   output: "1"
   runtime_cost: 603
@@ -39,7 +39,7 @@ tests:
   total_cost: 84603
 - name: negated_boolean_branches
   program: (not (= 2 ()))
-  debug_program: (a (i (= 2 ()) (q) (q 1 . 1)) 1)
+  debug_program: (a (i (= 2 ()) () (q 1 . 1)) 1)
   solution: (0)
   output: ()
   runtime_cost: 411

@@ -28,12 +28,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: union_return_type
-  program: (a (q 2 (i 2 (q . 4) (q)) 1) (c (q 1 . 2) 1))
-  debug_program: (a (q 2 (q 2 (i (not 2) (q) (q 5 2)) 1) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 1) (q . 2)) (q 2 1 ())) ()))
+  program: (a (q 2 (i 2 (q . 4) ()) 1) (c (q 1 . 2) 1))
+  debug_program: (a (q 2 (q 2 (i (not 2) () (q 5 2)) 1) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 1) (q . 2)) (q 2 1 ())) ()))
   output: "1"
-  runtime_cost: 535
-  byte_cost: 444000
-  total_cost: 444535
+  runtime_cost: 559
+  byte_cost: 420000
+  total_cost: 420559
 - name: literal_member
   program: (q . 5)
   debug_program: (a (q 2 (q 6 2) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 1) (q . 5)) (q 2 1 ())) ()))
@@ -42,15 +42,15 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: only_bounded_from_above
-  program: (f (a (q 1 1 . 2) (c (q) ())))
-  debug_program: (a (q 2 (q 5 2) (c (a 10 (c 14 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 4 (q . 1) (q . 2)) (c (q 2 3 (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ())) (q))) ()))
+  program: (f (a (q 1 1 . 2) (c () ())))
+  debug_program: (a (q 2 (q 5 2) (c (a 10 (c 14 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 4 (q . 1) (q . 2)) (c (q 2 3 (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ())) ())) ()))
   output: "1"
-  runtime_cost: 277
-  byte_cost: 300000
-  total_cost: 300277
+  runtime_cost: 301
+  byte_cost: 276000
+  total_cost: 276301
 - name: upper_candidate_with_expected_type
   program: (q . 1)
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q) (q 4 (q . 1) (q . 2))) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c () (q 4 (q . 1) (q . 2))) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000

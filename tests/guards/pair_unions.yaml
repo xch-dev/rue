@@ -8,13 +8,13 @@ tests:
   byte_cost: 84000
   total_cost: 84246
 - name: rest_with_overlapping_first
-  program: (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 9 6 ()) (q)) 1)
-  debug_program: (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 9 (f 2) (q . 2))) 1) (q 9 (r 2) ()) (q)) 1)
+  program: (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 9 6 ()) ()) 1)
+  debug_program: (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 9 (f 2) (q . 2))) 1) (q 9 (r 2) ()) ()) 1)
   solution: ((1 . 0x0000000000000000000000000000000000000000000000000000000000000000))
   output: ()
-  runtime_cost: 876
-  byte_cost: 732000
-  total_cost: 732876
+  runtime_cost: 900
+  byte_cost: 708000
+  total_cost: 708900
 - name: rest_with_condition
   program: (not 6)
   debug_program: (not (r 2))
@@ -48,13 +48,13 @@ tests:
   byte_cost: 828000
   total_cost: 828479
 - name: else_branch_narrowing
-  program: (a (i 2 (q) (q . 2)) 1)
-  debug_program: (a (i (not (not 2)) (q) (q . 2)) 1)
+  program: (a (i 2 () (q . 2)) 1)
+  debug_program: (a (i (not (not 2)) () (q . 2)) 1)
   solution: ((2))
   output: ()
-  runtime_cost: 301
-  byte_cost: 228000
-  total_cost: 228301
+  runtime_cost: 325
+  byte_cost: 204000
+  total_cost: 204325
 - name: else_branch_narrowing_rest
   program: (a (i 6 (q . 6) (q 1 . 0x0000000000000000000000000000000000000000000000000000000000000000)) 1)
   debug_program: (a (i (= (r 2) ()) (q 1 . 0x0000000000000000000000000000000000000000000000000000000000000000) (q 6 2)) 1)
@@ -64,9 +64,9 @@ tests:
   byte_cost: 636000
   total_cost: 636313
 - name: guard_values
-  program: (a (q 2 (i (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 32 6) (q)) 1) (q 8) (q 2 (q 2 (i (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 32 6) (q)) 1) (q 2 (q 2 (i (a (i (= 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q 1 . 1) (q 9 2 (q . 1))) 1) (q) (q 8)) 1) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) 1)) (q 8)) 1) (c (q 1) 1))) 1) (c (q 1 . 0x0000000000000000000000000000000000000000000000000000000000000000) 1))
-  debug_program: (a (q 2 (i (not (= (r 2) ())) (q 2 (q 2 (i (= (r 2) ()) (q 2 (q 2 (i (not (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 9 (f 2) (q . 2))) 1) (q 9 (r 2) ()) (q)) 1)) (q 2 (q 2 (i (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 9 (f 2) (q . 2))) 1) (q 9 (r 2) ()) (q)) 1) (q 2 (q 2 (i (not (not (r 2))) (q 2 (q 2 (i (not (r 2)) (q 2 (q 2 (i (not (not 2)) (q 2 (q 2 (i (not (not (not 2))) (q 2 (q 2 (i (not (not 2)) (q 2 (q 2 (i (a (i (= 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q 1 . 1) (q 9 2 (q . 1))) 1) (q) (q 8 (q . "assertion failed at pair_unions.rue:81:5"))) 1) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) 1)) (q 8 (q . "assertion failed at pair_unions.rue:76:5"))) 1) (c (c (q . 2) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:73:5"))) 1) (c () 1)) (q 8 (q . "assertion failed at pair_unions.rue:71:5"))) 1) (c (c (q . 7) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:68:5"))) 1) (c (c (q . 51) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:66:5"))) 1) (c (c (q . 51) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) (c (q . 1) ()))) 1)) (q 8 (q . "assertion failed at pair_unions.rue:60:5"))) 1) (c (c (q . 1) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:58:5"))) 1) (c (c (q . 1) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) 1)) (q 8 (q . "assertion failed at pair_unions.rue:52:5"))) 1) (c (c (q . 1) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:50:5"))) 1) (c (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) 1))
+  program: (a (q 2 (i (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 32 6) ()) 1) (q 8) (q 2 (q 2 (i (a (i (a (i (= 4 (q . 1)) (q 1 . 1) (q 9 4 (q . 2))) 1) (q 32 6) ()) 1) (q 2 (q 2 (i (a (i (= 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q 1 . 1) (q 9 2 (q . 1))) 1) () (q 8)) 1) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) 1)) (q 8)) 1) (c (q 1) 1))) 1) (c (q 1 . 0x0000000000000000000000000000000000000000000000000000000000000000) 1))
+  debug_program: (a (q 2 (i (not (= (r 2) ())) (q 2 (q 2 (i (= (r 2) ()) (q 2 (q 2 (i (not (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 9 (f 2) (q . 2))) 1) (q 9 (r 2) ()) ()) 1)) (q 2 (q 2 (i (a (i (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 9 (f 2) (q . 2))) 1) (q 9 (r 2) ()) ()) 1) (q 2 (q 2 (i (not (not (r 2))) (q 2 (q 2 (i (not (r 2)) (q 2 (q 2 (i (not (not 2)) (q 2 (q 2 (i (not (not (not 2))) (q 2 (q 2 (i (not (not 2)) (q 2 (q 2 (i (a (i (= 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q 1 . 1) (q 9 2 (q . 1))) 1) () (q 8 (q . "assertion failed at pair_unions.rue:81:5"))) 1) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) 1)) (q 8 (q . "assertion failed at pair_unions.rue:76:5"))) 1) (c (c (q . 2) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:73:5"))) 1) (c () 1)) (q 8 (q . "assertion failed at pair_unions.rue:71:5"))) 1) (c (c (q . 7) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:68:5"))) 1) (c (c (q . 51) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:66:5"))) 1) (c (c (q . 51) (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) (c (q . 1) ()))) 1)) (q 8 (q . "assertion failed at pair_unions.rue:60:5"))) 1) (c (c (q . 1) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:58:5"))) 1) (c (c (q . 1) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) 1)) (q 8 (q . "assertion failed at pair_unions.rue:52:5"))) 1) (c (c (q . 1) ()) 1)) (q 8 (q . "assertion failed at pair_unions.rue:50:5"))) 1) (c (c (q . 0x0000000000000000000000000000000000000000000000000000000000000000) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) 1))
   output: ()
-  runtime_cost: 3594
-  byte_cost: 4332000
-  total_cost: 4335594
+  runtime_cost: 3666
+  byte_cost: 4260000
+  total_cost: 4263666

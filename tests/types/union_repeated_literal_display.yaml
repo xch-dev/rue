@@ -1,7 +1,7 @@
 tests:
 - name: guard_on_a_union_of_the_same_literal
   program: (q . 5)
-  debug_program: (a (q 2 (q 2 (i (q . 1) (q . 2) (q)) 1) (c (a 2 (c (q . 5) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))) 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 (q 2 (i (q . 1) (q . 2) ()) 1) (c (a 2 (c (q . 5) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))) 1)) (c (q . 2) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000

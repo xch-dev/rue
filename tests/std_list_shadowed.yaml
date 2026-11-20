@@ -1,6 +1,6 @@
-program: (a (q 2 2 (c 2 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (sha256 (q . 98))))) (c (q 2 (i 5 (q 2 (i (= 9 7) (q 1 . 1) (q 2 2 (c 2 (c 13 7)))) 1) (q)) 1) ()))
-debug_program: (a (q 2 2 (c 2 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (sha256 (q . 98))))) (c (q 2 (i (not 5) (q) (q 2 (i (= (f 5) 7) (q 1 . 1) (q 2 2 (c 2 (c (r 5) 7)))) 1)) 1) ()))
+program: (a (q 2 2 (c 2 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (sha256 (q . 98))))) (c (q 2 (i 5 (q 2 (i (= 9 7) (q 1 . 1) (q 2 2 (c 2 (c 13 7)))) 1) ()) 1) ()))
+debug_program: (a (q 2 2 (c 2 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (sha256 (q . 98))))) (c (q 2 (i (not 5) () (q 2 (i (= (f 5) 7) (q 1 . 1) (q 2 2 (c 2 (c (r 5) 7)))) 1)) 1) ()))
 output: "1"
-runtime_cost: 4290
-byte_cost: 1524000
-total_cost: 1528290
+runtime_cost: 4338
+byte_cost: 1500000
+total_cost: 1504338

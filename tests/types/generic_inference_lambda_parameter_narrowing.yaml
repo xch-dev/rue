@@ -8,7 +8,7 @@ tests:
   total_cost: 36020
 - name: list_past_nil
   program: (q . 1)
-  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 ()) ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) () (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 ()) ())) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
@@ -29,14 +29,14 @@ tests:
   total_cost: 36020
 - name: narrowed_value_inside_another_one
   program: (q . 2)
-  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q) (q 2 (q 2 (q 2 (i (q . 1) (q 16 13 2) (q)) 1) (c (a (i (not 4) (q) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1) 1)) (c (c (a (i (q . 1) (q 4 2 (q . 1)) (q)) 1) (a (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1))) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 ()) ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) () (q 2 (q 2 (q 2 (i (q . 1) (q 16 13 2) ()) 1) (c (a (i (not 4) () (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1) 1)) (c (c (a (i (q . 1) (q 4 2 (q . 1)) ()) 1) (a (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1))) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 ()) ())) ()))
   output: "2"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: alias_kept_whole
   program: (q . 1)
-  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 (q . 1)) ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) ()) 1) () (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 (q . 1)) ())) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
@@ -49,12 +49,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: without_a_lambda
-  program: (a (q 2 (i 2 (q . 6) (q)) 1) (c () 1))
-  debug_program: (a (q 2 (q 2 (i (not 2) (q) (q 2 (i (q . 1) (q 6 2) (q)) 1)) 1) (c (a 2 ()) 1)) (c (q) ()))
+  program: (a (q 2 (i 2 (q . 6) ()) 1) (c () 1))
+  debug_program: (a (q 2 (q 2 (i (not 2) () (q 2 (i (q . 1) (q 6 2) ()) 1)) 1) (c (a 2 ()) 1)) (c () ()))
   output: ()
-  runtime_cost: 551
-  byte_cost: 396000
-  total_cost: 396551
+  runtime_cost: 575
+  byte_cost: 372000
+  total_cost: 372575
 diagnostics:
 - Unnecessary type guard from `List<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:37:24
 - Unnecessary type guard from `List<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:38:16

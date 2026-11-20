@@ -14,12 +14,12 @@ tests:
   byte_cost: 732000
   total_cost: 733637
 - name: lambdas_in_a_list
-  program: (a (q 2 2 (c 2 (c (c (q . 1) (q . 2)) (c (c (q . 2) (q 18 2 (q . 2))) ())))) (c (q 2 (i 3 (q 16 (a 13 (c 9 ())) (a 2 (c 2 7))) (q)) 1) ()))
-  debug_program: (a (q 2 2 (c 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ())))) ())))) (c (q 2 (i (not 3) (q) (q 16 (a (r (f 3)) (c (f (f 3)) ())) (a 2 (c 2 (r 3))))) 1) ()))
+  program: (a (q 2 2 (c 2 (c (c (q . 1) (q . 2)) (c (c (q . 2) (q 18 2 (q . 2))) ())))) (c (q 2 (i 3 (q 16 (a 13 (c 9 ())) (a 2 (c 2 7))) ()) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ())))) ())))) (c (q 2 (i (not 3) () (q 16 (a (r (f 3)) (c (f (f 3)) ())) (a 2 (c 2 (r 3))))) 1) ()))
   output: "5"
-  runtime_cost: 5408
-  byte_cost: 1404000
-  total_cost: 1409408
+  runtime_cost: 5480
+  byte_cost: 1380000
+  total_cost: 1385480
 - name: lambda_item_after_a_value_in_a_list
   program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (q 2 5 (c 2 ())) ()))
   debug_program: (a (q 2 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) (c (q 2 (f (r 1)) (c (f 1) ())) ()))
@@ -36,56 +36,56 @@ tests:
   total_cost: 1286034
 - name: call_without_arguments_after_a_value_in_a_pair
   program: (q . 5)
-  debug_program: (a (q 2 6 (c (q . 5) (a 4 ()))) (c (c (q) (q 5 1)) ()))
+  debug_program: (a (q 2 6 (c (q . 5) (a 4 ()))) (c (c () (q 5 1)) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: call_without_arguments_after_a_value_in_a_list
-  program: (a (q 2 2 (c 2 (q 5 ()))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) (q)) 1) ()))
-  debug_program: (a (q 2 4 (c 4 (c (q . 5) (c (a 6 ()) ())))) (c (c (q 2 (i (not 3) (q) (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) (q)) ()))
+  program: (a (q 2 2 (c 2 (q 5 ()))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) ()))
+  debug_program: (a (q 2 4 (c 4 (c (q . 5) (c (a 6 ()) ())))) (c (c (q 2 (i (not 3) () (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) ()) ()))
   output: "2"
-  runtime_cost: 3428
-  byte_cost: 876000
-  total_cost: 879428
+  runtime_cost: 3500
+  byte_cost: 852000
+  total_cost: 855500
 - name: call_with_arguments_after_a_value_keeps_its_own_inference
   program: (q . 1)
-  debug_program: (a (q 2 (q 2 (i (not 2) (q) (q 1 . 1)) 1) (c (a 6 (c (c (q . 1) (q . 2)) (a 4 ()))) 1)) (c (c (q . 1) (q 5 1)) ()))
+  debug_program: (a (q 2 (q 2 (i (not 2) () (q 1 . 1)) 1) (c (a 6 (c (c (q . 1) (q . 2)) (a 4 ()))) 1)) (c (c (q . 1) (q 5 1)) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: call_without_arguments_nested_in_a_pair
   program: (q . 1)
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 1) (q . 2)) (c (q . 3) (a 4 ())))) 1)) (c (c (q) (q 5 1)) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 1) (q . 2)) (c (q . 3) (a 4 ())))) 1)) (c (c () (q 5 1)) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: call_without_arguments_nested_in_a_list
-  program: (a (q 2 2 (c 2 (q (f) (())))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) (q)) 1) ()))
-  debug_program: (a (q 2 4 (c 4 (c (c (q . 5) ()) (c (c (a 6 ()) ()) ())))) (c (c (q 2 (i (not 3) (q) (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) (q)) ()))
+  program: (a (q 2 2 (c 2 (q (f) (())))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) ()))
+  debug_program: (a (q 2 4 (c 4 (c (c (q . 5) ()) (c (c (a 6 ()) ()) ())))) (c (c (q 2 (i (not 3) () (q 16 (q . 1) (a 2 (c 2 (r 3))))) 1) ()) ()))
   output: "2"
-  runtime_cost: 3428
-  byte_cost: 924000
-  total_cost: 927428
+  runtime_cost: 3500
+  byte_cost: 900000
+  total_cost: 903500
 - name: call_with_arguments_next_to_a_nested_call_without_them
   program: (q . 1)
-  debug_program: (a (q 2 (q 2 (i (= (f 2) ()) (q) (q 1 . 1)) 1) (c (a 14 (c (c (q . 1) (q . 2)) (c (a 10 ()) (a 4 ())))) 1)) (c (c (q) (c (q . 1) (q 5 1))) ()))
+  debug_program: (a (q 2 (q 2 (i (= (f 2) ()) () (q 1 . 1)) 1) (c (a 14 (c (c (q . 1) (q . 2)) (c (a 10 ()) (a 4 ())))) 1)) (c (c () (c (q . 1) (q 5 1))) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: call_with_arguments_deeper_next_to_a_call_without_them
   program: (q . 1)
-  debug_program: (a (q 2 (q 2 (i (= (f (r 2)) ()) (q) (q 1 . 1)) 1) (c (a 14 (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 4) (c (a 10 ()) (a 4 ()))))) 1)) (c (c (q) (c (q . 1) (q 5 1))) ()))
+  debug_program: (a (q 2 (q 2 (i (= (f (r 2)) ()) () (q 1 . 1)) 1) (c (a 14 (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 4) (c (a 10 ()) (a 4 ()))))) 1)) (c (c () (c (q . 1) (q 5 1))) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: call_without_arguments_past_the_end_of_a_list
   program: (q . 2)
-  debug_program: (a (q 2 (q 2 (q 5 2) (c 2 1)) (c (a 6 (c (c (q . 2) ()) (c (q . 3) (c (a 4 ()) ())))) 1)) (c (c (q) (q 5 1)) ()))
+  debug_program: (a (q 2 (q 2 (q 5 2) (c 2 1)) (c (a 6 (c (c (q . 2) ()) (c (q . 3) (c (a 4 ()) ())))) 1)) (c (c () (q 5 1)) ()))
   output: "2"
   runtime_cost: 20
   byte_cost: 36000
