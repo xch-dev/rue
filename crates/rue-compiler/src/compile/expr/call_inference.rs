@@ -157,6 +157,14 @@ pub(crate) fn infer_call(
 
     let mut order = ArgumentOrder::new(ctx, function, args, base.clone());
 
+    // The callee's generics that the type expected of the call can bound (see
+    // `ArgumentOrder::deferred`)
+    let expected_returns = if expected_type.is_some() {
+        generics_in(ctx, function, function.ret)
+    } else {
+        IndexSet::new()
+    };
+
     // The element lambdas that are waiting for later arguments, with the argument they're in (see
     // `DeferredLambda`)
     let mut waiting: Vec<(usize, DeferredLambda)> = Vec::new();
@@ -227,7 +235,7 @@ pub(crate) fn infer_call(
             // stand for the renamed ones (see `restorable`), which only holds while the argument is
             // being compiled, so they aren't deferred
             to_defer: if renamed.is_empty() {
-                order.deferred(i)
+                order.deferred(i, &expected_returns)
             } else {
                 HashMap::new()
             },
@@ -1086,6 +1094,9 @@ pub struct ElementLambda {
     reads: IndexSet<TypeId>,
     /// The callee's generics in the return types of the function types it's expected to be.
     returns: IndexSet<TypeId>,
+    /// Whether its body has a call or lambda in it, and it has no return type, so that its return
+    /// type can be what a call in its body returns.
+    calls: bool,
 }
 
 /// An element lambda that's compiled once no argument still to be compiled can add to the generics
@@ -1363,12 +1374,25 @@ impl ArgumentOrder {
     /// compiled (see `DeferredLambda`). One whose return type has a generic that an argument still
     /// to be compiled reads is compiled where it is, since that argument would be compiled before
     /// it, without what it adds to the generic.
-    fn deferred(&self, i: usize) -> HashMap<TextRange, ElementLambda> {
+    ///
+    /// So is one whose return type can be what a call in its body returns, while the type expected
+    /// of the call bounds a generic in it (`expected`): compiled where it is, its parameters are the
+    /// generics themselves, which the call in its body passes through, so the expected type's bound
+    /// narrows them too, as `5` does `T` in `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)`.
+    /// Compiled later, its parameters would be what the other arguments infer, `Int`, and the call
+    /// would return that. Which of the two a lambda needs depends on what its body does with its
+    /// parameters, which isn't known before it's compiled, so it's compiled where it was.
+    fn deferred(&self, i: usize, expected: &IndexSet<TypeId>) -> HashMap<TextRange, ElementLambda> {
         self.arguments[i]
             .element_lambdas
             .iter()
             .filter(|(_, lambda)| {
-                !self.is_settled(&lambda.reads)
+                !(lambda.calls
+                    && lambda
+                        .returns
+                        .iter()
+                        .any(|generic| expected.contains(generic)))
+                    && !self.is_settled(&lambda.reads)
                     && !self.pending.iter().any(|&other| {
                         self.arguments[other]
                             .reads
@@ -1705,11 +1729,15 @@ fn element_lambdas(
                 // against what the other arguments infer, its parameters would be narrower than
                 // what it makes them, as in `fn(x) => (x, nil)` for `fn(a: T) -> T` with `T` from
                 // `nil` (infer-fuzz generator 1, seeds 1461, 2955 and 6784)
+                let calls = lambda.ty().is_none()
+                    && lambda.body().is_some_and(|body| has_call_or_lambda(&body));
+
                 if !reads.is_empty() && !returns.iter().any(|generic| reads.contains(generic)) {
                     let lambda = ElementLambda {
                         ty,
                         reads: reads.clone(),
-                        returns,
+                        returns: returns.clone(),
+                        calls,
                     };
                     walk.lambdas.push((range, lambda));
                 }
@@ -1719,12 +1747,8 @@ fn element_lambdas(
                 // `fn() => make()` for `fn() -> U`
                 let mut element_reads = reads;
 
-                if lambda.ty().is_none()
-                    && lambda.body().is_some_and(|body| has_call_or_lambda(&body))
-                {
-                    for expected in &expected {
-                        element_reads.extend(generics_in(ctx, function, expected.ret));
-                    }
+                if calls {
+                    element_reads.extend(returns);
                 }
 
                 walk.reads.push((range, element_reads));

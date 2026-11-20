@@ -199,19 +199,20 @@ test fn element_returns_what_a_later_argument_adds_to() -> Int {
     apply_with((fn(x) => x + 1, 0), (5, 7))
 }
 
+// The calls have no expected type (see `element_with_a_call_and_an_expected_type` in
+// `generic_inference_element_lambda_generics_errors.rue`)
 fn with_the_callers_generic<A>(value: A) -> (List<A>, List<A>) {
-    (
-        map_list([fn(x) => identity::<A>(x)], value),
-        map_list(
-            [
-                fn(x) => {
-                    let y: A = x;
-                    identity(y)
-                },
-            ],
-            value,
-        ),
-    )
+    let named_in_a_call = map_list([fn(x) => identity::<A>(x)], value);
+    let named_in_a_binding = map_list(
+        [
+            fn(x) => {
+                let y: A = x;
+                identity(y)
+            },
+        ],
+        value,
+    );
+    (named_in_a_call, named_in_a_binding)
 }
 
 test fn element_names_the_callers_generic() -> (List<Int>, List<Int>) {
@@ -343,18 +344,15 @@ test fn element_returns_what_a_later_argument_reads() -> Int {
     chain([fn(x) => (x, 1)], [fn(y) => y.rest + 1], 5)
 }
 
-fn make<V>() -> V {
-    raise;
-}
-
 fn with_made<T, U>(pair: (fn(x: T) -> U, U), value: T) -> U {
     pair.first(value)
 }
 
-// Guard: the same with a call without arguments, which only what the lambda adds gives a type. It
-// always raises, so this is only compiled
-fn element_returns_what_a_call_without_arguments_reads() -> Int {
-    with_made((fn(_x) => 7, make()), 5)
+// Guard: the same with a call without arguments, which only what the lambda adds gives a type,
+// since the call has no expected type
+test fn element_returns_what_a_call_without_arguments_reads() -> Int {
+    let result = with_made((fn(_x) => 7, cast_nil()), 5);
+    result + 1
 }
 
 fn generic_pair<T>(functions: (fn(x: T) -> Int, Int), first: T, last: fn(y: Int) -> T) -> T {
@@ -431,4 +429,14 @@ fn first_then_typed<T, U>(pair: (fn(x: T) -> U, fn(y: Int) -> (U, Int)), value: 
 test fn element_returns_what_a_typed_sibling_calls_with() -> Int {
     let result = first_then_typed((fn(_x) => 7, fn(y: Int) => (identity(cast_nil()), y)), 5);
     result
+}
+
+// Guard: a lambda whose body has a call that its return type can be, in a call whose expected type
+// bounds that return type, is compiled where it is, so its parameter is `T`, which `identity` passes
+// through, and the expected `5` narrows `T` to `5`. Compiled later, `x` would be `Int`, which `5`
+// widens to, and `identity(x)` would be `Int`
+test fn element_with_a_call_narrowed_by_the_expected_type() -> (5, List<5>) {
+    let first: 5 = apply_first((fn(x) => identity(x), 1), 5);
+    let second: List<5> = map_list([fn(x) => identity(x)], 5);
+    (first, second)
 }

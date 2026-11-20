@@ -2,7 +2,7 @@ diagnostics:
 - Unused function `identity` at generic_inference_element_lambda_generics_errors.rue:6:4
 - Unused function `pair2` at generic_inference_element_lambda_generics_errors.rue:10:4
 - Unused function `sibling_lambda_captures_the_shared_generic` at generic_inference_element_lambda_generics_errors.rue:14:4
-- Cannot assign `Int | String` to `Int` without a cast, since they are semantically different at generic_inference_element_lambda_generics_errors.rue:19:30
+- "Cannot assign `(fn(x: Int) -> Int, fn(_y: T) -> T)` to `(fn(x: Int) -> Int, fn(x: Int) -> Int)`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:19:36"
 - Unused function `map_list` at generic_inference_element_lambda_generics_errors.rue:27:4
 - Unused function `map_and_call` at generic_inference_element_lambda_generics_errors.rue:35:4
 - Unused function `rejected_for_another_reason` at generic_inference_element_lambda_generics_errors.rue:44:4
@@ -24,3 +24,7 @@ diagnostics:
 - Unused function `with_value_of_return` at generic_inference_element_lambda_generics_errors.rue:112:4
 - Unused function `element_before_a_value_of_its_return_type` at generic_inference_element_lambda_generics_errors.rue:120:4
 - Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:121:36
+- Unused function `map_list_of` at generic_inference_element_lambda_generics_errors.rue:124:4
+- Unused function `element_with_a_call_and_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:136:4
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:137:5
+- Cannot assign `T` to `A`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:137:63

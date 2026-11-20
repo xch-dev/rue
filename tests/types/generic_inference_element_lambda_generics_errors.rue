@@ -120,3 +120,20 @@ fn with_value_of_return<T, U>(pair: (fn(x: T) -> U, U), value: T) -> U {
 fn element_before_a_value_of_its_return_type() -> Int {
     with_value_of_return((fn(x) => x + 1, 0), 5)
 }
+
+fn map_list_of<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    map_list(functions, value)
+}
+
+// A lambda whose body has a call that its return type can be is compiled where it is when the
+// call's expected type bounds that return type, against `T` itself, as before, so a body that needs
+// its parameter to be `A` is rejected here, although the same call without an expected type
+// compiles (see `element_names_the_callers_generic` in `generic_inference_element_lambda_generics.rue`).
+// Compiled where it is, the expected type's bound can narrow `T` through the call in its body,
+// which `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)` needs, and which it can't once its
+// parameter is what the other arguments infer. Which of the two a lambda needs depends on what its
+// body does with its parameter, which isn't known before it's compiled
+fn element_with_a_call_and_an_expected_type<A>(value: A) -> List<A> {
+    let result: List<A> = map_list_of([fn(x) => identity::<A>(x)], value);
+    result
+}
