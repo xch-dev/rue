@@ -417,9 +417,11 @@ fn first_then_rest<T, U>(pair: (fn(x: T) -> U, fn() -> U), value: T) -> (U, U) {
 
 // Guard: a sibling lambda with no untyped parameters reads what the lambda's return type adds to
 // `U` through the call in its body, which is inferred from the type its return type is expected to
-// have, so the lambda is compiled where it is
+// have, so the lambda is compiled where it is. The call has no expected type, which would give `U`
+// a type of its own
 test fn element_returns_what_a_sibling_calls_with() -> (Int, Int) {
-    first_then_rest((fn(_x) => 7, fn() => cast_nil()), 5)
+    let result = first_then_rest((fn(_x) => 7, fn() => cast_nil()), 5);
+    result
 }
 
 fn first_then_typed<T, U>(pair: (fn(x: T) -> U, fn(y: Int) -> (U, Int)), value: T) -> U {
@@ -427,5 +429,6 @@ fn first_then_typed<T, U>(pair: (fn(x: T) -> U, fn(y: Int) -> (U, Int)), value: 
 }
 
 test fn element_returns_what_a_typed_sibling_calls_with() -> Int {
-    first_then_typed((fn(_x) => 7, fn(y: Int) => (identity(cast_nil()), y)), 5)
+    let result = first_then_typed((fn(_x) => 7, fn(y: Int) => (identity(cast_nil()), y)), 5);
+    result
 }
