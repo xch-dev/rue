@@ -585,3 +585,19 @@ test fn element_returns_what_a_waiting_lambda_reads() -> Bool {
     let result = chain_after([fn(x) => x], (fn(w) => w, 1), nil, 6);
     result is (Int, nil)
 }
+
+fn chain_twice<T, U, V, W>(
+    functions: List<fn(x: T) -> U>,
+    link: (fn(v: V) -> T, T),
+    make: (fn(y: W) -> V, Int),
+    value: W,
+) -> List<U> {
+    map_list(functions, link.first(make.first(value)))
+}
+
+// Guard: the lambda next to `1` returns `V`, which what the waiting lambda reads, `T`, is mapped to
+// so far (`V | Int`), so it's compiled where it is, and the first lambda waits for `6` through it
+test fn element_returns_what_a_waiting_lambda_reads_through_a_mapping() -> List<Int> {
+    let result = chain_twice([fn(x) => x + 1], (fn(v) => v, 5), (fn(y) => y, 1), 6);
+    result
+}

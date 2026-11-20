@@ -328,6 +328,13 @@ tests:
   runtime_cost: 2881
   byte_cost: 1740000
   total_cost: 1742881
+- name: element_returns_what_a_waiting_lambda_reads_through_a_mapping
+  program: (a (q 2 2 (c 2 (c (c (q 16 2 (q . 1)) ()) (a (q . 2) (c (a (q . 2) (q 6)) ()))))) (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 6 (c 4 (c (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (q . 6))))) 1)) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q 2 2 (c 2 (c 9 (a (f 13) (c (a (f 11) (c 15 ())) ())))))) ()))
+  output: (7)
+  runtime_cost: 3195
+  byte_cost: 1572000
+  total_cost: 1575195
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
@@ -354,4 +361,7 @@ diagnostics:
     help: Return the value directly
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:567:5
+    help: Return the value directly
+- |-
+  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:601:5
     help: Return the value directly

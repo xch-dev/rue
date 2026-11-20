@@ -242,7 +242,12 @@ pub(crate) fn infer_call(
             // stand for the renamed ones (see `restorable`), which only holds while the argument is
             // being compiled, so they aren't deferred
             to_defer: if renamed.is_empty() {
-                order.deferred(i, &expected_returns, &depends, &waiting_reads(&waiting))
+                order.deferred(
+                    i,
+                    &expected_returns,
+                    &depends,
+                    &with_dependencies(&waiting_reads(&waiting), &depends),
+                )
             } else {
                 HashMap::new()
             },
@@ -321,7 +326,8 @@ pub(crate) fn infer_call(
         // still to be compiled adds to what they read. They never wait for each other: one only
         // waits if nothing still to be compiled reads what its return type adds to, neither an
         // argument (a pair or list with a lambda in it reads every generic in its parameter type,
-        // see `reads_of`) nor a lambda that's already waiting (see `ArgumentOrder::deferred`)
+        // see `reads_of`) nor a lambda that's already waiting, directly or through what its
+        // generics are mapped to so far (see `ArgumentOrder::deferred`)
         while !waiting.is_empty() {
             let inferred = ctx.solve_arguments(&solver, order.merged());
             let depends = mapping_dependencies(ctx, function, &inferred);
@@ -581,6 +587,27 @@ fn mapping_dependencies(
             (generic, others)
         })
         .collect()
+}
+
+/// The generics, and the other callee generics that their mappings so far reference, following
+/// them through each other (see `mapping_dependencies`), such as `W` for `T` when `T` is mapped to
+/// `W | Int`.
+fn with_dependencies(
+    generics: &IndexSet<TypeId>,
+    depends: &HashMap<TypeId, IndexSet<TypeId>>,
+) -> IndexSet<TypeId> {
+    let mut generics = generics.clone();
+    let mut index = 0;
+
+    while let Some(&generic) = generics.get_index(index) {
+        if let Some(others) = depends.get(&generic) {
+            generics.extend(others);
+        }
+
+        index += 1;
+    }
+
+    generics
 }
 
 /// The generics that the untyped parameters of the element lambdas still waiting read.
@@ -1411,18 +1438,7 @@ impl ArgumentOrder {
         generics: &IndexSet<TypeId>,
         depends: &HashMap<TypeId, IndexSet<TypeId>>,
     ) -> bool {
-        let mut generics = generics.clone();
-        let mut index = 0;
-
-        while let Some(&generic) = generics.get_index(index) {
-            if let Some(others) = depends.get(&generic) {
-                generics.extend(others);
-            }
-
-            index += 1;
-        }
-
-        let generics = &generics;
+        let generics = &with_dependencies(generics, depends);
 
         !self.pending.iter().any(|&other| {
             self.arguments[other]
