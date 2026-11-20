@@ -619,3 +619,28 @@ test fn element_under_a_hinted_expected_type() -> Int {
     );
     result.first
 }
+
+// A lambda that reads a field of a parameter that's the callee's generic itself waits, even under
+// an expected type, where a call in its body would otherwise keep it where it is:
+// compiled there, `p` is `T`, which has no fields, so it would be rejected anyway
+test fn element_reads_a_field_of_its_parameter_under_an_expected_type() -> (Int, List<Int>) {
+    let first: Int = apply_first((fn(p) => identity(p.first), 1), (5, 6));
+    let rest: List<Int> = map_list([fn(p) => identity(p.rest)], (5, 6));
+    (first, rest)
+}
+
+// Guard: a binding with the parameter's name shadows it, so the field it reads isn't the
+// parameter's, and the lambda is compiled where it is, as before, which a lambda whose return type
+// adds to what its parameter reads needs (see `element_adds_to_what_it_reads`)
+test fn element_reads_a_field_of_a_shadowing_binding() -> Int | nil {
+    self_feeding(
+        (
+            1,
+            fn(p) => {
+                let p = (5, nil);
+                p.first
+            },
+        ),
+        nil,
+    )
+}

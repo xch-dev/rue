@@ -10,7 +10,10 @@ use indexmap::IndexSet;
 
 use log::debug;
 use rowan::TextRange;
-use rue_ast::{AstExpr, AstFunctionCallExpr, AstGuardExpr, AstLambdaExpr, AstNode};
+use rue_ast::{
+    AstBinding, AstExpr, AstFieldAccessExpr, AstFunctionCallExpr, AstGuardExpr, AstLambdaExpr,
+    AstNamedBinding, AstNode, AstPathSegment,
+};
 use rue_hir::{Hir, HirId, Value};
 use rue_types::{
     CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, Union,
@@ -1167,6 +1170,11 @@ pub struct ElementLambda {
     /// generic itself can't be used any other way that loses it: its body either keeps it, as
     /// `(x, x)` does, or doesn't compile against it, as `x + 1` doesn't.
     narrows: bool,
+    /// Whether its body reads a field of an untyped parameter that's expected to be one of the
+    /// callee's generics itself, as `p.first` does for `p: T`, which doesn't compile against the
+    /// generic. Compiled where it is, it would be rejected whatever else is so, so it waits even
+    /// where a lambda that could compile there doesn't (see `ArgumentOrder::deferred`).
+    fails_in_place: bool,
 }
 
 /// An element lambda that's compiled once no argument still to be compiled can add to the generics
@@ -1482,6 +1490,13 @@ impl ArgumentOrder {
             .element_lambdas
             .iter()
             .filter(|(_, lambda)| {
+                // One that doesn't compile where it is waits whenever it can, since compiled there
+                // it would be rejected, whatever else waiting changes (see
+                // `ElementLambda::fails_in_place`)
+                if lambda.fails_in_place {
+                    return !self.is_settled(&lambda.reads, depends);
+                }
+
                 let bounded_by_expected = lambda
                     .returns
                     .iter()
@@ -1840,6 +1855,8 @@ fn element_lambdas(
                 // Whether an untyped parameter is expected to have a type that has a generic in it
                 // without being one, such as `(T, Int)`, a part of which doesn't reference `T`
                 let mut projected = false;
+                // The untyped parameters that are expected to be one of the callee's generics
+                let mut bare = HashSet::new();
 
                 for expected in &expected {
                     for &index in &untyped {
@@ -1849,6 +1866,9 @@ fn element_lambdas(
                                 rue_types::unwrap_semantic(ctx.types_mut(), parameter.ty, true);
                             projected |=
                                 !generics.is_empty() && !function.generics.contains(&semantic);
+                            if function.generics.contains(&semantic) {
+                                bare.insert(index);
+                            }
                             reads.extend(generics);
                         }
                     }
@@ -1872,12 +1892,17 @@ fn element_lambdas(
                                 .any(|node| AstGuardExpr::cast(node).is_some())
                         }));
 
-                if !reads.is_empty() && !returns.iter().any(|generic| reads.contains(generic)) {
+                let fails_in_place = reads_a_field_of(lambda, &bare);
+
+                if !reads.is_empty()
+                    && (fails_in_place || !returns.iter().any(|generic| reads.contains(generic)))
+                {
                     let lambda = ElementLambda {
                         ty,
                         reads: reads.clone(),
                         returns: returns.clone(),
                         narrows,
+                        fails_in_place,
                     };
                     walk.lambdas.push((range, lambda));
                 }
@@ -1953,11 +1978,57 @@ fn element_lambdas(
     walk.lambdas
         .into_iter()
         .filter(|(range, lambda)| {
-            !walk.reads.iter().any(|(other, reads)| {
-                other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
-            })
+            lambda.fails_in_place
+                || !walk.reads.iter().any(|(other, reads)| {
+                    other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
+                })
         })
         .collect()
+}
+
+/// Whether the lambda's body reads a field of one of the untyped parameters at the positions, as
+/// `p.first` does, other than of a binding in it with the same name.
+fn reads_a_field_of(lambda: &AstLambdaExpr, positions: &HashSet<usize>) -> bool {
+    let names: HashSet<String> = lambda
+        .parameters()
+        .enumerate()
+        .filter(|(index, _)| positions.contains(index))
+        .filter_map(|(_, parameter)| match parameter.binding()? {
+            AstBinding::NamedBinding(binding) => binding.name(),
+            _ => None,
+        })
+        .map(|name| name.text().to_string())
+        .collect();
+
+    let Some(body) = lambda.body() else {
+        return false;
+    };
+
+    // A binding with the parameter's name shadows it, so its fields aren't the parameter's
+    let shadowed: HashSet<String> = body
+        .syntax()
+        .descendants()
+        .filter_map(AstNamedBinding::cast)
+        .filter_map(|binding| binding.name())
+        .map(|name| name.text().to_string())
+        .collect();
+
+    body.syntax()
+        .descendants()
+        .filter_map(AstFieldAccessExpr::cast)
+        .filter_map(|access| access.expr())
+        .any(|expr| {
+            let AstExpr::PathExpr(path) = expr else {
+                return false;
+            };
+            let segments: Vec<AstPathSegment> = path.segments().collect();
+            let [segment] = segments.as_slice() else {
+                return false;
+            };
+            segment
+                .name()
+                .is_some_and(|name| names.contains(name.text()) && !shadowed.contains(name.text()))
+        })
 }
 
 /// The types of the first and rest of the pairs the type can be, each a union if there are
