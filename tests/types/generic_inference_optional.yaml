@@ -1,63 +1,63 @@
 tests:
 - name: nil_value
   program: (a (q 2 2 (q () . 42)) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 2 (c () (q . 42))) (c (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 2 (c () (q . 42))) (c (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q . 3) (q . 2)) 1) ()))
   output: "42"
   runtime_cost: 1168
   byte_cost: 852000
   total_cost: 853168
 - name: optional_value
   program: (a (q 2 2 (q 42)) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 (c 2 ())) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 2 ())) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q . 3) (q . 2)) 1) ()))
   output: "42"
   runtime_cost: 1168
   byte_cost: 852000
   total_cost: 853168
 - name: optional_bytes32
   program: (a (q 2 2 (c () (sha256 (q . 97)))) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 (c 2 (sha256 (q . 97)))) (c () 1)) (c (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 2 (sha256 (q . 97)))) (c () 1)) (c (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q . 3) (q . 2)) 1) ()))
   output: "0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
   runtime_cost: 1807
   byte_cost: 948000
   total_cost: 949807
 - name: optional_value_alone
   program: (a (q 2 2 (q . 42)) (c (q 2 (i (a (i (l 1) (q) (q 32 1)) 1) (q 8) (q . 1)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 2) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_inference_optional.rue:11:9")) (q . 1)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 2) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q 8 (q . "raise called at generic_inference_optional.rue:11:9")) (q . 1)) 1) ()))
   output: "42"
   runtime_cost: 1156
   byte_cost: 852000
   total_cost: 853156
 - name: zero_value
   program: (a (q 2 2 (q () . 42)) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 2 (c () (q . 42))) (c (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 2 (c () (q . 42))) (c (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q . 3) (q . 2)) 1) ()))
   output: "42"
   runtime_cost: 1168
   byte_cost: 852000
   total_cost: 853168
 - name: nil_default
   program: (a (q 2 2 (q 42)) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 (c 2 ())) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 2 ())) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q . 3) (q . 2)) 1) ()))
   output: "42"
   runtime_cost: 1168
   byte_cost: 852000
   total_cost: 853168
 - name: only_nil_value
   program: (a (q 2 2 ()) (c (q 2 (i (l 1) (q) (q 9 1 ())) 1) ()))
-  debug_program: (a (q 2 2 ()) (c (q 2 (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) ()))
+  debug_program: (a (q 2 2 ()) (c (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1) ()))
   output: "1"
   runtime_cost: 888
   byte_cost: 612000
   total_cost: 612888
 - name: only_nil_value_nested
   program: (a (q 2 2 ()) (c (q 2 (i (l 1) (q) (q 9 1 ())) 1) ()))
-  debug_program: (a (q 2 2 ()) (c (q 2 (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) ()))
+  debug_program: (a (q 2 2 ()) (c (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1) ()))
   output: "1"
   runtime_cost: 888
   byte_cost: 612000
   total_cost: 612888
 - name: optional_value_nested
   program: (a (q 2 2 (q 42)) (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 (c 2 ())) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 2 ())) (c (q . 42) 1)) (c (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q . 3) (q . 2)) 1) ()))
   output: "42"
   runtime_cost: 1168
   byte_cost: 852000

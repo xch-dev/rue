@@ -7,12 +7,12 @@ tests:
   byte_cost: 444000
   total_cost: 444563
 - name: called_with_several_types
-  program: (a (q 2 (q 2 (q 2 (i (a (i 10 (q 3 14 (q . 1) ()) (q)) 1) (q 16 8 12 (q . 2)) (q)) 1) (c (c (a 2 (q 20)) (a 2 (q 1))) 1)) (c 2 1)) (c (q 4 2 2) ()))
-  debug_program: (a (q 2 (q 2 (q 2 (i (a (i (f 6) (q 2 (i (r 6) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (+ (f 4) (r 4)) (q . 2)) (q)) 1) (c (c (a 2 (c (q . 20) ())) (a 2 (c (q . 1) ()))) 1)) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
+  program: (a (q 2 (q 2 (q 2 (i (a (i 10 (q . 14) (q)) 1) (q 16 8 12 (q . 2)) (q)) 1) (c (c (a 2 (q 20)) (a 2 (q 1))) 1)) (c 2 1)) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (a (i (f 6) (q 6 6) (q)) 1) (q 16 (+ (f 4) (r 4)) (q . 2)) (q)) 1) (c (c (a 2 (c (q . 20) ())) (a 2 (c (q . 1) ()))) 1)) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
   output: "42"
-  runtime_cost: 3188
-  byte_cost: 1596000
-  total_cost: 1599188
+  runtime_cost: 3090
+  byte_cost: 1476000
+  total_cost: 1479090
 - name: generics_in_another_order
   program: (a (q 6 (a 2 (q 21))) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 6 (a 2 (c (q . 21) ()))) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
@@ -57,7 +57,7 @@ tests:
   total_cost: 540690
 - name: union_expected_type
   program: (a (q 2 (q 2 (i (l 2) (q) (q 9 2 ())) 1) (c 2 1)) (c (q 4 2 2) ()))
-  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
+  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 9 2 ()) (q)) 1) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
   output: ()
   runtime_cost: 801
   byte_cost: 780000

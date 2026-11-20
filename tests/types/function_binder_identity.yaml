@@ -43,7 +43,7 @@ tests:
   total_cost: 589427
 - name: instantiate_alias_with_optional_expected_generic
   program: (a (q 2 2 (q . 2)) (c (q 32 (a (i (l 1) (q) (q 32 1)) 1)) ()))
-  debug_program: (a (q 2 6 (a 4 ())) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q 1 . 1)) 1)) ()))
+  debug_program: (a (q 2 6 (a 4 ())) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q) (q 1 . 1)) 1)) ()))
   output: "1"
   runtime_cost: 1104
   byte_cost: 660000

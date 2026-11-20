@@ -1,5 +1,5 @@
 program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (l 1) (q) (q 32 1)) 1) (q 8) (q . 1)) 1) ()))
-debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
+debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
 output: "5"
 runtime_cost: 1156
 byte_cost: 852000
@@ -7,33 +7,33 @@ total_cost: 853156
 tests:
 - name: unwrap_int
   program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (l 1) (q) (q 32 1)) 1) (q 8) (q . 1)) 1) ()))
-  debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
+  debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
   output: "5"
   runtime_cost: 1156
   byte_cost: 852000
   total_cost: 853156
 - name: unwrap_pair
   program: (a (q 2 2 (q 1 . 2)) (c (q 2 (i (a (i (l 1) (q) (q 32 1)) 1) (q 8) (q . 1)) 1) ()))
-  debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
   output: (1 . 2)
   runtime_cost: 955
   byte_cost: 876000
   total_cost: 876955
 - name: unwrap_nil
   program: (a (q 2 2 ()) (c (q 2 (i (a (i (l 1) (q) (q 32 1)) 1) (q 8) (q . 1)) 1) ()))
-  debug_program: (a (q 2 2 ()) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
+  debug_program: (a (q 2 2 ()) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
   byte_cost: 828000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "raise called at generic_else.rue:3:9"
 - name: unwrap_zero
   program: (a (q 2 2 ()) (c (q 2 (i (a (i (l 1) (q) (q 32 1)) 1) (q 8) (q . 1)) 1) ()))
-  debug_program: (a (q 2 2 ()) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
+  debug_program: (a (q 2 2 ()) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
   byte_cost: 828000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "raise called at generic_else.rue:3:9"
 - name: unwrap_nullable_nil
   program: (a (q 2 2 ()) (c (q 2 (i (a (i (l 1) (q) (q 32 1)) 1) (q 8) (q . 1)) 1) ()))
-  debug_program: (a (q 2 2 ()) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
+  debug_program: (a (q 2 2 ()) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q 8 (q . "raise called at generic_else.rue:3:9")) (q . 1)) 1) ()))
   byte_cost: 828000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "raise called at generic_else.rue:3:9"

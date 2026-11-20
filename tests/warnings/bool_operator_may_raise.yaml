@@ -23,9 +23,9 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
 - name: nested_short_circuit
-  program: (all () (i (x) (q . 1) ()))
-  debug_program: (a (q 2 4 (c 6 (c () (c (q . 1) ())))) (c (c (q 34 5 (a (i 11 (q 2 (i (a 2 15) (q 1 . 1) (q)) 1) (q)) 1)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
-  byte_cost: 228000
+  program: (all () (x))
+  debug_program: (a (q 2 4 (c 6 (c () (c (q . 1) ())))) (c (c (q 34 5 (a (i 11 (q 2 2 15) (q)) 1)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
+  byte_cost: 108000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
 - name: chained_twice
@@ -56,12 +56,12 @@ tests:
   byte_cost: 36000
   total_cost: 36201
 - name: short_circuit
-  program: (a (q 2 6 (c 4 (q ()))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8)) 1) (q 2 (i (a (i 7 (q 3 (a 2 5) (q . 1) ()) (q)) 1) (q 1 . 1) (q 3 (a 2 (+ 5 (q . 1))) (q . 1) ())) 1)) ()))
-  debug_program: (a (q 2 6 (c 4 (c () ()))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 2 (i (a (i 7 (q 2 (i (a 2 5) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 2 (i (a 2 (+ 5 (q . 1))) (q 1 . 1) (q)) 1)) 1)) ()))
+  program: (a (q 2 6 (c 4 (q ()))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8)) 1) (q 2 (i (a (i 7 (q 2 2 5) (q)) 1) (q 1 . 1) (q 2 2 (+ 5 (q . 1)))) 1)) ()))
+  debug_program: (a (q 2 6 (c 4 (c () ()))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 2 (i (a (i 7 (q 2 2 5) (q)) 1) (q 1 . 1) (q 2 2 (+ 5 (q . 1)))) 1)) ()))
   output: "1"
-  runtime_cost: 2957
-  byte_cost: 1764000
-  total_cost: 1766957
+  runtime_cost: 2859
+  byte_cost: 1524000
+  total_cost: 1526859
 - name: bitwise
   program: (a (q 2 6 (c 4 (q 2 . 1))) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) (q 25 (logand 7 (a 2 5)) (a 2 5))) ()))
   debug_program: (a (q 2 6 (c 4 (c (q . 2) (q . 1)))) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:113:5"))) 1) (q 25 (logand 7 (a 2 5)) (a 2 5))) ()))

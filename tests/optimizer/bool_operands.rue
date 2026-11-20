@@ -1,0 +1,56 @@
+// The right operand of `&&` and `||` is a `Bool`, so it's the result as it is, rather than being
+// turned into `1` or `()` again
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+// Its parameter is used twice, so it's called rather than inlined
+fn is_large(value: Int) -> Bool {
+    value > 100 && value < 1000
+}
+
+test fn or_call() -> Bool {
+    let n = positive(5);
+    n == 5 || is_large(n)
+}
+
+test fn or_call_false() -> Bool {
+    let n = positive(6);
+    n == 5 || is_large(n)
+}
+
+test fn and_call() -> Bool {
+    let n = positive(500);
+    n > 5 && is_large(n)
+}
+
+test fn and_call_false() -> Bool {
+    let n = positive(50);
+    n > 5 && is_large(n)
+}
+
+// Like `if`, the operators trust that a `Bool` is `true` or `false`, so a value that isn't one
+// passes through the right operand unchanged
+test fn or_value_outside_of_its_type() -> Bool {
+    let n = positive(5);
+    n == 6 || unchecked_cast::<Bool>(n)
+}
+
+test fn and_value_outside_of_its_type() -> Bool {
+    let n = positive(5);
+    n == 5 && unchecked_cast::<Bool>(n)
+}
+
+// Turning the result into a bool again only turns the right operand into one, since the left
+// operand's branch already is one
+test fn or_turned_into_a_bool() -> Int {
+    let n = positive(500);
+    let ok = n == 5 || is_large(n);
+    if ok {
+        1
+    } else {
+        0
+    }
+}

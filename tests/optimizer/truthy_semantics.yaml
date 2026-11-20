@@ -124,7 +124,7 @@ tests:
   total_cost: 108450
 - name: list_atom_terminator_nested
   program: (i (a (i (l 2) (q 32 4) (q)) 1) (q . 1) (q . 2))
-  debug_program: (a (i (a (i (l 2) (q 2 (i (not (f 2)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 1 . 2)) 1)
+  debug_program: (a (i (a (i (l 2) (q 32 (f 2)) (q)) 1) (q 1 . 1) (q 1 . 2)) 1)
   solution: ((5 . 1))
   output: "2"
   runtime_cost: 604

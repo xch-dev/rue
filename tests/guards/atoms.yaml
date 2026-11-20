@@ -17,7 +17,7 @@ tests:
   total_cost: 108188
 - name: atom_value_union
   program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 9 2 (q . 34))) 1)
-  debug_program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)
+  debug_program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 9 2 (q . 34))) 1)
   solution: (34)
   output: "1"
   runtime_cost: 585
@@ -25,7 +25,7 @@ tests:
   total_cost: 444585
 - name: atom_shape_value
   program: (a (i (l 2) (q) (q 9 2 (q . 42))) 1)
-  debug_program: (a (i (not (l 2)) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1) (q)) 1)
+  debug_program: (a (i (not (l 2)) (q 9 2 (q . 42)) (q)) 1)
   solution: (42)
   output: "1"
   runtime_cost: 465

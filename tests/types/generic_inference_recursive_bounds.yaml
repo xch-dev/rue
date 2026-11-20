@@ -50,7 +50,7 @@ tests:
   total_cost: 1623950
 - name: guard_given_directly
   program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 5) (q . 2))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (q 3 (a (i (l 2) (q) (q 32 2)) 1) (q . 1) (q . 2)))))) (q . 11)) 1) ()))
-  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (q . 11)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (q . 11)) 1) ()))
   output: ()
   runtime_cost: 3514
   byte_cost: 1716000
