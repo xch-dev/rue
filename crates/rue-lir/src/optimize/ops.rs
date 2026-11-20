@@ -13,7 +13,7 @@ use crate::{
         ArgList, Truthiness, fold_atoms, is_atom, is_boolean, is_nil, is_pure, opt_truthy,
         reads_env,
     },
-    parent_path, rest_path,
+    parent_path, path_to_atom, rest_path,
     stack::grow_stack,
 };
 
@@ -642,6 +642,13 @@ pub fn opt_if(
                 return opt_if(arena, inner, inner_then, inner_otherwise, inner_inline);
             }
 
+            // An inline `if` evaluates both branches, so one that picks between a bool and a
+            // constant is `any` or `all` of the condition and the bool, which is what `a || b`
+            // and `a && b` are when `b` is evaluated either way
+            if inline && let Some(logic) = eager_logic(arena, replacement, then, otherwise) {
+                return logic;
+            }
+
             let (condition, then, otherwise) =
                 if let Lir::Not(opposite) = arena[replacement].clone() {
                     (opposite, otherwise, then)
@@ -649,8 +656,105 @@ pub fn opt_if(
                     (replacement, then, otherwise)
                 };
 
+            if !inline && let Some(direct) = branch_directly(arena, condition, then, otherwise) {
+                return direct;
+            }
+
             alloc_if(arena, condition, then, otherwise, inline)
         }
+    }
+}
+
+/// `(i c 1 b)` is `(any c b)` and `(i c b ())` is `(all c b)` if `b` is always `()` or `1`, since
+/// every operand is evaluated in order either way, and `(i c () b)` and `(i c b 1)` are the same
+/// with `(not c)`. The condition can be a replacement that only has the same truthiness.
+fn eager_logic(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+) -> Option<LirId> {
+    // An `if` between two constants is already as small as it gets
+    let is_bool = |arena: &Arena<Lir>, value: LirId| {
+        !matches!(arena[value], Lir::Atom(_)) && is_boolean(arena, value)
+    };
+
+    if is_atom(arena, then, &[1]) && is_bool(arena, otherwise) {
+        return Some(opt_any(arena, vec![condition, otherwise]));
+    }
+
+    if is_nil(arena, otherwise) && is_bool(arena, then) {
+        return Some(opt_all(arena, vec![condition, then]));
+    }
+
+    if is_nil(arena, then) && is_bool(arena, otherwise) {
+        let negated = opt_not(arena, condition);
+        return Some(opt_all(arena, vec![negated, otherwise]));
+    }
+
+    if is_atom(arena, otherwise, &[1]) && is_bool(arena, then) {
+        let negated = opt_not(arena, condition);
+        return Some(opt_any(arena, vec![negated, then]));
+    }
+
+    None
+}
+
+/// An `if` whose condition is another `if` with a branch that's a constant, such as
+/// `(a (i (a (i a (q 1 . 1) (q . B)) 1) (q . T) (q . F)) 1)` from `if a || b`, already knows which
+/// way it goes when the inner condition picks the constant. Branching there directly gives
+/// `(a (i a (q . T) (q 2 (i B (q . T) (q . F)) 1)) 1)`, which runs one less `a`, and has the branch
+/// that's taken twice in place of the constant. So it's only done if that branch is no larger
+/// than the constant was, which is five bytes for `(q 1 . 1)` and one for `()`.
+fn branch_directly(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+) -> Option<LirId> {
+    let Lir::If(inner, inner_then, inner_otherwise, false) = arena[condition] else {
+        return None;
+    };
+
+    let repeated = |arena: &Arena<Lir>, constant: LirId| {
+        let Lir::Atom(atom) = &arena[constant] else {
+            return None;
+        };
+
+        let (taken, constant_size) = if atom.is_empty() {
+            (otherwise, 1)
+        } else {
+            (then, 5)
+        };
+
+        (quoted_size(arena, taken)? <= constant_size).then_some(taken)
+    };
+
+    if let Some(taken) = repeated(arena, inner_then) {
+        let rest = opt_if(arena, inner_otherwise, then, otherwise, false);
+        return Some(opt_if(arena, inner, taken, rest, false));
+    }
+
+    if let Some(taken) = repeated(arena, inner_otherwise) {
+        let rest = opt_if(arena, inner_then, then, otherwise, false);
+        return Some(opt_if(arena, inner, rest, taken, false));
+    }
+
+    None
+}
+
+/// How many bytes the value takes up as the quoted branch of an `if`, if it's one of the values
+/// that are at most five: `()`, a path or `(x)` in one byte, which is quoted as it is, or an atom
+/// of one byte, which is `(q 1 . ATOM)`.
+fn quoted_size(arena: &Arena<Lir>, value: LirId) -> Option<usize> {
+    let single_byte = |bytes: &[u8]| matches!(bytes, [byte] if *byte < 0x80);
+
+    match &arena[value] {
+        Lir::Atom(atom) if atom.is_empty() => Some(1),
+        Lir::Atom(atom) if single_byte(atom) => Some(5),
+        Lir::Path(path) if single_byte(&path_to_atom(path)) => Some(3),
+        Lir::Raise(args) if args.is_empty() => Some(5),
+        _ => None,
     }
 }
 

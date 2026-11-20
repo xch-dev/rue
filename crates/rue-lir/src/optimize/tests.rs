@@ -87,6 +87,17 @@ const ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "((1 . 2))", "(5 7
 
 // Some rewrites assume that values match their static types, so these only contain
 // environments where the first argument is an atom or a list respectively
+// Environments with three arguments that are atoms, for the rewrites that assume the operands of
+// `=` are
+const THREE_ATOM_ENVS: &[&str] = &[
+    "(() () ())",
+    "(1 () ())",
+    "(() 5 1)",
+    "(5 1 7)",
+    "(() 0x00 ())",
+    "(0x00 () 3)",
+];
+
 const ATOM_ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "(5 7)"];
 
 #[test]
@@ -224,14 +235,21 @@ fn test_nil_check_with_not() {
 
 #[test]
 fn test_nil_check_keeps_other_checks() {
-    // An inline `if` evaluates `(= x ())` for a pair too, which fails
+    // An inline `if` evaluates `(= x ())` for a pair too, which fails, so it isn't `(not x)`.
+    // It's the `all` of both checks, where `(= x ())` is only `(not x)` for an atom, which the
+    // optimizer assumes of the operands of `=` (see `opt_truthy`).
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
     let listp = arena.alloc(Lir::Listp(x));
     let nil = atom(&mut arena, &[]);
     let eq = arena.alloc(Lir::Eq(x, nil));
     let lir = arena.alloc(Lir::If(listp, nil, eq, true));
-    check(&mut arena, lir, ENVS, expect!["(i (l 2) () (= 2 ()))"]);
+    check(
+        &mut arena,
+        lir,
+        ATOM_ENVS,
+        expect!["(all (not (l 2)) (not 2))"],
+    );
 
     // With the operands of `=` the other way around too
     let eq = arena.alloc(Lir::Eq(nil, x));
@@ -272,6 +290,159 @@ fn test_nil_check_keeps_other_checks() {
 }
 
 #[test]
+fn test_inline_if_of_a_bool_is_all_or_any() {
+    // An inline `if` evaluates both branches, so `(i a 1 b)` is `(any a b)` if `b` is a bool,
+    // which is what `a || b` is lowered to when `b` is evaluated either way
+    let mut arena = Arena::new();
+    let a = path(&mut arena, 2);
+    let b = path(&mut arena, 5);
+    let nil = atom(&mut arena, &[]);
+    let one = atom(&mut arena, &[1]);
+    let b_is_nil = arena.alloc(Lir::Eq(b, nil));
+    let lir = arena.alloc(Lir::If(a, one, b_is_nil, true));
+    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(any 2 (not 5))"]);
+
+    // And `(i a b ())` is `(all a b)`
+    let lir = arena.alloc(Lir::If(a, b_is_nil, nil, true));
+    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(all 2 (not 5))"]);
+
+    // With the constant in the other branch, the condition is negated
+    let lir = arena.alloc(Lir::If(a, nil, b_is_nil, true));
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect!["(all (not 2) (not 5))"],
+    );
+    let lir = arena.alloc(Lir::If(a, b_is_nil, one, true));
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect!["(any (not 2) (not 5))"],
+    );
+
+    // A value that isn't known to be a bool is the result as it is
+    let lir = arena.alloc(Lir::If(a, one, b, true));
+    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(i 2 (q . 1) 5)"]);
+    let lir = arena.alloc(Lir::If(a, b, nil, true));
+    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(i 2 5 ())"]);
+
+    // Unless only its truthiness is observed
+    let two = atom(&mut arena, &[2]);
+    let either = arena.alloc(Lir::If(a, one, b, true));
+    let lir = arena.alloc(Lir::If(either, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect!["(i (any 2 5) (q . 1) (q . 2))"],
+    );
+    let both = arena.alloc(Lir::If(a, b, nil, true));
+    let lir = arena.alloc(Lir::If(both, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect!["(i (all 2 5) (q . 1) (q . 2))"],
+    );
+
+    // Chains are flattened, since every operand is evaluated in order either way
+    let c = path(&mut arena, 11);
+    let c_is_nil = arena.alloc(Lir::Eq(c, nil));
+    let first = arena.alloc(Lir::If(a, one, b_is_nil, true));
+    let lir = arena.alloc(Lir::If(first, one, c_is_nil, true));
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect!["(any 2 (not 5) (not 11))"],
+    );
+
+    // A branch that fails is still evaluated when the condition decides the result
+    let fails = arena.alloc(Lir::Eq(a, a));
+    let raises = raise(&mut arena);
+    let fails = arena.alloc(Lir::If(fails, nil, raises, false));
+    let fails = arena.alloc(Lir::Eq(fails, nil));
+    let lir = arena.alloc(Lir::If(a, one, fails, true));
+    check(
+        &mut arena,
+        lir,
+        ATOM_ENVS,
+        expect!["(any 2 (not (a (i (= 2 2) () (q 8)) 1)))"],
+    );
+
+    // An `if` that isn't inline only evaluates the branch that's taken
+    let lir = arena.alloc(Lir::If(a, one, b_is_nil, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i 2 (q 1 . 1) (q 9 5 ())) 1)"],
+    );
+}
+
+#[test]
+fn test_if_branches_directly() {
+    // `if a || b { () } else { 2 }`, where `b` is only evaluated if `a` is false, branches to the
+    // result as soon as `a` decides it, since `()` is smaller than the `(q 1 . 1)` it replaces
+    let mut arena = Arena::new();
+    let a = path(&mut arena, 2);
+    let b = path(&mut arena, 5);
+    let nil = atom(&mut arena, &[]);
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let b_first = arena.alloc(Lir::First(b));
+    let either = arena.alloc(Lir::If(a, one, b_first, false));
+    let lir = arena.alloc(Lir::If(either, nil, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i 2 () (q 3 9 () (q . 2))) 1)"],
+    );
+
+    // A chain branches once per operand
+    let c = path(&mut arena, 11);
+    let c_first = arena.alloc(Lir::First(c));
+    let any = arena.alloc(Lir::If(either, one, c_first, false));
+    let lir = arena.alloc(Lir::If(any, nil, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i 2 () (q 2 (i 9 () (q 3 19 () (q . 2))) 1)) 1)"],
+    );
+
+    // `if a && b { 2 } else { () }` does the same for the branch that's taken when `a` is false
+    let both = arena.alloc(Lir::If(a, b_first, nil, false));
+    let lir = arena.alloc(Lir::If(both, two, nil, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i 2 (q 3 9 (q . 2) ()) ()) 1)"],
+    );
+
+    // A branch that's larger than the constant would be repeated, so the condition is kept
+    let sum = arena.alloc(Lir::Add(vec![a, b]));
+    let lir = arena.alloc(Lir::If(either, sum, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i (a (i 2 (q 1 . 1) (q . 9)) 1) (q 16 2 5) (q 1 . 2)) 1)"],
+    );
+    let lir = arena.alloc(Lir::If(both, two, one, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(i (a (i 2 (q . 9) ()) 1) (q . 2) (q . 1))"],
+    );
+}
+
+#[test]
 fn test_if_in_condition() {
     // Only the truthiness of each branch of an if in a condition is observed
     let mut arena = Arena::new();
@@ -302,7 +473,7 @@ fn test_if_in_condition() {
         &mut arena,
         lir,
         ENVS,
-        expect!["(i (a (i 2 (q 8) (q 1 . 1)) 1) (q . 1) (q . 2))"],
+        expect!["(a (i 2 (q 3 (x) (q . 1) (q . 2)) (q 1 . 1)) 1)"],
     );
 
     // So does a branch of an inline if, since atoms can't fail

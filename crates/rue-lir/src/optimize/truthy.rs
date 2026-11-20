@@ -1,6 +1,10 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId, optimize::alloc_if, stack::grow_stack};
+use crate::{
+    Lir, LirId,
+    optimize::{alloc_if, opt_all, opt_any, opt_not},
+    stack::grow_stack,
+};
 
 /// What is statically known about the truthiness of an already optimized value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,9 +74,37 @@ fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
         // Only the truthiness of the branch that's taken is observed, so each branch can be
         // replaced by one with the same truthiness. A branch whose truthiness is known can't fail,
         // so it can be replaced by an atom with that truthiness, even if the `if` is inline.
+        //
+        // An inline `if` evaluates both branches, so if one of them is known, its truthiness is
+        // that of `any` or `all` of the condition and the other branch, such as `(i c 1 b)` from
+        // `c || b`, which is `(any c b)`.
         Lir::If(condition, then, otherwise, inline) => {
-            let new_then = truthiness_replacement(arena, then);
-            let new_otherwise = truthiness_replacement(arena, otherwise);
+            let then_truthiness = opt_truthy(arena, then);
+            let otherwise_truthiness = opt_truthy(arena, otherwise);
+
+            if inline {
+                match (then_truthiness, otherwise_truthiness) {
+                    (Truthiness::Known(true), Truthiness::Unknown(otherwise)) => {
+                        return Truthiness::Unknown(opt_any(arena, vec![condition, otherwise]));
+                    }
+                    (Truthiness::Unknown(then), Truthiness::Known(false)) => {
+                        return Truthiness::Unknown(opt_all(arena, vec![condition, then]));
+                    }
+                    (Truthiness::Known(false), Truthiness::Unknown(otherwise)) => {
+                        let negated = opt_not(arena, condition);
+                        return Truthiness::Unknown(opt_all(arena, vec![negated, otherwise]));
+                    }
+                    (Truthiness::Unknown(then), Truthiness::Known(true)) => {
+                        let negated = opt_not(arena, condition);
+                        return Truthiness::Unknown(opt_any(arena, vec![negated, then]));
+                    }
+                    (Truthiness::Known(_), Truthiness::Known(_))
+                    | (Truthiness::Unknown(_), Truthiness::Unknown(_)) => {}
+                }
+            }
+
+            let new_then = replacement(arena, then_truthiness);
+            let new_otherwise = replacement(arena, otherwise_truthiness);
 
             if new_then == then && new_otherwise == otherwise {
                 return Truthiness::Unknown(value);
@@ -84,9 +116,9 @@ fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     }
 }
 
-// A value with the same truthiness as the given one, which fails exactly when it does
-fn truthiness_replacement(arena: &mut Arena<Lir>, value: LirId) -> LirId {
-    match opt_truthy(arena, value) {
+// A value with the given truthiness, which fails exactly when the value it was found for does
+fn replacement(arena: &mut Arena<Lir>, truthiness: Truthiness) -> LirId {
+    match truthiness {
         Truthiness::Known(true) => arena.alloc(Lir::Atom(vec![1])),
         Truthiness::Known(false) => arena.alloc(Lir::Atom(vec![])),
         Truthiness::Unknown(replacement) => replacement,
