@@ -28,12 +28,21 @@ fn pick(flag: Bool, value: Int) -> Int {
 }
 
 // An argument that may fail is still evaluated at the call, whether or not the branch that reads
-// its parameter is taken
+// its parameter is taken: it's bound before the body
 test fn argument_that_may_fail(flag: Bool, a: Int, b: Int) -> Int {
-    pick(flag, check_positive(a)) + pick(flag, check_positive(b))
+    pick(flag, a / b) + pick(flag, a) + pick(flag, b)
 }
 
 test fn argument_that_fails_in_a_branch_that_is_not_taken(flag: Bool, a: Int, b: Int) -> Int {
+    pick(flag, a / b) + pick(flag, a) + pick(flag, b)
+}
+
+// Binding an argument in each call is larger than calling the function, so it isn't inlined
+test fn arguments_that_would_be_bound(flag: Bool, a: Int, b: Int) -> Int {
+    pick(flag, check_positive(a)) + pick(flag, check_positive(b))
+}
+
+test fn arguments_that_would_be_bound_and_fail(flag: Bool, a: Int, b: Int) -> Int {
     pick(flag, check_positive(a)) + pick(flag, check_positive(b))
 }
 
@@ -46,18 +55,153 @@ test fn argument_that_fails_and_is_not_read(a: Int, b: Int) -> Int {
     first_of(a, check_positive(b)) + first_of(b, check_positive(a))
 }
 
-// An argument whose parameter is read twice is only evaluated once
+// An argument whose parameter is read twice would be bound in each call, which is larger than
+// calling the function
 test fn argument_that_is_not_a_path(a: Int, b: Int) -> Int {
     twice(sha256(a as Bytes) as Int) + twice(a * b)
+}
+
+fn weighted(a: Int, b: Int) -> Int {
+    b + b + a
+}
+
+// The inner call's arguments are its own, although the same function is being inlined around
+// it: `b` of the inner call is bound, and isn't the outer call's `b`
+test fn nested_call_with_a_bound_argument(x: Int, y: Int) -> Int {
+    weighted(weighted(1, x * y), x)
+}
+
+test fn nested_call_with_an_argument_that_fails(x: Int, y: Int) -> Int {
+    weighted(weighted(1, x / y), x)
+}
+
+fn pick_twice(flag: Bool, value: Int) -> Int {
+    if flag {
+        value + value
+    } else {
+        1
+    }
+}
+
+test fn nested_call_in_a_condition(x: Int, y: Int, z: Int) -> Int {
+    pick_twice(pick_twice(true, y % z) > x / y, 1)
+}
+
+fn apply(g: fn(q: Int) -> Int, a: Int) -> Int {
+    g(a)
+}
+
+test fn nested_call_through_a_lambda(x: Int, y: Int, z: Int) -> Int {
+    apply(fn(q) => weighted(q, y), weighted(pick_twice(z > 0, y % z), x / y))
 }
 
 fn sum_of_squares(a: Int, b: Int, c: Int) -> Int {
     a * a + b * b + c * c + a * b * c
 }
 
-// A body that's larger than a call is only in the program once
+// A body that's larger than a call can still be smaller inlined, when its arguments are paths
 test fn larger_function(a: Int, b: Int, c: Int) -> Int {
     sum_of_squares(a, b, c) + sum_of_squares(c, b, a) + sum_of_squares(b, a, c)
+}
+
+fn polynomial(x: Int, y: Int) -> Int {
+    x
+            * x
+            * x
+            * y
+        + x
+            * x
+            * y
+            * y
+        + x
+            * y
+            * y
+            * y
+        + x
+            * x
+        + y
+            * y
+        + x
+            * y
+        + x
+        + y
+        + 1
+        + (x + y)
+            * (x + y)
+            * (x + y)
+}
+
+// A body that's too large isn't measured, and is only in the program once
+test fn function_that_is_too_large(a: Int, b: Int) -> Int {
+    polynomial(a, b) + polynomial(b, a)
+}
+
+fn checked(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+// A function that's only called once is measured too, if it reads a parameter more than once
+test fn called_once_with_a_parameter_read_twice(a: Int) -> Int {
+    checked(a) * 2
+}
+
+fn add_1(x: Int) -> Int {
+    x + 1
+}
+
+fn add_2(x: Int) -> Int {
+    x + 2
+}
+
+fn add_3(x: Int) -> Int {
+    x + 3
+}
+
+fn add_4(x: Int) -> Int {
+    x + 4
+}
+
+fn add_5(x: Int) -> Int {
+    x + 5
+}
+
+fn add_6(x: Int) -> Int {
+    x + 6
+}
+
+fn add_7(x: Int) -> Int {
+    x + 7
+}
+
+fn add_8(x: Int) -> Int {
+    x + 8
+}
+
+fn add_9(x: Int) -> Int {
+    x + 9
+}
+
+// Only eight functions are measured in one program, so one of these is still called
+test fn more_functions_than_are_measured(a: Int, b: Int) -> Int {
+    add_1(a)
+        * add_1(b)
+        * add_2(a)
+        * add_2(b)
+        * add_3(a)
+        * add_3(b)
+        * add_4(a)
+        * add_4(b)
+        * add_5(a)
+        * add_5(b)
+        * add_6(a)
+        * add_6(b)
+        * add_7(a)
+        * add_7(b)
+        * add_8(a)
+        * add_8(b)
+        * add_9(a)
+        * add_9(b)
 }
 
 fn increment(value: Int) -> Int {

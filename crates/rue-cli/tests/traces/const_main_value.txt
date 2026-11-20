@@ -7,8 +7,5 @@ error: clvm raise
     x = 1
 ===== release: () =====
 error: clvm raise
-  const_main_value.rue:11:19, in main
-    const main: Int = check(1);
-  const_main_value.rue:7:5, in check
+  const_main_value.rue:7:5, in main
     assert x > 1;
-    x = 1

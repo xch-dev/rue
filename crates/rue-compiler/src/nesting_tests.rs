@@ -478,6 +478,24 @@ fn path_bindings_in_a_program_that_is_too_deep_are_not_measured() {
     });
 }
 
+/// Inlining a function into each of its calls nests deeper than calling it does, so measuring
+/// whether the program is smaller that way can go past the lowering limit when the program
+/// itself doesn't. That way of lowering it isn't kept, rather than failing to compile.
+#[test]
+fn inlining_that_nests_too_deeply_is_not_kept() {
+    const LINKS: usize = 150;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn inc(x: Int) -> Int {{ x * 3 }}\n\nfn main(x0: Int) -> Int {{\n{}x{LINKS}\n}}",
+            links(LINKS, |i| format!("let x{} = inc(x{i});\n", i + 1))
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
 /// The search for unconditional recursion follows the whole chain of bindings. It used little stack
 /// for each binding when it recursed, so the chain is longer than the others.
 #[test]

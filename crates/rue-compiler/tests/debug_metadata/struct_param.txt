@@ -30,23 +30,18 @@ nodes:
       struct_param.rue:26:5-26:11  (f (r 1))
     struct_param.rue:14:5-14:19 fn by_struct  (f (r 1))
 ===== release =====
-program: (a (q 16 21 (a 6 5) (a 4 11)) (c (c (q 2 (i (> 3 2) (q 17 3 2) (q 8)) 1) (q 2 (i (= 2 (sha256 (q . "burn"))) (q 8) (q . 5)) 1)) 1))
-sidecar: 2419 bytes
+program: (+ 10 (a (i (= 4 (sha256 (q . "burn"))) (q 8) (q . 10)) 1) (a (i (> 13 9) (q 17 13 9) (q 8)) 1))
+sidecar: 1917 bytes
 files:
   struct_param.rue
 functions:
-  0: main ((_ . _) . (payment@5: list . (pair@11: pair . _)))
-  1: by_tuple (low, high)@1: pair
-  2: by_destructure { puzzle_hash, amount }@1: list
+  0: main (payment@2: list . (pair@5: pair . _))
 nodes:
-  struct_param.rue:9:52-11:2  (a (q 16 21 (a 6 5) (a 4 11)) (c (c (q 2 (i (> 3 2) (q 17...
-    struct_param.rue:10:5-10:66 fn main  (+ 21 (a 6 5) (a 4 11))
-      struct_param.rue:10:26-10:49  (a 6 5)
-      struct_param.rue:10:52-10:66  (a 4 11)
-    struct_param.rue:30:5-30:23 fn by_tuple  (a (i (> 3 2) (q 17 3 2) (q 8)) 1)
-      struct_param.rue:30:12-30:22  (> 3 2)
-      struct_param.rue:31:5-31:15  (- 3 2)
-    struct_param.rue:25:5-25:42 fn by_destructure  (a (i (= 2 (sha256 (q . "burn"))) (q 8) (q . 5)) 1)
-      struct_param.rue:25:12-25:41  (= 2 (sha256 (q . "burn")))
+  struct_param.rue:10:5-10:66 fn main  (+ 10 (a (i (= 4 (sha256 (q . "burn"))) (q 8) (q . 10)) 1...
+    struct_param.rue:25:5-25:42 label "by_destructure (inlined)"  (a (i (= 4 (sha256 (q . "burn"))) (q 8) (q . 10)) 1)
+      struct_param.rue:25:12-25:41  (= 4 (sha256 (q . "burn")))
         struct_param.rue:25:27-25:41  (sha256 (q . "burn"))
           struct_param.rue:25:34-25:40  (q . "burn")
+    struct_param.rue:30:5-30:23 label "by_tuple (inlined)"  (a (i (> 13 9) (q 17 13 9) (q 8)) 1)
+      struct_param.rue:30:12-30:22  (> 13 9)
+      struct_param.rue:31:5-31:15  (- 13 9)

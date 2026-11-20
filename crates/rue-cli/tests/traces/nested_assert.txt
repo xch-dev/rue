@@ -15,10 +15,7 @@ error: clvm raise
   nested_assert.rue:4:5, in main
     outer(amount) + 1
     amount = 10
-  nested_assert.rue:9:5, in outer
+  nested_assert.rue:9:5, in outer (inlined)
     inner(doubled, value) + doubled
-    value = 10
-  nested_assert.rue:13:5, in inner
+  nested_assert.rue:13:5, in inner (inlined)
     assert total > 100;
-    total = 20
-    base = 10

@@ -65,7 +65,12 @@ pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
     arena: &'a mut Arena<Lir>,
     graph: &'g DependencyGraph,
-    inline_symbols: Vec<HashMap<SymbolId, HirId>>,
+    /// The parameters of each call that's being inlined, from the outermost to the innermost,
+    /// with the argument that's substituted for each one, or `None` if its argument is bound in
+    /// the environment or evaluated for its effect instead. A parameter is looked up in the
+    /// innermost call that has it, since the same function can be inlined inside the argument
+    /// of another call to it, where an outer call's argument isn't this call's.
+    inline_symbols: Vec<HashMap<SymbolId, Option<HirId>>>,
     /// The functions whose calls are being inlined, from the outermost to the innermost, which
     /// keeps a lambda from being inlined into a call of a function it depends on (see
     /// [`Self::known_lambda`]).
@@ -206,6 +211,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
     }
 
+    /// Lowers without measuring which functions to inline (see
+    /// [`lower_with_inlined_functions`](Self::lower_with_inlined_functions)), for a program
+    /// that's only run while compiling, where its size doesn't matter.
+    #[must_use]
+    pub fn without_measured_inlining(mut self) -> Self {
+        self.inlining_decided = true;
+        self
+    }
+
     /// Records where each LIR node comes from in the source, and which nodes are the bodies of
     /// functions, for a debug sidecar (see [`take_debug_info`](Self::take_debug_info)). This
     /// doesn't change the LIR that's generated.
@@ -232,6 +246,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .enumerate()
             .rev()
             .find_map(|(frame, symbols)| Some((frame, *symbols.get(&symbol)?)))
+            .and_then(|(frame, argument)| Some((frame, argument?)))
     }
 
     /// Lowers an argument where it's substituted into a function that's inlined. It's the caller's
@@ -398,7 +413,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&&parameter| !self.graph.is_defined_in(parameter, symbol))
             .filter_map(|&symbol| {
                 let hir = self.inline_argument(symbol)?;
-                self.is_static_hir(hir).then_some((symbol, hir))
+                self.is_static_hir(hir).then_some((symbol, Some(hir)))
             })
             .collect();
         let inline_symbols = std::mem::replace(&mut self.inline_symbols, vec![static_arguments]);
@@ -928,7 +943,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// inlined inside a call to itself while code written in the outer call can still be lowered,
     /// since the inner call's parameters would hide the outer call's from that code. Calls by name
     /// only nest through the arguments of the outer call, which are the caller's code, as in
-    /// `twice(f, twice(f, x))`. But a lambda's code can be reached from inside a call it makes:
+    /// `twice(f, twice(f, x))`, where the inner call's frame has all of its own parameters (see
+    /// `inline_symbols`). But a lambda's code can be reached from inside a call it makes:
     /// the lambda can call a function whose call it was passed to, or pass a lambda it creates to
     /// an argument that calls the same lambda again. So a lambda isn't inlined inside a call of
     /// itself or of a function it depends on, and is built as a closure instead.
@@ -1118,22 +1134,24 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// for its effect instead, and if it's only referenced some of the time, it's bound before
     /// the body like a let statement, so that it's still evaluated at the call. An argument whose
     /// parameter is referenced more than once is bound too, so that it's only evaluated once,
-    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]). Only
-    /// lambdas have such parameters here, since functions with them aren't inlined automatically
-    /// (see [`Self::should_inline`]).
+    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]).
     fn lower_inline_call(
         &mut self,
         env: &Environment,
         symbol: SymbolId,
         function: &FunctionSymbol,
-        mut args: HashMap<SymbolId, HirId>,
+        args: HashMap<SymbolId, HirId>,
     ) -> LirId {
         let mut effects = Vec::new();
         let mut bound = Vec::new();
+        let mut args: HashMap<SymbolId, Option<HirId>> = args
+            .into_iter()
+            .map(|(parameter, arg)| (parameter, Some(arg)))
+            .collect();
 
         if function.kind != FunctionKind::Inline {
             for &parameter in &function.parameters {
-                let Some(&arg) = args.get(&parameter) else {
+                let Some(&Some(arg)) = args.get(&parameter) else {
                     continue;
                 };
 
@@ -1147,7 +1165,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     continue;
                 }
 
-                args.remove(&parameter);
+                // The parameter stays in the call's frame, so that it isn't taken for the
+                // parameter of an enclosing call to the same function
+                args.insert(parameter, None);
 
                 if self.graph.references(parameter) == 0 {
                     effects.push(arg);
@@ -1839,6 +1859,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .iter()
             .rev()
             .find_map(|symbols| symbols.get(&symbol).copied())
+            .flatten()
     }
 
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.
@@ -1927,19 +1948,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return false;
                 }
 
-                // A function that's called more than once is only inlined if the program was
-                // measured to be smaller that way, whatever its parameters are referenced by
-                if references > 1 {
-                    return self.is_inlined_function(symbol);
-                }
-
-                for parameter in &function.parameters {
-                    if self.graph.references(*parameter) > 1 {
-                        return false;
-                    }
-                }
-
-                true
+                // A function that's called more than once, or that reads a parameter more than
+                // once, is only inlined if the program was measured to be smaller that way
+                !self.is_measured_function(symbol) || self.is_inlined_function(symbol)
             }
             Symbol::Constant(constant) => {
                 if constant.inline {

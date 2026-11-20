@@ -1638,7 +1638,8 @@ mod tests {
         // The solution `(3)` fails the assertion, and `(30)` doesn't
         let error = run_debug(&["-x", hex, "ff0380", "--debug-metadata", sidecar]).unwrap_err();
         assert!(error.starts_with("clvm raise\n"), "{error}");
-        assert!(error.contains("main.rue:14:5, in check"), "{error}");
+        // `check` is inlined into `main` in a release build, where it's all of `main`'s body
+        assert!(error.contains("main.rue:14:5, in main"), "{error}");
         assert!(error.contains("value = 3"), "{error}");
         assert_eq!(
             run_debug(&["-x", hex, "ff1e80", "--debug-metadata", sidecar]),
@@ -1660,7 +1661,7 @@ mod tests {
             sidecar,
         ])
         .unwrap_err();
-        assert!(error.contains("main.rue:14:5, in check"), "{error}");
+        assert!(error.contains("main.rue:14:5, in main"), "{error}");
 
         // Without the sidecar, the failure is reported as before
         assert_eq!(run_debug(&["-x", hex, "ff0380"]).unwrap_err(), "clvm raise");

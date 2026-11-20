@@ -14,7 +14,5 @@ error: clvm raise
     first(x, y) + second(y, x)
     x = -1
     y = 5
-  duplicate_subexpr.rue:8:5, in first
+  duplicate_subexpr.rue:8:5, in first (inlined)
     assert a > 0;
-    a = -1
-    b = 5
