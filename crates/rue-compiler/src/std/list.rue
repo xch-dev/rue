@@ -1,0 +1,30 @@
+// The number of items in the list.
+export fn length<T>(list: List<T>) -> Int {
+    if list is (T, List<T>) {
+        length(list.rest) + 1
+    } else {
+        0
+    }
+}
+
+// The list's items in the opposite order.
+export inline fn reverse<T>(list: List<T>) -> List<T> {
+    reverse_onto(list, nil)
+}
+
+fn reverse_onto<T>(list: List<T>, reversed: List<T>) -> List<T> {
+    if list is (T, List<T>) {
+        reverse_onto(list.rest, [list.first, ...reversed])
+    } else {
+        reversed
+    }
+}
+
+// Whether any of the items in the list is equal to the item.
+export fn contains(list: List<Bytes>, item: Bytes) -> Bool {
+    if list is (Bytes, List<Bytes>) {
+        list.first == item || contains(list.rest, item)
+    } else {
+        false
+    }
+}

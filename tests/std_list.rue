@@ -1,0 +1,29 @@
+// The list functions of the standard library. Each list goes through `runtime`, which the compiler
+// can't fold, so the functions are run rather than evaluated at compile time.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+test fn length_of_lists() {
+    assert length(runtime([] as List<Int>)) == 0;
+    assert length(runtime([7])) == 1;
+    assert length(runtime([1, 2, 3, 4, 5])) == 5;
+    assert length(runtime(["a", "b"])) == 2;
+}
+
+test fn reverse_of_lists() {
+    assert deep_equal(reverse(runtime([] as List<Int>)), nil);
+    assert deep_equal(reverse(runtime([1])), [1]);
+    assert deep_equal(reverse(runtime([1, 2, 3])), [3, 2, 1]);
+}
+
+test fn contains_items() {
+    let hashes = runtime([sha256("a"), sha256("b"), sha256("c")]);
+    assert contains(hashes, sha256("a"));
+    assert contains(hashes, sha256("c"));
+    assert !contains(hashes, sha256("d"));
+    assert !contains(runtime([] as List<Bytes>), "a");
+    assert contains(runtime(["", "x"]), "");
+}

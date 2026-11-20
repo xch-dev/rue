@@ -2,6 +2,7 @@ export conditions::message_flags::*;
 export conditions::opcodes::*;
 export conditions::types::*;
 export curry_tree_hash::*;
+export list::*;
 export merkle::*;
 export tree_hash::*;
 export utils::*;
