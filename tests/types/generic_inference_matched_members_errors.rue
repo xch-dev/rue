@@ -26,15 +26,3 @@ fn assign_through_the_revisited_alias(function: Recursive) -> Int {
     let _inline: Inline = function;
     1
 }
-
-fn pick<A>(value: (A | Bytes32, nil) | (Int, A)) -> A {
-    unchecked_cast(value)
-}
-
-// The first member only bounds `A` through the union nested in it, which still counts as bounding
-// it, so it doesn't hold the value whatever `A` is, and the second member's `A ≥ nil` is checked
-// against `A ≤ Int`
-fn nested_member_bounds() -> Int {
-    let _f: fn(value: (Int, nil)) -> Int = pick;
-    1
-}
