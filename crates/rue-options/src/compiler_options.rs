@@ -52,12 +52,22 @@ pub struct CompilerOptions {
     ///
     /// - It removes such failures, such as by compiling `x % 2 == 1` to `logand`, which doesn't
     ///   limit `x`, or by dropping or moving a product or quotient that it treats as unable to fail.
-    /// - It adds them, by folding constants into operands longer than the limits, even when every
-    ///   operand in the source is short. For example, `x * C * C` with a 150 byte constant `C` is
-    ///   compiled to `x` times a single 299 byte constant.
+    /// - It adds them, by folding constants into operands longer than the limits, even when each
+    ///   constant in the source is within them. For example, `x * C * C` with a 150 byte constant
+    ///   `C` is compiled to `x` times a single 299 byte constant.
     ///
-    /// So a program that will run on mainnet before hard fork 2 should be compiled with this on,
-    /// even if its operands are short.
+    /// The only failures it removes are the length checks of `LIMITS` itself, never an `assert` or
+    /// `raise`, and what the release build returns is the result the source computes without
+    /// `LIMITS`. So leaving this off never makes a release build accept a spend that the source
+    /// rejects. The risk is the other way: a spend can fail on mainnet although its tests pass,
+    /// and if the long operand is fixed by the puzzle, such as a constant or a curried value, that
+    /// path can't be spent at all.
+    ///
+    /// So a program compiled with this off is safe to run on mainnet today as long as no operand
+    /// of these operators can exceed the limits, counting the values the program computes and the
+    /// constants the optimizer folds together. Typical puzzles are far from them: amounts are at
+    /// most 8 bytes and hashes are 32. Turn it on when operands could be that long, or to make
+    /// release and debug builds agree exactly under `LIMITS`.
     ///
     /// Const expressions are evaluated at compile time without `LIMITS` either way, since they're
     /// never run on chain, so a `const` can use operands of any length.

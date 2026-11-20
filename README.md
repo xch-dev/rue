@@ -130,9 +130,11 @@ With `operand_limits`:
 Without it, operands of any length are treated as allowed, so `*` can't fail and `/`, `%` and `divmod` only fail for a zero divisor. A program compiled this way can pass its tests and succeed in debug builds, yet fail on mainnet today when an operand is longer than a limit. The optimizer can also change whether a release build fails under `LIMITS`, in either direction:
 
 - It can remove a failure, such as by compiling `x % 2 == 1` to `logand`, or by dropping or moving a product or quotient it treats as unable to fail, so the release build succeeds where the debug build fails.
-- It can add one, by folding constants into an operand longer than a limit, even when every operand in the source is short. For example, `x * C * C` with a 150 byte constant `C` becomes `x` times one 299 byte constant, so the release build fails where the debug build succeeds.
+- It can add one, by folding constants into an operand longer than a limit, even when each constant in the source is within the limits. For example, `x * C * C` with a 150 byte constant `C` becomes `x` times one 299 byte constant, so the release build fails where the debug build succeeds.
 
-So leave it off only for programs that won't run on mainnet before hard fork 2, even if their operands are short.
+The only failures the optimizer removes are the length checks of `LIMITS` itself, never an `assert` or `raise`, and the release build returns what the source computes without `LIMITS`. So leaving the option off never makes a release build accept a spend that the source rejects. The risk is the other way: a spend can fail on mainnet although its tests pass, and if the long operand is fixed by the puzzle (such as a constant or a curried value), that path can't be spent at all.
+
+So a program compiled without the option is safe to run on mainnet today as long as no operand of these operators can exceed the limits, counting the values the program computes and the constants the optimizer folds together. Typical puzzles are far from them: amounts are at most 8 bytes and hashes are 32. Turn the option on when operands could be that long, or to make release and debug builds agree exactly under `LIMITS`.
 
 Either way, `const` expressions are evaluated at compile time without `LIMITS`, since they're never run on chain, so they can use operands of any length.
 
