@@ -1,0 +1,195 @@
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+struct Tail {
+    x: Int,
+    y: Int,
+    ...z: Int,
+}
+
+struct Spend {
+    opcode = 51,
+    puzzle_hash: Bytes32,
+    amount: Int,
+    ...memos: Any,
+}
+
+enum Shape {
+    Square { side: Int },
+    Rect { width: Int, height: Int },
+}
+
+fn point(n: Int) -> Point {
+    Point { x: n, y: n + 1, z: n * 2 }
+}
+
+fn spend(n: Int) -> Spend {
+    Spend { puzzle_hash: sha256(n as Bytes), amount: n, memos: nil }
+}
+
+// Each test that updates a struct is followed by the same struct rebuilt by hand, which it's
+// never larger than. The fields after the last one that's written are the rest of the value
+// being updated, rather than a copy of each of them
+test fn update_first(p: Point, n: Int) -> Point {
+    Point { ...p, x: n }
+}
+
+test fn rebuild_first(p: Point, n: Int) -> Point {
+    Point { x: n, y: p.y, z: p.z }
+}
+
+test fn update_middle(p: Point, n: Int) -> Point {
+    Point { ...p, y: n }
+}
+
+test fn rebuild_middle(p: Point, n: Int) -> Point {
+    Point { x: p.x, y: n, z: p.z }
+}
+
+// Nothing comes after the last field, so every field before it is copied
+test fn update_last(p: Point, n: Int) -> Point {
+    Point { ...p, z: n }
+}
+
+test fn rebuild_last(p: Point, n: Int) -> Point {
+    Point { x: p.x, y: p.y, z: n }
+}
+
+test fn update_first_two(p: Point, n: Int) -> Point {
+    Point { ...p, x: n, y: n }
+}
+
+test fn rebuild_first_two(p: Point, n: Int) -> Point {
+    Point { x: n, y: n, z: p.z }
+}
+
+test fn update_first_and_last(p: Point, n: Int) -> Point {
+    Point { ...p, x: n, z: n }
+}
+
+test fn rebuild_first_and_last(p: Point, n: Int) -> Point {
+    Point { x: n, y: p.y, z: n }
+}
+
+// A struct with nothing written is the value itself
+test fn update_nothing(p: Point) -> Point {
+    Point { ...p }
+}
+
+// The last field of a struct that isn't nil-terminated is the rest of the value either way
+test fn update_first_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { ...t, x: n }
+}
+
+test fn rebuild_first_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { x: n, y: t.y, z: t.z }
+}
+
+test fn update_last_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { ...t, z: n }
+}
+
+test fn rebuild_last_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { x: t.x, y: t.y, z: n }
+}
+
+// A value that isn't a path is only evaluated once. It isn't bound if it's only used once, which
+// it is when only the rest of it is kept
+test fn update_first_of_call(n: Int) -> Point {
+    Point { ...point(n), x: 1 }
+}
+
+test fn rebuild_first_of_call(n: Int) -> Point {
+    let p = point(n);
+    Point { x: 1, y: p.y, z: p.z }
+}
+
+test fn update_middle_of_call(n: Int) -> Point {
+    Point { ...point(n), y: 1 }
+}
+
+test fn rebuild_middle_of_call(n: Int) -> Point {
+    let p = point(n);
+    Point { x: p.x, y: 1, z: p.z }
+}
+
+test fn update_last_of_call(n: Int) -> Point {
+    Point { ...point(n), z: 1 }
+}
+
+test fn rebuild_last_of_call(n: Int) -> Point {
+    let p = point(n);
+    Point { x: p.x, y: p.y, z: 1 }
+}
+
+// A field whose type is a single value, such as an opcode, is copied from a path, which is
+// smaller than the value
+test fn update_after_constant(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { ...s, puzzle_hash }
+}
+
+test fn rebuild_after_constant(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { puzzle_hash, amount: s.amount, memos: s.memos }
+}
+
+// The value is used instead if that leaves a single use of a value that isn't a path, which
+// would be bound otherwise
+test fn update_after_constant_of_call(n: Int, puzzle_hash: Bytes32) -> Spend {
+    Spend { ...spend(n), puzzle_hash }
+}
+
+test fn rebuild_after_constant_of_call(n: Int, puzzle_hash: Bytes32) -> Spend {
+    let s = spend(n);
+    Spend { puzzle_hash, amount: s.amount, memos: s.memos }
+}
+
+// It's copied from a value that's bound anyway, since another field before the last one that's
+// written is copied from it too
+test fn update_last_after_constant_of_call(n: Int, memos: Any) -> Spend {
+    Spend { ...spend(n), memos }
+}
+
+test fn rebuild_last_after_constant_of_call(n: Int, memos: Any) -> Spend {
+    let s = spend(n);
+    Spend { puzzle_hash: s.puzzle_hash, amount: s.amount, memos }
+}
+
+// The discriminant of an enum variant is its value, unless it's nil, which is never larger than a
+// path
+test fn update_variant(rect: Shape::Rect, n: Int) -> Shape::Rect {
+    Shape::Rect { ...rect, height: n }
+}
+
+test fn rebuild_variant(rect: Shape::Rect, n: Int) -> Shape::Rect {
+    Shape::Rect { width: rect.width, height: n }
+}
+
+test fn update_nil_variant(square: Shape::Square, n: Int) -> Shape::Square {
+    Shape::Square { ...square, side: n }
+}
+
+// Every field is written, so the value isn't used, and it's only evaluated if it can fail
+#[allow(unused_struct_spread)]
+test fn update_every_field(n: Int) -> Point {
+    Point { ...point(n), x: 1, y: 2, z: 3 }
+}
+
+fn checked(n: Int) -> Point {
+    assert n > 0;
+    point(n)
+}
+
+#[allow(unused_struct_spread)]
+test fn update_every_field_of_failing_call(n: Int) -> Point {
+    Point { ...checked(n), x: 1, y: 2, z: 3 }
+}
+
+const ORIGIN: Point = Point { x: 1, y: 2, z: 3 };
+
+// A struct that's updated from a constant is folded
+test fn update_constant() -> Point {
+    Point { ...ORIGIN, y: 5 }
+}

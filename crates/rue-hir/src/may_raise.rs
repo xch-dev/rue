@@ -135,7 +135,7 @@ impl<'a> Visitor<'a> {
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
             Hir::List(list) => self.visit_all(list.items),
             Hir::Struct(initializer) => {
-                self.visit_all(initializer.fields.into_iter().map(|field| field.value))
+                self.visit_all(initializer.values().collect::<Vec<_>>())
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),

@@ -1146,8 +1146,8 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             }
         }
         Hir::Struct(initializer) => {
-            for field in &initializer.fields {
-                visit_hir(db, graph, field.value, false);
+            for value in initializer.values() {
+                visit_hir(db, graph, value, false);
             }
         }
         Hir::FieldAccess(access) => {

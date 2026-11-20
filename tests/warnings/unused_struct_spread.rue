@@ -1,0 +1,67 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+struct Wrapper {
+    ...inner: Int,
+}
+
+struct Empty {}
+
+fn make(n: Int) -> Point {
+    assert n > 0;
+    Point { x: n, y: n }
+}
+
+// Every field is written, so nothing is copied from the value
+test fn every_field(point: Point) -> Point {
+    Point { ...point, x: 1, y: 2 }
+}
+
+test fn every_field_out_of_order(point: Point) -> Point {
+    Point { ...point, y: 2, x: 1 }
+}
+
+test fn only_field(wrapper: Wrapper) -> Wrapper {
+    Wrapper { ...wrapper, inner: 1 }
+}
+
+// A struct with no fields has nothing to copy
+test fn no_fields(empty: Empty) -> Empty {
+    Empty { ...empty }
+}
+
+// The value is still evaluated if it isn't a path, so removing it isn't always the same
+test fn every_field_of_call(n: Int) -> Point {
+    Point { ...make(n), x: 1, y: 2 }
+}
+
+test fn every_field_on_lines(point: Point) -> Point {
+    Point {
+        ...point,
+        x: point.x + point.x + point.x + point.x + point.x + point.x + point.x + point.x,
+        y: point.y + point.y + point.y + point.y + point.y + point.y + point.y + point.y,
+    }
+}
+
+// A field is left to copy, so the value is used
+test fn one_field(point: Point) -> Point {
+    Point { ...point, x: 1 }
+}
+
+test fn no_fields_written(point: Point) -> Point {
+    Point { ...point }
+}
+
+// The lint can be allowed or expected
+#[allow(unused_struct_spread)]
+test fn allowed(point: Point) -> Point {
+    Point { ...point, x: 1, y: 2 }
+}
+
+test fn expected(point: Point) -> Int {
+    #[expect(unused_struct_spread)]
+    let updated = Point { ...point, x: 1, y: 2 };
+    updated.x + updated.y
+}

@@ -708,6 +708,11 @@ impl Database {
                     .fields
                     .iter()
                     .map(|field| format!("{}: {}", field.name, self.debug_hir(field.value)))
+                    .chain(
+                        initializer
+                            .tail
+                            .map(|tail| format!("...{}", self.debug_hir(tail)))
+                    )
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

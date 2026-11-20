@@ -277,6 +277,7 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
                     value: discriminant_hir,
                     is_default: true,
                 }],
+                tail: None,
                 nil_terminated,
             }));
 

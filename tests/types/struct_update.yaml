@@ -1,0 +1,99 @@
+tests:
+- name: update
+  program: (c 4 (c (q . 5) 14))
+  debug_program: (c (f 2) (c (q . 5) (r (r 2))))
+  solution: ((1 2 3))
+  output: (1 5 3)
+  runtime_cost: 230
+  byte_cost: 180000
+  total_cost: 180230
+- name: update_expression
+  program: (a (q 4 4 (c 10 (c (+ 9 21) ()))) (c (a (i (> 4 ()) (q . 2) (q 1 () () ())) 1) 1))
+  debug_program: (a (q 2 (q 4 (f 2) (c (f (r 2)) (c (+ (f 11) (f (r 11))) ()))) (c (a (i (> (f 5) ()) (q . 5) (q 2 2 ())) 1) 1)) (c (q 4 () (c () (c () ()))) 1))
+  solution: ((1 2 3))
+  output: (1 2 3)
+  runtime_cost: 2237
+  byte_cost: 852000
+  total_cost: 854237
+- name: update_shorthand
+  program: (c 5 6)
+  debug_program: (c 5 (r 2))
+  solution: ((1 2 3) 9)
+  output: (9 2 3)
+  runtime_cost: 155
+  byte_cost: 84000
+  total_cost: 84155
+- name: update_nested
+  program: (c 4 (c (c 18 12) ()))
+  debug_program: (c (f 2) (c (c (f (f (r 2))) (r (f 2))) ()))
+  solution: (((1 2 3) (4 5 6)))
+  output: ((1 2 3) (4 2 3))
+  runtime_cost: 365
+  byte_cost: 228000
+  total_cost: 228365
+- name: update_generic
+  program: (c 4 (c 5 ()))
+  debug_program: (c (f 2) (c 5 ()))
+  solution: ((7 8) 0xabcd)
+  output: (7 -21555)
+  runtime_cost: 250
+  byte_cost: 156000
+  total_cost: 156250
+- name: update_generic_wider
+  program: (c (q . 1) 6)
+  debug_program: (c (q . 1) (r 2))
+  solution: ((7 8))
+  output: (1 8)
+  runtime_cost: 123
+  byte_cost: 108000
+  total_cost: 108123
+- name: update_defaults
+  program: (c (q . 5) 6)
+  debug_program: (c (q . 5) (r 2))
+  solution: ((3 "name"))
+  output: (5 "name")
+  runtime_cost: 123
+  byte_cost: 108000
+  total_cost: 108123
+- name: update_narrowed
+  program: (a (i 4 (q 4 4 (c 4 ())) (q 1 () ())) 1)
+  debug_program: (a (i (= (f 2) ()) (q 4 () (c () ())) (q 4 (f 2) (c (f 2) ()))) 1)
+  solution: ((() 4))
+  output: (() ())
+  runtime_cost: 281
+  byte_cost: 444000
+  total_cost: 444281
+- name: update_narrowed_union
+  program: (a (i (l 2) (q 4 (q . 1) 6) (q 4 2 (q () ()))) 1)
+  debug_program: (a (q 2 (i (l 5) (q 4 (q . 1) (r 5)) (q 2 (q 4 11 (r 2)) (c (a 2 ()) 1))) 1) (c (q 4 () (c () (c () ()))) 1))
+  solution: ((1 2 3))
+  output: (1 2 3)
+  runtime_cost: 400
+  byte_cost: 516000
+  total_cost: 516400
+- name: update_variant
+  program: (a (i 4 (q 4 4 (c 22 14)) (q 4 () (c (* 10 (q . 2)) ()))) 1)
+  debug_program: (a (i (= (f 2) ()) (q 4 () (c (* (f (r 2)) (q . 2)) ())) (q 4 (f 2) (c (f (r (r 2))) (r (r 2))))) 1)
+  solution: ((1 2 3))
+  output: (1 3 3)
+  runtime_cost: 531
+  byte_cost: 612000
+  total_cost: 612531
+- name: update_out_of_order
+  program: (c (q . 3) (c 10 (q 1)))
+  debug_program: (c (q . 3) (c (f (r 2)) (c (q . 1) ())))
+  solution: ((1 2 3))
+  output: (3 2 1)
+  runtime_cost: 198
+  byte_cost: 228000
+  total_cost: 228198
+- name: update_evaluated_once
+  program: (a (q 4 4 (c (q . 1) 14)) (c (c 2 (c 2 (c 2 ()))) 1))
+  debug_program: (a (q 4 (f 2) (c (q . 1) (r (r 2)))) (c (a (i ("debug_print" (q . "struct_update.rue:113:13") (q . "evaluated")) (q) (q 4 2 (c 2 (c 2 ())))) 1) 1))
+  solution: (4)
+  output: (4 1 4)
+  runtime_cost: 777
+  byte_cost: 564000
+  total_cost: 564777
+  print_messages:
+  - "\"evaluated\""

@@ -701,6 +701,29 @@ fn test_missing_comma_in_list() {
         "#]],
         expect!["Expected one of `,`, `}`, found identifier at main.rue:2:30"],
     );
+
+    // A spread with a field's type or value after it is skipped up to the next field
+    check(
+        "fn main() {\n    let point = Point { ...rest: 1, x: 2 };\n}",
+        expect![[r#"
+            Document
+              FunctionItem
+                Block
+                  LetStmt
+                    NamedBinding
+                    StructInitializerExpr
+                      PathExpr
+                        PathSegment
+                      StructInitializerSpread
+                        PathExpr
+                          PathSegment
+                      Error ":"
+                      Error "1"
+                      StructInitializerField
+                        LiteralExpr
+        "#]],
+        expect!["Expected one of `,`, `}`, found `:` at main.rue:2:32"],
+    );
 }
 
 #[test]
@@ -1291,7 +1314,7 @@ fn test_struct_initializer_missing_close_brace_before_list() {
                   Error ";"
         "#]],
         expect![[r#"
-            Expected one of `}`, identifier, `,`, found `[` at main.rue:2:31
+            Expected one of `}`, `...`, identifier, `,`, found `[` at main.rue:2:31
             Expected `;`, found `,` at main.rue:2:54"#]],
     );
 }

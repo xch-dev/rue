@@ -20,6 +20,7 @@ mod recursion;
 mod returns;
 mod shadowing;
 mod statements;
+mod struct_spreads;
 mod syntax;
 mod unreachable;
 mod unused;
@@ -67,6 +68,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
     InputPass {
         lints: narrowing::LINTS,
         run: narrowing::check,
+    },
+    InputPass {
+        lints: struct_spreads::LINTS,
+        run: struct_spreads::check,
     },
 ];
 

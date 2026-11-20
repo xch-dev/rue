@@ -19,14 +19,62 @@ struct Destructured {
     ignored: Int,
 }
 
-fn main(solution: Solution, hashed: Hashed, passed: Passed, destructured: Destructured) -> Int {
+struct Updated {
+    read: Int,
+    copied: Int,
+    written: Int,
+}
+
+struct UpdatedBranch {
+    read: Int,
+    copied: Int,
+}
+
+struct Escaped {
+    value: Int,
+    other: Int,
+}
+
+fn main(
+    solution: Solution,
+    hashed: Hashed,
+    passed: Passed,
+    destructured: Destructured,
+    updated: Updated,
+    first: UpdatedBranch,
+    second: UpdatedBranch,
+    escaped: Escaped,
+) -> Int {
     let { used, ...rest } = destructured;
     let _rest = rest;
+
+    // Copying a field into the same struct with a spread isn't a read of it, whether it's copied
+    // on its own or as part of the rest of the value, and whether or not the value is a path
+    let updated = Updated { ...updated, written: 1 };
+    let moved = Updated { ...updated, read: 2 };
+    let branch = UpdatedBranch {
+        ...if used > 0 {
+            first
+        } else {
+            second
+        },
+        read: 3,
+    };
+
+    // A struct that's updated can still be read by something else
+    let escaped = tree_hash(Escaped { ...escaped, value: 1 });
 
     // A struct that's hashed can have its fields read by something else
     let hash = tree_hash(hashed);
 
-    solution.amount + read_value(passed) + hash.length + used
+    solution.amount
+        + read_value(passed)
+        + hash.length
+        + used
+        + updated.read
+        + moved.read
+        + branch.read
+        + escaped.length
 }
 
 // The struct is still only read by field inside of the function

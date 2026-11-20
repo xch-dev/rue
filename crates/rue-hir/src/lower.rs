@@ -564,12 +564,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
             Hir::List(list) => self.lower_list(env, list.items, list.nil_terminated),
             Hir::Struct(initializer) => {
-                let fields = initializer
-                    .fields
-                    .into_iter()
-                    .map(|field| field.value)
-                    .collect();
-                self.lower_list(env, fields, initializer.nil_terminated)
+                let values = initializer.values().collect();
+                self.lower_list(env, values, initializer.values_nil_terminated())
             }
             Hir::FieldAccess(access) => {
                 let mut lir = self.lower_hir(env, access.value);
@@ -1036,9 +1032,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 .iter()
                 .all(|&item| self.is_small_static(item, budget, path, substitutions)),
             Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_small_static(field.value, budget, path, substitutions)),
+                .values()
+                .all(|value| self.is_small_static(value, budget, path, substitutions)),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => {
                 self.is_small_static(*hir, budget, path, substitutions)
             }
@@ -1872,10 +1867,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Pair(first, rest) => self.is_static_hir(*first) && self.is_static_hir(*rest),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_static_hir(*hir),
             Hir::List(list) => list.items.iter().all(|&item| self.is_static_hir(item)),
-            Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_static_hir(field.value)),
+            Hir::Struct(initializer) => initializer.values().all(|value| self.is_static_hir(value)),
             // Guards that don't use the value at runtime are lowered to a boolean, unless the value
             // may fail, in which case it's evaluated for its effect first
             Hir::Guard(guard) => {
