@@ -1,0 +1,55 @@
+tests:
+- name: in_a_condition
+  program: (a (q 4 (a 2 5) (c (a 2 11) (c (a 2 23) (c (a 2 47) ())))) (c (q 3 1 (q . 2) (q . 1)) 1))
+  debug_program: (a (q 4 (a 2 5) (c (a 2 11) (c (a 2 23) (c (a 2 47) ())))) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) ()) 1) (q 1 . 1) (q 1 . 2)) 1) 1))
+  solution: (() 5 (1 . 2) 0x00)
+  output: (1 2 2 2)
+  runtime_cost: 1734
+  byte_cost: 924000
+  total_cost: 925734
+- name: as_a_value
+  program: (c (not 2) (c (not 5) (c (not 11) (c (not 23) ()))))
+  debug_program: (c (a (i (not (l 2)) (q 9 2 ()) ()) 1) (c (a (i (not (l 5)) (q 9 5 ()) ()) 1) (c (a (i (not (l 11)) (q 9 11 ()) ()) 1) (c (a (i (not (l 23)) (q 9 23 ()) ()) 1) ()))))
+  solution: (() 5 (1 . 2) 0x00)
+  output: (1 () () ())
+  runtime_cost: 1268
+  byte_cost: 492000
+  total_cost: 493268
+- name: negated
+  program: (c (not (not 2)) (c (not (not 5)) (c (not (not 11)) (c (not (not 23)) ()))))
+  debug_program: (c (not (a (i (not (l 2)) (q 9 2 ()) ()) 1)) (c (not (a (i (not (l 5)) (q 9 5 ()) ()) 1)) (c (not (a (i (not (l 11)) (q 9 11 ()) ()) 1)) (c (not (a (i (not (l 23)) (q 9 23 ()) ()) 1)) ()))))
+  solution: (() 5 (1 . 2) 0x00)
+  output: (() 1 1 1)
+  runtime_cost: 2072
+  byte_cost: 684000
+  total_cost: 686072
+- name: atom_or_nil
+  program: (c (i 2 (q . 2) (q . 1)) (c (i 5 (q . 2) (q . 1)) ()))
+  debug_program: (c (a (i (= 2 ()) (q 1 . 1) (q 1 . 2)) 1) (c (a (i (= 5 ()) (q 1 . 1) (q 1 . 2)) 1) ()))
+  solution: (() "a")
+  output: (1 2)
+  runtime_cost: 394
+  byte_cost: 444000
+  total_cost: 444394
+- name: value_that_may_fail
+  program: (not (a 2 (c 5 ())))
+  debug_program: (a (i (not (l (a 2 (c 5 ())))) (q 9 (a 2 (c 5 ())) ()) ()) 1)
+  solution: ((q) 1)
+  output: "1"
+  runtime_cost: 507
+  byte_cost: 204000
+  total_cost: 204507
+- name: value_that_fails
+  program: (not (a 2 (c 5 ())))
+  debug_program: (a (i (not (l (a 2 (c 5 ())))) (q 9 (a 2 (c 5 ())) ()) ()) 1)
+  solution: ((x) 1)
+  byte_cost: 204000
+  clvm_error: clvm raise ()
+- name: narrows
+  program: (a (i 2 (q 2 (i (l 2) (q 1 . -1) (q 13 2)) 1) ()) 1)
+  debug_program: (a (i (a (i (not (l 2)) (q 9 2 ()) ()) 1) () (q 2 (i (not (l 2)) (q 13 2) (q 17 () (q . 1))) 1)) 1)
+  solution: ("abc")
+  output: "3"
+  runtime_cost: 793
+  byte_cost: 552000
+  total_cost: 552793

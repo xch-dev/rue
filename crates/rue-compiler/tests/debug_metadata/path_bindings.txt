@@ -1,0 +1,55 @@
+===== debug =====
+program: (a (q 2 (i (> 2 (f 5)) (q 2 (q 2 (i 47 (q 16 (+ (+ (+ (+ (+ (+ (* 5 5) (* 6 6)) (* 4 4)) (* 4 4)) (* 4 4)) (* 4 4)) (* 4 4)) (* 4 4)) (q 16 6 5)) 1) (c (c (f (r (r (r (r (r (r (r (r 11))))))))) (f (r 5))) 1)) (q 8 (q . "assertion failed at path_bindings.rue:23:5"))) 1) (c (f (r (r 2))) 1))
+sidecar: 3630 bytes
+files:
+  path_bindings.rue
+functions:
+  0: main (point@2: list . (wide@5: list . (flag@11: atom . _)))
+nodes:
+  path_bindings.rue:21:54-31:2 fn main  (a (q 2 (i (> 2 (f 5)) (q 2 (q 2 (i 47 (q 16 (+ (+ (+ (+ ...
+    path_bindings.rue:23:5-23:24  (a (i (> 2 (f 5)) (q 2 (q 2 (i 47 (q 16 (+ (+ (+ (+ (+ (+...
+      path_bindings.rue:23:12-23:23  (> 2 (f 5))
+        path_bindings.rue:23:16-23:23  (f 5)
+      path_bindings.rue:21:54-31:2  (a (q 2 (i 47 (q 16 (+ (+ (+ (+ (+ (+ (* 5 5) (* 6 6)) (*...
+        path_bindings.rue:26:5-30:6  (a (i 47 (q 16 (+ (+ (+ (+ (+ (+ (* 5 5) (* 6 6)) (* 4 4)...
+          path_bindings.rue:27:9-27:70  (+ (+ (+ (+ (+ (+ (+ (* 5 5) (* 6 6)) (* 4 4)) (* 4 4)) (...
+            path_bindings.rue:27:9-27:62  (+ (+ (+ (+ (+ (+ (* 5 5) (* 6 6)) (* 4 4)) (* 4 4)) (* 4...
+              path_bindings.rue:27:9-27:54  (+ (+ (+ (+ (+ (* 5 5) (* 6 6)) (* 4 4)) (* 4 4)) (* 4 4)...
+                path_bindings.rue:27:9-27:46  (+ (+ (+ (+ (* 5 5) (* 6 6)) (* 4 4)) (* 4 4)) (* 4 4))
+                  path_bindings.rue:27:9-27:38  (+ (+ (+ (* 5 5) (* 6 6)) (* 4 4)) (* 4 4))
+                    path_bindings.rue:27:9-27:30  (+ (+ (* 5 5) (* 6 6)) (* 4 4))
+                      path_bindings.rue:27:9-27:22  (+ (* 5 5) (* 6 6))
+                        path_bindings.rue:27:9-27:14  (* 5 5)
+                        path_bindings.rue:27:17-27:22  (* 6 6)
+                      path_bindings.rue:27:25-27:30  (* 4 4)
+                    path_bindings.rue:27:33-27:38  (* 4 4)
+                  path_bindings.rue:27:41-27:46  (* 4 4)
+                path_bindings.rue:27:49-27:54  (* 4 4)
+              path_bindings.rue:27:57-27:62  (* 4 4)
+            path_bindings.rue:27:65-27:70  (* 4 4)
+          path_bindings.rue:29:9-29:14  (+ 6 5)
+        path_bindings.rue:24:13-24:19  (f (r (r (r (r (r (r (r (r 11)))))))))
+        path_bindings.rue:25:13-25:20  (f (r 5))
+    path_bindings.rue:22:13-22:20  (f (r (r 2)))
+===== release =====
+program: (a (i (> 22 4) (q 2 (q 2 (i 23 (q 16 (* 45 45) (* 21 21) (* 2 2) (* 2 2) (* 2 2) (* 2 2) (* 2 2) (* 2 2)) (q 16 21 45)) 1) (c 3069 1)) (q 8)) 1)
+sidecar: 2282 bytes
+files:
+  path_bindings.rue
+functions:
+  0: main (point@2: list . (wide@5: list . (flag@11: atom . _)))
+nodes:
+  path_bindings.rue:23:5-23:24 fn main  (a (i (> 22 4) (q 2 (q 2 (i 23 (q 16 (* 45 45) (* 21 21) ...
+    path_bindings.rue:23:12-23:23  (> 22 4)
+    path_bindings.rue:21:54-31:2  (a (q 2 (i 23 (q 16 (* 45 45) (* 21 21) (* 2 2) (* 2 2) (...
+      path_bindings.rue:26:5-30:6  (a (i 23 (q 16 (* 45 45) (* 21 21) (* 2 2) (* 2 2) (* 2 2...
+        path_bindings.rue:27:9-27:70  (+ (* 45 45) (* 21 21) (* 2 2) (* 2 2) (* 2 2) (* 2 2) (*...
+          path_bindings.rue:27:9-27:14  (* 45 45)
+          path_bindings.rue:27:17-27:22  (* 21 21)
+          path_bindings.rue:27:25-27:30  (* 2 2)
+          path_bindings.rue:27:33-27:38  (* 2 2)
+          path_bindings.rue:27:41-27:46  (* 2 2)
+          path_bindings.rue:27:49-27:54  (* 2 2)
+          path_bindings.rue:27:57-27:62  (* 2 2)
+          path_bindings.rue:27:65-27:70  (* 2 2)
+        path_bindings.rue:29:9-29:14  (+ 21 45)

@@ -1,0 +1,125 @@
+// A binding whose value is only a path into the environment, such as a field of a parameter, is
+// read where it's referenced rather than bound, if that isn't larger.
+
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+struct Line {
+    _start: Point,
+    end: Point,
+}
+
+test fn field_used_twice(a: Point, b: Int) -> Int {
+    let v = a.z;
+    v * v + b
+}
+
+// Through another binding that's a path
+test fn nested_fields(line: Line) -> Int {
+    let end = line.end;
+    let z = end.z;
+    let x = end.x;
+    z * z + x * x + end.y
+}
+
+// Both parts of a pair, which isn't the pair itself unless it's put back together in order
+test fn both_parts(value: (Int, Int)) -> (Int, (Int, (Int, Int))) {
+    let first = value.first;
+    let rest = value.rest;
+    (first, (rest, (rest, first)))
+}
+
+// The value is called, so it's only evaluated once
+test fn call_is_bound(f: fn() -> Point) -> Int {
+    let point = f();
+    let z = point.z;
+    z * z + point.x
+}
+
+fn check_password(password: Bytes) -> (Bytes, Int) {
+    assert sha256(password) == sha256("hunter2");
+    (password, password.length)
+}
+
+// A field of a value that may fail is still checked at the let statement, whether or not the
+// branch that reads it is taken
+test fn check_is_kept_when_the_branch_is_not_taken(password: Bytes, unlock: Bool) -> Int {
+    let checked = check_password(password);
+    let length = checked.rest;
+
+    if unlock {
+        length + length
+    } else {
+        42
+    }
+}
+
+test fn check_is_kept_when_the_branch_is_taken(password: Bytes, unlock: Bool) -> Int {
+    let checked = check_password(password);
+    let length = checked.rest;
+
+    if unlock {
+        length + length
+    } else {
+        42
+    }
+}
+
+inline fn squared_length(pair: (Bytes, Int)) -> Int {
+    let length = pair.rest;
+    length * length
+}
+
+// The argument of an `inline fn` is substituted, so the binding is only a path if the argument is
+test fn inline_argument_that_is_a_path(pair: (Bytes, Int)) -> Int {
+    squared_length(pair)
+}
+
+test fn inline_argument_that_may_fail(password: Bytes) -> Int {
+    squared_length(check_password(password))
+}
+
+// A closure that reads the binding captures what it's read from instead
+test fn captured_by_a_closure(a: Point, flag: Bool) -> Int {
+    let z = a.z;
+    let f = fn(x: Int) => x + z;
+    let g: fn(x: Int) -> Int = if flag {
+        f
+    } else {
+        fn(x: Int) => x - z
+    };
+    g(z)
+}
+
+// A division by a field can fail, so it's not a path
+test fn division_is_bound(a: Point) -> Int {
+    let quotient = a.x / a.y;
+    quotient + quotient
+}
+
+struct Wide {
+    _a: Int,
+    _b: Int,
+    _c: Int,
+    _d: Int,
+    _e: Int,
+    _f: Int,
+    _g: Int,
+    _h: Int,
+    i: Int,
+}
+
+// A path that's deep enough takes two bytes at each reference, so it's bound once it's referenced
+// often enough
+test fn deep_path_used_often(wide: Wide) -> Int {
+    let i = wide.i;
+    i * i + i * i + i * i + i * i + i * i + i * i
+}
+
+test fn deep_path_used_twice(wide: Wide) -> Int {
+    let i = wide.i;
+    i * i
+}

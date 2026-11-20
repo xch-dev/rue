@@ -1,0 +1,41 @@
+// Nil evaluates to itself, so it's left unquoted wherever it's used as code: the branches of an
+// `if`, the rest of a block after an `assert`, and a function that returns it.
+
+test fn assert_then_nil(a: Int, b: Int) {
+    assert a == b;
+}
+
+test fn nil_branch(flag: Bool, value: Int) -> Int | nil {
+    if flag {
+        value
+    } else {
+        nil
+    }
+}
+
+// The function's body is nil, which is the same program quoted or not
+test fn nil_function_value(flag: Bool) -> List<nil> {
+    let f: fn() -> nil = if flag {
+        fn() => nil
+    } else {
+        fn() => nil
+    };
+    [f(), f()]
+}
+
+// A list of nils is still a static value
+test fn static_nils() -> List<nil> {
+    [nil, nil, nil]
+}
+
+// A closure that captures nil
+test fn nil_capture(value: Int) -> (nil, Int) {
+    let captured = nil;
+    let f = fn(x: Int) => (captured, x);
+    let g: fn(x: Int) -> (nil, Int) = if value > 0 {
+        f
+    } else {
+        fn(x: Int) => (nil, x + 1)
+    };
+    g(value)
+}

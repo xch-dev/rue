@@ -1,0 +1,31 @@
+// solution: ((1 2 3) (4 5 6 7 8 9 10 11 12) 1)
+
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+struct Wide {
+    _a: Int,
+    _b: Int,
+    _c: Int,
+    _d: Int,
+    _e: Int,
+    _f: Int,
+    _g: Int,
+    _h: Int,
+    i: Int,
+}
+
+fn main(point: Point, wide: Wide, flag: Bool) -> Int {
+    let z = point.z;
+    assert z > point.x;
+    let i = wide.i;
+    let y = point.y;
+    if flag {
+        z * z + y * y + i * i + i * i + i * i + i * i + i * i + i * i
+    } else {
+        y + z
+    }
+}

@@ -45,3 +45,15 @@ test fn type_guard_checks_the_whole_shape(value: Any, flag: Bool) -> Int {
         0
     }
 }
+
+// A field of the solution is read where it's referenced, so a solution that's an atom where its
+// type says a struct only fails in the branch that reads it
+test fn field_of_the_wrong_shape(pair: (Int, Int), flag: Bool) -> Int {
+    let first = pair.first;
+
+    if flag {
+        first + first
+    } else {
+        0
+    }
+}

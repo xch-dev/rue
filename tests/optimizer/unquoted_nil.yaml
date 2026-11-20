@@ -1,0 +1,40 @@
+tests:
+- name: assert_then_nil
+  program: (a (i (= 2 5) () (q 8)) 1)
+  debug_program: (a (i (= 2 5) () (q 8 (q . "assertion failed at unquoted_nil.rue:5:5"))) 1)
+  solution: (5 5)
+  output: ()
+  runtime_cost: 497
+  byte_cost: 300000
+  total_cost: 300497
+- name: nil_branch
+  program: (a (i 2 (q . 5) ()) 1)
+  debug_program: (a (i 2 (q . 5) ()) 1)
+  solution: (() 7)
+  output: ()
+  runtime_cost: 325
+  byte_cost: 204000
+  total_cost: 204325
+- name: nil_function_value
+  program: (a (q 4 (a 2 ()) (c (a 2 ()) ())) (c (a (i 2 () ()) 1) 1))
+  debug_program: (a (q 4 (a 2 ()) (c (a 2 ()) ())) (c (a (i 2 (q 4 (q . 2) (c () (c () ()))) (q 4 (q . 2) (c () (c () ())))) 1) 1))
+  solution: (1)
+  output: (() ())
+  runtime_cost: 1155
+  byte_cost: 636000
+  total_cost: 637155
+- name: static_nils
+  program: (q () () ())
+  debug_program: (c () (c () (c () ())))
+  output: (() () ())
+  runtime_cost: 20
+  byte_cost: 108000
+  total_cost: 108020
+- name: nil_capture
+  program: (a (a (i (> 2 ()) (q 1 4 () 2) (q 1 4 () (+ 2 (q . 1)))) 1) (c 2 ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c 23 ())) (c (a (i (> 11 ()) (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 4 () (+ 2 (q . 1)))) (c (q . 1) ())))) 1) 1)) (c (c (q . 2) (c (c (q . 1) (q 4 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c () 1))
+  solution: (3)
+  output: (() . 3)
+  runtime_cost: 1199
+  byte_cost: 732000
+  total_cost: 733199

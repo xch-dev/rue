@@ -1,0 +1,93 @@
+tests:
+- name: field_used_twice
+  program: (+ (* 22 22) 5)
+  debug_program: (a (q 16 (* 2 2) 11) (c (f (r (r 2))) 1))
+  solution: ((1 2 3) 4)
+  output: "13"
+  runtime_cost: 1928
+  byte_cost: 156000
+  total_cost: 157928
+- name: nested_fields
+  program: (+ (* 90 90) (* 18 18) 42)
+  debug_program: (a (q 2 (q 16 (+ (* 4 4) (* 6 6)) (f (r 5))) (c (c (f (r (r 2))) (f 2)) 1)) (c (f (r 2)) 1))
+  solution: (((1 2 3) (4 5 6)))
+  output: "57"
+  runtime_cost: 3399
+  byte_cost: 252000
+  total_cost: 255399
+- name: both_parts
+  program: (c 4 (c 6 (c 6 4)))
+  debug_program: (a (q 4 4 (c 6 (c 6 4))) (c (c (f 2) (r 2)) 1))
+  solution: ((1 . 2))
+  output: (1 2 2 . 1)
+  runtime_cost: 361
+  byte_cost: 228000
+  total_cost: 228361
+- name: call_is_bound
+  program: (a (q 16 (* 22 22) 4) (c (a 2 ()) 1))
+  debug_program: (a (q 2 (q 16 (* 2 2) (f 5)) (c (f (r (r 2))) 1)) (c (a 2 ()) 1))
+  solution: ((q 1 2 3))
+  output: "10"
+  runtime_cost: 2337
+  byte_cost: 396000
+  total_cost: 398337
+- name: check_is_kept_when_the_branch_is_not_taken
+  program: (a (q 2 (q 2 (i 23 (q 16 2 2) (q 1 . 42)) 1) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 47 (q 16 2 2) (q 1 . 42)) 1) (c (r 2) 1)) (c (a 2 5) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
+  solution: ("wrong" ())
+  byte_cost: 1440000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at path_bindings.rue:43:5"
+- name: check_is_kept_when_the_branch_is_taken
+  program: (a (q 2 (q 2 (i 23 (q 16 2 2) (q 1 . 42)) 1) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 47 (q 16 2 2) (q 1 . 42)) 1) (c (r 2) 1)) (c (a 2 5) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
+  solution: ("hunter2" 1)
+  output: "14"
+  runtime_cost: 3672
+  byte_cost: 1440000
+  total_cost: 1443672
+- name: inline_argument_that_is_a_path
+  program: (* 6 6)
+  debug_program: (a (q 18 2 2) (c (r 2) 1))
+  solution: (("ab" . 2))
+  output: "4"
+  runtime_cost: 1104
+  byte_cost: 84000
+  total_cost: 85104
+- name: inline_argument_that_may_fail
+  program: (a (q 2 (q 18 2 2) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 18 2 2) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
+  solution: ("wrong")
+  byte_cost: 1200000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at path_bindings.rue:43:5"
+- name: captured_by_a_closure
+  program: (a (a (i 5 (q 4 (q . 2) (c (q 1 16 5 22) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q 4 (q . 2) (c (q 1 17 5 22) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ())))) 1) (c 22 ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c 11 ())) (c (a (i 23 (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 17 11 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (q . 1) ()))) ()))) ())))) 1) 1)) (c (c (q . 2) (c (c (q . 1) (q 16 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (f (r (r 2))) 1))
+  solution: ((1 2 3) 1)
+  output: "6"
+  runtime_cost: 2099
+  byte_cost: 1716000
+  total_cost: 1718099
+- name: division_is_bound
+  program: (a (q 16 2 2) (c (/ 4 10) 1))
+  debug_program: (a (q 16 2 2) (c (/ (f 2) (f (r 2))) 1))
+  solution: ((7 0 3))
+  byte_cost: 324000
+  clvm_error: Division by zero
+- name: deep_path_used_often
+  program: (a (q 16 (* 2 2) (* 2 2) (* 2 2) (* 2 2) (* 2 2) (* 2 2)) (c 1534 1))
+  debug_program: (a (q 16 (+ (+ (+ (+ (* 2 2) (* 2 2)) (* 2 2)) (* 2 2)) (* 2 2)) (* 2 2)) (c (f (r (r (r (r (r (r (r (r 2))))))))) 1))
+  solution: ((1 2 3 4 5 6 7 8 9))
+  output: "486"
+  runtime_cost: 8924
+  byte_cost: 804000
+  total_cost: 812924
+- name: deep_path_used_twice
+  program: (* 1534 1534)
+  debug_program: (a (q 18 2 2) (c (f (r (r (r (r (r (r (r (r 2))))))))) 1))
+  solution: ((1 2 3 4 5 6 7 8 9))
+  output: "81"
+  runtime_cost: 1168
+  byte_cost: 132000
+  total_cost: 133168
