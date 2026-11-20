@@ -157,13 +157,26 @@ impl Cache<Compiler> {
 
     /// The file or directory to rename along with the module that it is.
     fn moved(&self, module: &ModulePath, name: &str, new_name: &str) -> Result<Moved, String> {
-        // A file or directory that's reached through a symbolic link isn't where the project has
-        // it, so there's nothing that renaming it would be right for
-        let Some(from) = &self.entry_path(module) else {
-            return Err(format!(
-                "`{name}` is reached through a symbolic link, so it can't be renamed"
-            ));
-        };
+        let from = &self.entry_path(module, name)?;
+
+        // A symbolic link elsewhere in the project that leads to it, or to something in it,
+        // would be left leading nowhere
+        if let Some(root) = &self.root {
+            let mut files = Vec::new();
+            file_entries(&self.tree, &mut PathBuf::new(), &mut files);
+
+            for (entries, file) in files {
+                if let SourceKind::File(path) = &file.source.kind
+                    && Path::new(path).starts_with(from)
+                    && !root.join(&entries).starts_with(from)
+                {
+                    return Err(format!(
+                        "`{name}` can't be renamed, since the symbolic link at `{}` leads to it",
+                        entries.display()
+                    ));
+                }
+            }
+        }
 
         let directory = module.file.is_none();
 
@@ -180,8 +193,8 @@ impl Cache<Compiler> {
         }
 
         // An external function's file is found from the directory of the file it's declared in,
-        // one part of its path at a time, so the path breaks if a part of it names the directory
-        // that's renamed. A path that only leaves the directory with `..` still leads to its file
+        // one part of its path at a time. A path that stays in the directory that's renamed, or
+        // only leaves it, still leads to its file
         if directory {
             for file in self.tree.all_files() {
                 let SourceKind::File(path) = &file.source.kind else {
@@ -199,31 +212,38 @@ impl Cache<Compiler> {
                     .filter_map(AstFunctionItem::cast)
                     .filter_map(|function| function.source_path())
                 {
+                    // The compiler follows the path on the file system, where a part can be a
+                    // symbolic link or another spelling of a name, so each step is followed
+                    // there too. The path breaks if a step goes into the directory
                     let mut current = directory.to_path_buf();
 
                     let enters =
                         Path::new(&string_value(external.text()))
                             .components()
-                            .any(|component| match component {
-                                Component::ParentDir => {
-                                    current.pop();
-                                    false
+                            .any(|component| {
+                                let inside = current.starts_with(from);
+
+                                match component {
+                                    Component::ParentDir => {
+                                        current.pop();
+                                    }
+                                    Component::Normal(part) => current.push(part),
+                                    Component::Prefix(_)
+                                    | Component::RootDir
+                                    | Component::CurDir => {}
                                 }
-                                // The compiler follows the path on the file system, where a
-                                // part can be the directory under another spelling
-                                Component::Normal(part) => {
-                                    current.push(part);
-                                    current.canonicalize().as_ref().unwrap_or(&current) == from
+
+                                if let Ok(followed) = current.canonicalize() {
+                                    current = followed;
                                 }
-                                Component::Prefix(_) | Component::RootDir | Component::CurDir => {
-                                    false
-                                }
+
+                                !inside && current.starts_with(from)
                             });
 
                     if enters {
                         return Err(format!(
                             "`{name}` can't be renamed, since the path of the external function \
-                            at {} names it",
+                            at {} leads into it",
                             self.place(file, external.text_range().start())
                         ));
                     }
@@ -240,22 +260,28 @@ impl Cache<Compiler> {
     /// Where the file or directory that a module is is on disk, which is found from the
     /// directory that the project is compiled from, one entry at a time. The paths of the
     /// compiled files are where their symbolic links lead, which isn't where the project has
-    /// them, so an entry that's a link has no path here, and neither has anything in it.
-    fn entry_path(&self, module: &ModulePath) -> Option<PathBuf> {
-        let mut path = self.root.clone()?;
+    /// them, so an entry that's a link can't be renamed, and neither can anything in it.
+    fn entry_path(&self, module: &ModulePath, name: &str) -> Result<PathBuf, String> {
+        let missing = || format!("`{name}` isn't where it was when the project was compiled");
+
+        let mut path = self.root.clone().ok_or_else(missing)?;
 
         for entry in &module.entries {
             path.push(entry);
 
             if path.is_symlink() {
-                return None;
+                return Err(format!(
+                    "`{name}` is reached through a symbolic link, so it can't be renamed"
+                ));
             }
         }
 
-        match &module.file {
-            Some(file) => (path.canonicalize().ok()? == *file).then_some(path),
-            None => path.is_dir().then_some(path),
-        }
+        let found = match &module.file {
+            Some(file) => path.canonicalize().is_ok_and(|path| path == *file),
+            None => path.is_dir(),
+        };
+
+        if found { Ok(path) } else { Err(missing()) }
     }
 
     /// A place in a file as it's shown in a message: in the directory that the project is
@@ -323,6 +349,23 @@ impl Cache<Compiler> {
             declared |= role == Role::Declaration;
 
             sites.push(Site { file, role, token });
+        }
+
+        // A file that's in the project more than once, through a symbolic link, is compiled as
+        // a module for each, and only one of them has the name that's renamed
+        let files = self.tree.all_files();
+
+        if sites.iter().any(|site| {
+            files
+                .iter()
+                .filter(|file| file.source.kind == site.file.source.kind)
+                .count()
+                > 1
+        }) {
+            return Err(format!(
+                "`{name}` is used in a file that's in the project more than once, through a \
+                symbolic link, so it can't be renamed"
+            ));
         }
 
         let module = match target {
@@ -678,4 +721,27 @@ fn module_path(
         entries.pop();
         found
     })
+}
+
+/// Adds each file of the tree, with the entries that lead to it from the directory that the
+/// tree is in.
+fn file_entries<'a>(
+    tree: &'a FileTree,
+    entries: &mut PathBuf,
+    files: &mut Vec<(PathBuf, &'a File)>,
+) {
+    match tree {
+        FileTree::File(file) => files.push((entries.clone(), file)),
+        FileTree::Directory(directory) => {
+            for child in &directory.children {
+                entries.push(match child {
+                    FileTree::File(file) => format!("{}.rue", file.name),
+                    FileTree::Directory(directory) => directory.name.clone(),
+                });
+
+                file_entries(child, entries, files);
+                entries.pop();
+            }
+        }
+    }
 }

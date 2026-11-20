@@ -993,7 +993,7 @@ fn test_rename_directory_with_external_function() {
     let refused = |place: &str| {
         format!(
             "error: `lib` can't be renamed, since the path of the external function at {place} \
-            names it"
+            leads into it"
         )
     };
 
@@ -1118,8 +1118,8 @@ fn test_rename_refused_from_a_file_in_a_directory() {
         &files,
         "core",
         expect![[r#"
-        error: `lib` can't be renamed, since the path of the external function at main.rue:1:39 names it
-    "#]],
+            error: `lib` can't be renamed, since the path of the external function at main.rue:1:39 leads into it
+        "#]],
     );
 
     let files = [
@@ -1143,6 +1143,87 @@ fn test_rename_refused_from_a_file_in_a_directory() {
         expect![[r#"
         error: Renaming `other` to `value` would change what `value` refers to at lib/a.rue:3:5
     "#]],
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rename_with_symlinks_inside_the_project() {
+    // A file that's linked to from the project it's in is a module for each of its names, and a
+    // link that leads into a directory is left leading nowhere if the directory is renamed
+    let main = "extern fn run(value: Any) -> Any from \"hexes/run.hex\";\n\nfn main() -> Int {\n    utils::ONE + alias::ONE + lib::a::TWO + nested::THREE + plain::data::b::FOUR\n}\n";
+
+    let renamed = |cursor: &str, new_name: &str| {
+        let main = main.replacen(cursor, &format!("$0{cursor}"), 1);
+
+        let dir = super::TempDir::new("rue-lsp-rename-inner-links");
+        let real = dir.path().canonicalize().unwrap();
+        std::fs::write(real.join("Rue.toml"), super::MANIFEST).unwrap();
+
+        for (path, text) in [
+            ("utils.rue", "export const ONE: Int = 1;\n"),
+            ("lib/a.rue", "export const TWO: Int = 2;\n"),
+            ("lib/run.hex", "01"),
+            ("plain/data/b.rue", "export const FOUR: Int = 4;\n"),
+            ("plain/data/run.hex", "01"),
+        ] {
+            std::fs::create_dir_all(real.join(path).parent().unwrap()).unwrap();
+            std::fs::write(real.join(path), text).unwrap();
+        }
+
+        let link = |from: &str, to: &str| {
+            std::os::unix::fs::symlink(real.join(from), real.join(to)).unwrap();
+        };
+
+        link("utils.rue", "alias.rue");
+        link("lib/a.rue", "nested.rue");
+        link("plain/data", "hexes");
+
+        // `nested` is the same file as `lib::a`, whose constant it names differently
+        let main = main.replace("nested::THREE", "nested::TWO");
+
+        let project = TestProject::in_dir(dir, &[("main.rue", main.as_str())]);
+        project
+            .backend()
+            .shared
+            .rename_files
+            .store(true, Ordering::Relaxed);
+
+        let diagnostics = project.diagnostics();
+        assert!(!diagnostics.contains(" Error"), "{diagnostics}");
+
+        project.rename(new_name)
+    };
+
+    expect![[r#"
+        error: `ONE` is used in a file that's in the project more than once, through a symbolic link, so it can't be renamed
+    "#]].assert_eq(&renamed("ONE", "FIRST"));
+    expect![[r#"
+        error: `utils` can't be renamed, since the symbolic link at `alias.rue` leads to it
+    "#]]
+    .assert_eq(&renamed("utils", "helpers"));
+    expect![[r#"
+        error: `lib` can't be renamed, since the symbolic link at `nested.rue` leads to it
+    "#]]
+    .assert_eq(&renamed("lib", "core"));
+    expect![[r#"
+        error: `plain` can't be renamed, since the symbolic link at `hexes/b.rue` leads to it
+    "#]]
+    .assert_eq(&renamed("plain", "simple"));
+}
+
+#[test]
+fn test_rename_module_with_a_doubled_extension() {
+    // The file isn't the one that the module's name gives, so there's nothing to rename
+    check(
+        &[
+            ("main.rue", "fn main() -> Int {\n    uti$0ls::ONE\n}\n"),
+            ("utils.rue.rue", "export const ONE: Int = 1;\n"),
+        ],
+        "helpers",
+        expect![[r#"
+            error: `utils` isn't where it was when the project was compiled
+        "#]],
     );
 }
 
@@ -1189,7 +1270,7 @@ fn test_rename_directory_with_external_function_spelled_differently() {
     assert_eq!(
         project.rename("core"),
         "error: `lib` can't be renamed, since the path of the external function at main.rue:1:39 \
-        names it\n"
+        leads into it\n"
     );
 }
 
