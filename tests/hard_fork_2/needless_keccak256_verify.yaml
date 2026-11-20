@@ -73,13 +73,13 @@ tests:
   byte_cost: 1500000
   total_cost: 1507671
 - name: shadowed_by_binding
-  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) (a (i (= (a (q 11 2) (c 2 ())) 5) (q 8) (q)) 1))
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) (a (i (= (sha256 2) 5) (q 8) (q)) 1))
   debug_program: (a (q 3 (q . 1) (a (i (not (= (a 2 (c 5 ())) 11)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:73:5"))) 1) (a (i (= (keccak256 5) 11) (q) (q 8)) 1)) (c (c (q . 2) (c (c (q . 1) (q 11 2)) (c (q . 1) ()))) 1))
   solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
   output: ()
-  runtime_cost: 6625
-  byte_cost: 996000
-  total_cost: 1002625
+  runtime_cost: 6371
+  byte_cost: 828000
+  total_cost: 834371
 - name: enclosing_item
   program: (i () (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ()) (a (i (= (sha256 2) 5) (q 8) (q)) 1))
   debug_program: (a (q 3 (q . 1) (a (i (not (= (a 4 (c 10 5)) 11)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:80:5"))) 1) (a 14 (c 5 11))) (c (c (q 2 2 3) (c (q 11 1) (q 3 (q . 1) () (a (i (= (keccak256 2) 3) (q) (q 8)) 1)))) 1))
