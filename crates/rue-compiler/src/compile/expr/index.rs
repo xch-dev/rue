@@ -1,5 +1,5 @@
 use log::debug;
-use num_bigint::{BigInt, Sign};
+use num_bigint::BigInt;
 use rue_ast::{AstExpr, AstIndexExpr, AstNode, AstSliceExpr};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
@@ -147,31 +147,16 @@ fn next_index(ctx: &mut Compiler, index: HirId, srcloc: &SrcLoc) -> Option<HirId
         _ => return None,
     };
 
+    // One more than `i - 1` or `i + -1` is `i`
+    let cancels = BigInt::from(if op == BinaryOp::Add { -1 } else { 1 });
+    if literal_int(ctx, offset) == Some(cancels) {
+        return Some(place);
+    }
+
     // One more than `place + offset` is `place + (offset + 1)`, and one more than
     // `place - offset` is `place - (offset - 1)`
-    let Some(offset) = literal_int(ctx, offset) else {
-        let offset = alloc_constant_offset(ctx, offset, op, srcloc);
-        return Some(ctx.alloc_hir(Hir::Binary(op, place, offset)));
-    };
-
-    // A literal is written as it would be in the call, such as `i` after `i - 1`
-    let offset: BigInt = if op == BinaryOp::Add {
-        offset + 1
-    } else {
-        1 - offset
-    };
-
-    Some(match offset.sign() {
-        Sign::NoSign => place,
-        Sign::Plus => {
-            let offset = ctx.alloc_hir(Hir::Int(offset));
-            ctx.alloc_hir(Hir::Binary(BinaryOp::Add, place, offset))
-        }
-        Sign::Minus => {
-            let offset = ctx.alloc_hir(Hir::Int(-offset));
-            ctx.alloc_hir(Hir::Binary(BinaryOp::Sub, place, offset))
-        }
-    })
+    let offset = alloc_constant_offset(ctx, offset, op, srcloc);
+    Some(ctx.alloc_hir(Hir::Binary(op, place, offset)))
 }
 
 /// The value with one added to or subtracted from it.
@@ -233,7 +218,8 @@ fn is_constant(ctx: &Compiler, hir: HirId) -> bool {
 }
 
 /// Whether the value is a binding or parameter, or a field that's at a path from one, which is
-/// found without computing anything.
+/// found without computing anything. An `inline` binding or parameter stands for its value
+/// wherever it's used, so it's repeated like the others, as it is in the call.
 fn is_place(ctx: &Compiler, hir: HirId) -> bool {
     match ctx.hir(ctx.without_casts(hir)) {
         Hir::Reference(_) => true,

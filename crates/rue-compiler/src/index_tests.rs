@@ -1,20 +1,18 @@
 //! An index (`value[index]`) or slice (`value[start..end]`) compiles to the `substr` call that it
 //! stands for, so each one here is compared with the call it should generate.
 
-use std::{fmt::Write, path::PathBuf};
+use std::fmt::Write;
 
-use clvmr::Allocator;
-use rue_clvm::disassemble_program;
-use rue_diagnostic::SourceKind;
 use rue_options::CompilerOptions;
 
-use crate::test_utils::compile_with;
+use crate::test_utils::{compile, compile_with};
 
 const ITEMS: &str = "
 struct Cursor { data: Bytes, offset: Int }
 const N: Int = 3;
 const M: Int = N + 2;
 const K: Int = double(N) + 1;
+const HELLO_N: Bytes = 'hello'[N];
 fn double(value: Int) -> Int { value * 2 }
 ";
 
@@ -27,16 +25,7 @@ fn program(parameters: &str, body: &str, options: CompilerOptions) -> String {
             ..options
         };
     });
-    compiled.assert_no_errors();
-
-    let mut allocator = Allocator::new();
-    let kind = SourceKind::File("main.rue".to_string());
-    let main = compiled
-        .tree
-        .main(&mut compiled.ctx, &mut allocator, &kind, PathBuf::from("."))
-        .unwrap()
-        .expect("the source has a `main` function");
-    disassemble_program(&allocator, main)
+    compiled.main_program()
 }
 
 #[track_caller]
@@ -216,6 +205,60 @@ fn failing_constant_index() {
     );
 }
 
+/// The same goes for an index that costs too much to evaluate when compiling.
+#[test]
+fn costly_constant_index() {
+    let source = |body: &str| {
+        format!(
+            "fn count(n: Int) -> Int {{ if n == 0 {{ 0 }} else {{ 1 + count(n - 1) }} }}\n\
+             const K: Int = count(1000);\n\
+             fn main(a: Bytes) -> Bytes {{ {body} }}\n"
+        )
+    };
+    let program = |body: &str| {
+        compile_with(&source(body), |o| {
+            o.std = false;
+            o.const_eval_max_cost = 10_000;
+        })
+        .main_program()
+    };
+
+    assert_eq!(program("a[K]"), program("substr(a, K, K + 1)"));
+}
+
+/// A constant index inside of a const expression or a constant is evaluated with it, and one
+/// that fails is still an error of the const expression that's written.
+#[test]
+fn constant_index_in_const() {
+    check_optimized("", "const { \"hello\"[N + 1] }", "\"o\"");
+    check_optimized("", "HELLO_N", "\"l\"");
+
+    let source = "const N: Int = 3;\nfn main() -> Bytes { const { \"hello\"[N / 0] } }\n";
+    assert_eq!(
+        compile(source).errors(),
+        [r#"2:22 ConstEvalFailed("Division by zero")"#]
+    );
+}
+
+/// A constant index has a constant end wherever it's written.
+#[test]
+fn constant_index_in_functions() {
+    let source = |body: &str| {
+        format!(
+            "const N: Int = 3;\n\
+             fn generic<T>(a: Bytes, value: T) -> (Bytes, T) {{ ({body}, value) }}\n\
+             fn main(a: Bytes) -> Bytes {{\n    \
+             let lambda = fn(b: Bytes) => {body} + b;\n    \
+             generic(a, 1).first + lambda(a)\n}}\n"
+        )
+    };
+
+    assert_eq!(
+        compile(&source("a[N * 2]")).main_program(),
+        compile(&source("substr(a, N * 2, 7)")).main_program()
+    );
+}
+
 /// A constant can be declared after the code that indexes with it.
 #[test]
 fn constant_declared_later() {
@@ -224,20 +267,7 @@ fn main(a: Bytes) -> Bytes { a[LATER] }
 const LATER: Int = EVEN_LATER + 1;
 const EVEN_LATER: Int = const { 1 + 1 };
 ";
-    let mut compiled = compile_with(source, |o| o.std = false);
-    compiled.assert_no_errors();
-
-    let mut allocator = Allocator::new();
-    let kind = SourceKind::File("main.rue".to_string());
-    let main = compiled
-        .tree
-        .main(&mut compiled.ctx, &mut allocator, &kind, PathBuf::from("."))
-        .unwrap()
-        .expect("the source has a `main` function");
-    assert_eq!(
-        disassemble_program(&allocator, main),
-        "(substr 2 (q . 3) (q . 4))"
-    );
+    assert_eq!(compile(source).main_program(), "(substr 2 (q . 3) (q . 4))");
 }
 
 /// A long chain of constants is followed without overflowing the stack.
@@ -249,8 +279,7 @@ fn long_constant_chain() {
     }
     source.push_str("fn main(a: Bytes) -> Bytes { a[C19999] }\n");
 
-    let compiled = compile_with(&source, |o| o.std = false);
-    compiled.assert_no_errors();
+    compile(&source).assert_no_errors();
 }
 
 /// An `inline` binding stands for its value wherever it's used, so it's repeated like any other

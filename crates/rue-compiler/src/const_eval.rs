@@ -147,6 +147,7 @@ fn finish_const(
 
     let diagnostic = match result {
         Ok(value) => {
+            let value = ctx.alloc_hir(value);
             set_const_result(ctx, hir, value);
             states.insert(hir, ConstState::Done);
             return;
@@ -154,9 +155,7 @@ fn finish_const(
         // A const expression that the compiler generated is only an optimization, so the value is
         // left to be evaluated at runtime, as it was written
         Err(_) if expr.generated => {
-            if let Hir::Const(expr) = ctx.hir_mut(hir) {
-                expr.result = Some(expr.value);
-            }
+            set_const_result(ctx, hir, expr.value);
             states.insert(hir, ConstState::Done);
             return;
         }
@@ -179,7 +178,8 @@ fn finish_const(
         ctx.diagnostic_at(expr.loc, diagnostic);
     }
 
-    set_const_result(ctx, hir, Hir::Nil);
+    let nil = ctx.alloc_hir(Hir::Nil);
+    set_const_result(ctx, hir, nil);
     states.insert(hir, ConstState::Failed);
 }
 
@@ -208,9 +208,7 @@ fn const_options(ctx: &Compiler) -> CompilerOptions {
     }
 }
 
-fn set_const_result(ctx: &mut Compiler, hir: HirId, value: Hir) {
-    let value = ctx.alloc_hir(value);
-
+fn set_const_result(ctx: &mut Compiler, hir: HirId, value: HirId) {
     if let Hir::Const(expr) = ctx.hir_mut(hir) {
         expr.result = Some(value);
     }

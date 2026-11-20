@@ -112,6 +112,31 @@ fn computed(value: Bytes, index: Int) -> Bytes {
     value[double(doubled)] + value[index * 2] + value[value.length - 1]
 }
 
+const OFFSET: Int = 2;
+const ONLY_INDEX: Int = 3;
+
+// Warns once each: a constant index is in the end too, which isn't reported a second time
+fn constants(value: Bytes, flag: Bool) -> Bytes {
+    inline let fallible = value[OFFSET];
+    let same = value[OFFSET] == value[OFFSET];
+    let branches = if flag {
+        value[OFFSET * 2]
+    } else {
+        value[OFFSET * 2]
+    };
+    let lints = value[(OFFSET)] + value[OFFSET as Int] + value[+OFFSET] + value[0xFF as Int];
+    if flag && same {
+        fallible + branches + lints
+    } else {
+        value[ONLY_INDEX]
+    }
+}
+
+// Doesn't warn: the end of a constant index is written differently than in the call
+fn constant_and_call(value: Bytes) -> Bool {
+    value[OFFSET + 1] == substr(value, OFFSET + 1, OFFSET + 2)
+}
+
 fn main(value: Bytes, other: Bytes, index: Int, flag: Bool) -> Bytes {
     unused_value(value);
 
@@ -123,7 +148,10 @@ fn main(value: Bytes, other: Bytes, index: Int, flag: Bool) -> Bytes {
         needed_parens(value, other, index),
         plus(value, index),
         computed(value, index),
+        constants(value, flag),
     ];
+
+    assert constant_and_call(value);
 
     assert duplicate_condition(value, flag);
     assert self_comparison(value, index);

@@ -1,11 +1,6 @@
 //! A `match` expression compiles to the `if` and `else if` chain of type guards that it's
 //! equivalent to, so each one here is compared with the chain it should generate.
 
-use std::path::PathBuf;
-
-use clvmr::Allocator;
-use rue_clvm::disassemble_program;
-use rue_diagnostic::SourceKind;
 use rue_options::CompilerOptions;
 
 use crate::test_utils::compile_with;
@@ -29,16 +24,7 @@ fn program(main: &str, options: CompilerOptions) -> String {
             ..options
         };
     });
-    compiled.assert_no_errors();
-
-    let mut allocator = Allocator::new();
-    let kind = SourceKind::File("main.rue".to_string());
-    let main = compiled
-        .tree
-        .main(&mut compiled.ctx, &mut allocator, &kind, PathBuf::from("."))
-        .unwrap()
-        .expect("the source has a `main` function");
-    disassemble_program(&allocator, main)
+    compiled.main_program()
 }
 
 #[track_caller]
