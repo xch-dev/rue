@@ -1818,7 +1818,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             let mut referenced_symbols = IndexMap::new();
 
             for symbol in symbols {
-                referenced_symbols.insert(symbol, self.graph.references(symbol));
+                referenced_symbols.insert(symbol, self.graph.layout_references(symbol));
             }
 
             SymbolGroup::Tree(Environment::tree(referenced_symbols))

@@ -710,7 +710,7 @@ impl Database {
                     .map(|field| format!("{}: {}", field.name, self.debug_hir(field.value)))
                     .chain(
                         initializer
-                            .tail
+                            .tail_value()
                             .map(|tail| format!("...{}", self.debug_hir(tail)))
                     )
                     .collect::<Vec<_>>()

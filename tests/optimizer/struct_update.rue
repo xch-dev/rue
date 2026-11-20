@@ -125,8 +125,8 @@ test fn rebuild_last_of_call(n: Int) -> Point {
     Point { x: p.x, y: p.y, z: 1 }
 }
 
-// A field whose type is a single value, such as an opcode, is copied from a path, which is
-// smaller than the value
+// A field whose type is a single value, such as an opcode, is that value rather than a read of
+// the spread value, as it is when the struct is rebuilt by hand
 test fn update_after_constant(s: Spend, puzzle_hash: Bytes32) -> Spend {
     Spend { ...s, puzzle_hash }
 }
@@ -135,8 +135,7 @@ test fn rebuild_after_constant(s: Spend, puzzle_hash: Bytes32) -> Spend {
     Spend { puzzle_hash, amount: s.amount, memos: s.memos }
 }
 
-// The value is used instead if that leaves a single use of a value that isn't a path, which
-// would be bound otherwise
+// Reading it would be another use of the spread value, which would have to be bound for it
 test fn update_after_constant_of_call(n: Int, puzzle_hash: Bytes32) -> Spend {
     Spend { ...spend(n), puzzle_hash }
 }
@@ -146,8 +145,28 @@ test fn rebuild_after_constant_of_call(n: Int, puzzle_hash: Bytes32) -> Spend {
     Spend { puzzle_hash, amount: s.amount, memos: s.memos }
 }
 
-// It's copied from a value that's bound anyway, since another field before the last one that's
-// written is copied from it too
+test fn update_after_constant_of_binding(n: Int, puzzle_hash: Bytes32) -> Spend {
+    let s = spend(n);
+    Spend { ...s, puzzle_hash }
+}
+
+inline fn update_spend(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { ...s, puzzle_hash }
+}
+
+inline fn rebuild_spend(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { puzzle_hash, amount: s.amount, memos: s.memos }
+}
+
+// It would also evaluate the argument of an inline function again
+test fn update_after_constant_of_inline_parameter(n: Int, puzzle_hash: Bytes32) -> Spend {
+    update_spend(spend(n), puzzle_hash)
+}
+
+test fn rebuild_after_constant_of_inline_parameter(n: Int, puzzle_hash: Bytes32) -> Spend {
+    rebuild_spend(spend(n), puzzle_hash)
+}
+
 test fn update_last_after_constant_of_call(n: Int, memos: Any) -> Spend {
     Spend { ...spend(n), memos }
 }
@@ -157,8 +176,23 @@ test fn rebuild_last_after_constant_of_call(n: Int, memos: Any) -> Spend {
     Spend { puzzle_hash: s.puzzle_hash, amount: s.amount, memos }
 }
 
-// The discriminant of an enum variant is its value, unless it's nil, which is never larger than a
-// path
+struct Versioned {
+    value: Int,
+    version = 2,
+    kind = "versioned",
+}
+
+// The rest of the spread value isn't used if every field in it is a constant, so the struct
+// doesn't depend on the value at all
+test fn update_before_constants(versioned: Versioned, n: Int) -> Versioned {
+    Versioned { ...versioned, value: n }
+}
+
+test fn rebuild_before_constants(n: Int) -> Versioned {
+    Versioned { value: n }
+}
+
+// The discriminant of an enum variant is a constant too
 test fn update_variant(rect: Shape::Rect, n: Int) -> Shape::Rect {
     Shape::Rect { ...rect, height: n }
 }
@@ -169,6 +203,39 @@ test fn rebuild_variant(rect: Shape::Rect, n: Int) -> Shape::Rect {
 
 test fn update_nil_variant(square: Shape::Square, n: Int) -> Shape::Square {
     Shape::Square { ...square, side: n }
+}
+
+struct Optional {
+    value: Int | nil,
+    count: Int,
+    other: Int,
+}
+
+// A field that's narrowed to a single value is still read, as it is when the struct is rebuilt,
+// since a path is smaller than the value, unless the value is nil, which never is
+test fn update_narrowed_field(optional: Optional, n: Int) -> Optional {
+    if optional.count is 7 {
+        Optional { ...optional, other: n }
+    } else if optional.value is nil {
+        Optional { ...optional, other: n }
+    } else {
+        optional
+    }
+}
+
+test fn rebuild_narrowed_field(optional: Optional, n: Int) -> Optional {
+    if optional.count is 7 {
+        Optional { value: optional.value, count: optional.count, other: n }
+    } else if optional.value is nil {
+        Optional { value: optional.value, count: optional.count, other: n }
+    } else {
+        optional
+    }
+}
+
+// A cast of a path is still a path, so it isn't bound
+test fn update_cast(pair: (Int, (Int, (Int, nil))), n: Int) -> Point {
+    Point { ...pair as Point, z: n }
 }
 
 // Every field is written, so the value isn't used, and it's only evaluated if it can fail
@@ -250,4 +317,29 @@ test fn update_inline_parameter(n: Int) -> Point {
 
 test fn rebuild_inline_parameter(n: Int) -> Point {
     rebuild_inline(point(n))
+}
+
+fn update_walk(a: Int, b: Int, c: Int, d: Int, t: Tail, n: Int) -> (Int, Tail) {
+    if n > 9 {
+        return update_walk(a + b, b + c, c + d, d + a, t, n - 1);
+    }
+    (a + a + a + b + b + b + c + c + c + d, Tail { ...t, x: n })
+}
+
+fn rebuild_walk(a: Int, b: Int, c: Int, d: Int, t: Tail, n: Int) -> (Int, Tail) {
+    if n > 9 {
+        return rebuild_walk(a + b, b + c, c + d, d + a, t, n - 1);
+    }
+    (a + a + a + b + b + b + c + c + c + d, Tail { x: n, y: t.y, z: t.z })
+}
+
+// The parameters of a function are laid out by how often they're referenced. The rest of the
+// spread value is one reference, but it counts as one for each field in it, as when the struct is
+// rebuilt, so that the value isn't moved further away, which would make this larger
+test fn update_layout(t: Tail, n: Int) -> (Int, Tail) {
+    update_walk(1, 2, 3, 4, t, n)
+}
+
+test fn rebuild_layout(t: Tail, n: Int) -> (Int, Tail) {
+    rebuild_walk(1, 2, 3, 4, t, n)
 }

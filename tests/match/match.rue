@@ -314,3 +314,28 @@ test fn block_scrutinee_evaluated_once(value: Int | Bytes32 | nil) -> Int {
         Int => 2,
     }
 }
+
+// The path that the block ends in is still narrowed in the arms, and after the match
+test fn block_scrutinee_narrows_path(value: Int | Bytes32 | nil) -> Int {
+    match {
+        debug "evaluated";
+        value
+    } {
+        nil => {
+            return 0;
+        }
+        Bytes32 => {
+            return value.length;
+        }
+        Int => {}
+    }
+    value + 1
+}
+
+// A cast of a path is still a path, so it's narrowed rather than being bound
+test fn cast_scrutinee(value: Int | (Int, Int)) -> Int {
+    match value as Bytes | (Int, Int) {
+        Bytes => value.length,
+        (Int, Int) => value.first + value.rest,
+    }
+}
