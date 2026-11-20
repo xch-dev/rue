@@ -1387,12 +1387,17 @@ impl ArgumentOrder {
             .element_lambdas
             .iter()
             .filter(|(_, lambda)| {
-                !(lambda.calls
+                let narrowed_by_expected = lambda.calls
                     && lambda
                         .returns
                         .iter()
-                        .any(|generic| expected.contains(generic)))
-                    && !self.is_settled(&lambda.reads)
+                        .any(|generic| expected.contains(generic));
+
+                if narrowed_by_expected {
+                    return false;
+                }
+
+                !self.is_settled(&lambda.reads)
                     && !self.pending.iter().any(|&other| {
                         self.arguments[other]
                             .reads
