@@ -91,9 +91,8 @@ fn morph_conditions(
             rest_odd_output
         } else {
             let morphed = CreateCoin {
+                ...condition,
                 puzzle_hash: singleton_puzzle_hash(singleton, condition.puzzle_hash),
-                amount: condition.amount,
-                memos: condition.memos,
             };
             [morphed, ...rest_odd_output]
         };

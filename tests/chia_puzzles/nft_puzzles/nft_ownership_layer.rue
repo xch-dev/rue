@@ -84,10 +84,7 @@ fn wrap_conditions(
             ],
         );
 
-        return [
-            CreateCoin { puzzle_hash, amount: odd_coin.amount, memos: odd_coin.memos },
-            ...output.conditions,
-        ];
+        return [CreateCoin { ...odd_coin, puzzle_hash }, ...output.conditions];
     }
 
     let condition = conditions.first;

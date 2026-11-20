@@ -116,9 +116,8 @@ fn main(
             create_slot(
                 HANDLE_SLOT_1ST_CURRY_HASH,
                 tree_hash(XchandlesHandleSlotValue {
+                    ...slot_value,
                     counter: slot_value.counter + 1,
-                    a: slot_value.a,
-                    b: slot_value.b,
                 }),
             ),
         ]
