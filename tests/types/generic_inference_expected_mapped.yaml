@@ -42,19 +42,19 @@ tests:
   byte_cost: 780000
   total_cost: 780967
 - name: lambda_before_a_generic_lambda_keeps_it_wide
-  program: (a (q 1 . 6) (q 1))
+  program: (q . 6)
   debug_program: (a (q 2 (q . 2) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 6)) (c (q . 1) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))) 1)) (c (q 2 2 (c (q . 1) ())) ()))
   output: "6"
-  runtime_cost: 151
-  byte_cost: 180000
-  total_cost: 180151
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: lambda_that_adds_to_its_parameter_type_keeps_it_wide
-  program: (a (q 1 . 5) (q 7))
+  program: (q . 5)
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c () ()))))) (c (q 2 2 (c (a 3 ()) ())) ()))
   output: "5"
-  runtime_cost: 151
-  byte_cost: 180000
-  total_cost: 180151
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: nested_call_with_a_lambda_takes_the_expected_bound
   program: (a (q 16 (a 4 (c (q . 7) (a 6 (c (q . 5) (q 1 . 7))))) (a 4 (c (q . 7) (a 4 (c (a 6 (c (q . 5) (q 1 . 7))) (q . 7)))))) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
   debug_program: (a (q 2 (q 16 4 6) (c (c (a 4 (c (q . 7) (a 6 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))))))) (a 4 (c (q . 7) (a 4 (c (a 6 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))))) (q . 7)))))) 1)) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))

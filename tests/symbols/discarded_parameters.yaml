@@ -7,12 +7,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: discarded_lambda_parameters
-  program: (a (q 1 . 4) (q 1 2))
+  program: (q . 4)
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (c (q . 2) (c (c (q . 1) (q 1 . 4)) (c (q . 1) ()))) 1))
   output: "4"
-  runtime_cost: 151
-  byte_cost: 204000
-  total_cost: 204151
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: discarded_let_bindings
   program: (q . 5)
   debug_program: (a (q 6 (r 2)) (c (c (q . 1) (c (q . 2) (q . 5))) 1))

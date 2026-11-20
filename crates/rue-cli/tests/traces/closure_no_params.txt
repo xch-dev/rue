@@ -16,6 +16,5 @@ error: clvm raise
     x = 3
   closure_no_params.rue:12:5, in run (inlined)
     f() * 2
-  closure_no_params.rue:5:9, in <lambda>
+  closure_no_params.rue:5:9, in <lambda> (inlined)
     assert x > 5;
-    x = 3

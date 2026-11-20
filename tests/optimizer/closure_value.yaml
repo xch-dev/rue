@@ -24,9 +24,9 @@ tests:
   byte_cost: 1812000
   total_cost: 1814271
 - name: called_with_its_captures
-  program: (a (q 2 (q 2 (c (q . 2) (c (q 1 16 (* 23 11) 2) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ()))) ()))) ()))) (q 5)) (c (c (a 2 (q . 3)) (a 2 (q . 4))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 (q 2 27 (c 2 (q . 5))) (c (c (q . 2) (c (c (q . 1) (q 16 (* 23 11) 2)) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 9) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (c (a 4 (q . 3)) (a 4 (q . 4))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at closure_value.rue:5:5"))) 1) (q 2 2 (c 3 ()))) ()))
-  output: "19"
-  runtime_cost: 6066
-  byte_cost: 2484000
-  total_cost: 2490066
+  program: (a (q 2 (q 2 13 (c (c (q . 2) (c (q 1 16 (* 23 11) 2) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 9) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ()))) ()))) ()))) (q . 5))) (c (c (a 4 (q . 3)) (a 4 (q . 4))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) (q 16 (a 2 (c 3 ())) (a 2 (q ())))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 27 (c 2 (q . 5))) (c (c (q . 2) (c (c (q . 1) (q 16 (* 23 11) 2)) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 9) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (c (a 4 (q . 3)) (a 4 (q . 4))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at closure_value.rue:5:5"))) 1) (q 16 (a 2 (c 3 ())) (a 2 (c () ())))) ()))
+  output: "23"
+  runtime_cost: 9722
+  byte_cost: 2964000
+  total_cost: 2973722

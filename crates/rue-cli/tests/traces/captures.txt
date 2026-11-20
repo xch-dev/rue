@@ -17,9 +17,7 @@ error: clvm raise
     check(10) + helper(x / y, x)
     x = 3
     y = 1
-  captures.rue:9:9, in <lambda>
+  captures.rue:9:9, in <lambda> (inlined)
     assert item < limit;
-    x = 3
-    item = 10
 ===== release: (30 1) =====
 output: 12

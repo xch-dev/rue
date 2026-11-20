@@ -1,0 +1,275 @@
+// A call to a lambda that's known where it's called is inlined, rather than building the closure
+// and running it.
+
+inline fn apply(f: fn(value: Int) -> Int, value: Int) -> Int {
+    f(value)
+}
+
+inline fn apply_rest(
+    f: fn(first: Int, ...rest: List<Int>) -> List<Int>,
+    list: List<Int>,
+) -> List<Int> {
+    f(1, ...list)
+}
+
+inline fn apply_nested(f: fn(g: fn(value: Int) -> Int) -> Int, x: Int) -> Int {
+    f(fn(y: Int) => x + y)
+}
+
+inline fn apply_twice(f: fn(value: Int) -> Int, value: Int) -> Int {
+    f(f(value))
+}
+
+inline fn twice(f: fn(value: Int) -> Int) -> fn(value: Int) -> Int {
+    fn(value: Int) => f(f(value))
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+// Inlined, and then folded to 21
+test fn bound() -> Int {
+    let f = fn(value: Int) => value * 3;
+    f(7)
+}
+
+// Inlined, with the capture read from the environment
+test fn captured() -> Int {
+    let k = positive(5);
+    apply(fn(value: Int) => value * k, 7)
+}
+
+// Inlined, with the spread argument as the spread parameter
+test fn spread_argument() -> List<Int> {
+    let list = [positive(2), 3];
+    let f = fn(first: Int, ...rest: List<Int>) => [first, ...rest];
+    f(1, ...list)
+}
+
+// The argument is still evaluated, so the assertion still fails
+test fn unused_argument_is_evaluated() -> Int {
+    let f = fn(value: Int) => 42;
+    f(positive(-1))
+}
+
+// The closure that `twice` returns is built, since it's called outside of `twice`, but the call to
+// the lambda that's passed to it can't be inlined there, since its capture isn't static
+test fn returned_closure() -> Int {
+    let k = positive(2);
+    twice(fn(value: Int) => value * k)(3)
+}
+
+// Not inlined, since the binding is used twice, so the lambda is built once
+test fn used_twice() -> Int {
+    let k = positive(2);
+    let f = fn(value: Int) => value * k;
+    f(1) + f(2)
+}
+
+// Inlined through a cast to another function type
+test fn cast() -> Any {
+    let f = fn(value: Int) => value * 3;
+    let g = f as fn(value: Int) -> Any;
+    g(7)
+}
+
+// Inlined through an inline function's parameter, with the spread argument as the spread parameter
+test fn spread_through_inline_call() -> List<Int> {
+    apply_rest(fn(first: Int, ...rest: List<Int>) => [first, ...rest], [positive(2), 3])
+}
+
+// The outer lambda isn't inlined into the call of `apply` it's passed to, since it calls `apply`
+// itself, and the inner call's parameters would hide the outer call's from it. Lowering it against
+// the inner call's arguments would never finish. It's run as a closure instead, with the inner
+// lambda inlined in it.
+test fn nested_calls_of_the_same_function() -> Int {
+    let n = positive(3);
+    apply(fn(a: Int) => apply(fn(b: Int) => a + b, a), n)
+}
+
+// The `x` that the outer call's lambda adds is the outer call's (the 10), not the inner one's (1)
+test fn nested_lambda_sees_where_it_was_written() -> Int {
+    let n = positive(10);
+    apply_nested(
+        fn(h: fn(value: Int) -> Int) => apply_nested(fn(h2: fn(value: Int) -> Int) => h(1000), 1),
+        n,
+    )
+}
+
+// An argument whose parameter is referenced more than once is bound, so it's evaluated once
+test fn repeated_parameter() -> Int {
+    let n = positive(2);
+    let f = fn(value: Int) => value * value * value;
+    f(n * 5) + n
+}
+
+// An argument that's a value in the environment is substituted for each reference
+test fn repeated_trivial_parameter() -> Int {
+    let n = positive(2);
+    let f = fn(value: Int) => value * value * value;
+    f(n) + n
+}
+
+// So is a small static argument, which is folded where it's used
+test fn repeated_small_static_parameter() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f((1, 2))
+}
+
+// A large static argument is bound, rather than quoted for each reference
+test fn repeated_large_static_parameter() -> Bytes32 {
+    let suffix = positive(2) as Bytes;
+    let f = fn(value: Bytes) => sha256(value + suffix + value);
+    f("a string that's longer than a few bytes")
+}
+
+// A small static struct is substituted for each reference too
+test fn repeated_small_static_struct() -> Int {
+    let f = fn(value: Point) => value.x + value.y;
+    f(Point { x: 1, y: 2 })
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// An argument whose atoms take up 8 bytes is substituted
+test fn repeated_static_at_the_limit() -> Bytes {
+    let suffix = positive(2) as Bytes;
+    let f = fn(value: Bytes) => value + suffix + value;
+    f("1234567")
+}
+
+// But one with 9 is bound
+test fn repeated_static_over_the_limit() -> Bytes {
+    let suffix = positive(2) as Bytes;
+    let f = fn(value: Bytes) => value + suffix + value;
+    f("12345678")
+}
+
+// So is a large integer
+test fn repeated_large_int() -> Int {
+    let n = positive(2);
+    let f = fn(value: Int) => value * n + value;
+    f(12345678901234567890)
+}
+
+// The same static constant can be used more than once in a static argument
+test fn repeated_static_with_a_shared_constant() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f((ONE, ONE))
+}
+
+inline const ONE: Int = 1;
+
+// A call to a lambda with a static body and no arguments is folded, so it's substituted too
+test fn repeated_static_call() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    let make = fn() => (1, 2);
+    f(make())
+}
+
+// But not one whose body uses its parameter, which is evaluated once
+test fn repeated_call_with_runtime_argument() -> Int {
+    let n = positive(2);
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    let make = fn(value: Int) => (value, 2);
+    f(make(n)) + n
+}
+
+// Or one with an argument that isn't static, even if the body doesn't use it
+test fn repeated_call_ignoring_runtime_argument() -> Int {
+    let n = positive(2);
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    let make = fn(value: Int) => (1, 2);
+    f(make(n * 3)) + n
+}
+
+// A call to a lambda whose body is static with its static arguments is folded too
+test fn repeated_call_with_static_argument() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    let make = fn(value: Int) => (value, 2);
+    f(make(1))
+}
+
+// But an argument that the body uses twice is counted twice, so this one is bound
+test fn repeated_call_duplicating_its_argument() -> Bytes {
+    let suffix = positive(2) as Bytes;
+    let f = fn(value: (Bytes, Bytes)) => value.first + suffix + value.rest + value.first;
+    let make = fn(value: Bytes) => (value, value);
+    f(make("12345"))
+}
+
+// So is a call to a function that's inlined, such as `unchecked_cast`
+test fn repeated_unchecked_cast() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(unchecked_cast((1, 2)))
+}
+
+// A function that's called once is inlined, so a call to it is folded through its body, which is a
+// block with no statements
+test fn repeated_named_function_call() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(pair_with_two(3))
+}
+
+fn pair_with_two(value: Int) -> (Int, Int) {
+    (value, 2)
+}
+
+// Including a call nested in an argument of a call to the same function, which is checked where
+// it's written
+test fn repeated_nested_calls_of_the_same_function() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(unchecked_cast((unchecked_cast::<Int>(1), 2)))
+}
+
+// And a field of a static value
+test fn repeated_field_of_a_static_value() -> Int {
+    let pair = ((1, 2), 3);
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(pair.first)
+}
+
+// A lambda isn't inlined in the argument of a call to itself, which is built as a closure
+test fn not_inlined_into_its_own_argument() -> Int {
+    let n = positive(10);
+    apply_twice(fn(value: Int) => value * 2 + 1, n)
+}
+
+// The lambda that the outer call of `with_callback` passes to `h` is `fn() => y` with `y = 1`, so
+// `m1()` is 1, even though `m1` is called inside the second call of the same lambda, with `y = 2`
+test fn lambda_from_an_outer_call_of_the_same_lambda() -> Int {
+    with_callback(fn(y: Int, h: fn(m: fn() -> Int) -> Int) => h(fn() => y))
+}
+
+inline fn with_callback(g: fn(y: Int, h: fn(m: fn() -> Int) -> Int) -> Int) -> Int {
+    g(1, fn(m1: fn() -> Int) => g(2, fn(m2: fn() -> Int) => m1() * 10 + m2()))
+}
+
+// A lambda passed to an inline function and to a function that runs it is inlined where it's
+// called directly, and built as a closure for the other function, which doesn't see the inlined
+// call's arguments for its parameters
+test fn closure_built_inside_its_inlined_call() -> Int {
+    run_both(fn(first: Int, second: Int) => first + second)
+}
+
+inline fn run_both(f: fn(first: Int, second: Int) -> Int) -> Int {
+    f(1, run_pair(f, 5))
+}
+
+fn run_pair(f: fn(first: Int, second: Int) -> Int, value: Int) -> Int {
+    f(value, value)
+}
+
+// The same holds for a function called by name, whose call is inlined around its own closure
+test fn named_closure_built_inside_its_inlined_call() -> Int {
+    add(1, run_pair(add, 5))
+}
+
+inline fn add(first: Int, second: Int) -> Int {
+    first + second
+}

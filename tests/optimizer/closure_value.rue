@@ -29,6 +29,7 @@ test fn called_with_its_captures() -> Int {
     run(f, 5)
 }
 
+// It calls the closure twice, so it isn't inlined, and the closure is built and run
 fn run(f: fn(value: Int) -> Int, value: Int) -> Int {
-    f(value)
+    f(value) + f(0)
 }

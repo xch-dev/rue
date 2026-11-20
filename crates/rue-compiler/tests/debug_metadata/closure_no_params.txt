@@ -21,18 +21,15 @@ nodes:
       closure_no_params.rue:12:5-12:8  (a 1 ())
       closure_no_params.rue:12:11-12:12  (q . 2)
 ===== release =====
-program: (+ (* (a (c (q . 2) (c (q 1 2 (i (> 2 (q . 5)) (q . 2) (q 8)) 1) (c (c (q . 4) (c (c (q . 1) 2) (q ()))) ()))) ()) (q . 2)) (q . 1))
-sidecar: 1552 bytes
+program: (+ (* (a (i (> 2 (q . 5)) (q . 2) (q 8)) 1) (q . 2)) (q . 1))
+sidecar: 896 bytes
 files:
   closure_no_params.rue
 functions:
   0: main (x@2: integer . _)
-  1: <lambda> (x@2: integer . _)
 nodes:
-  closure_no_params.rue:8:5-8:19 fn main  (+ (* (a (c (q . 2) (c (q 1 2 (i (> 2 (q . 5)) (q . 2) (q...
-    closure_no_params.rue:12:5-12:12 label "run (inlined)"  (* (a (c (q . 2) (c (q 1 2 (i (> 2 (q . 5)) (q . 2) (q 8)...
-      closure_no_params.rue:12:5-12:8  (a (c (q . 2) (c (q 1 2 (i (> 2 (q . 5)) (q . 2) (q 8)) 1...
-        closure_no_params.rue:4:17-7:6 label "main"  (c (q . 2) (c (q 1 2 (i (> 2 (q . 5)) (q . 2) (q 8)) 1) (...
-          closure_no_params.rue:5:9-5:22 fn <lambda>  (a (i (> 2 (q . 5)) (q . 2) (q 8)) 1)
-            closure_no_params.rue:5:16-5:21  (> 2 (q . 5))
-              closure_no_params.rue:5:20-5:21  (q . 5)
+  closure_no_params.rue:8:5-8:19 fn main  (+ (* (a (i (> 2 (q . 5)) (q . 2) (q 8)) 1) (q . 2)) (q ....
+    closure_no_params.rue:12:5-12:12 label "run (inlined)"  (* (a (i (> 2 (q . 5)) (q . 2) (q 8)) 1) (q . 2))
+      closure_no_params.rue:5:9-5:22 label "<lambda> (inlined)"  (a (i (> 2 (q . 5)) (q . 2) (q 8)) 1)
+        closure_no_params.rue:5:16-5:21  (> 2 (q . 5))
+          closure_no_params.rue:5:20-5:21  (q . 5)

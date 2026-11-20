@@ -7,7 +7,7 @@ pub use debug::*;
 
 use std::{
     cell::{OnceCell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     iter,
     path::{Path, PathBuf},
     rc::Rc,
@@ -20,9 +20,9 @@ use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
-    BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, ExprStatement,
-    FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError,
-    Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
+    BinaryOp, BindingSymbol, Block, ConstantSymbol, Database, DependencyGraph, Environment,
+    ExprStatement, FieldAccess, FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId,
+    IfStatement, PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
 };
 
 use crate::analysis::{FunctionFailure, may_fail};
@@ -61,6 +61,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     arena: &'a mut Arena<Lir>,
     graph: &'g DependencyGraph,
     inline_symbols: Vec<HashMap<SymbolId, HirId>>,
+    /// The functions whose calls are being inlined, from the outermost to the innermost, which
+    /// keeps a lambda from being inlined into a call of a function it depends on (see
+    /// [`Self::known_lambda`]).
+    inline_functions: Vec<SymbolId>,
     options: CompilerOptions,
     main: SymbolId,
     base_path: PathBuf,
@@ -113,6 +117,11 @@ pub struct TooDeep {
 /// Real programs stay far below this.
 pub const MAX_LOWERING_DEPTH: usize = 512;
 
+/// The most bytes of atoms that a static argument can have and still be substituted for each
+/// reference to its parameter, rather than bound (see [`Lowerer::is_trivial_argument`]). Binding a
+/// value costs about this much more than quoting it again.
+const MAX_REPEATED_STATIC_SIZE: usize = 8;
+
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     pub fn new(
         db: &'d mut Database,
@@ -127,6 +136,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             arena,
             graph,
             inline_symbols: Vec::new(),
+            inline_functions: Vec::new(),
             options,
             main,
             base_path,
@@ -318,11 +328,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         // Inline arguments are lowered in the caller's environment, so the function body
-        // can only reach them through its captures, unless they are static values
+        // can only reach them through its captures, unless they are static values. The ones for
+        // the function's own parameters are from a call to it that's inlined around this one, so
+        // they aren't its parameters' values here. Those of functions defined in it are left out
+        // too, so that nothing inside the closure sees an inlined call of code from outside it.
         let static_arguments = self
             .inline_symbols
             .iter()
             .flat_map(HashMap::keys)
+            .filter(|&&parameter| !self.graph.is_defined_in(parameter, symbol))
             .filter_map(|&symbol| {
                 let hir = self.inline_argument(symbol)?;
                 self.is_static_hir(hir).then_some((symbol, hir))
@@ -728,35 +742,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_function_call(&mut self, env: &Environment, call: FunctionCall) -> LirId {
+        if let Some(callee) = self.inlined_callee(call.function)
+            && let Symbol::Function(function) = self.db.symbol(callee).clone()
+        {
+            let args = self.call_arguments(&function, call);
+            return self.lower_inline_call(env, callee, &function, args);
+        }
+
         if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(call.function)).clone()
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
-            let mut args = HashMap::new();
-            let mut arg_iter = call.args.into_iter();
-
-            for (&parameter, arg) in function.fixed_parameters().iter().zip(&mut arg_iter) {
-                args.insert(parameter, arg);
-            }
-
-            if !function.nil_terminated {
-                let mut last_arg = self.db.alloc_hir(Hir::Nil);
-
-                for (i, arg) in arg_iter.rev().enumerate() {
-                    if i == 0 && !call.nil_terminated {
-                        last_arg = arg;
-                    } else {
-                        last_arg = self.db.alloc_hir(Hir::Pair(arg, last_arg));
-                    }
-                }
-
-                if let Some(last_param) = function.parameters.last() {
-                    args.insert(*last_param, last_arg);
-                }
-            }
-
-            if self.should_inline(symbol) {
-                return self.lower_inline_call(env, &function, args);
-            }
+            let args = self.call_arguments(&function, call);
 
             let (capture_groups, param_group) = self.function_groups(symbol, &function);
 
@@ -811,6 +807,240 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         self.arena.alloc(Lir::Run(function, env))
     }
 
+    /// The argument for each of the function's parameters. Type checking ensures that the call
+    /// passes what the parameters take, and the arguments for a spread parameter are put in a
+    /// list.
+    fn call_arguments(
+        &mut self,
+        function: &FunctionSymbol,
+        call: FunctionCall,
+    ) -> HashMap<SymbolId, HirId> {
+        let mut args = HashMap::new();
+        let mut arg_iter = call.args.into_iter();
+
+        for (&parameter, arg) in function.fixed_parameters().iter().zip(&mut arg_iter) {
+            args.insert(parameter, arg);
+        }
+
+        if !function.nil_terminated {
+            let mut last_arg = self.db.alloc_hir(Hir::Nil);
+
+            for (i, arg) in arg_iter.rev().enumerate() {
+                if i == 0 && !call.nil_terminated {
+                    last_arg = arg;
+                } else {
+                    last_arg = self.db.alloc_hir(Hir::Pair(arg, last_arg));
+                }
+            }
+
+            if let Some(last_param) = function.parameters.last() {
+                args.insert(*last_param, last_arg);
+            }
+        }
+
+        args
+    }
+
+    /// The function that a call to the callee is inlined into: a function called by name that's
+    /// inlined (see [`Self::should_inline`]), or a lambda that's known where it's called (see
+    /// [`Self::known_lambda`]), rather than building the closure and running it.
+    fn inlined_callee(&self, callee: HirId) -> Option<SymbolId> {
+        if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(callee))
+            && let Symbol::Function(_) = self.db.symbol(*symbol)
+        {
+            return self.should_inline(*symbol).then_some(*symbol);
+        }
+
+        self.known_lambda(callee)
+    }
+
+    /// The lambda that the callee is, if it's a lambda expression, either directly or through
+    /// bindings that are inlined and the arguments of calls that are inlined, and its body can be
+    /// lowered where it's called. Everything it captures is in scope there, since the arguments
+    /// of inlined calls are lowered in the caller's environment, and a function that's lowered
+    /// within an inlined call only keeps the arguments that are static (see
+    /// [`Self::lower_function`]).
+    ///
+    /// Parameters are substituted with the innermost argument for them, so a function must not be
+    /// inlined inside a call to itself while code written in the outer call can still be lowered,
+    /// since the inner call's parameters would hide the outer call's from that code. Calls by name
+    /// only nest through the arguments of the outer call, which are the caller's code, as in
+    /// `twice(f, twice(f, x))`. But a lambda's code can be reached from inside a call it makes:
+    /// the lambda can call a function whose call it was passed to, or pass a lambda it creates to
+    /// an argument that calls the same lambda again. So a lambda isn't inlined inside a call of
+    /// itself or of a function it depends on, and is built as a closure instead.
+    ///
+    /// Like the automatic inlining of functions and bindings, this is only done when
+    /// `auto_inline` is enabled.
+    fn known_lambda(&self, mut hir: HirId) -> Option<SymbolId> {
+        if !self.options.auto_inline {
+            return None;
+        }
+
+        let mut seen = HashSet::new();
+
+        let lambda = loop {
+            match self.db.hir(self.db.without_casts(hir)) {
+                Hir::Lambda(symbol) => break *symbol,
+                Hir::Reference(symbol) if seen.insert(*symbol) => {
+                    if let Some(arg) = self.inline_argument(*symbol) {
+                        hir = arg;
+                    } else if let Symbol::Binding(binding) = self.db.symbol(*symbol)
+                        && self.should_inline(*symbol)
+                    {
+                        hir = binding.value.hir;
+                    } else {
+                        return None;
+                    }
+                }
+                _ => return None,
+            }
+        };
+
+        if self.inline_functions.is_empty() {
+            return Some(lambda);
+        }
+
+        let dependencies = self.dependencies(lambda, false);
+
+        let reenters = self
+            .inline_functions
+            .iter()
+            .any(|function| *function == lambda || dependencies.contains(function));
+
+        (!reenters).then_some(lambda)
+    }
+
+    /// Whether the argument is no more expensive to evaluate at each reference than to bind:
+    /// it's a value that's in the environment, or a small static value.
+    fn is_trivial_argument(&self, hir: HirId) -> bool {
+        if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(hir))
+            && !self.should_inline(*symbol)
+        {
+            return true;
+        }
+
+        let mut budget = MAX_REPEATED_STATIC_SIZE;
+        self.is_small_static(hir, &mut budget, &mut HashSet::new(), &mut Vec::new())
+    }
+
+    /// Whether the value is static and its atoms take up no more than the budget, which is
+    /// reduced by their size. Such a value is quoted where it's referenced, or folded with what
+    /// uses it. This follows the values that are substituted (see [`Self::substituted_value`]),
+    /// fields of static values, and calls that are inlined (see [`Self::inlined_callee`]) whose
+    /// arguments are static and whose body is static with them, such as `fn() => (1, 2)` or
+    /// `unchecked_cast((1, 2))`. Each argument of such a call is checked once, in the caller's
+    /// context, and its size is kept in `substitutions` and counted at each reference to its
+    /// parameter in the body. The symbols that are being followed are kept in `path`, so that a
+    /// value is never followed back into itself. This can't happen today, since bindings don't
+    /// refer to themselves and functions that call themselves aren't inlined, but it keeps the
+    /// walk finite if that changes.
+    fn is_small_static(
+        &self,
+        hir: HirId,
+        budget: &mut usize,
+        path: &mut HashSet<SymbolId>,
+        substitutions: &mut Vec<(SymbolId, usize)>,
+    ) -> bool {
+        let mut take = |size: usize| match budget.checked_sub(size) {
+            Some(rest) => {
+                *budget = rest;
+                true
+            }
+            None => false,
+        };
+
+        match self.db.hir(hir) {
+            Hir::Nil | Hir::Bool(_) => take(1),
+            Hir::Int(value) => take(value.bits().div_ceil(8) as usize + 1),
+            Hir::Bytes(bytes) => take(bytes.len() + 1),
+            Hir::String(string) => take(string.len() + 1),
+            Hir::Pair(first, rest) => {
+                self.is_small_static(*first, budget, path, substitutions)
+                    && self.is_small_static(*rest, budget, path, substitutions)
+            }
+            Hir::List(list) => list
+                .items
+                .iter()
+                .all(|&item| self.is_small_static(item, budget, path, substitutions)),
+            Hir::Struct(initializer) => initializer
+                .fields
+                .iter()
+                .all(|field| self.is_small_static(field.value, budget, path, substitutions)),
+            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => {
+                self.is_small_static(*hir, budget, path, substitutions)
+            }
+            // A field of a static value is folded, and is no larger than the value
+            Hir::FieldAccess(FieldAccess {
+                value,
+                kind: FieldKind::Path(_),
+                ..
+            }) => self.is_small_static(*value, budget, path, substitutions),
+            Hir::Const(expr) => expr
+                .result
+                .is_some_and(|result| self.is_small_static(result, budget, path, substitutions)),
+            Hir::Guard(_) => self.is_static_hir(hir) && take(1),
+            Hir::Block(Block {
+                statements,
+                body: Some(body),
+            }) if statements.is_empty() => self.is_small_static(*body, budget, path, substitutions),
+            Hir::Reference(symbol) => {
+                if let Some(&(_, size)) = substitutions
+                    .iter()
+                    .rev()
+                    .find(|(parameter, _)| parameter == symbol)
+                {
+                    return take(size);
+                }
+
+                if !path.insert(*symbol) {
+                    return false;
+                }
+
+                let small = self
+                    .substituted_value(*symbol)
+                    .is_some_and(|value| self.is_small_static(value, budget, path, substitutions));
+                path.remove(symbol);
+                small
+            }
+            Hir::FunctionCall(call) => {
+                let Some(callee) = self.inlined_callee(call.function) else {
+                    return false;
+                };
+                let Symbol::Function(function) = self.db.symbol(callee) else {
+                    return false;
+                };
+
+                // Only calls that pass each parameter its own argument
+                if !function.nil_terminated
+                    || !call.nil_terminated
+                    || function.parameters.len() != call.args.len()
+                {
+                    return false;
+                }
+
+                let mut sizes = Vec::with_capacity(call.args.len());
+
+                for &arg in &call.args {
+                    let mut remaining = *budget;
+
+                    if !self.is_small_static(arg, &mut remaining, path, substitutions) {
+                        return false;
+                    }
+
+                    sizes.push(*budget - remaining);
+                }
+
+                let frame = substitutions.len();
+                substitutions.extend(function.parameters.iter().copied().zip(sizes));
+                let small = self.is_small_static(function.body, budget, path, substitutions);
+                substitutions.truncate(frame);
+                small
+            }
+            _ => false,
+        }
+    }
+
     /// Lowers a call to a function that's inlined, by substituting the arguments for its
     /// parameters.
     ///
@@ -818,10 +1048,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// used. Otherwise, an argument that may fail is only substituted if the body always
     /// evaluates its parameter. If the parameter is never referenced, the argument is evaluated
     /// for its effect instead, and if it's only referenced some of the time, it's bound before
-    /// the body like a let statement, so that it's still evaluated at the call.
+    /// the body like a let statement, so that it's still evaluated at the call. An argument whose
+    /// parameter is referenced more than once is bound too, so that it's only evaluated once,
+    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]). Only
+    /// lambdas have such parameters here, since functions with them aren't inlined automatically
+    /// (see [`Self::should_inline`]).
     fn lower_inline_call(
         &mut self,
         env: &Environment,
+        symbol: SymbolId,
         function: &FunctionSymbol,
         mut args: HashMap<SymbolId, HirId>,
     ) -> LirId {
@@ -834,7 +1069,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     continue;
                 };
 
-                if !may_fail(self, arg) || self.parameter_always_evaluated(function.body, parameter)
+                let repeated =
+                    self.graph.references(parameter) > 1 && !self.is_trivial_argument(arg);
+
+                if !repeated
+                    && (!may_fail(self, arg)
+                        || self.parameter_always_evaluated(function.body, parameter))
                 {
                     continue;
                 }
@@ -859,15 +1099,20 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         // The body has no frame of its own, so it's named after the function, which tells a
         // debugger that it's running that function. The arguments are the caller's code, so
         // they're named after the caller where they're substituted (see `lower_substitution`).
-        let owner = self.debug.as_mut().and_then(|debug| {
+        let owner = self.debug.as_mut().map(|debug| {
             let caller = debug.owner();
             debug.inline_owners.push(caller);
-            let name = function.name.as_ref()?;
-            Some(debug.label(format!("{} (inlined)", name.text())))
+            let name = function
+                .name
+                .as_ref()
+                .map_or("<lambda>", |name| name.text());
+            debug.label(format!("{name} (inlined)"))
         });
 
         self.inline_symbols.push(args);
+        self.inline_functions.push(symbol);
         let mut result = self.with_owner(owner, |this| this.lower_hir(&body_env, function.body));
+        self.inline_functions.pop().unwrap();
         self.inline_symbols.pop().unwrap();
 
         if let Some(debug) = &mut self.debug {
@@ -1450,22 +1695,29 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 guard.value_uses() == 0 && !self.is_lowered_guard_effect(hir, guard.value)
             }
             Hir::Const(expr) => expr.result.is_some_and(|result| self.is_static_hir(result)),
-            Hir::Reference(symbol) => {
-                if let Some(hir) = self.inline_argument(*symbol) {
-                    return self.is_static_hir(hir);
-                }
-
-                if !self.should_inline(*symbol) {
-                    return false;
-                }
-
-                match self.db.symbol(*symbol) {
-                    Symbol::Constant(constant) => self.is_static_hir(constant.value.hir),
-                    Symbol::Binding(binding) => self.is_static_hir(binding.value.hir),
-                    _ => false,
-                }
-            }
+            Hir::Reference(symbol) => self
+                .substituted_value(*symbol)
+                .is_some_and(|value| self.is_static_hir(value)),
             _ => false,
+        }
+    }
+
+    /// The value that's lowered in place of a reference to the symbol, if it's substituted: the
+    /// argument of an inlined call for its parameter, or the value of a constant or binding
+    /// that's inlined.
+    fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
+        if let Some(hir) = self.inline_argument(symbol) {
+            return Some(hir);
+        }
+
+        if !self.should_inline(symbol) {
+            return None;
+        }
+
+        match self.db.symbol(symbol) {
+            Symbol::Constant(constant) => Some(constant.value.hir),
+            Symbol::Binding(binding) => Some(binding.value.hir),
+            _ => None,
         }
     }
 
