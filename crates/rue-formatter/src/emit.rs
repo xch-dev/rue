@@ -292,6 +292,10 @@ impl<'a> Formatter<'a> {
                 }
                 docs.push(self.delimited(index, close)?);
                 close
+            } else if facts.is_omitted_comma() {
+                // The comma is left out, but the comments around it are kept
+                self.consumed_tokens += 1;
+                index
             } else {
                 docs.push(self.token(index));
                 index
@@ -381,6 +385,7 @@ impl<'a> Formatter<'a> {
         let facts = self.layout.facts(open);
         let style = facts.delimiter_style.unwrap_or(DelimiterStyle::Group);
         let supports_trailing_comma = facts.supports_trailing_comma();
+        let omits_trailing_comma = facts.omits_trailing_comma();
         let is_generic = facts.is_generic();
         let open_doc = self.token(open);
         let close_doc = self.token(close);
@@ -443,13 +448,13 @@ impl<'a> Formatter<'a> {
             self.consumed_tokens += 1;
             Doc::concat([
                 leading,
-                if suppress_broken_comma {
+                if suppress_broken_comma || omits_trailing_comma {
                     without_comma
                 } else {
                     Doc::if_break(Doc::text(","), without_comma)
                 },
             ])
-        } else if supports_trailing_comma && !suppress_broken_comma {
+        } else if supports_trailing_comma && !suppress_broken_comma && !omits_trailing_comma {
             Doc::if_break(Doc::text(","), Doc::Nil)
         } else {
             Doc::Nil

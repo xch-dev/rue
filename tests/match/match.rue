@@ -47,7 +47,7 @@ test fn wildcard(shape: Shape) -> Int {
         _ => match shape {
             Circle => shape.radius,
             Square => shape.side,
-        },
+        }
     }
 }
 
@@ -147,11 +147,11 @@ test fn block_arms(value: Int | nil) -> Int {
     match value {
         nil => {
             raise "missing";
-        },
+        }
         Int => {
             let doubled = value * 2;
             doubled + 1
-        },
+        }
     }
 }
 
@@ -222,5 +222,18 @@ test fn nil_before_int(value: Int | nil) -> Int {
     match value {
         nil => -1,
         Int => value,
+    }
+}
+
+// The comma after an arm that ends with a brace can be left out, and the arm after it isn't read as
+// part of its value
+test fn arms_without_commas(value: (Int, Int) | Int) -> Int {
+    match value {
+        Int => { value }
+        (Int, Int) => if value.first > value.rest {
+            value.first
+        } else {
+            value.rest
+        }
     }
 }

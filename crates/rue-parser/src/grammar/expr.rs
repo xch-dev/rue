@@ -293,8 +293,9 @@ fn if_expr(
     }
 }
 
-/// A `match` expression, such as `match value { Int => 1, _ => 2 }`. Each arm's pattern is a type,
-/// and the arms are separated by commas like the fields of a struct.
+/// A `match` expression, such as `match value { Int => 1, _ => 2 }`. Each arm's pattern is a type.
+/// The arms are separated by commas, except that an arm whose value is a block, `if` or `match`
+/// ends at its closing brace, so the comma after it can be left out.
 fn match_expr(p: &mut Parser, checkpoint: Checkpoint) {
     p.start_at(checkpoint, SyntaxKind::MatchExpr);
     p.expect(T![match]);
@@ -311,25 +312,48 @@ fn match_expr(p: &mut Parser, checkpoint: Checkpoint) {
     );
     if p.expect(T!['{']) {
         delimited_list(p, T!['}'], |p| {
-            match_arm(p);
+            let mut ends_with_brace = match_arm(p);
 
-            // An arm on the next line most likely only needs the comma, so it's parsed as the next
-            // arm rather than skipped as part of the error
-            while !p.at(T![,]) && !p.at(T!['}']) && p.at_line_start() && at_type_start(p) {
-                p.expect(T![,]);
-                match_arm(p);
+            while !p.at(T![,]) && !p.at(T!['}']) && at_type_start(p) {
+                if !ends_with_brace {
+                    // An arm on the next line most likely only needs the comma, so it's parsed as
+                    // the next arm rather than skipped as part of the error
+                    if !p.at_line_start() {
+                        break;
+                    }
+                    p.expect(T![,]);
+                }
+                ends_with_brace = match_arm(p);
             }
         });
     }
     p.finish();
 }
 
-fn match_arm(p: &mut Parser) {
+/// Parses a match arm, and returns whether its value is a block, `if` or `match`, which ends at its
+/// closing brace rather than continuing with an operator, so no comma is needed after it.
+fn match_arm(p: &mut Parser) -> bool {
     p.start(SyntaxKind::MatchArm);
     ty(p);
     p.expect(T![=>]);
-    expr(p);
+
+    let checkpoint = p.checkpoint();
+    let ends_with_brace = if p.at_quiet(T!['{']) {
+        p.nested(block);
+        true
+    } else if p.at_quiet(T![if]) || p.at_quiet(T![inline]) && p.lookahead(1) == T![if] {
+        p.nested(|p| if_expr(p, checkpoint, false, true));
+        true
+    } else if p.at_quiet(T![match]) {
+        p.nested(|p| match_expr(p, checkpoint));
+        true
+    } else {
+        expr(p);
+        false
+    };
+
     p.finish();
+    ends_with_brace
 }
 
 fn path_expr(p: &mut Parser, checkpoint: Checkpoint) {
@@ -754,7 +778,7 @@ mod tests {
                       Integer@21..22 "1"
                   Comma@22..23 ","
                   Whitespace@23..24 " "
-                  MatchArm@24..32
+                  MatchArm@24..31
                     PathType@24..26
                       PathSegment@24..26
                         Ident@24..25 "_"
@@ -764,8 +788,106 @@ mod tests {
                     Block@29..31
                       OpenBrace@29..30 "{"
                       CloseBrace@30..31 "}"
-                    Whitespace@31..32 " "
+                  Whitespace@31..32 " "
                   CloseBrace@32..33 "}"
+            "#]],
+            expect![],
+        );
+
+        // An arm that ends with a brace doesn't need a comma, and the pair pattern after it isn't
+        // parsed as a call of the block
+        check(
+            expr,
+            "match x { nil => {} (Int, Int) => if a { 1 } else { 2 } _ => match y { _ => 3 } }",
+            expect![[r#"
+                MatchExpr@0..81
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 " "
+                  MatchArm@10..19
+                    LiteralType@10..13
+                      Nil@10..13 "nil"
+                    Whitespace@13..14 " "
+                    FatArrow@14..16 "=>"
+                    Whitespace@16..17 " "
+                    Block@17..19
+                      OpenBrace@17..18 "{"
+                      CloseBrace@18..19 "}"
+                  Whitespace@19..20 " "
+                  MatchArm@20..55
+                    PairType@20..30
+                      OpenParen@20..21 "("
+                      PathType@21..24
+                        PathSegment@21..24
+                          Ident@21..24 "Int"
+                      Comma@24..25 ","
+                      Whitespace@25..26 " "
+                      PathType@26..29
+                        PathSegment@26..29
+                          Ident@26..29 "Int"
+                      CloseParen@29..30 ")"
+                    Whitespace@30..31 " "
+                    FatArrow@31..33 "=>"
+                    Whitespace@33..34 " "
+                    IfExpr@34..55
+                      If@34..36 "if"
+                      Whitespace@36..37 " "
+                      PathExpr@37..39
+                        PathSegment@37..39
+                          Ident@37..38 "a"
+                          Whitespace@38..39 " "
+                      Block@39..44
+                        OpenBrace@39..40 "{"
+                        Whitespace@40..41 " "
+                        LiteralExpr@41..42
+                          Integer@41..42 "1"
+                        Whitespace@42..43 " "
+                        CloseBrace@43..44 "}"
+                      Whitespace@44..45 " "
+                      Else@45..49 "else"
+                      Whitespace@49..50 " "
+                      Block@50..55
+                        OpenBrace@50..51 "{"
+                        Whitespace@51..52 " "
+                        LiteralExpr@52..53
+                          Integer@52..53 "2"
+                        Whitespace@53..54 " "
+                        CloseBrace@54..55 "}"
+                  Whitespace@55..56 " "
+                  MatchArm@56..79
+                    PathType@56..58
+                      PathSegment@56..58
+                        Ident@56..57 "_"
+                        Whitespace@57..58 " "
+                    FatArrow@58..60 "=>"
+                    Whitespace@60..61 " "
+                    MatchExpr@61..79
+                      Match@61..66 "match"
+                      Whitespace@66..67 " "
+                      PathExpr@67..69
+                        PathSegment@67..69
+                          Ident@67..68 "y"
+                          Whitespace@68..69 " "
+                      OpenBrace@69..70 "{"
+                      Whitespace@70..71 " "
+                      MatchArm@71..78
+                        PathType@71..73
+                          PathSegment@71..73
+                            Ident@71..72 "_"
+                            Whitespace@72..73 " "
+                        FatArrow@73..75 "=>"
+                        Whitespace@75..76 " "
+                        LiteralExpr@76..77
+                          Integer@76..77 "3"
+                        Whitespace@77..78 " "
+                      CloseBrace@78..79 "}"
+                  Whitespace@79..80 " "
+                  CloseBrace@80..81 "}"
             "#]],
             expect![],
         );

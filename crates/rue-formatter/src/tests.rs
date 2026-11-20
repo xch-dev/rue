@@ -1707,11 +1707,11 @@ fn match_expressions() {
                     Int => {
                         let z = x + 1;
                         z
-                    },
+                    }
                 };
                 match { y } {
                     0 | 1 => y,
-                    _ => { y },
+                    _ => { y }
                 }
             }
         "#]],
@@ -1728,6 +1728,40 @@ fn match_arm_comments() {
                     // none
                     nil => 0, // zero
                     /* rest */ _ => x,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_commas_after_braces_are_removed() {
+    check(
+        "fn main(x: Int | nil, b: Bool) -> Int {\n    let y = match x {\n        nil => { 0 },\n        Int => {\n            let z = x + 1;\n            z\n        }, // after\n    };\n    let w = match b { true => if y > 0 { 1 } else { 2 } false => match x { nil => 0, _ => 1 } };\n    match x {\n        nil => {\n            1\n        } // comment\n        // own line\n        Int => x\n    }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil, b: Bool) -> Int {
+                let y = match x {
+                    nil => { 0 }
+                    Int => {
+                        let z = x + 1;
+                        z
+                    } // after
+                };
+                let w = match b {
+                    true => if y > 0 {
+                        1
+                    } else {
+                        2
+                    }
+                    false => match x {
+                        nil => 0,
+                        _ => 1,
+                    }
+                };
+                match x {
+                    nil => { 1 } // comment
+                    // own line
+                    Int => x,
                 }
             }
         "#]],

@@ -122,7 +122,7 @@ fn nested_arms(value: U) -> Int {
         _ => match value {
             B => 2,
             C => 3,
-        },
+        }
     }
 }
 

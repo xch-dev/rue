@@ -1,4 +1,6 @@
-use rue_ast::{AstDocument, AstExpr, AstModuleItem, AstNode, AstNodeKind};
+use rue_ast::{
+    AstDocument, AstExpr, AstMatchArm, AstMatchExpr, AstModuleItem, AstNode, AstNodeKind,
+};
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::{
@@ -50,22 +52,24 @@ pub struct TokenFacts {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-struct TokenFlags(u8);
+struct TokenFlags(u16);
 
 impl TokenFlags {
-    const TRAILING_COMMA: u8 = 1 << 0;
-    const GENERIC: u8 = 1 << 1;
-    const PREFIX_OPERATOR: u8 = 1 << 2;
-    const ATTACHED_OPENER: u8 = 1 << 3;
-    const ABSOLUTE_PATH_START: u8 = 1 << 4;
-    const CONDITIONAL_GROUP: u8 = 1 << 5;
-    const ATTRIBUTE_END: u8 = 1 << 6;
+    const TRAILING_COMMA: u16 = 1 << 0;
+    const GENERIC: u16 = 1 << 1;
+    const PREFIX_OPERATOR: u16 = 1 << 2;
+    const ATTACHED_OPENER: u16 = 1 << 3;
+    const ABSOLUTE_PATH_START: u16 = 1 << 4;
+    const CONDITIONAL_GROUP: u16 = 1 << 5;
+    const ATTRIBUTE_END: u16 = 1 << 6;
+    const OMITTED_COMMA: u16 = 1 << 7;
+    const OMIT_TRAILING_COMMA: u16 = 1 << 8;
 
-    fn insert(&mut self, flag: u8) {
+    fn insert(&mut self, flag: u16) {
         self.0 |= flag;
     }
 
-    fn contains(self, flag: u8) -> bool {
+    fn contains(self, flag: u16) -> bool {
         self.0 & flag != 0
     }
 }
@@ -97,6 +101,17 @@ impl TokenFacts {
 
     pub fn is_conditional_group(&self) -> bool {
         self.flags.contains(TokenFlags::CONDITIONAL_GROUP)
+    }
+
+    /// Whether the token is a comma that can be left out, so it isn't emitted, such as the one
+    /// after a match arm whose value is a block.
+    pub fn is_omitted_comma(&self) -> bool {
+        self.flags.contains(TokenFlags::OMITTED_COMMA)
+    }
+
+    /// Whether the list doesn't end in a comma, even when it's broken over several lines.
+    pub fn omits_trailing_comma(&self) -> bool {
+        self.flags.contains(TokenFlags::OMIT_TRAILING_COMMA)
     }
 }
 
@@ -193,6 +208,38 @@ fn analyze_nodes(
                     let id = token_id(&token, stream)?;
                     facts[id.index()].delimiter_style = Some(DelimiterStyle::Block);
                     facts[id.index()].flags.insert(TokenFlags::TRAILING_COMMA);
+
+                    let arms = AstMatchExpr::cast(node.clone())
+                        .map(|expr| expr.arms().collect::<Vec<_>>())
+                        .unwrap_or_default();
+                    if arms.last().is_some_and(AstMatchArm::ends_with_brace) {
+                        facts[id.index()]
+                            .flags
+                            .insert(TokenFlags::OMIT_TRAILING_COMMA);
+                    }
+                }
+            }
+            AstNodeKind::MatchArm => {
+                let arm = AstMatchArm::cast(node.clone()).ok_or_else(|| {
+                    FormatError::Internal("match arm node isn't a match arm".to_string())
+                })?;
+                let comma = arm.comma();
+
+                // Each arm is on a line of its own, whether or not it's followed by a comma
+                let boundary = match &comma {
+                    Some(comma) => Some(comma.clone()),
+                    None => significant_tokens(&node).last(),
+                };
+                if let Some(boundary) = boundary {
+                    let id = token_id(&boundary, stream)?;
+                    facts[id.index()].item_boundary = Some(ItemBoundary::Block);
+                }
+
+                if arm.ends_with_brace()
+                    && let Some(comma) = comma
+                {
+                    let id = token_id(&comma, stream)?;
+                    facts[id.index()].flags.insert(TokenFlags::OMITTED_COMMA);
                 }
             }
             AstNodeKind::StructInitializerExpr | AstNodeKind::StructBinding => {
@@ -329,8 +376,7 @@ fn analyze_nodes(
             | AstNodeKind::FieldAccessExpr
             | AstNodeKind::NamedBinding
             | AstNodeKind::ListBindingItem
-            | AstNodeKind::StructFieldBinding
-            | AstNodeKind::MatchArm => {}
+            | AstNodeKind::StructFieldBinding => {}
             AstNodeKind::Attribute => {
                 for token in node
                     .children_with_tokens()

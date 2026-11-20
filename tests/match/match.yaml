@@ -174,3 +174,11 @@ tests:
   runtime_cost: 277
   byte_cost: 264000
   total_cost: 264277
+- name: arms_without_commas
+  program: (a (i (l 2) (q 2 (i (> 4 6) (q . 4) (q . 6)) 1) (q . 2)) 1)
+  debug_program: (a (i (not (l 2)) (q . 2) (q 2 (i (> (f 2) (r 2)) (q 5 2) (q 6 2)) 1)) 1)
+  solution: ((3 . 7))
+  output: "7"
+  runtime_cost: 1145
+  byte_cost: 564000
+  total_cost: 565145

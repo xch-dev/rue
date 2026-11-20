@@ -837,6 +837,32 @@ impl AstMatchArm {
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }
+
+    /// Whether the arm's value is a block, `if` or `match`, which ends at its closing brace, so no
+    /// comma is needed after the arm.
+    pub fn ends_with_brace(&self) -> bool {
+        matches!(
+            self.expr(),
+            Some(AstExpr::Block(_) | AstExpr::IfExpr(_) | AstExpr::MatchExpr(_))
+        )
+    }
+
+    /// The comma after the arm, if there is one.
+    pub fn comma(&self) -> Option<SyntaxToken> {
+        let mut next = self.syntax().next_sibling_or_token();
+        while let Some(element) = next {
+            if !element.kind().is_trivia() {
+                return element.into_token().filter(|token| token.kind() == T![,]);
+            }
+            next = element.next_sibling_or_token();
+        }
+        None
+    }
+
+    /// Whether the comma after the arm can be left out, so the formatter removes it.
+    pub fn has_optional_comma(&self) -> bool {
+        self.ends_with_brace() && self.comma().is_some()
+    }
 }
 
 impl AstGuardExpr {

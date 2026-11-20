@@ -12,6 +12,11 @@ fn missing_comma(value: Int | nil) -> Int {
     }
 }
 
+// Only an arm that ends with a brace can leave out its comma
+fn missing_comma_same_line(value: Int | nil) -> Int {
+    match value { nil => 0 _ => 1 }
+}
+
 fn missing_body(value: Int | nil) -> Int {
     match value {
         nil =>,
@@ -56,4 +61,5 @@ fn main() -> Int {
     missing_arrow(nil) + missing_comma(nil) + missing_body(nil) + missing_pattern(nil)
         + missing_brace(nil) + missing_value()
         + unclosed_arm(A {})
+        + missing_comma_same_line(nil)
 }

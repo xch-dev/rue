@@ -200,7 +200,7 @@ fn parse_escape(input: String) -> (String, String) {
         "u" => parse_unicode(rest),
         _ => {
             raise "invalid escape sequence";
-        },
+        }
     }
 }
 
@@ -349,7 +349,7 @@ fn stringify(json: Json) -> String {
             "true"
         } else {
             "false"
-        },
+        }
         JsonNumber => integer_to_string(json.value),
         JsonString => '"' + escape(json.value) + '"',
         JsonArray => "[" + stringify_items(json.items) + "]",

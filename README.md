@@ -98,7 +98,7 @@ fn area(shape: Shape) -> Int {
 }
 ```
 
-A pattern can be any type that `is` can check, including a union (`Circle | Square`) and a literal (`0`, `"yes"`, `nil`, `true`). `_` matches every value that's left, so it's usually the last arm.
+Arms are separated by commas, which can be left out after an arm whose value is a block, `if` or `match`, since it ends at its closing brace (the formatter leaves them out there). A pattern can be any type that `is` can check, including a union (`Circle | Square`) and a literal (`0`, `"yes"`, `nil`, `true`). `_` matches every value that's left, so it's usually the last arm.
 
 A match must handle every value its type allows, so adding a member to a union is an error at every `match` that doesn't handle it, rather than a value that silently falls through to the wrong branch. The error lists the members that aren't handled:
 
