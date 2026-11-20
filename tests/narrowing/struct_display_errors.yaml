@@ -44,3 +44,7 @@ diagnostics:
     note: The `else` branch is the same at struct_display_errors.rue:110:12
     help: Replace the `if` with one of its branches
 - Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15
+- Unused function `split_pair` at struct_display_errors.rue:116:4
+- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) | nil } | Pair { left: nil, right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:116:35"
+- Unused binding `left` at struct_display_errors.rue:120:9
+- Unused binding `right` at struct_display_errors.rue:121:9

@@ -54,6 +54,28 @@ fn every_combination(value: (A | B, A | B)) -> (B, B) {
     value
 }
 
+struct Both {
+    first: A | B,
+    second: A | B,
+}
+
+// A struct whose pair is split in two becomes two copies of the struct, so its fields can be read
+fn split_struct(value: Both) -> A | B {
+    if value is (A, (A, nil)) {
+        return A { kind: 1 };
+    }
+
+    value.second
+}
+
+fn split_struct_every_combination(value: Both) -> B {
+    if value is (A, (A, nil)) | (A, (B, nil)) | (B, (A, nil)) {
+        return B { kind: 2 };
+    }
+
+    value.second
+}
+
 // The rest of a list is the list itself, which is covered
 fn list_item(value: List<A | B>) -> (B, List<A | B>) | nil {
     if value is (A, List<A | B>) {
@@ -83,6 +105,9 @@ test fn guard_values() {
     assert union_of_pairs((nil, 5)) == nil;
     assert every_combination((a, b)).first.kind == 2;
     assert every_combination((b, b)).rest.kind == 2;
+    assert split_struct(Both { first: a, second: b }) is B;
+    assert split_struct(Both { first: a, second: a }) is A;
+    assert split_struct_every_combination(Both { first: b, second: b }).kind == 2;
     assert list_item([a, b]) is nil;
     assert list_item([b, a]) is (B, List<A | B>);
     assert list_item(nil) is nil;

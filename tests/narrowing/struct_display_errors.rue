@@ -111,3 +111,13 @@ fn nested(b: Box<Int>, c: Bool) -> Bytes32 {
         b
     }
 }
+
+// A struct whose pair is split in two is displayed as two copies of the struct
+fn split_pair(p: Pair) -> Bytes32 {
+    if p is (nil, (nil, nil)) {
+        return 0x0000000000000000000000000000000000000000000000000000000000000000;
+    }
+    let left = p.left;
+    let right = p.right;
+    p
+}

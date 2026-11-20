@@ -9,9 +9,9 @@ use rue_diagnostic::Name;
 use crate::{
     Alias, Apply, Atom, AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind,
     Choices, Comparison, FunctionParameter, FunctionType, Generic, Inference, InferenceCandidates,
-    Pair, Struct, Type, TypeId, Union, add_expected_bounds, check, compare, compare_with_inference,
-    extract_atoms, extract_functions, extract_pairs, extract_structs, infer_from_expected,
-    is_non_contractive, resolve_inference, resolve_inference_with_bounds,
+    MAX_SPLIT_PAIRS, Pair, Struct, Type, TypeId, Union, add_expected_bounds, check, compare,
+    compare_with_inference, extract_atoms, extract_functions, extract_pairs, extract_structs,
+    infer_from_expected, is_non_contractive, resolve_inference, resolve_inference_with_bounds,
     resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
     unwrap_semantic,
 };
@@ -1287,6 +1287,13 @@ mod recursive {
             let _ = check(&mut db.arena, &db.builtins, pair, int_pair);
             let _ = check(&mut db.arena, &db.builtins, int_pair, pair);
             let _ = subtract(&mut db.arena, &db.builtins, pair, int_pair);
+            let _ = subtract(&mut db.arena, &db.builtins, int, ty);
+            let either = db.union(&[int, nil]);
+            let splittable = db.pair(either, either);
+            let first = db.pair(int, ty);
+            let rest = db.pair(ty, int);
+            let _ = subtract(&mut db.arena, &db.builtins, splittable, first);
+            let _ = subtract(&mut db.arena, &db.builtins, splittable, rest);
             let _ = db.cmp(ty, ty);
             let _ = db.cmp(int, ty);
             let union = db.union(&[ty, nil]);
@@ -4088,8 +4095,10 @@ mod subtraction {
         let either = db.union(&[one, two]);
         let lhs = db.pair(either, either);
         let rhs = db.pair(three, one);
+        let rest_disjoint = db.pair(one, three);
 
         assert_eq!(sub(&mut db, lhs, rhs), "(1 | 2, 1 | 2)");
+        assert_eq!(sub(&mut db, lhs, rest_disjoint), "(1 | 2, 1 | 2)");
     }
 
     #[test]
@@ -4110,7 +4119,7 @@ mod subtraction {
         let Type::Union(union) = db.arena[result].clone() else {
             panic!("expected a union");
         };
-        assert!(union.types.len() <= 16, "{} pairs", union.types.len());
+        assert_eq!(union.types.len(), MAX_SPLIT_PAIRS);
 
         // Every value that fails the check is still in the result
         for &a in &values {

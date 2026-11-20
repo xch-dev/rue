@@ -17,7 +17,8 @@ pub fn subtract(
     let lhs_id = substitute(arena, lhs_id);
     let rhs_id = substitute(arena, rhs_id);
 
-    // These should be rejected before reaching this point, but they would recurse forever
+    // These should be rejected before reaching this point, but they would recurse forever. Like
+    // `intersect`, the intersections of the parts of pairs (see `split_pair`) rely on this
     if reaches_non_contractive_cycle(arena, lhs_id) || reaches_non_contractive_cycle(arena, rhs_id)
     {
         return lhs_id;
@@ -115,7 +116,7 @@ enum Part {
 /// The most pairs that a pair variant can be split into. Splitting by a target pair whose parts
 /// both differ adds a pair, so a target with many such pairs would otherwise multiply the variants
 /// of the type. Past this, the remaining pairs are kept whole, which is only wider than it could be.
-const MAX_SPLIT_PAIRS: usize = 16;
+pub(crate) const MAX_SPLIT_PAIRS: usize = 16;
 
 /// The variants of `lhs_id` that aren't covered by `rhs_id`, or `None` if none of them changed.
 ///
@@ -214,22 +215,26 @@ fn split_pair(
 
             match (first_covered, rest_covered) {
                 (true, true) => changed = true,
-                (false, true) => match subtract_part(arena, builtins, cx, first, rhs.first) {
-                    Part::Unchanged => next.push((first, rest)),
-                    Part::Removed => changed = true,
-                    Part::Narrowed(first) => {
-                        changed = true;
-                        next.push((first, rest));
+                (false, true) | (true, false) => {
+                    let narrowed = if rest_covered {
+                        subtract_part(arena, builtins, cx, first, rhs.first)
+                    } else {
+                        subtract_part(arena, builtins, cx, rest, rhs.rest)
+                    };
+
+                    match narrowed {
+                        Part::Unchanged => next.push((first, rest)),
+                        Part::Removed => changed = true,
+                        Part::Narrowed(part) => {
+                            changed = true;
+                            next.push(if rest_covered {
+                                (part, rest)
+                            } else {
+                                (first, part)
+                            });
+                        }
                     }
-                },
-                (true, false) => match subtract_part(arena, builtins, cx, rest, rhs.rest) {
-                    Part::Unchanged => next.push((first, rest)),
-                    Part::Removed => changed = true,
-                    Part::Narrowed(rest) => {
-                        changed = true;
-                        next.push((first, rest));
-                    }
-                },
+                }
                 (false, false) => {
                     // Each pair that's left to split may still be split in two
                     if next.len() + (pairs.len() - index) >= MAX_SPLIT_PAIRS {
@@ -363,13 +368,35 @@ fn repackage_inner(
 
     let semantic_type_id = semantic_type_id.unwrap();
 
-    let inner = repackage(arena, builtins, collected);
-
     let result = match arena[semantic_type_id].clone() {
-        Type::Alias(alias) => arena.alloc(Type::Alias(Alias { inner, ..alias })),
+        Type::Alias(alias) => {
+            let inner = repackage(arena, builtins, collected);
+            arena.alloc(Type::Alias(Alias { inner, ..alias }))
+        }
         Type::Struct(ty) => {
-            let ty = ty.narrow(arena, builtins, inner);
-            arena.alloc(Type::Struct(ty))
+            // A struct's pair can be split into several pairs (see `split_pair`). Each of them gets
+            // its own copy of the struct, since the fields are read from a union of structs rather
+            // than from a struct whose inner type is a union.
+            let mut groups: IndexMap<TypeId, Vec<Variant>> = IndexMap::new();
+
+            for variant in collected {
+                groups.entry(variant.type_id).or_default().push(variant);
+            }
+
+            let copies: Vec<TypeId> = groups
+                .into_values()
+                .map(|variants| {
+                    let inner = repackage(arena, builtins, variants);
+                    let ty = ty.clone().narrow(arena, builtins, inner);
+                    arena.alloc(Type::Struct(ty))
+                })
+                .collect();
+
+            if copies.len() == 1 {
+                copies[0]
+            } else {
+                arena.alloc(Type::Union(Union::new(copies)))
+            }
         }
         _ => unreachable!(),
     };
