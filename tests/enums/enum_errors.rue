@@ -49,6 +49,16 @@ enum Growing<T> {
     Cons { head: T, tail: Growing::Cons<(T, T)> },
 }
 
+// The same goes for a variant that refers back to the whole enum with grown generic arguments
+enum Tree<T> {
+    Leaf,
+    Node { value: T, children: Tree<(T, T)> },
+}
+
+fn tree(tree: Tree<Int>) -> Bool {
+    tree is Tree::Leaf<Int>
+}
+
 fn growing(list: Growing::Cons<Int>) -> Int {
     list.head
 }

@@ -10,7 +10,10 @@ use rue_hir::{
 };
 use rue_types::{Alias, Apply, DISCRIMINANT_FIELD, Struct, Type, TypeId, Union};
 
-use super::{compile_field_defaults, compile_fields, declare_fields, resolve_struct_inner};
+use super::{
+    compile_field_defaults, compile_fields, declare_fields, resolve_alias_inner,
+    resolve_struct_inner,
+};
 use crate::{
     Compiler, CompletionContext, EnumVariant, LiteralValue, SyntaxItemKind,
     compile_generic_parameters, insert_local_module,
@@ -151,7 +154,8 @@ fn declare_variant(
     let ty = ctx.alloc_type(Type::Unresolved);
     let inner = ctx.alloc_type(Type::Unresolved);
 
-    // The variant is named by its path, since it isn't in scope by its own name
+    // The variant is named by its path, since it isn't in scope by its own name (the LSP's enum
+    // hover takes the variant's own name back from the end of it)
     let text = enum_name.map_or_else(
         || name.text().to_string(),
         |enum_name| format!("{enum_name}::{}", name.text()),
@@ -295,13 +299,7 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
         }
     };
 
-    let Type::Alias(Alias { inner, .. }) = ctx.ty(ty) else {
-        unreachable!()
-    };
-
-    let inner = *inner;
-
-    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
+    resolve_alias_inner(ctx, ty, resolved_inner);
 
     ctx.pop_declaration();
 }

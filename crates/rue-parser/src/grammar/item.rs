@@ -195,8 +195,7 @@ fn enum_variant(p: &mut Parser) {
         p.start(SyntaxKind::EnumDiscriminant);
         p.expect(T![=]);
         p.try_eat(T![-]);
-        if let Some(kind) = p.at_any(&[SyntaxKind::Integer, SyntaxKind::Binary, SyntaxKind::Octal])
-        {
+        if let Some(kind) = p.at_any(SyntaxKind::INTEGER_LITERAL) {
             p.try_eat(kind);
         } else {
             p.error_unexpected();

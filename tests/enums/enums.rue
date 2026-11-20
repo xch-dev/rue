@@ -52,6 +52,12 @@ enum Nested<T> {
     Double { inner: Nested::Single<(T, T)>, unit: Nested::Unit<(T, T)> },
 }
 
+// A variant can refer back to the whole enum with the same generic arguments
+enum Chain<T> {
+    Nil,
+    Cons { head: T, tail: Chain<T> },
+}
+
 enum Empty {}
 
 test fn unit_discriminants() {
@@ -153,6 +159,23 @@ test fn nested_generics() -> Int {
     } else {
         0
     }
+}
+
+fn sum(chain: Chain<Int>) -> Int {
+    if chain is Chain::Cons<Int> {
+        chain.head + sum(chain.tail)
+    } else {
+        0
+    }
+}
+
+test fn recursive_generic() -> Int {
+    let chain: Chain<Int> = Chain::Cons::<Int> {
+        head: 1,
+        tail: Chain::Cons::<Int> { head: 2, tail: Chain::Nil },
+    };
+    assert sum(chain) == 3;
+    sum(chain)
 }
 
 fn _absurd(value: Empty) -> Int {

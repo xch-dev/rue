@@ -589,6 +589,34 @@ fn main() -> Mode {
 }
 
 #[test]
+fn test_hover_empty_enum() {
+    check(
+        "enum Nev$0er {}\n",
+        expect![[r#"
+            enum Never {}
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_enum() {
+    check(
+        r#"
+enum Opt$0ion<T> {
+    None,
+    Some { value: T },
+}
+"#,
+        expect![[r#"
+            enum Option<T> {
+                None = 0,
+                Some = 1 { value: T },
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_enum_through_its_variant() {
     check(
         &format!("{SHAPE}\nfn main() -> Shape {{\n    Sha$0pe::Empty\n}}\n"),

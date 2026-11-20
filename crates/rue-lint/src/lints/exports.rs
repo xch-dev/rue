@@ -319,6 +319,9 @@ fn reached_names(
                 reached.extend(ty.name.as_ref().and_then(name_key));
                 pending.push(ty.inner);
                 pending.extend(&ty.generics);
+
+                // A variant is named through its enum, which has to stay exported with it
+                pending.extend(db.enum_of(Declaration::Type(ty.semantic)));
             }
             Type::Alias(alias) => {
                 reached.extend(alias.name.as_ref().and_then(name_key));

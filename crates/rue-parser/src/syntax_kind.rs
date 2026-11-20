@@ -508,6 +508,8 @@ impl SyntaxKind {
         T![false],
         T![super],
     ];
+    pub const INTEGER_LITERAL: &[Self] =
+        &[SyntaxKind::Integer, SyntaxKind::Binary, SyntaxKind::Octal];
     pub const PREFIX_OPS: &[Self] = &[T![!], T![-], T![+], T![~]];
     pub const BINARY_OPS: &[Self] = &[
         T![+],

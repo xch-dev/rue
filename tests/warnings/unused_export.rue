@@ -209,6 +209,16 @@ mod enums {
         B,
     }
 
+    // Only one of its variants is in the signature of an export used from outside
+    export enum InSignature {
+        A { value: Int },
+        B,
+    }
+
+    export fn in_signature() -> InSignature::A {
+        InSignature::A { value: 3 }
+    }
+
     export fn inside() -> Int {
         let a: OnlyInside = OnlyInside::A;
         assert a is OnlyInside::A;
@@ -256,4 +266,5 @@ fn main() -> Int {
         + enums::ByVariant::A as Int
         + A { value: 1 }.value
         + by_name(enums::ByName::A) as Int
+        + enums::in_signature().value
 }

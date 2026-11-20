@@ -539,12 +539,7 @@ impl AstEnumDiscriminant {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| {
-                matches!(
-                    token.kind(),
-                    SyntaxKind::Integer | SyntaxKind::Binary | SyntaxKind::Octal
-                )
-            })
+            .find(|token| SyntaxKind::INTEGER_LITERAL.contains(&token.kind()))
     }
 }
 

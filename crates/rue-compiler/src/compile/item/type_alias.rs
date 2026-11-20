@@ -78,13 +78,16 @@ pub fn compile_type_alias(
 
     ctx.pop_scope(range.end());
 
-    let Type::Alias(Alias { inner, .. }) = ctx.ty(ty) else {
+    resolve_alias_inner(ctx, ty, resolved_inner);
+
+    ctx.pop_declaration();
+}
+
+/// Resolves the type that a type alias (or enum) stands for.
+pub(crate) fn resolve_alias_inner(ctx: &mut Compiler, alias: TypeId, resolved_inner: TypeId) {
+    let Type::Alias(Alias { inner, .. }) = *ctx.ty(alias) else {
         unreachable!()
     };
 
-    let inner = *inner;
-
     *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
-
-    ctx.pop_declaration();
 }
