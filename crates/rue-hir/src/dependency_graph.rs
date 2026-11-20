@@ -264,6 +264,15 @@ impl DependencyGraph {
         self.const_exprs.iter().copied()
     }
 
+    /// Whether the symbol is defined in the function, or in a function defined in it, such as a
+    /// parameter or local of the function or of a lambda inside it.
+    pub fn is_defined_in(&self, symbol: SymbolId, function: SymbolId) -> bool {
+        iter::successors(self.owners.get(&symbol).copied(), |owner| {
+            self.owners.get(owner).copied()
+        })
+        .any(|owner| owner == function)
+    }
+
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
         // The locals of the scopes enclosing the symbol are captured, unless they are reached
         // through the scope they're defined in (such as by a recursive call), so each path
