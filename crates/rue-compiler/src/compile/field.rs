@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
-use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FieldAccess, FieldKind, Hir, HirId, TypePath, Value};
+use rue_diagnostic::{DiagnosticKind, SrcLoc};
+use rue_hir::{
+    BindingSymbol, FieldAccess, FieldKind, Hir, HirId, Statement, Symbol, SymbolPath, TypePath,
+    Value,
+};
 use rue_lint::FieldRead;
 use rue_types::{Struct, Type, TypeId, Union};
 
@@ -300,7 +303,75 @@ fn compile_struct_field(
     FieldResult::Value(value)
 }
 
-fn alloc_field_access(ctx: &mut Compiler, value: HirId, name: &str, kind: FieldKind) -> HirId {
+/// A value that's read more than once, such as by each arm of a `match` or for each field that's
+/// copied from it (see [`bind_unless_path`]).
+#[derive(Debug, Clone)]
+pub struct BoundValue {
+    /// The value, which is a reference to what it's bound to if it isn't a path.
+    pub value: Value,
+    /// Where the value is read from, which is what's narrowed when it's checked.
+    pub reference: SymbolPath,
+    /// The statement that binds the value, if it isn't a path. It goes before whatever reads the
+    /// value, in the same block.
+    pub statement: Option<Statement>,
+}
+
+/// Makes a value safe to read more than once. A path (a symbol, or the fields of one) is read as
+/// it is, and anything else is bound to an unnamed binding first, so that it's only evaluated
+/// once however many times it's read. The binding is at the given location.
+///
+/// A block that ends in a path has the path's reference, so that it's narrowed like the path, but
+/// its statements are evaluated each time it's read, so it's bound too.
+pub fn bind_unless_path(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> BoundValue {
+    if let Some(reference) = value.reference.clone()
+        && is_path(ctx, value.hir)
+    {
+        return BoundValue {
+            value,
+            reference,
+            statement: None,
+        };
+    }
+
+    let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+        name: None,
+        value: value.clone(),
+        inline: false,
+    }));
+    let reference = SymbolPath::new(symbol, vec![]);
+
+    BoundValue {
+        value: Value::new(ctx.alloc_hir(Hir::Reference(symbol)), value.ty)
+            .with_reference(reference.clone()),
+        reference,
+        statement: Some(Statement::Let(symbol, srcloc)),
+    }
+}
+
+/// Whether the node is a symbol or the fields of one, through casts, which have no effect.
+fn is_path(ctx: &Compiler, hir: HirId) -> bool {
+    let mut hir = hir;
+
+    loop {
+        hir = match ctx.hir(hir) {
+            Hir::Reference(_) => return true,
+            Hir::Cast(value) => *value,
+            Hir::FieldAccess(FieldAccess {
+                value,
+                kind: FieldKind::Path(_),
+                ..
+            }) => *value,
+            _ => return false,
+        };
+    }
+}
+
+pub(crate) fn alloc_field_access(
+    ctx: &mut Compiler,
+    value: HirId,
+    name: &str,
+    kind: FieldKind,
+) -> HirId {
     ctx.alloc_hir(Hir::FieldAccess(FieldAccess {
         value,
         name: name.to_string(),

@@ -30,23 +30,35 @@ tests:
 - name: every_field_of_call
   program: (a (q 3 () (a 2 5) (q 1 2)) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 ())) (q 8)) 1) 1))
   debug_program: (a (q 3 () (a 2 5) (c (q . 1) (c (q . 2) ()))) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 ())) (q 8 (q . "assertion failed at unused_struct_spread.rue:13:5"))) 1) 1))
+  solution: (4)
+  output: (1 2)
+  runtime_cost: 1547
   byte_cost: 900000
-  clvm_error: path into atom
+  total_cost: 901547
 - name: every_field_on_lines
   program: (c (+ 4 4 4 4 4 4 4 4) (c (+ 10 10 10 10 10 10 10 10) ()))
   debug_program: (c (+ (+ (+ (+ (+ (+ (+ (f 2) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (c (+ (+ (+ (+ (+ (+ (+ (f (r 2)) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) ()))
+  solution: ((1 2))
+  output: (8 16)
+  runtime_cost: 6398
   byte_cost: 588000
-  clvm_error: path into atom
+  total_cost: 594398
 - name: one_field
   program: (c (q . 1) 6)
   debug_program: (c (q . 1) (r 2))
+  solution: ((1 2))
+  output: (1 2)
+  runtime_cost: 123
   byte_cost: 108000
-  clvm_error: path into atom
+  total_cost: 108123
 - name: no_fields_written
   program: "2"
   debug_program: "2"
+  solution: ((1 2))
+  output: (1 2)
+  runtime_cost: 48
   byte_cost: 12000
-  clvm_error: path into atom
+  total_cost: 12048
 - name: allowed
   program: (q 1 2)
   debug_program: (c (q . 1) (c (q . 2) ()))

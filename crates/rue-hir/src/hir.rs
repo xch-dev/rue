@@ -165,9 +165,10 @@ pub struct StructInitializer {
 }
 
 impl StructInitializer {
-    /// The values of the fields that were written in the initializer, without the default values
-    /// of the fields that were left out. Those are shared by every initializer that uses them, so
-    /// they belong to the struct declaration instead.
+    /// The values that belong to the initializer: the fields that were written, the ones that
+    /// are copied from the value being updated, and the tail. The default values of the fields
+    /// that were left out aren't included, since they're shared by every initializer that uses
+    /// them, so they belong to the struct declaration instead.
     pub fn written_values(&self) -> impl Iterator<Item = HirId> + '_ {
         self.fields
             .iter()

@@ -1879,6 +1879,7 @@ fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
         y: 2,
     };
     let call = Point { ...make(n), x: 1, y: 2 };
+    let block = Point { ...{ assert n > 1; point }, x: 1, y: 2 };
     let comment = Point { ...point /* why */, x: 1, y: 2 };
     let trailing = Point {
         ...point, // why
@@ -1887,7 +1888,7 @@ fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
     };
     let tight = Point {...point,x: 1, y: 2 };
     let used = Point { ...point, x: 1 };
-    ([Point { ...point, x: 1, y: 2 }, lines, call, comment, trailing, tight, used], Empty { ...empty })
+    ([Point { ...point, x: 1, y: 2 }, lines, call, block, comment, trailing, tight, used], Empty { ...empty })
 }
 
 fn make(n: Int) -> Point {
@@ -1898,8 +1899,9 @@ fn make(n: Int) -> Point {
 
     let fixed = fix(source);
 
-    // The call is still evaluated, since it can fail, and the comment before the comma would be
-    // removed with the spread, so those are left for the user. A comment after the comma is kept
+    // The call and the block are still evaluated, since they can fail, and the comment before the
+    // comma would be removed with the spread, so those are left for the user. A comment after the
+    // comma is kept
     assert_eq!(
         fixed,
         "\
@@ -1916,6 +1918,7 @@ fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
         y: 2,
     };
     let call = Point { ...make(n), x: 1, y: 2 };
+    let block = Point { ...{ assert n > 1; point }, x: 1, y: 2 };
     let comment = Point { ...point /* why */, x: 1, y: 2 };
     let trailing = Point {
         // why
@@ -1924,7 +1927,7 @@ fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
     };
     let tight = Point {x: 1, y: 2 };
     let used = Point { ...point, x: 1 };
-    ([Point { x: 1, y: 2 }, lines, call, comment, trailing, tight, used], Empty { })
+    ([Point { x: 1, y: 2 }, lines, call, block, comment, trailing, tight, used], Empty { })
 }
 
 fn make(n: Int) -> Point {
@@ -1943,6 +1946,7 @@ fn make(n: Int) -> Point {
             "Warning 8: Unused parameter `empty`",
             "Warning 13: Every field of `Point` is specified, so nothing is copied from the spread value",
             "Warning 14: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 15: Every field of `Point` is specified, so nothing is copied from the spread value",
         ]
     );
     assert!(!has_errors);

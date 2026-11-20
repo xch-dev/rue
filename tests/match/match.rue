@@ -302,3 +302,15 @@ test fn inline_match_checks_whole_type(value: nil | (Int, Int)) -> Int {
         _ => 2,
     }
 }
+
+// A block that ends in a path isn't a path, so it's bound rather than being evaluated by each arm
+test fn block_scrutinee_evaluated_once(value: Int | Bytes32 | nil) -> Int {
+    match {
+        debug "evaluated";
+        value
+    } {
+        nil => 0,
+        Bytes32 => 1,
+        Int => 2,
+    }
+}
