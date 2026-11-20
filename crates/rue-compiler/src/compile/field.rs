@@ -325,7 +325,7 @@ pub struct BoundValue {
 /// block is checked, but its statements are evaluated each time it's read, so it's bound too.
 pub fn bind_unless_path(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> BoundValue {
     if let Some(reference) = value.reference.clone()
-        && is_path(ctx, value.hir)
+        && ctx.path_symbol(value.hir).is_some()
     {
         return BoundValue {
             value,
@@ -348,24 +348,6 @@ pub fn bind_unless_path(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> Bou
         // ends in can be, and it's the same value
         reference: value.reference.unwrap_or(binding),
         statement: Some(Statement::Let(symbol, srcloc)),
-    }
-}
-
-/// Whether the node is a symbol or the fields of one, through casts, which have no effect.
-fn is_path(ctx: &Compiler, hir: HirId) -> bool {
-    let mut hir = hir;
-
-    loop {
-        hir = match ctx.hir(hir) {
-            Hir::Reference(_) => return true,
-            Hir::Cast(value) => *value,
-            Hir::FieldAccess(FieldAccess {
-                value,
-                kind: FieldKind::Path(_),
-                ..
-            }) => *value,
-            _ => return false,
-        };
     }
 }
 

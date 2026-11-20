@@ -1872,6 +1872,16 @@ struct Point {
 
 struct Empty {}
 
+struct Spend {
+    opcode = 51,
+    amount: Int,
+}
+
+struct Tagged {
+    tag: 7,
+    amount: Int,
+}
+
 fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
     let lines = Point {
         ...point,
@@ -1895,6 +1905,10 @@ fn make(n: Int) -> Point {
     assert n > 0;
     Point { x: n, y: n }
 }
+
+export fn constants(spend: Spend, tagged: Tagged, n: Int) -> (Spend, Tagged) {
+    (Spend { ...spend, amount: n }, Tagged { ...tagged, amount: n })
+}
 ";
 
     let fixed = fix(source);
@@ -1911,6 +1925,16 @@ struct Point {
 }
 
 struct Empty {}
+
+struct Spend {
+    opcode = 51,
+    amount: Int,
+}
+
+struct Tagged {
+    tag: 7,
+    amount: Int,
+}
 
 fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
     let lines = Point {
@@ -1934,19 +1958,26 @@ fn make(n: Int) -> Point {
     assert n > 0;
     Point { x: n, y: n }
 }
+
+export fn constants(spend: Spend, tagged: Tagged, n: Int) -> (Spend, Tagged) {
+    (Spend { amount: n }, Tagged { ...tagged, amount: n })
+}
 "
     );
 
     let (reports, has_errors) = reports(&fixed, |_| {});
 
-    // Nothing else used `empty`, which only the spread that was removed referred to
+    // Nothing else used `empty` or `spend`, which only the spreads that were removed referred
+    // to. `Tagged` would be missing its `tag` without the spread, so it has no suggestion
     assert_eq!(
         reports,
         vec![
-            "Warning 8: Unused parameter `empty`",
-            "Warning 13: Every field of `Point` is specified, so nothing is copied from the spread value",
-            "Warning 14: Every field of `Point` is specified, so nothing is copied from the spread value",
-            "Warning 15: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 18: Unused parameter `empty`",
+            "Warning 23: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 24: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 25: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 41: Unused parameter `spend`",
+            "Warning 42: Every other field of `Tagged` is a constant, so nothing is read from the spread value",
         ]
     );
     assert!(!has_errors);

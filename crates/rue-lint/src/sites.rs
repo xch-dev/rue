@@ -43,12 +43,13 @@ pub struct LintSites {
     /// narrow it by, so its fields are merged instead. The types are subtracted while compiling,
     /// and not again by the lints.
     pub imprecise_narrowings: Vec<ImpreciseNarrowing>,
-    /// The values spread in struct initializers that specify every field, so nothing is copied
-    /// from them. The value isn't in the HIR unless it's evaluated for its effect.
+    /// The values spread in struct initializers that nothing is read from, since every field is
+    /// either written or a constant. The value isn't in the HIR unless it's evaluated for its
+    /// effect.
     pub unused_struct_spreads: Vec<UnusedStructSpread>,
 }
 
-/// A value spread in a struct initializer that specifies every field (see
+/// A value spread in a struct initializer that nothing is read from (see
 /// [`LintSites::unused_struct_spreads`]).
 #[derive(Debug, Clone)]
 pub struct UnusedStructSpread {
@@ -56,6 +57,12 @@ pub struct UnusedStructSpread {
     pub srcloc: SrcLoc,
     /// The name of the struct being initialized.
     pub struct_name: String,
+    /// Whether some fields aren't written, which are all constants (such as the opcode of a
+    /// condition), rather than every field being written.
+    pub constants: bool,
+    /// Whether the initializer is still complete without the spread, since every field that
+    /// isn't written has a default value.
+    pub removable: bool,
     /// Whether the value is still evaluated, since it isn't a path (such as a function call), so
     /// removing it could change what the program does.
     pub evaluated: bool,

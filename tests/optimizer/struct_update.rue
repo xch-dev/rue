@@ -18,7 +18,7 @@ struct Spend {
 }
 
 enum Shape {
-    Square { side: Int },
+    Square { side: Int, color: Int },
     Rect { width: Int, height: Int },
 }
 
@@ -205,14 +205,34 @@ test fn update_nil_variant(square: Shape::Square, n: Int) -> Shape::Square {
     Shape::Square { ...square, side: n }
 }
 
+test fn rebuild_nil_variant(square: Shape::Square, n: Int) -> Shape::Square {
+    Shape::Square { side: n, color: square.color }
+}
+
+struct Mixed {
+    value: Int,
+    version = 2,
+    other: Int,
+}
+
+// A constant in the rest of the spread value is part of it, as long as another field in it is
+// read
+test fn update_mixed_tail(mixed: Mixed, n: Int) -> Mixed {
+    Mixed { ...mixed, value: n }
+}
+
+test fn rebuild_mixed_tail(mixed: Mixed, n: Int) -> Mixed {
+    Mixed { value: n, other: mixed.other }
+}
+
 struct Optional {
     value: Int | nil,
     count: Int,
     other: Int,
 }
 
-// A field that's narrowed to a single value is still read, as it is when the struct is rebuilt,
-// since a path is smaller than the value, unless the value is nil, which never is
+// A field that's only narrowed to a single value is still read, as it is when the struct is
+// rebuilt, since a path is smaller than the value, and it's a reference either way
 test fn update_narrowed_field(optional: Optional, n: Int) -> Optional {
     if optional.count is 7 {
         Optional { ...optional, other: n }
@@ -342,4 +362,76 @@ test fn update_layout(t: Tail, n: Int) -> (Int, Tail) {
 
 test fn rebuild_layout(t: Tail, n: Int) -> (Int, Tail) {
     rebuild_walk(1, 2, 3, 4, t, n)
+}
+
+struct Wide {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    ...e: Int,
+}
+
+fn wide(n: Int) -> Wide {
+    assert n > 0;
+    Wide { a: n, b: n + 1, c: n + 2, d: n + 3, e: n + 4 }
+}
+
+// A value that's only used for the rest of it is used in place, unless the rest is further in than
+// the first field. Each step to it would be an operation around the value then, where a value
+// that's bound only has a longer path, so it's bound as it is when the struct is rebuilt
+test fn update_deep_tail_of_binding(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { ...q, a: n, b: n, c: n }, w + w)
+}
+
+test fn rebuild_deep_tail_of_binding(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { a: n, b: n, c: n, d: q.d, e: q.e }, w + w)
+}
+
+test fn update_deep_tail_of_call(n: Int) -> (Wide, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Wide { ...wide(n), a: n, b: n, c: n }, w + w)
+}
+
+test fn rebuild_deep_tail_of_call(n: Int) -> (Wide, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let q = wide(n);
+            Wide { a: n, b: n, c: n, d: q.d, e: q.e }
+        },
+        w + w,
+    )
+}
+
+struct Long {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    h: Int,
+}
+
+fn long(n: Int) -> Long {
+    assert n > 0;
+    Long { a: n, b: n, c: n, d: n, e: n, f: n, g: n + 1, h: n + 2 }
+}
+
+test fn update_deep_tail_of_long_binding(n: Int) -> (Long, Int) {
+    let q = long(n);
+    let w = sha256(n as Bytes) as Int;
+    (Long { ...q, a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 }, w + w)
+}
+
+test fn rebuild_deep_tail_of_long_binding(n: Int) -> (Long, Int) {
+    let q = long(n);
+    let w = sha256(n as Bytes) as Int;
+    (Long { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: q.g, h: q.h }, w + w)
 }
