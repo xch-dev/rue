@@ -198,7 +198,10 @@ impl DerefMut for Compiler {
 }
 
 impl Compiler {
-    pub fn new(options: CompilerOptions) -> Self {
+    pub fn new(mut options: CompilerOptions) -> Self {
+        // Some lints only warn by default with `hard_fork_2`, which can be set after the levels
+        options.lints.apply_target_defaults(options.hard_fork_2);
+
         let mut db = Database::new();
 
         let builtins = Builtins::new(&mut db);
@@ -987,7 +990,7 @@ impl Compiler {
             documents,
             entrypoints,
             self.has_errors(),
-            self.options.enforces_operand_limits(),
+            &self.options,
         );
 
         let diagnostics = rue_lint::run_lints(

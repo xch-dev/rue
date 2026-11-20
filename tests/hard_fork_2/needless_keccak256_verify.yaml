@@ -1,0 +1,51 @@
+hard_fork_2: true
+tests:
+- name: statement
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 2) 5) (q) (q 8)) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 4072
+  byte_cost: 468000
+  total_cost: 472072
+- name: final_expression
+  program: (a (i (= (keccak256 2) 5) (q) (q 8)) 1)
+  debug_program: (a (i (= (keccak256 2) 5) (q) (q 8)) 1)
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 3653
+  byte_cost: 372000
+  total_cost: 375653
+- name: value
+  program: (c (a (i (= (keccak256 2) 5) (q) (q 8)) 1) (q . 1))
+  debug_program: (c (a (i (= (keccak256 2) 5) (q) (q 8)) 1) (q . 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: (() . 1)
+  runtime_cost: 3724
+  byte_cost: 468000
+  total_cost: 471724
+- name: with_comment
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 2) 5) (q) (q 8)) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 4072
+  byte_cost: 468000
+  total_cost: 472072
+- name: allowed
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 2) 5) (q) (q 8)) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 4072
+  byte_cost: 468000
+  total_cost: 472072
+diagnostics:
+- |-
+  This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:5:5
+    help: Replace it with an `assert`
+- |-
+  This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:9:5
+    help: Replace it with an `assert`
+- This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:14:6
+- This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:19:5

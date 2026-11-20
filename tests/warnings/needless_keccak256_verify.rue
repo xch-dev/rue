@@ -1,0 +1,26 @@
+// Without `hard_fork_2`, the lint is allowed by default, since `keccak256` is an error, so nothing
+// is reported. `tests/hard_fork_2/needless_keccak256_verify.rue` has the same tests with it.
+
+test fn statement(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}
+
+test fn final_expression(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash)
+}
+
+// The call is a value here, so it can't be replaced with an `assert` statement
+test fn value(value: Bytes, hash: Bytes32) -> (nil, Int) {
+    (keccak256_verify(value, hash), 1)
+}
+
+// Comments outside of the arguments would be dropped, so there's no suggestion
+test fn with_comment(value: Bytes, hash: Bytes32) {
+    keccak256_verify(/* value */ value, hash /* hash */ ) // the check
+    ;
+}
+
+#[allow(needless_keccak256_verify)]
+test fn allowed(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}

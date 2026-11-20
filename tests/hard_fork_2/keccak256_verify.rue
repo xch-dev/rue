@@ -1,3 +1,5 @@
+#![allow(needless_keccak256_verify)]
+
 // Compiled with `hard_fork_2` (see `keccak256_verify.yaml`), where `keccak256_verify` checks the
 // hash outside of the softfork guard. `tests/keccak256_verify.rue` has the same tests compiled
 // without it.

@@ -239,6 +239,7 @@ lints! {
     PreludeOverEnclosingItem("prelude_over_enclosing_item", Warn, "Names in inline modules that refer to the prelude or a builtin, while an enclosing module has an item with the same name, which inline modules don't see"),
     DebugStatement("debug_statement", Allow, "`debug` statements, which shouldn't be left in a release build"),
     UnconditionalRecursion("unconditional_recursion", Warn, "Functions that call themselves on every path, so they never return"),
+    NeedlessKeccak256Verify("needless_keccak256_verify", Allow, "`keccak256_verify` calls, which can be written as `assert keccak256(value) == hash` after hard fork 2 (warns by default with `hard_fork_2`)"),
     BytesIntConfusion("bytes_int_confusion", Warn, "Casts of byte literals to `Int` whose value is negative or not in canonical form"),
     UnknownLint("unknown_lint", Warn, "Lint names in attributes or `Rue.toml` that don't refer to a known lint or group"),
     UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
@@ -251,6 +252,16 @@ impl Lint {
     /// Looks up a lint by its stable name.
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.iter().copied().find(|lint| lint.name() == name)
+    }
+
+    /// The level the lint is reported at if it isn't configured, for programs compiled with or
+    /// without `hard_fork_2`. Most lints have the same default either way, but a lint for code that
+    /// can be written more simply after hard fork 2 is only reported by default with it.
+    pub fn default_level_for(self, hard_fork_2: bool) -> LintLevel {
+        match self {
+            Self::NeedlessKeccak256Verify if hard_fork_2 => LintLevel::Warn,
+            _ => self.default_level(),
+        }
     }
 
     fn index(self) -> usize {
@@ -337,6 +348,7 @@ lint_groups! {
         NegatedCondition,
         CollapsibleIf,
         ManualAssert,
+        NeedlessKeccak256Verify,
         NeedlessLetReturn,
         RedundantFieldNames,
         UnnecessaryParens,
@@ -443,9 +455,13 @@ impl LintName {
     }
 }
 
-/// The configured level of every lint.
+/// The configured level of every lint, and which of them were set explicitly rather than left at
+/// their default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LintLevels([LintLevel; Lint::COUNT]);
+pub struct LintLevels {
+    levels: [LintLevel; Lint::COUNT],
+    explicit: [bool; Lint::COUNT],
+}
 
 impl Default for LintLevels {
     fn default() -> Self {
@@ -455,19 +471,34 @@ impl Default for LintLevels {
             levels[lint.index()] = lint.default_level();
         }
 
-        Self(levels)
+        Self {
+            levels,
+            explicit: [false; Lint::COUNT],
+        }
     }
 }
 
 impl LintLevels {
     pub fn get(&self, lint: Lint) -> LintLevel {
-        self.0[lint.index()]
+        self.levels[lint.index()]
     }
 
     /// Sets the level of a lint, even if it's forbidden. Use [`try_set`](Self::try_set) for
     /// overrides that must respect `forbid`.
     pub fn set(&mut self, lint: Lint, level: LintLevel) {
-        self.0[lint.index()] = level;
+        self.levels[lint.index()] = level;
+        self.explicit[lint.index()] = true;
+    }
+
+    /// Sets each lint that wasn't set explicitly to its default for programs compiled with or
+    /// without `hard_fork_2` (see [`Lint::default_level_for`]). The compiler does this once the
+    /// options are final, since `hard_fork_2` can be set after the lint levels are.
+    pub fn apply_target_defaults(&mut self, hard_fork_2: bool) {
+        for &lint in Lint::ALL {
+            if !self.explicit[lint.index()] {
+                self.levels[lint.index()] = lint.default_level_for(hard_fork_2);
+            }
+        }
     }
 
     /// Sets the level of a lint, unless it's forbidden and the new level isn't `forbid`. Returns
@@ -525,16 +556,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn target_defaults_only_change_levels_that_were_not_set() {
+        let lint = Lint::NeedlessKeccak256Verify;
+        assert_eq!(lint.default_level_for(false), LintLevel::Allow);
+        assert_eq!(lint.default_level_for(true), LintLevel::Warn);
+        assert_eq!(
+            Lint::UnusedBinding.default_level_for(true),
+            Lint::UnusedBinding.default_level()
+        );
+
+        let mut levels = LintLevels::default();
+        levels.apply_target_defaults(true);
+        assert_eq!(levels.get(lint), LintLevel::Warn);
+        levels.apply_target_defaults(false);
+        assert_eq!(levels.get(lint), LintLevel::Allow);
+
+        // A level set for the lint or its group is kept
+        for name in [LintName::Lint(lint), LintName::Group(LintGroup::Style)] {
+            let mut levels = LintLevels::default();
+            assert!(levels.apply(&[(name, LintLevel::Allow)]).is_empty());
+            levels.apply_target_defaults(true);
+            assert_eq!(levels.get(lint), LintLevel::Allow);
+        }
+    }
+
+    #[test]
     fn names_are_unique_and_round_trip() {
         let mut names = HashSet::new();
 
         for &lint in Lint::ALL {
             assert!(names.insert(lint.name()), "duplicate lint `{lint}`");
             assert_eq!(Lint::from_name(lint.name()), Some(lint));
+            // Digits are allowed after the first character, for names like `keccak256`
             assert!(
-                lint.name()
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c == '_'),
+                lint.name().starts_with(|c: char| c.is_ascii_lowercase())
+                    && lint
+                        .name()
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
                 "lint `{lint}` must be snake_case"
             );
             assert!(!lint.description().is_empty());
@@ -599,6 +658,7 @@ mod tests {
                 Lint::NegatedCondition,
                 Lint::CollapsibleIf,
                 Lint::ManualAssert,
+                Lint::NeedlessKeccak256Verify,
                 Lint::NeedlessLetReturn,
                 Lint::RedundantFieldNames,
                 Lint::UnnecessaryParens,

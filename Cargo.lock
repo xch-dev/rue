@@ -1856,6 +1856,7 @@ dependencies = [
  "rue-diagnostic",
  "rue-hir",
  "rue-lexer",
+ "rue-options",
  "rue-parser",
  "rue-types",
 ]
