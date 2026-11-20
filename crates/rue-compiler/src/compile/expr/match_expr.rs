@@ -5,7 +5,7 @@ use rue_ast::{AstMatchArm, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{BindingSymbol, Block, Guard, Hir, HirId, Statement, Symbol, SymbolPath, Value};
 use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
-use rue_types::{Check, Type, TypeId, Union};
+use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr, compile_type};
 
@@ -442,16 +442,7 @@ fn format_members(ctx: &mut Compiler, members: Vec<TypeId>) -> String {
     let mut names: Vec<String> = Vec::new();
 
     for member in members {
-        // What's left of `Any` once its atoms are handled is written as the pair it checks for,
-        // rather than the recursive type that it's made of
-        let name = if matches!(ctx.ty(member), Type::Pair(_))
-            && ctx.is_assignable(member, builtins.recursive_any_pair)
-            && ctx.is_assignable(builtins.recursive_any_pair, member)
-        {
-            "`(Any, Any)`".to_string()
-        } else {
-            format!("`{}`", ctx.type_name(member))
-        };
+        let name = format!("`{}`", member_name(ctx, &builtins, member));
 
         if !names.contains(&name) {
             names.push(name);
@@ -463,6 +454,31 @@ fn format_members(ctx: &mut Compiler, members: Vec<TypeId>) -> String {
         Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
         None => "every value".to_string(),
     }
+}
+
+/// The name of a member in a diagnostic. What's left of `Any` once some of it is handled is written
+/// in terms of `Any`, rather than the recursive type that it's made of. For example, `(Int, Any)`
+/// leaves the pairs `((Any, Any), Any)`, since every atom is an `Int`.
+fn member_name(ctx: &mut Compiler, builtins: &BuiltinTypes, ty: TypeId) -> String {
+    let equivalent = |ctx: &mut Compiler, other: TypeId| {
+        ctx.is_assignable(ty, other) && ctx.is_assignable(other, ty)
+    };
+
+    if equivalent(ctx, builtins.recursive_any) {
+        return "Any".to_string();
+    }
+
+    let Type::Pair(pair) = *ctx.ty(ty) else {
+        return ctx.type_name(ty);
+    };
+
+    if equivalent(ctx, builtins.recursive_any_pair) {
+        return "(Any, Any)".to_string();
+    }
+
+    let first = member_name(ctx, builtins, pair.first);
+    let rest = member_name(ctx, builtins, pair.rest);
+    format!("({first}, {rest})")
 }
 
 /// The members of a union, with aliases looked through, since an alias that's been narrowed by

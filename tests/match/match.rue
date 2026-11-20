@@ -164,6 +164,16 @@ test fn arm_types(value: Bool) -> Int | String {
 }
 
 // An earlier field-path arm narrows what later arms see
+// Subtracting a pattern splits a pair by the part that differs, so arms that handle each part of a
+// pair separately cover it
+test fn pair_parts(pair: (Shape, Int)) -> Int {
+    match pair {
+        (Circle, Int) => pair.first.radius + pair.rest,
+        (Square, Int) => pair.first.side * pair.rest,
+        (Point, Int) => pair.rest,
+    }
+}
+
 test fn field_value_later_arm(pair: (Shape, Int)) -> Int {
     match pair.first {
         Point => pair.rest,

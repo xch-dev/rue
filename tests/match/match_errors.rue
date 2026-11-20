@@ -119,7 +119,8 @@ fn error_in_unreachable_arm(value: U) -> Int {
     }
 }
 
-// What's left of `Any` after a pair pattern is still written as a pair of `Any`
+// What's left of `Any` after a pair pattern is written in terms of `Any`: `(Int, Any)` handles every
+// pair whose first value is an atom, so what's left is the pairs whose first value is a pair
 fn missing_any_after_pair(value: Any) -> Int {
     match value {
         (Int, Any) => 1,
@@ -132,15 +133,6 @@ type Optional<T> = T | nil;
 
 fn missing_alias(value: Optional<Bytes32>) -> Int {
     match value {}
-}
-
-// Subtracting a pattern doesn't split a pair by its parts, so arms that handle each part of a
-// pair separately need a `_` arm, as an `is` guard's `else` branch would
-fn pair_parts(value: (A | B, Int)) -> Int {
-    match value {
-        (A, Int) => 1,
-        (B, Int) => 2,
-    }
 }
 
 // An unknown type nested in a pattern is reported once, and the arms after it aren't checked
@@ -237,7 +229,6 @@ fn main() -> Int {
         + error_in_unreachable_arm(C {})
         + missing_any_after_pair(1)
         + missing_alias(nil)
-        + pair_parts((A {}, 1))
         + nested_unknown_pattern(nil)
         + incompatible_only(nil)
         + indistinguishable_then_unknown(nil)
