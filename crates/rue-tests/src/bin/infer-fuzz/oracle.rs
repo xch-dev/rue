@@ -16,6 +16,8 @@ use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 
+use crate::leak;
+
 /// The cost limit for running `main`. Generated programs are small, and recursion is bounded
 /// by a depth of at most 2, so this is only reached by a miscompilation.
 const MAX_COST: u64 = 10_000_000;
@@ -90,6 +92,9 @@ pub enum Compiled {
         time: Duration,
         /// See `fingerprint`.
         fingerprint: String,
+        /// The first binding or parameter whose type names a generic outside of where it's
+        /// bound, if there's one (see `leak.rs`).
+        leak: Option<String>,
     },
     Rejected {
         diag: Diag,
@@ -136,13 +141,14 @@ pub fn compile_with(source: &str, std: bool) -> Compiled {
     let time = start.elapsed();
 
     match result {
-        Ok((Ok((clvm, run)), fingerprint)) => Compiled::Ok {
+        Ok((Ok((clvm, run)), fingerprint, leak)) => Compiled::Ok {
             clvm,
             run,
             time,
             fingerprint,
+            leak,
         },
-        Ok((Err(diag), fingerprint)) => Compiled::Rejected {
+        Ok((Err(diag), fingerprint, _)) => Compiled::Rejected {
             diag,
             time,
             fingerprint,
@@ -190,7 +196,10 @@ pub fn fingerprint(diagnostics: &[Diagnostic], clvm: Option<&str>) -> String {
     format!("{hash:016x}")
 }
 
-fn compile_inner(source: &str, std: bool) -> (Result<(String, Run), Diag>, String) {
+/// The compile's result, its `fingerprint`, and the first leaked generic (see `leak.rs`).
+type Inner = (Result<(String, Run), Diag>, String, Option<String>);
+
+fn compile_inner(source: &str, std: bool) -> Inner {
     let mut ctx = Compiler::new(CompilerOptions {
         std,
         ..CompilerOptions::default()
@@ -202,6 +211,8 @@ fn compile_inner(source: &str, std: bool) -> (Result<(String, Run), Diag>, Strin
         "main".to_string(),
         Source::new(Arc::from(source), kind.clone()),
     );
+    let document = file.document.clone();
+    let first_hir = ctx.next_hir_id();
     let tree = FileTree::File(file);
     tree.compile(&mut ctx);
 
@@ -210,7 +221,11 @@ fn compile_inner(source: &str, std: bool) -> (Result<(String, Run), Diag>, Strin
     let result = compile_checked(&mut ctx, &tree, &kind, &diagnostics);
     let clvm = result.as_ref().ok().map(|(clvm, _)| clvm.as_str());
     let fingerprint = fingerprint(&diagnostics, clvm);
-    (result, fingerprint)
+    let leak = result
+        .is_ok()
+        .then(|| leak::leak(&mut ctx, &document, &kind, first_hir))
+        .flatten();
+    (result, fingerprint, leak)
 }
 
 fn compile_checked(
@@ -281,6 +296,9 @@ pub enum Category {
     Rejected,
     /// It compiles, but runs differently from the explicit program.
     Unsound,
+    /// It compiles, but a binding's or parameter's type names a generic outside of where it's
+    /// bound, such as a callee's generic that inference left in it (see `leak.rs`).
+    Leaked,
     /// Compiling it takes much longer than the explicit program, or times out.
     Slow,
     /// The compiler panicked, or the worker process died.
@@ -288,10 +306,11 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 5] = [
+    pub const ALL: [Category; 6] = [
         Category::Inferred,
         Category::Rejected,
         Category::Unsound,
+        Category::Leaked,
         Category::Slow,
         Category::Crashed,
     ];
@@ -397,12 +416,21 @@ pub fn classify(
         Compiled::Rejected { diag, .. } => {
             outcome(Category::Rejected, Some(diag.clone()), false, None)
         }
-        Compiled::Ok { clvm, run, .. } => {
-            if run == explicit_run {
-                outcome(Category::Inferred, None, clvm == explicit_clvm, None)
-            } else {
+        Compiled::Ok {
+            clvm, run, leak, ..
+        } => {
+            if run != explicit_run {
                 let detail = format!("explicit: {explicit_run:?}, inferred: {run:?}");
                 outcome(Category::Unsound, None, false, Some(detail))
+            } else if let Some(leak) = leak {
+                outcome(
+                    Category::Leaked,
+                    None,
+                    clvm == explicit_clvm,
+                    Some(leak.clone()),
+                )
+            } else {
+                outcome(Category::Inferred, None, clvm == explicit_clvm, None)
             }
         }
         Compiled::Panicked { .. } => unreachable!(),

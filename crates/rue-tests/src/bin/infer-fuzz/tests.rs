@@ -129,6 +129,7 @@ fn program(functions: Vec<Function>, annotation: Option<Ty>, value: Expr) -> Pro
             }],
             body: Expr::new(ExprKind::Var("v0".to_string()), Ty::Any),
         },
+        probes: std::collections::BTreeSet::new(),
     }
 }
 
@@ -724,6 +725,7 @@ fn ok(clvm: &str, millis: u64) -> Compiled {
         run: Run::Output("1".to_string()),
         time: Duration::from_millis(millis),
         fingerprint: String::new(),
+        leak: None,
     }
 }
 
@@ -846,6 +848,7 @@ fn unsound_and_crashed_failures_must_stay_so_while_shrinking() {
         run: Run::Output("2".to_string()),
         time: Duration::from_millis(1),
         fingerprint: String::new(),
+        leak: None,
     };
     assert!(worker::same_failure(&unsound, &expected, &different));
 
@@ -2044,4 +2047,45 @@ fn shrinking_keeps_functions_from_the_standard_library() {
         program.exprs().iter().any(|expr| variant.strips(expr))
     });
     assert_eq!(program.functions.len(), 1);
+}
+
+/// The leak oracle finds nothing in the snapshot tests that compile, whose types are what the
+/// compiler means them to be, so it doesn't flag a generic that's in scope.
+#[test]
+fn leak_oracle_flags_nothing_in_the_snapshot_tests() {
+    // Some of them are deep, as the stress tests are, so they're compiled with a larger stack
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(check_snapshot_tests_for_leaks)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn check_snapshot_tests_for_leaks() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
+    let mut stack = vec![root];
+    let mut leaks = Vec::new();
+    let mut checked = 0;
+
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rue") {
+                let source = std::fs::read_to_string(&path).unwrap();
+                if let Compiled::Ok {
+                    leak: Some(leak), ..
+                } = oracle::compile_with(&source, true)
+                {
+                    leaks.push(format!("{}: {leak}", path.display()));
+                }
+                checked += 1;
+            }
+        }
+    }
+
+    assert!(checked > 100);
+    assert_eq!(leaks, Vec::<String>::new());
 }

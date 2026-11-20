@@ -571,6 +571,9 @@ pub struct Program {
     /// The functions other than `main`, in the order they're declared.
     pub functions: Vec<Function>,
     pub main: Function,
+    /// The sites of generator version 3's probe calls, whose generics nothing gives a type (see
+    /// `Generator::probe`).
+    pub probes: BTreeSet<SiteId>,
 }
 
 /// How a site's generic arguments are written in a variant.

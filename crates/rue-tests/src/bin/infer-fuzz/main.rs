@@ -50,6 +50,7 @@
 
 mod compare;
 mod generate;
+mod leak;
 mod oracle;
 mod program;
 mod report;

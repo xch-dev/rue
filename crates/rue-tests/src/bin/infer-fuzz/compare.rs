@@ -177,7 +177,7 @@ fn is_regression(before: Category, after: Category) -> bool {
     (before == Category::Inferred && after != Category::Inferred)
         || (matches!(
             after,
-            Category::Unsound | Category::Slow | Category::Crashed
+            Category::Unsound | Category::Leaked | Category::Slow | Category::Crashed
         ) && after != before)
 }
 

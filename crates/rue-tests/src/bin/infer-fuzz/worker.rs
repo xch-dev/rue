@@ -136,19 +136,28 @@ pub fn run_command(out: &mut impl Write, version: u32, seed: u64, start: usize) 
     send(out, "explicit", &status)?;
 
     if valid {
-        for (index, (_, variant)) in generated.variants.iter().enumerate().skip(start) {
+        for (index, (name, variant)) in generated.variants.iter().enumerate().skip(start) {
             let source = generated.program.print(variant);
             progress(out, &index.to_string())?;
             let stripped = compile(&source);
             // Each compile of the recheck gets its own time limit too. An error writing the
             // progress shows up when the outcome is sent.
             let stage = index.to_string();
-            let outcome = classify(&explicit, &stripped, || {
+            let mut outcome = classify(&explicit, &stripped, || {
                 let _ = progress(out, &stage);
                 let explicit = compile(&explicit_source);
                 let _ = progress(out, &stage);
                 (explicit, compile(&source))
             });
+            // Nothing gives a probe's generics a type, so rejecting it is right (see
+            // `Generator::probe`)
+            if name == "probe" && outcome.category == Category::Rejected {
+                outcome.category = Category::Inferred;
+                outcome.detail = outcome
+                    .diag
+                    .take()
+                    .map(|diag| format!("rejected: {}", diag.located()));
+            }
             send(out, "variant", &(index, outcome))?;
         }
     }
@@ -233,7 +242,7 @@ fn shrink_command(
 }
 
 /// Whether a shrunk candidate fails like the original: the same diagnostic for a rejection, a
-/// different output for an unsound result, or the same panic.
+/// different output for an unsound result, a leaked generic for a leak, or the same panic.
 pub fn same_failure(original: &Outcome, expected: &oracle::Run, stripped: &Compiled) -> bool {
     match (original.category, stripped) {
         (Category::Rejected, Compiled::Rejected { diag, .. }) => original
@@ -241,6 +250,8 @@ pub fn same_failure(original: &Outcome, expected: &oracle::Run, stripped: &Compi
             .as_ref()
             .is_some_and(|target| diag.same_failure(target)),
         (Category::Unsound, Compiled::Ok { run, .. }) => run != expected,
+        // Any leak counts, since shrinking renames nothing but can remove the binding it was in
+        (Category::Leaked, Compiled::Ok { run, leak, .. }) => run == expected && leak.is_some(),
         (Category::Crashed, Compiled::Panicked { message }) => {
             Some(message) == original.detail.as_ref()
         }

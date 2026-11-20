@@ -225,7 +225,9 @@ fn nth_mut(program: &mut Program, mut index: usize) -> Option<&mut Expr> {
         None
     }
 
-    let Program { functions, main } = program;
+    let Program {
+        functions, main, ..
+    } = program;
     for function in functions.iter_mut().chain([main]) {
         for expr in function.exprs_mut() {
             if let Some(found) = find(expr, &mut index) {
