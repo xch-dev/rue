@@ -192,6 +192,7 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
                 allow_statement: false,
                 allow_struct_initializer: options.allow_struct_initializer,
                 inline: false,
+                allow_range: false,
             },
         );
         p.finish();
@@ -424,6 +425,7 @@ fn for_expr(p: &mut Parser, checkpoint: Checkpoint) {
         allow_statement: false,
         allow_struct_initializer: false,
         inline: false,
+        allow_range: false,
     };
 
     p.start_at(checkpoint, SyntaxKind::ForExpr);

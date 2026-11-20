@@ -2020,6 +2020,10 @@ fn assert_message_keeps_its_comments() {
     assert_eq!(
         format_source(&output, &FormatOptions::default()).unwrap(),
         output
+    );
+}
+
+#[test]
 fn for_expressions() {
     check(
         r"fn main(conditions: List<Condition>, target_puzzle_hash: Bytes32, xs: List<Int>) -> Any {
