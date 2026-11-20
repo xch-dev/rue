@@ -122,6 +122,9 @@ struct Choice {
     /// The members (with the fallback last) that collected bounds for a generic being
     /// instantiated, which are only used by `Choices::matched_so_far`.
     bounded: Vec<bool>,
+    /// Whether the fallback could hold the value without being compared (see
+    /// `Inference::required_upper_bounds`).
+    may_fall_back: bool,
 }
 
 /// The union members that each of a generic's candidates was collected under, in the same order
@@ -268,12 +271,14 @@ impl Inference {
     /// Upper bounds of the generic that every solution has to satisfy, as far as the candidates
     /// tell: each upper candidate that wasn't collected under any union member, then, for each
     /// union that wasn't compared under another one, the union of an upper candidate under each
-    /// of its members, if every member that can hold the value has one directly under it (and the
-    /// fallback can't hold it). A solution holds the value by one of the members, so the generic
-    /// is at most that member's bound, which is in the union. A member that gave `Invalid` can't
-    /// hold it, so it doesn't need one. For example, a return type of `(T, nil)` against an
-    /// expected `(5, nil) | (Int, Bytes)` gives `T ≤ 5` under the first member and nothing under
-    /// the second, which can't hold it, so `T ≤ 5`, and against `(5, nil) | (4, nil)`, `T ≤ 5 | 4`.
+    /// of its members, if every member that can hold the value has one directly under it, and the
+    /// fallback can't hold it (it gave `Invalid`, or there's none). A solution holds the value by
+    /// one of the members, so the generic is at most that member's bound, which is in the union.
+    /// A member that gave `Invalid` can't hold it, so it doesn't need one. A fallback that wasn't
+    /// compared because a member held the value could hold it without any bound, so such a union
+    /// requires nothing. For example, a return type of `(T, nil)` against an expected
+    /// `(5, nil) | Bytes32` gives `T ≤ 5` under the first member and nothing under the second,
+    /// which can't hold it, so `T ≤ 5`, and against `(5, nil) | (4, nil)`, `T ≤ 5 | 4`.
     pub fn required_upper_bounds(&self, arena: &mut Arena<Type>, generic: TypeId) -> Vec<TypeId> {
         let (Some(candidates), Some(branches)) =
             (self.generics.get(&generic), self.branches.get(&generic))
@@ -291,6 +296,7 @@ impl Inference {
 
         for (index, choice) in self.choices.0.iter().enumerate() {
             if choice.parent.is_some()
+                || choice.may_fall_back
                 || choice
                     .fallback
                     .is_some_and(|result| result != Comparison::Invalid)
@@ -765,6 +771,11 @@ impl Inference {
         self.choices.mark_bounded(branch);
     }
 
+    /// Records that the union's fallback wasn't compared, though it could hold the value.
+    pub(crate) fn mark_may_fall_back(&mut self, choice: usize) {
+        self.choices.0[choice].may_fall_back = true;
+    }
+
     /// Whether the candidates collected under the union member hold (see `Choices::matched_with`).
     #[cfg(test)]
     pub(crate) fn matched(&self, branch: BranchId) -> bool {
@@ -1101,6 +1112,7 @@ impl Choices {
             members: vec![None; members],
             fallback: None,
             bounded: vec![false; members + 1],
+            may_fall_back: false,
         });
         self.0.len() - 1
     }
@@ -1140,6 +1152,7 @@ impl Choices {
             members: members.to_vec(),
             fallback,
             bounded: bounded.to_vec(),
+            may_fall_back: fallback.is_none(),
         });
         self.0.len() - 1
     }

@@ -343,6 +343,27 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: no_requirement_from_a_nested_union
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: no_requirement_when_the_fallback_holds
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: no_requirement_when_an_uncompared_fallback_could_hold
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - Binding `result` is returned directly after it's declared at generic_inference_matched_members.rue:28:5
 - Unused parameter `b` at generic_inference_matched_members.rue:296:36

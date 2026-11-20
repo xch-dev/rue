@@ -678,3 +678,63 @@ test fn no_requirement_from_a_member_without_a_bound() -> Int {
     );
     1
 }
+
+fn with_nil_twice_checked<U>(value: U, _f: fn(y: U) -> Int) -> ((U, nil), nil) {
+    ((value, nil), nil)
+}
+
+// `U ≤ 5` is only under the nested union's `(5, nil)` member, and the other one holds
+// `Int | (5, 5)`, so the outer `((…), nil)` member has no bound of its own for `U`, and nothing is
+// required of `first_of(value)`: `U` stays `Int | (5, 5)`, and the guard on `y` can be a pair
+test fn no_requirement_from_a_nested_union() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    let _result: ((5, nil) | (Int | (5, 5), nil), nil) | Bytes32 = with_nil_twice_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    );
+    1
+}
+
+fn returning_checked<U>(_value: U, _f: fn(y: U) -> Int) -> fn(a: Int) -> U {
+    unchecked_cast(nil)
+}
+
+type FromBytes = fn(a: Bytes) -> 5;
+
+// `FromBytes` only casts the function, with `U ≤ 5`, so the union falls back to holding its
+// runtime structure, which `Atom | (Any, Any)` does whatever `U` is, and `U ≤ 5` isn't required
+test fn no_requirement_when_the_fallback_holds() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    let _result: FromBytes | Atom | (Any, Any) = returning_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    );
+    1
+}
+
+type ReturnsFive = fn(a: Int) -> 5;
+
+// `ReturnsFive` gives `U ≤ 5`, but a function that isn't one is held by the union's fallback,
+// its runtime structure, which `Atom | (Any, Any)` holds whatever `U` is. That fallback wasn't
+// compared, since `ReturnsFive` held the value, so `U ≤ 5` isn't required of `first_of(value)`,
+// which isn't narrowed, and the guard on `y` can be a pair
+test fn no_requirement_when_an_uncompared_fallback_could_hold() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    let _result: ReturnsFive | Atom | (Any, Any) = returning_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    );
+    1
+}

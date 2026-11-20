@@ -2397,6 +2397,10 @@ fn compare_structure(
             }
 
             if result == Comparison::Assign {
+                if let (Some(infer), Some(index)) = (ctx.infer.as_mut(), choice.infer) {
+                    infer.mark_may_fall_back(index);
+                }
+
                 result
             } else {
                 min(

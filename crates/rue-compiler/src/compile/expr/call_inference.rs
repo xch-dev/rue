@@ -145,8 +145,10 @@ pub(crate) fn infer_call(
         final_expected
     };
 
-    // What the required type infers for the callee's generics, whose upper bounds outside of any
-    // union member are what its arguments are required to be assignable to
+    // What the required type infers for the callee's generics, whose upper bounds that every
+    // solution has (see `Inference::required_upper_bounds`) are what its arguments are required
+    // to be assignable to.
+    //
     // A required type that binds generics only gives the generics upper bounds in terms of
     // them, which aren't in scope for an argument, so it requires nothing of them
     let required = required_type
