@@ -1,23 +1,23 @@
 tests:
 - name: raise_arm
-  program: (a (q 2 2 (q . 1)) (c (q 3 1 1 (x)) ()))
+  program: (i () (x) (q . 1))
   debug_program: (a (q 2 2 (q . 1)) (c (q 3 (= 1 ()) (x (q . "raise called at inline_match_may_raise.rue:10:13") (q . "missing")) 1) ()))
-  byte_cost: 420000
+  byte_cost: 156000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at inline_match_may_raise.rue:10:13" "missing")
 - name: assert_arm
-  program: (a (q 2 2 (q . 1)) (c (q 3 1 (a (i (> 1 (q . 5)) (q . 1) (q 8)) 1) (q . 1)) ()))
+  program: (x)
   debug_program: (a (q 2 2 (q . 1)) (c (q 3 (= 1 ()) (q . 1) (a (i (> 1 (q . 5)) (q . 1) (q 8 (q . "assertion failed at inline_match_may_raise.rue:24:13"))) 1)) ()))
-  byte_cost: 756000
+  byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:24:13"
 - name: normal_match
-  program: (a (q 2 2 (q . 1)) (c (q 2 (i 1 (q . 1) (q 8)) 1) ()))
+  program: (q . 1)
   debug_program: (a (q 2 2 (q . 1)) (c (q 2 (i (= 1 ()) (q 8 (q . "raise called at inline_match_may_raise.rue:39:13") (q . "missing")) (q . 1)) 1) ()))
   output: "1"
-  runtime_cost: 682
-  byte_cost: 540000
-  total_cost: 540682
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: no_raise
   program: (q . 1)
   debug_program: (a (q 2 2 (q . 1)) (c (q 3 (= 1 ()) () (q . 1)) ()))
@@ -26,36 +26,36 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: single_arm
-  program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 (q . 5)) (q . 1) (q 8)) 1) ()))
+  program: (x)
   debug_program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 (q . 5)) (q . 1) (q 8 (q . "assertion failed at inline_match_may_raise.rue:67:13"))) 1) ()))
-  byte_cost: 636000
+  byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:67:13"
 - name: allowed
-  program: (a (q 2 2 (q . 1)) (c (q 3 1 1 (x)) ()))
+  program: (i () (x) (q . 1))
   debug_program: (a (q 2 2 (q . 1)) (c (q 3 (= 1 ()) (x (q . "raise called at inline_match_may_raise.rue:83:13") (q . "missing")) 1) ()))
-  byte_cost: 420000
+  byte_cost: 156000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at inline_match_may_raise.rue:83:13" "missing")
 - name: statement_rest_raises
-  program: (a (q 2 2 (q 1)) (c (q 3 3 (a (i (= 2 (q . 1)) (q 8) (q . 2)) 1) ()) ()))
+  program: (i () (x) ())
   debug_program: (a (q 2 2 (c (q . 1) ())) (c (q 3 (= 3 ()) () (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:103:5"))) 1)) ()))
-  byte_cost: 756000
+  byte_cost: 132000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:103:5"
 - name: statement_without_return
-  program: (a (q 2 2 (q 4)) (c (q 3 () (i 3 () ()) (a (i (= 2 (q . 1)) (q 8) (q . 2)) 1)) ()))
+  program: (q . 4)
   debug_program: (a (q 2 2 (c (q . 4) ())) (c (q 3 () (i (= 3 ()) (a (i ("debug_print" (q . "inline_match_may_raise.rue:115:13") ()) () ()) 1) ()) (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:120:5"))) 1)) ()))
   output: "4"
-  runtime_cost: 1078
-  byte_cost: 852000
-  total_cost: 853078
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
   print_messages:
   - ()
 - name: nested_statement_rest_raises
-  program: (a (q 2 2 (q 1 () . 1)) (c (q 2 (q 2 (i 31 (q 3 23 (a 2 5) ()) (q 2 2 5)) 1) (c (q 2 (i (= 2 (q . 1)) (q 8) (q . 2)) 1) (c 1 1))) ()))
+  program: (a (q 3 () (a 2 5) ()) (c (q 8) (c 1 1)))
   debug_program: (a (q 2 2 (c (q . 1) (c () (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 (= 23 ()) () (a 2 5)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:139:9") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:142:5"))) 1) (c 1 1))) ()))
-  byte_cost: 1404000
+  byte_cost: 468000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:142:5"
 - name: arm_rest_raises
@@ -65,9 +65,9 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:164:5"
 - name: nested_reported_once
-  program: (a (q 2 2 (q 1 () . 1)) (c (q 2 (q 2 (i 31 (q 3 23 (a (i (> 11 (q . 1)) (q 2 2 5) (q 8)) 1) ()) (q 2 2 5)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8)) 1) (c 1 1))) ()))
+  program: (a (q 3 () (x) ()) (c (q 8) (c 1 1)))
   debug_program: (a (q 2 2 (c (q . 1) (c () (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 (= 23 ()) () (a (i (> 11 (q . 1)) (q 2 2 5) (q 8 (q . "assertion failed at inline_match_may_raise.rue:183:9"))) 1)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:185:9") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:188:5"))) 1) (c 1 1))) ()))
-  byte_cost: 1740000
+  byte_cost: 420000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:183:9"
 diagnostics:

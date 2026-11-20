@@ -42,12 +42,12 @@ tests:
   byte_cost: 612000
   total_cost: 613490
 - name: union_argument
-  program: (a (q 2 (q 2 (i 4 (q 2 (i 6 (q 16 4 6) ()) 1) ()) 1) (c (a 6 (c (a 4 (q . 5)) ())) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) ()) 1) (q 4 2 2)) ()))
+  program: (a (q 2 (q 2 (i 4 (q 2 (i 6 (q 16 4 6) ()) 1) ()) 1) (c (a 2 (q 5)) 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 2 (i (a (i (= (f 2) ()) (q 1 . 1) (q 9 (r 2) ())) 1) () (q 16 (f 2) (r 2))) 1) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (a 4 (q . 5)))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) ()) 1) (c (q 4 2 2) (q 2 2 (c 3 ())))) ()))
   output: "10"
-  runtime_cost: 3347
-  byte_cost: 1500000
-  total_cost: 1503347
+  runtime_cost: 2168
+  byte_cost: 1020000
+  total_cost: 1022168
 - name: literal_argument
   program: (a (q 2 (q 2 (i 4 (q . 6) ()) 1) (c (a 2 (q 1)) 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 2 (i (f 2) (q 6 2) ()) 1) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))

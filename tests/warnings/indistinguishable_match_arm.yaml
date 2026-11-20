@@ -1,9 +1,9 @@
-program: (a (q 16 (a 30 ()) (a 22 ()) (a 10 ()) (a 12 (q . 1)) (a 8 ()) (q . 4)) (c (c (c (q 2 (i 1 (q 3 3 (q . 2) (q . 1)) ()) 1) (q 2 (i (l 1) () (q . 1)) 1)) (c (q 2 (i 1 (q . 1) ()) 1) (c (q 2 (i 1 (q . 2) ()) 1) (q 2 (i 1 (q . 2) ()) 1)))) ()))
+program: (q . 5)
 debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 62 ()) (a 46 ())) (a 54 ())) (a 38 ())) (a 58 ())) (a 42 ())) (a 18 ())) (a 60 (q . 1))) (a 44 ())) (a 52 (q . 1))) (a 36 (q . 1))) (a 56 (q . 1))) (a 40 ())) (a 16 ())) (c (c (c (c (q 2 (q 16 2 (q . 1)) (c (a (i (not 1) () (q 1 . 1)) 1) 1)) (c (q 2 (i (not 1) () (q 2 (i (not (r 1)) (q 1 . 1) (q 1 . 2)) 1)) 1) (q 1 . 1))) (c (c (q 1 . 1) (q 1 . 1)) (c (q 2 (i (not 1) () (q 1 . 1)) 1) (q 2 (i (not (l 1)) (q . 1) ()) 1)))) (c (c (q 2 (i (= 1 ()) () (q . 1)) 1) (c (q 2 (i (not 1) () (q 1 . 1)) 1) (q . 1))) (c (c (q 2 (i (not (not 1)) (q 1 . 1) ()) 1) (q 2 (i (= 1 ()) () (q 1 . 1)) 1)) (c (q 2 (i (not (not 1)) (q 5 1) ()) 1) (q 2 (i (not 1) () (q 5 1)) 1))))) ()))
 output: "5"
-runtime_cost: 5130
-byte_cost: 2316000
-total_cost: 2321130
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020
 diagnostics:
 - Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:14:9
 - Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:20:9

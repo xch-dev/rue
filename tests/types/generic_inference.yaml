@@ -14,19 +14,19 @@ tests:
   byte_cost: 1404000
   total_cost: 1409500
 - name: apply_consistent
-  program: (a (q 2 2 (c (sha256 (q . 97)) (q 11 2))) (c (q 2 3 (c 2 ())) ()))
+  program: (a (q 2 6 (c 4 ())) (c (c (sha256 (q . 97)) (q 11 2)) 1))
   debug_program: (a (q 2 6 (c (sha256 (q . 97)) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
   output: "0xbf5d3affb73efd2ec6c36ad3112dd933efed63c4e1cbffcfa88e2759c144f2d8"
-  runtime_cost: 1936
-  byte_cost: 636000
-  total_cost: 637936
+  runtime_cost: 1785
+  byte_cost: 540000
+  total_cost: 541785
 - name: apply_wider_function
-  program: (a (q 2 2 (c (q . 1) (q 11 2))) (c (q 2 3 (c 2 ())) ()))
+  program: (a (q 2 6 (c 4 ())) (c (c (q . 1) (q 11 2)) 1))
   debug_program: (a (q 2 6 (c (q . 1) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
   output: "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
-  runtime_cost: 1330
-  byte_cost: 588000
-  total_cost: 589330
+  runtime_cost: 1179
+  byte_cost: 492000
+  total_cost: 493179
 - name: call_inferred_from_function
   program: (sha256 (q . 97))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (sha256 (q . 97)))) (c (q 2 2 (c 3 ())) ()))

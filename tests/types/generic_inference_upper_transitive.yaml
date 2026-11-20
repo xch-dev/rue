@@ -84,12 +84,12 @@ tests:
   byte_cost: 732000
   total_cost: 733052
 - name: held_candidate_kept
-  program: (a (q 4 (a 6 (c () (c (q . 2) 4))) (q . 1)) (c (c (q 2 (i 2 (q . 2) ()) 1) (q 2 (i 2 (q 2 5 (c 2 ())) ()) 1)) ()))
+  program: (a (q 1 () . 1) (c (q 2 (i 2 (q . 2) ()) 1) ()))
   debug_program: (a (q 2 (q 2 (q 4 2 (q . 1)) (c 2 1)) (c (a 14 (c () (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q 2 (i (= 2 ()) () (q . 2)) 1) (c (q . 2) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) ()) 1) () (q 2 5 (c 2 ()))) 1))) ()))
   output: (() . 1)
-  runtime_cost: 1054
-  byte_cost: 1164000
-  total_cost: 1165054
+  runtime_cost: 246
+  byte_cost: 444000
+  total_cost: 444246
 - name: bound_from_unmatched_union_member_ignored
   program: (a (q . 2) (q 1))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) 1)) (c (c (q . 2) (c (q . 2) (q . 2))) ()))

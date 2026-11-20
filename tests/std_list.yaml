@@ -21,16 +21,16 @@ tests:
   byte_cost: 4668000
   total_cost: 4684135
 - name: reverse_as_a_value
-  program: (a (q 2 (i (a 4 (c 4 (c (q 2 1) (a (c (q . 2) (c (q 1 2 2 (c 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 10) (q 1))) ()))) (c (a 14 (q 1 2)) ()))))) () (q 8)) 1) (c (c (q 2 (i (l 7) (q 2 (i (l 5) (q 2 (i (a 2 (c 2 (c 9 11))) (q 2 2 (c 2 (c 13 15))) ()) 1) ()) 1) (q 2 (i (l 5) () (q 9 7 5)) 1)) 1) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c 9 7)))) (q . 7)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
+  program: (a (q 2 (i (a 4 (c 4 (c (q 2 1) (a (c (q . 2) (c (q 1 2 2 (c 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 6) (q 1))) ()))) (q (q 2)))))) () (q 8)) 1) (c (c (q 2 (i (l 7) (q 2 (i (l 5) (q 2 (i (a 2 (c 2 (c 9 11))) (q 2 2 (c 2 (c 13 15))) ()) 1) ()) 1) (q 2 (i (l 5) () (q 9 7 5)) 1)) 1) (q 2 (i 5 (q 2 2 (c 2 (c 13 (c 9 7)))) (q . 7)) 1)) ()))
   debug_program: (a (q 2 (q 2 (i (a 9 (c 9 (c (c (q . 2) (c (q . 1) ())) (a 2 (c (a 29 (c (q . 1) (c (q . 2) ()))) ()))))) () (q 8 (q . "assertion failed at std_list.rue:34:5"))) 1) (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 2 (c 5 ())))) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) 1)) (c (c (q 2 (i (not (l 7)) (q 2 (i (not (l 5)) (q 9 7 5) ()) 1) (q 2 (i (not (l 5)) () (q 2 (i (a 2 (c 2 (c (f 5) (f 7)))) (q 2 2 (c 2 (c (r 5) (r 7)))) ()) 1)) 1)) 1) (c (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (c (f 5) 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at std_list.rue:5:5"))) 1))) ()))
   output: ()
-  runtime_cost: 10262
-  byte_cost: 4452000
-  total_cost: 4462262
+  runtime_cost: 9628
+  byte_cost: 3732000
+  total_cost: 3741628
 - name: qualified
-  program: (a (q 2 (i (= (a 4 (c 4 (a 6 (q 1 2 3)))) (q . 3)) () (q 8)) 1) (c (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1)) ()))
+  program: (a (q 2 (i (= (a 2 (c 2 (q 1 2 3))) (q . 3)) () (q 8)) 1) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) ()))
   debug_program: (a (q 2 (i (= (a 4 (c 4 (a 6 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) (q . 3)) () (q 8 (q . "assertion failed at std_list.rue:39:5"))) 1) (c (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at std_list.rue:5:5"))) 1)) ()))
   output: ()
-  runtime_cost: 5803
-  byte_cost: 1860000
-  total_cost: 1865803
+  runtime_cost: 5264
+  byte_cost: 1188000
+  total_cost: 1193264

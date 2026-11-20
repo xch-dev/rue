@@ -214,21 +214,21 @@ tests:
   byte_cost: 492000
   total_cost: 492281
 - name: guard_that_reads_fields_in_a_function
-  program: (a (q 3 (a (i (a 2 (c 11 5)) (q 2 2 (c 23 5)) ()) 1) (q . 10) (q . 20)) (c (q 2 (i 3 (q 1 . 1) (q 9 4 (q . 1))) 1) 1))
+  program: (i (a (i (a (i 2 (q 1 . 1) (q 9 9 (q . 1))) 1) (q 2 (i 2 (q 1 . 1) (q 9 19 (q . 1))) 1) ()) 1) (q . 10) (q . 20))
   debug_program: (a (q 2 (i (a (i (a 2 (c 11 5)) (q 2 2 (c 23 5)) ()) 1) (q 1 . 10) (q 1 . 20)) 1) (c (q 2 (i 3 (q 1 . 1) (q 9 (f 2) (q . 1))) 1) 1))
   solution: (1 () ())
   output: "10"
-  runtime_cost: 1687
-  byte_cost: 1164000
-  total_cost: 1165687
+  runtime_cost: 861
+  byte_cost: 1020000
+  total_cost: 1020861
 - name: constant_left_operand
-  program: (a (q 2 (i (a 2 5) (q 2 2 11) ()) 1) (c (q 1 . 1) 1))
+  program: (q . 1)
   debug_program: (a (q 2 (i (a 4 (c 6 5)) (q 2 4 (c 6 11)) ()) 1) (c (c (q 2 (i 2 (q 1 . 1) (q 9 3 (q . 1))) 1) (q . 1)) 1))
   solution: (5 6)
   output: "1"
-  runtime_cost: 885
-  byte_cost: 564000
-  total_cost: 564885
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: field_next_to_one_that_was_read
   program: (a (i (= 9 2) (q 1 . 1) (q 9 21 2)) 1)
   debug_program: (a (i (= (f 5) 2) (q 1 . 1) (q 9 (f (r 5)) 2)) 1)

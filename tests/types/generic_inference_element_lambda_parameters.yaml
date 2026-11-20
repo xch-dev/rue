@@ -1,25 +1,25 @@
 tests:
 - name: expected_type_reaches_an_element
-  program: (a (q 16 (a 2 (c (q . 5) (q . 2))) (q . 1)) (c (q 2 3 (c 2 ())) ()))
+  program: (+ (a (q 2 6 (c 4 ())) (c (c (q . 5) (q . 2)) 1)) (q . 1))
   debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))) 1)) (c (q 2 (r 1) (c (f 1) ())) ()))
   output: "6"
-  runtime_cost: 1562
-  byte_cost: 636000
-  total_cost: 637562
+  runtime_cost: 1411
+  byte_cost: 540000
+  total_cost: 541411
 - name: lambda_before_its_value
-  program: (a (q 2 2 (c (q . 2) (q . 1))) (c (q 2 2 (c 3 ())) ()))
+  program: (a (q 2 4 (c 6 ())) (c (c (q . 2) (q . 1)) 1))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1))) (c (q 2 (f 1) (c (r 1) ())) ()))
   output: "1"
-  runtime_cost: 786
-  byte_cost: 540000
-  total_cost: 540786
+  runtime_cost: 635
+  byte_cost: 444000
+  total_cost: 444635
 - name: lambda_before_its_value_with_an_expected_type
-  program: (a (q 16 (a 2 (c (q . 2) (q . 5))) (q . 1)) (c (q 2 2 (c 3 ())) ()))
+  program: (+ (a (q 2 4 (c 6 ())) (c (c (q . 2) (q . 5)) 1)) (q . 1))
   debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 (f 1) (c (r 1) ())) ()))
   output: "6"
-  runtime_cost: 1562
-  byte_cost: 636000
-  total_cost: 637562
+  runtime_cost: 1411
+  byte_cost: 540000
+  total_cost: 541411
 - name: list_of_lambdas
   program: (a (q 16 (a 2 (c (c (q . 2) ()) (q . 5))) (a 2 (c (c (q . 2) ()) (q . 1)))) (c (q 2 (i 2 (q 2 4 (c 3 ())) ()) 1) ()))
   debug_program: (a (q 2 (q 16 2 (a 5 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (q . 1)))) (c (a 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (q . 5))) 1)) (c (q 2 (i (not (not 2)) (q 2 (f 2) (c 3 ())) ()) 1) ()))
@@ -35,9 +35,9 @@ tests:
   byte_cost: 1428000
   total_cost: 1431780
 - name: lambda_before_its_value_next_to_another_lambda
-  program: (a (q 16 (a 2 (c (c (q . 2) (q . 1)) (c (q . 2) (q . 5)))) (q . 1)) (c (q 3 () (a 4 (c 6 ())) (a 5 (c 7 ()))) ()))
+  program: (+ (a (q 3 () (a 4 (c 6 ())) (q . 5)) (c (c (q . 2) (q . 1)) 1)) (q . 1))
   debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)))) 1)) (c (q 3 () (a (f 2) (c (r 2) ())) (a 5 (c 7 ()))) ()))
   output: "6"
-  runtime_cost: 2128
-  byte_cost: 1068000
-  total_cost: 1070128
+  runtime_cost: 1509
+  byte_cost: 660000
+  total_cost: 661509

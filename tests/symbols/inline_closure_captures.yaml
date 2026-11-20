@@ -35,16 +35,16 @@ tests:
   byte_cost: 372000
   total_cost: 374098
 - name: argument_evaluated_once
-  program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (q ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  program: (a (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (a (i (> 2 ()) (q . 2) (q 8)) 1)) (q ()))) ()))) 1)) 2) (c (q . 10) 1))
   debug_program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
   output: "30"
-  runtime_cost: 4615
-  byte_cost: 1836000
-  total_cost: 1840615
+  runtime_cost: 4206
+  byte_cost: 1572000
+  total_cost: 1576206
 - name: argument_raises
-  program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (q ()))) ()))) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  program: (a (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (a (i (> 2 ()) (q . 2) (q 8)) 1)) (q ()))) ()))) 1)) 2) (c () 1))
   debug_program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
-  byte_cost: 1812000
+  byte_cost: 1548000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_closure_captures.rue:39:5"
 - name: auto_inlined_closure

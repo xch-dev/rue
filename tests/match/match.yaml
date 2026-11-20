@@ -1,19 +1,19 @@
 tests:
 - name: structs
-  program: (a (q 4 (a 2 (q 1 2)) (c (a 2 (q 2 3)) (c (a 2 (q 3)) ()))) (c (q 2 (i (= 2 (q . 1)) (q 18 5 5 (q . 3)) (q 2 (i (= 2 (q . 2)) (q 18 5 5) ()) 1)) 1) ()))
+  program: (q 12 9 ())
   debug_program: (a (q 4 (a 2 (c (q . 1) (c (q . 2) ()))) (c (a 2 (c (q . 2) (c (q . 3) ()))) (c (a 2 (c (q . 3) ())) ()))) (c (q 2 (i (= (f 1) (q . 1)) (q 18 (* (q . 3) (f (r 1))) (f (r 1))) (q 2 (i (= (f 1) (q . 2)) (q 18 (f (r 1)) (f (r 1))) ()) 1)) 1) ()))
   output: (12 9 ())
-  runtime_cost: 6102
-  byte_cost: 1620000
-  total_cost: 1626102
+  runtime_cost: 20
+  byte_cost: 108000
+  total_cost: 108020
 - name: struct_argument
-  program: (a (q 2 2 5) (c (q 2 (i (= 2 (q . 1)) (q 18 5 5 (q . 3)) (q 2 (i (= 2 (q . 2)) (q 18 5 5) ()) 1)) 1) 1))
+  program: (a (i (= 4 (q . 1)) (q 18 10 10 (q . 3)) (q 2 (i (= 4 (q . 2)) (q 18 10 10) ()) 1)) 1)
   debug_program: (a (q 2 2 5) (c (q 2 (i (= (f 1) (q . 1)) (q 18 (* (q . 3) (f (r 1))) (f (r 1))) (q 2 (i (= (f 1) (q . 2)) (q 18 (f (r 1)) (f (r 1))) ()) 1)) 1) 1))
   solution: ((2 3))
   output: "9"
-  runtime_cost: 2339
-  byte_cost: 1068000
-  total_cost: 1070339
+  runtime_cost: 1938
+  byte_cost: 804000
+  total_cost: 805938
 - name: union_arms
   program: (i (= 4 (q . 1)) (q . 1) (q . 2))
   debug_program: (a (i (= (f 2) (q . 1)) (q 1 . 1) (q 1 . 2)) 1)
@@ -79,13 +79,13 @@ tests:
   byte_cost: 1500000
   total_cost: 1507047
 - name: expression_value
-  program: (a (q 2 (q 2 (i (= 4 (q . 1)) (q 1 . 1) (q 3 (= 4 (q . 2)) (q . 2) (q . 3))) 1) (c (a 2 5) 1)) (c (q 2 (i 1 (q . 2) (q 1 3)) 1) 1))
+  program: (a (q 2 (i (= 4 (q . 1)) (q 1 . 1) (q 3 (= 4 (q . 2)) (q . 2) (q . 3))) 1) (c (a (i 2 (q . 4) (q 1 3)) 1) 1))
   debug_program: (a (q 2 (q 2 (i (= (f 2) (q . 1)) (q 1 . 1) (q 2 (i (= (f 2) (q . 2)) (q 1 . 2) (q 1 . 3)) 1)) 1) (c (a 2 5) 1)) (c (q 2 (i (not 1) (q 4 (q . 3) ()) (q 5 1)) 1) 1))
   solution: (((2 4)))
   output: "2"
-  runtime_cost: 1591
-  byte_cost: 1284000
-  total_cost: 1285591
+  runtime_cost: 1182
+  byte_cost: 1020000
+  total_cost: 1021182
 - name: field_value
   program: (a (i (= 8 (q . 1)) (q . 20) (q . 6)) 1)
   debug_program: (a (i (= (f (f 2)) (q . 1)) (q 5 (r (f 2))) (q 6 2)) 1)
@@ -95,13 +95,13 @@ tests:
   byte_cost: 324000
   total_cost: 324465
 - name: generic
-  program: (a (q 2 2 5) (c (q 32 (not 1)) 1))
+  program: (not (not 2))
   debug_program: (a (q 2 2 5) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) ()) 1) () (q 1 . 1)) 1) 1))
   solution: (5)
   output: "1"
-  runtime_cost: 863
-  byte_cost: 372000
-  total_cost: 372863
+  runtime_cost: 450
+  byte_cost: 108000
+  total_cost: 108450
 - name: block_arms
   program: (a (i 2 (q 16 (* 2 (q . 2)) (q . 1)) (q 8)) 1)
   debug_program: (a (i (= 2 ()) (q 8 (q . "raise called at match.rue:149:13") (q . "missing")) (q 2 (q 16 2 (q . 1)) (c (* 2 (q . 2)) 1))) 1)

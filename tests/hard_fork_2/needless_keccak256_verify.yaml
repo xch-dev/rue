@@ -57,21 +57,21 @@ tests:
   byte_cost: 444000
   total_cost: 448096
 - name: shadowed
-  program: (a (q 3 () (a 2 (c 5 11)) ()) (c (q 3 () (a (i (= (keccak256 2) 3) () (q 8)) 1) (a (i (= (sha256 2) 3) (q 8) ()) 1)) 1))
+  program: (i () (i () (a (i (= (keccak256 2) 5) () (q 8)) 1) (a (i (= (sha256 2) 5) (q 8) ()) 1)) ())
   debug_program: (a (q 3 (q . 1) () (a 4 (c 6 (c 5 11)))) (c (c (q 3 (q . 1) (a (i (not (= (a 2 5) 7)) () (q 8 (q . "assertion failed at needless_keccak256_verify.rue:57:9"))) 1) (a (i (= (keccak256 5) 7) () (q 8)) 1)) (q 11 1)) 1))
   solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
   output: ()
-  runtime_cost: 7354
-  byte_cost: 1212000
-  total_cost: 1219354
+  runtime_cost: 6838
+  byte_cost: 876000
+  total_cost: 882838
 - name: shadowed_by_parameter
-  program: (a (q 3 () (a 2 (c 5 (c 11 (q 11 2)))) ()) (c (q 3 () (a (i (= (keccak256 2) 5) () (q 8)) 1) (a (i (= (a 7 (c 2 ())) 5) (q 8) ()) 1)) 1))
+  program: (i () (i () (a (i (= (keccak256 2) 5) () (q 8)) 1) (a (i (= (sha256 2) 5) (q 8) ()) 1)) ())
   debug_program: (a (q 3 (q . 1) () (a 2 (c 5 (c 11 (c (q . 2) (c (c (q . 1) (q 11 2)) (c (q . 1) ()))))))) (c (q 3 (q . 1) (a (i (not (= (a 7 (c 2 ())) 5)) () (q 8 (q . "assertion failed at needless_keccak256_verify.rue:67:5"))) 1) (a (i (= (keccak256 2) 5) () (q 8)) 1)) 1))
   solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
   output: ()
-  runtime_cost: 7719
-  byte_cost: 1452000
-  total_cost: 1459719
+  runtime_cost: 6838
+  byte_cost: 876000
+  total_cost: 882838
 - name: shadowed_by_binding
   program: (i () (a (i (= (keccak256 2) 5) () (q 8)) 1) (a (i (= (sha256 2) 5) (q 8) ()) 1))
   debug_program: (a (q 3 (q . 1) (a (i (not (= (a 2 (c 5 ())) 11)) () (q 8 (q . "assertion failed at needless_keccak256_verify.rue:73:5"))) 1) (a (i (= (keccak256 5) 11) () (q 8)) 1)) (c (c (q . 2) (c (c (q . 1) (q 11 2)) (c (q . 1) ()))) 1))

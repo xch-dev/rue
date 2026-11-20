@@ -24,13 +24,13 @@ tests:
   byte_cost: 204000
   total_cost: 204345
 - name: call_generic_field
-  program: (a (q 2 2 5) (c (q 2 (i 2 (q . 2) ()) 1) 1))
+  program: (a (i 4 (q . 4) ()) 1)
   debug_program: (a (q 2 2 5) (c (q 2 (i (not (not (f 1))) (q 2 (q . 2) (c (f 1) 1)) ()) 1) 1))
   solution: (((1 . 2)))
   output: (1 . 2)
-  runtime_cost: 746
-  byte_cost: 468000
-  total_cost: 468746
+  runtime_cost: 337
+  byte_cost: 204000
+  total_cost: 204337
 diagnostics:
 - |-
   Binding `value` is returned directly after it's declared at generic_struct_fields.rue:12:5

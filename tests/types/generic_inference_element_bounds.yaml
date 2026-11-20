@@ -1,18 +1,18 @@
 tests:
 - name: lambda_after_a_value_in_a_pair
-  program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 3 (c 2 ())) ()))
+  program: (a (q 2 6 (c 4 ())) (c (c (q . 1) (q . 2)) 1))
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))) (c (q 2 (r 1) (c (f 1) ())) ()))
   output: "1"
-  runtime_cost: 786
-  byte_cost: 540000
-  total_cost: 540786
+  runtime_cost: 635
+  byte_cost: 444000
+  total_cost: 444635
 - name: lambda_in_a_nested_pair
-  program: (a (q 2 2 (c (q . 1) (c (q . 2) (q 16 2 (q . 1))))) (c (q 2 7 (c 2 ())) ()))
+  program: (a (q 2 14 (c 4 ())) (c (c (q . 1) (c (q . 2) (q 16 2 (q . 1)))) 1))
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))))) (c (q 2 (r (r 1)) (c (f 1) ())) ()))
   output: "2"
-  runtime_cost: 1637
-  byte_cost: 732000
-  total_cost: 733637
+  runtime_cost: 1486
+  byte_cost: 636000
+  total_cost: 637486
 - name: lambdas_in_a_list
   program: (a (q 2 2 (c 2 (c (c (q . 1) (q . 2)) (c (c (q . 2) (q 18 2 (q . 2))) ())))) (c (q 2 (i 3 (q 16 (a 13 (c 9 ())) (a 2 (c 2 7))) ()) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (c (q . 2) (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ())))) ())))) (c (q 2 (i (not 3) () (q 16 (a (r (f 3)) (c (f (f 3)) ())) (a 2 (c 2 (r 3))))) 1) ()))
@@ -21,12 +21,12 @@ tests:
   byte_cost: 1380000
   total_cost: 1385480
 - name: lambda_item_after_a_value_in_a_list
-  program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (q 2 5 (c 2 ())) ()))
+  program: (a (q 2 10 (c 4 ())) (c (c (q . 1) (c (q . 2) ())) 1))
   debug_program: (a (q 2 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) (c (q 2 (f (r 1)) (c (f 1) ())) ()))
   output: "1"
-  runtime_cost: 885
-  byte_cost: 612000
-  total_cost: 612885
+  runtime_cost: 734
+  byte_cost: 516000
+  total_cost: 516734
 - name: call_inside_the_argument
   program: (a (q 2 6 (c 4 ())) (c (c (q . 1) (q 2 (q 2 6 (c 4 ())) (c (c 2 (q . 2)) 1))) 1))
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))))) (c (q 2 (r 1) (c (f 1) ())) ()))

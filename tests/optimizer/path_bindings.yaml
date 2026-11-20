@@ -32,20 +32,20 @@ tests:
   byte_cost: 396000
   total_cost: 398337
 - name: check_is_kept_when_the_branch_is_not_taken
-  program: (a (q 2 (q 2 (i 23 (q 16 2 2) (q 1 . 42)) 1) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (a (q 2 (i 11 (q 16 2 2) (q 1 . 42)) 1) (c (r (a (i (= (sha256 2) (sha256 (q . "hunter2"))) (q 4 2 (strlen 2)) (q 8)) 1)) 1))
   debug_program: (a (q 2 (q 2 (q 2 (i 47 (q 16 2 2) (q 1 . 42)) 1) (c (r 2) 1)) (c (a 2 5) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: ("wrong" ())
-  byte_cost: 1440000
+  byte_cost: 1176000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at path_bindings.rue:43:5"
 - name: check_is_kept_when_the_branch_is_taken
-  program: (a (q 2 (q 2 (i 23 (q 16 2 2) (q 1 . 42)) 1) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (a (q 2 (i 11 (q 16 2 2) (q 1 . 42)) 1) (c (r (a (i (= (sha256 2) (sha256 (q . "hunter2"))) (q 4 2 (strlen 2)) (q 8)) 1)) 1))
   debug_program: (a (q 2 (q 2 (q 2 (i 47 (q 16 2 2) (q 1 . 42)) 1) (c (r 2) 1)) (c (a 2 5) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: ("hunter2" 1)
   output: "14"
-  runtime_cost: 3672
-  byte_cost: 1440000
-  total_cost: 1443672
+  runtime_cost: 3263
+  byte_cost: 1176000
+  total_cost: 1179263
 - name: inline_argument_that_is_a_path
   program: (* 6 6)
   debug_program: (a (q 18 2 2) (c (r 2) 1))
@@ -55,10 +55,10 @@ tests:
   byte_cost: 84000
   total_cost: 85104
 - name: inline_argument_that_may_fail
-  program: (a (q 2 (q 18 2 2) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (a (q 18 2 2) (c (r (a (i (= (sha256 2) (sha256 (q . "hunter2"))) (q 4 2 (strlen 2)) (q 8)) 1)) 1))
   debug_program: (a (q 2 (q 18 2 2) (c (r (a 2 5)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: ("wrong")
-  byte_cost: 1200000
+  byte_cost: 936000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at path_bindings.rue:43:5"
 - name: captured_by_a_closure
@@ -100,33 +100,33 @@ tests:
   byte_cost: 948000
   total_cost: 957845
 - name: path_then_call
-  program: (a (q 16 (a (i 23 (q 18 13 13) ()) 1) (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1))) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (+ (a (i 11 (q 18 6 6) ()) 1) (a (q 2 (i 23 (q 18 2 2) ()) 1) (c (r (a (i (= (sha256 5) (sha256 (q . "hunter2"))) (q 4 5 (strlen 5)) (q 8)) 1)) 1)))
   debug_program: (a (q 16 (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r 5) 1)) (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1))) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: (("ab" . 2) "hunter2" 1)
   output: "53"
-  runtime_cost: 6109
-  byte_cost: 1728000
-  total_cost: 1734109
+  runtime_cost: 5696
+  byte_cost: 1464000
+  total_cost: 1469696
 - name: path_then_call_that_fails
-  program: (a (q 16 (a (i 23 (q 18 13 13) ()) 1) (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1))) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (+ (a (i 11 (q 18 6 6) ()) 1) (a (q 2 (i 23 (q 18 2 2) ()) 1) (c (r (a (i (= (sha256 5) (sha256 (q . "hunter2"))) (q 4 5 (strlen 5)) (q 8)) 1)) 1)))
   debug_program: (a (q 16 (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r 5) 1)) (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1))) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: (("ab" . 2) "wrong" ())
-  byte_cost: 1728000
+  byte_cost: 1464000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at path_bindings.rue:43:5"
 - name: call_then_path
-  program: (a (q 16 (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1)) (a (i 23 (q 18 13 13) ()) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (+ (a (q 2 (i 23 (q 18 2 2) ()) 1) (c (r (a (i (= (sha256 5) (sha256 (q . "hunter2"))) (q 4 5 (strlen 5)) (q 8)) 1)) 1)) (a (i 11 (q 18 6 6) ()) 1))
   debug_program: (a (q 16 (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1)) (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r 5) 1))) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: (("ab" . 2) "hunter2" 1)
   output: "53"
-  runtime_cost: 6109
-  byte_cost: 1728000
-  total_cost: 1734109
+  runtime_cost: 5696
+  byte_cost: 1464000
+  total_cost: 1469696
 - name: call_then_path_that_fails
-  program: (a (q 16 (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1)) (a (i 23 (q 18 13 13) ()) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (+ (a (q 2 (i 23 (q 18 2 2) ()) 1) (c (r (a (i (= (sha256 5) (sha256 (q . "hunter2"))) (q 4 5 (strlen 5)) (q 8)) 1)) 1)) (a (i 11 (q 18 6 6) ()) 1))
   debug_program: (a (q 16 (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r (a 2 11)) 1)) (a (q 2 (i 47 (q 18 2 2) ()) 1) (c (r 5) 1))) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: (("ab" . 2) "wrong" ())
-  byte_cost: 1728000
+  byte_cost: 1464000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at path_bindings.rue:43:5"
 - name: length_is_bound

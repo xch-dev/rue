@@ -56,21 +56,21 @@ tests:
   byte_cost: 1116000
   total_cost: 1119850
 - name: shadowed
-  program: (a (q 3 () (a 2 (c 5 11)) ()) (c (q 3 () (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 2 (c 3 ()))) (a (i (= (sha256 2) 3) (q 8) ()) 1)) 1))
+  program: (i () (i () (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 2 (c 5 ()))) (a (i (= (sha256 2) 5) (q 8) ()) 1)) ())
   debug_program: (a (q 3 (q . 1) () (a 4 (c 6 (c 5 11)))) (c (c (q 3 (q . 1) (a (i (not (= (a 2 5) 7)) () (q 8 (q . "assertion failed at needless_keccak256_verify.rue:57:9"))) 1) (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 5 (c 7 ())))) (q 11 1)) 1))
   solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
   output: ()
-  runtime_cost: 5555
-  byte_cost: 1884000
-  total_cost: 1889555
+  runtime_cost: 5039
+  byte_cost: 1548000
+  total_cost: 1553039
 - name: shadowed_by_parameter
-  program: (a (q 3 () (a 2 (c 5 (c 11 (q 11 2)))) ()) (c (q 3 () (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 2 (c 5 ()))) (a (i (= (a 7 (c 2 ())) 5) (q 8) ()) 1)) 1))
+  program: (i () (i () (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 2 (c 5 ()))) (a (i (= (sha256 2) 5) (q 8) ()) 1)) ())
   debug_program: (a (q 3 (q . 1) () (a 2 (c 5 (c 11 (c (q . 2) (c (c (q . 1) (q 11 2)) (c (q . 1) ()))))))) (c (q 3 (q . 1) (a (i (not (= (a 7 (c 2 ())) 5)) () (q 8 (q . "assertion failed at needless_keccak256_verify.rue:67:5"))) 1) (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 2 (c 5 ())))) 1))
   solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
   output: ()
-  runtime_cost: 5920
-  byte_cost: 2124000
-  total_cost: 2129920
+  runtime_cost: 5039
+  byte_cost: 1548000
+  total_cost: 1553039
 - name: shadowed_by_binding
   program: (i () (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 2 (c 5 ()))) (a (i (= (sha256 2) 5) (q 8) ()) 1))
   debug_program: (a (q 3 (q . 1) (a (i (not (= (a 2 (c 5 ())) 11)) () (q 8 (q . "assertion failed at needless_keccak256_verify.rue:73:5"))) 1) (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 5 (c 11 ())))) (c (c (q . 2) (c (c (q . 1) (q 11 2)) (c (q . 1) ()))) 1))

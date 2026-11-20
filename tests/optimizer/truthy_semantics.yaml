@@ -47,17 +47,17 @@ tests:
   byte_cost: 204000
   total_cost: 204590
 - name: pair_condition_raises
-  program: (a (q 3 (c (a 2 5) ()) (q . 2) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i (c (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) ()) (q . 2) (q . 1))
   debug_program: (a (q 2 (q 2 (i (not 2) (q 1 . 1) (q 1 . 2)) 1) (c (c (a 2 5) ()) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 828000
+  byte_cost: 564000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at truthy_semantics.rue:7:9" "too big")
 - name: pair_statement_raises
-  program: (a (q 3 () (all (c (a 2 5) ()) 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (all (c (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) ()) 2) (q . 1))
   debug_program: (a (q 3 (q . 1) (i (q . 1) (q . 1) (a 4 5)) (a 10 (c 14 5))) (c (c (q . 1) (c (q 4 (a 2 3) ()) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1))) 1))
   solution: (50)
-  byte_cost: 876000
+  byte_cost: 612000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at truthy_semantics.rue:7:9" "too big")
 - name: assert_ne_nil_pair

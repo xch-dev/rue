@@ -1,18 +1,18 @@
 tests:
 - name: generic_lambda_beside_an_untyped_lambda
-  program: (a (q 16 (a 2 (c (q . 2) (c (q . 2) (q . 5))))) (c (q 2 2 (c (a 5 (c (a 2 (c 7 ())) ())) ())) ()))
+  program: (+ (a (q 2 2 (c (a 2 (q 5)) ())) (c (q . 2) 1)))
   debug_program: (a (q 2 (q 2 (q 16 2 ()) (c 2 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (a 4 (q . 5))))) 1)) (c (c (q . 1) (q 2 2 (c (a 5 (c (a 2 (c 7 ())) ())) ()))) ()))
   output: "5"
-  runtime_cost: 1862
-  byte_cost: 972000
-  total_cost: 973862
+  runtime_cost: 1148
+  byte_cost: 516000
+  total_cost: 517148
 - name: generic_lambda_beside_an_untyped_element_lambda
-  program: (a (q 2 (q . 2) (c (c (a (q 2 4 (c (a 4 (q 5)) ())) (c (c (q . 2) (q . 1)) 1)) (c (a 6 (c (c (q . 2) ()) (c (q . 2) (q . 5)))) (c (a 4 (c (c (q . 2) (q . 1)) (c (q . 2) (q . 5)))) (a (q 2 4 (c (a 4 (q 5)) ())) (c (c (q . 2) (q . 1)) 1))))) 1)) (c (c (q 2 4 (c (a 5 (c (a 4 (c 7 ())) ())) ())) (q 2 (i 2 (q 2 4 (c (a 5 (c (a 4 (c 7 ())) ())) ())) ()) 1)) ()))
+  program: (a (q . 2) (c (c (a (q 2 4 (c (a 4 (q 5)) ())) (c (c (q . 2) (q . 1)) 1)) (c (a (q 2 (i 2 (q 2 4 (c (a 4 (q 5)) ())) ()) 1) (c (c (q . 2) ()) 1)) (c (a (q 2 4 (c (a 4 (q 5)) ())) (c (c (q . 2) (q . 1)) 1)) (a (q 2 4 (c (a 4 (q 5)) ())) (c (c (q . 2) (q . 1)) 1))))) 1))
   debug_program: (a (q 2 (q 2 (q 4 (f 2) (r 2)) (c (c 8 (c 12 (c 10 14))) 1)) (c (c (c (a 10 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (a 4 (q . 5))))) (a 30 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (a 4 (q . 5)))))) (c (a 22 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (a 4 (q . 5))))) (a 10 (c (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (a 4 (q . 5))))))) 1)) (c (c (q . 1) (c (q 2 (f 2) (c (a 5 (c (a (f 2) (c 7 ())) ())) ())) (c (q 2 (f 2) (c (a 5 (c (a (f 2) (c 7 ())) ())) ())) (q 2 (i (not 2) () (q 2 (f 2) (c (a 5 (c (a (f 2) (c 7 ())) ())) ()))) 1)))) ()))
   output: (5 5 5 . 5)
-  runtime_cost: 5169
-  byte_cost: 3588000
-  total_cost: 3593169
+  runtime_cost: 3888
+  byte_cost: 2772000
+  total_cost: 2775888
 - name: generic_lambda_beside_an_untyped_lambda_that_compiled
   program: (a (q . 2) (c (c (a (q 2 2 (c (a 2 (q 5)) ())) (c (q . 2) 1)) (c (a (q 2 2 (c (a 2 (q 5)) ())) (c (q . 2) 1)) (a (q 2 2 (c (a 2 (q 5)) ())) (c (q . 2) 1)))) 1))
   debug_program: (a (q 2 (q 2 (q 4 (f 2) (r 2)) (c (c 4 (c 10 14)) 1)) (c (c (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (a 6 (q . 5))))) (c (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)))) (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (a 6 (q . 5))))))) 1)) (c (c (q 2 2 (c (a 5 (c (a 2 (c 7 ())) ())) ())) (q . 1)) ()))

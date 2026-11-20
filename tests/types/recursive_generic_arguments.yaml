@@ -63,26 +63,26 @@ tests:
   byte_cost: 996000
   total_cost: 1001462
 - name: fixed_guard_valid
-  program: (a (q 2 2 (c (sha256 (q . 97)) (q 1))) (c (q 2 (i (= (strlen 2) (q . 32)) (q 32 (l 5)) ()) 1) ()))
+  program: (a (q 2 (i (= (strlen 4) (q . 32)) (q 32 (l 10)) ()) 1) (c (c (sha256 (q . 97)) (q 1)) 1))
   debug_program: (a (q 2 2 (c (sha256 (q . 97)) (c (q . 1) ()))) (c (q 2 (i (= (strlen (f 1)) (q . 32)) (q 32 (l (f (r 1)))) ()) 1) ()))
   output: "1"
-  runtime_cost: 1910
-  byte_cost: 900000
-  total_cost: 901910
+  runtime_cost: 1759
+  byte_cost: 804000
+  total_cost: 805759
 - name: fixed_guard_invalid_first
-  program: (a (q 2 2 (q 1 1)) (c (q 2 (i (= (strlen 2) (q . 32)) (q 32 (l 5)) ()) 1) ()))
+  program: ()
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) ()))) (c (q 2 (i (= (strlen (f 1)) (q . 32)) (q 32 (l (f (r 1)))) ()) 1) ()))
   output: ()
-  runtime_cost: 1035
-  byte_cost: 780000
-  total_cost: 781035
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: fixed_guard_invalid_rest
-  program: (a (q 2 2 (c (sha256 (q . 97)) (q (q . 2)))) (c (q 2 (i (= (strlen 2) (q . 32)) (q 32 (l 5)) ()) 1) ()))
+  program: (a (q 2 (i (= (strlen 4) (q . 32)) (q 32 (l 10)) ()) 1) (c (c (sha256 (q . 97)) (q (q . 2))) 1))
   debug_program: (a (q 2 2 (c (sha256 (q . 97)) (c (c (q . 1) (q . 2)) ()))) (c (q 2 (i (= (strlen (f 1)) (q . 32)) (q 32 (l (f (r 1)))) ()) 1) ()))
   output: ()
-  runtime_cost: 1910
-  byte_cost: 924000
-  total_cost: 925910
+  runtime_cost: 1759
+  byte_cost: 828000
+  total_cost: 829759
 - name: mutual_closed
   program: (c (sha256 (q . 97)) (q 1 (a . 3) 4))
   debug_program: (a (q . 2) (c (c (sha256 (q . 97)) (c (q . 1) (c (c (q . 2) (q . 3)) (c (q . 4) ())))) 1))

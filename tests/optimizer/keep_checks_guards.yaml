@@ -6,10 +6,10 @@ tests:
   byte_cost: 324000
   clvm_error: Division by zero
 - name: indistinguishable_structs
-  program: (a (q 3 (any (q . 1) (a 2 5)) (q . 1) (q . 2)) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8)) 1) 1))
+  program: (i (any (q . 1) (a (i (> 2 ()) (q 4 2 ()) (q 8)) 1)) (q . 1) (q . 2))
   debug_program: (a (q 2 (i (i () (a 2 5) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:21:5"))) 1) 1))
   solution: (0)
-  byte_cost: 900000
+  byte_cost: 636000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:21:5"
 - name: raise_in_operand
@@ -19,31 +19,31 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:26:5" 28271)
 - name: binding_only_used_by_guard
-  program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
   debug_program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 732000
+  byte_cost: 468000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: inlined_function_argument
-  program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
   debug_program: (a (q 2 6 (a 4 5)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) (q 1 . 1)) 1))
   solution: (50)
-  byte_cost: 732000
+  byte_cost: 468000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: guard_in_closure
-  program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
   debug_program: (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 3 () (a 5 2) (q . 1))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 732000
+  byte_cost: 468000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: guard_in_unused_binding
-  program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1)) (q . 1))
   debug_program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 852000
+  byte_cost: 588000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: failing_function_value
@@ -61,31 +61,31 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: inline_function_value
-  program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
   debug_program: (a (q 2 (i (q . 1) (q 3 () (a (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) (q . 1)) ()) 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 732000
+  byte_cost: 468000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: guard_as_captured_argument
-  program: (a (q 2 (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (i () (a 2 5) (q . 1))) (q ()))) ()))) ()) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (a (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))) (q ()))) ()))) ())
   debug_program: (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (i () (a 2 5) (q . 1))) (c () ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 1404000
+  byte_cost: 1140000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: nested_guards
-  program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1)) (q . 1))
   debug_program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 852000
+  byte_cost: 588000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: binding_in_operand
-  program: (a (q 3 () (i () (a 2 5) 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) 2) (q . 1))
   debug_program: (a (q 3 () (i () (a 2 5) 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 828000
+  byte_cost: 564000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: guard_in_called_function
@@ -96,13 +96,13 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:21:5"
 - name: inline_function_argument_is_skipped
-  program: (a (q 1 . 1) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (q . 1)
   debug_program: (a (q 1 . 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   output: "1"
-  runtime_cost: 246
-  byte_cost: 564000
-  total_cost: 564246
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: pure_operand
   program: (q . 1)
   debug_program: (q . 1)
