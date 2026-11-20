@@ -180,8 +180,7 @@ test fn repeated_call_with_runtime_argument() -> Int {
     f(make(n)) + n
 }
 
-// Or one with an argument that isn't static, even if the body doesn't use it, since it's still
-// evaluated
+// Or one with an argument that isn't static, even if the body doesn't use it
 test fn repeated_call_ignoring_runtime_argument() -> Int {
     let n = positive(2);
     let f = fn(value: (Int, Int)) => value.first + value.rest;
@@ -210,6 +209,8 @@ test fn repeated_unchecked_cast() -> Int {
     f(unchecked_cast((1, 2)))
 }
 
+// A function that's called once is inlined, so a call to it is folded through its body, which is a
+// block with no statements
 test fn repeated_named_function_call() -> Int {
     let f = fn(value: (Int, Int)) => value.first + value.rest;
     f(pair_with_two(3))
@@ -217,6 +218,13 @@ test fn repeated_named_function_call() -> Int {
 
 fn pair_with_two(value: Int) -> (Int, Int) {
     (value, 2)
+}
+
+// Including a call nested in an argument of a call to the same function, which is checked where
+// it's written
+test fn repeated_nested_calls_of_the_same_function() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(unchecked_cast((unchecked_cast::<Int>(1), 2)))
 }
 
 // And a field of a static value

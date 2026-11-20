@@ -180,6 +180,13 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: repeated_nested_calls_of_the_same_function
+  program: (q . 3)
+  debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) ())) (c (c (q . 2) (c (c (q . 1) (q 16 (f 2) (r 2))) (c (q . 1) ()))) 1))
+  output: "3"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: repeated_field_of_a_static_value
   program: (q . 3)
   debug_program: (a (q 2 6 (c (f 4) ())) (c (c (c (c (q . 1) (q . 2)) (q . 3)) (c (q . 2) (c (c (q . 1) (q 16 (f 2) (r 2))) (c (q . 1) ())))) 1))

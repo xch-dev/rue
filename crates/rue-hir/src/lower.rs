@@ -742,14 +742,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_function_call(&mut self, env: &Environment, call: FunctionCall) -> LirId {
+        if let Some(callee) = self.inlined_callee(call.function)
+            && let Symbol::Function(function) = self.db.symbol(callee).clone()
+        {
+            let args = self.call_arguments(&function, call);
+            return self.lower_inline_call(env, callee, &function, args);
+        }
+
         if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(call.function)).clone()
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
             let args = self.call_arguments(&function, call);
-
-            if self.should_inline(symbol) {
-                return self.lower_inline_call(env, symbol, &function, args);
-            }
 
             let (capture_groups, param_group) = self.function_groups(symbol, &function);
 
@@ -781,16 +784,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
 
             return self.arena.alloc(Lir::Run(function_lir, arg_env));
-        }
-
-        // A call to a lambda that's known here is inlined, rather than building the closure and
-        // running it, since the lambda's captures are all in scope where it's known
-        if self.options.auto_inline
-            && let Some(lambda) = self.known_lambda(call.function)
-            && let Symbol::Function(function) = self.db.symbol(lambda).clone()
-        {
-            let args = self.call_arguments(&function, call);
-            return self.lower_inline_call(env, lambda, &function, args);
         }
 
         let function = self.lower_hir(env, call.function);
@@ -848,6 +841,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         args
     }
 
+    /// The function that a call to the callee is inlined into: a function called by name that's
+    /// inlined (see [`Self::should_inline`]), or a lambda that's known where it's called (see
+    /// [`Self::known_lambda`]), rather than building the closure and running it.
+    fn inlined_callee(&self, callee: HirId) -> Option<SymbolId> {
+        if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(callee))
+            && let Symbol::Function(_) = self.db.symbol(*symbol)
+        {
+            return self.should_inline(*symbol).then_some(*symbol);
+        }
+
+        self.known_lambda(callee)
+    }
+
     /// The lambda that the callee is, if it's a lambda expression, either directly or through
     /// bindings that are inlined and the arguments of calls that are inlined, and its body can be
     /// lowered where it's called. Everything it captures is in scope there, since the arguments
@@ -863,7 +869,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// the lambda can call a function whose call it was passed to, or pass a lambda it creates to
     /// an argument that calls the same lambda again. So a lambda isn't inlined inside a call of
     /// itself or of a function it depends on, and is built as a closure instead.
+    ///
+    /// Like the automatic inlining of functions and bindings, this is only done when
+    /// `auto_inline` is enabled.
     fn known_lambda(&self, mut hir: HirId) -> Option<SymbolId> {
+        if !self.options.auto_inline {
+            return None;
+        }
+
         let mut seen = HashSet::new();
 
         let lambda = loop {
@@ -913,19 +926,21 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     /// Whether the value is static and its atoms take up no more than the budget, which is
     /// reduced by their size. Such a value is quoted where it's referenced, or folded with what
-    /// uses it. This follows the values that are substituted, like [`Self::is_static_hir`], as
-    /// well as calls to `inline fn`s and to lambdas that are inlined (see [`Self::known_lambda`])
-    /// whose arguments are static and whose body is static with them, such as `fn() => (1, 2)`
-    /// or `unchecked_cast((1, 2))`. The arguments of such a call are kept in `substitutions`, and
-    /// the symbols that are being followed in `path`, so that a value that refers to itself
-    /// through the arguments of inlined calls isn't followed forever, nor a function that calls
-    /// itself.
+    /// uses it. This follows the values that are substituted (see [`Self::substituted_value`]),
+    /// fields of static values, and calls that are inlined (see [`Self::inlined_callee`]) whose
+    /// arguments are static and whose body is static with them, such as `fn() => (1, 2)` or
+    /// `unchecked_cast((1, 2))`. Each argument of such a call is checked once, in the caller's
+    /// context, and its size is kept in `substitutions` and counted at each reference to its
+    /// parameter in the body. The symbols that are being followed are kept in `path`, so that a
+    /// value is never followed back into itself. This can't happen today, since bindings don't
+    /// refer to themselves and functions that call themselves aren't inlined, but it keeps the
+    /// walk finite if that changes.
     fn is_small_static(
         &self,
         hir: HirId,
         budget: &mut usize,
         path: &mut HashSet<SymbolId>,
-        substitutions: &mut Vec<(SymbolId, HirId)>,
+        substitutions: &mut Vec<(SymbolId, usize)>,
     ) -> bool {
         let mut take = |size: usize| match budget.checked_sub(size) {
             Some(rest) => {
@@ -969,72 +984,57 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 statements,
                 body: Some(body),
             }) if statements.is_empty() => self.is_small_static(*body, budget, path, substitutions),
-            Hir::Reference(symbol) if path.insert(*symbol) => {
-                let value = if let Some(&(_, arg)) = substitutions
+            Hir::Reference(symbol) => {
+                if let Some(&(_, size)) = substitutions
                     .iter()
                     .rev()
                     .find(|(parameter, _)| parameter == symbol)
                 {
-                    Some(arg)
-                } else if let Some(arg) = self.inline_argument(*symbol) {
-                    Some(arg)
-                } else if self.should_inline(*symbol) {
-                    match self.db.symbol(*symbol) {
-                        Symbol::Constant(constant) => Some(constant.value.hir),
-                        Symbol::Binding(binding) => Some(binding.value.hir),
-                        _ => None,
-                    }
-                } else {
-                    None
-                };
+                    return take(size);
+                }
 
-                let small = value
+                if !path.insert(*symbol) {
+                    return false;
+                }
+
+                let small = self
+                    .substituted_value(*symbol)
                     .is_some_and(|value| self.is_small_static(value, budget, path, substitutions));
                 path.remove(symbol);
                 small
             }
             Hir::FunctionCall(call) => {
-                let callee = match self.db.hir(self.db.without_casts(call.function)) {
-                    Hir::Reference(symbol)
-                        if matches!(self.db.symbol(*symbol), Symbol::Function(_))
-                            && self.should_inline(*symbol) =>
-                    {
-                        Some(*symbol)
-                    }
-                    _ => self.known_lambda(call.function),
-                };
-
-                let Some(callee) = callee else {
+                let Some(callee) = self.inlined_callee(call.function) else {
                     return false;
                 };
                 let Symbol::Function(function) = self.db.symbol(callee) else {
                     return false;
                 };
 
-                // Only calls that pass each parameter its own argument, which is checked here
-                // without being counted, since it's counted where the body references it
+                // Only calls that pass each parameter its own argument
                 if !function.nil_terminated
                     || !call.nil_terminated
                     || function.parameters.len() != call.args.len()
-                    || !call.args.iter().all(|&arg| {
-                        self.is_small_static(arg, &mut budget.clone(), path, substitutions)
-                    })
-                    || !path.insert(callee)
                 {
                     return false;
                 }
 
+                let mut sizes = Vec::with_capacity(call.args.len());
+
+                for &arg in &call.args {
+                    let mut remaining = *budget;
+
+                    if !self.is_small_static(arg, &mut remaining, path, substitutions) {
+                        return false;
+                    }
+
+                    sizes.push(*budget - remaining);
+                }
+
                 let frame = substitutions.len();
-                substitutions.extend(
-                    function
-                        .parameters
-                        .iter()
-                        .copied()
-                        .zip(call.args.iter().copied()),
-                );
+                substitutions.extend(function.parameters.iter().copied().zip(sizes));
                 let small = self.is_small_static(function.body, budget, path, substitutions);
                 substitutions.truncate(frame);
-                path.remove(&callee);
                 small
             }
             _ => false,
@@ -1695,22 +1695,29 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 guard.value_uses() == 0 && !self.is_lowered_guard_effect(hir, guard.value)
             }
             Hir::Const(expr) => expr.result.is_some_and(|result| self.is_static_hir(result)),
-            Hir::Reference(symbol) => {
-                if let Some(hir) = self.inline_argument(*symbol) {
-                    return self.is_static_hir(hir);
-                }
-
-                if !self.should_inline(*symbol) {
-                    return false;
-                }
-
-                match self.db.symbol(*symbol) {
-                    Symbol::Constant(constant) => self.is_static_hir(constant.value.hir),
-                    Symbol::Binding(binding) => self.is_static_hir(binding.value.hir),
-                    _ => false,
-                }
-            }
+            Hir::Reference(symbol) => self
+                .substituted_value(*symbol)
+                .is_some_and(|value| self.is_static_hir(value)),
             _ => false,
+        }
+    }
+
+    /// The value that's lowered in place of a reference to the symbol, if it's substituted: the
+    /// argument of an inlined call for its parameter, or the value of a constant or binding
+    /// that's inlined.
+    fn substituted_value(&self, symbol: SymbolId) -> Option<HirId> {
+        if let Some(hir) = self.inline_argument(symbol) {
+            return Some(hir);
+        }
+
+        if !self.should_inline(symbol) {
+            return None;
+        }
+
+        match self.db.symbol(symbol) {
+            Symbol::Constant(constant) => Some(constant.value.hir),
+            Symbol::Binding(binding) => Some(binding.value.hir),
+            _ => None,
         }
     }
 
