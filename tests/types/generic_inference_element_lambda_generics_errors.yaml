@@ -3,3 +3,7 @@ diagnostics:
 - Unused function `pair2` at generic_inference_element_lambda_generics_errors.rue:10:4
 - Unused function `sibling_lambda_captures_the_shared_generic` at generic_inference_element_lambda_generics_errors.rue:14:4
 - "Cannot assign `(fn(x: Int) -> Int, fn(_y: T) -> T)` to `(fn(x: Int) -> Int, fn(x: Int) -> Int)`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:19:36"
+- Unused function `map_list` at generic_inference_element_lambda_generics_errors.rue:27:4
+- Unused function `map_and_call` at generic_inference_element_lambda_generics_errors.rue:35:4
+- Unused function `rejected_for_another_reason` at generic_inference_element_lambda_generics_errors.rue:44:4
+- Cannot assign `(List<Int>, String)` to `(List<Int>, 1)` without a type guard, since the value isn't always a valid `(List<Int>, 1)` at generic_inference_element_lambda_generics_errors.rue:44:52

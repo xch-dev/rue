@@ -109,3 +109,33 @@ test fn sibling_next_to_any_keeps_the_shared_generic() -> Int {
         "hi",
     )
 }
+
+fn map_pairs<T, U>(functions: List<fn(x: (T, T)) -> U>, value: (T, T)) -> List<U> {
+    if functions is (fn(x: (T, T)) -> U, List<fn(x: (T, T)) -> U>) {
+        [functions.first(value), ...map_pairs(functions.rest, value)]
+    } else {
+        nil
+    }
+}
+
+// The parameter's type only contains the generic, so the generic in it is instantiated, not only
+// a parameter whose type is the generic
+test fn generic_nested_in_the_parameter_type() -> List<(Int, Int)> {
+    map_pairs([fn(x) => identity(x)], (5, 6))
+}
+
+fn map_and_apply<T, U, A, B>(
+    functions: List<fn(x: T) -> U>,
+    function: fn(a: A) -> B,
+    a: A,
+    value: T,
+) -> (List<U>, B) {
+    (map_list(functions, value), function(a))
+}
+
+// A lambda that's the whole argument is narrowed to the expected `5` (#335), so the call is solved
+// again with the lambdas' parameters, and the element lambda is instantiated in that solve too
+test fn instantiated_in_the_second_solve() -> (List<Int>, 5) {
+    let r: (List<Int>, 5) = map_and_apply([fn(x) => identity(x)], fn(y) => y, 5, 5);
+    r
+}
