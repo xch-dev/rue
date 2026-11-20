@@ -162,3 +162,49 @@ test fn arm_types(value: Bool) -> Int | String {
         false => "no",
     }
 }
+
+// An earlier field-path arm narrows what later arms see
+test fn field_value_later_arm(pair: (Shape, Int)) -> Int {
+    match pair.first {
+        Point => pair.rest,
+        Circle => pair.first.radius,
+        Square => pair.first.side,
+    }
+}
+
+// An atom of `Any` can be matched as an `Int`, as `is` does
+test fn any_as_int(value: Any) -> Int {
+    match value {
+        Int => value,
+        (Any, Any) => 0,
+    }
+}
+
+inline fn inline_area(shape: Shape) -> Int {
+    match shape {
+        Circle => shape.radius,
+        _ => 0,
+    }
+}
+
+test fn in_inline_function(shape: Shape) -> Int {
+    inline_area(shape)
+}
+
+test fn in_lambda(shape: Shape) -> Int {
+    let f = fn(shape: Shape) => match shape {
+        Square => shape.side,
+        _ => 0,
+    };
+    f(shape)
+}
+
+// A match with no arms on a value that never exists is never evaluated
+test fn no_arms(value: Int) -> Int {
+    if value == 0 {
+        return match {
+            raise "never";
+        } {};
+    }
+    value
+}

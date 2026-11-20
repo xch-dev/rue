@@ -1,4 +1,4 @@
-use rue_ast::{AstGenericArguments, AstGenericParameters, AstType};
+use rue_ast::{AstGenericArguments, AstGenericParameters};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, ScopeId};
 use rue_types::{Generic, Type, TypeId};
@@ -60,20 +60,6 @@ pub fn compile_function_generic_arguments(
 ) -> Vec<Option<TypeId>> {
     generic_arguments
         .types()
-        .map(|ty| (!is_placeholder(&ty)).then(|| compile_type(ctx, &ty)))
+        .map(|ty| (!ty.is_placeholder()).then(|| compile_type(ctx, &ty)))
         .collect()
-}
-
-fn is_placeholder(ty: &AstType) -> bool {
-    let AstType::PathType(path) = ty else {
-        return false;
-    };
-
-    let mut segments = path.segments();
-
-    segments.next().is_some_and(|segment| {
-        segment.separator().is_none()
-            && segment.generic_arguments().is_none()
-            && segment.name().is_some_and(|name| name.text() == "_")
-    }) && segments.next().is_none()
 }

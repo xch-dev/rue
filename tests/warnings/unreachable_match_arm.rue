@@ -76,6 +76,56 @@ fn allowed(value: U) -> Int {
     }
 }
 
+fn expected(value: U) -> Int {
+    #[expect(unreachable_match_arm)]
+    let result = match value {
+        _ => 1,
+        A => 2,
+    };
+    result + 1
+}
+
+fn unfulfilled(value: U) -> Int {
+    #[expect(unreachable_match_arm)]
+    let result = match value {
+        A => 1,
+        _ => 2,
+    };
+    result + 1
+}
+
+// The lints about `if` expressions don't see the chain that a match compiles to
+fn identical_arms(value: U) -> Int {
+    match value {
+        A => 1,
+        _ => 1,
+    }
+}
+
+fn bool_arms(value: U) -> Bool {
+    match value {
+        A => true,
+        _ => false,
+    }
+}
+
+fn negated_arms(value: Bool) -> Int {
+    match value {
+        false => 1,
+        true => 2,
+    }
+}
+
+fn nested_arms(value: U) -> Int {
+    match value {
+        A => 1,
+        _ => match value {
+            B => 2,
+            C => 3,
+        },
+    }
+}
+
 fn main() -> Int {
     after_wildcard(C {})
         + after_last_member(C {})
@@ -84,4 +134,14 @@ fn main() -> Int {
         + duplicate_literal(0)
         + reachable(C {})
         + allowed(C {})
+        + expected(C {})
+        + unfulfilled(C {})
+        + identical_arms(C {})
+        + negated_arms(true)
+        + nested_arms(C {})
+        + if bool_arms(C {}) {
+            1
+        } else {
+            0
+        }
 }

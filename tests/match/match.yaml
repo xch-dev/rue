@@ -118,3 +118,43 @@ tests:
   runtime_cost: 261
   byte_cost: 276000
   total_cost: 276261
+- name: field_value_later_arm
+  program: (a (i (= 8 (q . 3)) (q . 6) (q 2 (i (= 8 (q . 1)) (q . 20) (q . 20)) 1)) 1)
+  debug_program: (a (i (= (f (f 2)) (q . 3)) (q 6 2) (q 2 (i (= (f (f 2)) (q . 1)) (q 5 (r (f 2))) (q 5 (r (f 2)))) 1)) 1)
+  solution: (((2 4) . 9))
+  output: "4"
+  runtime_cost: 870
+  byte_cost: 636000
+  total_cost: 636870
+- name: any_as_int
+  program: (a (i (l 2) (q) (q . 2)) 1)
+  debug_program: (a (i (not (l 2)) (q . 2) (q)) 1)
+  solution: (7)
+  output: "7"
+  runtime_cost: 325
+  byte_cost: 276000
+  total_cost: 276325
+- name: in_inline_function
+  program: (a (i (= 4 (q . 1)) (q . 10) (q)) 1)
+  debug_program: (a (i (= (f 2) (q . 1)) (q 5 (r 2)) (q)) 1)
+  solution: ((1 6))
+  output: "6"
+  runtime_cost: 457
+  byte_cost: 324000
+  total_cost: 324457
+- name: in_lambda
+  program: (a (q 2 (i (= 4 (q . 2)) (q . 10) (q)) 1) (c 2 ()))
+  debug_program: (a (q 2 2 (c 5 ())) (c (c (q . 2) (c (c (q . 1) (q 2 (i (= (f 2) (q . 2)) (q 5 (r 2)) (q)) 1)) (c (q . 1) ()))) 1))
+  solution: ((2 8))
+  output: "8"
+  runtime_cost: 711
+  byte_cost: 492000
+  total_cost: 492711
+- name: no_arms
+  program: (a (i 2 (q . 2) (q 3 () (x) (x))) 1)
+  debug_program: (a (i (= 2 ()) (q 3 () (x (q . "raise called at match.rue:206:13") (q . "never")) (x (q . "raise called at match.rue:205:16"))) (q . 2)) 1)
+  solution: (5)
+  output: "5"
+  runtime_cost: 305
+  byte_cost: 372000
+  total_cost: 372305

@@ -106,7 +106,9 @@ A match must handle every value its type allows, so adding a member to a union i
 Error: Match on `Shape` is not exhaustive, since it doesn't handle `Point`
 ```
 
-An arm that can never be taken, because the arms before it already handle every value it matches, is reported by the `unreachable_match_arm` lint. Literals never cover all of a type like `Int` or `String`, so a match on one needs a `_` arm (or an arm for the whole type).
+An arm that can never be taken, because the arms before it already handle every value it matches, is reported by the `unreachable_match_arm` lint. Literals never cover all of a type like `Int` or `String`, so a match on one needs a `_` arm (or an arm for the whole type). Handling a pair one part at a time doesn't cover it either: `(A, Int)` and `(B, Int)` don't handle all of `(A | B, Int)`, so that needs a `_` arm too, as the `else` branch of an `is` guard would.
+
+Members that are the same at runtime can't be told apart, such as two structs with the same fields and no constant field, or `nil` and `false`. An arm for one of them would also handle the others, which is an error, so they have to be handled together (`A | B => ...`).
 
 A match compiles to the same code as the `if` and `else if` chain it's equivalent to. The arm that handles everything that's left is the chain's `else` branch, so it doesn't check anything at runtime.
 

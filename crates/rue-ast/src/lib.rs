@@ -832,16 +832,7 @@ impl AstMatchArm {
 
     /// Whether the arm's pattern is `_`, which matches every value that's left.
     pub fn is_wildcard(&self) -> bool {
-        let Some(AstType::PathType(ty)) = self.ty() else {
-            return false;
-        };
-        let mut segments = ty.segments();
-        let is_underscore = segments.next().is_some_and(|segment| {
-            segment.separator().is_none()
-                && segment.generic_arguments().is_none()
-                && segment.name().is_some_and(|name| name.text() == "_")
-        });
-        is_underscore && segments.next().is_none()
+        self.ty().is_some_and(|ty| ty.is_placeholder())
     }
 
     pub fn expr(&self) -> Option<AstExpr> {
@@ -917,6 +908,24 @@ impl AstLiteralType {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| SyntaxKind::LITERAL.contains(&token.kind()))
+    }
+}
+
+impl AstType {
+    /// Whether the type is `_`, which stands for a type to be filled in, such as a generic argument
+    /// to infer or a match arm that handles every value that's left.
+    pub fn is_placeholder(&self) -> bool {
+        let Self::PathType(path) = self else {
+            return false;
+        };
+
+        let mut segments = path.segments();
+
+        segments.next().is_some_and(|segment| {
+            segment.separator().is_none()
+                && segment.generic_arguments().is_none()
+                && segment.name().is_some_and(|name| name.text() == "_")
+        }) && segments.next().is_none()
     }
 }
 

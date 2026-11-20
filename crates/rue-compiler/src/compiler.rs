@@ -1037,13 +1037,6 @@ impl Compiler {
         self.diagnostic(node, DiagnosticKind::TypeComparisonTooComplex(from, to));
     }
 
-    /// Whether the type has no values, such as what's left of a union once every member has been
-    /// handled.
-    pub fn is_never(&mut self, ty: TypeId) -> bool {
-        let never = self.builtins.types.never;
-        self.is_assignable(ty, never)
-    }
-
     pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
         matches!(comparison, Comparison::Assign | Comparison::Cast)

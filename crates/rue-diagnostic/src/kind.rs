@@ -177,6 +177,11 @@ pub enum DiagnosticKind {
     NonExhaustiveMatch(String, String),
 
     #[error(
+        "Match arm `{0}` would also handle {1}, since they can't be told apart from it at runtime; add them to the pattern if that's intended"
+    )]
+    IndistinguishableMatchArm(String, String),
+
+    #[error(
         "Cannot assign `{0}` to `{1}` without a type guard, since the value isn't always a valid `{1}`"
     )]
     UnguardedAssignment(String, String),

@@ -311,24 +311,24 @@ fn match_expr(p: &mut Parser, checkpoint: Checkpoint) {
     );
     if p.expect(T!['{']) {
         delimited_list(p, T!['}'], |p| {
-            p.start(SyntaxKind::MatchArm);
-            ty(p);
-            p.expect(T![=>]);
-            expr(p);
-            p.finish();
+            match_arm(p);
 
             // An arm on the next line most likely only needs the comma, so it's parsed as the next
             // arm rather than skipped as part of the error
             while !p.at(T![,]) && !p.at(T!['}']) && p.at_line_start() && at_match_arm_start(p) {
                 p.expect(T![,]);
-                p.start(SyntaxKind::MatchArm);
-                ty(p);
-                p.expect(T![=>]);
-                expr(p);
-                p.finish();
+                match_arm(p);
             }
         });
     }
+    p.finish();
+}
+
+fn match_arm(p: &mut Parser) {
+    p.start(SyntaxKind::MatchArm);
+    ty(p);
+    p.expect(T![=>]);
+    expr(p);
     p.finish();
 }
 

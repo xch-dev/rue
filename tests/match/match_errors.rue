@@ -119,6 +119,87 @@ fn error_in_unreachable_arm(value: U) -> Int {
     }
 }
 
+// An arm whose check also lets through another member, which can't be told apart from it at
+// runtime, would see that member as its own type
+struct SameShapeA {
+    value: Int,
+}
+
+struct SameShapeB {
+    value: Bytes32,
+}
+
+fn indistinguishable_catch_all(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        nil => 0,
+        SameShapeA => value.value,
+    }
+}
+
+fn indistinguishable_checked(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        SameShapeA => value.value,
+        nil => 0,
+    }
+}
+
+fn indistinguishable_nil(value: Bool | nil) -> Int {
+    match value {
+        nil => 0,
+        true => 1,
+    }
+}
+
+// Handling both members in one arm is fine
+fn distinguishable_union(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        nil => 0,
+        SameShapeA | SameShapeB => 1,
+    }
+}
+
+// What's left of `Any` after a pair pattern is still written as a pair of `Any`
+fn missing_any_after_pair(value: Any) -> Int {
+    match value {
+        (Int, Any) => 1,
+        Int => 2,
+    }
+}
+
+// An alias is listed by what it's made of
+type Optional<T> = T | nil;
+
+fn missing_alias(value: Optional<Bytes32>) -> Int {
+    match value {}
+}
+
+// Subtracting a pattern doesn't split a pair by its parts, so arms that handle each part of a
+// pair separately need a `_` arm, as an `is` guard's `else` branch would
+fn pair_parts(value: (A | B, Int)) -> Int {
+    match value {
+        (A, Int) => 1,
+        (B, Int) => 2,
+    }
+}
+
+// An unknown type nested in a pattern is reported once, and the arms after it aren't checked
+fn nested_unknown_pattern(value: (Int, Int) | (Bytes32, nil) | nil) -> Int {
+    match value {
+        (Missing, Int) => 1,
+        (Bytes32, nil) => 2,
+        nil => 3,
+        nil => 4,
+    }
+}
+
+// A pattern that doesn't overlap the value doesn't also make the match non-exhaustive
+fn incompatible_only(value: Int | nil) -> Int {
+    match value {
+        (Int, Int) => 0,
+        nil => 1,
+    }
+}
+
 fn main() -> Int {
     missing_one(C {})
         + missing_many(C {})
@@ -135,4 +216,13 @@ fn main() -> Int {
         + unknown_pattern(C {})
         + wrong_arm_type(C {})
         + error_in_unreachable_arm(C {})
+        + indistinguishable_catch_all(nil)
+        + indistinguishable_checked(nil)
+        + indistinguishable_nil(nil)
+        + distinguishable_union(nil)
+        + missing_any_after_pair(1)
+        + missing_alias(nil)
+        + pair_parts((A {}, 1))
+        + nested_unknown_pattern(nil)
+        + incompatible_only(nil)
 }
