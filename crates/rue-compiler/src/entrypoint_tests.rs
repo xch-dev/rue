@@ -5,7 +5,7 @@ use std::path::Path;
 use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_diagnostic::SourceKind;
-use rue_lir::CLVM_FLAGS;
+use rue_lir::clvm_flags;
 use rue_options::CompilerOptions;
 
 use crate::test_utils::{Compiled, compile_with};
@@ -63,7 +63,7 @@ fn export(compiled: &mut Compiled, allocator: &mut Allocator, name: &str) -> Nod
 /// Runs the program with the solution, and returns its output, or `None` if it fails.
 fn run(allocator: &mut Allocator, program: NodePtr, solution: &str) -> Option<NodePtr> {
     let solution = assemble(allocator, solution).unwrap();
-    let dialect = ChiaDialect::new(CLVM_FLAGS);
+    let dialect = ChiaDialect::new(clvm_flags(true));
     Some(
         run_program(allocator, &dialect, program, solution, u64::MAX)
             .ok()?
