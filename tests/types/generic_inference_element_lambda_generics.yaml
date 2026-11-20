@@ -231,12 +231,12 @@ tests:
   byte_cost: 276000
   total_cost: 276927
 - name: element_waits_for_a_generic_lambda
-  program: (i () (a (q . 2) (q 5)) (a (q 1 . 6) (q 1)))
+  program: (i () (a (q . 2) (q 5)) (q . 6))
   debug_program: (a (q 2 2 (c (c (c (q . 2) (c (c (q . 1) (q 2 (q . 2) (c 2 1))) (c (q . 1) ()))) (q . 1)) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 6)) (c (q . 1) ())))))) (c (q 3 () (a (f 2) (c 5 ())) (a 7 (c (q . 1) ()))) ()))
   output: "6"
-  runtime_cost: 408
-  byte_cost: 420000
-  total_cost: 420408
+  runtime_cost: 277
+  byte_cost: 276000
+  total_cost: 276277
 - name: element_of_a_union_of_pairs
   program: (a (q 16 (a 2 (c (c (q 16 2 (q . 1)) ()) (q . 5))) (a 2 (c (c (q 16 2 (q . 1)) (q . 1)) (q . 5)))) (c (q) ()))
   debug_program: (a (q 16 (a 2 (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()) (q . 5))) (a 2 (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 1)) (q . 5)))) (c (q) ()))
@@ -301,12 +301,12 @@ tests:
   byte_cost: 180000
   total_cost: 180183
 - name: element_before_an_argument_that_reads_its_parameters
-  program: (a (q 4 (a 6 (c 6 (c (c (q . 2) ()) (a 4 (q . 5))))) (a (q . 2) (c (a (c (q . 2) (c (q 1 2 2 (q . 5)) (c (c (q . 4) (c (c (q . 1) 4) (q ()))) ()))) ()) ()))) (c (c (q . 1) (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1)) ()))
+  program: (a (q 4 (a 6 (c 6 (c (c (q . 2) ()) (a 4 (q . 5))))) (a (q . 2) (c (a 4 (q . 5)) ()))) (c (c (q . 1) (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1)) ()))
   debug_program: (a (q 2 (q 4 4 6) (c (c (a 10 (c 10 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (a 4 (q . 5))))) (a 14 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (q . 2) (c (c (q . 1) (q 2 2 (q . 5))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ())))))) 1)) (c (c (q . 1) (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q 2 (f 2) (c (a 3 ()) ())))) ()))
   output: ((5) . 5)
-  runtime_cost: 3643
-  byte_cost: 2364000
-  total_cost: 2367643
+  runtime_cost: 2784
+  byte_cost: 1692000
+  total_cost: 1694784
 - name: element_waits_for_what_its_generics_are_mapped_to
   program: (a (q 2 2 (c 2 (c (c (q 16 2 (q . 1)) ()) (a (q . 2) (q 6))))) (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) ()))
   debug_program: (a (q 2 (q . 2) (c (a 6 (c 4 (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()) (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)) (q . 6))))) 1)) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q 2 2 (c 2 (c 5 (a (f 11) (c 15 ())))))) ()))
