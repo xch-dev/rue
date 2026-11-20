@@ -377,9 +377,9 @@ fn add_votes_spend(
     coin_ids: List<Bytes32>,
     innerpuz_reveal: Any,
 ) -> Any {
-    merge_list(
-        curried(yes_votes, total_votes),
-        [
+    [
+        ...curried(yes_votes, total_votes),
+        ...[
             vote_amounts,
             vote_info,
             coin_ids,
@@ -392,7 +392,7 @@ fn add_votes_spend(
             nil,
             1,
         ],
-    )
+    ]
 }
 
 // A spend that reveals the treasury's rules: a timelock of 100, a pass margin of 51%, 500 votes
@@ -403,9 +403,9 @@ fn close_spend(
     soft_close_length: Int,
     self_destruct_flag: Any,
 ) -> Any {
-    merge_list(
-        curried(yes_votes, total_votes),
-        [
+    [
+        ...curried(yes_votes, total_votes),
+        ...[
             sha256("validator"),
             nil,
             100,
@@ -418,7 +418,7 @@ fn close_spend(
             self_destruct_flag,
             1,
         ],
-    )
+    ]
 }
 
 test fn adds_the_first_votes() -> Any {
@@ -482,10 +482,7 @@ test fn reference_rejects_a_duplicate_vote() -> Any {
 }
 
 fn early_self_destruct() -> Any {
-    merge_list(
-        curried(600, 1000),
-        [sha256("validator"), nil, 1000, 5100, 500, nil, 0, 1000, 30, 1, 1],
-    )
+    [...curried(600, 1000), ...[sha256("validator"), nil, 1000, 5100, 500, nil, 0, 1000, 30, 1, 1]]
 }
 
 test fn rejects_an_early_self_destruct() -> Any {

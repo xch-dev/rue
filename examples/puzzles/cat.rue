@@ -161,7 +161,7 @@ fn main(
         );
 
         // Prepend the TAIL's conditions.
-        merge_list(tail_conditions, conditions)
+        [...tail_conditions, ...conditions]
     } else {
         // If there's no TAIL, make sure the extra delta is zero.
         // It must have a parent that is also a CAT.

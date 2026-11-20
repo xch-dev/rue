@@ -26,7 +26,7 @@ fn approve(
     let conditions = members.first(delegated_puzzle_hash, ...solutions.first);
 
     if members.rest is (Member, List<Member>) {
-        merge_list(conditions, approve(members.rest, solutions.rest, delegated_puzzle_hash))
+        [...conditions, ...approve(members.rest, solutions.rest, delegated_puzzle_hash)]
     } else {
         conditions
     }

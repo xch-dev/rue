@@ -13,10 +13,10 @@ fn main(
     delegated_solution: Any,
     ...inner_solution: Any,
 ) -> List<Condition> {
-    merge_list(
-        inner_puzzle(tree_hash(delegated_puzzle), ...inner_solution),
-        delegated_puzzle(...delegated_solution),
-    )
+    [
+        ...inner_puzzle(tree_hash(delegated_puzzle), ...inner_solution),
+        ...delegated_puzzle(...delegated_solution),
+    ]
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
