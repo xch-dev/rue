@@ -319,15 +319,11 @@ pub(crate) fn infer_call(
             let param = function.params[i].ty;
 
             // As with a lambda that's the whole argument, nothing can add to the generics its
-            // parameters are expected to have now, so it's compiled against the expected type's
-            // bounds for them, unless its return type can (see `ArgumentOrder::takes_expected_bounds`)
+            // parameters are expected to have now, and its return type can't either (see
+            // `element_lambdas`), so it's compiled against the expected type's bounds for them
+            // (see `ArgumentOrder::takes_expected_bounds`)
             let inferred = ctx.solve_arguments(&solver, order.merged());
-            let mappings = ctx.argument_mappings(
-                &solver,
-                order.merged(),
-                &inferred,
-                !lambda.lambda.returns_reads,
-            );
+            let mappings = ctx.argument_mappings(&solver, order.merged(), &inferred, true);
             let expected = substitute_with_mappings(ctx.types_mut(), lambda.lambda.ty, &mappings);
 
             let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
@@ -1057,9 +1053,6 @@ pub struct ElementLambda {
     ty: TypeId,
     /// The callee's generics in the types its untyped parameters are expected to have.
     reads: IndexSet<TypeId>,
-    /// Whether the return types of the function types it's expected to be reference any of those,
-    /// so that compiling it can add to them (see `ArgumentKind::Lambda::returns_reads`).
-    returns_reads: bool,
 }
 
 /// An element lambda that's compiled once no argument still to be compiled can add to the generics
@@ -1648,13 +1641,13 @@ fn element_lambdas(
                         .any(|generic| reads.contains(generic))
                 });
 
-                if !reads.is_empty() {
-                    let lambda = ElementLambda {
-                        ty,
-                        reads,
-                        returns_reads,
-                    };
-                    lambdas.insert(expr.syntax().text_range(), lambda);
+                // One whose return type adds to the generics its parameters read is compiled
+                // against them where it is, so that it works for whatever it adds to them: compiled
+                // against what the other arguments infer, its parameters would be narrower than
+                // what it makes them, as in `fn(x) => (x, nil)` for `fn(a: T) -> T` with `T` from
+                // `nil` (infer-fuzz generator 1, seed 1461)
+                if !reads.is_empty() && !returns_reads {
+                    lambdas.insert(expr.syntax().text_range(), ElementLambda { ty, reads });
                 }
             }
             AstExpr::PairExpr(pair) => {

@@ -175,12 +175,26 @@ tests:
   byte_cost: 156000
   total_cost: 156179
 - name: element_waits_for_every_later_argument
-  program: (a (q 2 2 (c (c (q . 7) (q . 4)) (c (q 4 2 (q . 8)) (q 1 . 9)))) (c (q 16 (a 6 (c (a 5 (c 4 ())) ())) (a 6 (c 7 ()))) ()))
-  debug_program: (a (q 2 2 (c (c (q . 7) (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) (q 4 2 (q . 8))) (c (q . 1) ()))) (c (q . 1) (q . 9))))) (c (q 16 (a (r 2) (c (a 5 (c (f 2) ())) ())) (a (r 2) (c 7 ()))) ()))
-  output: "8"
-  runtime_cost: 2395
+  program: (a (q 2 2 (c (c (q . 7) (q . 2)) (c (q 4 2 (q . 8)) (q 1 . 9)))) (c (q 4 (a 6 (c (a 5 (c 4 ())) ())) (a 6 (c 7 ()))) ()))
+  debug_program: (a (q 2 2 (c (c (q . 7) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) (q 4 2 (q . 8))) (c (q . 1) ()))) (c (q . 1) (q . 9))))) (c (q 4 (a (r 2) (c (a 5 (c (f 2) ())) ())) (a (r 2) (c 7 ()))) ()))
+  output: ((7 . 8) 1 . 9)
+  runtime_cost: 1682
   byte_cost: 1212000
-  total_cost: 1214395
+  total_cost: 1213682
+- name: element_waits_for_a_later_lambda
+  program: (a (q 2 2 (c 2 (c (c (q 16 2 (q . 1)) ()) (q . 5)))) (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) ()))
+  debug_program: (a (q 2 6 (c 4 (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ())))))) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q 2 2 (c 2 (c 5 (a 7 ()))))) ()))
+  output: (6)
+  runtime_cost: 2782
+  byte_cost: 1284000
+  total_cost: 1286782
+- name: element_adds_to_what_it_reads
+  program: (a (q 1 5) (q ()))
+  debug_program: (a (q 2 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 4 (q . 5) ())) (c (q . 1) ())))) ())) (c (q 2 (r 2) (c 3 ())) ()))
+  output: (5)
+  runtime_cost: 151
+  byte_cost: 204000
+  total_cost: 204151
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
@@ -190,3 +204,4 @@ diagnostics:
     help: Return the value directly
 - Binding `r` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:139:5
 - Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:259:5
+- Unused function `element_waits_for_a_value_that_never_returns` at generic_inference_element_lambda_generics.rue:284:4

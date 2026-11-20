@@ -260,13 +260,43 @@ test fn element_takes_the_expected_bounds() -> 5 {
     result
 }
 
-fn after_both<T>(pair: (Int, fn(value: T) -> Int), make: fn(a: Int) -> T, value: T) -> Int {
-    pair.rest(make(pair.first)) + pair.rest(value)
+fn after_both<T>(pair: (Int, fn(value: T) -> T), make: fn(a: Int) -> T, value: T) -> (T, T) {
+    (pair.rest(make(pair.first)), pair.rest(value))
 }
 
 // Guard: the lambda waits for every later argument that adds to `T`, including a lambda, which is
 // compiled after the others, or its parameter would be narrower than `T` (infer-fuzz generator 1,
 // seed 115)
-test fn element_waits_for_every_later_argument() -> Int {
-    after_both((7, fn(x) => x.first), fn(a: Int) => (a, 8), (1, 9))
+test fn element_waits_for_every_later_argument() -> ((Int, Int), (Int, Int)) {
+    after_both((7, fn(x) => x), fn(a: Int) => (a, 8), (1, 9))
+}
+
+fn later_lambda<T, U>(functions: List<fn(x: T) -> U>, make: fn() -> T) -> List<U> {
+    map_list(functions, make())
+}
+
+test fn element_waits_for_a_later_lambda() -> List<Int> {
+    later_lambda([fn(x) => x + 1], fn() => 5)
+}
+
+// The call's expected type gives `T` its type, as nothing else does, and the lambda is
+// instantiated with it. The call always raises, so this is only compiled
+fn element_waits_for_a_value_that_never_returns() -> List<Int> {
+    map_list(
+        [fn(x) => identity(x)],
+        {
+            raise;
+        },
+    )
+}
+
+fn self_feeding<T>(pair: (Int, fn(a: T) -> T), value: T) -> T {
+    pair.rest(value)
+}
+
+// Guard: a lambda whose return type adds to the generic its parameter reads is compiled against
+// it where it is, so that it works for what it adds, rather than against `nil` (infer-fuzz
+// generator 1, seed 1461)
+test fn element_adds_to_what_it_reads() -> (Int, nil) | nil {
+    self_feeding((1, fn(_x) => (5, nil)), nil)
 }
