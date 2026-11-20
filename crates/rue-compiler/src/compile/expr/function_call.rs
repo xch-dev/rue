@@ -108,6 +108,8 @@ pub fn compile_function_call_expr(
             mut mappings,
         } = infer_call(ctx, function, &args, expected_type, narrower, &renamed);
 
+        let mut uninferred = HashMap::new();
+
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
@@ -137,7 +139,18 @@ pub fn compile_function_call_expr(
                 );
             }
 
-            mappings.insert(generic, ctx.unresolved().ty);
+            let unresolved = ctx.unresolved().ty;
+            mappings.insert(generic, unresolved);
+            uninferred.insert(generic, unresolved);
+        }
+
+        // The other generics can be inferred as types with these in them, such as `U` as `T` in
+        // `map_list([fn(x) => x], { raise; })`, where nothing gives `T` a type, so they're
+        // unresolved there too, rather than leaking out of the call
+        if !uninferred.is_empty() {
+            for ty in mappings.values_mut() {
+                *ty = substitute_with_mappings(ctx.types_mut(), *ty, &uninferred);
+            }
         }
 
         // The function that's returned can stay generic over the generics of a function type

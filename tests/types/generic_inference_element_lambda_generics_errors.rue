@@ -66,3 +66,14 @@ fn recursive<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> List
 
     map_list(functions, value)
 }
+
+// Nothing gives `T` a type, so `U`, inferred as `T`, is unresolved too, rather than leaking
+// `map_list`'s `T` out of the call
+fn generic_inferred_as_an_uninferred_one() -> Bool {
+    map_list(
+        [fn(x) => x],
+        {
+            raise;
+        },
+    )
+}

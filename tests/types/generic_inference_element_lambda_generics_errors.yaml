@@ -12,3 +12,6 @@ diagnostics:
 - "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:53:53"
 - Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:54:46
 - "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:55:13"
+- Unused function `generic_inferred_as_an_uninferred_one` at generic_inference_element_lambda_generics_errors.rue:72:4
+- Cannot assign `List<{unresolved}>` to `Bool` without a type guard, since the value isn't always a valid `Bool` at generic_inference_element_lambda_generics_errors.rue:72:52
+- Cannot infer generic `T` for `map_list`; specify it explicitly, e.g. `map_list::<...>()` at generic_inference_element_lambda_generics_errors.rue:73:5
