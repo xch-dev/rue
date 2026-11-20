@@ -840,6 +840,7 @@ fn main(value: Int | nil) -> Int {
             bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
             secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
             secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
+            keccak256_verify [Function] fn(value: Bytes, hash: Bytes32) -> nil
             INFINITY_G1 [Constant] PublicKey
             INFINITY_G2 [Constant] Signature
         "#]],
