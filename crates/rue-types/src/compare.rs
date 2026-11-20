@@ -2011,15 +2011,16 @@ fn compare_impl_inner(
     ctx.stack.pop().unwrap();
     ctx.frames.pop().unwrap();
 
+    // A summary that left out unions nested too deeply can reject more than computing the
+    // comparison again, so it isn't reused, in either mode, which keeps reusing exact
+    let memo_key = memo_key.filter(|_| {
+        summary
+            .as_ref()
+            .is_none_or(|summary| !summary.is_approximate())
+    });
+
     match frame {
         Frame::Exact(frame) => {
-            // A summary that left out unions nested too deeply can reject more than computing the
-            // comparison again, so it isn't reused, which keeps reusing exact
-            let memo_key = memo_key.filter(|_| {
-                summary
-                    .as_ref()
-                    .is_none_or(|summary| !summary.is_approximate())
-            });
             ctx.memo.exit(frame, key, memo_key, (result, summary));
             let work = ctx.memo.take_work();
             ctx.spend_many(work);
@@ -2703,9 +2704,14 @@ fn check_inner_bounds(
         let snapshot = ctx.snapshot_open();
         let before = failed.clone();
         let rigid = check_bounds(arena, builtins, ctx, (&unions, &mut failed), [index]);
-        let rigid = max(rigid, ctx.choices.attributed(unions.clone(), &failed));
 
-        if rigid == Comparison::Assign {
+        // It holds if it fails no pair, and the pairs it charges to union members don't make
+        // them worse (which only depends on what this check adds, not on what failed before)
+        let worse = failed.len() > before.len()
+            && ctx.choices.attributed(unions.clone(), &failed)
+                > ctx.choices.attributed(unions.clone(), &before);
+
+        if rigid == Comparison::Assign && !worse {
             continue;
         }
 
