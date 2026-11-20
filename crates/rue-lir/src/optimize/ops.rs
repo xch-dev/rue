@@ -598,6 +598,7 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // `(i c 1 ())` is `c` if `c` is always `()` or `1`, and `(i c () 1)` is always `(not c)`
 pub fn opt_if(
     arena: &mut Arena<Lir>,
+    target: ClvmTarget,
     condition: LirId,
     then: LirId,
     otherwise: LirId,
@@ -637,9 +638,17 @@ pub fn opt_if(
                     arena[condition].clone()
                 && (is_boolean(arena, inner_then) || is_boolean(arena, inner_otherwise))
             {
-                let inner_then = opt_if(arena, inner_then, then, otherwise, false);
-                let inner_otherwise = opt_if(arena, inner_otherwise, then, otherwise, false);
-                return opt_if(arena, inner, inner_then, inner_otherwise, inner_inline);
+                let inner_then = opt_if(arena, target, inner_then, then, otherwise, false);
+                let inner_otherwise =
+                    opt_if(arena, target, inner_otherwise, then, otherwise, false);
+                return opt_if(
+                    arena,
+                    target,
+                    inner,
+                    inner_then,
+                    inner_otherwise,
+                    inner_inline,
+                );
             }
 
             // An inline `if` evaluates both branches, so one that picks between a bool and a
@@ -662,8 +671,14 @@ pub fn opt_if(
                     (replacement, then, otherwise)
                 };
 
-            if !inline && let Some(direct) = branch_directly(arena, condition, then, otherwise) {
-                return direct;
+            if !inline {
+                if let Some(merged) = merge_checks(arena, target, condition, then, otherwise) {
+                    return merged;
+                }
+
+                if let Some(direct) = branch_directly(arena, target, condition, then, otherwise) {
+                    return direct;
+                }
             }
 
             alloc_if(arena, condition, then, otherwise, inline)
@@ -733,6 +748,216 @@ fn eager_logic(
     None
 }
 
+/// How many nodes a condition can have and still be checked along with the one before it (see
+/// [`merge_checks`]). None of them is a call, so each is at most one operator, which costs a few
+/// hundred to run on atoms the size of a hash, far less than the bytes that a check of its own
+/// takes.
+const MAX_MERGED_CHECK_SIZE: usize = 24;
+
+/// A check that's only reached once another check has passed, and that fails the same way, is
+/// checked along with it: `(a (i a (q 2 (i b (q . T) (q 8)) 1) (q 8)) 1)`, which is what two
+/// asserts in a row are, becomes `(a (i (all a b) (q . T) (q 8)) 1)`, which is about 17 bytes
+/// smaller. A check that passes when its condition is false is merged the same way, with the
+/// condition negated, and so is one that branches to the same result in more than one place,
+/// such as `(a (i b (q . T) (q 2 (i c (q . T) (q 8)) 1)) 1)` from an assert of `b || c` (see
+/// [`pass_condition`]).
+///
+/// If the first condition fails the check, the program fails whether or not the rest is
+/// evaluated first, and if it passes, the rest is evaluated either way. So this never changes
+/// whether the program fails, even if the second condition relies on the first, as `(> x 5)`
+/// does after a check that `x` is an atom. Two things could still be told apart, so they're
+/// ruled out:
+///
+/// - A condition that isn't cheap, such as a call, would run before the program fails, when it
+///   would have failed right away (see [`is_cheap_check`]).
+/// - A condition with an operator that can fail for operands of the right types, such as a
+///   division, would fail with its own error where the first check would have raised. A
+///   condition that relies on the first one still can, for a value that fails that check.
+///
+/// The checks after such a condition are left as they are, and are the result of the ones that
+/// are merged. The checks of a debug build raise with their own locations, so they're never the
+/// same.
+fn merge_checks(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+) -> Option<LirId> {
+    let (passes, rest, failure) = match (&arena[then], &arena[otherwise]) {
+        (_, Lir::Raise(_)) => (true, then, otherwise),
+        (Lir::Raise(_), _) => (false, otherwise, then),
+        _ => return None,
+    };
+
+    if !matches!(arena[rest], Lir::If(_, _, _, false)) {
+        return None;
+    }
+
+    let mut result = None;
+    let mut budget = MAX_MERGED_CHECK_SIZE;
+    let inner = pass_condition(arena, target, rest, failure, &mut result, &mut budget)?;
+    let result = result?;
+
+    // Nothing in the rest fails the same way, so there's nothing to merge
+    if matches!(arena[inner], Lir::Atom(_)) {
+        return None;
+    }
+
+    // Checks that all pass when their conditions are false fail when any of them is true
+    if !passes && let Lir::Not(inner) = arena[inner] {
+        let any = opt_any(arena, vec![condition, inner]);
+        return Some(opt_if(arena, target, any, failure, result, false));
+    }
+
+    let first = if passes {
+        condition
+    } else {
+        opt_not(arena, condition)
+    };
+    let all = opt_all(arena, vec![first, inner]);
+
+    Some(opt_if(arena, target, all, result, failure, false))
+}
+
+/// The condition under which a tree of checks reaches its result rather than the failure, as a
+/// bool: an `if` with a cheap condition (see [`is_cheap_check`]) whose branches are the failure,
+/// the result, or more checks of the same kind. The result is whatever the first branch that
+/// isn't one of those is, and every other such branch must be the same value. An `if` that isn't
+/// made of those is a result itself, so the checks after one that isn't cheap are left as they
+/// are.
+///
+/// The budget is the number of nodes in the conditions and of branches that are followed, which
+/// is reduced by them.
+fn pass_condition(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    tree: LirId,
+    failure: LirId,
+    result: &mut Option<LirId>,
+    budget: &mut usize,
+) -> Option<LirId> {
+    *budget = budget.checked_sub(1)?;
+
+    if same_value(arena, tree, failure) {
+        return Some(arena.alloc(Lir::Atom(vec![])));
+    }
+
+    if result.is_some_and(|result| same_value(arena, tree, result)) {
+        return Some(arena.alloc(Lir::Atom(vec![1])));
+    }
+
+    if let Lir::If(condition, then, otherwise, false) = arena[tree] {
+        let result_before = *result;
+        let budget_before = *budget;
+
+        let branches = grow_stack(|| {
+            if !is_cheap_check(arena, target, condition, budget) {
+                return None;
+            }
+
+            let then = pass_condition(arena, target, then, failure, result, budget)?;
+            let otherwise = pass_condition(arena, target, otherwise, failure, result, budget)?;
+            Some((then, otherwise))
+        });
+
+        if let Some((then, otherwise)) = branches {
+            return Some(opt_if(arena, target, condition, then, otherwise, false));
+        }
+
+        *result = result_before;
+        *budget = budget_before;
+    }
+
+    if result.is_some() {
+        return None;
+    }
+
+    *result = Some(tree);
+    Some(arena.alloc(Lir::Atom(vec![1])))
+}
+
+/// Whether the condition has no more nodes than the budget, which is reduced by them, and is
+/// only made of values and of operators that can't fail for operands of the right types, the
+/// same ones the failure analysis of the HIR treats as unable to fail. That leaves out anything
+/// that runs other code, which could run for as long as it likes.
+fn is_cheap_check(
+    arena: &Arena<Lir>,
+    target: ClvmTarget,
+    condition: LirId,
+    budget: &mut usize,
+) -> bool {
+    let Some(rest) = budget.checked_sub(1) else {
+        return false;
+    };
+
+    *budget = rest;
+
+    let mut all = |values: &[LirId]| {
+        values
+            .iter()
+            .all(|&value| grow_stack(|| is_cheap_check(arena, target, value, budget)))
+    };
+
+    match &arena[condition] {
+        Lir::Atom(_) | Lir::Path(_) | Lir::Quote(_) => true,
+        Lir::First(value)
+        | Lir::Rest(value)
+        | Lir::Listp(value)
+        | Lir::Not(value)
+        | Lir::Strlen(value)
+        | Lir::Lognot(value) => all(&[*value]),
+        Lir::Cons(left, right)
+        | Lir::Eq(left, right)
+        | Lir::Gt(left, right)
+        | Lir::GtBytes(left, right) => all(&[*left, *right]),
+        Lir::If(condition, then, otherwise, _) => all(&[*condition, *then, *otherwise]),
+        Lir::Add(args)
+        | Lir::Sub(args)
+        | Lir::Concat(args)
+        | Lir::Logand(args)
+        | Lir::Logior(args)
+        | Lir::Logxor(args)
+        | Lir::All(args)
+        | Lir::Any(args)
+        | Lir::Sha256(args)
+        | Lir::Sha256Inline(args) => all(args),
+        // `LIMITS` rejects an operand that's too long
+        Lir::Mul(args) => !target.limits_operands() && all(args),
+        Lir::Run(..)
+        | Lir::Closure(..)
+        | Lir::Div(..)
+        | Lir::Divmod(..)
+        | Lir::Mod(..)
+        | Lir::Modpow(..)
+        | Lir::Raise(_)
+        | Lir::Substr(..)
+        | Lir::Ash(..)
+        | Lir::Lsh(..)
+        | Lir::PubkeyForExp(_)
+        | Lir::G1Add(_)
+        | Lir::G1Subtract(_)
+        | Lir::G1Multiply(..)
+        | Lir::G1Negate(_)
+        | Lir::G1Map(..)
+        | Lir::G2Add(_)
+        | Lir::G2Subtract(_)
+        | Lir::G2Multiply(..)
+        | Lir::G2Negate(_)
+        | Lir::G2Map(..)
+        | Lir::BlsPairingIdentity(_)
+        | Lir::BlsVerify(..)
+        | Lir::Keccak256(_)
+        | Lir::Keccak256Inline(_)
+        | Lir::CoinId(..)
+        | Lir::K1Verify(..)
+        | Lir::R1Verify(..)
+        | Lir::Keccak256Verify(..)
+        | Lir::Op(..)
+        | Lir::DebugPrint(..) => false,
+    }
+}
+
 /// An `if` whose condition is another `if` with a branch that's a constant, such as
 /// `(a (i (a (i a (q 1 . 1) (q . B)) 1) (q . T) (q . F)) 1)` from `if a || b`, already knows which
 /// way it goes when the inner condition picks the constant. Branching there directly gives
@@ -741,6 +966,7 @@ fn eager_logic(
 /// than the constant was, which is five bytes for `(q 1 . 1)` and one for `()`.
 fn branch_directly(
     arena: &mut Arena<Lir>,
+    target: ClvmTarget,
     condition: LirId,
     then: LirId,
     otherwise: LirId,
@@ -764,13 +990,13 @@ fn branch_directly(
     };
 
     if let Some(taken) = repeated(arena, inner_then) {
-        let rest = opt_if(arena, inner_otherwise, then, otherwise, false);
-        return Some(opt_if(arena, inner, taken, rest, false));
+        let rest = opt_if(arena, target, inner_otherwise, then, otherwise, false);
+        return Some(opt_if(arena, target, inner, taken, rest, false));
     }
 
     if let Some(taken) = repeated(arena, inner_otherwise) {
-        let rest = opt_if(arena, inner_then, then, otherwise, false);
-        return Some(opt_if(arena, inner, rest, taken, false));
+        let rest = opt_if(arena, target, inner_then, then, otherwise, false);
+        return Some(opt_if(arena, target, inner, rest, taken, false));
     }
 
     None
@@ -1303,6 +1529,7 @@ fn same_value_step(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
             same_value(arena, *a, *c) && same_value(arena, *b, *d)
         }
         (Lir::Add(left), Lir::Add(right))
+        | (Lir::Raise(left), Lir::Raise(right))
         | (Lir::Sub(left), Lir::Sub(right))
         | (Lir::Mul(left), Lir::Mul(right))
         | (Lir::Concat(left), Lir::Concat(right))

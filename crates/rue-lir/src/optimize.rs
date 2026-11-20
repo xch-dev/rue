@@ -203,7 +203,7 @@ fn optimize_step(
             let condition = optimize_node(arena, condition, target, trace);
             let then = optimize_node(arena, then, target, trace);
             let otherwise = optimize_node(arena, otherwise, target, trace);
-            opt_if(arena, condition, then, otherwise, inline)
+            opt_if(arena, target, condition, then, otherwise, inline)
         }
         Lir::Raise(args) => {
             let args = args

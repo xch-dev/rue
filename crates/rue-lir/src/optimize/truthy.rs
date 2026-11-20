@@ -82,6 +82,18 @@ fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
             let then_truthiness = opt_truthy(arena, then);
             let otherwise_truthiness = opt_truthy(arena, otherwise);
 
+            // Branches that are known can't fail, so an `if` between a true and a false one has
+            // the truthiness of its condition, or the opposite
+            match (then_truthiness, otherwise_truthiness) {
+                (Truthiness::Known(true), Truthiness::Known(false)) => {
+                    return opt_truthy(arena, condition);
+                }
+                (Truthiness::Known(false), Truthiness::Known(true)) => {
+                    return opt_negated_truthy(arena, condition, None);
+                }
+                _ => {}
+            }
+
             if inline {
                 match (then_truthiness, otherwise_truthiness) {
                     (Truthiness::Known(true), Truthiness::Unknown(otherwise)) => {
