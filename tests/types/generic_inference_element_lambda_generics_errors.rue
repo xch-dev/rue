@@ -76,3 +76,22 @@ fn generic_inferred_as_an_uninferred_one() -> Bool {
         },
     )
 }
+
+fn self_feeding<T>(pair: (Int, fn(a: T) -> T), value: T) -> T {
+    pair.rest(value)
+}
+
+// An element lambda whose return type adds to the generic its parameter reads is compiled where it
+// is, against `T` itself, so `x + 1` is rejected, although `self_feeding::<Int>` compiles. Waiting
+// for `5`, as a lambda that's the whole argument does, would make `x` what the other arguments
+// infer, which is narrower than `T` whenever the lambda returns something else, so it would reject
+// `self_feeding((1, fn(_x) => (5, nil)), nil)`, which compiles today (see
+// `element_adds_to_what_it_reads`, and infer-fuzz generator 1, seeds 1461, 2955 and 6784), as
+// `apply_self(fn(_x) => (5, nil), nil)` is rejected for a lambda that's the whole argument. Which
+// of the two a lambda needs depends on what its body returns, which isn't known before it's
+// compiled, and a body is only compiled once. With an expected type, such as `Int`, that's what
+// `T` is, and it compiles
+fn element_returns_what_its_parameter_reads() -> Bool {
+    let result = self_feeding((1, fn(x) => x + 1), 5);
+    result == 6
+}

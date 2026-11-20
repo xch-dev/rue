@@ -15,3 +15,6 @@ diagnostics:
 - Unused function `generic_inferred_as_an_uninferred_one` at generic_inference_element_lambda_generics_errors.rue:71:4
 - Cannot assign `List<{unresolved}>` to `Bool` without a type guard, since the value isn't always a valid `Bool` at generic_inference_element_lambda_generics_errors.rue:71:52
 - Cannot infer generic `T` for `map_list`; specify it explicitly, e.g. `map_list::<...>()` at generic_inference_element_lambda_generics_errors.rue:72:5
+- Unused function `self_feeding` at generic_inference_element_lambda_generics_errors.rue:80:4
+- Unused function `element_returns_what_its_parameter_reads` at generic_inference_element_lambda_generics_errors.rue:94:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:95:44
