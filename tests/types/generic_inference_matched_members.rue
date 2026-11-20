@@ -505,3 +505,45 @@ test fn field_in_a_provisional_argument() -> Int {
     let result: Five = keep_both(Five { value: 5 }, Five { value: first_of(value) });
     result.value + 0
 }
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+// `identity`'s `T ≤ 5`, from the `let` annotation, is outside of any union member, so `T` is at
+// most `5` however `identity` is solved, and its argument has to be a `5`. That's what
+// `first_of(value)` is required to be, though its expected type is provisional, so it's narrowed
+// for it when `Int | (5, 5)` isn't one, and `T` is `5`
+test fn nested_call_narrowed_for_a_requirement() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = identity(first_of(value));
+    result + 0
+}
+
+// The same through two calls
+test fn nested_call_narrowed_through_two_calls() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = identity(identity(first_of(value)));
+    result + 0
+}
+
+// The same for an argument after another one: `keep_both`'s `U ≤ 5` makes `first_of(value)`
+// required to be a `5`, whatever the `5` before it infers `U` as so far
+test fn nested_call_narrowed_after_another_argument() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = keep_both(5, first_of(value));
+    result + 0
+}
+
+fn wrap<T>(value: T | (T, T)) -> (T, nil) {
+    unchecked_cast(value)
+}
+
+// `(Int | (5, 5), nil)` isn't a `(5, nil) | Bytes`, so the call doesn't solve and `T` is
+// narrowed. `(5, nil)` is, so that's what it's solved with, though `T ≤ 5` is only under the
+// expected type's `(5, nil)` member
+test fn narrowed_for_a_member_of_the_expected_type() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, nil) | Bytes = wrap(value);
+    1
+}

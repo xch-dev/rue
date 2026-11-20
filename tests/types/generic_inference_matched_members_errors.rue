@@ -50,32 +50,3 @@ fn alike_members_stay_ruled_out() -> Int {
     let _f = alike_members as fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil);
     1
 }
-
-fn first_of<T>(value: T | (T, T)) -> T {
-    unchecked_cast(value)
-}
-
-fn identity<T>(value: T) -> T {
-    value
-}
-
-fn wrap<T>(value: T | (T, T)) -> (T, nil) {
-    unchecked_cast(value)
-}
-
-// A call in an argument whose parameter references the enclosing call's generics is checked
-// against what they're finally inferred as, which can be wider than what it expects now, so it
-// isn't narrowed for it (#362's step 13h), and `T` is `Int | (5, 5)`, as it was
-fn nested_call_isnt_narrowed() -> Int {
-    let value: 5 | (5, 5) = 5;
-    let result: 5 = identity(first_of(value));
-    result + 0
-}
-
-// The expected type only bounds `T ≤ 5` under its `(5, nil)` member, which isn't a bound every
-// solution needs, so `T` isn't narrowed for it, and it's `Int | (5, 5)`, as it was
-fn bound_under_a_member_of_the_expected_type() -> Int {
-    let value: 5 | (5, 5) = 5;
-    let _result: (5, nil) | Bytes = wrap(value);
-    1
-}

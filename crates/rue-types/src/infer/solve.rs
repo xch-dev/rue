@@ -5,10 +5,8 @@ use id_arena::Arena;
 use crate::{
     BuiltinTypes, Comparison, Inference, Type, TypeId, add_expected_bounds,
     add_lambda_var_lower_bounds, compare, pass_lower_bounds, pass_upper_bounds, resolve_inference,
-    resolve_inference_with_bounds, substitute_with_mappings, upper_bounds,
+    resolve_inference_with_bounds, upper_bounds,
 };
-
-use super::CandidateKind;
 
 /// Solves the generics of a call, given the candidates its arguments contribute as they're
 /// compiled and the type expected of the call. The argument loop asks for a solution before each
@@ -35,10 +33,6 @@ pub struct CallSolver {
     /// before each argument, and a nested call in an argument solves it again, so each one is
     /// only instantiated once.
     instantiated: RefCell<[Option<(Inference, Inference)>; 2]>,
-    /// Whether the call has to be assignable to the type expected of it, rather than only taking
-    /// it as a hint, so that `CallSolver::solve` can narrow the generics to satisfy it (see
-    /// `CallSolver::requiring_expected`).
-    required: bool,
 }
 
 impl CallSolver {
@@ -61,7 +55,6 @@ impl CallSolver {
             fallback,
             narrower: None,
             instantiated: RefCell::default(),
-            required: false,
         }
     }
 
@@ -79,21 +72,6 @@ impl CallSolver {
     ) -> Self {
         self.fallback = resolve_inference(arena, builtins, narrower);
         self.narrower = Some(narrower.clone());
-        self
-    }
-
-    /// The solver for a call that has to be assignable to the type expected of it, as that type
-    /// is (not one an enclosing call can still widen). Where the generics resolved as usual break
-    /// a bound the expected type gives them outside of any union member, so that the call can't
-    /// be, `CallSolver::solve` leaves out the candidates of union members that another member's
-    /// implied candidates make unneeded, and takes that if it satisfies them (#362, §5, question
-    /// 2). For example, `let result: 5 = first(value);` with
-    /// `fn first<T>(value: T | (T, T)) -> T` and a `5 | (5, 5)`, where `T` would be `Int | (5, 5)`.
-    /// Only then, so that a call that's accepted as usual is solved as it always was: a narrower
-    /// generic could reject what follows, such as a type guard on the call's value.
-    #[must_use]
-    pub fn requiring_expected(mut self) -> Self {
-        self.required = true;
         self
     }
 
@@ -221,30 +199,27 @@ impl CallSolver {
         builtins: &BuiltinTypes,
         infer: Inference,
     ) -> HashMap<TypeId, TypeId> {
-        if !self.required {
-            return self.solve_with(arena, builtins, infer);
-        }
-
-        let mappings = self.solve_with(arena, builtins, infer.clone());
-
-        if self.satisfies_expected(arena, builtins, &mappings) {
-            return mappings;
-        }
-
-        // Only what satisfies the expected type is taken, so a call that's rejected either way
-        // keeps its diagnostics (see `CallSolver::requiring_expected`)
-        let mut narrow = infer;
-        narrow.narrow = true;
-        let narrowed = self.solve_with(arena, builtins, narrow);
-
-        if narrowed != mappings && self.satisfies_expected(arena, builtins, &narrowed) {
-            narrowed
-        } else {
-            mappings
-        }
+        self.solve_with(arena, builtins, infer)
     }
 
-    /// Like `CallSolver::solve`, without narrowing the generics to satisfy the expected type.
+    /// Like `CallSolver::solve`, but leaving out the candidates of union members that another
+    /// member's implied candidates make unneeded (`Inference::implied_members`), which narrows the
+    /// generics: `T` in `let result: 5 = first(value);` with `fn first<T>(value: T | (T, T)) -> T`
+    /// and a `5 | (5, 5)` is `5` rather than `Int | (5, 5)` (#362, §5, question 2). The compiler
+    /// only uses this for a call that what `solve` gives doesn't solve, so that a call that's
+    /// accepted is solved as it always was: a narrower generic could reject what follows, such as
+    /// a type guard on the call's value.
+    pub fn solve_narrowed(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        mut infer: Inference,
+    ) -> HashMap<TypeId, TypeId> {
+        infer.narrow = true;
+        self.solve_with(arena, builtins, infer)
+    }
+
+    /// What `CallSolver::solve` and `CallSolver::solve_narrowed` give for the inference.
     fn solve_with(
         &self,
         arena: &mut Arena<Type>,
@@ -291,41 +266,6 @@ impl CallSolver {
         add_lambda_var_lower_bounds(&mut infer);
 
         resolve_inference_with_bounds(arena, builtins, &infer, &self.fallback)
-    }
-
-    /// Whether the mappings satisfy every bound that the type expected of the call gives a
-    /// generic outside of any union member, which the call's type has to for it to be assignable
-    /// to the expected type.
-    fn satisfies_expected(
-        &self,
-        arena: &mut Arena<Type>,
-        builtins: &BuiltinTypes,
-        mappings: &HashMap<TypeId, TypeId>,
-    ) -> bool {
-        let Some(expected) = &self.expected else {
-            return true;
-        };
-
-        expected
-            .unconditional()
-            .into_iter()
-            .all(|(generic, kind, ty)| {
-                let Some(&mapped) = mappings.get(&generic) else {
-                    return true;
-                };
-
-                let bound = substitute_with_mappings(arena, ty, mappings);
-
-                match kind {
-                    CandidateKind::Lower => {
-                        compare(arena, builtins, bound, mapped) == Comparison::Assign
-                    }
-                    CandidateKind::Upper => {
-                        compare(arena, builtins, mapped, bound) == Comparison::Assign
-                    }
-                    CandidateKind::Held => true,
-                }
-            })
     }
 
     /// The inference with the vars for passed generic functions' instances replaced with what

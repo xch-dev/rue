@@ -60,9 +60,8 @@ pub struct Inference {
     /// The vars added along with the generics (see `Inference::add_var`).
     added: Vec<TypeId>,
     /// Whether resolving leaves out the candidates of union members that another member's implied
-    /// candidates make unneeded (`Inference::implied_members`). `CallSolver::solve` only does when
-    /// the generics resolved without leaving them out break a bound the type expected of the call
-    /// gives them.
+    /// candidates make unneeded (`Inference::implied_members`), which only
+    /// `CallSolver::solve_narrowed` does.
     pub(crate) narrow: bool,
 }
 
@@ -266,24 +265,22 @@ impl Inference {
         self.candidates_without(generic, &[])
     }
 
-    /// The candidates that weren't collected under any union member, with the generic and kind
-    /// they're for, which every solution has to satisfy.
-    pub(crate) fn unconditional(&self) -> Vec<(TypeId, CandidateKind, TypeId)> {
-        let mut unconditional = Vec::new();
+    /// The upper candidates of the generic that weren't collected under any union member, which
+    /// every solution has to satisfy.
+    pub fn unconditional_upper(&self, generic: TypeId) -> Vec<TypeId> {
+        let (Some(candidates), Some(branches)) =
+            (self.generics.get(&generic), self.branches.get(&generic))
+        else {
+            return Vec::new();
+        };
 
-        for (&generic, candidates) in &self.generics {
-            let branches = &self.branches[&generic];
-
-            for kind in CandidateKind::ALL {
-                for (&ty, branches) in candidates.list(kind).iter().zip(branches.list(kind)) {
-                    if branches.is_empty() {
-                        unconditional.push((generic, kind, ty));
-                    }
-                }
-            }
-        }
-
-        unconditional
+        candidates
+            .upper
+            .iter()
+            .zip(&branches.upper)
+            .filter(|(_, branches)| branches.is_empty())
+            .map(|(&ty, _)| ty)
+            .collect()
     }
 
     /// Like `Inference::matched_candidates`, but also leaving out the candidates of each kind in
@@ -343,7 +340,7 @@ impl Inference {
     ///   keeps what they give it. A generic and kind that would be left with none, because the
     ///   unions left out each other's, keeps them all.
     ///
-    /// This only runs for an inference that's `narrow` (see `CallSolver::solve`).
+    /// This only runs for an inference that's `narrow` (see `CallSolver::solve_narrowed`).
     fn implied_members(&self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) -> Vec<LeftOut> {
         let results = self.choices.results();
 

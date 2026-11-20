@@ -1565,7 +1565,7 @@ mod inference {
         let mut infer = Inference::new([t]);
         assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
 
-        // Only an inference that's narrow leaves them out (see `CallSolver::solve`)
+        // Only an inference that's narrow leaves them out (see `CallSolver::solve_narrowed`)
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert!(db.name(mappings[&t]).contains('('));
         infer.narrow = true;

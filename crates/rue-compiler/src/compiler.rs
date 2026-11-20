@@ -86,6 +86,9 @@ pub struct Compiler {
     call_frames: Vec<CallFrame>,
     /// How the type expected of the expression being compiled is used.
     expected: ExpectedTypeUse,
+    /// A type that the call argument at the range has to be assignable to however the enclosing
+    /// call's generics are solved, if there is one (see `Compiler::with_argument_requirement`).
+    argument_requirement: Option<(TextRange, TypeId)>,
     lint_sites: LintSites,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// Every type a path has named, in the order they were compiled, so that what's compiled between
@@ -260,6 +263,7 @@ impl Compiler {
             return_count: 0,
             call_frames: Vec::new(),
             expected: ExpectedTypeUse::default(),
+            argument_requirement: None,
             lint_sites: LintSites::default(),
             ambiguous_imports: HashSet::new(),
             named_types: Vec::new(),
@@ -940,11 +944,12 @@ impl Compiler {
     /// references the generics of the call being inferred: it's what they're inferred as so far,
     /// and the argument is checked against what they're finally inferred as, which a later
     /// argument can widen. Even when the value has to be assignable to it (it isn't a hint), a
-    /// call in it isn't narrowed to satisfy it (see `CallSolver::requiring_expected`), since the
-    /// wider type could be what the program needs. It's inherited like a hint, until an
-    /// expression is compiled with an expected type of its own: a `let` annotation, a lambda's
-    /// return type, a struct's field, or the argument of a parameter that doesn't reference the
-    /// call's generics.
+    /// call in it isn't narrowed to satisfy it (see `CallSolver::solve_narrowed`), since the
+    /// wider type could be what the program needs, only for what the enclosing call requires of
+    /// it however it's solved (see `Compiler::with_argument_requirement`). It's inherited like a
+    /// hint, until an expression is compiled with an expected type of its own: a `let`
+    /// annotation, a lambda's return type, a struct's field, or the argument of a parameter that
+    /// doesn't reference the call's generics.
     pub fn with_expected_type_provisional<T>(
         &mut self,
         provisional: bool,
@@ -960,6 +965,30 @@ impl Compiler {
     /// it's checked (see `Compiler::with_expected_type_provisional`).
     pub fn is_expected_type_provisional(&self) -> bool {
         self.expected.provisional
+    }
+
+    /// Compiles a call argument with a type that it has to be assignable to however the enclosing
+    /// call's generics are solved, if there is one. A call that's the argument itself is narrowed
+    /// for it (see `CallSolver::solve_narrowed`) when what it's solved as otherwise isn't
+    /// assignable to it, though its expected type is provisional
+    /// (`Compiler::with_expected_type_provisional`): the program would be rejected either way.
+    pub fn with_argument_requirement<T>(
+        &mut self,
+        requirement: Option<(TextRange, TypeId)>,
+        compile: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let outer = mem::replace(&mut self.argument_requirement, requirement);
+        let result = compile(self);
+        self.argument_requirement = outer;
+        result
+    }
+
+    /// The type that the expression at the range has to be assignable to, if it's a call argument
+    /// that has one (see `Compiler::with_argument_requirement`).
+    pub fn argument_requirement(&self, range: TextRange) -> Option<TypeId> {
+        self.argument_requirement
+            .filter(|&(at, _)| at == range)
+            .map(|(_, ty)| ty)
     }
 
     /// Compiles with an expected type that's only for the generics of the calls in the expression
@@ -1239,6 +1268,16 @@ impl Compiler {
     /// `CallSolver::solve`).
     pub fn solve_call(&mut self, solver: &CallSolver, infer: Inference) -> HashMap<TypeId, TypeId> {
         solver.solve(self.db.types_mut(), &self.builtins.types, infer)
+    }
+
+    /// The mappings the call is checked with when it narrows its generics (see
+    /// `CallSolver::solve_narrowed`).
+    pub fn solve_call_narrowed(
+        &mut self,
+        solver: &CallSolver,
+        infer: Inference,
+    ) -> HashMap<TypeId, TypeId> {
+        solver.solve_narrowed(self.db.types_mut(), &self.builtins.types, infer)
     }
 
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
