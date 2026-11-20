@@ -57,6 +57,21 @@ tests:
   debug_program: (substr 2 (q . 6) (q . 7))
   byte_cost: 156000
   clvm_error: path into atom
+- name: index_constant_operators
+  program: (concat (substr 2 (q . 5) (q . 6)) (substr 2 (q . 3) (q . 4)))
+  debug_program: (a (q 2 (q 14 (substr 11 (/ (* 2 (q . 5)) (q . 2)) (q . 6)) (substr 11 (- (strlen 9) (q . 1)) (q . 4))) (c (+ 6 (q . 2)) 1)) (c (c (q . "last") ()) 1))
+  byte_cost: 372000
+  clvm_error: path into atom
+- name: index_variable_with_constant
+  program: (concat (substr 2 (+ 5 (q . 2)) (+ 5 (q . 3))) (substr 2 (- 5 (q . 4)) (- 5 (q . 3))))
+  debug_program: (a (q 2 (q 14 (substr 11 (+ 23 2) (+ 23 (q . 3))) (substr 11 (- 23 (strlen 9)) (- 23 (q . 3)))) (c (+ 6 (q . 2)) 1)) (c (c (q . "last") ()) 1))
+  byte_cost: 660000
+  clvm_error: path into atom
+- name: index_constant_fails
+  program: (a (q 12 5 (/ 2 ()) (+ (/ 2 ()) (q . 1))) (c (q . 2) 1))
+  debug_program: (a (q 2 (q 12 11 (/ 2 ()) (+ (/ 2 ()) (q . 1))) (c (+ 2 (q . 2)) 1)) (c () 1))
+  byte_cost: 540000
+  clvm_error: Division by zero
 - name: index_call
   program: (a (q 12 5 2 (+ 2 (q . 1))) (c (* 5 (q . 2)) 1))
   debug_program: (a (q 2 (q 12 11 2 (+ 2 (q . 1))) (c (a 2 11) 1)) (c (q 18 1 (q . 2)) 1))
@@ -129,7 +144,7 @@ tests:
   clvm_error: "InvalidOperatorArg: Invalid Indices for Substring"
 - name: index_evaluated_once
   program: (a (q 12 (q . "hello") 2 (+ 2 (q . 1))) (c (q . 1) 1))
-  debug_program: (a (q 12 (q . "hello") 2 (+ 2 (q . 1))) (c (a (i ("debug_print" (q . "indexing.rue:131:13") (q . "index")) (q) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 12 (q . "hello") 2 (+ 2 (q . 1))) (c (a (i ("debug_print" (q . "indexing.rue:144:13") (q . "index")) (q) (q 1 . 1)) 1) 1))
   output: "101"
   runtime_cost: 1120
   byte_cost: 480000

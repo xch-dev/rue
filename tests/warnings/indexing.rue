@@ -78,7 +78,6 @@ fn parens(value: Bytes, other: Bytes, index: Int) -> Bytes {
         + (value[0])
         + (value[1..])[0]
         + (value[0]).length as Bytes
-        + (other[0] + value)
 }
 
 // Doesn't warn: the parentheses are needed before the brackets

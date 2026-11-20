@@ -68,6 +68,19 @@ test fn index_const_expr(value: Bytes) -> Bytes {
     value[const { offset(3) }]
 }
 
+test fn index_constant_operators(value: Bytes) -> Bytes {
+    value[THIRD * 5 / 2] + value[LAST.length - 1]
+}
+
+test fn index_variable_with_constant(value: Bytes, index: Int) -> Bytes {
+    value[index + THIRD] + value[index - LAST.length]
+}
+
+// A constant index that fails is left to fail when it's evaluated
+test fn index_constant_fails(value: Bytes) -> Bytes {
+    value[THIRD / 0]
+}
+
 // An index that isn't a variable is only evaluated once
 test fn index_call(value: Bytes, index: Int) -> Bytes {
     value[offset(index)]
@@ -133,3 +146,6 @@ test fn index_evaluated_once() -> Bytes {
         }
     ]
 }
+
+// Declared after the code that indexes with it
+const LAST: Bytes = "last";

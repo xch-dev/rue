@@ -26,8 +26,8 @@ use crate::{
     Compiler, EncodeError, ImportCache, SyntaxItemKind, build_debug_metadata, check_recursion,
     clvm_target, compile_default_items, compile_symbol_items, compile_type_items,
     const_eval::evaluate_const_exprs, declare_module_items, declare_symbol_items,
-    declare_type_items, entrypoint::entrypoint, fold_constant_indexes, recheck_contractive_types,
-    resolve_imports, resolve_pending_defaults,
+    declare_type_items, entrypoint::entrypoint, recheck_contractive_types, resolve_imports,
+    resolve_pending_defaults,
 };
 
 #[derive(Debug, Error)]
@@ -353,8 +353,6 @@ impl FileTree {
         if ctx.is_cancelled() {
             return;
         }
-
-        fold_constant_indexes(ctx);
 
         if lint {
             check_recursion(ctx);

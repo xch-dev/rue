@@ -151,6 +151,15 @@ fn finish_const(
             states.insert(hir, ConstState::Done);
             return;
         }
+        // A const expression that the compiler generated is only an optimization, so the value is
+        // left to be evaluated at runtime, as it was written
+        Err(_) if expr.generated => {
+            if let Hir::Const(expr) = ctx.hir_mut(hir) {
+                expr.result = Some(expr.value);
+            }
+            states.insert(hir, ConstState::Done);
+            return;
+        }
         Err(ConstEvalError::RuntimeDependency(symbol)) => {
             Some(DiagnosticKind::ConstRuntimeDependency(symbol))
         }

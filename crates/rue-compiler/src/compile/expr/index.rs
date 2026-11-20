@@ -1,24 +1,13 @@
-use std::collections::HashSet;
-
 use log::debug;
 use num_bigint::{BigInt, Sign};
 use rue_ast::{AstExpr, AstIndexExpr, AstNode, AstSliceExpr};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
-    BinaryOp, BindingSymbol, Block, FieldKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
+    BinaryOp, BindingSymbol, Block, ConstExpr, FieldKind, Hir, HirId, Statement, Symbol, UnaryOp,
     Value,
 };
 
 use crate::{Compiler, compile_expr};
-
-/// An index (`value[index]`) whose index isn't a literal, which might still be a constant.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct PendingIndex {
-    /// The node that the index expression compiled to.
-    hir: HirId,
-    value: HirId,
-    index: HirId,
-}
 
 /// An index (`value[index]`) is the byte at the index, as bytes of length one, which is what
 /// `substr(value, index, index + 1)` gives.
@@ -34,134 +23,15 @@ pub fn compile_index_expr(ctx: &mut Compiler, expr: &AstIndexExpr) -> Value {
         return Value::new(ctx.unresolved().hir, bytes);
     };
 
-    // A literal index has a literal end
-    if let Some(index) = int_value(ctx, start, None) {
-        let end = ctx.alloc_hir(Hir::Int(index + 1));
-        return Value::new(alloc_substr(ctx, value, start, Some(end)), bytes);
-    }
-
-    let hir = if let Some(end) = next_index(ctx, start) {
-        alloc_substr(ctx, value, start, Some(end))
-    } else {
-        alloc_bound_index(ctx, value, start, &index)
-    };
-
-    // It might still be a constant, which isn't known until everything is compiled
-    ctx.push_pending_index(PendingIndex {
-        hir,
-        value,
-        index: start,
-    });
-
-    Value::new(hir, bytes)
-}
-
-/// Binds the index, which is needed twice, rather than evaluating it twice, like the value that a
-/// `match` checks: `{ let index = ...; substr(value, index, index + 1) }`.
-fn alloc_bound_index(ctx: &mut Compiler, value: HirId, start: HirId, index: &AstExpr) -> HirId {
-    let index_value = Value::new(start, ctx.builtins().types.int);
-    let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
-        name: None,
-        value: index_value,
-        inline: false,
-    }));
     let srcloc = ctx.trimmed_srcloc(index.syntax());
 
-    let start = ctx.alloc_hir(Hir::Reference(symbol));
-    let one = ctx.alloc_hir(Hir::Int(BigInt::from(1)));
-    let end = ctx.alloc_hir(Hir::Binary(BinaryOp::Add, start, one));
-    let body = alloc_substr(ctx, value, start, Some(end));
+    let hir = if let Some(end) = next_index(ctx, start, &srcloc) {
+        alloc_substr(ctx, value, start, Some(end))
+    } else {
+        alloc_bound_index(ctx, value, start, srcloc)
+    };
 
-    ctx.alloc_hir(Hir::Block(Block {
-        statements: vec![Statement::Let(symbol, srcloc)],
-        body: Some(body),
-    }))
-}
-
-/// Gives each index that turned out to be a constant, such as `value[N]` or `value[N * 2]`, the
-/// index after it as a literal, like a literal index has, rather than adding one to it at
-/// runtime. This is done once everything is compiled, since a constant can be declared after the
-/// code that uses it, and after the const expressions are evaluated, since it can be one.
-pub(crate) fn fold_constant_indexes(ctx: &mut Compiler) {
-    for pending in ctx.take_pending_indexes() {
-        let Some(index) = int_value(ctx, pending.index, Some(&mut HashSet::new())) else {
-            continue;
-        };
-
-        let end = ctx.alloc_hir(Hir::Int(index + 1));
-        *ctx.hir_mut(pending.hir) = Hir::Substr(pending.value, pending.index, Some(end));
-        ctx.set_hir_indexed(pending.hir);
-    }
-}
-
-/// The value of an integer expression that's made of literals with `+`, `-` and `*`, and of
-/// constants and const expressions if `constants` is given, which is the constants being
-/// followed. The expression is known to be an `Int`, so bytes (such as the result of a const
-/// expression) are their integer value.
-fn int_value(
-    ctx: &Compiler,
-    hir: HirId,
-    mut constants: Option<&mut HashSet<SymbolId>>,
-) -> Option<BigInt> {
-    match ctx.hir(ctx.without_casts(hir)) {
-        Hir::Int(value) => Some(value.clone()),
-        Hir::Bytes(value) => Some(BigInt::from_signed_bytes_be(value)),
-        Hir::Const(expr) if constants.is_some() => int_value(ctx, expr.result?, constants),
-        Hir::Block(Block {
-            statements,
-            body: Some(body),
-        }) if statements.is_empty() => int_value(ctx, *body, constants),
-        Hir::Reference(symbol) => {
-            let constants = constants?;
-
-            let Symbol::Constant(constant) = ctx.symbol(*symbol) else {
-                return None;
-            };
-
-            // A constant that refers to itself is an error
-            if !constants.insert(*symbol) {
-                return None;
-            }
-
-            // A chain of constants that each refer to the next can be as long as the file
-            let value =
-                rue_types::grow_stack(|| int_value(ctx, constant.value.hir, Some(constants)));
-            constants.remove(symbol);
-            value
-        }
-        Hir::Unary(UnaryOp::Plus, value) => int_value(ctx, *value, constants),
-        Hir::Unary(UnaryOp::Neg, value) => Some(-int_value(ctx, *value, constants)?),
-        Hir::Binary(op @ (BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul), left, right) => {
-            let left = int_value(ctx, *left, constants.as_deref_mut())?;
-            let right = int_value(ctx, *right, constants)?;
-
-            Some(match op {
-                BinaryOp::Add => left + right,
-                BinaryOp::Sub => left - right,
-                _ => left * right,
-            })
-        }
-        _ => None,
-    }
-}
-
-/// Whether the value only depends on literals and constants, so the optimizer folds it wherever
-/// it's repeated, such as `32 / 2` or `N.length`.
-fn is_constant(ctx: &Compiler, hir: HirId) -> bool {
-    match ctx.hir(hir) {
-        Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bytes(_) | Hir::Bool(_) | Hir::Const(_) => {
-            true
-        }
-        Hir::Reference(symbol) => matches!(ctx.symbol(*symbol), Symbol::Constant(_)),
-        Hir::Cast(value) | Hir::Unary(_, value) => is_constant(ctx, *value),
-        Hir::Binary(_, left, right) => is_constant(ctx, *left) && is_constant(ctx, *right),
-        Hir::FieldAccess(access) => is_constant(ctx, access.value),
-        Hir::Block(Block {
-            statements,
-            body: Some(body),
-        }) => statements.is_empty() && is_constant(ctx, *body),
-        _ => false,
-    }
+    Value::new(hir, bytes)
 }
 
 /// A slice (`value[start..end]`) is the bytes from `start` up to `end`, which is what
@@ -229,28 +99,67 @@ fn alloc_substr(ctx: &mut Compiler, value: HirId, start: HirId, end: Option<HirI
     hir
 }
 
-/// The index after this one, if it's as cheap to compute from the index as it would be to bind
-/// the index and add one to it: a binding or a field of one, with or without a literal added to
-/// or subtracted from it, or an expression that's made of constants, which the optimizer folds.
-/// This is what `end` would be in the `substr(value, index, end)` call that the index would
-/// otherwise be written as, such as `substr(value, i + 1, i + 2)`, `substr(value, i - 1, i)` or
-/// `substr(value, 32 / 2, 32 / 2 + 1)`.
-fn next_index(ctx: &mut Compiler, index: HirId) -> Option<HirId> {
-    let (place, offset) = match *ctx.hir(ctx.without_casts(index)) {
-        Hir::Binary(BinaryOp::Add, left, right) if is_place(ctx, left) => {
-            (left, int_value(ctx, right, None)?)
+/// Binds the index, which is needed twice, rather than evaluating it twice, like the value that a
+/// `match` checks: `{ let index = ...; substr(value, index, index + 1) }`.
+fn alloc_bound_index(ctx: &mut Compiler, value: HirId, index: HirId, srcloc: SrcLoc) -> HirId {
+    let index = Value::new(index, ctx.builtins().types.int);
+    let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+        name: None,
+        value: index,
+        inline: false,
+    }));
+
+    let start = ctx.alloc_hir(Hir::Reference(symbol));
+    let end = alloc_offset(ctx, start, BinaryOp::Add);
+    let body = alloc_substr(ctx, value, start, Some(end));
+
+    ctx.alloc_hir(Hir::Block(Block {
+        statements: vec![Statement::Let(symbol, srcloc)],
+        body: Some(body),
+    }))
+}
+
+/// The index after this one, which is `end` in the `substr(value, index, end)` call that the
+/// index stands for, if it doesn't take evaluating the index again:
+///
+/// - The index is made of constants, so `end` is a constant too: `substr(value, N * 2, 7)`.
+/// - It's a binding or a field of one, which costs as much to repeat as it would to bind:
+///   `substr(value, i, i + 1)`.
+/// - It's one of those with a constant added to or subtracted from it, which one more is added
+///   to in `end`: `substr(value, i + 1, i + 2)` or `substr(value, i - 1, i)`.
+fn next_index(ctx: &mut Compiler, index: HirId, srcloc: &SrcLoc) -> Option<HirId> {
+    if is_constant(ctx, index) {
+        return Some(alloc_constant_offset(ctx, index, BinaryOp::Add, srcloc));
+    }
+
+    let (place, op, offset) = match *ctx.hir(ctx.without_casts(index)) {
+        Hir::Binary(op @ (BinaryOp::Add | BinaryOp::Sub), left, right)
+            if is_place(ctx, left) && is_constant(ctx, right) =>
+        {
+            (left, op, right)
         }
-        Hir::Binary(BinaryOp::Add, left, right) if is_place(ctx, right) => {
-            (right, int_value(ctx, left, None)?)
+        Hir::Binary(BinaryOp::Add, left, right)
+            if is_constant(ctx, left) && is_place(ctx, right) =>
+        {
+            (right, BinaryOp::Add, left)
         }
-        Hir::Binary(BinaryOp::Sub, left, right) if is_place(ctx, left) => {
-            (left, -int_value(ctx, right, None)?)
-        }
-        _ if is_place(ctx, index) || is_constant(ctx, index) => (index, BigInt::ZERO),
+        _ if is_place(ctx, index) => return Some(alloc_offset(ctx, index, BinaryOp::Add)),
         _ => return None,
     };
 
-    let offset: BigInt = offset + 1;
+    // One more than `place + offset` is `place + (offset + 1)`, and one more than
+    // `place - offset` is `place - (offset - 1)`
+    let Some(offset) = literal_int(ctx, offset) else {
+        let offset = alloc_constant_offset(ctx, offset, op, srcloc);
+        return Some(ctx.alloc_hir(Hir::Binary(op, place, offset)));
+    };
+
+    // A literal is written as it would be in the call, such as `i` after `i - 1`
+    let offset: BigInt = if op == BinaryOp::Add {
+        offset + 1
+    } else {
+        1 - offset
+    };
 
     Some(match offset.sign() {
         Sign::NoSign => place,
@@ -265,8 +174,66 @@ fn next_index(ctx: &mut Compiler, index: HirId) -> Option<HirId> {
     })
 }
 
-/// Whether the value is a binding, parameter or constant, or a field that's at a path from one,
-/// which is found without computing anything.
+/// The value with one added to or subtracted from it.
+fn alloc_offset(ctx: &mut Compiler, value: HirId, op: BinaryOp) -> HirId {
+    let one = ctx.alloc_hir(Hir::Int(BigInt::from(1)));
+    ctx.alloc_hir(Hir::Binary(op, value, one))
+}
+
+/// A value that's made of constants with one added to or subtracted from it, as a constant: a
+/// literal if the value is one, and otherwise a const expression, which is evaluated once every
+/// constant has a value, since a constant can be declared after the code that uses it. If it
+/// can't be evaluated, it's left to be evaluated at runtime, like the value is.
+fn alloc_constant_offset(ctx: &mut Compiler, value: HirId, op: BinaryOp, srcloc: &SrcLoc) -> HirId {
+    if let Some(value) = literal_int(ctx, value) {
+        return ctx.alloc_hir(Hir::Int(if op == BinaryOp::Add {
+            value + 1
+        } else {
+            value - 1
+        }));
+    }
+
+    let value = alloc_offset(ctx, value, op);
+
+    ctx.alloc_hir(Hir::Const(ConstExpr {
+        value,
+        loc: srcloc.clone(),
+        result: None,
+        generated: true,
+    }))
+}
+
+/// The value of an integer literal, with or without a sign.
+fn literal_int(ctx: &Compiler, hir: HirId) -> Option<BigInt> {
+    match ctx.hir(ctx.without_casts(hir)) {
+        Hir::Int(value) => Some(value.clone()),
+        Hir::Unary(UnaryOp::Plus, value) => literal_int(ctx, *value),
+        Hir::Unary(UnaryOp::Neg, value) => Some(-literal_int(ctx, *value)?),
+        _ => None,
+    }
+}
+
+/// Whether the value only depends on literals and constants, such as `N * 2` or `"ab".length`,
+/// so it can be evaluated when compiling.
+fn is_constant(ctx: &Compiler, hir: HirId) -> bool {
+    match ctx.hir(hir) {
+        Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bytes(_) | Hir::Bool(_) | Hir::Const(_) => {
+            true
+        }
+        Hir::Reference(symbol) => matches!(ctx.symbol(*symbol), Symbol::Constant(_)),
+        Hir::Cast(value) | Hir::Unary(_, value) => is_constant(ctx, *value),
+        Hir::Binary(_, left, right) => is_constant(ctx, *left) && is_constant(ctx, *right),
+        Hir::FieldAccess(access) => is_constant(ctx, access.value),
+        Hir::Block(Block {
+            statements,
+            body: Some(body),
+        }) => statements.is_empty() && is_constant(ctx, *body),
+        _ => false,
+    }
+}
+
+/// Whether the value is a binding or parameter, or a field that's at a path from one, which is
+/// found without computing anything.
 fn is_place(ctx: &Compiler, hir: HirId) -> bool {
     match ctx.hir(ctx.without_casts(hir)) {
         Hir::Reference(_) => true,

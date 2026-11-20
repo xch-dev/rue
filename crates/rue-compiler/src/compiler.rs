@@ -26,8 +26,8 @@ use rue_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{
-    DeferredLambda, ElementLambda, FileTree, LambdaParameter, PendingIndex, SyntaxItem,
-    SyntaxItemKind, SyntaxMap, narrowed_with_references,
+    DeferredLambda, ElementLambda, FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind,
+    SyntaxMap, narrowed_with_references,
 };
 
 /// How the type expected of the expression being compiled is used, which the expressions it's
@@ -105,9 +105,6 @@ pub struct Compiler {
     /// The type items compiled since their contractiveness was last rechecked, which happens once
     /// every type item in a tree has been compiled (see `recheck_contractive_types`).
     unchecked_type_items: Vec<TypeId>,
-    /// The indexes that aren't literals, which are folded once every constant has a value (see
-    /// `fold_constant_indexes`).
-    pending_indexes: Vec<PendingIndex>,
     cancel: Option<Cancel>,
     cancelled: bool,
     /// Where the first placeholder for code that couldn't be compiled was made (see
@@ -284,7 +281,6 @@ impl Compiler {
             overridden_symbols: HashSet::new(),
             narrowed_references: HashMap::new(),
             unchecked_type_items: Vec::new(),
-            pending_indexes: Vec::new(),
             cancel: None,
             cancelled: false,
             first_placeholder: None,
@@ -445,14 +441,6 @@ impl Compiler {
 
     pub(crate) fn push_unchecked_type_item(&mut self, ty: TypeId) {
         self.unchecked_type_items.push(ty);
-    }
-
-    pub(crate) fn push_pending_index(&mut self, index: PendingIndex) {
-        self.pending_indexes.push(index);
-    }
-
-    pub(crate) fn take_pending_indexes(&mut self) -> Vec<PendingIndex> {
-        std::mem::take(&mut self.pending_indexes)
     }
 
     pub(crate) fn take_unchecked_type_items(&mut self) -> Vec<TypeId> {
