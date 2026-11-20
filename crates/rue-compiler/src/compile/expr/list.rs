@@ -2,9 +2,11 @@ use log::debug;
 use rue_ast::AstListExpr;
 use rue_diagnostic::{DiagnosticKind, SpreadTarget};
 use rue_hir::{Hir, List, Value};
-use rue_types::{Pair, Type, TypeId, Union};
+use rue_types::{Pair, Type, TypeId};
 
-use super::call_inference::{compile_refined_element, holds_other_pairs, record_element};
+use super::call_inference::{
+    compile_refined_element, holds_other_pairs, pair_parts, record_element,
+};
 use crate::Compiler;
 
 pub fn compile_list_expr(
@@ -44,27 +46,9 @@ pub fn compile_list_expr(
             nil_terminated = false;
             expected_type
         } else if let Some(ty) = expected_type
-            && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, false)
-            && !pairs.is_empty()
+            && let Some((first, rest)) = pair_parts(ctx, ty)
         {
             hint |= holds_other_pairs(ctx, ty);
-
-            let first = if pairs.len() == 1 {
-                pairs[0].first
-            } else {
-                ctx.alloc_type(Type::Union(Union::new(
-                    pairs.iter().map(|pair| pair.first).collect(),
-                )))
-            };
-
-            let rest = if pairs.len() == 1 {
-                pairs[0].rest
-            } else {
-                ctx.alloc_type(Type::Union(Union::new(
-                    pairs.iter().map(|pair| pair.rest).collect(),
-                )))
-            };
-
             expected_type = Some(rest);
             last_item_type = Some(first);
 

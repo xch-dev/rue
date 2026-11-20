@@ -150,9 +150,9 @@ pub struct ArgumentFrame {
     /// The lambdas among those elements that are only compiled once no argument still to be
     /// compiled can add to the generics their parameters are expected to have, by where they are,
     /// with the type expected of each, before it's substituted (see `DeferredLambda`).
-    pub deferred: HashMap<TextRange, ElementLambda>,
-    /// The placeholders left for those lambdas.
-    pub deferred_lambdas: Vec<DeferredLambda>,
+    pub to_defer: HashMap<TextRange, ElementLambda>,
+    /// The placeholders left for those lambdas, as they're compiled.
+    pub deferred: Vec<DeferredLambda>,
 }
 
 /// A field of a struct initializer in a default value, whose own default value hadn't been compiled
