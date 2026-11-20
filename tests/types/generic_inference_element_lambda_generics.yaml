@@ -356,6 +356,13 @@ tests:
   runtime_cost: 151
   byte_cost: 180000
   total_cost: 180151
+- name: element_reads_a_field_of_a_parameter_that_has_a_type_already
+  program: (a (q 4 4 (q . 2)) (q (f . 3)))
+  debug_program: (a (q 2 (q . 2) (c (a 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 4 (f 2) (q . 2))) (c (q . 1) ())))) (c (q . 5) (q . 3)))) 1)) (c (q 2 (r 2) (c 3 ())) ()))
+  output: (5 . 2)
+  runtime_cost: 254
+  byte_cost: 276000
+  total_cost: 276254
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
@@ -386,3 +393,4 @@ diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:601:5
     help: Return the value directly
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:652:5

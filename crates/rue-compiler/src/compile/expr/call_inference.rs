@@ -251,6 +251,7 @@ pub(crate) fn infer_call(
                     final_expected.is_none(),
                     &depends,
                     &with_dependencies(&waiting_reads(&waiting), &depends),
+                    &mappings,
                 )
             } else {
                 HashMap::new()
@@ -1170,11 +1171,18 @@ pub struct ElementLambda {
     /// generic itself can't be used any other way that loses it: its body either keeps it, as
     /// `(x, x)` does, or doesn't compile against it, as `x + 1` doesn't.
     narrows: bool,
-    /// Whether its body reads a field of an untyped parameter that's expected to be one of the
-    /// callee's generics itself, as `p.first` does for `p: T`, which doesn't compile against the
-    /// generic. Compiled where it is, it would be rejected whatever else is so, so it waits even
-    /// where a lambda that could compile there doesn't (see `ArgumentOrder::deferred`).
-    fails_in_place: bool,
+    /// The callee's generics that untyped parameters whose fields its body reads are expected to
+    /// be, as `p.first` does for `p: T`. Where one of them has no mapping when the argument is
+    /// compiled, the parameter is that generic where the lambda is, which has no fields, so it
+    /// wouldn't compile there, and it waits even where a lambda that could compile there doesn't
+    /// (see `ArgumentOrder::deferred`). Where they all have one, the parameter is what the
+    /// generic is inferred as so far there (see `refine_element_expected`), which it can compile
+    /// against.
+    field_generics: IndexSet<TypeId>,
+    /// Whether it's compiled where it is unless it wouldn't compile there (see `field_generics`):
+    /// its return type adds to the generics its parameters read, or another element reads what it
+    /// adds to (see `element_lambdas`).
+    in_place: bool,
 }
 
 /// An element lambda that's compiled once no argument still to be compiled can add to the generics
@@ -1485,6 +1493,7 @@ impl ArgumentOrder {
         hinted: bool,
         depends: &HashMap<TypeId, IndexSet<TypeId>>,
         waiting: &IndexSet<TypeId>,
+        mappings: &HashMap<TypeId, TypeId>,
     ) -> HashMap<TextRange, ElementLambda> {
         self.arguments[i]
             .element_lambdas
@@ -1492,9 +1501,18 @@ impl ArgumentOrder {
             .filter(|(_, lambda)| {
                 // One that doesn't compile where it is waits whenever it can, since compiled there
                 // it would be rejected, whatever else waiting changes (see
-                // `ElementLambda::fails_in_place`)
-                if lambda.fails_in_place {
+                // `ElementLambda::field_generics`)
+                let fails_in_place = lambda
+                    .field_generics
+                    .iter()
+                    .any(|generic| !mappings.contains_key(generic));
+
+                if fails_in_place {
                     return !self.is_settled(&lambda.reads, depends);
+                }
+
+                if lambda.in_place {
+                    return false;
                 }
 
                 let bounded_by_expected = lambda
@@ -1855,8 +1873,9 @@ fn element_lambdas(
                 // Whether an untyped parameter is expected to have a type that has a generic in it
                 // without being one, such as `(T, Int)`, a part of which doesn't reference `T`
                 let mut projected = false;
-                // The untyped parameters that are expected to be one of the callee's generics
-                let mut bare = HashSet::new();
+                // The untyped parameters that are expected to be one of the callee's generics, with
+                // the generic
+                let mut bare: HashMap<usize, TypeId> = HashMap::new();
 
                 for expected in &expected {
                     for &index in &untyped {
@@ -1867,7 +1886,7 @@ fn element_lambdas(
                             projected |=
                                 !generics.is_empty() && !function.generics.contains(&semantic);
                             if function.generics.contains(&semantic) {
-                                bare.insert(index);
+                                bare.insert(index, semantic);
                             }
                             reads.extend(generics);
                         }
@@ -1892,17 +1911,20 @@ fn element_lambdas(
                                 .any(|node| AstGuardExpr::cast(node).is_some())
                         }));
 
-                let fails_in_place = reads_a_field_of(lambda, &bare);
+                let field_generics: IndexSet<TypeId> = reads_fields_of(lambda, &bare)
+                    .into_iter()
+                    .map(|index| bare[&index])
+                    .collect();
+                let in_place = returns.iter().any(|generic| reads.contains(generic));
 
-                if !reads.is_empty()
-                    && (fails_in_place || !returns.iter().any(|generic| reads.contains(generic)))
-                {
+                if !reads.is_empty() && (!in_place || !field_generics.is_empty()) {
                     let lambda = ElementLambda {
                         ty,
                         reads: reads.clone(),
                         returns: returns.clone(),
                         narrows,
-                        fails_in_place,
+                        field_generics,
+                        in_place,
                     };
                     walk.lambdas.push((range, lambda));
                 }
@@ -1975,33 +1997,35 @@ fn element_lambdas(
     // compiled before a lambda that waits, so one whose return type has a generic another element
     // reads is compiled where it is, as in `(fn(_x) => 7, fn(y) => y + 1)` for
     // `(fn(x: T) -> U, fn(y: U) -> Int)`
+    let reads = walk.reads;
     walk.lambdas
         .into_iter()
-        .filter(|(range, lambda)| {
-            lambda.fails_in_place
-                || !walk.reads.iter().any(|(other, reads)| {
-                    other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
-                })
+        .filter_map(|(range, mut lambda)| {
+            lambda.in_place |= reads.iter().any(|(other, reads)| {
+                *other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
+            });
+            (!lambda.in_place || !lambda.field_generics.is_empty()).then_some((range, lambda))
         })
         .collect()
 }
 
-/// Whether the lambda's body reads a field of one of the untyped parameters at the positions, as
-/// `p.first` does, other than of a binding in it with the same name.
-fn reads_a_field_of(lambda: &AstLambdaExpr, positions: &HashSet<usize>) -> bool {
-    let names: HashSet<String> = lambda
+/// The positions, among the untyped parameters at `positions`, of those whose fields the
+/// lambda's body reads, as `p.first` does, other than of a binding in it with the same name.
+fn reads_fields_of(lambda: &AstLambdaExpr, positions: &HashMap<usize, TypeId>) -> HashSet<usize> {
+    let names: HashMap<String, usize> = lambda
         .parameters()
         .enumerate()
-        .filter(|(index, _)| positions.contains(index))
-        .filter_map(|(_, parameter)| match parameter.binding()? {
-            AstBinding::NamedBinding(binding) => binding.name(),
+        .filter(|(index, _)| positions.contains_key(index))
+        .filter_map(|(index, parameter)| match parameter.binding()? {
+            AstBinding::NamedBinding(binding) => {
+                binding.name().map(|name| (name.text().to_string(), index))
+            }
             _ => None,
         })
-        .map(|name| name.text().to_string())
         .collect();
 
     let Some(body) = lambda.body() else {
-        return false;
+        return HashSet::new();
     };
 
     // A binding with the parameter's name shadows it, so its fields aren't the parameter's
@@ -2017,18 +2041,21 @@ fn reads_a_field_of(lambda: &AstLambdaExpr, positions: &HashSet<usize>) -> bool 
         .descendants()
         .filter_map(AstFieldAccessExpr::cast)
         .filter_map(|access| access.expr())
-        .any(|expr| {
+        .filter_map(|expr| {
             let AstExpr::PathExpr(path) = expr else {
-                return false;
+                return None;
             };
             let segments: Vec<AstPathSegment> = path.segments().collect();
             let [segment] = segments.as_slice() else {
-                return false;
+                return None;
             };
-            segment
-                .name()
-                .is_some_and(|name| names.contains(name.text()) && !shadowed.contains(name.text()))
+            let name = segment.name()?;
+            if shadowed.contains(name.text()) {
+                return None;
+            }
+            names.get(name.text()).copied()
         })
+        .collect()
 }
 
 /// The types of the first and rest of the pairs the type can be, each a union if there are

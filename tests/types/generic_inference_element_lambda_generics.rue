@@ -644,3 +644,11 @@ test fn element_reads_a_field_of_a_shadowing_binding() -> Int | nil {
         nil,
     )
 }
+
+// Guard: where the expected type already gives `T` a type when the pair is compiled, `p` is that
+// type where the lambda is, so it reads its field there, and is compiled there, as a lambda whose
+// return type adds to what its parameter reads needs (infer-fuzz generator 3, seed 484)
+test fn element_reads_a_field_of_a_parameter_that_has_a_type_already() -> (5, Int) {
+    let result: (5, Int) = self_feeding((1, fn(p) => (p.first, 2)), (5, 3));
+    result
+}
