@@ -57,6 +57,14 @@ pub struct Database {
     /// The imports whose paths go through a name that could refer to other modules.
     imports_through_ambiguous_names: IndexSet<ImportId>,
     tests: Vec<Test>,
+    /// The variants of each enum, in the order they're declared.
+    enums: HashMap<TypeId, Vec<TypeId>>,
+    /// The enum that each variant, constant of a variant without fields, and namespace of an
+    /// enum's variants belongs to.
+    enum_members: HashMap<Declaration, TypeId>,
+    /// The declarations that references to others are shown as (see
+    /// [`Database::reference_target`]).
+    reference_targets: HashMap<Declaration, Declaration>,
 }
 
 impl Database {
@@ -187,6 +195,43 @@ impl Database {
             .into_iter()
             .flatten()
             .map(|(name, value)| (name.as_str(), value))
+    }
+
+    /// Records the variants of an enum, which is the union of them.
+    pub fn insert_enum(&mut self, ty: TypeId, variants: Vec<TypeId>) {
+        self.enums.insert(ty, variants);
+    }
+
+    /// The variants of the type, if it's an enum.
+    pub fn enum_variants(&self, ty: TypeId) -> Option<&[TypeId]> {
+        self.enums.get(&ty).map(Vec::as_slice)
+    }
+
+    /// Records that the declaration is a variant of the enum, the constant of one, or the
+    /// namespace of its variants.
+    pub fn insert_enum_member(&mut self, declaration: Declaration, ty: TypeId) {
+        self.enum_members.insert(declaration, ty);
+    }
+
+    /// The enum that the declaration is a variant of, the constant of a variant of, or the
+    /// namespace of the variants of.
+    pub fn enum_of(&self, declaration: Declaration) -> Option<TypeId> {
+        self.enum_members.get(&declaration).copied()
+    }
+
+    /// Shows references to the declaration as references to the target instead.
+    pub fn insert_reference_target(&mut self, declaration: Declaration, target: Declaration) {
+        self.reference_targets.insert(declaration, target);
+    }
+
+    /// The declaration that a reference to the declaration is shown as by the language server.
+    /// The namespace of an enum's variants is the enum, and the constant of a variant without
+    /// fields is the variant, so that each of them has one declaration and one set of references.
+    pub fn reference_target(&self, declaration: Declaration) -> Declaration {
+        self.reference_targets
+            .get(&declaration)
+            .copied()
+            .unwrap_or(declaration)
     }
 
     pub fn alloc_scope(&mut self, scope: Scope) -> ScopeId {

@@ -18,6 +18,7 @@ const keywords = new Set([
   "const",
   "type",
   "struct",
+  "enum",
   "let",
   "if",
   "else",

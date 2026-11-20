@@ -948,6 +948,42 @@ fn struct_field_forms() {
 }
 
 #[test]
+fn enum_forms() {
+    check(
+        "enum Json<T>{Null,Bool{value:Bool},Neg=-1,Flags=0b1,Spread=3{...rest:T},Empty{}}enum None{}",
+        expect![[r#"
+            enum Json<T> {
+                Null,
+                Bool { value: Bool },
+                Neg = -1,
+                Flags = 0b1,
+                Spread = 3 { ...rest: T },
+                Empty {},
+            }
+
+            enum None {}
+        "#]],
+    );
+}
+
+#[test]
+fn long_enum_variant_breaks_fields() {
+    check(
+        "enum Big{Variant=10{first_field_name:Int,second_field_name:Bytes32,third_field_name:List<Int>,fourth:Int}}",
+        expect![[r#"
+            enum Big {
+                Variant = 10 {
+                    first_field_name: Int,
+                    second_field_name: Bytes32,
+                    third_field_name: List<Int>,
+                    fourth: Int,
+                },
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn statement_forms() {
     check(
         r#"fn statements(value:Int){inline let cached:Int=value;let declared:Int;let inferred=value;inline if value>0{debug value;}assert value!=0;raise "problem";raise;return value;return;value;}"#,

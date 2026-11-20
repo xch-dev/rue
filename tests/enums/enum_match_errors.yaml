@@ -1,0 +1,10 @@
+diagnostics:
+- Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Rect` at enum_match_errors.rue:14:11
+- Match on `Mode` is not exhaustive, since it doesn't handle `Mode::Off` and `Mode::On` at enum_match_errors.rue:21:11
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at enum_match_errors.rue:29:9
+    note: This arm handles every value that's left at enum_match_errors.rue:28:9
+- |-
+  Unreachable match arm, since an earlier arm also handles `Mode::Off`, which it can't tell apart from its own type at runtime at enum_match_errors.rue:39:9
+    note: This arm also handles `Mode::Off` at enum_match_errors.rue:37:9
+- Cannot type guard from `Mode` to `Shape::Empty`, since they do not overlap at enum_match_errors.rue:46:9

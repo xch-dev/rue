@@ -24,6 +24,8 @@ mod const_eval_tests;
 #[cfg(test)]
 mod entrypoint_tests;
 #[cfg(test)]
+mod enum_tests;
+#[cfg(test)]
 mod hir_type_tests;
 #[cfg(test)]
 mod import_pass_limit_tests;

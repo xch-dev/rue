@@ -100,4 +100,4 @@ diagnostics:
     help: Return the value directly
 - Binding `value` is returned directly after it's declared at generic_inference_expected.rue:64:5
 - Binding `value` is returned directly after it's declared at generic_inference_expected.rue:69:5
-- Binding `value` is returned directly after it's declared at generic_inference_expected.rue:82:5
+- Binding `value` is returned directly after it's declared at generic_inference_expected.rue:88:5

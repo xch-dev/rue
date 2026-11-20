@@ -1,230 +1,46 @@
-import opcodes::*;
+// The variants are also exported by their own names, such as `CreateCoin`
+export Condition::*;
 
-export struct Remark {
-    opcode = REMARK,
-    ...rest: Any = nil,
-}
-
-export struct AggSigParent {
-    opcode = AGG_SIG_PARENT,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct AggSigPuzzle {
-    opcode = AGG_SIG_PUZZLE,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct AggSigAmount {
-    opcode = AGG_SIG_AMOUNT,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct AggSigPuzzleAmount {
-    opcode = AGG_SIG_PUZZLE_AMOUNT,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct AggSigParentAmount {
-    opcode = AGG_SIG_PARENT_AMOUNT,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct AggSigParentPuzzle {
-    opcode = AGG_SIG_PARENT_PUZZLE,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct AggSigUnsafe {
-    opcode = AGG_SIG_UNSAFE,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct AggSigMe {
-    opcode = AGG_SIG_ME,
-    public_key: PublicKey,
-    message: Bytes,
-}
-
-export struct CreateCoin {
-    opcode = CREATE_COIN,
-    puzzle_hash: Bytes32,
-    amount: Int,
-    ...memos: Memos | nil = nil,
+// The conditions that a puzzle can output, each a list that starts with its opcode. A condition
+// without fields is written with braces, like the others (`AssertEphemeral {}`).
+export enum Condition {
+    Remark = 1 { ...rest: Any = nil },
+    AggSigParent = 43 { public_key: PublicKey, message: Bytes },
+    AggSigPuzzle = 44 { public_key: PublicKey, message: Bytes },
+    AggSigAmount = 45 { public_key: PublicKey, message: Bytes },
+    AggSigPuzzleAmount = 46 { public_key: PublicKey, message: Bytes },
+    AggSigParentAmount = 47 { public_key: PublicKey, message: Bytes },
+    AggSigParentPuzzle = 48 { public_key: PublicKey, message: Bytes },
+    AggSigUnsafe = 49 { public_key: PublicKey, message: Bytes },
+    AggSigMe = 50 { public_key: PublicKey, message: Bytes },
+    CreateCoin = 51 { puzzle_hash: Bytes32, amount: Int, ...memos: Memos | nil = nil },
+    ReserveFee = 52 { amount: Int },
+    CreateCoinAnnouncement = 60 { message: Bytes },
+    AssertCoinAnnouncement = 61 { id: Bytes32 },
+    CreatePuzzleAnnouncement = 62 { message: Bytes },
+    AssertPuzzleAnnouncement = 63 { id: Bytes32 },
+    AssertConcurrentSpend = 64 { coin_id: Bytes32 },
+    AssertConcurrentPuzzle = 65 { puzzle_hash: Bytes32 },
+    SendMessage = 66 { mode: Int, message: Bytes, ...receiver: List<Bytes | Int> },
+    ReceiveMessage = 67 { mode: Int, message: Bytes, ...sender: List<Bytes | Int> },
+    AssertMyCoinId = 70 { coin_id: Bytes32 },
+    AssertMyParentId = 71 { parent_id: Bytes32 },
+    AssertMyPuzzleHash = 72 { puzzle_hash: Bytes32 },
+    AssertMyAmount = 73 { amount: Int },
+    AssertMyBirthSeconds = 74 { seconds: Int },
+    AssertMyBirthHeight = 75 { height: Int },
+    AssertEphemeral = 76 {},
+    AssertSecondsRelative = 80 { seconds: Int },
+    AssertSecondsAbsolute = 81 { seconds: Int },
+    AssertHeightRelative = 82 { height: Int },
+    AssertHeightAbsolute = 83 { height: Int },
+    AssertBeforeSecondsRelative = 84 { seconds: Int },
+    AssertBeforeSecondsAbsolute = 85 { seconds: Int },
+    AssertBeforeHeightRelative = 86 { height: Int },
+    AssertBeforeHeightAbsolute = 87 { height: Int },
+    Softfork = 90 { cost: Int, ...args: List<Any> },
 }
 
 export struct Memos {
     value: Any,
 }
-
-export struct ReserveFee {
-    opcode = RESERVE_FEE,
-    amount: Int,
-}
-
-export struct CreateCoinAnnouncement {
-    opcode = CREATE_COIN_ANNOUNCEMENT,
-    message: Bytes,
-}
-
-export struct AssertCoinAnnouncement {
-    opcode = ASSERT_COIN_ANNOUNCEMENT,
-    id: Bytes32,
-}
-
-export struct CreatePuzzleAnnouncement {
-    opcode = CREATE_PUZZLE_ANNOUNCEMENT,
-    message: Bytes,
-}
-
-export struct AssertPuzzleAnnouncement {
-    opcode = ASSERT_PUZZLE_ANNOUNCEMENT,
-    id: Bytes32,
-}
-
-export struct AssertConcurrentSpend {
-    opcode = ASSERT_CONCURRENT_SPEND,
-    coin_id: Bytes32,
-}
-
-export struct AssertConcurrentPuzzle {
-    opcode = ASSERT_CONCURRENT_PUZZLE,
-    puzzle_hash: Bytes32,
-}
-
-export struct SendMessage {
-    opcode = SEND_MESSAGE,
-    mode: Int,
-    message: Bytes,
-    ...receiver: List<Bytes | Int>,
-}
-
-export struct ReceiveMessage {
-    opcode = RECEIVE_MESSAGE,
-    mode: Int,
-    message: Bytes,
-    ...sender: List<Bytes | Int>,
-}
-
-export struct AssertMyCoinId {
-    opcode = ASSERT_MY_COIN_ID,
-    coin_id: Bytes32,
-}
-
-export struct AssertMyParentId {
-    opcode = ASSERT_MY_PARENT_ID,
-    parent_id: Bytes32,
-}
-
-export struct AssertMyPuzzleHash {
-    opcode = ASSERT_MY_PUZZLE_HASH,
-    puzzle_hash: Bytes32,
-}
-
-export struct AssertMyAmount {
-    opcode = ASSERT_MY_AMOUNT,
-    amount: Int,
-}
-
-export struct AssertMyBirthSeconds {
-    opcode = ASSERT_MY_BIRTH_SECONDS,
-    seconds: Int,
-}
-
-export struct AssertMyBirthHeight {
-    opcode = ASSERT_MY_BIRTH_HEIGHT,
-    height: Int,
-}
-
-export struct AssertEphemeral {
-    opcode = ASSERT_EPHEMERAL,
-}
-
-export struct AssertSecondsRelative {
-    opcode = ASSERT_SECONDS_RELATIVE,
-    seconds: Int,
-}
-
-export struct AssertSecondsAbsolute {
-    opcode = ASSERT_SECONDS_ABSOLUTE,
-    seconds: Int,
-}
-
-export struct AssertHeightRelative {
-    opcode = ASSERT_HEIGHT_RELATIVE,
-    height: Int,
-}
-
-export struct AssertHeightAbsolute {
-    opcode = ASSERT_HEIGHT_ABSOLUTE,
-    height: Int,
-}
-
-export struct AssertBeforeSecondsRelative {
-    opcode = ASSERT_BEFORE_SECONDS_RELATIVE,
-    seconds: Int,
-}
-
-export struct AssertBeforeSecondsAbsolute {
-    opcode = ASSERT_BEFORE_SECONDS_ABSOLUTE,
-    seconds: Int,
-}
-
-export struct AssertBeforeHeightRelative {
-    opcode = ASSERT_BEFORE_HEIGHT_RELATIVE,
-    height: Int,
-}
-
-export struct AssertBeforeHeightAbsolute {
-    opcode = ASSERT_BEFORE_HEIGHT_ABSOLUTE,
-    height: Int,
-}
-
-export struct Softfork {
-    opcode = SOFTFORK,
-    cost: Int,
-    ...args: List<Any>,
-}
-
-export type Condition = Remark
-    | AggSigParent
-    | AggSigPuzzle
-    | AggSigAmount
-    | AggSigPuzzleAmount
-    | AggSigParentAmount
-    | AggSigParentPuzzle
-    | AggSigUnsafe
-    | AggSigMe
-    | CreateCoin
-    | ReserveFee
-    | CreateCoinAnnouncement
-    | AssertCoinAnnouncement
-    | CreatePuzzleAnnouncement
-    | AssertPuzzleAnnouncement
-    | AssertConcurrentSpend
-    | AssertConcurrentPuzzle
-    | SendMessage
-    | ReceiveMessage
-    | AssertMyCoinId
-    | AssertMyParentId
-    | AssertMyPuzzleHash
-    | AssertMyAmount
-    | AssertMyBirthSeconds
-    | AssertMyBirthHeight
-    | AssertEphemeral
-    | AssertSecondsRelative
-    | AssertSecondsAbsolute
-    | AssertHeightRelative
-    | AssertHeightAbsolute
-    | AssertBeforeSecondsRelative
-    | AssertBeforeSecondsAbsolute
-    | AssertBeforeHeightRelative
-    | AssertBeforeHeightAbsolute
-    | Softfork;

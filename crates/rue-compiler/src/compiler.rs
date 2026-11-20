@@ -66,6 +66,7 @@ pub struct Compiler {
     error_items: HashSet<Item>,
     builtins: Builtins,
     field_types: HashMap<TypeId, Vec<TypeId>>,
+    declared_variants: HashMap<TypeId, Vec<Option<EnumVariant>>>,
     inferred_fields: HashSet<(TypeId, String)>,
     /// The fields of each struct that have a default value, which is known before the default
     /// values are compiled.
@@ -187,6 +188,15 @@ pub struct ArgumentFrame {
     pub deferred: Vec<DeferredLambda>,
 }
 
+/// A variant of an enum, as it was declared.
+#[derive(Debug, Clone, Copy)]
+pub struct EnumVariant {
+    /// The variant's struct type.
+    pub ty: TypeId,
+    /// The constant for the variant, if it has no fields.
+    pub constant: Option<SymbolId>,
+}
+
 /// A field of a struct initializer in a default value, whose own default value hadn't been compiled
 /// yet, so it's filled in once every default value has been (see `resolve_pending_defaults`).
 #[derive(Debug, Clone)]
@@ -251,6 +261,7 @@ impl Compiler {
             error_items: HashSet::new(),
             builtins,
             field_types: HashMap::new(),
+            declared_variants: HashMap::new(),
             inferred_fields: HashSet::new(),
             declared_defaults: HashSet::new(),
             compiling_default: None,
@@ -1342,6 +1353,32 @@ impl Compiler {
         self.field_types[&ty].clone()
     }
 
+    /// Stores the variants of an enum, with `None` for each variant (in declaration order) that has
+    /// no name or a duplicate name, so they line up with the variants in the syntax tree.
+    pub(crate) fn insert_declared_variants(
+        &mut self,
+        ty: TypeId,
+        variants: Vec<Option<EnumVariant>>,
+    ) {
+        self.declared_variants.insert(ty, variants);
+    }
+
+    pub(crate) fn declared_variants(&self, ty: TypeId) -> &[Option<EnumVariant>] {
+        &self.declared_variants[&ty]
+    }
+
+    /// Whether the variant is declared without braces, which makes it a constant as well as a type.
+    pub fn is_unit_variant(&self, variant: TypeId) -> bool {
+        self.enum_of(Declaration::Type(variant))
+            .and_then(|ty| self.declared_variants.get(&ty))
+            .is_some_and(|variants| {
+                variants
+                    .iter()
+                    .flatten()
+                    .any(|declared| declared.ty == variant && declared.constant.is_some())
+            })
+    }
+
     /// Marks a struct field whose type was inferred from its default value rather than declared.
     pub fn insert_inferred_field(&mut self, ty: TypeId, name: String) {
         self.inferred_fields.insert((ty, name));
@@ -1468,6 +1505,7 @@ impl Compiler {
     }
 
     pub fn reference_span(&mut self, reference: Declaration, span: TextRange) {
+        let reference = self.db.reference_target(reference);
         self.add_syntax(SyntaxItemKind::reference(reference), span);
     }
 

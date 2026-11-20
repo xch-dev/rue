@@ -26,6 +26,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     let qualified = &input.sites.qualified_references;
     let export_keywords = export_keywords(input);
     let imported = imported(db);
+    let enum_uses = enum_uses(db, [qualified, &imported]);
 
     let mut reports = Vec::new();
 
@@ -54,10 +55,15 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 .chain(imported.get(&declaration))
                 .flatten();
 
+            // A variant can be named through its enum from inside of the module without the enum
+            // being exported, so only the uses outside of it count
+            let mut enum_uses = enum_uses.get(&declaration).into_iter().flatten();
+
             if direct {
-                uses.next().is_some()
+                uses.next().is_some() || enum_uses.any(|srcloc| !encloses(module_srcloc, srcloc))
             } else {
-                uses.any(|srcloc| !encloses(module_srcloc, srcloc))
+                uses.chain(enum_uses)
+                    .any(|srcloc| !encloses(module_srcloc, srcloc))
             }
         });
 
@@ -222,7 +228,30 @@ fn imported(db: &Database) -> HashMap<Declaration, Vec<SrcLoc>> {
         let import = db.import(id);
 
         let (item, declarations) = match &import.items {
-            Items::All(star) if !import.exported => (star, db.import_references(id)),
+            // The path of a glob over an enum's variants names the enum, even if none of them are
+            // used, so the enum has to stay exported for the import to resolve
+            Items::All(star) if !import.exported => (
+                star,
+                db.import_references(id)
+                    .into_iter()
+                    .chain(
+                        import
+                            .declarations
+                            .iter()
+                            // A glob over a module can import an enum's namespace, which doesn't
+                            // need the enum to be exported if it isn't used
+                            .filter(|&&(_, declaration)| {
+                                !matches!(
+                                    declaration,
+                                    Declaration::Symbol(symbol)
+                                        if matches!(db.symbol(symbol), Symbol::Module(_))
+                                )
+                            })
+                            .filter_map(|&(_, declaration)| db.enum_of(declaration))
+                            .map(Declaration::Type),
+                    )
+                    .collect::<Vec<_>>(),
+            ),
             Items::All(item) | Items::Named(item) => (
                 item,
                 import
@@ -246,6 +275,26 @@ fn imported(db: &Database) -> HashMap<Declaration, Vec<SrcLoc>> {
     }
 
     imported
+}
+
+/// Where the variants of each enum (or the namespace of them) are used through a path or import,
+/// which only needs the enum to be exported if it's from outside of the module it's declared in.
+fn enum_uses<'a>(
+    db: &Database,
+    uses: impl IntoIterator<Item = &'a HashMap<Declaration, Vec<SrcLoc>>>,
+) -> HashMap<Declaration, Vec<SrcLoc>> {
+    let mut enum_uses: HashMap<Declaration, Vec<SrcLoc>> = HashMap::new();
+
+    for (&declaration, srclocs) in uses.into_iter().flatten() {
+        if let Some(ty) = db.enum_of(declaration) {
+            enum_uses
+                .entry(Declaration::Type(ty))
+                .or_default()
+                .extend(srclocs.iter().cloned());
+        }
+    }
+
+    enum_uses
 }
 
 /// The types in the signature of an item, such as the parameters and return type of a function,
@@ -293,6 +342,9 @@ fn reached_names(
                 reached.extend(ty.name.as_ref().and_then(name_key));
                 pending.push(ty.inner);
                 pending.extend(&ty.generics);
+
+                // A variant is named through its enum, which has to stay exported with it
+                pending.extend(db.enum_of(Declaration::Type(ty.semantic)));
             }
             Type::Alias(alias) => {
                 reached.extend(alias.name.as_ref().and_then(name_key));
@@ -325,6 +377,7 @@ fn export_keywords(input: &LintInput<'_>) -> HashMap<NameKey, SrcLoc> {
             AstItem::SymbolItem(AstSymbolItem::ModuleItem(item)) => (item.export(), item.name()),
             AstItem::TypeItem(AstTypeItem::StructItem(item)) => (item.export(), item.name()),
             AstItem::TypeItem(AstTypeItem::TypeAliasItem(item)) => (item.export(), item.name()),
+            AstItem::TypeItem(AstTypeItem::EnumItem(item)) => (item.export(), item.name()),
             AstItem::ImportItem(_) => return None,
         };
 

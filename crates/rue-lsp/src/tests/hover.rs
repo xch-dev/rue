@@ -543,3 +543,234 @@ fn main(value: Point | Int) -> Int {
         "#]],
     );
 }
+
+const SHAPE: &str = r#"
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect = 10 { width: Int, ...rest: Any },
+}
+"#;
+
+#[test]
+fn test_hover_enum() {
+    check(
+        &format!("{SHAPE}\nfn main(shape: Sh$0ape) -> Shape {{\n    shape\n}}\n"),
+        expect![[r#"
+            enum Shape {
+                Empty = 0,
+                Circle = 1 { radius: Int },
+                Rect = 10 { width: Int, ...rest: Any },
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_enum_declaration() {
+    check(
+        r#"
+enum Mo$0de {
+    Off,
+    On = 5,
+}
+
+fn main() -> Mode {
+    Mode::On
+}
+"#,
+        expect![[r#"
+            enum Mode {
+                Off = 0,
+                On = 5,
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_empty_enum() {
+    check(
+        "enum Nev$0er {}\n",
+        expect![[r#"
+            enum Never {}
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_variant_with_braces() {
+    check(
+        r#"
+enum Shape {
+    Empty {},
+    Point,
+    Circle { radius: Int },
+}
+
+fn main() -> Shape {
+    Shape::Emp$0ty {}
+}
+"#,
+        expect![[r#"
+            Shape::Empty = 0 {}
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_enum_with_braces() {
+    check(
+        r#"
+enum Sha$0pe {
+    Empty {},
+    Point,
+    Circle { radius: Int },
+}
+"#,
+        expect![[r#"
+            enum Shape {
+                Empty = 0 {},
+                Point = 1,
+                Circle = 2 { radius: Int },
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_enum() {
+    check(
+        r#"
+enum Opt$0ion<T> {
+    None,
+    Some { value: T },
+}
+"#,
+        expect![[r#"
+            enum Option<T> {
+                None = 0,
+                Some = 1 { value: T },
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_enum_through_its_variant() {
+    check(
+        &format!("{SHAPE}\nfn main() -> Shape {{\n    Sha$0pe::Empty\n}}\n"),
+        expect![[r#"
+            enum Shape {
+                Empty = 0,
+                Circle = 1 { radius: Int },
+                Rect = 10 { width: Int, ...rest: Any },
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_variant() {
+    check(
+        &format!("{SHAPE}\nfn main() -> Shape {{\n    Shape::Cir$0cle {{ radius: 1 }}\n}}\n"),
+        expect![[r#"
+            Shape::Circle = 1 { radius: Int }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_variant_with_spread() {
+    check(
+        &format!("{SHAPE}\nfn main(rect: Shape::Re$0ct) -> Any {{\n    rect.rest\n}}\n"),
+        expect![[r#"
+            Shape::Rect = 10 { width: Int, ...rest: Any }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_variant_without_fields() {
+    check(
+        &format!("{SHAPE}\nfn main() -> Shape {{\n    Shape::Emp$0ty\n}}\n"),
+        expect![[r#"
+            Shape::Empty = 0
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_variant() {
+    check(
+        r#"
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+fn main(option: Option::So$0me<Int>) -> Int {
+    option.value
+}
+"#,
+        expect![[r#"
+            Option::Some<T> = 1 { value: T }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_variant_without_fields_declaration() {
+    check(
+        r#"
+enum Option<T> {
+    No$0ne,
+    Some { value: T },
+}
+
+fn main() -> Option<Int> {
+    Option::None
+}
+"#,
+        expect![[r#"
+            Option::None<T> = 0
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_enum_in_an_import_path() {
+    check(
+        &format!("{SHAPE}\nimport Sha$0pe::Empty;\n\nfn main() -> Shape {{\n    Empty\n}}\n"),
+        expect![[r#"
+            enum Shape {
+                Empty = 0,
+                Circle = 1 { radius: Int },
+                Rect = 10 { width: Int, ...rest: Any },
+            }
+        "#]],
+    );
+}
+
+// An imported variant is named the way it's in scope, like any other type
+#[test]
+fn test_hover_imported_variant() {
+    check(
+        &format!(
+            "{SHAPE}\nimport Shape::{{Circle, Empty}};\n\nfn main(circle: Cir$0cle) -> Shape {{\n    Empty\n}}\n"
+        ),
+        expect![[r#"
+            Circle = 1 { radius: Int }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_imported_variant_without_fields() {
+    check(
+        &format!("{SHAPE}\nimport Shape::Empty;\n\nfn main() -> Shape {{\n    Emp$0ty\n}}\n"),
+        expect![[r#"
+            Empty = 0
+        "#]],
+    );
+}

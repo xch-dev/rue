@@ -13,6 +13,11 @@ struct coin_info {
 
 type my_alias = Int;
 
+enum coin_kind {
+    Standard,
+    cat_coin { assetId: Bytes32 },
+}
+
 fn identity<t>(value: t) -> t {
     value
 }
@@ -27,6 +32,7 @@ mod InnerModule {
 // part of the name's case
 fn main(MOD_HASH: Bytes32, _unused: Int, info: coin_info) -> Int {
     let alias: my_alias = camelCase(1);
+    let _kind = coin_kind::Standard;
     let _ignored = MOD_HASH;
     alias
         + identity(InnerModule::helper())

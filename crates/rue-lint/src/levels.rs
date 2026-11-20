@@ -408,6 +408,7 @@ fn accepts_attributes(kind: SyntaxKind) -> bool {
             | SyntaxKind::ConstantItem
             | SyntaxKind::TypeAliasItem
             | SyntaxKind::StructItem
+            | SyntaxKind::EnumItem
             | SyntaxKind::ImportItem
             | SyntaxKind::LetStmt
             | SyntaxKind::ExprStmt

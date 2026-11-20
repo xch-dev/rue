@@ -656,3 +656,215 @@ fn main() -> Int {
         "#]],
     );
 }
+
+const MODE: &str = r#"
+enum Mode { Off, On { level: Int } }
+
+fn flip(mode: Mode) -> Mode {
+    if mode is Mode::Off { Mode::On { level: 1 } } else { Mode::Off }
+}
+"#;
+
+fn mode(cursor: &str, replacement: &str) -> String {
+    MODE.replacen(cursor, replacement, 1)
+}
+
+#[test]
+fn test_definition_enum_through_its_variant() {
+    check_definitions(
+        &[("main.rue", &mode("mode is Mode", "mode is Mo$0de"))],
+        expect![[r#"
+            main.rue:1:5-1:9
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_enum() {
+    check_references(
+        &[("main.rue", &mode("enum Mode", "enum Mo$0de"))],
+        expect![[r#"
+            main.rue:1:5-1:9
+            main.rue:3:14-3:18
+            main.rue:3:23-3:27
+            main.rue:4:15-4:19
+            main.rue:4:27-4:31
+            main.rue:4:58-4:62
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_enum_from_its_variant() {
+    check_references(
+        &[("main.rue", &mode("{ Mode::On", "{ Mo$0de::On"))],
+        expect![[r#"
+            main.rue:1:5-1:9
+            main.rue:3:14-3:18
+            main.rue:3:23-3:27
+            main.rue:4:15-4:19
+            main.rue:4:27-4:31
+            main.rue:4:58-4:62
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_variant_without_fields() {
+    check_definitions(
+        &[("main.rue", &mode("else { Mode::Off", "else { Mode::Of$0f"))],
+        expect![[r#"
+            main.rue:1:12-1:15
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_variant_without_fields() {
+    check_references(
+        &[("main.rue", &mode("{ Off", "{ Of$0f"))],
+        expect![[r#"
+            main.rue:1:12-1:15
+            main.rue:4:21-4:24
+            main.rue:4:64-4:67
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_variant_with_fields() {
+    check_references(
+        &[("main.rue", &mode("On {", "O$0n {"))],
+        expect![[r#"
+            main.rue:1:17-1:19
+            main.rue:4:33-4:35
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_imported_variant() {
+    check_references(
+        &[(
+            "main.rue",
+            r#"
+enum Mode { Off, On }
+
+import Mode::Off;
+
+fn main() -> Mode {
+    O$0ff
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:1:12-1:15
+            main.rue:3:13-3:16
+            main.rue:6:4-6:7
+        "#]],
+    );
+}
+
+const SHAPES: &str = r#"
+export enum Shape {
+    Empty,
+    Circle { radius: Int },
+}
+"#;
+
+#[test]
+fn test_references_enum_across_files() {
+    check_references(
+        &[
+            (
+                "main.rue",
+                r#"
+import shapes::Shape;
+import shapes::Shape::Empty;
+
+fn main() -> Shape {
+    if Empty is Shape::Circle { Shape::Empty } else { Empty }
+}
+"#,
+            ),
+            (
+                "shapes.rue",
+                &SHAPES.replacen("enum Shape", "enum Sha$0pe", 1),
+            ),
+        ],
+        expect![[r#"
+            main.rue:1:15-1:20
+            main.rue:2:15-2:20
+            main.rue:4:13-4:18
+            main.rue:5:16-5:21
+            main.rue:5:32-5:37
+            shapes.rue:1:12-1:17
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_variant_across_files() {
+    check_references(
+        &[
+            (
+                "main.rue",
+                r#"
+import shapes::Shape;
+import shapes::Shape::Empty;
+
+fn main() -> Shape {
+    if Empty is Shape::Circle { Shape::Empty } else { Empty }
+}
+"#,
+            ),
+            ("shapes.rue", &SHAPES.replacen("Empty,", "Emp$0ty,", 1)),
+        ],
+        expect![[r#"
+            main.rue:2:22-2:27
+            main.rue:5:7-5:12
+            main.rue:5:39-5:44
+            main.rue:5:54-5:59
+            shapes.rue:2:4-2:9
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_glob_imported_variant() {
+    check_references(
+        &[(
+            "main.rue",
+            r#"
+enum Shape { Empty, Circle { radius: Int } }
+
+import Shape::*;
+
+fn main() -> Shape {
+    if Empty is Circle { Circle { radius: 1 } } else { Emp$0ty }
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:1:13-1:18
+            main.rue:6:7-6:12
+            main.rue:6:55-6:60
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_enum_in_an_import_path() {
+    check_definitions(
+        &[
+            (
+                "main.rue",
+                "import shapes::Sha$0pe::Empty;\n\nfn main() -> Int {\n    0\n}\n",
+            ),
+            ("shapes.rue", SHAPES),
+        ],
+        expect![[r#"
+            shapes.rue:1:12-1:17
+        "#]],
+    );
+}

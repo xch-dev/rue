@@ -63,6 +63,7 @@ impl<'a> Lexer<'a> {
             "const" => TokenKind::Const,
             "type" => TokenKind::Type,
             "struct" => TokenKind::Struct,
+            "enum" => TokenKind::Enum,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
@@ -690,6 +691,13 @@ mod tests {
             "struct",
             expect![[r#"
                 Struct
+            "#]],
+        );
+
+        check(
+            "enum",
+            expect![[r#"
+                Enum
             "#]],
         );
 

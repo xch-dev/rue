@@ -1,0 +1,115 @@
+enum Duplicates {
+    Same,
+    Same,
+    Zero = 0,
+    One = 1,
+    AlsoTwo,
+    Two = 2,
+    Fields { value: Int, value: Int, ...rest: Any, last: Int },
+}
+
+// The previous discriminant plus one can repeat an earlier one
+enum Repeats {
+    One = 1,
+    Zero = 0,
+    AlsoOne,
+}
+
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+}
+
+enum Duplicated {
+    A,
+}
+
+enum Duplicated {
+    B,
+}
+
+enum Holder {
+    Empty,
+    Value { value: Int | nil },
+}
+
+enum Rest {
+    Only { ...rest: Any },
+}
+
+enum Switch {
+    Off,
+    On,
+}
+
+// A variant that refers to itself with growing generic arguments can't be substituted, even
+// where it's used on its own
+enum Growing<T> {
+    Nil,
+    Cons { head: T, tail: Growing::Cons<(T, T)> },
+}
+
+// The same goes for a variant that refers back to the whole enum with grown generic arguments
+enum Tree<T> {
+    Leaf,
+    Node { value: T, children: Tree<(T, T)> },
+}
+
+fn tree(tree: Tree<Int>) -> Bool {
+    tree is Tree::Leaf<Int>
+}
+
+fn growing(list: Growing::Cons<Int>) -> Int {
+    list.head
+}
+
+enum Mode {
+    Off,
+    On,
+}
+
+// The enum's name is taken in the type namespace and as a namespace for its variants
+struct Shape {}
+
+mod Mode {}
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+test fn errors() {
+    let _undeclared = Shape::Square;
+    let _unknown_field = Shape::Circle { radius: 1, diameter: 2 };
+    let _missing_field = Shape::Circle {};
+    let _not_a_value = Shape::Circle;
+    let _not_a_type: Shape::Square = Shape::Empty;
+    let _enum_as_value = Shape;
+    let _int_as_enum: Mode = 1;
+    let _wrong_variant: Shape::Circle = Shape::Empty;
+    let _missing_generics = Option::Some { value: 1 };
+    let _nested_path = Shape::Circle::Inner;
+    let _discriminant = Shape::Circle { radius: 1 }.kind;
+    let _none_as_int: Int = Option::None;
+}
+
+fn wrong_return(shape: Shape) -> Int {
+    shape
+}
+
+// The discriminant isn't shown in the type of a variant whose fields are narrowed
+fn narrowed(holder: Holder::Value) -> Bytes32 {
+    if holder.value is nil {
+        return holder;
+    }
+    raise;
+}
+
+// Only the variants of enums without fields can be compared, and only with the same enum
+fn equality(shape: Shape, mode: Mode, rest: Rest, mixed: Switch | Repeats) -> Bool {
+    shape == Shape::Empty
+        || Shape::Empty == Shape::Empty
+        || rest == Rest::Only { rest: 1 }
+        || mode == Repeats::One
+        || mixed == Switch::On
+}

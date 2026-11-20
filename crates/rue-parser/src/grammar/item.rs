@@ -48,6 +48,8 @@ fn item_with_inner(p: &mut Parser, top_level: bool) {
         type_alias_item(p, cp);
     } else if p.at_quiet(T![struct]) && !inline && !extern_kw && !test {
         struct_item(p, cp);
+    } else if p.at_quiet(T![enum]) && !inline && !extern_kw && !test {
+        enum_item(p, cp);
     } else if p.at_quiet(T![import]) || export {
         import_item(p, cp, export);
     } else {
@@ -169,6 +171,42 @@ fn struct_field(p: &mut Parser) {
     } else {
         p.expect(T![=]);
         expr(p);
+    }
+    p.finish();
+}
+
+fn enum_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::EnumItem);
+    p.expect(T![enum]);
+    p.expect(SyntaxKind::Ident);
+    if p.at(T![<]) {
+        generic_parameters(p);
+    }
+    if p.expect(T!['{']) {
+        delimited_list(p, T!['}'], enum_variant);
+    }
+    p.finish();
+}
+
+fn enum_variant(p: &mut Parser) {
+    p.start(SyntaxKind::EnumVariant);
+    p.expect(SyntaxKind::Ident);
+    if p.at(T![=]) {
+        p.start(SyntaxKind::EnumDiscriminant);
+        p.expect(T![=]);
+        p.try_eat(T![-]);
+        if let Some(kind) = p.at_any(SyntaxKind::INTEGER_LITERAL) {
+            p.try_eat(kind);
+        } else {
+            p.error_unexpected();
+        }
+        p.finish();
+    }
+    if p.at(T!['{']) {
+        p.start(SyntaxKind::EnumVariantFields);
+        p.expect(T!['{']);
+        delimited_list(p, T!['}'], struct_field);
+        p.finish();
     }
     p.finish();
 }
@@ -961,6 +999,150 @@ mod tests {
                   CloseBrace@29..30 "}"
             "#]],
             expect![""],
+        );
+    }
+
+    #[test]
+    fn test_enum_item() {
+        check(
+            item,
+            "enum Empty {}",
+            expect![[r#"
+            EnumItem@0..13
+              Enum@0..4 "enum"
+              Whitespace@4..5 " "
+              Ident@5..10 "Empty"
+              Whitespace@10..11 " "
+              OpenBrace@11..12 "{"
+              CloseBrace@12..13 "}"
+        "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "enum Mode { Off, On = 5, Negative = -1 }",
+            expect![[r#"
+                EnumItem@0..40
+                  Enum@0..4 "enum"
+                  Whitespace@4..5 " "
+                  Ident@5..9 "Mode"
+                  Whitespace@9..10 " "
+                  OpenBrace@10..11 "{"
+                  Whitespace@11..12 " "
+                  EnumVariant@12..15
+                    Ident@12..15 "Off"
+                  Comma@15..16 ","
+                  Whitespace@16..17 " "
+                  EnumVariant@17..23
+                    Ident@17..19 "On"
+                    Whitespace@19..20 " "
+                    EnumDiscriminant@20..23
+                      Assign@20..21 "="
+                      Whitespace@21..22 " "
+                      Integer@22..23 "5"
+                  Comma@23..24 ","
+                  Whitespace@24..25 " "
+                  EnumVariant@25..39
+                    Ident@25..33 "Negative"
+                    Whitespace@33..34 " "
+                    EnumDiscriminant@34..38
+                      Assign@34..35 "="
+                      Whitespace@35..36 " "
+                      Minus@36..37 "-"
+                      Integer@37..38 "1"
+                    Whitespace@38..39 " "
+                  CloseBrace@39..40 "}"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "enum Option<T> { None, Some = 0b1 { value: T, ...rest: Any } }",
+            expect![[r#"
+                EnumItem@0..62
+                  Enum@0..4 "enum"
+                  Whitespace@4..5 " "
+                  Ident@5..11 "Option"
+                  GenericParameters@11..14
+                    LessThan@11..12 "<"
+                    Ident@12..13 "T"
+                    GreaterThan@13..14 ">"
+                  Whitespace@14..15 " "
+                  OpenBrace@15..16 "{"
+                  Whitespace@16..17 " "
+                  EnumVariant@17..21
+                    Ident@17..21 "None"
+                  Comma@21..22 ","
+                  Whitespace@22..23 " "
+                  EnumVariant@23..60
+                    Ident@23..27 "Some"
+                    Whitespace@27..28 " "
+                    EnumDiscriminant@28..33
+                      Assign@28..29 "="
+                      Whitespace@29..30 " "
+                      Binary@30..33 "0b1"
+                    Whitespace@33..34 " "
+                    EnumVariantFields@34..60
+                      OpenBrace@34..35 "{"
+                      Whitespace@35..36 " "
+                      StructField@36..44
+                        Ident@36..41 "value"
+                        Colon@41..42 ":"
+                        Whitespace@42..43 " "
+                        PathType@43..44
+                          PathSegment@43..44
+                            Ident@43..44 "T"
+                      Comma@44..45 ","
+                      Whitespace@45..46 " "
+                      StructField@46..59
+                        Spread@46..49 "..."
+                        Ident@49..53 "rest"
+                        Colon@53..54 ":"
+                        Whitespace@54..55 " "
+                        PathType@55..59
+                          PathSegment@55..59
+                            Ident@55..58 "Any"
+                            Whitespace@58..59 " "
+                      CloseBrace@59..60 "}"
+                  Whitespace@60..61 " "
+                  CloseBrace@61..62 "}"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_enum_item_errors() {
+        check(
+            item,
+            "enum Mode { Off = x, On }",
+            expect![[r#"
+            EnumItem@0..25
+              Enum@0..4 "enum"
+              Whitespace@4..5 " "
+              Ident@5..9 "Mode"
+              Whitespace@9..10 " "
+              OpenBrace@10..11 "{"
+              Whitespace@11..12 " "
+              EnumVariant@12..18
+                Ident@12..15 "Off"
+                Whitespace@15..16 " "
+                EnumDiscriminant@16..18
+                  Assign@16..17 "="
+                  Whitespace@17..18 " "
+              Error@18..19 "x"
+              Comma@19..20 ","
+              Whitespace@20..21 " "
+              EnumVariant@21..24
+                Ident@21..23 "On"
+                Whitespace@23..24 " "
+              CloseBrace@24..25 "}"
+        "#]],
+            expect![
+                "Expected one of `-`, integer literal, binary literal, octal literal, found identifier at main.rue:1:19"
+            ],
         );
     }
 

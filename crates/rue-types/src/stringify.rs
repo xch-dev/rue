@@ -1,7 +1,7 @@
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{Alias, Struct, Type, TypeId, grow_stack, step, substitute};
+use crate::{Alias, DISCRIMINANT_FIELD, Struct, Type, TypeId, grow_stack, step, substitute};
 
 pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     let id = substitute(arena, id);
@@ -226,7 +226,14 @@ fn narrowed_fields_inner(
         return Some(vec![vec![]]);
     };
 
+    // The discriminant of an enum variant is part of the variant's name, so it isn't shown
+    let hidden = field == DISCRIMINANT_FIELD;
+
     if !ty.nil_terminated && index == ty.fields.len() - 1 {
+        if hidden {
+            return Some(vec![vec![]]);
+        }
+
         let value = stringify_impl(arena, current, stack);
         return Some(vec![vec![format!("...{field}: {value}")]]);
     }
@@ -237,11 +244,14 @@ fn narrowed_fields_inner(
 
     match &arena[current] {
         Type::Pair(pair) => {
-            let first = format!("{field}: {}", stringify_impl(arena, pair.first, stack));
             let mut variants = narrowed_fields(arena, ty, index + 1, pair.rest, stack)?;
 
-            for fields in &mut variants {
-                fields.insert(0, first.clone());
+            if !hidden {
+                let first = format!("{field}: {}", stringify_impl(arena, pair.first, stack));
+
+                for fields in &mut variants {
+                    fields.insert(0, first.clone());
+                }
             }
 
             Some(variants)

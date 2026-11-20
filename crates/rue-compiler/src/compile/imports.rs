@@ -1027,6 +1027,8 @@ fn import_base(import: &Import, import_scope: ScopeId) -> Base {
 /// Records a reference to a declaration from a name in an import, for the language server.
 fn add_reference(ctx: &mut Compiler, source: &Source, name: &Name, declaration: Declaration) {
     if let Some(srcloc) = name.srcloc() {
+        let declaration = ctx.reference_target(declaration);
+
         ctx.add_syntax_for_source(
             SyntaxItemKind::reference(declaration),
             TextRange::new(

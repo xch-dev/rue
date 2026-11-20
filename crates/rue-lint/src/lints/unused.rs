@@ -18,6 +18,7 @@ pub(crate) const LINTS: &[Lint] = &[
     Lint::UnusedGenericType,
     Lint::UnusedStruct,
     Lint::UnusedTypeAlias,
+    Lint::UnusedEnum,
 ];
 
 /// Reports imports and declarations that are never used. A declaration is used if it's live,
@@ -424,7 +425,12 @@ fn describe(db: &Database, declaration: Declaration) -> Option<(Lint, &'static s
             Type::Generic(Generic { name, .. }) => {
                 (Lint::UnusedGenericType, "generic type", name.as_ref()?)
             }
+            // A variant is used if its enum is, even if nothing creates it
+            Type::Struct(_) if db.enum_of(declaration).is_some() => return None,
             Type::Struct(Struct { name, .. }) => (Lint::UnusedStruct, "struct", name.as_ref()?),
+            Type::Alias(Alias { name, .. }) if db.enum_variants(ty).is_some() => {
+                (Lint::UnusedEnum, "enum", name.as_ref()?)
+            }
             Type::Alias(Alias { name, .. }) => {
                 (Lint::UnusedTypeAlias, "type alias", name.as_ref()?)
             }

@@ -1,0 +1,57 @@
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect = 10 { width: Int, height: Int },
+}
+
+enum Mode {
+    Off,
+    On,
+}
+
+// Each variant that isn't handled is listed
+fn missing_one(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle => shape.radius,
+    }
+}
+
+fn missing_many(mode: Mode) -> Int {
+    match mode {}
+}
+
+// An arm for a variant that's already handled is never taken
+fn unreachable(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        _ => 1,
+        Shape::Circle => 2,
+    }
+}
+
+// The first variant of an enum without fields is the same value as `nil`, so a match can't tell
+// them apart
+fn indistinguishable(mode: Mode | nil) -> Int {
+    match mode {
+        nil => 0,
+        Mode::On => 1,
+        Mode::Off => 2,
+    }
+}
+
+// A variant of another enum isn't a member of the value's type
+fn other_enum(mode: Mode) -> Int {
+    match mode {
+        Shape::Empty => 0,
+        _ => 1,
+    }
+}
+
+fn main(shape: Shape, mode: Mode) -> Int {
+    missing_one(shape)
+        + missing_many(mode)
+        + unreachable(shape)
+        + indistinguishable(mode)
+        + other_enum(mode)
+}

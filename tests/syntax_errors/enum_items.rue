@@ -1,0 +1,41 @@
+enum MissingDiscriminant {
+    A = ,
+    B,
+}
+
+enum NonLiteralDiscriminant {
+    A = VALUE,
+    B,
+}
+
+enum HexDiscriminant {
+    A = 0x01,
+}
+
+enum MissingComma {
+    A
+    B { value: Int }
+    C,
+}
+
+enum UnclosedFields {
+    A { value: Int,
+    B,
+}
+
+enum {
+    Nameless,
+}
+
+enum AfterFields {
+    A { value: Int } = 1,
+}
+
+test fn uses_enums() -> Int {
+    let _a = MissingDiscriminant::B;
+    let _b = NonLiteralDiscriminant::B;
+    let _c = HexDiscriminant::A;
+    let _d = MissingComma::C;
+    let _e = AfterFields::A { value: 1 };
+    0
+}

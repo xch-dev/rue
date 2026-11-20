@@ -19,6 +19,20 @@ tests:
   runtime_cost: 20
   byte_cost: 108000
   total_cost: 108020
+- name: variants
+  program: (q . 1)
+  debug_program: (a (q 2 (i (= () ()) (q 5 (r 2)) (q 8 (q . "assertion failed at unused_types.rue:76:5"))) 1) (c (c (q . 1) (c (q . 1) ())) 1))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: enum_name
+  program: (q . 1)
+  debug_program: (a (q 2 2 (q . 1)) (c (q 9 1 (q . 1)) ()))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: recursive
   program: ()
   debug_program: ()
@@ -32,3 +46,4 @@ diagnostics:
 - Unused constant `UNUSED_VALUE` at unused_types.rue:8:7
 - Unused struct `UnusedStruct` at unused_types.rue:14:8
 - Unused type alias `UnusedAlias` at unused_types.rue:19:6
+- Unused enum `UnusedEnum` at unused_types.rue:35:6

@@ -1,6 +1,7 @@
 use rue_ast::{
-    AstBinding, AstConstantItem, AstFunctionItem, AstFunctionParameter, AstGenericParameters,
-    AstLetStmt, AstModuleItem, AstNode, AstStructField, AstStructItem, AstTypeAliasItem,
+    AstBinding, AstConstantItem, AstEnumItem, AstEnumVariant, AstFunctionItem,
+    AstFunctionParameter, AstGenericParameters, AstLetStmt, AstModuleItem, AstNode, AstStructField,
+    AstStructItem, AstTypeAliasItem,
 };
 use rue_diagnostic::{Lint, Note, Source};
 use rue_parser::SyntaxToken;
@@ -132,6 +133,10 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 check_name(cx, source, item.name(), Case::ScreamingSnake, "Constant");
             } else if let Some(item) = AstStructItem::cast(node.clone()) {
                 check_name(cx, source, item.name(), Case::UpperCamel, "Struct");
+            } else if let Some(item) = AstEnumItem::cast(node.clone()) {
+                check_name(cx, source, item.name(), Case::UpperCamel, "Enum");
+            } else if let Some(variant) = AstEnumVariant::cast(node.clone()) {
+                check_name(cx, source, variant.name(), Case::UpperCamel, "Variant");
             } else if let Some(item) = AstTypeAliasItem::cast(node.clone()) {
                 check_name(cx, source, item.name(), Case::UpperCamel, "Type alias");
             } else if let Some(field) = AstStructField::cast(node.clone()) {
