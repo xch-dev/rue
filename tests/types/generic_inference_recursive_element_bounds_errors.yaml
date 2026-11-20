@@ -43,3 +43,8 @@ diagnostics:
 - Unused function `second_of` at generic_inference_recursive_element_bounds_errors.rue:225:4
 - Unused function `own_and_standing_in_seen_through` at generic_inference_recursive_element_bounds_errors.rue:236:4
 - Cannot assign `U` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_recursive_element_bounds_errors.rue:244:27
+- Unused function `first_element_lambda_body` at generic_inference_recursive_element_bounds_errors.rue:254:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_recursive_element_bounds_errors.rue:257:49
+- Unused function `renamed_generics_naming_each_other` at generic_inference_recursive_element_bounds_errors.rue:274:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:275:5
+- "Cannot assign `(((fn(a: U) -> U, 1), (fn(b: T) -> T, 1)), nil)` to `List<((fn(a: U) -> T, Int), (fn(b: T) -> U, Int))>`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:279:52"

@@ -634,11 +634,96 @@ fn argument_candidates(
 ) -> (GenericTypes, Inference) {
     let generic_types =
         generic_parameter_types(ctx, function, shared, parameters, restored, own_generics);
+    // The lambdas' untyped parameters that were compiled as the caller's generics standing for the
+    // callee's renamed ones count as those for what the argument infers, as they do where the
+    // lambdas are checked (see `generic_parameter_types`), so that it doesn't take the caller's
+    // generic as itself, such as `T` from `x7` in `[(fn(x6: Int) => x6, 1), (fn(x7) => x7, 1)]`,
+    // whose first element of a pair isn't refined (see `compile_pair_expr`). Not where a lambda's
+    // body names that generic, as `let y: T = x` does, which keeps it as main had it (#362, 13k6)
+    let originals: Vec<TypeId> = restored.keys().copied().collect();
+    let references: HashMap<TypeId, TypeId> = parameters
+        .iter()
+        .zip(&generic_types.types)
+        .filter_map(|(parameter, &ty)| {
+            ty.filter(|&ty| ty != parameter.ty)
+                .map(|ty| (parameter, ty))
+        })
+        .filter(|(parameter, _)| !parameter.lambda.names_types(ctx, &originals))
+        .map(|(parameter, ty)| (parameter.reference, ty))
+        .collect();
     let unrestored = unrestored_lambdas(ctx, &generic_types, &HashMap::new());
-    let ty = substitute_with_mappings(ctx.types_mut(), ty, &unrestored);
     let mut infer = base.clone();
+
+    if !references.is_empty() {
+        let mut mappings = unrestored.clone();
+        mappings.extend(references);
+        let ty = substitute_with_mappings(ctx.types_mut(), ty, &mappings);
+        ctx.infer_type(ty, param, &mut infer);
+
+        // Where that gives a generic a candidate with itself in it, such as from
+        // `fn(y) => if c { y } else { y }`, which returns the renamed generic twice, the caller's
+        // generic it stands for is what's known of it, as where nothing counts as the renamed one
+        if !names_its_own_generic(ctx, function, &infer) {
+            return (generic_types, infer);
+        }
+
+        infer = base.clone();
+    }
+
+    let ty = substitute_with_mappings(ctx.types_mut(), ty, &unrestored);
     ctx.infer_type(ty, param, &mut infer);
     (generic_types, infer)
+}
+
+/// Whether any of the callee's generics has a candidate with itself in it, directly or through the
+/// candidates of the others it names, such as two that are each other's.
+fn names_its_own_generic(ctx: &mut Compiler, function: &FunctionType, infer: &Inference) -> bool {
+    let names: HashMap<TypeId, Vec<TypeId>> = function
+        .generics
+        .iter()
+        .map(|&generic| {
+            let named = infer
+                .candidates(generic)
+                .map_or_else(Vec::new, |candidates| {
+                    let types: Vec<TypeId> = candidates
+                        .lower
+                        .iter()
+                        .chain(&candidates.upper)
+                        .chain(&candidates.held)
+                        .copied()
+                        .collect();
+
+                    function
+                        .generics
+                        .iter()
+                        .copied()
+                        .filter(|&other| {
+                            types
+                                .iter()
+                                .any(|&ty| contains_generic(ctx.types_mut(), ty, other))
+                        })
+                        .collect()
+                });
+            (generic, named)
+        })
+        .collect();
+
+    function.generics.iter().any(|&generic| {
+        let mut seen = HashSet::new();
+        let mut stack = names.get(&generic).cloned().unwrap_or_default();
+
+        while let Some(other) = stack.pop() {
+            if other == generic {
+                return true;
+            }
+
+            if seen.insert(other) {
+                stack.extend(names.get(&other).into_iter().flatten().copied());
+            }
+        }
+
+        false
+    })
 }
 
 /// The other callee generics that each mapping references (see `ArgumentOrder::is_settled`).
