@@ -90,13 +90,13 @@ pub fn compile_struct_initializer_expr(
 
     for field in expr.fields() {
         let value = if let Some(expr) = field.expr() {
-            compile_expr(
-                ctx,
-                &expr,
-                field
-                    .name()
-                    .and_then(|name| expected_field_types.get(name.text()).copied()),
-            )
+            let expected = field
+                .name()
+                .and_then(|name| expected_field_types.get(name.text()).copied());
+
+            // A field's type is one of its own, which its value is checked against below as it is
+            // (see `Compiler::with_expected_type_provisional`)
+            ctx.with_expected_type_provisional(false, |ctx| compile_expr(ctx, &expr, expected))
         } else {
             let Some(name) = field.name() else {
                 continue;

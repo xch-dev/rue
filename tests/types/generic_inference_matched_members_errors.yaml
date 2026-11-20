@@ -1,25 +1,24 @@
 diagnostics:
-- Unused function `first` at generic_inference_matched_members_errors.rue:1:4
-- Unused function `both_members_match` at generic_inference_matched_members_errors.rue:7:4
-- Binding `result` is returned directly after it's declared at generic_inference_matched_members_errors.rue:9:5
-- Cannot assign `Int | (5, 5)` to `5` without a type guard, since the value isn't always a valid `5` at generic_inference_matched_members_errors.rue:9:21
-- Unused type alias `Recursive` at generic_inference_matched_members_errors.rue:13:6
-- Unused type alias `Rest` at generic_inference_matched_members_errors.rue:14:6
-- Unused type alias `Inline` at generic_inference_matched_members_errors.rue:15:6
-- Unused type alias `Revisited` at generic_inference_matched_members_errors.rue:16:6
-- Unused type alias `Other` at generic_inference_matched_members_errors.rue:17:6
-- Unused function `assign_through_the_revisited_alias` at generic_inference_matched_members_errors.rue:24:4
-- Unused function `make_both` at generic_inference_matched_members_errors.rue:30:4
-- Unused type alias `TakesInt` at generic_inference_matched_members_errors.rue:34:6
-- Unused type alias `TakesBytes32` at generic_inference_matched_members_errors.rue:35:6
-- Unused type alias `Increment` at generic_inference_matched_members_errors.rue:36:6
-- Unused type alias `Discard` at generic_inference_matched_members_errors.rue:37:6
-- Unused type alias `GivesIncrement` at generic_inference_matched_members_errors.rue:38:6
-- Unused type alias `GivesDiscard` at generic_inference_matched_members_errors.rue:39:6
-- Unused function `members_of_two_unions_conflict` at generic_inference_matched_members_errors.rue:45:4
-- "Cannot assign `fn<T>() -> (fn(x: T) -> nil, fn(x: nil) -> T)` to `fn() -> (TakesInt | TakesBytes32, GivesIncrement | GivesDiscard)`, since they are incompatible at generic_inference_matched_members_errors.rue:46:83"
-- Unused type alias `OrInt` at generic_inference_matched_members_errors.rue:50:6
-- Unused type alias `OrNil` at generic_inference_matched_members_errors.rue:51:6
-- Unused function `alike_members` at generic_inference_matched_members_errors.rue:53:4
-- Unused function `alike_members_stay_ruled_out` at generic_inference_matched_members_errors.rue:61:4
-- "Cannot cast `fn<U>(_x: (U | OrInt<U>, OrNil<U> | U) | Bytes) -> U` to `fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil)`, since they have different runtime representations at generic_inference_matched_members_errors.rue:62:14"
+- Unused type alias `Recursive` at generic_inference_matched_members_errors.rue:1:6
+- Unused type alias `Rest` at generic_inference_matched_members_errors.rue:2:6
+- Unused type alias `Inline` at generic_inference_matched_members_errors.rue:3:6
+- Unused type alias `Revisited` at generic_inference_matched_members_errors.rue:4:6
+- Unused type alias `Other` at generic_inference_matched_members_errors.rue:5:6
+- Unused function `assign_through_the_revisited_alias` at generic_inference_matched_members_errors.rue:12:4
+- Unused function `make_both` at generic_inference_matched_members_errors.rue:18:4
+- Unused type alias `TakesInt` at generic_inference_matched_members_errors.rue:22:6
+- Unused type alias `TakesBytes32` at generic_inference_matched_members_errors.rue:23:6
+- Unused type alias `Increment` at generic_inference_matched_members_errors.rue:24:6
+- Unused type alias `Discard` at generic_inference_matched_members_errors.rue:25:6
+- Unused type alias `GivesIncrement` at generic_inference_matched_members_errors.rue:26:6
+- Unused type alias `GivesDiscard` at generic_inference_matched_members_errors.rue:27:6
+- Unused function `members_of_two_unions_conflict` at generic_inference_matched_members_errors.rue:33:4
+- "Cannot assign `fn<T>() -> (fn(x: T) -> nil, fn(x: nil) -> T)` to `fn() -> (TakesInt | TakesBytes32, GivesIncrement | GivesDiscard)`, since they are incompatible at generic_inference_matched_members_errors.rue:34:83"
+- Unused type alias `OrInt` at generic_inference_matched_members_errors.rue:38:6
+- Unused type alias `OrNil` at generic_inference_matched_members_errors.rue:39:6
+- Unused function `alike_members` at generic_inference_matched_members_errors.rue:41:4
+- Unused function `alike_members_stay_ruled_out` at generic_inference_matched_members_errors.rue:49:4
+- "Cannot cast `fn<U>(_x: (U | OrInt<U>, OrNil<U> | U) | Bytes) -> U` to `fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil)`, since they have different runtime representations at generic_inference_matched_members_errors.rue:50:14"
+- Unused function `first_member` at generic_inference_matched_members_errors.rue:54:4
+- Unused function `narrowed_only_if_it_solves_the_call` at generic_inference_matched_members_errors.rue:60:4
+- Cannot assign `Int | (5, 5)` to `(5, 5)` without a type guard, since the value isn't always a valid `(5, 5)` at generic_inference_matched_members_errors.rue:62:27

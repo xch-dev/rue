@@ -193,3 +193,440 @@ test fn instances_reopened_under_a_union_member() -> Int {
     let _call: fn(f: PairsOfInts) -> ((Int, Int), (Int, Int)) = call_given;
     1
 }
+
+fn first_of<T>(value: T | (T, T)) -> T {
+    unchecked_cast(value)
+}
+
+// Both members of `T | (T, T)` match `(5, 5)`, but the `(T, T)` member's `T ≥ 5` is implied by the
+// `T ≥ 5` that `5` gives, so the `T` member's `T ≥ (5, 5)` isn't needed, and `T` is `5` (#362's
+// step 13h). Both members' candidates used to be kept, which made `T` `Int | (5, 5)`
+test fn both_members_match() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = first_of(value);
+    result + 0
+}
+
+fn as_function<T>(value: T | (T, T)) -> fn(x: T) -> nil {
+    unchecked_cast(value)
+}
+
+// What `T` is without leaving out any member's candidates, `Int | (5, 5)`, makes the result a
+// `fn(x: (5, 5)) -> nil`, so it's what the call is solved with. Leaving out `T ≥ (5, 5)` would
+// make `T` `5`, and the result couldn't take a `(5, 5)`
+test fn returns_function_of_both() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _call: fn(x: (5, 5)) -> nil = as_function(value);
+    1
+}
+
+fn apply_to_member<T>(value: T | (T, T), f: fn(x: T) -> Int) -> Int {
+    f(unchecked_cast(value))
+}
+
+// The call has no expected type to narrow `T` for, so the lambda's `x` keeps the `(5, 5)` that
+// the `T` member gives, and checking it for a pair isn't redundant
+test fn lambda_takes_both() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_to_member(
+        value,
+        fn(x) => if x is (Int, Int) {
+            x.first
+        } else {
+            x
+        },
+    )
+}
+
+fn first_of_three<T>(value: T | (T, T) | (T, (T, T))) -> T {
+    unchecked_cast(value)
+}
+
+fn first_of_three_reversed<T>(value: (T, (T, T)) | (T, T) | T) -> T {
+    unchecked_cast(value)
+}
+
+// Each union is decided from the candidates no union leaves out, here the `T ≥ 5` that `5` gives,
+// so the order of the members doesn't matter. `(5, (5, 5))` matches all three members, and only
+// `(T, (T, T))`'s are all implied. When the unions were decided one after another, the first
+// order made `T` `Int | (5, 5)`
+test fn three_members_match() -> Int {
+    let value: 5 | (5, 5) | (5, (5, 5)) = 5;
+    let result: 5 = first_of_three(value);
+    result + 0
+}
+
+test fn three_members_match_reversed() -> Int {
+    let value: 5 | (5, 5) | (5, (5, 5)) = 5;
+    let result: 5 = first_of_three_reversed(value);
+    result + 0
+}
+
+// `T ≥ 5` is implied by the wider `T ≥ Int` from outside of the union, so the `T` member's
+// `T ≥ (5, 5)` is left out and `T` is `Int`
+test fn lower_candidate_implied_by_a_wider_one() -> Int {
+    let value: Int | (5, 5) = 5;
+    let result: Int = first_of(value);
+    result + 0
+}
+
+fn held_first<T>(value: T | (T, T | Int)) -> T {
+    unchecked_cast(value)
+}
+
+// The `(T, T | Int)` member's second `5` is held by `Int`, which doesn't constrain `T`, so the
+// member is still implied and the `T` member's `T ≥ (5, 5)` is left out
+test fn held_candidates_count_as_implied() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = held_first(value);
+    result + 0
+}
+
+fn nested_first<T>(value: (T | nil, nil) | ((T, T), nil)) -> T {
+    unchecked_cast(value)
+}
+
+// The `T ≥ (5, 5)` that's left out is collected under a union nested in the member left out
+test fn nested_union_in_a_left_out_member() -> Int {
+    let value: (5, nil) | ((5, 5), nil) = (5, nil);
+    let result: 5 = nested_first(value);
+    result + 0
+}
+
+fn first_of_both<T>(a: T | (T, T), b: T | (T, T)) -> T {
+    unchecked_cast(a)
+}
+
+// Neither union's candidates count as holding anyway for the other, so each is decided from the
+// `T ≥ 5`s that the two `5`s give. When they counted, each union's `T` member was implied by the
+// other's, and `T` was `Int | (5, 5)`
+test fn same_union_twice() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = first_of_both(value, value);
+    result + 0
+}
+
+fn as_curried<T>(value: T | (T, T)) -> fn() -> fn(x: T) -> nil {
+    unchecked_cast(value)
+}
+
+// The same as `returns_function_of_both`, through a function that the result returns
+test fn returns_curried_function_of_both() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _call: fn() -> fn(x: (5, 5)) -> nil = as_curried(value);
+    1
+}
+
+fn takes_into<U>(value: U) -> fn(y: U) -> nil {
+    unchecked_cast(value)
+}
+
+fn apply_into<U>(value: U, f: fn(y: U) -> Int) -> Int {
+    f(value)
+}
+
+// Without an expected type, `T` is what it always was, `Int | (5, 5)`, so the guard on the result
+// can be a pair. A `T` of `5` would make it redundant, which is an error
+test fn guard_on_the_result() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result = first_of(value);
+    if result is (Int, Int) {
+        return result.first;
+    }
+    1
+}
+
+// The same for a result that flows into a function type's parameter later
+test fn result_flows_into_a_parameter() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result = first_of(value);
+    let call = takes_into(result);
+    let _call: fn(y: (5, 5)) -> nil = call;
+    1
+}
+
+// A call in an argument of another call takes that call's generic as its expected type, which
+// gives `T` no bound, so it's what it always was, and `U` takes the `(5, 5)` the outer expected
+// type needs
+test fn nested_call_into_a_parameter() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _call: fn(y: (5, 5)) -> nil = takes_into(first_of(value));
+    1
+}
+
+// The same through a lambda's parameter, whose guard isn't redundant
+test fn nested_call_into_a_lambda() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_into(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
+}
+
+fn keep_both<U>(a: U, b: U) -> U {
+    unchecked_cast((a, b))
+}
+
+// `first_of(value)` is an argument whose parameter type is the enclosing call's `U`, which the `5`
+// before it has inferred as `5` so far. That's only a hint, which `U` can still widen past, so
+// `T` isn't narrowed for it and stays `Int | (5, 5)`, and the guard on the result can be a pair.
+// Narrowing for the hint would make `T` and `U` `5`, and the guard redundant, which is an error
+test fn hint_from_an_enclosing_call() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result = keep_both(5, first_of(value));
+    if result is (Int, Int) {
+        return result.first;
+    }
+    1
+}
+
+fn first_and_paired<T>(value: T | (T, T)) -> (T, (T, nil)) {
+    unchecked_cast(value)
+}
+
+// Only the expected type's `T ≤ 5` from the first element, outside of any union member, has to
+// hold, which `Int | (5, 5)` breaks and `5` satisfies, so `T` is narrowed to `5`, and the second
+// element is held by the `(5, nil)` member. The `T ≤ 4` from the `(4, nil)` member is only one
+// alternative, so it doesn't keep `T` from being narrowed
+test fn narrowed_for_a_bound_outside_of_a_union() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, (4, nil) | (5, nil)) = first_and_paired(value);
+    1
+}
+
+fn apply_after<U>(_start: U, value: U, f: fn(y: U) -> Int) -> Int {
+    f(value)
+}
+
+fn apply_thunk<U>(_start: U, value: fn() -> U, f: fn(y: U) -> Int) -> Int {
+    f(value())
+}
+
+fn apply_pair<U>(_start: U, value: (U, Int), f: fn(y: U) -> Int) -> Int {
+    f(value.first)
+}
+
+// `first_of(value)` has to be assignable to `U`, which is `Int` so far, but it's checked against
+// what `U` is finally inferred as, which its own value widens. So `T` isn't narrowed for it, `U`
+// is `Int | (5, 5)`, and the lambda's guard isn't redundant
+test fn provisional_expected_type() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_after(
+        5,
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
+}
+
+// The same through a lambda's body
+test fn provisional_expected_type_of_a_lambda_body() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_thunk(
+        5,
+        fn() => first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
+}
+
+// The same through a pair's element
+test fn provisional_expected_type_of_a_pair_element() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_pair(
+        5,
+        (first_of(value), 1),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
+}
+
+fn keep_first<U>(a: U, _b: U) -> U {
+    a
+}
+
+fn thunk_after<U>(_start: U, value: fn() -> U) -> U {
+    value()
+}
+
+fn only_five(value: 5) -> 5 {
+    value
+}
+
+// A `let` annotation is a type of its own, which the value is checked against as it is, so a call
+// in it is narrowed for it even in a lambda body whose expected type is provisional
+test fn let_annotation_in_a_provisional_lambda_body() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Int = thunk_after(
+        5,
+        fn() => {
+            let inner: 5 = first_of(value);
+            inner + 0
+        },
+    );
+    result + 0
+}
+
+// The same for a lambda's return type
+test fn return_type_of_a_lambda_with_a_provisional_type() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Int = thunk_after(5, fn(): 5 => first_of(value));
+    result + 0
+}
+
+// The same for the argument of a parameter that doesn't reference its call's generics, though that
+// call is in an argument whose expected type is provisional
+test fn argument_of_a_concrete_parameter_in_a_provisional_argument() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Int = keep_first(5, only_five(first_of(value)));
+    result + 0
+}
+
+struct Five {
+    value: 5,
+}
+
+// The same for a struct's field, which its value is checked against as it is
+test fn field_in_a_provisional_argument() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Five = keep_both(Five { value: 5 }, Five { value: first_of(value) });
+    result.value + 0
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+// `identity`'s `T ≤ 5`, from the `let` annotation, is outside of any union member, so `T` is at
+// most `5` however `identity` is solved, and its argument has to be a `5`. That's what
+// `first_of(value)` is required to be, though its expected type is provisional, so it's narrowed
+// for it when `Int | (5, 5)` isn't one, and `T` is `5`
+test fn nested_call_narrowed_for_a_requirement() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = identity(first_of(value));
+    result + 0
+}
+
+// The same through two calls
+test fn nested_call_narrowed_through_two_calls() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = identity(identity(first_of(value)));
+    result + 0
+}
+
+// The same for an argument after another one: `keep_both`'s `U ≤ 5` makes `first_of(value)`
+// required to be a `5`, whatever the `5` before it infers `U` as so far
+test fn nested_call_narrowed_after_another_argument() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = keep_both(5, first_of(value));
+    result + 0
+}
+
+fn wrap<T>(value: T | (T, T)) -> (T, nil) {
+    unchecked_cast(value)
+}
+
+// `(Int | (5, 5), nil)` isn't a `(5, nil) | Bytes`, so the call doesn't solve and `T` is
+// narrowed. `(5, nil)` is, so that's what it's solved with, though `T ≤ 5` is only under the
+// expected type's `(5, nil)` member
+test fn narrowed_for_a_member_of_the_expected_type() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, nil) | Bytes = wrap(value);
+    1
+}
+
+fn wrapped_twice<T>(value: T | (T, T)) -> fn(y: fn(z: T) -> nil) -> nil {
+    unchecked_cast(value)
+}
+
+fn call_with<G>(h: fn(y: G) -> nil, _f: fn(y: G) -> Int) -> G {
+    unchecked_cast(h)
+}
+
+// `call_with`'s `G` is in a parameter of `h`'s type, so `G ≤ fn(z: 5) -> nil` doesn't make
+// `wrapped_twice(value)` required to be a `fn(y: fn(z: 5) -> nil) -> nil`: the
+// `fn(y: fn(z: Int | (5, 5)) -> nil) -> nil` it's solved as makes `G` a
+// `fn(z: Int | (5, 5)) -> nil`, which is one. It isn't narrowed, so the lambda can pass `y` a
+// `(5, 5)`
+test fn nested_call_into_a_contravariant_parameter_isnt_narrowed() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: fn(z: 5) -> nil = call_with(
+        wrapped_twice(value),
+        fn(y) => {
+            y((5, 5));
+            1
+        },
+    );
+    1
+}
+
+fn pair_checked<G>(x: G, _f: fn(y: G) -> Int) -> (G, nil) {
+    (x, nil)
+}
+
+// `G ≤ 5` is only under the expected type's `(5, nil)` member, so it's not what `first_of(value)`
+// is required to be, and `G` stays `Int | (5, 5)`, which the other member takes. The guard on `y`
+// can then be a pair
+test fn no_requirement_from_a_member_of_the_expected_type() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, nil) | (Int | (5, 5), nil) = pair_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            1
+        },
+    );
+    1
+}
+
+fn first_checked<G>(x: G, _f: fn(y: G) -> Int) -> G {
+    x
+}
+
+// `first_of(value)` is an `Int | (5, 5)`, which is what it's required to be, so it isn't narrowed
+// and the guard on `y` can be a pair
+test fn nested_call_that_meets_its_requirement_isnt_narrowed() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: Int | (5, 5) = first_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            1
+        },
+    );
+    1
+}
+
+// The same through parentheses
+test fn nested_call_in_parentheses() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = identity((first_of(value)));
+    result + 0
+}
+
+fn make_pair<A, B>(value: B | (B, B)) -> fn(a: A) -> (A, B) {
+    unchecked_cast(value)
+}
+
+// A required type that binds generics of its own is only checked after the call's return type is
+// generalized over them, so the call isn't narrowed for it, and is solved as it always was
+test fn generic_function_expected_type_isnt_narrowed_for() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _f: fn<X>(a: X) -> (X, Int | (5, 5)) = make_pair(value);
+    1
+}

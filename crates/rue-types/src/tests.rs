@@ -1547,6 +1547,216 @@ mod inference {
         assert_eq!(candidates(&infer, t), InferenceCandidates::default());
     }
 
+    /// `5 | (5, 5)` against `T | (T, T)` matches both members for `(5, 5)`, but the `(T, T)`
+    /// member's `T ≥ 5` is implied by the `T ≥ 5` that `5` gives, so the `T` member's
+    /// `T ≥ (5, 5)` isn't needed (#362's step 13h). Against `T | (T, nil)`, only the `T` member
+    /// matches `(5, 5)`, so its `T ≥ (5, 5)` is kept.
+    #[test]
+    fn implied_members_leave_the_others_out() {
+        let mut db = Db::new();
+        let nil = db.builtins.nil;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let fives = db.pair(five, five);
+        let value = db.union(&[five, fives]);
+
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let param = db.union(&[t, pair]);
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        // Only an inference that's narrow leaves them out (see `CallSolver::solve_narrowed`)
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert!(db.name(mappings[&t]).contains('('));
+        infer.narrow = true;
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+
+        let t = db.generic("T");
+        let pair = db.pair(t, nil);
+        let param = db.union(&[t, pair]);
+        let mut infer = Inference::new([t]);
+        infer.narrow = true;
+        let _ = db.infer(value, param, &mut infer);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        let resolved = db.name(mappings[&t]);
+        assert!(resolved.contains('('), "{resolved}");
+    }
+
+    /// Resolves the generics after comparing the value with the parameter, without narrowing and
+    /// with it (`Inference::narrow`).
+    fn resolve_both_ways(
+        db: &mut Db,
+        value: TypeId,
+        param: TypeId,
+        generics: &[TypeId],
+    ) -> (Vec<String>, Vec<String>) {
+        let mut infer = Inference::new(generics.iter().copied());
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        let wide = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        infer.narrow = true;
+        let narrow = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        let names = |db: &mut Db, mappings: &HashMap<TypeId, TypeId>| {
+            generics
+                .iter()
+                .map(|generic| db.name(mappings[generic]))
+                .collect()
+        };
+        (names(db, &wide), names(db, &narrow))
+    }
+
+    #[test]
+    fn implied_members_never_empty_a_generic() {
+        // `((5, 5), ((5, 5), (5, nil)))` against
+        // `((T, T) | (T, U), ((T, T) | (T, U), (T, U | nil)))`: `(T, T)` is implied in both
+        // unions, and each would leave out the other's `U ≥ 5`, since it's outside of it. That
+        // would leave `U` with only the held `nil`, so both are kept
+        let mut db = Db::new();
+        let nil = db.builtins.nil;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let fives = db.pair(five, five);
+        let last = db.pair(five, nil);
+        let rest = db.pair(fives, last);
+        let value = db.pair(fives, rest);
+
+        let t = db.generic("T");
+        let u = db.generic("U");
+        let tt = db.pair(t, t);
+        let tu = db.pair(t, u);
+        let union = db.union(&[tt, tu]);
+        let u_or_nil = db.union(&[u, nil]);
+        let last = db.pair(t, u_or_nil);
+        let rest = db.pair(union, last);
+        let param = db.pair(union, rest);
+
+        let (wide, narrow) = resolve_both_ways(&mut db, value, param, &[t, u]);
+        assert_eq!(narrow[1], wide[1]);
+        assert_eq!(narrow[1], "Int");
+    }
+
+    #[test]
+    fn implied_members_keep_held_candidates() {
+        // `((5, nil), (5, 7))` against `((T, U | nil) | (T, nil), (T, U | Int))`: both members
+        // match `(5, nil)` and are implied, `(T, U | nil)` with a held `U ⊒ nil`. `U` has a held
+        // `7` from outside of the union, but held candidates are never left out, so `U` is what
+        // it is without narrowing whichever member comes first. Leaving them out made it
+        // `nil | Int` in one order and `Int` in the other
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let seven = db.literal(AtomSemantic::Int, &[7]);
+        let first = db.pair(five, nil);
+        let second = db.pair(five, seven);
+        let value = db.pair(first, second);
+
+        for reversed in [false, true] {
+            let t = db.generic("T");
+            let u = db.generic("U");
+            let u_or_nil = db.union(&[u, nil]);
+            let held = db.pair(t, u_or_nil);
+            let plain = db.pair(t, nil);
+            let mut members = vec![held, plain];
+            if reversed {
+                members.reverse();
+            }
+            let union = db.union(&members);
+            let u_or_int = db.union(&[u, int]);
+            let second = db.pair(t, u_or_int);
+            let param = db.pair(union, second);
+
+            let (wide, narrow) = resolve_both_ways(&mut db, value, param, &[t, u]);
+            assert_eq!(narrow[1], wide[1], "reversed: {reversed}");
+        }
+    }
+
+    #[test]
+    fn implied_members_upper_candidates() {
+        // `(fn(x: Int | Bytes) -> nil, fn(x: 5) -> nil)` matches both members. The first's
+        // `T ≤ Int | Bytes` is implied by the `T ≤ Int` from `(fn(x: Int) -> nil, nil)`, so the
+        // second's `T ≤ 5` is left out, and `T` is `Int`
+        let mut db = Db::new();
+        let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);
+        let any = db.builtins.permissive_any;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let int_or_bytes = db.union(&[int, bytes]);
+        let takes_int = db.function(&[int], nil);
+        let takes_wide = db.function(&[int_or_bytes], nil);
+        let takes_five = db.function(&[five], nil);
+        let first = db.pair(takes_int, nil);
+        let second = db.pair(takes_wide, takes_five);
+        let value = db.union(&[first, second]);
+
+        let t = db.generic("T");
+        let takes_t = db.function(&[t], nil);
+        let first = db.pair(takes_t, any);
+        let second = db.pair(any, takes_t);
+        let param = db.union(&[first, second]);
+        let mut infer = Inference::new([t]);
+        infer.narrow = true;
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+    }
+
+    #[test]
+    fn implied_members_only_leave_out_kinds_with_an_outside_candidate() {
+        // `(5, 5)` matches both `(T, T)` and `(U, T)`, and `(T, T)` is implied, but `U` has no
+        // lower candidate outside of the union, so `(U, T)`'s `U ≥ 5` is kept and `U` is `Int`
+        // (`5` widened) rather than the `Int | Bytes` its upper candidate gives
+        let mut db = Db::new();
+        let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let fives = db.pair(five, five);
+        let int_or_bytes = db.union(&[int, bytes]);
+        let takes_wide = db.function(&[int_or_bytes], nil);
+        let rest = db.pair(fives, nil);
+        let rest = db.pair(takes_wide, rest);
+        let value = db.pair(five, rest);
+
+        let t = db.generic("T");
+        let u = db.generic("U");
+        let takes_u = db.function(&[u], nil);
+        let tt = db.pair(t, t);
+        let ut = db.pair(u, t);
+        let union = db.union(&[tt, ut]);
+        let rest = db.pair(union, nil);
+        let rest = db.pair(takes_u, rest);
+        let param = db.pair(t, rest);
+        let mut infer = Inference::new([t, u]);
+        infer.narrow = true;
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+        assert_eq!(db.name(mappings[&u]), "Int");
+    }
+
+    #[test]
+    fn implied_members_dont_depend_on_order() {
+        // `T | (T, T) | (T, (T, T))` and the reverse, against `5 | (5, 5) | (5, (5, 5))`: each
+        // union is decided from the `T ≥ 5` that `5` gives, which no union leaves out
+        let mut db = Db::new();
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let fives = db.pair(five, five);
+        let nested = db.pair(five, fives);
+        let value = db.union(&[five, fives, nested]);
+
+        for reversed in [false, true] {
+            let t = db.generic("T");
+            let pair = db.pair(t, t);
+            let nested = db.pair(t, pair);
+            let mut members = vec![t, pair, nested];
+            if reversed {
+                members.reverse();
+            }
+            let param = db.union(&members);
+            let mut infer = Inference::new([t]);
+            infer.narrow = true;
+            assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+            let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+            assert_eq!(db.name(mappings[&t]), "Int", "reversed: {reversed}");
+        }
+    }
+
     #[test]
     fn widens_covariant_candidates() {
         let mut db = Db::new();

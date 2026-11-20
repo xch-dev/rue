@@ -44,7 +44,7 @@ pub(crate) fn infer_call(
     ctx: &mut Compiler,
     function: &FunctionType,
     args: &[AstExpr],
-    expected_type: Option<TypeId>,
+    (expected_type, requirement): (Option<TypeId>, Option<TypeId>),
     narrower: Option<TypeId>,
     renamed: &HashMap<TypeId, TypeId>,
 ) -> InferredCall {
@@ -117,9 +117,6 @@ pub(crate) fn infer_call(
         infer_expected(ctx, narrower, &bound)
     });
 
-    // The instances of generic functions passed as arguments are solved with the callee's generics
-    base.set_instance_policy(InstancePolicy::Joint);
-
     // A call with arguments in an element that's only refined for a call without arguments in it
     // only uses the type expected of it for the generics its arguments don't give a type (see
     // `refine_element_expected`), so it isn't solved again for it either
@@ -128,6 +125,40 @@ pub(crate) fn infer_call(
     // to. One that's only a hint doesn't count (see `Compiler::with_expected_type_hint`), such as one
     // that comes from what an enclosing call has inferred so far, which it can still widen
     let final_expected = expected_type.filter(|_| !ctx.is_expected_type_hint() && !fallback_only);
+
+    // The type the call has to be assignable to however it's solved, if there is one: its final
+    // expected type, unless an enclosing call can still widen that (see
+    // `Compiler::with_expected_type_provisional`), in which case it's what the enclosing call
+    // requires of it whatever it's solved as, if anything (see
+    // `Compiler::with_argument_requirement`). The call's generics are narrowed for it when what
+    // they're solved as otherwise isn't (see `CallSolver::solve_narrowed`)
+    //
+    // One that binds generics of its own, such as `fn<X>(a: X) -> X`, is left out, since the
+    // call's return type is only generalized over them after it's solved (see `generalize`), so
+    // the check below doesn't tell whether the call is assignable to it
+    let required_type = if ctx.is_expected_type_provisional() {
+        requirement
+    } else {
+        final_expected
+    }
+    .filter(|&ty| expected_generic_depths(ctx, ty).is_empty());
+
+    // What the required type infers for the callee's generics, whose upper bounds outside of any
+    // union member are what its arguments are required to be assignable to
+    let required = required_type.map(|ty| {
+        if Some(ty) == expected_type
+            && let Some(expected) = &expected
+        {
+            return expected.clone();
+        }
+
+        let mut bound = expected_generic_depths(ctx, ty);
+        bound.retain(|&generic, _| !is_type_in_scope(ctx, generic));
+        infer_expected(ctx, ty, &bound)
+    });
+
+    // The instances of generic functions passed as arguments are solved with the callee's generics
+    base.set_instance_policy(InstancePolicy::Joint);
 
     let solver = ctx.call_solver(expected, narrower.as_ref());
     let solver = Rc::new(if fallback_only {
@@ -292,25 +323,65 @@ pub(crate) fn infer_call(
             _ => None,
         };
 
-        let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
-            ctx.with_expected_type_hint(hint, |ctx| match expr {
-                AstExpr::LambdaExpr(lambda) => {
-                    let wrap = match &params {
-                        Some(params) => ParameterWrap::Generics {
-                            params,
-                            generics: &function.generics,
-                            mappings: &mappings,
-                        },
-                        None => ParameterWrap::Whole,
-                    };
+        // What the argument is required to be assignable to however the generics are solved:
+        // the parameter's type with each of them as its upper bound from the required type, if it
+        // has one outside of any union member and only occurs where values flow out of the
+        // argument. Every solution of the call has the generic at most that, so the argument
+        // has to be assignable to it, as in `let result: 5 = identity(first(value));`
+        let requirement = required
+            .as_ref()
+            .filter(|_| !writes.is_empty())
+            .and_then(|required| {
+                let mut bounds = HashMap::new();
 
-                    compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
+                for &generic in writes {
+                    if occurs_contravariantly(ctx, param, generic) {
+                        return None;
+                    }
+
+                    let upper = required
+                        .unconditional_upper(generic)
+                        .into_iter()
+                        .find(|&ty| !references_generics(ctx, ty, &function.generics))?;
+                    bounds.insert(generic, upper);
                 }
-                AstExpr::FunctionCallExpr(call) if narrower.is_some() => (
-                    compile_call_argument(ctx, expr, call, Some(expected), narrower),
-                    Vec::new(),
-                ),
-                _ => (compile_expr(ctx, expr, Some(expected)), Vec::new()),
+
+                // A call in parentheses is the argument as much as one without them
+                let mut call = expr.clone();
+
+                while let AstExpr::GroupExpr(group) = &call
+                    && let Some(inner) = group.expr()
+                {
+                    call = inner;
+                }
+
+                let ty = substitute_with_mappings(ctx.types_mut(), param, &bounds);
+                Some((call.syntax().text_range(), ty))
+            });
+
+        let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
+            ctx.with_argument_requirement(requirement, |ctx| {
+                ctx.with_expected_type_provisional(!writes.is_empty(), |ctx| {
+                    ctx.with_expected_type_hint(hint, |ctx| match expr {
+                        AstExpr::LambdaExpr(lambda) => {
+                            let wrap = match &params {
+                                Some(params) => ParameterWrap::Generics {
+                                    params,
+                                    generics: &function.generics,
+                                    mappings: &mappings,
+                                },
+                                None => ParameterWrap::Whole,
+                            };
+
+                            compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
+                        }
+                        AstExpr::FunctionCallExpr(call) if narrower.is_some() => (
+                            compile_call_argument(ctx, expr, call, Some(expected), narrower),
+                            Vec::new(),
+                        ),
+                        _ => (compile_expr(ctx, expr, Some(expected)), Vec::new()),
+                    })
+                })
             })
         });
 
@@ -496,6 +567,57 @@ pub(crate) fn infer_call(
         }
 
         with_own = false;
+    };
+
+    // A call that what its generics are solved as doesn't solve, for a type it's required to be
+    // assignable to, is rejected: an argument isn't assignable to its parameter, or the return
+    // type to the required type. So its generics are narrowed (see `CallSolver::solve_narrowed`),
+    // and that's used if it solves it. A call that's solved isn't narrowed, so that nothing that
+    // compiles changes
+    let (mappings, solved_checks) = match required_type {
+        Some(required_type)
+            if !solves_call(
+                ctx,
+                function,
+                &solved_checks,
+                &mappings,
+                Some(required_type),
+            ) =>
+        {
+            let mut narrowed = ctx.solve_call_narrowed(&solver, order.merged().clone());
+            restore_renamed(ctx, &mut narrowed, renamed);
+
+            let mut narrowed_checks = checks.clone();
+
+            if lambda_parameters
+                .iter()
+                .any(|parameters| !parameters.is_empty())
+            {
+                instantiate_generic_parameters(
+                    ctx,
+                    function,
+                    &lambda_parameters,
+                    &generic_types,
+                    &narrowed,
+                    &mut narrowed_checks,
+                );
+            }
+
+            if narrowed != mappings
+                && solves_call(
+                    ctx,
+                    function,
+                    &narrowed_checks,
+                    &narrowed,
+                    Some(required_type),
+                )
+            {
+                (narrowed, narrowed_checks)
+            } else {
+                (mappings, solved_checks)
+            }
+        }
+        _ => (mappings, solved_checks),
     };
 
     let mut checks = solved_checks;

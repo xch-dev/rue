@@ -97,5 +97,227 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: both_members_match
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: returns_function_of_both
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: lambda_takes_both
+  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  debug_program: (a (q 2 (q 2 5 (c 2 (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))))) (c (c (q . 5) (q . 5)) 1)) (c (q 2 3 (c 2 ())) ()))
+  output: "5"
+  runtime_cost: 460
+  byte_cost: 444000
+  total_cost: 444460
+- name: three_members_match
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: three_members_match_reversed
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: lower_candidate_implied_by_a_wider_one
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: held_candidates_count_as_implied
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_union_in_a_left_out_member
+  program: (+ (q 5))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (c (q . 5) ()) 1)) (c (q . 1) ()))
+  byte_cost: 108000
+  clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
+- name: same_union_twice
+  program: (a (q 16 2) (c (q . 5) 1))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 (c 2 2)) 1)) (c (q . 5) 1)) (c (q . 2) ()))
+  output: "5"
+  runtime_cost: 707
+  byte_cost: 252000
+  total_cost: 252707
+- name: returns_curried_function_of_both
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: guard_on_the_result
+  program: (a (q 2 (i (l 2) (q . 4) (q 1 . 1)) 1) (c (q . 5) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i (l 2) (q 5 2) (q 1 . 1)) 1) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "1"
+  runtime_cost: 523
+  byte_cost: 492000
+  total_cost: 492523
+- name: result_flows_into_a_parameter
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_into_a_parameter
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_into_a_lambda
+  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  debug_program: (a (q 2 (q 2 13 (c (a 9 2) (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 3 (c 2 ()))) ()))
+  output: "5"
+  runtime_cost: 460
+  byte_cost: 444000
+  total_cost: 444460
+- name: hint_from_an_enclosing_call
+  program: (a (q 2 (i (l 2) (q . 4) (q 1 . 1)) 1) (c (q 5 . 5) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i (l 2) (q 5 2) (q 1 . 1)) 1) (c (a 13 (c (q . 5) (a 9 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
+  output: "5"
+  runtime_cost: 555
+  byte_cost: 516000
+  total_cost: 516555
+- name: narrowed_for_a_bound_outside_of_a_union
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: provisional_expected_type
+  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  debug_program: (a (q 2 (q 2 13 (c (a 9 2) (c (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))) (q . 5)))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 5 (c 2 ()))) ()))
+  output: "5"
+  runtime_cost: 460
+  byte_cost: 444000
+  total_cost: 444460
+- name: provisional_expected_type_of_a_lambda_body
+  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  debug_program: (a (q 2 (q 2 13 (c (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 9) (c () ()))) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))) (q . 5)))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 5 (c (a 2 ()) ()))) ()))
+  output: "5"
+  runtime_cost: 460
+  byte_cost: 444000
+  total_cost: 444460
+- name: provisional_expected_type_of_a_pair_element
+  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  debug_program: (a (q 2 (q 2 13 (c (c (a 9 2) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))) (q . 5)))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 5 (c (f 2) ()))) ()))
+  output: "5"
+  runtime_cost: 460
+  byte_cost: 444000
+  total_cost: 444460
+- name: let_annotation_in_a_provisional_lambda_body
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 ()) (c (a 5 2) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 9) (c () ()))) ()))) ()))) (q . 5))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 2 2 ())) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: return_type_of_a_lambda_with_a_provisional_type
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 9) (c () ()))) ()))) ()))) (q . 5))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 2 2 ())) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: argument_of_a_concrete_parameter_in_a_provisional_argument
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 29 (c (q . 5) (a 21 (a 9 2)))) 1)) (c (q . 5) 1)) (c (c (q . 1) (c (q . 1) (q . 2))) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: field_in_a_provisional_argument
+  program: (+ (q 5))
+  debug_program: (a (q 2 (q 2 (q 16 (f 2) ()) (c (a 13 (c (c (q . 5) ()) (c (a 9 2) ()))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
+  byte_cost: 108000
+  clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
+- name: nested_call_narrowed_for_a_requirement
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (a 9 2)) 1)) (c (q . 5) 1)) (c (c (q . 1) (q . 1)) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_narrowed_through_two_calls
+  program: (a (q 16 (a 2 (a 2 (q . 5)))) (c (q . 1) ()))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 9 (a 9 (a 13 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q . 1)) ()))
+  output: "5"
+  runtime_cost: 1045
+  byte_cost: 420000
+  total_cost: 421045
+- name: nested_call_narrowed_after_another_argument
+  program: (+ (q 5 . 5))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (q . 5) (a 9 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
+  byte_cost: 108000
+  clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
+- name: narrowed_for_a_member_of_the_expected_type
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_into_a_contravariant_parameter_isnt_narrowed
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: no_requirement_from_a_member_of_the_expected_type
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_that_meets_its_requirement_isnt_narrowed
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_in_parentheses
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (a 9 2)) 1)) (c (q . 5) 1)) (c (c (q . 1) (q . 1)) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: generic_function_expected_type_isnt_narrowed_for
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - Binding `result` is returned directly after it's declared at generic_inference_matched_members.rue:28:5
+- Unused parameter `b` at generic_inference_matched_members.rue:296:36
+- |-
+  Unnecessary parentheses at generic_inference_matched_members.rue:618:30
+    help: Remove the parentheses

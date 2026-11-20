@@ -288,7 +288,7 @@ pub(crate) fn pass_lower_bounds(
     let mut equivalent: HashMap<(TypeId, TypeId), bool> = HashMap::new();
 
     for _ in 0..infer.generics.len() {
-        let expanded = expanded_lower_bounds(arena, infer);
+        let expanded = expanded_lower_bounds(arena, builtins, infer);
         let mut passed = Vec::new();
 
         for (&generic, candidates) in &infer.generics {
@@ -497,7 +497,7 @@ pub(crate) fn pass_upper_bounds(
     }
 
     // A generic's lower bounds don't change here, so they're only expanded once
-    let expanded = expanded_lower_bounds(arena, infer);
+    let expanded = expanded_lower_bounds(arena, builtins, infer);
 
     while let Some(((generic, upper, branches), add)) = stack.pop() {
         if add {
@@ -622,11 +622,13 @@ pub(crate) fn pass_upper_bounds(
 /// type is left as is, since expanding it would be an infinite type.
 fn expanded_lower_bounds(
     arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
     infer: &Inference,
 ) -> HashMap<TypeId, Option<TypeId>> {
-    // Only the lower bounds collected under union members that matched are checked against, as
-    // they're the ones the generics are resolved from (see `Inference::keep_matched`)
-    let infer = &infer.keep_matched();
+    // Only the lower bounds collected under union members that matched, and that no other member
+    // makes unneeded, are checked against, as they're the ones the generics are resolved from
+    // (see `Inference::keep_matched`)
+    let infer = &infer.keep_matched(arena, builtins);
 
     let edges: IndexMap<TypeId, Vec<TypeId>> = infer
         .generics

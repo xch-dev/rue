@@ -268,16 +268,19 @@ pub(crate) fn compile_lambda(
     let hint = ctx.is_expected_type_hint() && return_type.is_none();
 
     let body = if let Some(body) = expr.body() {
-        let result = ctx.with_expected_type_hint(hint, |ctx| {
-            if let AstExpr::Block(block) = &body {
-                ctx.add_syntax(
-                    SyntaxItemKind::CompletionContext(CompletionContext::Expression),
-                    block.syntax().text_range(),
-                );
-                compile_block(ctx, block, BlockKind::Body, body_type, true)
-            } else {
-                compile_expr(ctx, &body, body_type)
-            }
+        let provisional = ctx.is_expected_type_provisional() && return_type.is_none();
+        let result = ctx.with_expected_type_provisional(provisional, |ctx| {
+            ctx.with_expected_type_hint(hint, |ctx| {
+                if let AstExpr::Block(block) = &body {
+                    ctx.add_syntax(
+                        SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+                        block.syntax().text_range(),
+                    );
+                    compile_block(ctx, block, BlockKind::Body, body_type, true)
+                } else {
+                    compile_expr(ctx, &body, body_type)
+                }
+            })
         });
         if let Some(return_type) = return_type {
             ctx.assign_type(expr.syntax(), result.ty, return_type);

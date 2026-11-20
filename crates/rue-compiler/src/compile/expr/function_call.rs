@@ -117,7 +117,17 @@ pub fn compile_function_call_expr(
             results,
             checks,
             mut mappings,
-        } = infer_call(ctx, function, &args, expected_type, narrower, &renamed);
+        } = infer_call(
+            ctx,
+            function,
+            &args,
+            (
+                expected_type,
+                ctx.argument_requirement(call.syntax().text_range()),
+            ),
+            narrower,
+            &renamed,
+        );
 
         let mut uninferred = HashMap::new();
 

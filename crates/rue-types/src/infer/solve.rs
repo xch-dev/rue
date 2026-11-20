@@ -197,6 +197,33 @@ impl CallSolver {
         &self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
+        infer: Inference,
+    ) -> HashMap<TypeId, TypeId> {
+        self.solve_with(arena, builtins, infer)
+    }
+
+    /// Like `CallSolver::solve`, but leaving out the candidates of union members that another
+    /// member's implied candidates make unneeded (`Inference::implied_members`), which narrows the
+    /// generics: `T` in `let result: 5 = first(value);` with `fn first<T>(value: T | (T, T)) -> T`
+    /// and a `5 | (5, 5)` is `5` rather than `Int | (5, 5)` (#362, §5, question 2). The compiler
+    /// only uses this for a call that what `solve` gives doesn't solve, so that a call that's
+    /// accepted is solved as it always was: a narrower generic could reject what follows, such as
+    /// a type guard on the call's value.
+    pub fn solve_narrowed(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+        mut infer: Inference,
+    ) -> HashMap<TypeId, TypeId> {
+        infer.narrow = true;
+        self.solve_with(arena, builtins, infer)
+    }
+
+    /// What `CallSolver::solve` and `CallSolver::solve_narrowed` give for the inference.
+    fn solve_with(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
         mut infer: Inference,
     ) -> HashMap<TypeId, TypeId> {
         if infer.has_instances() {
