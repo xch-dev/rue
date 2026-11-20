@@ -1014,7 +1014,8 @@ fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
     let inferable = (0..200)
         .map(|seed| Generator::versioned(seed, 3).generate())
         .find_map(|generated| {
-            let uninferable = crate::generate::uninferable_probes(&generated.program);
+            let uninferable =
+                crate::generate::uninferable_probes(&generated.program, &Variant::default());
             let site = generated
                 .program
                 .probes
@@ -1953,7 +1954,7 @@ fn version_2_programs_never_change() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 3.
-const VERSION_3_HASH: u64 = 0xb3f8_c293_a73b_0629;
+const VERSION_3_HASH: u64 = 0x2c06_b018_2514_9503;
 
 #[test]
 fn version_3_programs_never_change() {
@@ -1978,7 +1979,9 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
         }
         // Only a probe variant removes the generic arguments of a probe whose arguments don't
         // give them a type, and each removes one
-        let uninferable = crate::generate::uninferable_probes(&first.program);
+        // Nor does any other variant remove a probe's arguments along with what gives them a type,
+        // as `identity` in `make_from_lambda(identity, 1)`
+        let uninferable = crate::generate::uninferable_probes(&first.program, &Variant::default());
         for (name, variant) in &first.variants {
             let removed = uninferable
                 .iter()
@@ -1986,6 +1989,13 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
                 .count();
             let expected = usize::from(name == "probe");
             assert_eq!(removed, expected, "seed {seed}, variant `{name}`");
+            if name != "probe" {
+                let left = crate::generate::uninferable_probes(&first.program, variant);
+                assert!(
+                    left.iter().all(|site| !variant.stripped.contains_key(site)),
+                    "seed {seed}, variant `{name}` removes a probe that nothing gives a type"
+                );
+            }
         }
         probes += usize::from(!first.program.probes.is_empty());
     }

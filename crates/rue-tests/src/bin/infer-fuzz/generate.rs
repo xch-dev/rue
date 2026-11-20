@@ -1661,21 +1661,26 @@ impl Removable<'_> {
                 ..
             } => {
                 if let Some(function) = self.program.function(function) {
+                    // A probe's expected type gives its generics nothing, since it's a generic
+                    // function type or `Any`
+                    let probe = self.program.probes.contains(site);
                     let witnessed = Witnessed::new(
                         self.program,
                         self.variant,
                         function,
                         *site,
                         args,
-                        expected,
+                        expected && !probe,
                         true,
                     );
-                    // A probe whose generics its arguments don't all give a type, which only the
-                    // expected type's `Any` would, is only removed in its own variant, and kept
-                    // everywhere else. One whose arguments do is removed as any other call is
+                    // A probe whose generics its arguments don't all give a type in the explicit
+                    // program, which only the expected type's `Any` would, is only removed in its
+                    // own variant, and kept everywhere else. One whose arguments do is removed as
+                    // any other call is, which keeps it when the variant also removes what gives
+                    // its generics a type, as `identity` in `make_from_lambda(identity, 1)`
                     // (see `Generator::probe`)
-                    let generics = if self.program.probes.contains(site)
-                        && !inferable(self.program, self.variant, function, *site, args)
+                    let generics = if probe
+                        && !inferable(self.program, &Variant::default(), function, *site, args)
                     {
                         vec![self.variant.stripped.contains_key(site); witnessed.generics.len()]
                     } else {
@@ -2135,7 +2140,7 @@ fn variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)
     // generic arguments removed and nothing else, so that one probe's rejection can't hide
     // another's. Only a variant that removes a probe's arguments counts them as removable, so the
     // other variants keep them, and each of these is legal as it is (see `Generator::probe`)
-    for site in uninferable_probes(program) {
+    for site in uninferable_probes(program, &Variant::default()) {
         let probe = Variant {
             stripped: [(site, Strip::All)].into(),
         };
@@ -2159,8 +2164,9 @@ fn inferable(
         .all(|&generic| generic)
 }
 
-/// The probes whose generics their arguments don't all give a type (see `Generator::probe`).
-pub fn uninferable_probes(program: &Program) -> BTreeSet<SiteId> {
+/// The probes whose generics their arguments don't all give a type, with the variant's generic
+/// arguments removed (see `Generator::probe`).
+pub fn uninferable_probes(program: &Program, variant: &Variant) -> BTreeSet<SiteId> {
     let mut sites = BTreeSet::new();
     for expr in program.exprs() {
         expr.walk(&mut |expr| {
@@ -2172,7 +2178,7 @@ pub fn uninferable_probes(program: &Program) -> BTreeSet<SiteId> {
             } = &expr.kind
                 && program.probes.contains(site)
                 && let Some(function) = program.function(function)
-                && !inferable(program, &Variant::default(), function, *site, args)
+                && !inferable(program, variant, function, *site, args)
             {
                 sites.insert(*site);
             }
