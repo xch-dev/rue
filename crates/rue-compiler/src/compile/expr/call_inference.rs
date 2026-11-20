@@ -1345,16 +1345,17 @@ impl ArgumentOrder {
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
     }
 
-    /// Whether no argument still to be compiled can add to any of the generics, other than through
-    /// an instance of its own generics (see `ArgumentKind::Lambda::holds_up`).
+    /// Whether no argument still to be compiled can add to any of the generics. A generic lambda
+    /// counts too: it doesn't hold up the order (see `ArgumentKind::Lambda::holds_up`), but it still
+    /// adds to them, and an element lambda that waits is compiled against the expected type's
+    /// bounds, which would be narrower than what it adds (see
+    /// `lambda_before_a_generic_lambda_keeps_it_wide` in `generic_inference_expected_mapped.rue`).
     fn is_settled(&self, generics: &IndexSet<TypeId>) -> bool {
         !self.pending.iter().any(|&other| {
-            let argument = &self.arguments[other];
-            argument.holds_up()
-                && argument
-                    .writes
-                    .iter()
-                    .any(|generic| generics.contains(generic))
+            self.arguments[other]
+                .writes
+                .iter()
+                .any(|generic| generics.contains(generic))
         })
     }
 

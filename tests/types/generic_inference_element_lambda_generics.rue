@@ -253,8 +253,8 @@ test fn element_before_a_value_of_the_generic() -> Int {
     first_and((fn(x) => x + 1, 1), 2)
 }
 
-// Guard: the lambda is compiled against the expected type's bounds once nothing else can add to
-// `T`, as a lambda that's the whole argument is, so `T` stays `5`
+// Guard: the lambda's parameters join the argument's, so the call is solved again with them when
+// the expected type `5` narrows `U`, as for a lambda that's the whole argument (#335)
 test fn element_takes_the_expected_bounds() -> 5 {
     let result: 5 = first_and((fn(x) => x, 5), 5);
     result
@@ -264,9 +264,9 @@ fn after_both<T>(pair: (Int, fn(value: T) -> T), make: fn(a: Int) -> T, value: T
     (pair.rest(make(pair.first)), pair.rest(value))
 }
 
-// Guard: the lambda waits for every later argument that adds to `T`, including a lambda, which is
-// compiled after the others, or its parameter would be narrower than `T` (infer-fuzz generator 1,
-// seed 115)
+// Guard: a lambda that waits for a later lambda that adds to `T` isn't compiled against only what
+// the arguments before it infer, which letting the later arguments go ahead of the pair did
+// (infer-fuzz generator 1, seed 115)
 test fn element_waits_for_every_later_argument() -> ((Int, Int), (Int, Int)) {
     after_both((7, fn(x) => x), fn(a: Int) => (a, 8), (1, 9))
 }
@@ -355,4 +355,54 @@ fn with_made<T, U>(pair: (fn(x: T) -> U, U), value: T) -> U {
 // always raises, so this is only compiled
 fn element_returns_what_a_call_without_arguments_reads() -> Int {
     with_made((fn(_x) => 7, make()), 5)
+}
+
+fn generic_pair<T>(functions: (fn(x: T) -> Int, Int), first: T, last: fn(y: Int) -> T) -> T {
+    let _ = functions.first(first);
+    last(1)
+}
+
+// Guard: a generic lambda still adds to `T` (`6`), although it doesn't hold up the other
+// arguments, so the lambda waits for it too, rather than being compiled against `5`, the expected
+// type's bound so far (see `lambda_before_a_generic_lambda_keeps_it_wide` in
+// `generic_inference_expected_mapped.rue`)
+test fn element_waits_for_a_generic_lambda() -> 5 | 6 {
+    generic_pair(
+        (
+            fn(x) => {
+                let z: 5 | 6 = x;
+                z
+            },
+            1,
+        ),
+        5,
+        fn<V>(_y: V) => 6,
+    )
+}
+
+fn list_or_pair<T>(functions: List<fn(x: T) -> Int> | (fn(x: T) -> Int, Int), value: T) -> Int {
+    let _ = functions;
+    let _ = value;
+    0
+}
+
+// The lambdas in a parameter type that's a union of pairs are found as compiling the pair or list
+// finds them, in the union of the pairs' first types
+test fn element_of_a_union_of_pairs() -> Int {
+    list_or_pair([fn(x) => x + 1], 5) + list_or_pair((fn(x) => x + 1, 1), 5)
+}
+
+fn either_first<T>(
+    functions: (fn(x: T) -> Int, Int) | (fn(x: T, y: Int) -> Int, nil),
+    value: T,
+) -> Int {
+    let _ = functions;
+    let _ = value;
+    0
+}
+
+// The union of the pairs' first types, not only the first pair's, so the lambda with two parameters
+// matches the second pair
+test fn element_of_a_union_of_pairs_with_other_first_types() -> Int {
+    either_first((fn(x, y) => x + y, nil), 5)
 }
