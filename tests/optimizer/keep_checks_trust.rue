@@ -57,3 +57,11 @@ test fn field_of_the_wrong_shape(pair: (Int, Int), flag: Bool) -> Int {
         0
     }
 }
+
+// Both parts of a pair, put back together in order, are the pair itself, so a solution that's
+// an atom where its type says a pair is returned as it is
+test fn parts_of_the_wrong_shape(pair: (Int, Int)) -> ((Int, Int), (Int, Int)) {
+    let first = pair.first;
+    let rest = pair.rest;
+    ((first, rest), (first, rest))
+}

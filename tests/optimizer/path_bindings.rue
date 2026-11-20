@@ -123,3 +123,83 @@ test fn deep_path_used_twice(wide: Wide) -> Int {
     let i = wide.i;
     i * i
 }
+
+struct Deep {
+    _a: Int,
+    _b: Int,
+    _c: Int,
+    _d: Int,
+    _e: Int,
+    _f: Int,
+    g: Int,
+    h: Int,
+}
+
+// Neither of these is smaller bound on its own, since the first value that's bound takes more
+// bytes than the next one, but both are smaller bound together
+test fn deep_paths_bound_together(deep: Deep) -> Int {
+    let g = deep.g;
+    let h = deep.h;
+    g * g + g * g + g * g + g + h * h + h * h + h * h + h
+}
+
+inline fn length_if(pair: (Bytes, Int), flag: Bool) -> Int {
+    let length = pair.rest;
+
+    if flag {
+        length * length
+    } else {
+        0
+    }
+}
+
+// The binding is a path in one call and not in the other, whichever comes first, and the check
+// in the argument is kept although the branch that reads the binding isn't taken
+test fn path_then_call(pair: (Bytes, Int), password: Bytes, flag: Bool) -> Int {
+    length_if(pair, flag) + length_if(check_password(password), flag)
+}
+
+test fn path_then_call_that_fails(pair: (Bytes, Int), password: Bytes, flag: Bool) -> Int {
+    length_if(pair, flag) + length_if(check_password(password), flag)
+}
+
+test fn call_then_path(pair: (Bytes, Int), password: Bytes, flag: Bool) -> Int {
+    length_if(check_password(password), flag) + length_if(pair, flag)
+}
+
+test fn call_then_path_that_fails(pair: (Bytes, Int), password: Bytes, flag: Bool) -> Int {
+    length_if(check_password(password), flag) + length_if(pair, flag)
+}
+
+// The length of a value isn't a path, since it fails for a pair
+test fn length_is_bound(value: Bytes, flag: Bool) -> Int {
+    let length = value.length;
+
+    if flag {
+        length + length
+    } else {
+        0
+    }
+}
+
+fn add_one(value: Int) -> Int {
+    value + 1
+}
+
+// A function that's referenced as a value is a closure, which isn't built twice
+test fn function_value_is_bound(flag: Bool, value: Int) -> Int {
+    let f = add_one;
+
+    if flag {
+        f(f(value))
+    } else {
+        f(value)
+    }
+}
+
+// The call fails, whether or not its result is read
+test fn call_that_fails_is_bound(f: fn() -> Point) -> Int {
+    let point = f();
+    let z = point.z;
+    z * z + point.x
+}

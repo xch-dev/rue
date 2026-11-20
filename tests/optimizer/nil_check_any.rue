@@ -59,3 +59,12 @@ test fn narrows(x: Any) -> Int {
 
     -1
 }
+
+// In a condition too
+test fn condition_that_fails(f: fn(x: Int) -> Any, x: Int) -> Int {
+    if f(x) is nil {
+        1
+    } else {
+        2
+    }
+}

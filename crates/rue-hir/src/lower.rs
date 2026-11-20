@@ -1320,8 +1320,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             })
             .collect();
 
-        let saved = self.forget_substitutions(&symbols);
-        let saved_paths = self.forget_path_bindings(&symbols);
+        let saved = self.forget_decisions(&symbols);
 
         let effects: Vec<SymbolId> = symbols
             .iter()
@@ -1333,8 +1332,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             this.lower_let_run(env, &symbols, &effects, stmts.clone(), body.clone())
         });
 
-        self.restore_substitutions(saved);
-        self.restore_path_bindings(saved_paths);
+        self.restore_decisions(saved);
 
         expr
     }

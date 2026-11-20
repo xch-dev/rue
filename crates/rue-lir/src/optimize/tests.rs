@@ -195,6 +195,34 @@ fn test_nil_check_of_any_value() {
 }
 
 #[test]
+fn test_nil_check_with_not() {
+    // `(i (l x) () (not x))` is `(not x)` whether or not the `if` is inline, since `not` can't
+    // fail
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let listp = arena.alloc(Lir::Listp(x));
+    let nil = atom(&mut arena, &[]);
+    let not_x = not(&mut arena, x);
+
+    for inline in [false, true] {
+        let lir = arena.alloc(Lir::If(listp, nil, not_x, inline));
+        check(&mut arena, lir, ENVS, expect!["(not 2)"]);
+    }
+
+    // The value is a field, which is nil, another atom or a pair
+    let first = arena.alloc(Lir::First(x));
+    let listp = arena.alloc(Lir::Listp(first));
+    let not_first = not(&mut arena, first);
+    let lir = arena.alloc(Lir::If(listp, nil, not_first, false));
+    check(
+        &mut arena,
+        lir,
+        &["((()))", "((0x00))", "(((1 . 2)))", "((5))", "(5)", "()"],
+        expect!["(not 4)"],
+    );
+}
+
+#[test]
 fn test_nil_check_keeps_other_checks() {
     // An inline `if` evaluates `(= x ())` for a pair too, which fails
     let mut arena = Arena::new();
@@ -204,6 +232,11 @@ fn test_nil_check_keeps_other_checks() {
     let eq = arena.alloc(Lir::Eq(x, nil));
     let lir = arena.alloc(Lir::If(listp, nil, eq, true));
     check(&mut arena, lir, ENVS, expect!["(i (l 2) () (= 2 ()))"]);
+
+    // With the operands of `=` the other way around too
+    let eq = arena.alloc(Lir::Eq(nil, x));
+    let lir = arena.alloc(Lir::If(listp, nil, eq, true));
+    check(&mut arena, lir, ENVS, expect!["(i (l 2) () (= () 2))"]);
 
     // A different value is checked
     let y = path(&mut arena, 5);

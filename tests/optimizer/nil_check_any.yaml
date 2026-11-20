@@ -53,3 +53,9 @@ tests:
   runtime_cost: 793
   byte_cost: 552000
   total_cost: 552793
+- name: condition_that_fails
+  program: (i (a 2 (c 5 ())) (q . 2) (q . 1))
+  debug_program: (a (i (a (i (not (l (a 2 (c 5 ())))) (q 9 (a 2 (c 5 ())) ()) ()) 1) (q 1 . 1) (q 1 . 2)) 1)
+  solution: ((x) 1)
+  byte_cost: 300000
+  clvm_error: clvm raise ()

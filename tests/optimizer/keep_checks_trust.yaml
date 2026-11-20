@@ -34,3 +34,12 @@ tests:
   byte_cost: 276000
   total_cost: 276329
   debug_clvm_error: "InvalidOperatorArg: first of non-cons"
+- name: parts_of_the_wrong_shape
+  program: (c 2 2)
+  debug_program: (a (q 4 (c 4 6) (c 4 6)) (c (c (f 2) (r 2)) 1))
+  solution: (5)
+  output: (5 . 5)
+  runtime_cost: 147
+  byte_cost: 84000
+  total_cost: 84147
+  debug_clvm_error: "InvalidOperatorArg: rest of non-cons"

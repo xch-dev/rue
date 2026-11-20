@@ -26,6 +26,21 @@ use crate::{
 
 use super::Lowerer;
 
+/// What was decided for a binding before its let statement was lowered again.
+#[derive(Debug)]
+pub(super) struct SavedDecisions {
+    symbol: SymbolId,
+    substitute: Option<bool>,
+    is_path: Option<bool>,
+}
+
+fn restore(decided: &mut HashMap<SymbolId, bool>, symbol: SymbolId, value: Option<bool>) {
+    match value {
+        Some(value) => decided.insert(symbol, value),
+        None => decided.remove(&symbol),
+    };
+}
+
 impl Lowerer<'_, '_, '_> {
     /// Whether the binding or constant, which is referenced at most once and isn't `inline`, can
     /// be evaluated where it's referenced rather than bound. This is cached, since it's needed
@@ -44,32 +59,34 @@ impl Lowerer<'_, '_, '_> {
         substitute
     }
 
-    /// Forgets whether the bindings can be substituted, since their let statements are being
+    /// Forgets what was decided for the bindings (whether they can be substituted, and whether
+    /// they're read where they're referenced as paths), since their let statements are being
     /// lowered again, which might be in a call to an `inline fn` with different arguments than
     /// before. They're decided again when the bindings are grouped. Returns what was decided
-    /// before, which is restored with [`Self::restore_substitutions`] once the statements are
+    /// before, which is restored with [`Self::restore_decisions`] once the statements are
     /// lowered, since a call to the same `inline fn` can be lowered inside another one.
-    pub(super) fn forget_substitutions(
-        &self,
-        symbols: &IndexSet<SymbolId>,
-    ) -> Vec<(SymbolId, Option<bool>)> {
+    pub(super) fn forget_decisions(&self, symbols: &IndexSet<SymbolId>) -> Vec<SavedDecisions> {
         let mut substitutions = self.substitutions.borrow_mut();
+        let mut path_bindings = self.path_bindings.borrow_mut();
 
         symbols
             .iter()
-            .map(|&symbol| (symbol, substitutions.remove(&symbol)))
+            .map(|&symbol| SavedDecisions {
+                symbol,
+                substitute: substitutions.remove(&symbol),
+                is_path: path_bindings.remove(&symbol),
+            })
             .collect()
     }
 
-    /// Restores what was decided before [`Self::forget_substitutions`].
-    pub(super) fn restore_substitutions(&self, saved: Vec<(SymbolId, Option<bool>)>) {
+    /// Restores what was decided before [`Self::forget_decisions`].
+    pub(super) fn restore_decisions(&self, saved: Vec<SavedDecisions>) {
         let mut substitutions = self.substitutions.borrow_mut();
+        let mut path_bindings = self.path_bindings.borrow_mut();
 
-        for (symbol, substitute) in saved {
-            match substitute {
-                Some(substitute) => substitutions.insert(symbol, substitute),
-                None => substitutions.remove(&symbol),
-            };
+        for decisions in saved {
+            restore(&mut substitutions, decisions.symbol, decisions.substitute);
+            restore(&mut path_bindings, decisions.symbol, decisions.is_path);
         }
     }
 

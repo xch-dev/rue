@@ -10,7 +10,8 @@
 //! It isn't always smaller: a path that's deep enough needs a longer atom at each reference, and
 //! a bound value can end up being folded into something shorter, such as a pair of two bindings
 //! that's the pair they're bound in. So the rest of the block is lowered both ways, and the
-//! smaller one is kept (see [`super::measure`]).
+//! smaller one is kept (see [`super::measure`]). Lowering them all bound is one of the ways
+//! that's measured, so a block is never larger than it was when they always were.
 //!
 //! The value can go through bindings and arguments that are substituted, as long as it's still
 //! only a path, so nothing that may fail or that's expensive to evaluate is ever repeated or
@@ -22,6 +23,10 @@ use rue_lir::LirId;
 use crate::{FieldAccess, FieldKind, Hir, HirId, Symbol, SymbolId};
 
 use super::Lowerer;
+
+/// How many bindings of one run of let statements are measured (see
+/// [`Lowerer::lower_path_bindings`]).
+const MAX_PATH_CANDIDATES: usize = 8;
 
 impl Lowerer<'_, '_, '_> {
     /// Whether the binding, which is referenced more than once and isn't `inline`, is evaluated
@@ -37,41 +42,50 @@ impl Lowerer<'_, '_, '_> {
     /// Lowers a run of let statements with `lower`, after deciding which of their bindings are
     /// evaluated where they're referenced since they're only paths.
     ///
-    /// Each such binding is decided the first time its let statement is lowered, by lowering the
-    /// run with all of them evaluated where they're referenced, and then with each one bound
-    /// instead, keeping it bound if that's smaller. The decision is remembered, so that the run
-    /// isn't measured again when it's lowered again, which it is when an enclosing run is
-    /// measured, or the function it's in is inlined somewhere else. It's only applied if the
-    /// value is still a path there, since the arguments of an inlined call can differ.
+    /// Each such binding is decided the first time its let statement is lowered. The run is
+    /// lowered with all of them read where they're referenced, and with all of them bound, which
+    /// is how they were lowered before, so the smaller of the two is never larger than that.
+    /// Then each one is switched on its own, and kept that way if that's smaller still. Binding
+    /// the first value of a run takes more bytes than binding another one next to it, so
+    /// several can be smaller bound together although none is on its own.
+    ///
+    /// The decision is remembered, so that the run isn't measured again when it's lowered again,
+    /// which it is when an enclosing run is measured, or the function it's in is inlined
+    /// somewhere else. It's only applied if the value is still a path there, since the
+    /// arguments of an inlined call can differ.
+    ///
+    /// Each measurement lowers the rest of the block again, so no more than
+    /// [`MAX_PATH_CANDIDATES`] bindings of a run are measured, and the rest are bound.
     pub(super) fn lower_path_bindings(
         &mut self,
         symbols: &IndexSet<SymbolId>,
         mut lower: impl FnMut(&mut Self) -> LirId,
     ) -> LirId {
-        let mut candidates = Vec::new();
-
-        if self.options.auto_inline {
-            // These are found in order, since a path can go through an earlier binding
-            for &symbol in symbols {
-                if let Symbol::Binding(binding) = self.db.symbol(symbol)
-                    && !binding.inline
-                    && self.graph.references(symbol) > 1
-                    && self.is_path(binding.value.hir)
-                {
-                    self.path_bindings.borrow_mut().insert(symbol, true);
-                    candidates.push(symbol);
-                }
-            }
-        }
-
         let mut undecided = Vec::new();
 
-        for symbol in candidates {
-            match self.path_choices.get(&symbol) {
-                Some(&is_path) => {
-                    self.path_bindings.borrow_mut().insert(symbol, is_path);
+        if self.options.auto_inline {
+            for &symbol in symbols {
+                let Symbol::Binding(binding) = self.db.symbol(symbol) else {
+                    continue;
+                };
+
+                if binding.inline
+                    || self.graph.references(symbol) <= 1
+                    || !self.is_path(binding.value.hir)
+                {
+                    continue;
                 }
-                None => undecided.push(symbol),
+
+                let is_path = match self.path_choices.get(&symbol) {
+                    Some(&is_path) => is_path,
+                    None if undecided.len() < MAX_PATH_CANDIDATES => {
+                        undecided.push(symbol);
+                        true
+                    }
+                    None => false,
+                };
+
+                self.path_bindings.borrow_mut().insert(symbol, is_path);
             }
         }
 
@@ -80,22 +94,42 @@ impl Lowerer<'_, '_, '_> {
         }
 
         let mut best = self.trial(&mut lower);
+        let mut are_paths = true;
 
-        for symbol in undecided {
-            self.path_bindings.borrow_mut().insert(symbol, false);
+        if undecided.len() > 1 {
+            self.set_path_bindings(&undecided, false);
             let bound = self.trial(&mut lower);
-            let is_path = bound.size >= best.size;
 
-            if is_path {
-                self.path_bindings.borrow_mut().insert(symbol, true);
-            } else {
+            if bound.size < best.size {
                 best = bound;
+                are_paths = false;
+            } else {
+                self.set_path_bindings(&undecided, true);
             }
+        }
 
-            self.path_choices.insert(symbol, is_path);
+        for &symbol in &undecided {
+            self.set_path_bindings(&[symbol], !are_paths);
+            let switched = self.trial(&mut lower);
+
+            if switched.size < best.size {
+                best = switched;
+                self.path_choices.insert(symbol, !are_paths);
+            } else {
+                self.set_path_bindings(&[symbol], are_paths);
+                self.path_choices.insert(symbol, are_paths);
+            }
         }
 
         self.keep(best)
+    }
+
+    fn set_path_bindings(&self, symbols: &[SymbolId], is_path: bool) {
+        let mut path_bindings = self.path_bindings.borrow_mut();
+
+        for &symbol in symbols {
+            path_bindings.insert(symbol, is_path);
+        }
     }
 
     /// Whether the value is only a path: fields of a value that's read from the environment,
@@ -126,34 +160,6 @@ impl Lowerer<'_, '_, '_> {
                 )
             }
             _ => false,
-        }
-    }
-
-    /// Forgets which of the bindings are paths, since their let statements are being lowered
-    /// again, which might be in a call to an `inline fn` with different arguments than before.
-    /// Returns what was decided before, which is restored with [`Self::restore_path_bindings`]
-    /// once the statements are lowered.
-    pub(super) fn forget_path_bindings(
-        &self,
-        symbols: &IndexSet<SymbolId>,
-    ) -> Vec<(SymbolId, Option<bool>)> {
-        let mut path_bindings = self.path_bindings.borrow_mut();
-
-        symbols
-            .iter()
-            .map(|&symbol| (symbol, path_bindings.remove(&symbol)))
-            .collect()
-    }
-
-    /// Restores what was decided before [`Self::forget_path_bindings`].
-    pub(super) fn restore_path_bindings(&self, saved: Vec<(SymbolId, Option<bool>)>) {
-        let mut path_bindings = self.path_bindings.borrow_mut();
-
-        for (symbol, decided) in saved {
-            match decided {
-                Some(decided) => path_bindings.insert(symbol, decided),
-                None => path_bindings.remove(&symbol),
-            };
         }
     }
 }
