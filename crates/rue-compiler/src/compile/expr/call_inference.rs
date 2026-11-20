@@ -10,7 +10,7 @@ use indexmap::IndexSet;
 
 use log::debug;
 use rowan::TextRange;
-use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
+use rue_ast::{AstExpr, AstFunctionCallExpr, AstGuardExpr, AstLambdaExpr, AstNode};
 use rue_hir::{Hir, HirId, Value};
 use rue_types::{
     CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, Union,
@@ -1094,9 +1094,11 @@ pub struct ElementLambda {
     reads: IndexSet<TypeId>,
     /// The callee's generics in the return types of the function types it's expected to be.
     returns: IndexSet<TypeId>,
-    /// Whether its body has a call or lambda in it, and it has no return type, so that its return
-    /// type can be what a call in its body returns.
-    calls: bool,
+    /// Whether it has no return type and its body has a call, lambda or type guard in it, so that
+    /// its return type can be what those make of its parameters, which can be a type that no longer
+    /// references the generics they were compiled as, as `identity(x)` and `x is nil` can (see
+    /// `ArgumentOrder::deferred`).
+    narrows: bool,
 }
 
 /// An element lambda that's compiled once no argument still to be compiled can add to the generics
@@ -1375,19 +1377,20 @@ impl ArgumentOrder {
     /// to be compiled reads is compiled where it is, since that argument would be compiled before
     /// it, without what it adds to the generic.
     ///
-    /// So is one whose return type can be what a call in its body returns, while the type expected
-    /// of the call bounds a generic in it (`expected`): compiled where it is, its parameters are the
-    /// generics themselves, which the call in its body passes through, so the expected type's bound
-    /// narrows them too, as `5` does `T` in `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)`.
-    /// Compiled later, its parameters would be what the other arguments infer, `Int`, and the call
-    /// would return that. Which of the two a lambda needs depends on what its body does with its
+    /// So is one whose return type can be what a call or type guard in its body makes of its
+    /// parameters, while the type expected of the call bounds a generic in it (`expected`): compiled
+    /// where it is, its parameters are the generics themselves, which the call passes through, so
+    /// the expected type's bound narrows them too, as `5` does `T` in
+    /// `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)`, or `5 | nil` does in
+    /// `fn(x) => if x is nil { nil } else { x }`. Compiled later, its parameters would be what the
+    /// other arguments infer, `Int`, and the call or guard would give that. Which of the two a lambda needs depends on what its body does with its
     /// parameters, which isn't known before it's compiled, so it's compiled where it was.
     fn deferred(&self, i: usize, expected: &IndexSet<TypeId>) -> HashMap<TextRange, ElementLambda> {
         self.arguments[i]
             .element_lambdas
             .iter()
             .filter(|(_, lambda)| {
-                let narrowed_by_expected = lambda.calls
+                let narrowed_by_expected = lambda.narrows
                     && lambda
                         .returns
                         .iter()
@@ -1736,13 +1739,20 @@ fn element_lambdas(
                 // `nil` (infer-fuzz generator 1, seeds 1461, 2955 and 6784)
                 let calls = lambda.ty().is_none()
                     && lambda.body().is_some_and(|body| has_call_or_lambda(&body));
+                let narrows = calls
+                    || lambda.ty().is_none()
+                        && lambda.body().is_some_and(|body| {
+                            body.syntax()
+                                .descendants()
+                                .any(|node| AstGuardExpr::cast(node).is_some())
+                        });
 
                 if !reads.is_empty() && !returns.iter().any(|generic| reads.contains(generic)) {
                     let lambda = ElementLambda {
                         ty,
                         reads: reads.clone(),
                         returns: returns.clone(),
-                        calls,
+                        narrows,
                     };
                     walk.lambdas.push((range, lambda));
                 }

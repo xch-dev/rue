@@ -272,6 +272,20 @@ tests:
   runtime_cost: 4437
   byte_cost: 3036000
   total_cost: 3040437
+- name: element_with_a_guard_narrowed_by_the_expected_type
+  program: (a (q 4 (a (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q) (q . 2)) 1) (q 5)) (a 2 (c 2 (c (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q) (q . 2)) 1) ()) (q . 5))))) (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) ()))
+  debug_program: (a (q 2 (q 4 4 6) (c (c (a 6 (c (c (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q . 2)) 1)) (c (q . 1) ()))) (q . 1)) (q . 5))) (a 4 (c 4 (c (c (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q . 2)) 1)) (c (q . 1) ()))) ()) (q . 5))))) 1)) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q 2 (f 2) (c 3 ()))) ()))
+  output: (5 5)
+  runtime_cost: 3706
+  byte_cost: 2460000
+  total_cost: 2463706
+- name: element_with_a_guard_narrowed_by_a_hint
+  program: (a (q 2 2 (c 2 (c (c (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q 1 . 5) (q . 2)) 1) ()) (q . 5)))) (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 6 (a 4 (c 4 (c (c (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 5) (q . 2)) 1)) (c (q . 1) ()))) ()) (q . 5))))) 1)) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q . 1)) ()))
+  output: (5)
+  runtime_cost: 2741
+  byte_cost: 1740000
+  total_cost: 1742741
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
@@ -291,3 +305,4 @@ diagnostics:
 - |-
   Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:430:5
     help: Return the value directly
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:473:5
