@@ -18,11 +18,12 @@ diagnostics:
     note: This arm handles every value that's left at match_errors.rue:117:9
 - Undeclared symbol `undefined` at match_errors.rue:118:14
 - Match on `Any` is not exhaustive, since it doesn't handle `((Any, Any), Any)` at match_errors.rue:125:11
-- Match on `Optional<Bytes32>` is not exhaustive, since it doesn't handle `Bytes32` and `nil` at match_errors.rue:135:11
-- Undeclared type `Missing` at match_errors.rue:141:10
-- Undeclared type `Missing` at match_errors.rue:151:9
-- Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:163:11
-- Unknown field `value` on type `WithValue | A` at match_errors.rue:177:28
-- Match on `U` is not exhaustive, since it doesn't handle `C` at match_errors.rue:183:18
-- Undeclared type `Missing` at match_errors.rue:201:9
-- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:209:9
+- Match on `Any` is not exhaustive, since it doesn't handle `(Any, Any)` at match_errors.rue:133:11
+- Match on `Optional<Bytes32>` is not exhaustive, since it doesn't handle `Bytes32` and `nil` at match_errors.rue:143:11
+- Undeclared type `Missing` at match_errors.rue:149:10
+- Undeclared type `Missing` at match_errors.rue:159:9
+- Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:171:11
+- Unknown field `value` on type `WithValue | A` at match_errors.rue:185:28
+- Match on `U` is not exhaustive, since it doesn't handle `C` at match_errors.rue:191:18
+- Undeclared type `Missing` at match_errors.rue:209:9
+- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:217:9

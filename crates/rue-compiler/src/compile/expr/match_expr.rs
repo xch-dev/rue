@@ -460,6 +460,15 @@ fn format_members(ctx: &mut Compiler, members: Vec<TypeId>) -> String {
 /// in terms of `Any`, rather than the recursive type that it's made of. For example, `(Int, Any)`
 /// leaves the pairs `((Any, Any), Any)`, since every atom is an `Int`.
 fn member_name(ctx: &mut Compiler, builtins: &BuiltinTypes, ty: TypeId) -> String {
+    member_name_impl(ctx, builtins, ty, &mut HashSet::new())
+}
+
+fn member_name_impl(
+    ctx: &mut Compiler,
+    builtins: &BuiltinTypes,
+    ty: TypeId,
+    visited: &mut HashSet<TypeId>,
+) -> String {
     let equivalent = |ctx: &mut Compiler, other: TypeId| {
         ctx.is_assignable(ty, other) && ctx.is_assignable(other, ty)
     };
@@ -468,17 +477,29 @@ fn member_name(ctx: &mut Compiler, builtins: &BuiltinTypes, ty: TypeId) -> Strin
         return "Any".to_string();
     }
 
-    let Type::Pair(pair) = *ctx.ty(ty) else {
+    // The parts of a recursive type lead back to it, and are named as a whole there
+    if !visited.insert(ty) {
         return ctx.type_name(ty);
-    };
-
-    if equivalent(ctx, builtins.recursive_any_pair) {
-        return "(Any, Any)".to_string();
     }
 
-    let first = member_name(ctx, builtins, pair.first);
-    let rest = member_name(ctx, builtins, pair.rest);
-    format!("({first}, {rest})")
+    let name = match ctx.ty(ty).clone() {
+        Type::Pair(_) if equivalent(ctx, builtins.recursive_any_pair) => "(Any, Any)".to_string(),
+        Type::Pair(pair) => {
+            let first = member_name_impl(ctx, builtins, pair.first, visited);
+            let rest = member_name_impl(ctx, builtins, pair.rest, visited);
+            format!("({first}, {rest})")
+        }
+        Type::Union(union) => union
+            .types
+            .iter()
+            .map(|&member| member_name_impl(ctx, builtins, member, visited))
+            .collect::<Vec<_>>()
+            .join(" | "),
+        _ => ctx.type_name(ty),
+    };
+
+    visited.remove(&ty);
+    name
 }
 
 /// The members of a union, with aliases looked through, since an alias that's been narrowed by
