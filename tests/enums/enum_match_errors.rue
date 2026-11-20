@@ -48,10 +48,30 @@ fn other_enum(mode: Mode) -> Int {
     }
 }
 
-fn main(shape: Shape, mode: Mode) -> Int {
+enum Dir {
+    Up = 1,
+    Down,
+}
+
+enum Both<X, Y> {
+    Neither,
+    Two { x: X, y: Y },
+}
+
+// The combinations of a variant's fields that aren't handled are listed
+fn missing_combinations(value: Both<Dir, Dir>) -> Int {
+    match value {
+        Both::Neither<Dir, Dir> => 0,
+        Both::Two<Dir::Up, Dir::Up> => 1,
+        Both::Two<Dir::Down, Dir::Up> => 3,
+    }
+}
+
+fn main(shape: Shape, mode: Mode, both: Both<Dir, Dir>) -> Int {
     missing_one(shape)
         + missing_many(mode)
         + unreachable(shape)
         + indistinguishable(mode)
         + other_enum(mode)
+        + missing_combinations(both)
 }
