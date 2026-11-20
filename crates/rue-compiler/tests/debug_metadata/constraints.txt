@@ -17,18 +17,15 @@ nodes:
           constraints.rue:32:19-32:26  (f (r 2))
       constraints.rue:21:17-21:47  (c 5 (c 5 ()))
 ===== release =====
-program: (a (q 2 (q 4 (a 5 11) (c (a 5 (c 11 (c 23 (c 47 (c 95 (c -65 (c 383 (c 767 (c 1535 (c 3071 (c (+ 4 10) ()))))))))))) ())) (c (c 5 (c 5 ())) 1)) (c (q . 1) 1))
-sidecar: 2573 bytes
+program: (a (q 4 5 (c (c 5 (c 11 (c 23 (c 47 (c 95 (c -65 (c 383 (c 767 (c 1535 (c (+ 4 10) ())))))))))) ())) (c (c 2 (c 2 ())) 1))
+sidecar: 2229 bytes
 files:
   constraints.rue
 functions:
-  0: main (_ . (number@5: integer . (maybe@11: atom . (key@23: atom . (flag@47: atom . (empty@95: atom . (hashes@191: list . (anything@383: unknown . (shapes@767: pair . (either@1535: unknown . _))))))))))
+  0: main (number@2: integer . (maybe@5: atom . (key@11: atom . (flag@23: atom . (empty@47: atom . (hashes@95: list . (anything@191: unknown . (shapes@383: pair . (either@767: unknown . _)))))))))
 nodes:
-  constraints.rue:20:10-35:2  (a (q 2 (q 4 (a 5 11) (c (a 5 (c 11 (c 23 (c 47 (c 95 (c ...
-    constraints.rue:20:10-35:2 fn main  (a (q 4 (a 5 11) (c (a 5 (c 11 (c 23 (c 47 (c 95 (c -65 (...
-      constraints.rue:34:5-34:41  (c (a 5 11) (c (a 5 (c 11 (c 23 (c 47 (c 95 (c -65 (c 383...
-        constraints.rue:34:6-34:22  (a 5 11)
-        constraints.rue:34:24-34:40  (a 5 (c 11 (c 23 (c 47 (c 95 (c -65 (c 383 (c 767 (c 1535...
-          constraints.rue:22:18-33:6  (c 11 (c 23 (c 47 (c 95 (c -65 (c 383 (c 767 (c 1535 (c 3...
-            constraints.rue:32:9-32:26  (+ 4 10)
-      constraints.rue:21:17-21:47  (c 5 (c 5 ()))
+  constraints.rue:20:10-35:2 fn main  (a (q 4 5 (c (c 5 (c 11 (c 23 (c 47 (c 95 (c -65 (c 383 (...
+    constraints.rue:34:5-34:41  (c 5 (c (c 5 (c 11 (c 23 (c 47 (c 95 (c -65 (c 383 (c 767...
+      constraints.rue:22:18-33:6 label "main"  (c 5 (c 11 (c 23 (c 47 (c 95 (c -65 (c 383 (c 767 (c 1535...
+        constraints.rue:32:9-32:26  (+ 4 10)
+    constraints.rue:21:17-21:47  (c 2 (c 2 ()))

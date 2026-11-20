@@ -1,0 +1,28 @@
+===== debug =====
+program: (a (q 18 (a 2 5) (a 2 11)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_small_function.rue:5:5"))) 1) 1))
+sidecar: 1199 bytes
+files:
+  inline_small_function.rue
+functions:
+  0: main (_ . (a@5: integer . (b@11: integer . _)))
+  1: checked value@1: integer
+nodes:
+  inline_small_function.rue:9:32-11:2  (a (q 18 (a 2 5) (a 2 11)) (c (q 2 (i (> 1 ()) (q . 1) (q...
+    inline_small_function.rue:10:5-10:28 fn main  (* (a 2 5) (a 2 11))
+      inline_small_function.rue:10:5-10:15  (a 2 5)
+      inline_small_function.rue:10:18-10:28  (a 2 11)
+    inline_small_function.rue:5:5-5:22 fn checked  (a (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inl...
+      inline_small_function.rue:5:12-5:21  (> 1 ())
+===== release =====
+program: (* (a (i (> 2 ()) (q . 2) (q 8)) 1) (a (i (> 5 ()) (q . 5) (q 8)) 1))
+sidecar: 1025 bytes
+files:
+  inline_small_function.rue
+functions:
+  0: main (a@2: integer . (b@5: integer . _))
+nodes:
+  inline_small_function.rue:10:5-10:28 fn main  (* (a (i (> 2 ()) (q . 2) (q 8)) 1) (a (i (> 5 ()) (q . 5...
+    inline_small_function.rue:5:5-5:22 label "checked (inlined)"  (a (i (> 2 ()) (q . 2) (q 8)) 1)
+      inline_small_function.rue:5:12-5:21  (> 2 ())
+    inline_small_function.rue:5:5-5:22 label "checked (inlined)"  (a (i (> 5 ()) (q . 5) (q 8)) 1)
+      inline_small_function.rue:5:12-5:21  (> 5 ())

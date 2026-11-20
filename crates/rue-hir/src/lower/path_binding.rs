@@ -216,7 +216,7 @@ impl Lowerer<'_, '_, '_> {
     }
 
     /// Whether the value is only a path (see [`Self::path_read`]).
-    fn is_path(&self, hir: HirId) -> bool {
+    pub(super) fn is_path(&self, hir: HirId) -> bool {
         self.path_read(hir).is_some()
     }
 

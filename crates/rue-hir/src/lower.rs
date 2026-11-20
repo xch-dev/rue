@@ -2,6 +2,7 @@
 
 mod debug;
 mod eager;
+mod inline;
 mod measure;
 mod path_binding;
 mod substitution;
@@ -101,6 +102,12 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// Whether no binding is read as a path, while a run is lowered the way it was before there
     /// were path bindings.
     paths_disabled: bool,
+    /// The functions that are called more than once and are inlined into each call anyway, since
+    /// the program is smaller that way (see [`Self::lower_with_inlined_functions`]).
+    inlined_functions: HashSet<SymbolId>,
+    /// Whether the functions to inline have been decided, which they are when the entrypoint is
+    /// first lowered.
+    inlining_decided: bool,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// Whether the value of each constant may fail, for the ones that can't (see
@@ -190,6 +197,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             path_choices: HashMap::new(),
             path_run_depth: 0,
             paths_disabled: false,
+            inlined_functions: HashSet::new(),
+            inlining_decided: false,
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
@@ -312,6 +321,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
+        if symbol == self.main && !self.inlining_decided {
+            self.inlining_decided = true;
+            return self.lower_with_inlined_functions(env, symbol);
+        }
+
         if let Some((frame, hir)) = self.inline_substitution(symbol) {
             return self.lower_substitution(env, frame, hir);
         }
@@ -961,11 +975,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     /// Whether the argument is no more expensive to evaluate at each reference than to bind:
-    /// it's a value that's in the environment, or a small static value.
+    /// it's a value that's in the environment, a path to a field of one (through any arguments
+    /// and bindings that are substituted), or a small static value.
     fn is_trivial_argument(&self, hir: HirId) -> bool {
         if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(hir))
             && !self.should_inline(*symbol)
         {
+            return true;
+        }
+
+        if self.is_path(hir) {
             return true;
         }
 
@@ -1904,13 +1923,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
+                if !self.options.auto_inline {
+                    return false;
+                }
+
+                // A function that's called more than once is only inlined if the program was
+                // measured to be smaller that way, whatever its parameters are referenced by
+                if references > 1 {
+                    return self.is_inlined_function(symbol);
+                }
+
                 for parameter in &function.parameters {
                     if self.graph.references(*parameter) > 1 {
                         return false;
                     }
                 }
 
-                references <= 1 && self.options.auto_inline
+                true
             }
             Symbol::Constant(constant) => {
                 if constant.inline {
