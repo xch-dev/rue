@@ -41,3 +41,10 @@ test fn check_is_kept_before_branch(value: Bytes, hash: Bytes32, flag: Bool) -> 
 fn debug_nil(_value: nil) -> Int {
     1
 }
+
+// The arguments are captured by a lambda that checks them when it's called
+test fn check_in_lambda(value: Bytes, hash: Bytes32) {
+    let prefixed = concat(["prefix", value]);
+    let check = fn() => keccak256_verify(prefixed, hash);
+    check();
+}

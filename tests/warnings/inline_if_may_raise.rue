@@ -103,6 +103,22 @@ fn verification_branch(x: Int) -> Bool {
     }
 }
 
+test fn keccak256_verification() -> Bool {
+    keccak256_verification_branch(1)
+}
+
+fn keccak256_verification_branch(x: Int) -> Bool {
+    inline if x > 5 {
+        keccak256_verify(
+            "hello",
+            0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8,
+        );
+        true
+    } else {
+        false
+    }
+}
+
 fn checked(x: Int) -> Int {
     assert x > 10;
     x

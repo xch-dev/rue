@@ -605,6 +605,10 @@ mod tests {
     /// for each target, and with the flags of blocks as well as the mempool. The softfork guard
     /// fails unless the cost it declares is exactly the cost of the check, so a matching hash
     /// only passes if the cost is right for the length of the value.
+    ///
+    /// A program compiled before hard fork 2 is also run with the flags after it, since a coin
+    /// locked to its puzzle hash before the fork must still be spendable after it, where the guard
+    /// is run with the new cost model.
     #[test]
     fn keccak256_verify_declares_the_exact_cost() {
         use clvmr::{ChiaDialect, ClvmFlags, run_program};
@@ -635,7 +639,16 @@ mod tests {
             )
             .unwrap();
 
-            for flags in [target.flags(), block(target)] {
+            let mut flag_sets = vec![target.flags(), block(target)];
+
+            if !target.hard_fork_2 {
+                flag_sets.extend([
+                    ClvmTarget::HARD_FORK_2.flags(),
+                    block(ClvmTarget::HARD_FORK_2),
+                ]);
+            }
+
+            for flags in flag_sets {
                 for len in (0..300).chain([1000, 4096]) {
                     let value = vec![0x61; len];
                     let digest = Keccak256::digest(&value).to_vec();

@@ -115,7 +115,7 @@ pub struct CompilerOptions {
     /// [`operand_limits`](Self::operand_limits) has no effect.
     ///
     /// This changes the compiled program, and so its puzzle hash, for any program that uses the
-    /// secp operators. It can also change what the optimizer emits for other programs, since it
+    /// secp operators or `keccak256_verify`. It can also change what the optimizer emits for other programs, since it
     /// folds constants by running operators with the target's flags: an operation that only
     /// succeeds after hard fork 2, such as negating an invalid point with relaxed BLS checks, is
     /// only folded with this on, and costs are compared in the target's cost model. A program compiled with this on can fail on
