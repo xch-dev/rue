@@ -206,7 +206,7 @@ fn append_node_signature(node: &SyntaxNode, signature: &mut Vec<String>) {
     }
 }
 
-/// Whether the comma follows a match arm that ends with a brace, which doesn't need one.
+/// Whether the comma follows a match arm whose comma the formatter leaves out.
 fn is_optional_match_comma(token: &rue_parser::SyntaxToken) -> bool {
     let mut previous = token.prev_sibling_or_token();
     while previous
@@ -218,7 +218,8 @@ fn is_optional_match_comma(token: &rue_parser::SyntaxToken) -> bool {
     previous
         .and_then(rowan::NodeOrToken::into_node)
         .and_then(rue_ast::AstMatchArm::cast)
-        .is_some_and(|arm| arm.ends_with_brace())
+        .and_then(|arm| arm.removable_comma())
+        .is_some_and(|comma| comma == *token)
 }
 
 fn is_optional_trailing_comma(token: &rue_parser::SyntaxToken) -> bool {

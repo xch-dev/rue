@@ -237,3 +237,10 @@ test fn arms_without_commas(value: (Int, Int) | Int) -> Int {
         }
     }
 }
+
+test fn inline_if_arm_without_comma(value: (Int, Int) | Int) -> Int {
+    match value {
+        Int => inline if value > 0 { value } else { 0 }
+        (Int, Int) => value.first,
+    }
+}

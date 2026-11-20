@@ -212,7 +212,10 @@ fn analyze_nodes(
                     let arms = AstMatchExpr::cast(node.clone())
                         .map(|expr| expr.arms().collect::<Vec<_>>())
                         .unwrap_or_default();
-                    if arms.last().is_some_and(AstMatchArm::ends_with_brace) {
+                    if arms.last().is_some_and(|arm| {
+                        arm.ends_with_brace()
+                            && (arm.comma().is_none() || arm.removable_comma().is_some())
+                    }) {
                         facts[id.index()]
                             .flags
                             .insert(TokenFlags::OMIT_TRAILING_COMMA);
@@ -235,9 +238,7 @@ fn analyze_nodes(
                     facts[id.index()].item_boundary = Some(ItemBoundary::Block);
                 }
 
-                if arm.ends_with_brace()
-                    && let Some(comma) = comma
-                {
+                if let Some(comma) = arm.removable_comma() {
                     let id = token_id(&comma, stream)?;
                     facts[id.index()].flags.insert(TokenFlags::OMITTED_COMMA);
                 }

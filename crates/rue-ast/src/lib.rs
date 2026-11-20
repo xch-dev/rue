@@ -849,19 +849,31 @@ impl AstMatchArm {
 
     /// The comma after the arm, if there is one.
     pub fn comma(&self) -> Option<SyntaxToken> {
+        self.comma_and_comments().0
+    }
+
+    /// The comma after the arm, if it can be left out: the arm ends with a brace, and there's no
+    /// comment between the arm and the comma, which would otherwise be left next to the next arm.
+    pub fn removable_comma(&self) -> Option<SyntaxToken> {
+        let (comma, has_comments) = self.comma_and_comments();
+        comma.filter(|_| self.ends_with_brace() && !has_comments)
+    }
+
+    fn comma_and_comments(&self) -> (Option<SyntaxToken>, bool) {
+        let mut has_comments = false;
         let mut next = self.syntax().next_sibling_or_token();
         while let Some(element) = next {
             if !element.kind().is_trivia() {
-                return element.into_token().filter(|token| token.kind() == T![,]);
+                let comma = element.into_token().filter(|token| token.kind() == T![,]);
+                return (comma, has_comments);
             }
+            has_comments |= matches!(
+                element.kind(),
+                SyntaxKind::LineComment | SyntaxKind::BlockComment
+            );
             next = element.next_sibling_or_token();
         }
-        None
-    }
-
-    /// Whether the comma after the arm can be left out, so the formatter removes it.
-    pub fn has_optional_comma(&self) -> bool {
-        self.ends_with_brace() && self.comma().is_some()
+        (None, has_comments)
     }
 }
 

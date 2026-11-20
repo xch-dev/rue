@@ -17,6 +17,15 @@ fn missing_comma_same_line(value: Int | nil) -> Int {
     match value { nil => 0 _ => 1 }
 }
 
+// An arm whose value is a block ends at its closing brace, like a block statement, so it can't be
+// continued with a field access or an operator
+fn continued_block_arm(value: Int | nil) -> Int {
+    match value {
+        nil => { (1, 2) }.first,
+        Int => if value > 0 { 1 } else { 2 } + 3,
+    }
+}
+
 fn missing_body(value: Int | nil) -> Int {
     match value {
         nil =>,
@@ -62,4 +71,5 @@ fn main() -> Int {
         + missing_brace(nil) + missing_value()
         + unclosed_arm(A {})
         + missing_comma_same_line(nil)
+        + continued_block_arm(nil)
 }

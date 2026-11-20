@@ -1767,3 +1767,19 @@ fn match_commas_after_braces_are_removed() {
         "#]],
     );
 }
+
+#[test]
+fn match_commas_after_comments_are_kept() {
+    check(
+        "fn main(x: Int | nil) -> Int {\n    match x {\n        nil => { 1 } /* c1 */ , // c2\n        Int => { 2 } // c3\n        ,\n    }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                match x {
+                    nil => { 1 } /* c1 */ , // c2
+                    Int => { 2 } // c3
+                    ,
+                }
+            }
+        "#]],
+    );
+}

@@ -182,3 +182,11 @@ tests:
   runtime_cost: 1145
   byte_cost: 564000
   total_cost: 565145
+- name: inline_if_arm_without_comma
+  program: (a (i (l 2) (q . 4) (q 3 (> 2 ()) 2 ())) 1)
+  debug_program: (a (i (not (l 2)) (q 3 (> 2 ()) 2 ()) (q 5 2)) 1)
+  solution: (5)
+  output: "5"
+  runtime_cost: 996
+  byte_cost: 444000
+  total_cost: 444996

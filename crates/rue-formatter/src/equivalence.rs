@@ -27,9 +27,7 @@ pub fn comment_signature(
         .descendants()
         .filter_map(AstMatchArm::cast)
     {
-        if arm.ends_with_brace()
-            && let Some(comma) = arm.comma()
-        {
+        if let Some(comma) = arm.removable_comma() {
             let id = stream.token_id_at_offset(usize::from(comma.text_range().start()))?;
             omitted_commas.insert(id.index());
         }
