@@ -19,6 +19,11 @@ workspace = true
 
 [dependencies]
 rue-compiler = { workspace = true }
+rue-ast = { workspace = true }
+rue-hir = { workspace = true }
+id-arena = { workspace = true }
+rue-types = { workspace = true }
+rowan = { workspace = true }
 rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
 rue-lir = { workspace = true }

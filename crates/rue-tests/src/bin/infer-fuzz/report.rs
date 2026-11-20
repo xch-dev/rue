@@ -255,6 +255,7 @@ fn write_counts(out: &mut String, records: &[SeedRecord]) {
         "some",
         "one",
         "expected",
+        "probe",
         "total",
         "programs (worst variant)",
     ] {

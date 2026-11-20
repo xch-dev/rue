@@ -201,7 +201,75 @@ const HELPERS: &[Template] = &[
 ///   generic function types in bindings' annotations and functions' return types (#340, #359),
 ///   longer chains and cycles of generics, `std`'s `merge_list`, and the `expected` variant,
 ///   which removes only the generic arguments that the expected type alone gives.
-pub const VERSIONS: [u32; 2] = [1, 2];
+/// - **3**: adds the shapes that the generics campaign's bugs had and the earlier versions don't
+///   make (#362): lists, pairs and boxes of untyped lambdas (#485, #489), recursive functions that
+///   pass them to themselves, lambdas whose bodies call generic functions (so that calls nest in
+///   the lambdas of other calls' arguments, as well as in their arguments, as earlier versions'
+///   do), bindings whose annotation is a union of a generic function type and `Any` (#490), and
+///   wider unions in expected types. Each of those bindings is a probe: one whose arguments
+///   don't give its call's generics a type is only removed by a `probe` variant of its own,
+///   where rejecting it is right and compiling it must not leak a generic (see `leak.rs`), and
+///   one whose arguments do is removed as any other call is.
+pub const VERSIONS: [u32; 3] = [1, 2, 3];
+
+/// Functions that generator version 3 adds to the catalog, which take lists, pairs and boxes of
+/// functions, or return a function from one (#485, #489, #490).
+const CATALOG_V3: &[Template] = &[
+    template(
+        "apply_each",
+        &["T", "U"],
+        &[("functions", "List<fn(a: T) -> U>"), ("value", "T")],
+        "List<U>",
+    ),
+    template(
+        "apply_first",
+        &["T", "U"],
+        &[("functions", "(fn(a: T) -> U, Int)"), ("value", "T")],
+        "U",
+    ),
+    template(
+        "first_and",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, T)"), ("value", "T")],
+        "U",
+    ),
+    template(
+        "two_steps",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, fn(b: U) -> Int)"), ("value", "T")],
+        "Int",
+    ),
+    template(
+        "apply_boxed",
+        &["T", "U"],
+        &[("function", "Box<fn(a: T) -> U>"), ("value", "T")],
+        "U",
+    ),
+    template(
+        "with_value",
+        &["T", "U"],
+        &[("functions", "List<fn(a: T) -> U>"), ("value", "T")],
+        "(List<U>, T)",
+    ),
+    template(
+        "self_feeding",
+        &["T"],
+        &[("pair", "(Int, fn(a: T) -> T)"), ("value", "T")],
+        "T",
+    ),
+    template(
+        "make_from_lambda",
+        &["A"],
+        &[("function", "fn(x: A) -> A")],
+        "fn(a: A) -> A",
+    ),
+    template(
+        "make_list",
+        &["A"],
+        &[("value", "List<A>")],
+        "fn(a: A) -> List<A>",
+    ),
+];
 
 /// Functions that generator version 2 adds to the catalog.
 const CATALOG_V2: &[Template] = &[
@@ -474,6 +542,11 @@ pub struct Generator {
     /// Whether expressions may call the program's generic functions. Catalog functions get
     /// plain bodies, such as `function(value)`.
     calls: bool,
+    /// How many lambdas the expression being built is inside of, which limits how many of them
+    /// version 3 lets call functions (see `function_value`).
+    lambdas: u32,
+    /// The sites of the calls that version 3's probe bindings make (see [`VERSIONS`]).
+    probes: BTreeSet<SiteId>,
 }
 
 /// How deep expressions are built in `main`, and in function bodies.
@@ -495,24 +568,40 @@ impl Generator {
             next_site: 0,
             next_name: 0,
             calls: true,
+            lambdas: 0,
+            probes: BTreeSet::new(),
         }
     }
 
     pub fn generate(mut self) -> Generated {
         let v2 = self.version >= 2;
-        let all: Vec<&Template> = if v2 {
+        let v3 = self.version >= 3;
+        let all: Vec<&Template> = if v3 {
+            CATALOG.iter().chain(CATALOG_V2).chain(CATALOG_V3).collect()
+        } else if v2 {
             CATALOG.iter().chain(CATALOG_V2).collect()
         } else {
             CATALOG.iter().collect()
         };
         let mut catalog = all.clone();
-        // Version 2's catalog is larger, so it picks more, for related functions to still meet
-        let count = if v2 {
+        // Version 2's catalog is larger, so it picks more, for related functions to still meet,
+        // and version 3 always picks some of its own
+        let count = if v3 {
+            self.rng.range(5, 10)
+        } else if v2 {
             self.rng.range(5, 11)
         } else {
             self.rng.range(4, 9)
         };
         let mut picked = Vec::new();
+        if v3 {
+            let mut own: Vec<&Template> = CATALOG_V3.iter().collect();
+            for _ in 0..self.rng.range(2, 4) {
+                let template = own.remove(self.rng.below(own.len()));
+                catalog.retain(|other| other.name != template.name);
+                picked.push(template);
+            }
+        }
         for _ in 0..count {
             picked.push(catalog.remove(self.rng.below(catalog.len())));
         }
@@ -541,6 +630,7 @@ impl Generator {
         let program = Program {
             functions: self.functions,
             main,
+            probes: self.probes,
         };
 
         let variants = variants(&mut self.rng, &program, v2);
@@ -571,10 +661,17 @@ impl Generator {
             .map(|(name, ty)| ((*name).to_string(), parse_ty(ty, template.generics)))
             .collect();
         let ret = parse_ty(template.ret, template.generics);
-        // Some higher-order functions call themselves, as `map` does in #334
-        let recursive = !generics.is_empty()
-            && params.iter().any(|(_, ty)| matches!(ty, Ty::Fn(..)))
-            && self.rng.chance(15);
+        // Some higher-order functions call themselves, as `map` does in #334, and in version 3
+        // those that take lists, pairs and boxes of functions too, more often
+        let recursive = if self.version >= 3 {
+            !generics.is_empty()
+                && params.iter().any(|(_, ty)| ty.contains_fn())
+                && self.rng.chance(35)
+        } else {
+            !generics.is_empty()
+                && params.iter().any(|(_, ty)| matches!(ty, Ty::Fn(..)))
+                && self.rng.chance(15)
+        };
         if recursive {
             params.push(("depth".to_string(), Ty::Int));
         }
@@ -805,6 +902,55 @@ impl Generator {
         Some((annotation.clone(), Expr::new(wrapped, annotation)))
     }
 
+    /// A probe binding's annotation and value (generator version 3): a call to a function that
+    /// returns a function of one of its generics, such as `make_from_lambda(fn(x) => x)`, and a
+    /// union of `Any` with that function type made generic over the generic, as
+    /// `(fn<T>(a: T) -> T) | Any`. The explicit program's generic arguments are assignable through
+    /// `Any`. Without them, where the arguments don't give the generic a type, a generic that a
+    /// parameter depends on is rightly rejected, as `make_from_lambda(fn(x) => x)`'s is, and a
+    /// compiler that infers it as the annotation's `T` names `T` outside of its function type
+    /// (#490). One that no parameter depends on, as in `pair_fn()`, is generalized over the
+    /// annotation's `T`, and compiles. Where the arguments do give it a type, as in
+    /// `make_list([7, 9])`, the call must compile.
+    fn probe(&mut self, scope: &Scope) -> Option<(Ty, Expr)> {
+        let candidates: Vec<usize> = (0..self.functions.len())
+            .filter(|&index| {
+                let function = &self.functions[index];
+                !function.generics.is_empty()
+                    && matches!(&function.ret, Ty::Fn(params, _) if matches!(params.as_slice(), [Ty::Var(_)]))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        let index = candidates[self.rng.below(candidates.len())];
+        let function = self.functions[index].clone();
+        let Ty::Fn(params, ret) = &function.ret else {
+            unreachable!("filtered above");
+        };
+        let Ty::Var(generic) = params[0] else {
+            unreachable!("filtered above");
+        };
+
+        let generic_args = self.instantiate(&function, vec![None; function.generics.len()], scope);
+        let mut bound = generic_args.clone();
+        bound[generic] = Ty::Rigid("T".to_string());
+        let annotation = Ty::Union(vec![
+            Ty::GenFn(
+                vec!["T".to_string()],
+                vec![Ty::Rigid("T".to_string())],
+                Box::new(ret.subst(&bound)),
+            ),
+            Ty::Any,
+        ]);
+
+        let call = self.call_to(index, generic_args, scope, 1);
+        if let Some(site) = call.site() {
+            self.probes.insert(site);
+        }
+        Some((annotation, call))
+    }
+
     /// The kinds of types that generator version 2 adds.
     fn ty_v2(&mut self, scope: &Scope, depth: u32) -> Ty {
         match self.rng.weighted(&[20, 15, 15, 10, 15, 10, 15]) {
@@ -958,6 +1104,11 @@ impl Generator {
                 let goal = match &value.ty {
                     Ty::Lit(_) if self.rng.chance(30) => Ty::Int,
                     ty @ (Ty::Int | Ty::Pair(..)) if self.rng.chance(15) => Ty::opt(ty.clone()),
+                    // Or a union with another type, which version 3 makes of any type
+                    ty if self.version >= 3 && self.rng.chance(20) => {
+                        let other = self.ty(&scope, 1);
+                        union_of(vec![ty.clone(), other])
+                    }
                     ty => ty.clone(),
                 };
                 (goal, value)
@@ -1015,6 +1166,23 @@ impl Generator {
                     annotation: Some(annotation),
                     value,
                 });
+            }
+        }
+
+        // Bindings whose annotation is a union of a generic function type and `Any`, which gives
+        // the call's generics no type: only `Any` is assignable from what the explicit program
+        // gives, and nothing else gives one (see `probe`)
+        if self.version >= 3 {
+            for _ in 0..self.rng.range(0, 2) {
+                if let Some((annotation, value)) = self.probe(&scope) {
+                    let name = format!("v{}", lets.len());
+                    parts.push(Expr::new(ExprKind::Var(name.clone()), Ty::Any));
+                    lets.push(Let {
+                        name,
+                        annotation: Some(annotation),
+                        value,
+                    });
+                }
             }
         }
 
@@ -1082,7 +1250,10 @@ impl Generator {
                 }
             }
             Ty::List(inner) => {
-                let expected = expected && !goal.gives_lambdas_no_types();
+                // Since #485 and #489, a list gives the lambdas in it their parameter types
+                let expected = expected
+                    && (!goal.gives_lambdas_no_types()
+                        || self.version >= 3 && matches!(**inner, Ty::Fn(..)));
                 match self.rng.below(3) {
                     0 => ExprKind::Nil,
                     count => ExprKind::List(
@@ -1370,7 +1541,16 @@ impl Generator {
                 (name, param.clone())
             })
             .collect();
-        let body = self.expr(ret, &inner, depth.saturating_sub(1), false);
+        // Version 3 lets a lambda's body call functions even where it's built at the last depth,
+        // for the lambdas that aren't inside two others already
+        let body_depth = if self.version >= 3 && self.lambdas < 2 {
+            depth.max(2) - 1
+        } else {
+            depth.saturating_sub(1)
+        };
+        self.lambdas += 1;
+        let body = self.expr(ret, &inner, body_depth, false);
+        self.lambdas -= 1;
 
         Expr::new(
             ExprKind::Lambda {
@@ -1481,16 +1661,30 @@ impl Removable<'_> {
                 ..
             } => {
                 if let Some(function) = self.program.function(function) {
+                    // A probe's expected type gives its generics nothing, since it's a generic
+                    // function type or `Any`
+                    let probe = self.program.probes.contains(site);
                     let witnessed = Witnessed::new(
                         self.program,
                         self.variant,
                         function,
                         *site,
                         args,
-                        expected,
+                        expected && !probe,
                         true,
                     );
-                    self.masks.insert(*site, witnessed.generics);
+                    // A probe whose generics its arguments don't all give a type in the explicit
+                    // program, which only the expected type's `Any` would, is only removed in its
+                    // own variant, and kept everywhere else. One whose arguments do is removed as
+                    // any other call is, which keeps it when the variant also removes what gives
+                    // its generics a type, as `identity` in `make_from_lambda(identity, 1)`
+                    // (see `Generator::probe`)
+                    let generics = if probe && !inferable(self.program, function, *site, args) {
+                        vec![self.variant.stripped.contains_key(site); witnessed.generics.len()]
+                    } else {
+                        witnessed.generics
+                    };
+                    self.masks.insert(*site, generics);
                     // The generics of a function passed to the call get a type through it
                     self.masks.extend(witnessed.references);
                 }
@@ -1938,6 +2132,61 @@ fn applied(name: &str, ty: &Ty) -> Expr {
 /// and a single site. Arguments that can't be removed at a site are kept, and the others are
 /// replaced with `_`.
 fn variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)> {
+    let mut variants = other_variants(rng, program, v2);
+
+    // Each probe whose generics nothing but the expected type's `Any` gives a type, with its
+    // generic arguments removed and nothing else, so that one probe's rejection can't hide
+    // another's. Only a variant that removes a probe's arguments counts them as removable, so the
+    // other variants keep them, and each of these is legal as it is (see `Generator::probe`)
+    for site in uninferable_probes(program) {
+        let probe = Variant {
+            stripped: [(site, Strip::All)].into(),
+        };
+        variants.push(("probe".to_string(), probe));
+    }
+
+    variants
+}
+
+/// Whether a call's arguments give each of its generics a type in the explicit program, without
+/// the expected type and with all of the call's generic arguments removed, so that generics that
+/// only give each other a type, as `compose`'s do in `compose(fn<V>(value: V) => value)`, don't
+/// count (infer-fuzz generator 3, seed 197).
+fn inferable(program: &Program, function: &Function, site: SiteId, args: &[Expr]) -> bool {
+    let stripped = Variant {
+        stripped: [(site, Strip::All)].into(),
+    };
+    Witnessed::new(program, &stripped, function, site, args, false, true)
+        .generics
+        .iter()
+        .all(|&generic| generic)
+}
+
+/// The probes whose generics their arguments don't all give a type (see `inferable` and
+/// `Generator::probe`).
+pub fn uninferable_probes(program: &Program) -> BTreeSet<SiteId> {
+    let mut sites = BTreeSet::new();
+    for expr in program.exprs() {
+        expr.walk(&mut |expr| {
+            if let ExprKind::Call {
+                site: Some(site),
+                function,
+                args,
+                ..
+            } = &expr.kind
+                && program.probes.contains(site)
+                && let Some(function) = program.function(function)
+                && !inferable(program, function, *site, args)
+            {
+                sites.insert(*site);
+            }
+        });
+    }
+    sites
+}
+
+/// The variants other than `probe`: `all`, `some`, `one` and, from version 2, `expected`.
+fn other_variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)> {
     let removable = &removable_sites(program, &Variant::default());
     let sites: Vec<SiteId> = program
         .sites()

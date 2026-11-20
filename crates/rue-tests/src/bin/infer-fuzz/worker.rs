@@ -136,7 +136,7 @@ pub fn run_command(out: &mut impl Write, version: u32, seed: u64, start: usize) 
     send(out, "explicit", &status)?;
 
     if valid {
-        for (index, (_, variant)) in generated.variants.iter().enumerate().skip(start) {
+        for (index, (name, variant)) in generated.variants.iter().enumerate().skip(start) {
             let source = generated.program.print(variant);
             progress(out, &index.to_string())?;
             let stripped = compile(&source);
@@ -149,6 +149,7 @@ pub fn run_command(out: &mut impl Write, version: u32, seed: u64, start: usize) 
                 let _ = progress(out, &stage);
                 (explicit, compile(&source))
             });
+            let outcome = probe_outcome(&generated.program, name, variant, outcome);
             send(out, "variant", &(index, outcome))?;
         }
     }
@@ -218,6 +219,9 @@ fn shrink_command(
     let message = match compile_program(&program, &variant) {
         Compiled::Rejected { diag, .. } => diag.located(),
         Compiled::Panicked { message } => message,
+        Compiled::Ok {
+            leak: Some(leak), ..
+        } => leak,
         Compiled::Ok { run, .. } => format!("{run:?}"),
     };
 
@@ -232,8 +236,37 @@ fn shrink_command(
     Ok(())
 }
 
+/// The outcome of a variant, counting a `probe` variant's rejection as inferred when it's that its
+/// probe's generic can't be inferred, which is right, since nothing gives it a type (see
+/// `Generator::probe`). Each of those variants removes only that probe's generic arguments, so
+/// the diagnostic is the probe's. Any other rejection is a failure, as it is for any other variant.
+pub fn probe_outcome(
+    program: &Program,
+    name: &str,
+    variant: &Variant,
+    mut outcome: Outcome,
+) -> Outcome {
+    let callees = program.probe_callees(variant);
+    let expected = outcome.diag.as_ref().is_some_and(|diag| {
+        diag.kind == "CannotInferGeneric"
+            && callees
+                .iter()
+                .any(|callee| diag.message.contains(&format!(" for `{callee}`")))
+    });
+
+    if name == "probe" && outcome.category == Category::Rejected && expected {
+        outcome.category = Category::Inferred;
+        outcome.detail = outcome
+            .diag
+            .take()
+            .map(|diag| format!("rejected: {}", diag.located()));
+    }
+
+    outcome
+}
+
 /// Whether a shrunk candidate fails like the original: the same diagnostic for a rejection, a
-/// different output for an unsound result, or the same panic.
+/// different output for an unsound result, a leaked generic for a leak, or the same panic.
 pub fn same_failure(original: &Outcome, expected: &oracle::Run, stripped: &Compiled) -> bool {
     match (original.category, stripped) {
         (Category::Rejected, Compiled::Rejected { diag, .. }) => original
@@ -241,6 +274,8 @@ pub fn same_failure(original: &Outcome, expected: &oracle::Run, stripped: &Compi
             .as_ref()
             .is_some_and(|target| diag.same_failure(target)),
         (Category::Unsound, Compiled::Ok { run, .. }) => run != expected,
+        // Any leak counts, since shrinking renames nothing but can remove the binding it was in
+        (Category::Leaked, Compiled::Ok { run, leak, .. }) => run == expected && leak.is_some(),
         (Category::Crashed, Compiled::Panicked { message }) => {
             Some(message) == original.detail.as_ref()
         }

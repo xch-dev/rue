@@ -129,6 +129,7 @@ fn program(functions: Vec<Function>, annotation: Option<Ty>, value: Expr) -> Pro
             }],
             body: Expr::new(ExprKind::Var("v0".to_string()), Ty::Any),
         },
+        probes: std::collections::BTreeSet::new(),
     }
 }
 
@@ -724,6 +725,7 @@ fn ok(clvm: &str, millis: u64) -> Compiled {
         run: Run::Output("1".to_string()),
         time: Duration::from_millis(millis),
         fingerprint: String::new(),
+        leak: None,
     }
 }
 
@@ -846,6 +848,7 @@ fn unsound_and_crashed_failures_must_stay_so_while_shrinking() {
         run: Run::Output("2".to_string()),
         time: Duration::from_millis(1),
         fingerprint: String::new(),
+        leak: None,
     };
     assert!(worker::same_failure(&unsound, &expected, &different));
 
@@ -907,6 +910,360 @@ fn tags_and_shapes_describe_the_calls_whose_arguments_are_removed() {
         shrink::shape(&program, &variant),
         "cycle(lambda, typed lambda, lit) as let: literal"
     );
+}
+
+/// A compile that leaked a generic is `Leaked` when it runs the same as the explicit program, and
+/// `Unsound` when it doesn't, which is the worse failure. A shrunk candidate fails like a leak only
+/// if it still leaks and runs the same.
+#[test]
+fn leaks_are_classified_and_shrunk_as_leaks() {
+    let leaked = |output: &str| Compiled::Ok {
+        clvm: "(q . 1)".to_string(),
+        run: Run::Output(output.to_string()),
+        time: Duration::from_millis(1),
+        fingerprint: String::new(),
+        leak: Some("`x: T` names `T` outside of where it's bound".to_string()),
+    };
+    let explicit = ok("(q . 1)", 1);
+    let unchanged = || (ok("(q . 1)", 1), ok("(q . 1)", 1));
+
+    let outcome = classify(&explicit, &leaked("1"), unchanged);
+    assert_eq!(outcome.category, Category::Leaked);
+    assert!(
+        outcome
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("`x: T`"))
+    );
+    assert_eq!(
+        classify(&explicit, &leaked("2"), unchanged).category,
+        Category::Unsound
+    );
+
+    let expected = Run::Output("1".to_string());
+    assert!(worker::same_failure(&outcome, &expected, &leaked("1")));
+    assert!(!worker::same_failure(&outcome, &expected, &leaked("2")));
+    assert!(!worker::same_failure(
+        &outcome,
+        &expected,
+        &ok("(q . 1)", 1)
+    ));
+}
+
+/// A probe's rejection counts as inferred only in the `probe` variant, and only when it's that the
+/// probe's own generic can't be inferred. Any other rejection, or a leak, stays a failure.
+#[test]
+fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
+    let generated = (0..40)
+        .map(|seed| Generator::versioned(seed, 3).generate())
+        .find(|generated| generated.variants.iter().any(|(name, _)| name == "probe"))
+        .unwrap();
+    let program = &generated.program;
+    let (_, variant) = generated
+        .variants
+        .iter()
+        .find(|(name, _)| name == "probe")
+        .unwrap();
+    let callee = *program.probe_callees(variant).iter().next().unwrap();
+
+    let rejected = |kind: &str, message: String| {
+        let mut outcome = Outcome::failed(Category::Rejected, String::new(), 1.0);
+        outcome.detail = None;
+        outcome.diag = Some(Diag {
+            kind: kind.to_string(),
+            message,
+            line_col: "1:1".to_string(),
+        });
+        outcome
+    };
+    let cannot_infer = || {
+        rejected(
+            "CannotInferGeneric",
+            format!("Cannot infer generic `A` for `{callee}`; specify it explicitly"),
+        )
+    };
+
+    let probe = worker::probe_outcome(program, "probe", variant, cannot_infer());
+    assert_eq!(probe.category, Category::Inferred);
+    assert!(probe.diag.is_none());
+    assert!(
+        probe
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.starts_with("rejected: "))
+    );
+
+    let other = worker::probe_outcome(program, "some", variant, cannot_infer());
+    assert_eq!(other.category, Category::Rejected);
+
+    let incompatible = rejected("IncompatibleType", "Cannot assign `_` to `_`".to_string());
+    let incompatible = worker::probe_outcome(program, "probe", variant, incompatible);
+    assert_eq!(incompatible.category, Category::Rejected);
+
+    let elsewhere = rejected(
+        "CannotInferGeneric",
+        "Cannot infer generic `A` for `not_a_probe`; specify it explicitly".to_string(),
+    );
+    assert_eq!(
+        worker::probe_outcome(program, "probe", variant, elsewhere).category,
+        Category::Rejected
+    );
+
+    // A probe variant removes only its own probe's arguments, so a probe that its arguments give a
+    // type, which other variants remove, isn't excused by it
+    let inferable = (0..200)
+        .map(|seed| Generator::versioned(seed, 3).generate())
+        .find_map(|generated| {
+            let uninferable = crate::generate::uninferable_probes(&generated.program);
+            let site = generated
+                .program
+                .probes
+                .iter()
+                .find(|site| !uninferable.contains(site))
+                .copied()?;
+            let callee = generated.program.probe_callees(&Variant {
+                stripped: [(site, Strip::All)].into(),
+            });
+            let callee = (*callee.iter().next()?).to_string();
+            let (_, variant) = generated
+                .variants
+                .iter()
+                .find(|(_, variant)| variant.stripped.contains_key(&site))?
+                .clone();
+            Some((generated.program.clone(), variant, callee))
+        })
+        .unwrap();
+    let (program_with_inferable, variant_with_inferable, inferable_callee) = &inferable;
+    let rejected_inferable = rejected(
+        "CannotInferGeneric",
+        format!("Cannot infer generic `A` for `{inferable_callee}`; specify it explicitly"),
+    );
+    assert_eq!(
+        worker::probe_outcome(
+            program_with_inferable,
+            "all",
+            variant_with_inferable,
+            rejected_inferable
+        )
+        .category,
+        Category::Rejected
+    );
+
+    let leaked = Outcome::failed(Category::Leaked, "leak".to_string(), 1.0);
+    assert_eq!(
+        worker::probe_outcome(program, "probe", variant, leaked).category,
+        Category::Leaked
+    );
+}
+
+/// The counts table has a row for each variant, the `probe` one too.
+#[test]
+fn the_report_counts_probe_variants() {
+    let records = vec![record(
+        0,
+        &[
+            ("all", Category::Inferred, &[]),
+            ("probe", Category::Inferred, &[]),
+        ],
+    )];
+    let clusters = report::clusters(&records);
+    assert!(report::report(&records, &clusters).contains("| probe | 1 |"));
+}
+
+/// The variants other than `probe` of generator version 3's programs don't leak on the compiler
+/// as it is, so the leak oracle's exceptions, a function's own generics and a lambda parameter
+/// compiled as a callee's generic, are what they need to be.
+#[test]
+fn version_3_variants_dont_leak() {
+    for seed in 0..60 {
+        let generated = Generator::versioned(seed, 3).generate();
+        let std = generated.program.uses_std();
+        for (name, variant) in &generated.variants {
+            if name == "probe" {
+                continue;
+            }
+            let source = generated.program.print(variant);
+            if let Compiled::Ok {
+                leak: Some(leak), ..
+            } = oracle::compile_with(&source, std)
+            {
+                panic!("seed {seed}, variant `{name}`: {leak}");
+            }
+        }
+    }
+}
+
+/// What the leak oracle finds in a compiled program.
+fn leak_of(compilation: &mut oracle::Compilation) -> Option<String> {
+    crate::leak::leak(
+        &mut compilation.ctx,
+        &compilation.document,
+        &compilation.kind,
+        compilation.first_hir,
+    )
+}
+
+/// The symbol declared in the program with the name.
+fn symbol_named(compilation: &oracle::Compilation, name: &str) -> rue_hir::SymbolId {
+    compilation
+        .ctx
+        .syntax_map()
+        .items()
+        .find_map(|item| match item.kind {
+            rue_compiler::SyntaxItemKind::SymbolDeclaration(symbol)
+                if compilation
+                    .ctx
+                    .symbol(symbol)
+                    .name()
+                    .is_some_and(|symbol_name| symbol_name.text() == name) =>
+            {
+                Some(symbol)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no symbol `{name}`"))
+}
+
+/// The leak oracle flags a binding whose type names a function's generic outside of that
+/// function, which is what a callee's generic left in an inferred type looks like, and allows the
+/// same generic in a lambda's parameter, which is how an element lambda compiled where it is gets
+/// it (#485). A generic that no function declares is flagged in a parameter too. The types are
+/// put in by hand, since the compiler doesn't leak any more.
+#[test]
+fn leak_oracle_flags_a_generic_outside_of_its_function() {
+    use rue_hir::Symbol;
+    use rue_types::{Generic, Type};
+
+    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Int {\n    let y = 1;\n    let g = fn(z: Int) => z;\n    f(g(y))\n}\n";
+    let mut compilation = oracle::compilation(source, false);
+    assert_eq!(leak_of(&mut compilation), None);
+
+    let f = symbol_named(&compilation, "f");
+    let Symbol::Function(function) = compilation.ctx.symbol(f) else {
+        panic!("`f` is a function");
+    };
+    let generic = function.vars[0];
+
+    // A binding outside of `f` with `f`'s `T`
+    let y = symbol_named(&compilation, "y");
+    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
+        panic!("`y` is a binding");
+    };
+    let int = std::mem::replace(&mut binding.value.ty, generic);
+    let leak = leak_of(&mut compilation).unwrap();
+    assert!(leak.contains("`y: T` names `T`"), "{leak}");
+    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
+        unreachable!();
+    };
+    binding.value.ty = int;
+
+    // A lambda's parameter with it is allowed, and with a generic that no function declares isn't
+    let z = symbol_named(&compilation, "z");
+    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
+        panic!("`z` is a parameter");
+    };
+    parameter.ty = generic;
+    assert_eq!(leak_of(&mut compilation), None);
+    let unnamed = compilation
+        .ctx
+        .alloc_type(Type::Generic(Generic { name: None }));
+    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
+        unreachable!();
+    };
+    parameter.ty = unnamed;
+    assert!(leak_of(&mut compilation).is_some_and(|leak| leak.contains("`z: ")));
+}
+
+/// The leak oracle checks the type the compiler recorded for each expression too, where a call's
+/// type goes straight into an annotated binding, as `make_list(nil)` did before #490. An expression
+/// in a lambda with parameters, or a pair around one, can have a callee's generic, as an element
+/// lambda compiled where it is does (#485), and a call can't, even around a lambda.
+#[test]
+fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
+    use rue_hir::{HirId, Symbol};
+
+    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Any {\n    let p = (fn(z: Int) => z, 2);\n    let q = f(p.first(1));\n    let r = f(fn(w: Int) => w);\n    let h = fn() => (f(5), 6);\n    (q, (r, h))\n}\n";
+    let mut compilation = oracle::compilation(source, false);
+    assert_eq!(leak_of(&mut compilation), None);
+
+    let f = symbol_named(&compilation, "f");
+    let Symbol::Function(function) = compilation.ctx.symbol(f) else {
+        panic!("`f` is a function");
+    };
+    let generic = function.vars[0];
+
+    // The node of the expression with the text, after the declarations
+    let main = source.find("fn main").unwrap();
+    let node = |compilation: &oracle::Compilation, text: &str| -> HirId {
+        crate::leak::hir_ids(compilation.first_hir, compilation.ctx.next_hir_id())
+            .find(|&hir| {
+                compilation.ctx.hir_type(hir).is_some()
+                    && compilation.ctx.hir_srcloc(hir).is_some_and(|srcloc| {
+                        srcloc.span.start > main && source[srcloc.span.clone()] == *text
+                    })
+            })
+            .unwrap_or_else(|| panic!("no node for `{text}`"))
+    };
+
+    for (text, leaks) in [
+        ("f(p.first(1))", true),
+        ("f(fn(w: Int) => w)", true),
+        ("z", false),
+        ("(fn(z: Int) => z, 2)", false),
+        // A lambda without parameters has none compiled as a callee's generic, so what's in it
+        // can't have one
+        ("(f(5), 6)", true),
+    ] {
+        let hir = node(&compilation, text);
+        let ty = compilation.ctx.hir_type(hir).unwrap();
+        compilation.ctx.set_hir_type(hir, generic);
+        let leak = leak_of(&mut compilation);
+        if leaks {
+            assert!(
+                leak.as_ref()
+                    .is_some_and(|leak| leak.contains(&format!("`{text}: T` names `T`"))),
+                "`{text}`: {leak:?}"
+            );
+        } else {
+            assert_eq!(leak, None, "`{text}`");
+        }
+        compilation.ctx.set_hir_type(hir, ty);
+    }
+}
+
+/// A binding in a generic function can have its generics, and a binding outside of it can't.
+#[test]
+fn leak_oracle_allows_a_functions_own_generics() {
+    let inside =
+        "fn f<T>(x: T) -> T {\n    let y: T = x;\n    y\n}\n\nfn main() -> Int {\n    f(1)\n}\n";
+    assert!(matches!(
+        oracle::compile(inside),
+        Compiled::Ok { leak: None, .. }
+    ));
+
+    // A generic function's type with its generic arguments applied, whose `T` the arguments stand
+    // for (infer-fuzz generator 3, seed 1889)
+    let applied = "type Maybe<T> = T | nil;\n\nfn wrap_maybe<T>(value: T) -> Maybe<T> {\n    nil\n}\n\nfn main() -> Any {\n    let v0 = wrap_maybe::<Int>;\n    nil\n}\n";
+    let compiled = oracle::compile(applied);
+    assert!(
+        matches!(compiled, Compiled::Ok { leak: None, .. }),
+        "{compiled:?}"
+    );
+
+    // A lambda's own generics, in its body and in a lambda in it, where it has no parameters
+    for body in [
+        "if (nil as List<U>) is nil { 1 } else { 2 }",
+        "{\n        let n: List<U> = nil;\n        let g = fn(x: U): U => x;\n        let _ = g;\n        if n is nil { 1 } else { 2 }\n    }",
+    ] {
+        let source = format!(
+            "fn run(f: fn<U>() -> Int) -> Int {{\n    f()\n}}\n\nfn main() -> Int {{\n    run(fn<U>(): Int => {body})\n}}\n"
+        );
+        let compiled = oracle::compile(&source);
+        assert!(
+            matches!(compiled, Compiled::Ok { leak: None, .. }),
+            "{source}\n{compiled:?}"
+        );
+    }
 }
 
 fn record(seed: u64, outcomes: &[(&str, Category, &[&str])]) -> report::SeedRecord {
@@ -1191,6 +1548,7 @@ fn comparisons_report_variants_that_are_no_longer_inferred() {
     for worse in [
         Category::Rejected,
         Category::Unsound,
+        Category::Leaked,
         Category::Slow,
         Category::Crashed,
     ] {
@@ -1215,8 +1573,19 @@ fn comparisons_report_variants_that_are_no_longer_inferred() {
         [Status]
     );
 
-    // Staying unsound, slow or crashed isn't a regression in itself
-    for bad in [Category::Unsound, Category::Slow, Category::Crashed] {
+    // A rejection that becomes a leak is worse too
+    assert_eq!(
+        kinds(&compared(Category::Rejected, Category::Leaked)),
+        [Regression]
+    );
+
+    // Staying unsound, leaked, slow or crashed isn't a regression in itself
+    for bad in [
+        Category::Unsound,
+        Category::Leaked,
+        Category::Slow,
+        Category::Crashed,
+    ] {
         assert_eq!(kinds(&compared(bad, bad)), [], "{bad:?}");
     }
 
@@ -1664,6 +2033,190 @@ fn version_2_programs_never_change() {
     assert_eq!(programs_hash(2), VERSION_2_HASH, "{:#x}", programs_hash(2));
 }
 
+/// The same as `VERSION_1_HASH`, for generator version 3.
+const VERSION_3_HASH: u64 = 0x37ab_bacb_1f9c_c771;
+
+/// No program declares two functions with the same name, as version 3 once did when its catalog
+/// had two `map_list`s (seed 93).
+#[test]
+fn programs_declare_each_function_once() {
+    for version in crate::generate::VERSIONS {
+        for seed in 0..300 {
+            let generated = Generator::versioned(seed, version).generate();
+            let mut names = std::collections::HashSet::new();
+            for function in &generated.program.functions {
+                assert!(
+                    names.insert(function.name.clone()),
+                    "version {version}, seed {seed} declares `{}` twice",
+                    function.name
+                );
+            }
+        }
+    }
+}
+
+/// Only a probe variant removes the generic arguments of a probe whose arguments don't give them a
+/// type, and each removes one. The other variants remove a probe's generic arguments only where
+/// something else gives them a type, and not along with it, as `identity` in
+/// `make_from_lambda(identity, 1)`. A probe whose generics only give each other a type is one
+/// whose arguments don't, as `compose(fn<V>(value: V) => value)` (seed 197).
+#[test]
+fn version_3_variants_remove_probes_only_where_something_gives_them_a_type() {
+    let mut compose = false;
+    for seed in 0..1000 {
+        let generated = Generator::versioned(seed, 3).generate();
+        let program = &generated.program;
+        let uninferable = crate::generate::uninferable_probes(program);
+        for (name, variant) in &generated.variants {
+            let removed = uninferable
+                .iter()
+                .filter(|site| variant.stripped.contains_key(site))
+                .count();
+            assert_eq!(
+                removed,
+                usize::from(name == "probe"),
+                "seed {seed}, variant `{name}`"
+            );
+            if name == "probe" {
+                compose |= seed == 197 && program.probe_callees(variant).contains("compose");
+                continue;
+            }
+            // Without the expected types, which a probe's annotation never gives a type to anything,
+            // so that this doesn't check the mask the variants are made with against itself
+            let removable = crate::generate::removable_sites_with(program, variant, false);
+            for (site, strip) in &variant.stripped {
+                if !program.probes.contains(site) {
+                    continue;
+                }
+                let mask = &removable[site];
+                let removed = match strip {
+                    Strip::All => vec![true; mask.len()],
+                    Strip::Placeholders(removed) => removed.clone(),
+                };
+                assert!(
+                    removed
+                        .iter()
+                        .zip(mask)
+                        .all(|(&removed, &mask)| !removed || mask),
+                    "seed {seed}, variant `{name}` removes a probe's generic arguments that \
+                     nothing gives a type"
+                );
+            }
+        }
+    }
+    assert!(compose, "seed 197 has a probe variant for `compose`");
+}
+
+#[test]
+fn version_3_programs_never_change() {
+    assert_eq!(programs_hash(3), VERSION_3_HASH, "{:#x}", programs_hash(3));
+}
+
+#[test]
+fn version_3_is_deterministic_and_its_explicit_programs_compile() {
+    let mut valid = 0;
+    let mut probes = 0;
+    for seed in 0..40 {
+        let first = Generator::versioned(seed, 3).generate();
+        let second = Generator::versioned(seed, 3).generate();
+        let explicit = first.program.print(&Variant::default());
+        assert_eq!(explicit, second.program.print(&Variant::default()));
+        assert_eq!(first.variants, second.variants);
+        if matches!(
+            oracle::compile_with(&explicit, first.program.uses_std()),
+            Compiled::Ok { leak: None, .. }
+        ) {
+            valid += 1;
+        }
+        probes += usize::from(!first.program.probes.is_empty());
+    }
+    assert!(valid >= 37, "only {valid} of 40 explicit programs compile");
+    assert!(probes >= 10, "only {probes} of 40 programs have a probe");
+}
+
+/// The leak oracle's walk over a type finds a generic that no function type binds, and none that
+/// one does, as `T` in `fn<T>(a: T) -> T`.
+#[test]
+fn leak_oracle_finds_unbound_generics() {
+    use rue_options::CompilerOptions;
+    use rue_types::{FunctionParameter, FunctionType, Generic, Pair, Type};
+
+    let mut ctx = rue_compiler::Compiler::new(CompilerOptions::default());
+    let generic = ctx.alloc_type(Type::Generic(Generic { name: None }));
+    let int = ctx.builtins().types.int;
+
+    let free_in = |ctx: &mut rue_compiler::Compiler, ty| {
+        let mut free = Vec::new();
+        crate::leak::free_generics(
+            ctx,
+            ty,
+            &mut Vec::new(),
+            &mut std::collections::HashSet::new(),
+            &mut free,
+        );
+        free
+    };
+
+    let pair = ctx.alloc_type(Type::Pair(Pair::new(generic, int)));
+    assert_eq!(free_in(&mut ctx, pair), vec![generic]);
+
+    // Behind a reference too
+    let reference = ctx.alloc_type(Type::Ref(generic));
+    assert_eq!(free_in(&mut ctx, reference), vec![generic]);
+
+    let function = |generics: Vec<_>| {
+        Type::Function(FunctionType {
+            generics,
+            params: vec![FunctionParameter::new("a", generic)],
+            nil_terminated: true,
+            ret: generic,
+        })
+    };
+    let bound = ctx.alloc_type(function(vec![generic]));
+    assert_eq!(free_in(&mut ctx, bound), Vec::new());
+    let unbound = ctx.alloc_type(function(Vec::new()));
+    assert_eq!(free_in(&mut ctx, unbound), vec![generic]);
+
+    // Bound in the function type and free beside it, in a pair and in a union
+    let beside = ctx.alloc_type(Type::Pair(Pair::new(bound, generic)));
+    assert_eq!(free_in(&mut ctx, beside), vec![generic]);
+    let either = ctx.alloc_type(Type::Union(rue_types::Union::new(vec![bound, generic])));
+    assert_eq!(free_in(&mut ctx, either), vec![generic]);
+
+    // A generic struct's own generic is bound by it, and its argument is free
+    let own = ctx.alloc_type(Type::Generic(Generic { name: None }));
+    let inner = ctx.alloc_type(Type::Pair(Pair::new(own, int)));
+    let structure = ctx.alloc_type(Type::Struct(rue_types::Struct {
+        name: None,
+        semantic: inner,
+        inner,
+        generics: vec![own],
+        fields: ["value".to_string()].into_iter().collect(),
+        nil_terminated: true,
+        narrowed: false,
+    }));
+    let applied = ctx.alloc_type(Type::Apply(rue_types::Apply::new(
+        structure,
+        [(own, generic)].into_iter().collect(),
+    )));
+    assert_eq!(free_in(&mut ctx, applied), vec![generic]);
+    let alone = ctx.alloc_type(Type::Apply(rue_types::Apply::new(
+        structure,
+        [(own, int)].into_iter().collect(),
+    )));
+    assert_eq!(free_in(&mut ctx, alone), Vec::new());
+
+    // A generic function's type with its generic applied binds it only in the function type, as
+    // `wrap_maybe::<Int>`'s does, and not beside it
+    let applied_function = ctx.alloc_type(Type::Apply(rue_types::Apply::new(
+        unbound,
+        [(generic, int)].into_iter().collect(),
+    )));
+    assert_eq!(free_in(&mut ctx, applied_function), Vec::new());
+    let beside_applied = ctx.alloc_type(Type::Pair(Pair::new(applied_function, generic)));
+    assert_eq!(free_in(&mut ctx, beside_applied), vec![generic]);
+}
+
 #[test]
 fn version_2_is_deterministic_and_its_explicit_programs_compile() {
     let mut valid = 0;
@@ -2044,4 +2597,45 @@ fn shrinking_keeps_functions_from_the_standard_library() {
         program.exprs().iter().any(|expr| variant.strips(expr))
     });
     assert_eq!(program.functions.len(), 1);
+}
+
+/// The leak oracle finds nothing in the snapshot tests that compile, whose types are what the
+/// compiler means them to be, so it doesn't flag a generic that's in scope.
+#[test]
+fn leak_oracle_flags_nothing_in_the_snapshot_tests() {
+    // Some of them are deep, as the stress tests are, so they're compiled with a larger stack
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(check_snapshot_tests_for_leaks)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn check_snapshot_tests_for_leaks() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
+    let mut stack = vec![root];
+    let mut leaks = Vec::new();
+    let mut checked = 0;
+
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rue") {
+                let source = std::fs::read_to_string(&path).unwrap();
+                if let Compiled::Ok {
+                    leak: Some(leak), ..
+                } = oracle::compile_with(&source, true)
+                {
+                    leaks.push(format!("{}: {leak}", path.display()));
+                }
+                checked += 1;
+            }
+        }
+    }
+
+    assert!(checked > 100);
+    assert_eq!(leaks, Vec::<String>::new());
 }
