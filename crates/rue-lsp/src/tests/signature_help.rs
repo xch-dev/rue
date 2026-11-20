@@ -306,17 +306,17 @@ fn test_signature_of_builtin() {
         "#]],
     );
     check(
-        "fn main() -> Bytes {\n    substr(\"abc\", $01)\n}\n",
+        "fn main() -> PublicKey {\n    g1_map(\"abc\", $0\"dst\")\n}\n",
         expect![[r#"
-            > fn substr(value: Bytes, [start: Int]) -> Bytes
-              fn substr(value: Bytes, [start: Int], end: Int) -> Bytes
+              fn g1_map([data: Bytes]) -> PublicKey
+            > fn g1_map(data: Bytes, [dst: Bytes]) -> PublicKey
         "#]],
     );
     check(
-        "fn main() -> Bytes {\n    substr(\"abc\", 1, $02)\n}\n",
+        "fn main() -> PublicKey {\n    g1_map($0\"abc\")\n}\n",
         expect![[r#"
-              fn substr(value: Bytes, [start: Int]) -> Bytes
-            > fn substr(value: Bytes, start: Int, [end: Int]) -> Bytes
+            > fn g1_map([data: Bytes]) -> PublicKey
+              fn g1_map([data: Bytes], dst: Bytes) -> PublicKey
         "#]],
     );
     // A signature that takes the rest of the arguments is for all of them
@@ -330,10 +330,10 @@ fn test_signature_of_builtin() {
 
     // With more arguments than any signature takes, it's the last one
     check(
-        "fn main() -> Bytes {\n    substr(\"abc\", 1, 2, $03)\n}\n",
+        "fn main() -> PublicKey {\n    g1_map(\"abc\", \"dst\", $0\"more\")\n}\n",
         expect![[r#"
-              fn substr(value: Bytes, [start: Int]) -> Bytes
-            > fn substr(value: Bytes, start: Int, [end: Int]) -> Bytes
+              fn g1_map([data: Bytes]) -> PublicKey
+            > fn g1_map(data: Bytes, [dst: Bytes]) -> PublicKey
         "#]],
     );
 
@@ -684,6 +684,29 @@ fn test_signature_with_huge_return_type() {
         ),
         expect![[r#"
             > fn function([value: Int]) -> ((((((((((((((((((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (((Int, Int), (Int, Int)), ((Int, Int), (Int, Int)))), ((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (..., ...))), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...)
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_in_index_and_slice() {
+    // A call that's indexed or sliced, or is a bound of one, is like any other
+    check(
+        &with_add("fn main(bytes: Bytes) -> Bytes {\n    bytes[add(1, $02)..]\n}\n"),
+        expect![[r#"
+            > fn add(first: Int, [second: Int]) -> Int
+        "#]],
+    );
+    check(
+        "fn make(length: Int, fill: Bytes) -> Bytes {\n    fill\n}\n\nfn main() -> Bytes {\n    make(1, $0\"a\")[0..1]\n}\n",
+        expect![[r#"
+            > fn make(length: Int, [fill: Bytes]) -> Bytes
+        "#]],
+    );
+    check(
+        &with_add("fn main(bytes: Bytes) -> Bytes {\n    bytes[$01..add(1, 2)]\n}\n"),
+        expect![[r#"
+            <none>
         "#]],
     );
 }
