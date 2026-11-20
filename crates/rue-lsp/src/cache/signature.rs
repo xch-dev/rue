@@ -1,14 +1,13 @@
 //! The signature of the function that's being called at the cursor, and which of its parameters
 //! the argument at the cursor is for. A struct initializer shows the struct's fields the same way.
 
-use std::collections::HashMap;
 use std::ops::Range;
 
 use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode, AstStructInitializerExpr};
 use rue_compiler::{Compiler, CompletionContext, SyntaxCall, SyntaxItemKind};
 use rue_hir::Symbol;
-use rue_parser::{SyntaxNode, T};
+use rue_parser::{SyntaxKind, SyntaxNode, T};
 use rue_types::Type;
 
 use super::{Cache, FieldHoverInfo, Scopes, field_declarations};
@@ -154,8 +153,6 @@ impl Cache<Compiler> {
             .last()?
             .clone();
 
-        let inferred = generics.into_iter().collect::<HashMap<_, _>>();
-
         // The types are shown as they're declared, with what each generic was inferred as next to
         // it, rather than with the generics replaced in each type. A type with them replaced is a
         // copy that isn't named by anything, which can take very long to write out in full
@@ -168,7 +165,7 @@ impl Cache<Compiler> {
 
             // A generic can be inferred as itself by a recursive call, or as a generic of the
             // caller's with the same name, which says nothing
-            if let Some(&ty) = inferred.get(&generic) {
+            if let Some(&(_, ty)) = generics.iter().find(|(declared, _)| *declared == generic) {
                 let inferred = self.bounded_type_name(scopes, ty, TYPE_PARTS);
 
                 if inferred != name {
@@ -221,8 +218,21 @@ impl Cache<Compiler> {
         initializer: &AstStructInitializerExpr,
         offset: TextSize,
     ) -> Option<Signatures> {
-        let name = initializer.path()?.syntax().text().to_string();
-        let name = name.trim();
+        // The struct is named as it's written, without the comments after it
+        let name = initializer
+            .path()?
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .filter(|token| {
+                !matches!(
+                    token.kind(),
+                    SyntaxKind::LineComment | SyntaxKind::BlockComment
+                )
+            })
+            .map(|token| token.text().to_string())
+            .collect::<String>();
+        let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
 
         let (ty, specified) = self
             .items_in(initializer.syntax().text_range())

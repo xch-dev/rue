@@ -779,3 +779,14 @@ fn test_signature_with_bool() {
         "#]],
     );
 }
+
+#[test]
+fn test_signature_of_struct_initializer_with_comment() {
+    // A comment between the struct's name and its fields isn't part of its name
+    check(
+        &format!("{POINT}fn main() -> Point {{\n    Point /* here */ {{ x: 1, $0 }}\n}}\n"),
+        expect![[r#"
+            > Point { x: Int, [y: Int] }
+        "#]],
+    );
+}

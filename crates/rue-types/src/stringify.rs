@@ -24,9 +24,6 @@ thread_local! {
 /// What's written in place of the parts of a type that [`stringify_bounded`] leaves out.
 pub const ELIDED: &str = "...";
 
-/// What's written for a type that couldn't be worked out.
-const UNRESOLVED: &str = "{unresolved}";
-
 /// Like [`stringify`], but only the first `parts` parts of the type are written (each type that it's
 /// made of is one), and the rest are shown as `...`. A type can be far larger written out than it
 /// is in memory, where its parts are shared, so this bounds the time and the length of the result
@@ -105,7 +102,7 @@ fn stringify_impl_inner(
 
     let result = match arena[id].clone() {
         Type::Ref(id) => stringify_impl(arena, id, stack),
-        Type::Unresolved => UNRESOLVED.to_string(),
+        Type::Unresolved => "{unresolved}".to_string(),
         Type::Generic(generic) => {
             if let Some(name) = generic.name {
                 name.text().to_string()
@@ -356,7 +353,8 @@ fn narrowed_fields_inner(
 }
 
 /// Adds the variants of a union, including those of directly nested unions, each of them once,
-/// until there are as many as the limit. Returns whether that was all of them.
+/// until there are as many as the limit. Returns whether that was all of them, which it can say
+/// it wasn't when the only ones left are written the same as ones that were added.
 fn union_variants(
     arena: &Arena<Type>,
     id: TypeId,
