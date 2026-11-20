@@ -46,3 +46,19 @@ fn members_of_two_unions_conflict() -> Int {
     let _both: fn() -> (TakesInt | TakesBytes32, GivesIncrement | GivesDiscard) = make_both;
     1
 }
+
+type OrInt<X> = X | Int;
+type OrNil<X> = X | nil;
+
+fn alike_members<U>(_x: (U | OrInt<U>, OrNil<U> | U) | Bytes) -> U {
+    unchecked_cast(nil)
+}
+
+// The parameter's unions have members that are alike (`U` twice), which a summary of a comparison
+// leaves out of the union, so that what fails under the other is still charged (#362's step 13g).
+// This is rejected, as it is without the duplicate members: a summary that kept the left out
+// member as one with nothing under it accepted it
+fn alike_members_stay_charged() -> Int {
+    let _f = alike_members as fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil);
+    1
+}

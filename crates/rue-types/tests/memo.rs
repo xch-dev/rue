@@ -1878,6 +1878,35 @@ fn test_memo_differential_bounded_summaries() {
     assert!(steps < 2_000_000, "{steps}");
 }
 
+/// `fn<U>(p0: (U | U | Int, U | nil | U) | Bytes) -> U` against
+/// `fn<B>(p0: B) -> fn(p0: nil) -> (Bytes, nil)`, whose unions have members that are alike.
+fn alike_members(db: &mut Types) -> (TypeId, TypeId) {
+    let BuiltinTypes {
+        int, bytes, nil, ..
+    } = db.builtins;
+    let [u, b] = [db.generic(), db.generic()];
+    let first = db.union(vec![u, u, int]);
+    let rest = db.union(vec![u, nil, u]);
+    let pair = db.pair(first, rest);
+    let param = db.union(vec![pair, bytes]);
+    let lhs = db.function(vec![u], vec![param], u);
+    let result = db.pair(bytes, nil);
+    let inner = db.function(vec![], vec![nil], result);
+    let rhs = db.function(vec![b], vec![b], inner);
+    (lhs, rhs)
+}
+
+/// A summary leaves out a member of a union that's alike another (see `Summary::canonicalize`),
+/// and it's left out of the union too: kept as a member with nothing under it, it would be one
+/// that nothing could be charged to, which hid what failed under the other, so the memo accepted
+/// these as a cast where computing them again rejects them, as without the duplicate members.
+#[test]
+fn test_alike_members_stay_charged() {
+    with_large_stack(|| {
+        assert_eq!(in_every_mode(alike_members), [Comparison::Invalid; 3]);
+    });
+}
+
 /// A larger run of `test_memo_differential`, which takes a few minutes in release builds:
 /// `cargo test --release -p rue-types --test memo -- --ignored --nocapture`
 #[test]

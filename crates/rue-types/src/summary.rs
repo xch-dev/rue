@@ -123,13 +123,20 @@ impl ChoiceRecord {
     /// in. Charging a failed pair doesn't, so a summary that does that is approximate (see
     /// `Summary::without_single_members`).
     fn alone(&self, member: usize) -> bool {
-        self.members
+        // A member that has no result, such as one left out as alike another (see
+        // `alike_member`), doesn't count as one that can't hold: the union is kept for it, which
+        // is exact. The fallback is only compared when no member holds
+        let members = self
+            .members
             .iter()
             .enumerate()
-            .chain([(FALLBACK, &self.fallback)])
-            .all(|(other, result)| {
-                other == member || result.is_none_or(|r| r == Comparison::Invalid)
-            })
+            .all(|(other, &result)| other == member || result == Some(Comparison::Invalid));
+
+        members
+            && (member == FALLBACK
+                || self
+                    .fallback
+                    .is_none_or(|result| result == Comparison::Invalid))
     }
 
     /// Whether a member (or the fallback) that collected no bounds gave `Assign`, like
@@ -548,11 +555,22 @@ impl Summary {
                 };
 
                 constraints.retain(|constraint| !under(constraint.branch, &choices));
-                let kept: Vec<ChoiceRecord> = choices
+                let mut kept: Vec<ChoiceRecord> = choices
                     .iter()
                     .filter(|other| !under(other.parent, &choices))
                     .cloned()
                     .collect();
+
+                // The member is left out of its union as well, rather than kept as a member that
+                // nothing is under, which nothing could be charged to (see `Choices::attributed`)
+                if let Some(record) = kept.iter_mut().find(|record| record.choice == choice) {
+                    if member == FALLBACK {
+                        record.fallback = None;
+                    } else {
+                        record.members[member] = None;
+                    }
+                }
+
                 choices = kept;
                 continue;
             }
@@ -1657,6 +1675,14 @@ mod tests {
         summary.canonicalize();
         assert_eq!(summary.choices().len(), 1);
         assert_eq!(summary.constraints().len(), 1);
+        assert!(!summary.is_approximate());
+
+        // The merged member is left out of the union, so nothing that fails under the one kept
+        // is hidden by it, a member with nothing under it to charge
+        assert_eq!(
+            summary.choices()[0].members,
+            [Some(Comparison::Assign), None]
+        );
     }
 
     /// A union with two copies of it under the same member is left out, like a third copy of a

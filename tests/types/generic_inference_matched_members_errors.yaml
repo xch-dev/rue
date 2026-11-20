@@ -18,3 +18,8 @@ diagnostics:
 - Unused type alias `GivesDiscard` at generic_inference_matched_members_errors.rue:39:6
 - Unused function `members_of_two_unions_conflict` at generic_inference_matched_members_errors.rue:45:4
 - "Cannot assign `fn<T>() -> (fn(x: T) -> nil, fn(x: nil) -> T)` to `fn() -> (TakesInt | TakesBytes32, GivesIncrement | GivesDiscard)`, since they are incompatible at generic_inference_matched_members_errors.rue:46:83"
+- Unused type alias `OrInt` at generic_inference_matched_members_errors.rue:50:6
+- Unused type alias `OrNil` at generic_inference_matched_members_errors.rue:51:6
+- Unused function `alike_members` at generic_inference_matched_members_errors.rue:53:4
+- Unused function `alike_members_stay_charged` at generic_inference_matched_members_errors.rue:61:4
+- "Cannot cast `fn<U>(_x: (U | OrInt<U>, OrNil<U> | U) | Bytes) -> U` to `fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil)`, since they have different runtime representations at generic_inference_matched_members_errors.rue:62:14"
