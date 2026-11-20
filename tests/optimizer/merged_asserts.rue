@@ -1,0 +1,165 @@
+// Consecutive asserts are checked together, as the arguments of one `all`, when the later
+// conditions are cheap and can't fail. The program fails if any of them is false either way.
+
+test fn three_asserts(a: Int, b: Int, c: Int) -> Int {
+    assert a > 0;
+    assert b > a;
+    assert c > b;
+    a + b + c
+}
+
+test fn three_asserts_first_is_false(a: Int, b: Int, c: Int) -> Int {
+    assert a > 0;
+    assert b > a;
+    assert c > b;
+    a + b + c
+}
+
+test fn three_asserts_last_is_false(a: Int, b: Int, c: Int) -> Int {
+    assert a > 0;
+    assert b > a;
+    assert c > b;
+    a + b + c
+}
+
+// A later assert can rely on what an earlier one checked. A value that fails the earlier one
+// fails the program either way, but in a release build it can be with the error of the later
+// condition rather than a raise.
+test fn narrowed_by_an_earlier_assert(x: Any) -> Int {
+    assert x is Int;
+    assert x > 5;
+    x
+}
+
+test fn narrowed_by_an_earlier_assert_that_is_false(x: Any) -> Int {
+    assert x is Int;
+    assert x > 5;
+    x
+}
+
+test fn fields_narrowed_by_an_earlier_assert(x: Any) -> Int {
+    assert x is (Int, Int);
+    assert x.first > x.rest;
+    x.first
+}
+
+test fn fields_narrowed_by_an_earlier_assert_that_is_false(x: Any) -> Int {
+    assert x is (Int, Int);
+    assert x.first > x.rest;
+    x.first
+}
+
+// Division can fail, so it's only evaluated once the assert before it has passed, and the
+// asserts after it are checked along with it
+test fn condition_that_may_fail(a: Int, b: Int) -> Int {
+    assert a != 0;
+    assert b / a > 1;
+    assert b > 0;
+    b
+}
+
+test fn condition_that_may_fail_is_not_evaluated(a: Int, b: Int) -> Int {
+    assert a != 0;
+    assert b / a > 1;
+    assert b > 0;
+    b
+}
+
+fn is_sorted(items: List<Int>) -> Bool {
+    if items is nil {
+        return true;
+    }
+
+    let rest = items.rest;
+
+    if rest is nil {
+        return true;
+    }
+
+    items.first < rest.first && is_sorted(rest)
+}
+
+// A call can run for as long as it likes, so it's only made once the assert before it has passed
+test fn call_is_not_merged(items: List<Int>, limit: Int) -> Int {
+    assert limit > 0;
+    assert is_sorted(items);
+    assert limit < 100;
+    limit
+}
+
+// A statement between two asserts keeps them apart
+test fn separated_by_a_let(a: Int, b: Int) -> Int {
+    assert a > 0;
+    let sum = a + b;
+    assert sum > a;
+    assert sum > b;
+    sum * sum
+}
+
+// Operands that are evaluated either way become arguments of the same `all`
+test fn asserts_of_conjunctions(a: Int, b: Int, c: Int) -> Int {
+    assert c > b && c > a;
+    assert c > 0 && c < 100;
+    c
+}
+
+inline fn check_range(value: Int, low: Int, high: Int) {
+    assert value > low;
+    assert value < high;
+}
+
+// The asserts of an inlined function are merged where it's inlined
+test fn inlined_asserts(value: Int) -> Int {
+    check_range(value, 0, 10);
+    value
+}
+
+test fn asserts_before_nil(a: Bytes32, b: Bytes32, c: Bytes32) {
+    assert a == b;
+    assert b == c;
+}
+
+struct Extra {
+    value: Bytes32,
+}
+
+// A binding that's read where it's referenced doesn't keep two asserts apart, and the right
+// operand of `||` is still only evaluated when it's needed, so `extra` can be left out
+test fn separated_by_a_path_binding(delta: Int, pair: (Bytes32, Bytes32), extra: Extra) {
+    assert delta == 0;
+    let first = pair.first;
+    assert first == pair.rest || first == extra.value;
+}
+
+test fn separated_by_a_path_binding_that_fails(delta: Int, pair: (Bytes32, Bytes32), extra: Extra) {
+    assert delta == 0;
+    let first = pair.first;
+    assert first == pair.rest || first == extra.value;
+}
+
+// Checks that are written as `if` statements are the same
+test fn raise_statements(a: Int, b: Int) -> Int {
+    if a > b {
+        raise;
+    }
+
+    if b > 100 {
+        raise;
+    }
+
+    assert a > 0;
+    b - a
+}
+
+test fn raise_statements_that_fail(a: Int, b: Int) -> Int {
+    if a > b {
+        raise;
+    }
+
+    if b > 100 {
+        raise;
+    }
+
+    assert a > 0;
+    b - a
+}
