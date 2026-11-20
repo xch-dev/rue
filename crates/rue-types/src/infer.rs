@@ -1222,6 +1222,45 @@ mod tests {
         assert!(nodes <= 10 + 20 * 3, "tried {nodes} picks");
     }
 
+    /// Past the limit, picking gives `Invalid`, whatever it found by then, and of two pairs with
+    /// the same members, the worse one counts.
+    #[test]
+    fn attributed_stops_at_the_limit_and_keeps_the_worst_duplicate() {
+        use Comparison::{Assign, Cast, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let first = reopened(&mut choices, None, &[Cast, Assign]);
+        let second = reopened(&mut choices, None, &[Assign, Assign]);
+        let pairs = [(Some(branch(first, 0)), Some(branch(second, 0)), Invalid)];
+        assert_eq!(choices.attributed(0..2, &pairs, usize::MAX).0, Assign);
+
+        // The first full pick gives `Cast`, then the limit is passed before `Assign` is found
+        assert_eq!(choices.attributed(0..2, &pairs, 4), (Invalid, 5));
+
+        let pairs = [
+            (Some(branch(second, 0)), None, Invalid),
+            (Some(branch(second, 0)), None, Cast),
+            (Some(branch(second, 1)), None, Cast),
+            (Some(branch(second, 1)), None, Invalid),
+        ];
+        assert_eq!(choices.attributed(1..2, &pairs, usize::MAX).0, Invalid);
+    }
+
+    /// A union nested in a member that isn't picked isn't picked from, so what it gives doesn't
+    /// count.
+    #[test]
+    fn attributed_skips_unions_under_members_not_picked() {
+        use Comparison::{Assign, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let outer = reopened(&mut choices, None, &[Assign, Assign]);
+        let inner = reopened(&mut choices, Some(branch(outer, 0)), &[Invalid]);
+        let pairs = [(Some(branch(inner, 0)), None, Invalid)];
+        assert_eq!(choices.attributed(0..2, &pairs, usize::MAX).0, Assign);
+    }
+
     #[test]
     fn exclusive_members() {
         let mut choices = Choices::default();
