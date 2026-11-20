@@ -1666,7 +1666,15 @@ impl Removable<'_> {
                         expected,
                         true,
                     );
-                    self.masks.insert(*site, witnessed.generics);
+                    // A probe's generics get no type from anything, so they're only removed in
+                    // the variant that removes them, and kept everywhere else (see
+                    // `Generator::probe`)
+                    let generics = if self.program.probes.contains(site) {
+                        vec![self.variant.stripped.contains_key(site); witnessed.generics.len()]
+                    } else {
+                        witnessed.generics
+                    };
+                    self.masks.insert(*site, generics);
                     // The generics of a function passed to the call get a type through it
                     self.masks.extend(witnessed.references);
                 }
@@ -2116,8 +2124,9 @@ fn applied(name: &str, ty: &Ty) -> Expr {
 fn variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)> {
     let mut variants = other_variants(rng, program, v2);
 
-    // The probes' generic arguments, which nothing else gives a type, removed with nothing else,
-    // and without legalizing it (see `Generator::probe`)
+    // The probes' generic arguments, which nothing else gives a type, removed with nothing else.
+    // Only a variant that removes a probe's arguments counts them as removable, so the other
+    // variants keep them, and this one is legal as it is (see `Generator::probe`)
     if !program.probes.is_empty() {
         let probe = Variant {
             stripped: program
