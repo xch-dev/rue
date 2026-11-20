@@ -132,5 +132,32 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: lower_candidate_implied_by_a_wider_one
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: held_candidates_count_as_implied
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_union_in_a_left_out_member
+  program: (+ (q 5))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (c (q . 5) ()) 1)) (c (q . 1) ()))
+  byte_cost: 108000
+  clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
+- name: same_union_twice
+  program: (a (q 16 2) (c (q . 5) 1))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 (c 2 2)) 1)) (c (q . 5) 1)) (c (q . 2) ()))
+  output: "5"
+  runtime_cost: 707
+  byte_cost: 252000
+  total_cost: 252707
 diagnostics:
 - Binding `result` is returned directly after it's declared at generic_inference_matched_members.rue:28:5
+- Unused parameter `b` at generic_inference_matched_members.rue:295:36

@@ -625,8 +625,9 @@ fn expanded_lower_bounds(
     builtins: &BuiltinTypes,
     infer: &Inference,
 ) -> HashMap<TypeId, Option<TypeId>> {
-    // Only the lower bounds collected under union members that matched are checked against, as
-    // they're the ones the generics are resolved from (see `Inference::keep_matched`)
+    // Only the lower bounds collected under union members that matched, and that no other member
+    // makes unneeded, are checked against, as they're the ones the generics are resolved from
+    // (see `Inference::keep_matched`)
     let infer = &infer.keep_matched(arena, builtins);
 
     let edges: IndexMap<TypeId, Vec<TypeId>> = infer

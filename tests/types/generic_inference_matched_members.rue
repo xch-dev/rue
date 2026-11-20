@@ -260,3 +260,47 @@ test fn three_members_match_reversed() -> Int {
     let result: 5 = first_of_three_reversed(value);
     result + 0
 }
+
+// `T ≥ 5` is implied by the wider `T ≥ Int` from outside of the union, so the `T` member's
+// `T ≥ (5, 5)` is left out and `T` is `Int`
+test fn lower_candidate_implied_by_a_wider_one() -> Int {
+    let value: Int | (5, 5) = 5;
+    let result: Int = first_of(value);
+    result + 0
+}
+
+fn held_first<T>(value: T | (T, T | Int)) -> T {
+    unchecked_cast(value)
+}
+
+// The `(T, T | Int)` member's second `5` is held by `Int`, which doesn't constrain `T`, so the
+// member is still implied and the `T` member's `T ≥ (5, 5)` is left out
+test fn held_candidates_count_as_implied() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = held_first(value);
+    result + 0
+}
+
+fn nested_first<T>(value: (T | nil, nil) | ((T, T), nil)) -> T {
+    unchecked_cast(value)
+}
+
+// The `T ≥ (5, 5)` that's left out is collected under a union nested in the member left out
+test fn nested_union_in_a_left_out_member() -> Int {
+    let value: (5, nil) | ((5, 5), nil) = (5, nil);
+    let result: 5 = nested_first(value);
+    result + 0
+}
+
+fn first_of_both<T>(a: T | (T, T), b: T | (T, T)) -> T {
+    unchecked_cast(a)
+}
+
+// Neither union's candidates count as holding anyway for the other, so each is decided from the
+// `T ≥ 5`s that the two `5`s give. When they counted, each union's `T` member was implied by the
+// other's, and `T` was `Int | (5, 5)`
+test fn same_union_twice() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = first_of_both(value, value);
+    result + 0
+}
