@@ -1,5 +1,5 @@
 use log::debug;
-use rue_ast::{AstListExpr, AstNode};
+use rue_ast::{AstExpr, AstListExpr, AstNode};
 use rue_hir::{FunctionCall, Hir, HirId, List, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
@@ -8,6 +8,14 @@ use super::call_inference::{
 };
 use crate::{Compiler, compile_expr};
 
+/// Compiles a list. Its type has a pair for each item, with the type of the last item as the rest
+/// if it's spread, such as `(A, (B, Rest))` for `[a, b, ...rest]`.
+///
+/// A list can also spread an item before its last one, such as `[a, ...items, last]`. How many
+/// items it has from there on isn't known, so from the first such spread, the rest of the list is
+/// a `List` of every item's type and every spread list's item types, such as
+/// `(A, List<Item | Last>)`, and each spread from there on, including a spread last item, must be
+/// a list (see [`Tail`]).
 pub fn compile_list_expr(
     ctx: &mut Compiler,
     list: &AstListExpr,
@@ -22,22 +30,30 @@ pub fn compile_list_expr(
 
     let len = list.items().count();
 
-    if list
+    // The first item that's spread before the last one, which the rest of the list is built in
+    // front of at runtime from
+    let tail_start = list
         .items()
         .take(len.saturating_sub(1))
-        .any(|item| item.spread().is_some())
-    {
-        return compile_list_with_spreads(ctx, list, expected_type);
-    }
+        .position(|item| item.spread().is_some());
+    let mut tail: Option<Tail> = None;
 
     // The type the last item was expected to be, which an item past the end of the pairs the
     // expected type has gets (see below)
     let mut last_item_type = None;
 
-    for item in list.items() {
-        // Only the last item can be spread here, since a list that spreads an earlier one is
-        // compiled by `compile_list_with_spreads`
+    for (i, item) in list.items().enumerate() {
         let is_spread = item.spread().is_some();
+
+        if tail_start == Some(i) {
+            hint |= expected_type.is_some_and(|ty| holds_other_pairs(ctx, ty));
+            tail = Some(Tail::new(ctx, expected_type));
+        }
+
+        if let Some(tail) = &mut tail {
+            tail.compile_item(ctx, item.expr().as_ref(), is_spread, hint);
+            continue;
+        }
 
         let item_type = if is_spread {
             nil_terminated = false;
@@ -79,6 +95,18 @@ pub fn compile_list_expr(
         values.push(value);
     }
 
+    if let Some(tail) = tail {
+        let tail = tail.finish(ctx);
+
+        // A list that starts with the spread is only what's built from there
+        if values.is_empty() {
+            return tail;
+        }
+
+        values.push(tail);
+        nil_terminated = false;
+    }
+
     let mut ty = ctx.builtins().nil.ty;
 
     for (i, value) in values.iter().rev().enumerate() {
@@ -97,107 +125,126 @@ pub fn compile_list_expr(
     Value::new(hir, ty)
 }
 
-/// Compiles a list that spreads an item before its last one, such as `[...items, last]`. Each
-/// such spread is a call to the builtin function that puts a list's items in front of the rest
-/// of the list (see `Builtins::spread_list`), unless what's spread is a list literal, whose items
-/// are put in the list directly. The list's type is a `List` of every item's type and every
-/// spread list's item types, so the spread lists, including a spread last item, must be lists.
-fn compile_list_with_spreads(
-    ctx: &mut Compiler,
-    list: &AstListExpr,
-    expected_type: Option<TypeId>,
-) -> Value {
-    let types = ctx.builtins().types;
-    let any_list = list_of(ctx, types.permissive_any);
-    let expected_item = expected_type
-        .and_then(|ty| pair_parts(ctx, ty))
-        .map(|(first, _)| first);
+/// The part of a list from the first item that's spread before the last one. Each such spread is
+/// a call to the builtin function that puts a list's items in front of the rest of the list (see
+/// `Builtins::spread_list`), unless what's spread is a list literal, whose items are put in the
+/// list directly.
+struct Tail {
+    /// The type this part of the list is expected to be, which each spread is compiled against.
+    expected: Option<TypeId>,
+    /// The type each item that isn't spread is expected to be.
+    expected_item: Option<TypeId>,
+    /// Each item, and whether it's spread.
+    items: Vec<(HirId, bool)>,
+    /// The types of the items, and of the items of each spread.
+    item_types: Vec<TypeId>,
+}
 
-    // As in a list without these spreads, each item can refine what the later ones are expected
-    // to be, such as a lambda's parameter type in a generic call's argument. The expected type is
-    // only a hint where it is for the rest of the list (see `compile_list_expr`)
-    let hint =
-        ctx.is_expected_type_hint() || expected_type.is_some_and(|ty| holds_other_pairs(ctx, ty));
+impl Tail {
+    fn new(ctx: &mut Compiler, expected: Option<TypeId>) -> Self {
+        let expected_item = expected
+            .and_then(|ty| pair_parts(ctx, ty))
+            .map(|(first, _)| first);
 
-    let mut items = Vec::new();
-    let mut item_types = Vec::new();
+        Self {
+            expected,
+            expected_item,
+            items: Vec::new(),
+            item_types: Vec::new(),
+        }
+    }
 
-    for item in list.items() {
-        let Some(expr) = item.expr() else {
+    /// Compiles an item against what the earlier items refine it to, and records its type, as an
+    /// item before the tail is, so that a lambda after a spread gets its parameter type in a
+    /// generic call's argument.
+    fn compile_item(
+        &mut self,
+        ctx: &mut Compiler,
+        expr: Option<&AstExpr>,
+        is_spread: bool,
+        hint: bool,
+    ) {
+        let Some(expr) = expr else {
             debug!("Unresolved list item expr");
-            items.push((ctx.unresolved().hir, item.spread().is_some()));
-            continue;
+            self.items.push((ctx.unresolved().hir, is_spread));
+            return;
         };
 
-        if item.spread().is_some() {
-            let value =
-                ctx.with_expected_type_hint(hint, |ctx| compile_expr(ctx, &expr, expected_type));
-            record_element(ctx, value.ty, expected_type);
+        if is_spread {
+            let expected = self.expected;
+            let value = ctx.with_expected_type_hint(hint, |ctx| compile_expr(ctx, expr, expected));
+            record_element(ctx, value.ty, expected);
+
+            let any = ctx.builtins().types.permissive_any;
+            let any_list = list_of(ctx, any);
             ctx.assign_type(expr.syntax(), value.ty, any_list);
-            item_types.extend(list_item_types(ctx, value.ty));
-            items.push((value.hir, true));
+
+            self.item_types.extend(list_item_types(ctx, value.ty));
+            self.items.push((value.hir, true));
         } else {
-            let (value, item_type) = compile_refined_element(ctx, &expr, expected_item, hint);
+            let (value, item_type) = compile_refined_element(ctx, expr, self.expected_item, hint);
             record_element(ctx, value.ty, item_type);
-            item_types.push(value.ty);
-            items.push((value.hir, false));
+            self.item_types.push(value.ty);
+            self.items.push((value.hir, false));
         }
     }
 
-    // The list is built from the end: the items after each spread are the rest it's put in
-    // front of
-    let mut rest = match items.last() {
-        Some(&(hir, true)) => {
-            items.pop();
-            hir
+    fn finish(mut self, ctx: &mut Compiler) -> Value {
+        // The list is built from the end: the items after each spread are the rest it's put in
+        // front of
+        let mut rest = match self.items.last() {
+            Some(&(hir, true)) => {
+                self.items.pop();
+                hir
+            }
+            _ => ctx.builtins().nil.hir,
+        };
+        let mut pending: Vec<HirId> = Vec::new();
+
+        for (hir, spread) in self.items.into_iter().rev() {
+            if !spread {
+                pending.push(hir);
+                continue;
+            }
+
+            if let Hir::List(literal) = ctx.hir(hir).clone()
+                && literal.nil_terminated
+            {
+                pending.extend(literal.items.into_iter().rev());
+                continue;
+            }
+
+            rest = prepend(ctx, &mut pending, rest);
+
+            let spread_list = ctx.builtins().spread_list;
+            let function = ctx.alloc_hir(Hir::Reference(spread_list));
+            rest = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
+                function,
+                args: vec![hir, rest],
+                nil_terminated: true,
+            }));
         }
-        _ => ctx.builtins().nil.hir,
-    };
-    let mut pending: Vec<HirId> = Vec::new();
 
-    for (hir, spread) in items.into_iter().rev() {
-        if !spread {
-            pending.push(hir);
-            continue;
+        let hir = prepend(ctx, &mut pending, rest);
+
+        // The same type is only in the union once, so that a union of the same function type,
+        // which can't be called, isn't made from a list of functions
+        let mut members: Vec<TypeId> = Vec::new();
+
+        for ty in self.item_types {
+            if !members
+                .iter()
+                .any(|&member| ctx.is_assignable(ty, member) && ctx.is_assignable(member, ty))
+            {
+                members.push(ty);
+            }
         }
 
-        if let Hir::List(literal) = ctx.hir(hir).clone()
-            && literal.nil_terminated
-        {
-            pending.extend(literal.items.into_iter().rev());
-            continue;
-        }
+        let item_type = ctx.alloc_type(Type::Union(Union::new(members)));
+        let ty = list_of(ctx, item_type);
 
-        rest = prepend(ctx, &mut pending, rest);
-
-        let spread_list = ctx.builtins().spread_list;
-        let function = ctx.alloc_hir(Hir::Reference(spread_list));
-        rest = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
-            function,
-            args: vec![hir, rest],
-            nil_terminated: true,
-        }));
+        Value::new(hir, ty)
     }
-
-    let hir = prepend(ctx, &mut pending, rest);
-
-    // The same type is only in the union once, so that a union of the same function type, which
-    // can't be called, isn't made from a list of functions
-    let mut members: Vec<TypeId> = Vec::new();
-
-    for ty in item_types {
-        if !members
-            .iter()
-            .any(|&member| ctx.is_assignable(ty, member) && ctx.is_assignable(member, ty))
-        {
-            members.push(ty);
-        }
-    }
-
-    let item_type = ctx.alloc_type(Type::Union(Union::new(members)));
-    let ty = list_of(ctx, item_type);
-
-    Value::new(hir, ty)
 }
 
 /// A list of the pending items, which were collected in reverse, in front of the rest.

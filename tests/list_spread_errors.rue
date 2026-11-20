@@ -11,3 +11,8 @@ fn main(value: Int, pair: (Int, Int), list: List<Int>) -> List<Int> {
 export fn names(names: List<Bytes>) -> List<Int> {
     [...names, 1]
 }
+
+// The list's type is a pair for each item before the first spread, and a `List` from there
+export fn leading(numbers: List<Int>) -> List<Int> {
+    ["name", true, ...numbers, 3]
+}

@@ -127,3 +127,12 @@ test fn alternating_item_types() -> List<Int | Bytes | Bool> {
     let prefixed: (Bool, Alternating) = runtime((true, [2, "b"]));
     [...alternating, ...prefixed, 3]
 }
+
+// The items before the first spread keep their own types, as they do in a list that only spreads
+// its last item, so the first item here is `Bytes` rather than `Bytes | Int`
+test fn items_before_the_first_spread() -> Bytes {
+    let numbers = runtime([1, 2]);
+    let list = ["name", ...numbers, 3];
+    assert deep_equal(list.rest, [1, 2, 3]);
+    list.first
+}
