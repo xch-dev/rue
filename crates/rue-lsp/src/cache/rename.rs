@@ -68,9 +68,11 @@ struct Plan<'a> {
 
 /// A module that's a file or a directory.
 struct ModulePath {
-    /// Where it is, unless it's reached through a symbolic link.
-    path: Option<PathBuf>,
-    directory: bool,
+    /// The names of the directories it's in, from the one the project is compiled from, and of
+    /// the file or directory that it is.
+    entries: Vec<String>,
+    /// The path of the file that was compiled as the module, if it's a file.
+    file: Option<PathBuf>,
     /// The module of the directory it's in, unless it's the directory or file that the project
     /// is compiled from.
     parent: Option<SymbolId>,
@@ -157,14 +159,16 @@ impl Cache<Compiler> {
     fn moved(&self, module: &ModulePath, name: &str, new_name: &str) -> Result<Moved, String> {
         // A file or directory that's reached through a symbolic link isn't where the project has
         // it, so there's nothing that renaming it would be right for
-        let Some(from) = &module.path else {
+        let Some(from) = &self.entry_path(module) else {
             return Err(format!(
                 "`{name}` is reached through a symbolic link, so it can't be renamed"
             ));
         };
 
+        let directory = module.file.is_none();
+
         let to = from.with_file_name(match from.extension() {
-            Some(extension) if !module.directory => {
+            Some(extension) if !directory => {
                 format!("{new_name}.{}", extension.to_string_lossy())
             }
             _ => new_name.to_string(),
@@ -178,7 +182,7 @@ impl Cache<Compiler> {
         // An external function's file is found from the directory of the file it's declared in,
         // one part of its path at a time, so the path breaks if a part of it names the directory
         // that's renamed. A path that only leaves the directory with `..` still leads to its file
-        if module.directory {
+        if directory {
             for file in self.tree.all_files() {
                 let SourceKind::File(path) = &file.source.kind else {
                     continue;
@@ -205,9 +209,11 @@ impl Cache<Compiler> {
                                     current.pop();
                                     false
                                 }
+                                // The compiler follows the path on the file system, where a
+                                // part can be the directory under another spelling
                                 Component::Normal(part) => {
                                     current.push(part);
-                                    current == *from
+                                    current.canonicalize().as_ref().unwrap_or(&current) == from
                                 }
                                 Component::Prefix(_) | Component::RootDir | Component::CurDir => {
                                     false
@@ -229,6 +235,27 @@ impl Cache<Compiler> {
             from: from.clone(),
             to,
         })
+    }
+
+    /// Where the file or directory that a module is is on disk, which is found from the
+    /// directory that the project is compiled from, one entry at a time. The paths of the
+    /// compiled files are where their symbolic links lead, which isn't where the project has
+    /// them, so an entry that's a link has no path here, and neither has anything in it.
+    fn entry_path(&self, module: &ModulePath) -> Option<PathBuf> {
+        let mut path = self.root.clone()?;
+
+        for entry in &module.entries {
+            path.push(entry);
+
+            if path.is_symlink() {
+                return None;
+            }
+        }
+
+        match &module.file {
+            Some(file) => (path.canonicalize().ok()? == *file).then_some(path),
+            None => path.is_dir().then_some(path),
+        }
     }
 
     /// A place in a file as it's shown in a message, like the notes of diagnostics are: relative
@@ -299,7 +326,7 @@ impl Cache<Compiler> {
 
         let module = match target {
             Target::Symbol(symbol) if matches!(self.ctx.symbol(symbol), Symbol::Module(_)) => {
-                module_path(&self.tree, symbol, None)
+                module_path(&self.tree, symbol, None, &mut Vec::new())
             }
             _ => None,
         };
@@ -309,7 +336,7 @@ impl Cache<Compiler> {
         if let Some(module) = &module
             && (module.parent.is_none()
                 || (module.parent == Some(self.tree.module())
-                    && !module.directory
+                    && module.file.is_some()
                     && name == "main"))
         {
             return Err(format!(
@@ -614,19 +641,24 @@ fn is_unqualified(token: &SyntaxToken) -> bool {
     }
 }
 
-/// A module that's a file or a directory of the project, given the directory that the tree is in.
-fn module_path(tree: &FileTree, module: SymbolId, parent: Option<&FileTree>) -> Option<ModulePath> {
+/// A module that's a file or a directory of the project, given the directory that the tree is in
+/// and the entries that lead to that directory.
+fn module_path(
+    tree: &FileTree,
+    module: SymbolId,
+    parent: Option<&FileTree>,
+    entries: &mut Vec<String>,
+) -> Option<ModulePath> {
     if tree.module() == module {
-        // The path is worked out from the files, whose paths are the ones that symbolic links
-        // lead to, so it's only where the module is if it's the entry for the module in the
-        // directory that the module is in
-        let entry = parent
-            .and_then(tree_path)
-            .map(|parent| parent.join(entry_name(tree)));
-
         return Some(ModulePath {
-            path: tree_path(tree).filter(|path| Some(path) == entry.as_ref() && !path.is_symlink()),
-            directory: matches!(tree, FileTree::Directory(_)),
+            entries: entries.clone(),
+            file: match tree {
+                FileTree::File(file) => match &file.source.kind {
+                    SourceKind::File(path) => Some(PathBuf::from(path)),
+                    SourceKind::Std(_) => return None,
+                },
+                FileTree::Directory(_) => None,
+            },
             parent: parent.map(FileTree::module),
         });
     }
@@ -635,41 +667,14 @@ fn module_path(tree: &FileTree, module: SymbolId, parent: Option<&FileTree>) -> 
         return None;
     };
 
-    directory
-        .children
-        .iter()
-        .find_map(|child| module_path(child, module, Some(tree)))
-}
+    directory.children.iter().find_map(|child| {
+        entries.push(match child {
+            FileTree::File(file) => format!("{}.rue", file.name),
+            FileTree::Directory(directory) => directory.name.clone(),
+        });
 
-/// The name of the file or directory that a module is.
-fn entry_name(tree: &FileTree) -> String {
-    match tree {
-        FileTree::File(file) => format!("{}.rue", file.name),
-        FileTree::Directory(directory) => directory.name.clone(),
-    }
-}
-
-/// The path of a file, or of a directory, which is the one that the files and directories in it
-/// are in. Those that are reached through a symbolic link are somewhere else, so they're left
-/// out, and if the rest disagree, the directory isn't known.
-fn tree_path(tree: &FileTree) -> Option<PathBuf> {
-    match tree {
-        FileTree::File(file) => match &file.source.kind {
-            SourceKind::File(path) => Some(PathBuf::from(path)),
-            SourceKind::Std(_) => None,
-        },
-        FileTree::Directory(directory) => {
-            let mut parents = directory.children.iter().filter_map(|child| {
-                let path = tree_path(child)?;
-                let parent = path.parent()?;
-
-                (parent.join(entry_name(child)) == path && !path.is_symlink())
-                    .then(|| parent.to_path_buf())
-            });
-
-            let path = parents.next()?;
-
-            parents.all(|parent| parent == path).then_some(path)
-        }
-    }
+        let found = module_path(child, module, Some(tree), entries);
+        entries.pop();
+        found
+    })
 }

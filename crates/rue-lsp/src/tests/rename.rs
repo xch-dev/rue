@@ -1015,27 +1015,43 @@ fn test_rename_directory_with_external_function() {
 #[test]
 fn test_rename_module_that_is_a_symlink() {
     // The file or directory that a symbolic link leads to isn't where the project has the
-    // module, so neither it nor the link is renamed
+    // module, so neither it nor the link is renamed, whatever the link is named
     let elsewhere = super::TempDir::new("rue-lsp-rename-elsewhere");
     let real = elsewhere.path().canonicalize().unwrap();
-    std::fs::write(real.join("impl.rue"), "export const ONE: Int = 1;\n").unwrap();
-    std::fs::create_dir(real.join("shared")).unwrap();
-    std::fs::write(real.join("shared/a.rue"), "export const TWO: Int = 2;\n").unwrap();
 
-    let main = "fn main() -> Int {\n    utils::ONE + lib::a::TWO + plain::THREE\n}\n";
+    for (path, text) in [
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+        ("impl.rue", "export const TWO: Int = 2;\n"),
+        ("only.rue", "export const THREE: Int = 3;\n"),
+        ("shared/a.rue", "export const FOUR: Int = 4;\n"),
+    ] {
+        std::fs::create_dir_all(real.join(path).parent().unwrap()).unwrap();
+        std::fs::write(real.join(path), text).unwrap();
+    }
+
+    let main = "fn main() -> Int {\n    utils::ONE + other::TWO + real::only::THREE + shared::a::FOUR + plain::FIVE\n}\n";
 
     let renamed = |cursor: &str, new_name: &str| {
         let main = main.replacen(cursor, &format!("$0{cursor}"), 1);
         let files = [
             ("main.rue", main.as_str()),
-            ("plain.rue", "export const THREE: Int = 3;\n"),
+            ("plain.rue", "export const FIVE: Int = 5;\n"),
         ];
 
-        // The links have to be there before the project is compiled
+        // The links have to be there before the project is compiled: a file and a directory
+        // that are named like what they lead to, a file that isn't, and a file that's the only
+        // one in a directory of the project
         let dir = super::TempDir::new("rue-lsp-rename-links");
+        let link = |from: &str, to: &str| {
+            std::os::unix::fs::symlink(real.join(from), dir.path().join(to)).unwrap();
+        };
+
         std::fs::write(dir.path().join("Rue.toml"), super::MANIFEST).unwrap();
-        std::os::unix::fs::symlink(real.join("impl.rue"), dir.path().join("utils.rue")).unwrap();
-        std::os::unix::fs::symlink(real.join("shared"), dir.path().join("lib")).unwrap();
+        std::fs::create_dir(dir.path().join("real")).unwrap();
+        link("utils.rue", "utils.rue");
+        link("impl.rue", "other.rue");
+        link("only.rue", "real/only.rue");
+        link("shared", "shared");
 
         let project = TestProject::in_dir(dir, &files);
         project
@@ -1050,24 +1066,83 @@ fn test_rename_module_that_is_a_symlink() {
         project.rename(new_name)
     };
 
-    assert_eq!(
-        renamed("utils", "helpers"),
-        "error: `utils` is reached through a symbolic link, so it can't be renamed\n"
-    );
-    assert_eq!(
-        renamed("lib", "core"),
-        "error: `lib` is reached through a symbolic link, so it can't be renamed\n"
-    );
+    for (cursor, name) in [
+        ("utils", "utils"),
+        ("other", "other"),
+        ("only", "only"),
+        ("shared", "shared"),
+        ("a::FOUR", "a"),
+    ] {
+        assert_eq!(
+            renamed(cursor, "renamed"),
+            format!("error: `{name}` is reached through a symbolic link, so it can't be renamed\n")
+        );
+    }
 
-    // A file that's where it seems to be is still renamed
+    // A file and a directory that are where they seem to be are still renamed
     expect![[r#"
         main.rue:
         fn main() -> Int {
-            utils::ONE + lib::a::TWO + simple::THREE
+            utils::ONE + other::TWO + real::only::THREE + shared::a::FOUR + simple::FIVE
         }
         renamed: plain.rue -> simple.rue
     "#]]
     .assert_eq(&renamed("plain", "simple"));
+    expect![[r#"
+        main.rue:
+        fn main() -> Int {
+            utils::ONE + other::TWO + actual::only::THREE + shared::a::FOUR + plain::FIVE
+        }
+        renamed: real -> actual
+    "#]]
+    .assert_eq(&renamed("real", "actual"));
+}
+
+#[test]
+fn test_rename_directory_without_source_files() {
+    // A directory is a module even if none of the files in it are
+    check(
+        &[
+            (
+                "main.rue",
+                "import hex$0es::*;\n\nfn main() -> Int {\n    1\n}\n",
+            ),
+            ("hexes/run.hex", "01"),
+        ],
+        "programs",
+        expect![[r#"
+            main.rue:
+            import programs::*;
+
+            fn main() -> Int {
+                1
+            }
+            renamed: hexes -> programs
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_directory_with_external_function_spelled_differently() {
+    // On a file system that ignores case, a path can name the directory under another spelling
+    let project = project(&[
+        (
+            "main.rue",
+            "extern fn run(value: Any) -> Any from \"Lib/run.hex\";\n\nfn main() -> Any {\n    li$0b::a::ONE\n}\n",
+        ),
+        ("lib/a.rue", "export const ONE: Int = 1;\n"),
+        ("lib/run.hex", "01"),
+    ]);
+
+    if !project.path("Lib").exists() {
+        return;
+    }
+
+    assert_eq!(
+        project.rename("core"),
+        "error: `lib` can't be renamed, since the path of the external function at main.rue:1:39 \
+        names it\n"
+    );
 }
 
 #[cfg(unix)]

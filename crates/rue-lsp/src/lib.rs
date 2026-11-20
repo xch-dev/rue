@@ -681,7 +681,10 @@ fn rename(
     }
 
     let Some((old_uri, new_uri)) = shared.paths.moved(&moved.from, &moved.to) else {
-        return Err(format!("`{}` can't be renamed", file_name(&moved.from)));
+        return Err(format!(
+            "`{}` can't be renamed, since it isn't a file that the editor can open",
+            file_name(&moved.from)
+        ));
     };
 
     // The files are edited where they are, and then moved

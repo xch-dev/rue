@@ -1,6 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize, TokenAtOffset};
@@ -147,10 +147,13 @@ pub struct Cache<T> {
     /// The struct that declares the fields of each type that a field was used through, such as
     /// `Wrap` for a `Wrap<Int>`, so that every use of a field is about the same declaration.
     field_owners: HashMap<TypeId, TypeId>,
+    /// The directory that the project is compiled from, if it's compiled from one, without any
+    /// symbolic links in its path.
+    root: Option<PathBuf>,
 }
 
 impl Cache<Compiler> {
-    pub fn new(mut ctx: Compiler, tree: FileTree, source: Source) -> Self {
+    pub fn new(mut ctx: Compiler, tree: FileTree, source: Source, entrypoint: &Path) -> Self {
         let syntax_map = ctx.syntax_map().clone();
 
         let mut field_owners = HashMap::new();
@@ -163,10 +166,10 @@ impl Cache<Compiler> {
                 continue;
             };
 
-            if let Entry::Vacant(entry) = field_owners.entry(field.container)
-                && let Some(owner) = field_owner(&mut ctx, field.container)
-            {
-                entry.insert(owner);
+            // A container that isn't a struct, such as a pair, is its own owner, which is also
+            // remembered so that it's only worked out once
+            if let Entry::Vacant(entry) = field_owners.entry(field.container) {
+                entry.insert(field_owner(&mut ctx, field.container).unwrap_or(field.container));
             }
         }
 
@@ -176,6 +179,7 @@ impl Cache<Compiler> {
             source,
             syntax_map,
             field_owners,
+            root: entrypoint.canonicalize().ok().filter(|root| root.is_dir()),
         }
     }
 
