@@ -78,7 +78,7 @@ fn subtract_impl(
     let mut cx = Subtraction::default();
 
     let type_id = match remaining_variants(arena, builtins, &mut cx, lhs_id, rhs_id) {
-        Some(variants) => repackage(arena, builtins, &mut cx.merged_structs, variants),
+        Some(variants) => repackage(arena, builtins, &mut cx, variants),
         None => lhs_id,
     };
 
@@ -124,6 +124,27 @@ struct Subtraction {
     merged_structs: Vec<MergedStruct>,
     /// Shared by every intersection, for the same reason.
     intersection: IntersectContext,
+}
+
+/// Whether `new_id` is strictly narrower than `old_id`, rather than only being restructured (like
+/// `Struct::narrow`).
+fn narrows(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    cx: &mut Subtraction,
+    old_id: TypeId,
+    new_id: TypeId,
+) -> bool {
+    new_id != old_id
+        && compare_impl(
+            arena,
+            builtins,
+            &mut cx.comparison,
+            old_id,
+            new_id,
+            None,
+            None,
+        ) > Comparison::Assign
 }
 
 /// Whether every value of `lhs_id` passes a check against `rhs_id`. The types have already been
@@ -374,25 +395,23 @@ fn subtract_part(
     match remaining_variants(arena, builtins, cx, lhs_id, rhs_id) {
         None => Part::Unchanged,
         Some(variants) if variants.is_empty() => Part::Removed,
-        Some(variants) => {
-            Part::Narrowed(repackage(arena, builtins, &mut cx.merged_structs, variants))
-        }
+        Some(variants) => Part::Narrowed(repackage(arena, builtins, cx, variants)),
     }
 }
 
 fn repackage(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    merged_structs: &mut Vec<MergedStruct>,
+    cx: &mut Subtraction,
     variants: Vec<Variant>,
 ) -> TypeId {
-    grow_stack(|| repackage_inner(arena, builtins, merged_structs, variants))
+    grow_stack(|| repackage_inner(arena, builtins, cx, variants))
 }
 
 fn repackage_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    merged_structs: &mut Vec<MergedStruct>,
+    cx: &mut Subtraction,
     variants: Vec<Variant>,
 ) -> TypeId {
     let mut collected = vec![];
@@ -437,11 +456,19 @@ fn repackage_inner(
 
     let result = match arena[semantic_type_id].clone() {
         Type::Alias(alias) => {
-            let inner = repackage(arena, builtins, merged_structs, collected);
-            arena.alloc(Type::Alias(Alias { inner, ..alias }))
+            let inner = repackage(arena, builtins, cx, collected);
+
+            // An alias is transparent, so once it's narrowed it's left out, rather than being
+            // displayed by a name that no longer describes the type (such as `List<A | B>` for a
+            // list that can't start with an `A`)
+            if narrows(arena, builtins, cx, alias.inner, inner) {
+                inner
+            } else {
+                arena.alloc(Type::Alias(Alias { inner, ..alias }))
+            }
         }
         Type::Struct(ty) => {
-            let inner = repackage(arena, builtins, merged_structs, collected);
+            let inner = repackage(arena, builtins, cx, collected);
 
             // A struct's pair can be split into several pairs (see `split_pair`), at any of the
             // levels that its fields are read through. Its fields are read from a union of
@@ -476,7 +503,7 @@ fn repackage_inner(
                     let ty = ty.narrow(arena, builtins, inner);
                     let merged = arena.alloc(Type::Struct(ty));
 
-                    merged_structs.push(MergedStruct {
+                    cx.merged_structs.push(MergedStruct {
                         semantic: semantic_type_id,
                         merged,
                     });
@@ -492,7 +519,7 @@ fn repackage_inner(
         return result;
     }
 
-    let leftover = repackage(arena, builtins, merged_structs, leftover);
+    let leftover = repackage(arena, builtins, cx, leftover);
 
     arena.alloc(Type::Union(Union::new(vec![result, leftover])))
 }

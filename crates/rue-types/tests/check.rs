@@ -550,7 +550,7 @@ fn test_recursive_types() {
     );
 
     let else_type = t.subtract(list, nil);
-    assert_eq!(t.name(else_type), "1 @ (Int, nil | <1>)");
+    assert_eq!(t.name(else_type), "0 @ (Int, nil | <0>)");
 }
 
 #[test]
