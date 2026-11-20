@@ -1547,6 +1547,37 @@ mod inference {
         assert_eq!(candidates(&infer, t), InferenceCandidates::default());
     }
 
+    /// `5 | (5, 5)` against `T | (T, T)` matches both members for `(5, 5)`, but the `(T, T)`
+    /// member's `T ≥ 5` is implied by the `T ≥ 5` that `5` gives, so the `T` member's
+    /// `T ≥ (5, 5)` isn't needed (#362's step 13h). Against `T | (T, nil)`, only the `T` member
+    /// matches `(5, 5)`, so its `T ≥ (5, 5)` is kept.
+    #[test]
+    fn implied_members_leave_the_others_out() {
+        let mut db = Db::new();
+        let nil = db.builtins.nil;
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let fives = db.pair(five, five);
+        let value = db.union(&[five, fives]);
+
+        let t = db.generic("T");
+        let pair = db.pair(t, t);
+        let param = db.union(&[t, pair]);
+        let mut infer = Inference::new([t]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        let resolved = db.name(mappings[&t]);
+        assert!(!resolved.contains('('), "{resolved}");
+
+        let t = db.generic("T");
+        let pair = db.pair(t, nil);
+        let param = db.union(&[t, pair]);
+        let mut infer = Inference::new([t]);
+        let _ = db.infer(value, param, &mut infer);
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        let resolved = db.name(mappings[&t]);
+        assert!(resolved.contains('('), "{resolved}");
+    }
+
     #[test]
     fn widens_covariant_candidates() {
         let mut db = Db::new();

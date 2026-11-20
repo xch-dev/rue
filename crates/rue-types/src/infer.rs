@@ -12,9 +12,10 @@ pub use solve::*;
 
 use std::mem;
 
+use id_arena::Arena;
 use indexmap::IndexMap;
 
-use crate::{Comparison, FxHashMap, TypeId};
+use crate::{BuiltinTypes, Comparison, FxHashMap, Type, TypeId, compare};
 
 /// The constraints collected for a generic type parameter during inference.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -91,6 +92,10 @@ pub(crate) struct BranchId {
 /// union member each was collected under, if it's one of a union compared inside of the function
 /// comparison whose bounds are being checked (see `Choices::attributed`).
 pub(crate) type FailedPair = (Option<BranchId>, Option<BranchId>, Comparison);
+
+/// A union member whose candidates aren't needed, with the generics and kinds of candidate that
+/// are left out (see `Inference::implied_members`).
+type LeftOut = (BranchId, Vec<(TypeId, CandidateKind)>);
 
 /// The `BranchId::member` of a union comparison's fallback, such as comparing a function's runtime
 /// structure with the union when no member holds the function (#349).
@@ -251,6 +256,17 @@ impl Inference {
     /// function to `T | (T, Int) | nil` matches the `T` member, so what comparing the function's
     /// runtime structure with `(T, Int)` collected for `T` is left out (#364).
     pub fn matched_candidates(&self, generic: TypeId) -> Option<InferenceCandidates> {
+        self.candidates_without(generic, &[])
+    }
+
+    /// Like `Inference::matched_candidates`, but also leaving out the candidates of each kind in
+    /// `left_out` for the generic that were collected under its union member, or in a union nested
+    /// in it.
+    fn candidates_without(
+        &self,
+        generic: TypeId,
+        left_out: &[LeftOut],
+    ) -> Option<InferenceCandidates> {
         let candidates = self.generics.get(&generic)?;
         let branches = &self.branches[&generic];
         let results = self.choices.results();
@@ -260,9 +276,13 @@ impl Inference {
                 .iter()
                 .zip(branches.list(kind))
                 .filter(|(_, branches)| {
-                    branches
-                        .iter()
-                        .all(|&branch| self.choices.matched_with(&results, branch))
+                    branches.iter().all(|&branch| {
+                        self.choices.matched_with(&results, branch)
+                            && !left_out.iter().any(|(member, kinds)| {
+                                kinds.contains(&(generic, kind))
+                                    && self.choices.is_under(branch, *member)
+                            })
+                    })
                 })
                 .map(|(&ty, _)| ty)
                 .collect()
@@ -275,16 +295,158 @@ impl Inference {
         })
     }
 
+    /// The union members whose candidates aren't needed although they matched, since another
+    /// member of the same union matched whose candidates are all implied by candidates that hold
+    /// anyway: the value is held by that member for any solution of those, so the other members'
+    /// candidates would only widen it (#362, §5, question 2). For example, `5 | (5, 5)` against
+    /// `T | (T, T)` matches both `T` and `(T, T)` for `(5, 5)`, but `(T, T)`'s `T ≥ 5` is implied
+    /// by the `T ≥ 5` that `5` gives, so `T ≥ (5, 5)` from the `T` member isn't needed, and `T`
+    /// is `5`. A lower bound `T ≥ c` is implied by `T ≥ l` with `c` assignable to `l`, and an
+    /// upper bound `T ≤ c` by `T ≤ u` with `u` assignable to `c`. A held candidate doesn't
+    /// constrain the generic, so it's implied. Where several members are implied, the first is
+    /// kept. Unions are decided in the order they were compared, and what's left out of one isn't
+    /// what holds anyway for those after it.
+    fn implied_members(&self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) -> Vec<LeftOut> {
+        let results = self.choices.results();
+        let mut left_out: Vec<LeftOut> = Vec::new();
+
+        // Every candidate, with the generic and kind it's for and the members it was collected
+        // under
+        let candidates: Vec<(TypeId, CandidateKind, TypeId, &Vec<BranchId>)> = self
+            .generics
+            .iter()
+            .flat_map(|(&generic, candidates)| {
+                let branches = &self.branches[&generic];
+                CandidateKind::ALL.into_iter().flat_map(move |kind| {
+                    candidates
+                        .list(kind)
+                        .iter()
+                        .zip(branches.list(kind))
+                        .map(move |(&ty, branches)| (generic, kind, ty, branches))
+                })
+            })
+            .collect();
+
+        for choice in 0..self.choices.len() {
+            let holds = |(generic, kind): (TypeId, CandidateKind),
+                         branches: &Vec<BranchId>,
+                         left_out: &[LeftOut]| {
+                branches.iter().all(|&branch| {
+                    self.choices.matched_with(&results, branch)
+                        && !left_out.iter().any(|(member, kinds)| {
+                            kinds.contains(&(generic, kind))
+                                && self.choices.is_under(branch, *member)
+                        })
+                })
+            };
+            let under = |branches: &Vec<BranchId>, member: usize| {
+                branches
+                    .iter()
+                    .any(|&branch| self.choices.is_under(branch, BranchId { choice, member }))
+            };
+
+            // The members that matched and have candidates that hold under them
+            let mut members: Vec<usize> = Vec::new();
+
+            for &(generic, kind, _, branches) in &candidates {
+                if !holds((generic, kind), branches, &left_out) {
+                    continue;
+                }
+
+                for &branch in branches {
+                    let mut current = Some(branch);
+
+                    while let Some(member) = current {
+                        if member.choice == choice && !members.contains(&member.member) {
+                            members.push(member.member);
+                        }
+
+                        current = self.choices.parent(member);
+                    }
+                }
+            }
+
+            if members.len() < 2 {
+                continue;
+            }
+
+            members.sort_unstable();
+
+            let implied = members.iter().copied().find(|&member| {
+                candidates
+                    .iter()
+                    .filter(|&&(generic, kind, _, branches)| {
+                        holds((generic, kind), branches, &left_out) && under(branches, member)
+                    })
+                    .all(|&(generic, kind, ty, _)| {
+                        let anyway =
+                            candidates
+                                .iter()
+                                .filter(|(other, other_kind, _, branches)| {
+                                    *other == generic
+                                        && *other_kind == kind
+                                        && holds((generic, kind), branches, &left_out)
+                                        && !branches
+                                            .iter()
+                                            .any(|&branch| self.choices.is_in(branch, choice))
+                                });
+
+                        match kind {
+                            CandidateKind::Held => true,
+                            CandidateKind::Lower => anyway.clone().any(|&(_, _, bound, _)| {
+                                compare(arena, builtins, ty, bound) == Comparison::Assign
+                            }),
+                            CandidateKind::Upper => anyway.clone().any(|&(_, _, bound, _)| {
+                                compare(arena, builtins, bound, ty) == Comparison::Assign
+                            }),
+                        }
+                    })
+            });
+
+            if let Some(implied) = implied {
+                // Only the candidates of a generic and kind that has one outside of the union are
+                // left out, so that a generic that only the other members constrain keeps what
+                // they give it
+                let outside: Vec<(TypeId, CandidateKind)> = candidates
+                    .iter()
+                    .filter(|&&(generic, kind, _, branches)| {
+                        holds((generic, kind), branches, &left_out)
+                            && !branches
+                                .iter()
+                                .any(|&branch| self.choices.is_in(branch, choice))
+                    })
+                    .map(|&(generic, kind, _, _)| (generic, kind))
+                    .collect();
+
+                left_out.extend(
+                    members
+                        .iter()
+                        .filter(|&&member| member != implied)
+                        .map(|&member| (BranchId { choice, member }, outside.clone())),
+                );
+            }
+        }
+
+        left_out
+    }
+
     /// The inference with each generic's candidates replaced by those that hold
-    /// (`Inference::matched_candidates`), which is what the generics are resolved from. A generic
-    /// whose candidates all come from union members that didn't match keeps every one of them, as
-    /// in `pick(ident)` with `fn pick<U>(f: fn(x: Int) -> (Int, Int) | (U, Bytes))`, where `U`'s
-    /// only candidate comes from the `(U, Bytes)` member.
-    pub(crate) fn keep_matched(&self) -> Inference {
+    /// (`Inference::matched_candidates`), without those of union members that another member's
+    /// implied candidates make unneeded (`Inference::implied_members`), which is what the generics
+    /// are resolved from. A generic whose candidates all come from union members that didn't
+    /// match keeps every one of them, as in `pick(ident)` with
+    /// `fn pick<U>(f: fn(x: Int) -> (Int, Int) | (U, Bytes))`, where `U`'s only candidate comes
+    /// from the `(U, Bytes)` member.
+    pub(crate) fn keep_matched(
+        &self,
+        arena: &mut Arena<Type>,
+        builtins: &BuiltinTypes,
+    ) -> Inference {
+        let left_out = self.implied_members(arena, builtins);
         let mut kept = self.clone();
 
         for (&generic, candidates) in &mut kept.generics {
-            let matched = self.matched_candidates(generic).unwrap();
+            let matched = self.candidates_without(generic, &left_out).unwrap();
 
             if matched != InferenceCandidates::default() {
                 *candidates = matched;
@@ -891,6 +1053,39 @@ impl Choices {
     /// picks of the members it was collected under instead (see `Choices::attributed`).
     pub(crate) fn matched_so_far(&self, branch: BranchId) -> bool {
         self.matched_since(branch, 0)
+    }
+
+    /// The union member that the member's union is nested in, if any.
+    pub(crate) fn parent(&self, branch: BranchId) -> Option<BranchId> {
+        self.0[branch.choice].parent
+    }
+
+    /// Whether the union member is the other one, or nested in it.
+    pub(crate) fn is_under(&self, mut branch: BranchId, member: BranchId) -> bool {
+        loop {
+            if branch == member {
+                return true;
+            }
+
+            match self.0[branch.choice].parent {
+                Some(parent) => branch = parent,
+                None => return false,
+            }
+        }
+    }
+
+    /// Whether the union member is a member of the union, or nested in one.
+    pub(crate) fn is_in(&self, mut branch: BranchId, choice: usize) -> bool {
+        loop {
+            if branch.choice == choice {
+                return true;
+            }
+
+            match self.0[branch.choice].parent {
+                Some(parent) => branch = parent,
+                None => return false,
+            }
+        }
     }
 
     /// Whether the union members are alternatives: they're different members of one union, or

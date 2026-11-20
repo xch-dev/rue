@@ -54,7 +54,7 @@ pub(crate) fn resolve_inference_around(
     fixed: &HashMap<TypeId, TypeId>,
 ) -> HashMap<TypeId, TypeId> {
     // Only the candidates collected under union members that matched are resolved from (#364)
-    let infer = &infer.keep_matched();
+    let infer = &infer.keep_matched(arena, builtins);
 
     let references: HashMap<TypeId, HashSet<TypeId>> = infer
         .generics
