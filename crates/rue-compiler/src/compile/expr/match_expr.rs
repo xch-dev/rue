@@ -3,11 +3,14 @@ use std::collections::HashSet;
 use log::debug;
 use rue_ast::{AstMatchArm, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
-use rue_hir::{BindingSymbol, Block, Guard, Hir, HirId, Statement, Symbol, SymbolPath, Value};
+use rue_hir::{
+    BindingSymbol, Block, Guard, Hir, HirId, Statement, Symbol, SymbolPath, Value,
+    control_terminates,
+};
 use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
-use crate::{Compiler, compile_expr, compile_type};
+use crate::{BlockKind, Compiler, compile_expr, compile_type};
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
 /// equivalent to, so that it's checked, narrowed and generated the same way. Each arm checks the
@@ -18,6 +21,7 @@ pub fn compile_match_expr(
     ctx: &mut Compiler,
     expr: &AstMatchExpr,
     expected_type: Option<TypeId>,
+    arm_kind: Option<BlockKind>,
 ) -> Value {
     let inline = expr.inline().is_some();
 
@@ -62,6 +66,9 @@ pub fn compile_match_expr(
     let mut branches = Vec::new();
     let mut else_branch = None;
     let mut types = Vec::new();
+    // The types of the value in the arms of a statement that fall through to the rest of the
+    // block, which only sees those values
+    let mut fallthrough_types = Vec::new();
     let mut handled = Vec::new();
     let mut indistinguishable = Vec::new();
 
@@ -96,7 +103,15 @@ pub fn compile_match_expr(
                     .map_or(UnreachableReason::Handled, UnreachableReason::CatchAll);
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
             }
-            compile_unreachable_arm(ctx, &arm, &reference, pattern, inline, expected_type);
+            compile_unreachable_arm(
+                ctx,
+                &arm,
+                &reference,
+                pattern,
+                inline,
+                expected_type,
+                arm_kind,
+            );
             continue;
         }
 
@@ -111,7 +126,15 @@ pub fn compile_match_expr(
             if ctx.is_assignable(ty, earlier) {
                 let reason = UnreachableReason::Handled;
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
-                compile_unreachable_arm(ctx, &arm, &reference, pattern, inline, expected_type);
+                compile_unreachable_arm(
+                    ctx,
+                    &arm,
+                    &reference,
+                    pattern,
+                    inline,
+                    expected_type,
+                    arm_kind,
+                );
                 continue;
             }
         }
@@ -148,7 +171,15 @@ pub fn compile_match_expr(
                     has_error = true;
                 }
             }
-            compile_unreachable_arm(ctx, &arm, &reference, pattern, inline, expected_type);
+            compile_unreachable_arm(
+                ctx,
+                &arm,
+                &reference,
+                pattern,
+                inline,
+                expected_type,
+                arm_kind,
+            );
             continue;
         }
 
@@ -181,12 +212,24 @@ pub fn compile_match_expr(
             &reference,
             pattern.filter(|_| !inline),
             expected_type,
+            arm_kind,
         );
         types.push(body.ty);
 
+        let catches_all = check == Check::None || else_members.is_empty();
+
+        // An arm that handles everything that's left sees the members that are left, rather
+        // than the type they're left in, which can keep the name of an alias that's been narrowed
+        if arm_kind == Some(BlockKind::Statement) && !control_terminates(ctx, body.hir) {
+            match pattern {
+                Some(ty) if !catches_all => fallthrough_types.push(ty),
+                _ => fallthrough_types.extend(remaining_members.iter().copied()),
+            }
+        }
+
         // An arm that handles every value that's left is the `else` branch, which doesn't need to
         // check anything
-        if check == Check::None || else_members.is_empty() {
+        if catches_all {
             else_branch = Some(body.hir);
             catch_all = Some(arm_srcloc);
             continue;
@@ -228,6 +271,19 @@ pub fn compile_match_expr(
     }
 
     ctx.revert_mappings(checkpoint, expr.syntax().text_range().end());
+
+    // The rest of the block after a statement only sees the values of the arms that fall through
+    // to it, unless the arms are evaluated eagerly
+    if arm_kind == Some(BlockKind::Statement) {
+        let narrowing = (!inline && !has_error && !fallthrough_types.is_empty()).then(|| {
+            let ty = match fallthrough_types.len() {
+                1 => fallthrough_types[0],
+                _ => ctx.alloc_type(Type::Union(Union::new(fallthrough_types))),
+            };
+            reference.narrowed_to(ty)
+        });
+        ctx.set_statement_narrowing(narrowing);
+    }
 
     // The arms that take members which no later arm names are reported themselves, since nothing
     // else shows that those members end up there
@@ -306,13 +362,17 @@ pub fn compile_match_expr(
     Value::new(hir, ty)
 }
 
-/// Compiles an arm's body, with the value narrowed to the arm's type, if it has one.
+/// Compiles an arm's body, with the value narrowed to the arm's type, if it has one. If the arms
+/// are blocks of a given kind, such as in a statement (see [`Compiler::with_branches`]), so is a
+/// body that's a block, `if` or `match`, and in a statement any other body is an error, since its
+/// value isn't used.
 fn compile_arm(
     ctx: &mut Compiler,
     arm: &AstMatchArm,
     reference: &SymbolPath,
     ty: Option<TypeId>,
     expected_type: Option<TypeId>,
+    branches: Option<BlockKind>,
 ) -> Value {
     let Some(body) = arm.expr() else {
         debug!("Unresolved match arm body");
@@ -322,7 +382,18 @@ fn compile_arm(
     let range = body.syntax().text_range();
     let mappings = ty.map(|ty| reference.narrowed_to(ty)).unwrap_or_default();
     let index = ctx.push_mappings(mappings, range.start());
-    let value = compile_expr(ctx, &body, expected_type);
+
+    let value = match branches {
+        Some(kind) if arm.ends_with_brace() => {
+            ctx.with_branches(kind, |ctx| compile_expr(ctx, &body, expected_type))
+        }
+        Some(BlockKind::Statement) => {
+            ctx.diagnostic(body.syntax(), DiagnosticKind::StatementMatchArmValue);
+            compile_expr(ctx, &body, expected_type)
+        }
+        _ => compile_expr(ctx, &body, expected_type),
+    };
+
     ctx.revert_mappings(index, range.end());
     value
 }
@@ -337,9 +408,10 @@ fn compile_unreachable_arm(
     pattern: Option<TypeId>,
     inline: bool,
     expected_type: Option<TypeId>,
+    branches: Option<BlockKind>,
 ) {
     let ty = (!inline).then(|| pattern.unwrap_or(ctx.builtins().types.never));
-    let _ = compile_arm(ctx, arm, reference, ty, expected_type);
+    let _ = compile_arm(ctx, arm, reference, ty, expected_type, branches);
 }
 
 /// An arm whose check also lets through members it can't tell apart from its own type.

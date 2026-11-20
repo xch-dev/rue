@@ -16,7 +16,7 @@ diagnostics:
 - Block does not return a value at statements.rue:26:29
 - Cannot assign `nil` to `Int` without a cast, since they are semantically different at statements.rue:26:29
 - Condition always evaluates to `true` at statements.rue:27:8
-- Expected statement block to end in `return` or `raise`, not an expression at statements.rue:28:9
+- Cannot end a statement's block with a value, since it isn't used; end it with a statement such as `return` or `raise` instead at statements.rue:28:9
 - Expected one of `;`, `}`, found `else` at statements.rue:29:5
 - Expected one of `else`, `}`, found `test` at statements.rue:34:1
 - |-

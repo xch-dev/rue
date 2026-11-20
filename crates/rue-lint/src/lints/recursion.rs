@@ -169,6 +169,9 @@ impl Search<'_> {
                     let then = self.expr(statement.then)?;
                     return self.block(&statements[index + 1..], body).map(|_| then);
                 }
+                // A branch might not call it and still return, raise or fall through, so the rest
+                // of the block isn't counted
+                Statement::Control(statement) => return self.expr(statement.hir),
                 Statement::Return(hir, _) => return self.expr(*hir),
                 Statement::Raise(hir, _) => return hir.and_then(|hir| self.expr(hir)),
                 // If the assertion fails, it raises before anything after it

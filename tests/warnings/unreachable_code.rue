@@ -82,3 +82,44 @@ test fn reachable() {
 test fn dead_reference_fails() -> Int {
     dead_reference()
 }
+
+// A statement whose branches all return or raise never finishes
+fn after_exiting_match(value: Int | nil) -> Int {
+    match value {
+        nil => {
+            return 0;
+        }
+        Int => {
+            raise "value";
+        }
+    }
+
+    1
+}
+
+fn after_exiting_if(flag: Bool) -> Int {
+    if flag {
+        return 0;
+    } else {
+        raise "flag";
+    }
+
+    1
+}
+
+// A statement with a branch that falls through finishes
+fn after_falling_through(flag: Bool) -> Int {
+    if flag {
+        return 0;
+    } else {
+        debug flag;
+    }
+
+    1
+}
+
+test fn exiting_statements() {
+    assert after_exiting_match(nil) == 0;
+    assert after_exiting_if(true) == 0;
+    assert after_falling_through(false) == 1;
+}

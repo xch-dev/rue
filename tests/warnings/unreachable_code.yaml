@@ -18,6 +18,15 @@ tests:
   byte_cost: 156000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at unreachable_code.rue:72:5" "failed")
+- name: exiting_statements
+  program: ()
+  debug_program: (a (q 2 (i (= (a 14 ()) ()) (q 2 (i (= (a 10 (q . 1)) ()) (q 2 (i (= (a 4 ()) (q . 1)) (q) (q 8 (q . "assertion failed at unreachable_code.rue:124:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:123:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:122:5"))) 1) (c (c (q 2 (i 1 (q) (q 2 (i ("debug_print" (q . "unreachable_code.rue:115:9") 1) (q) (q 1 . 1)) 1)) 1) (c (q 2 (i 1 (q) (q 8 (q . "raise called at unreachable_code.rue:104:9") (q . "flag"))) 1) (q 2 (i (= 1 ()) (q) (q 8 (q . "raise called at unreachable_code.rue:93:13") (q . "value"))) 1))) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+  print_messages:
+  - ()
 diagnostics:
 - Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:3:5
 - |-
@@ -57,4 +66,12 @@ diagnostics:
 - |-
   Unreachable code at unreachable_code.rue:68:5
     note: Any code after this is never evaluated at unreachable_code.rue:67:5
+    help: Remove the unreachable code
+- |-
+  Unreachable code at unreachable_code.rue:97:5
+    note: Any code after this is never evaluated at unreachable_code.rue:88:5
+    help: Remove the unreachable code
+- |-
+  Unreachable code at unreachable_code.rue:107:5
+    note: Any code after this is never evaluated at unreachable_code.rue:101:5
     help: Remove the unreachable code

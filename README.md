@@ -153,6 +153,34 @@ Each variant has a discriminant, which is `0` for the first variant and one more
 
 An enum can have generic parameters, which every variant shares. They're given to a variant like they are to a struct, as in `Option::Some::<Int> { value: 1 }` and `Option::Some<Int>`. A variant without fields is the same value whatever the generics are, so it can be assigned to any instantiation of the enum.
 
+## Statements
+
+An `if`, `else if` and `else` chain or a `match` can be a statement in the middle of a block, without a `;`. Its branches are blocks of statements rather than values: each one can `return` from the function, `raise`, or fall through to the code after the statement. An `if` without an `else` works the same way, with nothing in the `else` branch:
+
+```rs
+fn perimeter(shape: Shape) -> Int {
+    match shape {
+        Point => {
+            return 0;
+        }
+        Circle => {
+            raise "a circle has no sides";
+        }
+        Square => {
+            assert shape.side > 0;
+        }
+    }
+
+    shape.side * 4
+}
+```
+
+The code after a statement only sees the values of the branches that fall through to it. Above, `shape` is a `Square` after the `match`. If only one branch of an `if` chain falls through, the code after it sees what that branch does. A statement whose branches all `return` or `raise` never finishes, so a function can end with it instead of a value, and code after it is reported by `unreachable_code`. In the same way, the branches of the `if`, `match` or block that a function ends with can `return`, since it's what the function returns.
+
+As in Rust, a statement ends at its closing brace, so `if a { 1 } else { 2 } + 3` at the start of a statement is the statement followed by `+ 3`. Wrap it in parentheses to use it as a value. With a `;` after it, it's an expression statement like any other, whose branches are values.
+
+The code after a statement is only generated once. If several branches fall through to it and one of them can return, it's passed to them as a program to run, rather than being generated in each one.
+
 ## CLI
 
 | Command                         | Description                                                            |

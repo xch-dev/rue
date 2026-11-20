@@ -1771,6 +1771,37 @@ fn match_arm_comments() {
 }
 
 #[test]
+fn block_like_statements() {
+    check(
+        "fn main(x: Int | nil, b: Bool) -> Int {\n    match x { nil => { return 0; } Int => {} }\n    if b { debug x; } else if x > 1 { return 1; } else { raise; }\n    match x { 1 => { return 1; } _ => {} };\n    x\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil, b: Bool) -> Int {
+                match x {
+                    nil => {
+                        return 0;
+                    }
+                    Int => {}
+                }
+                if b {
+                    debug x;
+                } else if x > 1 {
+                    return 1;
+                } else {
+                    raise;
+                }
+                match x {
+                    1 => {
+                        return 1;
+                    }
+                    _ => {}
+                };
+                x
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn inline_match_expressions() {
     check(
         "fn main(x: Int | nil) -> Int {\n    let y = inline   match x { nil => 0, Int => 1 };\n    match x { nil => inline match y { 0 => 1, _ => 2 }, Int => 3 }\n}\n",

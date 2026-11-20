@@ -219,8 +219,15 @@ pub enum DiagnosticKind {
     #[error("Let bindings must have a value, since they cannot be reassigned")]
     MissingLetValue,
 
-    #[error("Expected statement block to end in `return` or `raise`, not an expression")]
+    #[error(
+        "Cannot end a statement's block with a value, since it isn't used; end it with a statement such as `return` or `raise` instead"
+    )]
     UnexpectedImplicitReturn,
+
+    #[error(
+        "Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead"
+    )]
+    StatementMatchArmValue,
 
     #[error("Cannot use a `return` statement here, end the block with an expression instead")]
     UnexpectedExplicitReturn,

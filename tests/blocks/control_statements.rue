@@ -1,0 +1,400 @@
+struct Circle {
+    kind = 1,
+    radius: Int,
+}
+
+struct Square {
+    kind = 2,
+    side: Int,
+}
+
+struct Point {
+    _kind = 3,
+}
+
+type Shape = Circle | Square | Point;
+
+fn checked(value: Int) -> Int {
+    assert value < 100;
+    value
+}
+
+// Every arm ends in `return` or `raise`, so the match ends the function
+fn every_arm_exits(shape: Shape) -> Int {
+    match shape {
+        Circle => {
+            return shape.radius;
+        }
+        Square => {
+            return shape.side * 2;
+        }
+        Point => {
+            raise "point";
+        }
+    }
+}
+
+test fn every_arm_exits_circle() -> Int {
+    every_arm_exits(Circle { radius: 5 })
+}
+
+test fn every_arm_exits_point() -> Int {
+    every_arm_exits(Point {})
+}
+
+// Every branch ends in `return` or `raise`, so the chain ends the function
+fn every_branch_exits(value: Int) -> Int {
+    if value > 10 {
+        return 1;
+    } else if value > 5 {
+        raise "between";
+    } else {
+        return 2;
+    }
+}
+
+test fn every_branch_exits_results() -> List<Int> {
+    [every_branch_exits(20), every_branch_exits(1)]
+}
+
+test fn every_branch_exits_raises() -> Int {
+    every_branch_exits(7)
+}
+
+// Only one arm continues with the rest of the function
+fn one_arm_continues(shape: Shape) -> Int {
+    match shape {
+        Circle => {
+            return shape.radius;
+        }
+        Square => {
+            raise "square";
+        }
+        Point => {}
+    }
+
+    100
+}
+
+test fn one_arm_continues_results() -> List<Int> {
+    [one_arm_continues(Circle { radius: 5 }), one_arm_continues(Point {})]
+}
+
+// Several arms continue with the rest of the function, which is only generated once
+fn several_arms_continue(shape: Shape, value: Int) -> Int {
+    match shape {
+        Circle => {
+            return shape.radius;
+        }
+        Square => {
+            assert value > 0;
+        }
+        Point => {
+            assert value > 1;
+        }
+    }
+
+    value * value + 1000
+}
+
+test fn several_arms_continue_results() -> List<Int> {
+    [
+        several_arms_continue(Circle { radius: 5 }, 0),
+        several_arms_continue(Square { side: 1 }, 1),
+        several_arms_continue(Point {}, 2),
+    ]
+}
+
+test fn several_arms_continue_fails() -> Int {
+    several_arms_continue(Point {}, 1)
+}
+
+// No branch returns, so the statement is evaluated before the rest of the function
+fn no_branch_returns(value: Int) -> Int {
+    if value > 5 {
+        assert value < 10;
+    } else if value > 2 {
+        debug value;
+    } else {
+        assert value != 0;
+    }
+
+    value + 1
+}
+
+test fn no_branch_returns_results() -> List<Int> {
+    [no_branch_returns(7), no_branch_returns(3), no_branch_returns(1)]
+}
+
+test fn no_branch_returns_fails() -> Int {
+    no_branch_returns(0)
+}
+
+// An `if` statement without an `else` can fall through too
+fn if_falls_through(value: Int) -> Int {
+    if value > 5 {
+        assert value < 10;
+    }
+
+    value
+}
+
+test fn if_falls_through_results() -> List<Int> {
+    [if_falls_through(7), if_falls_through(20 - 19)]
+}
+
+test fn if_falls_through_fails() -> Int {
+    if_falls_through(12)
+}
+
+// Statements nest, and each one continues with the rest of the block it's in
+fn nested(shape: Shape, value: Int) -> Int {
+    match shape {
+        Circle => {
+            if value > 5 {
+                return shape.radius;
+            } else if value > 2 {
+                assert value != 3;
+            } else {
+                assert value != 0;
+            }
+
+            assert value != 4;
+        }
+        _ => {
+            match value {
+                0 => {
+                    return 0;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    value + 10
+}
+
+test fn nested_results() -> List<Int> {
+    [
+        nested(Circle { radius: 5 }, 6),
+        nested(Circle { radius: 5 }, 5),
+        nested(Circle { radius: 5 }, 1),
+        nested(Point {}, 0),
+        nested(Point {}, 7),
+    ]
+}
+
+test fn nested_fails() -> Int {
+    nested(Circle { radius: 5 }, 4)
+}
+
+// Statements after one another
+fn sequence(shape: Shape, value: Int) -> Int {
+    match shape {
+        Circle => {
+            return 1;
+        }
+        Square => {
+            assert value > 0;
+        }
+        Point => {}
+    }
+
+    if value > 5 {
+        return 2;
+    } else if value > 3 {
+        assert value != 4;
+    } else {
+        debug value;
+    }
+
+    value
+}
+
+test fn sequence_results() -> List<Int> {
+    [
+        sequence(Circle { radius: 1 }, 0),
+        sequence(Square { side: 1 }, 7),
+        sequence(Point {}, 5),
+        sequence(Point {}, 0),
+    ]
+}
+
+// A binding that can fail is still checked when a branch returns before it's used
+fn checks_before_returning(value: Int, early: Bool) -> Int {
+    let checked = checked(value);
+
+    if early {
+        return 0;
+    } else if value > 5 {
+        assert value > 6;
+    } else {
+        debug value;
+    }
+
+    checked
+}
+
+test fn checks_before_returning_fails() -> Int {
+    checks_before_returning(500, true)
+}
+
+// The branches of a function body's value can return from the function
+fn returns_from_value(value: Int) -> Int {
+    if value > 5 {
+        return 1;
+    } else {
+        2
+    }
+}
+
+fn returns_from_match_value(value: Int | nil) -> Int {
+    match value {
+        nil => {
+            return 0;
+        }
+        Int => value + 1,
+    }
+}
+
+fn returns_from_block_value(value: Int) -> Int {
+    {
+        if value > 5 {
+            return 1;
+        }
+
+        2
+    }
+}
+
+test fn returns_from_values() -> List<Int> {
+    [
+        returns_from_value(7),
+        returns_from_value(1),
+        returns_from_match_value(nil),
+        returns_from_match_value(4),
+        returns_from_block_value(7),
+        returns_from_block_value(1),
+    ]
+}
+
+// A statement with `;` after it is an expression statement, whose branches are values
+fn expression_statement(value: Int) -> Int {
+    if value > 5 {
+        value
+    } else {
+        0
+    };
+    value
+}
+
+test fn expression_statement_result() -> Int {
+    expression_statement(7)
+}
+
+// A statement in an expression block falls through to the rest of the block
+fn in_expression_block(value: Int) -> Int {
+    let result = {
+        match value {
+            0 => {
+                assert value == 0;
+            }
+            _ => {}
+        }
+
+        value + 1
+    };
+    result * 2
+}
+
+test fn in_expression_block_result() -> Int {
+    in_expression_block(1)
+}
+
+// The arms of a statement can be `if` and `match` without a block around them
+fn arms_without_blocks(value: Int | nil, flag: Bool) -> Int {
+    match value {
+        nil => if flag {
+            return 0;
+        } else {
+            raise "no value";
+        }
+        Int => match value {
+            3 => {
+                return 1;
+            }
+            _ => {}
+        }
+    }
+
+    value + 2
+}
+
+test fn arms_without_blocks_results() -> List<Int> {
+    [arms_without_blocks(nil, true), arms_without_blocks(3, false), arms_without_blocks(5, false)]
+}
+
+test fn arms_without_blocks_raises() -> Int {
+    arms_without_blocks(nil, false)
+}
+
+// The rest of the block only sees the values of the branches that fall through to it
+fn narrows_after(value: Int | nil, pair: (Int, Int) | Int) -> Int {
+    match value {
+        nil => {
+            return 0;
+        }
+        _ => {}
+    }
+
+    if pair is Int {
+        return value + pair;
+    } else if pair.first > 10 {
+        raise "too large";
+    } else {
+        debug pair;
+    }
+
+    value + pair.first + pair.rest
+}
+
+test fn narrows_after_results() -> List<Int> {
+    [narrows_after(nil, 1), narrows_after(1, 2), narrows_after(1, (2, 3))]
+}
+
+// The last arm handles every value that's left, which the rest of the block sees by its members
+fn narrows_to_last_arm(shape: Shape) -> Int {
+    match shape {
+        Point => {
+            return 0;
+        }
+        Circle => {
+            raise "a circle has no sides";
+        }
+        Square => {
+            assert shape.side > 0;
+        }
+    }
+
+    shape.side * 4
+}
+
+test fn narrows_to_last_arm_results() -> List<Int> {
+    [narrows_to_last_arm(Point {}), narrows_to_last_arm(Square { side: 3 })]
+}
+
+// An `inline match` statement evaluates every arm
+fn inline_statement(value: Int) -> Int {
+    inline match value {
+        0 => {
+            debug value;
+        }
+        _ => {}
+    }
+
+    value
+}
+
+test fn inline_statement_result() -> Int {
+    inline_statement(1)
+}

@@ -1,0 +1,10 @@
+diagnostics:
+- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at control_statement_errors.rue:4:16
+- Cannot end a statement's block with a value, since it isn't used; end it with a statement such as `return` or `raise` instead at control_statement_errors.rue:14:9
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at control_statement_errors.rue:28:17
+- Cannot assign `Never | nil` to `Int` without a cast, since they are semantically different at control_statement_errors.rue:39:37
+- Block does not return a value at control_statement_errors.rue:42:12
+- Match on `Int | nil | (Int, Int)` is not exhaustive, since it doesn't handle `(Int, Int)` at control_statement_errors.rue:49:11
+- Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:68:5
+- Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:77:5
+- Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:89:5

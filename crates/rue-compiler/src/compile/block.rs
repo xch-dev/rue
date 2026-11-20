@@ -1,8 +1,9 @@
 use log::debug;
-use rue_ast::{AstBlock, AstNode, AstStmt, AstStmtOrExpr};
+use rue_ast::{AstBlock, AstExpr, AstNode, AstStmt, AstStmtOrExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Statement, Symbol, Value,
+    BindingSymbol, Block, ControlStatement, Declaration, ExprStatement, Hir, IfStatement,
+    Statement, Symbol, Value, control_may_return, control_terminates, statements_terminate,
 };
 use rue_types::{Type, TypeId, Union};
 
@@ -19,7 +20,9 @@ pub enum BlockKind {
     /// A block used as an expression. It must end in an expression, and nested `return`
     /// statements are not allowed, since they would only exit the block itself.
     Expr,
-    /// The then block of an if statement. It must end in `return` or `raise`, and its
+    /// A branch of a statement, such as the block of an `if` statement or an arm of a `match`
+    /// statement. It can't end in an expression, since its value wouldn't be used, but it can end
+    /// in `return` or `raise`, or fall through to the rest of the block after the statement. Its
     /// `return` statements exit to the enclosing return target, if there is one.
     Statement,
 }
@@ -56,7 +59,11 @@ pub fn compile_block(
     let mut implicit_return = false;
     let mut trailing_expr = None;
 
-    for stmt in block.items() {
+    let mut items = block.items().peekable();
+
+    while let Some(stmt) = items.next() {
+        let is_last = items.peek().is_none();
+
         let stmt = match stmt {
             AstStmtOrExpr::Stmt(stmt) => {
                 ctx.add_syntax(
@@ -66,12 +73,52 @@ pub fn compile_block(
 
                 stmt
             }
+            // An `if` and `else` chain or a `match` before the end of the block is a statement, as
+            // is one that ends a statement block, whose value wouldn't be used
+            AstStmtOrExpr::Expr(expr) if is_block_like(&expr) && (!is_last || !is_expr) => {
+                ctx.set_statement_narrowing(None);
+
+                let value =
+                    ctx.with_branches(BlockKind::Statement, |ctx| compile_expr(ctx, &expr, None));
+
+                let terminates = control_terminates(ctx, value.hir);
+
+                if terminates && return_value.is_none() {
+                    return_value = Some(Value::new(
+                        ctx.alloc_hir(Hir::Unresolved),
+                        ctx.builtins().types.never,
+                    ));
+                }
+
+                statements.push(Statement::Control(ControlStatement {
+                    hir: value.hir,
+                    terminates,
+                    may_return: control_may_return(ctx, value.hir),
+                    srcloc: ctx.trimmed_srcloc(expr.syntax()),
+                }));
+
+                if let Some(narrowing) = ctx.take_statement_narrowing() {
+                    ctx.push_mappings(narrowing, expr.syntax().text_range().end());
+                }
+
+                continue;
+            }
             AstStmtOrExpr::Expr(expr) => {
                 if !is_expr {
                     ctx.diagnostic(expr.syntax(), DiagnosticKind::UnexpectedImplicitReturn);
                 }
 
-                let value = compile_expr(ctx, &expr, expected_type);
+                // The value of a function body is what it returns, so the branches of an `if`,
+                // `match` or block that's its value can return from the function too
+                let value = if kind == BlockKind::Body
+                    && (is_block_like(&expr) || matches!(expr, AstExpr::Block(_)))
+                {
+                    ctx.with_branches(BlockKind::Body, |ctx| {
+                        compile_expr(ctx, &expr, expected_type)
+                    })
+                } else {
+                    compile_expr(ctx, &expr, expected_type)
+                };
 
                 return_types.push(value.ty);
 
@@ -169,12 +216,12 @@ pub fn compile_block(
 
                 let then_block = if let Some(then_block) = stmt.then_block() {
                     if stmt.inline().is_some() {
-                        compile_block(ctx, &then_block, BlockKind::Statement, None, true)
+                        compile_block(ctx, &then_block, BlockKind::Statement, None, false)
                     } else {
                         let range = then_block.syntax().text_range();
                         let index = ctx.push_mappings(condition.then_map.clone(), range.start());
                         let value =
-                            compile_block(ctx, &then_block, BlockKind::Statement, None, true);
+                            compile_block(ctx, &then_block, BlockKind::Statement, None, false);
                         ctx.revert_mappings(index, range.end());
                         value
                     }
@@ -183,16 +230,42 @@ pub fn compile_block(
                     ctx.unresolved()
                 };
 
-                if stmt.inline().is_none() {
-                    ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
-                }
+                let srcloc = ctx.trimmed_srcloc(stmt.syntax());
 
-                Statement::If(IfStatement {
-                    condition: condition.hir,
-                    then: then_block.hir,
-                    inline: stmt.inline().is_some(),
-                    srcloc: ctx.trimmed_srcloc(stmt.syntax()),
-                })
+                // A block that ends in `return` or `raise` is an early exit, so the rest of the
+                // block is its `else` branch, and only sees the values that the condition is false
+                // for. Otherwise, the rest of the block comes after either branch.
+                if control_terminates(ctx, then_block.hir) {
+                    if stmt.inline().is_none() {
+                        ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
+                    }
+
+                    Statement::If(IfStatement {
+                        condition: condition.hir,
+                        then: then_block.hir,
+                        inline: stmt.inline().is_some(),
+                        srcloc,
+                    })
+                } else {
+                    let else_block = ctx.alloc_hir(Hir::Block(Block {
+                        statements: Vec::new(),
+                        body: None,
+                    }));
+
+                    let hir = ctx.alloc_hir(Hir::If(
+                        condition.hir,
+                        then_block.hir,
+                        else_block,
+                        stmt.inline().is_some(),
+                    ));
+
+                    Statement::Control(ControlStatement {
+                        hir,
+                        terminates: false,
+                        may_return: control_may_return(ctx, hir),
+                        srcloc,
+                    })
+                }
             }
             AstStmt::ReturnStmt(stmt) => {
                 ctx.increment_return_count();
@@ -293,9 +366,15 @@ pub fn compile_block(
         return_types.push(ctx.builtins().types.nil);
     }
 
-    let return_type = if kind == BlockKind::Statement || return_types.is_empty() {
-        // Statement blocks always exit by either returning from the function or raising,
-        // so control never continues past them with a value.
+    let return_type = if kind == BlockKind::Statement {
+        // A statement block doesn't have a value, so it either exits by returning from the
+        // function or raising, or falls through to the rest of the block it's in
+        if statements_terminate(&statements) {
+            ctx.builtins().types.never
+        } else {
+            ctx.builtins().types.nil
+        }
+    } else if return_types.is_empty() {
         ctx.builtins().types.never
     } else if return_types.len() == 1 {
         return_types[0]
@@ -335,4 +414,10 @@ pub fn compile_block(
     // Blocks aren't always compiled with `compile_expr` (such as function bodies), so their type is
     // recorded here
     ctx.record_value(block.syntax(), value)
+}
+
+/// Whether the expression is an `if` and `else` chain or a `match`, which can be a statement whose
+/// branches are statement blocks.
+fn is_block_like(expr: &AstExpr) -> bool {
+    matches!(expr, AstExpr::IfExpr(_) | AstExpr::MatchExpr(_))
 }

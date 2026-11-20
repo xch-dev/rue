@@ -668,6 +668,9 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                     Statement::Expr(expr) => {
                         visit_hir(db, graph, expr.hir, false);
                     }
+                    Statement::Control(stmt) => {
+                        visit_hir(db, graph, stmt.hir, false);
+                    }
                     Statement::Debug(expr, _) => {
                         if graph.options.debug_symbols {
                             visit_hir(db, graph, *expr, false);

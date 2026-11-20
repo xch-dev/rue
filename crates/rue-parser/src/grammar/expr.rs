@@ -36,10 +36,19 @@ pub fn expr(p: &mut Parser) {
     expr_with(p, checkpoint, ExprOptions::default());
 }
 
-/// Returns whether the expression was parsed as a statement (an if statement without an `else`).
+/// Returns whether the expression was parsed as a statement: an `if` statement without an `else`,
+/// or an `if` with an `else` or a `match` at the start of the statement, which ends at its closing
+/// brace like in Rust (see [`ends_statement`]).
 pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -> bool {
     p.nested(|p| expr_with_inner(p, checkpoint, options))
         .unwrap_or(false)
+}
+
+/// At the start of a statement, an `if` with an `else` or a `match` ends at its closing brace, rather
+/// than continuing with an operator, so it can be followed by more statements without a `;`. With a
+/// `;` after it, it's an expression statement like any other expression.
+fn ends_statement(p: &mut Parser) -> bool {
+    !p.at_quiet(T![;])
 }
 
 fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -> bool {
@@ -127,9 +136,17 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
         || (!options.inline && p.at_quiet(T![inline]) && p.lookahead(1) == T![match])
     {
         match_expr(p, checkpoint, !options.inline);
+
+        if options.allow_statement {
+            return ends_statement(p);
+        }
     } else if p.at_quiet(T![if]) || (!options.inline && p.at_quiet(T![inline])) {
         if if_expr(p, checkpoint, options.allow_statement, !options.inline) {
             return true;
+        }
+
+        if options.allow_statement {
+            return ends_statement(p);
         }
     } else if !options.inline && p.at_quiet(T![fn]) && p.lookahead(1) != SyntaxKind::Ident {
         p.start_at(checkpoint, SyntaxKind::LambdaExpr);

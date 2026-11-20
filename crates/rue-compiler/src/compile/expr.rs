@@ -47,6 +47,8 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         expr.syntax().text_range(),
     );
 
+    let branches = ctx.take_branch_kind();
+
     let value = match expr {
         AstExpr::PathExpr(expr) => compile_path_expr(ctx, expr),
         AstExpr::StructInitializerExpr(expr) => compile_struct_initializer_expr(ctx, expr),
@@ -60,13 +62,19 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::FunctionCallExpr(expr) => {
             compile_function_call_expr(ctx, expr, expected_type, None)
         }
-        AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type),
-        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type),
+        AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type, branches),
+        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type, branches),
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
         AstExpr::LambdaExpr(expr) => compile_lambda_expr(ctx, expr, expected_type),
-        AstExpr::Block(block) => compile_block(ctx, block, BlockKind::Expr, expected_type, true),
+        AstExpr::Block(block) => compile_block(
+            ctx,
+            block,
+            branches.unwrap_or(BlockKind::Expr),
+            expected_type,
+            branches != Some(BlockKind::Statement),
+        ),
     };
 
     ctx.record_value(expr.syntax(), value)

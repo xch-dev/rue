@@ -2,12 +2,9 @@ diagnostics:
 - Block does not return a value at improper_blocks.rue:3:36
 - Cannot assign `nil` to `Int` without a cast, since they are semantically different at improper_blocks.rue:3:36
 - Condition always evaluates to `true` at improper_blocks.rue:6:8
-- Block does not return a value at improper_blocks.rue:6:13
 - Condition always evaluates to `true` at improper_blocks.rue:10:8
-- Expected statement block to end in `return` or `raise`, not an expression at improper_blocks.rue:11:9
+- Cannot end a statement's block with a value, since it isn't used; end it with a statement such as `return` or `raise` instead at improper_blocks.rue:11:9
 - |-
   Unnecessary `return` statement, since the function body can end in an expression instead at improper_blocks.rue:16:5
     help: Replace the `return` statement with its value
 - Condition always evaluates to `true` at improper_blocks.rue:20:8
-- Cannot use a `return` statement here, end the block with an expression instead at improper_blocks.rue:21:9
-- Cannot use a `return` statement here, end the block with an expression instead at improper_blocks.rue:23:9

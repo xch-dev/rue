@@ -45,9 +45,13 @@ impl HirLintPass for UnreachableCode {
         let diverging = &block.statements[index];
         let diverging_srcloc = diverging.srcloc().clone();
 
-        // Removing the code after a `return` or `raise` leaves a block that still ends correctly,
+        // Removing the code after a `return`, `raise` or statement whose branches all end in one
+        // leaves a block that still ends correctly,
         // but removing it after any other statement could leave a block without a value
-        let removable = matches!(diverging, Statement::Return(..) | Statement::Raise(..));
+        let removable = matches!(
+            diverging,
+            Statement::Return(..) | Statement::Raise(..) | Statement::Control(_)
+        );
 
         self.reported.push(SrcLoc::new(
             first.source.clone(),
@@ -89,6 +93,7 @@ impl HirLintPass for UnreachableCode {
 fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
     let hir = match statement {
         Statement::Return(..) | Statement::Raise(..) => return true,
+        Statement::Control(statement) => return statement.terminates,
         Statement::Expr(statement) => statement.hir,
         Statement::Let(symbol, _) => match cx.db().symbol(*symbol) {
             Symbol::Binding(binding) if !binding.inline => binding.value.hir,
