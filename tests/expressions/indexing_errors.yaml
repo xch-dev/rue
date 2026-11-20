@@ -41,14 +41,20 @@ diagnostics:
 - Constant `SECOND` references itself at indexing_errors.rue:51:7
 - Unused constant `SECOND` at indexing_errors.rue:51:7
 - Unused function `recursive_constants` at indexing_errors.rue:53:4
-- Unused function `strings` at indexing_errors.rue:58:4
-- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:59:18
-- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:60:18
-- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:61:18
-- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:62:18
-- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:63:18
-- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:64:18
-- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:65:18
-- Unused function `removed` at indexing_errors.rue:69:4
-- Unused parameter `bytes` at indexing_errors.rue:69:12
-- "`substr` was removed, since bytes are sliced with brackets instead: `value[start..end]`, `value[start..]`, or `value[index]` for one byte at indexing_errors.rue:70:5"
+- Unused type alias `First` at indexing_errors.rue:57:6
+- Unused type alias `Last` at indexing_errors.rue:58:6
+- Unused function `strings` at indexing_errors.rue:63:4
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:72:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:73:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:74:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:75:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:76:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:77:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:78:18
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:79:18
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:80:18
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:81:18
+- Unused function `removed` at indexing_errors.rue:85:4
+- Unused parameter `bytes` at indexing_errors.rue:85:12
+- "`substr` was removed, since bytes are sliced with brackets instead: `value[start..end]`, `value[start..]`, or `value[index]` for one byte at indexing_errors.rue:86:5"
+- Undeclared symbol `substr` at indexing_errors.rue:86:33

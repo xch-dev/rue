@@ -54,8 +54,24 @@ fn recursive_constants(bytes: Bytes) -> Bytes {
     bytes[LOOP] + bytes[FIRST] + bytes[SECOND - 1] + bytes[LOOP..FIRST]
 }
 
+type First = String;
+type Last = String;
+
+mod util {}
+
 // Part of a string is a string, and part of anything else is bytes
-fn strings(string: String, literal: "hello" | "world", optional: String | nil, bytes: Bytes) {
+fn strings(
+    string: String,
+    literal: "hello" | "world",
+    optional: String | nil,
+    bytes: Bytes,
+    first: First,
+    name: First | Last,
+    twice: String | String,
+) {
+    let _: Int = first[0];
+    let _: Int = name[1..];
+    let _: Int = twice[0];
     let _: Int = string[0];
     let _: Int = string[1..];
     let _: Int = literal[..2];
@@ -67,5 +83,5 @@ fn strings(string: String, literal: "hello" | "world", optional: String | nil, b
 
 // The builtin that slicing replaced
 fn removed(bytes: Bytes) -> Bytes {
-    substr(bytes, 0, 1)
+    substr(bytes, 0, 1) + util::substr(bytes, 0, 1)
 }

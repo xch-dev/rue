@@ -99,18 +99,21 @@ fn compile_indexed_value(ctx: &mut Compiler, expr: Option<AstExpr>) -> Option<(H
 
 /// Whether every value of the type is a `String`, rather than only being assignable to one, as
 /// `Bytes` are.
-fn is_string(ctx: &mut Compiler, ty: TypeId, visited: &mut HashSet<TypeId>) -> bool {
+fn is_string(ctx: &mut Compiler, ty: TypeId, unions: &mut HashSet<TypeId>) -> bool {
     let ty = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
-
-    // A type that only refers to itself has no values
-    if !visited.insert(ty) {
-        return false;
-    }
 
     match ctx.ty(ty).clone() {
         Type::Atom(atom) => atom.semantic == AtomSemantic::String,
         Type::Union(union) => {
-            !union.types.is_empty() && union.types.iter().all(|&ty| is_string(ctx, ty, visited))
+            // A union that's a member of itself has no values of its own there
+            if !unions.insert(ty) {
+                return true;
+            }
+
+            let is_string =
+                !union.types.is_empty() && union.types.iter().all(|&ty| is_string(ctx, ty, unions));
+            unions.remove(&ty);
+            is_string
         }
         _ => false,
     }
