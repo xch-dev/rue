@@ -6,8 +6,8 @@ use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{
-    FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol,
-    SymbolId, UnaryOp, Value,
+    FieldAccess, FieldKind, FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol,
+    Scope, ScopeId, Symbol, SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -171,6 +171,24 @@ impl Database {
             hir = *value;
         }
         hir
+    }
+
+    /// The symbol that a path is read from, if the node is one: a symbol or the fields of one,
+    /// through casts, which have no effect. A path can be read any number of times without
+    /// evaluating anything again.
+    pub fn path_symbol(&self, mut hir: HirId) -> Option<SymbolId> {
+        loop {
+            hir = match self.hir(hir) {
+                Hir::Reference(symbol) => return Some(*symbol),
+                Hir::Cast(value) => *value,
+                Hir::FieldAccess(FieldAccess {
+                    value,
+                    kind: FieldKind::Path(_),
+                    ..
+                }) => *value,
+                _ => return None,
+            };
+        }
     }
 
     /// Records the static type of a HIR node. Each expression compiles to a node of its own,

@@ -100,7 +100,7 @@ test fn update_narrowed_union_atom(value: Point | Int) -> Point {
 // A value that's one variant of an enum can update that variant
 test fn update_variant(shape: Shape) -> Shape {
     match shape {
-        Shape::Square => Shape::Square { ...shape, side: shape.side * 2 },
+        Shape::Square => Shape::Square { side: shape.side * 2 },
         Shape::Rect => Shape::Rect { ...shape, width: shape.height },
     }
 }

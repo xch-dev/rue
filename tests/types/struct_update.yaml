@@ -56,13 +56,13 @@ tests:
   byte_cost: 108000
   total_cost: 108123
 - name: update_narrowed
-  program: (a (i 4 (q 4 4 (c 4 ())) (q 1 () ())) 1)
-  debug_program: (a (i (= (f 2) ()) (q 4 () (c () ())) (q 4 (f 2) (c (f 2) ()))) 1)
+  program: (a (i 4 (q 4 4 (c 4 ())) (q 4 4 (q ()))) 1)
+  debug_program: (a (i (= (f 2) ()) (q 4 (f 2) (c () ())) (q 4 (f 2) (c (f 2) ()))) 1)
   solution: ((() 4))
   output: (() ())
-  runtime_cost: 281
-  byte_cost: 444000
-  total_cost: 444281
+  runtime_cost: 384
+  byte_cost: 492000
+  total_cost: 492384
 - name: update_narrowed_union
   program: (a (i (l 2) (q 4 (q . 1) 6) (q 4 2 (q () ()))) 1)
   debug_program: (a (q 2 (i (l 5) (q 4 (q . 1) (r 5)) (q 2 (q 4 11 (r 2)) (c (a 2 ()) 1))) 1) (c (q 4 () (c () (c () ()))) 1))

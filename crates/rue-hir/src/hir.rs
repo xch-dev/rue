@@ -204,9 +204,12 @@ pub struct StructTail {
     pub value: HirId,
     /// The number of fields in the tail that would each be read from the value being updated if
     /// they were copied one at a time, which is how often a struct that's rebuilt by hand
-    /// references it. The value is laid out in the environment as if it was referenced that often
-    /// (see `DependencyGraph::layout_references`).
-    pub fields: usize,
+    /// references it. There's at least one. The tail is a single reference, but the value is
+    /// treated as if it was referenced this often where that keeps the struct from being larger
+    /// than one that's rebuilt (see `DependencyGraph::layout_references`).
+    pub reads: usize,
+    /// The number of fields before the tail, which is how many steps into the value it is.
+    pub depth: usize,
 }
 
 #[derive(Debug, Clone)]

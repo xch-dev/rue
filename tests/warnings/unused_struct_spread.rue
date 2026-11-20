@@ -45,6 +45,40 @@ test fn every_field_on_lines(point: Point) -> Point {
     }
 }
 
+struct Spend {
+    opcode = 51,
+    amount: Int,
+}
+
+struct Tagged {
+    tag: 7,
+    amount: Int,
+}
+
+enum Shape {
+    Square { side: Int },
+    Rect { width: Int, height: Int },
+}
+
+// The fields that aren't written are all constants, so nothing is read from the value
+test fn other_fields_are_constants(spend: Spend, n: Int) -> Spend {
+    Spend { ...spend, amount: n }
+}
+
+test fn only_the_discriminant_is_left(square: Shape::Square, n: Int) -> Shape::Square {
+    Shape::Square { ...square, side: n }
+}
+
+// A constant without a default value would be missing without the spread, so it isn't removed
+test fn constant_without_a_default(tagged: Tagged, n: Int) -> Tagged {
+    Tagged { ...tagged, amount: n }
+}
+
+// A field that isn't a constant is left, so the value is used
+test fn variant_field_is_left(rect: Shape::Rect, n: Int) -> Shape::Rect {
+    Shape::Rect { ...rect, width: n }
+}
+
 // A field is left to copy, so the value is used
 test fn one_field(point: Point) -> Point {
     Point { ...point, x: 1 }

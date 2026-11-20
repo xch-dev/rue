@@ -227,7 +227,8 @@ pub fn compile_struct_initializer_expr(
 
         StructTail {
             value,
-            fields: rest_reads,
+            reads: rest_reads,
+            depth: prefix,
         }
     });
 
@@ -499,7 +500,7 @@ fn copy_fields(
             }
         }
 
-        let field = match constant_field(ctx, value.ty, expected_type) {
+        let field = match constant_field(ctx, expected_type) {
             Some(constant) => CopiedField {
                 value: Value::new(ctx.alloc_hir(Hir::Bytes(constant)), value.ty),
                 constant: true,
@@ -515,11 +516,20 @@ fn copy_fields(
 
     ctx.lint_sites_mut().field_reads.truncate(field_reads);
 
-    if struct_type
+    // Nothing is read from the spread value if every field that isn't written is a constant.
+    // Removing it leaves the fields to their default values, if they have them, which are the
+    // same constants.
+    let mut unwritten = struct_type
         .fields
         .iter()
-        .all(|name| fields.contains_key(name))
+        .filter(|name| !fields.contains_key(*name))
+        .peekable();
+    let constants = unwritten.peek().is_some();
+
+    if copied.values().all(|field| field.constant)
+        && unwritten.clone().all(|name| copied.contains_key(name))
     {
+        let removable = unwritten.all(|name| ctx.has_declared_default(struct_type.semantic, name));
         let srcloc = ctx.trimmed_srcloc(base.node.syntax());
         let struct_name = ctx.type_name(struct_type.semantic);
         ctx.lint_sites_mut()
@@ -527,6 +537,8 @@ fn copy_fields(
             .push(UnusedStructSpread {
                 srcloc,
                 struct_name,
+                constants,
+                removable,
                 evaluated: base.statement.is_some(),
             });
     }
@@ -541,18 +553,10 @@ fn copy_fields(
 /// is often smaller, but it's one more use of the spread value, which can be what makes a binding
 /// necessary or evaluates the argument of an inline function again.
 ///
-/// A field that's nil in the spread value, because it has been narrowed, is nil as well, since
-/// that's never larger than reading it.
-fn constant_field(
-    ctx: &mut Compiler,
-    copied_type: TypeId,
-    expected_type: Option<TypeId>,
-) -> Option<Vec<u8>> {
-    if let Some(value) = expected_type.and_then(|ty| single_value(ctx, ty)) {
-        return Some(value);
-    }
-
-    single_value(ctx, copied_type).filter(Vec::is_empty)
+/// A field that's only a single value in the spread value, because it has been narrowed, is
+/// read like any other, as it would be by hand.
+fn constant_field(ctx: &mut Compiler, expected_type: Option<TypeId>) -> Option<Vec<u8>> {
+    single_value(ctx, expected_type?)
 }
 
 /// The only value of the type, if it's an atom with one.

@@ -43,6 +43,38 @@ tests:
   runtime_cost: 6398
   byte_cost: 588000
   total_cost: 594398
+- name: other_fields_are_constants
+  program: (c (q . 51) (c 5 ()))
+  debug_program: (c (q . 51) (c 5 ()))
+  solution: ((51 5) 9)
+  output: (51 9)
+  runtime_cost: 218
+  byte_cost: 180000
+  total_cost: 180218
+- name: only_the_discriminant_is_left
+  program: (c () (c 5 ()))
+  debug_program: (c () (c 5 ()))
+  solution: ((() 5) 9)
+  output: (() 9)
+  runtime_cost: 242
+  byte_cost: 156000
+  total_cost: 156242
+- name: constant_without_a_default
+  program: (c (q . 7) (c 5 ()))
+  debug_program: (c (q . 7) (c 5 ()))
+  solution: ((7 5) 9)
+  output: (7 9)
+  runtime_cost: 218
+  byte_cost: 180000
+  total_cost: 180218
+- name: variant_field_is_left
+  program: (c (q . 1) (c 5 14))
+  debug_program: (c (q . 1) (c 5 (r (r 2))))
+  solution: ((1 2 3) 9)
+  output: (1 9 3)
+  runtime_cost: 230
+  byte_cost: 180000
+  total_cost: 180230
 - name: one_field
   program: (c (q . 1) 6)
   debug_program: (c (q . 1) (r 2))
@@ -92,3 +124,10 @@ diagnostics:
 - |-
   Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:42:9
     help: Remove the spread
+- |-
+  Every other field of `Spend` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:65:13
+    help: Remove the spread
+- |-
+  Every other field of `Shape::Square` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:69:21
+    help: Remove the spread
+- Every other field of `Tagged` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:74:14

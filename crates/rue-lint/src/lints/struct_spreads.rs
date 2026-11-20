@@ -5,21 +5,32 @@ use crate::{LintContext, LintInput, text::comment_count};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedStructSpread];
 
-/// Reports the values spread in struct initializers that specify every field, so nothing is
-/// copied from them. Which fields a spread provides is decided while compiling, so these are
-/// recorded as sites then.
+/// Reports the values spread in struct initializers that nothing is read from, since every field
+/// is either written or a constant. Which fields a spread provides is decided while compiling, so
+/// these are recorded as sites then.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     for site in &input.sites.unused_struct_spreads {
-        let Some(diagnostic) = cx.report(
-            Lint::UnusedStructSpread,
-            site.srcloc.clone(),
+        let message = if site.constants {
+            format!(
+                "Every other field of `{}` is a constant, so nothing is read from the spread value",
+                site.struct_name
+            )
+        } else {
             format!(
                 "Every field of `{}` is specified, so nothing is copied from the spread value",
                 site.struct_name
-            ),
-        ) else {
+            )
+        };
+
+        let Some(diagnostic) = cx.report(Lint::UnusedStructSpread, site.srcloc.clone(), message)
+        else {
             continue;
         };
+
+        // A field without a default value would be missing without the spread
+        if !site.removable {
+            continue;
+        }
 
         let removed = removed_range(&site.srcloc);
 
