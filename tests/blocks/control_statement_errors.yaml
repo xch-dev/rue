@@ -8,3 +8,4 @@ diagnostics:
 - Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:68:5
 - Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:77:5
 - Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:89:5
+- Expected an `else` branch, since the value of the `if` is used at control_statement_errors.rue:107:12

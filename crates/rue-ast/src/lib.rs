@@ -848,7 +848,23 @@ impl AstFunctionCallExpr {
     }
 }
 
+impl AstExpr {
+    /// Whether the expression is a block, `if` or `match`, which ends at its closing brace rather
+    /// than continuing with an operator where a statement or match arm can end.
+    pub fn ends_with_brace(&self) -> bool {
+        matches!(self, Self::Block(_) | Self::IfExpr(_) | Self::MatchExpr(_))
+    }
+}
+
 impl AstIfExpr {
+    /// The `else` keyword, which an `else if` statement can leave out.
+    pub fn else_token(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![else])
+    }
+
     pub fn inline(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -924,10 +940,7 @@ impl AstMatchArm {
     /// Whether the arm's value is a block, `if` or `match`, which ends at its closing brace, so no
     /// comma is needed after the arm.
     pub fn ends_with_brace(&self) -> bool {
-        matches!(
-            self.expr(),
-            Some(AstExpr::Block(_) | AstExpr::IfExpr(_) | AstExpr::MatchExpr(_))
-        )
+        self.expr().is_some_and(|expr| expr.ends_with_brace())
     }
 
     /// The comma after the arm, if there is one.

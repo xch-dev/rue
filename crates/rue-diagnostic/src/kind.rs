@@ -229,6 +229,9 @@ pub enum DiagnosticKind {
     )]
     StatementMatchArmValue,
 
+    #[error("Expected an `else` branch, since the value of the `if` is used")]
+    MissingElse,
+
     #[error("Cannot use a `return` statement here, end the block with an expression instead")]
     UnexpectedExplicitReturn,
 

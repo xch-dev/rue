@@ -244,8 +244,8 @@ impl Block {
 }
 
 /// The statements that are evaluated, which end at the first `return`, `raise` or statement whose
-/// branches all end in one (see [`ControlStatement`]). Nothing after it is lowered, so analyses that follow lowering (such as the dependency graph) should only look at
-/// these statements.
+/// branches all end in one (see [`ControlStatement`]). Nothing after it is lowered, so analyses
+/// that follow lowering (such as the dependency graph) should only look at these statements.
 pub fn reachable_statements(statements: &[Statement]) -> &[Statement] {
     match first_exit(statements) {
         Some(index) => &statements[..=index],
@@ -272,7 +272,7 @@ pub fn statements_terminate(statements: &[Statement]) -> bool {
 fn first_exit(statements: &[Statement]) -> Option<usize> {
     statements.iter().position(|statement| match statement {
         Statement::Return(..) | Statement::Raise(..) => true,
-        Statement::Control(statement) => statement.terminates,
+        Statement::Control(statement) => statement.fallthroughs == 0,
         _ => false,
     })
 }
@@ -344,31 +344,19 @@ pub struct IfStatement {
 #[derive(Debug, Clone)]
 pub struct ControlStatement {
     pub hir: HirId,
-    /// Whether every branch ends in a `return` or `raise`, so nothing after the statement is
-    /// evaluated (see [`control_terminates`]).
-    pub terminates: bool,
+    /// The number of branches that fall through to the rest of the block (see
+    /// [`control_fallthroughs`]). If it's zero, every branch ends in a `return` or `raise`, so
+    /// nothing after the statement is evaluated.
+    pub fallthroughs: usize,
     /// Whether a branch can return from the function, so the rest of the block isn't always
     /// evaluated after it, even if the branch doesn't raise (see [`control_may_return`]).
     pub may_return: bool,
     pub srcloc: SrcLoc,
 }
 
-/// Whether every branch of a [`ControlStatement`]'s node ends in a `return` or `raise`.
-pub fn control_terminates(db: &Database, hir: HirId) -> bool {
-    match db.hir(hir) {
-        Hir::If(_, then, else_, _) => {
-            control_terminates(db, *then) && control_terminates(db, *else_)
-        }
-        Hir::Block(block) => {
-            statements_terminate(&block.statements)
-                || block.body.is_some_and(|body| control_terminates(db, body))
-        }
-        _ => false,
-    }
-}
-
 /// The number of branches of a [`ControlStatement`]'s node that fall through to the rest of the
-/// block, which is the number of times the rest is reached.
+/// block, which is the number of places the rest is reached from. It's zero if every branch ends
+/// in a `return` or `raise`.
 pub fn control_fallthroughs(db: &Database, hir: HirId) -> usize {
     match db.hir(hir) {
         Hir::If(_, then, else_, _) => {

@@ -99,3 +99,16 @@ test fn errors() -> Int {
         + if_not_narrowed(nil)
         + inline_not_narrowed(nil)
 }
+
+// An `else if` can only leave out the `else` in a statement, since otherwise its value is used
+fn missing_else(flag: Bool, other: Bool) -> Int {
+    if flag {
+        1
+    } else if other {
+        2
+    }
+}
+
+test fn missing_else_called() -> Int {
+    missing_else(true, false)
+}

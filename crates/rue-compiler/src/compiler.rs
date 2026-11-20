@@ -26,8 +26,8 @@ use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{
-    BlockKind, DeferredLambda, ElementLambda, FileTree, LambdaParameter, SyntaxItem,
-    SyntaxItemKind, SyntaxMap, narrowed_with_references,
+    DeferredLambda, ElementLambda, FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind,
+    SyntaxMap, narrowed_with_references,
 };
 
 /// How the type expected of the expression being compiled is used, which the expressions it's
@@ -83,13 +83,6 @@ pub struct Compiler {
     external_programs: HashMap<PathBuf, Vec<u8>>,
     return_stack: Vec<(Option<ReturnTarget>, usize)>,
     return_count: usize,
-    /// The kind of block that the branches of the next expression compiled are, if it's an `if`,
-    /// `match` or block whose branches aren't values (see [`Self::with_branches`]).
-    branch_kind: Option<BlockKind>,
-    /// What the rest of the block after the statement that was just compiled sees its values
-    /// narrowed to, by the branches of the statement that fall through to it (see
-    /// [`Self::set_statement_narrowing`]).
-    statement_narrowing: Option<Mappings>,
     /// The calls whose generics are being inferred from their arguments, innermost last.
     call_frames: Vec<CallFrame>,
     /// How the type expected of the expression being compiled is used.
@@ -279,8 +272,6 @@ impl Compiler {
             external_programs: HashMap::new(),
             return_stack: Vec::new(),
             return_count: 0,
-            branch_kind: None,
-            statement_narrowing: None,
             call_frames: Vec::new(),
             expected: ExpectedTypeUse::default(),
             argument_requirement: None,
@@ -1051,34 +1042,6 @@ impl Compiler {
     /// The number of `return` statements compiled so far that could exit the blocks in
     /// the current return context, which is used to tell whether a block may have exited
     /// early.
-    /// Compiles an `if`, `match` or block whose branches are blocks of the given kind, rather than
-    /// values: the branches of a statement, or those of a function body's value, which can
-    /// `return` from the function. Only the expression that `f` compiles first sees it, so the
-    /// expressions inside of it are compiled as usual.
-    pub fn with_branches<T>(&mut self, kind: BlockKind, f: impl FnOnce(&mut Self) -> T) -> T {
-        let previous = self.branch_kind.replace(kind);
-        let result = f(self);
-        self.branch_kind = previous;
-        result
-    }
-
-    /// The kind of block that the branches of the expression being compiled are, if it's been
-    /// given one (see [`Self::with_branches`]).
-    pub fn take_branch_kind(&mut self) -> Option<BlockKind> {
-        self.branch_kind.take()
-    }
-
-    /// Records what the rest of the block after the statement being compiled sees its values
-    /// narrowed to, which the block takes once the statement has been compiled. Every `if` and
-    /// `match` statement records it, so that one inside of it isn't mistaken for it.
-    pub fn set_statement_narrowing(&mut self, narrowing: Option<Mappings>) {
-        self.statement_narrowing = narrowing;
-    }
-
-    pub fn take_statement_narrowing(&mut self) -> Option<Mappings> {
-        self.statement_narrowing.take()
-    }
-
     pub fn return_count(&self) -> usize {
         self.return_count
     }

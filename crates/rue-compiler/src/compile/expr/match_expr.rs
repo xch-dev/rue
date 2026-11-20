@@ -4,13 +4,13 @@ use log::debug;
 use rue_ast::{AstMatchArm, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
-    BindingSymbol, Block, Guard, Hir, HirId, Statement, Symbol, SymbolPath, Value,
-    control_terminates,
+    BindingSymbol, Block, Guard, Hir, HirId, Mappings, Statement, Symbol, SymbolPath, Value,
+    control_fallthroughs,
 };
 use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
-use crate::{BlockKind, Compiler, compile_expr, compile_type};
+use crate::{BlockKind, Compiler, compile_branching_expr, compile_expr, compile_type};
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
 /// equivalent to, so that it's checked, narrowed and generated the same way. Each arm checks the
@@ -22,7 +22,7 @@ pub fn compile_match_expr(
     expr: &AstMatchExpr,
     expected_type: Option<TypeId>,
     arm_kind: Option<BlockKind>,
-) -> Value {
+) -> (Value, Option<Mappings>) {
     let inline = expr.inline().is_some();
 
     let scrutinee = if let Some(scrutinee) = expr.expr() {
@@ -220,7 +220,7 @@ pub fn compile_match_expr(
 
         // An arm that handles everything that's left sees the members that are left, rather
         // than the type they're left in, which can keep the name of an alias that's been narrowed
-        if arm_kind == Some(BlockKind::Statement) && !control_terminates(ctx, body.hir) {
+        if arm_kind == Some(BlockKind::Statement) && control_fallthroughs(ctx, body.hir) > 0 {
             match pattern {
                 Some(ty) if !catches_all => fallthrough_types.push(ty),
                 _ => fallthrough_types.extend(remaining_members.iter().copied()),
@@ -274,16 +274,17 @@ pub fn compile_match_expr(
 
     // The rest of the block after a statement only sees the values of the arms that fall through
     // to it, unless the arms are evaluated eagerly
-    if arm_kind == Some(BlockKind::Statement) {
-        let narrowing = (!inline && !has_error && !fallthrough_types.is_empty()).then(|| {
-            let ty = match fallthrough_types.len() {
-                1 => fallthrough_types[0],
-                _ => ctx.alloc_type(Type::Union(Union::new(fallthrough_types))),
-            };
-            reference.narrowed_to(ty)
-        });
-        ctx.set_statement_narrowing(narrowing);
-    }
+    let narrowing = (arm_kind == Some(BlockKind::Statement)
+        && !inline
+        && !has_error
+        && !fallthrough_types.is_empty())
+    .then(|| {
+        let ty = match fallthrough_types.len() {
+            1 => fallthrough_types[0],
+            _ => ctx.alloc_type(Type::Union(Union::new(fallthrough_types))),
+        };
+        reference.narrowed_to(ty)
+    });
 
     // The arms that take members which no later arm names are reported themselves, since nothing
     // else shows that those members end up there
@@ -359,11 +360,11 @@ pub fn compile_match_expr(
         ctx.lint_sites_mut().inline_match_arms.insert(hir, arms);
     }
 
-    Value::new(hir, ty)
+    (Value::new(hir, ty), narrowing)
 }
 
 /// Compiles an arm's body, with the value narrowed to the arm's type, if it has one. If the arms
-/// are blocks of a given kind, such as in a statement (see [`Compiler::with_branches`]), so is a
+/// are blocks of a given kind, such as in a statement (see [`compile_branching_expr`]), so is a
 /// body that's a block, `if` or `match`, and in a statement any other body is an error, since its
 /// value isn't used.
 fn compile_arm(
@@ -385,7 +386,7 @@ fn compile_arm(
 
     let value = match branches {
         Some(kind) if arm.ends_with_brace() => {
-            ctx.with_branches(kind, |ctx| compile_expr(ctx, &body, expected_type))
+            compile_branching_expr(ctx, &body, expected_type, kind).0
         }
         Some(BlockKind::Statement) => {
             ctx.diagnostic(body.syntax(), DiagnosticKind::StatementMatchArmValue);

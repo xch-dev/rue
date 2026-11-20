@@ -1,19 +1,21 @@
 use log::debug;
 use rue_ast::{AstExpr, AstIfExpr, AstNode};
-use rue_hir::{Hir, Value, control_terminates};
+use rue_diagnostic::DiagnosticKind;
+use rue_hir::{Block, Hir, Mappings, Value, control_fallthroughs};
 use rue_types::{Type, TypeId, Union};
 
-use crate::{BlockKind, Compiler, compile_expr};
+use crate::{BlockKind, Compiler, compile_branching_expr, compile_expr};
 
 /// Compiles an `if` expression. If its branches are blocks of a given kind (see
-/// [`Compiler::with_branches`]), such as the branches of a statement, so are those of the `else if`
-/// expressions after it.
+/// [`compile_branching_expr`]), such as the branches of a statement, so are those of the `else if`
+/// expressions after it, and for a statement, this also gives what the rest of the block after it
+/// sees its values narrowed to.
 pub fn compile_if_expr(
     ctx: &mut Compiler,
     expr: &AstIfExpr,
     expected_type: Option<TypeId>,
     branches: Option<BlockKind>,
-) -> Value {
+) -> (Value, Option<Mappings>) {
     let condition = if let Some(condition) = expr.condition() {
         let value = compile_expr(ctx, &condition, None);
         ctx.check_condition(condition.syntax(), value.ty);
@@ -23,7 +25,7 @@ pub fn compile_if_expr(
         ctx.unresolved()
     };
 
-    let then_expr = if let Some(then_expr) = expr.then_expr() {
+    let (then_expr, _) = if let Some(then_expr) = expr.then_expr() {
         if expr.inline().is_some() {
             // We can't type guard if the branches are eagerly evaluated
             compile_branch(ctx, &then_expr, expected_type, branches)
@@ -36,10 +38,10 @@ pub fn compile_if_expr(
         }
     } else {
         debug!("Unresolved if then expr");
-        ctx.unresolved()
+        (ctx.unresolved(), None)
     };
 
-    let else_expr = if let Some(else_expr) = expr.else_expr() {
+    let (else_expr, else_narrowing) = if let Some(else_expr) = expr.else_expr() {
         if expr.inline().is_some() {
             // We can't type guard if the branches are eagerly evaluated
             compile_branch(ctx, &else_expr, expected_type, branches)
@@ -50,38 +52,42 @@ pub fn compile_if_expr(
             ctx.revert_mappings(index, range.end());
             value
         }
+    } else if branches == Some(BlockKind::Statement) {
+        // An `else if` statement can leave out the `else`, which then falls through, like an `if`
+        // statement without one
+        let hir = ctx.alloc_hir(Hir::Block(Block {
+            statements: Vec::new(),
+            body: None,
+        }));
+        (Value::new(hir, ctx.builtins().types.nil), None)
     } else {
+        // The `else` can only be left out at the start of a statement, which is parsed the same as
+        // a value until it's known which one it is
+        if expr.else_token().is_none() {
+            ctx.diagnostic(expr.syntax(), DiagnosticKind::MissingElse);
+        }
         debug!("Unresolved if else expr");
-        ctx.unresolved()
+        (ctx.unresolved(), None)
     };
-
-    // An `else if` statement records what the rest of the block sees after it
-    let else_narrowing = ctx.take_statement_narrowing();
 
     // The rest of the block after a statement only sees the values that the branch which falls
     // through to it does, if only one of them does. An `else if` chain that only falls through in
     // its last branch is like a series of `if` statements that exit early.
-    if branches == Some(BlockKind::Statement) {
-        let narrowing = if expr.inline().is_some() {
-            None
-        } else {
-            match (
-                control_terminates(ctx, then_expr.hir),
-                control_terminates(ctx, else_expr.hir),
-            ) {
-                (true, false) => Some(match else_narrowing {
-                    Some(else_narrowing) => {
-                        ctx.merge_mappings(&condition.else_map, &else_narrowing)
-                    }
-                    None => condition.else_map.clone(),
-                }),
-                (false, true) => Some(condition.then_map.clone()),
-                _ => None,
-            }
-        };
-
-        ctx.set_statement_narrowing(narrowing);
-    }
+    let narrowing = if branches == Some(BlockKind::Statement) && expr.inline().is_none() {
+        match (
+            control_fallthroughs(ctx, then_expr.hir) == 0,
+            control_fallthroughs(ctx, else_expr.hir) == 0,
+        ) {
+            (true, false) => Some(match else_narrowing {
+                Some(else_narrowing) => ctx.merge_mappings(&condition.else_map, &else_narrowing),
+                None => condition.else_map.clone(),
+            }),
+            (false, true) => Some(condition.then_map.clone()),
+            _ => None,
+        }
+    } else {
+        None
+    };
 
     let ty = ctx.alloc_type(Type::Union(Union::new(vec![then_expr.ty, else_expr.ty])));
     let hir = ctx.alloc_hir(Hir::If(
@@ -91,7 +97,7 @@ pub fn compile_if_expr(
         expr.inline().is_some(),
     ));
 
-    Value::new(hir, ty)
+    (Value::new(hir, ty), narrowing)
 }
 
 fn compile_branch(
@@ -99,10 +105,10 @@ fn compile_branch(
     expr: &AstExpr,
     expected_type: Option<TypeId>,
     branches: Option<BlockKind>,
-) -> Value {
+) -> (Value, Option<Mappings>) {
     if let Some(kind) = branches {
-        ctx.with_branches(kind, |ctx| compile_expr(ctx, expr, expected_type))
+        compile_branching_expr(ctx, expr, expected_type, kind)
     } else {
-        compile_expr(ctx, expr, expected_type)
+        (compile_expr(ctx, expr, expected_type), None)
     }
 }

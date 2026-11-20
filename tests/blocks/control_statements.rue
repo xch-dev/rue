@@ -398,3 +398,253 @@ fn inline_statement(value: Int) -> Int {
 test fn inline_statement_result() -> Int {
     inline_statement(1)
 }
+
+// A function without a value, inlined into a branch that returns, returns nil rather than
+// continuing with the rest of the block it's called from
+inline fn check_positive(value: Int) {
+    assert value > 0;
+}
+
+fn returns_inlined_nil(flag: Bool, value: Int) -> Int | nil {
+    if flag {
+        return check_positive(value);
+    } else {
+        debug value;
+    }
+
+    value + 100
+}
+
+fn returns_inlined_nil_shared(flag: Bool, value: Int) -> Int | nil {
+    if flag {
+        return check_positive(value);
+    } else if value > 5 {
+        debug value;
+    } else {
+        assert value != 0;
+    }
+
+    value + 100
+}
+
+test fn returns_inlined_nil_results() -> List<Int | nil> {
+    [
+        returns_inlined_nil(true, 1),
+        returns_inlined_nil(false, 1),
+        returns_inlined_nil_shared(true, 1),
+        returns_inlined_nil_shared(false, 1),
+    ]
+}
+
+// A function without a value that ends with a statement, inlined into a branch that falls
+// through
+inline fn log_sign(value: Int) {
+    if value > 0 {
+        debug "positive";
+    }
+}
+
+fn calls_statement_function(flag: Bool, value: Int) -> Int {
+    if flag {
+        return 1;
+    } else {
+        log_sign(value);
+    }
+
+    value
+}
+
+test fn calls_statement_function_results() -> List<Int> {
+    [calls_statement_function(true, 5), calls_statement_function(false, 5)]
+}
+
+// A function without a return type can end with a statement
+fn check_value(value: Int) {
+    if value > 5 {
+        assert value < 10;
+    } else {
+        assert value != 0;
+    }
+}
+
+test fn ends_with_statement() {
+    check_value(7);
+    check_value(1);
+}
+
+test fn ends_with_statement_fails() {
+    check_value(12);
+}
+
+// An `else if` statement can leave out the `else`
+fn else_if_without_else(value: Int) -> Int {
+    if value > 10 {
+        return 1;
+    } else if value > 5 {
+        assert value != 6;
+    }
+
+    value
+}
+
+test fn else_if_without_else_results() -> List<Int> {
+    [else_if_without_else(20), else_if_without_else(7), else_if_without_else(2)]
+}
+
+test fn else_if_without_else_fails() -> Int {
+    else_if_without_else(6)
+}
+
+// A return inside an `if` statement in a branch can still return from the function
+fn returns_from_nested_if(value: Int | nil, flag: Bool) -> Int {
+    match value {
+        nil => {
+            if flag {
+                return 1;
+            }
+        }
+        Int => {}
+    }
+
+    2
+}
+
+fn returns_from_nested_if_shared(value: Int | nil, flag: Bool) -> Int {
+    match value {
+        nil => {
+            if flag {
+                return 1;
+            }
+        }
+        Int => {
+            assert value != 3;
+        }
+    }
+
+    2
+}
+
+test fn returns_from_nested_if_results() -> List<Int> {
+    [
+        returns_from_nested_if(nil, true),
+        returns_from_nested_if(nil, false),
+        returns_from_nested_if(5, true),
+        returns_from_nested_if_shared(nil, true),
+        returns_from_nested_if_shared(nil, false),
+        returns_from_nested_if_shared(5, true),
+    ]
+}
+
+// A binding that can fail is still put where it's used if no branch can return
+fn substitutes_without_returns(value: Int) -> Int {
+    let checked = checked(value);
+
+    if value > 5 {
+        assert value > 6;
+    } else {
+        debug value;
+    }
+
+    checked
+}
+
+test fn substitutes_without_returns_result() -> Int {
+    substitutes_without_returns(7)
+}
+
+// Statements in an inline function, called from a branch of another statement
+inline fn classify(value: Int) -> Int {
+    if value > 10 {
+        return 3;
+    } else if value > 5 {
+        assert value != 6;
+    } else {
+        debug value;
+    }
+
+    value * 2
+}
+
+fn calls_inline_statements(shape: Shape, value: Int) -> Int {
+    match shape {
+        Point => {
+            return classify(value);
+        }
+        _ => {}
+    }
+
+    classify(value + 1)
+}
+
+test fn calls_inline_statements_results() -> List<Int> {
+    [
+        calls_inline_statements(Point {}, 20),
+        calls_inline_statements(Point {}, 7),
+        calls_inline_statements(Circle { radius: 1 }, 1),
+    ]
+}
+
+// Statements in a lambda
+fn lambda_statements(value: Int, other: Int) -> Int {
+    let run = fn(value: Int, other: Int): Int => {
+        match value {
+            0 => {
+                return 7;
+            }
+            1 => {
+                assert other > 0;
+            }
+            _ => {
+                debug other;
+            }
+        }
+
+        value * other
+    };
+    run(value, other)
+}
+
+test fn lambda_statements_results() -> List<Int> {
+    [lambda_statements(0, 5), lambda_statements(1, 5), lambda_statements(3, 5)]
+}
+
+// An `inline if` statement evaluates both of its branches
+fn inline_if_statement(value: Int) -> Int {
+    inline if value > 5 {
+        debug value;
+    } else {
+        debug 0;
+    }
+
+    value
+}
+
+test fn inline_if_statement_result() -> Int {
+    inline_if_statement(7)
+}
+
+// A branch with bindings of its own before it runs the shared rest of the block
+fn bindings_before_shared_rest(shape: Shape, value: Int) -> Int {
+    match shape {
+        Circle => {
+            return shape.radius;
+        }
+        Square => {
+            let doubled = value * 2;
+            assert doubled + doubled > 4;
+        }
+        Point => {
+            assert value > 1;
+        }
+    }
+
+    value + 1
+}
+
+test fn bindings_before_shared_rest_results() -> List<Int> {
+    [
+        bindings_before_shared_rest(Circle { radius: 9 }, 0),
+        bindings_before_shared_rest(Square { side: 1 }, 2),
+        bindings_before_shared_rest(Point {}, 2),
+    ]
+}

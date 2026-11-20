@@ -3,19 +3,21 @@ use rue_ast::{AstBlock, AstExpr, AstNode, AstStmt, AstStmtOrExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
     BindingSymbol, Block, ControlStatement, Declaration, ExprStatement, Hir, IfStatement,
-    Statement, Symbol, Value, control_may_return, control_terminates, statements_terminate,
+    Statement, Symbol, Value, control_fallthroughs, control_may_return, statements_terminate,
 };
 use rue_types::{Type, TypeId, Union};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type, create_binding,
+    Compiler, CompletionContext, SyntaxItemKind, compile_branching_expr, compile_expr,
+    compile_type, create_binding,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockKind {
-    /// The top level of a function or lambda body. It must end in an expression, and the
-    /// caller is responsible for pushing the [`ReturnTarget`](crate::ReturnTarget) that
-    /// nested `return` statements exit to.
+    /// The top level of a function or lambda body, or a branch of the `if`, `match` or block that
+    /// it ends with, since that's what the function returns too. It must end in an expression,
+    /// `return` or `raise`, and the caller is responsible for pushing the
+    /// [`ReturnTarget`](crate::ReturnTarget) that nested `return` statements exit to.
     Body,
     /// A block used as an expression. It must end in an expression, and nested `return`
     /// statements are not allowed, since they would only exit the block itself.
@@ -74,16 +76,18 @@ pub fn compile_block(
                 stmt
             }
             // An `if` and `else` chain or a `match` before the end of the block is a statement, as
-            // is one that ends a statement block, whose value wouldn't be used
-            AstStmtOrExpr::Expr(expr) if is_block_like(&expr) && (!is_last || !is_expr) => {
-                ctx.set_statement_narrowing(None);
+            // is one that ends a block whose value isn't used: a statement block, or the body of a
+            // function without a return type
+            AstStmtOrExpr::Expr(expr)
+                if is_if_or_match(&expr)
+                    && (!is_last || !is_expr || (kind == BlockKind::Body && !require_return)) =>
+            {
+                let (value, narrowing) =
+                    compile_branching_expr(ctx, &expr, None, BlockKind::Statement);
 
-                let value =
-                    ctx.with_branches(BlockKind::Statement, |ctx| compile_expr(ctx, &expr, None));
+                let fallthroughs = control_fallthroughs(ctx, value.hir);
 
-                let terminates = control_terminates(ctx, value.hir);
-
-                if terminates && return_value.is_none() {
+                if fallthroughs == 0 && return_value.is_none() {
                     return_value = Some(Value::new(
                         ctx.alloc_hir(Hir::Unresolved),
                         ctx.builtins().types.never,
@@ -92,12 +96,12 @@ pub fn compile_block(
 
                 statements.push(Statement::Control(ControlStatement {
                     hir: value.hir,
-                    terminates,
+                    fallthroughs,
                     may_return: control_may_return(ctx, value.hir),
                     srcloc: ctx.trimmed_srcloc(expr.syntax()),
                 }));
 
-                if let Some(narrowing) = ctx.take_statement_narrowing() {
+                if let Some(narrowing) = narrowing {
                     ctx.push_mappings(narrowing, expr.syntax().text_range().end());
                 }
 
@@ -110,12 +114,8 @@ pub fn compile_block(
 
                 // The value of a function body is what it returns, so the branches of an `if`,
                 // `match` or block that's its value can return from the function too
-                let value = if kind == BlockKind::Body
-                    && (is_block_like(&expr) || matches!(expr, AstExpr::Block(_)))
-                {
-                    ctx.with_branches(BlockKind::Body, |ctx| {
-                        compile_expr(ctx, &expr, expected_type)
-                    })
+                let value = if kind == BlockKind::Body && expr.ends_with_brace() {
+                    compile_branching_expr(ctx, &expr, expected_type, BlockKind::Body).0
                 } else {
                     compile_expr(ctx, &expr, expected_type)
                 };
@@ -235,7 +235,7 @@ pub fn compile_block(
                 // A block that ends in `return` or `raise` is an early exit, so the rest of the
                 // block is its `else` branch, and only sees the values that the condition is false
                 // for. Otherwise, the rest of the block comes after either branch.
-                if control_terminates(ctx, then_block.hir) {
+                if control_fallthroughs(ctx, then_block.hir) == 0 {
                     if stmt.inline().is_none() {
                         ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
                     }
@@ -261,7 +261,7 @@ pub fn compile_block(
 
                     Statement::Control(ControlStatement {
                         hir,
-                        terminates: false,
+                        fallthroughs: control_fallthroughs(ctx, hir),
                         may_return: control_may_return(ctx, hir),
                         srcloc,
                     })
@@ -418,6 +418,6 @@ pub fn compile_block(
 
 /// Whether the expression is an `if` and `else` chain or a `match`, which can be a statement whose
 /// branches are statement blocks.
-fn is_block_like(expr: &AstExpr) -> bool {
+fn is_if_or_match(expr: &AstExpr) -> bool {
     matches!(expr, AstExpr::IfExpr(_) | AstExpr::MatchExpr(_))
 }

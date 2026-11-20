@@ -328,6 +328,118 @@ mod tests {
             expect![],
         );
 
+        // An `else if` statement can leave out the `else`, but not an `if` used as a value
+        check(
+            block,
+            "{ if a { b; } else if c { d; } e }",
+            expect![[r#"
+            Block@0..34
+              OpenBrace@0..1 "{"
+              Whitespace@1..2 " "
+              IfExpr@2..31
+                If@2..4 "if"
+                Whitespace@4..5 " "
+                PathExpr@5..7
+                  PathSegment@5..7
+                    Ident@5..6 "a"
+                    Whitespace@6..7 " "
+                Block@7..13
+                  OpenBrace@7..8 "{"
+                  Whitespace@8..9 " "
+                  ExprStmt@9..11
+                    PathExpr@9..10
+                      PathSegment@9..10
+                        Ident@9..10 "b"
+                    Semicolon@10..11 ";"
+                  Whitespace@11..12 " "
+                  CloseBrace@12..13 "}"
+                Whitespace@13..14 " "
+                Else@14..18 "else"
+                Whitespace@18..19 " "
+                IfExpr@19..31
+                  If@19..21 "if"
+                  Whitespace@21..22 " "
+                  PathExpr@22..24
+                    PathSegment@22..24
+                      Ident@22..23 "c"
+                      Whitespace@23..24 " "
+                  Block@24..30
+                    OpenBrace@24..25 "{"
+                    Whitespace@25..26 " "
+                    ExprStmt@26..28
+                      PathExpr@26..27
+                        PathSegment@26..27
+                          Ident@26..27 "d"
+                      Semicolon@27..28 ";"
+                    Whitespace@28..29 " "
+                    CloseBrace@29..30 "}"
+                  Whitespace@30..31 " "
+              PathExpr@31..33
+                PathSegment@31..33
+                  Ident@31..32 "e"
+                  Whitespace@32..33 " "
+              CloseBrace@33..34 "}"
+        "#]],
+            expect![],
+        );
+        check(
+            block,
+            "{ let x = if a { 1 } else if c { 2 }; x }",
+            expect![[r#"
+            Block@0..41
+              OpenBrace@0..1 "{"
+              Whitespace@1..2 " "
+              LetStmt@2..37
+                Let@2..5 "let"
+                Whitespace@5..6 " "
+                NamedBinding@6..7
+                  Ident@6..7 "x"
+                Whitespace@7..8 " "
+                Assign@8..9 "="
+                Whitespace@9..10 " "
+                IfExpr@10..36
+                  If@10..12 "if"
+                  Whitespace@12..13 " "
+                  PathExpr@13..15
+                    PathSegment@13..15
+                      Ident@13..14 "a"
+                      Whitespace@14..15 " "
+                  Block@15..20
+                    OpenBrace@15..16 "{"
+                    Whitespace@16..17 " "
+                    LiteralExpr@17..18
+                      Integer@17..18 "1"
+                    Whitespace@18..19 " "
+                    CloseBrace@19..20 "}"
+                  Whitespace@20..21 " "
+                  Else@21..25 "else"
+                  Whitespace@25..26 " "
+                  IfExpr@26..36
+                    If@26..28 "if"
+                    Whitespace@28..29 " "
+                    PathExpr@29..31
+                      PathSegment@29..31
+                        Ident@29..30 "c"
+                        Whitespace@30..31 " "
+                    Block@31..36
+                      OpenBrace@31..32 "{"
+                      Whitespace@32..33 " "
+                      LiteralExpr@33..34
+                        Integer@33..34 "2"
+                      Whitespace@34..35 " "
+                      CloseBrace@35..36 "}"
+                    Block@36..36
+                Semicolon@36..37 ";"
+              Whitespace@37..38 " "
+              PathExpr@38..40
+                PathSegment@38..40
+                  Ident@38..39 "x"
+                  Whitespace@39..40 " "
+              CloseBrace@40..41 "}"
+        "#]],
+            expect!["Expected `else`, found `;` at main.rue:1:37"],
+        );
+
         // It doesn't continue with an operator, as in Rust, so `+ 3` is the next statement
         check(
             block,

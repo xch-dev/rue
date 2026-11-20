@@ -278,6 +278,19 @@ fn if_expr(
     allow_statement: bool,
     allow_inline: bool,
 ) -> bool {
+    if_expr_with(p, checkpoint, allow_statement, allow_inline, false)
+}
+
+/// Parses an `if`, which is an `if` statement if it's at the start of a statement and has no
+/// `else`. The `else if` expressions of a chain at the start of a statement can leave out the
+/// `else` too, since the chain is a statement then (it's an error later if its value is used).
+fn if_expr_with(
+    p: &mut Parser,
+    checkpoint: Checkpoint,
+    allow_statement: bool,
+    allow_inline: bool,
+    optional_else: bool,
+) -> bool {
     // An `inline match` is parsed before getting here, but it's still one of the things that can
     // come after `inline`
     if allow_inline && p.try_eat(T![inline]) {
@@ -303,10 +316,15 @@ fn if_expr(
         true
     } else {
         p.start_at(checkpoint, SyntaxKind::IfExpr);
+        if optional_else && !p.at(T![else]) {
+            p.finish();
+            return false;
+        }
         p.expect(T![else]);
         if p.at(T![if]) {
             let child = p.checkpoint();
-            p.nested(|p| if_expr(p, child, false, false));
+            let optional_else = allow_statement || optional_else;
+            p.nested(|p| if_expr_with(p, child, false, false, optional_else));
         } else {
             block(p);
         }
