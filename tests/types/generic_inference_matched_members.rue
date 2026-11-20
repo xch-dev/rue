@@ -125,3 +125,71 @@ test fn unmatched_bounds_from_revisits_dont_bound() -> Int {
     let _f: fn(value: Nested) -> Int = either_of;
     1
 }
+
+fn pick_nested<A>(value: (A | Bytes32, nil) | (Int, A)) -> A {
+    unchecked_cast(value)
+}
+
+// Both members hold `(Int, nil)`: the first with `A ≥ Int`, through the union nested in it, and
+// the second with `A ≥ nil`. With `A ≤ Int` from the return type, the second member's bounds
+// don't hold, which only rules it out: the first still holds, so `A` is `Int` (#362's step 13g).
+// Every member that matched used to have to hold, which rejected this
+test fn nested_member_bounds() -> Int {
+    let _f: fn(value: (Int, nil)) -> Int = pick_nested;
+    1
+}
+
+fn make<T>() -> fn(x: T) -> T {
+    unchecked_cast(nil)
+}
+
+type Increment = fn(x: Int) -> Int;
+type Discard = fn(x: Int) -> nil;
+
+// `make`'s function matches both members of the union with `T` as `Int`, and `Discard`'s
+// `T ≤ nil` conflicts with `T ≥ Int`, which only rules `Discard` out, so `Increment` holds (#362's
+// step 13g). This used to be rejected, though `fn() -> Increment` alone is accepted
+test fn either_function_member() -> Int {
+    let _either: fn() -> Increment | Discard = make;
+    1
+}
+
+type PairsToInt = fn(x: (Int, Int)) -> Int | (Int, Int);
+type PairsToNil = fn(x: (Int, Int)) -> nil;
+
+// The same with a union in the first member's return type, which `T` can be either member of
+test fn either_function_member_with_a_union() -> Int {
+    let _either: fn() -> PairsToInt | PairsToNil = make;
+    1
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+// `T ≥ Int` from the parameter, and both members of the return type's union match `(T, T)`: the
+// first with `T ≤ Int` and the second with `T ≤ Bytes32`. Only the second member's bounds conflict,
+// which rules it out, and the first holds with `T` as `Int` (#362's step 13g)
+test fn duplicate_into_either_pair() -> Int {
+    let function: fn(value: Int) -> (Int, Int) | (Bytes32, Bytes32) = duplicate;
+    let _pair = function(1);
+    1
+}
+
+type Pairs = fn<U>(x: U) -> (U, U);
+type GivenPairs<B> = fn(g: Pairs) -> B;
+type PairsOfInts = fn<T>(g: fn(x: Int) -> T) -> (T, T);
+
+fn call_given<B>(f: GivenPairs<B> | nil) -> B {
+    unchecked_cast(f)
+}
+
+// `PairsOfInts` matches the first member of `GivenPairs<B> | nil`, under which `B ≥ (T', T')` and
+// `T' ≥ (U', U')`. `T'` gets `T' ≤ (Int, Int)` when the bounds are checked, and checking it again
+// fails `(U', U') ≤ (Int, Int)` while `U'` is rigid, which only rules out that member. It's still
+// checked again with `U'` open, as a pair that fails outside of a union is, so `U'` is `Int` and
+// the member holds (#362's step 13g)
+test fn instances_reopened_under_a_union_member() -> Int {
+    let _call: fn(f: PairsOfInts) -> ((Int, Int), (Int, Int)) = call_given;
+    1
+}

@@ -27,14 +27,38 @@ fn assign_through_the_revisited_alias(function: Recursive) -> Int {
     1
 }
 
-fn pick<A>(value: (A | Bytes32, nil) | (Int, A)) -> A {
-    unchecked_cast(value)
+fn make_both<T>() -> (fn(x: T) -> nil, fn(x: nil) -> T) {
+    unchecked_cast(nil)
 }
 
-// The first member only bounds `A` through the union nested in it, which still counts as bounding
-// it, so it doesn't hold the value whatever `A` is, and the second member's `A ≥ nil` is checked
-// against `A ≤ Int`
-fn nested_member_bounds() -> Int {
-    let _f: fn(value: (Int, nil)) -> Int = pick;
+type TakesInt = fn(x: Int) -> nil;
+type TakesBytes32 = fn(x: Bytes32) -> nil;
+type Increment = fn(x: Int) -> Int;
+type Discard = fn(x: Int) -> nil;
+type GivesIncrement = fn(x: nil) -> Increment;
+type GivesDiscard = fn(x: nil) -> Discard;
+
+// The first union gives `T ≥ Int` or `T ≥ Bytes32`, and the second `T ≤ Increment` or
+// `T ≤ Discard`, and every one of the four pairs fails, so no pick of a member of each holds.
+// A pair across two unions only rules out picking both of its members (#362's step 13g), and
+// here each member conflicts with every member of the other union
+fn members_of_two_unions_conflict() -> Int {
+    let _both: fn() -> (TakesInt | TakesBytes32, GivesIncrement | GivesDiscard) = make_both;
+    1
+}
+
+type OrInt<X> = X | Int;
+type OrNil<X> = X | nil;
+
+fn alike_members<U>(_x: (U | OrInt<U>, OrNil<U> | U) | Bytes) -> U {
+    unchecked_cast(nil)
+}
+
+// The parameter's unions have members that are alike (`U` twice), which a summary of a comparison
+// leaves out of the union, so that what fails under the other still rules it out (#362's step 13g).
+// This is rejected, as it is without the duplicate members: a summary that kept the left out
+// member as one with nothing under it accepted it
+fn alike_members_stay_ruled_out() -> Int {
+    let _f = alike_members as fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil);
     1
 }

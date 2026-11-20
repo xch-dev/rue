@@ -2,6 +2,7 @@ use std::{
     cmp::{max, min},
     collections::{BTreeSet, HashMap, HashSet},
     mem,
+    ops::Range,
     rc::Rc,
 };
 
@@ -11,12 +12,12 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BranchId, BuiltinTypes, CandidateKind, Choices, FALLBACK,
-    FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic, Inference,
-    InferenceCandidates, InferenceSnapshot, InstancePolicy, Join, Memo, Type, TypeId,
+    FailedPair, FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic,
+    Inference, InferenceCandidates, InferenceSnapshot, InstancePolicy, Join, Memo, Type, TypeId,
     compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
     has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
     substitute_with_mappings,
-    summary::{Constraint, Summary, Var},
+    summary::{self, Branch, ChoiceRecord, Constraint, Summary, Var},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -951,6 +952,7 @@ impl ComparisonContext<'_> {
         let (entered, numbering) = (frame.entered, frame.binders.clone());
         let mut summary = Summary::default();
         let mut locals: FxHashMap<usize, Var> = FxHashMap::default();
+        let mut choices: FxHashMap<usize, Var> = FxHashMap::default();
 
         // The local binders that are instances, which the bounds of the key's instances refer to
         let mut exported: Vec<(usize, Var)> = Vec::new();
@@ -975,7 +977,7 @@ impl ComparisonContext<'_> {
                     (entered, &numbering),
                     (Var::Key(position), bound, upper),
                     &mut summary,
-                    &mut locals,
+                    (&mut locals, &mut choices),
                 );
 
                 self.export_closed(arena, referenced, &mut exported, &mut closed);
@@ -1015,7 +1017,7 @@ impl ComparisonContext<'_> {
                     (entered, &numbering),
                     (target, bound, upper),
                     &mut summary,
-                    &mut locals,
+                    (&mut locals, &mut choices),
                 );
 
                 self.export_closed(arena, referenced, &mut exported, &mut closed);
@@ -1056,7 +1058,7 @@ impl ComparisonContext<'_> {
         (entered, numbering): (usize, &[usize]),
         (target, (ty, env, branches), upper): (Var, Bound, bool),
         summary: &mut Summary,
-        locals: &mut FxHashMap<usize, Var>,
+        (locals, choices): (&mut FxHashMap<usize, Var>, &mut FxHashMap<usize, Var>),
     ) -> (Constraint, Vec<(usize, Var)>) {
         self.cache_references(arena, ty);
         let mut vars = Vec::new();
@@ -1085,20 +1087,63 @@ impl ComparisonContext<'_> {
             vars.push((generic, var));
         }
 
-        // A bound collected under a union member inside of the comparison that didn't match
-        // doesn't decide the result wherever the summary is applied either
+        // A bound collected under a union member inside of the comparison is collected under it
+        // wherever the summary is applied, along with the unions it's nested in, so it decides
+        // the result there as it did here. One under a member that gave `Invalid` (or nested in
+        // one) is recorded without its union (see `Constraint::unmatched`), since no best pick of
+        // members has that member, which keeps a summary that's applied under such a member again
+        // and again from growing
         let unmatched = branches
             .local
-            .is_some_and(|branch| !self.choices.matched_since(branch, snapshot.choices));
+            .is_some_and(|branch| !self.choices.can_hold_since(branch, snapshot.choices));
+        let branch = if unmatched {
+            None
+        } else {
+            self.branch_of(branches.local, snapshot.choices, summary, choices)
+        };
 
         let constraint = Constraint {
             var: target,
             upper,
             ty,
             env: vars,
+            branch,
             unmatched,
         };
         (constraint, referenced)
+    }
+
+    /// The union member that a bound was collected under, if it's a member of a union compared
+    /// inside of the comparison at the top of the stack (opened from `from` on), in the summary's
+    /// coordinates. Its union is added to the summary (see `ChoiceRecord`), along with those it's
+    /// nested in, and `choices` maps each to its local binder.
+    fn branch_of(
+        &self,
+        branch: Option<BranchId>,
+        from: usize,
+        summary: &mut Summary,
+        choices: &mut FxHashMap<usize, Var>,
+    ) -> Option<Branch> {
+        let branch = branch.filter(|branch| branch.choice >= from)?;
+
+        let var = if let Some(&var) = choices.get(&branch.choice) {
+            var
+        } else {
+            let (parent, members, fallback, bounded) = self.choices.record_of(branch.choice);
+            let parent = self.branch_of(parent, from, summary, choices);
+            let var = summary.local();
+            choices.insert(branch.choice, var);
+            summary.add_choice(ChoiceRecord {
+                choice: var,
+                parent,
+                members,
+                fallback,
+                bounded,
+            });
+            var
+        };
+
+        Some((var, branch.member))
     }
 
     /// Puts the bounds of a summary on the instances of the binders that a comparison's key
@@ -1116,6 +1161,13 @@ impl ComparisonContext<'_> {
         let mut instances = vec![false; summary.locals()];
         // The locals that each one's constraints refer to
         let mut refers: Vec<Vec<usize>> = vec![Vec::new(); summary.locals()];
+        let mut unions = vec![false; summary.locals()];
+
+        for choice in summary.choices() {
+            if let Var::Local(local) = choice.choice {
+                unions[local] = true;
+            }
+        }
 
         for constraint in summary.constraints() {
             if let Var::Local(local) = constraint.var {
@@ -1159,7 +1211,13 @@ impl ComparisonContext<'_> {
         let locals: Vec<usize> = generics
             .into_iter()
             .zip(slots)
-            .map(|(generic, instance)| {
+            .zip(&unions)
+            .map(|((generic, instance), &union)| {
+                // A union's local binder isn't a binder (see `ChoiceRecord`)
+                if union {
+                    return usize::MAX;
+                }
+
                 self.binders.push(Binder {
                     generic: generic.unwrap_or(summary.constraints()[0].ty),
                     parent: None,
@@ -1170,7 +1228,8 @@ impl ComparisonContext<'_> {
             })
             .collect();
 
-        let mut unmatched = None;
+        let branches = self.reopen_choices(summary);
+        let mut missed = None;
 
         for constraint in summary.constraints() {
             let target = match constraint.var {
@@ -1200,23 +1259,39 @@ impl ComparisonContext<'_> {
                 env = Some(self.binders.len() - 1);
             }
 
-            // A bound that didn't match goes under a member of a choice that's only there to not
-            // match, in `choices` and in the inference, so that it doesn't decide the result, and
-            // the candidates that checking it collects are left out like the original's
-            let branches = if constraint.unmatched {
-                *unmatched.get_or_insert_with(|| self.unmatched_branches())
-            } else {
-                self.bound_branches()
+            // A bound collected under a union member inside of the comparison goes under that
+            // member of the union reopened here
+            let branches = match constraint.branch {
+                Some((Var::Local(choice), member)) => {
+                    let (local, infer) = branches[choice];
+                    BoundBranches {
+                        local: Some(BranchId {
+                            choice: local,
+                            member,
+                        }),
+                        infer: infer.map(|choice| BranchId { choice, member }),
+                    }
+                }
+                // A bound that didn't match goes under a member of a choice that's only there to
+                // not match, in `choices` and in the inference, so that it doesn't decide the
+                // result, and the candidates that checking it collects are left out like the
+                // original's
+                _ if constraint.unmatched => {
+                    *missed.get_or_insert_with(|| self.unmatched_branches())
+                }
+                _ => self.bound_branches(),
             };
 
-            let bound = (constraint.ty, env, branches);
-
-            // A bound that didn't match doesn't decide anything, so it doesn't count as bounding
-            // the instance for the union member it's applied under either (see `compare_member`)
+            // A bound under a member that didn't match doesn't decide anything, so it doesn't
+            // count as bounding the instance for the union member it's applied under either (see
+            // `compare_member`)
+            let unmatched = branches
+                .local
+                .is_some_and(|branch| !self.choices.matched_so_far(branch));
             let bounded = self.bounded;
-            self.push_bound(target, bound, constraint.upper);
+            self.push_bound(target, (constraint.ty, env, branches), constraint.upper);
 
-            if constraint.unmatched {
+            if unmatched {
                 self.bounded = bounded;
             }
         }
@@ -1245,6 +1320,66 @@ impl ComparisonContext<'_> {
         }
     }
 
+    /// Reopens the unions of a summary under the current union members (see `ChoiceRecord`), in
+    /// `choices` and in the inference, with what each of their members gave, and returns the
+    /// choices that each union's local binder is reopened as.
+    fn reopen_choices(&mut self, summary: &Summary) -> Vec<(usize, Option<usize>)> {
+        let mut reopened: Vec<Option<(usize, Option<usize>)>> = vec![None; summary.locals()];
+        let local_of = |var: Var| match var {
+            Var::Local(local) => local,
+            Var::Key(_) => unreachable!("a union is a local binder"),
+        };
+
+        // A union is reopened after the one it's nested in, whichever order they're in
+        while summary
+            .choices()
+            .iter()
+            .any(|choice| reopened[local_of(choice.choice)].is_none())
+        {
+            for choice in summary.choices() {
+                let local = local_of(choice.choice);
+
+                if reopened[local].is_some() {
+                    continue;
+                }
+
+                let (parent, infer_parent) = match choice.parent {
+                    Some((parent, member)) => {
+                        let Some((parent, infer)) = reopened[local_of(parent)] else {
+                            continue;
+                        };
+                        (
+                            Some(BranchId {
+                                choice: parent,
+                                member,
+                            }),
+                            infer.map(|choice| BranchId { choice, member }),
+                        )
+                    }
+                    None => (self.local_branch, self.branch),
+                };
+
+                let index =
+                    self.choices
+                        .reopen(parent, &choice.members, choice.fallback, &choice.bounded);
+                let infer = self.infer.as_mut().map(|infer| {
+                    infer.reopen_choice(
+                        infer_parent,
+                        &choice.members,
+                        choice.fallback,
+                        &choice.bounded,
+                    )
+                });
+                reopened[local] = Some((index, infer));
+            }
+        }
+
+        reopened
+            .into_iter()
+            .map(|choice| choice.unwrap_or((usize::MAX, None)))
+            .collect()
+    }
+
     /// Counts a step towards the comparison that started from an empty stack, and returns `true`
     /// if it has taken too many, so it's giving up (see `COMPARISON_STEP_LIMIT`).
     fn spend(&mut self) -> bool {
@@ -1253,7 +1388,8 @@ impl ComparisonContext<'_> {
 
     /// Counts the steps towards the comparison that started from an empty stack, like `spend`.
     fn spend_many(&mut self, steps: usize) -> bool {
-        self.steps += steps;
+        // Canonicalizing summaries is part of comparing, so it counts too
+        self.steps += steps + summary::take_work();
 
         if self.steps > comparison_step_limit(COMPARISON_STEP_LIMIT) {
             self.budget = Budget::GivingUp;
@@ -1876,6 +2012,14 @@ fn compare_impl_inner(
     ctx.stack.pop().unwrap();
     ctx.frames.pop().unwrap();
 
+    // A summary that left out unions nested too deeply can reject more than computing the
+    // comparison again, so it isn't reused, in either mode, which keeps reusing exact
+    let memo_key = memo_key.filter(|_| {
+        summary
+            .as_ref()
+            .is_none_or(|summary| !summary.is_approximate())
+    });
+
     match frame {
         Frame::Exact(frame) => {
             ctx.memo.exit(frame, key, memo_key, (result, summary));
@@ -2009,6 +2153,8 @@ fn compare_structure(
                 let (lhs_env, rhs_env) = (ctx.lhs_env, ctx.rhs_env);
                 let first = ctx.binders.len();
                 let own = ctx.instances.len();
+                // The unions compared inside of this one, whose members' bounds are checked below
+                let choices = ctx.choices.len();
                 ctx.lhs_env = ctx.bind(lhs_env, &lhs.generics, true);
                 ctx.rhs_env = ctx.bind(rhs_env, &rhs.generics, false);
                 // The instances of the generic functions compared inside of this one come after
@@ -2063,7 +2209,7 @@ fn compare_structure(
                 let instantiable_from = ctx.instantiable_from;
                 let snapshot = ctx.snapshot_from(own);
                 let (shallow, deeper) =
-                    check_inner_bounds(arena, builtins, ctx, (own, inner), false);
+                    check_inner_bounds(arena, builtins, ctx, (own, inner), false, choices);
 
                 // It's only checked again if instantiating more could make a difference, which it
                 // can't where there's nothing nested further in to instantiate: otherwise, a
@@ -2075,13 +2221,13 @@ fn compare_structure(
                     } else {
                         ctx.restore(&snapshot);
                         let (deep, _) =
-                            check_inner_bounds(arena, builtins, ctx, (own, inner), true);
+                            check_inner_bounds(arena, builtins, ctx, (own, inner), true, choices);
 
                         if deep <= shallow {
                             deep
                         } else {
                             ctx.restore(&snapshot);
-                            check_inner_bounds(arena, builtins, ctx, (own, inner), false).0
+                            check_inner_bounds(arena, builtins, ctx, (own, inner), false, choices).0
                         }
                     },
                 );
@@ -2361,6 +2507,7 @@ fn check_bounds(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut ComparisonContext<'_>,
+    (inner, failed): (&Range<usize>, &mut Vec<FailedPair>),
     instances: impl IntoIterator<Item = usize>,
 ) -> Comparison {
     let mut result = Comparison::Assign;
@@ -2376,17 +2523,9 @@ fn check_bounds(
                     break 'bounds;
                 }
 
-                // Bounds collected under different members of one union are alternatives, so
-                // they needn't hold together, and such a pair isn't compared (so it collects no
-                // candidates either, which each member's own pairs do). Every member that matched
-                // still has to hold with the bounds outside of the union, and with those of every
-                // member of another union that matched, which are all checked against each other.
-                // That's incomplete: a member that matched but whose bounds conflict fails the
-                // union, even if another member holds (#362, §5, question 2). Without this, two
-                // members of one union that each hold could fail together, and whether a member
-                // matches isn't monotone in its result, so a comparison could have no least fixed
-                // point, on which exact and fixpoint mode disagreed. That's still the case across
-                // unions (see `test_union_member_differential_large`)
+                // Bounds collected under different members of one union are alternatives, which no
+                // pick of members has both of, so such a pair isn't compared (and collects no
+                // candidates, which each member's own pairs do)
                 if let (Some(lhs), Some(rhs)) = (lower_branches.local, upper_branches.local)
                     && ctx.choices.exclusive(lhs, rhs)
                 {
@@ -2417,7 +2556,38 @@ fn check_bounds(
                 ctx.rhs_env = upper_env;
                 let pair = compare_impl(arena, builtins, ctx, lower, upper, None, None);
 
-                if unmatched.is_none() {
+                // A pair with a bound collected under a member of a union compared inside of the
+                // function only rules out picks of that member (and the other's, across two
+                // unions), which decides the result along with the other members' (see
+                // `Choices::attributed`), so a union holds if any member does (#360). Otherwise, a
+                // bound collected under a union outside of the function counts if its member
+                // matches so far
+                let attributed: Vec<BranchId> = [lower_branches.local, upper_branches.local]
+                    .into_iter()
+                    .flatten()
+                    .filter(|branch| inner.contains(&branch.choice))
+                    .collect();
+
+                // A bound under a member of a union that's held by another member decides nothing
+                // (see `Choices::needed_in`), so a pair with one isn't attributed to anything
+                let needed = [lower_branches.local, upper_branches.local]
+                    .into_iter()
+                    .flatten()
+                    .all(|branch| ctx.choices.needed_in(branch, inner));
+
+                if !needed {
+                } else if !attributed.is_empty() {
+                    if pair != Comparison::Assign {
+                        let inside = |branch: Option<BranchId>| {
+                            branch.filter(|branch| inner.contains(&branch.choice))
+                        };
+                        failed.push((
+                            inside(lower_branches.local),
+                            inside(upper_branches.local),
+                            pair,
+                        ));
+                    }
+                } else if unmatched.is_none() {
                     result = max(result, pair);
                 }
 
@@ -2483,8 +2653,15 @@ fn check_inner_bounds(
     ctx: &mut ComparisonContext<'_>,
     (own, inner): (usize, usize),
     deep: bool,
+    choices: usize,
 ) -> (Comparison, bool) {
     let end = ctx.instances.len();
+    // The unions compared inside of the function comparison (from `choices` on), not those that
+    // checking opens, whose members the pairs that fail are attributed to. What every check gives
+    // them is joined, since a union holds only if one member holds with all of its bounds (see
+    // `check_bounds`)
+    let unions = choices..ctx.choices.len();
+    let mut failed: Vec<FailedPair> = Vec::new();
     let mut memo = FxHashMap::default();
     let mut deeper = false;
     let closed: Vec<usize> = (inner..end)
@@ -2501,7 +2678,7 @@ fn check_inner_bounds(
         .collect();
     let reopened = ctx.reopen(closed);
     ctx.instantiable_from = end;
-    let mut result = check_bounds(arena, builtins, ctx, own..inner);
+    let mut result = check_bounds(arena, builtins, ctx, (&unions, &mut failed), own..inner);
     let mut grown: BTreeSet<usize> = close_reopened(ctx, reopened);
 
     // Each instance whose bounds grew is checked again, from the outermost in. It's checked with
@@ -2517,9 +2694,12 @@ fn check_inner_bounds(
     while let Some(index) = grown.pop_first() {
         ctx.instantiable_from = ctx.instances.len();
         let snapshot = ctx.snapshot_open();
-        let rigid = check_bounds(arena, builtins, ctx, [index]);
+        let before = failed.clone();
+        let rigid = check_bounds(arena, builtins, ctx, (&unions, &mut failed), [index]);
 
-        if rigid == Comparison::Assign {
+        // It holds if it fails no pair, directly or under a union member (which only rules that
+        // member out, see `Choices::attributed`), which only depends on this instance's own pairs
+        if rigid == Comparison::Assign && failed.len() == before.len() {
             continue;
         }
 
@@ -2532,12 +2712,19 @@ fn check_inner_bounds(
         }
 
         ctx.restore(&snapshot);
+        failed = before;
         let reopened = ctx.reopen(referenced);
-        result = max(result, check_bounds(arena, builtins, ctx, [index]));
+        result = max(
+            result,
+            check_bounds(arena, builtins, ctx, (&unions, &mut failed), [index]),
+        );
         grown.extend(close_reopened(ctx, reopened));
     }
 
-    (result, deeper)
+    let limit = comparison_step_limit(COMPARISON_STEP_LIMIT).saturating_sub(ctx.steps);
+    let (attributed, nodes) = ctx.choices.attributed(unions, &failed, limit);
+    ctx.spend_many(nodes);
+    (max(result, attributed), deeper)
 }
 
 /// Makes the instances that `ComparisonContext::reopen` reopened rigid again, and returns those
@@ -2631,6 +2818,7 @@ mod tests {
                 upper: true,
                 ty: bound,
                 env: Vec::new(),
+                branch: None,
                 unmatched: false,
             });
             Rc::new(summary)

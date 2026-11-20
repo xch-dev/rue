@@ -87,6 +87,11 @@ pub(crate) struct BranchId {
     pub(crate) member: usize,
 }
 
+/// A pair of bounds on an instance that didn't hold (and what comparing them gave), with the
+/// union member each was collected under, if it's one of a union compared inside of the function
+/// comparison whose bounds are being checked (see `Choices::attributed`).
+pub(crate) type FailedPair = (Option<BranchId>, Option<BranchId>, Comparison);
+
 /// The `BranchId::member` of a union comparison's fallback, such as comparing a function's runtime
 /// structure with the union when no member holds the function (#349).
 pub(crate) const FALLBACK: usize = usize::MAX;
@@ -403,6 +408,17 @@ impl Inference {
         self.choices.open(parent, members)
     }
 
+    /// Opens a choice that's already been compared (see `Choices::reopen`).
+    pub(crate) fn reopen_choice(
+        &mut self,
+        parent: Option<BranchId>,
+        members: &[Option<Comparison>],
+        fallback: Option<Comparison>,
+        bounded: &[bool],
+    ) -> usize {
+        self.choices.reopen(parent, members, fallback, bounded)
+    }
+
     /// Records what comparing the value with a union's member (or its fallback) gave.
     pub(crate) fn record(&mut self, branch: BranchId, result: Comparison) {
         self.choices.record(branch, result);
@@ -569,6 +585,179 @@ impl Choices {
                 .is_none_or(|parent| self.matched_since(parent, from))
     }
 
+    /// Whether the union member, and every member it's nested in from the choice opened at index
+    /// `from` on, either gave a result other than `Invalid` or hasn't given one yet. A member that
+    /// gave `Invalid` never holds the value, whatever the bounds collected under it are, so they
+    /// can't decide anything (see `Choices::attributed`).
+    pub(crate) fn can_hold_since(&self, branch: BranchId, from: usize) -> bool {
+        if branch.choice < from {
+            return true;
+        }
+
+        let choice = &self.0[branch.choice];
+
+        let result = if branch.member == FALLBACK {
+            choice.fallback
+        } else {
+            choice.members[branch.member]
+        };
+
+        result != Some(Comparison::Invalid)
+            && choice
+                .parent
+                .is_none_or(|parent| self.can_hold_since(parent, from))
+    }
+
+    /// Whether the bounds collected under the union member can decide anything, as far as the
+    /// choices opened in the range do: no union it's nested in from there on (nor its own) is held
+    /// by another member, one that gave `Assign` without collecting bounds. Picking that member
+    /// gives `Assign` with nothing to rule it out, so no best pick of members needs what's under
+    /// the others (see `Choices::attributed`), and pairs with it can be left out, which only saves
+    /// picking. It has to be `Assign`: a member that gave the union's best result, `Cast`, wouldn't
+    /// make a best pick when another member gives `Assign`.
+    pub(crate) fn needed_in(&self, mut branch: BranchId, range: &std::ops::Range<usize>) -> bool {
+        loop {
+            if !range.contains(&branch.choice) {
+                return true;
+            }
+
+            let choice = &self.0[branch.choice];
+            let index = branch.member.min(choice.members.len());
+
+            let held = choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .zip(&choice.bounded)
+                .enumerate()
+                .any(|(other, (&result, &bounded))| {
+                    other != index && result == Some(Comparison::Assign) && !bounded
+                });
+
+            if held {
+                return false;
+            }
+
+            match choice.parent {
+                Some(parent) => branch = parent,
+                None => return true,
+            }
+        }
+    }
+
+    /// The result of the unions opened in the range, given the pairs of bounds that failed (see
+    /// `FailedPair`): the best, over each way of picking a member (or the fallback) of each union
+    /// reached, of the worst of what the picked members gave and what the failed pairs whose
+    /// bounds were both collected under picked members (or outside of the unions) gave. So the
+    /// members of a union are alternatives, and a pair only rules out picking both of its members
+    /// (#360). It's the best over picks of the worst of the results, so it's monotone in the
+    /// members' results and the pairs', and it doesn't depend on how the summaries that the
+    /// unions came from left out unions that decide nothing (see `Summary::canonicalize`). Only
+    /// the unions that a failed pair's bound was collected under, and those they're nested in,
+    /// are picked from, since the others' results are already in the comparison's. The picks
+    /// tried are returned along with the result, and count as steps of comparing: picking is
+    /// exponential in the number of unions, but they're few at a time, and a comparison that
+    /// picks too many gives up. The search stops once it has tried more than `limit` picks (the
+    /// steps the comparison has left), and then gives `Invalid`, since the comparison gives up.
+    pub(crate) fn attributed(
+        &self,
+        range: std::ops::Range<usize>,
+        pairs: &[FailedPair],
+        limit: usize,
+    ) -> (Comparison, usize) {
+        if pairs.is_empty() {
+            return (Comparison::Assign, 0);
+        }
+
+        let mut touched: Vec<bool> = vec![false; range.len()];
+
+        for &(lhs, rhs, _) in pairs {
+            for mut branch in [lhs, rhs].into_iter().flatten() {
+                while range.contains(&branch.choice) && !touched[branch.choice - range.start] {
+                    touched[branch.choice - range.start] = true;
+
+                    match self.0[branch.choice].parent {
+                        Some(parent) => branch = parent,
+                        None => break,
+                    }
+                }
+            }
+        }
+
+        // The touched unions in order, each after the one it's nested in, with the members (and
+        // the fallback) that were compared and what each gave
+        let unions: Vec<(usize, Vec<(usize, Comparison)>)> = range
+            .clone()
+            .filter(|&index| touched[index - range.start])
+            .map(|index| {
+                let choice = &self.0[index];
+                let members = choice
+                    .members
+                    .iter()
+                    .enumerate()
+                    .chain([(FALLBACK, &choice.fallback)])
+                    .filter_map(|(member, &result)| result.map(|result| (member, result)))
+                    .collect();
+                (index, members)
+            })
+            .collect();
+
+        // Each pair is worked out once the last of the unions its members are nested in has been
+        // picked from (or passed over, if it isn't reached), since what's picked after that
+        // doesn't change whether both of its members are picked. Of the pairs with the same
+        // members, only the worst counts. A pair under no union in the range always counts
+        let mut position = vec![0; range.len()];
+
+        for (index, &(union, _)) in unions.iter().enumerate() {
+            position[union - range.start] = index;
+        }
+
+        let mut worst_of: FxHashMap<(Option<BranchId>, Option<BranchId>), Comparison> =
+            FxHashMap::default();
+
+        for &(lhs, rhs, pair) in pairs {
+            let entry = worst_of.entry((lhs, rhs)).or_insert(pair);
+            *entry = (*entry).max(pair);
+        }
+
+        let mut decided: Vec<Vec<FailedPair>> = vec![Vec::new(); unions.len()];
+        let mut always = Comparison::Assign;
+        let mut sorted: Vec<_> = worst_of.into_iter().collect();
+        sorted.sort_unstable();
+
+        for ((lhs, rhs), pair) in sorted {
+            let last = [lhs, rhs]
+                .into_iter()
+                .flatten()
+                .filter(|branch| range.contains(&branch.choice))
+                .map(|branch| position[branch.choice - range.start])
+                .max();
+
+            match last {
+                Some(last) => decided[last].push((lhs, rhs, pair)),
+                None => always = always.max(pair),
+            }
+        }
+
+        let mut search = Search {
+            choices: self,
+            range: &range,
+            unions: &unions,
+            decided: &decided,
+            picked: vec![None; range.len()],
+            best: None,
+            nodes: 0,
+            limit,
+        };
+        search.pick(0, always);
+
+        if search.nodes > limit {
+            return (Comparison::Invalid, search.nodes);
+        }
+
+        (search.best.unwrap_or(Comparison::Invalid), search.nodes)
+    }
+
     /// Starts comparing a value with a union's members, under the given member of an enclosing
     /// union if there is one, and returns the index of the new choice.
     pub(crate) fn open(&mut self, parent: Option<BranchId>, members: usize) -> usize {
@@ -577,6 +766,45 @@ impl Choices {
             members: vec![None; members],
             fallback: None,
             bounded: vec![false; members + 1],
+        });
+        self.0.len() - 1
+    }
+
+    /// The union member that the choice is nested in, what each of its members and its fallback
+    /// gave, and which collected bounds (see `ChoiceRecord` in `summary.rs`).
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn record_of(
+        &self,
+        choice: usize,
+    ) -> (
+        Option<BranchId>,
+        Vec<Option<Comparison>>,
+        Option<Comparison>,
+        Vec<bool>,
+    ) {
+        let choice = &self.0[choice];
+        (
+            choice.parent,
+            choice.members.clone(),
+            choice.fallback,
+            choice.bounded.clone(),
+        )
+    }
+
+    /// Opens a choice that's already been compared, with what each of its members and its fallback
+    /// gave and which collected bounds, such as one that a summary recorded, and returns it.
+    pub(crate) fn reopen(
+        &mut self,
+        parent: Option<BranchId>,
+        members: &[Option<Comparison>],
+        fallback: Option<Comparison>,
+        bounded: &[bool],
+    ) -> usize {
+        self.0.push(Choice {
+            parent,
+            members: members.to_vec(),
+            fallback,
+            bounded: bounded.to_vec(),
         });
         self.0.len() - 1
     }
@@ -657,7 +885,10 @@ impl Choices {
     /// the member its choice is nested in holds too. A member that's still being compared holds,
     /// since it hasn't given a result yet. This is for the bounds of a generic being instantiated,
     /// which are checked once the function comparison that bound it finishes, which can be in the
-    /// middle of comparing an enclosing union's member.
+    /// middle of comparing an enclosing union's member. Since #362's step 13g, it only decides
+    /// pairs with a bound collected under a union outside of that function comparison, and which
+    /// candidates checking a pair collects: a failed pair under a union inside of it rules out
+    /// picks of the members it was collected under instead (see `Choices::attributed`).
     pub(crate) fn matched_so_far(&self, branch: BranchId) -> bool {
         self.matched_since(branch, 0)
     }
@@ -703,6 +934,105 @@ impl Choices {
         }
 
         results
+    }
+}
+
+/// A search for the pick of a member of each union that gives the best result with the failed
+/// pairs of bounds it picks both members of (see `Choices::attributed`).
+struct Search<'a> {
+    choices: &'a Choices,
+    range: &'a std::ops::Range<usize>,
+    /// The touched unions, each after the one it's nested in, and their compared members.
+    unions: &'a [(usize, Vec<(usize, Comparison)>)],
+    /// The failed pairs that are worked out once each union has been picked from, by its
+    /// position in `unions`: those whose members are nested in it last.
+    decided: &'a [Vec<FailedPair>],
+    /// The member picked for each union in the range so far, if it's picked one.
+    picked: Vec<Option<usize>>,
+    /// The best result of a full pick so far, if one has been made.
+    best: Option<Comparison>,
+    /// How many picks were tried, which counts towards the comparison's steps.
+    nodes: usize,
+    /// How many picks it tries before it stops.
+    limit: usize,
+}
+
+impl Search<'_> {
+    /// Whether the member is picked, along with every member it's nested in (in the range).
+    fn active(&self, mut branch: BranchId) -> bool {
+        loop {
+            if !self.range.contains(&branch.choice) {
+                return true;
+            }
+
+            if self.picked[branch.choice - self.range.start] != Some(branch.member) {
+                return false;
+            }
+
+            match self.choices.0[branch.choice].parent {
+                Some(parent) => branch = parent,
+                None => return true,
+            }
+        }
+    }
+
+    /// Whether the union is reached by the members picked so far: it's not nested in a member of
+    /// a union in the range, or the one it's nested in is picked.
+    fn reached(&self, union: usize) -> bool {
+        self.choices.0[union]
+            .parent
+            .is_none_or(|parent| self.active(parent))
+    }
+
+    /// Picks a member of the union at the position and each after it, with `worst` the worst
+    /// result of the members picked so far.
+    fn pick(&mut self, position: usize, worst: Comparison) {
+        self.nodes += 1;
+
+        if self.nodes > self.limit {
+            return;
+        }
+
+        // Nothing picked from here on can make it better than a pick already made
+        if self.best.is_some_and(|best| worst >= best) {
+            return;
+        }
+
+        let Some((union, members)) = self.unions.get(position) else {
+            self.best = Some(self.best.map_or(worst, |best| best.min(worst)));
+            return;
+        };
+
+        let union = *union;
+        let slot = union - self.range.start;
+
+        if !self.reached(union) || members.is_empty() {
+            let worst = self.with_decided(position, worst);
+            self.pick(position + 1, worst);
+            return;
+        }
+
+        for &(member, result) in members {
+            self.picked[slot] = Some(member);
+            let worst = self.with_decided(position, worst.max(result));
+            self.pick(position + 1, worst);
+        }
+
+        self.picked[slot] = None;
+    }
+
+    /// The worst of `worst` and the pairs worked out at the position whose members are both
+    /// picked (see `Search::decided`).
+    fn with_decided(&self, position: usize, worst: Comparison) -> Comparison {
+        self.decided[position]
+            .iter()
+            .filter(|&&(lhs, rhs, _)| {
+                [lhs, rhs]
+                    .into_iter()
+                    .flatten()
+                    .all(|branch| self.active(branch))
+            })
+            .fold(worst, |worst, &(_, _, pair)| worst.max(pair))
     }
 }
 
@@ -752,6 +1082,184 @@ impl InferenceCandidates {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reopened(choices: &mut Choices, parent: Option<BranchId>, members: &[Comparison]) -> usize {
+        let members: Vec<Option<Comparison>> = members.iter().copied().map(Some).collect();
+        choices.reopen(parent, &members, None, &vec![true; members.len() + 1])
+    }
+
+    /// A failed pair across two unions rules out picking both of its members, so each union picks
+    /// a member that holds with the other's pick.
+    #[test]
+    fn attributed_picks_members_across_unions() {
+        use Comparison::{Assign, Cast, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let first = reopened(&mut choices, None, &[Assign, Cast]);
+        let second = reopened(&mut choices, None, &[Assign, Assign]);
+
+        // The first union's first member conflicts with both of the second's, so the first union
+        // picks its second member, which gives `Cast`
+        let pairs = [
+            (Some(branch(first, 0)), Some(branch(second, 0)), Invalid),
+            (Some(branch(first, 0)), Some(branch(second, 1)), Invalid),
+        ];
+        assert_eq!(choices.attributed(0..2, &pairs, usize::MAX).0, Cast);
+
+        // With one conflict, the second union picks its other member
+        assert_eq!(choices.attributed(0..2, &pairs[..1], usize::MAX).0, Assign);
+
+        // A bound outside of any union charges the member in full
+        let pairs = [
+            (Some(branch(second, 0)), None, Invalid),
+            (None, Some(branch(second, 1)), Invalid),
+        ];
+        assert_eq!(choices.attributed(0..2, &pairs, usize::MAX).0, Invalid);
+    }
+
+    /// A pair whose bounds are under a member and a union nested in it rules out the nested
+    /// member, which the union it's in can avoid.
+    #[test]
+    fn attributed_charges_the_enclosed_member() {
+        use Comparison::{Assign, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let outer = reopened(&mut choices, None, &[Assign, Invalid]);
+        let inner = reopened(&mut choices, Some(branch(outer, 0)), &[Assign, Assign]);
+
+        for pair in [
+            (Some(branch(outer, 0)), Some(branch(inner, 0)), Invalid),
+            (Some(branch(inner, 0)), Some(branch(outer, 0)), Invalid),
+        ] {
+            assert_eq!(choices.attributed(0..2, &[pair], usize::MAX).0, Assign);
+        }
+    }
+
+    /// A union with a member that gave `Assign` without collecting bounds is held by it, so what's
+    /// under its other members decides nothing, while one whose members all collected bounds isn't.
+    #[test]
+    fn needed_in_held_unions() {
+        use Comparison::{Assign, Cast};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let held = choices.reopen(
+            None,
+            &[Some(Assign), Some(Assign)],
+            None,
+            &[true, false, false],
+        );
+        let bounded = reopened(&mut choices, None, &[Assign, Assign]);
+        let cast = choices.reopen(
+            None,
+            &[Some(Assign), Some(Cast)],
+            None,
+            &[true, false, false],
+        );
+
+        assert!(!choices.needed_in(branch(held, 0), &(0..3)));
+        assert!(choices.needed_in(branch(bounded, 0), &(0..3)));
+        // Held only by a member that gave `Assign`, so a result getting worse can't make it held
+        assert!(choices.needed_in(branch(cast, 0), &(0..3)));
+        // Outside of the range, it isn't the function comparison's to decide
+        assert!(choices.needed_in(branch(held, 0), &(1..3)));
+    }
+
+    /// A union whose member without bounds gave `Cast`, though that's its best result, isn't
+    /// held, so a result getting worse can't make it held.
+    #[test]
+    fn needed_in_not_held_by_a_best_cast() {
+        use Comparison::Cast;
+
+        let mut choices = Choices::default();
+        let union = choices.reopen(None, &[Some(Cast), Some(Cast)], None, &[true, false, false]);
+        assert!(choices.needed_in(
+            BranchId {
+                choice: union,
+                member: 0
+            },
+            &(0..1)
+        ));
+    }
+
+    /// Picking a member of each union is exponential in the number of unions, at worst, but a pick
+    /// that a failed pair already rules out isn't tried further. Here, 20 unions of three members
+    /// each have a failed pair for every two of them that picks the same member, like coloring a
+    /// complete graph with three colors, which no pick does, and few picks are tried. With a limit
+    /// on them, the search stops.
+    #[test]
+    fn attributed_picks_within_a_limit() {
+        use Comparison::{Assign, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let unions: Vec<usize> = (0..20)
+            .map(|_| reopened(&mut choices, None, &[Assign, Assign, Assign]))
+            .collect();
+        let mut pairs = Vec::new();
+
+        for (position, &lhs) in unions.iter().enumerate() {
+            for &rhs in &unions[position + 1..] {
+                for member in 0..3 {
+                    pairs.push((
+                        Some(branch(lhs, member)),
+                        Some(branch(rhs, member)),
+                        Invalid,
+                    ));
+                }
+            }
+        }
+
+        let (result, nodes) = choices.attributed(0..20, &pairs, usize::MAX);
+        assert_eq!(result, Invalid);
+        assert!(nodes < 1000, "tried {nodes} picks");
+
+        // Past the limit, each union being picked from returns once for each of its members
+        let (result, nodes) = choices.attributed(0..20, &pairs, 10);
+        assert_eq!(result, Invalid);
+        assert!(nodes <= 10 + 20 * 3, "tried {nodes} picks");
+    }
+
+    /// Past the limit, picking gives `Invalid`, whatever it found by then, and of two pairs with
+    /// the same members, the worse one counts.
+    #[test]
+    fn attributed_stops_at_the_limit_and_keeps_the_worst_duplicate() {
+        use Comparison::{Assign, Cast, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let first = reopened(&mut choices, None, &[Cast, Assign]);
+        let second = reopened(&mut choices, None, &[Assign, Assign]);
+        let pairs = [(Some(branch(first, 0)), Some(branch(second, 0)), Invalid)];
+        assert_eq!(choices.attributed(0..2, &pairs, usize::MAX).0, Assign);
+
+        // The first full pick gives `Cast`, then the limit is passed before `Assign` is found
+        assert_eq!(choices.attributed(0..2, &pairs, 4), (Invalid, 5));
+
+        let pairs = [
+            (Some(branch(second, 0)), None, Invalid),
+            (Some(branch(second, 0)), None, Cast),
+            (Some(branch(second, 1)), None, Cast),
+            (Some(branch(second, 1)), None, Invalid),
+        ];
+        assert_eq!(choices.attributed(1..2, &pairs, usize::MAX).0, Invalid);
+    }
+
+    /// A union nested in a member that isn't picked isn't picked from, so what it gives doesn't
+    /// count.
+    #[test]
+    fn attributed_skips_unions_under_members_not_picked() {
+        use Comparison::{Assign, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let outer = reopened(&mut choices, None, &[Assign, Assign]);
+        let inner = reopened(&mut choices, Some(branch(outer, 0)), &[Invalid]);
+        let pairs = [(Some(branch(inner, 0)), None, Invalid)];
+        assert_eq!(choices.attributed(0..2, &pairs, usize::MAX).0, Assign);
+    }
 
     #[test]
     fn exclusive_members() {
