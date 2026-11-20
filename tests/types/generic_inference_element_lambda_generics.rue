@@ -538,3 +538,31 @@ test fn element_before_an_argument_that_reads_its_parameters() -> (List<5>, 5) {
     let made: 5 = apply_made((fn(x) => x, 1), fn() => identity(5));
     (list, made)
 }
+
+fn chain_through<T, U, W>(
+    functions: List<fn(x: T) -> U>,
+    make: (fn(w: W) -> T, T),
+    value: W,
+) -> List<U> {
+    map_list(functions, make.first(value))
+}
+
+// Guard: the lambda waits for what `T` is mapped to so far to be settled too: the lambda next to
+// `5` makes `T` `W | Int`, and `W` is only given a type by `6`, which the lambda waits for
+test fn element_waits_for_what_its_generics_are_mapped_to() -> List<Int> {
+    let result = chain_through([fn(x) => x + 1], (fn(w) => w, 5), 6);
+    result
+}
+
+fn each_other<T, U>(first: (fn(x: T) -> U, Int), second: (fn(y: U) -> T, Int), t: T, u: U) -> (
+    T,
+    U,
+) {
+    (second.first(u), first.first(t))
+}
+
+// Two lambdas that wait for what each other adds are compiled in order once every argument is
+test fn elements_wait_for_each_other() -> (Int, Int) {
+    let result = each_other((fn(x) => x, 1), (fn(y) => y, 2), 5, 6);
+    result
+}
