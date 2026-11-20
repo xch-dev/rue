@@ -28,16 +28,16 @@ tests:
   byte_cost: 588000
   total_cost: 589330
 - name: call_inferred_from_function
-  program: (a (q . 2) (c (sha256 (q . 97)) ()))
+  program: (sha256 (q . 97))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (sha256 (q . 97)))) (c (q 2 2 (c 3 ())) ()))
   output: "0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
-  runtime_cost: 818
-  byte_cost: 252000
-  total_cost: 252818
+  runtime_cost: 564
+  byte_cost: 84000
+  total_cost: 84564
 - name: call_inferred_from_value
-  program: (a (q 16 2 (q . 1)) (q 41))
+  program: (q . 42)
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 41))) (c (q 2 2 (c 3 ())) ()))
   output: "42"
-  runtime_cost: 955
-  byte_cost: 252000
-  total_cost: 252955
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

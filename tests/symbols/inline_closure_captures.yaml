@@ -7,12 +7,12 @@ byte_cost: 780000
 total_cost: 781683
 tests:
 - name: closure_in_inline_function
-  program: (a (q 16 (a (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q ()))) ()))) ()) 2) (c (q . 10) 1))
+  program: (a (q 16 2 2) (c (q . 10) 1))
   debug_program: (a (q 16 (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) 2) (c (q . 10) 1))
   output: "20"
-  runtime_cost: 1937
-  byte_cost: 948000
-  total_cost: 949937
+  runtime_cost: 1078
+  byte_cost: 276000
+  total_cost: 277078
 - name: returned_closure
   program: (a (q 16 (a (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q ()))) ()))) ()) 2) (c (q . 10) 1))
   debug_program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
@@ -21,19 +21,19 @@ tests:
   byte_cost: 948000
   total_cost: 949937
 - name: captured_binding
-  program: (a (q 16 (a (c (q . 2) (c (q 1 16 (* 2 (q . 2)) (q . 1)) (c (c (q . 4) (c (c (q . 1) 2) (q ()))) ()))) ()) 2) (c (q . 10) 1))
+  program: (a (q 16 (* 2 (q . 2)) 2 (q . 1)) (c (q . 10) 1))
   debug_program: (a (q 16 (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) 1)) (c (* 2 (q . 2)) 1)) 2) (c (q . 10) 1))
   output: "31"
-  runtime_cost: 3733
-  byte_cost: 1140000
-  total_cost: 1143733
+  runtime_cost: 2441
+  byte_cost: 420000
+  total_cost: 422441
 - name: captured_by_nested_closure
-  program: (a (q 16 (a (c (q . 2) (c (q 1 2 (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q ()))) ()))) ()) (c (c (q . 4) (c (c (q . 1) (* 2 (q . 3))) (q ()))) ()))) ()) 2) (c (q . 10) 1))
+  program: (a (q 16 (* 2 (q . 3)) 2) (c (q . 10) 1))
   debug_program: (a (q 16 (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1))) (c (c (q . 4) (c (c (q . 1) (* 2 (q . 3))) (c () ()))) ()))) 1)) 2) (c (q . 10) 1))
   output: "40"
-  runtime_cost: 3816
-  byte_cost: 1716000
-  total_cost: 1719816
+  runtime_cost: 2098
+  byte_cost: 372000
+  total_cost: 374098
 - name: argument_evaluated_once
   program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (q ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
   debug_program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))

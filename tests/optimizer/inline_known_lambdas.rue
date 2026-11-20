@@ -1,0 +1,63 @@
+// A call to a lambda that's known where it's called is inlined, rather than building the closure
+// and running it. Calls that the lambda's parameters don't match exactly still run the closure.
+
+inline fn apply(f: fn(value: Int) -> Int, value: Int) -> Int {
+    f(value)
+}
+
+inline fn twice(f: fn(value: Int) -> Int) -> fn(value: Int) -> Int {
+    fn(value: Int) => f(f(value))
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+// Inlined, and then folded to 21
+test fn bound() -> Int {
+    let f = fn(value: Int) => value * 3;
+    f(7)
+}
+
+// Inlined, with the capture read from the environment
+test fn captured() -> Int {
+    let k = positive(5);
+    apply(fn(value: Int) => value * k, 7)
+}
+
+// Inlined, with the spread argument as the spread parameter
+test fn spread_argument() -> List<Int> {
+    let list = [positive(2), 3];
+    let f = fn(first: Int, ...rest: List<Int>) => [first, ...rest];
+    f(1, ...list)
+}
+
+// Not inlined, since the parameters would be in the spread argument
+test fn parameters_in_spread() -> Int {
+    let list = [positive(1), 2];
+    let f = unchecked_cast::<fn(...args: List<Int>) -> Int>(
+        fn(first: Int, second: Int) => first + second,
+    );
+    f(...list)
+}
+
+// The argument is still evaluated, so the assertion still fails
+test fn unused_argument_is_evaluated() -> Int {
+    let f = fn(value: Int) => 42;
+    f(positive(-1))
+}
+
+// The closure that `twice` returns is built, since it's called outside of `twice`, but the call to
+// the lambda that's passed to it can't be inlined there, since its capture isn't static
+test fn returned_closure() -> Int {
+    let k = positive(2);
+    twice(fn(value: Int) => value * k)(3)
+}
+
+// Not inlined, since the binding is used twice, so the lambda is built once
+test fn used_twice() -> Int {
+    let k = positive(2);
+    let f = fn(value: Int) => value * k;
+    f(1) + f(2)
+}

@@ -21,12 +21,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: infer_lambda_from_return_type
-  program: (a (q 16 2 (q . 1)) (q 5))
+  program: (q . 6)
   debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))) (c (q 2 1 (c (q . 5) ())) ()))
   output: "6"
-  runtime_cost: 955
-  byte_cost: 252000
-  total_cost: 252955
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: infer_remaining_from_return_type
   program: (q 1)
   debug_program: (a (q 2 2 (q . 1)) (c (q 4 1 ()) ()))

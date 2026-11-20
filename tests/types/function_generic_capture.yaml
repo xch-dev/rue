@@ -22,12 +22,12 @@ tests:
   byte_cost: 396000
   total_cost: 396432
 - name: generic_function_result_is_inferred
-  program: (a (q 1 . 5) (q (q . 2)))
+  program: (q . 5)
   debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))
   output: "5"
-  runtime_cost: 151
-  byte_cost: 204000
-  total_cost: 204151
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: explicit_generic_arguments
   program: (a (q . 2) (c (a (q 1 . 42) (q (q . 2))) ()))
   debug_program: (a (q 2 (q 2 4 (c (a 6 (c (c (q . 1) (q . 2)) ())) ())) (c (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (a 4 (q . 42))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) (q . 2)) ()))
@@ -50,12 +50,12 @@ tests:
   byte_cost: 156000
   total_cost: 156179
 - name: nested_lambdas_have_their_own_generics
-  program: (a (q 1 . 5) (q (q . 2)))
+  program: (q . 5)
   debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))
   output: "5"
-  runtime_cost: 151
-  byte_cost: 204000
-  total_cost: 204151
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: polymorphic_recursion_through_generic_functions
   program: (q . 42)
   debug_program: (q . 42)

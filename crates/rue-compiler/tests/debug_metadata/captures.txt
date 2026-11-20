@@ -33,29 +33,24 @@ nodes:
           captures.rue:16:30-16:37  (> 2 (q . 100))
             captures.rue:16:34-16:37  (q . 100)
 ===== release =====
-program: (+ (a (c (q . 2) (c (q 1 2 (i (> (* 2 (q . 2)) 5) (q . 5) (q 8)) 1) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q 10)) (i (a (c (q . 2) (c (q 1 2 (i (> 5 (q . 5)) (q 21 2 (q . 100)) (q)) 1) (c (c (q . 4) (c (c (q . 1) (/ 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (q ()))) ()))) ()))) ()) (q . 1) (q . 2)))
-sidecar: 3581 bytes
+program: (+ (a (i (> (* 2 (q . 2)) (q . 10)) (q 1 . 10) (q 8)) 1) (i (a (i (> 2 (q . 5)) (q 21 (/ 2 5) (q . 100)) (q)) 1) (q . 1) (q . 2)))
+sidecar: 1909 bytes
 files:
   captures.rue
 functions:
   0: main (x@2: integer . (y@5: integer . _))
-  1: <lambda> (x@2: integer . (item@5: integer . _))
-  2: <lambda> (a@2: integer . (b@5: integer . _))
 nodes:
-  captures.rue:12:5-12:33 fn main  (+ (a (c (q . 2) (c (q 1 2 (i (> (* 2 (q . 2)) 5) (q . 5)...
-    captures.rue:12:5-12:14  (a (c (q . 2) (c (q 1 2 (i (> (* 2 (q . 2)) 5) (q . 5) (q...
-      captures.rue:8:17-11:6  (c (q . 2) (c (q 1 2 (i (> (* 2 (q . 2)) 5) (q . 5) (q 8)...
-        captures.rue:9:9-9:29 fn <lambda>  (a (i (> (* 2 (q . 2)) 5) (q . 5) (q 8)) 1)
-          captures.rue:9:16-9:28  (> (* 2 (q . 2)) 5)
-            captures.rue:7:17-7:22  (* 2 (q . 2))
-    captures.rue:17:5-21:6 label "helper (inlined)"  (i (a (c (q . 2) (c (q 1 2 (i (> 5 (q . 5)) (q 21 2 (q . ...
-      captures.rue:17:8-17:11  (a (c (q . 2) (c (q 1 2 (i (> 5 (q . 5)) (q 21 2 (q . 100...
-        captures.rue:16:13-16:37  (c (q . 2) (c (q 1 2 (i (> 5 (q . 5)) (q 21 2 (q . 100)) ...
-          captures.rue:16:21-16:37 fn <lambda>  (a (i (> 5 (q . 5)) (q 21 2 (q . 100)) (q)) 1)
-            captures.rue:16:21-16:26  (> 5 (q . 5))
-              captures.rue:16:25-16:26  (q . 5)
-            captures.rue:16:30-16:37  (> 2 (q . 100))
-              captures.rue:16:34-16:37  (q . 100)
-          captures.rue:12:24-12:29 label "main"  (/ 2 5)
+  captures.rue:12:5-12:33 fn main  (+ (a (i (> (* 2 (q . 2)) (q . 10)) (q 1 . 10) (q 8)) 1) ...
+    captures.rue:9:9-9:29 label "<lambda> (inlined)"  (a (i (> (* 2 (q . 2)) (q . 10)) (q 1 . 10) (q 8)) 1)
+      captures.rue:9:16-9:28  (> (* 2 (q . 2)) (q . 10))
+        captures.rue:7:17-7:22  (* 2 (q . 2))
+        captures.rue:12:11-12:13 label "main"  (q . 10)
+      captures.rue:12:11-12:13 label "main"  (q . 10)
+    captures.rue:17:5-21:6 label "helper (inlined)"  (i (a (i (> 2 (q . 5)) (q 21 (/ 2 5) (q . 100)) (q)) 1) (...
+      captures.rue:16:21-16:26  (> 2 (q . 5))
+        captures.rue:16:25-16:26  (q . 5)
+      captures.rue:16:30-16:37  (> (/ 2 5) (q . 100))
+        captures.rue:12:24-12:29 label "main"  (/ 2 5)
+        captures.rue:16:34-16:37  (q . 100)
       captures.rue:18:9-18:10  (q . 1)
       captures.rue:20:9-20:10  (q . 2)

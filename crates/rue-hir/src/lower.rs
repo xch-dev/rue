@@ -7,7 +7,7 @@ pub use debug::*;
 
 use std::{
     cell::{OnceCell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     iter,
     path::{Path, PathBuf},
     rc::Rc,
@@ -790,6 +790,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             return self.arena.alloc(Lir::Run(function_lir, arg_env));
         }
 
+        // A call to a lambda that's known here is inlined, rather than building the closure and
+        // running it, since the lambda's captures are all in scope where it's known
+        if self.options.auto_inline
+            && let Some(lambda) = self.known_lambda(call.function)
+            && let Symbol::Function(function) = self.db.symbol(lambda).clone()
+            && let Some(args) = self.lambda_arguments(&function, &call)
+        {
+            return self.lower_inline_call(env, &function, args);
+        }
+
         let function = self.lower_hir(env, call.function);
 
         let mut args = Vec::new();
@@ -809,6 +819,73 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         self.arena.alloc(Lir::Run(function, env))
+    }
+
+    /// The lambda that the callee is, if it's a lambda expression, either directly or through
+    /// bindings that are inlined and the arguments of calls that are inlined. Its body can then be
+    /// lowered where it's called, since everything it captures is in scope there: the arguments of
+    /// inlined calls are lowered in the caller's environment, and a function that's lowered within
+    /// an inlined call only keeps the arguments that are static (see [`Self::lower_function`]).
+    fn known_lambda(&self, mut hir: HirId) -> Option<SymbolId> {
+        let mut seen = HashSet::new();
+
+        loop {
+            match self.db.hir(self.db.without_casts(hir)) {
+                Hir::Lambda(symbol) => return Some(*symbol),
+                Hir::Reference(symbol) if seen.insert(*symbol) => {
+                    if let Some(arg) = self.inline_argument(*symbol) {
+                        hir = arg;
+                    } else if let Symbol::Binding(binding) = self.db.symbol(*symbol)
+                        && self.should_inline(*symbol)
+                    {
+                        hir = binding.value.hir;
+                    } else {
+                        return None;
+                    }
+                }
+                _ => return None,
+            }
+        }
+    }
+
+    /// The argument for each parameter of a lambda that's called, if the call passes exactly what
+    /// its parameters take. Otherwise, the call runs the closure, since an argument that no
+    /// parameter takes is still evaluated, and a parameter that's in a spread argument would need
+    /// to be taken apart from it.
+    fn lambda_arguments(
+        &mut self,
+        function: &FunctionSymbol,
+        call: &FunctionCall,
+    ) -> Option<HashMap<SymbolId, HirId>> {
+        let (items, spread) = if call.nil_terminated {
+            (call.args.as_slice(), None)
+        } else {
+            let (spread, items) = call.args.split_last()?;
+            (items, Some(*spread))
+        };
+
+        let fixed = function.fixed_parameters();
+
+        if items.len() < fixed.len() {
+            return None;
+        }
+
+        let mut args: HashMap<SymbolId, HirId> =
+            fixed.iter().copied().zip(items.iter().copied()).collect();
+
+        if function.nil_terminated {
+            return (spread.is_none() && items.len() == fixed.len()).then_some(args);
+        }
+
+        let mut rest = spread.unwrap_or_else(|| self.db.alloc_hir(Hir::Nil));
+
+        for &item in items[fixed.len()..].iter().rev() {
+            rest = self.db.alloc_hir(Hir::Pair(item, rest));
+        }
+
+        args.insert(*function.parameters.last()?, rest);
+
+        Some(args)
     }
 
     /// Lowers a call to a function that's inlined, by substituting the arguments for its
@@ -859,11 +936,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         // The body has no frame of its own, so it's named after the function, which tells a
         // debugger that it's running that function. The arguments are the caller's code, so
         // they're named after the caller where they're substituted (see `lower_substitution`).
-        let owner = self.debug.as_mut().and_then(|debug| {
+        let owner = self.debug.as_mut().map(|debug| {
             let caller = debug.owner();
             debug.inline_owners.push(caller);
-            let name = function.name.as_ref()?;
-            Some(debug.label(format!("{} (inlined)", name.text())))
+            let name = function
+                .name
+                .as_ref()
+                .map_or("<lambda>", |name| name.text());
+            debug.label(format!("{name} (inlined)"))
         });
 
         self.inline_symbols.push(args);
