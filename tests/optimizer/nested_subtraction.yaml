@@ -1,11 +1,11 @@
 tests:
 - name: double_negate_cases
-  program: (a (q 2 (i (= (a 2 (q . 100)) (q . 100)) (q 2 (i (= (a 2 (q . -100)) (q . -100)) () (q 8)) 1) (q 8)) 1) (c (q 16 1) ()))
+  program: ()
   debug_program: (a (q 2 (i (= (a 2 (q . 100)) (q . 100)) (q 2 (i (= (a 2 (- () (q . 100))) (- () (q . 100))) () (q 8 (q . "assertion failed at nested_subtraction.rue:11:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:10:5"))) 1) (c (q 17 () (- () 1)) ()))
   output: ()
-  runtime_cost: 2264
-  byte_cost: 1116000
-  total_cost: 1118264
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: double_negate_literal
   program: ()
   debug_program: (a (i (= (- () (- () (q . 100))) (q . 100)) (q 2 (i (= (- () (- () (- () (q . 100)))) (- () (q . 100))) () (q 8 (q . "assertion failed at nested_subtraction.rue:16:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:15:5"))) 1)
@@ -14,12 +14,12 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: nested_subtraction
-  program: (a (q 2 (i (= (- (a 2 (q 100 . 200)) (q . 300)) (q . -400)) (q 2 (i (= (a 2 (c (q . 100) (a 2 (q 200 . 300)))) (q . 200)) () (q 8)) 1) (q 8)) 1) (c (q 17 2 3) ()))
+  program: ()
   debug_program: (a (q 2 (i (= (- (a 2 (c (q . 100) (q . 200))) (q . 300)) (- () (q . 400))) (q 2 (i (= (a 2 (c (q . 100) (a 2 (c (q . 200) (q . 300))))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) (q 2 (i (= (- (q . 100) (- (q . 200) (q . 300))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) () (q 8 (q . "assertion failed at nested_subtraction.rue:24:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:23:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:22:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:21:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:20:5"))) 1) (c (q 17 2 3) ()))
   output: ()
-  runtime_cost: 4888
-  byte_cost: 1572000
-  total_cost: 1576888
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: negative_right_logical_shift
   program: ()
   debug_program: (a (i (= (lsh (q . 10) (- () (- () (q . 1)))) (q . 20)) () (q 8 (q . "assertion failed at nested_subtraction.rue:28:5"))) 1)

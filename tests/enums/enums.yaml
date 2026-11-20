@@ -28,12 +28,12 @@ tests:
   byte_cost: 1428000
   total_cost: 1434589
 - name: unit_narrowing
-  program: (a (q 2 (i (a 2 (q . 5)) (q 2 (i (a 2 ()) (q 8) ()) 1) (q 8)) 1) (c (q 33 (= 1 (q . 5)) (= 1 (q . 1))) ()))
+  program: ()
   debug_program: (a (q 2 (i (a 2 (q . 5)) (q 2 (i (not (a 2 ())) () (q 8 (q . "assertion failed at enums.rue:118:5"))) 1) (q 8 (q . "assertion failed at enums.rue:117:5"))) 1) (c (q 2 (i (= 1 (q . 5)) (q 1 . 1) (q 9 1 (q . 1))) 1) ()))
   output: ()
-  runtime_cost: 3390
-  byte_cost: 1092000
-  total_cost: 1095390
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: variants_are_types
   program: (a (q 2 (i (= 4 (q . 1)) (q 16 10 10) (q 8)) 1) (c (q 1 4) 1))
   debug_program: (a (q 2 (q 2 (i (= (f 4) (q . 1)) (q 16 (f (r 6)) (f (r 5))) (q 8 (q . "assertion failed at enums.rue:125:5"))) 1) (c (c 2 2) 1)) (c (c (q . 1) (c (q . 4) ())) 1))
@@ -49,12 +49,12 @@ tests:
   byte_cost: 2868000
   total_cost: 2883963
 - name: generic
-  program: (a (q 2 (q 2 (i (= (a 9 (c 9 2)) (a 9 (c 9 (q ())))) (q 16 (a 13 (q (q 5))) (a 13 (c 2 (q . 10)))) (q 8)) 1) (c (q ()) 1)) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (q 2 (i (= 4 (q . 1)) (q . 10) (q . 3)) 1)) ()))
+  program: (a (q 2 (q 2 (i (= (a 5 (c 5 2)) (a 5 (c 5 (q ())))) (q 16 (a (i (= 4 (q . 1)) (q . 10) (q 1 . 10)) 1) (q . 5)) (q 8)) 1) (c (q ()) 1)) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
   debug_program: (a (q 2 (q 2 (i (= (a 9 (c 9 4)) (a 9 (c 9 (c () ())))) (q 16 (a 13 (c 6 ())) (a 13 (c 4 (q . 10)))) (q 8 (q . "assertion failed at enums.rue:148:5"))) 1) (c (c (c () ()) (c (q . 1) (c (q . 5) ()))) 1)) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (q 2 (i (= (f 2) (q . 1)) (q 5 (r 2)) (q . 3)) 1)) ()))
   output: "15"
-  runtime_cost: 11310
-  byte_cost: 2652000
-  total_cost: 2663310
+  runtime_cost: 10325
+  byte_cost: 2268000
+  total_cost: 2278325
 - name: nested_generics
   program: (a (q 2 (i (= 4 (q . 2)) (q 16 74 106) ()) 1) (c (q 2 (q (q . 2)) (())) 1))
   debug_program: (a (q 2 (q 2 (i (= (f 2) (q . 2)) (q 16 (f (f (r (f (r 2))))) (r (f (r (f (r 2)))))) ()) 1) (c (c (q . 2) (c 2 (c (c () ()) ()))) 1)) (c (c (q . 1) (c (c (q . 1) (q . 2)) ())) 1))
@@ -77,12 +77,12 @@ tests:
   byte_cost: 420000
   total_cost: 420555
 - name: through_modules
-  program: (a (q 2 (i (= (a 2 ()) (q . 1)) (q 2 (i (a 2 (q . 1)) (q 8) ()) 1) (q 8)) 1) (c (q 9 1 ()) ()))
+  program: ()
   debug_program: (a (q 2 (i (= (a 2 ()) (q . 1)) (q 2 (i (= (a 2 (q . 1)) ()) () (q 8 (q . "assertion failed at enums.rue:208:5"))) 1) (q 8 (q . "assertion failed at enums.rue:207:5"))) 1) (c (q 2 (i (= 1 ()) (q 1 . 1) ()) 1) ()))
   output: ()
-  runtime_cost: 1607
-  byte_cost: 996000
-  total_cost: 997607
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: importing_variants
   program: (q . 9)
   debug_program: (a (q 2 (q 2 (i (= (f 2) ()) (q 5 (r (a 9 ()))) (q 8 (q . "assertion failed at enums.rue:225:5"))) 1) (c (a 6 ()) 1)) (c (c (q 4 (q . 1) (c (q . 9) ())) (q 4 () ())) ()))

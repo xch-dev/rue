@@ -105,12 +105,12 @@ tests:
   byte_cost: 156000
   total_cost: 156179
 - name: expected_generic_not_inferred_for_a_parameter
-  program: (a (q 16 (f (a (a 2 ()) (q 1))) (f (a (a 2 ()) (q 2)))) (c (q 4 (q . 2) (c (q 1 4 5 2) (c (c (q . 4) (c (c (q . 1) 1) (q 1))) ()))) ()))
+  program: (+ (f (a (q 4 2 ()) (q 1))) (f (a (q 4 2 ()) (q 2))))
   debug_program: (a (q 2 (q 2 (q 16 (f 4) (f 6)) (c (c (a 4 (c (q . 1) ())) (a 6 (c (q . 2) ()))) 1)) (c (c (a 2 ()) (a 2 ())) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
   output: "3"
-  runtime_cost: 3374
-  byte_cost: 1428000
-  total_cost: 1431374
+  runtime_cost: 1366
+  byte_cost: 612000
+  total_cost: 613366
 - name: function_in_a_pair
   program: (a (q 2 4 (c 6 ())) (c (c (q 16 2 (q . 1)) (q . 4)) 1))
   debug_program: (a (q 2 (q 2 (f 2) (c (r 2) ())) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q 16 2 (q . 1)) (q 4 1 (q . 4))) ()))
@@ -119,9 +119,9 @@ tests:
   byte_cost: 540000
   total_cost: 541411
 - name: generic_in_scope_bound_by_an_expected_function_type
-  program: (a (q 2 4 (c 4 (c 6 (q 7)))) (c (c (q 2 5 (c (f (a 5 (c (q 9) (c 11 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (q 1))) ()))) ()))))))) (f (a 5 (c (q 8) (c 11 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (q 1))) ()))) ()))))))))) (q . 2)) ()))
+  program: (a (q 2 2 (c 2 (q 7))) (c (q 1 . 9) ()))
   debug_program: (a (q 2 4 (c 22 (c 4 (c 30 (c 10 (c (q . 7) ())))))) (c (c (q 2 (q 2 47 (c (f 6) (f 4))) (c (c (a 23 (c (a 11 (q . 1)) (c 47 (c (q . 2) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (c (q . 1) ()))) ()))) ()))) ()))) ())))))) (a 23 (c (a 2 ()) (c 47 (c (q . 2) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (c (q . 1) ()))) ()))) ()))) ()))) ()))))))) 1)) (c (q . 2) (c (q 4 (q . 9) ()) (q 4 (q . 8) ())))) ()))
   output: "9"
-  runtime_cost: 3582
-  byte_cost: 3300000
-  total_cost: 3303582
+  runtime_cost: 504
+  byte_cost: 420000
+  total_cost: 420504

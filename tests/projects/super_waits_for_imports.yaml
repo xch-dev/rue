@@ -1,10 +1,10 @@
 tests:
 - name: super_imports_wait_for_the_imports_of_the_module
-  program: (a (q 16 (a 2 ()) (* (a 2 ()) (q . 10)) (* (a 2 ()) (q . 100)) (* (a 2 ()) (q . 1000)) (q . 3)) (c (q 1 . 2) ()))
+  program: (q . 2225)
   debug_program: (a (q 16 (+ (+ (+ (a 30 (c 4 ())) (* (a 22 (c 4 ())) (q . 10))) (* (a 26 (c 4 ())) (q . 100))) (* (a 4 ()) (q . 1000))) 18) (c (c (q 1 . 2) (c (c (q . 3) (q 2 2 ())) (c (q 2 2 ()) (q 2 2 ())))) ()))
   output: "2225"
-  runtime_cost: 5885
-  byte_cost: 996000
-  total_cost: 1001885
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
 diagnostics:
 - Unused import `*` at main.rue:5:15

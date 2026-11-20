@@ -29,9 +29,9 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
 - name: chained_twice
-  program: (a (q 34 () (a 2 ()) (a 2 (q . 1))) (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8)) 1) ()))
+  program: (all () (x))
   debug_program: (a (q 2 6 (c 4 (c () (c () (q . 1))))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 34 (all 5 (a 2 11)) (a 2 15))) ()))
-  byte_cost: 804000
+  byte_cost: 108000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
 - name: comparisons

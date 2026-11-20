@@ -262,12 +262,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: nested_call_narrowed_through_two_calls
-  program: (a (q 16 (a 2 (a 2 (q . 5)))) (c (q . 1) ()))
+  program: (q . 5)
   debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 9 (a 9 (a 13 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q . 1)) ()))
   output: "5"
-  runtime_cost: 1045
-  byte_cost: 420000
-  total_cost: 421045
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: nested_call_narrowed_after_another_argument
   program: (+ (q 5 . 5))
   debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (q . 5) (a 9 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))

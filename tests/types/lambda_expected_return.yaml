@@ -28,12 +28,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: inside_pair
-  program: (a (q 5 (c (a 2 (q . 7)) (a 2 (q . 1)))) (c (q . 1) ()))
+  program: (q . 7)
   debug_program: (a (q 2 (q 5 (a 2 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (q . 7)) (a 2 5))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q . 1) ()))
   output: "7"
-  runtime_cost: 714
-  byte_cost: 516000
-  total_cost: 516714
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: block_body
   program: (q . 7)
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (c (q . 2) (c (c (q . 1) (q 2 2 (q . 7))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q . 1) ()))

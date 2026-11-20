@@ -14,12 +14,12 @@ tests:
   byte_cost: 636000
   total_cost: 637598
 - name: nested_calls
-  program: (a (q 2 (q 16 8 12 10 14) (c (a 6 (c 4 (a 6 (c 4 (q . 1))))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
+  program: (a (q 2 (q 16 8 12 10 14) (c (a 2 (c (a 2 (q 1)) ())) 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 16 (+ (+ (f (f 2)) (r (f 2))) (f (r 2))) (r (r 2))) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: "4"
-  runtime_cost: 3499
-  byte_cost: 1116000
-  total_cost: 1119499
+  runtime_cost: 2745
+  byte_cost: 828000
+  total_cost: 830745
 - name: through_several_layers
   program: (a (q 2 (q 16 4 6) (c (a 2 (q 21)) 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 10 (c 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 21)))) 1)) (c (c (q 4 2 2) (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ())))) ()))

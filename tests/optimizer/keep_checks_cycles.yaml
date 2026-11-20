@@ -84,10 +84,10 @@ tests:
   byte_cost: 2964000
   clvm_error: Division by zero
 - name: unused_value_checked_before_its_recursive_function
-  program: (a (q 2 (i (= 5 (q . 5)) (q 16 (* (a 4 (c 4 5)) ()) (a 6 (c 4 5))) (q 2 6 (c 4 5))) 1) (c (c (q 2 (i 3 (q 3 () (+ (a 2 (c 2 (- 3 (q . 1)))) (/ (q . 100) (- 3 (q . 1)))) (q . 1)) ()) 1) (q 3 () (a 2 1) (q . 7))) 1))
+  program: (a (q 2 (i (= 5 (q . 5)) (q 16 (* (a 2 (c 2 5)) ()) (i () (a 2 (c 2 5)) (q . 7))) (q 3 () (a 2 (c 2 5)) (q . 7))) 1) (c (q 2 (i 3 (q 3 () (+ (a 2 (c 2 (- 3 (q . 1)))) (/ (q . 100) (- 3 (q . 1)))) (q . 1)) ()) 1) 1))
   debug_program: (a (q 2 (i (= 5 (q . 5)) (q 16 (* (a 4 (c 4 5)) ()) (a 6 (c 4 5))) (q 2 6 (c 4 5))) 1) (c (c (q 2 (i (= 3 ()) () (q 3 () (+ (a 2 (c 2 (- 3 (q . 1)))) (/ (q . 100) (- 3 (q . 1)))) (q . 1))) 1) (q 3 () (a 2 (c 2 3)) (q . 7))) 1))
   solution: (1)
-  byte_cost: 2196000
+  byte_cost: 2148000
   clvm_error: Division by zero
 - name: component_found_in_a_later_pass
   program: (a (q 2 (q 2 (i 23 (q 16 4 6) ()) 1) (c (c (a 10 (c (c 14 (c 4 10)) (q . 5))) (a 4 (c 10 (c 14 (c 4 (c 5 ())))))) 1)) (c (c (q 2 (i (> 23 ()) (q 2 2 (c (c 5 (c 11 2)) (- 23 (q . 1)))) ()) 1) (c (q 2 (i (> (q . 100) 3) (q 2 4 (c (c 10 (c 14 4)) (c 3 (q . 2)))) (q 8)) 1) (q 2 (i (> 5 ()) (q 2 14 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 14) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ()))) ()))) ())))))) (q 2 7 (c 5 ()))) 1))) 1))

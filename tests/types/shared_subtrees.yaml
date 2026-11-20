@@ -7,9 +7,9 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: shared_unions
-  program: (a (q 2 (q 32 (a 5 2)) (c () 1)) (c (q . 1) ()))
+  program: (a (q 32 2) (c () 1))
   debug_program: (a (q 2 (q 2 (i (not (l (a 5 2))) (q 9 (a 5 2) ()) ()) 1) (c () 1)) (c (q . 1) ()))
   output: "1"
-  runtime_cost: 912
-  byte_cost: 492000
-  total_cost: 492912
+  runtime_cost: 499
+  byte_cost: 228000
+  total_cost: 228499

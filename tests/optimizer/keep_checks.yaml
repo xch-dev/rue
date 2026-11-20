@@ -674,10 +674,10 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: failing_call_found_through_unused_binding
-  program: (a (q 3 () (a 4 (c 5 (c (q . 2) (c (q 1 2 2 5) (c (c (q . 4) (c (c (q . 1) 6) (q 1))) ()))))) (a 4 (c 5 (q 16 2 (q . 1))))) (c (c (q 3 () (a 3 (c 2 ())) 2) (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1)) 1))
+  program: (a (q 3 () (i () (a 2 5) 5) 5) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
   debug_program: (a (q 3 () (a 10 (c (c 4 14) 5)) (a 4 (c 5 (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))))) (c (c (q 3 () (a 3 (c 2 ())) 2) (c (q 2 4 (c 3 (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))))) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1))) 1))
   solution: (50)
-  byte_cost: 2052000
+  byte_cost: 804000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: unused_call_of_forwarded_safe_argument_is_dropped
@@ -758,10 +758,10 @@ tests:
   byte_cost: 1164000
   total_cost: 1169517
 - name: conditional_call_of_failing_parameter_is_kept
-  program: (a (q 16 (a 2 (c 5 (q 16 2 (q . 1)))) (a 2 (c 5 (q 19 (q . 100) 2)))) (c (q 2 (q 2 (i (> 5 ()) (q . 2) ()) 1) (c (a 3 (c 2 ())) 1)) 1))
+  program: (+ (a (i (> 2 ()) (q 2 (q 16 2 (q . 1)) (c 2 ())) ()) 1) (a (q 2 (i (> 5 ()) (q . 2) ()) 1) (c (/ (q . 100) 2) 1)))
   debug_program: (a (q 16 (a 4 (c 5 (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))))) (a 4 (c 5 (c (q . 2) (c (c (q . 1) (q 19 (q . 100) 2)) (c (q . 1) ())))))) (c (c (q 2 (q 2 (i (> 5 ()) (q . 2) ()) 1) (c (a 3 (c 2 ())) 1)) (q 16 2 (q . 1))) 1))
   solution: (0)
-  byte_cost: 1380000
+  byte_cost: 1140000
   clvm_error: Division by zero
 - name: recursive_map_of_safe_function_is_inlined
   program: (a (q 2 2 (c 2 (c (q 18 2 (q . 2)) 5))) (c (q 2 (i 7 (q 2 (i (> 11 ()) (q 4 (a 5 (c 11 ())) (a 2 (c 2 (c 5 15)))) (q 2 2 (c 2 (c 5 15)))) 1) ()) 1) 1))
@@ -832,13 +832,13 @@ tests:
   byte_cost: 300000
   clvm_error: Division by zero
 - name: unused_binding_reading_evaluated_constant_is_dropped
-  program: (a (q 2 (q 16 (* 2 2) (a 9 11) (a 9 23)) (c (a 6 (q . 2)) 1)) (c (c (q 18 1 (q . 2)) (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1)) 1))
+  program: (a (q 2 (q 16 (* 2 2) (* 11 (q . 2)) (* 23 (q . 2))) (c (a 2 (q . 2)) 1)) (c (q 2 (i (= 1 (q . 3)) (q 8) (q . 1)) 1) 1))
   debug_program: (a (q 2 (q 16 (+ (* 2 2) (a 9 11)) (a 9 23)) (c (a 6 (q . 2)) 1)) (c (c (q 18 1 (q . 2)) (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1418:5"))) 1)) 1))
   solution: (1 2)
   output: "10"
-  runtime_cost: 5816
-  byte_cost: 1308000
-  total_cost: 1313816
+  runtime_cost: 5359
+  byte_cost: 1164000
+  total_cost: 1169359
 - name: argument_walked_inside_another_argument_is_inlined
   program: (+ 2 (/ (q . 100) 2) (q . 1))
   debug_program: (a (q 16 (+ 5 (+ 2 ())) (q . 1)) (c (/ (q . 100) 2) 1))

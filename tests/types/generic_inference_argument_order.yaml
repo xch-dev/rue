@@ -84,12 +84,12 @@ tests:
   byte_cost: 1164000
   total_cost: 1165742
 - name: lambda_for_a_mapped_bare_generic_doesnt_wait
-  program: (a (q 3 () (a (a 2 (c (a 2 (c (q 1 . 7) (c (q 1 1 . 9) ()))) (c () ()))) (q ())) ()) (c (q . 2) ()))
+  program: (i () (a (q 1 . 7) (q ())) ())
   debug_program: (a (q 2 (q 3 () (a 2 (c () ())) ()) (c (a 2 (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 9)) (c (q . 1) ())))) (c (q . 1) ()))) (c (q . 2) (c () (c (q . 1) ())))))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c () (c (q . 1) ())))) (c (q . 1) ()))) (c (q . 2) (c () (c (q . 1) ())))))) 1)) (c (q . 2) ()))
   output: ()
-  runtime_cost: 1229
-  byte_cost: 972000
-  total_cost: 973229
+  runtime_cost: 273
+  byte_cost: 276000
+  total_cost: 276273
 - name: lambda_waits_for_the_generics_its_own_are_inferred_through
   program: (a (q 2 2 (c (c (q . 2) (q . 2)) (c (q . 1) (c (q . 1) (q . 2))))) (c (q 2 (i (> 11 ()) (q 2 6 (c (a 4 (c 5 ())) ())) (q 2 6 (c (a 4 (c 5 ())) ()))) 1) ()))
   debug_program: (a (q 2 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (q . 1) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 11 ()) (q 2 6 (c (a 4 (c 5 ())) ())) (q 2 6 (c (a 4 (c 5 ())) ()))) 1) ()))

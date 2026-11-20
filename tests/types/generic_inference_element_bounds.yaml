@@ -28,12 +28,12 @@ tests:
   byte_cost: 612000
   total_cost: 612885
 - name: call_inside_the_argument
-  program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q 1 2 2 (c 5 (q . 2))) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))))) (c (q 2 3 (c 2 ())) ()))
+  program: (a (q 2 6 (c 4 ())) (c (c (q . 1) (q 2 (q 2 6 (c 4 ())) (c (c 2 (q . 2)) 1))) 1))
   debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))))) (c (q 2 (r 1) (c (f 1) ())) ()))
   output: "1"
-  runtime_cost: 2034
-  byte_cost: 1284000
-  total_cost: 1286034
+  runtime_cost: 1250
+  byte_cost: 852000
+  total_cost: 853250
 - name: call_without_arguments_after_a_value_in_a_pair
   program: (q . 5)
   debug_program: (a (q 2 6 (c (q . 5) (a 4 ()))) (c (c () (q 5 1)) ()))

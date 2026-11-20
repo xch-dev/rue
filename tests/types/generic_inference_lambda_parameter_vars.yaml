@@ -56,19 +56,19 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: annotated_let_in_a_lambda_body
-  program: (a (q 2 2 (c (c (q . 2) (c (q 1 16 (a 2 (c (q . 2) (q . 5))) 5) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q . 1))) (c (q 2 2 (c 3 ())) ()))
+  program: (a (q 16 2 (q . 5)) (q 1))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 11) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q . 1))) (c (q 2 2 (c 3 ())) ()))
   output: "6"
-  runtime_cost: 2810
-  byte_cost: 1380000
-  total_cost: 1382810
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
 - name: annotated_lambda_return_type
-  program: (a (q 2 2 (c (c (q . 2) (c (q 1 2 2 (c (q . 2) (q . 5))) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q . 1))) (c (q 2 2 (c 3 ())) ()))
+  program: (a (q 1 . 5) (q 1))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q . 1))) (c (q 2 2 (c 3 ())) ()))
   output: "5"
-  runtime_cost: 2002
-  byte_cost: 1308000
-  total_cost: 1310002
+  runtime_cost: 151
+  byte_cost: 180000
+  total_cost: 180151
 - name: pair_expected_with_a_generic_member
   program: (a (q 2 (i 2 (q . 4) ()) 1) (c (q 5 . 1) 1))
   debug_program: (a (q 2 (q 2 (i (not (not 2)) (q 5 2) ()) 1) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (a 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (q . 1)) (q 2 2 (c 3 ()))) ()))
@@ -147,19 +147,19 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: argument_whose_generic_takes_values
-  program: (a (q 2 (a 2 (q 1 . 1)) (c (a (a 2 (q 1 . 5)) (q ())) ())) (c (q . 1) ()))
+  program: (a (q 1 . 1) (c (a (q 1 . 5) (q ())) ()))
   debug_program: (a (q 2 30 (c (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (a 4 (a 22 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ())))))) ()))) (c (c (q . 1) (c (q . 2) (c (q 4 (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) (q 2 5 (c (a 2 (c 7 ())) ()))))) ()))
   output: "1"
-  runtime_cost: 969
-  byte_cost: 708000
-  total_cost: 708969
+  runtime_cost: 377
+  byte_cost: 372000
+  total_cost: 372377
 - name: compound_element_of_a_compound_parameter
-  program: (a (q 16 (f (a 2 (c (q . 4) (q . 5)))) (a 2 (c (q . 8) (q . 5))) (q . 5)) (c (q 2 2 (c (c (c 3 (q . 1)) (q . 2)) ())) ()))
+  program: (q . 15)
   debug_program: (a (q 2 (q 16 (+ (f 4) (r 10)) 14) (c (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) (c (a 6 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) (a 4 (c (c (q . 2) (c (c (q . 1) (q 5 (f 2))) (c (q . 1) ()))) (q . 5))))) 1)) (c (c (q 2 2 (c (c (c 3 (q . 1)) (q . 2)) ())) (q 2 2 (c (c (c (q . 1) 3) (q . 2)) ()))) ()))
   output: "15"
-  runtime_cost: 2772
-  byte_cost: 1092000
-  total_cost: 1094772
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: field_of_a_struct_parameter
   program: (q . 15)
   debug_program: (a (q 2 (q 16 (+ 4 10) (f 14)) (c (c (a 14 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))) (c (a 10 (c (c (q . 2) (c (c (q . 1) (q 5 (r 2))) (c (q . 1) ()))) (q . 5))) (a 4 (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (q . 1) ()))) (q . 5))))) 1)) (c (c (q 2 2 (c (c (c 3 (q . 1)) (c (q . 2) ())) ())) (c (q 2 2 (c (c (q . 1) (c 3 ())) ())) (q 2 2 (c (c 3 (c (q . 1) ())) ())))) ()))
@@ -175,19 +175,19 @@ tests:
   byte_cost: 588000
   total_cost: 589355
 - name: nested_call_to_the_same_function
-  program: (a (q 2 2 (c (c (q . 2) (c (q 1 2 2 (c (q . 2) (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q . 26729))) (c (q 2 2 (c 3 ())) ()))
+  program: (a (q 2 4 (c 6 ())) (c (c (q 2 (q 2 4 (c 6 ())) (c (c (q . 2) (q . 1)) 1)) (q . 26729)) 1))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q . 26729))) (c (q 2 (f 1) (c (r 1) ())) ()))
   output: "1"
-  runtime_cost: 2002
-  byte_cost: 1332000
-  total_cost: 1334002
+  runtime_cost: 1222
+  byte_cost: 900000
+  total_cost: 901222
 - name: callback_of_an_enclosing_call_left_alone
-  program: (a (q 2 2 (c (c (q . 2) (c (q 1 2 2 (c (q . 2) (c (q . 7) ()))) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q . 5) (q . 2)))) (c (q 2 2 (c 5 (c 7 ()))) ()))
+  program: (a (q 2 4 (c 10 (c 14 ()))) (c (c (q 2 (q 2 4 (c 10 (c 14 ()))) (c (c (q . 2) (c (q . 7) ())) 1)) (c (q . 5) (q . 2))) 1))
   debug_program: (a (q 2 4 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 7) (c (q . 2) (c () (c (q . 1) ()))))))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))))) (c (c (q 2 (f 1) (c (f (r 1)) (c (r (r 1)) ()))) (q . 2)) ()))
   output: "7"
-  runtime_cost: 2382
-  byte_cost: 1548000
-  total_cost: 1550382
+  runtime_cost: 1610
+  byte_cost: 1188000
+  total_cost: 1189610
 - name: union_expected_type
   program: (q . 5)
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
@@ -217,12 +217,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: field_of_a_narrowed_struct
-  program: (a (q 16 (a 6 (c (q 2 (i 2 (q . 4) (q 1 . 5)) 1) (q . 5))) (a 6 (c (q 2 (i 2 (q 2 (i 10 (q 1 . 5) (q . 4)) 1) (q 1 . 5)) 1) (q . 5))) (a 4 (c (q 5 (f (a (i 10 (q 4 2 (q . 1)) (q 4 2 ())) 1))) (q . 5))) (a 4 (c (q 5 (r (a (i 10 (q 4 (q . 1) 2) (q 4 () 2)) 1))) (q . 5)))) (c (c (q 2 2 (c (c 3 (q 1)) ())) (q 2 2 (c (c 3 (q 1)) ()))) ()))
+  program: (q . 20)
   debug_program: (a (q 2 (q 16 (+ (+ 8 12) 10) 14) (c (c (c (a 6 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1)) (c (q . 1) ()))) (q . 5))) (a 6 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 2 (i (= (f (r 2)) ()) (q 5 2) (q 1 . 5)) 1)) 1)) (c (q . 1) ()))) (q . 5)))) (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 2 (q 5 (f 2)) (c (a (i (= (f (r 2)) ()) (q 4 2 ()) (q 4 2 (q . 1))) 1) 1))) (c (q . 1) ()))) (q . 5))) (a 4 (c (c (q . 2) (c (c (q . 1) (q 2 (q 5 (r 2)) (c (a (i (= (f (r 2)) ()) (q 4 () 2) (q 4 (q . 1) 2)) 1) 1))) (c (q . 1) ()))) (q . 5))))) 1)) (c (c (q 2 2 (c (c 3 (c (q . 1) ())) ())) (q 2 2 (c (c 3 (c (q . 1) ())) ()))) ()))
   output: "20"
-  runtime_cost: 5790
-  byte_cost: 3396000
-  total_cost: 3401790
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: rest_of_a_narrowed_list
   program: (a (q 2 2 (c (q . 5) (q 2 (i 2 (q 2 (i 6 (q . 10) (q 1 . 5)) 1) (q 1 . 5)) 1))) (c (q 2 3 (c (c 2 (c 2 ())) ())) ()))
   debug_program: (a (q 2 (q . 2) (c (a 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 2 (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1) (c (r 2) 1))) 1)) (c (q . 1) ()))))) 1)) (c (q 2 3 (c (c 2 (c 2 ())) ())) ()))
