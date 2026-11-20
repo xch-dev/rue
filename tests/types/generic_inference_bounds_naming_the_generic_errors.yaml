@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot infer generic `A` for `g0`; specify it explicitly, e.g. `g0::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:17:23
+- Cannot infer generic `A` for `g0`; specify it explicitly, e.g. `g0::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:18:47

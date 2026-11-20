@@ -1,7 +1,11 @@
-// A generic lambda passed next to an untyped lambda, where the generics they link are inferred
-// through each other. A lower candidate that's a union with the generic in it is split, so no
-// callee's generic is left in the call's type (#362, 13k4; infer-fuzz generator 1, seed 2807, and
-// generator 3, seed 5981)
+// Candidates that are unions with the generic they bound as a member, which inference used as they
+// were, leaving the callee's generic in the call's type (#362, 13k4 and 13k5). A lower one is split
+// into its members, since `T ≥ X | T` is `T ≥ X`, and an upper one says nothing, since `T ≤ X | T`
+// always holds (see `generic_inference_bounds_naming_the_generic_errors.rue`).
+//
+// A generic lambda passed next to an untyped lambda gives the lower ones, where the generics they
+// link are inferred through each other (infer-fuzz generator 1, seed 2807, and generator 3, seed
+// 5981)
 
 fn cycle<A, B>(forward: fn(a: A) -> B, backward: fn(a: B) -> A, value: A) -> B {
     forward(backward(forward(value)))
@@ -117,4 +121,20 @@ test fn generic_lambda_through_a_call_beside_an_untyped_lambda_that_compiled() -
 // The same in a recursive call, as the fuzzer found it
 test fn generic_lambda_beside_an_untyped_lambda_in_a_recursive_call() -> Int {
     same_again(fn(x: Int) => x, fn() => 1, 1)
+}
+
+fn g0<A>(_a: fn(a: Maybe<A>) -> Int, value: A) -> fn(a: A) -> A {
+    let _ = value;
+    fn(a: A) => a
+}
+
+type Maybe<T> = T | nil;
+
+// An untyped lambda parameter compiled as `Maybe<A>` gives `A ≤ A | nil`, which says nothing, so
+// `A` is inferred from the other arguments, or written out (infer-fuzz generator 3, seed 6717)
+test fn untyped_parameter_of_a_union_with_the_generic() -> (Int, Int) {
+    let inferred = g0(fn(x) => 9, 5);
+    let explicit = g0::<Int>(fn(x) => 9, 5);
+    let checks: (fn(a: Int) -> Int, fn(a: Int) -> Int) = (inferred, explicit);
+    (checks.first(1), checks.rest(2))
 }

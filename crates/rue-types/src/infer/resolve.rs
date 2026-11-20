@@ -155,9 +155,9 @@ impl InferenceResolver<'_> {
 
         for &generic in &component {
             let candidates = InferenceCandidates {
-                lower: self.expand(arena, &component, generic, true, |c| &c.lower),
-                upper: self.expand(arena, &component, generic, false, |c| &c.upper),
-                held: self.expand(arena, &component, generic, false, |c| &c.held),
+                lower: self.expand(arena, &component, generic, CandidateKind::Lower),
+                upper: self.expand(arena, &component, generic, CandidateKind::Upper),
+                held: self.expand(arena, &component, generic, CandidateKind::Held),
             };
 
             if candidates == InferenceCandidates::default()
@@ -204,6 +204,8 @@ impl InferenceResolver<'_> {
                 continue;
             }
 
+            // A type that references the generic itself isn't one, as `A | nil` isn't for
+            // `A ≤ A | nil`, which `expand` leaves out, so the generic is left uninferred then
             for generic in pending.drain(..) {
                 if let Some(ty) = pick_inferred_type(
                     arena,
@@ -211,7 +213,8 @@ impl InferenceResolver<'_> {
                     &self.infer.renamed,
                     self.infer.renamed.get(&generic).copied(),
                     &self.infer.generics[&generic],
-                ) {
+                ) && !free_generics(arena, ty).contains(&generic)
+                {
                     self.mappings.insert(generic, ty);
                 }
             }
@@ -267,13 +270,17 @@ impl InferenceResolver<'_> {
     /// and the generic is followed as a candidate of its own. That's what passing a generic function
     /// for one of the callee's function types gives, as `T ≥ Int | T` from
     /// `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T`, which only says `T ≥ Int`.
+    ///
+    /// An upper candidate that's a union with the generic it bounds as a member says nothing, since
+    /// `T ≤ X | T` always holds, so it's left out. That's what an untyped lambda parameter compiled
+    /// as `Maybe<A>` gives against `fn(a: Maybe<A>) -> Int`, as `A ≤ A | nil`, which `A` was then
+    /// inferred as, though nothing gives it a type (infer-fuzz generator 3, seed 6717).
     fn expand(
         &self,
         arena: &mut Arena<Type>,
         component: &IndexSet<TypeId>,
         generic: TypeId,
-        lower: bool,
-        kind: impl Fn(&InferenceCandidates) -> &Vec<TypeId>,
+        kind: CandidateKind,
     ) -> Vec<TypeId> {
         let mut visited = HashSet::from([generic]);
         let mut stack = vec![generic];
@@ -281,20 +288,30 @@ impl InferenceResolver<'_> {
 
         while let Some(generic) = stack.pop() {
             // In the order they were found, with a split union's members in its place
-            let mut candidates: VecDeque<TypeId> = kind(&self.infer.generics[&generic])
-                .iter()
-                .copied()
-                .collect();
+            let candidates = &self.infer.generics[&generic];
+            let mut candidates: VecDeque<TypeId> = match kind {
+                CandidateKind::Lower => &candidates.lower,
+                CandidateKind::Upper => &candidates.upper,
+                CandidateKind::Held => &candidates.held,
+            }
+            .iter()
+            .copied()
+            .collect();
 
             while let Some(ty) = candidates.pop_front() {
-                if lower
-                    && let Type::Union(union) = &arena[ty]
-                    && union.types.iter().any(|member| component.contains(member))
-                {
-                    for &member in union.types.iter().rev() {
-                        candidates.push_front(member);
+                if let Type::Union(union) = &arena[ty] {
+                    match kind {
+                        CandidateKind::Lower
+                            if union.types.iter().any(|member| component.contains(member)) =>
+                        {
+                            for &member in union.types.iter().rev() {
+                                candidates.push_front(member);
+                            }
+                            continue;
+                        }
+                        CandidateKind::Upper if union.types.contains(&generic) => continue,
+                        _ => {}
                     }
-                    continue;
                 }
 
                 if component.contains(&ty) {

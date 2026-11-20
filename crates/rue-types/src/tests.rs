@@ -1368,9 +1368,11 @@ mod inference {
     }
 
     /// A lower candidate that's a union with the generic in it only bounds the generic by the
-    /// other members, as passing `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T` gives (#362, 13k4).
+    /// other members, as passing `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T` gives (#362, 13k4),
+    /// and an upper one says nothing, as an untyped lambda parameter compiled as `Maybe<A>` gives
+    /// against `fn(a: Maybe<A>) -> Int` (13k5).
     #[test]
-    fn union_lower_candidate_with_the_generic_in_it() {
+    fn union_candidates_with_the_generic_in_them() {
         let mut db = Db::new();
         let int = db.builtins.int;
         let t = db.generic("T");
@@ -1390,6 +1392,22 @@ mod inference {
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(db.name(mappings[&t]), "Int");
         assert_eq!(db.name(mappings[&v]), "Int");
+
+        // `T ≤ T | nil` leaves `T` uninferred, rather than inferred as `T | nil`
+        let t = db.generic("T");
+        let nil = db.builtins.nil;
+        let union = db.union(&[t, nil]);
+        let mut infer = Inference::new([t]);
+        infer.push(t, CandidateKind::Upper, union, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert!(!mappings.contains_key(&t), "{}", db.name(mappings[&t]));
+
+        // And with another candidate, that one decides it
+        let mut infer = Inference::new([t]);
+        infer.push(t, CandidateKind::Upper, union, Vec::new());
+        infer.push(t, CandidateKind::Lower, int, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
 
         // An upper candidate isn't split, since `T ≤ Int | V` doesn't say `T ≤ Int`
         let (t, v) = (db.generic("T"), db.generic("V"));
