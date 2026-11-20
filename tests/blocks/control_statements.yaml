@@ -192,12 +192,12 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at control_statements.rue:464:9"
 - name: delegates_results
-  program: (a (q 3 (a 14 (c 4 (q . 7))) (all (a 14 (c 4 (q . 1))) (a 10 (c 4 ())) (a 10 (c 4 (q . 7)))) ()) (c (c (q 2 (i (> 1 (q . 5)) (q 2 (i (> (q . 10) 1) () (q 8)) 1) (q 2 (i 1 () (q 8)) 1)) 1) (c (q 2 (i 3 (q 2 2 3) ()) 1) (q 2 (i (> 3 (q . 1)) (q 2 2 3) (q 2 2 (+ 3 (q . 5)))) 1))) ()))
+  program: (a (q 34 (a 14 (c 4 (q . 7))) (a 14 (c 4 (q . 1))) (a 10 (c 4 ())) (a 10 (c 4 (q . 7)))) (c (c (q 2 (i (> 1 (q . 5)) (q 2 (i (> (q . 10) 1) () (q 8)) 1) (q 2 (i 1 () (q 8)) 1)) 1) (c (q 2 (i 3 (q 2 2 3) ()) 1) (q 2 (i (> 3 (q . 1)) (q 2 2 3) (q 2 2 (+ 3 (q . 5)))) 1))) ()))
   debug_program: (a (q 3 (q . 1) (i (q . 1) (i (q . 1) (i (q . 1) () (a 10 (c 4 (q . 7)))) (a 10 (c 4 ()))) (a 14 (c 4 (q . 1)))) (a 14 (c 4 (q . 7)))) (c (c (q 2 (i (> 1 (q . 5)) (q 2 (i (> (q . 10) 1) () (q 8 (q . "assertion failed at control_statements.rue:464:9"))) 1) (q 2 (i (not (= 1 ())) () (q 8 (q . "assertion failed at control_statements.rue:466:9"))) 1)) 1) (c (q 2 (i (= 3 ()) () (q 2 2 3)) 1) (q 2 (i (> 3 (q . 1)) (q 2 2 3) (q 2 2 (+ 3 (q . 5)))) 1))) ()))
   output: ()
-  runtime_cost: 11014
-  byte_cost: 2892000
-  total_cost: 2903014
+  runtime_cost: 11236
+  byte_cost: 2820000
+  total_cost: 2831236
 - name: delegates_fails
   program: (a (q 3 () (a 6 (c 4 (q . 12))) ()) (c (c (q 2 (i (> 1 (q . 5)) (q 2 (i (> (q . 10) 1) () (q 8)) 1) (q 2 (i 1 () (q 8)) 1)) 1) (q 2 (i (> 3 (q . 1)) (q 2 2 3) (q 2 2 (+ 3 (q . 5)))) 1)) ()))
   debug_program: (a (q 3 (q . 1) () (a 6 (c 4 (q . 12)))) (c (c (q 2 (i (> 1 (q . 5)) (q 2 (i (> (q . 10) 1) () (q 8 (q . "assertion failed at control_statements.rue:464:9"))) 1) (q 2 (i (not (= 1 ())) () (q 8 (q . "assertion failed at control_statements.rue:466:9"))) 1)) 1) (q 2 (i (> 3 (q . 1)) (q 2 2 3) (q 2 2 (+ 3 (q . 5)))) 1)) ()))
@@ -205,12 +205,12 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at control_statements.rue:464:9"
 - name: ends_with_else_if_results
-  program: (a (q 3 (a 2 (q . 20)) (all (a 2 (q . 7)) (a 2 (q . 1))) ()) (c (q 2 (i (> 1 (q . 10)) () (q 2 (i (> 1 (q . 5)) (q 2 (i (= 1 (q . 6)) (q 8) ()) 1) ()) 1)) 1) ()))
+  program: (a (q 34 (a 2 (q . 20)) (a 2 (q . 7)) (a 2 (q . 1))) (c (q 2 (i (> 1 (q . 10)) () (q 2 (i (> 1 (q . 5)) (q 2 (i (= 1 (q . 6)) (q 8) ()) 1) ()) 1)) 1) ()))
   debug_program: (a (q 3 (q . 1) (i (q . 1) (i (q . 1) () (a 2 (q . 1))) (a 2 (q . 7))) (a 2 (q . 20))) (c (q 2 (i (> 1 (q . 10)) () (q 2 (i (> 1 (q . 5)) (q 2 (i (not (= 1 (q . 6))) () (q 8 (q . "assertion failed at control_statements.rue:512:9"))) 1) ()) 1)) 1) ()))
   output: ()
-  runtime_cost: 6131
-  byte_cost: 1548000
-  total_cost: 1554131
+  runtime_cost: 6353
+  byte_cost: 1476000
+  total_cost: 1482353
 - name: ends_with_else_if_fails
   program: (a (q 3 () (a 2 (q . 6)) ()) (c (q 2 (i (> 1 (q . 10)) () (q 2 (i (> 1 (q . 5)) (q 2 (i (= 1 (q . 6)) (q 8) ()) 1) ()) 1)) 1) ()))
   debug_program: (a (q 3 (q . 1) () (a 2 (q . 6))) (c (q 2 (i (> 1 (q . 10)) () (q 2 (i (> 1 (q . 5)) (q 2 (i (not (= 1 (q . 6))) () (q 8 (q . "assertion failed at control_statements.rue:512:9"))) 1) ()) 1)) 1) ()))

@@ -56,12 +56,12 @@ tests:
   byte_cost: 156000
   total_cost: 156179
 - name: equivalent_generic_functions
-  program: (a (q 2 (q 2 (i (a 5 (q 1)) (q 9 2 (q . 1)) ()) 1) (c (a 2 (q 1)) 1)) (c (q . 2) 1))
+  program: (a (q 2 (q 34 (a 5 (q 1)) (= 2 (q . 1))) (c (a 2 (q 1)) 1)) (c (q . 2) 1))
   debug_program: (a (q 2 (q 2 (q 2 (i 6 (q 9 4 (q . 1)) ()) 1) (c (c (a 2 (c (q . 1) ())) (a 2 (c (q . 1) ()))) 1)) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q . 2))) ()))
   output: "1"
-  runtime_cost: 1271
-  byte_cost: 900000
-  total_cost: 901271
+  runtime_cost: 1839
+  byte_cost: 780000
+  total_cost: 781839
 - name: guard_other_candidates
   program: (a (q 32 2) (c () 1))
   debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 9 2 ()) ()) 1) (c (a 6 (c () (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q . 2)) ()))

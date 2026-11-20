@@ -7,7 +7,7 @@ tests:
   byte_cost: 444000
   total_cost: 444563
 - name: called_with_several_types
-  program: (a (q 2 (q 2 (q 2 (i (a (i 10 (q . 14) ()) 1) (q 16 8 12 (q . 2)) ()) 1) (c (c (a 2 (q 20)) (a 2 (q 1))) 1)) (c 2 1)) (c (q 4 2 2) ()))
+  program: (a (q 2 (q 2 (q 2 (i 10 (q 2 (i 14 (q 16 8 12 (q . 2)) ()) 1) ()) 1) (c (c (a 2 (q 20)) (a 2 (q 1))) 1)) (c 2 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 2 (q 2 (i (a (i (f 6) (q 6 6) ()) 1) (q 16 (+ (f 4) (r 4)) (q . 2)) ()) 1) (c (c (a 2 (c (q . 20) ())) (a 2 (c (q . 1) ()))) 1)) (c (a 4 (c 6 ())) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 2 2)) ()))
   output: "42"
   runtime_cost: 3138

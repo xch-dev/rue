@@ -1,21 +1,21 @@
 tests:
 - name: division_by_zero
-  program: (i (i () (/ 2 ()) (q . 1)) (q . 1) (q . 2))
+  program: (i (any (q . 1) (/ 2 ())) (q . 1) (q . 2))
   debug_program: (a (q 2 (i 2 (q 1 . 1) (q 1 . 2)) 1) (c (i () (/ 2 ()) (q . 1)) 1))
   solution: (5)
-  byte_cost: 348000
+  byte_cost: 324000
   clvm_error: Division by zero
 - name: indistinguishable_structs
-  program: (a (q 3 (i () (a 2 5) (q . 1)) (q . 1) (q . 2)) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8)) 1) 1))
+  program: (a (q 3 (any (q . 1) (a 2 5)) (q . 1) (q . 2)) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8)) 1) 1))
   debug_program: (a (q 2 (i (i () (a 2 5) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:21:5"))) 1) 1))
   solution: (0)
-  byte_cost: 924000
+  byte_cost: 900000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:21:5"
 - name: raise_in_operand
-  program: (i (i () (x) (q . 1)) (q . 1) (q . 2))
+  program: (i (any (q . 1) (x)) (q . 1) (q . 2))
   debug_program: (a (q 2 (i (i () (a 2 ()) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 8 (q . "raise called at keep_checks_guards.rue:26:5") (q . 28271)) ()))
-  byte_cost: 300000
+  byte_cost: 276000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:26:5" 28271)
 - name: binding_only_used_by_guard

@@ -35,7 +35,7 @@ tests:
   byte_cost: 1812000
   total_cost: 1814909
 - name: match_variant_fields
-  program: (a (q 2 (i (a 4 (q ())) (q 8) (q 2 (i (= (a 4 (q 1 1)) (q . 1)) (q 2 (i (= (a 4 (q 1 2)) (q . 2)) (q 2 (i (= (a 6 (q 1 1)) (q . 1)) (q 2 (i (= (a 6 (q 1 2)) (q . 2)) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)) 1) (c (c (q 2 (i 2 (q 2 (i (= 5 (q . 1)) (q 1 . 1) (q . 5)) 1) ()) 1) (q 2 (i (a (i 2 (q 2 (i (= 2 (q . 1)) (q 9 5 (q . 1)) ()) 1) (q 1 . 1)) 1) (q 1 . 1) (q . 5)) 1)) ()))
+  program: (a (q 2 (i (a 4 (q ())) (q 8) (q 2 (i (= (a 4 (q 1 1)) (q . 1)) (q 2 (i (= (a 4 (q 1 2)) (q . 2)) (q 2 (i (= (a 6 (q 1 1)) (q . 1)) (q 2 (i (= (a 6 (q 1 2)) (q . 2)) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)) 1) (c (c (q 2 (i 2 (q 2 (i (= 5 (q . 1)) (q 1 . 1) (q . 5)) 1) ()) 1) (q 2 (i 2 (q 2 (i (a (i (= 2 (q . 1)) (q 9 5 (q . 1)) ()) 1) (q 1 . 1) (q . 5)) 1) (q 1 . 1)) 1)) ()))
   debug_program: (a (q 2 (i (= (a 4 (c () ())) ()) (q 2 (i (= (a 4 (c (q . 1) (c (q . 1) ()))) (q . 1)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) ()))) (q . 2)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 1) ()))) (q . 1)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 2) ()))) (q . 2)) () (q 8 (q . "assertion failed at enum_match.rue:136:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:135:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:134:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:133:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:132:5"))) 1) (c (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f (r 1)) (q . 1)) (q 1 . 1) (q 5 (r 1))) 1)) 1) (q 2 (i (a (i (= (f 1) ()) (q 1 . 1) (q 2 (i (= (f 1) (q . 1)) (q 9 (f (r 1)) (q . 1)) ()) 1)) 1) (q 1 . 1) (q 2 (q . 2) (c (f (r 1)) 1))) 1)) ()))
   output: ()
   runtime_cost: 6776

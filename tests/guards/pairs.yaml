@@ -24,7 +24,7 @@ tests:
   byte_cost: 1068000
   total_cost: 1069247
 - name: pair_shape_value
-  program: (a (i (l 2) (q 2 (i (a (i (l 4) () (q 9 4 (q . 42))) 1) (q 2 (i (l 6) () (q 9 6 (q . 34))) 1) ()) 1) ()) 1)
+  program: (a (i (l 2) (q 2 (i (l 4) () (q 2 (i (= 4 (q . 42)) (q 2 (i (l 6) () (q 9 6 (q . 34))) 1) ()) 1)) 1) ()) 1)
   debug_program: (a (i (l 2) (q 2 (i (a (i (not (l (f 2))) (q 9 (f 2) (q . 42)) ()) 1) (q 2 (i (not (l (r 2))) (q 9 (r 2) (q . 34)) ()) 1) ()) 1) ()) 1)
   solution: ((42 . 34))
   output: "1"
@@ -40,7 +40,7 @@ tests:
   byte_cost: 84000
   total_cost: 84214
 - name: guard_type_assumption_shortcut
-  program: (a (q 2 (i 4 (q 8) (q 2 (i (a (i 4 () (q 9 (strlen 6) (q . 32))) 1) (q 8) ()) 1)) 1) (c (q ()) 1))
+  program: (a (q 2 (i 4 (q 8) (q 2 (i 4 () (q 2 (i (= (strlen 6) (q . 32)) (q 8) ()) 1)) 1)) 1) (c (q ()) 1))
   debug_program: (a (q 2 (i (= (f 2) ()) (q 2 (i (not (a (i (= (f 2) ()) (q 9 (strlen (r 2)) (q . 32)) ()) 1)) () (q 8 (q . "assertion failed at pairs.rue:28:5"))) 1) (q 8 (q . "assertion failed at pairs.rue:25:5"))) 1) (c (c () ()) 1))
   output: ()
   runtime_cost: 1414

@@ -32,7 +32,7 @@ tests:
   byte_cost: 276000
   total_cost: 277145
 - name: pair_struct_and
-  program: (a (i (a (i 2 (q 21 4 ()) ()) 1) (q . 10) ()) 1)
+  program: (a (i 2 (q 2 (i (> 4 ()) (q . 10) ()) 1) ()) 1)
   debug_program: (a (i (a (i (not (not 2)) (q 21 (f 2) ()) ()) 1) (q 5 (r 2)) ()) 1)
   solution: ((1 2))
   output: "2"

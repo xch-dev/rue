@@ -18,13 +18,13 @@ tests:
   total_cost: 492571
   debug_clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
 - name: type_guard_checks_the_whole_shape
-  program: (a (i (a (i (l 2) (q 2 (i (l 4) () (q 32 (l 6))) 1) ()) 1) (q 2 (i 5 (q 16 4 (q . 1)) (q . 6)) 1) ()) 1)
+  program: (a (i (l 2) (q 2 (i (l 4) () (q 2 (i (l 6) () (q 2 (i 5 (q 16 4 (q . 1)) (q . 6)) 1)) 1)) 1) ()) 1)
   debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 32 (l (r 2))) ()) 1) ()) 1) (q 2 (q 2 (i 11 (q . 4) (q . 6)) 1) (c (c (+ (f 2) (q . 1)) (r 2)) 1)) ()) 1)
   solution: (((1 2) . 3) ())
   output: ()
-  runtime_cost: 927
-  byte_cost: 1092000
-  total_cost: 1092927
+  runtime_cost: 650
+  byte_cost: 1044000
+  total_cost: 1044650
 - name: field_of_the_wrong_shape
   program: (a (i 5 (q 16 4 4) ()) 1)
   debug_program: (a (q 2 (i 11 (q 16 2 2) ()) 1) (c (f 2) 1))

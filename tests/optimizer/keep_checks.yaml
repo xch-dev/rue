@@ -28,10 +28,10 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: binding_in_short_circuit
-  program: (a (q 2 (q 2 (i 23 (q 9 2 (q . 5)) ()) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (a (q 2 (q 34 23 (= 2 (q . 5))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
   debug_program: (a (q 2 (q 2 (i 23 (q 9 2 (q . 5)) ()) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50 ())
-  byte_cost: 1068000
+  byte_cost: 948000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: binding_in_closure
@@ -255,10 +255,10 @@ tests:
   byte_cost: 444000
   clvm_error: Shift too large
 - name: binding_in_short_circuit_or
-  program: (a (q 2 (q 2 (i 23 (q 1 . 1) (q 9 2 (q . 5))) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (a (q 2 (q 33 23 (= 2 (q . 5))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
   debug_program: (a (q 2 (q 2 (i 23 (q 1 . 1) (q 9 2 (q . 5))) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50 1)
-  byte_cost: 1116000
+  byte_cost: 948000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks.rue:7:9" "too big")
 - name: constant_through_constant

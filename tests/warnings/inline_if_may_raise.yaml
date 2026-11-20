@@ -24,9 +24,9 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:46:9"
 - name: guard_expr
-  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (i (i () (a 2 3) (q . 1)) (q . 1) (q . 2)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (i (any (q . 1) (a 2 3)) (q . 1) (q . 2)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
   debug_program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (i (i () (a 2 3) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:123:5"))) 1)) ()))
-  byte_cost: 1332000
+  byte_cost: 1308000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:123:5"
 - name: nested_if
