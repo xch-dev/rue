@@ -1,0 +1,147 @@
+// `C` is only ever handled by the last arm of a match, which doesn't check its `kind`
+#![allow(unused_struct_field)]
+
+struct A {
+    kind = 1,
+}
+
+struct B {
+    kind = 2,
+}
+
+struct C {
+    kind = 3,
+}
+
+type U = A | B | C;
+
+// Every arm after one that handles everything that's left is unreachable
+fn after_wildcard(value: U) -> Int {
+    match value {
+        A => 1,
+        _ => 2,
+        B => 3,
+        _ => 4,
+    }
+}
+
+fn after_last_member(value: U) -> Int {
+    match value {
+        A => 1,
+        B | C => 2,
+        C => 3,
+    }
+}
+
+// An arm whose values the earlier arms already handle
+fn duplicate(value: U) -> Int {
+    match value {
+        A => 1,
+        A => 2,
+        B => 3,
+        C => 4,
+    }
+}
+
+fn covered_by_union(value: U) -> Int {
+    match value {
+        A | B => 1,
+        B => 2,
+        _ => 3,
+    }
+}
+
+fn duplicate_literal(value: Int) -> Int {
+    match value {
+        0 => 1,
+        0 => 2,
+        _ => 3,
+    }
+}
+
+// Nothing is reported for a match whose arms are all reachable
+fn reachable(value: U) -> Int {
+    match value {
+        A => 1,
+        B => 2,
+        C => 3,
+    }
+}
+
+#[allow(unreachable_match_arm)]
+fn allowed(value: U) -> Int {
+    match value {
+        _ => 1,
+        A => 2,
+    }
+}
+
+fn expected(value: U) -> Int {
+    #[expect(unreachable_match_arm)]
+    let result = match value {
+        _ => 1,
+        A => 2,
+    };
+    result + 1
+}
+
+fn unfulfilled(value: U) -> Int {
+    #[expect(unreachable_match_arm)]
+    let result = match value {
+        A => 1,
+        _ => 2,
+    };
+    result + 1
+}
+
+// The lints about `if` expressions don't see the chain that a match compiles to
+fn identical_arms(value: U) -> Int {
+    match value {
+        A => 1,
+        _ => 1,
+    }
+}
+
+fn bool_arms(value: U) -> Bool {
+    match value {
+        A => true,
+        _ => false,
+    }
+}
+
+fn negated_arms(value: Bool) -> Int {
+    match value {
+        false => 1,
+        true => 2,
+    }
+}
+
+fn nested_arms(value: U) -> Int {
+    match value {
+        A => 1,
+        _ => match value {
+            B => 2,
+            C => 3,
+        }
+    }
+}
+
+fn main() -> Int {
+    after_wildcard(C {})
+        + after_last_member(C {})
+        + duplicate(C {})
+        + covered_by_union(C {})
+        + duplicate_literal(0)
+        + reachable(C {})
+        + allowed(C {})
+        + expected(C {})
+        + unfulfilled(C {})
+        + identical_arms(C {})
+        + negated_arms(true)
+        + nested_arms(C {})
+        + if bool_arms(C {}) {
+            1
+        } else {
+            0
+        }
+}

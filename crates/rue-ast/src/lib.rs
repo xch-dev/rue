@@ -140,6 +140,8 @@ ast_nodes!(
     BinaryExpr,
     FunctionCallExpr,
     IfExpr,
+    MatchExpr,
+    MatchArm,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -173,6 +175,7 @@ ast_enum!(
     FunctionCallExpr,
     Block,
     IfExpr,
+    MatchExpr,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -791,6 +794,97 @@ impl AstIfExpr {
     }
 }
 
+impl AstMatchExpr {
+    /// The `inline` keyword, which makes every arm evaluated eagerly, like an `inline if`.
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![inline])
+    }
+
+    /// The value being matched on.
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn arms(&self) -> impl Iterator<Item = AstMatchArm> {
+        self.syntax().children().filter_map(AstMatchArm::cast)
+    }
+
+    /// Whether the arms were parsed without errors, between both braces. Otherwise some of them
+    /// could be missing, such as after an arm with an unclosed delimiter.
+    pub fn arms_are_complete(&self) -> bool {
+        let mut open = false;
+        let mut close = false;
+
+        for element in self.syntax().children_with_tokens() {
+            match element.kind() {
+                T!['{'] => open = true,
+                T!['}'] => close = true,
+                _ => {}
+            }
+        }
+
+        open && close
+            && !self
+                .arms()
+                .flat_map(|arm| arm.syntax().descendants_with_tokens().collect::<Vec<_>>())
+                .chain(self.syntax().children_with_tokens())
+                .any(|element| element.kind() == SyntaxKind::Error)
+    }
+}
+
+impl AstMatchArm {
+    /// The type that the value is checked against, or `_` (see [`AstType::is_placeholder`]) for
+    /// every value that's left.
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    /// Whether the arm's value is a block, `if` or `match`, which ends at its closing brace, so no
+    /// comma is needed after the arm.
+    pub fn ends_with_brace(&self) -> bool {
+        matches!(
+            self.expr(),
+            Some(AstExpr::Block(_) | AstExpr::IfExpr(_) | AstExpr::MatchExpr(_))
+        )
+    }
+
+    /// The comma after the arm, if there is one.
+    pub fn comma(&self) -> Option<SyntaxToken> {
+        self.comma_and_comments().0
+    }
+
+    /// The comma after the arm, if it can be left out: the arm ends with a brace, and there's no
+    /// comment between the arm and the comma, which would otherwise be left next to the next arm.
+    pub fn removable_comma(&self) -> Option<SyntaxToken> {
+        let (comma, has_comments) = self.comma_and_comments();
+        comma.filter(|_| self.ends_with_brace() && !has_comments)
+    }
+
+    fn comma_and_comments(&self) -> (Option<SyntaxToken>, bool) {
+        let mut has_comments = false;
+        let mut next = self.syntax().next_sibling_or_token();
+        while let Some(element) = next {
+            if !element.kind().is_trivia() {
+                let comma = element.into_token().filter(|token| token.kind() == T![,]);
+                return (comma, has_comments);
+            }
+            has_comments |= matches!(
+                element.kind(),
+                SyntaxKind::LineComment | SyntaxKind::BlockComment
+            );
+            next = element.next_sibling_or_token();
+        }
+        (None, has_comments)
+    }
+}
+
 impl AstGuardExpr {
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
@@ -859,6 +953,24 @@ impl AstLiteralType {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| SyntaxKind::LITERAL.contains(&token.kind()))
+    }
+}
+
+impl AstType {
+    /// Whether the type is `_`, which stands for a type to be filled in, such as a generic argument
+    /// to infer or a match arm that handles every value that's left.
+    pub fn is_placeholder(&self) -> bool {
+        let Self::PathType(path) = self else {
+            return false;
+        };
+
+        let mut segments = path.segments();
+
+        segments.next().is_some_and(|segment| {
+            segment.separator().is_none()
+                && segment.generic_arguments().is_none()
+                && segment.name().is_some_and(|name| name.text() == "_")
+        }) && segments.next().is_none()
     }
 }
 

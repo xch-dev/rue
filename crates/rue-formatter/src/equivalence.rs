@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use rue_ast::{AstDocument, AstNode};
+use rue_ast::{AstDocument, AstMatchArm, AstNode};
 
 use crate::{
     FormatError,
@@ -19,6 +19,19 @@ pub fn comment_signature(
     let import_groups = plan_import_groups(document.syntax(), stream)?;
     let mut signature = Vec::new();
     let mut covered_gaps = HashSet::new();
+
+    // The commas after match arms that end with a brace are left out, so they aren't counted
+    let mut omitted_commas = HashSet::new();
+    for arm in document
+        .syntax()
+        .descendants()
+        .filter_map(AstMatchArm::cast)
+    {
+        if let Some(comma) = arm.removable_comma() {
+            let id = stream.token_id_at_offset(usize::from(comma.text_range().start()))?;
+            omitted_commas.insert(id.index());
+        }
+    }
 
     append_trivia(&mut signature, "file", "header", &document_plan.header);
     append_trivia(&mut signature, "file", "footer", &document_plan.footer);
@@ -86,7 +99,7 @@ pub fn comment_signature(
                 |(span, anchor)| {
                     (
                         anchor.clone(),
-                        normalized_relative_gap(stream, *span, gap_index),
+                        normalized_relative_gap(stream, *span, gap_index, &omitted_commas),
                     )
                 },
             );
@@ -111,9 +124,16 @@ fn append_trivia(signature: &mut Vec<String>, anchor: &str, role: &str, gap: &Ga
     }
 }
 
-fn normalized_relative_gap(stream: &TokenStream, span: TokenSpan, gap: usize) -> usize {
+fn normalized_relative_gap(
+    stream: &TokenStream,
+    span: TokenSpan,
+    gap: usize,
+    omitted_commas: &HashSet<usize>,
+) -> usize {
     (span.start().index()..gap)
-        .filter(|index| !is_optional_trailing_comma(stream, *index))
+        .filter(|index| {
+            !is_optional_trailing_comma(stream, *index) && !omitted_commas.contains(index)
+        })
         .count()
 }
 

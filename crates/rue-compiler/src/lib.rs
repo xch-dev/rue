@@ -34,6 +34,8 @@ mod inference_order_tests;
 #[cfg(test)]
 mod lint_tests;
 #[cfg(test)]
+mod match_tests;
+#[cfg(test)]
 mod narrowing_tests;
 #[cfg(test)]
 mod nesting_tests;

@@ -192,7 +192,8 @@ fn append_node_signature(node: &SyntaxNode, signature: &mut Vec<String>) {
             }
             rowan::NodeOrToken::Node(child) => append_node_signature(&child, signature),
             rowan::NodeOrToken::Token(token)
-                if token.kind() == rue_parser::T![,] && is_optional_trailing_comma(&token) => {}
+                if token.kind() == rue_parser::T![,]
+                    && (is_optional_trailing_comma(&token) || is_optional_match_comma(&token)) => {}
             // Strings can be requoted, which changes their text but not their value
             rowan::NodeOrToken::Token(token) if token.kind() == SyntaxKind::String => {
                 signature.push(format!("t:String:{:?}", string_value(token.text())));
@@ -203,6 +204,22 @@ fn append_node_signature(node: &SyntaxNode, signature: &mut Vec<String>) {
             rowan::NodeOrToken::Token(_) => {}
         }
     }
+}
+
+/// Whether the comma follows a match arm whose comma the formatter leaves out.
+fn is_optional_match_comma(token: &rue_parser::SyntaxToken) -> bool {
+    let mut previous = token.prev_sibling_or_token();
+    while previous
+        .as_ref()
+        .is_some_and(|element| element.kind().is_trivia())
+    {
+        previous = previous.and_then(|element| element.prev_sibling_or_token());
+    }
+    previous
+        .and_then(rowan::NodeOrToken::into_node)
+        .and_then(rue_ast::AstMatchArm::cast)
+        .and_then(|arm| arm.removable_comma())
+        .is_some_and(|comma| comma == *token)
 }
 
 fn is_optional_trailing_comma(token: &rue_parser::SyntaxToken) -> bool {

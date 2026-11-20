@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use rue_diagnostic::{Lint, SrcLoc};
 use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, may_raise, statements_may_raise};
 
-use crate::{HirLintPass, LintContext};
+use crate::{HirLintPass, LintContext, LintInput};
 
 /// Both branches of an `inline if` are evaluated eagerly, so a branch which can raise will do so
 /// regardless of the condition. This runs after every function has been compiled, so that calls
@@ -39,6 +41,47 @@ impl HirLintPass for InlineIfMayRaise {
         {
             report(cx, statement.srcloc.clone());
         }
+    }
+}
+
+/// Every arm of an `inline match` is evaluated eagerly, like the branches of an `inline if`, so an
+/// arm which can raise will do so whichever arm is taken. The arms are generated as an `inline if`
+/// chain with no location of its own, so they're recorded by the compiler.
+pub(crate) struct InlineMatchMayRaise<'a> {
+    arms: &'a HashMap<HirId, Vec<HirId>>,
+}
+
+impl<'a> InlineMatchMayRaise<'a> {
+    pub(crate) fn new(input: &'a LintInput<'a>) -> Self {
+        Self {
+            arms: &input.sites.inline_match_arms,
+        }
+    }
+}
+
+impl HirLintPass for InlineMatchMayRaise<'_> {
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::InlineMatchMayRaise]
+    }
+
+    fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, _node: &Hir) {
+        let Some(arms) = self.arms.get(&hir) else {
+            return;
+        };
+
+        if arms.len() < 2 || !arms.iter().any(|&arm| may_raise(cx.db(), arm)) {
+            return;
+        }
+
+        let Some(srcloc) = cx.db().hir_srcloc(hir).cloned() else {
+            return;
+        };
+
+        cx.report(
+            Lint::InlineMatchMayRaise,
+            srcloc,
+            "An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead",
+        );
     }
 }
 

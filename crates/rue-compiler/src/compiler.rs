@@ -1134,32 +1134,8 @@ impl Compiler {
     }
 
     pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
-        let check = match rue_types::check(self.db.types_mut(), &self.builtins.types, from, to) {
-            Ok(check) => check,
-            Err(CheckError::DepthExceeded) => {
-                self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
-                return Constraint::new(Check::Impossible);
-            }
-            Err(CheckError::TooLarge) => {
-                self.diagnostic(node, DiagnosticKind::TypeCheckTooLarge);
-                return Constraint::new(Check::Impossible);
-            }
-            Err(CheckError::RecursiveType) => {
-                self.diagnostic(node, DiagnosticKind::RecursiveTypeCheck);
-                return Constraint::new(Check::Impossible);
-            }
-            Err(CheckError::FunctionType) => {
-                self.diagnostic(node, DiagnosticKind::FunctionTypeCheck);
-                return Constraint::new(Check::Impossible);
-            }
-            Err(CheckError::GenericType) => {
-                self.diagnostic(node, DiagnosticKind::GenericTypeCheck);
-                return Constraint::new(Check::Impossible);
-            }
-            Err(CheckError::TooComplex) => {
-                self.too_complex(node, from, to);
-                return Constraint::new(Check::Impossible);
-            }
+        let Some(check) = self.runtime_check(node, from, to) else {
+            return Constraint::new(Check::Impossible);
         };
 
         if check == Check::Impossible {
@@ -1171,6 +1147,32 @@ impl Compiler {
         let else_id = rue_types::subtract(self.db.types_mut(), &self.builtins.types, from, to);
 
         Constraint::new(check).with_else(else_id)
+    }
+
+    /// The check that a value of type `from` needs at runtime to tell whether it's a `to`, or
+    /// `None` if it can't be checked, which has been reported. A check that's impossible, since the
+    /// types don't overlap, isn't reported here.
+    pub fn runtime_check(
+        &mut self,
+        node: &impl GetTextRange,
+        from: TypeId,
+        to: TypeId,
+    ) -> Option<Check> {
+        let error = match rue_types::check(self.db.types_mut(), &self.builtins.types, from, to) {
+            Ok(check) => return Some(check),
+            Err(CheckError::DepthExceeded) => DiagnosticKind::TypeCheckDepthExceeded,
+            Err(CheckError::TooLarge) => DiagnosticKind::TypeCheckTooLarge,
+            Err(CheckError::RecursiveType) => DiagnosticKind::RecursiveTypeCheck,
+            Err(CheckError::FunctionType) => DiagnosticKind::FunctionTypeCheck,
+            Err(CheckError::GenericType) => DiagnosticKind::GenericTypeCheck,
+            Err(CheckError::TooComplex) => {
+                self.too_complex(node, from, to);
+                return None;
+            }
+        };
+
+        self.diagnostic(node, error);
+        None
     }
 
     pub fn check_condition(&mut self, node: &impl GetTextRange, ty: TypeId) {

@@ -1,0 +1,20 @@
+program: (a (q 16 (a 14 (q 3)) (a 10 (q 3)) (a 12 (q 3)) (a 8 (q 3)) (q . 14)) (c (c (c (q 2 (i (= 2 (q . 1)) (q 1 . 1) (q 3 (= 2 (q . 2)) (q . 2) (q . 3))) 1) (q 2 (i (= 2 (q . 1)) (q 1 . 1) (q 3 (= 2 (q . 2)) (q . 2) (q . 3))) 1)) (c (q 3 (a (i (= 2 (q . 1)) (q 1 . 1) (q 9 2 (q . 2))) 1) (q . 1) (q . 3)) (q 2 (i (= 2 (q . 1)) (q 1 . 1) (q 3 (= 2 (q . 2)) (q . 3) (q . 4))) 1))) ()))
+debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 62 (c (q . 3) ())) (a 46 (c (q . 3) ()))) (a 54 (c (q . 3) ()))) (a 38 (c (q . 3) ()))) (a 58 ())) (a 42 (c (q . 3) ()))) (a 18 (c (q . 3) ()))) (a 60 (c (q . 3) ()))) (a 44 (c (q . 3) ()))) (a 20 (c (q . 3) ()))) (a 56 (q . 1))) (a 40 (c (q . 3) ()))) (a (i (a 16 (c (q . 3) ())) (q 1 . 1) (q)) 1)) (c (c (c (c (q 2 (i (= (f 1) (q . 1)) (q 1 . 1) (q)) 1) (c (q 2 (i (= (f 1) (q . 1)) (q 1 . 1) (q 2 (i (= (f 1) (q . 2)) (q 1 . 2) (q 1 . 3)) 1)) 1) (q 2 (i (= 1 ()) (q 1 . 1) (q 1 . 2)) 1))) (c (q 2 (i (= (f 1) (q . 1)) (q 1 . 1) (q 1 . 1)) 1) (c (q 2 (q 16 2 (q . 1)) (c (a (i (= (f 1) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) 1)) (q 2 (q 16 2 (q . 1)) (c (q . 1) 1))))) (c (c (q 1 . 1) (c (q 2 (i (= (f 1) (q . 1)) (q 1 . 1) (q 2 (i (= (f 1) (q . 2)) (q 1 . 2) (q 1 . 3)) 1)) 1) (q 2 (i (= 1 ()) (q 1 . 1) (q 1 . 3)) 1))) (c (c (q 2 (i (a (i (= (f 1) (q . 1)) (q 1 . 1) (q 2 (i (= (f 1) (q . 2)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q 1 . 3)) 1) (q 2 (i (= (f 1) (q . 1)) (q 1 . 1) (q 2 (i (= (f 1) (q . 2)) (q 1 . 3) (q 1 . 4)) 1)) 1)) (c (q 2 (i (= (f 1) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (q 2 (i (= (f 1) (q . 1)) (q 1 . 1) (q 1 . 2)) 1))))) ()))
+output: "27"
+runtime_cost: 5488
+byte_cost: 3444000
+total_cost: 3449488
+diagnostics:
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at unreachable_match_arm.rue:23:9
+    note: This arm handles every value that's left at unreachable_match_arm.rue:22:9
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at unreachable_match_arm.rue:24:9
+    note: This arm handles every value that's left at unreachable_match_arm.rue:22:9
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at unreachable_match_arm.rue:32:9
+    note: This arm handles every value that's left at unreachable_match_arm.rue:31:9
+- Unreachable match arm, since the earlier arms handle every value it matches at unreachable_match_arm.rue:40:9
+- Unreachable match arm, since the earlier arms handle every value it matches at unreachable_match_arm.rue:49:9
+- Unreachable match arm, since the earlier arms handle every value it matches at unreachable_match_arm.rue:57:9
+- Expected lint `unreachable_match_arm` to be reported here, but it never was at unreachable_match_arm.rue:89:14

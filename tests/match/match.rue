@@ -1,0 +1,284 @@
+struct Circle {
+    kind = 1,
+    radius: Int,
+}
+
+struct Square {
+    kind = 2,
+    side: Int,
+}
+
+struct Point {
+    kind = 3,
+}
+
+type Rounded = Circle;
+type Shape = Rounded | Square | Point;
+type Tree = Int | (Tree, Tree);
+
+fn area(shape: Shape) -> Int {
+    match shape {
+        Circle => 3 * shape.radius * shape.radius,
+        Square => shape.side * shape.side,
+        Point => 0,
+    }
+}
+
+test fn structs() -> List<Int> {
+    [area(Circle { radius: 2 }), area(Square { side: 3 }), area(Point {})]
+}
+
+test fn struct_argument(shape: Shape) -> Int {
+    area(shape)
+}
+
+// An arm can match a union, or a nested union by its alias
+test fn union_arms(shape: Shape) -> Int {
+    match shape {
+        Rounded => 1,
+        Square | Point => 2,
+    }
+}
+
+// The wildcard handles every value that's left, and narrows the value to what's left
+test fn wildcard(shape: Shape) -> Int {
+    match shape {
+        Point => 0,
+        _ => match shape {
+            Circle => shape.radius,
+            Square => shape.side,
+        }
+    }
+}
+
+test fn int_literals(value: Int) -> Int {
+    match value {
+        0 => 10,
+        1 => 20,
+        _ => value,
+    }
+}
+
+test fn string_literals(value: String) -> Int {
+    match value {
+        "yes" => 1,
+        "no" => 0,
+        _ => -1,
+    }
+}
+
+test fn bools(value: Bool) -> Int {
+    match value {
+        true => 1,
+        false => 0,
+    }
+}
+
+test fn lists(values: List<Int>) -> Int {
+    match values {
+        nil => 0,
+        (Int, List<Int>) => values.first + lists(values.rest),
+    }
+}
+
+test fn any(value: Any) -> Int {
+    match value {
+        Bytes => 1,
+        (Any, Any) => 2,
+    }
+}
+
+fn depth(tree: Tree) -> Int {
+    match tree {
+        Int => 0,
+        (Tree, Tree) => 1 + max(depth(tree.first), depth(tree.rest)),
+    }
+}
+
+fn max(a: Int, b: Int) -> Int {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+test fn recursive_alias(tree: Tree) -> Int {
+    depth(tree)
+}
+
+// A value that isn't a reference is only evaluated once
+test fn expression_value(shapes: List<Shape>) -> Int {
+    match first_or_point(shapes) {
+        Circle => 1,
+        Square => 2,
+        Point => 3,
+    }
+}
+
+fn first_or_point(shapes: List<Shape>) -> Shape {
+    if shapes is nil {
+        Point {}
+    } else {
+        shapes.first
+    }
+}
+
+test fn field_value(pair: (Shape, Int)) -> Int {
+    match pair.first {
+        Circle => pair.first.radius,
+        _ => pair.rest,
+    }
+}
+
+test fn generic(value: Int | nil) -> Int {
+    or_zero(value)
+}
+
+fn or_zero<T>(value: T | nil) -> Int {
+    match value {
+        nil => 0,
+        _ => 1,
+    }
+}
+
+// Arms can be blocks, and a block arm can raise
+test fn block_arms(value: Int | nil) -> Int {
+    match value {
+        nil => {
+            raise "missing";
+        }
+        Int => {
+            let doubled = value * 2;
+            doubled + 1
+        }
+    }
+}
+
+// The type of a match is the union of its arms' types
+test fn arm_types(value: Bool) -> Int | String {
+    match value {
+        true => 1,
+        false => "no",
+    }
+}
+
+// An earlier field-path arm narrows what later arms see
+test fn field_value_later_arm(pair: (Shape, Int)) -> Int {
+    match pair.first {
+        Point => pair.rest,
+        Circle => pair.first.radius,
+        Square => pair.first.side,
+    }
+}
+
+// An atom of `Any` can be matched as an `Int`, as `is` does
+test fn any_as_int(value: Any) -> Int {
+    match value {
+        Int => value,
+        (Any, Any) => 0,
+    }
+}
+
+inline fn inline_area(shape: Shape) -> Int {
+    match shape {
+        Circle => shape.radius,
+        _ => 0,
+    }
+}
+
+test fn in_inline_function(shape: Shape) -> Int {
+    inline_area(shape)
+}
+
+test fn in_lambda(shape: Shape) -> Int {
+    let f = fn(shape: Shape) => match shape {
+        Square => shape.side,
+        _ => 0,
+    };
+    f(shape)
+}
+
+// A match with no arms on a value that never exists is never evaluated
+test fn no_arms(value: Int) -> Int {
+    if value == 0 {
+        return match {
+            raise "never";
+        } {};
+    }
+    value
+}
+
+// A pattern narrower than an untyped atom checks it, even inside a pair
+test fn nested_atoms(values: List<Atom>) -> Int {
+    match values {
+        nil => 0,
+        (Int, List<Atom>) => values.first + nested_atoms(values.rest),
+    }
+}
+
+// `nil` is handled before `Int`, since it's also the `Int` zero
+test fn nil_before_int(value: Int | nil) -> Int {
+    match value {
+        nil => -1,
+        Int => value,
+    }
+}
+
+// The comma after an arm that ends with a brace can be left out, and the arm after it isn't read as
+// part of its value
+test fn arms_without_commas(value: (Int, Int) | Int) -> Int {
+    match value {
+        Int => { value }
+        (Int, Int) => if value.first > value.rest {
+            value.first
+        } else {
+            value.rest
+        }
+    }
+}
+
+test fn inline_if_arm_without_comma(value: (Int, Int) | Int) -> Int {
+    match value {
+        Int => inline if value > 0 { value } else { 0 }
+        (Int, Int) => value.first,
+    }
+}
+
+// Every arm of an `inline match` is evaluated, and the one that matches is picked, like the
+// branches of an `inline if`
+test fn inline_match(value: Shape) -> Int {
+    inline match value {
+        Circle => 1,
+        Square => 2,
+        Point => 3,
+    }
+}
+
+test fn inline_match_literals(value: Int) -> Int {
+    inline match value {
+        0 => 10,
+        1 => 20,
+        _ => value,
+    }
+}
+
+// The comma after an `inline match` arm can be left out too
+test fn inline_match_arm_without_comma(value: Int | nil) -> Int {
+    match value {
+        nil => inline match 1 {
+            _ => 0,
+        }
+        Int => value,
+    }
+}
+
+// Every check of an `inline match` is evaluated, so the check for the pair also checks that the
+// value is a pair, although the arm before it handles `nil`
+test fn inline_match_checks_whole_type(value: nil | (Int, Int)) -> Int {
+    inline match value {
+        nil => 0,
+        (1, Int) => 1,
+        _ => 2,
+    }
+}

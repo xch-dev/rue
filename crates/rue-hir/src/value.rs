@@ -69,6 +69,15 @@ impl SymbolPath {
     pub fn new(symbol: SymbolId, path: Vec<TypePath>) -> Self {
         Self { symbol, path }
     }
+
+    /// The narrowing of the value at this path to the type, such as by a type guard.
+    pub fn narrowed_to(&self, ty: TypeId) -> Mappings {
+        let mut paths = HashMap::new();
+        paths.insert(self.path.clone(), ty);
+        let mut mappings = HashMap::new();
+        mappings.insert(self.symbol, paths);
+        mappings
+    }
 }
 
 /// Combines two sets of narrowing facts which are known to hold at the same time.

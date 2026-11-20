@@ -21,6 +21,7 @@ const keywords = new Set([
   "let",
   "if",
   "else",
+  "match",
   "return",
   "assert",
   "raise",

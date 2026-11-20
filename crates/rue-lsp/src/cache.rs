@@ -277,7 +277,14 @@ impl Cache<Compiler> {
             T![=] if matches!(parent, Some(SyntaxKind::LetStmt | SyntaxKind::ConstantItem)) => {
                 Some(CompletionContext::Expression)
             }
-            T![return] | T![assert] | T![raise] | T![if] => Some(CompletionContext::Expression),
+            // A match arm starts with its pattern, which is a type, and ends with its value
+            T!['{'] | T![,] if parent == Some(SyntaxKind::MatchExpr) => {
+                Some(CompletionContext::Type)
+            }
+            T![=>] if parent == Some(SyntaxKind::MatchArm) => Some(CompletionContext::Expression),
+            T![return] | T![assert] | T![raise] | T![if] | T![match] => {
+                Some(CompletionContext::Expression)
+            }
             _ => None,
         }
     }

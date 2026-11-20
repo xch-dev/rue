@@ -1,0 +1,32 @@
+program: (a (q 16 (a 30 ()) (a 22 ()) (a 10 ()) (a 12 (q . 1)) (a 8 ()) (q . 4)) (c (c (c (q 2 (i 1 (q 3 3 (q . 2) (q . 1)) (q)) 1) (q 2 (i (l 1) (q) (q . 1)) 1)) (c (q 2 (i 1 (q . 1) (q)) 1) (c (q 2 (i 1 (q . 2) (q)) 1) (q 2 (i 1 (q . 2) (q)) 1)))) ()))
+debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 62 ()) (a 46 ())) (a 54 ())) (a 38 ())) (a 58 ())) (a 42 ())) (a 18 ())) (a 60 (q . 1))) (a 44 ())) (a 52 (q . 1))) (a 36 (q . 1))) (a 56 (q . 1))) (a 40 ())) (a 16 ())) (c (c (c (c (q 2 (q 16 2 (q . 1)) (c (a (i (not 1) (q) (q 1 . 1)) 1) 1)) (c (q 2 (i (not 1) (q) (q 2 (i (not (r 1)) (q 1 . 1) (q 1 . 2)) 1)) 1) (q 1 . 1))) (c (c (q 1 . 1) (q 1 . 1)) (c (q 2 (i (not 1) (q) (q 1 . 1)) 1) (q 2 (i (not (l 1)) (q . 1) (q)) 1)))) (c (c (q 2 (i (= 1 ()) (q) (q . 1)) 1) (c (q 2 (i (not 1) (q) (q 1 . 1)) 1) (q . 1))) (c (c (q 2 (i (not (not 1)) (q 1 . 1) (q)) 1) (q 2 (i (= 1 ()) (q) (q 1 . 1)) 1)) (c (q 2 (i (not (not 1)) (q 5 1) (q)) 1) (q 2 (i (not 1) (q) (q 5 1)) 1))))) ()))
+output: "5"
+runtime_cost: 5010
+byte_cost: 2436000
+total_cost: 2441010
+diagnostics:
+- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:14:9
+- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:20:9
+- Match arm `nil` also handles `false`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:27:9
+- |-
+  Unreachable match arm, since an earlier arm also handles `SameShapeB`, which it can't tell apart from its own type at runtime at indistinguishable_match_arm.rue:37:9
+    note: This arm also handles `SameShapeB` at indistinguishable_match_arm.rue:35:9
+- Match arm `Int` also handles `String` and `false`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:45:9
+- |-
+  Unreachable match arm, since an earlier arm also handles `true`, which it can't tell apart from its own type at runtime at indistinguishable_match_arm.rue:46:9
+    note: This arm also handles `true` at indistinguishable_match_arm.rue:45:9
+- Match arm `Int` also handles `nil`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:54:9
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at indistinguishable_match_arm.rue:55:9
+    note: This arm handles every value that's left at indistinguishable_match_arm.rue:54:9
+- Match arm `Int` also handles `nil`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:61:9
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at indistinguishable_match_arm.rue:62:9
+    note: This arm handles every value that's left at indistinguishable_match_arm.rue:61:9
+- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:80:9
+- |-
+  Unreachable match arm, since an earlier arm also handles `SameShapeD`, which it can't tell apart from its own type at runtime at indistinguishable_match_arm.rue:82:9
+    note: This arm also handles `SameShapeD` at indistinguishable_match_arm.rue:81:9
+- |-
+  Unreachable match arm, since an earlier arm also handles `nil`, which it can't tell apart from its own type at runtime at indistinguishable_match_arm.rue:90:9
+    note: This arm also handles `nil` at indistinguishable_match_arm.rue:89:9

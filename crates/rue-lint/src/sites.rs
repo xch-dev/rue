@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rue_diagnostic::{Name, SrcLoc};
-use rue_hir::{Declaration, SymbolId};
+use rue_hir::{Declaration, HirId, SymbolId};
 
 /// Facts recorded by the compiler while compiling, for lints that need something that isn't kept
 /// in the HIR. The compiler records every site; the lints decide what to report.
@@ -29,6 +29,16 @@ pub struct LintSites {
     /// namespace. An inline module doesn't see the items of the modules it's in, so the name means
     /// the prelude's item rather than the enclosing one.
     pub enclosed_prelude_references: Vec<EnclosedPreludeReference>,
+    /// The arms of `match` expressions that are never taken, since the arms before them handle
+    /// every value they match. They're left out of the HIR, so they're recorded as they're
+    /// compiled.
+    pub unreachable_match_arms: Vec<UnreachableMatchArm>,
+    /// The arms of `match` expressions that also handle members they can't tell apart from their
+    /// own type.
+    pub indistinguishable_match_arms: Vec<IndistinguishableMatchArm>,
+    /// The arms of each `inline match` that are evaluated, by the node of the `match`. Its arms
+    /// are generated as an `inline if` chain, which has no location of its own.
+    pub inline_match_arms: HashMap<HirId, Vec<HirId>>,
 }
 
 /// A read of a struct's field. The struct is identified by its name, which every copy of it (such
@@ -37,6 +47,45 @@ pub struct LintSites {
 pub struct FieldRead {
     pub struct_name: Name,
     pub field: String,
+}
+
+/// An arm of a `match` expression that's never taken (see [`LintSites::unreachable_match_arms`]).
+#[derive(Debug, Clone)]
+pub struct UnreachableMatchArm {
+    /// The arm's pattern.
+    pub pattern: SrcLoc,
+    /// Why the arm is never taken.
+    pub reason: UnreachableReason,
+}
+
+/// Why a match arm is never taken.
+#[derive(Debug, Clone)]
+pub enum UnreachableReason {
+    /// The arms before it handle every value that the pattern matches between them.
+    Handled,
+    /// An earlier arm handles every value that's left.
+    CatchAll(SrcLoc),
+    /// An earlier arm also handles the pattern's values, since it can't tell them apart from its
+    /// own type at runtime (see [`IndistinguishableMatchArm`]).
+    Indistinguishable {
+        /// The earlier arm's pattern.
+        arm: SrcLoc,
+        /// The members that the earlier arm handles, as a list for a diagnostic.
+        members: String,
+    },
+}
+
+/// An arm of a `match` expression whose check also lets through members of the value's type that
+/// aren't values of its own type, since they're the same at runtime, which no later arm names (see
+/// [`LintSites::indistinguishable_match_arms`]). An arm that does name them is unreachable instead.
+#[derive(Debug, Clone)]
+pub struct IndistinguishableMatchArm {
+    /// The arm's pattern.
+    pub pattern: SrcLoc,
+    /// The pattern's type, for a diagnostic.
+    pub ty: String,
+    /// The members that the arm also handles, as a list for a diagnostic.
+    pub members: String,
 }
 
 /// A name in an inline module that resolves to the prelude or a builtin, while an enclosing module

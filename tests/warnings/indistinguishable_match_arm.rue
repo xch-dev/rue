@@ -1,0 +1,149 @@
+// An arm whose check also lets through other members of the value's type, which can't be told
+// apart from it at runtime, sees them as its own type
+struct SameShapeA {
+    value: Int,
+}
+
+struct SameShapeB {
+    value: Bytes32,
+}
+
+fn catch_all(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        nil => 0,
+        SameShapeA => value.value,
+    }
+}
+
+fn checked(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        SameShapeA => value.value,
+        nil => 0,
+    }
+}
+
+fn nil_and_false(value: Bool | nil) -> Int {
+    match value {
+        nil => 0,
+        true => 1,
+    }
+}
+
+// A later arm that names those members is never taken, which is reported on that arm instead
+fn later_arm(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        SameShapeA => 1,
+        nil => 0,
+        SameShapeB => 3,
+    }
+}
+
+// Only the members that a later arm names are reported on it, and the rest on the arm that takes
+// them
+fn some_named_later(value: Int | String | Bool) -> Int {
+    match value {
+        Int => 1,
+        true => 0,
+    }
+}
+
+// An arm that's never taken for another reason keeps that reason, even if it's the same value at
+// runtime as a member that an earlier arm takes
+fn literal_after_int(value: Int | nil) -> Int {
+    match value {
+        Int => 1,
+        0 => 2,
+    }
+}
+
+fn any_after_int(value: Int | nil) -> Int {
+    match value {
+        Int => 1,
+        Any => 2,
+    }
+}
+
+// Each arm that takes members is reported for its own
+struct SameShapeC {
+    first: Int,
+    rest: Int,
+}
+
+struct SameShapeD {
+    first: Bytes32,
+    rest: Int,
+}
+
+fn several_arms(value: SameShapeA | SameShapeB | SameShapeC | SameShapeD | nil) -> Int {
+    match value {
+        nil => 0,
+        SameShapeA => 1,
+        SameShapeC => 2,
+        SameShapeD => 3,
+    }
+}
+
+// `nil` is also the `Int` zero, so it's handled by the `Int` arm
+fn nil_after_int(value: Int | nil) -> Int {
+    match value {
+        Int => value,
+        nil => 0,
+    }
+}
+
+// Nothing is reported when the members are handled together, or the narrower one comes first
+fn union_pattern(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        nil => 0,
+        SameShapeA | SameShapeB => 1,
+    }
+}
+
+fn nil_before_int(value: Int | nil) -> Int {
+    match value {
+        nil => 0,
+        Int => value,
+    }
+}
+
+// An untyped atom can be read as an `Int`, which is what checking it is for
+fn atom_as_int(value: Any) -> Int {
+    match value {
+        Int => value,
+        (Any, Any) => 0,
+    }
+}
+
+fn expected(value: SameShapeA | SameShapeB | nil) -> Int {
+    #[expect(indistinguishable_match_arm)]
+    let result = match value {
+        nil => 0,
+        SameShapeA => 1,
+    };
+    result + 1
+}
+
+#[allow(indistinguishable_match_arm)]
+fn allowed(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        nil => 0,
+        SameShapeA => 1,
+    }
+}
+
+fn main() -> Int {
+    catch_all(nil)
+        + checked(nil)
+        + nil_and_false(nil)
+        + later_arm(nil)
+        + nil_after_int(nil)
+        + union_pattern(nil)
+        + nil_before_int(nil)
+        + atom_as_int(1)
+        + allowed(nil)
+        + some_named_later(1)
+        + literal_after_int(1)
+        + any_after_int(1)
+        + several_arms(nil)
+        + expected(nil)
+}

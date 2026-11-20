@@ -78,6 +78,52 @@ export fn hello() -> String {
 
 The [Modules](https://rue-lang.com/docs/modules) page covers modules, imports and exports in more detail.
 
+## Match Expressions
+
+A `match` checks a value against a list of types in order, like an `if` and `else if` chain of `is` guards, and evaluates to the value of the first arm that matches. Each arm narrows the value to its type, and the arms after it only see the values that it didn't handle:
+
+```rs
+struct Circle { kind = 1, radius: Int }
+struct Square { kind = 2, side: Int }
+struct Point { kind = 3 }
+
+type Shape = Circle | Square | Point;
+
+fn area(shape: Shape) -> Int {
+    match shape {
+        Circle => 3 * shape.radius * shape.radius,
+        Square => shape.side * shape.side,
+        Point => 0,
+    }
+}
+```
+
+Arms are separated by commas, which can be left out after an arm whose value is a block, `if` or `match`, since it ends at its closing brace (the formatter leaves them out there). A pattern can be any type that `is` can check, including a union (`Circle | Square`) and a literal (`0`, `"yes"`, `nil`, `true`). `_` matches every value that's left, so it's usually the last arm.
+
+A match must handle every value its type allows, so adding a member to a union is an error at every `match` that doesn't handle it, rather than a value that silently falls through to the wrong branch. The error lists the members that aren't handled:
+
+```
+Error: Match on `Shape` is not exhaustive, since it doesn't handle `Point`
+```
+
+An arm that can never be taken, because the arms before it already handle every value it matches, is reported by the `unreachable_match_arm` lint. Literals never cover all of a type like `Int` or `String`, so a match on one needs a `_` arm (or an arm for the whole type). Handling a pair one part at a time doesn't cover it either: `(A, Int)` and `(B, Int)` don't handle all of `(A | B, Int)`, so that needs a `_` arm too, as the `else` branch of an `is` guard would.
+
+Members that are the same at runtime can't be told apart, such as two structs with the same fields and no constant field, `nil` and `false`, or `nil` and the `Int` zero. An arm for one of them also handles the others, so a later arm for them is never taken, and `unreachable_match_arm` reports it. If no later arm names them, `indistinguishable_match_arm` reports the arm that takes them instead. Handle them together (`A | B => ...`), or the narrower one first (`nil` before `Int`).
+
+A match compiles to the same code as the `if` and `else if` chain it's equivalent to. The arm that handles everything that's left is the chain's `else` branch, so it doesn't check anything at runtime.
+
+An `inline match` is to `match` what `inline if` is to `if`: every arm that can match is evaluated, and the value of the one that matches is picked, which avoids the cost of branching at the cost of evaluating every arm. Since they're evaluated whatever the value is, the arms don't narrow it, and an arm that can raise always does, which the `inline_match_may_raise` lint reports. It still has to handle every value:
+
+```rs
+fn code(shape: Shape) -> Int {
+    inline match shape {
+        Circle => 1,
+        Square => 2,
+        Point => 3,
+    }
+}
+```
+
 ## CLI
 
 | Command                         | Description                                                            |

@@ -19,6 +19,18 @@ fn ty_with(p: &mut Parser, allow_union: bool) {
     p.nested(|p| ty_with_inner(p, allow_union));
 }
 
+/// Whether the next token can start a type.
+pub(crate) fn at_type_start(p: &mut Parser) -> bool {
+    p.at_quiet(SyntaxKind::Ident)
+        || p.at_quiet(T![super])
+        || p.at_quiet(T![project])
+        || p.at_quiet(T![::])
+        || p.at_any_quiet(SyntaxKind::LITERAL).is_some()
+        || p.at_quiet(T!['('])
+        || p.at_quiet(T!['['])
+        || p.at_quiet(T![fn])
+}
+
 fn ty_with_inner(p: &mut Parser, allow_union: bool) {
     let cp = p.checkpoint();
 

@@ -11,6 +11,7 @@ mod guards;
 mod hard_fork;
 mod inline_ifs;
 mod inline_values;
+mod matches;
 mod naming;
 mod operators;
 mod prelude;
@@ -58,6 +59,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
         lints: prelude::LINTS,
         run: prelude::check,
     },
+    InputPass {
+        lints: matches::LINTS,
+        run: matches::check,
+    },
 ];
 
 /// Every [`HirLintPass`], which all run during the same walk over the HIR.
@@ -69,6 +74,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(conditions::ConstantCondition),
         Box::new(statements::UnusedValue),
         Box::new(inline_ifs::InlineIfMayRaise),
+        Box::new(inline_ifs::InlineMatchMayRaise::new(input)),
         Box::new(inline_ifs::BoolOperatorMayRaise),
         Box::new(inline_values::InlineValueMayFail::new(input)),
         Box::new(returns::UnnecessaryReturn),

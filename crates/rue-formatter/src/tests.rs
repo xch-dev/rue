@@ -1695,3 +1695,113 @@ fn nested_generics_and_shift_operators_remain_unambiguous() {
         "#]],
     );
 }
+
+#[test]
+fn match_expressions() {
+    check(
+        "fn main(x:Int|nil)->Int{let y=match x{nil=>0,Int=>{let z=x+1;z}};match {y}{0|1=>y,_=>{y}}}",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                let y = match x {
+                    nil => 0,
+                    Int => {
+                        let z = x + 1;
+                        z
+                    }
+                };
+                match { y } {
+                    0 | 1 => y,
+                    _ => { y }
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_arm_comments() {
+    check(
+        "fn main(x: Int | nil) -> Int {\n    match x {\n        // none\n        nil => 0, // zero\n        /* rest */ _ => x,\n    }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                match x {
+                    // none
+                    nil => 0, // zero
+                    /* rest */ _ => x,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn inline_match_expressions() {
+    check(
+        "fn main(x: Int | nil) -> Int {\n    let y = inline   match x { nil => 0, Int => 1 };\n    match x { nil => inline match y { 0 => 1, _ => 2 }, Int => 3 }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                let y = inline match x {
+                    nil => 0,
+                    Int => 1,
+                };
+                match x {
+                    nil => inline match y {
+                        0 => 1,
+                        _ => 2,
+                    }
+                    Int => 3,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_commas_after_braces_are_removed() {
+    check(
+        "fn main(x: Int | nil, b: Bool) -> Int {\n    let y = match x {\n        nil => { 0 },\n        Int => {\n            let z = x + 1;\n            z\n        }, // after\n    };\n    let w = match b { true => if y > 0 { 1 } else { 2 } false => match x { nil => 0, _ => 1 } };\n    match x {\n        nil => {\n            1\n        } // comment\n        // own line\n        Int => x\n    }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil, b: Bool) -> Int {
+                let y = match x {
+                    nil => { 0 }
+                    Int => {
+                        let z = x + 1;
+                        z
+                    } // after
+                };
+                let w = match b {
+                    true => if y > 0 {
+                        1
+                    } else {
+                        2
+                    }
+                    false => match x {
+                        nil => 0,
+                        _ => 1,
+                    }
+                };
+                match x {
+                    nil => { 1 } // comment
+                    // own line
+                    Int => x,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_commas_after_comments_are_kept() {
+    check(
+        "fn main(x: Int | nil) -> Int {\n    match x {\n        nil => { 1 } /* c1 */ , // c2\n        Int => { 2 } // c3\n        ,\n    }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                match x {
+                    nil => { 1 } /* c1 */ , // c2
+                    Int => { 2 } // c3
+                    ,
+                }
+            }
+        "#]],
+    );
+}

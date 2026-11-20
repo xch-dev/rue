@@ -1,0 +1,248 @@
+struct A {
+    kind = 1,
+}
+
+struct B {
+    kind = 2,
+}
+
+struct C {
+    kind = 3,
+}
+
+type U = A | B | C;
+
+// Each member that isn't handled is listed
+fn missing_one(value: U) -> Int {
+    match value {
+        A => 1,
+        B => 2,
+    }
+}
+
+fn missing_many(value: U) -> Int {
+    match value {
+        A => 1,
+    }
+}
+
+fn no_arms(value: U) -> Int {
+    match value {}
+}
+
+// Literals never handle every value of a type like `Int`
+fn missing_int(value: Int) -> Int {
+    match value {
+        0 => 1,
+        1 => 2,
+    }
+}
+
+fn missing_any_pair(value: Any) -> Int {
+    match value {
+        Atom => 1,
+    }
+}
+
+fn missing_any_atom(value: Any) -> Int {
+    match value {
+        (Any, Any) => 1,
+    }
+}
+
+fn missing_list_pair(value: List<Int>) -> Int {
+    match value {
+        nil => 0,
+    }
+}
+
+fn missing_generic<T>(value: T | nil) -> Int {
+    match value {
+        nil => 0,
+    }
+}
+
+// A value that isn't a reference is still checked
+fn missing_expression() -> Int {
+    match make() {
+        A => 1,
+    }
+}
+
+fn make() -> U {
+    C {}
+}
+
+// A pattern that doesn't overlap the value at all is an error, as it is for `is`
+fn incompatible(value: U) -> Int {
+    match value {
+        Int => 1,
+        _ => 2,
+    }
+}
+
+// The pattern must be checkable at runtime
+fn generic_pattern<T>(value: T | nil) -> Int {
+    match value {
+        T => 1,
+        nil => 0,
+    }
+}
+
+fn function_pattern(value: nil | fn() -> Int) -> Int {
+    match value {
+        fn() -> Int => 1,
+        nil => 0,
+    }
+}
+
+// An unknown pattern is reported once, without a second error about exhaustiveness
+fn unknown_pattern(value: U) -> Int {
+    match value {
+        Missing => 1,
+    }
+}
+
+// The arms must all have the expected type
+fn wrong_arm_type(value: U) -> Int {
+    match value {
+        A => 1,
+        _ => "no",
+    }
+}
+
+// Errors in arms that are never taken are still reported
+fn error_in_unreachable_arm(value: U) -> Int {
+    match value {
+        _ => 1,
+        A => undefined,
+    }
+}
+
+// What's left of `Any` after a pair pattern is still written as a pair of `Any`
+fn missing_any_after_pair(value: Any) -> Int {
+    match value {
+        (Int, Any) => 1,
+        Int => 2,
+    }
+}
+
+// An alias is listed by what it's made of
+type Optional<T> = T | nil;
+
+fn missing_alias(value: Optional<Bytes32>) -> Int {
+    match value {}
+}
+
+// Subtracting a pattern doesn't split a pair by its parts, so arms that handle each part of a
+// pair separately need a `_` arm, as an `is` guard's `else` branch would
+fn pair_parts(value: (A | B, Int)) -> Int {
+    match value {
+        (A, Int) => 1,
+        (B, Int) => 2,
+    }
+}
+
+// An unknown type nested in a pattern is reported once, and the arms after it aren't checked
+fn nested_unknown_pattern(value: (Int, Int) | (Bytes32, nil) | nil) -> Int {
+    match value {
+        (Missing, Int) => 1,
+        (Bytes32, nil) => 2,
+        nil => 3,
+        nil => 4,
+    }
+}
+
+// A repeated pattern after an unknown one isn't reported either
+fn repeated_after_unknown_pattern(value: U) -> Int {
+    match value {
+        Missing => 0,
+        A => 1,
+        A => 2,
+        _ => 3,
+    }
+}
+
+// Members that are written the same are listed once
+type FirstPair = (Int, Int);
+type SecondPair = (Int, Int);
+
+fn missing_same_names(value: FirstPair | SecondPair | nil) -> Int {
+    match value {
+        nil => 0,
+    }
+}
+
+// The arms of an `inline match` are all evaluated, so they don't narrow the value, but the match
+// still has to be exhaustive
+struct WithValue {
+    kind = 4,
+    value: Int,
+}
+
+fn inline_no_narrowing(value: WithValue | A) -> Int {
+    inline match value {
+        WithValue => value.value,
+        A => 0,
+    }
+}
+
+fn inline_missing(value: U) -> Int {
+    inline match value {
+        A => 1,
+        B => 2,
+    }
+}
+
+// An arm that takes members it can't tell apart isn't reported once there's an error
+struct SameShapeA {
+    value: Int,
+}
+
+struct SameShapeB {
+    value: Bytes32,
+}
+
+fn indistinguishable_then_unknown(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        SameShapeA => 1,
+        Missing => 2,
+        _ => 0,
+    }
+}
+
+// A pattern that doesn't overlap the value doesn't also make the match non-exhaustive
+fn incompatible_only(value: Int | nil) -> Int {
+    match value {
+        (Int, Int) => 0,
+        nil => 1,
+    }
+}
+
+fn main() -> Int {
+    missing_one(C {})
+        + missing_many(C {})
+        + no_arms(C {})
+        + missing_int(0)
+        + missing_any_pair(1)
+        + missing_any_atom(1)
+        + missing_list_pair(nil)
+        + missing_generic(1)
+        + missing_expression()
+        + incompatible(C {})
+        + generic_pattern(nil)
+        + function_pattern(nil)
+        + unknown_pattern(C {})
+        + wrong_arm_type(C {})
+        + error_in_unreachable_arm(C {})
+        + missing_any_after_pair(1)
+        + missing_alias(nil)
+        + pair_parts((A {}, 1))
+        + nested_unknown_pattern(nil)
+        + incompatible_only(nil)
+        + indistinguishable_then_unknown(nil)
+        + repeated_after_unknown_pattern(C {})
+        + missing_same_names(nil)
+        + inline_no_narrowing(A {})
+        + inline_missing(C {})
+}
