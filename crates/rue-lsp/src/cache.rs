@@ -1122,7 +1122,12 @@ impl Cache<Compiler> {
             .struct_fields(scopes, ty)
             .filter(|(fields, _)| !fields.is_empty())
         else {
-            return discriminant;
+            // A variant without fields that's declared with braces is written with them
+            return if self.ctx.is_unit_variant(variant) {
+                discriminant
+            } else {
+                format!("{discriminant} {{}}")
+            };
         };
 
         let fields = field_declarations(&fields, nil_terminated).join(", ");

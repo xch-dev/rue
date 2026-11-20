@@ -599,6 +599,46 @@ fn test_hover_empty_enum() {
 }
 
 #[test]
+fn test_hover_variant_with_braces() {
+    check(
+        r#"
+enum Shape {
+    Empty {},
+    Point,
+    Circle { radius: Int },
+}
+
+fn main() -> Shape {
+    Shape::Emp$0ty {}
+}
+"#,
+        expect![[r#"
+            Shape::Empty = 0 {}
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_enum_with_braces() {
+    check(
+        r#"
+enum Sha$0pe {
+    Empty {},
+    Point,
+    Circle { radius: Int },
+}
+"#,
+        expect![[r#"
+            enum Shape {
+                Empty = 0 {},
+                Point = 1,
+                Circle = 2 { radius: Int },
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_generic_enum() {
     check(
         r#"

@@ -1367,6 +1367,18 @@ impl Compiler {
         &self.declared_variants[&ty]
     }
 
+    /// Whether the variant is declared without braces, which makes it a constant as well as a type.
+    pub fn is_unit_variant(&self, variant: TypeId) -> bool {
+        self.enum_of(Declaration::Type(variant))
+            .and_then(|ty| self.declared_variants.get(&ty))
+            .is_some_and(|variants| {
+                variants
+                    .iter()
+                    .flatten()
+                    .any(|declared| declared.ty == variant && declared.constant.is_some())
+            })
+    }
+
     /// Marks a struct field whose type was inferred from its default value rather than declared.
     pub fn insert_inferred_field(&mut self, ty: TypeId, name: String) {
         self.inferred_fields.insert((ty, name));
