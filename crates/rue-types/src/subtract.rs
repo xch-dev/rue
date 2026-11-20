@@ -78,7 +78,13 @@ fn subtract_impl(
     let mut cx = Subtraction::default();
 
     let type_id = match remaining_variants(arena, builtins, &mut cx, lhs_id, rhs_id) {
-        Some(variants) => repackage(arena, builtins, &mut cx, variants),
+        Some(remaining) => repackage(
+            arena,
+            builtins,
+            &remaining.narrowed,
+            &mut cx.merged_structs,
+            remaining.variants,
+        ),
         None => lhs_id,
     };
 
@@ -124,27 +130,6 @@ struct Subtraction {
     merged_structs: Vec<MergedStruct>,
     /// Shared by every intersection, for the same reason.
     intersection: IntersectContext,
-}
-
-/// Whether `new_id` is strictly narrower than `old_id`, rather than only being restructured (like
-/// `Struct::narrow`).
-fn narrows(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    cx: &mut Subtraction,
-    old_id: TypeId,
-    new_id: TypeId,
-) -> bool {
-    new_id != old_id
-        && compare_impl(
-            arena,
-            builtins,
-            &mut cx.comparison,
-            old_id,
-            new_id,
-            None,
-            None,
-        ) > Comparison::Assign
 }
 
 /// Whether every value of `lhs_id` passes a check against `rhs_id`. The types have already been
@@ -198,6 +183,14 @@ enum Part {
 /// of the type. Past this, the remaining pairs are kept whole, which is only wider than it could be.
 pub(crate) const MAX_SPLIT_PAIRS: usize = 16;
 
+/// What's left of a type once a target is subtracted from it.
+struct Remaining {
+    variants: Vec<Variant>,
+    /// The aliases and structs that a variant was removed or narrowed under, which are narrower
+    /// than they were.
+    narrowed: FxHashSet<TypeId>,
+}
+
 /// The variants of `lhs_id` that aren't covered by `rhs_id`, or `None` if none of them changed.
 ///
 /// A pair variant that isn't covered as a whole is split by the pairs in the target (see
@@ -208,7 +201,7 @@ fn remaining_variants(
     cx: &mut Subtraction,
     lhs_id: TypeId,
     rhs_id: TypeId,
-) -> Option<Vec<Variant>> {
+) -> Option<Remaining> {
     grow_stack(|| remaining_variants_inner(arena, builtins, cx, lhs_id, rhs_id))
 }
 
@@ -218,7 +211,7 @@ fn remaining_variants_inner(
     cx: &mut Subtraction,
     lhs_id: TypeId,
     rhs_id: TypeId,
-) -> Option<Vec<Variant>> {
+) -> Option<Remaining> {
     step();
 
     cx.stack.insert((lhs_id, rhs_id));
@@ -227,6 +220,7 @@ fn remaining_variants_inner(
     let mut rhs_pairs = None;
     let mut changed = false;
     let mut remaining = Vec::with_capacity(variants.len());
+    let mut narrowed = FxHashSet::default();
 
     for variant in variants {
         let key = (variant.type_id, rhs_id);
@@ -248,12 +242,15 @@ fn remaining_variants_inner(
             outcome
         };
 
+        if !matches!(outcome, Outcome::Unchanged) {
+            changed = true;
+            narrowed.extend(variant.semantic_type_ids.iter().copied());
+        }
+
         match outcome {
             Outcome::Unchanged => remaining.push(variant),
-            Outcome::Removed => changed = true,
+            Outcome::Removed => {}
             Outcome::Narrowed(type_ids) => {
-                changed = true;
-
                 for type_id in type_ids {
                     remaining.push(Variant {
                         semantic_type_ids: variant.semantic_type_ids.clone(),
@@ -266,7 +263,10 @@ fn remaining_variants_inner(
 
     cx.stack.remove(&(lhs_id, rhs_id));
 
-    changed.then_some(remaining)
+    changed.then_some(Remaining {
+        variants: remaining,
+        narrowed,
+    })
 }
 
 /// Subtracts each of the pairs in the target from the pair, one at a time.
@@ -394,24 +394,32 @@ fn subtract_part(
 
     match remaining_variants(arena, builtins, cx, lhs_id, rhs_id) {
         None => Part::Unchanged,
-        Some(variants) if variants.is_empty() => Part::Removed,
-        Some(variants) => Part::Narrowed(repackage(arena, builtins, cx, variants)),
+        Some(remaining) if remaining.variants.is_empty() => Part::Removed,
+        Some(remaining) => Part::Narrowed(repackage(
+            arena,
+            builtins,
+            &remaining.narrowed,
+            &mut cx.merged_structs,
+            remaining.variants,
+        )),
     }
 }
 
 fn repackage(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    cx: &mut Subtraction,
+    narrowed: &FxHashSet<TypeId>,
+    merged_structs: &mut Vec<MergedStruct>,
     variants: Vec<Variant>,
 ) -> TypeId {
-    grow_stack(|| repackage_inner(arena, builtins, cx, variants))
+    grow_stack(|| repackage_inner(arena, builtins, narrowed, merged_structs, variants))
 }
 
 fn repackage_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    cx: &mut Subtraction,
+    narrowed: &FxHashSet<TypeId>,
+    merged_structs: &mut Vec<MergedStruct>,
     variants: Vec<Variant>,
 ) -> TypeId {
     let mut collected = vec![];
@@ -456,19 +464,21 @@ fn repackage_inner(
 
     let result = match arena[semantic_type_id].clone() {
         Type::Alias(alias) => {
-            let inner = repackage(arena, builtins, cx, collected);
+            let inner = repackage(arena, builtins, narrowed, merged_structs, collected);
 
             // An alias is transparent, so once it's narrowed it's left out, rather than being
             // displayed by a name that no longer describes the type (such as `List<A | B>` for a
-            // list that can't start with an `A`)
-            if narrows(arena, builtins, cx, alias.inner, inner) {
+            // list that can't start with an `A`). It counts as narrowed if a variant was removed
+            // or narrowed under it, even if another variant still covers those values (such as
+            // `Int` in `Int | 5` minus `5`), which only changes how it's displayed.
+            if narrowed.contains(&semantic_type_id) {
                 inner
             } else {
                 arena.alloc(Type::Alias(Alias { inner, ..alias }))
             }
         }
         Type::Struct(ty) => {
-            let inner = repackage(arena, builtins, cx, collected);
+            let inner = repackage(arena, builtins, narrowed, merged_structs, collected);
 
             // A struct's pair can be split into several pairs (see `split_pair`), at any of the
             // levels that its fields are read through. Its fields are read from a union of
@@ -503,7 +513,7 @@ fn repackage_inner(
                     let ty = ty.narrow(arena, builtins, inner);
                     let merged = arena.alloc(Type::Struct(ty));
 
-                    cx.merged_structs.push(MergedStruct {
+                    merged_structs.push(MergedStruct {
                         semantic: semantic_type_id,
                         merged,
                     });
@@ -519,7 +529,7 @@ fn repackage_inner(
         return result;
     }
 
-    let leftover = repackage(arena, builtins, cx, leftover);
+    let leftover = repackage(arena, builtins, narrowed, merged_structs, leftover);
 
     arena.alloc(Type::Union(Union::new(vec![result, leftover])))
 }
