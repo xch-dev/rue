@@ -73,7 +73,7 @@ impl Hir {
             Self::List(list) => Children::list(None, &list.items),
             Self::Struct(initializer) => Children {
                 fields: &initializer.fields,
-                body: initializer.tail,
+                body: initializer.tail_value(),
                 ..Children::default()
             },
             Self::FieldAccess(access) => Children::fixed([Some(access.value), None, None]),
@@ -159,7 +159,7 @@ pub struct StructInitializer {
     /// The rest of the struct after the fields, which is the part of the value being updated
     /// (`...base`) that comes after the last field that was written. It's used as it is, rather
     /// than each of its fields being copied.
-    pub tail: Option<HirId>,
+    pub tail: Option<StructTail>,
     /// Whether the fields end in nil. A struct with a tail ends however the tail does.
     pub nil_terminated: bool,
 }
@@ -174,18 +174,39 @@ impl StructInitializer {
             .iter()
             .filter(|field| !field.is_default)
             .map(|field| field.value)
-            .chain(self.tail)
+            .chain(self.tail_value())
     }
 
     /// The values the struct is made of, which are its fields followed by its tail.
     pub fn values(&self) -> impl Iterator<Item = HirId> + '_ {
-        self.fields.iter().map(|field| field.value).chain(self.tail)
+        self.fields
+            .iter()
+            .map(|field| field.value)
+            .chain(self.tail_value())
+    }
+
+    /// The rest of the struct after its fields, if it has a tail.
+    pub fn tail_value(&self) -> Option<HirId> {
+        self.tail.as_ref().map(|tail| tail.value)
     }
 
     /// Whether the values end in nil, rather than the last of them being the rest of the struct.
     pub fn values_nil_terminated(&self) -> bool {
         self.nil_terminated && self.tail.is_none()
     }
+}
+
+/// The rest of a struct after the fields that its initializer has (see
+/// [`StructInitializer::tail`]).
+#[derive(Debug, Clone, Copy)]
+pub struct StructTail {
+    /// The part of the value being updated that the rest of the struct is.
+    pub value: HirId,
+    /// The number of fields in the tail that would each be read from the value being updated if
+    /// they were copied one at a time, which is how often a struct that's rebuilt by hand
+    /// references it. The value is laid out in the environment as if it was referenced that often
+    /// (see `DependencyGraph::layout_references`).
+    pub fields: usize,
 }
 
 #[derive(Debug, Clone)]

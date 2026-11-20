@@ -168,13 +168,13 @@ tests:
   byte_cost: 1044000
   total_cost: 1046978
 - name: update_after_constant
-  program: (c 4 (c 5 14))
-  debug_program: (c (f 2) (c 5 (r (r 2))))
+  program: (c (q . 51) (c 5 14))
+  debug_program: (c (q . 51) (c 5 (r (r 2))))
   solution: ((51 0x0202020202020202020202020202020202020202020202020202020202020202 5 7) 0x0101010101010101010101010101010101010101010101010101010101010101)
   output: (51 0x0101010101010101010101010101010101010101010101010101010101010101 5 7)
-  runtime_cost: 262
-  byte_cost: 156000
-  total_cost: 156262
+  runtime_cost: 230
+  byte_cost: 180000
+  total_cost: 180230
 - name: rebuild_after_constant
   program: (c (q . 51) (c 5 14))
   debug_program: (c (q . 51) (c 5 (c (f (r (r 2))) (r (r (r 2))))))
@@ -199,14 +199,38 @@ tests:
   runtime_cost: 1710
   byte_cost: 900000
   total_cost: 901710
+- name: update_after_constant_of_binding
+  program: (a (q 4 (q . 51) (c 11 (r (r (a 2 5))))) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  debug_program: (a (q 2 (q 4 (q . 51) (c 23 (r (r 2)))) (c (a 2 5) 1)) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  solution: (4 0x0101010101010101010101010101010101010101010101010101010101010101)
+  output: (51 0x0101010101010101010101010101010101010101010101010101010101010101 4)
+  runtime_cost: 1506
+  byte_cost: 828000
+  total_cost: 829506
+- name: update_after_constant_of_inline_parameter
+  program: (a (q 4 (q . 51) (c 11 (r (r (a 2 5))))) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  debug_program: (a (q 4 (q . 51) (c 11 (r (r (a 2 5))))) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  solution: (4 0x0101010101010101010101010101010101010101010101010101010101010101)
+  output: (51 0x0101010101010101010101010101010101010101010101010101010101010101 4)
+  runtime_cost: 1506
+  byte_cost: 828000
+  total_cost: 829506
+- name: rebuild_after_constant_of_inline_parameter
+  program: (a (q 4 (q . 51) (c 11 (c (f (r (r (a 2 5)))) (r (r (r (a 2 5))))))) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  debug_program: (a (q 4 (q . 51) (c 11 (c (f (r (r (a 2 5)))) (r (r (r (a 2 5))))))) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  solution: (4 0x0101010101010101010101010101010101010101010101010101010101010101)
+  output: (51 0x0101010101010101010101010101010101010101010101010101010101010101 4)
+  runtime_cost: 2721
+  byte_cost: 1164000
+  total_cost: 1166721
 - name: update_last_after_constant_of_call
-  program: (a (q 2 (q 4 4 (c 10 (c 22 23))) (c (a 2 5) 1)) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
-  debug_program: (a (q 2 (q 4 (f 2) (c (f (r 2)) (c (f (r (r 2))) 23))) (c (a 2 5) 1)) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  program: (a (q 2 (q 4 (q . 51) (c 10 (c 22 23))) (c (a 2 5) 1)) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
+  debug_program: (a (q 2 (q 4 (q . 51) (c (f (r 2)) (c (f (r (r 2))) 23))) (c (a 2 5) 1)) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
   solution: (4 0x0101010101010101010101010101010101010101010101010101010101010101)
   output: (51 0xe52d9c508c502347344d8c07ad91cbd6068afc75ff6292f062a09ca381c89e71 4 . 0x0101010101010101010101010101010101010101010101010101010101010101)
-  runtime_cost: 1853
-  byte_cost: 948000
-  total_cost: 949853
+  runtime_cost: 1821
+  byte_cost: 972000
+  total_cost: 973821
 - name: rebuild_last_after_constant_of_call
   program: (a (q 2 (q 4 (q . 51) (c 10 (c 22 23))) (c (a 2 5) 1)) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
   debug_program: (a (q 2 (q 4 (q . 51) (c (f (r 2)) (c (f (r (r 2))) 23))) (c (a 2 5) 1)) (c (q 4 (q . 51) (c (sha256 1) (c 1 ()))) 1))
@@ -215,14 +239,30 @@ tests:
   runtime_cost: 1821
   byte_cost: 972000
   total_cost: 973821
+- name: update_before_constants
+  program: (c 5 (q 2 "versioned"))
+  debug_program: (c 5 (c (q . 2) (c (q . "versioned") ())))
+  solution: ((1 2 "versioned") 9)
+  output: (9 2 "versioned")
+  runtime_cost: 123
+  byte_cost: 264000
+  total_cost: 264123
+- name: rebuild_before_constants
+  program: (c 2 (q 2 "versioned"))
+  debug_program: (c 2 (c (q . 2) (c (q . "versioned") ())))
+  solution: (9)
+  output: (9 2 "versioned")
+  runtime_cost: 119
+  byte_cost: 264000
+  total_cost: 264119
 - name: update_variant
-  program: (c 4 (c 10 (c 5 ())))
-  debug_program: (c (f 2) (c (f (r 2)) (c 5 ())))
+  program: (c (q . 1) (c 10 (c 5 ())))
+  debug_program: (c (q . 1) (c (f (r 2)) (c 5 ())))
   solution: ((1 2 3) 9)
   output: (1 2 9)
-  runtime_cost: 357
-  byte_cost: 228000
-  total_cost: 228357
+  runtime_cost: 325
+  byte_cost: 252000
+  total_cost: 252325
 - name: rebuild_variant
   program: (c (q . 1) (c 10 (c 5 ())))
   debug_program: (c (q . 1) (c (f (r 2)) (c 5 ())))
@@ -239,6 +279,30 @@ tests:
   runtime_cost: 242
   byte_cost: 156000
   total_cost: 156242
+- name: update_narrowed_field
+  program: (a (i (= 10 (q . 7)) (q 4 4 (c 10 (c 5 ()))) (q 2 (i 4 (q . 2) (q 4 () (c 10 (c 5 ())))) 1)) 1)
+  debug_program: (a (i (= (f (r 2)) (q . 7)) (q 4 (f 2) (c (f (r 2)) (c 5 ()))) (q 2 (i (= (f 2) ()) (q 4 () (c (f (r 2)) (c 5 ()))) (q . 2)) 1)) 1)
+  solution: ((() 7 3) 9)
+  output: (() 7 9)
+  runtime_cost: 762
+  byte_cost: 972000
+  total_cost: 972762
+- name: rebuild_narrowed_field
+  program: (a (i (= 10 (q . 7)) (q 4 4 (c 10 (c 5 ()))) (q 2 (i 4 (q . 2) (q 4 4 (c 10 (c 5 ())))) 1)) 1)
+  debug_program: (a (i (= (f (r 2)) (q . 7)) (q 4 (f 2) (c (f (r 2)) (c 5 ()))) (q 2 (i (= (f 2) ()) (q 4 (f 2) (c (f (r 2)) (c 5 ()))) (q . 2)) 1)) 1)
+  solution: ((() 7 3) 9)
+  output: (() 7 9)
+  runtime_cost: 762
+  byte_cost: 972000
+  total_cost: 972762
+- name: update_cast
+  program: (c 4 (c 10 (c 5 ())))
+  debug_program: (c (f 2) (c (f (r 2)) (c 5 ())))
+  solution: ((1 2 3) 9)
+  output: (1 2 9)
+  runtime_cost: 357
+  byte_cost: 228000
+  total_cost: 228357
 - name: update_every_field
   program: (q 1 2 3)
   debug_program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
@@ -249,11 +313,11 @@ tests:
   total_cost: 108020
 - name: update_every_field_of_failing_call
   program: (a (q 3 () (a 4 (c 6 5)) (q 1 2 3)) (c (c (q 2 (i (> 3 ()) (q 2 2 3) (q 8)) 1) (q 4 1 (c (+ 1 (q . 1)) (c (* 1 (q . 2)) ())))) 1))
-  debug_program: (a (q 3 () (a 4 (c 6 5)) (c (q . 1) (c (q . 2) (c (q . 3) ())))) (c (c (q 2 (i (> 3 ()) (q 2 2 3) (q 8 (q . "assertion failed at struct_update.rue:181:5"))) 1) (q 4 1 (c (+ 1 (q . 1)) (c (* 1 (q . 2)) ())))) 1))
+  debug_program: (a (q 3 () (a 4 (c 6 5)) (c (q . 1) (c (q . 2) (c (q . 3) ())))) (c (c (q 2 (i (> 3 ()) (q 2 2 3) (q 8 (q . "assertion failed at struct_update.rue:248:5"))) 1) (q 4 1 (c (+ 1 (q . 1)) (c (* 1 (q . 2)) ())))) 1))
   solution: (0)
   byte_cost: 1428000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:181:5"
+  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:248:5"
 - name: update_constant
   program: (a (q 4 4 (c (q . 5) 14)) (q (q 2 3)))
   debug_program: (a (q 4 (f 2) (c (q . 5) (r (r 2)))) (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) ()))
@@ -272,7 +336,7 @@ tests:
   total_cost: 468460
 - name: update_block
   program: (a (q 4 4 (c 10 (c 11 ()))) (c (a (i (> 5 ()) (q . 2) (q 8)) 1) 1))
-  debug_program: (a (q 4 (f 2) (c (f (r 2)) (c 11 ()))) (c (a (i ("debug_print" (q . "struct_update.rue:206:13") (q . "evaluated")) (q) (q 2 (i (> 5 ()) (q . 2) (q 8 (q . "assertion failed at struct_update.rue:207:13"))) 1)) 1) 1))
+  debug_program: (a (q 4 (f 2) (c (f (r 2)) (c 11 ()))) (c (a (i ("debug_print" (q . "struct_update.rue:273:13") (q . "evaluated")) (q) (q 2 (i (> 5 ()) (q . 2) (q 8 (q . "assertion failed at struct_update.rue:274:13"))) 1)) 1) 1))
   solution: ((1 2 3) 9)
   output: (1 2 9)
   runtime_cost: 1421
@@ -282,7 +346,7 @@ tests:
   - "\"evaluated\""
 - name: rebuild_block
   program: (a (q 4 4 (c 10 (c 11 ()))) (c (a (i (> 5 ()) (q . 2) (q 8)) 1) 1))
-  debug_program: (a (q 4 (f 2) (c (f (r 2)) (c 11 ()))) (c (a (i ("debug_print" (q . "struct_update.rue:216:9") (q . "evaluated")) (q) (q 2 (i (> 5 ()) (q . 2) (q 8 (q . "assertion failed at struct_update.rue:217:9"))) 1)) 1) 1))
+  debug_program: (a (q 4 (f 2) (c (f (r 2)) (c 11 ()))) (c (a (i ("debug_print" (q . "struct_update.rue:283:9") (q . "evaluated")) (q) (q 2 (i (> 5 ()) (q . 2) (q 8 (q . "assertion failed at struct_update.rue:284:9"))) 1)) 1) 1))
   solution: ((1 2 3) 9)
   output: (1 2 9)
   runtime_cost: 1421
@@ -292,11 +356,11 @@ tests:
   - "\"evaluated\""
 - name: update_every_field_of_failing_block
   program: (i () (a (i (> 5 ()) (q . 2) (q 8)) 1) (q 1 2 3))
-  debug_program: (i () (a (i (> 5 ()) (q . 2) (q 8 (q . "assertion failed at struct_update.rue:228:13"))) 1) (c (q . 1) (c (q . 2) (c (q . 3) ()))))
+  debug_program: (i () (a (i (> 5 ()) (q . 2) (q 8 (q . "assertion failed at struct_update.rue:295:13"))) 1) (c (q . 1) (c (q . 2) (c (q . 3) ()))))
   solution: ((1 2 3) 0)
   byte_cost: 516000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:228:13"
+  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:295:13"
 - name: update_inline_parameter
   program: (a (q 4 (f (a 2 5)) (c (q . 1) (r (r (a 2 5))))) (c (q 4 1 (c (+ 1 (q . 1)) (c (* 1 (q . 2)) ()))) 1))
   debug_program: (a (q 4 (f (a 2 5)) (c (q . 1) (r (r (a 2 5))))) (c (q 4 1 (c (+ 1 (q . 1)) (c (* 1 (q . 2)) ()))) 1))
@@ -313,3 +377,19 @@ tests:
   runtime_cost: 5199
   byte_cost: 1188000
   total_cost: 1193199
+- name: update_layout
+  program: (a (q 2 2 (c 2 (c (q 1 . 2) (c (q 3 . 4) (c 5 11))))) (c (q 2 (i (> 31 (q . 9)) (q 2 2 (c 2 (c (c (+ 9 13) (+ 13 19)) (c (c (+ 19 27) (+ 27 9)) (c 23 (- 31 (q . 1))))))) (q 4 (+ 9 9 9 13 13 13 19 19 19 27) (c 31 55))) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 1) (q . 2)) (c (c (q . 3) (q . 4)) (c 5 11))))) (c (q 2 (i (> 31 (q . 9)) (q 2 2 (c 2 (c (c (+ 9 13) (+ 13 19)) (c (c (+ 19 27) (+ 27 9)) (c 23 (- 31 (q . 1))))))) (q 4 (+ (+ (+ (+ (+ (+ (+ (+ (+ 9 9) 9) 13) 13) 13) 19) 19) 19) 27) (c 31 (r 23)))) 1) 1))
+  solution: ((1 2 . 3) 11)
+  output: (104 9 2 . 3)
+  runtime_cost: 17037
+  byte_cost: 2268000
+  total_cost: 2285037
+- name: rebuild_layout
+  program: (a (q 2 2 (c 2 (c (q 1 . 2) (c (q 3 . 4) (c 5 11))))) (c (q 2 (i (> 31 (q . 9)) (q 2 2 (c 2 (c (c (+ 9 13) (+ 13 19)) (c (c (+ 19 27) (+ 27 9)) (c 23 (- 31 (q . 1))))))) (q 4 (+ 9 9 9 13 13 13 19 19 19 27) (c 31 55))) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 1) (q . 2)) (c (c (q . 3) (q . 4)) (c 5 11))))) (c (q 2 (i (> 31 (q . 9)) (q 2 2 (c 2 (c (c (+ 9 13) (+ 13 19)) (c (c (+ 19 27) (+ 27 9)) (c 23 (- 31 (q . 1))))))) (q 4 (+ (+ (+ (+ (+ (+ (+ (+ (+ 9 9) 9) 13) 13) 13) 19) 19) 19) 27) (c 31 (c (f (r 23)) (r (r 23)))))) 1) 1))
+  solution: ((1 2 . 3) 11)
+  output: (104 9 2 . 3)
+  runtime_cost: 17037
+  byte_cost: 2268000
+  total_cost: 2285037

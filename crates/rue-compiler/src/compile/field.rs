@@ -309,7 +309,8 @@ fn compile_struct_field(
 pub struct BoundValue {
     /// The value, which is a reference to what it's bound to if it isn't a path.
     pub value: Value,
-    /// Where the value is read from, which is what's narrowed when it's checked.
+    /// What's narrowed when the value is checked: the path the value is, or that the block it is
+    /// ends in, and otherwise its binding.
     pub reference: SymbolPath,
     /// The statement that binds the value, if it isn't a path. It goes before whatever reads the
     /// value, in the same block.
@@ -320,8 +321,8 @@ pub struct BoundValue {
 /// it is, and anything else is bound to an unnamed binding first, so that it's only evaluated
 /// once however many times it's read. The binding is at the given location.
 ///
-/// A block that ends in a path has the path's reference, so that it's narrowed like the path, but
-/// its statements are evaluated each time it's read, so it's bound too.
+/// A block that ends in a path has the path's reference, so that the path is narrowed when the
+/// block is checked, but its statements are evaluated each time it's read, so it's bound too.
 pub fn bind_unless_path(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> BoundValue {
     if let Some(reference) = value.reference.clone()
         && is_path(ctx, value.hir)
@@ -338,12 +339,14 @@ pub fn bind_unless_path(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> Bou
         value: value.clone(),
         inline: false,
     }));
-    let reference = SymbolPath::new(symbol, vec![]);
+    let binding = SymbolPath::new(symbol, vec![]);
 
     BoundValue {
         value: Value::new(ctx.alloc_hir(Hir::Reference(symbol)), value.ty)
-            .with_reference(reference.clone()),
-        reference,
+            .with_reference(binding.clone()),
+        // The binding can't be named, so narrowing it has no effect, but the path that a block
+        // ends in can be, and it's the same value
+        reference: value.reference.unwrap_or(binding),
         statement: Some(Statement::Let(symbol, srcloc)),
     }
 }

@@ -29,7 +29,7 @@ pub(crate) fn hir_eq(db: &Database, a: HirId, b: HirId) -> bool {
         (Hir::Struct(a), Hir::Struct(b)) => {
             a.ty == b.ty
                 && a.nil_terminated == b.nil_terminated
-                && match (a.tail, b.tail) {
+                && match (a.tail_value(), b.tail_value()) {
                     (Some(a), Some(b)) => hir_eq(db, a, b),
                     (None, None) => true,
                     _ => false,
