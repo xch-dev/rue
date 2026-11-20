@@ -20,10 +20,11 @@ use crate::{DebugTags, Lir, LirId, SpanScopes, stack::grow_stack};
 /// How the optimizer may change the program.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct OptimizeOptions {
-    /// Whether the program is run with `LIMITS` (see [`clvm_flags`](crate::clvm_flags)), so that the optimizer
-    /// doesn't remove or add failures caused by the length of an operand. Without it, the
-    /// optimizer assumes operands of any length are allowed, and may fold, flatten or rewrite
-    /// operators in ways that remove those failures.
+    /// Whether the program is run with `LIMITS` (see [`clvm_flags`](crate::clvm_flags)), so that
+    /// the optimizer doesn't remove or add failures caused by the length of an operand. Without
+    /// it, the optimizer assumes operands of any length are allowed, and may fold, flatten or
+    /// rewrite operators in ways that remove those failures, or add them (such as by folding
+    /// short constants into one that's too long).
     pub operand_limits: bool,
 }
 

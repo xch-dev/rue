@@ -46,10 +46,18 @@ pub struct CompilerOptions {
     /// When it's off, the compiler targets CLVM without `LIMITS`, as mainnet will be after hard
     /// fork 2. Operands of any length are treated as allowed, so `*` can't fail, and `/`, `%` and
     /// `divmod` only fail for a zero divisor. A program compiled this way can pass its tests and
-    /// succeed in debug builds, yet fail on mainnet today when an operand exceeds a limit, and the
-    /// optimizer may remove such a failure, so a release build can succeed where the same program
-    /// fails on mainnet. For example, `x % 2 == 1` is compiled to `logand`, which doesn't limit
-    /// `x`, and products of constants are folded whatever their length.
+    /// succeed in debug builds, yet fail on mainnet today when an operand exceeds a limit. The
+    /// optimizer can also change whether it fails under `LIMITS`, in either direction, so a release
+    /// build can succeed where the debug build fails, or fail where it succeeds:
+    ///
+    /// - It removes such failures, such as by compiling `x % 2 == 1` to `logand`, which doesn't
+    ///   limit `x`, or by dropping or moving a product or quotient that it treats as unable to fail.
+    /// - It adds them, by folding constants into operands longer than the limits, even when every
+    ///   operand in the source is short. For example, `x * C * C` with a 150 byte constant `C` is
+    ///   compiled to `x` times a single 299 byte constant.
+    ///
+    /// So a program that will run on mainnet before hard fork 2 should be compiled with this on,
+    /// even if its operands are short.
     ///
     /// Const expressions are evaluated at compile time without `LIMITS` either way, since they're
     /// never run on chain, so a `const` can use operands of any length.

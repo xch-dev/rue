@@ -127,7 +127,12 @@ With `operand_limits`:
 - Lints that ask whether a value can fail, such as `inline_value_may_fail`, count these operators as able to fail.
 - `rue test` runs tests with `LIMITS`, so a test fails where mainnet would. `rue debug --operand-limits` runs a program with `LIMITS`.
 
-Without it, operands of any length are treated as allowed, so `*` can't fail and `/`, `%` and `divmod` only fail for a zero divisor. A program compiled this way can pass its tests and succeed in debug builds, yet fail on mainnet today when an operand is longer than a limit, and the optimizer may remove such a failure, so under `LIMITS` a release build can succeed where the debug build fails. Leave it off only if the operands can't be that long, or the program won't run before hard fork 2.
+Without it, operands of any length are treated as allowed, so `*` can't fail and `/`, `%` and `divmod` only fail for a zero divisor. A program compiled this way can pass its tests and succeed in debug builds, yet fail on mainnet today when an operand is longer than a limit. The optimizer can also change whether a release build fails under `LIMITS`, in either direction:
+
+- It can remove a failure, such as by compiling `x % 2 == 1` to `logand`, or by dropping or moving a product or quotient it treats as unable to fail, so the release build succeeds where the debug build fails.
+- It can add one, by folding constants into an operand longer than a limit, even when every operand in the source is short. For example, `x * C * C` with a 150 byte constant `C` becomes `x` times one 299 byte constant, so the release build fails where the debug build succeeds.
+
+So leave it off only for programs that won't run on mainnet before hard fork 2, even if their operands are short.
 
 Either way, `const` expressions are evaluated at compile time without `LIMITS`, since they're never run on chain, so they can use operands of any length.
 

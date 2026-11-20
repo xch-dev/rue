@@ -483,7 +483,8 @@ fn is_odd_check(
 }
 
 // Whether the value is known to be no longer than `MAX_DIVIDEND_BYTES`, so that `LIMITS` allows it
-// as a dividend
+// as a dividend. A short enough constant dividend is already folded by `opt_mod`, so the constant
+// case is only defensive
 fn fits_dividend(arena: &Arena<Lir>, value: LirId) -> bool {
     match &arena[value] {
         Lir::Atom(atom) => atom.len() <= MAX_DIVIDEND_BYTES,
