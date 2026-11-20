@@ -136,21 +136,19 @@ pub fn compile(source: &str) -> Compiled {
 /// milliseconds longer, and changes which names are in scope, so only programs that call it get
 /// it.
 pub fn compile_with(source: &str, std: bool) -> Compiled {
-    let start = Instant::now();
     COMPILING.set(true);
     let result = catch_unwind(AssertUnwindSafe(|| compile_inner(source, std)));
     COMPILING.set(false);
-    let time = start.elapsed();
 
     match result {
-        Ok((Ok((clvm, run)), fingerprint, leak)) => Compiled::Ok {
+        Ok((Ok((clvm, run)), fingerprint, leak, time)) => Compiled::Ok {
             clvm,
             run,
             time,
             fingerprint,
             leak,
         },
-        Ok((Err(diag), fingerprint, _)) => Compiled::Rejected {
+        Ok((Err(diag), fingerprint, _, time)) => Compiled::Rejected {
             diag,
             time,
             fingerprint,
@@ -198,8 +196,15 @@ pub fn fingerprint(diagnostics: &[Diagnostic], clvm: Option<&str>) -> String {
     format!("{hash:016x}")
 }
 
-/// The compile's result, its `fingerprint`, and the first leaked generic (see `leak.rs`).
-type Inner = (Result<(String, Run), Diag>, String, Option<String>);
+/// The compile's result, its `fingerprint`, the first leaked generic (see `leak.rs`), and how long
+/// compiling and running took, which doesn't count the leak oracle, so that a slow compile is one
+/// whose inference is slow.
+type Inner = (
+    Result<(String, Run), Diag>,
+    String,
+    Option<String>,
+    Duration,
+);
 
 /// A compiled program, with what the leak oracle needs of it (see `leak::leak`).
 pub struct Compilation {
@@ -239,6 +244,7 @@ pub fn compilation(source: &str, std: bool) -> Compilation {
 }
 
 fn compile_inner(source: &str, std: bool) -> Inner {
+    let start = Instant::now();
     let Compilation {
         mut ctx,
         tree,
@@ -252,11 +258,12 @@ fn compile_inner(source: &str, std: bool) -> Inner {
     let result = compile_checked(&mut ctx, &tree, &kind, &diagnostics);
     let clvm = result.as_ref().ok().map(|(clvm, _)| clvm.as_str());
     let fingerprint = fingerprint(&diagnostics, clvm);
+    let time = start.elapsed();
     let leak = result
         .is_ok()
         .then(|| leak::leak(&mut ctx, &document, &kind, first_hir))
         .flatten();
-    (result, fingerprint, leak)
+    (result, fingerprint, leak, time)
 }
 
 fn compile_checked(

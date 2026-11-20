@@ -1175,6 +1175,87 @@ fn leak_oracle_flags_a_generic_outside_of_its_function() {
     assert!(check(&mut compilation).is_some_and(|leak| leak.contains("`z: ")));
 }
 
+/// The leak oracle checks the type the compiler recorded for each expression too, where a call's
+/// type goes straight into an annotated binding, as `make_list(nil)` did before #490. An expression
+/// in a lambda, or a pair around one, can have a callee's generic, as an element lambda compiled
+/// where it is does (#485), and a call can't, even around a lambda.
+#[test]
+fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
+    use id_arena::{ArenaBehavior, DefaultArenaBehavior};
+    use rue_hir::{Hir, HirId, Symbol};
+
+    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Any {\n    let p = (fn(z: Int) => z, 2);\n    let q = f(p.first(1));\n    let r = f(fn(w: Int) => w);\n    (q, r)\n}\n";
+    let mut compilation = oracle::compilation(source, false);
+    let check = |compilation: &mut oracle::Compilation| {
+        crate::leak::leak(
+            &mut compilation.ctx,
+            &compilation.document,
+            &compilation.kind,
+            compilation.first_hir,
+        )
+    };
+    assert_eq!(check(&mut compilation), None);
+
+    let f = compilation
+        .ctx
+        .syntax_map()
+        .items()
+        .find_map(|item| match item.kind {
+            rue_compiler::SyntaxItemKind::SymbolDeclaration(symbol)
+                if compilation
+                    .ctx
+                    .symbol(symbol)
+                    .name()
+                    .is_some_and(|name| name.text() == "f") =>
+            {
+                Some(symbol)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let Symbol::Function(function) = compilation.ctx.symbol(f) else {
+        panic!("`f` is a function");
+    };
+    let generic = function.vars[0];
+
+    // The node of the expression with the text, after the declarations
+    let main = source.find("fn main").unwrap();
+    let node = |compilation: &oracle::Compilation, text: &str| -> HirId {
+        let arena = DefaultArenaBehavior::<Hir>::arena_id(compilation.first_hir);
+        (compilation.first_hir.index()..compilation.ctx.next_hir_id().index())
+            .map(|index| DefaultArenaBehavior::<Hir>::new_id(arena, index))
+            .find(|&hir| {
+                compilation.ctx.hir_type(hir).is_some()
+                    && compilation.ctx.hir_srcloc(hir).is_some_and(|srcloc| {
+                        srcloc.span.start > main && source[srcloc.span.clone()] == *text
+                    })
+            })
+            .unwrap_or_else(|| panic!("no node for `{text}`"))
+    };
+
+    for (text, leaks) in [
+        ("f(p.first(1))", true),
+        ("f(fn(w: Int) => w)", true),
+        ("z", false),
+        ("(fn(z: Int) => z, 2)", false),
+    ] {
+        let hir = node(&compilation, text);
+        let ty = compilation.ctx.hir_type(hir).unwrap();
+        compilation.ctx.set_hir_type(hir, generic);
+        let leak = check(&mut compilation);
+        if leaks {
+            assert!(
+                leak.as_ref()
+                    .is_some_and(|leak| leak.contains(&format!("`{text}: T` names `T`"))),
+                "`{text}`: {leak:?}"
+            );
+        } else {
+            assert_eq!(leak, None, "`{text}`");
+        }
+        compilation.ctx.set_hir_type(hir, ty);
+    }
+}
+
 /// A binding in a generic function can have its generics, and a binding outside of it can't.
 #[test]
 fn leak_oracle_allows_a_functions_own_generics() {
