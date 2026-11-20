@@ -22,71 +22,60 @@ fn not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     arena.alloc(Lir::Not(value))
 }
 
-fn compile(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId, optimized: bool) -> NodePtr {
+fn compile(
+    arena: &Arena<Lir>,
+    allocator: &mut Allocator,
+    lir: LirId,
+    target: ClvmTarget,
+    optimized: bool,
+) -> NodePtr {
     codegen(
         arena,
         allocator,
         lir,
         CodegenOptions {
             optimize_static_pairs: optimized,
-            hard_fork_2: false,
+            target,
         },
     )
     .unwrap()
 }
 
-/// Each target, which the optimizer must preserve the behavior under: with and without
-/// `operand_limits` before hard fork 2, and after it.
-const OPTIONS: [ClvmTarget; 3] = [
-    ClvmTarget {
-        operand_limits: false,
-        hard_fork_2: false,
-    },
-    ClvmTarget {
-        operand_limits: true,
-        hard_fork_2: false,
-    },
-    ClvmTarget {
-        operand_limits: false,
-        hard_fork_2: true,
-    },
-];
-
 fn run(
     allocator: &mut Allocator,
-    options: ClvmTarget,
+    target: ClvmTarget,
     program: NodePtr,
     env: NodePtr,
 ) -> Option<Vec<u8>> {
-    let dialect = ChiaDialect::new(options.flags());
+    let dialect = ChiaDialect::new(target.flags());
     let output = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
     Some(node_to_bytes(allocator, output.1).unwrap())
 }
 
-// Optimizes the LIR, checks the code generated without `operand_limits`, and checks that the
-// optimized and unoptimized programs behave the same for each of the given environments, with and
-// without `operand_limits`
+// Optimizes the LIR, checks the code generated for the default target, and checks that the
+// optimized and unoptimized programs behave the same for each of the given environments, for each
+// target
 #[allow(clippy::needless_pass_by_value)]
 fn check(arena: &mut Arena<Lir>, lir: LirId, envs: &[&str], expect: Expect) {
-    for options in OPTIONS {
-        let optimized = optimize(arena, lir, options);
+    for target in ClvmTarget::ALL {
+        let optimized = optimize(arena, lir, target);
 
         let mut allocator = Allocator::new();
-        let unoptimized_ptr = compile(arena, &mut allocator, lir, false);
-        let optimized_ptr = compile(arena, &mut allocator, optimized, true);
+        let unoptimized_ptr = compile(arena, &mut allocator, lir, target, false);
+        let optimized_ptr = compile(arena, &mut allocator, optimized, target, true);
 
-        if !options.operand_limits {
+        if target == ClvmTarget::default() {
             expect.assert_eq(&disassemble_program(&allocator, optimized_ptr));
         }
 
         for env in envs {
             let env_ptr = rue_clvm::assemble(&mut allocator, env).unwrap();
-            let expected = run(&mut allocator, options, unoptimized_ptr, env_ptr);
-            let actual = run(&mut allocator, options, optimized_ptr, env_ptr);
+            let expected = run(&mut allocator, target, unoptimized_ptr, env_ptr);
+            let actual = run(&mut allocator, target, optimized_ptr, env_ptr);
             assert_eq!(
                 expected,
                 actual,
-                "{} and {} differ for env {env} with {options:?}",
+                "{} and {} differ for env {env} with {target:?}",
                 disassemble_program(&allocator, unoptimized_ptr),
                 disassemble_program(&allocator, optimized_ptr),
             );
@@ -826,17 +815,17 @@ fn fuzz_optimizer_differential() {
     for _ in 0..20_000 {
         let mut arena = Arena::new();
         let lir = generate(&mut arena, &mut rng, 4);
-        let options = rng.pick(&OPTIONS);
-        let optimized = optimize(&mut arena, lir, options);
+        let target = rng.pick(&ClvmTarget::ALL);
+        let optimized = optimize(&mut arena, lir, target);
 
         let mut allocator = Allocator::new();
-        let unoptimized_ptr = compile(&arena, &mut allocator, lir, false);
-        let optimized_ptr = compile(&arena, &mut allocator, optimized, true);
+        let unoptimized_ptr = compile(&arena, &mut allocator, lir, target, false);
+        let optimized_ptr = compile(&arena, &mut allocator, optimized, target, true);
 
         for _ in 0..6 {
             let env = generate_env(&mut allocator, &mut rng);
-            let expected = run(&mut allocator, options, unoptimized_ptr, env);
-            let actual = run(&mut allocator, options, optimized_ptr, env);
+            let expected = run(&mut allocator, target, unoptimized_ptr, env);
+            let actual = run(&mut allocator, target, optimized_ptr, env);
 
             if expected != actual {
                 let show = |allocator: &mut Allocator, value: Option<Vec<u8>>| {
@@ -848,7 +837,7 @@ fn fuzz_optimizer_differential() {
                 let expected = show(&mut allocator, expected);
                 let actual = show(&mut allocator, actual);
                 panic!(
-                    "optimizer changed behavior with {options:?} for env {}\nunoptimized: {} => {expected}\noptimized: {} => {actual}",
+                    "optimizer changed behavior with {target:?} for env {}\nunoptimized: {} => {expected}\noptimized: {} => {actual}",
                     disassemble_value(&allocator, env),
                     disassemble_program(&allocator, unoptimized_ptr),
                     disassemble_program(&allocator, optimized_ptr),

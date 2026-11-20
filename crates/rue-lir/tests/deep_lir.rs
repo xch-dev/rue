@@ -43,7 +43,7 @@ fn compile_all_ways(arena: &mut Arena<Lir>, lir: LirId) -> Vec<u8> {
                 root,
                 CodegenOptions {
                     optimize_static_pairs,
-                    hard_fork_2: false,
+                    target: ClvmTarget::default(),
                 },
             )
             .unwrap();

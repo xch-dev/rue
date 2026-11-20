@@ -1,4 +1,4 @@
-use clvmr::{Allocator, ChiaDialect, ClvmFlags, NodePtr, SExp, run_program, serde::node_to_bytes};
+use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program, serde::node_to_bytes};
 use id_arena::Arena;
 
 use crate::{COST_PER_BYTE, ClvmOp, ClvmTarget, Lir, LirId};
@@ -27,12 +27,12 @@ pub fn fold_atoms(
         atoms.push(atom.clone());
     }
 
-    let result = run_op(op, &atoms, target.flags())?;
+    let result = run_op(op, &atoms, target)?;
 
     Some(arena.alloc(Lir::Atom(result)))
 }
 
-fn run_op(op: ClvmOp, atoms: &[Vec<u8>], flags: ClvmFlags) -> Option<Vec<u8>> {
+fn run_op(op: ClvmOp, atoms: &[Vec<u8>], target: ClvmTarget) -> Option<Vec<u8>> {
     let mut allocator = Allocator::new();
 
     let mut args = NodePtr::NIL;
@@ -42,10 +42,10 @@ fn run_op(op: ClvmOp, atoms: &[Vec<u8>], flags: ClvmFlags) -> Option<Vec<u8>> {
         args = allocator.new_pair(atom, args).ok()?;
     }
 
-    let op = allocator.new_atom(&op.to_atom()).ok()?;
+    let op = allocator.new_atom(&op.to_target_atom(target)).ok()?;
     let program = allocator.new_pair(op, args).ok()?;
 
-    let dialect = ChiaDialect::new(flags);
+    let dialect = ChiaDialect::new(target.flags());
     let reduction = run_program(
         &mut allocator,
         &dialect,

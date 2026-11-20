@@ -112,14 +112,7 @@ impl TargetArgs {
     fn apply(self, options: &mut CompilerOptions) -> Result<()> {
         options.operand_limits |= self.operand_limits;
         options.hard_fork_2 |= self.hard_fork_2;
-
-        if options.operand_limits && options.hard_fork_2 {
-            anyhow::bail!(
-                "`operand_limits` has no effect with `hard_fork_2`, since hard fork 2 removes `LIMITS`, so only one of them can be set"
-            );
-        }
-
-        Ok(())
+        Ok(options.check_target()?)
     }
 }
 
@@ -1787,6 +1780,45 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("hard_fork_2"), "{error}");
+    }
+
+    #[test]
+    fn tests_run_with_hard_fork_2_when_compiled_with_it() {
+        // The recursion keeps `keccak256` from being folded, so the tests run it
+        let source = "fn chain(value: Bytes, times: Int) -> Bytes {\n    if times == 0 {\n        value\n    } else {\n        chain(keccak256(value), times - 1)\n    }\n}\n\ntest fn hashes() {\n    assert chain(\"hello\", 1) == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;\n}\n\ntest fn fails_after_hashing() {\n    assert chain(\"hello\", 1) == 0x00;\n}\n";
+        let project = TempProject::new("hard-fork-2-test", source);
+        let path = project.0.join("main.rue");
+        let cost = CostArgs {
+            max_cost: DEFAULT_MAX_COST,
+        };
+
+        let mut ctx = Compiler::new(CompilerOptions {
+            hard_fork_2: true,
+            ..CompilerOptions::debug()
+        });
+        let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
+        let mut allocator = Allocator::new();
+        let tests = tree
+            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .unwrap();
+
+        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+
+        // The trace runs it again with the same flags, so it fails at the assertion rather than at
+        // `keccak256`
+        let (failure, trace) =
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+        assert!(
+            failure.message.contains("assertion failed"),
+            "{}",
+            failure.message
+        );
+        let trace = trace.unwrap().unwrap();
+        assert!(
+            trace.contains("main.rue:14:5, in fails_after_hashing"),
+            "{trace}"
+        );
+        assert!(!trace.contains("in chain"), "{trace}");
     }
 
     #[test]

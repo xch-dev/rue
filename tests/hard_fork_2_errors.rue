@@ -1,0 +1,18 @@
+// Without `hard_fork_2`, each call of `modpow`, `keccak256` and `keccak256_inline` is an error,
+// whatever its form, including in constants and const expressions. `tests/hard_fork_2/builtins.rue`
+// has them compiled with `hard_fork_2`.
+
+const POWER: Int = modpow(2, 3, 5);
+
+fn main(value: Bytes, values: List<Bytes>, base: Int) -> (
+    Bytes32,
+    (Bytes32, (Bytes32, (Int, (Int, Bytes32)))),
+) {
+    (
+        keccak256(value),
+        (
+            keccak256(...values),
+            (keccak256_inline(value), (modpow(base, 2, 7), (POWER, const { keccak256("hello") }))),
+        ),
+    )
+}

@@ -123,6 +123,8 @@ hard_fork_2 = true
 
 `keccak256` can't be used inside the softfork guard instead, since the guard always returns nil, so a hash can't be returned from it.
 
+Turning `hard_fork_2` on changes the compiled program, and so its puzzle hash, for any program that uses the secp operators. It can also change what the optimizer emits elsewhere, since it folds constants by comparing costs in the target's cost model.
+
 `rue test`, and `rue debug` when it's run inside the project, run programs with the flags for the target, so tests behave as mainnet would at the target. Without `hard_fork_2`, a raw program run by `rue debug` fails on `keccak256` as it would on mainnet. It can still use `modpow`, unless `operand_limits` is on: mainnet disables `modpow` with the `DISABLE_OP` flag, which also limits the dividend of `/`, `%` and `divmod` to 2048 bytes, and Rue only applies operand length limits with `operand_limits`. Compiled programs can't use `modpow` either way, since the compiler rejects it. A program compiled with `hard_fork_2` can still fail on mainnet until hard fork 2 activates, and the costs reported for it don't match mainnet's until then. Const expressions are evaluated at compile time with the target's cost model, which `const_eval_max_cost` is measured in.
 
 ## Operand Limits

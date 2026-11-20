@@ -984,11 +984,11 @@ fn codegen(
 
     let debug_info = lowerer.take_debug_info();
 
+    let target = clvm_target(&options);
     let codegen_options = CodegenOptions {
         optimize_static_pairs: options.optimize_static_pairs,
-        hard_fork_2: options.hard_fork_2,
+        target,
     };
-    let target = clvm_target(&options);
 
     let Some(mut debug_info) = debug_info else {
         if options.optimize_lir {

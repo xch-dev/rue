@@ -636,20 +636,16 @@ fn main_programs(
 
 /// The release and debug compilers for a snapshot, with the target it sets by hand.
 fn compilers(file: &TestFile) -> Result<(Compiler, Compiler)> {
-    if file.operand_limits && file.hard_fork_2 {
-        anyhow::bail!(
-            "`operand_limits` has no effect with `hard_fork_2`, since hard fork 2 removes `LIMITS`"
-        );
-    }
-
     let target = |options: CompilerOptions| CompilerOptions {
         operand_limits: file.operand_limits,
         hard_fork_2: file.hard_fork_2,
         ..options
     };
+    let options = target(CompilerOptions::default());
+    options.check_target()?;
 
     Ok((
-        Compiler::new(target(CompilerOptions::default())),
+        Compiler::new(options),
         Compiler::new(target(CompilerOptions::debug())),
     ))
 }

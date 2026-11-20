@@ -29,6 +29,30 @@ pub struct ClvmTarget {
     pub hard_fork_2: bool,
 }
 
+#[cfg(test)]
+impl ClvmTarget {
+    /// Mainnet today, without `operand_limits`, which is the default.
+    pub(crate) const TODAY: Self = Self {
+        operand_limits: false,
+        hard_fork_2: false,
+    };
+
+    /// Mainnet today, with `operand_limits`.
+    pub(crate) const TODAY_WITH_LIMITS: Self = Self {
+        operand_limits: true,
+        hard_fork_2: false,
+    };
+
+    /// Mainnet after hard fork 2.
+    pub(crate) const HARD_FORK_2: Self = Self {
+        operand_limits: false,
+        hard_fork_2: true,
+    };
+
+    /// Every target the optimizer must preserve the behavior under.
+    pub(crate) const ALL: [Self; 3] = [Self::TODAY, Self::TODAY_WITH_LIMITS, Self::HARD_FORK_2];
+}
+
 impl ClvmTarget {
     /// Whether operands are limited by their length, which they are with `operand_limits` until
     /// hard fork 2.
@@ -54,8 +78,10 @@ impl ClvmTarget {
     ///   compiler rejects it.
     ///
     /// After hard fork 2, they use the new cost model, enable `keccak256` outside of the guard,
-    /// the secp operators as opcodes 64 and 65, and relaxed BLS point checks, and don't include
-    /// `DISABLE_OP` or `LIMITS`, as chia does once hard fork 2 activates.
+    /// the secp operators as opcodes 64 and 65, and relaxed BLS point checks, as chia does once
+    /// hard fork 2 activates. They don't include `LIMITS`, which chia stops setting then, or
+    /// `DISABLE_OP`, which chia's mempool flags still include but which has no effect with the new
+    /// cost model.
     pub const fn flags(self) -> ClvmFlags {
         if self.hard_fork_2 {
             return MEMPOOL_MODE
@@ -188,20 +214,9 @@ impl Dialect for DebugDialect {
 mod tests {
     use super::*;
 
-    const TODAY: ClvmTarget = ClvmTarget {
-        operand_limits: false,
-        hard_fork_2: false,
-    };
-
-    const TODAY_WITH_LIMITS: ClvmTarget = ClvmTarget {
-        operand_limits: true,
-        hard_fork_2: false,
-    };
-
-    const HARD_FORK_2: ClvmTarget = ClvmTarget {
-        operand_limits: false,
-        hard_fork_2: true,
-    };
+    const TODAY: ClvmTarget = ClvmTarget::TODAY;
+    const TODAY_WITH_LIMITS: ClvmTarget = ClvmTarget::TODAY_WITH_LIMITS;
+    const HARD_FORK_2: ClvmTarget = ClvmTarget::HARD_FORK_2;
 
     /// Whether each flag that hard fork 2 changes is set, in the order of the assertions below.
     fn hard_fork_flags(target: ClvmTarget) -> [bool; 6] {
@@ -256,17 +271,17 @@ mod tests {
     #[test]
     fn secp_opcodes_match_the_target() {
         assert_eq!(
-            ClvmOp::Secp256K1Verify.to_target_atom(false),
+            ClvmOp::Secp256K1Verify.to_target_atom(TODAY),
             [0x13, 0xd6, 0x1f, 0x00]
         );
-        assert_eq!(ClvmOp::Secp256K1Verify.to_target_atom(true), [64]);
+        assert_eq!(ClvmOp::Secp256K1Verify.to_target_atom(HARD_FORK_2), [64]);
         assert_eq!(
-            ClvmOp::Secp256R1Verify.to_target_atom(false),
+            ClvmOp::Secp256R1Verify.to_target_atom(TODAY),
             [0x1c, 0x3a, 0x8f, 0x00]
         );
-        assert_eq!(ClvmOp::Secp256R1Verify.to_target_atom(true), [65]);
+        assert_eq!(ClvmOp::Secp256R1Verify.to_target_atom(HARD_FORK_2), [65]);
         assert_eq!(
-            ClvmOp::Sha256.to_target_atom(true),
+            ClvmOp::Sha256.to_target_atom(HARD_FORK_2),
             ClvmOp::Sha256.to_atom()
         );
     }

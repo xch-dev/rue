@@ -271,7 +271,7 @@ fn evaluate_const_expr(
         lir,
         CodegenOptions {
             optimize_static_pairs: options.optimize_static_pairs,
-            hard_fork_2: options.hard_fork_2,
+            target,
         },
     )
     .map_err(|error| ConstEvalError::Failed(error.to_string()))?;

@@ -55,3 +55,10 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: keccak256_in_const
+  program: (q . 0xa37f8abed547456433a0e46d74a03d8c1db3ec945d663dc6063fd61f07cf9dc0)
+  debug_program: (q . 0xa37f8abed547456433a0e46d74a03d8c1db3ec945d663dc6063fd61f07cf9dc0)
+  output: "0xa37f8abed547456433a0e46d74a03d8c1db3ec945d663dc6063fd61f07cf9dc0"
+  runtime_cost: 20
+  byte_cost: 420000
+  total_cost: 420020

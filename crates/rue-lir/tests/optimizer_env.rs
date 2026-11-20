@@ -165,7 +165,7 @@ fn test_optimizer_env_differential() {
             lir,
             CodegenOptions {
                 optimize_static_pairs: false,
-                hard_fork_2: false,
+                target: ClvmTarget::default(),
             },
         )
         .unwrap();
@@ -176,7 +176,7 @@ fn test_optimizer_env_differential() {
             optimized,
             CodegenOptions {
                 optimize_static_pairs: true,
-                hard_fork_2: false,
+                target: ClvmTarget::default(),
             },
         )
         .unwrap();

@@ -47,3 +47,17 @@ test fn modpow_moved_into_branch(base: Int, exponent: Int, modulus: Int, flag: B
 test fn modpow_in_const() -> Int {
     const { modpow(2, 10, 1000) }
 }
+
+fn chain(value: Bytes, times: Int) -> Bytes {
+    if times == 0 {
+        value
+    } else {
+        chain(keccak256(value), times - 1)
+    }
+}
+
+// The recursion keeps `keccak256` from being folded, so it's run by const evaluation, with the
+// flags after hard fork 2
+test fn keccak256_in_const() -> Bytes {
+    const { chain("hello", 3) }
+}

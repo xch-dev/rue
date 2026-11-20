@@ -1160,20 +1160,9 @@ mod tests {
 
     use super::*;
 
-    const UNLIMITED: ClvmTarget = ClvmTarget {
-        operand_limits: false,
-        hard_fork_2: false,
-    };
-
-    const LIMITED: ClvmTarget = ClvmTarget {
-        operand_limits: true,
-        hard_fork_2: false,
-    };
-
-    const HARD_FORK_2: ClvmTarget = ClvmTarget {
-        operand_limits: false,
-        hard_fork_2: true,
-    };
+    const UNLIMITED: ClvmTarget = ClvmTarget::TODAY;
+    const LIMITED: ClvmTarget = ClvmTarget::TODAY_WITH_LIMITS;
+    const HARD_FORK_2: ClvmTarget = ClvmTarget::HARD_FORK_2;
 
     fn atom(arena: &mut Arena<Lir>, value: i64) -> LirId {
         arena.alloc(Lir::Atom(bigint_atom(BigInt::from(value))))
@@ -1185,11 +1174,11 @@ mod tests {
 
     fn run(
         allocator: &mut Allocator,
-        options: ClvmTarget,
+        target: ClvmTarget,
         program: NodePtr,
         env: NodePtr,
     ) -> Option<Vec<u8>> {
-        let dialect = ChiaDialect::new(options.flags());
+        let dialect = ChiaDialect::new(target.flags());
         let result = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
         Some(node_to_bytes(allocator, result.1).unwrap())
     }
@@ -1198,6 +1187,7 @@ mod tests {
         arena: &Arena<Lir>,
         allocator: &mut Allocator,
         lir: LirId,
+        target: ClvmTarget,
         optimize: bool,
     ) -> NodePtr {
         codegen(
@@ -1206,7 +1196,7 @@ mod tests {
             lir,
             CodegenOptions {
                 optimize_static_pairs: optimize,
-                hard_fork_2: false,
+                target,
             },
         )
         .unwrap()
@@ -1214,7 +1204,7 @@ mod tests {
 
     fn disassemble(arena: &Arena<Lir>, lir: LirId) -> String {
         let mut allocator = Allocator::new();
-        let program = compile(arena, &mut allocator, lir, true);
+        let program = compile(arena, &mut allocator, lir, UNLIMITED, true);
         disassemble_program(&allocator, program)
     }
 
@@ -1228,15 +1218,15 @@ mod tests {
 
     fn assert_equivalent_with(
         arena: &mut Arena<Lir>,
-        options: ClvmTarget,
+        target: ClvmTarget,
         lir: LirId,
         envs: &[Vec<Vec<u8>>],
     ) -> LirId {
-        let optimized = optimize(arena, lir, options);
+        let optimized = optimize(arena, lir, target);
 
         let mut allocator = Allocator::new();
-        let unoptimized_program = compile(arena, &mut allocator, lir, false);
-        let optimized_program = compile(arena, &mut allocator, optimized, true);
+        let unoptimized_program = compile(arena, &mut allocator, lir, target, false);
+        let optimized_program = compile(arena, &mut allocator, optimized, target, true);
 
         for env in envs {
             let mut env_ptr = NodePtr::NIL;
@@ -1247,9 +1237,9 @@ mod tests {
             }
 
             assert_eq!(
-                run(&mut allocator, options, unoptimized_program, env_ptr),
-                run(&mut allocator, options, optimized_program, env_ptr),
-                "optimized program differs for environment {env:?} with {options:?}"
+                run(&mut allocator, target, unoptimized_program, env_ptr),
+                run(&mut allocator, target, optimized_program, env_ptr),
+                "optimized program differs for environment {env:?} with {target:?}"
             );
         }
 
@@ -1376,8 +1366,8 @@ mod tests {
                 let twice = optimize(&mut arena, once, UNLIMITED);
 
                 let mut allocator = Allocator::new();
-                let once = compile(&arena, &mut allocator, once, true);
-                let twice = compile(&arena, &mut allocator, twice, true);
+                let once = compile(&arena, &mut allocator, once, UNLIMITED, true);
+                let twice = compile(&arena, &mut allocator, twice, UNLIMITED, true);
                 assert_eq!(
                     node_to_bytes(&allocator, once).unwrap(),
                     node_to_bytes(&allocator, twice).unwrap()
@@ -1480,21 +1470,21 @@ mod tests {
                 .collect(),
         ));
 
-        for (options, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
-            let result = opt_modpow(&mut arena, options, long_base, two, seven);
+        for (target, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
+            let result = opt_modpow(&mut arena, target, long_base, two, seven);
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
 
-            let result = opt_g1_multiply(&mut arena, options, point, long_scalar);
+            let result = opt_g1_multiply(&mut arena, target, point, long_scalar);
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
 
-            let result = opt_g2_multiply(&mut arena, options, g2_point, long_scalar);
+            let result = opt_g2_multiply(&mut arena, target, g2_point, long_scalar);
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
         }
 
         // Short operands fold, unless `modpow` is disabled, as `DISABLE_OP` does with
         // `operand_limits` before hard fork 2
-        for (options, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
-            let result = opt_modpow(&mut arena, options, two, two, seven);
+        for (target, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
+            let result = opt_modpow(&mut arena, target, two, two, seven);
             assert_eq!(
                 matches!(&arena[result], Lir::Atom(atom) if *atom == [4]),
                 folded
@@ -1584,14 +1574,14 @@ mod tests {
                 })
                 .collect();
 
-            for options in [UNLIMITED, LIMITED, HARD_FORK_2] {
-                let optimized = assert_equivalent_with(&mut arena, options, lir, &envs);
+            for target in [UNLIMITED, LIMITED, HARD_FORK_2] {
+                let optimized = assert_equivalent_with(&mut arena, target, lir, &envs);
 
                 // Optimizing a second time shouldn't change the output
-                let twice = optimize(&mut arena, optimized, options);
+                let twice = optimize(&mut arena, optimized, target);
                 let mut allocator = Allocator::new();
-                let once = compile(&arena, &mut allocator, optimized, true);
-                let twice = compile(&arena, &mut allocator, twice, true);
+                let once = compile(&arena, &mut allocator, optimized, target, true);
+                let twice = compile(&arena, &mut allocator, twice, target, true);
                 assert_eq!(
                     node_to_bytes(&allocator, once).unwrap(),
                     node_to_bytes(&allocator, twice).unwrap()

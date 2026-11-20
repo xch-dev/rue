@@ -1,4 +1,12 @@
 use rue_diagnostic::LintLevels;
+use thiserror::Error;
+
+/// Both `operand_limits` and `hard_fork_2` are set, although hard fork 2 removes `LIMITS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error(
+    "`operand_limits` has no effect with `hard_fork_2`, since hard fork 2 removes `LIMITS`, so only one of them can be set"
+)]
+pub struct TargetConflict;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::struct_excessive_bools)]
@@ -23,10 +31,9 @@ pub struct CompilerOptions {
     pub const_eval_max_cost: u64,
 
     /// Whether programs target CLVM with the `LIMITS` flag, which Chia mainnet enforces in both
-    /// the mempool and blocks until hard fork 2. Off by default, even though
-    /// [`hard_fork_2`](Self::hard_fork_2) is off by default too. It has no effect with
-    /// `hard_fork_2`, which removes `LIMITS`, and setting both is an error in the CLI and the test
-    /// runner.
+    /// the mempool and blocks until hard fork 2. Off by default. It has no effect with
+    /// [`hard_fork_2`](Self::hard_fork_2), which removes `LIMITS`, and setting both is an error in
+    /// the CLI and the test runner (see [`check_target`](Self::check_target)).
     ///
     /// `LIMITS` makes some operators fail when an operand is too long, counting any leading zero
     /// bytes:
@@ -105,9 +112,10 @@ pub struct CompilerOptions {
     /// opcodes 64 and 65. Hard fork 2 also removes `LIMITS`, so
     /// [`operand_limits`](Self::operand_limits) has no effect.
     ///
-    /// Either option only changes what the compiler accepts and how programs are run in tests and
-    /// `rue debug`. A program compiled with this on can fail on mainnet until hard fork 2
-    /// activates, and costs reported before then don't match mainnet's.
+    /// This changes the compiled program, and so its puzzle hash, for any program that uses the
+    /// secp operators, and it can change what the optimizer emits, since it folds constants by
+    /// comparing costs in the target's cost model. A program compiled with this on can fail on
+    /// mainnet until hard fork 2 activates, and costs reported before then don't match mainnet's.
     ///
     /// The test runner, `rue test`, and `rue debug` run inside the project, run programs with the
     /// flags for the target (see `rue_lir::ClvmTarget::flags`).
@@ -138,6 +146,16 @@ impl CompilerOptions {
     /// [`operand_limits`](Self::operand_limits) until hard fork 2.
     pub fn enforces_operand_limits(&self) -> bool {
         self.operand_limits && !self.hard_fork_2
+    }
+
+    /// Checks that the options that choose the target don't conflict. `operand_limits` has no
+    /// effect with `hard_fork_2`, so setting both is a mistake.
+    pub fn check_target(&self) -> Result<(), TargetConflict> {
+        if self.operand_limits && self.hard_fork_2 {
+            return Err(TargetConflict);
+        }
+
+        Ok(())
     }
 
     pub fn debug() -> Self {
@@ -191,6 +209,10 @@ mod tests {
                 ..CompilerOptions::default()
             };
             assert_eq!(options.enforces_operand_limits(), enforced);
+            assert_eq!(
+                options.check_target().is_err(),
+                operand_limits && hard_fork_2
+            );
         }
     }
 
