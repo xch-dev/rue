@@ -144,14 +144,23 @@ impl ChoiceRecord {
                     .is_none_or(|result| result == Comparison::Invalid))
     }
 
-    /// Whether a member (or the fallback) that collected no bounds gave `Assign`, like
-    /// `Choices::needed_in`.
-    fn held(&self) -> bool {
+    /// Whether a member (or the fallback) that gave `Assign` has nothing under it that a failed
+    /// pair could be charged to wherever the summary is applied: it collected no bounds, like
+    /// `Choices::needed_in`, or nothing in the summary is under it (`used` are the members that
+    /// something is), such as a member whose bounds were all on the comparison's own instances,
+    /// which were checked inside of it. Picking it then gives `Assign` (see
+    /// `Choices::attributed`). A member left out as alike another has no result, so it doesn't
+    /// hold the union (see `alike_member`).
+    fn held(&self, used: Option<&Vec<usize>>) -> bool {
         self.members
             .iter()
-            .chain([&self.fallback])
+            .enumerate()
+            .chain([(FALLBACK, &self.fallback)])
             .zip(&self.bounded)
-            .any(|(&result, &bounded)| result == Some(Comparison::Assign) && !bounded)
+            .any(|((member, &result), &bounded)| {
+                result == Some(Comparison::Assign)
+                    && (!bounded || used.is_none_or(|used| !used.contains(&member)))
+            })
     }
 
     /// The binders that the record refers to: the union, then the one it's nested in.
@@ -475,8 +484,8 @@ impl Summary {
     /// The summary's unions and constraints, with the unions that decide nothing left out, which
     /// keeps a summary that's applied under a union member of a comparison that's summarized
     /// itself from nesting its unions one level deeper each time, without bound:
-    /// - A union held by a member that gave `Assign` without collecting bounds, with what's under
-    ///   its other members (see `ChoiceRecord::held` and `Choices::needed_in`).
+    /// - A union held by a member that gave `Assign` with nothing under it, with what's under its
+    ///   other members (see `ChoiceRecord::held` and `Choices::needed_in`).
     /// - A third copy of a union under the same member (see `extra_copy`).
     /// - A member alike another of its union, with what's under it (see `alike_member`).
     /// - A union that has something under only one of its members, the only one that can hold
@@ -516,7 +525,7 @@ impl Summary {
             // (#360)
             let held = choices
                 .iter()
-                .find(|choice| choice.held())
+                .find(|choice| choice.held(used.get(&choice.choice)))
                 .map(|choice| choice.choice);
 
             if let Some(extra) = held.or_else(|| extra_copy(&choices, &constraints)) {
@@ -1757,6 +1766,37 @@ mod tests {
             summary.canonicalize();
             assert_eq!(summary.choices().len(), kept, "{second:?}");
             assert_eq!(summary.constraints().len(), kept, "{second:?}");
+        }
+    }
+
+    /// A union held by a member that gave `Assign` and collected bounds, none of which are in the
+    /// summary, is left out too, since nothing can be charged to that member where the summary is
+    /// applied. One whose member with nothing under it gave `Cast`, or was left out as alike
+    /// another (so it has no result), is kept.
+    #[test]
+    fn test_canonicalize_leaves_out_unions_held_by_a_member_with_nothing_under_it() {
+        let mut types = Types::new();
+        let a = types.generic();
+
+        for (first, kept) in [
+            (Some(Comparison::Assign), 0),
+            (Some(Comparison::Cast), 1),
+            (None, 1),
+        ] {
+            let mut summary = Summary::default();
+            let choice = summary.local();
+            summary.add_choice(ChoiceRecord {
+                members: vec![first, Some(Comparison::Assign)],
+                ..union(choice, None, &[], &[true, true, false])
+            });
+            summary.add(Constraint {
+                branch: Some((choice, 1)),
+                ..bound(Var::Key(0), true, a, vec![])
+            });
+
+            summary.canonicalize();
+            assert_eq!(summary.choices().len(), kept, "{first:?}");
+            assert_eq!(summary.constraints().len(), kept, "{first:?}");
         }
     }
 

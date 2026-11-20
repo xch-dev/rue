@@ -2730,7 +2730,8 @@ fn check_inner_bounds(
         grown.extend(close_reopened(ctx, reopened));
     }
 
-    let (attributed, nodes) = ctx.choices.attributed(unions, &failed);
+    let limit = comparison_step_limit(COMPARISON_STEP_LIMIT).saturating_sub(ctx.steps);
+    let (attributed, nodes) = ctx.choices.attributed(unions, &failed, limit);
     ctx.spend_many(nodes);
     (max(result, attributed), deeper)
 }
