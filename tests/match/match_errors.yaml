@@ -17,15 +17,10 @@ diagnostics:
   Unreachable match arm, since an earlier arm handles every value that's left at match_errors.rue:118:9
     note: This arm handles every value that's left at match_errors.rue:117:9
 - Undeclared symbol `undefined` at match_errors.rue:118:14
-- Match arm `SameShapeA` would also handle `SameShapeB`, since they can't be told apart from it at runtime; handle them in an earlier arm, or add them to this pattern at match_errors.rue:135:9
-- Match arm `SameShapeA` would also handle `SameShapeB`, since they can't be told apart from it at runtime; handle them in an earlier arm, or add them to this pattern at match_errors.rue:141:9
-- Match arm `nil` would also handle `false`, since they can't be told apart from it at runtime; handle them in an earlier arm, or add them to this pattern at match_errors.rue:148:9
-- Match arm `Int` would also handle `nil`, since they can't be told apart from it at runtime; handle them in an earlier arm, or add them to this pattern at match_errors.rue:156:9
-- Match arm `SameShapeA` would also handle `SameShapeB`, since they can't be told apart from it at runtime; handle them in an earlier arm, or add them to this pattern at match_errors.rue:164:9
-- Match on `Any` is not exhaustive, since it doesn't handle `(Any, Any)` at match_errors.rue:180:11
-- Match on `Optional<Bytes32>` is not exhaustive, since it doesn't handle `Bytes32` and `nil` at match_errors.rue:190:11
-- Match on `(A | B, Int)` is not exhaustive, since it doesn't handle `(A | B, Int)` at match_errors.rue:196:11
-- Undeclared type `Missing` at match_errors.rue:205:10
-- Undeclared type `Missing` at match_errors.rue:215:9
-- Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:227:11
-- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:235:9
+- Match on `Any` is not exhaustive, since it doesn't handle `(Any, Any)` at match_errors.rue:124:11
+- Match on `Optional<Bytes32>` is not exhaustive, since it doesn't handle `Bytes32` and `nil` at match_errors.rue:134:11
+- Match on `(A | B, Int)` is not exhaustive, since it doesn't handle `(A | B, Int)` at match_errors.rue:140:11
+- Undeclared type `Missing` at match_errors.rue:149:10
+- Undeclared type `Missing` at match_errors.rue:159:9
+- Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:171:11
+- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:179:9

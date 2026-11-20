@@ -108,7 +108,7 @@ Error: Match on `Shape` is not exhaustive, since it doesn't handle `Point`
 
 An arm that can never be taken, because the arms before it already handle every value it matches, is reported by the `unreachable_match_arm` lint. Literals never cover all of a type like `Int` or `String`, so a match on one needs a `_` arm (or an arm for the whole type). Handling a pair one part at a time doesn't cover it either: `(A, Int)` and `(B, Int)` don't handle all of `(A | B, Int)`, so that needs a `_` arm too, as the `else` branch of an `is` guard would.
 
-Members that are the same at runtime can't be told apart, such as two structs with the same fields and no constant field, `nil` and `false`, or `nil` and the `Int` zero. An arm for one of them would also handle the others, which is an error, so they have to be handled together (`A | B => ...`), or the narrower one first (`nil` before `Int`).
+Members that are the same at runtime can't be told apart, such as two structs with the same fields and no constant field, `nil` and `false`, or `nil` and the `Int` zero. An arm for one of them also handles the others, so a later arm for them is never taken, and `unreachable_match_arm` reports it. If no later arm names them, `indistinguishable_match_arm` reports the arm that takes them instead. Handle them together (`A | B => ...`), or the narrower one first (`nil` before `Int`).
 
 A match compiles to the same code as the `if` and `else if` chain it's equivalent to. The arm that handles everything that's left is the chain's `else` branch, so it doesn't check anything at runtime.
 

@@ -33,6 +33,9 @@ pub struct LintSites {
     /// every value they match. They're left out of the HIR, so they're recorded as they're
     /// compiled.
     pub unreachable_match_arms: Vec<UnreachableMatchArm>,
+    /// The arms of `match` expressions that also handle members they can't tell apart from their
+    /// own type.
+    pub indistinguishable_match_arms: Vec<IndistinguishableMatchArm>,
 }
 
 /// A read of a struct's field. The struct is identified by its name, which every copy of it (such
@@ -48,9 +51,37 @@ pub struct FieldRead {
 pub struct UnreachableMatchArm {
     /// The arm's pattern.
     pub pattern: SrcLoc,
-    /// The earlier arm that handles every value that's left, if there is one, rather than the
-    /// arms before it handling every value the pattern matches between them.
-    pub catch_all: Option<SrcLoc>,
+    pub reason: UnreachableReason,
+}
+
+/// Why a match arm is never taken.
+#[derive(Debug, Clone)]
+pub enum UnreachableReason {
+    /// The arms before it handle every value that the pattern matches between them.
+    Handled,
+    /// An earlier arm handles every value that's left.
+    CatchAll(SrcLoc),
+    /// An earlier arm also handles the pattern's values, since it can't tell them apart from its
+    /// own type at runtime (see [`IndistinguishableMatchArm`]).
+    Indistinguishable {
+        /// The earlier arm's pattern.
+        arm: SrcLoc,
+        /// The members that the earlier arm handles, as a list for a diagnostic.
+        members: String,
+    },
+}
+
+/// An arm of a `match` expression whose check also lets through members of the value's type that
+/// aren't values of its own type, since they're the same at runtime, which no later arm names (see
+/// [`LintSites::indistinguishable_match_arms`]). An arm that does name them is unreachable instead.
+#[derive(Debug, Clone)]
+pub struct IndistinguishableMatchArm {
+    /// The arm's pattern.
+    pub pattern: SrcLoc,
+    /// The pattern's type, for a diagnostic.
+    pub ty: String,
+    /// The members that the arm also handles, as a list for a diagnostic.
+    pub members: String,
 }
 
 /// A name in an inline module that resolves to the prelude or a builtin, while an enclosing module

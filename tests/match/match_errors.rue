@@ -119,62 +119,6 @@ fn error_in_unreachable_arm(value: U) -> Int {
     }
 }
 
-// An arm whose check also lets through another member, which can't be told apart from it at
-// runtime, would see that member as its own type
-struct SameShapeA {
-    value: Int,
-}
-
-struct SameShapeB {
-    value: Bytes32,
-}
-
-fn indistinguishable_catch_all(value: SameShapeA | SameShapeB | nil) -> Int {
-    match value {
-        nil => 0,
-        SameShapeA => value.value,
-    }
-}
-
-fn indistinguishable_checked(value: SameShapeA | SameShapeB | nil) -> Int {
-    match value {
-        SameShapeA => value.value,
-        nil => 0,
-    }
-}
-
-fn indistinguishable_nil(value: Bool | nil) -> Int {
-    match value {
-        nil => 0,
-        true => 1,
-    }
-}
-
-// `nil` is also the `Int` zero, so it has to be handled first
-fn indistinguishable_order(value: Int | nil) -> Int {
-    match value {
-        Int => value,
-        nil => 0,
-    }
-}
-
-// The arms after an arm that's reported aren't checked
-fn after_indistinguishable(value: SameShapeA | SameShapeB | nil) -> Int {
-    match value {
-        SameShapeA => 1,
-        nil => 0,
-        SameShapeB => 3,
-    }
-}
-
-// Handling both members in one arm is fine
-fn distinguishable_union(value: SameShapeA | SameShapeB | nil) -> Int {
-    match value {
-        nil => 0,
-        SameShapeA | SameShapeB => 1,
-    }
-}
-
 // What's left of `Any` after a pair pattern is still written as a pair of `Any`
 fn missing_any_after_pair(value: Any) -> Int {
     match value {
@@ -253,17 +197,11 @@ fn main() -> Int {
         + unknown_pattern(C {})
         + wrong_arm_type(C {})
         + error_in_unreachable_arm(C {})
-        + indistinguishable_catch_all(nil)
-        + indistinguishable_checked(nil)
-        + indistinguishable_nil(nil)
-        + distinguishable_union(nil)
         + missing_any_after_pair(1)
         + missing_alias(nil)
         + pair_parts((A {}, 1))
         + nested_unknown_pattern(nil)
         + incompatible_only(nil)
-        + indistinguishable_order(nil)
-        + after_indistinguishable(nil)
         + repeated_after_unknown_pattern(C {})
         + missing_same_names(nil)
 }

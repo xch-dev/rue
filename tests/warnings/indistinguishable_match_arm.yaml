@@ -1,0 +1,16 @@
+program: (a (q 16 (a 14 ()) (a 10 ()) (a 12 ()) (a 8 (q . 1))) (c (c (c (q 2 (i (l 1) (q) (q . 1)) 1) (q 2 (i 1 (q . 1) (q)) 1)) (c (q 2 (i 1 (q . 2) (q)) 1) (q 2 (i 1 (q . 2) (q)) 1))) ()))
+debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (a 62 ()) (a 46 ())) (a 22 ())) (a 26 ())) (a 18 ())) (a 28 ())) (a 20 ())) (a 24 (q . 1))) (a 16 ())) (c (c (c (c (q 2 (i (not 1) (q) (q 1 . 1)) 1) (q 2 (i (not (l 1)) (q . 1) (q)) 1)) (c (q 2 (i (= 1 ()) (q) (q . 1)) 1) (q 2 (i (not 1) (q) (q 1 . 1)) 1))) (c (c (q . 1) (q 2 (i (not (not 1)) (q 1 . 1) (q)) 1)) (c (q 2 (i (= 1 ()) (q) (q 1 . 1)) 1) (c (q 2 (i (not (not 1)) (q 5 1) (q)) 1) (q 2 (i (not 1) (q) (q 5 1)) 1))))) ()))
+output: "1"
+runtime_cost: 3780
+byte_cost: 1836000
+total_cost: 1839780
+diagnostics:
+- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:14:9
+- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:20:9
+- Match arm `nil` also handles `false`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:27:9
+- |-
+  Unreachable match arm, since an earlier arm also handles `SameShapeB`, which it can't tell apart from its own type at runtime at indistinguishable_match_arm.rue:37:9
+    note: This arm also handles `SameShapeB` at indistinguishable_match_arm.rue:35:9
+- |-
+  Unreachable match arm, since an earlier arm also handles `nil`, which it can't tell apart from its own type at runtime at indistinguishable_match_arm.rue:45:9
+    note: This arm also handles `nil` at indistinguishable_match_arm.rue:44:9

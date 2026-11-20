@@ -4,7 +4,7 @@ use log::debug;
 use rue_ast::{AstMatchArm, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{BindingSymbol, Block, Guard, Hir, HirId, Statement, Symbol, SymbolPath, Value};
-use rue_lint::UnreachableMatchArm;
+use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
 use rue_types::{Check, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr, compile_type};
@@ -59,6 +59,7 @@ pub fn compile_match_expr(
     let mut else_branch = None;
     let mut types = Vec::new();
     let mut handled = Vec::new();
+    let mut indistinguishable = Vec::new();
 
     let checkpoint = ctx.mapping_checkpoint();
 
@@ -86,7 +87,10 @@ pub fn compile_match_expr(
         // Once an arm has handled every value that's left, the ones after it are never taken
         if catch_all.is_some() || remaining_members.is_empty() {
             if !has_error {
-                report_unreachable(ctx, pattern_srcloc, catch_all.clone());
+                let reason = catch_all
+                    .clone()
+                    .map_or(UnreachableReason::Handled, UnreachableReason::CatchAll);
+                report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
             }
             compile_unreachable_arm(ctx, &arm, &reference, pattern, expected_type);
             continue;
@@ -101,7 +105,8 @@ pub fn compile_match_expr(
         {
             let earlier = ctx.alloc_type(Type::Union(Union::new(handled.clone())));
             if ctx.is_assignable(ty, earlier) {
-                report_unreachable(ctx, pattern_srcloc, None);
+                let reason = UnreachableReason::Handled;
+                report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
                 compile_unreachable_arm(ctx, &arm, &reference, pattern, expected_type);
                 continue;
             }
@@ -124,7 +129,14 @@ pub fn compile_match_expr(
             // rather than one whose values the earlier arms handle
             if !has_error && let Some(ty) = pattern {
                 if overlaps(ctx, scrutinee.ty, ty) {
-                    report_unreachable(ctx, pattern_srcloc, None);
+                    let reason = UnreachableReason::Handled;
+                    report_unreachable(
+                        ctx,
+                        pattern_srcloc,
+                        pattern,
+                        reason,
+                        &mut indistinguishable,
+                    );
                 } else {
                     let from = ctx.type_name(scrutinee.ty);
                     let to = ctx.type_name(ty);
@@ -147,11 +159,16 @@ pub fn compile_match_expr(
             _ => builtins.never,
         };
 
-        if !has_error
-            && let Some(ty) = pattern
-            && !check_distinguishable(ctx, &remaining_members, ty, pattern_srcloc)
-        {
-            has_error = true;
+        if !has_error && let Some(ty) = pattern {
+            let members = indistinguishable_members(ctx, &remaining_members, ty);
+            if !members.is_empty() {
+                indistinguishable.push(Indistinguishable {
+                    pattern: pattern_srcloc,
+                    ty,
+                    members,
+                    reported: false,
+                });
+            }
         }
 
         let else_members = members(ctx, else_type);
@@ -185,6 +202,22 @@ pub fn compile_match_expr(
     }
 
     ctx.revert_mappings(checkpoint, expr.syntax().text_range().end());
+
+    // The arms that take members which no later arm names are reported themselves, since nothing
+    // else shows that those members end up there
+    if !has_error {
+        for arm in indistinguishable.into_iter().filter(|arm| !arm.reported) {
+            let ty = ctx.type_name(arm.ty);
+            let members = format_members(ctx, arm.members);
+            ctx.lint_sites_mut()
+                .indistinguishable_match_arms
+                .push(IndistinguishableMatchArm {
+                    pattern: arm.pattern,
+                    ty,
+                    members,
+                });
+        }
+    }
 
     let else_branch = if let Some(else_branch) = else_branch {
         else_branch
@@ -267,27 +300,61 @@ fn compile_unreachable_arm(
     let _ = compile_arm(ctx, arm, reference, Some(ty), expected_type);
 }
 
-fn report_unreachable(ctx: &mut Compiler, pattern: SrcLoc, catch_all: Option<SrcLoc>) {
-    ctx.lint_sites_mut()
-        .unreachable_match_arms
-        .push(UnreachableMatchArm { pattern, catch_all });
+/// An arm whose check also lets through members it can't tell apart from its own type.
+struct Indistinguishable {
+    pattern: SrcLoc,
+    ty: TypeId,
+    members: Vec<TypeId>,
+    /// Whether a later arm names some of the members, and is reported as unreachable because of it.
+    reported: bool,
 }
 
-/// Reports the members of what's left that the arm's check lets through, although they aren't
-/// values of its type, and returns whether there were none. They're the same at runtime as the
-/// pattern, so there's no way to check which one a value is, and the arm would see them as its
-/// type. An `is` guard warns about this when it doesn't check anything (see
-/// `indistinguishable_guard`), but a match must handle each member on purpose.
-fn check_distinguishable(
+/// Records that an arm is never taken. If an earlier arm takes the values it names, although they
+/// aren't of that arm's type, that's the reason given, since it's the one that's least expected.
+fn report_unreachable(
     ctx: &mut Compiler,
-    remaining: &[TypeId],
-    ty: TypeId,
-    srcloc: SrcLoc,
-) -> bool {
+    pattern_srcloc: SrcLoc,
+    pattern: Option<TypeId>,
+    mut reason: UnreachableReason,
+    indistinguishable: &mut [Indistinguishable],
+) {
+    if let Some(ty) = pattern {
+        for arm in indistinguishable.iter_mut() {
+            let members: Vec<TypeId> = arm
+                .members
+                .clone()
+                .into_iter()
+                .filter(|&member| overlaps(ctx, member, ty))
+                .collect();
+
+            if !members.is_empty() {
+                arm.reported = true;
+                reason = UnreachableReason::Indistinguishable {
+                    arm: arm.pattern.clone(),
+                    members: format_members(ctx, members),
+                };
+                break;
+            }
+        }
+    }
+
+    ctx.lint_sites_mut()
+        .unreachable_match_arms
+        .push(UnreachableMatchArm {
+            pattern: pattern_srcloc,
+            reason,
+        });
+}
+
+/// The members of what's left that the arm's check lets through, although they aren't values of
+/// its type. They're the same at runtime as the pattern, so there's no way to check which one a
+/// value is, and the arm sees them as its type. An `is` guard warns about this when it doesn't
+/// check anything (see `indistinguishable_guard`).
+fn indistinguishable_members(ctx: &mut Compiler, remaining: &[TypeId], ty: TypeId) -> Vec<TypeId> {
     // Each member is compared on its own, rather than comparing the whole union with the pattern,
     // since the members of a large union are mostly the same few types (see #496). A member that
     // the pattern is narrower than, such as `Atom` for an `Int` pattern, is what checking is for.
-    let indistinguishable: Vec<TypeId> = remaining
+    remaining
         .iter()
         .copied()
         .filter(|&member| {
@@ -295,19 +362,7 @@ fn check_distinguishable(
                 && !ctx.is_assignable(member, ty)
                 && !ctx.is_assignable(ty, member)
         })
-        .collect();
-
-    if indistinguishable.is_empty() {
-        return true;
-    }
-
-    let name = ctx.type_name(ty);
-    let members = format_members(ctx, indistinguishable);
-    ctx.diagnostic_at(
-        srcloc,
-        DiagnosticKind::IndistinguishableMatchArm(name, members),
-    );
-    false
+        .collect()
 }
 
 /// The value that an arm's type guard checks. Each guard has a node of its own, like the guards of
