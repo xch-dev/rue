@@ -415,6 +415,7 @@ async fn test_protocol_session() {
     assert_eq!(capabilities["definitionProvider"], json!(true));
     assert_eq!(capabilities["referencesProvider"], json!(true));
     assert_eq!(capabilities["renameProvider"], json!(true));
+    assert_eq!(capabilities["inlayHintProvider"], json!(true));
     assert_eq!(
         capabilities["signatureHelpProvider"],
         json!({ "triggerCharacters": ["(", ",", "{"] })
@@ -475,6 +476,17 @@ fn rename(uri: &Uri, line: u32, character: u32, new_name: &str) -> Value {
     let mut params = position(uri, line, character);
     params["newName"] = json!(new_name);
     params
+}
+
+/// The parameters of a request for the inlay hints of a whole document.
+fn inlay_hints(uri: &Uri) -> Value {
+    json!({
+        "textDocument": { "uri": uri },
+        "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 1000, "character": 0 },
+        },
+    })
 }
 
 fn formatting(uri: &Uri) -> Value {
@@ -674,6 +686,103 @@ async fn test_signature_help_session() {
 }
 
 #[tokio::test]
+async fn test_inlay_hint_session() {
+    let text = "fn add(first: Int, second: Int) -> Int {\n    first + second\n}\n\nfn main() -> Int {\n    let text = \"\u{1F600}\"; let sum = add(1, 2);\n    sum\n}\n";
+    let project = TempProject::new(&[("main.rue", text)]);
+    let uri = project.uri("main.rue");
+
+    // The client says which hints it wants when it starts the server
+    let mut client = Client::new();
+    let messages = client
+        .initialize_with(json!({
+            "capabilities": { "workspace": { "inlayHint": { "refreshSupport": true } } },
+            "initializationOptions": { "inlayHints": { "parameterNames": false } },
+        }))
+        .await;
+    assert!(messages.is_empty(), "unexpected messages: {messages:?}");
+
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, text).await;
+    client.sync().await;
+
+    // Positions are in UTF-16 code units
+    let sum = json!({
+        "position": { "line": 5, "character": 28 },
+        "label": ": Int",
+        "kind": 1,
+        "paddingRight": false,
+    });
+
+    let parameter = |character: u32, name: &str| {
+        json!({
+            "position": { "line": 5, "character": character },
+            "label": format!("{name}:"),
+            "kind": 2,
+            "paddingRight": true,
+        })
+    };
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([sum]));
+
+    // And when its settings change, after which it's told to ask for the hints again
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "rue": { "inlayHints": { "parameterNames": true } } } }),
+        )
+        .await;
+
+    let messages = client.sync().await;
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert_eq!(messages[0].method(), "workspace/inlayHint/refresh");
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([sum, parameter(35, "first"), parameter(38, "second")])
+    );
+
+    // Settings that change nothing, or that aren't the server's, don't refresh anything
+    for settings in [
+        json!({ "rue": { "inlayHints": { "parameterNames": true } } }),
+        json!({ "rue": { "inlayHints": { "parameterNames": "yes" } } }),
+        json!({ "other": { "inlayHints": { "types": false } } }),
+        Value::Null,
+    ] {
+        client
+            .notify(
+                "workspace/didChangeConfiguration",
+                json!({ "settings": settings }),
+            )
+            .await;
+    }
+
+    assert!(client.sync().await.is_empty());
+
+    // The hints are for the text as it is when the request is sent, though the server hasn't
+    // compiled it yet
+    let compiles = client.compiles();
+    client
+        .change(
+            &uri,
+            2,
+            &[&text.replace("let sum = add(1, 2);", "let sum = 1 + 2;")],
+        )
+        .await;
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([sum]));
+    assert_eq!(client.compiles(), compiles + 1);
+}
+
+#[tokio::test]
 async fn test_rename_file_without_client_support() {
     let main = "fn main() -> Int {\n    utils::ONE\n}\n";
     let project = TempProject::new(&[
@@ -787,6 +896,11 @@ async fn test_query_panics_are_caught() {
             Task::SignatureHelp,
             "textDocument/signatureHelp",
             position(&uri, 2, 6),
+        ),
+        (
+            Task::InlayHints,
+            "textDocument/inlayHint",
+            inlay_hints(&uri),
         ),
         (
             Task::Formatting,

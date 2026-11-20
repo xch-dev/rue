@@ -17,14 +17,17 @@ use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position,
 };
 
+mod hints;
 mod rename;
 mod signature;
 
+pub use hints::{HintKind, HintOptions};
 pub use rename::Rename;
 pub use signature::Signatures;
 
 use crate::paths::path_to_uri;
 use crate::position::{position_to_offset, source_range};
+use hints::innermost_scope;
 
 #[derive(Debug, Clone)]
 pub struct Scopes(Vec<ScopeId>);
@@ -240,17 +243,22 @@ impl Cache<Compiler> {
         // Every scope that contains the index is nested in or equal to the others, so the narrower
         // one is the inner one. Of scopes with the same span, the first one exited (which is added
         // to the syntax map first) is the innermost.
-        let innermost = self
-            .syntax_map
-            .items()
-            .filter(|item| item.source_kind == *kind && contains(item.span, index))
-            .filter_map(|item| match item.kind {
-                SyntaxItemKind::Scope(scope) => Some((item.span.len(), scope)),
-                _ => None,
-            })
-            .min_by_key(|&(len, _)| len)
-            .map(|(_, scope)| scope);
+        let innermost = innermost_scope(
+            self.syntax_map
+                .items()
+                .filter(|item| item.source_kind == *kind)
+                .filter_map(|item| match item.kind {
+                    SyntaxItemKind::Scope(scope) => Some((item.span, scope)),
+                    _ => None,
+                }),
+            index,
+        );
 
+        self.scope_chain(innermost)
+    }
+
+    /// A scope and the scopes that it's in, innermost first.
+    fn scope_chain(&self, innermost: Option<ScopeId>) -> Scopes {
         let mut visible = Vec::new();
         let mut current = innermost;
 

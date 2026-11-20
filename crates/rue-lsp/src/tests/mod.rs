@@ -4,6 +4,7 @@ mod completion;
 mod diagnostics;
 mod formatting;
 mod hover;
+mod inlay_hints;
 mod lifecycle;
 mod line_endings;
 mod navigation;
@@ -30,10 +31,11 @@ use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
     Diagnostic, DocumentChangeOperation, DocumentChanges, DocumentFormattingParams,
     FormattingOptions, GotoDefinitionParams, GotoDefinitionResponse, HoverContents, HoverParams,
-    Location, MarkedString, NumberOrString, OneOf, ParameterLabel, PartialResultParams, Position,
-    PrepareRenameResponse, Range, ReferenceContext, ReferenceParams, RenameParams, ResourceOp,
-    SignatureHelpParams, TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri,
-    WorkDoneProgressParams, WorkspaceEdit,
+    InlayHintLabel, InlayHintParams, InlayHintTooltip, Location, MarkedString, NumberOrString,
+    OneOf, ParameterLabel, PartialResultParams, Position, PrepareRenameResponse, Range,
+    ReferenceContext, ReferenceParams, RenameParams, ResourceOp, SignatureHelpParams,
+    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams,
+    WorkspaceEdit,
 };
 
 use crate::paths::{path_to_uri, uri_to_path};
@@ -340,6 +342,79 @@ impl TestProject {
         }
 
         output
+    }
+
+    /// Renders the file with its inlay hints written into it, between `«` and `»`, followed by the
+    /// tooltips of the hints that have one.
+    pub fn inlay_hints(&self, name: &str) -> String {
+        let text = &self.text(name);
+        let end = offset_to_position(&LineIndex::with_carriage_returns(text), text, text.len());
+        self.inlay_hints_in(name, Range::new(Position::new(0, 0), end))
+    }
+
+    /// Renders the file with the inlay hints of a range, like [`Self::inlay_hints`].
+    pub fn inlay_hints_in(&self, name: &str, range: Range) -> String {
+        let text = &self.text(name);
+
+        let hints = block_on(self.backend().inlay_hint(InlayHintParams {
+            text_document: TextDocumentIdentifier::new(self.uri(name)),
+            range,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        }))
+        .unwrap()
+        .unwrap_or_default();
+
+        let lines = LineIndex::with_carriage_returns(text);
+        let mut output = text.clone();
+        let mut last = None;
+
+        // The hints are in order, so they're written from the end of the text, which keeps the
+        // positions of the earlier ones valid
+        for hint in hints.iter().rev() {
+            assert!(
+                last.is_none_or(|last| hint.position <= last),
+                "hints are in order"
+            );
+            last = Some(hint.position);
+
+            let InlayHintLabel::String(label) = &hint.label else {
+                panic!("unexpected label: {:?}", hint.label);
+            };
+
+            // A hint that's padded is shown with a space, as the editor shows it
+            let label = if hint.padding_right == Some(true) {
+                format!("«{label}» ")
+            } else {
+                format!("«{label}»")
+            };
+
+            let offset = position_to_offset(&lines, text, hint.position);
+            assert_eq!(offset_to_position(&lines, text, offset), hint.position);
+            output.insert_str(offset, &label);
+        }
+
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+
+        for hint in hints {
+            if let Some(InlayHintTooltip::String(tooltip)) = hint.tooltip {
+                writeln!(output, "tooltip: {tooltip}").unwrap();
+            }
+        }
+
+        output
+    }
+
+    /// The text of a file, as the project was created with it.
+    fn text(&self, name: &str) -> String {
+        let (_, text) = self
+            .files
+            .iter()
+            .find(|(file, _)| file == name)
+            .expect("missing file");
+
+        text.clone()
     }
 
     /// Renders the signatures at the cursor, with the active parameter of each in brackets and

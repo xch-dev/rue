@@ -30,12 +30,13 @@ use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
     CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChangeOperation, DocumentChanges,
     DocumentFormattingParams, FileSystemWatcher, GlobPattern, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
+    InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintKind,
+    InlayHintLabel, InlayHintParams, InlayHintTooltip, LanguageString, Location, MarkedString,
     MessageType, NumberOrString, OneOf, OptionalVersionedTextDocumentIdentifier,
     ParameterInformation, ParameterLabel, Position, PrepareRenameResponse, Range, ReferenceParams,
     Registration, RenameFile, RenameOptions, RenameParams, ResourceOp, ResourceOperationKind,
@@ -45,7 +46,9 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{Client, LanguageServer};
 
-use crate::cache::{HoverInfo, Rename, Signatures, SymbolHoverKind, field_declarations};
+use crate::cache::{
+    HintKind, HintOptions, HoverInfo, Rename, Signatures, SymbolHoverKind, field_declarations,
+};
 use crate::paths::{Paths, document, file_name, uri_to_path};
 use crate::position::{offset_to_position, offsets_to_range, source_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
@@ -61,6 +64,8 @@ pub struct Backend {
     worker: Worker,
     /// Whether the client can register file watchers when asked to.
     watch_files: AtomicBool,
+    /// Whether the client asks for inlay hints again when it's told that they changed.
+    refresh_hints: AtomicBool,
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
@@ -73,6 +78,7 @@ enum Task {
     Completion,
     Rename,
     SignatureHelp,
+    InlayHints,
     Formatting,
     CodeAction,
 }
@@ -87,6 +93,7 @@ impl fmt::Display for Task {
             Self::Completion => "computing completions",
             Self::Rename => "renaming",
             Self::SignatureHelp => "computing signature help",
+            Self::InlayHints => "computing inlay hints",
             Self::Formatting => "formatting",
             Self::CodeAction => "computing code actions",
         })
@@ -142,6 +149,21 @@ impl LanguageServer for Backend {
             .and_then(|capabilities| capabilities.prepare_support)
             .unwrap_or(false);
 
+        if let Some(options) = &params.initialization_options {
+            set_hint_options(&self.shared, options);
+        }
+
+        // The hints are asked for again once the client changes which ones it wants
+        let refresh_hints = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|capabilities| capabilities.inlay_hint.as_ref())
+            .and_then(|capabilities| capabilities.refresh_support)
+            .unwrap_or(false);
+
+        self.refresh_hints.store(refresh_hints, Ordering::Relaxed);
+
         // Files in the workspace are reported with the paths the client uses for them
         #[allow(deprecated)]
         let root_uri = params.root_uri.iter();
@@ -182,6 +204,7 @@ impl LanguageServer for Backend {
                     ]),
                     ..Default::default()
                 }),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
@@ -425,6 +448,30 @@ impl LanguageServer for Backend {
             .await)
     }
 
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let revision = self.revision(&params.text_document.uri);
+        let options = *lock(&self.shared.hints);
+
+        Ok(self
+            .query(Task::InlayHints, move |state| {
+                Some(inlay_hints(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.range,
+                    options,
+                ))
+            })
+            .await)
+    }
+
+    /// The client's settings say which inlay hints it wants.
+    async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
+        if set_hint_options(&self.shared, &params.settings)
+            && self.refresh_hints.load(Ordering::Relaxed)
+        {
+            self.shared.client.inlay_hint_refresh().await.ok();
+        }
+    }
+
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         self.catch_panic(Task::Formatting, || self.on_formatting(&params))
             .await
@@ -454,6 +501,7 @@ impl Backend {
             worker: Worker::new(shared.clone()),
             shared,
             watch_files: AtomicBool::new(false),
+            refresh_hints: AtomicBool::new(false),
         }
     }
 
@@ -792,6 +840,56 @@ fn signature_help(cache: &mut Cache<Compiler>, position: Position) -> Option<Sig
         active_signature: Some(active as u32),
         active_parameter,
     })
+}
+
+fn inlay_hints(cache: &mut Cache<Compiler>, range: Range, options: HintOptions) -> Vec<InlayHint> {
+    let range = cache.position(range.start)..cache.position(range.end);
+
+    cache
+        .inlay_hints(range, options)
+        .into_iter()
+        .map(|hint| InlayHint {
+            position: hint.position,
+            label: InlayHintLabel::String(hint.label),
+            kind: Some(match hint.kind {
+                HintKind::Type | HintKind::GenericArguments => InlayHintKind::TYPE,
+                HintKind::Parameter => InlayHintKind::PARAMETER,
+            }),
+            text_edits: None,
+            tooltip: hint.tooltip.map(InlayHintTooltip::String),
+            padding_left: None,
+            // A parameter's name is before its argument, and the rest are right after a name
+            padding_right: Some(hint.kind == HintKind::Parameter),
+            data: None,
+        })
+        .collect()
+}
+
+/// Sets which inlay hints the client wants from its settings, which are either the server's own
+/// (`{ "inlayHints": { ... } }`, as the initialization options are) or every setting with the
+/// server's under `rue`. The ones that aren't given stay as they are. Returns whether any changed.
+fn set_hint_options(shared: &Shared, settings: &serde_json::Value) -> bool {
+    let settings = settings.get("rue").unwrap_or(settings);
+
+    let Some(settings) = settings.get("inlayHints") else {
+        return false;
+    };
+
+    let mut options = lock(&shared.hints);
+    let options = &mut *options;
+    let previous = *options;
+
+    for (name, option) in [
+        ("types", &mut options.types),
+        ("genericArguments", &mut options.generic_arguments),
+        ("parameterNames", &mut options.parameter_names),
+    ] {
+        if let Some(value) = settings.get(name).and_then(serde_json::Value::as_bool) {
+            *option = value;
+        }
+    }
+
+    *options != previous
 }
 
 fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {

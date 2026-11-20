@@ -232,8 +232,15 @@ When a test fails, `test` shows where it was in the source: the stack of calls t
 - **Go to definition and find references:** for functions, constants, bindings, types, struct fields, enum variants, generic parameters and modules, across the files of the project.
 - **Rename:** renames a function, constant, binding, type, struct field, enum variant, generic parameter or module everywhere in the project, along with the file or directory of a module that's one. A shorthand field (`Point { x }`) is written out, so the field or the binding keeps its name. Names that are built in or from the standard library can't be renamed, and a new name that's invalid, already used, or would change what a name refers to is refused.
 - **Signature help:** the parameters of the function that's being called, with the one that the argument at the cursor is for, and what the function's generics were inferred as. It works for functions, lambdas, builtins and the fields of a struct initializer.
+- **Inlay hints:** the types that were inferred for `let` bindings and lambda parameters, the generic arguments that were inferred for a call, and the names of the parameters that a call's arguments are for (unless an argument is named like its parameter). Long types are cut short, with the rest in the hint's tooltip.
 - **Completion:** names in scope, the fields of a struct after a `.`, and the items of a module after `::`.
 - **Formatting:** the same as `rue fmt`, with the options from `Rue.toml`.
+
+Each kind of inlay hint is on unless it's turned off, either in the `initializationOptions` that the editor starts the server with, or in the settings it sends later (under `rue`):
+
+```json
+{ "inlayHints": { "types": true, "genericArguments": true, "parameterNames": false } }
+```
 
 ## Hard Fork 2
 

@@ -2,7 +2,7 @@
 //! language server never panics on it, whether it's complete or half-typed.
 //!
 //! For each file, it (a) makes every request that's about a position (hover, go to definition,
-//! references, completion, rename and signature help) at many cursor positions, and (b) recompiles
+//! references, completion, rename, signature help and inlay hints) at many cursor positions, and (b) recompiles
 //! edited versions of the file, as if it were being typed, and makes the same requests where the
 //! edit happened. The edits are: everything after the cursor removed, the rest of the cursor's
 //! line removed, and a chunk removed from the cursor on.
@@ -33,9 +33,9 @@ use std::thread::{self, ThreadId};
 use futures::executor::block_on;
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
-    CompletionParams, GotoDefinitionParams, HoverParams, PartialResultParams, Position,
-    ReferenceContext, ReferenceParams, RenameParams, SignatureHelpParams, TextDocumentIdentifier,
-    TextDocumentPositionParams, Uri, WorkDoneProgressParams,
+    CompletionParams, GotoDefinitionParams, HoverParams, InlayHintParams, PartialResultParams,
+    Position, Range, ReferenceContext, ReferenceParams, RenameParams, SignatureHelpParams,
+    TextDocumentIdentifier, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
 };
 
 use super::TestProject;
@@ -192,10 +192,11 @@ enum Request {
     PrepareRename,
     Rename,
     SignatureHelp,
+    InlayHints,
 }
 
 impl Request {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Hover,
         Self::GotoDefinition,
         Self::References,
@@ -203,6 +204,7 @@ impl Request {
         Self::PrepareRename,
         Self::Rename,
         Self::SignatureHelp,
+        Self::InlayHints,
     ];
 
     fn name(self) -> &'static str {
@@ -214,6 +216,7 @@ impl Request {
             Self::PrepareRename => "prepare rename",
             Self::Rename => "rename",
             Self::SignatureHelp => "signature help",
+            Self::InlayHints => "inlay hints",
         }
     }
 
@@ -256,6 +259,15 @@ impl Request {
                 block_on(backend.signature_help(SignatureHelpParams {
                     context: None,
                     text_document_position_params: document,
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                }))
+                .ok();
+            }
+            // The hints of the whole file, since the edits change code anywhere in it
+            Self::InlayHints => {
+                block_on(backend.inlay_hint(InlayHintParams {
+                    text_document: document.text_document,
+                    range: Range::new(Position::new(0, 0), Position::new(u32::MAX, 0)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 }))
                 .ok();
