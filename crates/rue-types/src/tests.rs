@@ -4075,6 +4075,29 @@ mod subtraction {
     }
 
     #[test]
+    fn splits_any() {
+        let mut db = Db::new();
+        let BuiltinTypes {
+            int,
+            nil,
+            atom,
+            permissive_any: any,
+            ..
+        } = db.builtins;
+        let rhs = db.pair(int, any);
+        let inner = db.pair(any, any);
+        let pair = db.pair(inner, any);
+        let expected = db.union(&[atom, pair]);
+        let int_pair = db.pair(int, nil);
+
+        // The first value of a remaining pair can't be an atom, since every atom is an `Int`
+        let result = subtract(&mut db.arena, &db.builtins, any, rhs);
+        assert_eq!(db.cmp(result, expected), Comparison::Assign);
+        assert_eq!(db.cmp(atom, result), Comparison::Assign);
+        assert_eq!(db.cmp(int_pair, result), Comparison::Invalid);
+    }
+
+    #[test]
     fn recursive_parts_terminate() {
         let mut db = Db::new();
         let [one, two, _] = literals(&mut db);

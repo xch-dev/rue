@@ -88,7 +88,7 @@ pub fn extract_pairs(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Vec<P
 }
 
 /// The pairs that make up an already substituted type, like `extract_pairs` without `strict`.
-pub(crate) fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
+pub(crate) fn extract_pairs_substituted(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
     extract_pairs_impl(arena, id, false, &mut HashSet::new()).unwrap_or_default()
 }
 

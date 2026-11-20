@@ -1,12 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use id_arena::Arena;
 use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, Pair, Type, TypeId, Union, compare, grow_stack, pairs_of,
-    reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    Alias, BuiltinTypes, Comparison, Pair, Type, TypeId, Union, compare, extract_pairs_substituted,
+    grow_stack, reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 pub fn subtract(
@@ -50,10 +50,33 @@ fn subtract_impl(
     lhs_id: TypeId,
     rhs_id: TypeId,
 ) -> TypeId {
-    let variants = remaining_variants(arena, builtins, lhs_id, rhs_id, &mut HashSet::new())
-        .unwrap_or_else(|| variants_of(arena, builtins, lhs_id));
+    let mut cx = Subtraction::default();
 
-    repackage(arena, builtins, variants)
+    match remaining_variants(arena, builtins, &mut cx, lhs_id, rhs_id) {
+        Some(variants) => repackage(arena, builtins, variants),
+        None => lhs_id,
+    }
+}
+
+/// The state of one subtraction, which is shared by the subtractions of the parts of its pairs.
+#[derive(Default)]
+struct Subtraction {
+    /// The subtractions in progress, to stop at a cycle through the parts of recursive types.
+    stack: HashSet<(TypeId, TypeId)>,
+    /// What's left of each variant once a target is subtracted from it. The same variant often
+    /// appears many times, such as in a union that repeats a type at each level (#496), and each
+    /// copy should be narrowed to the same type.
+    variants: HashMap<(TypeId, TypeId), Outcome>,
+    /// What's left of each part of a pair once a part of a target pair is subtracted from it. The
+    /// same subtraction can be reached through either part of the pairs in a target.
+    parts: HashMap<(TypeId, TypeId), Outcome>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Outcome {
+    Unchanged,
+    Removed,
+    Narrowed(TypeId),
 }
 
 /// The variants of `lhs_id` that aren't covered by `rhs_id`, or `None` if none of them changed.
@@ -62,32 +85,26 @@ fn subtract_impl(
 /// other is covered: `(X, Y) - (P, Y) = (X - P, Y)`. The values that fail the check against
 /// `(P, Y)` are exactly the ones whose first value isn't a `P`. When both parts differ, the
 /// remainder isn't a single pair, so the variant is kept whole.
-///
-/// The parts of a recursive type can lead back to a subtraction that's already in progress, such
-/// as `L - R` with `type L = Bytes | (Int, L)` and `type R = Int | (Int, R)`. That subtraction
-/// keeps its part whole, so the result is only wider than it could be.
 fn remaining_variants(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
+    cx: &mut Subtraction,
     lhs_id: TypeId,
     rhs_id: TypeId,
-    stack: &mut HashSet<(TypeId, TypeId)>,
 ) -> Option<Vec<Variant>> {
-    grow_stack(|| remaining_variants_inner(arena, builtins, lhs_id, rhs_id, stack))
+    grow_stack(|| remaining_variants_inner(arena, builtins, cx, lhs_id, rhs_id))
 }
 
 fn remaining_variants_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
+    cx: &mut Subtraction,
     lhs_id: TypeId,
     rhs_id: TypeId,
-    stack: &mut HashSet<(TypeId, TypeId)>,
 ) -> Option<Vec<Variant>> {
     step();
 
-    if !stack.insert((lhs_id, rhs_id)) {
-        return None;
-    }
+    cx.stack.insert((lhs_id, rhs_id));
 
     let variants = variants_of(arena, builtins, lhs_id);
     let mut rhs_pairs = None;
@@ -95,25 +112,32 @@ fn remaining_variants_inner(
     let mut remaining = Vec::with_capacity(variants.len());
 
     for mut variant in variants {
-        if compare(arena, builtins, variant.type_id, rhs_id) <= Comparison::Cast {
-            changed = true;
-            continue;
-        }
+        let key = (variant.type_id, rhs_id);
 
-        let Type::Pair(pair) = arena[variant.type_id] else {
-            remaining.push(variant);
-            continue;
+        let outcome = if let Some(outcome) = cx.variants.get(&key) {
+            *outcome
+        } else {
+            let outcome = if compare(arena, builtins, variant.type_id, rhs_id) <= Comparison::Cast {
+                Outcome::Removed
+            } else if let Type::Pair(pair) = arena[variant.type_id] {
+                let rhs_pairs =
+                    rhs_pairs.get_or_insert_with(|| extract_pairs_substituted(arena, rhs_id));
+                split_pair(arena, builtins, cx, pair, rhs_pairs)
+            } else {
+                Outcome::Unchanged
+            };
+
+            cx.variants.insert(key, outcome);
+            outcome
         };
 
-        let rhs_pairs = rhs_pairs.get_or_insert_with(|| pairs_of(arena, rhs_id));
-
-        match split_pair(arena, builtins, pair, rhs_pairs, stack) {
-            Split::Unchanged => {}
-            Split::Removed => {
+        match outcome {
+            Outcome::Unchanged => {}
+            Outcome::Removed => {
                 changed = true;
                 continue;
             }
-            Split::Narrowed(type_id) => {
+            Outcome::Narrowed(type_id) => {
                 changed = true;
                 variant.type_id = type_id;
             }
@@ -122,15 +146,9 @@ fn remaining_variants_inner(
         remaining.push(variant);
     }
 
-    stack.remove(&(lhs_id, rhs_id));
+    cx.stack.remove(&(lhs_id, rhs_id));
 
     changed.then_some(remaining)
-}
-
-enum Split {
-    Unchanged,
-    Removed,
-    Narrowed(TypeId),
 }
 
 /// Subtracts each of the pairs in the target from the pair, one at a time, where only one of the
@@ -138,10 +156,10 @@ enum Split {
 fn split_pair(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
+    cx: &mut Subtraction,
     pair: Pair,
     rhs_pairs: &[Pair],
-    stack: &mut HashSet<(TypeId, TypeId)>,
-) -> Split {
+) -> Outcome {
     let mut first = pair.first;
     let mut rest = pair.rest;
     let mut changed = false;
@@ -151,29 +169,59 @@ fn split_pair(
         let rest_covered = compare(arena, builtins, rest, rhs.rest) <= Comparison::Cast;
 
         let (part, rhs_part) = match (first_covered, rest_covered) {
-            (true, true) => return Split::Removed,
+            (true, true) => return Outcome::Removed,
             (false, true) => (&mut first, rhs.first),
             (true, false) => (&mut rest, rhs.rest),
             (false, false) => continue,
         };
 
-        let Some(variants) = remaining_variants(arena, builtins, *part, rhs_part, stack) else {
-            continue;
-        };
-
-        if variants.is_empty() {
-            return Split::Removed;
+        match subtract_part(arena, builtins, cx, *part, rhs_part) {
+            Outcome::Unchanged => {}
+            Outcome::Removed => return Outcome::Removed,
+            Outcome::Narrowed(type_id) => {
+                *part = type_id;
+                changed = true;
+            }
         }
-
-        *part = repackage(arena, builtins, variants);
-        changed = true;
     }
 
     if changed {
-        Split::Narrowed(arena.alloc(Type::Pair(Pair::new(first, rest))))
+        Outcome::Narrowed(arena.alloc(Type::Pair(Pair::new(first, rest))))
     } else {
-        Split::Unchanged
+        Outcome::Unchanged
     }
+}
+
+/// Subtracts a part of a target pair from a part of a pair.
+///
+/// The parts of a recursive type can lead back to a subtraction that's already in progress, such
+/// as `L - R` with `type L = 2 | (1, L)` and `type R = 1 | (1, R)`. That part is kept whole, so the
+/// result is only wider than it could be.
+fn subtract_part(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    cx: &mut Subtraction,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+) -> Outcome {
+    let key = (lhs_id, rhs_id);
+
+    if let Some(outcome) = cx.parts.get(&key) {
+        return *outcome;
+    }
+
+    if cx.stack.contains(&key) {
+        return Outcome::Unchanged;
+    }
+
+    let outcome = match remaining_variants(arena, builtins, cx, lhs_id, rhs_id) {
+        None => Outcome::Unchanged,
+        Some(variants) if variants.is_empty() => Outcome::Removed,
+        Some(variants) => Outcome::Narrowed(repackage(arena, builtins, variants)),
+    };
+
+    cx.parts.insert(key, outcome);
+    outcome
 }
 
 fn repackage(arena: &mut Arena<Type>, builtins: &BuiltinTypes, variants: Vec<Variant>) -> TypeId {
