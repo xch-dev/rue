@@ -1420,11 +1420,10 @@ mod tests {
 
         let lir = arena.alloc(Lir::Eq(modulo, one));
         let long = [vec![1], vec![0; 299]].concat();
-        let envs = [vec![long], int_env(&[3])[..].to_vec()];
-        assert_equivalent(&mut arena, lir, &envs);
+        let envs = [vec![long], int_env(&[3])];
 
         // Without the limits, the long dividend is odd-checked with `logand` like any other
-        let optimized = assert_equivalent_with(&mut arena, UNLIMITED, lir, &envs);
+        let optimized = assert_equivalent(&mut arena, lir, &envs);
         assert_eq!(disassemble(&arena, optimized), "(logand 2 (q . 1))");
 
         // A boolean is short enough, as is a constant
@@ -1463,11 +1462,23 @@ mod tests {
         ));
         let long_scalar = arena.alloc(Lir::Atom(vec![1; 1025]));
 
+        // The generator of G2
+        let generator = "93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8";
+        let g2_point = arena.alloc(Lir::Atom(
+            (0..generator.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&generator[i..i + 2], 16).unwrap())
+                .collect(),
+        ));
+
         for (options, folded) in [(UNLIMITED, true), (LIMITED, false)] {
             let result = opt_modpow(&mut arena, options, long_base, two, seven);
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
 
             let result = opt_g1_multiply(&mut arena, options, point, long_scalar);
+            assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
+
+            let result = opt_g2_multiply(&mut arena, options, g2_point, long_scalar);
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
         }
 
