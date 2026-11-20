@@ -10,7 +10,10 @@ use indexmap::IndexSet;
 
 use log::debug;
 use rowan::TextRange;
-use rue_ast::{AstExpr, AstFunctionCallExpr, AstGuardExpr, AstLambdaExpr, AstNode};
+use rue_ast::{
+    AstBinding, AstExpr, AstFieldAccessExpr, AstFunctionCallExpr, AstGuardExpr, AstLambdaExpr,
+    AstNamedBinding, AstNode, AstPathSegment,
+};
 use rue_hir::{Hir, HirId, Value};
 use rue_types::{
     CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, Union,
@@ -245,8 +248,10 @@ pub(crate) fn infer_call(
                 order.deferred(
                     i,
                     &expected_returns,
+                    final_expected.is_none(),
                     &depends,
                     &with_dependencies(&waiting_reads(&waiting), &depends),
+                    &mappings,
                 )
             } else {
                 HashMap::new()
@@ -1166,6 +1171,18 @@ pub struct ElementLambda {
     /// generic itself can't be used any other way that loses it: its body either keeps it, as
     /// `(x, x)` does, or doesn't compile against it, as `x + 1` doesn't.
     narrows: bool,
+    /// The callee's generics that untyped parameters whose fields its body reads are expected to
+    /// be, as `p.first` does for `p: T`. Where one of them has no mapping when the argument is
+    /// compiled, the parameter is that generic where the lambda is, which has no fields, so it
+    /// wouldn't compile there, and it waits even where a lambda that could compile there doesn't
+    /// (see `ArgumentOrder::deferred`). Where they all have one, the parameter is what the
+    /// generic is inferred as so far there (see `refine_element_expected`), which it can compile
+    /// against.
+    field_generics: IndexSet<TypeId>,
+    /// Whether it's compiled where it is unless it wouldn't compile there (see `field_generics`):
+    /// its return type adds to the generics its parameters read, or another element reads what it
+    /// adds to (see `element_lambdas`).
+    in_place: bool,
 }
 
 /// An element lambda that's compiled once no argument still to be compiled can add to the generics
@@ -1459,19 +1476,49 @@ impl ArgumentOrder {
     /// the expected type's bound narrows them too, as `5` does `T` in
     /// `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)`, or `5 | nil` does in
     /// `fn(x) => if x is nil { nil } else { x }`. Compiled later, its parameters would be what the
-    /// other arguments infer, `Int`, and the call or guard would give that. Which of the two a lambda needs depends on what its body does with its
-    /// parameters, which isn't known before it's compiled, so it's compiled where it was.
+    /// other arguments infer, `Int`, and the call or guard would give that. Which of the two a
+    /// lambda needs depends on what its body does with its parameters, which isn't known before
+    /// it's compiled, so it's compiled where it was.
+    ///
+    /// Where the type expected of the call is only a hint (`hinted`), as it is for a call in a
+    /// lambda's body in another call's argument, any lambda whose return type it bounds is compiled
+    /// where it is too. The call is only solved again with its lambdas' parameters, to narrow them
+    /// to what the expected type allows, when the expected type is final (see
+    /// `solve_with_lambda_parameters`), so compiled later, `x` in `fn(x) => [x, x]` would stay the
+    /// `Int` that `5` widens to where a `List<5>` is expected (infer-fuzz generator 3, seed 408).
+    ///
+    /// Each of those rules gives way to one: a lambda that reads a field of an untyped parameter
+    /// whose generic has no mapping yet waits whenever it can, since compiled where it is, the
+    /// parameter would be the generic, which has no fields (see `ElementLambda::field_generics`).
     fn deferred(
         &self,
         i: usize,
         expected: &IndexSet<TypeId>,
+        hinted: bool,
         depends: &HashMap<TypeId, IndexSet<TypeId>>,
         waiting: &IndexSet<TypeId>,
+        mappings: &HashMap<TypeId, TypeId>,
     ) -> HashMap<TextRange, ElementLambda> {
         self.arguments[i]
             .element_lambdas
             .iter()
             .filter(|(_, lambda)| {
+                // One that doesn't compile where it is waits whenever it can, since compiled there
+                // it would be rejected, whatever else waiting changes (see
+                // `ElementLambda::field_generics`)
+                let fails_in_place = lambda
+                    .field_generics
+                    .iter()
+                    .any(|generic| !mappings.contains_key(generic));
+
+                if fails_in_place {
+                    return !self.is_settled(&lambda.reads, depends);
+                }
+
+                if lambda.in_place {
+                    return false;
+                }
+
                 let bounded_by_expected = lambda
                     .returns
                     .iter()
@@ -1480,7 +1527,8 @@ impl ArgumentOrder {
                 // The expected type's bound reaches the generics its parameters read through its
                 // return type only once it's compiled, so it's compiled where it is if its body can
                 // lose them, or if an argument still to be compiled reads them, as `identity(5)`
-                // does in `map_list([fn(x) => x], identity(5))` with `List<5>` expected
+                // does in `map_list([fn(x) => x], identity(5))` with `List<5>` expected, or if the
+                // expected type is only a hint (`hinted`)
                 let read_later = self.pending.iter().any(|&other| {
                     self.arguments[other]
                         .reads
@@ -1488,7 +1536,7 @@ impl ArgumentOrder {
                         .any(|generic| lambda.reads.contains(generic))
                 });
 
-                if bounded_by_expected && (lambda.narrows || read_later) {
+                if bounded_by_expected && (lambda.narrows || read_later || hinted) {
                     return false;
                 }
 
@@ -1789,8 +1837,9 @@ fn reads_of(
 /// of, that can wait for later arguments (see `DeferredLambda`), with the types they're expected to
 /// have, found by following the parameter type along those pairs as compiling them does (see
 /// `pair_parts`). Those are the ones whose untyped parameters are expected to have the callee's
-/// generics, and whose return types have none that they or the other elements read. Where the
-/// pairs can't be followed, there are none.
+/// generics, and whose return types have none that they or the other elements read, or whose
+/// bodies read a field of an untyped parameter that's expected to be one of the generics (see
+/// `ElementLambda::field_generics`). Where the pairs can't be followed, there are none.
 fn element_lambdas(
     ctx: &mut Compiler,
     function: &FunctionType,
@@ -1829,6 +1878,9 @@ fn element_lambdas(
                 // Whether an untyped parameter is expected to have a type that has a generic in it
                 // without being one, such as `(T, Int)`, a part of which doesn't reference `T`
                 let mut projected = false;
+                // The untyped parameters that are expected to be one of the callee's generics, with
+                // the generic
+                let mut generic_parameters: HashMap<usize, TypeId> = HashMap::new();
 
                 for expected in &expected {
                     for &index in &untyped {
@@ -1838,6 +1890,9 @@ fn element_lambdas(
                                 rue_types::unwrap_semantic(ctx.types_mut(), parameter.ty, true);
                             projected |=
                                 !generics.is_empty() && !function.generics.contains(&semantic);
+                            if function.generics.contains(&semantic) {
+                                generic_parameters.insert(index, semantic);
+                            }
                             reads.extend(generics);
                         }
                     }
@@ -1861,12 +1916,15 @@ fn element_lambdas(
                                 .any(|node| AstGuardExpr::cast(node).is_some())
                         }));
 
-                if !reads.is_empty() && !returns.iter().any(|generic| reads.contains(generic)) {
+                // Whether it's compiled in place is decided once every element is found, below
+                if !reads.is_empty() {
                     let lambda = ElementLambda {
                         ty,
                         reads: reads.clone(),
                         returns: returns.clone(),
                         narrows,
+                        field_generics: field_generics(lambda, &generic_parameters),
+                        in_place: returns.iter().any(|generic| reads.contains(generic)),
                     };
                     walk.lambdas.push((range, lambda));
                 }
@@ -1939,12 +1997,68 @@ fn element_lambdas(
     // compiled before a lambda that waits, so one whose return type has a generic another element
     // reads is compiled where it is, as in `(fn(_x) => 7, fn(y) => y + 1)` for
     // `(fn(x: T) -> U, fn(y: U) -> Int)`
+    let reads = walk.reads;
     walk.lambdas
         .into_iter()
-        .filter(|(range, lambda)| {
-            !walk.reads.iter().any(|(other, reads)| {
-                other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
-            })
+        .filter_map(|(range, mut lambda)| {
+            lambda.in_place |= reads.iter().any(|(other, reads)| {
+                *other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
+            });
+            (!lambda.in_place || !lambda.field_generics.is_empty()).then_some((range, lambda))
+        })
+        .collect()
+}
+
+/// The generics of the untyped parameters in `generic_parameters` (by position) whose fields the
+/// lambda's body reads, as `p.first` does, other than of a binding in it with the same name.
+fn field_generics(
+    lambda: &AstLambdaExpr,
+    generic_parameters: &HashMap<usize, TypeId>,
+) -> IndexSet<TypeId> {
+    let names: HashMap<String, TypeId> = lambda
+        .parameters()
+        .enumerate()
+        .filter_map(|(index, parameter)| {
+            let generic = *generic_parameters.get(&index)?;
+            match parameter.binding()? {
+                AstBinding::NamedBinding(binding) => binding
+                    .name()
+                    .map(|name| (name.text().to_string(), generic)),
+                _ => None,
+            }
+        })
+        .collect();
+
+    let Some(body) = lambda.body() else {
+        return IndexSet::new();
+    };
+
+    // A binding with the parameter's name shadows it, so its fields aren't the parameter's
+    let shadowed: HashSet<String> = body
+        .syntax()
+        .descendants()
+        .filter_map(AstNamedBinding::cast)
+        .filter_map(|binding| binding.name())
+        .map(|name| name.text().to_string())
+        .collect();
+
+    body.syntax()
+        .descendants()
+        .filter_map(AstFieldAccessExpr::cast)
+        .filter_map(|access| access.expr())
+        .filter_map(|expr| {
+            let AstExpr::PathExpr(path) = expr else {
+                return None;
+            };
+            let segments: Vec<AstPathSegment> = path.segments().collect();
+            let [segment] = segments.as_slice() else {
+                return None;
+            };
+            let name = segment.name()?;
+            if shadowed.contains(name.text()) {
+                return None;
+            }
+            names.get(name.text()).copied()
         })
         .collect()
 }

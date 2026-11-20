@@ -137,3 +137,26 @@ fn element_with_a_call_and_an_expected_type<A>(value: A) -> List<A> {
     let result: List<A> = map_list_of([fn(x) => identity::<A>(x)], value);
     result
 }
+
+fn apply_first_of<T, U>(functions: (fn(a: T) -> U, Int), value: T) -> U {
+    functions.first(value)
+}
+
+fn duplicate<T>(value: T) -> (T, T) {
+    (value, value)
+}
+
+// A lambda whose body passes its parameter to a call that needs it to be `Int | Bytes` is
+// compiled where it is under an expected type, against `T` itself, as before, so it's rejected,
+// although `apply_first_of::<Int | Bytes, _>` compiles. As for `identity(x)` in
+// `let r: 5 = apply_first_of((fn(x) => identity(x), 1), 5)`, which compiles because it's compiled
+// where it is, whether a call keeps the parameter's generic isn't known before the body is
+// compiled. Reading a field of the parameter is known never to compile there, so that one waits
+// (see `element_reads_a_field_of_its_parameter_under_an_expected_type`)
+fn element_passes_its_parameter_to_a_call_under_an_expected_type() -> (Int | Bytes, Int | Bytes) {
+    let result: (Int | Bytes, Int | Bytes) = apply_first_of(
+        (fn(x) => duplicate::<Int | Bytes>(x), 1),
+        5,
+    );
+    result
+}

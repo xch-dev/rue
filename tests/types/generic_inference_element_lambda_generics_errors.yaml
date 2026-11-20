@@ -28,3 +28,8 @@ diagnostics:
 - Unused function `element_with_a_call_and_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:136:4
 - Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:137:5
 - Cannot assign `T` to `A`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:137:63
+- Unused function `apply_first_of` at generic_inference_element_lambda_generics_errors.rue:141:4
+- Unused function `duplicate` at generic_inference_element_lambda_generics_errors.rue:145:4
+- Unused function `element_passes_its_parameter_to_a_call_under_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:156:4
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:157:5
+- Cannot assign `T` to `Int | Bytes` without a type guard, since the value isn't always a valid `Int | Bytes` at generic_inference_element_lambda_generics_errors.rue:158:44

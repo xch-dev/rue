@@ -601,3 +601,82 @@ test fn element_returns_what_a_waiting_lambda_reads_through_a_mapping() -> List<
     let result = chain_twice([fn(x) => x + 1], (fn(v) => v, 5), (fn(y) => y, 1), 6);
     result
 }
+
+fn apply_boxed<T, U>(function: Box<fn(a: T) -> U>, value: T) -> U {
+    function.inner(value)
+}
+
+// Guard: the type expected of `apply_first(...)` is only a hint, since it's in a lambda's body in
+// `apply_boxed`'s argument, so the call isn't solved again to narrow the lambda's `x`, and the
+// lambda is compiled where it is, as before, so `T` is narrowed to `5` through its return type
+// (infer-fuzz generator 3, seed 408)
+test fn element_under_a_hinted_expected_type() -> Int {
+    let result = apply_boxed(
+        Box::<fn(a: Int) -> (Int, fn(a: List<5>) -> List<5>)> {
+            inner: fn(_x14) => (4, fn(_x15: List<5>) => apply_first((fn(x16) => [x16, x16], 1), 5)),
+        },
+        1,
+    );
+    result.first
+}
+
+// A lambda that reads a field of a parameter that's the callee's generic itself waits, even under
+// an expected type, where a call in its body would otherwise keep it where it is:
+// compiled there, `p` is `T`, which has no fields, so it would be rejected anyway
+test fn element_reads_a_field_of_its_parameter_under_an_expected_type() -> (Int, List<Int>) {
+    let first: Int = apply_first((fn(p) => identity(p.first), 1), (5, 6));
+    let rest: List<Int> = map_list([fn(p) => identity(p.rest)], (5, 6));
+    (first, rest)
+}
+
+// Guard: a binding with the parameter's name shadows it, so the field it reads isn't the
+// parameter's, and the lambda is compiled where it is, as before, which a lambda whose return type
+// another element reads needs (see `element_returns_what_a_sibling_reads`)
+test fn element_reads_a_field_of_a_shadowing_binding() -> Int {
+    two_steps(
+        (
+            fn(p) => {
+                let p = (7, 1);
+                p.first
+            },
+            fn(y) => y + 1,
+        ),
+        5,
+    )
+}
+
+fn steps_between<T, U>(value: T, pair: (fn(x: T) -> U, fn(y: U) -> Int), other: T) -> Int {
+    pair.rest(pair.first(value)) + pair.rest(pair.first(other))
+}
+
+// Guard: `T` has a type when the pair is compiled, so `p` reads its field where the lambda is, and
+// the lambda is compiled there, since the lambda next to it reads what its return type adds to
+test fn element_reads_a_field_of_a_mapped_parameter_that_a_sibling_needs() -> Int {
+    let start: (Int, Int) = (7, 1);
+    steps_between(start, (fn(p) => p.first, fn(y) => y + 1), (8, 2))
+}
+
+mod paths {
+    export const ONE: (Int, Int) = (7, 1);
+
+    export mod first {
+        export const PAIR: (Int, Int) = (8, 2);
+    }
+}
+
+// Guard: a path with more than one segment isn't the parameter, even where its first or last
+// segment has the parameter's name, so the lambda is compiled where it is, as a lambda whose return
+// type another element reads needs
+test fn element_reads_a_field_of_a_path() -> (Int, Int) {
+    let a = two_steps((fn(ONE) => paths::ONE.first, fn(y) => y + 1), 5);
+    let b = two_steps((fn(paths) => paths::first::PAIR.first, fn(y) => y + 1), 5);
+    (a, b)
+}
+
+// Guard: where the expected type already gives `T` a type when the pair is compiled, `p` is that
+// type where the lambda is, so it reads its field there, and is compiled there, as a lambda whose
+// return type adds to what its parameter reads needs (infer-fuzz generator 3, seed 484)
+test fn element_reads_a_field_of_a_parameter_that_has_a_type_already() -> (5, Int) {
+    let result: (5, Int) = self_feeding((1, fn(p) => (p.first, 2)), (5, 3));
+    result
+}
