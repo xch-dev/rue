@@ -1793,6 +1793,33 @@ fn what_ambiguous_modules_only_import_privately_is_still_unused() {
 }
 
 #[test]
+fn private_glob_imports_in_ambiguous_modules_that_collide_use_both() {
+    // The first module's `m` imports `Y` privately from `{private}` and exports it from `{public}`,
+    // so which one `m`'s `Y` is depends on the names too. Either could be what `both::m::Y` refers
+    // to, so neither is reported, whichever is bound.
+    for (private, public) in [("aaa", "zzz"), ("zzz", "aaa")] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                &format!(
+                    "import super::super::{private}::*; export super::super::{public}::*; export const X: Int = 1;"
+                ),
+                "export const X: Int = 2;",
+                &format!(
+                    "mod {private} {{ export const Y: Int = 5; }} mod {public} {{ export const Y: Int = 6; }} fn main() -> Int {{ both::m::X }}"
+                ),
+            ));
+
+            assert_eq!(
+                unused_items(&compiled),
+                Vec::<String>::new(),
+                "private: {private}, first binds: {first_binds}"
+            );
+        }
+    }
+}
+
+#[test]
 fn glob_imports_through_ambiguous_modules_that_bring_in_nothing_are_used() {
     // The first module's `m` is empty, so the glob import brings in nothing when `m` is bound to
     // it, but it goes through an ambiguous name, so it's used in either order

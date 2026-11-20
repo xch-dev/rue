@@ -266,17 +266,20 @@ fn ambiguous_module_items(db: &Database) -> Vec<Declaration> {
         let scope = db.scope(module.scope);
 
         // What a name in it refers to, and what else it could if it's ambiguous there too. What it
-        // only imports privately can't be reached through a path, so it isn't included.
+        // only imports privately can't be reached through a path, so it isn't included,
         for namespace in Namespace::ALL {
             for (_, item) in scope.items(namespace) {
                 let via = scope.item_import(item);
+                let declaration = Declaration::from(item);
+                let others = db
+                    .ambiguous_alternatives(via, declaration)
+                    .collect::<Vec<_>>();
 
-                if via.is_some_and(|via| !db.import(via).exported) {
+                // Unless it collides with what's brought in another way, which could be what the
+                // name refers to in another order
+                if via.is_some_and(|via| !db.import(via).exported) && others.is_empty() {
                     continue;
                 }
-
-                let declaration = Declaration::from(item);
-                let others = db.ambiguous_alternatives(via, declaration);
 
                 for declaration in std::iter::once(declaration).chain(others) {
                     match (namespace, declaration) {
