@@ -452,6 +452,39 @@ test fn captured_through_an_inline_let() -> List<Int> {
     for x in runtime([1, 2]) { x * next }
 }
 
+// A fold from nil keeps its type where it's an argument for a generic parameter
+fn or_default<T>(value: T | nil, default: Int) -> Int {
+    if value is nil {
+        default
+    } else {
+        1
+    }
+}
+
+test fn nil_fold_as_a_generic_argument() -> Int {
+    or_default(
+        for x in runtime([1, 2]) fold done = nil {
+            check(x);
+            done
+        },
+        2,
+    )
+}
+
+// A loop is still a loop where a pair or struct that can also be nil is expected, since that
+// isn't a list
+fn checked_pair(xs: List<Int>) -> (Int, Int) | nil {
+    for x in xs { check(x) }
+}
+
+fn checked_point(xs: List<Int>) -> Point | nil {
+    for x in xs { check(x) }
+}
+
+test fn loop_with_an_optional_expected_type() -> Bool {
+    checked_pair(runtime([1, 2])) is nil && checked_point(runtime([3])) is nil
+}
+
 // A body whose value is nil still makes a list where one is expected
 fn empty_lists(xs: List<Int>) -> List<List<Int>> {
     for _x in xs { [] }

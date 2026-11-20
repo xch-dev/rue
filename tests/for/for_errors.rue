@@ -34,6 +34,9 @@ fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
     // A fold from nil in a generic call's argument doesn't take the call's generic as its type
     let l = first_or(for x in xs fold rest = nil { [x, ...rest] }, 0);
 
+    // Nor where the generic is only in the parameter that the fold is the argument for
+    let o = count(for x in xs fold rest = nil { [x, ...rest] });
+
     // A fold from nil doesn't take its type from a type that's only a hint, such as a cast's
     let m = (for x in xs fold rest = nil { [x, ...rest] }) as List<Int>;
 
@@ -57,10 +60,19 @@ fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
         + l
         + length(m)
         + length(n)
+        + o
 }
 
 fn check(x: Int) {
     assert x > 0;
+}
+
+fn count<T>(list: List<T>) -> Int {
+    if list is (T, List<T>) {
+        1 + count(list.rest)
+    } else {
+        0
+    }
 }
 
 fn first_or<T>(list: List<T>, default: T) -> T {

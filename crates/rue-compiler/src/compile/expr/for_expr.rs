@@ -7,7 +7,7 @@ use rue_hir::{
 };
 use rue_types::{FunctionParameter, FunctionType, Pair, Type, TypeId};
 
-use super::call_inference::{list_of, pair_parts};
+use super::call_inference::{list_of, pair_parts, references_call_generics};
 use super::list::{list_item_types, union_of};
 use crate::{BlockKind, Compiler, compile_block, compile_expr, compile_type, create_binding};
 
@@ -106,12 +106,14 @@ pub fn compile_for_expr(
         };
 
         let ty = annotation.unwrap_or_else(|| match expected_type {
-            // Not a type that's only a hint, such as one with the generics of a call that's
-            // being inferred, which the fold can't be
+            // Not a type that's only a hint, or that still has the generics of a call being
+            // inferred, which the fold can't be: a parameter's type is expected of its argument
+            // as it is while no other argument has given its generics a type
             Some(expected)
                 if ctx.is_assignable(init.ty, types.nil)
                     && ctx.is_assignable(init.ty, expected)
-                    && !ctx.is_expected_type_hint() =>
+                    && !ctx.is_expected_type_hint()
+                    && !references_call_generics(ctx, expected) =>
             {
                 expected
             }
@@ -216,6 +218,16 @@ pub fn compile_for_expr(
         .and_then(|ty| pair_parts(ctx, ty))
         .map(|(first, _)| first);
 
+    // A list is a type that's still itself with another item in front of it, unlike a pair or a
+    // struct that can also be nil
+    let expects_list = match (expected_type, expected_item) {
+        (Some(expected), Some(item)) => {
+            let longer = ctx.alloc_type(Type::Pair(Pair::new(item, expected)));
+            ctx.is_assignable(longer, expected)
+        }
+        _ => false,
+    };
+
     let expected_body = match &accumulator {
         Some(accumulator) => Some(accumulator.ty),
         None => expected_item,
@@ -260,10 +272,7 @@ pub fn compile_for_expr(
     // be a list, which it's then a list of nils for
     let kind = if fold.is_some() {
         ForKind::Fold
-    } else if statement
-        || !has_value
-        || (expected_item.is_none() && ctx.is_assignable(body.ty, types.nil))
-    {
+    } else if statement || !has_value || (!expects_list && ctx.is_assignable(body.ty, types.nil)) {
         ForKind::Loop
     } else {
         ForKind::List
