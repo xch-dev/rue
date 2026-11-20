@@ -1614,16 +1614,15 @@ test fn tests() {
 
     let (reports, has_errors) = reports(source, |_| {});
 
-    // A `return` in an expression block would only exit the block, so it's still an error
+    // The block is the function body's value, so returning from it is the same as being its value
     assert_eq!(
         reports,
         vec![
             "Warning 7: Unnecessary `return` statement, since the function body can end in an expression instead",
             "Warning 8: Unreachable code",
-            "Error 13: Cannot use a `return` statement here, end the block with an expression instead",
         ]
     );
-    assert!(has_errors);
+    assert!(!has_errors);
 }
 
 #[test]
@@ -2807,4 +2806,135 @@ fn keccak256(value: Bytes) -> Bytes32 {
         "{:?}",
         compiled.diagnostics
     );
+}
+
+/// Removing the code after a statement whose branches all return or raise leaves the statement at
+/// the end of the function body, which is still valid, since a body's value can return.
+#[test]
+fn code_after_exiting_statement_can_be_removed() {
+    let source = "\
+fn main(value: Int | nil) -> Int {
+    match value {
+        nil => {
+            return 0;
+        }
+        Int => {
+            raise \"value\";
+        }
+    }
+
+    1
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::UnreachableCode))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert!(fixed.ends_with("        }\n    }\n}\n"), "{fixed}");
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+/// An `if` statement whose branches are the same is replaced with the statements in its branch,
+/// rather than a block, which isn't a statement in the middle of another block.
+#[test]
+fn identical_statement_branches_can_be_replaced() {
+    let source = "\
+fn main(c: Bool, x: Int) -> Int {
+    if x > 1 {
+        assert c;
+    } else {
+        assert c;
+    }
+
+    x
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::IdenticalBranches))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(c: Bool, x: Int) -> Int {
+    assert c;
+
+    x
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+/// The attributes on an `if` statement aren't part of its code, so replacing it keeps them, and the
+/// statements of its branch are indented like it was.
+#[test]
+fn identical_statement_branches_keep_attributes() {
+    let source = "\
+fn main(c: Bool, x: Int) -> Int {
+    #[allow(unused_binding)]
+    if x > 1 {
+        let unused = 1;
+        assert c;
+    } else {
+        let unused = 1;
+        assert c;
+    }
+
+    x
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::IdenticalBranches))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(c: Bool, x: Int) -> Int {
+    #[allow(unused_binding)]
+    let unused = 1;
+    assert c;
+
+    x
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
 }

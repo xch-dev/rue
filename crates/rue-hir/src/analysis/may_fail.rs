@@ -276,6 +276,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
                     _ => false,
                 },
                 Statement::Expr(ref statement) => self.visit(statement.hir, in_body),
+                Statement::Control(ref statement) => self.visit(statement.hir, in_body),
                 Statement::If(ref statement) => {
                     self.any([statement.condition, statement.then], in_body)
                 }

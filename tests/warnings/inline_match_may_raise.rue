@@ -85,3 +85,106 @@ fn allowed_branch(x: Int | nil) -> Int | nil {
         Int => x,
     }
 }
+
+// When an arm of an `inline match` statement returns, the arm that falls through still evaluates
+// the rest of the block
+test fn statement_rest_raises() -> Int {
+    statement_rest_raises_branch(nil, 1)
+}
+
+fn statement_rest_raises_branch(x: Int | nil, y: Int) -> Int {
+    inline match x {
+        nil => {
+            return 0;
+        }
+        Int => {}
+    }
+
+    assert y != 1;
+    y
+}
+
+// No arm returns, so the rest of the block is evaluated whichever arm is taken
+test fn statement_without_return() -> Int {
+    statement_without_return_branch(nil, 4)
+}
+
+fn statement_without_return_branch(x: Int | nil, y: Int) -> Int {
+    inline match x {
+        nil => {
+            debug 0;
+        }
+        Int => {}
+    }
+
+    assert y != 1;
+    y
+}
+
+// An `inline match` statement in a branch of another statement evaluates the rest of the block
+// after that statement too
+test fn nested_statement_rest_raises() -> Int {
+    nested_statement_rest_raises_branch(nil, 1, true)
+}
+
+fn nested_statement_rest_raises_branch(x: Int | nil, y: Int, flag: Bool) -> Int {
+    if flag {
+        inline match x {
+            nil => {
+                return 0;
+            }
+            Int => {}
+        }
+    } else {
+        debug y;
+    }
+
+    assert y != 1;
+    y
+}
+
+// An `inline match` that's an arm of a `match` statement evaluates the rest of the block after it
+test fn arm_rest_raises() -> Int {
+    arm_rest_raises_branch(nil, nil, 1)
+}
+
+fn arm_rest_raises_branch(x: Int | nil, z: Int | nil, y: Int) -> Int {
+    match x {
+        nil => inline match z {
+            nil => {
+                return 1;
+            }
+            Int => {}
+        }
+        Int => {
+            debug y;
+        }
+    }
+
+    assert y != 1;
+    2
+}
+
+// Reported once when both the statement's own rest and the rest after the statement it's in can
+// raise
+test fn nested_reported_once() -> Int {
+    nested_reported_once_branch(nil, 1, true)
+}
+
+fn nested_reported_once_branch(x: Int | nil, y: Int, flag: Bool) -> Int {
+    if flag {
+        inline match x {
+            nil => {
+                return 0;
+            }
+            Int => {}
+        }
+
+        assert y > 1;
+    } else {
+        debug y;
+    }
+
+    assert y > 2;
+    y
+}

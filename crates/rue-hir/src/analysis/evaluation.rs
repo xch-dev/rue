@@ -153,6 +153,18 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
                         return true;
                     }
                 }
+                // A branch that raises doesn't matter, and one that falls through continues with
+                // the rest of the block. A branch that returns doesn't, so the rest is only
+                // evaluated some of the time.
+                Statement::Control(ref statement) => {
+                    if self.hir(statement.hir) {
+                        return true;
+                    }
+
+                    if statement.may_return {
+                        return false;
+                    }
+                }
                 Statement::Assert(condition, _) => {
                     if self.hir(condition) {
                         return true;

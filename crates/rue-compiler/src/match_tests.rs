@@ -191,3 +191,31 @@ fn inline_match_checks_whole_type() {
         "fn main(x: nil | (Int, Int)) -> Int { inline if x is nil { 0 } else { inline if x is (1, Int) { 1 } else { 2 } } }",
     );
 }
+
+/// A `match` statement whose only arm that falls through is the last is an `if` statement that
+/// returns early.
+#[test]
+fn statement_with_early_return() {
+    check(
+        "fn main(u: U) -> Int { match u { A => { return u.value; } _ => {} } 0 }",
+        "fn main(u: U) -> Int { if u is A { return u.value; } 0 }",
+    );
+}
+
+/// An `if` and `else` statement whose `else` branch falls through is the same.
+#[test]
+fn if_else_statement_with_early_return() {
+    check(
+        "fn main(u: U) -> Int { if u is A { return u.value; } else {} 0 }",
+        "fn main(u: U) -> Int { if u is A { return u.value; } 0 }",
+    );
+}
+
+/// A statement whose arms all return is the same as the `if` chain that's the function's value.
+#[test]
+fn statement_that_returns() {
+    check(
+        "fn main(u: U) -> Int { match u { A => { return u.value; } B => { return 1; } C => { return 2; } } }",
+        "fn main(u: U) -> Int { if u is A { u.value } else if u is B { 1 } else { 2 } }",
+    );
+}

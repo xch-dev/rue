@@ -20,9 +20,10 @@ use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
-    BinaryOp, BindingSymbol, Block, ConstantSymbol, Database, DependencyGraph, Environment,
-    ExprStatement, FieldAccess, FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId,
-    IfStatement, PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
+    BinaryOp, BindingSymbol, Block, ConstantSymbol, ControlStatement, Database, DependencyGraph,
+    Environment, ExprStatement, FieldAccess, FieldKind, FunctionCall, FunctionKind, FunctionSymbol,
+    Hir, HirId, IfStatement, PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp,
+    generate_check_hir,
 };
 
 use crate::analysis::{FunctionFailure, may_fail};
@@ -92,6 +93,29 @@ pub struct Lowerer<'d, 'a, 'g> {
     constant_roots: OnceCell<Vec<HirId>>,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
+}
+
+/// What a block's statements are followed by.
+#[derive(Debug, Clone)]
+enum Tail {
+    /// The block's body, which is its value, or nil if it doesn't have one.
+    Body(Option<HirId>),
+    /// The rest of the block that a [`ControlStatement`] is in, which a branch of the statement
+    /// that falls through continues with.
+    Continue(Rc<Continuation>),
+    /// The chain of `if` nodes of a `match` statement, which comes after the statement that binds
+    /// its value, followed by what follows the statement.
+    Control(HirId, Rc<Tail>),
+}
+
+/// The rest of the block after a [`ControlStatement`], for the branches that fall through to it.
+#[derive(Debug)]
+enum Continuation {
+    /// The rest of the block, which is lowered where the only branch that falls through ends.
+    Inline(Vec<Statement>, Tail),
+    /// The rest of the block, which is lowered once and quoted, and passed to the branches along
+    /// with the environment it runs in, so that each branch that falls through can run it.
+    Shared { program: SymbolId, env: SymbolId },
 }
 
 /// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.
@@ -547,7 +571,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 self.lower_hir(env, result)
             }
             Hir::Reference(symbol) => self.lower_symbol(env, symbol, false),
-            Hir::Block(block) => self.lower_block(env, block.statements, block.body),
+            Hir::Block(block) => self.lower_block(env, block.statements, Tail::Body(block.body)),
             Hir::Lambda(lambda) => self.lower_symbol(env, lambda, true),
             Hir::If(condition, then, else_, inline) => {
                 let condition = self.lower_hir(env, condition);
@@ -1223,21 +1247,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         )))
     }
 
-    fn lower_block(
-        &mut self,
-        env: &Environment,
-        mut stmts: Vec<Statement>,
-        body: Option<HirId>,
-    ) -> LirId {
+    fn lower_block(&mut self, env: &Environment, mut stmts: Vec<Statement>, body: Tail) -> LirId {
         if !self.options.debug_symbols {
             stmts.retain(|stmt| !matches!(stmt, Statement::Debug(..)));
         }
 
         let Some(stmt) = stmts.first().cloned() else {
-            return if let Some(body) = body {
-                self.lower_hir(env, body)
-            } else {
-                self.arena.alloc(Lir::Atom(vec![]))
+            return match body {
+                Tail::Body(Some(body)) => self.lower_hir(env, body),
+                Tail::Body(None) => self.arena.alloc(Lir::Atom(vec![])),
+                Tail::Continue(continuation) => self.lower_continuation(env, &continuation),
+                Tail::Control(chain, tail) => {
+                    self.lower_control_chain(env, chain, Tail::clone(&tail))
+                }
             };
         };
 
@@ -1252,17 +1274,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         env: &Environment,
         stmt: Statement,
         stmts: Vec<Statement>,
-        body: Option<HirId>,
+        body: Tail,
     ) -> LirId {
         match stmt {
             Statement::Let(..) => self.lower_let_stmts(env, stmts, body),
-            Statement::Return(hir, _) => self.lower_block(env, vec![], Some(hir)),
+            Statement::Return(hir, _) => self.lower_block(env, vec![], Tail::Body(Some(hir))),
             Statement::Assert(condition, srcloc) => {
                 self.lower_assert(env, stmts, condition, srcloc, body)
             }
             Statement::Expr(stmt) => self.lower_expr_stmts(env, stmt, stmts, body),
             Statement::Raise(hir, srcloc) => self.lower_raise(env, hir, srcloc),
             Statement::If(stmt) => self.lower_if(env, stmts, stmt, body),
+            Statement::Control(stmt) => self.lower_control(env, stmts, &stmt, body),
             Statement::Debug(hir, srcloc) => self.lower_debug(env, stmts, hir, srcloc, body),
         }
     }
@@ -1271,7 +1294,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         &mut self,
         env: &Environment,
         mut stmts: Vec<Statement>,
-        body: Option<HirId>,
+        body: Tail,
     ) -> LirId {
         let lets = stmts
             .iter()
@@ -1425,7 +1448,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         mut stmts: Vec<Statement>,
         condition: HirId,
         srcloc: SrcLoc,
-        body: Option<HirId>,
+        body: Tail,
     ) -> LirId {
         stmts.remove(0);
 
@@ -1485,7 +1508,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         mut stmts: Vec<Statement>,
         value: HirId,
         srcloc: SrcLoc,
-        body: Option<HirId>,
+        body: Tail,
     ) -> LirId {
         stmts.remove(0);
 
@@ -1504,7 +1527,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         env: &Environment,
         mut stmts: Vec<Statement>,
         stmt: IfStatement,
-        body: Option<HirId>,
+        body: Tail,
     ) -> LirId {
         stmts.remove(0);
         let condition = self.lower_hir(env, stmt.condition);
@@ -1514,12 +1537,106 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .alloc(Lir::If(condition, then_branch, else_branch, stmt.inline))
     }
 
+    /// Lowers an `if` and `else` chain or a `match` used as a statement, along with the rest of the
+    /// block, which each branch that falls through continues with (see [`Continuation`]).
+    fn lower_control(
+        &mut self,
+        env: &Environment,
+        mut stmts: Vec<Statement>,
+        stmt: &ControlStatement,
+        body: Tail,
+    ) -> LirId {
+        stmts.remove(0);
+
+        // Nothing after the statement is evaluated
+        if stmt.fallthroughs == 0 {
+            return self.lower_hir(env, stmt.hir);
+        }
+
+        // Each branch either raises or falls through, so the statement can be evaluated for its
+        // effect, like an expression statement, and then the rest of the block
+        if !stmt.may_return {
+            let value = self.lower_hir(env, stmt.hir);
+            let rest = self.lower_block(env, stmts, body);
+            return self.effect(value, rest);
+        }
+
+        // Only one branch continues with the rest of the block, so it's lowered there
+        if stmt.fallthroughs == 1 {
+            let continuation = Rc::new(Continuation::Inline(stmts, body));
+            return self.lower_control_chain(env, stmt.hir, Tail::Continue(continuation));
+        }
+
+        // Several branches continue with the rest of the block, so it's lowered once and run by
+        // each of them, rather than being generated again in each one
+        let rest = self.lower_block(env, stmts, body);
+        let program = self.db.alloc_symbol(Symbol::Unresolved);
+        let rest_env = self.db.alloc_symbol(Symbol::Unresolved);
+
+        let chain_env = Environment::Pair(
+            Box::new(Environment::Leaf(program)),
+            Box::new(Environment::Pair(
+                Box::new(Environment::Leaf(rest_env)),
+                Box::new(env.clone()),
+            )),
+        );
+
+        let continuation = Rc::new(Continuation::Shared {
+            program,
+            env: rest_env,
+        });
+        let chain = self.lower_control_chain(&chain_env, stmt.hir, Tail::Continue(continuation));
+
+        let chain = self.arena.alloc(Lir::Quote(chain));
+        let rest = self.arena.alloc(Lir::Quote(rest));
+        let current_env = self.arena.alloc(Lir::Path(1u8.into()));
+        let envs = self.arena.alloc(Lir::Cons(current_env, current_env));
+        let args = self.arena.alloc(Lir::Cons(rest, envs));
+        self.arena.alloc(Lir::Run(chain, args))
+    }
+
+    /// Lowers the node of a [`ControlStatement`], whose branches end with the tail when they fall
+    /// through, rather than with nil like a block without a body.
+    fn lower_control_chain(&mut self, env: &Environment, hir: HirId, tail: Tail) -> LirId {
+        self.nested(Frame::Hir(hir), |this| match this.db.hir(hir).clone() {
+            Hir::If(condition, then, else_, inline) => {
+                let condition = this.lower_hir(env, condition);
+                let then = this.lower_control_chain(env, then, tail.clone());
+                let else_ = this.lower_control_chain(env, else_, tail);
+                this.arena.alloc(Lir::If(condition, then, else_, inline))
+            }
+            Hir::Block(block) => {
+                let tail = match block.body {
+                    Some(body) => Tail::Control(body, Rc::new(tail)),
+                    None => tail,
+                };
+                this.lower_block(env, block.statements, tail)
+            }
+            _ => this.lower_hir_inner(env, hir),
+        })
+    }
+
+    /// Lowers what a branch of a [`ControlStatement`] that falls through continues with.
+    fn lower_continuation(&mut self, env: &Environment, continuation: &Continuation) -> LirId {
+        match continuation {
+            Continuation::Inline(stmts, tail) => self.lower_block(env, stmts.clone(), tail.clone()),
+            Continuation::Shared {
+                program,
+                env: rest_env,
+            } => {
+                let program = self.lower_path(env, *program);
+                let rest_env = self.lower_path(env, *rest_env);
+                self.arena.alloc(Lir::Run(program, rest_env))
+            }
+        }
+    }
+
     fn lower_expr_stmts(
         &mut self,
         env: &Environment,
         stmt: ExprStatement,
         mut stmts: Vec<Statement>,
-        body: Option<HirId>,
+        body: Tail,
     ) -> LirId {
         if self.options.debug_symbols {
             stmts.remove(0);

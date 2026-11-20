@@ -85,6 +85,11 @@ impl Visitor<'_> {
                                 return true;
                             }
                         }
+                        Statement::Control(stmt) => {
+                            if self.visit_hir(stmt.hir) {
+                                return true;
+                            }
+                        }
                         Statement::If(stmt) => {
                             if self.visit_all([stmt.condition, stmt.then]) {
                                 return true;

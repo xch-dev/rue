@@ -4,7 +4,7 @@ use rue_diagnostic::SrcLoc;
 use rue_lir::ClvmOp;
 use rue_types::{Check, TypeId};
 
-use crate::{BinaryOp, SymbolId, TypePath, UnaryOp, check_value_uses};
+use crate::{BinaryOp, Database, SymbolId, TypePath, UnaryOp, check_value_uses};
 
 pub type HirId = Id<Hir>;
 
@@ -243,9 +243,9 @@ impl Block {
     }
 }
 
-/// The statements that are evaluated, which end at the first `return` or `raise`. Nothing after it
-/// is lowered, so analyses that follow lowering (such as the dependency graph) should only look at
-/// these statements.
+/// The statements that are evaluated, which end at the first `return`, `raise` or statement whose
+/// branches all end in one (see [`ControlStatement`]). Nothing after it is lowered, so analyses
+/// that follow lowering (such as the dependency graph) should only look at these statements.
 pub fn reachable_statements(statements: &[Statement]) -> &[Statement] {
     match first_exit(statements) {
         Some(index) => &statements[..=index],
@@ -254,7 +254,7 @@ pub fn reachable_statements(statements: &[Statement]) -> &[Statement] {
 }
 
 /// The body that follows the statements, if it's evaluated, which it isn't if one of the
-/// statements is a `return` or `raise`.
+/// statements is a `return`, `raise` or statement whose branches all end in one.
 pub fn reachable_body(statements: &[Statement], body: Option<HirId>) -> Option<HirId> {
     if first_exit(statements).is_some() {
         None
@@ -263,10 +263,18 @@ pub fn reachable_body(statements: &[Statement], body: Option<HirId>) -> Option<H
     }
 }
 
+/// Whether the statements never reach their end, since every path through them ends in a `return`
+/// or `raise`.
+pub fn statements_terminate(statements: &[Statement]) -> bool {
+    first_exit(statements).is_some()
+}
+
 fn first_exit(statements: &[Statement]) -> Option<usize> {
-    statements
-        .iter()
-        .position(|statement| matches!(statement, Statement::Return(..) | Statement::Raise(..)))
+    statements.iter().position(|statement| match statement {
+        Statement::Return(..) | Statement::Raise(..) => true,
+        Statement::Control(statement) => statement.fallthroughs == 0,
+        _ => false,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -274,6 +282,7 @@ pub enum Statement {
     Expr(ExprStatement),
     Let(SymbolId, SrcLoc),
     If(IfStatement),
+    Control(ControlStatement),
     Return(HirId, SrcLoc),
     Assert(HirId, SrcLoc),
     Raise(Option<HirId>, SrcLoc),
@@ -287,6 +296,7 @@ impl Statement {
         let hirs = match self {
             Self::Let(..) => [None, None],
             Self::Expr(statement) => [Some(statement.hir), None],
+            Self::Control(statement) => [Some(statement.hir), None],
             Self::If(statement) => [Some(statement.condition), Some(statement.then)],
             Self::Return(hir, _) | Self::Assert(hir, _) | Self::Debug(hir, _) => [Some(*hir), None],
             Self::Raise(hir, _) => [*hir, None],
@@ -300,6 +310,7 @@ impl Statement {
         match self {
             Self::Expr(statement) => &statement.srcloc,
             Self::If(statement) => &statement.srcloc,
+            Self::Control(statement) => &statement.srcloc,
             Self::Let(_, srcloc)
             | Self::Return(_, srcloc)
             | Self::Assert(_, srcloc)
@@ -322,6 +333,69 @@ pub struct IfStatement {
     pub then: HirId,
     pub inline: bool,
     pub srcloc: SrcLoc,
+}
+
+/// An `if` and `else` chain or a `match` used as a statement, whose branches are statement blocks
+/// rather than values. A branch can end in a `return` or `raise`, or fall through to the rest of
+/// the block after the statement, which is its continuation.
+///
+/// The node is the chain of [`Hir::If`] nodes (for a `match`, inside the [`Hir::Block`] that binds
+/// its value), whose leaves are the branches' blocks, which have no body.
+#[derive(Debug, Clone)]
+pub struct ControlStatement {
+    pub hir: HirId,
+    /// The number of branches that fall through to the rest of the block (see
+    /// [`control_fallthroughs`]). If it's zero, every branch ends in a `return` or `raise`, so
+    /// nothing after the statement is evaluated.
+    pub fallthroughs: usize,
+    /// Whether a branch can return from the function, so the rest of the block isn't always
+    /// evaluated after it, even if the branch doesn't raise (see [`control_may_return`]).
+    pub may_return: bool,
+    /// Whether every branch is evaluated, like the branches of an `inline if`. A branch that falls
+    /// through evaluates the rest of the block too, so it's evaluated even if a branch returns.
+    pub inline: bool,
+    pub srcloc: SrcLoc,
+}
+
+/// The number of branches of a [`ControlStatement`]'s node that fall through to the rest of the
+/// block, which is the number of places the rest is reached from. It's zero if every branch ends
+/// in a `return` or `raise`.
+pub fn control_fallthroughs(db: &Database, hir: HirId) -> usize {
+    match db.hir(hir) {
+        Hir::If(_, then, else_, _) => {
+            control_fallthroughs(db, *then) + control_fallthroughs(db, *else_)
+        }
+        Hir::Block(block) => {
+            if statements_terminate(&block.statements) {
+                0
+            } else {
+                block.body.map_or(1, |body| control_fallthroughs(db, body))
+            }
+        }
+        _ => 1,
+    }
+}
+
+/// Whether a branch of a [`ControlStatement`]'s node can return from the function.
+pub fn control_may_return(db: &Database, hir: HirId) -> bool {
+    match db.hir(hir) {
+        Hir::If(_, then, else_, _) => {
+            control_may_return(db, *then) || control_may_return(db, *else_)
+        }
+        Hir::Block(block) => {
+            block.statements.iter().any(|statement| match statement {
+                Statement::Return(..) => true,
+                Statement::If(statement) => control_may_return(db, statement.then),
+                Statement::Control(statement) => statement.may_return,
+                Statement::Expr(_)
+                | Statement::Let(..)
+                | Statement::Assert(..)
+                | Statement::Raise(..)
+                | Statement::Debug(..) => false,
+            }) || block.body.is_some_and(|body| control_may_return(db, body))
+        }
+        _ => false,
+    }
 }
 
 #[derive(Debug, Clone)]

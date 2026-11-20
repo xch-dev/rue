@@ -36,10 +36,10 @@ pub use prefix::*;
 pub use struct_initializer::*;
 
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
-use rue_hir::Value;
+use rue_hir::{Mappings, Value};
 use rue_types::TypeId;
 
-use crate::{BlockKind, Compiler, CompletionContext, SyntaxItemKind, compile_block};
+use crate::{BlockKind, Branches, Compiler, CompletionContext, SyntaxItemKind, compile_block};
 
 pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<TypeId>) -> Value {
     ctx.add_syntax(
@@ -60,8 +60,8 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::FunctionCallExpr(expr) => {
             compile_function_call_expr(ctx, expr, expected_type, None)
         }
-        AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type),
-        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type),
+        AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type, None).0,
+        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type, None).0,
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
@@ -70,6 +70,41 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
     };
 
     ctx.record_value(expr.syntax(), value)
+}
+
+/// Compiles an `if`, `match` or block whose branches are blocks of the given kind, rather than
+/// values: the branches of a statement, or those of a function body's value, which can `return`
+/// from the function. Any other expression is compiled as usual.
+///
+/// For a statement, this also gives what the rest of the block after it sees its values narrowed
+/// to, by the branches that fall through to it.
+pub fn compile_branching_expr(
+    ctx: &mut Compiler,
+    expr: &AstExpr,
+    expected_type: Option<TypeId>,
+    branches: Branches,
+) -> (Value, Option<Mappings>) {
+    if !expr.ends_with_brace() {
+        return (compile_expr(ctx, expr, expected_type), None);
+    }
+
+    ctx.add_syntax(
+        SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+        expr.syntax().text_range(),
+    );
+
+    let (value, narrowing) = match expr {
+        AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type, Some(branches)),
+        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type, Some(branches)),
+        AstExpr::Block(block) => {
+            let kind = branches.kind;
+            let value = compile_block(ctx, block, kind, expected_type, branches.require_value);
+            (value, None)
+        }
+        _ => unreachable!("only a block, `if` or `match` ends with a brace"),
+    };
+
+    (ctx.record_value(expr.syntax(), value), narrowing)
 }
 
 /// Compiles a call that's an argument of a call whose generics are being inferred, as

@@ -267,3 +267,228 @@ fn outer_binding_used_twice_inner(x: Int) -> Int {
     let value = checked(x);
     inline if x > 5 { value } else { value + 1 }
 }
+
+// An `inline if` statement without an `else` whose block falls through
+test fn statement_falls_through() -> Int {
+    statement_falls_through_branch(1)
+}
+
+fn statement_falls_through_branch(x: Int) -> Int {
+    inline if x > 5 {
+        assert x > 6;
+    }
+
+    x
+}
+
+// When a branch of an `inline if` statement returns, the branch that falls through still
+// evaluates the rest of the block
+test fn statement_rest_raises() -> Int {
+    statement_rest_raises_branch(1)
+}
+
+fn statement_rest_raises_branch(x: Int) -> Int {
+    inline if x > 5 {
+        return 1;
+    } else {
+        debug x;
+    }
+
+    assert x > 3;
+    x
+}
+
+// No branch returns, so the rest of the block is evaluated whichever branch is taken
+test fn statement_without_return() -> Int {
+    statement_without_return_branch(4)
+}
+
+fn statement_without_return_branch(x: Int) -> Int {
+    inline if x > 5 {
+        debug x;
+    } else {
+        debug 0;
+    }
+
+    assert x > 3;
+    x
+}
+
+// An `inline if` statement in a branch of another statement evaluates the rest of the block after
+// that statement too
+test fn nested_statement_rest_raises() -> Int {
+    nested_statement_rest_raises_branch(1, true)
+}
+
+fn nested_statement_rest_raises_branch(x: Int, flag: Bool) -> Int {
+    if flag {
+        inline if x == 1 {
+            return 1;
+        }
+    } else {
+        debug x;
+    }
+
+    assert x != 1;
+    2
+}
+
+// Only the condition can raise, which is evaluated either way
+fn checked_value(x: Int) -> Int {
+    assert x < 100;
+    x
+}
+
+test fn condition_raises() -> Int {
+    condition_raises_branch(1)
+}
+
+fn condition_raises_branch(x: Int) -> Int {
+    inline if checked_value(x) > 5 {
+        debug x;
+    }
+
+    x
+}
+
+// An `inline if` that's an arm of a `match` statement evaluates the rest of the block after it
+test fn arm_rest_raises() -> Int {
+    arm_rest_raises_branch(1, nil)
+}
+
+fn arm_rest_raises_branch(x: Int, y: Int | nil) -> Int {
+    match y {
+        nil => inline if x == 1 {
+            return 1;
+        } else {
+            debug x;
+        }
+        Int => {
+            debug y;
+        }
+    }
+
+    assert x != 1;
+    2
+}
+
+// A statement whose branch and rest of the block can both raise is only reported once
+test fn reported_once() -> Int {
+    reported_once_branch(1)
+}
+
+fn reported_once_branch(x: Int) -> Int {
+    inline if x > 5 {
+        return 1;
+    } else {
+        assert x > 2;
+    }
+
+    assert x > 3;
+    x
+}
+
+// Reported once when both the statement's own rest and the rest after the statement it's in can
+// raise
+test fn nested_reported_once() -> Int {
+    nested_reported_once_branch(1, true, true)
+}
+
+fn nested_reported_once_branch(x: Int, b: Bool, c: Bool) -> Int {
+    if b {
+        inline if c {
+            return 1;
+        }
+
+        assert x > 1;
+    } else {
+        debug 1;
+    }
+
+    assert x > 2;
+    x
+}
+
+// The branch exits after the nested statement, so it doesn't reach the rest after the outer one
+test fn nested_branch_exits() -> Int {
+    nested_branch_exits_branch(1, true, true)
+}
+
+fn nested_branch_exits_branch(x: Int, b: Bool, c: Bool) -> Int {
+    if b {
+        inline if c {
+            return 1;
+        }
+
+        return 2;
+    } else {
+        debug 1;
+    }
+
+    assert x > 2;
+    x
+}
+
+// An `inline if` arm that can't return, or never falls through, doesn't evaluate the rest after
+// the statement when another branch returns
+test fn arm_without_return() -> Int {
+    arm_without_return_branch(1, nil)
+}
+
+fn arm_without_return_branch(x: Int, y: Int | nil) -> Int {
+    match y {
+        nil => inline if x == 1 {
+            debug x;
+        } else {
+            debug 0;
+        }
+        Int => {
+            debug y;
+        }
+    }
+
+    assert x > 0;
+    x
+}
+
+test fn arm_always_exits() -> Int {
+    arm_always_exits_branch(1, nil)
+}
+
+fn arm_always_exits_branch(x: Int, y: Int | nil) -> Int {
+    match y {
+        nil => inline if x == 1 {
+            return 1;
+        } else {
+            return 0;
+        }
+        Int => {
+            debug y;
+        }
+    }
+
+    assert x > 0;
+    x
+}
+
+// An `inline if` two statements deep
+test fn two_levels_deep() -> Int {
+    two_levels_deep_branch(1, true, true, true)
+}
+
+fn two_levels_deep_branch(x: Int, a: Bool, b: Bool, c: Bool) -> Int {
+    if a {
+        if b {
+            inline if c {
+                return 1;
+            }
+        } else {
+            debug 0;
+        }
+    } else {
+        debug 1;
+    }
+
+    assert x > 2;
+    x
+}
