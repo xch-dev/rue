@@ -30,7 +30,16 @@ enum Duplicated {
 
 enum Holder {
     Empty,
-    Value { value: Int | Bytes32 },
+    Value { value: Int | nil },
+}
+
+enum Rest {
+    Only { ...rest: Any },
+}
+
+enum Switch {
+    Off,
+    On,
 }
 
 enum Mode {
@@ -52,7 +61,7 @@ test fn errors() {
     let _undeclared = Shape::Square;
     let _unknown_field = Shape::Circle { radius: 1, diameter: 2 };
     let _missing_field = Shape::Circle {};
-    let _not_a_struct = Shape::Empty {};
+    let _unit_with_braces = Shape::Empty {};
     let _not_a_value = Shape::Circle;
     let _not_a_type: Shape::Square = Shape::Empty;
     let _enum_as_value = Shape;
@@ -69,13 +78,17 @@ fn wrong_return(shape: Shape) -> Int {
 
 // The discriminant isn't shown in the type of a variant whose fields are narrowed
 fn narrowed(holder: Holder::Value) -> Bytes32 {
-    if holder.value is Int {
+    if holder.value is nil {
         return holder;
     }
-    holder.value
+    raise;
 }
 
 // Only the variants of enums without fields can be compared, and only with the same enum
-fn equality(shape: Shape, mode: Mode) -> Bool {
-    shape == Shape::Empty || mode == Repeats::One
+fn equality(shape: Shape, mode: Mode, rest: Rest, mixed: Switch | Repeats) -> Bool {
+    shape == Shape::Empty
+        || Shape::Empty == Shape::Empty
+        || rest == Rest::Only { rest: 1 }
+        || mode == Repeats::One
+        || mixed == Switch::On
 }

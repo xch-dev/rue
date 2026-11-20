@@ -10,7 +10,7 @@ use rue_hir::{
 };
 use rue_types::{Alias, Apply, DISCRIMINANT_FIELD, Struct, Type, TypeId, Union};
 
-use super::{compile_field_defaults, compile_fields, declare_fields, fields_inner};
+use super::{compile_field_defaults, compile_fields, declare_fields, resolve_struct_inner};
 use crate::{
     Compiler, CompletionContext, EnumVariant, LiteralValue, SyntaxItemKind,
     compile_generic_parameters, insert_local_module,
@@ -140,18 +140,12 @@ fn declare_variant(
         return None;
     }
 
+    let names = IndexSet::from([DISCRIMINANT_FIELD.to_string()]);
+
     let (fields, nil_terminated) = if has_fields {
-        let fields = variant
-            .fields()
-            .map(|fields| fields.fields().collect::<Vec<_>>())
-            .unwrap_or_default();
-        declare_fields(
-            ctx,
-            IndexSet::from([DISCRIMINANT_FIELD.to_string()]),
-            &fields,
-        )
+        declare_fields(ctx, names, &variant.struct_fields().collect::<Vec<_>>())
     } else {
-        (IndexSet::from([DISCRIMINANT_FIELD.to_string()]), false)
+        (names, false)
     };
 
     let ty = ctx.alloc_type(Type::Unresolved);
@@ -254,19 +248,13 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
         field_types.extend(compile_fields(ctx, info.ty, variant.struct_fields()));
         ctx.pop_declaration();
 
-        let Type::Struct(Struct {
-            inner,
-            nil_terminated,
-            ..
-        }) = ctx.ty(info.ty).clone()
-        else {
-            unreachable!()
-        };
-
-        let resolved_inner = fields_inner(ctx, field_types, nil_terminated);
-        *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
+        resolve_struct_inner(ctx, info.ty, field_types);
 
         if let Some(constant) = info.constant {
+            let Type::Struct(Struct { nil_terminated, .. }) = *ctx.ty(info.ty) else {
+                unreachable!()
+            };
+
             // A variant without fields is the same value for every instantiation of a generic
             // enum, so its constant uses the variant with none of the generics
             let constant_type = if generics.is_empty() {

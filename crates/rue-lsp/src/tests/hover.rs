@@ -669,3 +669,40 @@ fn main() -> Option<Int> {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_enum_in_an_import_path() {
+    check(
+        &format!("{SHAPE}\nimport Sha$0pe::Empty;\n\nfn main() -> Shape {{\n    Empty\n}}\n"),
+        expect![[r#"
+            enum Shape {
+                Empty = 0,
+                Circle = 1 { radius: Int },
+                Rect = 10 { width: Int, ...rest: Any },
+            }
+        "#]],
+    );
+}
+
+// An imported variant is named the way it's in scope, like any other type
+#[test]
+fn test_hover_imported_variant() {
+    check(
+        &format!(
+            "{SHAPE}\nimport Shape::{{Circle, Empty}};\n\nfn main(circle: Cir$0cle) -> Shape {{\n    Empty\n}}\n"
+        ),
+        expect![[r#"
+            Circle = 1 { radius: Int }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_imported_variant_without_fields() {
+    check(
+        &format!("{SHAPE}\nimport Shape::Empty;\n\nfn main() -> Shape {{\n    Emp$0ty\n}}\n"),
+        expect![[r#"
+            Empty = 0
+        "#]],
+    );
+}

@@ -40,7 +40,7 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{Client, LanguageServer};
 
-use crate::cache::{HoverInfo, SymbolHoverKind};
+use crate::cache::{HoverInfo, SymbolHoverKind, field_declarations};
 use crate::paths::{Paths, document, uri_to_path};
 use crate::position::{offset_to_position, offsets_to_range, source_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
@@ -492,17 +492,9 @@ fn hover(cache: &mut Cache<Compiler>, position: Position) -> Option<Hover> {
                     HoverInfo::Struct(info) => format!(
                         "struct {} {{\n{}\n}}",
                         info.name,
-                        info.fields
+                        field_declarations(&info.fields, info.nil_terminated)
                             .iter()
-                            .enumerate()
-                            .map(|(i, field)| {
-                                let spread = if !info.nil_terminated && i == info.fields.len() - 1 {
-                                    "..."
-                                } else {
-                                    ""
-                                };
-                                format!("    {spread}{}: {},", field.name, field.type_name)
-                            })
+                            .map(|field| format!("    {field},"))
                             .collect::<Vec<String>>()
                             .join("\n")
                     ),

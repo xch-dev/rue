@@ -113,12 +113,6 @@ pub fn compile_struct_item(
 ) {
     ctx.push_declaration(Declaration::Type(struct_type));
 
-    let nil_terminated = if let Type::Struct(Struct { nil_terminated, .. }) = ctx.ty(struct_type) {
-        *nil_terminated
-    } else {
-        unreachable!()
-    };
-
     let range = struct_item.syntax().text_range();
     ctx.push_scope(scope, range.start());
 
@@ -126,15 +120,7 @@ pub fn compile_struct_item(
 
     ctx.pop_scope(range.end());
 
-    let resolved_inner = fields_inner(ctx, types, nil_terminated);
-
-    let Type::Struct(Struct { inner, .. }) = ctx.ty(struct_type) else {
-        unreachable!()
-    };
-
-    let inner = *inner;
-
-    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
+    resolve_struct_inner(ctx, struct_type, types);
 
     ctx.pop_declaration();
 }
@@ -199,20 +185,29 @@ pub(crate) fn compile_fields(
     types
 }
 
-/// The type that a struct with fields of the given types is made of: a list of them, whose last
-/// field is the rest of the list if it isn't nil terminated.
-pub(crate) fn fields_inner(ctx: &mut Compiler, types: Vec<TypeId>, nil_terminated: bool) -> TypeId {
-    let mut inner = ctx.builtins().nil.ty;
+/// Resolves the type that a struct (or enum variant) with fields of the given types is made of:
+/// a list of them, whose last field is the rest of the list if it isn't nil terminated.
+pub(crate) fn resolve_struct_inner(ctx: &mut Compiler, struct_type: TypeId, types: Vec<TypeId>) {
+    let Type::Struct(Struct {
+        inner,
+        nil_terminated,
+        ..
+    }) = *ctx.ty(struct_type)
+    else {
+        unreachable!()
+    };
+
+    let mut resolved_inner = ctx.builtins().nil.ty;
 
     for (i, ty) in types.into_iter().rev().enumerate() {
         if !nil_terminated && i == 0 {
-            inner = ty;
+            resolved_inner = ty;
         } else {
-            inner = ctx.alloc_type(Type::Pair(Pair::new(ty, inner)));
+            resolved_inner = ctx.alloc_type(Type::Pair(Pair::new(ty, resolved_inner)));
         }
     }
 
-    inner
+    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
 }
 
 /// Compiles the default values of a struct's fields. This happens after all types have been

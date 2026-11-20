@@ -94,6 +94,23 @@ pub struct FieldHoverInfo {
     pub type_name: String,
 }
 
+/// Each field as it's declared, with a spread before the last one if the struct isn't nil
+/// terminated.
+pub fn field_declarations(fields: &[FieldHoverInfo], nil_terminated: bool) -> Vec<String> {
+    fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            let spread = if !nil_terminated && i == fields.len() - 1 {
+                "..."
+            } else {
+                ""
+            };
+            format!("{spread}{}: {}", field.name, field.type_name)
+        })
+        .collect()
+}
+
 /// Something that can be declared and referenced, which is what navigation queries are about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target<'a> {
@@ -525,27 +542,8 @@ impl Cache<Compiler> {
                     continue;
                 }
 
-                match subcontext {
-                    CompletionContext::Document
-                    | CompletionContext::Item
-                    | CompletionContext::Statement
-                    | CompletionContext::StructFields { .. }
-                    | CompletionContext::ModuleExports { .. } => {
-                        continue;
-                    }
-                    CompletionContext::Type => {}
-                    CompletionContext::Expression => {
-                        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
-
-                        match self.ctx.ty(semantic) {
-                            Type::Struct(_) => {}
-                            _ => continue,
-                        }
-
-                        if self.is_completed_as_constant(ty, &name, &symbol_names) {
-                            continue;
-                        }
-                    }
+                if !self.completes_type(&subcontext, ty, &name, &symbol_names) {
+                    continue;
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
@@ -616,27 +614,8 @@ impl Cache<Compiler> {
                     continue;
                 }
 
-                match context {
-                    CompletionContext::Document
-                    | CompletionContext::Item
-                    | CompletionContext::Statement
-                    | CompletionContext::StructFields { .. }
-                    | CompletionContext::ModuleExports { .. } => {
-                        continue;
-                    }
-                    CompletionContext::Type => {}
-                    CompletionContext::Expression => {
-                        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
-
-                        match self.ctx.ty(semantic) {
-                            Type::Struct(_) => {}
-                            _ => continue,
-                        }
-
-                        if self.is_completed_as_constant(ty, &name, &symbol_names) {
-                            continue;
-                        }
-                    }
+                if !self.completes_type(&context, ty, &name, &symbol_names) {
+                    continue;
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
@@ -1029,16 +1008,31 @@ impl Cache<Compiler> {
         }
     }
 
-    /// Whether the type is a variant without fields, whose constant with the same name is
-    /// completed instead in an expression.
-    fn is_completed_as_constant(
-        &self,
+    /// Whether a type is completed in the context, which is any type in a type, or a struct in an
+    /// expression (for a struct initializer). A variant without fields isn't completed in an
+    /// expression if its constant, which has the same name, already is.
+    fn completes_type(
+        &mut self,
+        context: &CompletionContext,
         ty: TypeId,
         name: &str,
         symbol_names: &HashSet<(String, bool)>,
     ) -> bool {
-        self.ctx.enum_of(Declaration::Type(ty)).is_some()
-            && symbol_names.contains(&(name.to_string(), false))
+        match context {
+            CompletionContext::Type => true,
+            CompletionContext::Expression => {
+                let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+
+                matches!(self.ctx.ty(semantic), Type::Struct(_))
+                    && !(self.ctx.enum_of(Declaration::Type(ty)).is_some()
+                        && symbol_names.contains(&(name.to_string(), false)))
+            }
+            CompletionContext::Document
+            | CompletionContext::Item
+            | CompletionContext::Statement
+            | CompletionContext::StructFields { .. }
+            | CompletionContext::ModuleExports { .. } => false,
+        }
     }
 
     fn is_enum_namespace(&self, symbol: SymbolId) -> bool {
@@ -1132,19 +1126,7 @@ impl Cache<Compiler> {
             return discriminant;
         }
 
-        let fields = fields
-            .iter()
-            .enumerate()
-            .map(|(i, field)| {
-                let spread = if !nil_terminated && i == fields.len() - 1 {
-                    "..."
-                } else {
-                    ""
-                };
-                format!("{spread}{}: {}", field.name, field.type_name)
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+        let fields = field_declarations(&fields, nil_terminated).join(", ");
 
         format!("{discriminant} {{ {fields} }}")
     }
