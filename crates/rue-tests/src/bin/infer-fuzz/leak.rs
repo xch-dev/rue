@@ -23,7 +23,7 @@ use rowan::TextRange;
 use std::ops::Range;
 
 use id_arena::{ArenaBehavior, DefaultArenaBehavior};
-use rue_ast::{AstDocument, AstFunctionItem, AstLambdaExpr, AstNode};
+use rue_ast::{AstDocument, AstFunctionItem, AstNode};
 use rue_compiler::{Compiler, SyntaxItemKind};
 use rue_diagnostic::SourceKind;
 use rue_hir::{Hir, HirId, Symbol, SymbolId};
@@ -72,49 +72,57 @@ pub fn leak(
         }
     }
 
-    let lambdas: Vec<SymbolId> = ctx
-        .hirs_between(first_hir, ctx.next_hir_id())
-        .filter_map(|hir| match hir {
-            Hir::Lambda(symbol) => Some(*symbol),
+    // Each lambda's range is where its node was compiled from, which covers one without
+    // parameters too
+    let lambdas: Vec<(HirId, SymbolId)> = hir_ids(first_hir, ctx.next_hir_id())
+        .filter_map(|hir| match ctx.hir(hir) {
+            Hir::Lambda(symbol) => Some((hir, *symbol)),
             _ => None,
         })
         .collect();
 
     let mut lambda_ranges = Vec::new();
 
-    for symbol in lambdas {
+    for (hir, symbol) in lambdas {
         let Symbol::Function(function) = ctx.symbol(symbol) else {
             continue;
         };
-        // A lambda's range is found through its parameters, which every generated lambda with
-        // generics has
-        let range = function
-            .parameters
-            .iter()
-            .filter_map(|parameter| declarations.get(parameter))
-            .find_map(|&span| enclosing::<AstLambdaExpr>(document, span));
-        if let Some(range) = range {
-            lambda_ranges.push(range);
-            binders.push((range, function.vars.clone()));
-        }
+        let Some(range) = main_range(ctx, kind, hir) else {
+            continue;
+        };
+        lambda_ranges.push(range);
+        binders.push((range, function.vars.clone()));
     }
 
-    // Whether a generic is in scope at the span. A lambda's untyped parameter can be compiled as a
-    // callee's generic, or a renamed copy of one, which keeps its name and where it's declared,
-    // and the lambda's type is instantiated from it once the call is solved, as an element lambda
-    // that's compiled where it is (#485). Those are declared by a function, unlike the generic of
-    // an expected generic function type that #490 named outside of it. So in a parameter, in an
-    // expression in a lambda, which can be made of one, and in a pair or list around a lambda,
-    // whose type is recorded before the call is solved, they're in scope. A call's type never has
-    // its callee's generics, so they aren't in the type of a call around a lambda
-    let in_scope = |ctx: &Compiler, span: TextRange, generic: TypeId, callees: bool| {
-        binders
-            .iter()
-            .any(|(range, vars)| range.contains_range(span) && vars.contains(&generic))
-            || callees
-                && declaration(ctx, kind, generic).is_some_and(|span| declared.contains(&span))
+    // The first generic in the type that isn't in scope at the span: one that a function or lambda
+    // around it binds, or, with `function_generics`, any that one of the program's named functions
+    // declares
+    let leaked = |ctx: &mut Compiler, ty: TypeId, span: TextRange, function_generics: bool| {
+        let mut free = Vec::new();
+        free_generics(ctx, ty, &mut Vec::new(), &mut HashSet::new(), &mut free);
+        free.into_iter().find(|&generic| {
+            let bound = binders
+                .iter()
+                .any(|(range, vars)| range.contains_range(span) && vars.contains(&generic));
+            let declared_by_function = function_generics
+                && declaration(ctx, kind, generic).is_some_and(|span| declared.contains(&span));
+            !bound && !declared_by_function
+        })
     };
 
+    let message = |ctx: &mut Compiler, label: &str, ty: TypeId, generic: TypeId| {
+        format!(
+            "`{label}: {}` names `{}` outside of where it's bound",
+            ctx.type_name(ty),
+            ctx.type_name(generic)
+        )
+    };
+
+    // A lambda's untyped parameter can be compiled as a callee's generic, or a renamed copy of one,
+    // which keeps its name and where it's declared, and the lambda's type is instantiated from it
+    // once the call is solved, as an element lambda that's compiled where it is (#485). Those are
+    // declared by a function, unlike the generic of an expected generic function type that #490
+    // named outside of it, so a parameter can have them
     for symbol in order {
         let (name, ty, parameter) = match ctx.symbol(symbol) {
             Symbol::Binding(binding) => (binding.name.clone(), binding.value.ty, false),
@@ -123,64 +131,54 @@ pub fn leak(
         };
         let span = declarations[&symbol];
 
-        let mut free = Vec::new();
-        free_generics(ctx, ty, &mut Vec::new(), &mut HashSet::new(), &mut free);
-
-        let leaked = free
-            .iter()
-            .copied()
-            .find(|&generic| !in_scope(ctx, span, generic, parameter));
-
-        if let Some(generic) = leaked {
+        if let Some(generic) = leaked(ctx, ty, span, parameter) {
             let name = name.map_or_else(|| "_".to_string(), |name| name.text().to_string());
-            let type_name = ctx.type_name(ty);
-            let generic_name = ctx.type_name(generic);
-            return Some(format!(
-                "`{name}: {type_name}` names `{generic_name}` outside of where it's bound"
-            ));
+            return Some(message(ctx, &name, ty, generic));
         }
     }
 
-    // The expressions, in the order they were compiled
-    let arena = DefaultArenaBehavior::<Hir>::arena_id(first_hir);
-    for index in first_hir.index()..ctx.next_hir_id().index() {
-        let hir: HirId = DefaultArenaBehavior::<Hir>::new_id(arena, index);
-        let (Some(ty), Some(srcloc)) = (ctx.hir_type(hir), ctx.hir_srcloc(hir).cloned()) else {
+    // The expressions, in the order they were compiled. One in a lambda can be made of such a
+    // parameter, and a pair or list around a lambda has its type recorded before the call is
+    // solved, so they can have a function's generics too. A call's type never has its callee's
+    // generics, so a call around a lambda can't
+    for hir in hir_ids(first_hir, ctx.next_hir_id()) {
+        let Some(ty) = ctx.hir_type(hir) else {
             continue;
         };
-        if srcloc.source.kind != *kind {
-            continue;
-        }
-        let Ok(start) = u32::try_from(srcloc.span.start) else {
+        let Some(span) = main_range(ctx, kind, hir) else {
             continue;
         };
-        let Ok(end) = u32::try_from(srcloc.span.end) else {
-            continue;
-        };
-        let span = TextRange::new(start.into(), end.into());
-        let callees = lambda_ranges.iter().any(|range| {
+        let function_generics = lambda_ranges.iter().any(|range| {
             range.contains_range(span)
                 || span.contains_range(*range) && !matches!(ctx.hir(hir), Hir::FunctionCall(_))
         });
 
-        let mut free = Vec::new();
-        free_generics(ctx, ty, &mut Vec::new(), &mut HashSet::new(), &mut free);
-
-        if let Some(generic) = free
-            .iter()
-            .copied()
-            .find(|&generic| !in_scope(ctx, span, generic, callees))
-        {
+        if let Some(generic) = leaked(ctx, ty, span, function_generics) {
             let text = document.syntax().text().slice(span).to_string();
-            let type_name = ctx.type_name(ty);
-            let generic_name = ctx.type_name(generic);
-            return Some(format!(
-                "`{text}: {type_name}` names `{generic_name}` outside of where it's bound"
-            ));
+            return Some(message(ctx, &text, ty, generic));
         }
     }
 
     None
+}
+
+/// The ids of the nodes allocated from `first` up to `next`, both of which are from
+/// `Database::next_hir_id`.
+pub(crate) fn hir_ids(first: HirId, next: HirId) -> impl Iterator<Item = HirId> {
+    let arena = DefaultArenaBehavior::<Hir>::arena_id(first);
+    (first.index()..next.index())
+        .map(move |index| DefaultArenaBehavior::<Hir>::new_id(arena, index))
+}
+
+/// Where in the main file the node was compiled from, if it was compiled from there.
+fn main_range(ctx: &Compiler, kind: &SourceKind, hir: HirId) -> Option<TextRange> {
+    let srcloc = ctx.hir_srcloc(hir)?;
+    if srcloc.source.kind != *kind {
+        return None;
+    }
+    let start = u32::try_from(srcloc.span.start).ok()?;
+    let end = u32::try_from(srcloc.span.end).ok()?;
+    Some(TextRange::new(start.into(), end.into()))
 }
 
 /// Where the generic's name is declared in the source, if it's named there. Only the main file's

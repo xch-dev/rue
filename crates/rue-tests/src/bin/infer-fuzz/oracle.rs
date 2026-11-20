@@ -244,26 +244,39 @@ pub fn compilation(source: &str, std: bool) -> Compilation {
 }
 
 fn compile_inner(source: &str, std: bool) -> Inner {
-    let start = Instant::now();
-    let Compilation {
-        mut ctx,
-        tree,
-        document,
-        kind,
-        first_hir,
-    } = compilation(source, std);
-
-    let diagnostics = ctx.take_diagnostics();
-
-    let result = compile_checked(&mut ctx, &tree, &kind, &diagnostics);
-    let clvm = result.as_ref().ok().map(|(clvm, _)| clvm.as_str());
-    let fingerprint = fingerprint(&diagnostics, clvm);
-    let time = start.elapsed();
+    let (mut compilation, result, fingerprint, time) = compile_timed(source, std);
     let leak = result
         .is_ok()
-        .then(|| leak::leak(&mut ctx, &document, &kind, first_hir))
+        .then(|| {
+            leak::leak(
+                &mut compilation.ctx,
+                &compilation.document,
+                &compilation.kind,
+                compilation.first_hir,
+            )
+        })
         .flatten();
     (result, fingerprint, leak, time)
+}
+
+/// Compiles and runs the source, with how long that took, which the leak oracle runs after, so a
+/// slow compile is one whose inference is slow.
+fn compile_timed(
+    source: &str,
+    std: bool,
+) -> (Compilation, Result<(String, Run), Diag>, String, Duration) {
+    let start = Instant::now();
+    let mut compilation = compilation(source, std);
+    let diagnostics = compilation.ctx.take_diagnostics();
+    let result = compile_checked(
+        &mut compilation.ctx,
+        &compilation.tree,
+        &compilation.kind,
+        &diagnostics,
+    );
+    let clvm = result.as_ref().ok().map(|(clvm, _)| clvm.as_str());
+    let fingerprint = fingerprint(&diagnostics, clvm);
+    (compilation, result, fingerprint, start.elapsed())
 }
 
 fn compile_checked(

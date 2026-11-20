@@ -1093,109 +1093,19 @@ fn version_3_variants_dont_leak() {
     }
 }
 
-/// The leak oracle flags a binding whose type names a function's generic outside of that
-/// function, which is what a callee's generic left in an inferred type looks like, and allows the
-/// same generic in a lambda's parameter, which is how an element lambda compiled where it is gets
-/// it (#485). A generic that no function declares is flagged in a parameter too. The types are
-/// put in by hand, since the compiler doesn't leak any more.
-#[test]
-fn leak_oracle_flags_a_generic_outside_of_its_function() {
-    use rue_compiler::SyntaxItemKind;
-    use rue_hir::Symbol;
-    use rue_types::{Generic, Type};
-
-    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Int {\n    let y = 1;\n    let g = fn(z: Int) => z;\n    f(g(y))\n}\n";
-    let mut compilation = oracle::compilation(source, false);
-    let check = |compilation: &mut oracle::Compilation| {
-        crate::leak::leak(
-            &mut compilation.ctx,
-            &compilation.document,
-            &compilation.kind,
-            compilation.first_hir,
-        )
-    };
-    assert_eq!(check(&mut compilation), None);
-
-    let symbols: Vec<_> = compilation
-        .ctx
-        .syntax_map()
-        .items()
-        .filter_map(|item| match item.kind {
-            SyntaxItemKind::SymbolDeclaration(symbol) => Some(symbol),
-            _ => None,
-        })
-        .collect();
-    let named = |compilation: &oracle::Compilation, name: &str| {
-        symbols
-            .iter()
-            .copied()
-            .find(|&symbol| {
-                compilation
-                    .ctx
-                    .symbol(symbol)
-                    .name()
-                    .is_some_and(|symbol_name| symbol_name.text() == name)
-            })
-            .unwrap()
-    };
-    let f = named(&compilation, "f");
-    let Symbol::Function(function) = compilation.ctx.symbol(f) else {
-        panic!("`f` is a function");
-    };
-    let generic = function.vars[0];
-
-    // A binding outside of `f` with `f`'s `T`
-    let y = named(&compilation, "y");
-    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
-        panic!("`y` is a binding");
-    };
-    let int = std::mem::replace(&mut binding.value.ty, generic);
-    let leak = check(&mut compilation).unwrap();
-    assert!(leak.contains("`y: T` names `T`"), "{leak}");
-    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
-        unreachable!();
-    };
-    binding.value.ty = int;
-
-    // A lambda's parameter with it is allowed, and with a generic that no function declares isn't
-    let z = named(&compilation, "z");
-    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
-        panic!("`z` is a parameter");
-    };
-    parameter.ty = generic;
-    assert_eq!(check(&mut compilation), None);
-    let unnamed = compilation
-        .ctx
-        .alloc_type(Type::Generic(Generic { name: None }));
-    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
-        unreachable!();
-    };
-    parameter.ty = unnamed;
-    assert!(check(&mut compilation).is_some_and(|leak| leak.contains("`z: ")));
+/// What the leak oracle finds in a compiled program.
+fn leak_of(compilation: &mut oracle::Compilation) -> Option<String> {
+    crate::leak::leak(
+        &mut compilation.ctx,
+        &compilation.document,
+        &compilation.kind,
+        compilation.first_hir,
+    )
 }
 
-/// The leak oracle checks the type the compiler recorded for each expression too, where a call's
-/// type goes straight into an annotated binding, as `make_list(nil)` did before #490. An expression
-/// in a lambda, or a pair around one, can have a callee's generic, as an element lambda compiled
-/// where it is does (#485), and a call can't, even around a lambda.
-#[test]
-fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
-    use id_arena::{ArenaBehavior, DefaultArenaBehavior};
-    use rue_hir::{Hir, HirId, Symbol};
-
-    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Any {\n    let p = (fn(z: Int) => z, 2);\n    let q = f(p.first(1));\n    let r = f(fn(w: Int) => w);\n    (q, r)\n}\n";
-    let mut compilation = oracle::compilation(source, false);
-    let check = |compilation: &mut oracle::Compilation| {
-        crate::leak::leak(
-            &mut compilation.ctx,
-            &compilation.document,
-            &compilation.kind,
-            compilation.first_hir,
-        )
-    };
-    assert_eq!(check(&mut compilation), None);
-
-    let f = compilation
+/// The symbol declared in the program with the name.
+fn symbol_named(compilation: &oracle::Compilation, name: &str) -> rue_hir::SymbolId {
+    compilation
         .ctx
         .syntax_map()
         .items()
@@ -1205,13 +1115,78 @@ fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
                     .ctx
                     .symbol(symbol)
                     .name()
-                    .is_some_and(|name| name.text() == "f") =>
+                    .is_some_and(|symbol_name| symbol_name.text() == name) =>
             {
                 Some(symbol)
             }
             _ => None,
         })
-        .unwrap();
+        .unwrap_or_else(|| panic!("no symbol `{name}`"))
+}
+
+/// The leak oracle flags a binding whose type names a function's generic outside of that
+/// function, which is what a callee's generic left in an inferred type looks like, and allows the
+/// same generic in a lambda's parameter, which is how an element lambda compiled where it is gets
+/// it (#485). A generic that no function declares is flagged in a parameter too. The types are
+/// put in by hand, since the compiler doesn't leak any more.
+#[test]
+fn leak_oracle_flags_a_generic_outside_of_its_function() {
+    use rue_hir::Symbol;
+    use rue_types::{Generic, Type};
+
+    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Int {\n    let y = 1;\n    let g = fn(z: Int) => z;\n    f(g(y))\n}\n";
+    let mut compilation = oracle::compilation(source, false);
+    assert_eq!(leak_of(&mut compilation), None);
+
+    let f = symbol_named(&compilation, "f");
+    let Symbol::Function(function) = compilation.ctx.symbol(f) else {
+        panic!("`f` is a function");
+    };
+    let generic = function.vars[0];
+
+    // A binding outside of `f` with `f`'s `T`
+    let y = symbol_named(&compilation, "y");
+    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
+        panic!("`y` is a binding");
+    };
+    let int = std::mem::replace(&mut binding.value.ty, generic);
+    let leak = leak_of(&mut compilation).unwrap();
+    assert!(leak.contains("`y: T` names `T`"), "{leak}");
+    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
+        unreachable!();
+    };
+    binding.value.ty = int;
+
+    // A lambda's parameter with it is allowed, and with a generic that no function declares isn't
+    let z = symbol_named(&compilation, "z");
+    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
+        panic!("`z` is a parameter");
+    };
+    parameter.ty = generic;
+    assert_eq!(leak_of(&mut compilation), None);
+    let unnamed = compilation
+        .ctx
+        .alloc_type(Type::Generic(Generic { name: None }));
+    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
+        unreachable!();
+    };
+    parameter.ty = unnamed;
+    assert!(leak_of(&mut compilation).is_some_and(|leak| leak.contains("`z: ")));
+}
+
+/// The leak oracle checks the type the compiler recorded for each expression too, where a call's
+/// type goes straight into an annotated binding, as `make_list(nil)` did before #490. An expression
+/// in a lambda, or a pair around one, can have a callee's generic, as an element lambda compiled
+/// where it is does (#485), and a call can't, even around a lambda.
+#[test]
+fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
+    use rue_hir::{HirId, Symbol};
+
+    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Any {\n    let p = (fn(z: Int) => z, 2);\n    let q = f(p.first(1));\n    let r = f(fn(w: Int) => w);\n    (q, r)\n}\n";
+    let mut compilation = oracle::compilation(source, false);
+    assert_eq!(leak_of(&mut compilation), None);
+
+    let f = symbol_named(&compilation, "f");
     let Symbol::Function(function) = compilation.ctx.symbol(f) else {
         panic!("`f` is a function");
     };
@@ -1220,9 +1195,7 @@ fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
     // The node of the expression with the text, after the declarations
     let main = source.find("fn main").unwrap();
     let node = |compilation: &oracle::Compilation, text: &str| -> HirId {
-        let arena = DefaultArenaBehavior::<Hir>::arena_id(compilation.first_hir);
-        (compilation.first_hir.index()..compilation.ctx.next_hir_id().index())
-            .map(|index| DefaultArenaBehavior::<Hir>::new_id(arena, index))
+        crate::leak::hir_ids(compilation.first_hir, compilation.ctx.next_hir_id())
             .find(|&hir| {
                 compilation.ctx.hir_type(hir).is_some()
                     && compilation.ctx.hir_srcloc(hir).is_some_and(|srcloc| {
@@ -1241,7 +1214,7 @@ fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
         let hir = node(&compilation, text);
         let ty = compilation.ctx.hir_type(hir).unwrap();
         compilation.ctx.set_hir_type(hir, generic);
-        let leak = check(&mut compilation);
+        let leak = leak_of(&mut compilation);
         if leaks {
             assert!(
                 leak.as_ref()
@@ -1273,6 +1246,21 @@ fn leak_oracle_allows_a_functions_own_generics() {
         matches!(compiled, Compiled::Ok { leak: None, .. }),
         "{compiled:?}"
     );
+
+    // A lambda's own generics, in its body and in a lambda in it, where it has no parameters
+    for body in [
+        "if (nil as List<U>) is nil { 1 } else { 2 }",
+        "{\n        let n: List<U> = nil;\n        let g = fn(x: U): U => x;\n        let _ = g;\n        if n is nil { 1 } else { 2 }\n    }",
+    ] {
+        let source = format!(
+            "fn run(f: fn<U>() -> Int) -> Int {{\n    f()\n}}\n\nfn main() -> Int {{\n    run(fn<U>(): Int => {body})\n}}\n"
+        );
+        let compiled = oracle::compile(&source);
+        assert!(
+            matches!(compiled, Compiled::Ok { leak: None, .. }),
+            "{source}\n{compiled:?}"
+        );
+    }
 }
 
 fn record(seed: u64, outcomes: &[(&str, Category, &[&str])]) -> report::SeedRecord {
@@ -2090,7 +2078,9 @@ fn version_3_variants_remove_probes_only_where_something_gives_them_a_type() {
                 compose |= seed == 197 && program.probe_callees(variant).contains("compose");
                 continue;
             }
-            let removable = crate::generate::removable_sites(program, variant);
+            // Without the expected types, which a probe's annotation never gives a type to anything,
+            // so that this doesn't check the mask the variants are made with against itself
+            let removable = crate::generate::removable_sites_with(program, variant, false);
             for (site, strip) in &variant.stripped {
                 if !program.probes.contains(site) {
                     continue;
