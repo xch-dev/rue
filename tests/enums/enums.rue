@@ -44,6 +44,14 @@ enum Option<T> {
     Some { value: T },
 }
 
+// A variant can use another with grown generic arguments, as long as it doesn't lead back to
+// itself, as with the structs it stands for
+enum Nested<T> {
+    Unit,
+    Single { value: T },
+    Double { inner: Nested::Single<(T, T)>, unit: Nested::Unit<(T, T)> },
+}
+
 enum Empty {}
 
 test fn unit_discriminants() {
@@ -136,6 +144,17 @@ test fn generic() -> Int {
 }
 
 // An enum without variants has no values, so it can be used as any type
+test fn nested_generics() -> Int {
+    let single = Nested::Single::<(Int, Int)> { value: (1, 2) };
+    let double: Nested<Int> = Nested::Double::<Int> { inner: single, unit: Nested::Unit };
+
+    if double is Nested::Double<Int> {
+        double.inner.value.first + double.inner.value.rest
+    } else {
+        0
+    }
+}
+
 fn _absurd(value: Empty) -> Int {
     value
 }
