@@ -160,22 +160,22 @@ An `if`, `else if` and `else` chain or a `match` can be a statement in the middl
 ```rs
 fn perimeter(shape: Shape) -> Int {
     match shape {
-        Point => {
+        Shape::Empty => {
             return 0;
         }
-        Circle => {
+        Shape::Circle => {
             raise "a circle has no sides";
         }
-        Square => {
-            assert shape.side > 0;
+        Shape::Rect => {
+            assert shape.width > 0;
         }
     }
 
-    shape.side * 4
+    shape.width * 2 + shape.height * 2
 }
 ```
 
-The code after a statement only sees the values of the branches that fall through to it. Above, `shape` is a `Square` after the `match`. If only one branch of an `if` chain falls through, the code after it sees what that branch does. A statement whose branches all `return` or `raise` never finishes, so a function can end with it instead of a value, and code after it is reported by `unreachable_code`. A function without a return type can end with any statement. In the same way, the branches of the `if`, `match` or block that a function ends with can `return`, since it's what the function returns.
+The code after a statement only sees the values of the branches that fall through to it. Above, `shape` is a `Shape::Rect` after the `match`. If only one branch of an `if` chain falls through, the code after it sees what that branch does. A statement whose branches all `return` or `raise` never finishes, so a function can end with it instead of a value, and code after it is reported by `unreachable_code`. A function without a return type can end with any statement. In the same way, the branches of the `if`, `match` or block that a function ends with can `return`, since it's what the function returns.
 
 As in Rust, a statement ends at its closing brace, so `if a { 1 } else { 2 } + 3` at the start of a statement is the statement followed by `+ 3`. Wrap it in parentheses to use it as a value. With a `;` after it, it's an expression statement like any other, whose branches are values.
 

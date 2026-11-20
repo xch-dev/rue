@@ -309,5 +309,26 @@ tests:
   byte_cost: 1212000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at control_statements.rue:774:13" "refunds aren't charged")
+- name: exits_through_statement_results
+  program: (a (q 4 (a 6 (q () . 1)) (c (a 6 (q 4 . 1)) (c (a 4 (q () . 1)) (c (a 4 (q 4 . 1)) ())))) (c (c (q 2 (i 2 (q 2 (i (= 2 (q . 3)) (q 8) (q 16 2 (q . 1))) 1) (q 2 (i 3 (q) (q 8)) 1)) 1) (q 2 (i 2 (q 16 2 (q . 1)) (q 2 (i 3 (q) (q 8)) 1)) 1)) ()))
+  debug_program: (a (q 4 (a 6 (c () (q . 1))) (c (a 6 (c (q . 4) (q . 1))) (c (a 4 (c () (q . 1))) (c (a 4 (c (q . 4) (q . 1))) ())))) (c (c (q 2 (i (= 2 ()) (q 2 (i 3 (q) (q 8 (q . "raise called at control_statements.rue:812:17") (q . "no value"))) 1) (q 2 (i (not (= 2 (q . 3))) (q 16 2 (q . 1)) (q 8 (q . "assertion failed at control_statements.rue:816:13"))) 1)) 1) (q 2 (i (= 2 ()) (q 2 (i 3 (q) (q 8 (q . "raise called at control_statements.rue:799:13") (q . "no value"))) 1) (q 16 2 (q . 1))) 1)) ()))
+  output: (() 5 () 5)
+  runtime_cost: 4872
+  byte_cost: 2508000
+  total_cost: 2512872
+- name: exits_before_more_statements_raises
+  program: (x)
+  debug_program: (a (q 2 2 (q . 1)) (c (q 2 (q . 2) (c (a (i 1 (q 8 (q . "raise called at control_statements.rue:836:13") (q . "flag")) (q 8 (q . "raise called at control_statements.rue:838:13") (q . "no flag"))) 1) 1)) ()))
+  byte_cost: 36000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at control_statements.rue:836:13" "flag")
 diagnostics:
 - Value returned by statement is unused at control_statements.rue:283:5
+- Binding `value` is returned directly after it's declared at control_statements.rue:834:5
+- |-
+  Unreachable code at control_statements.rue:841:9
+    note: Any code after this is never evaluated at control_statements.rue:835:9
+    help: Remove the unreachable code
+- |-
+  Unreachable code at control_statements.rue:843:5
+    note: Any code after this is never evaluated at control_statements.rue:834:5

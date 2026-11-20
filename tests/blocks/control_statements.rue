@@ -788,3 +788,61 @@ test fn charge_results() -> List<Int> {
 test fn charge_refund() -> Int {
     charge(Payment::Refund { amount: 5 })
 }
+
+// A branch whose only exit is a statement whose branches all exit exits too, so the rest of the
+// block only sees the values of the other branch
+fn exits_through_statement(value: Int | nil, flag: Bool) -> Int {
+    if value is nil {
+        if flag {
+            return 0;
+        } else {
+            raise "no value";
+        }
+    }
+
+    value + 1
+}
+
+fn exits_through_statement_shared(value: Int | nil, flag: Bool) -> Int {
+    match value {
+        nil => {
+            if flag {
+                return 0;
+            } else {
+                raise "no value";
+            }
+        }
+        Int => {
+            assert value != 3;
+        }
+    }
+
+    value + 1
+}
+
+test fn exits_through_statement_results() -> List<Int> {
+    [
+        exits_through_statement(nil, true),
+        exits_through_statement(4, true),
+        exits_through_statement_shared(nil, true),
+        exits_through_statement_shared(4, true),
+    ]
+}
+
+// A statement whose branches all exit doesn't have a value, even with more statements after it
+fn exits_before_more_statements(flag: Bool) -> Int {
+    let value: Int = {
+        if flag {
+            raise "flag";
+        } else {
+            raise "no flag";
+        }
+
+        debug flag;
+    };
+    value
+}
+
+test fn exits_before_more_statements_raises() -> Int {
+    exits_before_more_statements(true)
+}

@@ -1,5 +1,10 @@
 fn main(value: Int) -> Int {
-    forever(value) + through_branches(value) + terminates(value) + guarded(value)
+    forever(value)
+        + through_branches(value)
+        + terminates(value)
+        + guarded(value)
+        + through_statement(value)
+        + after_statement(value)
 }
 
 fn forever(value: Int) -> Int {
@@ -27,4 +32,26 @@ fn terminates(value: Int) -> Int {
 fn guarded(value: Int) -> Int {
     assert value > 0;
     guarded(value - 1)
+}
+
+// Every branch of the statement calls itself
+fn through_statement(value: Int) -> Int {
+    if value > 0 {
+        debug through_statement(value);
+    } else {
+        debug through_statement(value - 1);
+    }
+
+    0
+}
+
+// A branch of the statement could return before the call after it, so it isn't looked past
+fn after_statement(value: Int) -> Int {
+    if value > 0 {
+        return 0;
+    } else {
+        debug value;
+    }
+
+    after_statement(value - 1)
 }

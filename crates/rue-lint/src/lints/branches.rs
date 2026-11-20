@@ -36,8 +36,20 @@ impl HirLintPass for IdenticalBranches {
         }
 
         let srcloc = srcloc.clone();
-        let then_text = then_srcloc.text().to_string();
         let else_srcloc = else_srcloc.clone();
+
+        // A statement is replaced with the statements in its branch, since a block in the middle
+        // of another one isn't a statement
+        let then_text = if is_statement(cx, hir) {
+            let text = then_srcloc.text();
+            text.strip_prefix('{')
+                .and_then(|text| text.strip_suffix('}'))
+                .unwrap_or(text)
+                .trim()
+                .to_string()
+        } else {
+            then_srcloc.text().to_string()
+        };
 
         let Some(diagnostic) = cx.report(
             Lint::IdenticalBranches,
@@ -59,6 +71,15 @@ impl HirLintPass for IdenticalBranches {
             Applicability::MaybeIncorrect,
         ));
     }
+}
+
+/// Whether the `if` is a statement in its block (see [`rue_hir::ControlStatement`]).
+fn is_statement(cx: &LintContext<'_>, hir: HirId) -> bool {
+    cx.parent().is_some_and(|parent| {
+        matches!(cx.db().hir(parent), Hir::Block(block) if block.statements.iter().any(
+            |statement| matches!(statement, Statement::Control(statement) if statement.hir == hir)
+        ))
+    })
 }
 
 /// A condition that repeats an earlier one in the same `else if` chain is never true when it's

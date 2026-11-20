@@ -2845,3 +2845,47 @@ fn main(value: Int | nil) -> Int {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+/// An `if` statement whose branches are the same is replaced with the statements in its branch,
+/// rather than a block, which isn't a statement in the middle of another block.
+#[test]
+fn identical_statement_branches_can_be_replaced() {
+    let source = "\
+fn main(c: Bool, x: Int) -> Int {
+    if x > 1 {
+        assert c;
+    } else {
+        assert c;
+    }
+
+    x
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::IdenticalBranches))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(c: Bool, x: Int) -> Int {
+    assert c;
+
+    x
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}

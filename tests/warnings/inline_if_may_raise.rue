@@ -387,3 +387,108 @@ fn reported_once_branch(x: Int) -> Int {
     assert x > 3;
     x
 }
+
+// Reported once when both the statement's own rest and the rest after the statement it's in can
+// raise
+test fn nested_reported_once() -> Int {
+    nested_reported_once_branch(1, true, true)
+}
+
+fn nested_reported_once_branch(x: Int, b: Bool, c: Bool) -> Int {
+    if b {
+        inline if c {
+            return 1;
+        }
+
+        assert x > 1;
+    } else {
+        debug 1;
+    }
+
+    assert x > 2;
+    x
+}
+
+// The branch exits after the nested statement, so it doesn't reach the rest after the outer one
+test fn nested_branch_exits() -> Int {
+    nested_branch_exits_branch(1, true, true)
+}
+
+fn nested_branch_exits_branch(x: Int, b: Bool, c: Bool) -> Int {
+    if b {
+        inline if c {
+            return 1;
+        }
+
+        return 2;
+    } else {
+        debug 1;
+    }
+
+    assert x > 2;
+    x
+}
+
+// An `inline if` arm that can't return, or never falls through, doesn't evaluate the rest after
+// the statement when another branch returns
+test fn arm_without_return() -> Int {
+    arm_without_return_branch(1, nil)
+}
+
+fn arm_without_return_branch(x: Int, y: Int | nil) -> Int {
+    match y {
+        nil => inline if x == 1 {
+            debug x;
+        } else {
+            debug 0;
+        }
+        Int => {
+            debug y;
+        }
+    }
+
+    assert x > 0;
+    x
+}
+
+test fn arm_always_exits() -> Int {
+    arm_always_exits_branch(1, nil)
+}
+
+fn arm_always_exits_branch(x: Int, y: Int | nil) -> Int {
+    match y {
+        nil => inline if x == 1 {
+            return 1;
+        } else {
+            return 0;
+        }
+        Int => {
+            debug y;
+        }
+    }
+
+    assert x > 0;
+    x
+}
+
+// An `inline if` two statements deep
+test fn two_levels_deep() -> Int {
+    two_levels_deep_branch(1, true, true, true)
+}
+
+fn two_levels_deep_branch(x: Int, a: Bool, b: Bool, c: Bool) -> Int {
+    if a {
+        if b {
+            inline if c {
+                return 1;
+            }
+        } else {
+            debug 0;
+        }
+    } else {
+        debug 1;
+    }
+
+    assert x > 2;
+    x
+}

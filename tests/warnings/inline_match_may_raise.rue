@@ -164,3 +164,27 @@ fn arm_rest_raises_branch(x: Int | nil, z: Int | nil, y: Int) -> Int {
     assert y != 1;
     2
 }
+
+// Reported once when both the statement's own rest and the rest after the statement it's in can
+// raise
+test fn nested_reported_once() -> Int {
+    nested_reported_once_branch(nil, 1, true)
+}
+
+fn nested_reported_once_branch(x: Int | nil, y: Int, flag: Bool) -> Int {
+    if flag {
+        inline match x {
+            nil => {
+                return 0;
+            }
+            Int => {}
+        }
+
+        assert y > 1;
+    } else {
+        debug y;
+    }
+
+    assert y > 2;
+    y
+}

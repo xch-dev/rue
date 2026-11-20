@@ -187,6 +187,42 @@ tests:
   byte_cost: 1188000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:384:9"
+- name: nested_reported_once
+  program: (a (q 2 2 (q 1 1 . 1)) (c (q 2 (q 2 (i 23 (q 3 31 (q . 1) (a (i (> 11 (q . 1)) (q 2 2 5) (q 8)) 1)) (q 2 2 5)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8)) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (q . 1)))) (c (q 2 (q 2 (i 23 (q 3 31 (q . 1) (a (i (> 11 (q . 1)) (q 2 2 5) (q 8 (q . "assertion failed at inline_if_may_raise.rue:403:9"))) 1)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:405:9") (q . 1)) (q) (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:408:5"))) 1) (c 1 1))) ()))
+  byte_cost: 1764000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:403:9"
+- name: nested_branch_exits
+  program: (a (q 2 2 (q 1 1 . 1)) (c (q 2 (i 5 (q 3 7 (q . 1) (q . 2)) (q 2 (i (> 2 (q . 2)) (q . 2) (q 8)) 1)) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (q . 1)))) (c (q 2 (i 5 (q 3 7 (q . 1) (q . 2)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:425:9") (q . 1)) (q) (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:428:5"))) 1)) 1)) 1) ()))
+  output: "1"
+  runtime_cost: 772
+  byte_cost: 1044000
+  total_cost: 1044772
+- name: arm_without_return
+  program: (a (q 2 2 (q 1)) (c (q 3 () (a (i 3 (q) (q 3 (= 2 (q . 1)) () ())) 1) (a (i (> 2 ()) (q . 2) (q 8)) 1)) ()))
+  debug_program: (a (q 2 2 (c (q . 1) ())) (c (q 3 () (a (i (= 3 ()) (q 3 (= 2 (q . 1)) (a (i ("debug_print" (q . "inline_if_may_raise.rue:441:13") 2) (q) (q)) 1) (a (i ("debug_print" (q . "inline_if_may_raise.rue:443:13") ()) (q) (q)) 1)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:446:13") 3) (q) (q)) 1)) 1) (a (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:450:5"))) 1)) ()))
+  output: "1"
+  runtime_cost: 1880
+  byte_cost: 1140000
+  total_cost: 1141880
+  print_messages:
+  - ()
+  - "1"
+- name: arm_always_exits
+  program: (a (q 2 2 (q 1)) (c (q 2 (i 3 (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (q 9 2 (q . 1))) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) ())) (c (q 2 (i (= 3 ()) (q 3 (= 2 (q . 1)) (q . 1) ()) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:466:13") 3) (q) (q 2 (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:470:5"))) 1)) 1)) 1) ()))
+  output: "1"
+  runtime_cost: 830
+  byte_cost: 948000
+  total_cost: 948830
+- name: two_levels_deep
+  program: (a (q 2 2 (q 1 1 1 . 1)) (c (q 2 (q 2 (i 23 (q 2 (q 2 (i -65 (q 3 -1 (q . 1) (a 2 5)) (q 2 2 5)) 1) (c (q 2 2 5) (c 1 1))) (q 2 2 5)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8)) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (c (q . 1) (q . 1))))) (c (q 2 (q 2 (i 23 (q 2 (q 2 (i -65 (q 3 -1 (q . 1) (a 2 5)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:486:13") ()) (q) (q 2 2 5)) 1)) 1) (c (q 2 2 5) (c 1 1))) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:489:9") (q . 1)) (q) (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:492:5"))) 1) (c 1 1))) ()))
+  byte_cost: 2100000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:492:5"
 diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:8:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:20:5
@@ -218,3 +254,5 @@ diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:325:9
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:361:16
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:381:5
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:399:9
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:482:13
