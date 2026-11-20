@@ -359,7 +359,7 @@ fn target(attribute: &AstAttribute) -> Option<SyntaxNode> {
         .ancestors()
         .skip(1)
         .take_while(|node| node.text_range().start() == start)
-        .find(|node| accepts_attributes(node.kind()))
+        .find(accepts_attributes)
 }
 
 /// The file or module that an inner attribute applies to, if it's at the start of one. Anywhere
@@ -399,10 +399,17 @@ fn is_after_failed_item(attribute: &AstAttribute) -> bool {
     }
 }
 
-/// Whether attributes can be attached to nodes of the given kind.
-fn accepts_attributes(kind: SyntaxKind) -> bool {
+/// Whether attributes can be attached to the node. An `if` or `match` directly in a block is a
+/// statement (or the block's value), so it can have them too.
+fn accepts_attributes(node: &SyntaxNode) -> bool {
+    if matches!(node.kind(), SyntaxKind::IfExpr | SyntaxKind::MatchExpr) {
+        return node
+            .parent()
+            .is_some_and(|parent| parent.kind() == SyntaxKind::Block);
+    }
+
     matches!(
-        kind,
+        node.kind(),
         SyntaxKind::ModuleItem
             | SyntaxKind::FunctionItem
             | SyntaxKind::ConstantItem

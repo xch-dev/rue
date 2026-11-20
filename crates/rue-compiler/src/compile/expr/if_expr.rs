@@ -68,7 +68,8 @@ pub fn compile_if_expr(
             ctx.diagnostic(expr.syntax(), DiagnosticKind::MissingElse);
         }
         debug!("Unresolved if else expr");
-        (ctx.unresolved(), None)
+        let never = ctx.builtins().types.never;
+        (ctx.unresolved().with_type(never), None)
     };
 
     // The rest of the block after a statement only sees the values that the branch which falls
