@@ -90,7 +90,10 @@ pub fn leak(
         let Some(range) = main_range(ctx, kind, hir) else {
             continue;
         };
-        lambda_ranges.push(range);
+        // Only a lambda with parameters can have one compiled as a callee's generic (see below)
+        if !function.parameters.is_empty() {
+            lambda_ranges.push(range);
+        }
         binders.push((range, function.vars.clone()));
     }
 

@@ -1176,13 +1176,13 @@ fn leak_oracle_flags_a_generic_outside_of_its_function() {
 
 /// The leak oracle checks the type the compiler recorded for each expression too, where a call's
 /// type goes straight into an annotated binding, as `make_list(nil)` did before #490. An expression
-/// in a lambda, or a pair around one, can have a callee's generic, as an element lambda compiled
-/// where it is does (#485), and a call can't, even around a lambda.
+/// in a lambda with parameters, or a pair around one, can have a callee's generic, as an element
+/// lambda compiled where it is does (#485), and a call can't, even around a lambda.
 #[test]
 fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
     use rue_hir::{HirId, Symbol};
 
-    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Any {\n    let p = (fn(z: Int) => z, 2);\n    let q = f(p.first(1));\n    let r = f(fn(w: Int) => w);\n    (q, r)\n}\n";
+    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Any {\n    let p = (fn(z: Int) => z, 2);\n    let q = f(p.first(1));\n    let r = f(fn(w: Int) => w);\n    let h = fn() => (f(5), 6);\n    (q, (r, h))\n}\n";
     let mut compilation = oracle::compilation(source, false);
     assert_eq!(leak_of(&mut compilation), None);
 
@@ -1210,6 +1210,9 @@ fn leak_oracle_flags_an_expression_with_a_generic_outside_of_its_function() {
         ("f(fn(w: Int) => w)", true),
         ("z", false),
         ("(fn(z: Int) => z, 2)", false),
+        // A lambda without parameters has none compiled as a callee's generic, so what's in it
+        // can't have one
+        ("(f(5), 6)", true),
     ] {
         let hir = node(&compilation, text);
         let ty = compilation.ctx.hir_type(hir).unwrap();
