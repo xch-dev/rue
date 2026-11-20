@@ -78,7 +78,9 @@ fn evaluate_const(ctx: &mut Compiler, states: &mut HashMap<HirId, ConstState>, h
                 unreachable!("const expressions are never replaced");
             };
 
-            if expr.result.is_some() {
+            if ctx.is_failed_exponent(hir) {
+                states.insert(hir, ConstState::Failed);
+            } else if expr.result.is_some() {
                 states.insert(hir, ConstState::Done);
             } else {
                 states.insert(hir, ConstState::Evaluating);
@@ -208,6 +210,7 @@ fn finish_const(
     // still be lowered
     if let Some(power) = power {
         set_expansion(ctx, power, nil);
+        ctx.set_exponent_failed(hir);
     }
 
     states.insert(hir, ConstState::Failed);

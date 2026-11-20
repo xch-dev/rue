@@ -55,6 +55,12 @@ fn failing_exponent(x: Int) -> Int {
     x ** (1 / 0)
 }
 
+// Only the exponent that failed is reported, rather than the exponent or const expression that
+// it's in as well, which would be evaluated without it
+fn failed_exponent_in_exponent(x: Int, n: Int) -> Int {
+    x ** (300 - 2 ** n) + const { 10 / 2 ** -1 }
+}
+
 // The same errors are reported for a power in a constant
 const NEGATIVE_POWER: Int = 2 ** -1;
 
@@ -73,6 +79,7 @@ fn runtime_base_in_const(x: Int) -> Int {
 fn main(x: Int, n: Int) -> Int {
     runtime_exponent(x, n)
         + runtime_binding(x)
+        + failed_exponent_in_exponent(x, n)
         + literal_binding(x)
         + inline_parameter(x, 2)
         + NEGATIVE_POWER

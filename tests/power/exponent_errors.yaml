@@ -11,8 +11,10 @@ diagnostics:
 - The exponent `1000000000000000000000000000000` is larger than the maximum of 256, since a power is compiled to the product of that many copies of its base at exponent_errors.rue:47:10
 - The exponent `512` is larger than the maximum of 256, since a power is compiled to the product of that many copies of its base at exponent_errors.rue:51:10
 - "Const expression failed to evaluate: Division by zero at exponent_errors.rue:55:10"
-- Cannot raise to the negative power `-1`, since the result wouldn't be an integer at exponent_errors.rue:59:34
-- Constant `RECURSIVE` references itself at exponent_errors.rue:62:7
-- Const expression depends on itself at exponent_errors.rue:62:29
-- Const expression depends on itself at exponent_errors.rue:65:10
-- Const expression depends on runtime value `x` at exponent_errors.rue:70:5
+- The exponent of `**` must be known at compile time, but it depends on `n`, which isn't a `const`. CLVM has no power operator, so `x ** 3` is compiled to `x * x * x`, and an exponent that's only known at runtime needs a function that multiplies in a loop at exponent_errors.rue:61:22
+- Cannot raise to the negative power `-1`, since the result wouldn't be an integer at exponent_errors.rue:61:45
+- Cannot raise to the negative power `-1`, since the result wouldn't be an integer at exponent_errors.rue:65:34
+- Constant `RECURSIVE` references itself at exponent_errors.rue:68:7
+- Const expression depends on itself at exponent_errors.rue:68:29
+- Const expression depends on itself at exponent_errors.rue:71:10
+- Const expression depends on runtime value `x` at exponent_errors.rue:76:5

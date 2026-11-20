@@ -28,6 +28,8 @@ pub struct Database {
     const_exprs: Vec<HirId>,
     /// The power that each const expression is the exponent of.
     powers: HashMap<HirId, HirId>,
+    /// The exponents that couldn't be evaluated, or that their power can't be expanded with.
+    failed_exponents: HashSet<HirId>,
     hir_types: HashMap<HirId, TypeId>,
     /// Types that nodes are reported as having in place of the ones they were recorded with (see
     /// `Database::report_type_as`).
@@ -119,6 +121,16 @@ impl Database {
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
         self.const_exprs.iter().copied()
+    }
+
+    /// Records that the exponent of a power failed, which an error has been reported for.
+    pub fn set_exponent_failed(&mut self, exponent: HirId) {
+        self.failed_exponents.insert(exponent);
+    }
+
+    /// Whether the exponent of a power failed, so the power is only expanded to a placeholder.
+    pub fn is_failed_exponent(&self, exponent: HirId) -> bool {
+        self.failed_exponents.contains(&exponent)
     }
 
     /// The power that the const expression is the exponent of, if it's one.
