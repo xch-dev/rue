@@ -126,7 +126,7 @@ export const rue = StreamLanguage.define<State>({
       return "variableName";
     }
 
-    if (stream.match(/^(\.\.\.|::|->|=>|[-+*/%<>=!&|^~]=?)/)) return "operator";
+    if (stream.match(/^(\.\.\.?|::|->|=>|[-+*/%<>=!&|^~]=?)/)) return "operator";
     stream.next();
     return "punctuation";
   },
