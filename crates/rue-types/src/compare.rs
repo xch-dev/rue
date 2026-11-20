@@ -2780,7 +2780,6 @@ mod tests {
                 ty: bound,
                 env: Vec::new(),
                 branch: None,
-                unmatched: false,
             });
             Rc::new(summary)
         };
