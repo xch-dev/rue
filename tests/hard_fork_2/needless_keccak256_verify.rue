@@ -5,8 +5,24 @@ test fn statement(value: Bytes, hash: Bytes32) {
     keccak256_verify(value, hash);
 }
 
+// Removing the final expression would leave a block without a value, which most blocks must have,
+// so there's no suggestion
 test fn final_expression(value: Bytes, hash: Bytes32) {
     keccak256_verify(value, hash)
+}
+
+test fn final_expression_of_branch(value: Bytes, hash: Bytes32, flag: Bool) {
+    if flag {
+        keccak256_verify(value, hash)
+    } else {
+        keccak256_verify(concat([value, value]), hash)
+    };
+}
+
+// The suggestion would have to move the attribute, so there's none
+test fn with_attribute(value: Bytes, hash: Bytes32) {
+    #[allow(unused_value)]
+    keccak256_verify(value, hash);
 }
 
 // The call is a value here, so it can't be replaced with an `assert` statement

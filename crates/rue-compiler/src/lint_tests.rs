@@ -2732,7 +2732,7 @@ fn needless_keccak256_verify_only_warns_by_default_with_hard_fork_2() {
     assert_eq!(keccak256_verify_lints(|_| {}), (0, 0));
     assert_eq!(
         keccak256_verify_lints(|options| options.hard_fork_2 = true),
-        (3, 2)
+        (3, 1)
     );
 
     // A level that's set explicitly is kept either way. Without `hard_fork_2`, `keccak256` is an
@@ -2777,7 +2777,7 @@ fn main(value: Bytes, hash: Bytes32, other: Bytes32) -> Int {
 }
 
 fn tail(value: Bytes, hash: Bytes32) {
-    assert keccak256(concat([value, value])) == hash;
+    keccak256_verify(concat([value, value]), hash)
 }
 "
     );

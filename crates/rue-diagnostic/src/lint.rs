@@ -348,7 +348,6 @@ lint_groups! {
         NegatedCondition,
         CollapsibleIf,
         ManualAssert,
-        NeedlessKeccak256Verify,
         NeedlessLetReturn,
         RedundantFieldNames,
         UnnecessaryParens,
@@ -571,13 +570,24 @@ mod tests {
         levels.apply_target_defaults(false);
         assert_eq!(levels.get(lint), LintLevel::Allow);
 
-        // A level set for the lint or its group is kept
-        for name in [LintName::Lint(lint), LintName::Group(LintGroup::Style)] {
-            let mut levels = LintLevels::default();
-            assert!(levels.apply(&[(name, LintLevel::Allow)]).is_empty());
-            levels.apply_target_defaults(true);
-            assert_eq!(levels.get(lint), LintLevel::Allow);
-        }
+        // A level that's set is kept, as are those set for a group
+        let mut levels = LintLevels::default();
+        assert!(
+            levels
+                .apply(&[(LintName::Lint(lint), LintLevel::Allow)])
+                .is_empty()
+        );
+        levels.apply_target_defaults(true);
+        assert_eq!(levels.get(lint), LintLevel::Allow);
+
+        let mut levels = LintLevels::default();
+        assert!(
+            levels
+                .apply(&[(LintName::Group(LintGroup::Style), LintLevel::Deny)])
+                .is_empty()
+        );
+        levels.apply_target_defaults(true);
+        assert_eq!(levels.get(Lint::ManualAssert), LintLevel::Deny);
     }
 
     #[test]
@@ -658,7 +668,6 @@ mod tests {
                 Lint::NegatedCondition,
                 Lint::CollapsibleIf,
                 Lint::ManualAssert,
-                Lint::NeedlessKeccak256Verify,
                 Lint::NeedlessLetReturn,
                 Lint::RedundantFieldNames,
                 Lint::UnnecessaryParens,

@@ -39,24 +39,27 @@ impl HirLintPass for NeedlessKeccak256Verify {
             return;
         };
 
-        // The call can only be replaced with an `assert` statement where it's a statement, or the
-        // final expression of a block, whose value is nil either way
-        let replaced = cx
-            .parent()
+        // The call can only be replaced with an `assert` statement where it's a statement. As the
+        // final expression of a block, removing it would leave the block without a value, which
+        // most blocks must have
+        let replaced = self
+            .hard_fork_2
+            .then(|| cx.parent())
+            .flatten()
             .and_then(|parent| match db.hir(parent) {
-                Hir::Block(block) => block
-                    .statements
-                    .iter()
-                    .find_map(|statement| match statement {
-                        Statement::Expr(statement) if statement.hir == hir => {
-                            Some(statement.srcloc.clone())
-                        }
-                        _ => None,
-                    })
-                    .or_else(|| (block.body == Some(hir)).then(|| srcloc.clone())),
+                Hir::Block(block) => {
+                    block
+                        .statements
+                        .iter()
+                        .find_map(|statement| match statement {
+                            Statement::Expr(statement) if statement.hir == hir => {
+                                Some(statement.srcloc.clone())
+                            }
+                            _ => None,
+                        })
+                }
                 _ => None,
-            })
-            .filter(|_| self.hard_fork_2);
+            });
 
         let replacement = replaced.and_then(|replaced| {
             let value = text_at(db, value, Position::Whole)?;
