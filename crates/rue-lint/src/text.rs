@@ -62,6 +62,7 @@ pub(crate) fn position(cx: &LintContext<'_>, hir: HirId) -> Position {
         | Hir::BlsVerify(..)
         | Hir::Secp256K1Verify(..)
         | Hir::Secp256R1Verify(..)
+        | Hir::Keccak256Verify(..)
         | Hir::ClvmOp(..) => Position::Whole,
         _ => Position::Operand,
     }
@@ -175,6 +176,7 @@ fn is_atomic(db: &Database, hir: HirId) -> bool {
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)
             | Hir::Secp256R1Verify(..)
+            | Hir::Keccak256Verify(..)
             | Hir::ClvmOp(..)
     )
 }

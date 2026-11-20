@@ -105,7 +105,9 @@ impl Visitor<'_> {
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
             Hir::FunctionCall(call) => self.visit_hir(call.function) || self.visit_all(call.args),
             Hir::Unary(_, hir) | Hir::ClvmOp(_, hir) => self.visit_hir(hir),
-            Hir::Pair(a, b) | Hir::Binary(_, a, b) => self.visit_all([a, b]),
+            Hir::Pair(a, b) | Hir::Binary(_, a, b) | Hir::Keccak256Verify(a, b) => {
+                self.visit_all([a, b])
+            }
             Hir::CoinId(a, b, c)
             | Hir::Modpow(a, b, c)
             | Hir::Secp256K1Verify(a, b, c)

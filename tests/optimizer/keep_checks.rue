@@ -517,15 +517,6 @@ test fn substr_moved_into_branch(value: Bytes, start: Int, flag: Bool) -> Bytes 
     }
 }
 
-test fn modpow_moved_into_branch(base: Int, exponent: Int, modulus: Int, flag: Bool) -> Int {
-    let result = modpow(base, exponent, modulus);
-    if flag {
-        result
-    } else {
-        0
-    }
-}
-
 // Hashing can't fail, so it's still moved into the branch
 test fn hash_is_inlined(value: Bytes, flag: Bool) -> Bytes32 {
     let hash = sha256(value);

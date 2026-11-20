@@ -75,6 +75,9 @@ pub(crate) fn hir_eq(db: &Database, a: HirId, b: HirId) -> bool {
         | (Hir::Secp256R1Verify(a1, a2, a3), Hir::Secp256R1Verify(b1, b2, b3)) => {
             all_eq(db, &[*a1, *a2, *a3], &[*b1, *b2, *b3])
         }
+        (Hir::Keccak256Verify(a1, a2), Hir::Keccak256Verify(b1, b2)) => {
+            all_eq(db, &[*a1, *a2], &[*b1, *b2])
+        }
         (Hir::Substr(a1, a2, a3), Hir::Substr(b1, b2, b3)) => {
             all_eq(db, &[*a1, *a2], &[*b1, *b2]) && option_eq(db, *a3, *b3)
         }

@@ -1,0 +1,51 @@
+// Before hard fork 2, `keccak256_verify` checks the hash inside the softfork guard, which declares
+// the exact cost of the check for the length of the value. `tests/hard_fork_2/keccak256_verify.rue`
+// has the same tests compiled with `hard_fork_2`, where the check is outside of the guard.
+
+test fn verifies(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}
+
+test fn verifies_empty(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}
+
+test fn verifies_long(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}
+
+test fn rejects_wrong_hash(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}
+
+// A check of constants is done at compile time when the hash matches
+test fn constant_match_is_folded() {
+    keccak256_verify("hello", 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8);
+}
+
+// and kept when it doesn't, so that it still fails
+test fn constant_mismatch_is_kept() {
+    keccak256_verify("hello", 0x0000000000000000000000000000000000000000000000000000000000000000);
+}
+
+// The check can fail, so it isn't moved into the branch
+test fn check_is_kept_before_branch(value: Bytes, hash: Bytes32, flag: Bool) -> Int {
+    let checked = keccak256_verify(value, hash);
+    if flag {
+        debug_nil(checked)
+    } else {
+        0
+    }
+}
+
+fn debug_nil(_value: nil) -> Int {
+    1
+}
+
+// The arguments are captured by a lambda that checks them when it's called, and the hash is of
+// the captured value, so it only passes if that's what the lambda checks
+test fn check_in_lambda(value: Bytes, hash: Bytes32) {
+    let prefixed = concat(["prefix", value]);
+    let check = fn() => keccak256_verify(prefixed, hash);
+    check();
+}

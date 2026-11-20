@@ -250,7 +250,8 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             | Hir::BlsPairingIdentity(_)
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)
-            | Hir::Secp256R1Verify(..) => true,
+            | Hir::Secp256R1Verify(..)
+            | Hir::Keccak256Verify(..) => true,
             Hir::If(..)
             | Hir::List(_)
             | Hir::Struct(_)
@@ -576,7 +577,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 /// Whether the operation may fail for well-typed operands. Shifts only fail for some right
 /// operands, so they can't fail if it's a suitable constant, whose atom must also be short
 /// enough. Division only fails for a zero divisor, unless the program is compiled with
-/// `operand_limits`. Then `LIMITS` (see [`rue_lir::clvm_flags`]) rejects operands of
+/// `operand_limits`. Then `LIMITS` (see [`rue_lir::ClvmTarget::flags`]) rejects operands of
 /// multiplication and division that are too long, so those can only be known not to fail if both
 /// operands are suitable constants.
 fn binary_may_fail(

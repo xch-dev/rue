@@ -2690,3 +2690,121 @@ fn main(value: Bytes) -> (Bytes32, Bytes32) {
             .all(|diagnostic| diagnostic.lint() != Some(Lint::PreludeOverEnclosingItem))
     );
 }
+
+const KECCAK256_VERIFY: &str = "\
+fn main(value: Bytes, hash: Bytes32, other: Bytes32) -> Int {
+    keccak256_verify(value, hash);
+    let _checked = keccak256_verify(value, other);
+    tail(value, hash);
+    1
+}
+
+fn tail(value: Bytes, hash: Bytes32) {
+    keccak256_verify(concat([value, value]), hash)
+}
+";
+
+/// The lints reported for `KECCAK256_VERIFY`, and how many of them have a suggestion that can be
+/// applied automatically.
+fn keccak256_verify_lints(configure: impl FnOnce(&mut CompilerOptions)) -> (usize, usize) {
+    let (diagnostics, has_errors) = compile_source(KECCAK256_VERIFY, configure);
+    assert!(!has_errors, "{diagnostics:?}");
+
+    let lints = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::NeedlessKeccak256Verify))
+        .collect::<Vec<_>>();
+    let fixable = lints
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic
+                .suggestions
+                .iter()
+                .any(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        })
+        .count();
+
+    (lints.len(), fixable)
+}
+
+#[test]
+fn needless_keccak256_verify_only_warns_by_default_with_hard_fork_2() {
+    assert_eq!(keccak256_verify_lints(|_| {}), (0, 0));
+    assert_eq!(
+        keccak256_verify_lints(|options| options.hard_fork_2 = true),
+        (3, 1)
+    );
+
+    // A level that's set explicitly is kept either way. Without `hard_fork_2`, `keccak256` is an
+    // error, so there's nothing to suggest
+    let level = |level| {
+        move |options: &mut CompilerOptions| {
+            options.lints.set(Lint::NeedlessKeccak256Verify, level);
+        }
+    };
+    assert_eq!(keccak256_verify_lints(level(LintLevel::Warn)), (3, 0));
+    assert_eq!(
+        keccak256_verify_lints(|options| {
+            level(LintLevel::Allow)(options);
+            options.hard_fork_2 = true;
+        }),
+        (0, 0)
+    );
+}
+
+#[test]
+fn needless_keccak256_verify_suggestions_compile() {
+    let compile = |source: &str| compile_with(source, |options| options.hard_fork_2 = true);
+    let compiled = compile(KECCAK256_VERIFY);
+
+    let edits = compiled
+        .diagnostics
+        .iter()
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+    let fixed = apply_edits(KECCAK256_VERIFY, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(value: Bytes, hash: Bytes32, other: Bytes32) -> Int {
+    assert keccak256(value) == hash;
+    let _checked = keccak256_verify(value, other);
+    tail(value, hash);
+    1
+}
+
+fn tail(value: Bytes, hash: Bytes32) {
+    keccak256_verify(concat([value, value]), hash)
+}
+"
+    );
+
+    let compiled = compile(&fixed);
+    assert!(!compiled.has_errors(), "{:?}", compiled.diagnostics);
+
+    // Where `keccak256` names something else, an `assert` of it would call that instead, so
+    // there's no suggestion
+    let shadowed = "\
+fn main(value: Bytes, hash: Bytes32) -> Int {
+    keccak256_verify(value, hash);
+    1
+}
+
+fn keccak256(value: Bytes) -> Bytes32 {
+    sha256(value)
+}
+";
+    let compiled = compile(shadowed);
+    assert!(
+        compiled
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.lint() == Some(Lint::NeedlessKeccak256Verify))
+            .all(|diagnostic| diagnostic.suggestions.is_empty()),
+        "{:?}",
+        compiled.diagnostics
+    );
+}

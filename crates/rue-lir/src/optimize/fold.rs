@@ -1,40 +1,21 @@
-use clvmr::{Allocator, ChiaDialect, ClvmFlags, NodePtr, SExp, run_program, serde::node_to_bytes};
+use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program, serde::node_to_bytes};
 use id_arena::Arena;
 
-use crate::{COST_PER_BYTE, ClvmOp, Lir, LirId, OptimizeOptions, clvm_flags};
+use crate::{COST_PER_BYTE, ClvmOp, ClvmTarget, Lir, LirId};
 
 // The maximum cost spent evaluating a single operator at compile time
 const MAX_FOLD_COST: u64 = 100_000_000;
 
 // If every argument is an atom, we can run the operator at compile time to get the result
-// This uses the same dialect as the runtime, so the result is always exactly the same
+// This uses the flags the program is run with (see `ClvmTarget::flags`), so the result is always
+// exactly the same, and the costs are compared with the cost model the program is run with
 // If the operator would fail, we leave it alone so that it still fails at runtime
 // We also only fold if it doesn't increase the total cost (for example, by producing a large atom)
-//
-// This runs the operator with `LIMITS`, which only adds failures, so whatever it folds is folded
-// the same way whether the program is compiled with `operand_limits` or not. Operators whose
-// operands `LIMITS` limits use `fold_limited_atoms` instead, so that they're folded without it
-// when it doesn't apply.
-pub fn fold_atoms(arena: &mut Arena<Lir>, op: ClvmOp, args: &[LirId]) -> Option<LirId> {
-    fold_atoms_with(arena, op, args, clvm_flags(true))
-}
-
-// Like `fold_atoms`, but runs the operator with the flags that the program is run with, for the
-// operators whose operands `LIMITS` limits (`modpow`, `g1_multiply` and `g2_multiply`)
-pub fn fold_limited_atoms(
+pub fn fold_atoms(
     arena: &mut Arena<Lir>,
-    options: OptimizeOptions,
+    target: ClvmTarget,
     op: ClvmOp,
     args: &[LirId],
-) -> Option<LirId> {
-    fold_atoms_with(arena, op, args, clvm_flags(options.operand_limits))
-}
-
-fn fold_atoms_with(
-    arena: &mut Arena<Lir>,
-    op: ClvmOp,
-    args: &[LirId],
-    flags: ClvmFlags,
 ) -> Option<LirId> {
     let mut atoms = Vec::with_capacity(args.len());
 
@@ -46,12 +27,12 @@ fn fold_atoms_with(
         atoms.push(atom.clone());
     }
 
-    let result = run_op(op, &atoms, flags)?;
+    let result = run_op(op, &atoms, target)?;
 
     Some(arena.alloc(Lir::Atom(result)))
 }
 
-fn run_op(op: ClvmOp, atoms: &[Vec<u8>], flags: ClvmFlags) -> Option<Vec<u8>> {
+fn run_op(op: ClvmOp, atoms: &[Vec<u8>], target: ClvmTarget) -> Option<Vec<u8>> {
     let mut allocator = Allocator::new();
 
     let mut args = NodePtr::NIL;
@@ -61,10 +42,10 @@ fn run_op(op: ClvmOp, atoms: &[Vec<u8>], flags: ClvmFlags) -> Option<Vec<u8>> {
         args = allocator.new_pair(atom, args).ok()?;
     }
 
-    let op = allocator.new_atom(&op.to_atom()).ok()?;
+    let op = allocator.new_atom(&op.to_target_atom(target)).ok()?;
     let program = allocator.new_pair(op, args).ok()?;
 
-    let dialect = ChiaDialect::new(flags);
+    let dialect = ChiaDialect::new(target.flags());
     let reduction = run_program(
         &mut allocator,
         &dialect,
@@ -123,7 +104,12 @@ mod tests {
     fn test_fold_nil_arguments_and_result() {
         let mut arena = Arena::new();
         let nil = arena.alloc(Lir::Atom(vec![]));
-        let result = fold_atoms(&mut arena, ClvmOp::GtBytes, &[nil, nil]);
+        let result = fold_atoms(
+            &mut arena,
+            ClvmTarget::default(),
+            ClvmOp::GtBytes,
+            &[nil, nil],
+        );
         assert!(matches!(result.map(|id| &arena[id]), Some(Lir::Atom(atom)) if atom.is_empty()));
     }
 
@@ -133,7 +119,15 @@ mod tests {
         let value = arena.alloc(Lir::Atom(b"hello".to_vec()));
         let start = arena.alloc(Lir::Atom(vec![2]));
         let end = arena.alloc(Lir::Atom(vec![10]));
-        assert!(fold_atoms(&mut arena, ClvmOp::Substr, &[value, start, end]).is_none());
+        assert!(
+            fold_atoms(
+                &mut arena,
+                ClvmTarget::default(),
+                ClvmOp::Substr,
+                &[value, start, end]
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -141,6 +135,14 @@ mod tests {
         let mut arena = Arena::new();
         let one = arena.alloc(Lir::Atom(vec![1]));
         let shift = arena.alloc(Lir::Atom(bigint_atom(1000.into())));
-        assert!(fold_atoms(&mut arena, ClvmOp::Ash, &[one, shift]).is_none());
+        assert!(
+            fold_atoms(
+                &mut arena,
+                ClvmTarget::default(),
+                ClvmOp::Ash,
+                &[one, shift]
+            )
+            .is_none()
+        );
     }
 }

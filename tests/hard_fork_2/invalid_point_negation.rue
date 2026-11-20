@@ -1,0 +1,10 @@
+// Compiled with `hard_fork_2` (see `invalid_point_negation.yaml`). `tests/invalid_point_negation.rue`
+// has the same test compiled without it.
+
+// Negating a point that isn't valid fails, unless BLS checks are relaxed, as they are after hard
+// fork 2, so the negation is only folded then
+test fn negate_invalid_point() -> PublicKey {
+    -(
+        0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 as PublicKey
+    )
+}

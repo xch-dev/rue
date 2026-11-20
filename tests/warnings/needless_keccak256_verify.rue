@@ -1,0 +1,97 @@
+// Without `hard_fork_2`, the lint is allowed by default, since `keccak256` is an error, so nothing
+// is reported. `tests/hard_fork_2/needless_keccak256_verify.rue` has the same tests with it.
+
+test fn statement(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}
+
+// Removing the final expression would leave a block without a value, which most blocks must have,
+// so there's no suggestion
+test fn final_expression(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash)
+}
+
+test fn final_expression_of_branch(value: Bytes, hash: Bytes32, flag: Bool) {
+    if flag {
+        keccak256_verify(value, hash)
+    } else {
+        keccak256_verify(concat([value, value]), hash)
+    };
+}
+
+// The suggestion would have to move the attribute, so there's none
+test fn with_attribute(value: Bytes, hash: Bytes32) {
+    #[allow(unused_value)]
+    keccak256_verify(value, hash);
+}
+
+// The call is a value here, so it can't be replaced with an `assert` statement
+test fn value(value: Bytes, hash: Bytes32) -> (nil, Int) {
+    (keccak256_verify(value, hash), 1)
+}
+
+// Comments outside of the arguments would be dropped, so there's no suggestion
+test fn with_comment(value: Bytes, hash: Bytes32) {
+    keccak256_verify(/* value */ value, hash /* hash */ ) // the check
+    ;
+}
+
+#[allow(needless_keccak256_verify)]
+test fn allowed(value: Bytes, hash: Bytes32) {
+    keccak256_verify(value, hash);
+}
+
+// `keccak256` doesn't name the builtin here, so an `assert` of it would call something else, and
+// there's no suggestion
+test fn shadowed(value: Bytes, hash: Bytes32) {
+    shadowing::check(value, hash);
+}
+
+mod shadowing {
+    fn keccak256(value: Bytes) -> Bytes32 {
+        sha256(value)
+    }
+
+    export fn check(value: Bytes, hash: Bytes32) {
+        keccak256_verify(value, hash);
+        assert keccak256(value) != hash;
+    }
+}
+
+test fn shadowed_by_parameter(value: Bytes, hash: Bytes32) {
+    shadowed_by(value, hash, fn(value: Bytes) => sha256(value));
+}
+
+fn shadowed_by(value: Bytes, hash: Bytes32, keccak256: fn(value: Bytes) -> Bytes32) {
+    keccak256_verify(value, hash);
+    assert keccak256(value) != hash;
+}
+
+test fn shadowed_by_binding(value: Bytes, hash: Bytes32) {
+    let keccak256 = fn(value: Bytes) => sha256(value);
+    keccak256_verify(value, hash);
+    assert keccak256(value) != hash;
+}
+
+// An inline module doesn't see the items of the module around it, so `keccak256` is the builtin in
+// it, and the `assert` is suggested
+test fn enclosing_item(value: Bytes, hash: Bytes32) {
+    enclosing::inner::check(value, hash);
+    assert enclosing::hashed(value) != hash;
+}
+
+mod enclosing {
+    fn keccak256(value: Bytes) -> Bytes32 {
+        sha256(value)
+    }
+
+    export mod inner {
+        export fn check(value: Bytes, hash: Bytes32) {
+            keccak256_verify(value, hash);
+        }
+    }
+
+    export fn hashed(value: Bytes) -> Bytes32 {
+        keccak256(value)
+    }
+}

@@ -287,6 +287,16 @@ pub enum DiagnosticKind {
     #[error("Expected an even number of arguments")]
     ExpectedEvenArguments,
 
+    #[error(
+        "`{0}` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2`"
+    )]
+    RequiresHardFork2(String),
+
+    #[error(
+        "`{0}` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2`, but `keccak256_verify` can check a hash without it"
+    )]
+    KeccakRequiresHardFork2(String),
+
     #[error("Expected one argument followed by an even number of additional arguments")]
     ExpectedOneArgumentEvenAdditional,
 

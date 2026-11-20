@@ -95,13 +95,46 @@ Useful `build` flags:
 - `--hex` - output serialized bytecode as hex
 - `--hash` - output the tree hash of the compiled program
 - `--debug` - include debug information such as assertion messages
-- `--operand-limits` - target CLVM with the `LIMITS` flag that mainnet enforces today (see [Operand Limits](#operand-limits)); `test` takes it too
+- `--hard-fork-2` - target mainnet as it will be after hard fork 2 (see [Hard Fork 2](#hard-fork-2)); `test` and `debug` take it too
+- `--operand-limits` - target CLVM with the `LIMITS` flag that mainnet enforces today (see [Operand Limits](#operand-limits)); `test` and `debug` take it too
 - `--all` - compile every export in the project and write each one to a file (next to its source, or in `dist_dir` if set in `Rue.toml`)
 - `--debug-metadata` - also write a debug metadata sidecar for each program (`<name>.rue.debug.clvm.bin`, in Chialisp's structural debug metadata format), which debuggers use to show where in the source a failing program was. It's written next to each program with `--all`, and otherwise next to the source file, or to `--debug-metadata=<path>`. The programs are the same either way
 
 `test` and `debug` stop a program once its cost passes 11,000,000,000 (the same as Chia's block cost limit), so a program that never ends fails instead of hanging. `--max-cost <cost>` changes the limit.
 
 When a test fails, `test` shows where it was in the source: the stack of calls that led to the failure, with the values of their parameters. `debug` does the same for a program built with `--debug-metadata` when it's given the sidecar with `--debug-metadata <path>` (which can be repeated, for programs that run other programs).
+
+## Hard Fork 2
+
+By default, Rue targets Chia mainnet as it is today, before hard fork 2. Turn on `hard_fork_2` in `Rue.toml`, or pass `--hard-fork-2` to `build`, `test` or `debug`, to target mainnet as it will be once hard fork 2 activates:
+
+```toml
+[compiler]
+hard_fork_2 = true
+```
+
+| | Without `hard_fork_2` (default) | With `hard_fork_2` |
+| --- | --- | --- |
+| `modpow` | An error, since mainnet disables it until hard fork 2 | Allowed |
+| `keccak256`, `keccak256_inline` | An error, since mainnet doesn't know the operator outside of the softfork guard until hard fork 2 | Allowed |
+| Cost model, for running programs and for the optimizer's cost comparisons | The current one | The new one |
+| `keccak256_verify` | Checks the hash inside of the softfork guard | Checks the hash outside of the guard |
+| `secp256k1_verify`, `secp256r1_verify` | The four byte opcodes that encode their cost | The one byte opcodes 64 and 65 |
+| `LIMITS` | Only with `operand_limits` (see [Operand Limits](#operand-limits)) | Removed, so `operand_limits` can't be set with `hard_fork_2` |
+
+`keccak256` can't be used inside the softfork guard instead, since the guard always returns nil, so a hash can't be returned from it. What can be done there is checking a hash, which is what `keccak256_verify(value, hash)` does. Like `bls_verify` and `secp256k1_verify`, it returns nil, and fails unless `keccak256(value) == hash`:
+
+```rs
+fn main(preimage: Bytes) {
+    keccak256_verify(preimage, 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8);
+}
+```
+
+Without `hard_fork_2`, it runs the check inside the softfork guard with extension 1, which mainnet's nodes run `keccak256` in. The guard fails unless it declares the exact cost of what it runs, so `keccak256_verify` computes it from the length of the value. With `hard_fork_2`, the check runs outside of the guard, so the program is smaller and costs less overall, although `keccak256` costs more for each byte under the new cost model. A program compiled without `hard_fork_2` still works after hard fork 2, where the guard is no longer checked against its declared cost. With `hard_fork_2`, the `needless_keccak256_verify` lint warns on `keccak256_verify` and suggests `assert keccak256(value) == hash` instead. It's allowed by default without `hard_fork_2`, since `keccak256` is an error then.
+
+Turning `hard_fork_2` on changes the compiled program, and so its puzzle hash, for any program that uses the secp operators or `keccak256_verify`. It can also change what the optimizer emits for other programs, since it folds constants by running operators with the target's flags: an operation that only succeeds after hard fork 2, such as negating an invalid point with relaxed BLS checks, is only folded with `hard_fork_2`, and costs are compared in the target's cost model.
+
+`rue test`, and `rue debug` when it's run inside the project, run programs with the flags for the target, so tests behave as mainnet would at the target. Without `hard_fork_2`, a raw program run by `rue debug` fails on `keccak256` as it would on mainnet. It can still use `modpow`, unless `operand_limits` is on: mainnet disables `modpow` with the `DISABLE_OP` flag, which also limits the dividend of `/`, `%` and `divmod` to 2048 bytes, and Rue only applies operand length limits with `operand_limits`. Compiled programs can't use `modpow` either way, since the compiler rejects it. A program compiled with `hard_fork_2` can still fail on mainnet until hard fork 2 activates, and the costs reported for it don't match mainnet's until then. Const expressions are evaluated at compile time with the target's cost model, which `const_eval_max_cost` is measured in.
 
 ## Operand Limits
 
@@ -114,7 +147,7 @@ Chia mainnet runs programs with CLVM's `LIMITS` flag until hard fork 2, which ma
 | `modpow`                       | the base, exponent or modulus is longer than 256 bytes                                       |
 | `g1_multiply`, `g2_multiply`   | the scalar is longer than 1024 bytes                                                         |
 
-By default, Rue targets CLVM without `LIMITS`, as mainnet will be after hard fork 2. To target it with `LIMITS`, turn on `operand_limits` in `Rue.toml`, or pass `--operand-limits` to `build` or `test`:
+By default, Rue doesn't apply `LIMITS`, even though it targets mainnet before hard fork 2 otherwise (see [Hard Fork 2](#hard-fork-2)). To target CLVM with `LIMITS`, turn on `operand_limits` in `Rue.toml`, or pass `--operand-limits` to `build`, `test` or `debug`. It can't be set with `hard_fork_2`, since hard fork 2 removes `LIMITS`:
 
 ```toml
 [compiler]

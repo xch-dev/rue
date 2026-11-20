@@ -3,7 +3,7 @@ use clvmr::{Allocator, NodePtr};
 use id_arena::Id;
 use num_bigint::BigUint;
 
-use crate::bigint_atom;
+use crate::{ClvmTarget, bigint_atom};
 
 pub type LirId = Id<Lir>;
 
@@ -62,6 +62,8 @@ pub enum Lir {
     CoinId(LirId, LirId, LirId),
     K1Verify(LirId, LirId, LirId),
     R1Verify(LirId, LirId, LirId),
+    /// Fails unless the Keccak-256 hash of the value is the hash (see `KECCAK256_VERIFY_COST`).
+    Keccak256Verify(LirId, LirId),
     Op(ClvmOp, LirId),
     DebugPrint(String, LirId),
 }
@@ -116,12 +118,24 @@ pub enum ClvmOp {
     Secp256K1Verify,
     Secp256R1Verify,
     Keccak256,
+    Softfork,
 
     // Non-standard
     DebugPrint,
 }
 
 impl ClvmOp {
+    /// The opcode of the operator for programs compiled for the target. Hard fork 2 makes the
+    /// secp operators available as the one byte opcodes 64 and 65, which are shorter than the four
+    /// byte opcodes that encode their cost, and are the same otherwise.
+    pub fn to_target_atom(self, target: ClvmTarget) -> Vec<u8> {
+        match self {
+            Self::Secp256K1Verify if target.hard_fork_2 => vec![64],
+            Self::Secp256R1Verify if target.hard_fork_2 => vec![65],
+            _ => self.to_atom(),
+        }
+    }
+
     pub fn to_atom(self) -> Vec<u8> {
         let num = match self {
             Self::Quote => 1,
@@ -172,6 +186,7 @@ impl ClvmOp {
             Self::Secp256K1Verify => return vec![0x13, 0xd6, 0x1f, 0x00],
             Self::Secp256R1Verify => return vec![0x1c, 0x3a, 0x8f, 0x00],
             Self::Keccak256 => 62,
+            Self::Softfork => 36,
             Self::DebugPrint => return b"debug_print".into(),
         };
 

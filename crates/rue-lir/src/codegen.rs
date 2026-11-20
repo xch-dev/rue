@@ -3,11 +3,18 @@ use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
 use num_bigint::BigUint;
 
-use crate::{ClvmOp, DebugTags, Lir, LirId, NodeTags, Result, path_to_atom, stack::grow_stack};
+use crate::{
+    ClvmOp, ClvmTarget, DebugTags, KECCAK256_COST_PER_BYTE, KECCAK256_VERIFY_COST, Lir, LirId,
+    NodeTags, Result, path_to_atom, stack::grow_stack,
+};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CodegenOptions {
     pub optimize_static_pairs: bool,
+
+    /// What the program is compiled for. After hard fork 2, the secp operators are the one byte
+    /// opcodes 64 and 65, and before it, the four byte opcodes that encode their cost.
+    pub target: ClvmTarget,
 }
 
 pub fn codegen(
@@ -460,19 +467,20 @@ fn codegen_step(
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(
-                clvm_list!(ClvmOp::Secp256K1Verify, pubkey, message, signature)
-                    .to_clvm(allocator)?,
-            )
+            let op = allocator.new_atom(&ClvmOp::Secp256K1Verify.to_target_atom(options.target))?;
+            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
         }
         Lir::R1Verify(pubkey, message, signature) => {
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(
-                clvm_list!(ClvmOp::Secp256R1Verify, pubkey, message, signature)
-                    .to_clvm(allocator)?,
-            )
+            let op = allocator.new_atom(&ClvmOp::Secp256R1Verify.to_target_atom(options.target))?;
+            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
+        }
+        Lir::Keccak256Verify(value, hash) => {
+            let value = codegen(arena, allocator, *value)?;
+            let hash = codegen(arena, allocator, *hash)?;
+            keccak256_verify(allocator, options.target, value, hash)
         }
         Lir::Op(op, args) => {
             let args = codegen(arena, allocator, *args)?;
@@ -526,12 +534,148 @@ fn codegen_static_value(
     }
 }
 
+/// Generates a check that fails unless the Keccak-256 hash of the value is the hash, which is
+/// `(a (i (= (keccak256 VALUE) HASH) (q) (q 8)) 1)`.
+///
+/// Before hard fork 2, `keccak256` is only available inside the softfork guard (extension 1), which
+/// always returns nil, so only the check can be run there. The values are put in the environment,
+/// so that each is only evaluated once, and the guard declares the exact cost of the check, which
+/// depends on the length of the value:
+///
+/// `(a (q softfork (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q . CHECK) 1) (c VALUE (c HASH ())))`
+///
+/// where `CHECK` reads the value and hash from paths 2 and 5. If the check fails, the guard fails
+/// before its cost is compared, so the declared cost only has to be right when the hash matches.
+fn keccak256_verify(
+    allocator: &mut Allocator,
+    target: ClvmTarget,
+    value: NodePtr,
+    hash: NodePtr,
+) -> Result<NodePtr> {
+    if target.hard_fork_2 {
+        return keccak256_check(allocator, value, hash);
+    }
+
+    let value_path = 2u8.to_clvm(allocator)?;
+    let hash_path = 5u8.to_clvm(allocator)?;
+    let check = keccak256_check(allocator, value_path, hash_path)?;
+
+    let cost = clvm_list!(
+        ClvmOp::Add,
+        clvm_quote!(KECCAK256_VERIFY_COST),
+        clvm_list!(
+            ClvmOp::Mul,
+            clvm_list!(ClvmOp::Strlen, 2u8),
+            clvm_quote!(KECCAK256_COST_PER_BYTE)
+        )
+    );
+    let guard = clvm_list!(
+        ClvmOp::Softfork,
+        cost,
+        clvm_quote!(1u8),
+        clvm_quote!(check),
+        1u8
+    );
+    let env = clvm_list!(ClvmOp::Cons, value, clvm_list!(ClvmOp::Cons, hash, ()));
+
+    Ok(clvm_list!(ClvmOp::Apply, clvm_quote!(guard), env).to_clvm(allocator)?)
+}
+
+/// `(a (i (= (keccak256 VALUE) HASH) (q) (q 8)) 1)`, which fails unless the hash matches.
+fn keccak256_check(allocator: &mut Allocator, value: NodePtr, hash: NodePtr) -> Result<NodePtr> {
+    let condition = clvm_list!(ClvmOp::Eq, clvm_list!(ClvmOp::Keccak256, value), hash);
+    let check = clvm_list!(
+        ClvmOp::If,
+        condition,
+        clvm_quote!(()),
+        clvm_quote!(clvm_list!(ClvmOp::Raise))
+    );
+
+    Ok(clvm_list!(ClvmOp::Apply, check, 1u8).to_clvm(allocator)?)
+}
+
 #[cfg(test)]
 mod tests {
     use expect_test::{Expect, expect};
     use rue_clvm::disassemble_program;
 
     use super::*;
+
+    /// Runs `keccak256_verify` on values of many lengths, with their hash and with a wrong one,
+    /// for each target, and with the flags of blocks as well as the mempool. The softfork guard
+    /// fails unless the cost it declares is exactly the cost of the check, so a matching hash
+    /// only passes if the cost is right for the length of the value.
+    ///
+    /// A program compiled before hard fork 2 is also run with the flags after it, since a coin
+    /// locked to its puzzle hash before the fork must still be spendable after it, where the guard
+    /// is run with the new cost model.
+    #[test]
+    fn keccak256_verify_declares_the_exact_cost() {
+        use clvmr::{ChiaDialect, ClvmFlags, run_program};
+        use sha3::{Digest, Keccak256};
+
+        let mut arena = Arena::new();
+        let value = arena.alloc(Lir::Path(BigUint::from(2u8)));
+        let hash = arena.alloc(Lir::Path(BigUint::from(5u8)));
+        let lir = arena.alloc(Lir::Keccak256Verify(value, hash));
+
+        // Blocks don't add the mempool's restrictions, and allow unknown operators
+        let block = |target: ClvmTarget| {
+            target.flags().difference(
+                ClvmFlags::NO_UNKNOWN_OPS | ClvmFlags::LIMIT_HEAP | ClvmFlags::LIMIT_SOFTFORK,
+            )
+        };
+
+        for target in ClvmTarget::ALL {
+            let mut allocator = Allocator::new();
+            let program = codegen(
+                &arena,
+                &mut allocator,
+                lir,
+                CodegenOptions {
+                    optimize_static_pairs: true,
+                    target,
+                },
+            )
+            .unwrap();
+
+            let mut flag_sets = vec![target.flags(), block(target)];
+
+            if !target.hard_fork_2 {
+                flag_sets.extend([
+                    ClvmTarget::HARD_FORK_2.flags(),
+                    block(ClvmTarget::HARD_FORK_2),
+                ]);
+            }
+
+            for flags in flag_sets {
+                for len in (0..300).chain([1000, 4096]) {
+                    let value = vec![0x61; len];
+                    let digest = Keccak256::digest(&value).to_vec();
+
+                    for (hash, passes) in [(digest, true), (vec![0; 32], false)] {
+                        let value_ptr = allocator.new_atom(&value).unwrap();
+                        let hash_ptr = allocator.new_atom(&hash).unwrap();
+                        let env = clvm_list!(value_ptr, hash_ptr)
+                            .to_clvm(&mut allocator)
+                            .unwrap();
+                        let result = run_program(
+                            &mut allocator,
+                            &ChiaDialect::new(flags),
+                            program,
+                            env,
+                            11_000_000_000,
+                        );
+                        assert_eq!(
+                            result.is_ok(),
+                            passes,
+                            "{target:?} {flags:?} for a value of {len} bytes: {result:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[allow(clippy::needless_pass_by_value)]
     fn check(arena: &Arena<Lir>, lir: LirId, expect: Expect) {
@@ -555,6 +699,7 @@ mod tests {
             lir,
             CodegenOptions {
                 optimize_static_pairs,
+                target: ClvmTarget::default(),
             },
         )
         .unwrap();

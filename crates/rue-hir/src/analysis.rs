@@ -33,7 +33,7 @@
 //!
 //! That's for CLVM without the `LIMITS` flag. With `operand_limits` (see
 //! `CompilerOptions::operand_limits`), programs target CLVM with `LIMITS`, which mainnet enforces
-//! today and which rejects operands that are too long (see [`rue_lir::clvm_flags`]). Then
+//! today and which rejects operands that are too long (see [`rue_lir::ClvmTarget::flags`]). Then
 //! multiplication and division are only treated as unable to fail if every operand is a suitable
 //! constant, and a product or quotient of values that aren't known at compile time can fail.
 //! Without `operand_limits`, a release build can succeed under `LIMITS` where a debug build

@@ -712,6 +712,13 @@ impl Database {
                     self.debug_hir(*msg)
                 )
             }
+            Hir::Keccak256Verify(value, hash) => {
+                format!(
+                    "keccak256_verify({}, {})",
+                    self.debug_hir(*value),
+                    self.debug_hir(*hash)
+                )
+            }
             Hir::InfinityG1 => "INFINITY_G1".to_string(),
             Hir::InfinityG2 => "INFINITY_G2".to_string(),
             Hir::ClvmOp(op, args) => {

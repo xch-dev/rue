@@ -115,7 +115,7 @@ impl DependencyGraph {
             unvisited_guards: Vec::new(),
             calls: HashMap::new(),
             main,
-            failures: FailureAnalysis::new(options.operand_limits),
+            failures: FailureAnalysis::new(options.enforces_operand_limits()),
         };
 
         // The symbols are visited depth first, in the order they're referenced, like a recursive
@@ -753,6 +753,10 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *pk, false);
             visit_hir(db, graph, *msg, false);
         }
+        Hir::Keccak256Verify(value, hash) => {
+            visit_hir(db, graph, *value, false);
+            visit_hir(db, graph, *hash, false);
+        }
         Hir::InfinityG1 => {}
         Hir::InfinityG2 => {}
         Hir::ClvmOp(_op, args) => {
@@ -860,7 +864,7 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) -> bool {
         .collect();
 
     graph.failures = FailureAnalysis::with_evaluated_constants(
-        graph.options.operand_limits,
+        graph.options.enforces_operand_limits(),
         evaluated_constants,
     );
 

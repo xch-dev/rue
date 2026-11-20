@@ -19,6 +19,7 @@ workspace = true
 rue-ast = { workspace = true }
 rue-diagnostic = { workspace = true }
 rue-hir = { workspace = true }
+rue-options = { workspace = true }
 rue-lexer = { workspace = true }
 rue-parser = { workspace = true }
 rue-types = { workspace = true }

@@ -16,13 +16,13 @@ use clvmr::{
 };
 use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
-use rue_compiler::{CompiledExport, CompiledTest, Compiler, FileTree, normalize_path};
+use rue_compiler::{CompiledExport, CompiledTest, Compiler, FileTree, clvm_target, normalize_path};
 use rue_diagnostic::{
     Diagnostic, DiagnosticSeverity, ForbiddenBy, LineIndex, Lint, LintGroup, LintLevel, LintLevels,
     LintName, SourceKind,
 };
-use rue_lir::{DebugDialect, clvm_flags};
-use rue_options::{Manifest, Project, find_project};
+use rue_lir::{ClvmTarget, DebugDialect};
+use rue_options::{CompilerOptions, Manifest, Project, find_project};
 
 mod compact;
 mod fmt;
@@ -92,7 +92,7 @@ pub struct TestArgs {
     cost: CostArgs,
 }
 
-/// How the compiled programs are targeted, which takes precedence over `Rue.toml`.
+/// What programs are compiled for and run with, which takes precedence over `Rue.toml`.
 #[derive(Debug, Clone, Copy, Args)]
 pub struct TargetArgs {
     /// Target CLVM with the `LIMITS` flag that mainnet enforces until hard fork 2, which rejects
@@ -100,11 +100,19 @@ pub struct TargetArgs {
     /// This is the same as `operand_limits = true` in `Rue.toml`, and turns it on if it's off there
     #[clap(long)]
     operand_limits: bool,
+    /// Target mainnet as it will be after hard fork 2, which allows `modpow` and `keccak256`, and
+    /// uses the new cost model. This is the same as `hard_fork_2 = true` in `Rue.toml`, and turns
+    /// it on if it's off there
+    #[clap(long)]
+    hard_fork_2: bool,
 }
 
 impl TargetArgs {
-    fn apply(self, project: &mut Project) {
-        project.options.operand_limits |= self.operand_limits;
+    /// Applies the flags to the options, and returns an error if they set options that conflict.
+    fn apply(self, options: &mut CompilerOptions) -> Result<()> {
+        options.operand_limits |= self.operand_limits;
+        options.hard_fork_2 |= self.hard_fork_2;
+        Ok(options.check_target()?)
     }
 }
 
@@ -286,12 +294,10 @@ pub struct DebugArgs {
     /// the source the program was if it fails (can be repeated)
     #[clap(long, value_name = "PATH")]
     debug_metadata: Vec<PathBuf>,
-    /// Run the program with the `LIMITS` flag that mainnet enforces until hard fork 2, which
-    /// rejects some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and
-    /// `g2_multiply`. `LIMITS` is also used when run inside a project (found from the current
-    /// directory or its parents) whose `Rue.toml` sets `operand_limits = true`
-    #[clap(long)]
-    operand_limits: bool,
+    /// The program is run with the flags of the target, which is also set by the `Rue.toml` of the
+    /// project it's run inside of (found from the current directory or its parents)
+    #[clap(flatten)]
+    target: TargetArgs,
     #[clap(flatten)]
     cost: CostArgs,
 }
@@ -468,7 +474,7 @@ fn build(args: BuildArgs) -> Result<()> {
     };
 
     let lint_errors = configure_lints(&mut project, &args.lints);
-    args.target.apply(&mut project);
+    args.target.apply(&mut project.options)?;
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -844,7 +850,7 @@ fn test(args: TestArgs) -> Result<()> {
     };
 
     let lint_errors = configure_lints(&mut project, &args.lints);
-    args.target.apply(&mut project);
+    args.target.apply(&mut project.options)?;
 
     let mut ctx = Compiler::new(project.options);
 
@@ -919,16 +925,16 @@ struct TestFailure {
 }
 
 /// Runs a test, which passes if it returns nil, and otherwise returns why it failed. It's run
-/// with `LIMITS` if it's compiled with `operand_limits`.
+/// with the flags of the target it's compiled for.
 fn run_test(
     allocator: &mut Allocator,
     program: NodePtr,
-    operand_limits: bool,
+    target: ClvmTarget,
     cost: CostArgs,
 ) -> Result<(), TestFailure> {
     let message = match run_program(
         allocator,
-        &DebugDialect::new(clvm_flags(operand_limits), true),
+        &DebugDialect::new(target.flags(), true),
         program,
         NodePtr::NIL,
         cost.max_cost,
@@ -966,7 +972,7 @@ fn run_and_trace_test(
 ) -> Result<(), (TestFailure, Option<Result<String, String>>)> {
     let checkpoint = allocator.checkpoint();
 
-    let failure = match run_test(allocator, test.ptr, ctx.options().operand_limits, cost) {
+    let failure = match run_test(allocator, test.ptr, ctx.target(), cost) {
         Ok(()) => return Ok(()),
         Err(failure) => failure,
     };
@@ -1004,7 +1010,7 @@ fn trace_test(
     // What the test prints has already been shown, so it isn't printed again
     match run_with_trace(
         allocator,
-        &DebugDialect::new(clvm_flags(ctx.options().operand_limits), false),
+        &DebugDialect::new(ctx.target().flags(), false),
         program,
         NodePtr::NIL,
         cost.max_cost,
@@ -1020,11 +1026,13 @@ fn debug(args: DebugArgs) -> Result<String> {
     debug_in(args, &env::current_dir()?)
 }
 
-/// Runs the program like [`debug`], with `LIMITS` if it's asked for or the project that the
-/// directory is in is compiled with `operand_limits`.
+/// Runs the program like [`debug`], with the flags of the target that's asked for, or that the
+/// project the directory is in is compiled for.
 fn debug_in(args: DebugArgs, dir: &Path) -> Result<String> {
-    let operand_limits = args.operand_limits
-        || find_project(dir, true)?.is_some_and(|project| project.options.operand_limits);
+    let mut options =
+        find_project(dir, true)?.map_or_else(CompilerOptions::debug, |project| project.options);
+    args.target.apply(&mut options)?;
+    let target = clvm_target(&options);
 
     let mut allocator = Allocator::new();
 
@@ -1046,7 +1054,7 @@ fn debug_in(args: DebugArgs, dir: &Path) -> Result<String> {
         NodePtr::NIL
     };
 
-    let dialect = DebugDialect::new(clvm_flags(operand_limits), true);
+    let dialect = DebugDialect::new(target.flags(), true);
 
     if args.debug_metadata.is_empty() {
         let output = run_program(
@@ -1107,6 +1115,7 @@ mod tests {
     use rue_compiler::{CompiledTest, Compiler, FileTree};
     use rue_diagnostic::SourceKind;
     use rue_diagnostic::{ForbiddenBy, Lint, LintGroup, LintLevel, LintLevels, LintName};
+    use rue_lir::ClvmTarget;
     use rue_options::CompilerOptions;
     use sha2::{Digest, Sha256};
 
@@ -1526,8 +1535,9 @@ mod tests {
 
         // The second test fails, and its name contains the first's, which passes
         assert_eq!(tests[1].name.as_deref(), Some("fails_too"));
-        assert!(run_test(&mut allocator, tests[0].ptr, false, cost).is_ok());
-        let failure = run_test(&mut allocator, tests[1].ptr, false, cost).unwrap_err();
+        assert!(run_test(&mut allocator, tests[0].ptr, ClvmTarget::default(), cost).is_ok());
+        let failure =
+            run_test(&mut allocator, tests[1].ptr, ClvmTarget::default(), cost).unwrap_err();
         assert!(failure.raised);
 
         // The trace shows the test at its call to `check`, and the assertion with its argument
@@ -1564,7 +1574,7 @@ mod tests {
         // A test that returns something other than nil has no stack to show
         let program = assemble(&mut allocator, "(q . 1)").unwrap();
         assert!(
-            !run_test(&mut allocator, program, false, cost)
+            !run_test(&mut allocator, program, ClvmTarget::default(), cost)
                 .unwrap_err()
                 .raised
         );
@@ -1739,6 +1749,107 @@ mod tests {
     }
 
     #[test]
+    fn debug_runs_with_hard_fork_2_when_asked() {
+        // `keccak256` is unknown outside of the softfork guard until hard fork 2
+        let program = "(keccak256 (q . \"hello\"))";
+        let hash = "0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8";
+
+        assert!(run_debug(&[program]).is_err());
+        assert_eq!(run_debug(&[program, "()", "--hard-fork-2"]).unwrap(), hash);
+
+        // A project with `hard_fork_2` on is run with it, and it can't be combined with
+        // `operand_limits`, which it removes
+        let project = TempProject::new("debug-hard-fork-2", "fn main() -> Int {\n    1\n}\n");
+        let parse = |args: &[&str]| {
+            let Ok(Command::Debug(args)) =
+                Command::try_parse_from(["rue", "debug"].iter().chain(args))
+            else {
+                panic!("expected debug command");
+            };
+            args
+        };
+
+        fs::write(
+            project.0.join("Rue.toml"),
+            "[compiler]\nhard_fork_2 = true\n",
+        )
+        .unwrap();
+        assert_eq!(debug_in(parse(&[program]), &project.0).unwrap(), hash);
+
+        let error = debug_in(parse(&[program, "()", "--operand-limits"]), &project.0)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("hard_fork_2"), "{error}");
+    }
+
+    #[test]
+    fn tests_run_with_hard_fork_2_when_compiled_with_it() {
+        // The recursion keeps `keccak256` from being folded, so the tests run it
+        let source = "fn chain(value: Bytes, times: Int) -> Bytes {\n    if times == 0 {\n        value\n    } else {\n        chain(keccak256(value), times - 1)\n    }\n}\n\ntest fn hashes() {\n    assert chain(\"hello\", 1) == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;\n}\n\ntest fn fails_after_hashing() {\n    assert chain(\"hello\", 1) == 0x00;\n}\n";
+        let project = TempProject::new("hard-fork-2-test", source);
+        let path = project.0.join("main.rue");
+        let cost = CostArgs {
+            max_cost: DEFAULT_MAX_COST,
+        };
+
+        let mut ctx = Compiler::new(CompilerOptions {
+            hard_fork_2: true,
+            ..CompilerOptions::debug()
+        });
+        let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
+        let mut allocator = Allocator::new();
+        let tests = tree
+            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .unwrap();
+
+        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+
+        // The trace runs it again with the same flags, so it fails at the assertion rather than at
+        // `keccak256`
+        let (failure, trace) =
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+        assert!(
+            failure.message.contains("assertion failed"),
+            "{}",
+            failure.message
+        );
+        let trace = trace.unwrap().unwrap();
+        assert!(
+            trace.contains("main.rue:14:5, in fails_after_hashing"),
+            "{trace}"
+        );
+        assert!(!trace.contains("in chain"), "{trace}");
+    }
+
+    #[test]
+    fn target_flags_conflict_when_both_are_set() {
+        let Ok(Command::Build(args)) =
+            Command::try_parse_from(["rue", "build", "--hard-fork-2", "--operand-limits"])
+        else {
+            panic!("expected build command");
+        };
+
+        let mut options = CompilerOptions::default();
+        assert!(args.target.apply(&mut options).is_err());
+
+        // A flag combines with the option set elsewhere, such as in `Rue.toml`
+        let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "--hard-fork-2"])
+        else {
+            panic!("expected test command");
+        };
+
+        let mut options = CompilerOptions::default();
+        args.target.apply(&mut options).unwrap();
+        assert!(options.hard_fork_2 && !options.operand_limits);
+
+        options = CompilerOptions {
+            operand_limits: true,
+            ..CompilerOptions::default()
+        };
+        assert!(args.target.apply(&mut options).is_err());
+    }
+
+    #[test]
     fn tests_run_with_operand_limits_when_compiled_with_them() {
         // The test passes without `LIMITS`, but `%` fails for the long dividend with them
         let source = format!(
@@ -1784,7 +1895,7 @@ mod tests {
         else {
             panic!("expected build command");
         };
-        args.target.apply(&mut project);
+        args.target.apply(&mut project.options).unwrap();
         assert!(project.options.operand_limits);
         let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "--operand-limits"])
         else {
@@ -1809,8 +1920,13 @@ mod tests {
     fn run_test_with(program: &str, max_cost: u64) -> Result<(), String> {
         let mut allocator = Allocator::new();
         let program = assemble(&mut allocator, program).unwrap();
-        run_test(&mut allocator, program, false, CostArgs { max_cost })
-            .map_err(|failure| failure.message)
+        run_test(
+            &mut allocator,
+            program,
+            ClvmTarget::default(),
+            CostArgs { max_cost },
+        )
+        .map_err(|failure| failure.message)
     }
 
     #[test]

@@ -8,6 +8,18 @@ fn and_assert_operator(a: Bool, x: Int) -> Bool {
     a & check_positive(x)
 }
 
+test fn and_keccak256_verify() -> Bool {
+    and_keccak256_verify_operator(false, "hello")
+}
+
+fn and_keccak256_verify_operator(a: Bool, value: Bytes) -> Bool {
+    a
+        & {
+            keccak256_verify(value, sha256(value));
+            true
+        }
+}
+
 test fn or_raise() -> Bool {
     or_raise_operator(true, 0)
 }

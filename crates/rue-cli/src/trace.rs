@@ -90,7 +90,6 @@ mod tests {
     use expect_test::expect_file;
     use rue_clvm::{assemble, disassemble_value};
     use rue_compiler::{Compiler, FileTree, normalize_path};
-    use rue_lir::clvm_flags;
     use rue_options::CompilerOptions;
 
     use super::*;
@@ -148,7 +147,7 @@ mod tests {
 
                     match run_with_trace(
                         &mut allocator,
-                        &DebugDialect::new(clvm_flags(options.operand_limits), false),
+                        &DebugDialect::new(rue_compiler::clvm_target(&options).flags(), false),
                         program,
                         env,
                         11_000_000_000,

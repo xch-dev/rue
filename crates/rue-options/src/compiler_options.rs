@@ -1,4 +1,12 @@
 use rue_diagnostic::LintLevels;
+use thiserror::Error;
+
+/// Both `operand_limits` and `hard_fork_2` are set, although hard fork 2 removes `LIMITS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error(
+    "`operand_limits` has no effect with `hard_fork_2`, since hard fork 2 removes `LIMITS`, so only one of them can be set"
+)]
+pub struct TargetConflict;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::struct_excessive_bools)]
@@ -23,7 +31,9 @@ pub struct CompilerOptions {
     pub const_eval_max_cost: u64,
 
     /// Whether programs target CLVM with the `LIMITS` flag, which Chia mainnet enforces in both
-    /// the mempool and blocks until hard fork 2. Off by default.
+    /// the mempool and blocks until hard fork 2. Off by default. It has no effect with
+    /// [`hard_fork_2`](Self::hard_fork_2), which removes `LIMITS`, and setting both is an error in
+    /// the CLI and the test runner (see [`check_target`](Self::check_target)).
     ///
     /// `LIMITS` makes some operators fail when an operand is too long, counting any leading zero
     /// bytes:
@@ -43,8 +53,8 @@ pub struct CompilerOptions {
     /// the project then run programs with `LIMITS`, so they fail where mainnet would. `rue debug`
     /// can also be passed `--operand-limits` to run a program with `LIMITS` outside of a project.
     ///
-    /// When it's off, the compiler targets CLVM without `LIMITS`, as mainnet will be after hard
-    /// fork 2. Operands of any length are treated as allowed, so `*` can't fail, and `/`, `%` and
+    /// When it's off, the compiler targets CLVM without `LIMITS`, which mainnet only does after
+    /// hard fork 2. Operands of any length are treated as allowed, so `*` can't fail, and `/`, `%` and
     /// `divmod` only fail for a zero divisor. A program compiled this way can pass its tests and
     /// succeed in debug builds, yet fail on mainnet today when an operand exceeds a limit. The
     /// optimizer can also change whether it fails under `LIMITS`, in either direction, so a release
@@ -79,9 +89,41 @@ pub struct CompilerOptions {
     /// Const expressions are evaluated at compile time without `LIMITS` either way, since they're
     /// never run on chain, so a `const` can use operands of any length.
     ///
-    /// This only concerns `LIMITS`. The other ways the flags programs are run with differ from
-    /// mainnet's are described by `rue_lir::clvm_flags`.
+    /// This only concerns `LIMITS`. The flags programs are run with are described by
+    /// `rue_lir::ClvmTarget::flags`.
     pub operand_limits: bool,
+
+    /// Whether programs target Chia mainnet as it will be after hard fork 2, rather than as it is
+    /// today. Off by default.
+    ///
+    /// When it's off:
+    ///
+    /// - `modpow` is an error, since mainnet disables it until hard fork 2 (`DISABLE_OP`).
+    /// - `keccak256` is an error, since mainnet doesn't know the operator outside of the softfork
+    ///   guard until hard fork 2. It can't be used inside the guard instead, since the guard always
+    ///   returns nil, so a hash can't be returned from it. `keccak256_verify` checks a hash inside
+    ///   the guard instead, declaring the exact cost of the check.
+    /// - Programs are run, and the optimizer compares costs, with the cost model from before hard
+    ///   fork 2.
+    /// - `secp256k1_verify` and `secp256r1_verify` are compiled to the four byte opcodes that
+    ///   encode their cost.
+    ///
+    /// When it's on, `modpow` and `keccak256` are allowed, programs are run with the new cost
+    /// model and with relaxed BLS point checks, `keccak256_verify` checks the hash outside of the
+    /// guard, and the secp operators are compiled to the one byte opcodes 64 and 65. Hard fork 2
+    /// also removes `LIMITS`, so
+    /// [`operand_limits`](Self::operand_limits) has no effect.
+    ///
+    /// This changes the compiled program, and so its puzzle hash, for any program that uses the
+    /// secp operators or `keccak256_verify`. It can also change what the optimizer emits for other programs, since it
+    /// folds constants by running operators with the target's flags: an operation that only
+    /// succeeds after hard fork 2, such as negating an invalid point with relaxed BLS checks, is
+    /// only folded with this on, and costs are compared in the target's cost model. A program compiled with this on can fail on
+    /// mainnet until hard fork 2 activates, and costs reported before then don't match mainnet's.
+    ///
+    /// The test runner, `rue test`, and `rue debug` run inside the project, run programs with the
+    /// flags for the target (see `rue_lir::ClvmTarget::flags`).
+    pub hard_fork_2: bool,
 
     /// The level each lint is reported at.
     pub lints: LintLevels,
@@ -97,12 +139,29 @@ impl Default for CompilerOptions {
             optimize_static_pairs: true,
             const_eval_max_cost: 11_000_000_000,
             operand_limits: false,
+            hard_fork_2: false,
             lints: LintLevels::default(),
         }
     }
 }
 
 impl CompilerOptions {
+    /// Whether operands are limited by their length, which they are with
+    /// [`operand_limits`](Self::operand_limits) until hard fork 2.
+    pub fn enforces_operand_limits(&self) -> bool {
+        self.operand_limits && !self.hard_fork_2
+    }
+
+    /// Checks that the options that choose the target don't conflict. `operand_limits` has no
+    /// effect with `hard_fork_2`, so setting both is a mistake.
+    pub fn check_target(&self) -> Result<(), TargetConflict> {
+        if self.operand_limits && self.hard_fork_2 {
+            return Err(TargetConflict);
+        }
+
+        Ok(())
+    }
+
     pub fn debug() -> Self {
         Self {
             std: true,
@@ -112,6 +171,7 @@ impl CompilerOptions {
             optimize_static_pairs: false,
             const_eval_max_cost: 11_000_000_000,
             operand_limits: false,
+            hard_fork_2: false,
             lints: LintLevels::default(),
         }
     }
@@ -133,9 +193,31 @@ mod tests {
                 optimize_static_pairs: true,
                 const_eval_max_cost: 11_000_000_000,
                 operand_limits: false,
+                hard_fork_2: false,
                 lints: LintLevels::default(),
             }
         );
+    }
+
+    #[test]
+    fn operand_limits_only_apply_before_hard_fork_2() {
+        for (operand_limits, hard_fork_2, enforced) in [
+            (false, false, false),
+            (true, false, true),
+            (false, true, false),
+            (true, true, false),
+        ] {
+            let options = CompilerOptions {
+                operand_limits,
+                hard_fork_2,
+                ..CompilerOptions::default()
+            };
+            assert_eq!(options.enforces_operand_limits(), enforced);
+            assert_eq!(
+                options.check_target().is_err(),
+                operand_limits && hard_fork_2
+            );
+        }
     }
 
     #[test]

@@ -20,6 +20,7 @@ use rue_hir::{
     replace_type,
 };
 use rue_lint::{EnclosedPreludeReference, LintInput, LintSites};
+use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
@@ -197,7 +198,10 @@ impl DerefMut for Compiler {
 }
 
 impl Compiler {
-    pub fn new(options: CompilerOptions) -> Self {
+    pub fn new(mut options: CompilerOptions) -> Self {
+        // Some lints only warn by default with `hard_fork_2`, which can be set after the levels
+        options.lints.apply_target_defaults(options.hard_fork_2);
+
         let mut db = Database::new();
 
         let builtins = Builtins::new(&mut db);
@@ -264,6 +268,11 @@ impl Compiler {
 
     pub fn source(&self) -> &Source {
         &self.source
+    }
+
+    /// What the programs are compiled for, which decides the flags they're run with.
+    pub fn target(&self) -> ClvmTarget {
+        clvm_target(&self.options)
     }
 
     pub fn options(&self) -> &CompilerOptions {
@@ -981,7 +990,7 @@ impl Compiler {
             documents,
             entrypoints,
             self.has_errors(),
-            self.options.operand_limits,
+            &self.options,
         );
 
         let diagnostics = rue_lint::run_lints(
@@ -1419,5 +1428,14 @@ impl GetTextRange for SyntaxNode {
 impl GetTextRange for SyntaxToken {
     fn text_range(&self) -> TextRange {
         self.text_range()
+    }
+}
+
+/// What programs compiled with the options are compiled for, which decides the flags they're run
+/// with (see [`ClvmTarget::flags`]).
+pub fn clvm_target(options: &CompilerOptions) -> ClvmTarget {
+    ClvmTarget {
+        operand_limits: options.operand_limits,
+        hard_fork_2: options.hard_fork_2,
     }
 }

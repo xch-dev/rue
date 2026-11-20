@@ -23,6 +23,7 @@ use std::{cell::OnceCell, collections::HashSet};
 use rue_ast::AstDocument;
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
 use rue_hir::{Database, Declaration, FailureAnalysis};
+use rue_options::CompilerOptions;
 use rue_types::BuiltinTypes;
 
 /// Everything the lint passes need beyond the database.
@@ -37,6 +38,8 @@ pub struct LintInput<'a> {
     /// Whether compilation reported any errors. Code that failed to compile may not have recorded
     /// all of its sites, so `expect` attributes aren't checked, as in Rust.
     pub has_errors: bool,
+    /// Whether the program is compiled for after hard fork 2.
+    pub hard_fork_2: bool,
     /// The declarations that are live, which are computed the first time a pass needs them.
     live: OnceCell<HashSet<Declaration>>,
     /// Whether values may fail as written, which is shared between the passes that check it.
@@ -49,15 +52,16 @@ impl<'a> LintInput<'a> {
         documents: Vec<(&'a Source, &'a AstDocument)>,
         entrypoints: &'a HashSet<Declaration>,
         has_errors: bool,
-        operand_limits: bool,
+        options: &CompilerOptions,
     ) -> Self {
         Self {
             sites,
             documents,
             entrypoints,
             has_errors,
+            hard_fork_2: options.hard_fork_2,
             live: OnceCell::new(),
-            failures: FailureAnalysis::new(operand_limits),
+            failures: FailureAnalysis::new(options.enforces_operand_limits()),
         }
     }
 

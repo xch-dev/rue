@@ -1,0 +1,89 @@
+tests:
+- name: statement
+  program: (i () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) ())
+  debug_program: (i (q . 1) () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 3826
+  byte_cost: 1140000
+  total_cost: 1143826
+- name: final_expression
+  program: (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ())))
+  debug_program: (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ())))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 3704
+  byte_cost: 1044000
+  total_cost: 1047704
+- name: final_expression_of_branch
+  program: (i () (a (i 11 (q 2 (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) (q 2 (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c (a (c (c (q . 14) ()) (c 2 (c 2 ()))) ()) (c 5 ())))) 1) ())
+  debug_program: (i (q . 1) () (a (i 11 (q 2 (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) (q 2 (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c (a (c (c (q . 14) ()) (c 2 (c 2 ()))) ()) (c 5 ())))) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8 1)
+  output: ()
+  runtime_cost: 4091
+  byte_cost: 2772000
+  total_cost: 2776091
+- name: with_attribute
+  program: (i () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) ())
+  debug_program: (i (q . 1) () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 3826
+  byte_cost: 1140000
+  total_cost: 1143826
+- name: value
+  program: (c (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) (q . 1))
+  debug_program: (c (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) (q . 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: (() . 1)
+  runtime_cost: 3775
+  byte_cost: 1140000
+  total_cost: 1143775
+- name: with_comment
+  program: (i () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) ())
+  debug_program: (i (q . 1) () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 3826
+  byte_cost: 1140000
+  total_cost: 1143826
+- name: allowed
+  program: (i () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) ())
+  debug_program: (i (q . 1) () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 3826
+  byte_cost: 1140000
+  total_cost: 1143826
+- name: shadowed
+  program: (a (q 3 () (a 2 (c 5 11)) ()) (c (q 3 () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 3 ()))) (a (i (= (sha256 2) 3) (q 8) (q)) 1)) 1))
+  debug_program: (a (q 3 (q . 1) () (a 4 (c 6 (c 5 11)))) (c (c (q 3 (q . 1) (a (i (not (= (a 2 5) 7)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:57:9"))) 1) (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 5 (c 7 ())))) (q 11 1)) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 5507
+  byte_cost: 1932000
+  total_cost: 1937507
+- name: shadowed_by_parameter
+  program: (a (q 3 () (a 2 (c 5 (c 11 (q 11 2)))) ()) (c (q 3 () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) (a (i (= (a 7 (c 2 ())) 5) (q 8) (q)) 1)) 1))
+  debug_program: (a (q 3 (q . 1) () (a 2 (c 5 (c 11 (c (q . 2) (c (c (q . 1) (q 11 2)) (c (q . 1) ()))))))) (c (q 3 (q . 1) (a (i (not (= (a 7 (c 2 ())) 5)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:67:5"))) 1) (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ())))) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 5872
+  byte_cost: 2172000
+  total_cost: 2177872
+- name: shadowed_by_binding
+  program: (i () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) (a (i (= (a (q 11 2) (c 2 ())) 5) (q 8) (q)) 1))
+  debug_program: (a (q 3 (q . 1) (a (i (not (= (a 2 (c 5 ())) 11)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:73:5"))) 1) (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 5 (c 11 ())))) (c (c (q . 2) (c (c (q . 1) (q 11 2)) (c (q . 1) ()))) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 5123
+  byte_cost: 1668000
+  total_cost: 1673123
+- name: enclosing_item
+  program: (i () (i () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 5 ()))) ()) (a (i (= (sha256 2) 5) (q 8) (q)) 1))
+  debug_program: (a (q 3 (q . 1) (a (i (not (= (a 4 (c 10 5)) 11)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:80:5"))) 1) (a 14 (c 5 11))) (c (c (q 2 2 3) (c (q 11 1) (q 3 (q . 1) () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 3 ())))))) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 4991
+  byte_cost: 1596000
+  total_cost: 1600991

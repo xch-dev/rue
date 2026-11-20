@@ -44,6 +44,8 @@ pub enum Hir {
     BlsVerify(HirId, Vec<HirId>),
     Secp256K1Verify(HirId, HirId, HirId),
     Secp256R1Verify(HirId, HirId, HirId),
+    /// Checks that the Keccak-256 hash of the value is the hash.
+    Keccak256Verify(HirId, HirId),
     InfinityG1,
     InfinityG2,
     ClvmOp(ClvmOp, HirId),
@@ -83,7 +85,9 @@ impl Hir {
                 body: block.body,
                 ..Children::default()
             },
-            Self::Pair(a, b) | Self::Binary(_, a, b) => Children::fixed([Some(*a), Some(*b), None]),
+            Self::Pair(a, b) | Self::Binary(_, a, b) | Self::Keccak256Verify(a, b) => {
+                Children::fixed([Some(*a), Some(*b), None])
+            }
             Self::If(a, b, c, _)
             | Self::CoinId(a, b, c)
             | Self::Modpow(a, b, c)

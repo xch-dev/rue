@@ -18,13 +18,13 @@ use rue_hir::{
     ModuleSymbol, Namespace, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
-use rue_lir::{CodegenOptions, OptimizeOptions};
+use rue_lir::CodegenOptions;
 use rue_parser::Parser;
 use thiserror::Error;
 
 use crate::{
     Compiler, EncodeError, ImportCache, SyntaxItemKind, build_debug_metadata, check_recursion,
-    compile_default_items, compile_symbol_items, compile_type_items,
+    clvm_target, compile_default_items, compile_symbol_items, compile_type_items,
     const_eval::evaluate_const_exprs, declare_module_items, declare_symbol_items,
     declare_type_items, entrypoint::entrypoint, recheck_contractive_types, resolve_imports,
     resolve_pending_defaults,
@@ -984,16 +984,15 @@ fn codegen(
 
     let debug_info = lowerer.take_debug_info();
 
+    let target = clvm_target(&options);
     let codegen_options = CodegenOptions {
         optimize_static_pairs: options.optimize_static_pairs,
-    };
-    let optimize_options = OptimizeOptions {
-        operand_limits: options.operand_limits,
+        target,
     };
 
     let Some(mut debug_info) = debug_info else {
         if options.optimize_lir {
-            lir = rue_lir::optimize(&mut arena, lir, optimize_options);
+            lir = rue_lir::optimize(&mut arena, lir, target);
         }
 
         let ptr = rue_lir::codegen(&arena, allocator, lir, codegen_options)?;
@@ -1006,7 +1005,7 @@ fn codegen(
     let base_path = lowerer.base_path().to_path_buf();
 
     if options.optimize_lir {
-        lir = rue_lir::optimize_with_tags(&mut arena, lir, optimize_options, &mut debug_info.tags);
+        lir = rue_lir::optimize_with_tags(&mut arena, lir, target, &mut debug_info.tags);
     }
 
     let (ptr, nodes) =

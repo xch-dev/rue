@@ -8,6 +8,7 @@ mod comparisons;
 mod conditions;
 mod exports;
 mod guards;
+mod hard_fork;
 mod inline_ifs;
 mod inline_values;
 mod naming;
@@ -79,6 +80,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(branches::NeedlessBool),
         Box::new(branches::NegatedCondition),
         Box::new(branches::ManualAssert),
+        Box::new(hard_fork::NeedlessKeccak256Verify::new(input)),
         Box::new(statements::DebugStatement),
         Box::new(statements::NeedlessLetReturn),
         Box::new(casts::BytesIntConfusion),
@@ -110,7 +112,7 @@ mod tests {
             Vec::new(),
             &entrypoints,
             false,
-            false,
+            &rue_options::CompilerOptions::default(),
         );
 
         for pass in hir_passes(&input) {
