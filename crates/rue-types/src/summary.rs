@@ -76,12 +76,6 @@ pub(crate) struct Constraint {
     /// summary is applied, it's collected under that member again, so whether it decides the
     /// result depends on the union's members as it did in the comparison (#360).
     pub(crate) branch: Option<Branch>,
-    /// Whether it was collected under a union member inside of the comparison that gave `Invalid`
-    /// (or one nested in such a member), which can never be picked, so it doesn't decide whether
-    /// the instance's bounds hold wherever the summary is applied either (see
-    /// `Choices::can_hold_since`). Its union isn't kept (`branch` is `None`): whichever members it
-    /// was under, it only matters that none of them can hold.
-    pub(crate) unmatched: bool,
 }
 
 /// A member of a union compared inside of the comparison: the union's local binder (see
@@ -124,9 +118,10 @@ impl ChoiceRecord {
 
     /// Whether the member is the only one that can hold the value: every other member that was
     /// compared, and the fallback if it was, gave `Invalid`. Then the union holds exactly when the
-    /// member does, along with what's under it, so leaving the union out and putting what's under
-    /// the member under the member the union is nested in decides the same (see
-    /// `Choices::attributed`).
+    /// member does, along with what's under it, so a pick of members would decide the same with
+    /// the union left out and what's under the member put under the member the union is nested
+    /// in. Charging a failed pair doesn't, so a summary that does that is approximate (see
+    /// `Summary::without_single_members`).
     fn alone(&self, member: usize) -> bool {
         self.members
             .iter()
@@ -163,7 +158,6 @@ impl Constraint {
             upper: self.upper,
             ty: self.ty,
             branch: self.branch.map(|(choice, member)| (f(choice), member)),
-            unmatched: self.unmatched,
             env: self
                 .env
                 .iter()
@@ -477,10 +471,9 @@ impl Summary {
     ///   is nested in instead. It holds exactly when what's under that member does.
     /// - A union nested more deeply than `MAX_UNION_DEPTH`, which the summary is approximate for.
     ///
-    /// (What's under a member that gave `Invalid` isn't under a union at all, see
-    /// `Constraint::unmatched`.) Each of them but the last decides the same as the summary without
-    /// it, under how a failed pair of bounds is charged to the members it was collected under
-    /// (see `Choices::attributed`).
+    /// The first three decide the same as the summary without them, under how a failed pair of
+    /// bounds is charged to the members it was collected under (see `Choices::attributed`), and
+    /// the summary is approximate for the last two.
     fn without_single_members(&self) -> (Vec<ChoiceRecord>, Vec<Constraint>, bool) {
         let mut choices = self.choices.clone();
         let mut constraints = self.constraints.clone();
@@ -591,7 +584,12 @@ impl Summary {
                 break;
             };
 
-            approximate |= !alone(&choices[index]);
+            // Folding a union that only one member can hold into the member it's nested in is how
+            // picking would decide it, but not how charging a failed pair to both of its members
+            // does, which would also charge that member (see `Choices::attributed`), so it can
+            // accept more than computing the comparison again would. Leaving out a union nested
+            // too deeply can reject more. Either way, the summary is approximate
+            approximate = true;
 
             let removed = choices.remove(index);
             let lift = |branch: &mut Option<Branch>| {
@@ -623,13 +621,11 @@ impl Summary {
 
         for (index, (items, locals)) in shapes.iter().enumerate() {
             // A component that bounds a local binder (an instance) keeps a third copy
-            let copies = if items.iter().any(|item| {
-                matches!(item, Item::Constraint(constraint) if matches!(constraint.var, Var::Local(_)))
-            }) {
-                3
-            } else {
-                2
+            let bounds_local = |item: &Item| match item {
+                Item::Constraint(constraint) => matches!(constraint.var, Var::Local(_)),
+                Item::Choice(_) => false,
             };
+            let copies = if items.iter().any(bounds_local) { 3 } else { 2 };
 
             if index >= copies && shapes[index - copies].0 == *items {
                 continue;
@@ -1174,7 +1170,6 @@ mod tests {
             ty,
             env,
             branch: None,
-            unmatched: false,
         }
     }
 

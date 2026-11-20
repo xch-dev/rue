@@ -1,12 +1,10 @@
 // Generic functions nest their generics inside of recursive types here, so comparing these took
 // exponential time until #362's step 13b.3 (#344), and gave up as too complex. They're compared in
-// fixpoint mode now, which finishes. `Q1` should be assignable to `Q2`, since they're both `N0`,
-// and the guard unnecessary, but it isn't found to be, most likely because the union members that
-// match a value aren't monotone in their results (#360), so comparing has no least fixed point,
-// and iterating keeps a failure from an early round. #362's step 13f stopped checking bounds from
-// members of one union against each other, which didn't change this, so it's likely bounds from
-// members of different unions (see `test_union_member_differential_large` in rue-types' memo
-// tests). A fix for that is expected to change the guard's diagnostic
+// fixpoint mode now, which finishes. `Q1` is assignable to `Q2`, since they're both `N0`, so the
+// guard is unnecessary. That wasn't found until #362's step 13g, since the union members that
+// matched a value weren't monotone in their results (#360), so comparing had no least fixed point,
+// and iterating kept a failure from an early round. Now a failed pair of bounds only rules out
+// the union members it was collected under
 type N0 = Bytes
     | (((1, Bytes32), N0 | N1<2, Bytes32>))
     | (((N1<Bytes32, Bytes>, N1<1, nil>), N2 | N1<Bytes32, Bytes>));

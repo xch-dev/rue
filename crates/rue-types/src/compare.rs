@@ -1087,19 +1087,12 @@ impl ComparisonContext<'_> {
             vars.push((generic, var));
         }
 
-        // A bound collected under a union member inside of the comparison that matched is collected
-        // under it wherever the summary is applied, along with the unions it's nested in, so it
-        // decides the result there as it did here. One under a member that didn't match (or that's
-        // nested in one) doesn't decide it anywhere, so only that is kept (see `Constraint`), which
-        // keeps a summary that's applied under such a member again and again from growing
-        let unmatched = branches
-            .local
-            .is_some_and(|branch| !self.choices.can_hold_since(branch, snapshot.choices));
-        let branch = if unmatched {
-            None
-        } else {
-            self.branch_of(branches.local, snapshot.choices, summary, choices)
-        };
+        // A bound collected under a union member inside of the comparison is collected under it
+        // wherever the summary is applied, along with the unions it's nested in, so it decides
+        // the result there as it did here, even under a member that gave `Invalid`: a pair with it
+        // still charges the member of another union it's checked against (see
+        // `Choices::attributed`)
+        let branch = self.branch_of(branches.local, snapshot.choices, summary, choices);
 
         let constraint = Constraint {
             var: target,
@@ -1107,7 +1100,6 @@ impl ComparisonContext<'_> {
             ty,
             env: vars,
             branch,
-            unmatched,
         };
         (constraint, referenced)
     }
@@ -1228,7 +1220,6 @@ impl ComparisonContext<'_> {
             .collect();
 
         let branches = self.reopen_choices(summary);
-        let mut missed = None;
 
         for constraint in summary.constraints() {
             let target = match constraint.var {
@@ -1271,13 +1262,6 @@ impl ComparisonContext<'_> {
                         infer: infer.map(|choice| BranchId { choice, member }),
                     }
                 }
-                // A bound that didn't match goes under a member of a choice that's only there to
-                // not match, in `choices` and in the inference, so that it doesn't decide the
-                // result, and the candidates that checking it collects are left out like the
-                // original's
-                _ if constraint.unmatched => {
-                    *missed.get_or_insert_with(|| self.unmatched_branches())
-                }
                 _ => self.bound_branches(),
             };
 
@@ -1293,29 +1277,6 @@ impl ComparisonContext<'_> {
             if unmatched {
                 self.bounded = bounded;
             }
-        }
-    }
-
-    /// Opens a choice with two members under the current ones, the first of which didn't match,
-    /// and returns it (see `ComparisonContext::apply_summary`).
-    fn unmatched_branches(&mut self) -> BoundBranches {
-        let choice = self.open_choice(2);
-        let missed = |choice| BranchId { choice, member: 0 };
-        let matched = |choice| BranchId { choice, member: 1 };
-
-        if let Some(local) = choice.local {
-            self.choices.record(missed(local), Comparison::Invalid);
-            self.choices.record(matched(local), Comparison::Assign);
-        }
-
-        if let (Some(infer), Some(choice)) = (self.infer.as_mut(), choice.infer) {
-            infer.record(missed(choice), Comparison::Invalid);
-            infer.record(matched(choice), Comparison::Assign);
-        }
-
-        BoundBranches {
-            local: choice.local.map(missed),
-            infer: choice.infer.map(missed),
         }
     }
 
@@ -2524,15 +2485,9 @@ fn check_bounds(
 
                 // Bounds collected under different members of one union are alternatives, so
                 // they needn't hold together, and such a pair isn't compared (so it collects no
-                // candidates either, which each member's own pairs do). Every member that matched
-                // still has to hold with the bounds outside of the union, and with those of every
-                // member of another union that matched, which are all checked against each other.
-                // That's incomplete: a member that matched but whose bounds conflict fails the
-                // union, even if another member holds (#362, §5, question 2). Without this, two
-                // members of one union that each hold could fail together, and whether a member
-                // matches isn't monotone in its result, so a comparison could have no least fixed
-                // point, on which exact and fixpoint mode disagreed. That's still the case across
-                // unions (see `test_union_member_differential_large`)
+                // candidates either, which each member's own pairs do). A failed pair across
+                // unions is charged to the members it was collected under (see
+                // `Choices::attributed`)
                 if let (Some(lhs), Some(rhs)) = (lower_branches.local, upper_branches.local)
                     && ctx.choices.exclusive(lhs, rhs)
                 {
@@ -2705,13 +2660,9 @@ fn check_inner_bounds(
         let before = failed.clone();
         let rigid = check_bounds(arena, builtins, ctx, (&unions, &mut failed), [index]);
 
-        // It holds if it fails no pair, and the pairs it charges to union members don't make
-        // them worse (which only depends on what this check adds, not on what failed before)
-        let worse = failed.len() > before.len()
-            && ctx.choices.attributed(unions.clone(), &failed)
-                > ctx.choices.attributed(unions.clone(), &before);
-
-        if rigid == Comparison::Assign && !worse {
+        // It holds if it fails no pair, including those it charges to union members, which only
+        // depends on what this check adds
+        if rigid == Comparison::Assign && failed.len() == before.len() {
             continue;
         }
 
