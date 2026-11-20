@@ -496,3 +496,32 @@ fn test_signature_with_huge_inferred_type() {
         "#]],
     );
 }
+
+#[test]
+fn test_signature_in_assert_message() {
+    // The comma before the message of an `assert` isn't one of a call's
+    check(
+        &with_add(
+            "fn main(value: Int) -> Int {\n    assert add(value, $01) > 1, add(1, 2);\n    value\n}\n",
+        ),
+        expect![[r#"
+            > fn add(first: Int, [second: Int]) -> Int
+        "#]],
+    );
+    check(
+        &with_add(
+            "fn main(value: Int) -> Int {\n    assert value > 1, add($01, 2);\n    value\n}\n",
+        ),
+        expect![[r#"
+            > fn add([first: Int], second: Int) -> Int
+        "#]],
+    );
+    check(
+        &with_add(
+            "fn main(value: Int) -> Int {\n    assert value > 1,$0 add(1, 2);\n    value\n}\n",
+        ),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
