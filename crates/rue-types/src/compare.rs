@@ -2660,9 +2660,10 @@ fn check_inner_bounds(
         let before = failed.clone();
         let rigid = check_bounds(arena, builtins, ctx, (&unions, &mut failed), [index]);
 
-        // It holds if it fails no pair, including those it charges to union members, which only
-        // depends on what this check adds
-        if rigid == Comparison::Assign && failed.len() == before.len() {
+        // It holds if it fails no pair directly. A pair that fails under a union member only rules
+        // that member out (see `Choices::attributed`), which checking again with more instances
+        // open isn't tried for, so it can only reject more
+        if rigid == Comparison::Assign {
             continue;
         }
 
@@ -2684,7 +2685,8 @@ fn check_inner_bounds(
         grown.extend(close_reopened(ctx, reopened));
     }
 
-    let attributed = ctx.choices.attributed(unions, &failed);
+    let (attributed, nodes) = ctx.choices.attributed(unions, &failed);
+    ctx.spend_many(nodes);
     (max(result, attributed), deeper)
 }
 

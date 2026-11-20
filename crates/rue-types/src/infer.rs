@@ -622,29 +622,26 @@ impl Choices {
         }
     }
 
-    /// The worst result of the unions opened in the range that aren't nested in another of them,
-    /// given the pairs of bounds that failed (see `FailedPair`). A union's result is the best of
-    /// its members' (and the fallback's), and a member's is its own result joined with what the
-    /// pairs charge it and with what the unions nested in it give. So a member whose bounds don't
-    /// hold stops counting, and the union holds if another member does: its members are
-    /// alternatives (#360). Only the unions that a failed pair's bound was collected under, and
-    /// those they're nested in, are worked out, since the others' results are already in the
-    /// comparison's.
-    ///
-    /// A pair whose bounds are both under members of unions, neither nested in the other's, rules
-    /// out picking both members. Which of them to give up would need backtracking (#362, §5,
-    /// question 2), so both members are charged what the pair gave, whatever the members' results
-    /// are. That's sound, since any pick of both pays for the pair, and charging one of them by
-    /// what the other's union can do instead isn't: a member that conflicts with every member of
-    /// another union could be charged nothing. Everything here is built from `max` and `min` over
-    /// the members' results and the pairs', so it's monotone in them.
+    /// The result of the unions opened in the range, given the pairs of bounds that failed (see
+    /// `FailedPair`): the best, over each way of picking a member (or the fallback) of each union
+    /// reached, of the worst of what the picked members gave and what the failed pairs whose
+    /// bounds were both collected under picked members (or outside of the unions) gave. So the
+    /// members of a union are alternatives, and a pair only rules out picking both of its members
+    /// (#360). It's the best over picks of the worst of the results, so it's monotone in the
+    /// members' results and the pairs', and it doesn't depend on how the summaries that the
+    /// unions came from left out unions that decide nothing (see `Summary::canonicalize`). Only
+    /// the unions that a failed pair's bound was collected under, and those they're nested in,
+    /// are picked from, since the others' results are already in the comparison's. The picks
+    /// tried are returned along with the result, and count as steps of comparing: picking is
+    /// exponential in the number of unions, but they're few at a time, and a comparison that
+    /// picks too many gives up.
     pub(crate) fn attributed(
         &self,
         range: std::ops::Range<usize>,
         pairs: &[FailedPair],
-    ) -> Comparison {
+    ) -> (Comparison, usize) {
         if pairs.is_empty() {
-            return Comparison::Assign;
+            return (Comparison::Assign, 0);
         }
 
         let mut touched: Vec<bool> = vec![false; range.len()];
@@ -662,97 +659,35 @@ impl Choices {
             }
         }
 
-        let mut charged: FxHashMap<BranchId, Comparison> = FxHashMap::default();
-        let mut charge = |branch: BranchId, by: Comparison| {
-            let entry = charged.entry(branch).or_insert(Comparison::Assign);
-            *entry = (*entry).max(by);
+        // The touched unions in order, each after the one it's nested in, with the members (and
+        // the fallback) that were compared and what each gave
+        let unions: Vec<(usize, Vec<(usize, Comparison)>)> = range
+            .clone()
+            .filter(|&index| touched[index - range.start])
+            .map(|index| {
+                let choice = &self.0[index];
+                let members = choice
+                    .members
+                    .iter()
+                    .enumerate()
+                    .chain([(FALLBACK, &choice.fallback)])
+                    .filter_map(|(member, &result)| result.map(|result| (member, result)))
+                    .collect();
+                (index, members)
+            })
+            .collect();
+
+        let mut search = Search {
+            choices: self,
+            range: &range,
+            unions: &unions,
+            pairs,
+            picked: vec![None; range.len()],
+            best: None,
+            nodes: 0,
         };
-
-        for &(lhs, rhs, pair) in pairs {
-            match (lhs, rhs) {
-                (Some(lhs), Some(rhs)) if self.encloses(lhs, rhs) => charge(rhs, pair),
-                (Some(lhs), Some(rhs)) if self.encloses(rhs, lhs) => charge(lhs, pair),
-                // Both members are charged in full: which of them to give up would need
-                // backtracking
-                (Some(lhs), Some(rhs)) => {
-                    charge(lhs, pair);
-                    charge(rhs, pair);
-                }
-                (Some(branch), None) | (None, Some(branch)) => charge(branch, pair),
-                (None, None) => {}
-            }
-        }
-
-        self.evaluate(&range, &touched, &charged).1
-    }
-
-    /// What each member of the touched unions in the range gives, given what's charged to them
-    /// (see `Choices::attributed`), and the worst result of those that aren't nested in another.
-    fn evaluate(
-        &self,
-        range: &std::ops::Range<usize>,
-        touched: &[bool],
-        charged: &FxHashMap<BranchId, Comparison>,
-    ) -> (FxHashMap<BranchId, Comparison>, Comparison) {
-        let mut nested: FxHashMap<BranchId, Comparison> = charged.clone();
-        let mut members: FxHashMap<BranchId, Comparison> = FxHashMap::default();
-        let mut result = Comparison::Assign;
-
-        for index in range.clone().rev() {
-            if !touched[index - range.start] {
-                continue;
-            }
-
-            let choice = &self.0[index];
-            let mut best = None;
-
-            for (member, &own) in choice
-                .members
-                .iter()
-                .enumerate()
-                .chain([(FALLBACK, &choice.fallback)])
-            {
-                let Some(own) = own else {
-                    continue;
-                };
-
-                let branch = BranchId {
-                    choice: index,
-                    member,
-                };
-                let gives = own.max(nested.get(&branch).copied().unwrap_or(Comparison::Assign));
-                members.insert(branch, gives);
-                best = Some(best.map_or(gives, |best: Comparison| best.min(gives)));
-            }
-
-            let Some(best) = best else {
-                continue;
-            };
-
-            match choice.parent {
-                Some(parent) if range.contains(&parent.choice) => {
-                    let entry = nested.entry(parent).or_insert(Comparison::Assign);
-                    *entry = (*entry).max(best);
-                }
-                _ => result = result.max(best),
-            }
-        }
-
-        (members, result)
-    }
-
-    /// Whether the union member is the other one or one it's nested in.
-    fn encloses(&self, outer: BranchId, mut inner: BranchId) -> bool {
-        loop {
-            if inner == outer {
-                return true;
-            }
-
-            match self.0[inner.choice].parent {
-                Some(parent) => inner = parent,
-                None => return false,
-            }
-        }
+        search.pick(0, Comparison::Assign);
+        (search.best.unwrap_or(Comparison::Invalid), search.nodes)
     }
 
     /// Starts comparing a value with a union's members, under the given member of an enclosing
@@ -934,6 +869,91 @@ impl Choices {
     }
 }
 
+/// A search for the pick of a member of each union that gives the best result with the failed
+/// pairs of bounds it picks both members of (see `Choices::attributed`).
+struct Search<'a> {
+    choices: &'a Choices,
+    range: &'a std::ops::Range<usize>,
+    /// The touched unions, each after the one it's nested in, and their compared members.
+    unions: &'a [(usize, Vec<(usize, Comparison)>)],
+    pairs: &'a [FailedPair],
+    /// The member picked for each union in the range so far, if it's picked one.
+    picked: Vec<Option<usize>>,
+    /// The best result of a full pick so far, if one has been made.
+    best: Option<Comparison>,
+    /// How many picks were tried, which counts towards the comparison's steps.
+    nodes: usize,
+}
+
+impl Search<'_> {
+    /// Whether the member is picked, along with every member it's nested in (in the range).
+    fn active(&self, mut branch: BranchId) -> bool {
+        loop {
+            if !self.range.contains(&branch.choice) {
+                return true;
+            }
+
+            if self.picked[branch.choice - self.range.start] != Some(branch.member) {
+                return false;
+            }
+
+            match self.choices.0[branch.choice].parent {
+                Some(parent) => branch = parent,
+                None => return true,
+            }
+        }
+    }
+
+    /// Whether the union is reached by the members picked so far: it's not nested in a member of
+    /// a union in the range, or the one it's nested in is picked.
+    fn reached(&self, union: usize) -> bool {
+        self.choices.0[union]
+            .parent
+            .is_none_or(|parent| self.active(parent))
+    }
+
+    /// Picks a member of the union at the position and each after it, with `worst` the worst
+    /// result of the members picked so far.
+    fn pick(&mut self, position: usize, worst: Comparison) {
+        self.nodes += 1;
+
+        // Nothing picked from here on can make it better than a pick already made
+        if self.best.is_some_and(|best| worst >= best) {
+            return;
+        }
+
+        let Some((union, members)) = self.unions.get(position) else {
+            let worst = self
+                .pairs
+                .iter()
+                .filter(|&&(lhs, rhs, _)| {
+                    [lhs, rhs]
+                        .into_iter()
+                        .flatten()
+                        .all(|branch| self.active(branch))
+                })
+                .fold(worst, |worst, &(_, _, pair)| worst.max(pair));
+            self.best = Some(self.best.map_or(worst, |best| best.min(worst)));
+            return;
+        };
+
+        let union = *union;
+        let slot = union - self.range.start;
+
+        if !self.reached(union) || members.is_empty() {
+            self.pick(position + 1, worst);
+            return;
+        }
+
+        for &(member, result) in members {
+            self.picked[slot] = Some(member);
+            self.pick(position + 1, worst.max(result));
+        }
+
+        self.picked[slot] = None;
+    }
+}
+
 /// The best result that any member of the choice, or its fallback, gave so far.
 fn best_of(choice: &Choice) -> Comparison {
     choice
@@ -986,11 +1006,10 @@ mod tests {
         choices.reopen(parent, &members, None, &vec![true; members.len() + 1])
     }
 
-    /// A failed pair across two unions charges both members, so a member that conflicts with
-    /// every member of the other union is ruled out, and one that conflicts with only some of
-    /// them is too, since which to give up would need backtracking.
+    /// A failed pair across two unions rules out picking both of its members, so each union picks
+    /// a member that holds with the other's pick.
     #[test]
-    fn attributed_charges_both_members_across_unions() {
+    fn attributed_picks_members_across_unions() {
         use Comparison::{Assign, Cast, Invalid};
 
         let branch = |choice, member| BranchId { choice, member };
@@ -998,28 +1017,27 @@ mod tests {
         let first = reopened(&mut choices, None, &[Assign, Cast]);
         let second = reopened(&mut choices, None, &[Assign, Assign]);
 
-        // The first union's first member conflicts with both of the second's. Picking its second
-        // member would give `Cast`, but both members of each pair are charged, so the second union
-        // is ruled out as well, which rejects more than picking would (#362, §5, question 2)
+        // The first union's first member conflicts with both of the second's, so the first union
+        // picks its second member, which gives `Cast`
         let pairs = [
             (Some(branch(first, 0)), Some(branch(second, 0)), Invalid),
             (Some(branch(first, 0)), Some(branch(second, 1)), Invalid),
         ];
-        assert_eq!(choices.attributed(0..2, &pairs), Invalid);
+        assert_eq!(choices.attributed(0..2, &pairs).0, Cast);
 
-        // With one conflict, the second union still has a member, and the first gives `Cast`
-        assert_eq!(choices.attributed(0..2, &pairs[..1]), Cast);
+        // With one conflict, the second union picks its other member
+        assert_eq!(choices.attributed(0..2, &pairs[..1]).0, Assign);
 
         // A bound outside of any union charges the member in full
         let pairs = [
             (Some(branch(second, 0)), None, Invalid),
             (None, Some(branch(second, 1)), Invalid),
         ];
-        assert_eq!(choices.attributed(0..2, &pairs), Invalid);
+        assert_eq!(choices.attributed(0..2, &pairs).0, Invalid);
     }
 
-    /// A pair whose bounds are under a member and a union nested in it charges the nested member,
-    /// which the union it's in can avoid.
+    /// A pair whose bounds are under a member and a union nested in it rules out the nested
+    /// member, which the union it's in can avoid.
     #[test]
     fn attributed_charges_the_enclosed_member() {
         use Comparison::{Assign, Invalid};
@@ -1033,7 +1051,7 @@ mod tests {
             (Some(branch(outer, 0)), Some(branch(inner, 0)), Invalid),
             (Some(branch(inner, 0)), Some(branch(outer, 0)), Invalid),
         ] {
-            assert_eq!(choices.attributed(0..2, &[pair]), Assign);
+            assert_eq!(choices.attributed(0..2, &[pair]).0, Assign);
         }
     }
 

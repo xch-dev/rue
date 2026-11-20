@@ -602,12 +602,10 @@ impl Summary {
                 break;
             };
 
-            // Folding a union that only one member can hold into the member it's nested in is how
-            // picking would decide it, but not how charging a failed pair to both of its members
-            // does, which would also charge that member (see `Choices::attributed`), so it can
-            // accept more than computing the comparison again would. Leaving out a union nested
-            // too deeply can reject more. Either way, the summary is approximate
-            approximate = true;
+            // Folding a union that only one member can hold into the member it's nested in decides
+            // the same (see `Choices::attributed`), but leaving out a union nested too deeply can
+            // reject more, so the summary is approximate then
+            approximate |= !alone(&choices[index]);
 
             let removed = choices.remove(index);
             let lift = |branch: &mut Option<Branch>| {
