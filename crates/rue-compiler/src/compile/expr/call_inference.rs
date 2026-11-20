@@ -1666,7 +1666,10 @@ fn element_lambdas(
     struct Walk {
         lambdas: Vec<(TextRange, ElementLambda)>,
         reads: Vec<(TextRange, IndexSet<TypeId>)>,
-        /// Whether every element was found, which it isn't where the pairs can't be followed.
+        /// Whether every element was found, which it isn't where the pairs can't be followed. That's
+        /// defensive: an element there is compiled without an expected type, or, past the end of a
+        /// list's expected pairs, with the type the item before it was expected to have, whose
+        /// generics that item already reads, so no program has been found where it matters.
         complete: bool,
     }
 
