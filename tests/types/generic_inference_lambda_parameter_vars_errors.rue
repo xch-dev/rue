@@ -19,7 +19,10 @@ fn apply_to<T>(pair: (fn(value: T) -> T, T)) -> T {
 
 // A call nested in an argument of a call to the same function shares the enclosing call's `T`, and
 // the inner lambda's body references `x`, which is that `T` too, so `y` isn't checked as what the
-// inner call infers `T` as: `x` would leak out of `apply_to` as that
+// inner call infers `T` as: `x` would leak out of `apply_to` as that. The outer call compiles, as
+// `Int | String`: before #362's 13k4 the inner call's expected type named the outer `T`, as
+// `T | Int`, which `T` was inferred through, as `T | Int | String`, and the outer call was
+// rejected too
 #[expect(unused_function)]
 fn nested_call_to_the_same_function() -> Any {
     apply_to((

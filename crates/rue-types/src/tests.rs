@@ -1367,6 +1367,166 @@ mod inference {
         assert_eq!(mappings[&t], int);
     }
 
+    /// A lower candidate that's a union with the generic in it only bounds the generic by the
+    /// other members, as passing `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T` gives (#362, 13k4),
+    /// and an upper one says nothing, as an untyped lambda parameter compiled as `Maybe<A>` gives
+    /// against `fn(a: Maybe<A>) -> Int` (13k5).
+    #[test]
+    fn union_candidates_with_the_generic_in_them() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let t = db.generic("T");
+        let union = db.union(&[int, t]);
+
+        let mut infer = Inference::new([t]);
+        infer.push(t, CandidateKind::Lower, union, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+
+        // Through another generic in the cycle too, as `T ≥ V ≥ T`
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let union = db.union(&[int, v]);
+        let mut infer = Inference::new([t, v]);
+        infer.push(t, CandidateKind::Lower, union, Vec::new());
+        infer.push(v, CandidateKind::Lower, t, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+        assert_eq!(db.name(mappings[&v]), "Int");
+
+        // `T ≤ T | nil` leaves `T` uninferred, rather than inferred as `T | nil`
+        let t = db.generic("T");
+        let nil = db.builtins.nil;
+        let union = db.union(&[t, nil]);
+        let mut infer = Inference::new([t]);
+        infer.push(t, CandidateKind::Upper, union, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert!(!mappings.contains_key(&t), "{}", db.name(mappings[&t]));
+
+        // And with another candidate, that one decides it
+        let mut infer = Inference::new([t]);
+        infer.push(t, CandidateKind::Upper, union, Vec::new());
+        infer.push(t, CandidateKind::Lower, int, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+
+        // A generic that's only bounded by the others in its cycle through such a union is
+        // resolved through what they're resolved to, as `T ≥ V | T` with `V ≥ T` is through `V`'s
+        // fallback
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let union = db.union(&[v, t]);
+        let mut infer = Inference::new([t, v]);
+        infer.push(t, CandidateKind::Lower, union, Vec::new());
+        infer.push(v, CandidateKind::Lower, t, Vec::new());
+        let fallback = HashMap::from([(v, int)]);
+        let mappings =
+            resolve_inference_with_fallback(&mut db.arena, &db.builtins, &infer, &fallback);
+        assert_eq!(db.name(mappings[&v]), "Int");
+        assert_eq!(
+            mappings.get(&t).map(|&ty| db.name(ty)).as_deref(),
+            Some("Int")
+        );
+
+        // A split union's members keep their order
+        let t = db.generic("T");
+        let bytes = db.builtins.bytes;
+        let union = db.union(&[int, bytes, t]);
+        let mut infer = Inference::new([t]);
+        infer.push(t, CandidateKind::Lower, union, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int | Bytes");
+
+        // Within a cycle, an upper union with another generic of it says nothing either, since the
+        // cycle lets that generic be the one it bounds. No program has been found that gives these
+        // (untyped lambdas, generic lambdas and generic functions cross-wired through `Maybe` in
+        // two parameters, by hand, and infer-fuzz): such calls are rejected as `Cannot infer
+        // generic`, or their generics have other candidates. Whatever's left, no mapping names a
+        // generic of the cycle other than as that generic itself, here or once the call is solved
+        // (`resolve_inference_with_bounds`)
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let cycles = [
+            // `T ≤ V`, `V ≤ T | nil`
+            (
+                vec![(t, CandidateKind::Upper, v)],
+                vec![(v, CandidateKind::Upper, vec![t, nil])],
+            ),
+            // `T ≤ Int | V`, `V ≤ T`
+            (
+                vec![(v, CandidateKind::Upper, t)],
+                vec![(t, CandidateKind::Upper, vec![int, v])],
+            ),
+            // The same with `T ≥ Bytes`, which decides both
+            (
+                vec![
+                    (v, CandidateKind::Upper, t),
+                    (t, CandidateKind::Lower, bytes),
+                ],
+                vec![(t, CandidateKind::Upper, vec![int, v])],
+            ),
+        ];
+        for (index, (bare, unions)) in cycles.into_iter().enumerate() {
+            let mut infer = Inference::new([t, v]);
+            for (generic, kind, ty) in bare {
+                infer.push(generic, kind, ty, Vec::new());
+            }
+            for (generic, kind, members) in unions {
+                let union = db.union(&members);
+                infer.push(generic, kind, union, Vec::new());
+            }
+            for mappings in [
+                resolve_inference(&mut db.arena, &db.builtins, &infer),
+                resolve_inference_with_bounds(&mut db.arena, &db.builtins, &infer, &HashMap::new()),
+            ] {
+                // Only as the other generic itself, which a cycle with nothing else leaves it as
+                for (generic, other) in [(t, v), (v, t)] {
+                    if let Some(&ty) = mappings.get(&generic) {
+                        let names = crate::free_generics(&db.arena, ty);
+                        assert!(
+                            ty == other || !names.contains(&t) && !names.contains(&v),
+                            "cycle {index}: {}",
+                            db.name(ty)
+                        );
+                    }
+                }
+                if index == 2 {
+                    assert_eq!(db.name(mappings[&t]), "Bytes");
+                    assert_eq!(db.name(mappings[&v]), "Bytes");
+                }
+            }
+        }
+
+        // A cycle through a compound candidate, as `T ≤ V` with `V ≥ (T, Int)`, is an infinite type,
+        // which is left as is, and `T` isn't resolved through it, since it would name itself. No
+        // instantiation satisfies it, so a call that gives it is rejected, as
+        // `kv(fn(x) => (x, 1), fn(y) => y)` with `fn kv<T, V>(f: fn(a: T) -> V, g: fn(b: V) -> T)` is
+        // (see `generic_inference_bounds_naming_the_generic_errors.rue`)
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let pair = db.pair(t, int);
+        let mut infer = Inference::new([t, v]);
+        infer.push(t, CandidateKind::Upper, v, Vec::new());
+        infer.push(v, CandidateKind::Lower, pair, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings.get(&v), Some(&pair));
+        assert!(
+            mappings
+                .get(&t)
+                .is_none_or(|&ty| !crate::free_generics(&db.arena, ty).contains(&t)),
+            "{}",
+            db.name(mappings[&t])
+        );
+
+        // An upper candidate isn't split, since `T ≤ Int | V` doesn't say `T ≤ Int`
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let union = db.union(&[int, v]);
+        let mut infer = Inference::new([t, v]);
+        infer.push(t, CandidateKind::Upper, union, Vec::new());
+        infer.push(v, CandidateKind::Upper, t, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_ne!(
+            mappings.get(&t).map(|&ty| db.name(ty)).as_deref(),
+            Some("Int")
+        );
+    }
+
     /// A type compared with itself is `Assign` without comparing it, unless it references a
     /// generic being inferred, which comparing it collects candidates for.
     #[test]

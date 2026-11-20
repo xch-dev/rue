@@ -1,0 +1,55 @@
+// Where nothing gives a generic a type but a candidate that's a union with the generic as a member,
+// which says nothing, so the generic isn't inferred (#362, 13k5; see
+// `generic_inference_bounds_naming_the_generic.rue`)
+
+type Maybe<T> = T | nil;
+
+fn g0<A>(_a: fn(a: Maybe<A>) -> Int) -> fn(a: A) -> A {
+    fn(a: A) => a
+}
+
+// `x` is compiled as `Maybe<A>`, which gives `A ≤ A | nil`. `A` was inferred as `A | nil`, which
+// named the callee's `A` in the call's type, `fn(a: A | nil) -> A | nil`, through which it could be
+// used as anything (infer-fuzz generator 3, seed 6717). Nothing gives it a type, so it's rejected,
+// with or without an expected type that doesn't give it one either. The difference from
+// `g4(fn(x) => x)` in `generic_inference_bounds_naming_the_generic.rue`, which infers `nil`, is that
+// something flows out of the lambda there, and nothing does here
+#[expect(unused_function)]
+fn untyped_parameter_of_a_union_with_the_generic() -> Any {
+    let unannotated = g0(fn(x) => 9);
+    let annotated: (fn<T>(a: T) -> T) | Any = g0(fn(x) => 9);
+    (unannotated, annotated)
+}
+
+#[expect(unused_function)]
+fn either_of<A, B>(_a: fn(a: A | B) -> Int, _b: fn(b: B) -> A) -> fn(a: A) -> B {
+    unchecked_cast(nil)
+}
+
+// The same through another generic: `B ≤ A ≤ A | B` from the lambdas says nothing about either
+#[expect(unused_function)]
+fn untyped_parameters_of_a_union_with_each_other() -> Any {
+    either_of(fn(x) => 1, fn(y) => y)
+}
+
+#[expect(unused_function)]
+fn cross<T, V>(f: fn(a: T) -> V, g: fn(b: V) -> T) -> V {
+    let _ = (f, g);
+    unchecked_cast(nil)
+}
+
+// A cycle through a compound type, `V ≥ (T, 1)` with `T ≥ V`, has no instantiation, as on main,
+// though the types in the error name the callee's generics
+#[expect(unused_function)]
+fn cycle_through_a_pair() -> Any {
+    cross(fn(x) => (x, 1), fn(y) => y)
+}
+
+// The same call compiles with `A` written out, or with the lambda's parameter typed
+fn main() -> Int {
+    let explicit = g0::<Int>(fn(x) => 9);
+    let typed = g0(fn(x: Int | nil) => 9);
+    let check: fn(a: Int) -> Int = explicit;
+    let _ = typed;
+    check(1)
+}
