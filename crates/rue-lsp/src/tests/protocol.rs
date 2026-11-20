@@ -662,7 +662,7 @@ async fn test_signature_help_session() {
         .await;
 
     let response = client
-        .request("textDocument/signatureHelp", Some(position(&uri, 5, 8)))
+        .request("textDocument/signatureHelp", Some(position(&uri, 5, 11)))
         .await;
     assert_eq!(response.result().unwrap()["activeParameter"], json!(0));
     assert_eq!(client.compiles(), compiles + 1);

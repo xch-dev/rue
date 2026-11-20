@@ -9,6 +9,7 @@ use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode, AstStructInitializerExpr};
 use rue_compiler::{Compiler, CompletionContext, SyntaxCall, SyntaxItemKind};
 use rue_hir::Symbol;
 use rue_parser::{SyntaxNode, T};
+use rue_types::{Type, TypeId, UNRESOLVED};
 
 use super::{Cache, FieldHoverInfo, Scopes, field_declarations};
 
@@ -31,44 +32,46 @@ pub struct Signature {
     pub parameters: Vec<Range<usize>>,
     /// The parameter that the argument at the cursor is for.
     pub active_parameter: Option<usize>,
-    /// Whether the last parameter takes the rest of the arguments.
-    variadic: bool,
 }
 
 impl Signature {
-    /// A signature made of parts that are written one after the other, some of which are
-    /// parameters. The last parameter takes the rest of the arguments if it's `variadic`.
-    fn new(parts: &[(&str, bool)], argument: usize, variadic: bool) -> Self {
-        let mut label = String::new();
-        let mut parameters = Vec::new();
+    /// A signature whose parameters are written between a prefix and a suffix, with commas
+    /// between them.
+    fn new(prefix: &str, parameters: &[impl AsRef<str>], suffix: &str, argument: usize) -> Self {
+        let mut label = prefix.to_string();
+        let mut ranges = Vec::new();
 
-        for &(part, is_parameter) in parts {
-            let start = label.len();
-            label.push_str(part);
-
-            if is_parameter {
-                parameters.push(start..label.len());
+        for (i, parameter) in parameters.iter().enumerate() {
+            if i > 0 {
+                label.push_str(", ");
             }
+
+            let start = label.len();
+            label.push_str(parameter.as_ref());
+            ranges.push(start..label.len());
         }
+
+        label.push_str(suffix);
 
         // An argument past the last parameter is shown as being for it even if it doesn't take
         // the rest of them, since the protocol has no way to say that it isn't for any of them
-        let active_parameter = parameters
-            .len()
-            .checked_sub(1)
-            .map(|last| argument.min(last));
+        let active_parameter = ranges.len().checked_sub(1).map(|last| argument.min(last));
 
         Self {
             label,
-            parameters,
+            parameters: ranges,
             active_parameter,
-            variadic,
         }
     }
 
-    /// Whether the signature has a parameter for the argument.
+    /// Whether the signature has a parameter for the argument, which the last one is for every
+    /// argument from it on if it takes the rest of them.
     fn takes(&self, argument: usize) -> bool {
-        argument < self.parameters.len() || (self.variadic && !self.parameters.is_empty())
+        argument < self.parameters.len()
+            || self
+                .parameters
+                .last()
+                .is_some_and(|last| self.label[last.clone()].starts_with("..."))
     }
 }
 
@@ -141,8 +144,7 @@ impl Cache<Compiler> {
             return Some(Signatures { signatures, active });
         }
 
-        // The same call can be compiled more than once (such as a lambda's body, until the types
-        // of its parameters are known), and the last time is the one that was kept
+        // If the call was compiled more than once, the last time is the one that was kept
         let SyntaxCall { function, generics } = self
             .items_in(call.syntax().text_range())
             .filter_map(|kind| match kind {
@@ -157,69 +159,51 @@ impl Cache<Compiler> {
         // The types are shown as they're declared, with what each generic was inferred as next to
         // it, rather than with the generics replaced in each type. A type with them replaced is a
         // copy that isn't named by anything, which can take very long to write out in full
-        let mut parts = vec![(prefix, false)];
+        let mut prefix = prefix;
 
         for (i, &generic) in function.generics.iter().enumerate() {
-            let mut part = String::from(if i == 0 { "<" } else { ", " });
-            part.push_str(&self.bounded_type_name(scopes, generic, TYPE_PARTS));
+            prefix.push_str(if i == 0 { "<" } else { ", " });
+            prefix.push_str(&self.bounded_type_name(scopes, generic, TYPE_PARTS));
 
             // A recursive call can infer a generic as itself, which says nothing
             if let Some(&ty) = inferred.get(&generic).filter(|&&ty| ty != generic) {
-                part.push_str(" = ");
-                part.push_str(&self.bounded_type_name(scopes, ty, TYPE_PARTS));
+                prefix.push_str(" = ");
+                prefix.push_str(&self.bounded_type_name(scopes, ty, TYPE_PARTS));
             }
 
             if i == function.generics.len() - 1 {
-                part.push('>');
+                prefix.push('>');
             }
-
-            parts.push((part, false));
         }
 
-        parts.push(("(".to_string(), false));
+        prefix.push('(');
 
         let len = function.params.len();
 
-        for (i, param) in function.params.iter().enumerate() {
-            if i > 0 {
-                parts.push((", ".to_string(), false));
-            }
+        let parameters = function
+            .params
+            .iter()
+            .enumerate()
+            .map(|(i, param)| {
+                let ty = self.bounded_type_name(scopes, param.ty, TYPE_PARTS);
 
-            let ty = self.bounded_type_name(scopes, param.ty, TYPE_PARTS);
-
-            let spread = if !function.nil_terminated && i == len - 1 {
-                "..."
-            } else {
-                ""
-            };
-
-            parts.push((
-                if param.name.is_empty() {
-                    format!("{spread}{ty}")
+                let spread = if !function.nil_terminated && i == len - 1 {
+                    "..."
                 } else {
-                    format!("{spread}{}: {ty}", param.name)
-                },
-                true,
-            ));
-        }
+                    ""
+                };
 
-        parts.push((
-            format!(
-                ") -> {}",
-                self.bounded_type_name(scopes, function.ret, TYPE_PARTS)
-            ),
-            false,
-        ));
+                format!("{spread}{}: {ty}", param.name)
+            })
+            .collect::<Vec<_>>();
+
+        let suffix = format!(
+            ") -> {}",
+            self.bounded_type_name(scopes, function.ret, TYPE_PARTS)
+        );
 
         Some(Signatures {
-            signatures: vec![Signature::new(
-                &parts
-                    .iter()
-                    .map(|(part, is_parameter)| (part.as_str(), *is_parameter))
-                    .collect::<Vec<_>>(),
-                argument,
-                !function.nil_terminated,
-            )],
+            signatures: vec![Signature::new(&prefix, &parameters, &suffix, argument)],
             active: 0,
         })
     }
@@ -248,13 +232,28 @@ impl Cache<Compiler> {
             return None;
         }
 
-        let fields = fields
-            .into_iter()
-            .map(|(name, ty)| FieldHoverInfo {
-                name,
-                type_name: self.bounded_type_name(scopes, ty, TYPE_PARTS),
-            })
-            .collect::<Vec<_>>();
+        let names = |cache: &mut Self, fields: Vec<(String, TypeId)>| {
+            fields
+                .into_iter()
+                .map(|(name, ty)| FieldHoverInfo {
+                    name,
+                    type_name: cache.bounded_type_name(scopes, ty, TYPE_PARTS),
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let mut fields = names(self, fields);
+
+        // A generic struct whose generic arguments are missing or wrong has fields whose types
+        // couldn't be worked out, so they're shown as they're declared, like a call's are
+        if fields
+            .iter()
+            .any(|field| field.type_name.contains(UNRESOLVED))
+            && let Type::Struct(declared) = self.ctx.ty(ty)
+            && let Some((declared, _)) = self.struct_field_types(declared.semantic)
+        {
+            fields = names(self, declared);
+        }
 
         // The field that the cursor is in, or else the first one that hasn't been given a value
         // yet, which is the one to write next
@@ -274,26 +273,12 @@ impl Cache<Compiler> {
         let name = name.trim();
         let declarations = field_declarations(&fields, nil_terminated);
 
-        let mut parts = vec![(format!("{name} {{ "), false)];
-
-        for (i, declaration) in declarations.iter().enumerate() {
-            if i > 0 {
-                parts.push((", ".to_string(), false));
-            }
-
-            parts.push((declaration.clone(), true));
-        }
-
-        parts.push((" }".to_string(), false));
-
         Some(Signatures {
             signatures: vec![Signature::new(
-                &parts
-                    .iter()
-                    .map(|(part, is_parameter)| (part.as_str(), *is_parameter))
-                    .collect::<Vec<_>>(),
+                &format!("{name} {{ "),
+                &declarations,
+                " }",
                 active,
-                false,
             )],
             active: 0,
         })
@@ -346,51 +331,42 @@ fn argument_index(
 /// The signature of a builtin, which is written like the rest of a function's declaration after
 /// its name, such as `(value: Bytes, start: Int) -> Bytes`.
 fn builtin_signature(prefix: &str, signature: &str, argument: usize) -> Signature {
-    let mut parts = vec![(prefix, false)];
+    let mut parameters = Vec::new();
     let mut depth = 0usize;
-    let mut start = 0;
+    let mut start = 1;
+    let mut end = signature.len();
 
     // The parameters are between the outermost parentheses, separated by the commas that aren't
     // inside of a type
     for (i, c) in signature.char_indices() {
         match c {
-            '(' | '<' | '[' => {
-                depth += 1;
+            '(' | '<' | '[' => depth += 1,
+            ')' | '>' | ']' => {
+                depth = depth.saturating_sub(1);
 
-                if depth == 1 {
-                    parts.push((&signature[start..=i], false));
-                    start = i + 1;
-                }
-            }
-            // The `>` of a `->` isn't a bracket
-            ')' | '>' | ']' if depth > 0 && !signature[..i].ends_with('-') => {
-                if depth == 1 && c == ')' {
-                    if start < i {
-                        parts.push((&signature[start..i], true));
-                    }
-
-                    start = i;
+                if depth == 0 {
+                    end = i;
                     break;
                 }
-
-                depth -= 1;
             }
             ',' if depth == 1 => {
-                parts.push((&signature[start..i], true));
-                parts.push((", ", false));
-                start = i + 1 + signature[i + 1..].len() - signature[i + 1..].trim_start().len();
+                parameters.push(signature[start..i].trim());
+                start = i + 1;
             }
             _ => {}
         }
     }
 
-    parts.push((&signature[start..], false));
+    let last = signature.get(start..end).unwrap_or_default().trim();
 
-    let variadic = parts
-        .iter()
-        .rev()
-        .find(|(_, is_parameter)| *is_parameter)
-        .is_some_and(|(part, _)| part.starts_with("..."));
+    if !last.is_empty() {
+        parameters.push(last);
+    }
 
-    Signature::new(&parts, argument, variadic)
+    Signature::new(
+        &format!("{prefix}("),
+        &parameters,
+        signature.get(end..).unwrap_or_default(),
+        argument,
+    )
 }

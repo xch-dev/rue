@@ -132,7 +132,7 @@ fn test_signature_without_parameters() {
 
 #[test]
 fn test_signature_of_spread_parameter() {
-    // The last parameter takes the rest of the arguments
+    // The last parameter is the rest of the arguments as one list, which is spread into it
     let source = "fn total(first: Int, ...rest: List<Int>) -> Int {\n    first\n}\n\n";
 
     check(
@@ -142,7 +142,7 @@ fn test_signature_of_spread_parameter() {
         "#]],
     );
     check(
-        &format!("{source}fn main(list: List<Int>) -> Int {{\n    total(1, 2, $0...list)\n}}\n"),
+        "fn main(total: fn(first: Int, ...rest: List<Int>) -> Int) -> Int {\n    total(1, $0...[2])\n}\n",
         expect![[r#"
             > fn total(first: Int, [...rest: List<Int>]) -> Int
         "#]],
@@ -220,6 +220,73 @@ fn test_signature_of_generic_function() {
 }
 
 #[test]
+fn test_signature_of_recursive_generic_call() {
+    // The generics are the function's own, which a call to itself can infer as each other
+    check(
+        "fn first<T>(list: List<T>, fallback: T) -> T {\n    first(list, $0fallback)\n}\n",
+        expect![[r#"
+            > fn first<T>(list: List<T>, [fallback: T]) -> T
+        "#]],
+    );
+    check(
+        "fn rec<T>(value: T, other: Int) -> Int {\n    rec(1, $02)\n}\n",
+        expect![[r#"
+            > fn rec<T = Int>(value: T, [other: Int]) -> Int
+        "#]],
+    );
+    check(
+        "fn swap<T, U>(a: T, b: U, n: Int) -> Int {\n    swap(b, a, $0n - 1)\n}\n",
+        expect![[r#"
+            > fn swap<T = U, U = T>(a: T, b: U, [n: Int]) -> Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_of_ambiguous_call() {
+    // The call is rejected, since it could be to either function, so neither is shown
+    check(
+        "fn main(f: (fn(a: Int) -> Int) | (fn(b: Bytes) -> Int)) -> Int {\n    f($01)\n}\n",
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_with_large_union() {
+    // A union that's written in full doesn't say that anything was left out of it
+    let members = (1..=20)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    check(
+        &format!(
+            "fn big(value: {members}, other: Int) -> Int {{\n    other\n}}\n\nfn main() -> Int {{\n    big(1, $02)\n}}\n"
+        ),
+        expect![[r#"
+            > fn big(value: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20, [other: Int]) -> Int
+        "#]],
+    );
+
+    // And one that isn't says so once, at its end
+    let members = (1..=100)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    check(
+        &format!(
+            "fn big(value: {members}, other: Int) -> Int {{\n    other\n}}\n\nfn main() -> Int {{\n    big(1, $02)\n}}\n"
+        ),
+        expect![[r#"
+            > fn big(value: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 | 58 | 59 | 60 | 61 | 62 | 63 | ..., [other: Int]) -> Int
+        "#]],
+    );
+}
+
+#[test]
 fn test_signature_of_generic_function_with_lambda() {
     check(
         "fn map<T, U>(list: List<T>, function: fn(item: T) -> U) -> List<U> {\n    []\n}\n\nfn main(list: List<Int>) -> List<Bool> {\n    map(list, $0fn(item) => item > 1)\n}\n",
@@ -252,6 +319,24 @@ fn test_signature_of_builtin() {
             > fn substr(value: Bytes, start: Int, [end: Int]) -> Bytes
         "#]],
     );
+    // A signature that takes the rest of the arguments is for all of them
+    check(
+        "fn main() -> Bytes32 {\n    sha256(\"a\", $0\"b\")\n}\n",
+        expect![[r#"
+              fn sha256([value: Bytes]) -> Bytes32
+            > fn sha256([...values: List<Bytes>]) -> Bytes32
+        "#]],
+    );
+
+    // With more arguments than any signature takes, it's the last one
+    check(
+        "fn main() -> Bytes {\n    substr(\"abc\", 1, 2, $03)\n}\n",
+        expect![[r#"
+              fn substr(value: Bytes, [start: Int]) -> Bytes
+            > fn substr(value: Bytes, start: Int, [end: Int]) -> Bytes
+        "#]],
+    );
+
     check(
         "fn main(key: PublicKey, signature: Signature) -> nil {\n    bls_verify(signature, key, \"a\", key, $0\"b\")\n}\n",
         expect![[r#"
@@ -292,6 +377,38 @@ fn test_signature_of_imported_function() {
         ],
         expect![[r#"
             > fn double([value: Int]) -> Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_is_of_the_file_with_the_cursor() {
+    // Each file has a call and a struct initializer in the same place
+    let file = |name: &str, cursor: &str| {
+        format!(
+            "struct Point {{\n    {name}: Int,\n}}\n\nfn make({name}: Int) -> Point {{\n    Point {{ {name} }}\n}}\n\nfn call() -> Point {{\n    let point = Point {{ {cursor} }};\n    make(1)\n}}\n"
+        )
+    };
+
+    check_files(
+        &[
+            ("main.rue", &file("aaa", "$0")),
+            ("other.rue", &file("bbb", "")),
+            ("zzz.rue", &file("ccc", "")),
+        ],
+        expect![[r#"
+            > Point { [aaa: Int] }
+        "#]],
+    );
+
+    check_files(
+        &[
+            ("main.rue", &file("aaa", "").replace("make(1)", "make($01)")),
+            ("other.rue", &file("bbb", "")),
+            ("zzz.rue", &file("ccc", "")),
+        ],
+        expect![[r#"
+            > fn make([aaa: Int]) -> Point
         "#]],
     );
 }
@@ -449,6 +566,37 @@ fn test_signature_with_syntax_errors() {
         "#]],
     );
 
+    // A generic struct that's missing its generic arguments shows its fields as they're declared
+    check(
+        "struct Wrap<T> {\n    value: T,\n    list: List<T>,\n}\n\nfn main() -> Int {\n    let wrap = Wrap { value: 1, $0 };\n    1\n}\n",
+        expect![[r#"
+            > Wrap { value: T, [list: List<T>] }
+        "#]],
+    );
+
+    // Something that isn't a function has no signature, and the call that it's an argument of
+    // isn't shown in its place
+    check(
+        &with_add("fn main() -> Int {\n    add(1, unknown($0))\n}\n"),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    check(
+        &with_add("fn main() -> Int {\n    add(1, Unknown { $0 }.x)\n}\n"),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    check(
+        &with_add(
+            "struct Empty {}\n\nfn main() -> Int {\n    let empty = Empty { $0 };\n    add(1, 2)\n}\n",
+        ),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+
     // Something that isn't a function has no signature
     check(
         "fn main() -> Int {\n    unknown($0)\n}\n",
@@ -522,6 +670,20 @@ fn test_signature_in_assert_message() {
         ),
         expect![[r#"
             <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_with_huge_return_type() {
+    let nested = format!("{}1{}", "pair(".repeat(20), ")".repeat(20));
+
+    check(
+        &format!(
+            "fn pair<T>(value: T) -> (T, T) {{\n    (value, value)\n}}\n\nfn main() -> Int {{\n    let big = {nested};\n    let function = fn(value: Int) => big;\n    let result = function($01);\n    1\n}}\n"
+        ),
+        expect![[r#"
+            > fn function([value: Int]) -> ((((((((((((((((((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (((Int, Int), (Int, Int)), ((Int, Int), (Int, Int)))), ((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (..., ...))), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...)
         "#]],
     );
 }

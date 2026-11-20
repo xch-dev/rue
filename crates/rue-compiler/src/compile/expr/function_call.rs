@@ -58,8 +58,12 @@ pub fn compile_function_call_expr(
         ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidFunctionCall(name));
     }
 
-    // The function as it's declared, which is what the language server shows
-    let declared = expected_functions.first().cloned();
+    // The function as it's declared, which is what the language server shows, unless the call
+    // is rejected because it could be to more than one function
+    let declared = match expected_functions.as_slice() {
+        [function] => Some(function.clone()),
+        _ => None,
+    };
 
     // The callee's generics that are also in scope, as in a recursive call, are renamed to fresh
     // ones, so that they aren't confused with the caller's generics with the same ids (#334)

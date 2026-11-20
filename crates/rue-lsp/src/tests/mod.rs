@@ -359,6 +359,16 @@ impl TestProject {
             return "<none>\n".to_string();
         };
 
+        // The active parameter is one of the signature's
+        for signature in &help.signatures {
+            assert!(
+                signature.active_parameter.is_none_or(
+                    |active| (active as usize) < signature.parameters.as_ref().unwrap().len()
+                ),
+                "{signature:?}"
+            );
+        }
+
         let active = help.active_signature.unwrap() as usize;
         assert_eq!(
             help.active_parameter,
