@@ -9,7 +9,7 @@ use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode, AstStructInitializerExpr};
 use rue_compiler::{Compiler, CompletionContext, SyntaxCall, SyntaxItemKind};
 use rue_hir::Symbol;
 use rue_parser::{SyntaxNode, T};
-use rue_types::{Type, TypeId, UNRESOLVED};
+use rue_types::Type;
 
 use super::{Cache, FieldHoverInfo, Scopes, field_declarations};
 
@@ -163,12 +163,18 @@ impl Cache<Compiler> {
 
         for (i, &generic) in function.generics.iter().enumerate() {
             prefix.push_str(if i == 0 { "<" } else { ", " });
-            prefix.push_str(&self.bounded_type_name(scopes, generic, TYPE_PARTS));
+            let name = self.bounded_type_name(scopes, generic, TYPE_PARTS);
+            prefix.push_str(&name);
 
-            // A recursive call can infer a generic as itself, which says nothing
-            if let Some(&ty) = inferred.get(&generic).filter(|&&ty| ty != generic) {
-                prefix.push_str(" = ");
-                prefix.push_str(&self.bounded_type_name(scopes, ty, TYPE_PARTS));
+            // A generic can be inferred as itself by a recursive call, or as a generic of the
+            // caller's with the same name, which says nothing
+            if let Some(&ty) = inferred.get(&generic) {
+                let inferred = self.bounded_type_name(scopes, ty, TYPE_PARTS);
+
+                if inferred != name {
+                    prefix.push_str(" = ");
+                    prefix.push_str(&inferred);
+                }
             }
 
             if i == function.generics.len() - 1 {
@@ -215,6 +221,9 @@ impl Cache<Compiler> {
         initializer: &AstStructInitializerExpr,
         offset: TextSize,
     ) -> Option<Signatures> {
+        let name = initializer.path()?.syntax().text().to_string();
+        let name = name.trim();
+
         let (ty, specified) = self
             .items_in(initializer.syntax().text_range())
             .filter_map(|kind| match kind {
@@ -226,34 +235,30 @@ impl Cache<Compiler> {
             })
             .last()?;
 
-        let (fields, nil_terminated) = self.struct_field_types(ty)?;
+        let (mut fields, nil_terminated) = self.struct_field_types(ty)?;
 
         if fields.is_empty() {
             return None;
         }
 
-        let names = |cache: &mut Self, fields: Vec<(String, TypeId)>| {
-            fields
-                .into_iter()
-                .map(|(name, ty)| FieldHoverInfo {
-                    name,
-                    type_name: cache.bounded_type_name(scopes, ty, TYPE_PARTS),
-                })
-                .collect::<Vec<_>>()
-        };
-
-        let mut fields = names(self, fields);
-
         // A generic struct whose generic arguments are missing or wrong has fields whose types
         // couldn't be worked out, so they're shown as they're declared, like a call's are
         if fields
             .iter()
-            .any(|field| field.type_name.contains(UNRESOLVED))
+            .any(|&(_, ty)| rue_types::contains_unresolved(self.ctx.types(), ty))
             && let Type::Struct(declared) = self.ctx.ty(ty)
             && let Some((declared, _)) = self.struct_field_types(declared.semantic)
         {
-            fields = names(self, declared);
+            fields = declared;
         }
+
+        let fields = fields
+            .into_iter()
+            .map(|(name, ty)| FieldHoverInfo {
+                name,
+                type_name: self.bounded_type_name(scopes, ty, TYPE_PARTS),
+            })
+            .collect::<Vec<_>>();
 
         // The field that the cursor is in, or else the first one that hasn't been given a value
         // yet, which is the one to write next
@@ -269,8 +274,6 @@ impl Cache<Compiler> {
             })
             .unwrap_or(0);
 
-        let name = initializer.path()?.syntax().text().to_string();
-        let name = name.trim();
         let declarations = field_declarations(&fields, nil_terminated);
 
         Some(Signatures {

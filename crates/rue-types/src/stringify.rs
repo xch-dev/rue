@@ -19,7 +19,7 @@ thread_local! {
 pub const ELIDED: &str = "...";
 
 /// What's written for a type that couldn't be worked out.
-pub const UNRESOLVED: &str = "{unresolved}";
+const UNRESOLVED: &str = "{unresolved}";
 
 /// Like [`stringify`], but only the first `parts` parts of the type are written (each type that it's
 /// made of is one), and the rest are shown as `...`. A type can be far larger written out than it
@@ -185,7 +185,7 @@ fn stringify_impl_inner(
             // Each member takes at least one part to write, so the members that there's no
             // budget for aren't looked at, however many there are
             let limit = BUDGET.get().unwrap_or(usize::MAX);
-            let mut members = Vec::new();
+            let mut members = IndexSet::new();
             let mut elided = !union_variants(arena, id, limit, &mut members);
 
             let mut variants = members
@@ -339,13 +339,13 @@ fn narrowed_fields_inner(
     }
 }
 
-/// Adds the variants of a union, including those of directly nested unions, until there are as
-/// many as the limit. Returns whether that was all of them.
+/// Adds the variants of a union, including those of directly nested unions, each of them once,
+/// until there are as many as the limit. Returns whether that was all of them.
 fn union_variants(
     arena: &Arena<Type>,
     id: TypeId,
     limit: usize,
-    variants: &mut Vec<TypeId>,
+    variants: &mut IndexSet<TypeId>,
 ) -> bool {
     grow_stack(|| union_variants_inner(arena, id, limit, variants))
 }
@@ -354,15 +354,17 @@ fn union_variants_inner(
     arena: &Arena<Type>,
     id: TypeId,
     limit: usize,
-    variants: &mut Vec<TypeId>,
+    variants: &mut IndexSet<TypeId>,
 ) -> bool {
     match &arena[id] {
         Type::Union(union) => union
             .types
             .iter()
             .all(|&id| union_variants(arena, id, limit, variants)),
+        // A member that's there more than once is only written once
+        _ if variants.contains(&id) => true,
         _ if variants.len() < limit => {
-            variants.push(id);
+            variants.insert(id);
             true
         }
         _ => false,
@@ -424,9 +426,19 @@ mod tests {
             "(Int | Bytes | ..., ...)"
         );
 
+        // A member that's in a union more than once doesn't count as left out
+        let repeated = arena.alloc(Type::Union(Union::new(vec![union, union, int])));
+        assert_eq!(stringify_bounded(&mut arena, repeated, 7), full);
+
+        let same = arena.alloc(Type::Union(Union::new(vec![int; 100])));
+        assert_eq!(stringify_bounded(&mut arena, same, 3), "Int");
+
         // A union with far more members than there's budget for isn't walked to the end
-        let wide = arena.alloc(Type::Union(Union::new(vec![union; 100_000])));
-        assert_eq!(stringify_bounded(&mut arena, wide, 3), "Int | Bytes | ...");
+        let many = (0..100_000)
+            .map(|_| arena.alloc(Type::Atom(Atom::INT)))
+            .collect::<Vec<_>>();
+        let wide = arena.alloc(Type::Union(Union::new(many)));
+        assert_eq!(stringify_bounded(&mut arena, wide, 3), "Int | ...");
 
         // Each pair is made of the one before it twice, so the type is over a million times as
         // long written out as it is in memory

@@ -243,6 +243,23 @@ fn test_signature_of_recursive_generic_call() {
 }
 
 #[test]
+fn test_signature_of_generic_inferred_as_generic_with_the_same_name() {
+    // The caller's generic is another one, but saying that `T` is `T` says nothing
+    check(
+        "fn id<T>(value: T) -> T {\n    value\n}\n\nfn other<T>(value: T) -> T {\n    id($0value)\n}\n",
+        expect![[r#"
+            > fn id<T>([value: T]) -> T
+        "#]],
+    );
+    check(
+        "fn id<T>(value: T) -> T {\n    value\n}\n\nfn other<U>(value: U) -> U {\n    id($0value)\n}\n",
+        expect![[r#"
+            > fn id<T = U>([value: T]) -> T
+        "#]],
+    );
+}
+
+#[test]
 fn test_signature_of_ambiguous_call() {
     // The call is rejected, since it could be to either function, so neither is shown
     check(
