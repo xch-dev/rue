@@ -206,3 +206,33 @@ test fn both_members_match() -> Int {
     let result: 5 = first_of(value);
     result + 0
 }
+
+fn as_function<T>(value: T | (T, T)) -> fn(x: T) -> nil {
+    unchecked_cast(value)
+}
+
+// `T` occurs in a parameter of the function type that's returned, so `T ≥ (5, 5)` is kept, and
+// `T` is wide enough for the result to take a `(5, 5)`. Leaving it out would make `T` `5`
+test fn returns_function_of_both() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _call: fn(x: (5, 5)) -> nil = as_function(value);
+    1
+}
+
+fn apply_to_member<T>(value: T | (T, T), f: fn(x: T) -> Int) -> Int {
+    f(unchecked_cast(value))
+}
+
+// `T` occurs in the parameter of `f`, so the lambda's `x` keeps the `(5, 5)` that the `T` member
+// gives, and checking it for a pair isn't redundant
+test fn lambda_takes_both() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_to_member(
+        value,
+        fn(x) => if x is (Int, Int) {
+            x.first
+        } else {
+            x
+        },
+    )
+}

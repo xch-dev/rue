@@ -10,12 +10,12 @@ pub use bounds::*;
 pub use resolve::*;
 pub use solve::*;
 
-use std::mem;
+use std::{collections::HashSet, mem};
 
 use id_arena::Arena;
 use indexmap::IndexMap;
 
-use crate::{BuiltinTypes, Comparison, FxHashMap, Type, TypeId, compare};
+use crate::{BuiltinTypes, Comparison, FxHashMap, Type, TypeId, compare, substitute};
 
 /// The constraints collected for a generic type parameter during inference.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -59,6 +59,10 @@ pub struct Inference {
     policy: InstancePolicy,
     /// The vars added along with the generics (see `Inference::add_var`).
     added: Vec<TypeId>,
+    /// The generics that occur in a parameter of a function type in the signature of the
+    /// function being called, whose candidates are never left out (see
+    /// `Inference::keep_wide_in`).
+    wide: Vec<TypeId>,
 }
 
 /// How the vars for passed generic functions' instances are resolved (see
@@ -168,6 +172,7 @@ impl Inference {
             instances: Vec::new(),
             policy: InstancePolicy::Eager,
             added: Vec::new(),
+            wide: Vec::new(),
         }
     }
 
@@ -182,6 +187,48 @@ impl Inference {
             && self.instances == other.instances
             && self.policy == other.policy
             && self.added == other.added
+            && self.wide == other.wide
+    }
+
+    /// Keeps every candidate of the generics being inferred that occur in a parameter of a
+    /// function type in `ty`, a parameter or the return type of the function being called (see
+    /// `Inference::implied_members`). Values flow out of the function type into such a
+    /// parameter, so a narrower generic could reject what the wider one accepts: with
+    /// `fn mk<T>(v: T | (T, T)) -> fn(x: T) -> nil`, `mk(value)` for a `5 | (5, 5)` is only a
+    /// `fn(x: (5, 5)) -> nil` if `T` keeps `(5, 5)`.
+    pub fn keep_wide_in(&mut self, arena: &mut Arena<Type>, ty: TypeId) {
+        let ty = substitute(arena, ty);
+        let mut visited = HashSet::new();
+        let mut stack = vec![(ty, false)];
+
+        while let Some((id, in_params)) = stack.pop() {
+            if !visited.insert((id, in_params)) {
+                continue;
+            }
+
+            if in_params && self.generics.contains_key(&id) && !self.wide.contains(&id) {
+                self.wide.push(id);
+            }
+
+            match &arena[id] {
+                Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
+                Type::Ref(inner) => stack.push((*inner, in_params)),
+                Type::Pair(pair) => stack.extend([(pair.first, in_params), (pair.rest, in_params)]),
+                Type::Alias(alias) => stack.push((alias.inner, in_params)),
+                Type::Struct(ty) => stack.push((ty.inner, in_params)),
+                // What an application's generics stand for isn't known here, so they count as
+                // being in a parameter
+                Type::Apply(apply) => {
+                    stack.push((apply.inner, true));
+                    stack.extend(apply.generics.values().map(|&ty| (ty, true)));
+                }
+                Type::Function(function) => {
+                    stack.push((function.ret, in_params));
+                    stack.extend(function.param_types().map(|ty| (ty, true)));
+                }
+                Type::Union(union) => stack.extend(union.types.iter().map(|&ty| (ty, in_params))),
+            }
+        }
     }
 
     /// Records that a generic being inferred was renamed from another generic. They're compared as
@@ -410,7 +457,8 @@ impl Inference {
                 let outside: Vec<(TypeId, CandidateKind)> = candidates
                     .iter()
                     .filter(|&&(generic, kind, _, branches)| {
-                        holds((generic, kind), branches, &left_out)
+                        !self.wide.contains(&generic)
+                            && holds((generic, kind), branches, &left_out)
                             && !branches
                                 .iter()
                                 .any(|&branch| self.choices.is_in(branch, choice))
