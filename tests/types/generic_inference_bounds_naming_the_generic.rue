@@ -163,6 +163,19 @@ test fn untyped_parameter_of_a_union_with_the_generic_returned() -> nil {
     check(nil)
 }
 
+fn g5<A>(function: fn(a: Maybe<A>) -> A) -> A {
+    function(nil)
+}
+
+// Guard: where the lambda gives `A` a lower bound, `A ≤ A | nil` is kept, as on main, where it keeps
+// `6` from being widened to `Int`, which can't be shown to satisfy it. It's only left out where
+// nothing else gives `A` a type (see the errors file)
+test fn literal_from_a_lambda_with_a_union_parameter_with_the_generic() -> 6 {
+    let value = g5(fn(x) => 6);
+    let check: 6 = value;
+    check
+}
+
 // An untyped lambda parameter compiled as `Maybe<A>` gives `A ≤ A | nil`, which says nothing, so
 // `A` is inferred from the other arguments, or written out (infer-fuzz generator 3, seed 6717)
 test fn untyped_parameter_of_a_union_with_the_generic() -> (Int, Int) {

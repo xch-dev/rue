@@ -155,10 +155,17 @@ impl InferenceResolver<'_> {
         let mut bounded_by_component = Vec::new();
 
         for &generic in &component {
+            let lower = self.expand(arena, &component, generic, CandidateKind::Lower, false);
             let candidates = InferenceCandidates {
-                lower: self.expand(arena, &component, generic, CandidateKind::Lower),
-                upper: self.expand(arena, &component, generic, CandidateKind::Upper),
-                held: self.expand(arena, &component, generic, CandidateKind::Held),
+                upper: self.expand(
+                    arena,
+                    &component,
+                    generic,
+                    CandidateKind::Upper,
+                    lower.is_empty(),
+                ),
+                held: self.expand(arena, &component, generic, CandidateKind::Held, false),
+                lower,
             };
 
             if candidates == InferenceCandidates::default()
@@ -301,12 +308,19 @@ impl InferenceResolver<'_> {
     /// inferred as, though nothing gives it a type (infer-fuzz generator 3, seed 6717). The same
     /// goes for one with another generic of the component as a member, which the cycle lets be the
     /// generic: `T ≤ V` with `V ≤ T | nil` says nothing about either.
+    ///
+    /// The upper ones are only left out (`drop_upper_unions`) where the generic has no lower
+    /// candidates, since that's where they'd be what it's inferred as. Where it has some, it's
+    /// inferred from them, and the upper ones are kept as they are, where they keep a literal from
+    /// being widened, as `6` in `g5(fn(x) => 6)` with `fn g5<A>(f: fn(a: Maybe<A>) -> A) -> A`, which
+    /// `Int` can't be shown to satisfy `A ≤ A | nil` for, as before #362's 13k5.
     fn expand(
         &self,
         arena: &mut Arena<Type>,
         component: &IndexSet<TypeId>,
         generic: TypeId,
         kind: CandidateKind,
+        drop_upper_unions: bool,
     ) -> Vec<TypeId> {
         let mut visited = HashSet::from([generic]);
         let mut stack = vec![generic];
@@ -325,7 +339,7 @@ impl InferenceResolver<'_> {
             while let Some(ty) = candidates.pop() {
                 // A union with a generic of the component as a member is split if it's a lower
                 // candidate, and says nothing if it's an upper one
-                if kind != CandidateKind::Held
+                if (kind == CandidateKind::Lower || drop_upper_unions)
                     && has_union_member(arena, ty, |member| component.contains(&member))
                 {
                     if kind == CandidateKind::Lower {

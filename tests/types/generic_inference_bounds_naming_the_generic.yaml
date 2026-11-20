@@ -55,6 +55,13 @@ tests:
   runtime_cost: 1307
   byte_cost: 1020000
   total_cost: 1021307
+- name: literal_from_a_lambda_with_a_union_parameter_with_the_generic
+  program: (a (q 1 . 6) (q ()))
+  debug_program: (a (q 2 (q 2 (q . 2) (c 2 1)) (c (a 2 (c (q . 2) (c (c (q . 1) (q 1 . 6)) (c (q . 1) ())))) 1)) (c (q 2 1 (c () ())) ()))
+  output: "6"
+  runtime_cost: 151
+  byte_cost: 180000
+  total_cost: 180151
 - name: untyped_parameter_of_a_union_with_the_generic
   program: (a (q 2 (q 4 (a 4 (q 1)) (a 6 (q 2))) (c (c (a 2 (c (q 1 . 9) (q . 5))) (a 2 (c (q 1 . 9) (q . 5)))) 1)) (c (q 1 . 2) ()))
   debug_program: (a (q 2 (q 2 (q 4 (a (f 2) (c (q . 1) ())) (a (r 2) (c (q . 2) ()))) (c (c 4 6) 1)) (c (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 9)) (c (q . 1) ()))) (q . 5))) (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 9)) (c (q . 1) ()))) (q . 5)))) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))
@@ -62,3 +69,5 @@ tests:
   runtime_cost: 1456
   byte_cost: 1212000
   total_cost: 1213456
+diagnostics:
+- Binding `check` is returned directly after it's declared at generic_inference_bounds_naming_the_generic.rue:175:5
