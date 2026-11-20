@@ -1,51 +1,21 @@
 // A JSON parser and serializer.
 //
-// Each kind of JSON value is a struct with a constant `kind` field, so a `Json` value can be
-// narrowed with `is` or `match`. CLVM only has integers, so numbers with fractions or exponents
-// are rejected.
+// Each kind of JSON value is a variant of the `Json` enum, so a `Json` value can be narrowed with
+// `is` or `match`. CLVM only has integers, so numbers with fractions or exponents are rejected.
 
-inline const NULL: 1 = 1;
-inline const BOOL: 2 = 2;
-inline const NUMBER: 3 = 3;
-inline const STRING: 4 = 4;
-inline const ARRAY: 5 = 5;
-inline const OBJECT: 6 = 6;
-
-struct JsonNull {
-    kind = NULL,
-}
-
-struct JsonBool {
-    kind = BOOL,
-    value: Bool,
-}
-
-struct JsonNumber {
-    kind = NUMBER,
-    value: Int,
-}
-
-struct JsonString {
-    kind = STRING,
-    value: String,
-}
-
-struct JsonArray {
-    kind = ARRAY,
-    items: List<Json>,
-}
-
-struct JsonObject {
-    kind = OBJECT,
-    members: List<Member>,
+enum Json {
+    Null,
+    Bool { value: Bool },
+    Number { value: Int },
+    String { value: String },
+    Array { items: List<Json> },
+    Object { members: List<Member> },
 }
 
 struct Member {
     key: String,
     value: Json,
 }
-
-type Json = JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject;
 
 fn main(input: String) -> String {
     stringify(parse(input))
@@ -74,25 +44,25 @@ fn parse_value(input: String) -> (Json, String) {
 
     if char == "{" {
         let (members, rest) = parse_object(rest);
-        (JsonObject { members }, rest)
+        (Json::Object { members }, rest)
     } else if char == "[" {
         let (items, rest) = parse_array(rest);
-        (JsonArray { items }, rest)
+        (Json::Array { items }, rest)
     } else if char == '"' {
         let (value, rest) = parse_string(rest, "");
-        (JsonString { value }, rest)
+        (Json::String { value }, rest)
     } else if char == "-" {
         let (value, rest) = parse_natural(rest);
-        (JsonNumber { value: -value }, rest)
+        (Json::Number { value: -value }, rest)
     } else if is_digit(input) {
         let (value, rest) = parse_natural(input);
-        (JsonNumber { value }, rest)
+        (Json::Number { value }, rest)
     } else if starts_with(input, "true") {
-        (JsonBool { value: true }, substr(input, 4))
+        (Json::Bool { value: true }, substr(input, 4))
     } else if starts_with(input, "false") {
-        (JsonBool { value: false }, substr(input, 5))
+        (Json::Bool { value: false }, substr(input, 5))
     } else if starts_with(input, "null") {
-        (JsonNull {}, substr(input, 4))
+        (Json::Null, substr(input, 4))
     } else {
         raise "unexpected character";
     }
@@ -344,16 +314,16 @@ fn starts_with(input: String, prefix: String) -> Bool {
 // Serializes a value as compact JSON, with no whitespace between tokens.
 fn stringify(json: Json) -> String {
     match json {
-        JsonNull => "null",
-        JsonBool => if json.value {
+        Json::Null => "null",
+        Json::Bool => if json.value {
             "true"
         } else {
             "false"
         }
-        JsonNumber => integer_to_string(json.value),
-        JsonString => '"' + escape(json.value) + '"',
-        JsonArray => "[" + stringify_items(json.items) + "]",
-        JsonObject => "{" + stringify_members(json.members) + "}",
+        Json::Number => integer_to_string(json.value),
+        Json::String => '"' + escape(json.value) + '"',
+        Json::Array => "[" + stringify_items(json.items) + "]",
+        Json::Object => "{" + stringify_members(json.members) + "}",
     }
 }
 
@@ -430,7 +400,7 @@ fn integer_to_string(num: Int) -> String {
 
 // Looks up the value of a key in an object, or returns nil if it's missing.
 fn get(json: Json | nil, key: String) -> Json | nil {
-    if json is JsonObject {
+    if json is Json::Object {
         find(json.members, key)
     } else {
         nil
@@ -448,8 +418,8 @@ fn find(members: List<Member>, key: String) -> Json | nil {
 }
 
 test fn literals() {
-    assert parse("null") is JsonNull;
-    assert parse(" true ") is JsonBool;
+    assert parse("null") is Json::Null;
+    assert parse(" true ") is Json::Bool;
     assert stringify(parse("true")) == "true";
     assert stringify(parse("false")) == "false";
     assert stringify(parse("[]")) == "[]";
@@ -458,7 +428,7 @@ test fn literals() {
 
 test fn numbers() {
     let number = parse("-1234");
-    assert number is JsonNumber && number.value == -1234;
+    assert number is Json::Number && number.value == -1234;
 
     assert stringify(parse("0")) == "0";
     assert stringify(parse("-0")) == "0";
@@ -467,16 +437,16 @@ test fn numbers() {
 
 test fn strings() {
     let string = parse('"hello, world"');
-    assert string is JsonString && string.value == "hello, world";
+    assert string is Json::String && string.value == "hello, world";
 
     let string = parse('"tab\\there\\nquote\\"backslash\\\\slash\\/"');
-    assert string is JsonString;
+    assert string is Json::String;
     assert string.value == 'tab\there\nquote"backslash\\slash/';
 }
 
 test fn unicode() {
     let string = parse('"café € 😀"');
-    assert string is JsonString;
+    assert string is Json::String;
     assert string.value == "caf"
         + 0xc3a9 as String
         + " "
@@ -506,18 +476,18 @@ test fn nested() {
     let value = parse(source);
 
     let name = get(value, "name");
-    assert name is JsonString && name.value == "Rue";
+    assert name is Json::String && name.value == "Rue";
 
     let version = get(value, "version");
-    assert version is JsonNumber && version.value == 1;
+    assert version is Json::Number && version.value == 1;
 
     let tags = get(value, "tags");
-    assert tags is JsonArray && tags.items is (Json, List<Json>);
+    assert tags is Json::Array && tags.items is (Json, List<Json>);
 
     let first_tag = tags.items.first;
-    assert first_tag is JsonString && first_tag.value == "clvm";
+    assert first_tag is Json::String && first_tag.value == "clvm";
 
-    assert get(get(value, "nested"), "missing") is JsonNull;
+    assert get(get(value, "nested"), "missing") is Json::Null;
     assert get(value, "unknown") is nil;
 
     assert stringify(
