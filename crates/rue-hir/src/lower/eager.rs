@@ -8,7 +8,7 @@
 //! - It doesn't rely on the left operand. The left operand of `x is Int && x > 5` narrows the
 //!   type that the right one is checked with, so the right one fails on its own for an `x` that
 //!   isn't an atom. The compiler records the expressions whose left operand narrows nothing
-//!   (see [`Database::has_independent_operands`](crate::Database)). The checks that a type guard
+//!   but values that were already atoms (see [`Database::has_independent_operands`](crate::Database)). The checks that a type guard
 //!   is lowered to are never recorded, since each relies on the ones before it.
 //! - It can't fail (see [`may_fail`]), so evaluating it doesn't add a failure.
 //! - It only reads what the left operand already read (see [`Lowerer::reads_are_evaluated`]).
@@ -25,9 +25,11 @@
 
 use std::collections::HashSet;
 
+use rue_types::Check;
+
 use crate::{
     BinaryOp, FieldAccess, FieldKind, Hir, HirId, Symbol, SymbolId, TypePath, UnaryOp,
-    analysis::may_fail,
+    analysis::may_fail, check_value_uses,
 };
 
 use super::Lowerer;
@@ -44,13 +46,14 @@ impl Lowerer<'_, '_, '_> {
     /// left operand decides the result (see the [module docs](self)). This is only done when the
     /// LIR is optimized, so that debug builds evaluate what's written.
     pub(super) fn is_eager_operand(&self, hir: HirId, left: HirId, right: HirId) -> bool {
+        let mut budget = MAX_EAGER_OPERAND_SIZE;
+
         self.options.optimize_lir
             && self.db.has_independent_operands(hir)
-            && self.is_cheap(
-                right,
-                &mut MAX_EAGER_OPERAND_SIZE.clone(),
-                &mut HashSet::new(),
-            )
+            // A left operand that's known decides the result while it's compiled, which only
+            // leaves the right operand out if it isn't evaluated either way
+            && !self.is_static_hir(left)
+            && self.is_cheap(right, &mut budget, &mut HashSet::new())
             && !may_fail(self, right)
             && self.reads_are_evaluated(left, right)
     }
@@ -120,7 +123,7 @@ impl Lowerer<'_, '_, '_> {
     }
 
     fn evaluated_reads_inner(&self, hir: HirId, reads: &mut Vec<(SymbolId, Vec<TypePath>)>) {
-        if let Some(read) = self.read(hir) {
+        if let Some(read) = self.path_read(hir) {
             reads.push(read);
             return;
         }
@@ -143,12 +146,17 @@ impl Lowerer<'_, '_, '_> {
                     self.evaluated_reads(result, reads);
                 }
             }
+            // A check that doesn't use the value doesn't read it
+            Hir::Guard(guard) => {
+                if guard.value_uses() > 0 {
+                    self.evaluated_reads(guard.value, reads);
+                }
+            }
             Hir::Cast(_)
             | Hir::Unary(..)
             | Hir::Binary(..)
             | Hir::ClvmOp(..)
             | Hir::FieldAccess(_)
-            | Hir::Guard(_)
             | Hir::List(_)
             | Hir::Struct(_)
             | Hir::Pair(..)
@@ -185,14 +193,15 @@ impl Lowerer<'_, '_, '_> {
 
     /// Collects everything the value can read from the environment, whether or not it's always
     /// evaluated, and returns whether all of it could be followed. The value is cheap (see
-    /// [`Self::is_cheap`]), so there are no calls or blocks in it.
+    /// [`Self::is_cheap`]), so there are no calls, lambdas or statements in it, but anything that
+    /// can't be followed is refused here too.
     fn reads(&self, hir: HirId, reads: &mut Vec<(SymbolId, Vec<TypePath>)>) -> bool {
         // This follows the values that are substituted, which can go as deep as a chain of them
         rue_types::grow_stack(|| self.reads_inner(hir, reads))
     }
 
     fn reads_inner(&self, hir: HirId, reads: &mut Vec<(SymbolId, Vec<TypePath>)>) -> bool {
-        if let Some(read) = self.read(hir) {
+        if let Some(read) = self.path_read(hir) {
             reads.push(read);
             return true;
         }
@@ -200,10 +209,26 @@ impl Lowerer<'_, '_, '_> {
         let node = self.db.hir(hir);
 
         match node {
+            Hir::Nil
+            | Hir::String(_)
+            | Hir::Int(_)
+            | Hir::Bytes(_)
+            | Hir::Bool(_)
+            | Hir::InfinityG1
+            | Hir::InfinityG2 => true,
             Hir::Reference(symbol) => self
                 .substituted_value(*symbol)
                 .is_some_and(|value| self.reads(value, reads)),
             Hir::Const(expr) => expr.result.is_some_and(|result| self.reads(result, reads)),
+            // A check of the parts of a pair reads them without checking that the value is a
+            // pair first, when its type already says so, so it reads more than the value. A
+            // check that doesn't use the value doesn't read it.
+            Hir::Guard(guard) => {
+                let check = guard.runtime_check();
+
+                check_value_uses(&check) == 0
+                    || (!checks_fields(&check) && self.reads(guard.value, reads))
+            }
             // A field of a value that isn't read from the environment, such as of a struct
             // that's built in place, isn't followed
             Hir::FieldAccess(FieldAccess {
@@ -211,39 +236,30 @@ impl Lowerer<'_, '_, '_> {
                 ..
             })
             | Hir::Unary(UnaryOp::First | UnaryOp::Rest, _) => false,
-            _ => node.children().all(|child| self.reads(child, reads)),
-        }
-    }
-
-    /// The symbol that the value is read from, and the path to the field of it that's read, if
-    /// the value is a path into the environment: a symbol that isn't substituted, or fields of
-    /// one, through any casts and the values that are substituted. A type guard reads its value
-    /// before it checks anything inside of it.
-    fn read(&self, hir: HirId) -> Option<(SymbolId, Vec<TypePath>)> {
-        match self.db.hir(hir) {
-            Hir::Cast(value) => self.read(*value),
-            Hir::Guard(guard) => self.read(guard.value),
-            Hir::FieldAccess(FieldAccess {
-                value,
-                kind: FieldKind::Path(steps),
-                ..
-            }) => {
-                let (symbol, mut path) = self.read(*value)?;
-                path.extend(steps.iter().copied());
-                Some((symbol, path))
-            }
-            Hir::Reference(symbol) => {
-                if let Some(value) = self.substituted_value(*symbol) {
-                    return self.read(value);
-                }
-
-                matches!(
-                    self.db.symbol(*symbol),
-                    Symbol::Parameter(_) | Symbol::Binding(_) | Symbol::Constant(_)
-                )
-                .then(|| (*symbol, Vec::new()))
-            }
-            _ => None,
+            Hir::Block(block) if !block.statements.is_empty() => false,
+            Hir::Block(_)
+            | Hir::Cast(_)
+            | Hir::Unary(..)
+            | Hir::Binary(..)
+            | Hir::ClvmOp(..)
+            | Hir::FieldAccess(_)
+            | Hir::List(_)
+            | Hir::Struct(_)
+            | Hir::Pair(..)
+            | Hir::If(..) => node.children().all(|child| self.reads(child, reads)),
+            Hir::Unresolved
+            | Hir::Lambda(_)
+            | Hir::FunctionCall(_)
+            | Hir::CoinId(..)
+            | Hir::Substr(..)
+            | Hir::Modpow(..)
+            | Hir::G1Map(..)
+            | Hir::G2Map(..)
+            | Hir::BlsPairingIdentity(_)
+            | Hir::BlsVerify(..)
+            | Hir::Secp256K1Verify(..)
+            | Hir::Secp256R1Verify(..)
+            | Hir::Keccak256Verify(..) => false,
         }
     }
 
@@ -334,5 +350,18 @@ impl Lowerer<'_, '_, '_> {
             | Hir::Secp256R1Verify(..)
             | Hir::Keccak256Verify(..) => false,
         }
+    }
+}
+
+/// Whether the check looks at the parts of a pair.
+fn checks_fields(check: &Check) -> bool {
+    match check {
+        Check::Pair(..) => true,
+        Check::And(checks) | Check::Or(checks) => checks.iter().any(checks_fields),
+        Check::None
+        | Check::Impossible
+        | Check::IsAtom { .. }
+        | Check::IsPair { .. }
+        | Check::Atom(_) => false,
     }
 }

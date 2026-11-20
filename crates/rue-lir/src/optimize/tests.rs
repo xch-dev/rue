@@ -85,8 +85,6 @@ fn check(arena: &mut Arena<Lir>, lir: LirId, envs: &[&str], expect: Expect) {
 
 const ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "((1 . 2))", "(5 7)"];
 
-// Some rewrites assume that values match their static types, so these only contain
-// environments where the first argument is an atom or a list respectively
 // Environments with three arguments that are atoms, for the rewrites that assume the operands of
 // `=` are
 const THREE_ATOM_ENVS: &[&str] = &[
@@ -98,6 +96,8 @@ const THREE_ATOM_ENVS: &[&str] = &[
     "(0x00 () 3)",
 ];
 
+// Some rewrites assume that values match their static types, so these only contain
+// environments where the first argument is an atom or a list respectively
 const ATOM_ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "(5 7)"];
 
 #[test]
@@ -254,7 +254,12 @@ fn test_nil_check_keeps_other_checks() {
     // With the operands of `=` the other way around too
     let eq = arena.alloc(Lir::Eq(nil, x));
     let lir = arena.alloc(Lir::If(listp, nil, eq, true));
-    check(&mut arena, lir, ENVS, expect!["(i (l 2) () (= () 2))"]);
+    check(
+        &mut arena,
+        lir,
+        ATOM_ENVS,
+        expect!["(all (not (l 2)) (not 2))"],
+    );
 
     // A different value is checked
     let y = path(&mut arena, 5);
@@ -360,16 +365,15 @@ fn test_inline_if_of_a_bool_is_all_or_any() {
     );
 
     // A branch that fails is still evaluated when the condition decides the result
-    let fails = arena.alloc(Lir::Eq(a, a));
     let raises = raise(&mut arena);
-    let fails = arena.alloc(Lir::If(fails, nil, raises, false));
+    let fails = arena.alloc(Lir::If(a, raises, nil, false));
     let fails = arena.alloc(Lir::Eq(fails, nil));
     let lir = arena.alloc(Lir::If(a, one, fails, true));
     check(
         &mut arena,
         lir,
         ATOM_ENVS,
-        expect!["(any 2 (not (a (i (= 2 2) () (q 8)) 1)))"],
+        expect!["(any 2 (not (a (i 2 (q 8) ()) 1)))"],
     );
 
     // An `if` that isn't inline only evaluates the branch that's taken
@@ -381,6 +385,18 @@ fn test_inline_if_of_a_bool_is_all_or_any() {
         expect!["(a (i 2 (q 1 . 1) (q 9 5 ())) 1)"],
     );
 }
+
+// Environments where the first argument is false and the first of the second or third decides
+const BRANCH_ENVS: &[&str] = &[
+    "(() (1))",
+    "(() (()))",
+    "(5 (1))",
+    "(() (()) (1))",
+    "(() (()) (()))",
+    "()",
+    "(5)",
+    "(() 7)",
+];
 
 #[test]
 fn test_if_branches_directly() {
@@ -398,7 +414,7 @@ fn test_if_branches_directly() {
     check(
         &mut arena,
         lir,
-        ENVS,
+        BRANCH_ENVS,
         expect!["(a (i 2 () (q 3 9 () (q . 2))) 1)"],
     );
 
@@ -410,7 +426,7 @@ fn test_if_branches_directly() {
     check(
         &mut arena,
         lir,
-        ENVS,
+        BRANCH_ENVS,
         expect!["(a (i 2 () (q 2 (i 9 () (q 3 19 () (q . 2))) 1)) 1)"],
     );
 
@@ -420,7 +436,7 @@ fn test_if_branches_directly() {
     check(
         &mut arena,
         lir,
-        ENVS,
+        BRANCH_ENVS,
         expect!["(a (i 2 (q 3 9 (q . 2) ()) ()) 1)"],
     );
 
@@ -430,14 +446,14 @@ fn test_if_branches_directly() {
     check(
         &mut arena,
         lir,
-        ENVS,
+        BRANCH_ENVS,
         expect!["(a (i (a (i 2 (q 1 . 1) (q . 9)) 1) (q 16 2 5) (q 1 . 2)) 1)"],
     );
     let lir = arena.alloc(Lir::If(both, two, one, false));
     check(
         &mut arena,
         lir,
-        ENVS,
+        BRANCH_ENVS,
         expect!["(i (a (i 2 (q . 9) ()) 1) (q . 2) (q . 1))"],
     );
 }

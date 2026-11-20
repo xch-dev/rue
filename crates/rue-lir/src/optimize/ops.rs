@@ -645,8 +645,14 @@ pub fn opt_if(
             // An inline `if` evaluates both branches, so one that picks between a bool and a
             // constant is `any` or `all` of the condition and the bool, which is what `a || b`
             // and `a && b` are when `b` is evaluated either way
-            if inline && let Some(logic) = eager_logic(arena, replacement, then, otherwise) {
-                return logic;
+            if inline {
+                if let Some(check) = nil_check(arena, replacement, then, otherwise, inline) {
+                    return check;
+                }
+
+                if let Some(logic) = eager_logic(arena, replacement, then, otherwise) {
+                    return logic;
+                }
             }
 
             let (condition, then, otherwise) =
@@ -663,6 +669,33 @@ pub fn opt_if(
             alloc_if(arena, condition, then, otherwise, inline)
         }
     }
+}
+
+/// `(not x)` for `(i (l x) () (not x))`, or for the same with `(= x ())` if the `if` isn't inline
+/// (see [`alloc_if`]).
+fn nil_check(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+    inline: bool,
+) -> Option<LirId> {
+    let Lir::Listp(value) = arena[condition] else {
+        return None;
+    };
+
+    if !is_nil(arena, then) {
+        return None;
+    }
+
+    let checked = match arena[otherwise] {
+        Lir::Not(checked) => checked,
+        Lir::Eq(left, right) if !inline && is_nil(arena, right) => left,
+        Lir::Eq(left, right) if !inline && is_nil(arena, left) => right,
+        _ => return None,
+    };
+
+    same_value(arena, value, checked).then(|| arena.alloc(Lir::Not(value)))
 }
 
 /// `(i c 1 b)` is `(any c b)` and `(i c b ())` is `(all c b)` if `b` is always `()` or `1`, since
@@ -772,19 +805,8 @@ pub fn alloc_if(
     otherwise: LirId,
     inline: bool,
 ) -> LirId {
-    if let Lir::Listp(value) = arena[condition]
-        && is_nil(arena, then)
-    {
-        let checked = match arena[otherwise] {
-            Lir::Not(checked) => Some(checked),
-            Lir::Eq(left, right) if !inline && is_nil(arena, right) => Some(left),
-            Lir::Eq(left, right) if !inline && is_nil(arena, left) => Some(right),
-            _ => None,
-        };
-
-        if checked.is_some_and(|checked| same_value(arena, value, checked)) {
-            return arena.alloc(Lir::Not(value));
-        }
+    if let Some(check) = nil_check(arena, condition, then, otherwise, inline) {
+        return check;
     }
 
     let inline =

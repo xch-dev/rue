@@ -124,14 +124,15 @@ test fn call_is_only_made_when_needed(item: Int, items: List<Int>) -> Bool {
 }
 
 // The operators trust that a `Bool` is `true` or `false`, so a right operand that isn't known to
-// be one of them is the result as it is, as it was when it was only evaluated when needed
+// be one of them is the result as it is, as it was when it was only evaluated when needed. It's
+// evaluated either way here, since `a` comes before `b`.
 test fn right_operand_outside_of_its_type(a: Bool, b: Bool) -> Bool {
-    a || b
+    b || a
 }
 
 test fn right_operand_outside_of_its_type_compared(a: Bool, b: Bool) -> Bool {
-    let both = a && b;
-    both == b
+    let both = b && a;
+    both == a
 }
 
 inline fn either(a: Bool, b: Bool) -> Bool {
@@ -145,7 +146,7 @@ test fn inline_argument_that_may_fail(flag: Bool, value: Int) -> Bool {
 }
 
 test fn inline_argument_that_cannot_fail(flag: Bool, value: Int) -> Bool {
-    either(flag, value > 0)
+    either(value > 5, value > 0)
 }
 
 // A binding that may fail is evaluated at its let statement, so reading it can't fail
@@ -186,4 +187,107 @@ test fn narrows_to_an_atom(x: Any) -> Bool {
 
 test fn narrows_to_an_atom_that_is_compared(x: Any) -> Bool {
     !(x is Int) || x > 5
+}
+
+struct First {
+    tag: 1,
+    value: Int,
+}
+
+struct Second {
+    tag: 2,
+    value: Int,
+}
+
+// A type guard between two pairs reads their fields without checking that the value is a pair,
+// since its type says so, so it's only evaluated when it's needed, and the value can be left out
+test fn guard_that_reads_fields(x: First | Second, flag: Bool) -> Int {
+    if flag || x is First {
+        10
+    } else {
+        20
+    }
+}
+
+fn is_first(x: First | Second, flag: Bool) -> Bool {
+    flag || x is First
+}
+
+test fn guard_that_reads_fields_in_a_function(
+    flag: Bool,
+    x: First | Second,
+    y: First | Second,
+) -> Int {
+    if is_first(x, flag) && is_first(y, flag) {
+        10
+    } else {
+        20
+    }
+}
+
+const ENABLED: Bool = true;
+
+fn is_enabled_or_one(a: Int) -> Bool {
+    ENABLED || a == 1
+}
+
+// A left operand that's known decides the result while it's compiled
+test fn constant_left_operand(a: Int, b: Int) -> Bool {
+    is_enabled_or_one(a) && is_enabled_or_one(b)
+}
+
+struct Two {
+    value: Bytes32,
+    other: Bytes32,
+}
+
+// A field next to the one the left operand read might not be there
+test fn field_next_to_one_that_was_read(a: Bytes32, two: Two) -> Bool {
+    two.value == a || two.other == a
+}
+
+// What the right operand of the left operand read might not have been read
+test fn read_by_an_operand_that_was_skipped(a: Int, b: Int, c: Int, d: Int) -> Bool {
+    (a == b || a == d) || c == d
+}
+
+// Nor what a branch of the left operand read
+test fn read_by_a_branch_that_was_not_taken(a: Int, b: Int) -> Bool {
+    (
+        if a > 0 {
+            true
+        } else {
+            b > 0
+        }
+    )
+        || b > 5
+}
+
+fn either_matches(a: Int, b: Int, c: Int) -> Bool {
+    a == b || a == c
+}
+
+// The parameters of a function that's used as a value come from whoever calls it
+test fn function_used_as_a_value(a: Int, flag: Bool) -> Bool {
+    let f: fn(a: Int, b: Int, c: Int) -> Bool = if flag {
+        either_matches
+    } else {
+        fn(a: Int, b: Int, c: Int) => a == c || a == b
+    };
+    f(a, a, a)
+}
+
+// An operand that's small is evaluated either way, and one that isn't is only evaluated when
+// it's needed
+test fn small_operand(a: Int) -> Bool {
+    a > 0 || a + a + a > 5
+}
+
+test fn large_operand(a: Int) -> Bool {
+    a > 0 || a + a + a + a + a + a + a + a + a + a + a + a + a + a > 5
+}
+
+// This operator costs as much to run as a hundred bytes do
+test fn expensive_operand(secret_key: Int, public_key: PublicKey) -> Bool {
+    public_key == pubkey_for_exp(secret_key) || pubkey_for_exp(secret_key) == public_key
 }
