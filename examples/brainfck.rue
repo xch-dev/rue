@@ -135,11 +135,7 @@ inline fn output(state: State) -> State {
 inline fn input(state: State) -> State {
     inline let { tape, input, output } = state;
 
-    State {
-        tape: Tape { ...tape, value: input[0] as Int },
-        input: input[1..],
-        output,
-    }
+    State { tape: Tape { ...tape, value: input[0] as Int }, input: input[1..], output }
 }
 
 inline fn run(source: String, input: String) -> String {
