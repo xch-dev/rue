@@ -186,7 +186,7 @@ impl InferenceResolver<'_> {
         let mut pending = bounded_by_component;
 
         while !pending.is_empty() {
-            let resolved = self.resolve_through_component(arena, builtins, &pending);
+            let resolved = self.resolve_through_component(arena, builtins, &component, &pending);
 
             if !resolved.is_empty() {
                 pending.retain(|generic| !resolved.contains_key(generic));
@@ -206,8 +206,8 @@ impl InferenceResolver<'_> {
             }
 
             // These are the raw candidates, which still have what `expand` leaves out, such as
-            // `A | nil` for `A ≤ A | nil`. A type that names the generic itself isn't a solution
-            // for it, so the generic is left uninferred then
+            // `A | nil` for `A ≤ A | nil`, so the generic is left uninferred if what they give isn't
+            // a solution for it (see `is_solution`)
             for generic in pending.drain(..) {
                 if let Some(ty) = pick_inferred_type(
                     arena,
@@ -215,7 +215,7 @@ impl InferenceResolver<'_> {
                     &self.infer.renamed,
                     self.infer.renamed.get(&generic).copied(),
                     &self.infer.generics[&generic],
-                ) && !free_generics(arena, ty).contains(&generic)
+                ) && is_solution(arena, &component, generic, ty)
                 {
                     self.mappings.insert(generic, ty);
                 }
@@ -230,6 +230,7 @@ impl InferenceResolver<'_> {
         &self,
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
+        component: &IndexSet<TypeId>,
         pending: &[TypeId],
     ) -> HashMap<TypeId, TypeId> {
         // Their candidates are generics in the component, since they're only bounded by it, or what
@@ -250,7 +251,9 @@ impl InferenceResolver<'_> {
                     && let Some(members) = union_members(arena, ty)
                 {
                     types.extend(members.into_iter().rev());
-                } else if let Some(&mapped) = self.mappings.get(&ty) {
+                } else if let Some(&mapped) = self.mappings.get(&ty)
+                    && is_solution(arena, component, generic, mapped)
+                {
                     result.push(mapped);
                 }
             }
@@ -295,7 +298,9 @@ impl InferenceResolver<'_> {
     /// An upper candidate that's a union with the generic as a member says nothing, since
     /// `T ≤ X | T` always holds, so it's left out. That's what an untyped lambda parameter compiled
     /// as `Maybe<A>` gives against `fn(a: Maybe<A>) -> Int`, as `A ≤ A | nil`, which `A` was then
-    /// inferred as, though nothing gives it a type (infer-fuzz generator 3, seed 6717).
+    /// inferred as, though nothing gives it a type (infer-fuzz generator 3, seed 6717). The same
+    /// goes for one with another generic of the component as a member, which the cycle lets be the
+    /// generic: `T ≤ V` with `V ≤ T | nil` says nothing about either.
     fn expand(
         &self,
         arena: &mut Arena<Type>,
@@ -318,20 +323,16 @@ impl InferenceResolver<'_> {
                 .collect();
 
             while let Some(ty) = candidates.pop() {
-                match kind {
-                    CandidateKind::Lower
-                        if has_union_member(arena, ty, |member| component.contains(&member)) =>
-                    {
+                // A union with a generic of the component as a member is split if it's a lower
+                // candidate, and says nothing if it's an upper one
+                if kind != CandidateKind::Held
+                    && has_union_member(arena, ty, |member| component.contains(&member))
+                {
+                    if kind == CandidateKind::Lower {
                         let members = union_members(arena, ty).expect("it has union members");
                         candidates.extend(members.into_iter().rev());
-                        continue;
                     }
-                    CandidateKind::Upper
-                        if has_union_member(arena, ty, |member| member == generic) =>
-                    {
-                        continue;
-                    }
-                    _ => {}
+                    continue;
                 }
 
                 if component.contains(&ty) {
@@ -961,6 +962,26 @@ fn mentioned_vars(arena: &Arena<Type>, id: TypeId, vars: &HashSet<TypeId>) -> Ve
     }
 
     found
+}
+
+/// Whether the type can be what a generic of the component is resolved to: another generic of the
+/// component, which a cycle with nothing else leaves it as (#336), or a type that names none of
+/// them. One that names the generic itself, as `A | nil` does for `A ≤ A | nil`, or another of the
+/// component inside of something else, as `T | nil` does for `V` with `T ≤ V ≤ T | nil`, would
+/// leave a generic of the call in its type (#362, 13k4 and 13k5).
+fn is_solution(
+    arena: &Arena<Type>,
+    component: &IndexSet<TypeId>,
+    generic: TypeId,
+    ty: TypeId,
+) -> bool {
+    if component.contains(&ty) {
+        ty != generic
+    } else {
+        !free_generics(arena, ty)
+            .iter()
+            .any(|other| component.contains(other))
+    }
 }
 
 /// The members of the union that the type is, directly or behind a reference or an alias, with

@@ -154,7 +154,9 @@ test fn generic_function_returning_an_alias_beside_an_untyped_lambda() -> (Int |
 }
 
 // `x` is compiled as `Maybe<A>`, and returning it gives `A ≥ A | nil`, which only says `A ≥ nil`,
-// so `A` is inferred as `nil`, as it is when `nil` is passed for a `Maybe<A>`
+// so `A` is inferred as `nil`, as it is when `nil` is passed for a `Maybe<A>`. The difference from
+// `g0(fn(x) => 9)` in the errors file, which is rejected, is that something flows out of the lambda
+// here, and nothing does there
 test fn untyped_parameter_of_a_union_with_the_generic_returned() -> nil {
     let function = g4(fn(x) => x);
     let check: fn(a: nil) -> nil = function;

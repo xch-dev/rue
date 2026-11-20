@@ -1,4 +1,6 @@
 diagnostics:
-- Cannot infer generic `A` for `g0`; specify it explicitly, e.g. `g0::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:17:23
-- Cannot infer generic `A` for `g0`; specify it explicitly, e.g. `g0::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:18:47
-- Cannot infer generic `B` for `either_of`; specify it explicitly, e.g. `either_of::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:30:5
+- Cannot infer generic `A` for `g0`; specify it explicitly, e.g. `g0::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:19:23
+- Cannot infer generic `A` for `g0`; specify it explicitly, e.g. `g0::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:20:47
+- Cannot infer generic `B` for `either_of`; specify it explicitly, e.g. `either_of::<...>()` at generic_inference_bounds_naming_the_generic_errors.rue:32:5
+- "Cannot assign `fn(x: T) -> (T, 1)` to `fn(a: (T, 1)) -> ((T, 1), 1)`, since they are incompatible at generic_inference_bounds_naming_the_generic_errors.rue:45:11"
+- "Cannot assign `fn(y: (T, 1)) -> (T, 1)` to `fn(b: ((T, 1), 1)) -> (T, 1)`, since they are incompatible at generic_inference_bounds_naming_the_generic_errors.rue:45:28"
