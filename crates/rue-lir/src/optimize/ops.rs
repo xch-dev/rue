@@ -656,6 +656,11 @@ pub fn opt_if(
 
 /// Allocates an `if` whose condition is already optimized, making it inline if both branches are
 /// atoms, since evaluating both is then the same as choosing one and is cheaper.
+///
+/// `(i (l x) () (not x))` is `(not x)`, since `not` is already false for a pair. This is what a
+/// check for nil is lowered to when the value could also be a pair or another atom, such as
+/// `x is nil` for an `Any`. The check can also end in `(= x ())`, which is `(not x)` for an atom,
+/// and is only evaluated for one unless the `if` is inline.
 pub fn alloc_if(
     arena: &mut Arena<Lir>,
     condition: LirId,
@@ -663,6 +668,21 @@ pub fn alloc_if(
     otherwise: LirId,
     inline: bool,
 ) -> LirId {
+    if let Lir::Listp(value) = arena[condition]
+        && is_nil(arena, then)
+    {
+        let checked = match arena[otherwise] {
+            Lir::Not(checked) => Some(checked),
+            Lir::Eq(left, right) if !inline && is_nil(arena, right) => Some(left),
+            Lir::Eq(left, right) if !inline && is_nil(arena, left) => Some(right),
+            _ => None,
+        };
+
+        if checked.is_some_and(|checked| same_value(arena, value, checked)) {
+            return arena.alloc(Lir::Not(value));
+        }
+    }
+
     let inline =
         inline || (matches!(arena[then], Lir::Atom(_)) && matches!(arena[otherwise], Lir::Atom(_)));
 

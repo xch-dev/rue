@@ -161,6 +161,84 @@ fn test_listp_condition() {
 }
 
 #[test]
+fn test_nil_check_of_any_value() {
+    // `x is nil` for a value that could be any atom or a pair is lowered to
+    // `(a (i (not (l x)) (q 9 x ()) ()) 1)`, which is `(not x)`, since `not` is false for a pair
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let listp = arena.alloc(Lir::Listp(x));
+    let is_atom = not(&mut arena, listp);
+    let nil = atom(&mut arena, &[]);
+    let eq = arena.alloc(Lir::Eq(x, nil));
+    let is_nil = arena.alloc(Lir::If(is_atom, eq, nil, false));
+    check(&mut arena, is_nil, ENVS, expect!["(not 2)"]);
+
+    // With the operands of `=` the other way around
+    let eq = arena.alloc(Lir::Eq(nil, x));
+    let flipped = arena.alloc(Lir::If(is_atom, eq, nil, false));
+    check(&mut arena, flipped, ENVS, expect!["(not 2)"]);
+
+    // In a condition, the `not` flips the branches
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let lir = arena.alloc(Lir::If(is_nil, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 2) (q . 1))"]);
+
+    // The value is only evaluated once, and still fails when it did before
+    let first = arena.alloc(Lir::First(x));
+    let copy = arena.alloc(Lir::First(x));
+    let listp = arena.alloc(Lir::Listp(first));
+    let is_atom = not(&mut arena, listp);
+    let eq = arena.alloc(Lir::Eq(copy, nil));
+    let lir = arena.alloc(Lir::If(is_atom, eq, nil, false));
+    check(&mut arena, lir, ENVS, expect!["(not 4)"]);
+}
+
+#[test]
+fn test_nil_check_keeps_other_checks() {
+    // An inline `if` evaluates `(= x ())` for a pair too, which fails
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let listp = arena.alloc(Lir::Listp(x));
+    let nil = atom(&mut arena, &[]);
+    let eq = arena.alloc(Lir::Eq(x, nil));
+    let lir = arena.alloc(Lir::If(listp, nil, eq, true));
+    check(&mut arena, lir, ENVS, expect!["(i (l 2) () (= 2 ()))"]);
+
+    // A different value is checked
+    let y = path(&mut arena, 5);
+    let eq = arena.alloc(Lir::Eq(y, nil));
+    let lir = arena.alloc(Lir::If(listp, nil, eq, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i (l 2) () (q 9 5 ())) 1)"],
+    );
+
+    // The pair isn't false
+    let one = atom(&mut arena, &[1]);
+    let not_x = not(&mut arena, x);
+    let lir = arena.alloc(Lir::If(listp, one, not_x, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i (l 2) (q 1 . 1) (q 32 2)) 1)"],
+    );
+
+    // The check is against another atom
+    let eq = arena.alloc(Lir::Eq(x, one));
+    let lir = arena.alloc(Lir::If(listp, nil, eq, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i (l 2) () (q 9 2 (q . 1))) 1)"],
+    );
+}
+
+#[test]
 fn test_if_in_condition() {
     // Only the truthiness of each branch of an if in a condition is observed
     let mut arena = Arena::new();
