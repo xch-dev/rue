@@ -4,15 +4,15 @@ use log::debug;
 use rue_ast::{AstNode, AstStructInitializerExpr, AstStructInitializerSpread};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, Block, FieldAccess, FieldKind, Hir, Statement, StructField, StructInitializer,
-    Symbol, SymbolPath, TypePath, Value,
+    Block, FieldKind, Hir, Statement, StructField, StructInitializer, SymbolPath, TypePath, Value,
 };
 use rue_lint::UnusedStructSpread;
 use rue_types::{Atom, AtomRestriction, Struct, Type, TypeId, Union};
 
 use crate::{
-    Compiler, CompletionContext, Field, FieldResult, PathKind, PathResult, PendingDefault,
-    SyntaxField, SyntaxItemKind, check_symbol_value, compile_expr, compile_field, compile_path,
+    BoundValue, Compiler, CompletionContext, Field, FieldResult, PathKind, PathResult,
+    PendingDefault, SyntaxField, SyntaxItemKind, alloc_field_access, bind_unless_path,
+    check_symbol_value, compile_expr, compile_field, compile_path,
 };
 
 pub fn compile_struct_initializer_expr(
@@ -219,11 +219,12 @@ pub fn compile_struct_initializer_expr(
         .as_ref()
         .filter(|base| base.is_struct && written < struct_type.fields.len())
         .map(|base| {
-            ctx.alloc_hir(Hir::FieldAccess(FieldAccess {
-                value: base.value.hir,
-                name: struct_type.fields[written].clone(),
-                kind: FieldKind::Path(vec![TypePath::Rest; written]),
-            }))
+            if written == 0 {
+                base.value.hir
+            } else {
+                let path = FieldKind::Path(vec![TypePath::Rest; written]);
+                alloc_field_access(ctx, base.value.hir, "rest", path)
+            }
         });
 
     let field_count = if tail.is_some() {
@@ -401,22 +402,13 @@ fn compile_spreads(
 
         // The value's fields are each read from it, so a value that isn't a path is bound first,
         // rather than being evaluated again for each of them
-        let (value, statement) = if value.reference.is_some() {
-            (value, None)
-        } else {
-            let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
-                name: None,
-                value: value.clone(),
-                inline: false,
-            }));
-            let srcloc = node.expr().map_or_else(
-                || ctx.trimmed_srcloc(node.syntax()),
-                |expr| ctx.trimmed_srcloc(expr.syntax()),
-            );
-            let reference = Value::new(ctx.alloc_hir(Hir::Reference(symbol)), value.ty)
-                .with_reference(SymbolPath::new(symbol, vec![]));
-            (reference, Some(Statement::Let(symbol, srcloc)))
-        };
+        let srcloc = node.expr().map_or_else(
+            || ctx.trimmed_srcloc(node.syntax()),
+            |expr| ctx.trimmed_srcloc(expr.syntax()),
+        );
+        let BoundValue {
+            value, statement, ..
+        } = bind_unless_path(ctx, value, srcloc);
 
         base = Some(Base {
             node,
@@ -433,11 +425,9 @@ fn compile_spreads(
 /// are and however it's been narrowed. The fields that are copied from it are checked against the
 /// types of the fields being initialized, so the instances don't need to be the same.
 fn is_instance(ctx: &mut Compiler, ty: TypeId, struct_type: &Struct) -> bool {
-    rue_types::extract_structs(ctx.types_mut(), ty).is_some_and(|structs| {
-        structs
-            .iter()
-            .all(|ty| ty.semantic == struct_type.semantic && ty.fields == struct_type.fields)
-    })
+    // The instances are all of the same struct, so only one of them needs to be compared
+    rue_types::extract_structs(ctx.types_mut(), ty)
+        .is_some_and(|structs| structs[0].semantic == struct_type.semantic)
 }
 
 /// The values of the fields that aren't written in the initializer, which are copied from the
@@ -530,32 +520,27 @@ fn use_constants(
     copied: &mut HashMap<String, Value>,
     prefix: usize,
 ) {
-    let constants = struct_type
-        .fields
-        .iter()
-        .take(prefix)
-        .filter(|name| copied.contains_key(*name))
-        .filter_map(|name| {
-            let ty = rue_types::unwrap_semantic(ctx.types_mut(), copied[name].ty, true);
-            match ctx.ty(ty) {
-                Type::Atom(Atom {
-                    restriction: Some(AtomRestriction::Value(value)),
-                    ..
-                }) => Some((name.clone(), value.to_vec())),
-                _ => None,
-            }
-        })
-        .collect::<Vec<_>>();
+    let mut copies = 0;
+    let mut constants = Vec::new();
 
-    // The uses of the spread value that are left if every constant is used: the fields before
-    // the last one that's written, and the rest of the value after it
-    let copies = struct_type
-        .fields
-        .iter()
-        .take(prefix)
-        .filter(|name| copied.contains_key(*name))
-        .count()
-        - constants.len();
+    for name in struct_type.fields.iter().take(prefix) {
+        let Some(value) = copied.get(name) else {
+            continue;
+        };
+
+        let ty = rue_types::unwrap_semantic(ctx.types_mut(), value.ty, true);
+
+        match ctx.ty(ty) {
+            Type::Atom(Atom {
+                restriction: Some(AtomRestriction::Value(value)),
+                ..
+            }) => constants.push((name.clone(), value.to_vec())),
+            _ => copies += 1,
+        }
+    }
+
+    // The uses of the spread value that are left if every constant is used: the other fields
+    // before the last one that's written, and the rest of the value after it
     let uses = copies + usize::from(prefix < struct_type.fields.len());
     let avoids_binding = base.statement.is_some() && uses <= 1;
 

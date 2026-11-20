@@ -189,7 +189,65 @@ test fn update_every_field_of_failing_call(n: Int) -> Point {
 
 const ORIGIN: Point = Point { x: 1, y: 2, z: 3 };
 
-// A struct that's updated from a constant is folded
+// A constant is a path, so its fields are read from it like a parameter's
 test fn update_constant() -> Point {
     Point { ...ORIGIN, y: 5 }
+}
+
+test fn rebuild_constant() -> Point {
+    Point { x: ORIGIN.x, y: 5, z: ORIGIN.z }
+}
+
+// A block that ends in a path is narrowed like the path, but it isn't one, so it's bound rather
+// than being evaluated for each field
+test fn update_block(p: Point, n: Int) -> Point {
+    Point {
+        ...{
+            debug "evaluated";
+            assert n > 0;
+            p
+        },
+        z: n,
+    }
+}
+
+test fn rebuild_block(p: Point, n: Int) -> Point {
+    let q = {
+        debug "evaluated";
+        assert n > 0;
+        p
+    };
+    Point { x: q.x, y: q.y, z: n }
+}
+
+// It's still evaluated when every field is written, since it can fail
+#[allow(unused_struct_spread)]
+test fn update_every_field_of_failing_block(p: Point, n: Int) -> Point {
+    Point {
+        ...{
+            assert n > 0;
+            p
+        },
+        x: 1,
+        y: 2,
+        z: 3,
+    }
+}
+
+inline fn update_inline(p: Point) -> Point {
+    Point { ...p, y: 1 }
+}
+
+inline fn rebuild_inline(p: Point) -> Point {
+    Point { x: p.x, y: 1, z: p.z }
+}
+
+// The parameter of an inline function is a path that's replaced by its argument wherever it's
+// used, so the argument is evaluated for each use, as it is when the struct is rebuilt
+test fn update_inline_parameter(n: Int) -> Point {
+    update_inline(point(n))
+}
+
+test fn rebuild_inline_parameter(n: Int) -> Point {
+    rebuild_inline(point(n))
 }
