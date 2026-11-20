@@ -336,7 +336,8 @@ fn test_signature_of_builtin() {
               fn g1_map([data: Bytes], dst: Bytes) -> PublicKey
         "#]],
     );
-    // A signature that takes the rest of the arguments is for all of them
+    // With more arguments than any signature takes, it's the last one, though the call is an
+    // error (a spread parameter takes one argument, which is spread)
     check(
         "fn main() -> Bytes32 {\n    sha256(\"a\", $0\"b\")\n}\n",
         expect![[r#"
@@ -478,6 +479,18 @@ fn test_signature_of_struct_initializer() {
         ),
         (
             "Point { y: $01, x: 2 }",
+            expect![[r#"
+            > Point { x: Int, [y: Int] }
+        "#]],
+        ),
+        (
+            "Point { x: 1, y: 2$0 }",
+            expect![[r#"
+            > Point { x: Int, [y: Int] }
+        "#]],
+        ),
+        (
+            "Point { x, y$0 }",
             expect![[r#"
             > Point { x: Int, [y: Int] }
         "#]],
@@ -724,6 +737,45 @@ fn test_signature_in_index_and_slice() {
         &with_add("fn main(bytes: Bytes) -> Bytes {\n    bytes[$01..add(1, 2)]\n}\n"),
         expect![[r#"
             <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_with_written_generic_arguments() {
+    // The generic arguments that are written are what the types are shown with
+    check(
+        "fn id<T>(value: T) -> T {\n    value\n}\n\nfn main() -> Int {\n    id::<Int>($01)\n}\n",
+        expect![[r#"
+            > fn id([value: Int]) -> Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_in_block_argument() {
+    // Inside of a block or an `if` that's an argument, it's still the call that it's passed to
+    check(
+        &with_add("fn main() -> Int {\n    add(1, {\n        let x = 2;\n        $0x\n    })\n}\n"),
+        expect![[r#"
+            > fn add(first: Int, [second: Int]) -> Int
+        "#]],
+    );
+    check(
+        &with_add("fn main(flag: Bool) -> Int {\n    add(1, if flag { $02 } else { 3 })\n}\n"),
+        expect![[r#"
+            > fn add(first: Int, [second: Int]) -> Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_with_bool() {
+    // The types of a function that's called directly are named as they are on hover
+    check(
+        "fn check(flag: Bool, other: Bool | nil) -> Bool {\n    flag\n}\n\nfn main() -> Bool {\n    check($0true, nil)\n}\n",
+        expect![[r#"
+            > fn check([flag: Bool], other: true | false | nil) -> Bool
         "#]],
     );
 }

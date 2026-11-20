@@ -59,9 +59,24 @@ pub fn compile_function_call_expr(
     }
 
     // The function as it's declared, which is what the language server shows, unless the call
-    // is rejected because it could be to more than one function
+    // is rejected because it could be to more than one function. The type of a function that's
+    // called directly is taken as it is, since its parts are the types that the code names,
+    // which the function that's extracted from it has copies of
     let declared = match expected_functions.as_slice() {
-        [function] => Some(function.clone()),
+        [function] => {
+            let mut ty = expr.ty;
+
+            while let Type::Ref(inner) = ctx.ty(ty) {
+                ty = *inner;
+            }
+
+            match ctx.ty(ty) {
+                Type::Function(declared) if declared.generics.len() == function.generics.len() => {
+                    Some(declared.clone())
+                }
+                _ => Some(function.clone()),
+            }
+        }
         _ => None,
     };
 
@@ -175,17 +190,15 @@ pub fn compile_function_call_expr(
         }
 
         // The language server shows what the call's generics were inferred as, which leaves out
-        // the ones that weren't. They're the generics as they're declared, rather than the copies
-        // that a recursive call's are renamed to
+        // the ones that weren't. They're the generics as they're declared, which are in the same
+        // order as the ones that were inferred
         if let Some(declared) = declared {
             let inferred = function
                 .generics
                 .iter()
-                .filter(|generic| !uninferred.contains_key(*generic))
-                .filter_map(|generic| {
-                    let ty = *mappings.get(generic)?;
-                    Some((*renamed.get(generic).unwrap_or(generic), ty))
-                })
+                .zip(&declared.generics)
+                .filter(|(generic, _)| !uninferred.contains_key(*generic))
+                .filter_map(|(generic, declared)| Some((*declared, *mappings.get(generic)?)))
                 .collect();
 
             ctx.add_syntax(

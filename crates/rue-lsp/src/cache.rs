@@ -891,9 +891,14 @@ impl Cache<Compiler> {
     /// only its first `parts` parts are written, and the rest are shown as `...`. A type that
     /// was inferred can be far too large to write in full.
     fn bounded_type_name(&mut self, scopes: &Scopes, ty: TypeId, parts: usize) -> String {
+        self.bounded_type(scopes, ty, parts).0
+    }
+
+    /// The name of a type like [`Self::bounded_type_name`], and whether any of it was left out.
+    fn bounded_type(&mut self, scopes: &Scopes, ty: TypeId, parts: usize) -> (String, bool) {
         for &scope in &scopes.0 {
             if let Some(name) = self.ctx.scope(scope).type_name(ty) {
-                return name.to_string();
+                return (name.to_string(), false);
             }
         }
 
