@@ -96,6 +96,41 @@ tests:
   runtime_cost: 2521
   byte_cost: 1368000
   total_cost: 1370521
+- name: repeated_small_static_struct
+  program: (q . 3)
+  debug_program: (a (q 2 2 (c (c (q . 1) (c (q . 2) ())) ())) (c (c (q . 2) (c (c (q . 1) (q 16 (f 2) (f (r 2)))) (c (q . 1) ()))) 1))
+  output: "3"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: repeated_static_at_the_limit
+  program: (a (q 14 (q . "1234567") (a 2 (q . 2)) (q . "1234567")) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "1234567") ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat 11 2) 11)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  output: "0x313233343536370231323334353637"
+  runtime_cost: 2010
+  byte_cost: 924000
+  total_cost: 926010
+- name: repeated_static_over_the_limit
+  program: (a (q 2 (q 14 2 (a 5 (q . 2)) 2) (c (q . "12345678") 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "12345678") ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat 11 2) 11)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  output: "0x3132333435363738023132333435363738"
+  runtime_cost: 2322
+  byte_cost: 996000
+  total_cost: 998322
+- name: repeated_large_int
+  program: (a (q 2 (q 16 (* 2 (a 5 (q . 2))) 2) (c (q . 0x00ab54a98ceb1f0ad2) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 0x00ab54a98ceb1f0ad2) ())) (c (c (q . 2) (c (c (q . 1) (q 16 (* 11 2) 11)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  output: "0x0201fdfca6c15d2076"
+  runtime_cost: 3565
+  byte_cost: 1056000
+  total_cost: 1059565
+- name: repeated_static_with_a_shared_constant
+  program: (q . 2)
+  debug_program: (a (q 2 2 (c (c (q . 1) (q . 1)) ())) (c (c (q . 2) (c (c (q . 1) (q 16 (f 2) (r 2))) (c (q . 1) ()))) 1))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: repeated_static_call
   program: (q . 3)
   debug_program: (a (q 2 4 (c (a 6 ()) ())) (c (c (c (q . 2) (c (c (q . 1) (q 16 (f 2) (r 2))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 1) (q . 2))) (c () ())))) 1))
@@ -110,13 +145,27 @@ tests:
   runtime_cost: 3422
   byte_cost: 1188000
   total_cost: 1191422
-- name: inlined_into_its_own_argument
-  program: (a (q 16 (* (+ (* (a 2 (q . 10)) (q . 2)) (q . 1)) (q . 2)) (q . 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+- name: repeated_call_ignoring_runtime_argument
+  program: (a (q 2 (q 16 (a (q 16 4 6) (c (q 1 . 2) 1)) 2) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 16 (a 10 (c (a 14 (c (* 4 (q . 3)) ())) ())) 4) (c (c (a 2 (q . 2)) (c (c (q . 2) (c (c (q . 1) (q 16 (f 2) (r 2))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 1) (q . 2))) (c (q . 1) ()))))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  output: "5"
+  runtime_cost: 3323
+  byte_cost: 1140000
+  total_cost: 1143323
+- name: not_inlined_into_its_own_argument
+  program: (a (q 16 (* (a (q 16 (* 2 (q . 2)) (q . 1)) (c (a 2 (q . 10)) ())) (q . 2)) (q . 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
   debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 2)) (q . 1))) (c (q . 1) ()))) (c (a (c (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 2)) (q . 1))) (c (q . 1) ()))) (c 2 ())) ())) (c (a 2 (q . 10)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "43"
-  runtime_cost: 4819
-  byte_cost: 996000
-  total_cost: 1000819
+  runtime_cost: 5073
+  byte_cost: 1164000
+  total_cost: 1169073
+- name: lambda_from_an_outer_call_of_the_same_lambda
+  program: (a (q 2 5 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ())) (c (q . 2) (c (c (q . 2) (c (c (q . 1) (q 16 (* (a 2 ()) (q . 10)) (a 5 ()))) (c (c (q . 4) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) ()))) ())))
+  debug_program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) (c (q . 1) ()))) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (q . 2) (c (c (q . 2) (c (c (q . 1) (q 16 (* (a 2 ()) (q . 10)) (a 5 ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ())))) (c (c (q . 4) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 5 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) (c (q . 1) ())))) (c (q . 1) ()))) ()))) ())))
+  output: "12"
+  runtime_cost: 4505
+  byte_cost: 2196000
+  total_cost: 2200505
 - name: closure_built_inside_its_inlined_call
   program: (a (q 16 (a 2 (c (q . 5) (q 16 2 5))) (q . 1)) (c (q 2 3 (c 2 (c 2 ()))) ()))
   debug_program: (a (q 2 (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) (c (q . 1) (c (a 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))))) ()))) (c (q 2 3 (c 2 (c 2 ()))) ()))

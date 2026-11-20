@@ -125,14 +125,54 @@ test fn repeated_large_static_parameter() -> Bytes32 {
     f("a string that's longer than a few bytes")
 }
 
-// A call to a lambda with a static body and static arguments is folded, so it's substituted too
+// A small static struct is substituted for each reference too
+test fn repeated_small_static_struct() -> Int {
+    let f = fn(value: Point) => value.x + value.y;
+    f(Point { x: 1, y: 2 })
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// An argument whose atoms take up 8 bytes is substituted
+test fn repeated_static_at_the_limit() -> Bytes {
+    let suffix = positive(2) as Bytes;
+    let f = fn(value: Bytes) => value + suffix + value;
+    f("1234567")
+}
+
+// But one with 9 is bound
+test fn repeated_static_over_the_limit() -> Bytes {
+    let suffix = positive(2) as Bytes;
+    let f = fn(value: Bytes) => value + suffix + value;
+    f("12345678")
+}
+
+// So is a large integer
+test fn repeated_large_int() -> Int {
+    let n = positive(2);
+    let f = fn(value: Int) => value * n + value;
+    f(12345678901234567890)
+}
+
+// The same static constant can be used more than once in a static argument
+test fn repeated_static_with_a_shared_constant() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f((ONE, ONE))
+}
+
+inline const ONE: Int = 1;
+
+// A call to a lambda with a static body and no arguments is folded, so it's substituted too
 test fn repeated_static_call() -> Int {
     let f = fn(value: (Int, Int)) => value.first + value.rest;
     let make = fn() => (1, 2);
     f(make())
 }
 
-// But not one with an argument that isn't static, which is evaluated once
+// But not one whose body uses its parameter, which is evaluated once
 test fn repeated_call_with_runtime_argument() -> Int {
     let n = positive(2);
     let f = fn(value: (Int, Int)) => value.first + value.rest;
@@ -140,10 +180,29 @@ test fn repeated_call_with_runtime_argument() -> Int {
     f(make(n)) + n
 }
 
-// A lambda is inlined in the argument of a call to itself, since the argument is the caller's code
-test fn inlined_into_its_own_argument() -> Int {
+// Or one with an argument that isn't static, even if the body doesn't use it, since it's still
+// evaluated
+test fn repeated_call_ignoring_runtime_argument() -> Int {
+    let n = positive(2);
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    let make = fn(value: Int) => (1, 2);
+    f(make(n * 3)) + n
+}
+
+// A lambda isn't inlined in the argument of a call to itself, which is built as a closure
+test fn not_inlined_into_its_own_argument() -> Int {
     let n = positive(10);
     apply_twice(fn(value: Int) => value * 2 + 1, n)
+}
+
+// The lambda that the outer call of `with_callback` passes to `h` is `fn() => y` with `y = 1`, so
+// `m1()` is 1, even though `m1` is called inside the second call of the same lambda, with `y = 2`
+test fn lambda_from_an_outer_call_of_the_same_lambda() -> Int {
+    with_callback(fn(y: Int, h: fn(m: fn() -> Int) -> Int) => h(fn() => y))
+}
+
+inline fn with_callback(g: fn(y: Int, h: fn(m: fn() -> Int) -> Int) -> Int) -> Int {
+    g(1, fn(m1: fn() -> Int) => g(2, fn(m2: fn() -> Int) => m1() * 10 + m2()))
 }
 
 // A lambda passed to an inline function and to a function that runs it is inlined where it's

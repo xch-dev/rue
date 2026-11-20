@@ -264,23 +264,24 @@ impl DependencyGraph {
         self.const_exprs.iter().copied()
     }
 
-    /// Whether the symbol is defined in the function, or in a function defined in it, such as a
-    /// parameter or local of the function or of a lambda inside it.
-    pub fn is_defined_in(&self, symbol: SymbolId, function: SymbolId) -> bool {
+    /// The functions that the symbol is defined in, from the innermost to the outermost.
+    fn owners(&self, symbol: SymbolId) -> impl Iterator<Item = SymbolId> + '_ {
         iter::successors(self.owners.get(&symbol).copied(), |owner| {
             self.owners.get(owner).copied()
         })
-        .any(|owner| owner == function)
+    }
+
+    /// Whether the symbol is defined in the function, or in a function defined in it, such as a
+    /// parameter or local of the function or of a lambda inside it.
+    pub fn is_defined_in(&self, symbol: SymbolId, function: SymbolId) -> bool {
+        self.owners(symbol).any(|owner| owner == function)
     }
 
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
         // The locals of the scopes enclosing the symbol are captured, unless they are reached
         // through the scope they're defined in (such as by a recursive call), so each path
         // keeps track of which of these scopes it has entered
-        let scopes: Vec<SymbolId> = iter::successors(self.owners.get(&symbol).copied(), |owner| {
-            self.owners.get(owner).copied()
-        })
-        .collect();
+        let scopes: Vec<SymbolId> = self.owners(symbol).collect();
 
         let mut visited = HashSet::new();
         let mut result = IndexSet::new();
