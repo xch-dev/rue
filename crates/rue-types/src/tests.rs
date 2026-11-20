@@ -4171,6 +4171,65 @@ mod subtraction {
     }
 
     #[test]
+    fn merges_struct_past_copy_limit() {
+        const FIELDS: usize = 8;
+
+        let mut db = Db::new();
+        let nil = db.builtins.nil;
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+
+        let nested = |db: &mut Db, parts: &[TypeId]| {
+            parts
+                .iter()
+                .rev()
+                .fold(nil, |rest, &first| db.pair(first, rest))
+        };
+
+        let inner = nested(&mut db, &[either; FIELDS]);
+        let lhs = db.strukt("S", inner);
+        let Type::Struct(mut ty) = db.arena[lhs].clone() else {
+            unreachable!();
+        };
+        ty.fields = (0..FIELDS).map(|i| format!("f{i}")).collect();
+        db.set(lhs, Type::Struct(ty));
+
+        // Every combination with an even number of `2`s, which leaves more combinations than a
+        // struct is split into
+        let combinations = (0..1u32 << FIELDS).map(|bits| {
+            (0..FIELDS)
+                .map(|i| if bits >> i & 1 == 1 { two } else { one })
+                .collect::<Vec<_>>()
+        });
+        let even = combinations
+            .filter(|parts| parts.iter().filter(|&&part| part == two).count() % 2 == 0)
+            .collect::<Vec<_>>();
+        let even = even
+            .iter()
+            .map(|parts| nested(&mut db, parts))
+            .collect::<Vec<_>>();
+        let rhs = db.union(&even);
+
+        // The pairs are merged into one struct with a single pair at each level, so its fields can
+        // still be read, and it contains every combination that's left
+        let result = subtract(&mut db.arena, &db.builtins, lhs, rhs);
+        let Type::Struct(ty) = db.arena[result].clone() else {
+            panic!("expected a struct, found {}", db.name(result));
+        };
+        let mut level = ty.inner;
+        for _ in 0..FIELDS {
+            let Type::Pair(pair) = db.arena[level] else {
+                panic!("expected a pair, found {}", db.name(level));
+            };
+            level = pair.rest;
+        }
+        let mut odd = vec![one; FIELDS];
+        odd[0] = two;
+        let odd = nested(&mut db, &odd);
+        assert_eq!(db.cmp(odd, ty.inner), Comparison::Assign);
+    }
+
+    #[test]
     fn splits_any() {
         let mut db = Db::new();
         let BuiltinTypes {

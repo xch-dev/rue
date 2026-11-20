@@ -379,8 +379,9 @@ fn repackage_inner(
             // A struct's pair can be split into several pairs (see `split_pair`), at any of the
             // levels that its fields are read through. Its fields are read from a union of
             // structs, but not through a union in a struct's inner type, so each pair gets its own
-            // copy of the struct. Past the limit, the struct is left as it was, which is only
-            // wider than it could be.
+            // copy of the struct. Past the limit, the pairs at each level are merged into one pair
+            // instead, which is only wider than it could be. The last level read through can be a
+            // union, but it's split as well, so that every copy is displayed the same way.
             let levels = if ty.nil_terminated {
                 ty.fields.len()
             } else {
@@ -403,7 +404,11 @@ fn repackage_inner(
 
                     arena.alloc(Type::Union(Union::new(copies)))
                 }
-                None => semantic_type_id,
+                None => {
+                    let inner = merge_spine(arena, inner, levels);
+                    let ty = ty.narrow(arena, builtins, inner);
+                    arena.alloc(Type::Struct(ty))
+                }
             }
         }
         _ => unreachable!(),
@@ -461,6 +466,30 @@ fn spine_variants(arena: &mut Arena<Type>, id: TypeId, levels: usize) -> Option<
     };
 
     Some(variants)
+}
+
+/// Merges the pairs at each of the first `levels` levels of a struct's inner type into one pair,
+/// whose parts are the unions of theirs. The result contains every value of the type, and can have
+/// its fields read like the inner type of a struct.
+fn merge_spine(arena: &mut Arena<Type>, id: TypeId, levels: usize) -> TypeId {
+    let pairs = extract_pairs_substituted(arena, id);
+
+    if levels == 0 || pairs.is_empty() {
+        return id;
+    }
+
+    let first = union_of(arena, pairs.iter().map(|pair| pair.first).collect());
+    let rest = union_of(arena, pairs.iter().map(|pair| pair.rest).collect());
+    let rest = merge_spine(arena, rest, levels - 1);
+    arena.alloc(Type::Pair(Pair::new(first, rest)))
+}
+
+fn union_of(arena: &mut Arena<Type>, types: Vec<TypeId>) -> TypeId {
+    if types.len() == 1 {
+        types[0]
+    } else {
+        arena.alloc(Type::Union(Union::new(types)))
+    }
 }
 
 struct Variant {
