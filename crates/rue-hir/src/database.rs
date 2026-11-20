@@ -50,6 +50,11 @@ pub struct Database {
     /// declarations with it, keyed by the import that the name refers to a declaration through and
     /// that declaration.
     ambiguous_alternatives: IndexMap<(ImportId, Declaration), IndexSet<Declaration>>,
+    /// The modules that a path or import goes through a name that could refer to other modules
+    /// to, along with those other modules (see [`Database::add_ambiguous_path`]).
+    ambiguous_modules: IndexSet<SymbolId>,
+    /// The imports whose paths go through a name that could refer to other modules.
+    imports_through_ambiguous_names: IndexSet<ImportId>,
     tests: Vec<Test>,
 }
 
@@ -461,6 +466,45 @@ impl Database {
             .into_iter()
             .flatten()
             .copied()
+    }
+
+    /// Records that a path or import goes through a module name that refers to the module through
+    /// the import, if the name could refer to other modules too, because glob imports bring in
+    /// different modules with it. Which of them it's bound to depends on the order the imports are
+    /// resolved in, and so on module names, so each of them counts as one whose members could be
+    /// used, along with what's in the modules inside of them. Returns whether it's ambiguous.
+    pub fn add_ambiguous_path(&mut self, import: Option<ImportId>, module: Declaration) -> bool {
+        let modules = std::iter::once(module)
+            .chain(self.ambiguous_alternatives(import, module))
+            .filter_map(|module| match module {
+                Declaration::Symbol(symbol) => Some(symbol),
+                Declaration::Type(_) => None,
+            })
+            .collect::<Vec<_>>();
+
+        if modules.len() < 2 {
+            return false;
+        }
+
+        self.ambiguous_modules.extend(modules);
+        true
+    }
+
+    /// The modules that a path or import goes through an ambiguous name to (see
+    /// [`Database::add_ambiguous_path`]).
+    pub fn ambiguous_modules(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.ambiguous_modules.iter().copied()
+    }
+
+    /// Records that an import's path goes through a name that could refer to other modules, so
+    /// it's used either way (see [`Database::add_ambiguous_path`]).
+    pub fn add_import_through_ambiguous_name(&mut self, import: ImportId) {
+        self.imports_through_ambiguous_names.insert(import);
+    }
+
+    /// Whether an import's path goes through a name that could refer to other modules.
+    pub fn is_import_through_ambiguous_name(&self, import: ImportId) -> bool {
+        self.imports_through_ambiguous_names.contains(&import)
     }
 
     /// Every name that could refer to other declarations, as the import it refers to a

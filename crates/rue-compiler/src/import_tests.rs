@@ -1644,6 +1644,254 @@ fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others()
     }
 }
 
+/// Two modules each export a module `m`, which `both` glob exports from both of them, so `both::m`
+/// is ambiguous. The first one's `m` has `first_items`, and `beta`'s has `second_items`. The rest
+/// is `rest`. The first module is `alpha` if `first_binds`, and otherwise `omega`, so that either
+/// glob import binds `m` (and the names have the same length, so the warnings are at the same
+/// places).
+fn colliding_modules(
+    first_binds: bool,
+    first_items: &str,
+    second_items: &str,
+    rest: &str,
+) -> String {
+    let first = if first_binds { "alpha" } else { "omega" };
+
+    format!(
+        "
+        mod {first} {{ export mod m {{ {first_items} }} }}
+        mod beta {{ export mod m {{ {second_items} }} }}
+        mod both {{ export super::{first}::*; export super::beta::*; }}
+        {rest}
+        "
+    )
+}
+
+/// The warnings about unused items (rather than imports).
+fn unused_items(compiled: &Compiled) -> Vec<String> {
+    compiled
+        .warnings()
+        .into_iter()
+        .filter(|warning| warning.contains(" Unused") && !warning.ends_with("UnusedImport"))
+        .collect()
+}
+
+#[test]
+fn paths_through_ambiguous_modules_use_everything_in_each() {
+    // Whichever glob import bound `m`, a path or import through it counts everything in each
+    // module it could refer to as used, including what's in the modules inside of them, so none of
+    // it is reported, and neither is the import. That includes `ONLY`, which only `beta`'s `m`
+    // has, and `T`, which only the first module's has (the path to each fails when `m` is bound to
+    // the other), and `UNUSED`, which nothing uses.
+    let first_items = "export const X: Int = 1; export type T = Int; export const UNUSED: Int = 3; export mod n { export const Y: Int = 1; }";
+    let second_items = "export const X: Int = 2; export const ONLY: Int = 4; export mod n { export const Y: Int = 2; export fn g() -> Int { 1 } }";
+
+    for user in [
+        "fn main() -> Int { both::m::X }",
+        "fn main() -> Int { let t: both::m::T = 1; t }",
+        "fn main() -> Int { both::m::n::Y }",
+        "fn main() -> Int { both::m::ONLY }",
+        "import both::m::X; fn main() -> Int { X }",
+        "import both::m::*; fn main() -> Int { X }",
+        "import both::m::n::Y; fn main() -> Int { Y }",
+        "import both::*; fn main() -> Int { m::X }",
+        "mod mid { export super::both::m::*; } fn main() -> Int { mid::X }",
+    ] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                first_items,
+                second_items,
+                user,
+            ));
+            let context = format!("{user}, first binds: {first_binds}");
+
+            assert!(
+                compiled
+                    .errors()
+                    .iter()
+                    .all(|error| error.contains("AmbiguousImport") || error.contains("Undeclared")),
+                "{context}: {:?}",
+                compiled.errors()
+            );
+            assert_eq!(unused_items(&compiled), Vec::<String>::new(), "{context}");
+            assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+        }
+    }
+}
+
+#[test]
+fn imports_through_ambiguous_modules_are_used() {
+    // An import through `both::m` is used even if nothing uses what it brings in, in either order
+    for user in [
+        "import both::m::X; fn main() -> Int { 1 }",
+        "import both::m::*; fn main() -> Int { 1 }",
+    ] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                "export const X: Int = 1;",
+                "export const X: Int = 2;",
+                user,
+            ));
+            let context = format!("{user}, first binds: {first_binds}");
+
+            assert_eq!(unused_items(&compiled), Vec::<String>::new(), "{context}");
+            assert_eq!(unused_imports(&compiled), Vec::<String>::new(), "{context}");
+        }
+    }
+}
+
+#[test]
+fn ambiguous_modules_that_nothing_goes_through_are_unused_in_each() {
+    // Nothing goes through `both::m`, so what's in each `m` is still reported, in either order, and
+    // so is what's in a module that a path through an unambiguous name goes to
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const X: Int = 1;",
+            "export const X: Int = 2;",
+            "mod other { export const Y: Int = 3; export const Z: Int = 4; } fn main() -> Int { other::Y }",
+        ));
+
+        assert_eq!(
+            unused_items(&compiled),
+            [
+                "2:49 UnusedConstant",
+                "3:48 UnusedConstant",
+                "5:59 UnusedConstant",
+            ],
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn what_ambiguous_modules_only_import_privately_is_still_unused() {
+    // The first module's `m` privately glob-imports `lib`, which a path through `both::m` can't
+    // reach, so `lib`'s items are still reported in either order, and so is the glob import
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "import super::super::lib::*; export const X: Int = 1;",
+            "export const X: Int = 2;",
+            "mod lib { export const DEAD: Int = 1; export mod sub { export const DEEP: Int = 2; } } fn main() -> Int { both::m::X }",
+        ));
+        let context = format!("first binds: {first_binds}");
+
+        assert_eq!(
+            unused_items(&compiled),
+            ["5:32 UnusedConstant", "5:77 UnusedConstant"],
+            "{context}"
+        );
+        assert_eq!(
+            unused_imports(&compiled),
+            ["2:62 UnusedImport"],
+            "{context}"
+        );
+    }
+}
+
+#[test]
+fn private_glob_imports_in_ambiguous_modules_that_collide_use_both() {
+    // The first module's `m` imports `Y` privately from `{private}` and exports it from `{public}`,
+    // so which one `m`'s `Y` is depends on the names too. Either could be what `both::m::Y` refers
+    // to, so neither is reported, whichever is bound.
+    for (private, public) in [("aaa", "zzz"), ("zzz", "aaa")] {
+        for first_binds in [true, false] {
+            let compiled = compile(&colliding_modules(
+                first_binds,
+                &format!(
+                    "import super::super::{private}::*; export super::super::{public}::*; export const X: Int = 1;"
+                ),
+                "export const X: Int = 2;",
+                &format!(
+                    "mod {private} {{ export const Y: Int = 5; }} mod {public} {{ export const Y: Int = 6; }} fn main() -> Int {{ both::m::X }}"
+                ),
+            ));
+
+            assert_eq!(
+                unused_items(&compiled),
+                Vec::<String>::new(),
+                "private: {private}, first binds: {first_binds}"
+            );
+        }
+    }
+}
+
+#[test]
+fn glob_imports_through_ambiguous_modules_that_bring_in_nothing_are_used() {
+    // The first module's `m` is empty, so the glob import brings in nothing when `m` is bound to
+    // it, but it goes through an ambiguous name, so it's used in either order
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "",
+            "export const X: Int = 2;",
+            "mod user { export super::both::m::*; } fn main() -> Int { 1 }",
+        ));
+
+        assert_eq!(
+            unused_imports(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
+        );
+    }
+}
+
+#[test]
+fn paths_through_ambiguous_modules_at_several_segments_use_everything_in_each() {
+    // `both::m` could be `{outer}::m` or `gamma::m`, and in `{outer}::m`, `n` could be
+    // `{first}::n` or `beta::n`, so every `Y` is used, whichever glob imports bound the names
+    for outer in ["aaa", "zzz"] {
+        for first in ["alpha", "omega"] {
+            let compiled = compile(&format!(
+                "
+                mod {first} {{ export mod n {{ export const Y: Int = 1; }} }}
+                mod beta {{ export mod n {{ export const Y: Int = 2; }} }}
+                mod {outer} {{ export mod m {{ export super::super::{first}::*; export super::super::beta::*; }} }}
+                mod gamma {{ export mod m {{ export mod n {{ export const Y: Int = 3; }} }} }}
+                mod both {{ export super::{outer}::*; export super::gamma::*; }}
+                fn main() -> Int {{ both::m::n::Y }}
+                "
+            ));
+
+            assert_eq!(
+                unused_items(&compiled),
+                Vec::<String>::new(),
+                "outer: {outer}, first: {first}"
+            );
+        }
+    }
+}
+
+#[test]
+fn uses_through_ambiguous_modules_are_not_recursive_through_the_others() {
+    // The first module's `X` calls the function that uses `both::m::X`, which is only recursive if
+    // `m` is bound to the first module's. Everything in the other `m` counts as used, but isn't
+    // referenced.
+    for first_binds in [true, false] {
+        let compiled = compile(&colliding_modules(
+            first_binds,
+            "export const X: Int = super::super::value();",
+            "export const X: Int = 2;",
+            "fn value() -> Int { both::m::X } fn main() -> Int { value() }",
+        ));
+        let recursive = compiled
+            .errors()
+            .into_iter()
+            .filter(|error| error.contains("Recursive"))
+            .count();
+
+        assert_eq!(recursive > 0, first_binds, "first binds: {first_binds}");
+        assert_eq!(
+            unused_items(&compiled),
+            Vec::<String>::new(),
+            "first binds: {first_binds}"
+        );
+    }
+}
+
 #[test]
 fn imports_from_a_parent_module_find_what_it_imports() {
     // `import super::V;` and `import super::m::W;` find what `inner` imports, rather than the
