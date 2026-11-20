@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use clvmr::{Allocator, ChiaDialect, error::EvalErr, run_program};
+use clvmr::{Allocator, ChiaDialect, NodePtr, error::EvalErr, run_program};
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_diagnostic::SourceKind;
 use rue_lir::ClvmTarget;
@@ -27,8 +27,8 @@ fn compile_build(source: &str, debug: bool) -> Compiled {
     compiled
 }
 
-/// The program that `main` compiles to.
-fn program(source: &str, debug: bool) -> String {
+/// Compiles `main`, and gives its program to the function.
+fn with_main<T>(source: &str, debug: bool, f: impl FnOnce(&mut Allocator, NodePtr) -> T) -> T {
     let mut compiled = compile_build(source, debug);
     let mut allocator = Allocator::new();
     let kind = SourceKind::File("main.rue".to_string());
@@ -37,27 +37,28 @@ fn program(source: &str, debug: bool) -> String {
         .main(&mut compiled.ctx, &mut allocator, &kind, PathBuf::from("."))
         .unwrap()
         .unwrap();
-    disassemble_program(&allocator, ptr)
+    f(&mut allocator, ptr)
+}
+
+/// The program that `main` compiles to.
+fn program(source: &str, debug: bool) -> String {
+    with_main(source, debug, |allocator, ptr| {
+        disassemble_program(allocator, ptr)
+    })
 }
 
 /// What `main` returns for the solution, or what it raises.
 fn run(source: &str, debug: bool, solution: &str) -> Result<String, String> {
-    let mut compiled = compile_build(source, debug);
-    let mut allocator = Allocator::new();
-    let kind = SourceKind::File("main.rue".to_string());
-    let ptr = compiled
-        .tree
-        .main(&mut compiled.ctx, &mut allocator, &kind, PathBuf::from("."))
-        .unwrap()
-        .unwrap();
-    let solution = assemble(&mut allocator, solution).unwrap();
-    let dialect = ChiaDialect::new(ClvmTarget::default().flags());
+    with_main(source, debug, |allocator, ptr| {
+        let solution = assemble(allocator, solution).unwrap();
+        let dialect = ChiaDialect::new(ClvmTarget::default().flags());
 
-    match run_program(&mut allocator, &dialect, ptr, solution, u64::MAX) {
-        Ok(output) => Ok(disassemble_value(&allocator, output.1)),
-        Err(EvalErr::Raise(value)) => Err(disassemble_value(&allocator, value)),
-        Err(error) => Err(error.to_string()),
-    }
+        match run_program(allocator, &dialect, ptr, solution, u64::MAX) {
+            Ok(output) => Ok(disassemble_value(allocator, output.1)),
+            Err(EvalErr::Raise(value)) => Err(disassemble_value(allocator, value)),
+            Err(error) => Err(error.to_string()),
+        }
+    })
 }
 
 /// A function that asserts `a > b` with each message (or without one, for an empty message).
@@ -334,4 +335,128 @@ fn message_must_be_an_expression() {
             "{source}: {errors:?}"
         );
     }
+}
+
+/// A message or the value of a `raise` that's the only use of an `inline fn` parameter in a
+/// closure doesn't make the release build capture the argument, which would keep what the argument
+/// references in the program.
+#[test]
+fn release_program_is_the_same_with_a_parameter_only_captured_for_the_message() {
+    let source = |statement: &str, body: &str| {
+        format!(
+            "#![allow(unused_binding, unused_function, unused_parameter, manual_assert)]\n\
+             inline fn check(p: Int, c: Bool) -> fn() -> Int {{\n    \
+             fn() => {{\n        {statement}\n        0\n    }}\n}}\n\n\
+             fn helper(a: Int) -> Int {{\n    a * a + 1\n}}\n\n\
+             fn main(a: Int, c: Bool) -> Int {{\n    {body}\n}}\n"
+        )
+    };
+
+    for body in [
+        "let unused = check(helper(a) / 0, c);\n    a",
+        "let call = fn(v: Int) => {\n        let unused = check(v / 0, c);\n        v\n    };\n    \
+         call(a) + call(a + 1)",
+        "let used = check(helper(a) / 0, c);\n    used() + a",
+    ] {
+        for (with, without) in [
+            ("assert c, p;", "assert c;"),
+            ("assert c, [p, p];", "assert c;"),
+            (
+                "if !c {\n            raise p;\n        }",
+                "if !c {\n            raise;\n        }",
+            ),
+        ] {
+            let with = source(with, body);
+            let without = source(without, body);
+
+            assert_eq!(program(&with, false), program(&without, false), "{with}");
+
+            // The argument's check is skipped either way, which is reported either way
+            for source in [&with, &without] {
+                let warnings = compile(source).warnings();
+                assert_eq!(warnings.len(), 1, "{source}: {warnings:?}");
+                assert!(warnings[0].ends_with("InlineValueMayFail"), "{warnings:?}");
+            }
+        }
+    }
+}
+
+/// A binding that an `inline fn` parameter only reaches a message through doesn't count as a use
+/// that evaluates the parameter.
+#[test]
+fn inline_argument_that_only_reaches_a_message_is_reported() {
+    for message in [
+        "let x = p;\n    assert c, x;",
+        "let x = p + 1;\n    let y = x * 2;\n    assert c, y;",
+        "let g = fn() => p;\n    assert c, g();",
+        "assert c, p;",
+        "assert c;",
+    ] {
+        let source = format!(
+            "#![allow(unused_binding, unused_parameter)]\n\
+             inline fn check(p: Int, c: Bool) -> Int {{\n    {message}\n    0\n}}\n\n\
+             fn main(a: Int, c: Bool) -> Int {{\n    check(a / 0, c)\n}}\n"
+        );
+
+        let warnings = compile(&source).warnings();
+        assert_eq!(warnings.len(), 1, "{source}: {warnings:?}");
+        assert!(warnings[0].ends_with("InlineValueMayFail"), "{warnings:?}");
+        assert_eq!(program(&source, false), "(a (i 5 (q) (q 8)) 1)", "{source}");
+    }
+}
+
+/// Lints that look at expressions look at the message too.
+#[test]
+fn lints_check_the_message() {
+    let source = "fn main(a: Int, b: Int) -> Int {\n    \
+                  assert a > 0, if b > 1 { \"x\" } else { \"x\" };\n    \
+                  assert a > 1, b as Int;\n    a\n}\n";
+
+    assert_eq!(
+        compile(source).warnings(),
+        ["2:19 IdenticalBranches", "3:19 UnnecessaryCast"]
+    );
+}
+
+/// Blocks whose assertions only differ in their messages aren't the same.
+#[test]
+fn identical_branches_compares_messages() {
+    let source = |first: &str, second: &str| {
+        format!(
+            "fn main(a: Int, b: Int) -> Int {{\n    if a > 5 {{\n        assert b > 1{first};\n        1\n    \
+             }} else {{\n        assert b > 1{second};\n        1\n    }}\n}}\n"
+        )
+    };
+
+    for (first, second, same) in [
+        ("", "", true),
+        (", \"x\"", ", \"x\"", true),
+        (", \"x\"", ", \"y\"", false),
+        (", \"x\"", "", false),
+    ] {
+        let warnings = compile(&source(first, second)).warnings();
+        let expected: &[&str] = if same {
+            &["2:5 IdenticalBranches"]
+        } else {
+            &[]
+        };
+        assert_eq!(warnings, expected, "{first} {second}");
+    }
+}
+
+/// A function that only calls itself in a message returns whenever the condition is true.
+#[test]
+fn recursion_in_a_message_is_not_unconditional() {
+    let source = |message: &str| {
+        format!("fn main(a: Int, b: Int) -> Int {{\n    assert a > 0{message};\n    a\n}}\n")
+    };
+
+    assert_eq!(
+        compile(&source(", main(a, b)")).warnings(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        compile(&source("").replace("a > 0", "main(a, b) > 0")).warnings(),
+        ["1:4 UnconditionalRecursion"]
+    );
 }

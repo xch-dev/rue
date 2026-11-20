@@ -296,17 +296,29 @@ impl Statement {
     /// The nodes directly inside of the statement, in the order they're written. A binding's
     /// value is stored in its symbol, so a `let` statement doesn't have any.
     pub fn hirs(&self) -> impl Iterator<Item = HirId> + use<> {
-        let hirs = match self {
+        self.hir_slots(true).into_iter().flatten()
+    }
+
+    /// The nodes directly inside of the statement that a release build lowers. A `debug`
+    /// statement, the value of a `raise` and the message of an `assert` are only lowered with
+    /// debug symbols, so a release build doesn't reference anything in them.
+    pub fn release_hirs(&self) -> impl Iterator<Item = HirId> + use<> {
+        self.hir_slots(false).into_iter().flatten()
+    }
+
+    fn hir_slots(&self, debug_symbols: bool) -> [Option<HirId>; 2] {
+        match self {
             Self::Let(..) => [None, None],
             Self::Expr(statement) => [Some(statement.hir), None],
             Self::Control(statement) => [Some(statement.hir), None],
             Self::If(statement) => [Some(statement.condition), Some(statement.then)],
-            Self::Return(hir, _) | Self::Debug(hir, _) => [Some(*hir), None],
-            Self::Assert(condition, message, _) => [Some(*condition), *message],
-            Self::Raise(hir, _) => [*hir, None],
-        };
-
-        hirs.into_iter().flatten()
+            Self::Return(hir, _) => [Some(*hir), None],
+            Self::Debug(hir, _) => [debug_symbols.then_some(*hir), None],
+            Self::Assert(condition, message, _) => {
+                [Some(*condition), message.filter(|_| debug_symbols)]
+            }
+            Self::Raise(hir, _) => [hir.filter(|_| debug_symbols), None],
+        }
     }
 
     /// The location of the statement in the source code.
