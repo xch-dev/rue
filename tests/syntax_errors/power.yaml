@@ -1,0 +1,9 @@
+diagnostics:
+- Unused function `missing_exponent` at power.rue:1:4
+- Expected expression, found `}` at power.rue:3:1
+- Unused function `spaced_operator` at power.rue:6:4
+- Expected expression, found `*` at power.rue:7:9
+- Unused function `missing_base` at power.rue:10:4
+- Block does not return a value at power.rue:10:26
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at power.rue:10:26
+- Expected one of `}`, statement, found `*` at power.rue:11:5

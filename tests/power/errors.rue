@@ -1,0 +1,34 @@
+fn bytes_base(bytes: Bytes) -> Bytes {
+    bytes ** 2
+}
+
+fn bytes_exponent(x: Int, bytes: Bytes) -> Int {
+    x ** bytes
+}
+
+fn bool_exponent(x: Int) -> Int {
+    x ** true
+}
+
+fn public_key_base(pk: PublicKey) -> PublicKey {
+    pk ** 2
+}
+
+// With errors, the exponents aren't evaluated, so the powers aren't expanded, but they're still
+// checked by the lints, which report the comparison of a power with itself
+fn unexpanded_power(x: Int, flag: Bool) -> Int {
+    inline let square = (x / 2) ** 2;
+    if flag && x ** 2 == x ** 2 {
+        square ** 2
+    } else {
+        0
+    }
+}
+
+fn main(x: Int, bytes: Bytes, pk: PublicKey) -> Int {
+    unexpanded_power(x, true)
+        + bytes_base(bytes) as Int
+        + bytes_exponent(x, bytes)
+        + bool_exponent(x)
+        + public_key_base(pk) as Int
+}

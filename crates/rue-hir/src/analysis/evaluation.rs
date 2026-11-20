@@ -94,6 +94,7 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             Hir::Reference(symbol) => self.reference(*symbol),
             Hir::Lambda(lambda) => self.captures_target(*lambda),
             Hir::Block(block) => self.block(&block.statements, block.body),
+            Hir::Power(power) => self.any(power.evaluated()),
             Hir::If(condition, then, else_, inline) => {
                 if *inline {
                     self.any(node.children())
@@ -250,6 +251,9 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
                         .body
                         .is_some_and(|body| self.mentions(body, frames, visited))
                 }
+                Hir::Power(power) => power
+                    .evaluated()
+                    .any(|child| self.mentions(child, frames, visited)),
                 _ => node
                     .children()
                     .any(|child| self.mentions(child, frames, visited)),

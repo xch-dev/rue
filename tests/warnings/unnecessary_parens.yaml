@@ -1,6 +1,6 @@
-program: (a (i (> 2 ()) (q 2 (i 5 (q 16 2 (q . 1)) (q 2 (i (> 2 (q . 100)) () (q 2 (i (> 2 (q . 200)) () (q 2 (i (> (a (q 16 2 (q . 1)) (c 2 ())) (q . 300)) () (q 17 (+ (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (* 2 (q . 2)) 2 (* (+ 2 (q . 1)) (q . 2)) (q . 1)) 2)) 1)) 1)) 1)) 1) (q 8)) 1)
-debug_program: (a (q 2 (q 2 (i (> 11 ()) (q 2 (q 2 (i 47 (q . 9) (q 2 (q 2 (i (> (f (c 47 (c (q . 1) ()))) (q . 100)) () (q 2 (i (> (f (c 47 (c (q . 1) ()))) (q . 200)) () (q 2 (i (> (a (f (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ())) (c 47 ())) (q . 300)) () (q 16 (+ (+ (+ (+ 43 59) 9) (f 13)) 4) 6)) 1)) 1)) 1) (c (c (* (+ 23 (q . 1)) (q . 2)) (- () (+ 23 (q . 1)))) 1))) 1) (c (c (a 5 (c (* 11 (q . 2)) (q . 1))) (c (+ 11 (q . 1)) (c (q . 2) ()))) 1)) (q 8 (q . "assertion failed at unnecessary_parens.rue:5:5"))) 1) (c (c (+ 5 (q . 1)) (c (* 5 (q . 2)) (* (+ 5 (q . 1)) (q . 2)))) 1)) (c (q 16 2 3) 1))
-byte_cost: 2652000
+program: (a (i (> 2 ()) (q 2 (i 5 (q 16 2 (q . 1)) (q 2 (i (> 2 (q . 100)) () (q 2 (i (> 2 (q . 200)) () (q 2 (i (> (a (q 16 2 (q . 1)) (c 2 ())) (q . 300)) () (q 17 (+ (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (* 2 (q . 2)) 2 (* 2 2) (* (+ 2 (q . 1)) (q . 2)) (a (q 18 2 2) (c (- () 2) 1)) (a (q 18 2 2 2) (c (* 2 2) 1)) (* 2 2) (q . 1)) 2)) 1)) 1)) 1)) 1) (q 8)) 1)
+debug_program: (a (q 2 (q 2 (i (> 11 ()) (q 2 (q 2 (i 47 (q . 9) (q 2 (q 2 (i (> (f (c 47 (c (q . 1) ()))) (q . 100)) () (q 2 (i (> (f (c 47 (c (q . 1) ()))) (q . 200)) () (q 2 (i (> (a (f (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ())) (c 47 ())) (q . 300)) () (q 16 (+ (+ (+ (+ (+ (+ (+ (+ 43 59) 9) (f 13)) 8) 20) 28) 10) 22) 30)) 1)) 1)) 1) (c (c (c (* 23 23) (c (* (+ 23 (q . 1)) (q . 2)) (- () (+ 23 (q . 1))))) (c (a (q 18 2 2) (c (- () 23) 1)) (c (a (q 18 (* 2 2) 2) (c (* 23 23) 1)) (* 23 23)))) 1))) 1) (c (c (a 5 (c (* 11 (q . 2)) (q . 1))) (c (+ 11 (q . 1)) (c (q . 2) ()))) 1)) (q 8 (q . "assertion failed at unnecessary_parens.rue:5:5"))) 1) (c (c (+ 5 (q . 1)) (c (* 5 (q . 2)) (* (+ 5 (q . 1)) (q . 2)))) 1)) (c (q 16 2 3) 1))
+byte_cost: 3540000
 clvm_error: path into atom
 diagnostics:
 - |-
@@ -28,5 +28,11 @@ diagnostics:
   Unnecessary parentheses at unnecessary_parens.rue:10:16
     help: Remove the parentheses
 - |-
-  Field `y` of struct `Point` is never read at unnecessary_parens.rue:35:5
+  Unnecessary parentheses at unnecessary_parens.rue:13:17
+    help: Remove the parentheses
+- |-
+  Unnecessary parentheses at unnecessary_parens.rue:13:28
+    help: Remove the parentheses
+- |-
+  Field `y` of struct `Point` is never read at unnecessary_parens.rue:49:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`

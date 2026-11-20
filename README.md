@@ -197,6 +197,27 @@ A message costs nothing on chain. A release build never evaluates it, and compil
 
 The message is only evaluated once the condition is false, so it sees the values the condition is false for (in `assert !(value is nil), value;`, the `value` in the message is `nil`), and it can't change whether the program fails. The `manual_assert` lint suggests an `assert` for an `if` that only raises, and keeps the value of its `raise` as the message.
 
+## Powers
+
+`base ** exponent` raises an `Int` to a power. It's right associative, and binds more tightly than every other binary operator, and than a prefix operator before its base, so `-a ** 2` is `-(a ** 2)` and `2 ** 3 ** 2` is `2 ** 9`.
+
+CLVM has no power operator (`modpow` takes a modulus, and mainnet only allows it after [hard fork 2](#hard-fork-2)), so a power is compiled to multiplication: `x ** 3` is compiled exactly like `x * x * x`. A base that isn't a variable, a field or a constant is only evaluated once, as if it were bound with `let` first, while an `inline` binding is substituted for each copy like it is in the product. This means the exponent has to be known at compile time:
+
+```rs
+const DECIMALS: Int = 3;
+
+fn main(amount: Int) -> Int {
+    amount ** 2 + 10 ** DECIMALS + 2 ** (DECIMALS + 1)
+}
+```
+
+- The exponent is evaluated like a `const` expression, so it can use constants and call functions, but not parameters or `let` bindings, even ones bound to a number. A power with such an exponent is an error. Write a function that multiplies in a loop instead, so that its cost is visible in the source.
+- The exponent can't be negative, and can't be larger than 256, which is enough for `2 ** 256`. `x ** 0` is `1`, including `0 ** 0`, and `x ** 1` is `x`.
+- A power of constants is folded like any other product of constants, so `10 ** 18` is compiled to the number. (A base that's a long expression of constants, or a power too long to multiply under `LIMITS`, is bound instead of repeated when the exponent is large, and then isn't folded: write it as a `const` expression.) A `const` that's used as the base is read once per copy like in the product, so `BASE ** 4` is only folded if `BASE` is an `inline const`, or the power is in a `const` expression.
+- A power of a runtime value takes two bytes per copy of the base (`x ** 8` is `(* x x x x x x x x)`), which is smaller than calling a function that loops for an exponent up to about 40.
+
+With [`operand_limits`](#operand-limits), a power fails exactly when the product it's compiled to does: `x ** n` multiplies `x` by itself one copy at a time, so it fails if `x`, or any of the products before the last one, is longer than 256 bytes. `x ** 1` and `x ** 0` don't multiply anything, so they don't limit `x`.
+
 ## CLI
 
 | Command                         | Description                                                            |
@@ -283,7 +304,7 @@ Chia mainnet runs programs with CLVM's `LIMITS` flag until hard fork 2, which ma
 
 | Operator                       | Fails when                                                                                   |
 | ------------------------------ | -------------------------------------------------------------------------------------------- |
-| `*`                            | an operand is longer than 256 bytes, or the running product grows past 1024 bytes            |
+| `*`, `**`                      | an operand is longer than 256 bytes, or the running product grows past 1024 bytes            |
 | `/`, `%`, `divmod`             | the dividend is longer than 256 bytes, or the divisor is longer than 1024 bytes              |
 | `modpow`                       | the base, exponent or modulus is longer than 256 bytes                                       |
 | `g1_multiply`, `g2_multiply`   | the scalar is longer than 1024 bytes                                                         |

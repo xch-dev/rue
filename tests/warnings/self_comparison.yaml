@@ -1,6 +1,6 @@
-program: (all (a (i (all (a (i (all (= 2 2) (not (= 2 2)) (> 2 2)) (q 32 (>s 11 11)) ()) 1) (= (- 2 2) (logxor 2 2)) (not (logand 2 2)) (> 2 2) (= 2 2)) (q 9 2 5) ()) 1) (> (+ 2 2) ()))
-debug_program: (a (q 2 (q 2 (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i 33 (q . 49) ()) 1) (q . 41) ()) 1) (q . 89) ()) 1) (q 9 121 37) ()) 1) (q 9 85 ()) ()) 1) (q . 45) ()) 1) (q . 2) ()) 1) (q . 93) ()) 1) (q 21 125 ()) ()) 1) (c (= 58 5) 1)) (c (c (c (c (= 2 2) (not (= 2 2))) (c (> 2 2) (c (not (>s 11 11)) (- 2 2)))) (c (c (logxor 2 2) (c (logand 2 2) 2)) (c (> 2 2) (c (= 2 5) (+ 2 2))))) 1))
-byte_cost: 1788000
+program: (a (i (all (a (i (all (a (i (all (= 2 2) (not (= 2 2)) (> 2 2)) (q 32 (>s 11 11)) ()) 1) (= (- 2 2) (logxor 2 2)) (not (logand 2 2)) (> 2 2) (= 2 2) (= (* 2 2) (* 2 2))) (q 9 2 5) ()) 1) (> (+ 2 2) ()) (= (* 2 2) (* 2 2 2))) (q 9 (* 2 2) (* 5 5)) ()) 1)
+debug_program: (a (q 2 (q 2 (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i 33 (q . 81) ()) 1) (q . 113) ()) 1) (q . 73) ()) 1) (q 9 105 89) ()) 1) (q 9 121 ()) ()) 1) (q . 85) ()) 1) (q . 2) ()) 1) (q . 117) ()) 1) (q . 77) ()) 1) (q 21 109 ()) ()) 1) (q . 93) ()) 1) (q . 125) ()) 1) (c (= 18 5) 1)) (c (c (c (c (= 2 2) (c (not (= 2 2)) (> 2 2))) (c (c (not (>s 11 11)) (- 2 2)) (c (logxor 2 2) (logand 2 2)))) (c (c 2 (c (> 2 2) (= (* 2 2) (* 2 2)))) (c (c (= 2 5) (+ 2 2)) (c (= (* 2 2) (* (* 2 2) 2)) (= (* 2 2) (* 5 5)))))) 1))
+byte_cost: 2700000
 clvm_error: path into atom
 diagnostics:
 - Both sides of `==` are the same, so it always evaluates to `true` at self_comparison.rue:2:16
@@ -14,3 +14,4 @@ diagnostics:
   Unnecessary cast from `Int` to `Int`, since they are compatible with each other at self_comparison.rue:12:16
     help: Remove the cast
 - Both sides of `>` are the same, so it always evaluates to `false` at self_comparison.rue:12:16
+- Both sides of `==` are the same, so it always evaluates to `true` at self_comparison.rue:16:18

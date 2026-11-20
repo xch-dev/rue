@@ -863,3 +863,35 @@ fn test_hover_imported_variant_without_fields() {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_power_base() {
+    check(
+        r#"
+const EXPONENT: Int = 2;
+
+fn main(num: Int) -> Int {
+    nu$0m ** EXPONENT
+}
+"#,
+        expect![[r#"
+            num: Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_power_exponent() {
+    check(
+        r#"
+const EXPONENT: Int = 2;
+
+fn main(num: Int) -> Int {
+    num ** EXPO$0NENT
+}
+"#,
+        expect![[r#"
+            const EXPONENT: Int
+        "#]],
+    );
+}

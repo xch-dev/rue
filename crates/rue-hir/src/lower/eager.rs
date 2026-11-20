@@ -145,6 +145,12 @@ impl Lowerer<'_, '_, '_> {
                     self.evaluated_reads(result, reads);
                 }
             }
+            // A power is evaluated as the multiplications that it's expanded into
+            Hir::Power(power) => {
+                if let Some(expansion) = power.expansion {
+                    self.evaluated_reads(expansion, reads);
+                }
+            }
             // A check that doesn't use the value doesn't read it
             Hir::Guard(guard) => {
                 if guard.value_uses() > 0 {
@@ -219,6 +225,9 @@ impl Lowerer<'_, '_, '_> {
                 .substituted_value(*symbol)
                 .is_some_and(|value| self.reads(value, reads)),
             Hir::Const(expr) => expr.result.is_some_and(|result| self.reads(result, reads)),
+            Hir::Power(power) => power
+                .expansion
+                .is_some_and(|expansion| self.reads(expansion, reads)),
             // A check of the parts of a pair reads them without checking that the value is a
             // pair first, when its type already says so, so it reads more than the value. A
             // check that doesn't use the value doesn't read it.
@@ -286,6 +295,10 @@ impl Lowerer<'_, '_, '_> {
             Hir::Const(expr) => expr
                 .result
                 .is_some_and(|result| self.is_cheap(result, budget)),
+            // Each multiplication that the power is expanded into counts
+            Hir::Power(power) => power
+                .expansion
+                .is_some_and(|expansion| self.is_cheap(expansion, budget)),
             Hir::Reference(symbol) => self
                 .substituted_value(*symbol)
                 .is_none_or(|value| self.is_cheap(value, budget)),

@@ -26,6 +26,8 @@ pub struct Test {
 pub struct Database {
     hir: Arena<Hir>,
     const_exprs: Vec<HirId>,
+    /// The power that each const expression is the exponent of.
+    powers: HashMap<HirId, HirId>,
     hir_types: HashMap<HirId, TypeId>,
     /// Types that nodes are reported as having in place of the ones they were recorded with (see
     /// `Database::report_type_as`).
@@ -76,14 +78,17 @@ impl Database {
     }
 
     pub fn alloc_hir(&mut self, hir: Hir) -> HirId {
-        let is_const = matches!(&hir, Hir::Const(_));
-        let hir = self.hir.alloc(hir);
+        let id = self.hir.alloc(hir);
 
-        if is_const {
-            self.const_exprs.push(hir);
+        match &self.hir[id] {
+            Hir::Const(_) => self.const_exprs.push(id),
+            Hir::Power(power) => {
+                self.powers.insert(power.exponent, id);
+            }
+            _ => {}
         }
 
-        hir
+        id
     }
 
     pub fn hir(&self, id: HirId) -> &Hir {
@@ -114,6 +119,11 @@ impl Database {
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
         self.const_exprs.iter().copied()
+    }
+
+    /// The power that the const expression is the exponent of, if it's one.
+    pub fn power_of_exponent(&self, exponent: HirId) -> Option<HirId> {
+        self.powers.get(&exponent).copied()
     }
 
     /// The value inside of any casts, which is what's evaluated at runtime.
@@ -647,6 +657,11 @@ impl Database {
             Hir::Cast(value) => format!("({} as _)", self.debug_hir(*value)),
             Hir::Guard(guard) => format!("({} is _)", self.debug_hir(guard.value)),
             Hir::Const(expr) => format!("const {{ {} }}", self.debug_hir(expr.value)),
+            Hir::Power(power) => format!(
+                "({} ** {})",
+                self.debug_hir(power.base),
+                self.debug_hir(power.exponent)
+            ),
             Hir::Reference(symbol) => self.debug_symbol(*symbol),
             Hir::Block(block) => block
                 .body

@@ -605,6 +605,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     .expect("unevaluated const expression reached lowering");
                 self.lower_hir(env, result)
             }
+            Hir::Power(power) => {
+                let expansion = power.expansion.expect("unexpanded power reached lowering");
+                self.lower_hir(env, expansion)
+            }
             Hir::Reference(symbol) => self.lower_symbol(env, symbol, false),
             Hir::Block(block) => self.lower_block(env, block.statements, Tail::Body(block.body)),
             Hir::Lambda(lambda) => self.lower_symbol(env, lambda, true),

@@ -12,9 +12,14 @@ fn main(a: Int, b: Int, bytes: Bytes) -> Bool {
     let cast = (a as Int) > a;
     let through_binding = copy == a;
 
+    // Powers are the same if their bases and exponents are
+    let powers = a ** 2 == a ** 2;
+
     // Different operands aren't reported
     let unrelated = a == b;
     let sum = a + a;
+    let different_exponents = a ** 2 == a ** 3;
+    let different_bases = a ** 2 == b ** 2;
 
     same
         && different
@@ -24,6 +29,9 @@ fn main(a: Int, b: Int, bytes: Bytes) -> Bool {
         && and == 0
         && cast
         && through_binding
+        && powers
         && unrelated
         && sum > 0
+        && different_exponents
+        && different_bases
 }

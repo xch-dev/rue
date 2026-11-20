@@ -1,0 +1,458 @@
+tests:
+- name: square
+  program: (* 2 2)
+  debug_program: (* 2 2)
+  solution: (7)
+  output: "49"
+  runtime_cost: 1096
+  byte_cost: 84000
+  total_cost: 85096
+- name: square_by_hand
+  program: (* 2 2)
+  debug_program: (* 2 2)
+  solution: (7)
+  output: "49"
+  runtime_cost: 1096
+  byte_cost: 84000
+  total_cost: 85096
+- name: cube
+  program: (* 2 2 2)
+  debug_program: (* (* 2 2) 2)
+  solution: (7)
+  output: "343"
+  runtime_cost: 2051
+  byte_cost: 108000
+  total_cost: 110051
+- name: cube_by_hand
+  program: (* 2 2 2)
+  debug_program: (* (* 2 2) 2)
+  solution: (7)
+  output: "343"
+  runtime_cost: 2051
+  byte_cost: 108000
+  total_cost: 110051
+- name: eighth_power
+  program: (* 2 2 2 2 2 2 2 2)
+  debug_program: (* (* (* (* (* (* (* 2 2) 2) 2) 2) 2) 2) 2)
+  solution: (3)
+  output: "6561"
+  runtime_cost: 6788
+  byte_cost: 228000
+  total_cost: 234788
+- name: eighth_power_by_hand
+  program: (* 2 2 2 2 2 2 2 2)
+  debug_program: (* (* (* (* (* (* (* 2 2) 2) 2) 2) 2) 2) 2)
+  solution: (3)
+  output: "6561"
+  runtime_cost: 6788
+  byte_cost: 228000
+  total_cost: 234788
+- name: constant_power
+  program: (q . 1000000000000000000)
+  debug_program: (q . 1000000000000000000)
+  output: "1000000000000000000"
+  runtime_cost: 20
+  byte_cost: 132000
+  total_cost: 132020
+- name: constant_power_by_hand
+  program: (q . 1000000000000000000)
+  debug_program: (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (q . 10) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10)) (q . 10))
+  output: "1000000000000000000"
+  runtime_cost: 20
+  byte_cost: 132000
+  total_cost: 132020
+- name: constant_bases
+  program: (q . 108)
+  debug_program: (+ (+ (+ (+ (+ (* (* (- () (q . 2)) (- () (q . 2))) (- () (q . 2))) (q . 64)) (* (+ (q . 1) (q . 2)) (+ (q . 1) (q . 2)))) (q . 16)) (q . 25)) (% (q . 0x010000000000000000000000000000000000000000000000000000000000000000) (q . 7)))
+  output: "108"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: power_of_constant_power
+  program: (q . 458)
+  debug_program: (+ (+ (% (q . 0x01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) (q . 1000)) (% (q . 0x023ace5c50a5fbec9ef2bf6ea5baf2d8251ba059110e8021edab80c22cc7be93d75217206270a74a538cf21f451c2c0ae6ebe3d29d42528179584c85832eb42192ce8fdea7a2e7820858337f4f8c28be9ce9c3abe2a942c36350df1d8105fb270cd846a4296e4c35d551cc8e0d25deb9cbc901150caed34c523b62666447a3f65cb50db60821943a27f228a936ac73f334f6483346263aa88c5baf73ead231aed90cbd9afe1735cdace3f2f46564a1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) (q . 7))) (* (+ (q . 1) (q . 8)) (+ (q . 1) (q . 8))))
+  output: "458"
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: negative_constant_base
+  program: (q . -17)
+  debug_program: (+ (+ (+ (q . -27) (q . 9)) (q . -1)) (% (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (- () (q . 1099511627776)) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (- () (q . 1099511627776))) (q . 7)))
+  output: "-17"
+  runtime_cost: 20
+  byte_cost: 48000
+  total_cost: 48020
+- name: large_constant_base
+  program: (+ (% (a (q 18 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2) (c (q . 1099511627776) 1)) (q . 7)) (% (a (q 18 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2) (c (q . 2) 1)) (q . 1000)))
+  debug_program: (+ (% (a (q 18 (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* 2 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) (c (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (+ (q . 1) (q . 1)) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) (+ (q . 1) (q . 1))) 1)) (q . 7)) (% (a (q 18 (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* 2 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) (c (+ (+ (q . 1) (q . 1)) ()) 1)) (q . 1000)))
+  output: "938"
+  runtime_cost: 333212
+  byte_cost: 7908000
+  total_cost: 8241212
+- name: long_constant_power_base
+  program: (% (a (q 18 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2) (c (q . 0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) 1)) (q . 1000))
+  debug_program: (% (a (q 18 (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* 2 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) (c (q . 0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) 1)) (q . 1000))
+  output: "376"
+  runtime_cost: 1378083
+  byte_cost: 3732000
+  total_cost: 5110083
+- name: largest_exponent_of_largest_exponent
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: constant_item_base
+  program: (a (q 18 2 2 2 2) (q 3))
+  debug_program: (a (q 18 (* (* 2 2) 2) 2) (c (q . 3) ()))
+  output: "81"
+  runtime_cost: 3117
+  byte_cost: 276000
+  total_cost: 279117
+- name: constant_item_base_by_hand
+  program: (a (q 18 2 2 2 2) (q 3))
+  debug_program: (a (q 18 (* (* 2 2) 2) 2) (c (q . 3) ()))
+  output: "81"
+  runtime_cost: 3117
+  byte_cost: 276000
+  total_cost: 279117
+- name: inline_constant_item_base
+  program: (q . 81)
+  debug_program: (* (* (* (q . 3) (q . 3)) (q . 3)) (q . 3))
+  output: "81"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: constant_item_base_in_const
+  program: (q . 81)
+  debug_program: (q . 81)
+  output: "81"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: bound_base
+  program: (a (q 18 2 2 2) (c (+ 2 (q . 1)) 1))
+  debug_program: (a (q 18 (* 2 2) 2) (c (+ 2 (q . 1)) 1))
+  solution: (4)
+  output: "125"
+  runtime_cost: 3071
+  byte_cost: 372000
+  total_cost: 375071
+- name: bound_base_by_hand
+  program: (a (q 18 2 2 2) (c (+ 2 (q . 1)) 1))
+  debug_program: (a (q 18 (* 2 2) 2) (c (+ 2 (q . 1)) 1))
+  solution: (4)
+  output: "125"
+  runtime_cost: 3071
+  byte_cost: 372000
+  total_cost: 375071
+- name: call_base
+  program: (a (q 18 2 2) (c (+ 2 (q . 1)) 1))
+  debug_program: (a (q 2 (q 18 2 2) (c (a 2 5) 1)) (c (q 16 1 (q . 1)) 1))
+  solution: (4)
+  output: "25"
+  runtime_cost: 2126
+  byte_cost: 348000
+  total_cost: 350126
+- name: first_power
+  program: "2"
+  debug_program: "2"
+  solution: (9)
+  output: "9"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: zeroth_power
+  program: (q . 1)
+  debug_program: (q . 1)
+  solution: (9)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: zeroth_power_of_failing_base
+  program: (i () (/ (q . 10) 2) (q . 1))
+  debug_program: (i () (/ (q . 10) 2) (q . 1))
+  solution: (0)
+  byte_cost: 228000
+  clvm_error: Division by zero
+- name: zeroth_power_of_valid_base
+  program: (i () (/ (q . 10) 2) (q . 1))
+  debug_program: (i () (/ (q . 10) 2) (q . 1))
+  solution: (5)
+  output: "1"
+  runtime_cost: 1173
+  byte_cost: 228000
+  total_cost: 229173
+- name: zeroth_power_of_failing_reference
+  program: (i () (/ (q . 10) 2) (q . 1))
+  debug_program: (i () (/ (q . 10) 2) (q . 1))
+  solution: (0)
+  byte_cost: 228000
+  clvm_error: Division by zero
+- name: zeroth_power_of_valid_reference
+  program: (i () (/ (q . 10) 2) (q . 1))
+  debug_program: (i () (/ (q . 10) 2) (q . 1))
+  solution: (5)
+  output: "1"
+  runtime_cost: 1173
+  byte_cost: 228000
+  total_cost: 229173
+- name: field_base
+  program: (+ (* 4 4) (* 10 10 10))
+  debug_program: (+ (* (f 2) (f 2)) (* (* (f (r 2)) (f (r 2))) (f (r 2))))
+  solution: ((3 4))
+  output: "73"
+  runtime_cost: 3925
+  byte_cost: 252000
+  total_cost: 255925
+- name: field_base_by_hand
+  program: (+ (* 4 4) (* 10 10 10))
+  debug_program: (+ (* (f 2) (f 2)) (* (* (f (r 2)) (f (r 2))) (f (r 2))))
+  solution: ((3 4))
+  output: "73"
+  runtime_cost: 3925
+  byte_cost: 252000
+  total_cost: 255925
+- name: cast_base
+  program: (* 2 2 2)
+  debug_program: (* (* 2 2) 2)
+  solution: (3)
+  output: "27"
+  runtime_cost: 2041
+  byte_cost: 108000
+  total_cost: 110041
+- name: length_base
+  program: (a (q 18 2 2 2) (c (strlen 2) 1))
+  debug_program: (a (q 18 (* 2 2) 2) (c (strlen 2) 1))
+  solution: ("ab")
+  output: "8"
+  runtime_cost: 2481
+  byte_cost: 324000
+  total_cost: 326481
+- name: zeroth_power_of_field
+  program: (q . 1)
+  debug_program: (q . 1)
+  solution: ((3 4))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: unused_division_by_power
+  program: "2"
+  debug_program: "2"
+  solution: (7)
+  output: "7"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: unused_shift_by_power
+  program: "2"
+  debug_program: "2"
+  solution: (7)
+  output: "7"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: failing_shift_by_power
+  program: (i () (ash 2 (q . 0x400000000000000000)) 2)
+  debug_program: (i () (ash 2 (q . 0x400000000000000000)) 2)
+  solution: (7)
+  byte_cost: 312000
+  clvm_error: "InvalidOperatorArg: ash requires int32 args (with no leading zeros)"
+- name: division_by_zero_power
+  program: (i () (/ 2 ()) 2)
+  debug_program: (i () (/ 2 ()) 2)
+  solution: (7)
+  byte_cost: 180000
+  clvm_error: Division by zero
+- name: negated_power
+  program: (- () (* 2 2))
+  debug_program: (- () (* 2 2))
+  solution: (3)
+  output: "-9"
+  runtime_cost: 1893
+  byte_cost: 156000
+  total_cost: 157893
+- name: power_of_negation
+  program: (a (q 18 2 2) (c (- () 2) 1))
+  debug_program: (a (q 18 2 2) (c (- () 2) 1))
+  solution: (3)
+  output: "9"
+  runtime_cost: 2147
+  byte_cost: 324000
+  total_cost: 326147
+- name: constant_exponent
+  program: (* 2 2)
+  debug_program: (* 2 2)
+  solution: (5)
+  output: "25"
+  runtime_cost: 1096
+  byte_cost: 84000
+  total_cost: 85096
+- name: computed_exponent
+  program: (* 2 2 2)
+  debug_program: (* (* 2 2) 2)
+  solution: (5)
+  output: "125"
+  runtime_cost: 2041
+  byte_cost: 108000
+  total_cost: 110041
+- name: function_exponent
+  program: (* 2 2 2 2)
+  debug_program: (* (* (* 2 2) 2) 2)
+  solution: (5)
+  output: "625"
+  runtime_cost: 2996
+  byte_cost: 132000
+  total_cost: 134996
+- name: power_in_called_function
+  program: (+ (* 2 2 2 2) (* 2 2 2 2) (q . 9))
+  debug_program: (a (q 2 (q 16 (+ (* (* (* 11 11) 11) 11) 2) (* (* (* 11 11) 11) 11)) (c (a 2 (q . 3)) 1)) (c (q 18 1 1) 1))
+  solution: (2)
+  output: "41"
+  runtime_cost: 7071
+  byte_cost: 372000
+  total_cost: 379071
+- name: power_exponent
+  program: (* 2 2 2 2)
+  debug_program: (* (* (* 2 2) 2) 2)
+  solution: (5)
+  output: "625"
+  runtime_cost: 2996
+  byte_cost: 132000
+  total_cost: 134996
+- name: const_block_exponent
+  program: (q . 1)
+  debug_program: (q . 1)
+  solution: (5)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: power_of_power
+  program: (a (q 18 2 2 2) (c (* 2 2) 1))
+  debug_program: (a (q 18 (* 2 2) 2) (c (* 2 2) 1))
+  solution: (2)
+  output: "64"
+  runtime_cost: 3343
+  byte_cost: 348000
+  total_cost: 351343
+- name: sum_of_powers
+  program: (+ (* 2 2) (* 2 5 (q . 2)) (* 5 5))
+  debug_program: (+ (+ (* 2 2) (* (* (q . 2) 2) 5)) (* 5 5))
+  solution: (3 4)
+  output: "49"
+  runtime_cost: 5296
+  byte_cost: 372000
+  total_cost: 377296
+- name: power_in_constant
+  program: (+ (* 2 (q . 1000)) (q . 0x010000000000000000))
+  debug_program: (a (q 16 (* 5 2) (q . 0x010000000000000000)) (c (q . 1000) 1))
+  solution: (2)
+  output: "0x0100000000000007d0"
+  runtime_cost: 1967
+  byte_cost: 336000
+  total_cost: 337967
+- name: largest_exponent
+  program: (q . 0x00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
+  debug_program: (- (q . 0x010000000000000000000000000000000000000000000000000000000000000000) (q . 1))
+  output: "0x00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  runtime_cost: 20
+  byte_cost: 432000
+  total_cost: 432020
+- name: largest_exponent_of_parameter
+  program: (* 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2)
+  debug_program: (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* 2 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2) 2)
+  solution: (2)
+  output: "0x010000000000000000000000000000000000000000000000000000000000000000"
+  runtime_cost: 265254
+  byte_cost: 6180000
+  total_cost: 6445254
+- name: inline_base
+  program: (* (+ 2 (q . 1)) (+ 2 (q . 1)))
+  debug_program: (* (+ 2 (q . 1)) (+ 2 (q . 1)))
+  solution: (4)
+  output: "25"
+  runtime_cost: 2648
+  byte_cost: 276000
+  total_cost: 278648
+- name: power_in_lambda
+  program: (* 2 2)
+  debug_program: (a (q 2 2 (c 5 (c (q . 2) (c (c (q . 1) (q 18 2 2)) (c (q . 1) ()))))) (c (q 2 3 (c 2 ())) 1))
+  solution: (6)
+  output: "36"
+  runtime_cost: 1096
+  byte_cost: 84000
+  total_cost: 85096
+- name: power_in_branch
+  program: (a (i 5 (q 18 2 2) (q 18 2 2 2)) 1)
+  debug_program: (a (i 5 (q 18 2 2) (q 18 (* 2 2) 2)) 1)
+  solution: (2 ())
+  output: "8"
+  runtime_cost: 2302
+  byte_cost: 396000
+  total_cost: 398302
+- name: power_index
+  program: (a (q 14 (substr 5 (* 2 2) (q . 5)) (substr 5 (q . 2) (q . 4))) (c (q . 2) 1))
+  debug_program: (a (q 14 (substr 5 (* 2 2) (q . 5)) (substr 5 (q . 2) (q . 4))) (c (q . 2) 1))
+  solution: ("abcdefgh")
+  output: "\"ecd\""
+  runtime_cost: 1942
+  byte_cost: 612000
+  total_cost: 613942
+- name: power_of_index
+  program: (a (q 18 2 2) (c (substr 2 () (q . 1)) 1))
+  debug_program: (a (q 18 2 2) (c (substr 2 () (q . 1)) 1))
+  solution: ("abcdefgh")
+  output: "9409"
+  runtime_cost: 1426
+  byte_cost: 372000
+  total_cost: 373426
+- name: unused_power
+  program: "2"
+  debug_program: "2"
+  solution: (5)
+  output: "5"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: eager_square
+  program: (a (q 2 2 (c 2 5)) (c (q 2 (i 3 (q 2 (i (any (> 5 (q . 100)) (> (* 5 5) (q . 100))) (q 1 . 1) (q 2 2 (c 2 7))) 1) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 5)) (c (q 2 (i (not 3) () (q 2 (i (a (i (> (f 3) (q . 100)) (q 1 . 1) (q 21 (* (f 3) (f 3)) (q . 100))) 1) (q 1 . 1) (q 2 2 (c 2 (r 3)))) 1)) 1) 1))
+  byte_cost: 1260000
+  clvm_error: path into atom
+- name: eager_square_by_hand
+  program: (a (q 2 2 (c 2 5)) (c (q 2 (i 3 (q 2 (i (any (> 5 (q . 100)) (> (* 5 5) (q . 100))) (q 1 . 1) (q 2 2 (c 2 7))) 1) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 5)) (c (q 2 (i (not 3) () (q 2 (i (a (i (> (f 3) (q . 100)) (q 1 . 1) (q 21 (* (f 3) (f 3)) (q . 100))) 1) (q 1 . 1) (q 2 2 (c 2 (r 3)))) 1)) 1) 1))
+  byte_cost: 1260000
+  clvm_error: path into atom
+- name: inlined_square
+  program: (+ (* 2 2) (* 5 5))
+  debug_program: (a (q 16 (a 2 5) (a 2 11)) (c (q 18 1 1) 1))
+  byte_cost: 228000
+  clvm_error: path into atom
+- name: inlined_square_by_hand
+  program: (+ (* 2 2) (* 5 5))
+  debug_program: (a (q 16 (a 2 5) (a 2 11)) (c (q 18 1 1) 1))
+  byte_cost: 228000
+  clvm_error: path into atom
+- name: shared_large_power
+  program: (a (q 16 (a 2 (q . 2)) (a 2 (q . 3))) (c (q 18 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1) ()))
+  debug_program: (a (q 16 (a 2 (q . 2)) (a 2 (q . 3))) (c (q 18 (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* 1 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) ()))
+  output: "3487832977"
+  runtime_cost: 37728
+  byte_cost: 972000
+  total_cost: 1009728
+- name: shared_large_power_by_hand
+  program: (a (q 16 (a 2 (q . 2)) (a 2 (q . 3))) (c (q 18 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1) ()))
+  debug_program: (a (q 16 (a 2 (q . 2)) (a 2 (q . 3))) (c (q 18 (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* 1 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) ()))
+  output: "3487832977"
+  runtime_cost: 37728
+  byte_cost: 972000
+  total_cost: 1009728
+diagnostics:
+- |-
+  `0xFF` is the negative number `-1` as an `Int`, since integers are signed at expansion.rue:64:45
+    help: Write the number `255` instead

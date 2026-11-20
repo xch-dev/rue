@@ -1,0 +1,12 @@
+fn missing_exponent(x: Int) -> Int {
+    x **
+}
+
+// The two `*` of the operator have to be next to each other
+fn spaced_operator(x: Int) -> Int {
+    x * * 2
+}
+
+fn missing_base() -> Int {
+    ** 2
+}

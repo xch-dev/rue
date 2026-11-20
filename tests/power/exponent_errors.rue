@@ -1,0 +1,90 @@
+// The exponent of a power is evaluated at compile time, so it has to be known then, and it can't
+// be negative or larger than 256
+const EXPONENT: Int = 300;
+const NEGATIVE: Int = -2;
+
+fn runtime_exponent(x: Int, n: Int) -> Int {
+    x ** n
+}
+
+fn runtime_binding(x: Int) -> Int {
+    let n = x + 1;
+    2 ** n
+}
+
+// A binding isn't known at compile time, even if it's bound to a number, and neither is the
+// parameter of an inline function
+fn literal_binding(x: Int) -> Int {
+    let n = 2;
+    x ** n
+}
+
+inline fn inline_parameter(x: Int, n: Int) -> Int {
+    x ** n
+}
+
+fn runtime_exponent_in_const(x: Int) -> Int {
+    const { 2 ** x }
+}
+
+fn negative_exponent(x: Int) -> Int {
+    x ** -1
+}
+
+fn negative_constant_exponent(x: Int) -> Int {
+    2 ** NEGATIVE + x
+}
+
+fn too_large(x: Int) -> Int {
+    x ** 257
+}
+
+fn too_large_constant(x: Int) -> Int {
+    x ** EXPONENT
+}
+
+fn too_large_literal_base() -> Int {
+    2 ** 1000000000000000000000000000000
+}
+
+fn nested_too_large(x: Int) -> Int {
+    x ** 2 ** 9
+}
+
+fn failing_exponent(x: Int) -> Int {
+    x ** (1 / 0)
+}
+
+// The same errors are reported for a power in a constant
+const NEGATIVE_POWER: Int = 2 ** -1;
+
+// An exponent can't depend on itself
+const RECURSIVE: Int = 2 ** RECURSIVE;
+
+fn recursive_exponent(x: Int) -> Int {
+    x ** recursive_exponent(1)
+}
+
+// The base of a power in a const expression has to be known at compile time too
+fn runtime_base_in_const(x: Int) -> Int {
+    const { x ** 2 }
+}
+
+fn main(x: Int, n: Int) -> Int {
+    runtime_exponent(x, n)
+        + runtime_binding(x)
+        + literal_binding(x)
+        + inline_parameter(x, 2)
+        + NEGATIVE_POWER
+        + RECURSIVE
+        + recursive_exponent(x)
+        + runtime_base_in_const(x)
+        + runtime_exponent_in_const(x)
+        + negative_exponent(x)
+        + negative_constant_exponent(x)
+        + too_large(x)
+        + too_large_constant(x)
+        + too_large_literal_base()
+        + nested_too_large(x)
+        + failing_exponent(x)
+}

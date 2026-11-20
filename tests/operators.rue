@@ -23,6 +23,33 @@ test fn arithmetic() {
     assert -67 * 3 + 1 == -200;
 }
 
+test fn power() {
+    assert 2 ** 10 == 1024;
+    assert 10 ** 18 == 1000000000000000000;
+    assert 2 ** 256 == 0x010000000000000000000000000000000000000000000000000000000000000000 as Int;
+
+    // Anything to the power of zero is one, including zero
+    assert 2 ** 0 == 1;
+    assert 0 ** 0 == 1;
+    assert 0 ** 5 == 0;
+    assert 7 ** 1 == 7;
+
+    // It binds more tightly than a `-` before the base, but not one before the exponent
+    assert -2 ** 2 == -4;
+    assert (-2) ** 2 == 4;
+    assert (-2) ** 3 == -8;
+    assert 2 ** -(-3) == 8;
+
+    // It's right associative, and binds more tightly than the other binary operators
+    assert 2 ** 3 ** 2 == 512;
+    assert (2 ** 3) ** 2 == 64;
+    assert 2 * 3 ** 2 == 18;
+    assert 2 ** 3 * 2 == 16;
+
+    // A cast after the exponent applies to the exponent
+    assert 2 ** 0x02 as Int == 4;
+}
+
 test fn bls_scalar_multiplication() {
     let g1 = 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb as PublicKey;
     assert g1 == pubkey_for_exp(0x0000000000000000000000000000000000000000000000000000000000000001);

@@ -634,6 +634,12 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 visit_hir(db, graph, expr.value, false);
             }
         }
+        // Once the exponent has been evaluated, only the expansion is used
+        Hir::Power(power) => {
+            for child in power.evaluated() {
+                visit_hir(db, graph, child, false);
+            }
+        }
         Hir::Reference(symbol) => {
             if !is_call {
                 graph.closures.insert(*symbol);

@@ -431,6 +431,11 @@ impl<'a, 'c> Uses<'a, 'c> {
                 }
             }
             Hir::Block(block) => self.block(&block.statements, block.body),
+            Hir::Power(power) => {
+                for child in power.evaluated() {
+                    self.hir(child);
+                }
+            }
             // A guard whose check doesn't use its value only evaluates it for its effect, the
             // same way as a binding that's never referenced
             Hir::Guard(guard) => {

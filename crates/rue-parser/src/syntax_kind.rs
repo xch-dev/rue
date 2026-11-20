@@ -151,6 +151,9 @@ pub enum SyntaxKind {
     #[display("`%`")]
     Percent,
 
+    #[display("`**`")]
+    Power,
+
     // Comparison operators
     #[display("`==`")]
     Equals,
@@ -477,6 +480,7 @@ macro_rules! T {
     [*] => { $crate::SyntaxKind::Star };
     [/] => { $crate::SyntaxKind::Slash };
     [%] => { $crate::SyntaxKind::Percent };
+    [**] => { $crate::SyntaxKind::Power };
     [==] => { $crate::SyntaxKind::Equals };
     [!=] => { $crate::SyntaxKind::NotEquals };
     [<] => { $crate::SyntaxKind::LessThan };
@@ -527,6 +531,7 @@ impl SyntaxKind {
         T![*],
         T![/],
         T![%],
+        T![**],
         T![<],
         T![>],
         T![<=],
@@ -555,9 +560,16 @@ impl SyntaxKind {
             T![<<] | T![>>] | T![>>>] => Some((15, 16)),
             T![+] | T![-] => Some((17, 18)),
             T![*] | T![/] | T![%] => Some((19, 20)),
+            // Right associative, so `a ** b ** c` is `a ** (b ** c)`
+            T![**] => Some((22, 21)),
             _ => None,
         }
     }
+
+    /// The binding power that the operand of a prefix operator is parsed with. Only `**` binds
+    /// more tightly, so `-a ** 2` is `-(a ** 2)` like in most languages, while every other binary
+    /// operator applies to the result of the prefix operator, so `-a * 2` is `(-a) * 2`.
+    pub const PREFIX_BINDING_POWER: u8 = 21;
 
     pub fn is_trivia(&self) -> bool {
         matches!(
@@ -615,6 +627,7 @@ impl SyntaxKind {
             T![*] => &[T![*]],
             T![/] => &[T![/]],
             T![%] => &[T![%]],
+            T![**] => &[T![*], T![*]],
             T![==] => &[T![=], T![=]],
             T![!=] => &[T![!], T![=]],
             T![<] => &[T![<]],

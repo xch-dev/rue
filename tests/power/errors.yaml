@@ -1,0 +1,6 @@
+diagnostics:
+- Cannot use `**` operator with `Bytes` and `2` at errors.rue:2:5
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at errors.rue:6:7
+- Cannot assign `true` to `Int` without a cast, since they are semantically different at errors.rue:10:7
+- Cannot use `**` operator with `PublicKey` and `2` at errors.rue:14:5
+- Both sides of `==` are the same, so it always evaluates to `true` at errors.rue:21:16

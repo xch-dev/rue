@@ -21,6 +21,49 @@ test fn inline_quotient(x: Int, flag: Bool) -> Int {
     }
 }
 
+// Warns: a power is a product of the base with itself
+test fn inline_power(x: Int, flag: Bool) -> Int {
+    inline let square = x ** 2;
+    if flag {
+        square
+    } else {
+        0
+    }
+}
+
+// Doesn't warn: every product in a power of a short constant is short
+test fn inline_constant_power(x: Int, flag: Bool) -> Int {
+    inline let scale = 10 ** 18;
+    if flag {
+        scale
+    } else {
+        x
+    }
+}
+
+// Warns: the cube of a 200 byte constant multiplies its square, which is too long
+test fn inline_long_constant_power(flag: Bool) -> Int {
+    inline let cube = (
+        0x0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101 as Int
+    )
+        ** 3;
+    if flag {
+        cube
+    } else {
+        0
+    }
+}
+
+// Doesn't warn: the first power is the base itself
+test fn inline_first_power(x: Int, flag: Bool) -> Int {
+    inline let same = x ** 1;
+    if flag {
+        same
+    } else {
+        0
+    }
+}
+
 // Doesn't warn: the operands are short constants
 test fn inline_constant_product(flag: Bool) -> Int {
     inline let product = 6 * 7;

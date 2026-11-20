@@ -4,12 +4,14 @@ use std::path::PathBuf;
 use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
 use id_arena::Arena;
-use rue_diagnostic::DiagnosticKind;
+use num_bigint::Sign;
+use num_traits::ToPrimitive;
+use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
-    DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol, SymbolId,
-    has_reachable_unresolved,
+    DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, MAX_POWER_EXPONENT,
+    Symbol, SymbolId, Value, expand_power, has_reachable_unresolved,
 };
-use rue_lir::{CodegenOptions, codegen, optimize};
+use rue_lir::{CodegenOptions, atom_bigint, codegen, optimize};
 use rue_options::CompilerOptions;
 
 use crate::{Compiler, clvm_target, entrypoint::synthetic_function};
@@ -40,6 +42,8 @@ enum ConstEvalError {
     Failed(String),
     Recursive,
     DependencyFailed,
+    /// The exponent of a power was evaluated, but the power can't be expanded with it.
+    Exponent(DiagnosticKind),
     LoweringTooDeep,
 }
 
@@ -145,10 +149,25 @@ fn finish_const(
         unreachable!("const expressions are never replaced");
     };
 
+    let power = ctx.power_of_exponent(hir);
+
+    // The exponent of a power also has to be one that the power can be expanded with
+    let result = result.and_then(|value| match power {
+        Some(_) => exponent_value(&value).map(|exponent| (value, Some(exponent))),
+        None => Ok((value, None)),
+    });
+
     let diagnostic = match result {
-        Ok(value) => {
+        Ok((value, exponent)) => {
             let value = ctx.alloc_hir(value);
             set_const_result(ctx, hir, value);
+
+            // The power is expanded as soon as its exponent is known, so that it has been by the
+            // time anything that contains it is lowered, including a const expression
+            if let (Some(power), Some(exponent)) = (power, exponent) {
+                expand(ctx, power, exponent, &expr.loc);
+            }
+
             states.insert(hir, ConstState::Done);
             return;
         }
@@ -158,6 +177,9 @@ fn finish_const(
             set_const_result(ctx, hir, expr.value);
             states.insert(hir, ConstState::Done);
             return;
+        }
+        Err(ConstEvalError::RuntimeDependency(symbol)) if power.is_some() => {
+            Some(DiagnosticKind::RuntimeExponent(symbol))
         }
         Err(ConstEvalError::RuntimeDependency(symbol)) => {
             Some(DiagnosticKind::ConstRuntimeDependency(symbol))
@@ -170,6 +192,7 @@ fn finish_const(
         Err(ConstEvalError::LoweringTooDeep) => {
             Some(DiagnosticKind::LoweringTooDeep(MAX_LOWERING_DEPTH))
         }
+        Err(ConstEvalError::Exponent(diagnostic)) => Some(diagnostic),
         // The dependency has already reported its own diagnostic
         Err(ConstEvalError::DependencyFailed) => None,
     };
@@ -180,7 +203,63 @@ fn finish_const(
 
     let nil = ctx.alloc_hir(Hir::Nil);
     set_const_result(ctx, hir, nil);
+
+    // Like the const expression, the power gets a placeholder, so that whatever contains it can
+    // still be lowered
+    if let Some(power) = power {
+        set_expansion(ctx, power, nil);
+    }
+
     states.insert(hir, ConstState::Failed);
+}
+
+/// The exponent that a power is expanded with, unless it's negative or too large.
+fn exponent_value(exponent: &Hir) -> Result<u32, ConstEvalError> {
+    // The exponent is an `Int`, so it's an atom unless its type is wrong, which the compiler
+    // trusts as it does at runtime
+    let Hir::Bytes(bytes) = exponent else {
+        return Err(ConstEvalError::Failed(
+            "the exponent isn't an atom".to_string(),
+        ));
+    };
+
+    let exponent = atom_bigint(bytes);
+
+    if exponent.sign() == Sign::Minus {
+        return Err(ConstEvalError::Exponent(DiagnosticKind::NegativeExponent(
+            exponent.to_string(),
+        )));
+    }
+
+    exponent
+        .to_u32()
+        .filter(|&exponent| exponent <= MAX_POWER_EXPONENT)
+        .ok_or_else(|| {
+            ConstEvalError::Exponent(DiagnosticKind::ExponentTooLarge(
+                exponent.to_string(),
+                MAX_POWER_EXPONENT,
+            ))
+        })
+}
+
+/// Expands a power into multiplications, now that its exponent has been evaluated. The location
+/// is the exponent's, for a base that doesn't have one.
+fn expand(ctx: &mut Compiler, power: HirId, exponent: u32, loc: &SrcLoc) {
+    let Hir::Power(node) = *ctx.hir(power) else {
+        unreachable!("powers are never replaced");
+    };
+
+    let int = ctx.builtins().types.int;
+    let base = Value::new(node.base, ctx.hir_type(node.base).unwrap_or(int));
+    let srcloc = ctx.hir_srcloc(node.base).unwrap_or(loc).clone();
+    let expansion = expand_power(ctx, base, srcloc, exponent);
+    set_expansion(ctx, power, expansion);
+}
+
+fn set_expansion(ctx: &mut Compiler, power: HirId, expansion: HirId) {
+    if let Hir::Power(power) = ctx.hir_mut(power) {
+        power.expansion = Some(expansion);
+    }
 }
 
 /// A function that returns the value of a const expression, which it's evaluated as.

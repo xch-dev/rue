@@ -67,7 +67,7 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
             p,
             cp,
             ExprOptions {
-                minimum_binding_power: 255,
+                minimum_binding_power: SyntaxKind::PREFIX_BINDING_POWER,
                 allow_statement: false,
                 allow_struct_initializer: options.allow_struct_initializer,
                 inline: false,
@@ -2476,6 +2476,170 @@ mod tests {
                       Integer@8..9 "3"
             "#]],
             expect![""],
+        );
+    }
+
+    #[test]
+    fn test_power_operator() {
+        // It's right associative, and binds more tightly than the other binary operators
+        check(
+            expr,
+            "1 * 2 ** 3 ** 4 * 5",
+            expect![[r#"
+            BinaryExpr@0..19
+              BinaryExpr@0..16
+                LiteralExpr@0..1
+                  Integer@0..1 "1"
+                Whitespace@1..2 " "
+                Star@2..3 "*"
+                Whitespace@3..4 " "
+                BinaryExpr@4..16
+                  LiteralExpr@4..5
+                    Integer@4..5 "2"
+                  Whitespace@5..6 " "
+                  Power@6..8 "**"
+                  Whitespace@8..9 " "
+                  BinaryExpr@9..16
+                    LiteralExpr@9..10
+                      Integer@9..10 "3"
+                    Whitespace@10..11 " "
+                    Power@11..13 "**"
+                    Whitespace@13..14 " "
+                    LiteralExpr@14..15
+                      Integer@14..15 "4"
+                    Whitespace@15..16 " "
+              Star@16..17 "*"
+              Whitespace@17..18 " "
+              LiteralExpr@18..19
+                Integer@18..19 "5"
+        "#]],
+            expect![],
+        );
+
+        // It binds more tightly than a prefix operator on its base, but not on its exponent
+        check(
+            expr,
+            "-1 ** -2 ** 3",
+            expect![[r#"
+            PrefixExpr@0..13
+              Minus@0..1 "-"
+              BinaryExpr@1..13
+                LiteralExpr@1..2
+                  Integer@1..2 "1"
+                Whitespace@2..3 " "
+                Power@3..5 "**"
+                Whitespace@5..6 " "
+                PrefixExpr@6..13
+                  Minus@6..7 "-"
+                  BinaryExpr@7..13
+                    LiteralExpr@7..8
+                      Integer@7..8 "2"
+                    Whitespace@8..9 " "
+                    Power@9..11 "**"
+                    Whitespace@11..12 " "
+                    LiteralExpr@12..13
+                      Integer@12..13 "3"
+        "#]],
+            expect![],
+        );
+
+        // Other binary operators apply to the result of a prefix operator
+        check(
+            expr,
+            "-1 * 2",
+            expect![[r#"
+            BinaryExpr@0..6
+              PrefixExpr@0..3
+                Minus@0..1 "-"
+                LiteralExpr@1..2
+                  Integer@1..2 "1"
+                Whitespace@2..3 " "
+              Star@3..4 "*"
+              Whitespace@4..5 " "
+              LiteralExpr@5..6
+                Integer@5..6 "2"
+        "#]],
+            expect![],
+        );
+
+        // Postfix operators bind more tightly still
+        check(
+            expr,
+            "a.b ** c() as Int",
+            expect![[r#"
+            BinaryExpr@0..17
+              FieldAccessExpr@0..3
+                PathExpr@0..1
+                  PathSegment@0..1
+                    Ident@0..1 "a"
+                Dot@1..2 "."
+                Ident@2..3 "b"
+              Whitespace@3..4 " "
+              Power@4..6 "**"
+              Whitespace@6..7 " "
+              CastExpr@7..17
+                FunctionCallExpr@7..10
+                  PathExpr@7..8
+                    PathSegment@7..8
+                      Ident@7..8 "c"
+                  OpenParen@8..9 "("
+                  CloseParen@9..10 ")"
+                Whitespace@10..11 " "
+                As@11..13 "as"
+                Whitespace@13..14 " "
+                PathType@14..17
+                  PathSegment@14..17
+                    Ident@14..17 "Int"
+        "#]],
+            expect![],
+        );
+
+        // The two `*` have to be next to each other
+        check(
+            expr,
+            "1 * * 2",
+            expect![[r#"
+            BinaryExpr@0..7
+              LiteralExpr@0..1
+                Integer@0..1 "1"
+              Whitespace@1..2 " "
+              Star@2..3 "*"
+              Whitespace@3..4 " "
+              Error@4..5 "*"
+              Whitespace@5..6 " "
+              Error@6..7 "2"
+        "#]],
+            expect!["Expected expression, found `*` at main.rue:1:5"],
+        );
+        check(
+            expr,
+            "1 * *2",
+            expect![[r#"
+            BinaryExpr@0..6
+              LiteralExpr@0..1
+                Integer@0..1 "1"
+              Whitespace@1..2 " "
+              Star@2..3 "*"
+              Whitespace@3..4 " "
+              Error@4..5 "*"
+              Error@5..6 "2"
+        "#]],
+            expect!["Expected expression, found `*` at main.rue:1:5"],
+        );
+        check(
+            expr,
+            "1 *** 2",
+            expect![[r#"
+            BinaryExpr@0..7
+              LiteralExpr@0..1
+                Integer@0..1 "1"
+              Whitespace@1..2 " "
+              Power@2..4 "**"
+              Error@4..5 "*"
+              Whitespace@5..6 " "
+              Error@6..7 "2"
+        "#]],
+            expect!["Expected expression, found `*` at main.rue:1:5"],
         );
     }
 

@@ -1528,7 +1528,7 @@ fn binding_forms() {
 #[test]
 fn every_binary_operator_has_canonical_spacing() {
     check(
-        "fn operators(a:Int,b:Int){a||b;a&&b;a==b;a!=b;a<b;a>b;a<=b;a>=b;a|b;a^b;a&b;a<<b;a>>b;a>>>b;a+b;a-b;a*b;a/b;a%b}",
+        "fn operators(a:Int,b:Int){a||b;a&&b;a==b;a!=b;a<b;a>b;a<=b;a>=b;a|b;a^b;a&b;a<<b;a>>b;a>>>b;a+b;a-b;a*b;a/b;a%b;a**b}",
         expect![[r#"
             fn operators(a: Int, b: Int) {
                 a || b;
@@ -1549,7 +1549,43 @@ fn every_binary_operator_has_canonical_spacing() {
                 a - b;
                 a * b;
                 a / b;
-                a % b
+                a % b;
+                a ** b
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn power_operator_keeps_its_parentheses_and_prefix_operators() {
+    check(
+        "fn powers(a:Int,b:Int)->Int{-a**2+(-a)**2+a**-b+a**b**2+(a**b)**2;a**/*c*/2}",
+        expect![[r#"
+            fn powers(a: Int, b: Int) -> Int {
+                -a ** 2 + (-a) ** 2 + a ** -b + a ** b ** 2 + (a ** b) ** 2;
+                a ** /*c*/ 2
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn power_operator_wraps_one_level_deeper_than_products() {
+    check(
+        "fn powers(first_value:Int,second_value:Int)->Int{first_value**2**2*second_value**3+first_value**4*second_value**5+first_value**6}",
+        expect![[r#"
+            fn powers(first_value: Int, second_value: Int) -> Int {
+                first_value
+                            ** 2
+                            ** 2
+                        * second_value
+                            ** 3
+                    + first_value
+                            ** 4
+                        * second_value
+                            ** 5
+                    + first_value
+                        ** 6
             }
         "#]],
     );
