@@ -13,6 +13,7 @@ mod inline_ifs;
 mod inline_values;
 mod matches;
 mod naming;
+mod narrowing;
 mod operators;
 mod prelude;
 mod recursion;
@@ -62,6 +63,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
     InputPass {
         lints: matches::LINTS,
         run: matches::check,
+    },
+    InputPass {
+        lints: narrowing::LINTS,
+        run: narrowing::check,
     },
 ];
 

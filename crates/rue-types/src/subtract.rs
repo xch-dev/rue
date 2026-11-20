@@ -14,6 +14,26 @@ pub fn subtract(
     lhs_id: TypeId,
     rhs_id: TypeId,
 ) -> TypeId {
+    subtract_detailed(arena, builtins, lhs_id, rhs_id).type_id
+}
+
+/// The result of a subtraction, along with how precise it is.
+#[derive(Debug, Clone)]
+pub struct Subtracted {
+    pub type_id: TypeId,
+    /// The structs that would have been split into more than `MAX_STRUCT_COPIES` copies, so the
+    /// pairs at each level of their fields were merged instead, which makes the result wider than
+    /// it could be (see `merge_spine`).
+    pub merged_structs: Vec<TypeId>,
+}
+
+/// Like `subtract`, but also says which structs were merged rather than split.
+pub fn subtract_detailed(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+) -> Subtracted {
     let lhs_id = substitute(arena, lhs_id);
     let rhs_id = substitute(arena, rhs_id);
 
@@ -21,7 +41,10 @@ pub fn subtract(
     // `intersect`, the intersections of the parts of pairs (see `split_pair`) rely on this
     if reaches_non_contractive_cycle(arena, lhs_id) || reaches_non_contractive_cycle(arena, rhs_id)
     {
-        return lhs_id;
+        return Subtracted {
+            type_id: lhs_id,
+            merged_structs: Vec::new(),
+        };
     }
 
     let names = log_enabled!(Level::Trace).then(|| {
@@ -38,7 +61,7 @@ pub fn subtract(
     let result = subtract_impl(arena, builtins, lhs_id, rhs_id);
 
     if let Some((lhs_name, rhs_name)) = &names {
-        let new_name = stringify_impl(arena, result, &mut IndexMap::new());
+        let new_name = stringify_impl(arena, result.type_id, &mut IndexMap::new());
         trace!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
     }
 
@@ -50,12 +73,17 @@ fn subtract_impl(
     builtins: &BuiltinTypes,
     lhs_id: TypeId,
     rhs_id: TypeId,
-) -> TypeId {
+) -> Subtracted {
     let mut cx = Subtraction::default();
 
-    match remaining_variants(arena, builtins, &mut cx, lhs_id, rhs_id) {
-        Some(variants) => repackage(arena, builtins, variants),
+    let type_id = match remaining_variants(arena, builtins, &mut cx, lhs_id, rhs_id) {
+        Some(variants) => repackage(arena, builtins, &mut cx.merged_structs, variants),
         None => lhs_id,
+    };
+
+    Subtracted {
+        type_id,
+        merged_structs: cx.merged_structs,
     }
 }
 
@@ -72,6 +100,8 @@ struct Subtraction {
     /// Shared by every comparison, since they all start from an empty stack. Otherwise each part
     /// of a nested split would compare the whole of the types it's given again.
     comparison: ComparisonContext<'static>,
+    /// The structs whose pairs were merged rather than split (see `Subtracted::merged_structs`).
+    merged_structs: Vec<TypeId>,
     /// Shared by every intersection, for the same reason.
     intersection: IntersectContext,
 }
@@ -315,17 +345,25 @@ fn subtract_part(
     match remaining_variants(arena, builtins, cx, lhs_id, rhs_id) {
         None => Part::Unchanged,
         Some(variants) if variants.is_empty() => Part::Removed,
-        Some(variants) => Part::Narrowed(repackage(arena, builtins, variants)),
+        Some(variants) => {
+            Part::Narrowed(repackage(arena, builtins, &mut cx.merged_structs, variants))
+        }
     }
 }
 
-fn repackage(arena: &mut Arena<Type>, builtins: &BuiltinTypes, variants: Vec<Variant>) -> TypeId {
-    grow_stack(|| repackage_inner(arena, builtins, variants))
+fn repackage(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    merged_structs: &mut Vec<TypeId>,
+    variants: Vec<Variant>,
+) -> TypeId {
+    grow_stack(|| repackage_inner(arena, builtins, merged_structs, variants))
 }
 
 fn repackage_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
+    merged_structs: &mut Vec<TypeId>,
     variants: Vec<Variant>,
 ) -> TypeId {
     let mut collected = vec![];
@@ -370,11 +408,11 @@ fn repackage_inner(
 
     let result = match arena[semantic_type_id].clone() {
         Type::Alias(alias) => {
-            let inner = repackage(arena, builtins, collected);
+            let inner = repackage(arena, builtins, merged_structs, collected);
             arena.alloc(Type::Alias(Alias { inner, ..alias }))
         }
         Type::Struct(ty) => {
-            let inner = repackage(arena, builtins, collected);
+            let inner = repackage(arena, builtins, merged_structs, collected);
 
             // A struct's pair can be split into several pairs (see `split_pair`), at any of the
             // levels that its fields are read through. Its fields are read from a union of
@@ -405,6 +443,10 @@ fn repackage_inner(
                     arena.alloc(Type::Union(Union::new(copies)))
                 }
                 None => {
+                    if !merged_structs.contains(&semantic_type_id) {
+                        merged_structs.push(semantic_type_id);
+                    }
+
                     let inner = merge_spine(arena, inner, levels);
                     let ty = ty.narrow(arena, builtins, inner);
                     arena.alloc(Type::Struct(ty))
@@ -418,13 +460,13 @@ fn repackage_inner(
         return result;
     }
 
-    let leftover = repackage(arena, builtins, leftover);
+    let leftover = repackage(arena, builtins, merged_structs, leftover);
 
     arena.alloc(Type::Union(Union::new(vec![result, leftover])))
 }
 
 /// The most copies that a struct can be split into (see `spine_variants`).
-const MAX_STRUCT_COPIES: usize = 64;
+pub const MAX_STRUCT_COPIES: usize = 64;
 
 /// The alternatives of a struct's inner type with a single pair at each of the first `levels`
 /// levels of pairs (the levels that its fields are read through), or `None` if there are more than

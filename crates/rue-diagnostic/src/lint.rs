@@ -230,6 +230,7 @@ lints! {
     DuplicateCondition("duplicate_condition", Warn, "Conditions in an `else if` chain, `&&` or `||` that repeat an earlier one"),
     UnreachableMatchArm("unreachable_match_arm", Warn, "`match` arms that are never taken, since the arms before them handle every value they match"),
     IndistinguishableMatchArm("indistinguishable_match_arm", Warn, "`match` arms that also handle other members of a union, since they can't be told apart from them at runtime"),
+    ImpreciseNarrowing("imprecise_narrowing", Warn, "Type guards and `match` arms that leave too many combinations of a struct's fields to narrow it by, so the fields that are left are merged and the struct is wider than it could be"),
     BoolComparison("bool_comparison", Warn, "Comparisons with `true` or `false`, which can use the value or its negation instead"),
     NeedlessBool("needless_bool", Warn, "`if` expressions that return `true` and `false`, which can use the condition instead"),
     NegatedCondition("negated_condition", Allow, "`if` expressions with a negated condition and an `else` branch, which can swap the branches instead"),

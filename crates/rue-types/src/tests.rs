@@ -13,7 +13,7 @@ use crate::{
     compare_with_inference, extract_atoms, extract_functions, extract_pairs, extract_structs,
     infer_from_expected, is_non_contractive, resolve_inference, resolve_inference_with_bounds,
     resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
-    unwrap_semantic,
+    subtract_detailed, unwrap_semantic,
 };
 
 struct Db {
@@ -4160,7 +4160,9 @@ mod subtraction {
         let narrow = db.pair(two, int);
         let rhs = db.pair(one, int);
 
-        let result = subtract(&mut db.arena, &db.builtins, lhs, rhs);
+        let subtracted = subtract_detailed(&mut db.arena, &db.builtins, lhs, rhs);
+        assert!(subtracted.merged_structs.is_empty());
+        let result = subtracted.type_id;
         let Type::Struct(ty) = db.arena[result].clone() else {
             panic!("expected a struct");
         };
@@ -4212,7 +4214,14 @@ mod subtraction {
 
         // The pairs are merged into one struct with a single pair at each level, so its fields can
         // still be read, and it contains every combination that's left
-        let result = subtract(&mut db.arena, &db.builtins, lhs, rhs);
+        let subtracted = subtract_detailed(&mut db.arena, &db.builtins, lhs, rhs);
+        let merged = subtracted
+            .merged_structs
+            .iter()
+            .map(|&id| db.name(id))
+            .collect::<Vec<_>>();
+        assert_eq!(merged, ["S"]);
+        let result = subtracted.type_id;
         let Type::Struct(ty) = db.arena[result].clone() else {
             panic!("expected a struct, found {}", db.name(result));
         };

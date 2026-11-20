@@ -158,7 +158,7 @@ pub fn compile_match_expr(
         // to subtract, which can be slow for large unions
         let else_type = match pattern {
             Some(ty) if check != Check::None => {
-                rue_types::subtract(ctx.types_mut(), &builtins, remaining, ty)
+                ctx.subtract_type(pattern_srcloc.clone(), remaining, ty)
             }
             _ => builtins.never,
         };
