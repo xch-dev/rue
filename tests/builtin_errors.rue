@@ -75,6 +75,9 @@ fn main(
     let _ = secp256r1_verify(r1_pk, bytes, r1_sig);
     let _ = secp256r1_verify(r1_pk, hash, k1_sig);
     let _ = secp256r1_verify(...[r1_pk, hash, r1_sig]);
+    let _ = keccak256_verify(bytes);
+    let _ = keccak256_verify(bytes, bytes);
+    let _ = keccak256_verify(...[bytes, hash]);
 
     // Only the last argument can be spread
     let _ = sha256(...ints, bytes);

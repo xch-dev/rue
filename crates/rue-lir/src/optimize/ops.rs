@@ -1099,6 +1099,21 @@ pub fn opt_r1_verify(
     arena.alloc(Lir::R1Verify(public_key, message, signature))
 }
 
+// If both values are atoms and the hash matches, the check passes, so it's nil
+// Otherwise it's kept, so that it still fails at runtime
+pub fn opt_keccak256_verify(arena: &mut Arena<Lir>, value: LirId, hash: LirId) -> LirId {
+    let matches = matches!(
+        (&arena[value], &arena[hash]),
+        (Lir::Atom(value), Lir::Atom(hash)) if Keccak256::digest(value).as_slice() == hash.as_slice()
+    );
+
+    if matches {
+        return arena.alloc(Lir::Atom(vec![]));
+    }
+
+    arena.alloc(Lir::Keccak256Verify(value, hash))
+}
+
 /// Whether both values are the same expression, so they evaluate to the same result (or both
 /// fail) in the same environment. This is conservative, so it can return `false` for values
 /// that are the same.
@@ -1489,6 +1504,24 @@ mod tests {
                 matches!(&arena[result], Lir::Atom(atom) if *atom == [4]),
                 folded
             );
+        }
+    }
+
+    // A check of constants passes or fails at compile time, so it's only folded if it passes
+    #[test]
+    fn test_keccak256_verify_folds_matching_constants() {
+        let mut arena = Arena::new();
+        let value = arena.alloc(Lir::Atom(b"hello".to_vec()));
+        let hash = arena.alloc(Lir::Atom(Keccak256::digest(b"hello").to_vec()));
+        let wrong = arena.alloc(Lir::Atom(vec![0; 32]));
+        let path = path(&mut arena, 2);
+
+        let result = opt_keccak256_verify(&mut arena, value, hash);
+        assert!(matches!(&arena[result], Lir::Atom(atom) if atom.is_empty()));
+
+        for (value, hash) in [(value, wrong), (path, hash), (value, path)] {
+            let result = opt_keccak256_verify(&mut arena, value, hash);
+            assert!(matches!(arena[result], Lir::Keccak256Verify(v, h) if v == value && h == hash));
         }
     }
 

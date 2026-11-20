@@ -385,6 +385,11 @@ fn optimize_step(
             let signature = optimize_node(arena, signature, target, trace);
             opt_r1_verify(arena, target, public_key, message, signature)
         }
+        Lir::Keccak256Verify(value, hash) => {
+            let value = optimize_node(arena, value, target, trace);
+            let hash = optimize_node(arena, hash, target, trace);
+            opt_keccak256_verify(arena, value, hash)
+        }
         Lir::Op(op, arg) => {
             let arg = optimize_node(arena, arg, target, trace);
             opt_op(arena, op, arg)

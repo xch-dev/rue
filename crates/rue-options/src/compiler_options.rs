@@ -101,15 +101,17 @@ pub struct CompilerOptions {
     /// - `modpow` is an error, since mainnet disables it until hard fork 2 (`DISABLE_OP`).
     /// - `keccak256` is an error, since mainnet doesn't know the operator outside of the softfork
     ///   guard until hard fork 2. It can't be used inside the guard instead, since the guard always
-    ///   returns nil, so a hash can't be returned from it.
+    ///   returns nil, so a hash can't be returned from it. `keccak256_verify` checks a hash inside
+    ///   the guard instead, declaring the exact cost of the check.
     /// - Programs are run, and the optimizer compares costs, with the cost model from before hard
     ///   fork 2.
     /// - `secp256k1_verify` and `secp256r1_verify` are compiled to the four byte opcodes that
     ///   encode their cost.
     ///
     /// When it's on, `modpow` and `keccak256` are allowed, programs are run with the new cost
-    /// model and with relaxed BLS point checks, and the secp operators are compiled to the one byte
-    /// opcodes 64 and 65. Hard fork 2 also removes `LIMITS`, so
+    /// model and with relaxed BLS point checks, `keccak256_verify` checks the hash outside of the
+    /// guard, and the secp operators are compiled to the one byte opcodes 64 and 65. Hard fork 2
+    /// also removes `LIMITS`, so
     /// [`operand_limits`](Self::operand_limits) has no effect.
     ///
     /// This changes the compiled program, and so its puzzle hash, for any program that uses the

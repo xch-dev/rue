@@ -118,10 +118,19 @@ hard_fork_2 = true
 | `modpow` | An error, since mainnet disables it until hard fork 2 | Allowed |
 | `keccak256`, `keccak256_inline` | An error, since mainnet doesn't know the operator outside of the softfork guard until hard fork 2 | Allowed |
 | Cost model, for running programs and for the optimizer's cost comparisons | The current one | The new one |
+| `keccak256_verify` | Checks the hash inside of the softfork guard | Checks the hash outside of the guard |
 | `secp256k1_verify`, `secp256r1_verify` | The four byte opcodes that encode their cost | The one byte opcodes 64 and 65 |
 | `LIMITS` | Only with `operand_limits` (see [Operand Limits](#operand-limits)) | Removed, so `operand_limits` can't be set with `hard_fork_2` |
 
-`keccak256` can't be used inside the softfork guard instead, since the guard always returns nil, so a hash can't be returned from it.
+`keccak256` can't be used inside the softfork guard instead, since the guard always returns nil, so a hash can't be returned from it. What can be done there is checking a hash, which is what `keccak256_verify(value, hash)` does. Like `bls_verify` and `secp256k1_verify`, it returns nil, and fails unless `keccak256(value) == hash`:
+
+```rs
+fn main(preimage: Bytes) {
+    keccak256_verify(preimage, 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8);
+}
+```
+
+Without `hard_fork_2`, it runs the check inside the softfork guard with extension 1, which mainnet's nodes run `keccak256` in. The guard fails unless it declares the exact cost of what it runs, so `keccak256_verify` computes it from the length of the value. With `hard_fork_2`, the check runs outside of the guard, which costs less.
 
 Turning `hard_fork_2` on changes the compiled program, and so its puzzle hash, for any program that uses the secp operators. It can also change what the optimizer emits for other programs, since it folds constants by running operators with the target's flags: an operation that only succeeds after hard fork 2, such as negating an invalid point with relaxed BLS checks, is only folded with `hard_fork_2`, and costs are compared in the target's cost model.
 

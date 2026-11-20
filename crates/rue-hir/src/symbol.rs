@@ -143,6 +143,7 @@ pub enum Builtin {
     BlsVerify,
     Secp256K1Verify,
     Secp256R1Verify,
+    Keccak256Verify,
 }
 
 impl Builtin {
@@ -194,6 +195,7 @@ impl Builtin {
             Self::Secp256R1Verify => {
                 &["(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil"]
             }
+            Self::Keccak256Verify => &["(value: Bytes, hash: Bytes32) -> nil"],
         }
     }
 }
@@ -237,6 +239,7 @@ impl fmt::Display for Builtin {
                 Self::BlsVerify => "bls_verify",
                 Self::Secp256K1Verify => "secp256k1_verify",
                 Self::Secp256R1Verify => "secp256r1_verify",
+                Self::Keccak256Verify => "keccak256_verify",
             }
         )
     }

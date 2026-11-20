@@ -250,7 +250,8 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             | Hir::BlsPairingIdentity(_)
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)
-            | Hir::Secp256R1Verify(..) => true,
+            | Hir::Secp256R1Verify(..)
+            | Hir::Keccak256Verify(..) => true,
             Hir::If(..)
             | Hir::List(_)
             | Hir::Struct(_)

@@ -1,7 +1,7 @@
 diagnostics:
 - "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at hard_fork_2_errors.rue:5:20"
-- "`keccak256` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at hard_fork_2_errors.rue:12:9"
-- "`keccak256` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at hard_fork_2_errors.rue:14:13"
-- "`keccak256_inline` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at hard_fork_2_errors.rue:15:14"
+- "`keccak256` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2`, but `keccak256_verify` can check a hash without it at hard_fork_2_errors.rue:12:9"
+- "`keccak256` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2`, but `keccak256_verify` can check a hash without it at hard_fork_2_errors.rue:14:13"
+- "`keccak256_inline` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2`, but `keccak256_verify` can check a hash without it at hard_fork_2_errors.rue:15:14"
 - "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at hard_fork_2_errors.rue:15:40"
-- "`keccak256` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at hard_fork_2_errors.rue:15:76"
+- "`keccak256` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2`, but `keccak256_verify` can check a hash without it at hard_fork_2_errors.rue:15:76"

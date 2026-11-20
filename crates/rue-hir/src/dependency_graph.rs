@@ -753,6 +753,10 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *pk, false);
             visit_hir(db, graph, *msg, false);
         }
+        Hir::Keccak256Verify(value, hash) => {
+            visit_hir(db, graph, *value, false);
+            visit_hir(db, graph, *hash, false);
+        }
         Hir::InfinityG1 => {}
         Hir::InfinityG2 => {}
         Hir::ClvmOp(_op, args) => {

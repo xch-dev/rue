@@ -29,10 +29,12 @@ pub(crate) fn compile_builtin(
             .ast
             .expr()
             .map_or_else(|| call.ast.syntax().clone(), |expr| expr.syntax().clone());
-        ctx.diagnostic(
-            &node,
-            DiagnosticKind::RequiresHardFork2(builtin.to_string()),
-        );
+        let kind = if matches!(builtin, Builtin::Keccak256 { .. }) {
+            DiagnosticKind::KeccakRequiresHardFork2(builtin.to_string())
+        } else {
+            DiagnosticKind::RequiresHardFork2(builtin.to_string())
+        };
+        ctx.diagnostic(&node, kind);
     }
 
     match builtin {
@@ -171,6 +173,12 @@ pub(crate) fn compile_builtin(
             [types.k1_public_key, types.bytes32, types.k1_signature],
             types.nil,
             |[public_key, message, signature]| Hir::Secp256K1Verify(public_key, message, signature),
+        ),
+        Builtin::Keccak256Verify => call.fixed(
+            ctx,
+            [types.bytes, types.bytes32],
+            types.nil,
+            |[value, hash]| Hir::Keccak256Verify(value, hash),
         ),
         Builtin::Secp256R1Verify => call.fixed(
             ctx,

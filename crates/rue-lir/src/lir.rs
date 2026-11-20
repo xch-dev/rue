@@ -62,6 +62,8 @@ pub enum Lir {
     CoinId(LirId, LirId, LirId),
     K1Verify(LirId, LirId, LirId),
     R1Verify(LirId, LirId, LirId),
+    /// Fails unless the Keccak-256 hash of the value is the hash (see `KECCAK256_VERIFY_COST`).
+    Keccak256Verify(LirId, LirId),
     Op(ClvmOp, LirId),
     DebugPrint(String, LirId),
 }
@@ -116,6 +118,7 @@ pub enum ClvmOp {
     Secp256K1Verify,
     Secp256R1Verify,
     Keccak256,
+    Softfork,
 
     // Non-standard
     DebugPrint,
@@ -183,6 +186,7 @@ impl ClvmOp {
             Self::Secp256K1Verify => return vec![0x13, 0xd6, 0x1f, 0x00],
             Self::Secp256R1Verify => return vec![0x1c, 0x3a, 0x8f, 0x00],
             Self::Keccak256 => 62,
+            Self::Softfork => 36,
             Self::DebugPrint => return b"debug_print".into(),
         };
 

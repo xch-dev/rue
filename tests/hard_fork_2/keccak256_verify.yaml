@@ -1,0 +1,50 @@
+hard_fork_2: true
+tests:
+- name: verifies
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 2) 5) (q) (q 8)) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 4072
+  byte_cost: 468000
+  total_cost: 472072
+- name: verifies_empty
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 2) 5) (q) (q 8)) 1))
+  solution: (() 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470)
+  output: ()
+  runtime_cost: 4022
+  byte_cost: 468000
+  total_cost: 472022
+- name: verifies_long
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 2) 5) (q) (q 8)) 1))
+  solution: (0x616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161 0x5b7e0e47a96f32a88b4f14ca177982790807c40e1a105742ba0fc1babe1ef826)
+  output: ()
+  runtime_cost: 7022
+  byte_cost: 468000
+  total_cost: 475022
+- name: rejects_wrong_hash
+  program: (i () (a (i (= (keccak256 2) 5) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 2) 5) (q) (q 8)) 1))
+  solution: ("hello" 0x0000000000000000000000000000000000000000000000000000000000000000)
+  byte_cost: 468000
+  clvm_error: clvm raise ()
+- name: constant_match_is_folded
+  program: ()
+  debug_program: (i (q . 1) () (a (i (= (keccak256 (q . "hello")) (q . 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)) (q) (q 8)) 1))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: constant_mismatch_is_kept
+  program: (i () (a (i (= (keccak256 (q . "hello")) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q) (q 8)) 1) ())
+  debug_program: (i (q . 1) () (a (i (= (keccak256 (q . "hello")) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q) (q 8)) 1))
+  byte_cost: 960000
+  clvm_error: clvm raise ()
+- name: check_is_kept_before_branch
+  program: (a (q 3 23 (q . 1) ()) (c (a (i (= (keccak256 2) 5) (q) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 47 (q 2 5 2) (q)) 1) (c (a (i (= (keccak256 5) 11) (q) (q 8)) 1) 1)) (c (q 1 . 1) 1))
+  solution: ("hello" 0x0000000000000000000000000000000000000000000000000000000000000000 ())
+  byte_cost: 660000
+  clvm_error: clvm raise ()

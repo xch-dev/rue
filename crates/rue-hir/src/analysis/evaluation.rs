@@ -121,6 +121,7 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             | Hir::Modpow(..)
             | Hir::Secp256K1Verify(..)
             | Hir::Secp256R1Verify(..)
+            | Hir::Keccak256Verify(..)
             | Hir::Substr(..)
             | Hir::G1Map(..)
             | Hir::G2Map(..)

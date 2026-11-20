@@ -204,6 +204,12 @@ impl Builtins {
             false,
         );
 
+        scope.insert_symbol(
+            "keccak256_verify".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Keccak256Verify)),
+            false,
+        );
+
         let infinity_g1 = db.alloc_hir(Hir::InfinityG1);
         let infinity_g2 = db.alloc_hir(Hir::InfinityG2);
 

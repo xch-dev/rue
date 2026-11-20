@@ -49,7 +49,8 @@ fn reads_env_step(arena: &Arena<Lir>, lir: LirId) -> bool {
         | Lir::Ash(left, right)
         | Lir::Lsh(left, right)
         | Lir::G1Multiply(left, right)
-        | Lir::G2Multiply(left, right) => reads_env(arena, *left) || reads_env(arena, *right),
+        | Lir::G2Multiply(left, right)
+        | Lir::Keccak256Verify(left, right) => reads_env(arena, *left) || reads_env(arena, *right),
         Lir::G1Map(value, map) | Lir::G2Map(value, map) => {
             reads_env(arena, *value) || map.is_some_and(|map| reads_env(arena, map))
         }

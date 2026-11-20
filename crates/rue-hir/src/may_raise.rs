@@ -126,6 +126,7 @@ impl<'a> Visitor<'a> {
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)
             | Hir::Secp256R1Verify(..)
+            | Hir::Keccak256Verify(..)
             | Hir::ClvmOp(ClvmOp::Raise, _) => true,
             Hir::Block(block) => {
                 self.visit_statements(&block.statements) || self.visit_all(block.reachable_body())

@@ -116,6 +116,17 @@ pub const MAX_DIVIDEND_BYTES: usize = 256;
 /// `/`, `%` and `divmod`.
 pub const MAX_DIVISOR_BYTES: usize = 1024;
 
+/// The cost, under the cost model from before hard fork 2, that `keccak256_verify` declares for the
+/// softfork guard it checks the hash in, apart from [`KECCAK256_COST_PER_BYTE`] for each byte of
+/// the value. It's the cost of entering the guard (140), plus the cost of running the check in it,
+/// `(a (i (= (keccak256 2) 5) (q) (q 8)) 1)`, for an empty value and a matching 32 byte hash. The
+/// guard fails unless its cost is exactly the cost it declares.
+pub const KECCAK256_VERIFY_COST: u64 = 1206;
+
+/// The cost of `keccak256` for each byte of its argument, under the cost model from before hard
+/// fork 2.
+pub const KECCAK256_COST_PER_BYTE: u64 = 2;
+
 /// The cost charged for each byte of a serialized program. This is `cost_per_byte` in Chia's
 /// mainnet consensus constants, which aren't available from `clvmr` itself.
 pub const COST_PER_BYTE: u64 = 12_000;

@@ -113,39 +113,39 @@ fn records_expression_types_and_locations() {
         "#,
         &expect![[r#"
             { ... }: Int at `{ let doubled = double(value); assert doubled > 0; if list is (Int, List<Int>) { return list.first; } let flag = true; let point = Point { x: [doubled, 2].first }; if flag && nil == nil { (doubled + point.y) as Int } else { -doubled } }`
-              double<30>(value<33>): Int at `double(value)`
-                double<30>: fn(value: Int) -> Int at `double`
-                value<33>: Int at `value`
-              (doubled<35> > 0): Bool at `doubled > 0`
-                doubled<35>: Int at `doubled`
+              double<31>(value<34>): Int at `double(value)`
+                double<31>: fn(value: Int) -> Int at `double`
+                value<34>: Int at `value`
+              (doubled<36> > 0): Bool at `doubled > 0`
+                doubled<36>: Int at `doubled`
                 0: 0 at `0`
-              (list<34> is _): Bool at `list is (Int, List<Int>)`
-                list<34>: List<Int> at `list`
+              (list<35> is _): Bool at `list is (Int, List<Int>)`
+                list<35>: List<Int> at `list`
               { ... }: Never at `{ return list.first; }`
-                list<34>.first: Int at `list.first`
-                  list<34>: (Int, List<Int>) at `list`
+                list<35>.first: Int at `list.first`
+                  list<35>: (Int, List<Int>) at `list`
               true: true at `true`
-              { x: [doubled<35>, 2].first, y: 0 }: Point at `Point { x: [doubled, 2].first }`
-                [doubled<35>, 2].first: Int at `[doubled, 2].first`
-                  [doubled<35>, 2]: (Int, (2, nil)) at `[doubled, 2]`
-                    doubled<35>: Int at `doubled`
+              { x: [doubled<36>, 2].first, y: 0 }: Point at `Point { x: [doubled, 2].first }`
+                [doubled<36>, 2].first: Int at `[doubled, 2].first`
+                  [doubled<36>, 2]: (Int, (2, nil)) at `[doubled, 2]`
+                    doubled<36>: Int at `doubled`
                     2: 2 at `2`
                 0: 0 at `0`
-              if (flag<36> && (nil == nil)) { ((doubled<35> + point<37>.y) as _) } else { (- doubled<35>) }: Int at `if flag && nil == nil { (doubled + point.y) as Int } else { -doubled }`
-                (flag<36> && (nil == nil)): Bool at `flag && nil == nil`
-                  flag<36>: true at `flag`
+              if (flag<37> && (nil == nil)) { ((doubled<36> + point<38>.y) as _) } else { (- doubled<36>) }: Int at `if flag && nil == nil { (doubled + point.y) as Int } else { -doubled }`
+                (flag<37> && (nil == nil)): Bool at `flag && nil == nil`
+                  flag<37>: true at `flag`
                   (nil == nil): Bool at `nil == nil`
                     nil: nil at `nil`
                     nil: nil at `nil`
                 { ... }: Int at `{ (doubled + point.y) as Int }`
-                  ((doubled<35> + point<37>.y) as _): Int at `(doubled + point.y) as Int`
-                    (doubled<35> + point<37>.y): Int at `(doubled + point.y)`
-                      doubled<35>: Int at `doubled`
-                      point<37>.y: Int at `point.y`
-                        point<37>: Point at `point`
+                  ((doubled<36> + point<38>.y) as _): Int at `(doubled + point.y) as Int`
+                    (doubled<36> + point<38>.y): Int at `(doubled + point.y)`
+                      doubled<36>: Int at `doubled`
+                      point<38>.y: Int at `point.y`
+                        point<38>: Point at `point`
                 { ... }: Int at `{ -doubled }`
-                  (- doubled<35>): Int at `-doubled`
-                    doubled<35>: Int at `doubled`"#]],
+                  (- doubled<36>): Int at `-doubled`
+                    doubled<36>: Int at `doubled`"#]],
     );
 }
 
@@ -166,13 +166,13 @@ fn call_in_a_pair_expected_to_be_any_keeps_its_type() {
         ",
         &expect![[r#"
             { ... }: (5, Int) | Any at `{ let pair: (5, Int) | Any = (map(fn(x) => x, 5), 1); pair }`
-              (map<30>(<36>, 5), 1): (Int, 1) at `(map(fn(x) => x, 5), 1)`
-                map<30>(<36>, 5): Int at `map(fn(x) => x, 5)`
-                  map<30>: fn<A, B>(function: fn(a: A) -> B, value: A) -> B at `map`
-                  <36>: fn(x: Int) -> Int at `fn(x) => x`
+              (map<31>(<37>, 5), 1): (Int, 1) at `(map(fn(x) => x, 5), 1)`
+                map<31>(<37>, 5): Int at `map(fn(x) => x, 5)`
+                  map<31>: fn<A, B>(function: fn(a: A) -> B, value: A) -> B at `map`
+                  <37>: fn(x: Int) -> Int at `fn(x) => x`
                   5: 5 at `5`
                 1: 1 at `1`
-              pair<34>: (5, Int) | Any at `pair`"#]],
+              pair<35>: (5, Int) | Any at `pair`"#]],
     );
 }
 
@@ -192,11 +192,11 @@ fn call_in_a_list_expected_to_be_any_keeps_its_type() {
         ",
         &expect![[r#"
             { ... }: List<5> | Any at `{ let list: List<5> | Any = [map(fn(x) => x, 5)]; list }`
-              [map<30>(<36>, 5)]: (Int, nil) at `[map(fn(x) => x, 5)]`
-                map<30>(<36>, 5): Int at `map(fn(x) => x, 5)`
-                  map<30>: fn<A, B>(function: fn(a: A) -> B, value: A) -> B at `map`
-                  <36>: fn(x: Int) -> Int at `fn(x) => x`
+              [map<31>(<37>, 5)]: (Int, nil) at `[map(fn(x) => x, 5)]`
+                map<31>(<37>, 5): Int at `map(fn(x) => x, 5)`
+                  map<31>: fn<A, B>(function: fn(a: A) -> B, value: A) -> B at `map`
+                  <37>: fn(x: Int) -> Int at `fn(x) => x`
                   5: 5 at `5`
-              list<34>: List<5> | Any at `list`"#]],
+              list<35>: List<5> | Any at `list`"#]],
     );
 }

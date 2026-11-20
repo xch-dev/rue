@@ -696,6 +696,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let msg = self.lower_hir(env, msg);
                 self.arena.alloc(Lir::R1Verify(sig, pk, msg))
             }
+            Hir::Keccak256Verify(value, hash) => {
+                let value = self.lower_hir(env, value);
+                let hash = self.lower_hir(env, hash);
+                self.arena.alloc(Lir::Keccak256Verify(value, hash))
+            }
             Hir::InfinityG1 => self.arena.alloc(Lir::G1Add(vec![])),
             Hir::InfinityG2 => self.arena.alloc(Lir::G2Add(vec![])),
             Hir::ClvmOp(op, args) => {
