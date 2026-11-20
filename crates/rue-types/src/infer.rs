@@ -389,10 +389,15 @@ impl Inference {
             })
             .collect();
 
-        // The members of each union that have candidates under them
+        // The members of each union that have candidates under them, and the candidates under
+        // each of those (by index), along with the unions each candidate is in
         let mut members: Vec<Vec<usize>> = vec![Vec::new(); self.choices.len()];
+        let mut under: FxHashMap<BranchId, Vec<usize>> = FxHashMap::default();
+        let mut inside: Vec<Vec<usize>> = Vec::with_capacity(candidates.len());
 
-        for &(_, _, _, branches) in &candidates {
+        for (index, &(_, _, _, branches)) in candidates.iter().enumerate() {
+            let mut unions: Vec<usize> = Vec::new();
+
             for &branch in branches {
                 let mut current = Some(branch);
 
@@ -401,8 +406,31 @@ impl Inference {
                         members[member.choice].push(member.member);
                     }
 
+                    let list = under.entry(member).or_default();
+
+                    if list.last() != Some(&index) {
+                        list.push(index);
+                    }
+
+                    if !unions.contains(&member.choice) {
+                        unions.push(member.choice);
+                    }
+
                     current = self.choices.parent(member);
                 }
+            }
+
+            inside.push(unions);
+        }
+
+        // For each generic and kind, the unions that every one of its candidates is in, so that it
+        // has a candidate outside of any other union
+        let mut within: Vec<((TypeId, CandidateKind), Vec<usize>)> = Vec::new();
+
+        for (index, &(generic, kind, _, _)) in candidates.iter().enumerate() {
+            match within.iter_mut().find(|(pair, _)| *pair == (generic, kind)) {
+                Some((_, unions)) => unions.retain(|choice| inside[index].contains(choice)),
+                None => within.push(((generic, kind), inside[index].clone())),
             }
         }
 
@@ -447,14 +475,10 @@ impl Inference {
             members.sort_unstable();
 
             let implied = members.iter().copied().find(|&member| {
-                candidates
+                under[&BranchId { choice, member }]
                     .iter()
-                    .filter(|(_, _, _, branches)| {
-                        branches.iter().any(|&branch| {
-                            self.choices.is_under(branch, BranchId { choice, member })
-                        })
-                    })
-                    .all(|&(generic, kind, ty, _)| {
+                    .map(|&index| candidates[index])
+                    .all(|(generic, kind, ty, _)| {
                         let mut anyway = anyway.iter().filter(|&&(other, other_kind, _)| {
                             other == generic && other_kind == kind
                         });
@@ -474,18 +498,13 @@ impl Inference {
             // Only the candidates of a generic and kind that has a candidate outside of the union
             // are left out, so that a generic that only its members constrain keeps what they
             // give it
-            let mut outside: Vec<(TypeId, CandidateKind)> = Vec::new();
-
-            for &(generic, kind, _, branches) in &candidates {
-                if !self.wide.contains(&generic)
-                    && !outside.contains(&(generic, kind))
-                    && !branches
-                        .iter()
-                        .any(|&branch| self.choices.is_in(branch, choice))
-                {
-                    outside.push((generic, kind));
-                }
-            }
+            let outside: Vec<(TypeId, CandidateKind)> = within
+                .iter()
+                .filter(|((generic, _), unions)| {
+                    !self.wide.contains(generic) && !unions.contains(&choice)
+                })
+                .map(|&(pair, _)| pair)
+                .collect();
 
             if outside.is_empty() {
                 continue;
@@ -496,13 +515,10 @@ impl Inference {
                 let member = BranchId { choice, member };
                 let mut kinds: Vec<(TypeId, CandidateKind)> = Vec::new();
 
-                for &(generic, kind, _, branches) in &candidates {
-                    if outside.contains(&(generic, kind))
-                        && !kinds.contains(&(generic, kind))
-                        && branches
-                            .iter()
-                            .any(|&branch| self.choices.is_under(branch, member))
-                    {
+                for &index in &under[&member] {
+                    let (generic, kind, _, _) = candidates[index];
+
+                    if outside.contains(&(generic, kind)) && !kinds.contains(&(generic, kind)) {
                         kinds.push((generic, kind));
                     }
                 }
@@ -1184,20 +1200,6 @@ impl Choices {
     pub(crate) fn is_under(&self, mut branch: BranchId, member: BranchId) -> bool {
         loop {
             if branch == member {
-                return true;
-            }
-
-            match self.0[branch.choice].parent {
-                Some(parent) => branch = parent,
-                None => return false,
-            }
-        }
-    }
-
-    /// Whether the union member is a member of the union, or nested in one.
-    pub(crate) fn is_in(&self, mut branch: BranchId, choice: usize) -> bool {
-        loop {
-            if branch.choice == choice {
                 return true;
             }
 
