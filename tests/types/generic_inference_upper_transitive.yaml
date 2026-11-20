@@ -1,88 +1,88 @@
 tests:
 - name: feed_identity
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()))) ()))) (q 1))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q 16 2 (q . 1)) 1))) (q 1))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "2"
-  runtime_cost: 2752
-  byte_cost: 1620000
-  total_cost: 1622752
+  runtime_cost: 1828
+  byte_cost: 828000
+  total_cost: 829828
 - name: chain_of_three
-  program: (a (q 2 (c (q . 2) (c (c (q . 1) (q 2 11 (c (a 5 (c (a 2 (c 23 ())) ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()))) ()))) ()))) (q 1)) (c (q . 2) ()))
+  program: (a (q 2 (c (q . 2) (c (q 1 2 11 (c (a 5 (c (a 2 (c 23 ())) ())) ())) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (q (c (q 16 2 (q . 1)) 1)))) ()))) ()))) (q 1)) (c (q . 2) ()))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ())))))) 1)) (c (c (q . 2) (c (q 16 2 (q . 1)) (q 4 (q . 2) (c (c (q . 1) (q 2 11 (c (a 5 (c (a 2 (c 23 ())) ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 7) (c (q . 1) ()))) ()))) ()))) ()))))) ()))
   output: "2"
-  runtime_cost: 3707
-  byte_cost: 2268000
-  total_cost: 2271707
+  runtime_cost: 3233
+  byte_cost: 1884000
+  total_cost: 1887233
 - name: through_several_layers
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()))) ()))) (q 1))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q 16 2 (q . 1)) 1))) (q 1))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 10 (c 14 (c (c (q . 2) (c (c (q . 1) 12) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ())))))) 1)) (c (c (c (q 16 2 (q . 1)) (q . 2)) (c (q 2 2 (c 5 7)) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "2"
-  runtime_cost: 2752
-  byte_cost: 1620000
-  total_cost: 1622752
+  runtime_cost: 1828
+  byte_cost: 828000
+  total_cost: 829828
 - name: union_upper_bound
-  program: (a (q 2 (q 16 (a 2 (q ())) (a 2 (q 1))) (c (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) 1)) (c (q 2 (i 2 (q . 2) (q)) 1) ()))
+  program: (a (q 2 (q 16 (a 2 (q ())) (a 2 (q 1))) (c (c (q . 2) (c (q 1 2 5 (c (a 2 (c 11 ())) ())) (c (c (q . 4) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) ()))) 1)) (c (q 2 (i 2 (q . 2) (q)) 1) ()))
   debug_program: (a (q 2 (q 16 (a 2 (c () ())) (a 2 (c (q . 1) ()))) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 2 (i (= 2 ()) (q) (q . 2)) 1) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "1"
-  runtime_cost: 4827
-  byte_cost: 2268000
-  total_cost: 2272827
+  runtime_cost: 4590
+  byte_cost: 2076000
+  total_cost: 2080590
 - name: compound_lower_bound
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q 4 2 ())) (c (c (q . 4) (c (c (q . 1) (q . 4)) (c (q . 1) ()))) ()))) ()))) (q 1))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q 4 2 ()) (c (q . 4) 1))) (q 1))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 5 2) (c (q 4 2 ()) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "1"
-  runtime_cost: 2075
-  byte_cost: 1596000
-  total_cost: 1598075
+  runtime_cost: 1151
+  byte_cost: 804000
+  total_cost: 805151
 - name: instantiated_generic_function
-  program: (a (q 2 (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) (q 21)) (c (c (q 16 4 6) (q 4 2 2)) ()))
+  program: (a (q 2 (c (q . 2) (c (q 1 2 5 (c (a 2 (c 11 ())) ())) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ()))) ()))) (q 21)) (c (c (q 16 4 6) (q 4 2 2)) ()))
   debug_program: (a (q 2 (q 2 2 (c (q . 21) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 16 (f 2) (r 2)) (c (q 4 2 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "42"
-  runtime_cost: 3248
-  byte_cost: 1908000
-  total_cost: 1911248
+  runtime_cost: 3082
+  byte_cost: 1788000
+  total_cost: 1791082
 - name: expected_type_still_used
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()))) ()))) (q 5))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q 16 2 (q . 1)) 1))) (q 5))
   debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "6"
-  runtime_cost: 2752
-  byte_cost: 1620000
-  total_cost: 1622752
+  runtime_cost: 1828
+  byte_cost: 828000
+  total_cost: 829828
 - name: nested_calls
-  program: (a (q 16 (a (a 10 (c 4 (a 10 (c 4 14)))) (q 1)) (a (a 10 (c (a 10 (c 4 14)) 4)) (q 1))) (c (c (q . 2) (c (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) (q 16 2 (q . 1)))) ()))
+  program: (a (q 16 (a (a 10 (c 4 (a 10 (c 4 14)))) (q 1)) (a (a 10 (c (a 10 (c 4 14)) 4)) (q 1))) (c (c (q . 2) (c (q 4 (q . 2) (c (q 1 2 5 (c (a 2 (c 11 ())) ())) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (q 1))) ()))) ()))) (q 16 2 (q . 1)))) ()))
   debug_program: (a (q 2 (q 16 (a 4 (c (q . 1) ())) (a 6 (c (q . 1) ()))) (c (c (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 14) (c (q . 1) ()))))))) (a 10 (c (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 14) (c (q . 1) ()))))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q . 2) (c (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) (q 16 2 (q . 1)))) ()))
   output: "4"
-  runtime_cost: 11598
-  byte_cost: 2724000
-  total_cost: 2735598
+  runtime_cost: 10934
+  byte_cost: 2604000
+  total_cost: 2614934
 - name: nested_call_with_expected_type
-  program: (a (q 2 (a 6 (c 4 (a 6 (c 4 (q 16 2 (q . 1)))))) (q 5)) (c (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ())))) ()))
+  program: (a (q 2 (a 6 (c 4 (a 6 (c 4 (q 16 2 (q . 1)))))) (q 5)) (c (c (q . 2) (q 4 (q . 2) (c (q 1 2 5 (c (a 2 (c 11 ())) ())) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (q 1))) ()))) ())))) ()))
   debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 14) (c (q . 1) ()))))))) 1)) (c (c (q . 2) (c (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) (q 16 2 (q . 1)))) ()))
   output: "6"
-  runtime_cost: 5490
-  byte_cost: 2172000
-  total_cost: 2177490
+  runtime_cost: 5158
+  byte_cost: 2052000
+  total_cost: 2057158
 - name: typed_lambda
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()))) ()))) (q 1))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q 16 2 (q . 1)) 1))) (q 1))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ())))) ()))
   output: "2"
-  runtime_cost: 2752
-  byte_cost: 1620000
-  total_cost: 1622752
+  runtime_cost: 1828
+  byte_cost: 828000
+  total_cost: 829828
 - name: literal_union_upper_bound
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) ()))) (q 2))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q . 2) 1))) (q 2))
   debug_program: (a (q 2 (q 2 2 (c (q . 2) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "2"
-  runtime_cost: 1976
-  byte_cost: 1524000
-  total_cost: 1525976
+  runtime_cost: 1052
+  byte_cost: 732000
+  total_cost: 733052
 - name: literal_upper_bound
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) ()))) (q 5))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q . 2) 1))) (q 5))
   debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "5"
-  runtime_cost: 1976
-  byte_cost: 1524000
-  total_cost: 1525976
+  runtime_cost: 1052
+  byte_cost: 732000
+  total_cost: 733052
 - name: held_candidate_kept
   program: (a (q 4 (a 6 (c () (c (q . 2) 4))) (q . 1)) (c (c (q 2 (i 2 (q . 2) (q)) 1) (q 2 (i (a (i (l 2) (q) (q 32 2)) 1) (q) (q 2 5 (c 2 ()))) 1)) ()))
   debug_program: (a (q 2 (q 2 (q 4 2 (q . 1)) (c 2 1)) (c (a 14 (c () (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q 2 (i (= 2 ()) (q) (q . 2)) 1) (c (q . 2) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q 2 5 (c 2 ()))) 1))) ()))
@@ -105,12 +105,12 @@ tests:
   byte_cost: 324000
   total_cost: 324433
 - name: inferred_generic_narrowed_with_an_expected_type
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) ()))) (q 5))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q . 2) 1))) (q 5))
   debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "5"
-  runtime_cost: 1976
-  byte_cost: 1524000
-  total_cost: 1525976
+  runtime_cost: 1052
+  byte_cost: 732000
+  total_cost: 733052
 - name: inferred_generic_narrowed_in_a_longer_cycle
   program: (q . 1)
   debug_program: (q . 1)
@@ -119,19 +119,19 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: bound_from_one_of_several_matching_members_not_passed_on
-  program: (a (q 2 (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) ()))) ()))) (q 6)) (c (q 4 2 2) ()))
+  program: (a (q 2 (c (q . 2) (c (q 1 2 5 (c (a 2 (c 11 ())) ())) (c (c (q . 4) (c (c (q . 1) 2) (q (c (q 1 . 1) 1)))) ()))) (q 6)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) (c (q . 6) ())) (c (c (q 1 . 1) (c (q 4 2 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "1"
-  runtime_cost: 2301
-  byte_cost: 1788000
-  total_cost: 1790301
+  runtime_cost: 1827
+  byte_cost: 1404000
+  total_cost: 1405827
 - name: bound_referencing_an_unresolved_generic_not_passed_on
-  program: (a (c (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) ()))) (q 7))
+  program: (a (q 2 (q 2 5 (c (a 2 (c 11 ())) ())) (c (q . 2) (c (q . 2) 1))) (q 7))
   debug_program: (a (q 2 (q 2 2 (c (q . 7) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) 1)) (c (c (q . 2) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))))) ()))
   output: "7"
-  runtime_cost: 1976
-  byte_cost: 1524000
-  total_cost: 1525976
+  runtime_cost: 1052
+  byte_cost: 732000
+  total_cost: 733052
 - name: inferred_generic_narrowed_to_a_union_of_literals
   program: (a (q . 2) (c (a (q . 2) (q 1)) ()))
   debug_program: (a (q 2 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) (q . 2))))) (c (c (q . 2) (c (q . 2) (q 2 5 (c (a 2 (c 11 ())) ())))) ()))

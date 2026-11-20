@@ -90,10 +90,10 @@ tests:
   byte_cost: 2220000
   clvm_error: Division by zero
 - name: component_found_in_a_later_pass
-  program: (a (q 2 (q 2 (i 23 (q 16 4 6) (q)) 1) (c (c (a 10 (c (c 14 (c 4 10)) (q . 5))) (a 4 (c 10 (c 14 (c 4 (c 5 ())))))) 1)) (c (c (q 2 (i (> 23 ()) (q 2 2 (c (c 5 (c 11 2)) (- 23 (q . 1)))) (q)) 1) (c (q 2 (i (> (q . 100) 3) (q 2 4 (c (c 10 (c 14 4)) (c 3 (q . 2)))) (q 8)) 1) (q 2 (i (> 5 ()) (q 2 14 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 14) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ())))))) (q 2 7 (c 5 ()))) 1))) 1))
+  program: (a (q 2 (q 2 (i 23 (q 16 4 6) (q)) 1) (c (c (a 10 (c (c 14 (c 4 10)) (q . 5))) (a 4 (c 10 (c 14 (c 4 (c 5 ())))))) 1)) (c (c (q 2 (i (> 23 ()) (q 2 2 (c (c 5 (c 11 2)) (- 23 (q . 1)))) (q)) 1) (c (q 2 (i (> (q . 100) 3) (q 2 4 (c (c 10 (c 14 4)) (c 3 (q . 2)))) (q 8)) 1) (q 2 (i (> 5 ()) (q 2 14 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 14) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ()))) ()))) ())))))) (q 2 7 (c 5 ()))) 1))) 1))
   debug_program: (a (q 2 (q 2 (i 23 (q 16 4 6) (q)) 1) (c (c (a 10 (c (c 14 (c 4 10)) (q . 5))) (a 4 (c 10 (c 14 (c 4 (c 5 ())))))) 1)) (c (c (q 2 (i (not (> 23 ())) (q) (q 2 2 (c (c 5 (c 11 2)) (- 23 (q . 1))))) 1) (c (q 2 (q 2 (i (> (q . 100) 7) (q . 2) (q 8 (q . "assertion failed at keep_checks_cycles.rue:639:5"))) 1) (c (a 4 (c (c 10 (c 14 4)) (c 3 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) 1)) (q 2 (i (not (> 5 ())) (q 2 7 (c 5 ())) (q 2 14 (c (c 4 (c 10 14)) (c (- 5 (q . 1)) (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 14) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))))))) 1))) 1))
   solution: (200 ())
-  byte_cost: 5100000
+  byte_cost: 5052000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks_cycles.rue:639:5"
 - name: finished_component_before_swapped_values

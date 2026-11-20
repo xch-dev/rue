@@ -28,12 +28,12 @@ tests:
   byte_cost: 276000
   total_cost: 276927
 - name: inside_pair
-  program: (a (q 5 (a (c (q . 2) (c (c (q . 1) (q 4 (a 2 (q . 7)) (a 2 5))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 1))) (c (q . 1) ()))
+  program: (a (q 5 (a (c (q . 2) (c (q 1 4 (a 2 (q . 7)) (a 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q 1))) (c (q . 1) ()))
   debug_program: (a (q 2 (q 5 (a 2 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (q . 7)) (a 2 5))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q . 1) ()))
   output: "7"
-  runtime_cost: 1747
-  byte_cost: 1332000
-  total_cost: 1333747
+  runtime_cost: 1581
+  byte_cost: 1212000
+  total_cost: 1213581
 - name: block_body
   program: (a (q 1 . 7) (q 1))
   debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (c (q . 2) (c (c (q . 1) (q 2 2 (q . 7))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q . 1) ()))
@@ -70,12 +70,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: nested_lambda
-  program: (a (a (q 4 (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 10)) 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 1)) (q 2))
+  program: (a (a (q 4 (q . 2) (c (q 1 16 (* 2 (q . 10)) 5) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q 1)) (q 2))
   debug_program: (a (q 2 (a 2 (c (q . 1) ())) (c (q . 2) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 10)) 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) (c (q . 1) ()))) 1))
   output: "12"
-  runtime_cost: 3008
-  byte_cost: 1164000
-  total_cost: 1167008
+  runtime_cost: 2842
+  byte_cost: 1044000
+  total_cost: 1046842
 - name: nested_lambda_through_generic_function_type
   program: (a (a (q 1 . 2) (q 1)) (q 2))
   debug_program: (a (q 2 (a 2 (c (q . 1) ())) (c (q . 2) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (q . 1) ()))) 1))

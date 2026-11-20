@@ -22,8 +22,8 @@ nodes:
         closure_capture.rue:15:22-15:42  (a 2 (c 2 (c (r 5) 7)))
           closure_capture.rue:15:31-15:41  (r 5)
 ===== release =====
-program: (a (q 2 2 (c 2 (c 11 (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q . 5) (q 8)) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))))) (c (q 2 (i 5 (q 16 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) 1))
-sidecar: 2645 bytes
+program: (a (q 2 2 (c 2 (c 11 (c (q . 2) (c (q 1 2 (i (> 2 5) (q . 5) (q 8)) 1) (c (c (q . 4) (c (c (q . 1) 5) (q 1))) ())))))) (c (q 2 (i 5 (q 16 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) 1))
+sidecar: 2535 bytes
 files:
   closure_capture.rue
 functions:
@@ -31,9 +31,9 @@ functions:
   1: <lambda> (limit@2: integer . (item@5: integer . _))
   2: total (_ . (items@5: list . f@7: unknown))
 nodes:
-  closure_capture.rue:3:46-9:2  (a (q 2 2 (c 2 (c 11 (c (q . 2) (c (c (q . 1) (q 2 (i (> ...
-    closure_capture.rue:8:5-8:24 fn main  (a 2 (c 2 (c 11 (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) ...
-      closure_capture.rue:4:17-7:6  (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q . 5) (q 8)) 1...
+  closure_capture.rue:3:46-9:2  (a (q 2 2 (c 2 (c 11 (c (q . 2) (c (q 1 2 (i (> 2 5) (q ....
+    closure_capture.rue:8:5-8:24 fn main  (a 2 (c 2 (c 11 (c (q . 2) (c (q 1 2 (i (> 2 5) (q . 5) (...
+      closure_capture.rue:4:17-7:6  (c (q . 2) (c (q 1 2 (i (> 2 5) (q . 5) (q 8)) 1) (c (c (...
         closure_capture.rue:5:9-5:29 fn <lambda>  (a (i (> 2 5) (q . 5) (q 8)) 1)
           closure_capture.rue:5:16-5:28  (> 2 5)
     closure_capture.rue:11:60-16:2 fn total  (a (i 5 (q 16 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) (q)) 1)

@@ -112,12 +112,12 @@ tests:
   byte_cost: 804000
   total_cost: 805055
 - name: kind_instantiation_next_to_a_function
-  program: (i () (a (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) (c (q . 1) ()))) ()))) (q 98)) ())
+  program: (i () (a (q 2 (q 2 2 (c 5 ())) (c (q 4 (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) 1)) (q 98)) ())
   debug_program: (a (q 2 (q 3 () (a 2 (c (q . 98) ())) ()) (c (a 14 (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 97)) (c (q . 1) ())))) (c (q . 1) ())))))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
   output: ()
-  runtime_cost: 2045
-  byte_cost: 1836000
-  total_cost: 1838045
+  runtime_cost: 1263
+  byte_cost: 1188000
+  total_cost: 1189263
 - name: kind_instantiation_next_to_several_functions
   program: ()
   debug_program: ()
@@ -133,11 +133,11 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: polarity_instantiation_next_to_a_function
-  program: (f (a (a (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q 4 2 (q . 5)) ())) (q 1)))
+  program: (f (a (a (q 4 (q . 2) (c (q 1 2 2 (c 5 ())) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q 4 2 (q . 5)) ())) (q 1)))
   debug_program: (a (q 2 (q 5 (a 2 (c (q . 1) ()))) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 4 2 (q . 5))) (c (q . 1) ())))) (c () ()))))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 2 2 (c (a 3 ()) ()))) ()))
   output: "1"
-  runtime_cost: 1663
-  byte_cost: 1332000
-  total_cost: 1333663
+  runtime_cost: 1497
+  byte_cost: 1212000
+  total_cost: 1213497
 diagnostics:
 - Unnecessary type guard from `7` to `7`, since they are already compatible types at generic_inference_joint_instances.rue:47:21
