@@ -8,6 +8,11 @@
 //! then its value and its summary, which only depend on its key. Reaching it again while it's in
 //! progress applies the summary to the binders it's reached with (see `StackFrame` in
 //! `compare.rs`).
+//!
+//! A bound collected under a member of a union compared inside of the comparison records that
+//! member, and the summary records the union and what its members gave (see `ChoiceRecord`), so
+//! that applying it collects the bound under the same member of the same union again, and the
+//! members stay alternatives (#362's step 13g).
 
 use std::{cell::Cell, rc::Rc};
 
@@ -71,10 +76,11 @@ pub(crate) struct Constraint {
     /// summary is applied, it's collected under that member again, so whether it decides the
     /// result depends on the union's members as it did in the comparison (#360).
     pub(crate) branch: Option<Branch>,
-    /// Whether it was collected under a union member inside of the comparison that didn't match the
-    /// value (or one nested in such a member), so it doesn't decide whether the instance's bounds
-    /// hold wherever the summary is applied either. Its union isn't kept (`branch` is `None`):
-    /// whichever members it was under, it only matters that it didn't match.
+    /// Whether it was collected under a union member inside of the comparison that gave `Invalid`
+    /// (or one nested in such a member), which can never be picked, so it doesn't decide whether
+    /// the instance's bounds hold wherever the summary is applied either (see
+    /// `Choices::can_hold_since`). Its union isn't kept (`branch` is `None`): whichever members it
+    /// was under, it only matters that none of them can hold.
     pub(crate) unmatched: bool,
 }
 
@@ -459,15 +465,22 @@ impl Summary {
         (ground, shapes, approximate)
     }
 
-    /// The summary's unions and constraints, with each union that has something under only one of
-    /// its members, which matched (see `ChoiceRecord::matched`), left out, and what's under that
-    /// member put under the member that the union is nested in instead. (What's under a member
-    /// that didn't match isn't under a union at all, see `Constraint::unmatched`.) Such a union
-    /// doesn't decide anything: what's under the member holds exactly when what's under the one
-    /// it's nested in holds, and since nothing is under its other members, it doesn't make any two
-    /// bounds alternatives (see `Choices::exclusive`). Leaving it out keeps a summary that's
-    /// applied under a union member of a comparison that's then summarized itself from nesting
-    /// its unions one level deeper each time, without bound.
+    /// The summary's unions and constraints, with the unions that decide nothing left out, which
+    /// keeps a summary that's applied under a union member of a comparison that's summarized
+    /// itself from nesting its unions one level deeper each time, without bound:
+    /// - A union held by a member that gave `Assign` without collecting bounds, with what's under
+    ///   its other members (see `ChoiceRecord::held` and `Choices::needed_in`).
+    /// - A third copy of a union under the same member (see `extra_copy`).
+    /// - A member alike another of its union, with what's under it (see `alike_member`).
+    /// - A union that has something under only one of its members, the only one that can hold
+    ///   (see `ChoiceRecord::alone`), with what's under that member put under the member the union
+    ///   is nested in instead. It holds exactly when what's under that member does.
+    /// - A union nested more deeply than `MAX_UNION_DEPTH`, which the summary is approximate for.
+    ///
+    /// (What's under a member that gave `Invalid` isn't under a union at all, see
+    /// `Constraint::unmatched`.) Each of them but the last decides the same as the summary without
+    /// it, under how a failed pair of bounds is charged to the members it was collected under
+    /// (see `Choices::attributed`).
     fn without_single_members(&self) -> (Vec<ChoiceRecord>, Vec<Constraint>, bool) {
         let mut choices = self.choices.clone();
         let mut constraints = self.constraints.clone();

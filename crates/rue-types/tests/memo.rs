@@ -2210,8 +2210,8 @@ fn test_union_member_differential_large() {
 ///
 /// `FL` is assignable to itself, without comparing any further, in every mode, and isn't to a copy
 /// of it, in every mode either: the copy has its own free `T`, which `FL` and `FR` both refer to,
-/// so `(T, Bytes)` isn't assignable to the copy's, and no bounds are checked at all. (This used to
-/// be read as the union members of `FR` failing against each other.)
+/// so `(T, Bytes)` isn't assignable to the copy's. (This used to be read as the union members of
+/// `FR` failing against each other.)
 #[test]
 fn test_compared_with_itself() {
     with_large_stack(|| {

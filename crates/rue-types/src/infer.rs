@@ -905,7 +905,10 @@ impl Choices {
     /// the member its choice is nested in holds too. A member that's still being compared holds,
     /// since it hasn't given a result yet. This is for the bounds of a generic being instantiated,
     /// which are checked once the function comparison that bound it finishes, which can be in the
-    /// middle of comparing an enclosing union's member.
+    /// middle of comparing an enclosing union's member. Since #362's step 13g, it only decides
+    /// pairs with a bound collected under a union outside of that function comparison, and which
+    /// candidates checking a pair collects: a failed pair under a union inside of it is charged
+    /// to the members it was collected under instead (see `Choices::attributed`).
     pub(crate) fn matched_so_far(&self, branch: BranchId) -> bool {
         self.matched_since(branch, 0)
     }
