@@ -42,7 +42,8 @@ fn debug_nil(_value: nil) -> Int {
     1
 }
 
-// The arguments are captured by a lambda that checks them when it's called
+// The arguments are captured by a lambda that checks them when it's called, and the hash is of
+// the captured value, so it only passes if that's what the lambda checks
 test fn check_in_lambda(value: Bytes, hash: Bytes32) {
     let prefixed = concat(["prefix", value]);
     let check = fn() => keccak256_verify(prefixed, hash);
