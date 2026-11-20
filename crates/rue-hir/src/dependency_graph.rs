@@ -648,8 +648,14 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 
                         visit_let(db, graph, *stmt);
                     }
-                    Statement::Assert(stmt, _) => {
+                    Statement::Assert(stmt, message, _) => {
                         visit_hir(db, graph, *stmt, false);
+
+                        if graph.options.debug_symbols
+                            && let Some(message) = message
+                        {
+                            visit_hir(db, graph, *message, false);
+                        }
                     }
                     Statement::Raise(stmt, _) => {
                         if graph.options.debug_symbols

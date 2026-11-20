@@ -1,0 +1,12 @@
+===== debug: (10 20) =====
+error: clvm raise
+  assert_message.rue:4:5, in main
+    assert amount >= minimum, ["amount is too small", shortfall(amount, minimum)];
+    amount = 10
+    minimum = 20
+===== release: (10 20) =====
+error: clvm raise
+  assert_message.rue:4:5, in main
+    assert amount >= minimum, ["amount is too small", shortfall(amount, minimum)];
+    amount = 10
+    minimum = 20

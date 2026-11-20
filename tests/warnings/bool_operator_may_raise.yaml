@@ -80,6 +80,9 @@ diagnostics:
 - This operand can raise, but it's evaluated even when the left side of `&` is `false`; use `&&` to skip it at bool_operator_may_raise.rue:8:9
 - This operand can raise, but it's evaluated even when the left side of `&` is `false`; use `&&` to skip it at bool_operator_may_raise.rue:17:11
 - This operand can raise, but it's evaluated even when the left side of `|` is `true`; use `||` to skip it at bool_operator_may_raise.rue:29:11
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at bool_operator_may_raise.rue:30:13
+    help: Replace it with an `assert`
 - This operand can raise, but it's evaluated even when the left side of `&` is `false`; use `&&` to skip it at bool_operator_may_raise.rue:42:13
 - This operand can raise, but it's evaluated even when the left side of `&` is `false`; use `&&` to skip it at bool_operator_may_raise.rue:54:9
 - This operand can raise, but it's evaluated even when the left side of `&` is `false`; use `&&` to skip it at bool_operator_may_raise.rue:54:29

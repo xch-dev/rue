@@ -292,6 +292,16 @@ impl<'a> Formatter<'a> {
                 }
                 docs.push(self.delimited(index, close)?);
                 close
+            } else if facts.is_message_comma() {
+                // The message is the rest of the group, which is indented if it's on its own line
+                docs.push(self.token(index));
+                let message = self.stream.next_token(index).ok_or_else(|| {
+                    FormatError::Internal("message comma has no following token".to_string())
+                })?;
+                let gap = self.gap_between(index, message);
+                let message = self.span(self.stream.span(message, span.end())?)?;
+                docs.push(Doc::concat([gap, message]).indent());
+                break;
             } else if facts.is_omitted_comma() {
                 // The comma is left out, but the comments around it are kept
                 self.consumed_tokens += 1;

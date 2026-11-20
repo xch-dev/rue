@@ -55,7 +55,7 @@ fn main(
     let valid_amount = my_amount % 2 == 1;
     let valid_lineage = is_lineage | (parent_coin_id == singleton.launcher_id);
 
-    assert valid_amount & valid_lineage;
+    assert valid_amount & valid_lineage, "The amount must be odd, and the lineage valid";
 
     // Assert the amount and parent coin id
     let assert_amount = AssertMyAmount { amount: my_amount };
@@ -76,14 +76,14 @@ fn morph_conditions(
     has_odd_output: Bool,
 ) -> List<Condition> {
     if conditions is nil {
-        assert has_odd_output;
+        assert has_odd_output, "The singleton must be recreated or melted";
         return;
     }
 
     inline let (condition, rest) = conditions;
 
     if condition is CreateCoin && condition.amount % 2 == 1 {
-        assert !has_odd_output;
+        assert !has_odd_output, "Only one output can have an odd amount";
 
         let rest_odd_output = morph_conditions(singleton, rest, true);
 

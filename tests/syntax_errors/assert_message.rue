@@ -1,0 +1,24 @@
+test fn missing_message() -> Int {
+    let a = 1;
+    assert a > 0, ;
+    a
+}
+
+// There's only one message, which can be a list
+test fn several_messages() -> Int {
+    let a = 1;
+    assert a > 0, "first", "second";
+    a
+}
+
+test fn missing_comma() -> Int {
+    let a = 1;
+    assert a > 0 "message";
+    a
+}
+
+test fn still_works() -> Int {
+    let a = 1;
+    assert a > 0, "message";
+    a
+}

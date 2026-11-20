@@ -147,7 +147,8 @@ fn main(
 
     let final_conditions = if !(morph.tail_info is nil) {
         // Make sure the asset id matches the revealed TAIL.
-        assert tree_hash(morph.tail_info.tail_puzzle) == asset_id;
+        assert tree_hash(morph.tail_info.tail_puzzle) == asset_id,
+            "The TAIL puzzle doesn't match the asset id";
 
         // Run the TAIL puzzle with its solution.
         // It also has access to various information about the CAT spend.
@@ -165,7 +166,8 @@ fn main(
     } else {
         // If there's no TAIL, make sure the extra delta is zero.
         // It must have a parent that is also a CAT.
-        assert parent_is_cat & (extra_delta == 0);
+        assert parent_is_cat & (extra_delta == 0),
+            ["Without a TAIL, the parent must be a CAT and the extra delta zero", extra_delta];
 
         // Output the conditions as they are.
         conditions
@@ -226,14 +228,14 @@ fn morph_conditions(
     } else {
         // If the condition is a coin announcement,
         // make sure it's not pretending to be part of the ring.
-        if condition is CreateCoinAnnouncement
-            && (
-                (condition.message.length == 33)
-                    & (substr(condition.message, 0, 1) == RING_MORPH_BYTE)
-            )
-        {
-            raise "Created coin announcements must not have the ring morph byte";
-        }
+        assert !(
+            condition is CreateCoinAnnouncement
+                && (
+                    (condition.message.length == 33)
+                        & (substr(condition.message, 0, 1) == RING_MORPH_BYTE)
+                )
+        ),
+            "Created coin announcements must not have the ring morph byte";
 
         (condition, 0)
     };

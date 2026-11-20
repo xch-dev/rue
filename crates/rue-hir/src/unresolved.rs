@@ -95,8 +95,13 @@ impl Visitor<'_> {
                                 return true;
                             }
                         }
-                        Statement::Assert(hir, _) | Statement::Debug(hir, _) => {
+                        Statement::Debug(hir, _) => {
                             if self.visit_hir(hir) {
+                                return true;
+                            }
+                        }
+                        Statement::Assert(condition, message, _) => {
+                            if self.visit_hir(condition) || self.visit_all(message) {
                                 return true;
                             }
                         }

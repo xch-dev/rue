@@ -2938,3 +2938,109 @@ fn main(c: Bool, x: Int) -> Int {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+/// The value of the `raise` is kept as the message of the `assert`, which is type-checked where
+/// the condition is false, like the body of the `if` it replaces.
+#[test]
+fn manual_assert_suggestions_keep_the_message() {
+    let source = "\
+fn main(value: Int | nil, other: Int) -> Int {
+    if value is nil {
+        raise [\"missing\", none(value)];
+    }
+
+    if value == other {
+        raise;
+    }
+
+    if value > 100 {
+        raise(\"too large\", value - 100);
+    }
+
+    if other > 100 {
+        raise [
+            \"other is too large\",
+            other,
+        ];
+    }
+
+    if value > other && value != 7 { raise \"larger\"; }
+
+    // A comment would be dropped, so these aren't replaced
+    if value == 1 {
+        // One isn't allowed
+        raise \"one\";
+    }
+
+    if value == 2 {
+        raise /* two */ \"two\";
+    }
+
+    if value == 3 {
+        #[allow(unused_binding)]
+        raise \"three\";
+    }
+
+    value
+}
+
+fn none(value: nil) -> nil {
+    value
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(value: Int | nil, other: Int) -> Int {
+    assert !(value is nil), [\"missing\", none(value)];
+
+    assert value != other;
+
+    assert !(value > 100), (\"too large\", value - 100);
+
+    assert !(other > 100), [
+            \"other is too large\",
+            other,
+        ];
+
+    assert !(value > other && value != 7), \"larger\";
+
+    // A comment would be dropped, so these aren't replaced
+    if value == 1 {
+        // One isn't allowed
+        raise \"one\";
+    }
+
+    if value == 2 {
+        raise /* two */ \"two\";
+    }
+
+    if value == 3 {
+        #[allow(unused_binding)]
+        raise \"three\";
+    }
+
+    value
+}
+
+fn none(value: nil) -> nil {
+    value
+}
+"
+    );
+
+    // They're still reported, and the fixed code compiles and has nothing else to fix
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(
+        reports,
+        [16, 21, 25].map(|line| format!(
+            "Warning {line}: This `if` statement only raises, so it can be written as an `assert`"
+        ))
+    );
+    assert!(!has_errors);
+    assert_eq!(fix(&fixed), fixed);
+}

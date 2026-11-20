@@ -1,0 +1,17 @@
+fn main(a: Int, b: Int | nil) -> Int {
+    // The message is checked like any other expression
+    assert a > 3, missing;
+    assert a > 4, a + "text";
+
+    // It sees the values the condition is false for, which is `nil` here
+    assert !(b is nil), double(b);
+
+    // The condition is still checked
+    assert a, "not a condition";
+
+    a
+}
+
+fn double(value: Int) -> Int {
+    value * 2
+}

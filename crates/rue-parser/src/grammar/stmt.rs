@@ -97,6 +97,10 @@ fn assert_stmt(p: &mut Parser, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::AssertStmt);
     p.expect(T![assert]);
     expr(p);
+    // The message, which is only evaluated in a debug build, once the assertion has failed
+    if p.try_eat(T![,]) {
+        expr(p);
+    }
     expect_semicolon(p);
     p.finish();
 }
@@ -281,10 +285,10 @@ mod tests {
     fn test_assert_stmt() {
         check_stmt(
             StatementKind::Normal,
-            "return 42;",
+            "assert 42;",
             expect![[r#"
-                ReturnStmt@0..10
-                  Return@0..6 "return"
+                AssertStmt@0..10
+                  Assert@0..6 "assert"
                   Whitespace@6..7 " "
                   LiteralExpr@7..9
                     Integer@7..9 "42"
@@ -295,18 +299,151 @@ mod tests {
     }
 
     #[test]
+    fn test_assert_stmt_with_message() {
+        check_stmt(
+            StatementKind::Normal,
+            "assert a > b, \"a must be larger\";",
+            expect![[r#"
+                AssertStmt@0..33
+                  Assert@0..6 "assert"
+                  Whitespace@6..7 " "
+                  BinaryExpr@7..12
+                    PathExpr@7..9
+                      PathSegment@7..9
+                        Ident@7..8 "a"
+                        Whitespace@8..9 " "
+                    GreaterThan@9..10 ">"
+                    Whitespace@10..11 " "
+                    PathExpr@11..12
+                      PathSegment@11..12
+                        Ident@11..12 "b"
+                  Comma@12..13 ","
+                  Whitespace@13..14 " "
+                  LiteralExpr@14..32
+                    String@14..32 "\"a must be larger\""
+                  Semicolon@32..33 ";"
+            "#]],
+            expect![],
+        );
+
+        check_stmt(
+            StatementKind::Normal,
+            "assert a, [b, c];",
+            expect![[r#"
+                AssertStmt@0..17
+                  Assert@0..6 "assert"
+                  Whitespace@6..7 " "
+                  PathExpr@7..8
+                    PathSegment@7..8
+                      Ident@7..8 "a"
+                  Comma@8..9 ","
+                  Whitespace@9..10 " "
+                  ListExpr@10..16
+                    OpenBracket@10..11 "["
+                    ListItem@11..12
+                      PathExpr@11..12
+                        PathSegment@11..12
+                          Ident@11..12 "b"
+                    Comma@12..13 ","
+                    Whitespace@13..14 " "
+                    ListItem@14..15
+                      PathExpr@14..15
+                        PathSegment@14..15
+                          Ident@14..15 "c"
+                    CloseBracket@15..16 "]"
+                  Semicolon@16..17 ";"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_assert_stmt_with_invalid_message() {
+        // The message is missing
+        check_stmt(
+            StatementKind::Normal,
+            "assert a, ;",
+            expect![[r#"
+                AssertStmt@0..11
+                  Assert@0..6 "assert"
+                  Whitespace@6..7 " "
+                  PathExpr@7..8
+                    PathSegment@7..8
+                      Ident@7..8 "a"
+                  Comma@8..9 ","
+                  Whitespace@9..10 " "
+                  Semicolon@10..11 ";"
+            "#]],
+            expect!["Expected expression, found `;` at main.rue:1:11"],
+        );
+
+        // There's only one message
+        check_stmt(
+            StatementKind::Normal,
+            "assert a, b, c;",
+            expect![[r#"
+                AssertStmt@0..15
+                  Assert@0..6 "assert"
+                  Whitespace@6..7 " "
+                  PathExpr@7..8
+                    PathSegment@7..8
+                      Ident@7..8 "a"
+                  Comma@8..9 ","
+                  Whitespace@9..10 " "
+                  PathExpr@10..11
+                    PathSegment@10..11
+                      Ident@10..11 "b"
+                  Error@11..12 ","
+                  Whitespace@12..13 " "
+                  Error@13..14 "c"
+                  Semicolon@14..15 ";"
+            "#]],
+            expect!["Expected `;`, found `,` at main.rue:1:12"],
+        );
+
+        // The comma is missing
+        check_stmt(
+            StatementKind::Normal,
+            "assert a \"b\";",
+            expect![[r#"
+                AssertStmt@0..13
+                  Assert@0..6 "assert"
+                  Whitespace@6..7 " "
+                  PathExpr@7..9
+                    PathSegment@7..9
+                      Ident@7..8 "a"
+                      Whitespace@8..9 " "
+                  Error@9..12 "\"b\""
+                  Semicolon@12..13 ";"
+            "#]],
+            expect!["Expected one of `,`, `;`, found string literal at main.rue:1:10"],
+        );
+    }
+
+    #[test]
     fn test_raise_stmt() {
         check_stmt(
             StatementKind::Normal,
-            "return 42;",
+            "raise 42;",
             expect![[r#"
-                ReturnStmt@0..10
-                  Return@0..6 "return"
-                  Whitespace@6..7 " "
-                  LiteralExpr@7..9
-                    Integer@7..9 "42"
-                  Semicolon@9..10 ";"
+                RaiseStmt@0..9
+                  Raise@0..5 "raise"
+                  Whitespace@5..6 " "
+                  LiteralExpr@6..8
+                    Integer@6..8 "42"
+                  Semicolon@8..9 ";"
             "#]],
+            expect![],
+        );
+
+        check_stmt(
+            StatementKind::Normal,
+            "raise;",
+            expect![[r#"
+            RaiseStmt@0..6
+              Raise@0..5 "raise"
+              Semicolon@5..6 ";"
+        "#]],
             expect![],
         );
     }

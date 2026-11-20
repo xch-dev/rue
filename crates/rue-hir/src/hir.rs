@@ -284,7 +284,10 @@ pub enum Statement {
     If(IfStatement),
     Control(ControlStatement),
     Return(HirId, SrcLoc),
-    Assert(HirId, SrcLoc),
+    /// The condition, and the message if there is one. Like the value of a `raise`, the message
+    /// is only lowered with debug symbols, and only evaluated once the condition is false, so it
+    /// never changes whether the program fails.
+    Assert(HirId, Option<HirId>, SrcLoc),
     Raise(Option<HirId>, SrcLoc),
     Debug(HirId, SrcLoc),
 }
@@ -298,7 +301,8 @@ impl Statement {
             Self::Expr(statement) => [Some(statement.hir), None],
             Self::Control(statement) => [Some(statement.hir), None],
             Self::If(statement) => [Some(statement.condition), Some(statement.then)],
-            Self::Return(hir, _) | Self::Assert(hir, _) | Self::Debug(hir, _) => [Some(*hir), None],
+            Self::Return(hir, _) | Self::Debug(hir, _) => [Some(*hir), None],
+            Self::Assert(condition, message, _) => [Some(*condition), *message],
             Self::Raise(hir, _) => [*hir, None],
         };
 
@@ -313,7 +317,7 @@ impl Statement {
             Self::Control(statement) => &statement.srcloc,
             Self::Let(_, srcloc)
             | Self::Return(_, srcloc)
-            | Self::Assert(_, srcloc)
+            | Self::Assert(_, _, srcloc)
             | Self::Raise(_, srcloc)
             | Self::Debug(_, srcloc) => srcloc,
         }

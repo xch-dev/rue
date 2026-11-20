@@ -1279,8 +1279,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         match stmt {
             Statement::Let(..) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir, _) => self.lower_block(env, vec![], Tail::Body(Some(hir))),
-            Statement::Assert(condition, srcloc) => {
-                self.lower_assert(env, stmts, condition, srcloc, body)
+            Statement::Assert(condition, message, srcloc) => {
+                self.lower_assert(env, stmts, condition, message, srcloc, body)
             }
             Statement::Expr(stmt) => self.lower_expr_stmts(env, stmt, stmts, body),
             Statement::Raise(hir, srcloc) => self.lower_raise(env, hir, srcloc),
@@ -1447,6 +1447,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         env: &Environment,
         mut stmts: Vec<Statement>,
         condition: HirId,
+        message: Option<HirId>,
         srcloc: SrcLoc,
         body: Tail,
     ) -> LirId {
@@ -1457,11 +1458,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         // The check and the failure are located at the statement, rather than the condition
         self.with_span(srcloc.clone(), |this| {
+            // The message is only lowered with debug symbols, like the value of a `raise`, so a
+            // release build is the same with and without it
             let raise = if this.options.debug_symbols {
                 let error = this.arena.alloc(Lir::Atom(
                     format!("assertion failed at {}", srcloc.display(&this.base_path)).into_bytes(),
                 ));
-                vec![error]
+                let message = message.map(|message| this.lower_hir(env, message));
+                std::iter::once(error).chain(message).collect()
             } else {
                 vec![]
             };

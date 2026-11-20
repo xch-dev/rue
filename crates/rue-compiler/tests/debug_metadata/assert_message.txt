@@ -1,0 +1,28 @@
+===== debug =====
+program: (a (q 2 (i (not (> 11 5)) (q 17 5 11) (q 8 (q . "assertion failed at assert_message.rue:4:5") (c (q . "amount is too small") (c (a 2 (c 5 11)) ())))) 1) (c (q 17 3 2) 1))
+sidecar: 1614 bytes
+files:
+  assert_message.rue
+functions:
+  0: main (_ . (amount@5: integer . (minimum@11: integer . _)))
+  1: shortfall (amount@2: integer . minimum@3: integer)
+nodes:
+  assert_message.rue:3:43-6:2  (a (q 2 (i (not (> 11 5)) (q 17 5 11) (q 8 (q . "assertio...
+    assert_message.rue:4:5-4:83 fn main  (a (i (not (> 11 5)) (q 17 5 11) (q 8 (q . "assertion fai...
+      assert_message.rue:4:12-4:29  (not (> 11 5))
+      assert_message.rue:5:5-5:21  (- 5 11)
+      assert_message.rue:4:31-4:82  (c (q . "amount is too small") (c (a 2 (c 5 11)) ()))
+        assert_message.rue:4:32-4:53  (q . "amount is too small")
+        assert_message.rue:4:55-4:81  (a 2 (c 5 11))
+    assert_message.rue:9:5-9:21 fn shortfall  (- 3 2)
+===== release =====
+program: (a (i (> 5 2) (q 8) (q 17 2 5)) 1)
+sidecar: 802 bytes
+files:
+  assert_message.rue
+functions:
+  0: main (amount@2: integer . (minimum@5: integer . _))
+nodes:
+  assert_message.rue:4:5-4:83 fn main  (a (i (> 5 2) (q 8) (q 17 2 5)) 1)
+    assert_message.rue:4:12-4:29  (> 5 2)
+    assert_message.rue:5:5-5:21  (- 2 5)

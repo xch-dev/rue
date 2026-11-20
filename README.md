@@ -181,6 +181,22 @@ As in Rust, a statement ends at its closing brace, so `if a { 1 } else { 2 } + 3
 
 The code after a statement is only generated once. If several branches fall through to it and one of them can return, it's passed to them as a program to run, rather than being generated in each one.
 
+### Assertion Messages
+
+An `assert` can have a message after its condition, which says what went wrong. It can be any value, so it can include the values that failed the check:
+
+```rs
+fn withdraw(balance: Int, amount: Int) -> Int {
+    assert amount > 0, "the amount must be positive";
+    assert balance >= amount, ["insufficient balance", balance, amount];
+    balance - amount
+}
+```
+
+A message costs nothing on chain. A release build never evaluates it, and compiles to the same program with and without it. A debug build (`rue build --debug`, and `rue test`) raises the location of the `assert` followed by the message, such as `("assertion failed at main.rue:3:5" ("insufficient balance" 5 8))`, or only the location if there's no message. `raise` works the same way: its value is only raised in a debug build.
+
+The message is only evaluated once the condition is false, so it sees the values the condition is false for (in `assert !(value is nil), value;`, the `value` in the message is `nil`), and it can't change whether the program fails. The `manual_assert` lint suggests an `assert` for an `if` that only raises, and keeps the value of its `raise` as the message.
+
 ## CLI
 
 | Command                         | Description                                                            |

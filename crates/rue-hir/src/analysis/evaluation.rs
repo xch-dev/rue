@@ -165,7 +165,8 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
                         return false;
                     }
                 }
-                Statement::Assert(condition, _) => {
+                // The message is only evaluated if the condition is false, when the program fails
+                Statement::Assert(condition, _, _) => {
                     if self.hir(condition) {
                         return true;
                     }

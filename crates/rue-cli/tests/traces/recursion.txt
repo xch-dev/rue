@@ -3,19 +3,19 @@ error: clvm raise
   recursion.rue:4:5, in main
     countdown(n, 0)
     n = 3
-  recursion.rue:11:5, in countdown
+  recursion.rue:12:5, in countdown
     countdown(n - 1, acc + n)
     n = 3
     acc = ()
-  recursion.rue:11:5, in countdown
+  recursion.rue:12:5, in countdown
     countdown(n - 1, acc + n)
     n = 2
     acc = 3
-  recursion.rue:11:5, in countdown
+  recursion.rue:12:5, in countdown
     countdown(n - 1, acc + n)
     n = 1
     acc = 5
-  recursion.rue:9:9, in countdown
+  recursion.rue:10:9, in countdown
     raise "hit zero";
     n = ()
     acc = 6
@@ -24,19 +24,19 @@ error: clvm raise
   recursion.rue:4:5, in main
     countdown(n, 0)
     n = 3
-  recursion.rue:11:5, in countdown
+  recursion.rue:12:5, in countdown
     countdown(n - 1, acc + n)
     n = 3
     acc = ()
-  recursion.rue:11:5, in countdown
+  recursion.rue:12:5, in countdown
     countdown(n - 1, acc + n)
     n = 2
     acc = 3
-  recursion.rue:11:5, in countdown
+  recursion.rue:12:5, in countdown
     countdown(n - 1, acc + n)
     n = 1
     acc = 5
-  recursion.rue:9:9, in countdown
+  recursion.rue:10:9, in countdown
     raise "hit zero";
     n = ()
     acc = 6

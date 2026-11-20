@@ -6,6 +6,7 @@ fn main(x: Int) -> Int {
 }
 
 inline fn checked_sub(a: Int, b: Int) -> Int {
+    #[allow(manual_assert)]
     if a < b {
         raise "underflow";
     }

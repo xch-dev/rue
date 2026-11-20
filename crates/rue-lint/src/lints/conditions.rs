@@ -21,7 +21,7 @@ impl HirLintPass for ConstantCondition {
     fn check_statement(&mut self, cx: &mut LintContext<'_>, block: &Block, index: usize) {
         match &block.statements[index] {
             Statement::If(statement) => check_condition(cx, statement.condition),
-            Statement::Assert(condition, _) => check_condition(cx, *condition),
+            Statement::Assert(condition, _, _) => check_condition(cx, *condition),
             _ => {}
         }
     }

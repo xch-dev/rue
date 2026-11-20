@@ -1872,3 +1872,91 @@ fn match_commas_after_comments_are_kept() {
         "#]],
     );
 }
+
+#[test]
+fn assert_message_stays_on_the_line_if_it_fits() {
+    let output = format_source(
+        "fn main(){assert a>b  ,  \"a must be larger\";assert a,[a,b];assert a;}",
+        &FormatOptions::default(),
+    )
+    .unwrap();
+    expect![[r#"
+        fn main() {
+            assert a > b, "a must be larger";
+            assert a, [a, b];
+            assert a;
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(
+        format_source(&output, &FormatOptions::default()).unwrap(),
+        output
+    );
+}
+
+#[test]
+fn assert_message_moves_to_its_own_line_before_the_condition_breaks() {
+    let options = FormatOptions {
+        max_width: 40,
+        ..FormatOptions::default()
+    };
+    let output = format_source(
+        "fn main(){assert first_value>second_value,\"first must be larger\";\
+         assert first_value>second_value,[\"first must be larger\",first_value,second_value];\
+         assert value==first_value+second_value+third_value,\"the values must add up\";\
+         assert check(first_value,second_value,third_value,fourth_value),\"message\"+other;}",
+        &options,
+    )
+    .unwrap();
+    expect![[r#"
+        fn main() {
+            assert first_value > second_value,
+                "first must be larger";
+            assert first_value > second_value,
+                [
+                    "first must be larger",
+                    first_value,
+                    second_value,
+                ];
+            assert value == first_value
+                + second_value
+                + third_value,
+                "the values must add up";
+            assert check(
+                first_value,
+                second_value,
+                third_value,
+                fourth_value,
+            ),
+                "message" + other;
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(format_source(&output, &options).unwrap(), output);
+}
+
+#[test]
+fn assert_message_keeps_its_comments() {
+    let output = format_source(
+        "fn main(){assert a>b, // why\n\"larger\";assert a,\n// own line\n\"a\";assert a /* x */ , /* y */ \"a\" /* z */ ;#[allow(unused)] assert a,b;}",
+        &FormatOptions::default(),
+    )
+    .unwrap();
+    expect![[r#"
+        fn main() {
+            assert a > b, // why
+                "larger";
+            assert a,
+                // own line
+                "a";
+            assert a /* x */ , /* y */ "a" /* z */ ;
+            #[allow(unused)]
+            assert a, b;
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(
+        format_source(&output, &FormatOptions::default()).unwrap(),
+        output
+    );
+}

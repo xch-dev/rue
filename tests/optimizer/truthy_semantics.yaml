@@ -139,6 +139,9 @@ tests:
   debug_clvm_error: "InvalidOperatorArg: rest of non-cons"
 diagnostics:
 - |-
+  This `if` statement only raises, so it can be written as an `assert` at truthy_semantics.rue:6:5
+    help: Replace it with an `assert`
+- |-
   Unnecessary comparison with `true` at truthy_semantics.rue:21:5
     help: Use the value directly
 - Value returned by statement is unused at truthy_semantics.rue:61:5
