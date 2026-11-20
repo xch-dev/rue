@@ -51,6 +51,7 @@ pub struct FieldRead {
 pub struct UnreachableMatchArm {
     /// The arm's pattern.
     pub pattern: SrcLoc,
+    /// Why the arm is never taken.
     pub reason: UnreachableReason,
 }
 

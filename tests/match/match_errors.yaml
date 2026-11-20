@@ -23,4 +23,5 @@ diagnostics:
 - Undeclared type `Missing` at match_errors.rue:149:10
 - Undeclared type `Missing` at match_errors.rue:159:9
 - Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:171:11
-- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:179:9
+- Undeclared type `Missing` at match_errors.rue:188:9
+- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:196:9

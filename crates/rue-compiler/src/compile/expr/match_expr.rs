@@ -166,7 +166,6 @@ pub fn compile_match_expr(
                     pattern: pattern_srcloc,
                     ty,
                     members,
-                    reported: false,
                 });
             }
         }
@@ -206,7 +205,10 @@ pub fn compile_match_expr(
     // The arms that take members which no later arm names are reported themselves, since nothing
     // else shows that those members end up there
     if !has_error {
-        for arm in indistinguishable.into_iter().filter(|arm| !arm.reported) {
+        for arm in indistinguishable
+            .into_iter()
+            .filter(|arm| !arm.members.is_empty())
+        {
             let ty = ctx.type_name(arm.ty);
             let members = format_members(ctx, arm.members);
             ctx.lint_sites_mut()
@@ -304,13 +306,13 @@ fn compile_unreachable_arm(
 struct Indistinguishable {
     pattern: SrcLoc,
     ty: TypeId,
+    /// The members that no later arm has named yet.
     members: Vec<TypeId>,
-    /// Whether a later arm names some of the members, and is reported as unreachable because of it.
-    reported: bool,
 }
 
-/// Records that an arm is never taken. If an earlier arm takes the values it names, although they
-/// aren't of that arm's type, that's the reason given, since it's the one that's least expected.
+/// Records that an arm is never taken. If it names members that an earlier arm takes, although
+/// they aren't of that arm's type, that's the reason given, since it's the one that's least
+/// expected.
 fn report_unreachable(
     ctx: &mut Compiler,
     pattern_srcloc: SrcLoc,
@@ -320,18 +322,21 @@ fn report_unreachable(
 ) {
     if let Some(ty) = pattern {
         for arm in indistinguishable.iter_mut() {
-            let members: Vec<TypeId> = arm
-                .members
-                .clone()
-                .into_iter()
-                .filter(|&member| overlaps(ctx, member, ty))
-                .collect();
+            // A pattern that covers the earlier arm's own type is unreachable whatever else it takes
+            if ctx.is_assignable(arm.ty, ty) {
+                continue;
+            }
 
-            if !members.is_empty() {
-                arm.reported = true;
+            let (named, unnamed): (Vec<TypeId>, Vec<TypeId>) = arm
+                .members
+                .iter()
+                .partition(|&&member| ctx.is_assignable(member, ty));
+
+            if !named.is_empty() {
+                arm.members = unnamed;
                 reason = UnreachableReason::Indistinguishable {
                     arm: arm.pattern.clone(),
-                    members: format_members(ctx, members),
+                    members: format_members(ctx, named),
                 };
                 break;
             }

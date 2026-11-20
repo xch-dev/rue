@@ -173,6 +173,23 @@ fn missing_same_names(value: FirstPair | SecondPair | nil) -> Int {
     }
 }
 
+// An arm that takes members it can't tell apart isn't reported once there's an error
+struct SameShapeA {
+    value: Int,
+}
+
+struct SameShapeB {
+    value: Bytes32,
+}
+
+fn indistinguishable_then_unknown(value: SameShapeA | SameShapeB | nil) -> Int {
+    match value {
+        SameShapeA => 1,
+        Missing => 2,
+        _ => 0,
+    }
+}
+
 // A pattern that doesn't overlap the value doesn't also make the match non-exhaustive
 fn incompatible_only(value: Int | nil) -> Int {
     match value {
@@ -202,6 +219,7 @@ fn main() -> Int {
         + pair_parts((A {}, 1))
         + nested_unknown_pattern(nil)
         + incompatible_only(nil)
+        + indistinguishable_then_unknown(nil)
         + repeated_after_unknown_pattern(C {})
         + missing_same_names(nil)
 }
