@@ -19,9 +19,12 @@
 //! a random subset of them (`some`, sometimes written as `_`), and the arguments of one site
 //! (`one`). Generator version 2 adds a fourth, `expected`, which removes only the arguments
 //! that nothing but the expected type gives a type to, such as `let x: Int | nil = none();`.
-//! Version 3 adds `probe`, which removes only the arguments of calls that nothing gives a type
-//! to, as `let f: (fn<T>(a: T) -> T) | Any = make_from_lambda(fn(x) => x);`: rejecting it is
-//! right, so it counts as inferred, but compiling it must not leak a generic.
+//! Version 3 adds `probe` variants, each of which removes only the arguments of one call that
+//! nothing but an expected type's `Any` gives a type to, as
+//! `let f: (fn<T>(a: T) -> T) | Any = make_from_lambda(fn(x) => x);`. Rejecting it with
+//! `CannotInferGeneric` is right, so it counts as inferred, and compiling it must not leak a
+//! generic. A probe whose generic no parameter depends on, such as `pair_fn()`, compiles, since
+//! the generic is generalized over the annotation's `T`.
 //! Failures are grouped by category and the first diagnostic, and a few of each group are shrunk
 //! to a small reproduction.
 //!

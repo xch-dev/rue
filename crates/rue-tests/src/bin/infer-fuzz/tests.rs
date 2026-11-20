@@ -956,10 +956,15 @@ fn leaks_are_classified_and_shrunk_as_leaks() {
 fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
     let generated = (0..40)
         .map(|seed| Generator::versioned(seed, 3).generate())
-        .find(|generated| !generated.program.probes.is_empty())
+        .find(|generated| generated.variants.iter().any(|(name, _)| name == "probe"))
         .unwrap();
     let program = &generated.program;
-    let callee = *program.probe_callees().iter().next().unwrap();
+    let (_, variant) = generated
+        .variants
+        .iter()
+        .find(|(name, _)| name == "probe")
+        .unwrap();
+    let callee = *program.probe_callees(variant).iter().next().unwrap();
 
     let rejected = |kind: &str, message: String| {
         let mut outcome = Outcome::failed(Category::Rejected, String::new(), 1.0);
@@ -978,7 +983,7 @@ fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
         )
     };
 
-    let probe = worker::probe_outcome(program, "probe", cannot_infer());
+    let probe = worker::probe_outcome(program, "probe", variant, cannot_infer());
     assert_eq!(probe.category, Category::Inferred);
     assert!(probe.diag.is_none());
     assert!(
@@ -988,11 +993,11 @@ fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
             .is_some_and(|detail| detail.starts_with("rejected: "))
     );
 
-    let other = worker::probe_outcome(program, "some", cannot_infer());
+    let other = worker::probe_outcome(program, "some", variant, cannot_infer());
     assert_eq!(other.category, Category::Rejected);
 
     let incompatible = rejected("IncompatibleType", "Cannot assign `_` to `_`".to_string());
-    let incompatible = worker::probe_outcome(program, "probe", incompatible);
+    let incompatible = worker::probe_outcome(program, "probe", variant, incompatible);
     assert_eq!(incompatible.category, Category::Rejected);
 
     let elsewhere = rejected(
@@ -1000,13 +1005,53 @@ fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
         "Cannot infer generic `A` for `not_a_probe`; specify it explicitly".to_string(),
     );
     assert_eq!(
-        worker::probe_outcome(program, "probe", elsewhere).category,
+        worker::probe_outcome(program, "probe", variant, elsewhere).category,
+        Category::Rejected
+    );
+
+    // A probe variant removes only its own probe's arguments, so a probe that its arguments give a
+    // type, which other variants remove, isn't excused by it
+    let inferable = (0..200)
+        .map(|seed| Generator::versioned(seed, 3).generate())
+        .find_map(|generated| {
+            let uninferable = crate::generate::uninferable_probes(&generated.program);
+            let site = generated
+                .program
+                .probes
+                .iter()
+                .find(|site| !uninferable.contains(site))
+                .copied()?;
+            let callee = generated.program.probe_callees(&Variant {
+                stripped: [(site, Strip::All)].into(),
+            });
+            let callee = (*callee.iter().next()?).to_string();
+            let (_, variant) = generated
+                .variants
+                .iter()
+                .find(|(_, variant)| variant.stripped.contains_key(&site))?
+                .clone();
+            Some((generated.program.clone(), variant, callee))
+        })
+        .unwrap();
+    let (program_with_inferable, variant_with_inferable, inferable_callee) = &inferable;
+    let rejected_inferable = rejected(
+        "CannotInferGeneric",
+        format!("Cannot infer generic `A` for `{inferable_callee}`; specify it explicitly"),
+    );
+    assert_eq!(
+        worker::probe_outcome(
+            program_with_inferable,
+            "all",
+            variant_with_inferable,
+            rejected_inferable
+        )
+        .category,
         Category::Rejected
     );
 
     let leaked = Outcome::failed(Category::Leaked, "leak".to_string(), 1.0);
     assert_eq!(
-        worker::probe_outcome(program, "probe", leaked).category,
+        worker::probe_outcome(program, "probe", variant, leaked).category,
         Category::Leaked
     );
 }
@@ -1827,7 +1872,7 @@ fn version_2_programs_never_change() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 3.
-const VERSION_3_HASH: u64 = 0x3447_b31e_3d05_9920;
+const VERSION_3_HASH: u64 = 0xb3f8_c293_a73b_0629;
 
 #[test]
 fn version_3_programs_never_change() {
@@ -1850,18 +1895,16 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
         ) {
             valid += 1;
         }
-        // Only the probe variant removes a probe's generic arguments
+        // Only a probe variant removes the generic arguments of a probe whose arguments don't
+        // give them a type, and each removes one
+        let uninferable = crate::generate::uninferable_probes(&first.program);
         for (name, variant) in &first.variants {
-            let removes_probes = first
-                .program
-                .probes
+            let removed = uninferable
                 .iter()
-                .any(|site| variant.stripped.contains_key(site));
-            assert_eq!(
-                removes_probes,
-                name == "probe",
-                "seed {seed}, variant `{name}`"
-            );
+                .filter(|site| variant.stripped.contains_key(site))
+                .count();
+            let expected = usize::from(name == "probe");
+            assert_eq!(removed, expected, "seed {seed}, variant `{name}`");
         }
         probes += usize::from(!first.program.probes.is_empty());
     }

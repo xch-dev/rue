@@ -206,10 +206,10 @@ const HELPERS: &[Template] = &[
 ///   pass them to themselves, lambdas whose bodies call generic functions (so that calls nest in
 ///   the lambdas of other calls' arguments, as well as in their arguments, as earlier versions'
 ///   do), bindings whose annotation is a union of a generic function type and `Any` (#490), and
-///   wider unions in expected types. Each of
-///   those bindings is a probe that nothing gives its call's generics a type, which the `probe`
-///   variant removes: rejecting it is right, and compiling it must not leak a generic (see
-///   `leak.rs`).
+///   wider unions in expected types. Each of those bindings is a probe: one whose arguments
+///   don't give its call's generics a type is only removed by a `probe` variant of its own,
+///   where rejecting it is right and compiling it must not leak a generic (see `leak.rs`), and
+///   one whose arguments do is removed as any other call is.
 pub const VERSIONS: [u32; 3] = [1, 2, 3];
 
 /// Functions that generator version 3 adds to the catalog, which take lists, pairs and boxes of
@@ -906,9 +906,12 @@ impl Generator {
     /// returns a function of one of its generics, such as `make_from_lambda(fn(x) => x)`, and a
     /// union of `Any` with that function type made generic over the generic, as
     /// `(fn<T>(a: T) -> T) | Any`. The explicit program's generic arguments are assignable through
-    /// `Any`. Without them, nothing gives the generic a type, so the call is rightly rejected, but
-    /// a compiler that infers it as the annotation's `T` names `T` outside of its function type
-    /// (#490).
+    /// `Any`. Without them, where the arguments don't give the generic a type, a generic that a
+    /// parameter depends on is rightly rejected, as `make_from_lambda(fn(x) => x)`'s is, and a
+    /// compiler that infers it as the annotation's `T` names `T` outside of its function type
+    /// (#490). One that no parameter depends on, as in `pair_fn()`, is generalized over the
+    /// annotation's `T`, and compiles. Where the arguments do give it a type, as in
+    /// `make_list([7, 9])`, the call must compile.
     fn probe(&mut self, scope: &Scope) -> Option<(Ty, Expr)> {
         let candidates: Vec<usize> = (0..self.functions.len())
             .filter(|&index| {
@@ -1667,10 +1670,13 @@ impl Removable<'_> {
                         expected,
                         true,
                     );
-                    // A probe's generics get no type from anything, so they're only removed in
-                    // the variant that removes them, and kept everywhere else (see
-                    // `Generator::probe`)
-                    let generics = if self.program.probes.contains(site) {
+                    // A probe whose generics its arguments don't all give a type, which only the
+                    // expected type's `Any` would, is only removed in its own variant, and kept
+                    // everywhere else. One whose arguments do is removed as any other call is
+                    // (see `Generator::probe`)
+                    let generics = if self.program.probes.contains(site)
+                        && !inferable(self.program, self.variant, function, *site, args)
+                    {
                         vec![self.variant.stripped.contains_key(site); witnessed.generics.len()]
                     } else {
                         witnessed.generics
@@ -2125,21 +2131,54 @@ fn applied(name: &str, ty: &Ty) -> Expr {
 fn variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)> {
     let mut variants = other_variants(rng, program, v2);
 
-    // The probes' generic arguments, which nothing else gives a type, removed with nothing else.
-    // Only a variant that removes a probe's arguments counts them as removable, so the other
-    // variants keep them, and this one is legal as it is (see `Generator::probe`)
-    if !program.probes.is_empty() {
+    // Each probe whose generics nothing but the expected type's `Any` gives a type, with its
+    // generic arguments removed and nothing else, so that one probe's rejection can't hide
+    // another's. Only a variant that removes a probe's arguments counts them as removable, so the
+    // other variants keep them, and each of these is legal as it is (see `Generator::probe`)
+    for site in uninferable_probes(program) {
         let probe = Variant {
-            stripped: program
-                .probes
-                .iter()
-                .map(|&site| (site, Strip::All))
-                .collect(),
+            stripped: [(site, Strip::All)].into(),
         };
         variants.push(("probe".to_string(), probe));
     }
 
     variants
+}
+
+/// Whether a call's arguments give each of its generics a type, without the expected type.
+fn inferable(
+    program: &Program,
+    variant: &Variant,
+    function: &Function,
+    site: SiteId,
+    args: &[Expr],
+) -> bool {
+    Witnessed::new(program, variant, function, site, args, false, true)
+        .generics
+        .iter()
+        .all(|&generic| generic)
+}
+
+/// The probes whose generics their arguments don't all give a type (see `Generator::probe`).
+pub fn uninferable_probes(program: &Program) -> BTreeSet<SiteId> {
+    let mut sites = BTreeSet::new();
+    for expr in program.exprs() {
+        expr.walk(&mut |expr| {
+            if let ExprKind::Call {
+                site: Some(site),
+                function,
+                args,
+                ..
+            } = &expr.kind
+                && program.probes.contains(site)
+                && let Some(function) = program.function(function)
+                && !inferable(program, &Variant::default(), function, *site, args)
+            {
+                sites.insert(*site);
+            }
+        });
+    }
+    sites
 }
 
 /// The variants other than `probe`: `all`, `some`, `one` and, from version 2, `expected`.

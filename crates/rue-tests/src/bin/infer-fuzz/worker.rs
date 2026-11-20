@@ -149,7 +149,7 @@ pub fn run_command(out: &mut impl Write, version: u32, seed: u64, start: usize) 
                 let _ = progress(out, &stage);
                 (explicit, compile(&source))
             });
-            let outcome = probe_outcome(&generated.program, name, outcome);
+            let outcome = probe_outcome(&generated.program, name, variant, outcome);
             send(out, "variant", &(index, outcome))?;
         }
     }
@@ -236,12 +236,17 @@ fn shrink_command(
     Ok(())
 }
 
-/// The outcome of a variant, counting the `probe` variant's rejection as inferred when it's that
-/// a probe's generic can't be inferred, which is right where nothing gives it a type (see
-/// `Generator::probe`). Any other rejection is a failure, as it is for any other variant, since a
-/// probe whose arguments give its generics a type must compile.
-pub fn probe_outcome(program: &Program, name: &str, mut outcome: Outcome) -> Outcome {
-    let callees = program.probe_callees();
+/// The outcome of a variant, counting a `probe` variant's rejection as inferred when it's that its
+/// probe's generic can't be inferred, which is right, since nothing gives it a type (see
+/// `Generator::probe`). Each of those variants removes only that probe's generic arguments, so
+/// the diagnostic is the probe's. Any other rejection is a failure, as it is for any other variant.
+pub fn probe_outcome(
+    program: &Program,
+    name: &str,
+    variant: &Variant,
+    mut outcome: Outcome,
+) -> Outcome {
+    let callees = program.probe_callees(variant);
     let expected = outcome.diag.as_ref().is_some_and(|diag| {
         diag.kind == "CannotInferGeneric"
             && callees
