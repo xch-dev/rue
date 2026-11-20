@@ -300,3 +300,22 @@ fn self_feeding<T>(pair: (Int, fn(a: T) -> T), value: T) -> T {
 test fn element_adds_to_what_it_reads() -> (Int, nil) | nil {
     self_feeding((1, fn(_x) => (5, nil)), nil)
 }
+
+fn with_value<T, U>(functions: List<fn(x: T) -> U>, value: T) -> (List<U>, T) {
+    (map_list(functions, value), value)
+}
+
+// Guard: the lambda is compiled against the expected type's bounds, which make `T` `5`, rather
+// than the `Int` that `5` widens to
+test fn element_takes_the_expected_bounds_of_its_parameter() -> (List<5>, 5) {
+    let result: (List<5>, 5) = with_value(
+        [
+            fn(x) => {
+                let y: 5 = x;
+                y
+            },
+        ],
+        5,
+    );
+    result
+}

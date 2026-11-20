@@ -195,6 +195,13 @@ tests:
   runtime_cost: 151
   byte_cost: 204000
   total_cost: 204151
+- name: element_takes_the_expected_bounds_of_its_parameter
+  program: (a (q 2 6 (c 4 (c (q . 5) (c (q . 2) ())))) (c (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) (q 4 (a 2 (c 2 (c 7 5))) 5)) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 6 (c 4 (c (q . 5) (c (c (q . 2) (c (c (q . 1) (q 2 (q . 2) (c 2 1))) (c (q . 1) ()))) ())))) 1)) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q 4 (a 2 (c 2 (c 7 5))) 5)) ()))
+  output: ((5) . 5)
+  runtime_cost: 2581
+  byte_cost: 1572000
+  total_cost: 1574581
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
@@ -205,3 +212,5 @@ diagnostics:
 - Binding `r` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:139:5
 - Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:259:5
 - Unused function `element_waits_for_a_value_that_never_returns` at generic_inference_element_lambda_generics.rue:284:4
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:311:5
+- Binding `y` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:314:17
