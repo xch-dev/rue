@@ -1409,6 +1409,23 @@ mod inference {
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(db.name(mappings[&t]), "Int");
 
+        // A generic that's only bounded by the others in its cycle through such a union is
+        // resolved through what they're resolved to, as `T ≥ V | T` with `V ≥ T` is through `V`'s
+        // fallback
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let union = db.union(&[v, t]);
+        let mut infer = Inference::new([t, v]);
+        infer.push(t, CandidateKind::Lower, union, Vec::new());
+        infer.push(v, CandidateKind::Lower, t, Vec::new());
+        let fallback = HashMap::from([(v, int)]);
+        let mappings =
+            resolve_inference_with_fallback(&mut db.arena, &db.builtins, &infer, &fallback);
+        assert_eq!(db.name(mappings[&v]), "Int");
+        assert_eq!(
+            mappings.get(&t).map(|&ty| db.name(ty)).as_deref(),
+            Some("Int")
+        );
+
         // An upper candidate isn't split, since `T ≤ Int | V` doesn't say `T ≤ Int`
         let (t, v) = (db.generic("T"), db.generic("V"));
         let union = db.union(&[int, v]);

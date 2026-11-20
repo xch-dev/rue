@@ -130,6 +130,37 @@ fn g0<A>(_a: fn(a: Maybe<A>) -> Int, value: A) -> fn(a: A) -> A {
 
 type Maybe<T> = T | nil;
 
+type IntOr<T> = Int | T;
+
+fn optional<V>(value: V) -> Maybe<V> {
+    value
+}
+
+fn int_or<V>(value: V) -> IntOr<V> {
+    value
+}
+
+fn g4<A>(function: fn(a: Maybe<A>) -> Maybe<A>) -> fn(a: A) -> Maybe<A> {
+    fn(a: A) => function(a)
+}
+
+// A union behind an alias is split too, as a named generic function that returns one gives:
+// `fn<V>(value: V) -> Maybe<V>` for `fn(a: B) -> A` gave `B ≥ Maybe<B> | Int` through the lambda
+test fn generic_function_returning_an_alias_beside_an_untyped_lambda() -> (Int | nil, Int) {
+    let maybe = cycle(fn(x) => x, optional, pass(5));
+    let int = cycle(fn(x) => x, int_or, pass(5));
+    let checks: (Int | nil, Int) = (maybe, int);
+    (checks.first, checks.rest)
+}
+
+// `x` is compiled as `Maybe<A>`, and returning it gives `A ≥ A | nil`, which only says `A ≥ nil`,
+// so `A` is inferred as `nil`, as it is when `nil` is passed for a `Maybe<A>`
+test fn untyped_parameter_of_a_union_with_the_generic_returned() -> nil {
+    let function = g4(fn(x) => x);
+    let check: fn(a: nil) -> nil = function;
+    check(nil)
+}
+
 // An untyped lambda parameter compiled as `Maybe<A>` gives `A ≤ A | nil`, which says nothing, so
 // `A` is inferred from the other arguments, or written out (infer-fuzz generator 3, seed 6717)
 test fn untyped_parameter_of_a_union_with_the_generic() -> (Int, Int) {

@@ -19,6 +19,17 @@ fn untyped_parameter_of_a_union_with_the_generic() -> Any {
     (unannotated, annotated)
 }
 
+#[expect(unused_function)]
+fn either_of<A, B>(_a: fn(a: A | B) -> Int, _b: fn(b: B) -> A) -> fn(a: A) -> B {
+    unchecked_cast(nil)
+}
+
+// The same through another generic: `B ≤ A ≤ A | B` from the lambdas says nothing about either
+#[expect(unused_function)]
+fn untyped_parameters_of_a_union_with_each_other() -> Any {
+    either_of(fn(x) => 1, fn(y) => y)
+}
+
 // The same call compiles with `A` written out, or with the lambda's parameter typed
 fn main() -> Int {
     let explicit = g0::<Int>(fn(x) => 9);

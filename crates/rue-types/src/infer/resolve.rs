@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet},
     mem,
 };
 
@@ -9,7 +9,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, CandidateKind, Comparison, FxHashMap, FxHashSet,
     Inference, InferenceCandidates, InstancePolicy, Type, TypeId, Union, compare, compare_renamed,
-    free_generics, references_generic, substitute_with_mappings,
+    free_generics, references_generic, substitute_with_mappings, unwrap_semantic,
     unwrap_semantic_without_substitution,
 };
 
@@ -150,7 +150,8 @@ impl InferenceResolver<'_> {
             }
         }
 
-        // The generics that are only bounded by the others in the component are resolved after them
+        // The generics whose candidates all come from the others in the component, or say nothing,
+        // are resolved after them
         let mut bounded_by_component = Vec::new();
 
         for &generic in &component {
@@ -181,7 +182,7 @@ impl InferenceResolver<'_> {
         // be others like it, so this is repeated until nothing more resolves. Then the remaining
         // ones fall back like a generic that nothing constrains, and the ones they bound are
         // resolved through them in turn. If neither is possible, there's nothing to resolve them
-        // to, so their candidates are used as they are.
+        // to, so their candidates are used as they are, unless that names the generic itself.
         let mut pending = bounded_by_component;
 
         while !pending.is_empty() {
@@ -204,8 +205,9 @@ impl InferenceResolver<'_> {
                 continue;
             }
 
-            // A type that references the generic itself isn't one, as `A | nil` isn't for
-            // `A ≤ A | nil`, which `expand` leaves out, so the generic is left uninferred then
+            // These are the raw candidates, which still have what `expand` leaves out, such as
+            // `A | nil` for `A ≤ A | nil`. A type that names the generic itself isn't a solution
+            // for it, so the generic is left uninferred then
             for generic in pending.drain(..) {
                 if let Some(ty) = pick_inferred_type(
                     arena,
@@ -221,7 +223,7 @@ impl InferenceResolver<'_> {
         }
     }
 
-    /// Picks a type for each of the generics, which are only bounded by others in their component,
+    /// Picks a type for each of the generics, whose candidates all come from others in their component,
     /// from the types that those were resolved to. They all read the same mappings, so the order
     /// of the generics doesn't matter. The ones not bounded by any that were resolved are left out.
     fn resolve_through_component(
@@ -230,22 +232,39 @@ impl InferenceResolver<'_> {
         builtins: &BuiltinTypes,
         pending: &[TypeId],
     ) -> HashMap<TypeId, TypeId> {
-        // Their candidates are all generics in the component, since they're only bounded by it
-        let resolved = |types: &Vec<TypeId>| -> Vec<TypeId> {
-            types
+        // Their candidates are generics in the component, since they're only bounded by it, or what
+        // `expand` leaves out or splits: a lower union with a generic of the component as a
+        // member, whose members are taken instead, and an upper union with the generic itself as
+        // one, which says nothing
+        let resolved = |arena: &mut Arena<Type>, generic: TypeId, kind: CandidateKind| {
+            let mut types: Vec<TypeId> = self.infer.generics[&generic]
+                .list(kind)
                 .iter()
-                .filter_map(|ty| self.mappings.get(ty).copied())
-                .collect()
+                .rev()
+                .copied()
+                .collect();
+            let mut result = Vec::new();
+
+            while let Some(ty) = types.pop() {
+                if kind == CandidateKind::Lower
+                    && let Some(members) = union_members(arena, ty)
+                {
+                    types.extend(members.into_iter().rev());
+                } else if let Some(&mapped) = self.mappings.get(&ty) {
+                    result.push(mapped);
+                }
+            }
+
+            result
         };
 
         pending
             .iter()
             .filter_map(|&generic| {
-                let raw = &self.infer.generics[&generic];
                 let candidates = InferenceCandidates {
-                    lower: resolved(&raw.lower),
-                    upper: resolved(&raw.upper),
-                    held: resolved(&raw.held),
+                    lower: resolved(arena, generic, CandidateKind::Lower),
+                    upper: resolved(arena, generic, CandidateKind::Upper),
+                    held: resolved(arena, generic, CandidateKind::Held),
                 };
                 let original = self.infer.renamed.get(&generic).copied();
                 let ty = pick_inferred_type(
@@ -269,9 +288,11 @@ impl InferenceResolver<'_> {
     /// `T ≥ X` and `T ≥ Y`), so one with a generic of the component as a member is split into them,
     /// and the generic is followed as a candidate of its own. That's what passing a generic function
     /// for one of the callee's function types gives, as `T ≥ Int | T` from
-    /// `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T`, which only says `T ≥ Int`.
+    /// `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T`, which only says `T ≥ Int`. A union behind an
+    /// alias counts too, as `Maybe<T>` from `fn<V>(x: V) -> Maybe<V>`, and so does one nested in a
+    /// member.
     ///
-    /// An upper candidate that's a union with the generic it bounds as a member says nothing, since
+    /// An upper candidate that's a union with the generic as a member says nothing, since
     /// `T ≤ X | T` always holds, so it's left out. That's what an untyped lambda parameter compiled
     /// as `Maybe<A>` gives against `fn(a: Maybe<A>) -> Int`, as `A ≤ A | nil`, which `A` was then
     /// inferred as, though nothing gives it a type (infer-fuzz generator 3, seed 6717).
@@ -286,32 +307,31 @@ impl InferenceResolver<'_> {
         let mut stack = vec![generic];
         let mut result = IndexSet::new();
 
-        while let Some(generic) = stack.pop() {
-            // In the order they were found, with a split union's members in its place
-            let candidates = &self.infer.generics[&generic];
-            let mut candidates: VecDeque<TypeId> = match kind {
-                CandidateKind::Lower => &candidates.lower,
-                CandidateKind::Upper => &candidates.upper,
-                CandidateKind::Held => &candidates.held,
-            }
-            .iter()
-            .copied()
-            .collect();
+        while let Some(bounded) = stack.pop() {
+            // A stack, so that they're taken in the order they were found, with a split union's
+            // members in its place
+            let mut candidates: Vec<TypeId> = self.infer.generics[&bounded]
+                .list(kind)
+                .iter()
+                .rev()
+                .copied()
+                .collect();
 
-            while let Some(ty) = candidates.pop_front() {
-                if let Type::Union(union) = &arena[ty] {
-                    match kind {
-                        CandidateKind::Lower
-                            if union.types.iter().any(|member| component.contains(member)) =>
-                        {
-                            for &member in union.types.iter().rev() {
-                                candidates.push_front(member);
-                            }
-                            continue;
-                        }
-                        CandidateKind::Upper if union.types.contains(&generic) => continue,
-                        _ => {}
+            while let Some(ty) = candidates.pop() {
+                match kind {
+                    CandidateKind::Lower
+                        if has_union_member(arena, ty, |member| component.contains(&member)) =>
+                    {
+                        let members = union_members(arena, ty).expect("it has union members");
+                        candidates.extend(members.into_iter().rev());
+                        continue;
                     }
+                    CandidateKind::Upper
+                        if has_union_member(arena, ty, |member| member == generic) =>
+                    {
+                        continue;
+                    }
+                    _ => {}
                 }
 
                 if component.contains(&ty) {
@@ -941,4 +961,45 @@ fn mentioned_vars(arena: &Arena<Type>, id: TypeId, vars: &HashSet<TypeId>) -> Ve
     }
 
     found
+}
+
+/// The members of the union that the type is, directly or behind a reference or an alias, with
+/// the alias's generic arguments substituted, if it's one.
+fn union_members(arena: &mut Arena<Type>, ty: TypeId) -> Option<Vec<TypeId>> {
+    let ty = match &arena[ty] {
+        Type::Union(_) => ty,
+        Type::Ref(_) | Type::Alias(_) | Type::Apply(_) => unwrap_semantic(arena, ty, true),
+        _ => return None,
+    };
+
+    match &arena[ty] {
+        Type::Union(union) => Some(union.types.clone()),
+        _ => None,
+    }
+}
+
+/// Whether the type is a union with a member that the predicate holds for, or one of whose members
+/// is such a union in turn (see `union_members`).
+fn has_union_member(
+    arena: &mut Arena<Type>,
+    ty: TypeId,
+    predicate: impl Fn(TypeId) -> bool,
+) -> bool {
+    let mut stack = vec![ty];
+    let mut visited = HashSet::new();
+
+    while let Some(ty) = stack.pop() {
+        if !visited.insert(ty) {
+            continue;
+        }
+        let Some(members) = union_members(arena, ty) else {
+            continue;
+        };
+        if members.iter().any(|&member| predicate(member)) {
+            return true;
+        }
+        stack.extend(members);
+    }
+
+    false
 }
