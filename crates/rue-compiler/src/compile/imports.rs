@@ -1792,7 +1792,7 @@ fn resolve_glob_import(
                 // one, so it's used wherever the binding is. Otherwise, which of them counts as
                 // used would depend on which one bound the name, and so on the order they're
                 // resolved in.
-                if ctx.add_shared_glob_binding(bound_by, existing.into(), import_id, item.into()) {
+                if ctx.add_shared_binding(bound_by, existing.into(), import_id, item.into()) {
                     ctx.import_mut(import_id)
                         .declarations
                         .push((name, item.into()));
@@ -1937,7 +1937,7 @@ fn resolve_named_import(
         }
     }
 
-    for &(found, _) in &found {
+    for &(found, via) in &found {
         let namespace = found.namespace();
         let error = ctx.is_error_item(found);
         let existing = ctx.scope(import_scope).item(namespace, name);
@@ -2001,8 +2001,32 @@ fn resolve_named_import(
             add_reference(ctx, &import.source, item, found.into());
         }
 
+        // Another named import that brings in the same item may have bound the name, depending on
+        // the order they're resolved in, and so on module names. Like glob imports that bring in
+        // the name, this one shares its binding, so that it's used wherever that one is, rather
+        // than which of them is reported as unused depending on the order. An import that finds
+        // the item through that binding (such as `import X;` beside `import a::X;`) only ever
+        // re-imports it, so it doesn't.
+        let bound_by = ctx
+            .scope(import_scope)
+            .item_import(found)
+            .filter(|&bound_by| {
+                bound_by != import_id
+                    && via != Some(bound_by)
+                    && matches!(ctx.import(bound_by).items, Items::Named(_))
+            });
+
         if bind(ctx, import_scope, import_id, name, found, exported) {
             updated = true;
+            unused_imports.shift_remove(name);
+        } else if let Some(bound_by) = bound_by {
+            if ctx.add_shared_binding(bound_by, found.into(), import_id, found.into()) {
+                ctx.import_mut(import_id)
+                    .declarations
+                    .push((name.to_string(), found.into()));
+                updated = true;
+            }
+
             unused_imports.shift_remove(name);
         } else if diagnostics && existing != Some(found) {
             let (error, kind) = ImportError::duplicate(namespace, name);

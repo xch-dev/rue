@@ -1614,6 +1614,187 @@ fn unused_colliding_glob_items_are_all_unused() {
 }
 
 #[test]
+fn named_imports_of_the_same_item_share_its_binding() {
+    // Two named imports bring in the same `X`. Whichever is resolved first binds the name, which
+    // depends on module names, so the other shares its binding, like glob imports that bring in
+    // the same name: both are used if it is, and both are unused if it isn't.
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (body, expected) in [
+            ("X", vec![]),
+            ("1", vec!["5:43 UnusedImport", "5:64 UnusedImport"]),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {first} {{ export super::src::X; }}
+                mod {second} {{ export super::src::X; }}
+                mod u {{ import super::{first}::X; import super::{second}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("first: {first}, body: {body}");
+
+            compiled.assert_no_errors();
+            assert_eq!(unused_imports(&compiled), expected, "{context}");
+        }
+    }
+}
+
+#[test]
+fn several_named_imports_of_the_same_item_share_its_binding() {
+    // Three named imports of the same `X`, with their modules named in every order, so that each
+    // of them binds the name in some order. The others share the binding either way.
+    let names = ["ma", "mm", "mz"];
+
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let [a, b, c] = order.map(|index| names[index]);
+
+        for (body, expected) in [
+            ("X", vec![]),
+            (
+                "1",
+                vec![
+                    "6:43 UnusedImport",
+                    "6:64 UnusedImport",
+                    "6:85 UnusedImport",
+                ],
+            ),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {a} {{ export super::src::X; }}
+                mod {b} {{ export super::src::X; }}
+                mod {c} {{ export super::src::X; }}
+                mod u {{ import super::{a}::X; import super::{b}::X; import super::{c}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("{a} {b} {c}, body: {body}");
+
+            compiled.assert_no_errors();
+            assert_eq!(unused_imports(&compiled), expected, "{context}");
+        }
+    }
+}
+
+#[test]
+fn named_imports_of_the_same_item_share_its_binding_in_mixed_cases() {
+    // `src` has a constant and a type alias `X`, which both re-exports of it bring in. In each case
+    // the warnings are the same whichever module's import binds `X`:
+    // - A path-less `import X;` finds `X` through the import that's already there, so it only
+    //   re-imports it, and is reported whether or not `X` is used.
+    // - A private import beside an export of the same item shares the export's binding, so it's
+    //   used wherever that one is (here, from outside of `u`).
+    // - Using `X` only as a type uses both imports, which bring in the constant too.
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (items, main, expected) in [
+            (
+                "import super::{first}::X; import X; export fn value() -> Int { X }",
+                "u::value()",
+                vec!["2:64 UnusedTypeAlias", "5:53 UnusedImport"],
+            ),
+            (
+                "import super::{first}::X; import X; export fn value() -> Int { 1 }",
+                "u::value()",
+                vec![
+                    "2:40 UnusedConstant",
+                    "2:64 UnusedTypeAlias",
+                    "5:53 UnusedImport",
+                ],
+            ),
+            (
+                "import super::{second}::X; export super::{first}::X;",
+                "u::X",
+                vec!["2:64 UnusedTypeAlias"],
+            ),
+            (
+                "import super::{second}::X; export super::{first}::X;",
+                "1",
+                vec![
+                    "2:40 UnusedConstant",
+                    "2:64 UnusedTypeAlias",
+                    "5:43 UnusedImport",
+                ],
+            ),
+            (
+                "import super::{first}::X; import super::{second}::X; export fn value() -> Int { let x: X = 1; x }",
+                "u::value()",
+                vec!["2:40 UnusedConstant"],
+            ),
+        ] {
+            let items = items.replace("{first}", first).replace("{second}", second);
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; export type X = Int; }}
+                mod {first} {{ export super::src::X; }}
+                mod {second} {{ export super::src::X; }}
+                mod u {{ {items} }}
+                fn main() -> Int {{ {main} }}
+                "
+            ));
+            let context = format!("first: {first}, {items}, main: {main}");
+            let warnings = compiled
+                .warnings()
+                .into_iter()
+                .filter(|warning| warning.contains(" Unused"))
+                .collect::<Vec<_>>();
+
+            compiled.assert_no_errors();
+            assert_eq!(warnings, expected, "{context}");
+        }
+    }
+}
+
+#[test]
+fn path_less_imports_through_another_import_of_the_same_item_share_its_binding() {
+    // `u`'s import of `super::X` finds `X` through the parent's import, not through the binding
+    // that the other import in `u` may have made, so the two share the binding: both are used if
+    // `X` is, and both (and the parent's import) are reported if it isn't, in either order
+    for (first, second) in [("ma", "mz"), ("mz", "ma")] {
+        for (body, expected) in [
+            ("X", vec![]),
+            (
+                "1",
+                vec![
+                    "2:40 UnusedConstant",
+                    "4:28 UnusedImport",
+                    "6:39 UnusedImport",
+                    "6:60 UnusedImport",
+                ],
+            ),
+        ] {
+            let compiled = compile(&format!(
+                "
+                mod src {{ export const X: Int = 1; }}
+                mod {first} {{ export super::src::X; }}
+                import {first}::X;
+                mod {second} {{ export super::src::X; }}
+                mod u {{ import super::X; import super::{second}::X; export fn value() -> Int {{ {body} }} }}
+                fn main() -> Int {{ u::value() }}
+                "
+            ));
+            let context = format!("first: {first}, body: {body}");
+            let warnings = compiled
+                .warnings()
+                .into_iter()
+                .filter(|warning| warning.contains(" Unused"))
+                .collect::<Vec<_>>();
+
+            compiled.assert_no_errors();
+            assert_eq!(warnings, expected, "{context}");
+        }
+    }
+}
+
+#[test]
 fn ambiguous_uses_of_colliding_glob_items_are_not_recursive_through_the_others() {
     // The first module's `V` calls the function that uses `V`, which is only recursive if the
     // name is bound to it. The use counts as a use of the other `V` too, but isn't a reference to
