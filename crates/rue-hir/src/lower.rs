@@ -20,9 +20,9 @@ use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
-    BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, ExprStatement,
-    FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError,
-    Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
+    BinaryOp, BindingSymbol, Block, ConstantSymbol, Database, DependencyGraph, Environment,
+    ExprStatement, FieldAccess, FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId,
+    IfStatement, PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
 };
 
 use crate::analysis::{FunctionFailure, may_fail};
@@ -908,21 +908,24 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let mut budget = MAX_REPEATED_STATIC_SIZE;
-        self.is_small_static(hir, &mut budget, &mut HashSet::new())
+        self.is_small_static(hir, &mut budget, &mut HashSet::new(), &mut Vec::new())
     }
 
     /// Whether the value is static and its atoms take up no more than the budget, which is
     /// reduced by their size. Such a value is quoted where it's referenced, or folded with what
     /// uses it. This follows the values that are substituted, like [`Self::is_static_hir`], as
-    /// well as calls to lambdas that are inlined (see [`Self::known_lambda`]) whose arguments are
-    /// static and whose body is static without them, such as `fn() => (1, 2)`. The symbols that
-    /// are being followed are kept in `path`, so that a value that refers to itself through the
-    /// arguments of inlined calls isn't followed forever.
+    /// well as calls to `inline fn`s and to lambdas that are inlined (see [`Self::known_lambda`])
+    /// whose arguments are static and whose body is static with them, such as `fn() => (1, 2)`
+    /// or `unchecked_cast((1, 2))`. The arguments of such a call are kept in `substitutions`, and
+    /// the symbols that are being followed in `path`, so that a value that refers to itself
+    /// through the arguments of inlined calls isn't followed forever, nor a function that calls
+    /// itself.
     fn is_small_static(
         &self,
         hir: HirId,
         budget: &mut usize,
         path: &mut HashSet<SymbolId>,
+        substitutions: &mut Vec<(SymbolId, HirId)>,
     ) -> bool {
         let mut take = |size: usize| match budget.checked_sub(size) {
             Some(rest) => {
@@ -938,26 +941,42 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Bytes(bytes) => take(bytes.len() + 1),
             Hir::String(string) => take(string.len() + 1),
             Hir::Pair(first, rest) => {
-                self.is_small_static(*first, budget, path)
-                    && self.is_small_static(*rest, budget, path)
+                self.is_small_static(*first, budget, path, substitutions)
+                    && self.is_small_static(*rest, budget, path, substitutions)
             }
             Hir::List(list) => list
                 .items
                 .iter()
-                .all(|&item| self.is_small_static(item, budget, path)),
+                .all(|&item| self.is_small_static(item, budget, path, substitutions)),
             Hir::Struct(initializer) => initializer
                 .fields
                 .iter()
-                .all(|field| self.is_small_static(field.value, budget, path)),
+                .all(|field| self.is_small_static(field.value, budget, path, substitutions)),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => {
-                self.is_small_static(*hir, budget, path)
+                self.is_small_static(*hir, budget, path, substitutions)
             }
+            // A field of a static value is folded, and is no larger than the value
+            Hir::FieldAccess(FieldAccess {
+                value,
+                kind: FieldKind::Path(_),
+                ..
+            }) => self.is_small_static(*value, budget, path, substitutions),
             Hir::Const(expr) => expr
                 .result
-                .is_some_and(|result| self.is_small_static(result, budget, path)),
+                .is_some_and(|result| self.is_small_static(result, budget, path, substitutions)),
             Hir::Guard(_) => self.is_static_hir(hir) && take(1),
+            Hir::Block(Block {
+                statements,
+                body: Some(body),
+            }) if statements.is_empty() => self.is_small_static(*body, budget, path, substitutions),
             Hir::Reference(symbol) if path.insert(*symbol) => {
-                let value = if let Some(arg) = self.inline_argument(*symbol) {
+                let value = if let Some(&(_, arg)) = substitutions
+                    .iter()
+                    .rev()
+                    .find(|(parameter, _)| parameter == symbol)
+                {
+                    Some(arg)
+                } else if let Some(arg) = self.inline_argument(*symbol) {
                     Some(arg)
                 } else if self.should_inline(*symbol) {
                     match self.db.symbol(*symbol) {
@@ -969,22 +988,54 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     None
                 };
 
-                let small = value.is_some_and(|value| self.is_small_static(value, budget, path));
+                let small = value
+                    .is_some_and(|value| self.is_small_static(value, budget, path, substitutions));
                 path.remove(symbol);
                 small
             }
             Hir::FunctionCall(call) => {
-                let Some(lambda) = self.known_lambda(call.function) else {
+                let callee = match self.db.hir(self.db.without_casts(call.function)) {
+                    Hir::Reference(symbol)
+                        if matches!(self.db.symbol(*symbol), Symbol::Function(_))
+                            && self.should_inline(*symbol) =>
+                    {
+                        Some(*symbol)
+                    }
+                    _ => self.known_lambda(call.function),
+                };
+
+                let Some(callee) = callee else {
                     return false;
                 };
-                let Symbol::Function(function) = self.db.symbol(lambda) else {
+                let Symbol::Function(function) = self.db.symbol(callee) else {
                     return false;
                 };
 
-                call.args
-                    .iter()
-                    .all(|&arg| self.is_small_static(arg, budget, path))
-                    && self.is_small_static(function.body, budget, path)
+                // Only calls that pass each parameter its own argument, which is checked here
+                // without being counted, since it's counted where the body references it
+                if !function.nil_terminated
+                    || !call.nil_terminated
+                    || function.parameters.len() != call.args.len()
+                    || !call.args.iter().all(|&arg| {
+                        self.is_small_static(arg, &mut budget.clone(), path, substitutions)
+                    })
+                    || !path.insert(callee)
+                {
+                    return false;
+                }
+
+                let frame = substitutions.len();
+                substitutions.extend(
+                    function
+                        .parameters
+                        .iter()
+                        .copied()
+                        .zip(call.args.iter().copied()),
+                );
+                let small = self.is_small_static(function.body, budget, path, substitutions);
+                substitutions.truncate(frame);
+                path.remove(&callee);
+                small
             }
             _ => false,
         }

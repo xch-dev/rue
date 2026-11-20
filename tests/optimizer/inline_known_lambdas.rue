@@ -189,6 +189,43 @@ test fn repeated_call_ignoring_runtime_argument() -> Int {
     f(make(n * 3)) + n
 }
 
+// A call to a lambda whose body is static with its static arguments is folded too
+test fn repeated_call_with_static_argument() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    let make = fn(value: Int) => (value, 2);
+    f(make(1))
+}
+
+// But an argument that the body uses twice is counted twice, so this one is bound
+test fn repeated_call_duplicating_its_argument() -> Bytes {
+    let suffix = positive(2) as Bytes;
+    let f = fn(value: (Bytes, Bytes)) => value.first + suffix + value.rest + value.first;
+    let make = fn(value: Bytes) => (value, value);
+    f(make("12345"))
+}
+
+// So is a call to a function that's inlined, such as `unchecked_cast`
+test fn repeated_unchecked_cast() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(unchecked_cast((1, 2)))
+}
+
+test fn repeated_named_function_call() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(pair_with_two(3))
+}
+
+fn pair_with_two(value: Int) -> (Int, Int) {
+    (value, 2)
+}
+
+// And a field of a static value
+test fn repeated_field_of_a_static_value() -> Int {
+    let pair = ((1, 2), 3);
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    f(pair.first)
+}
+
 // A lambda isn't inlined in the argument of a call to itself, which is built as a closure
 test fn not_inlined_into_its_own_argument() -> Int {
     let n = positive(10);

@@ -112,12 +112,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: lambda_takes_both
-  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  program: (q . 5)
   debug_program: (a (q 2 (q 2 5 (c 2 (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))))) (c (c (q . 5) (q . 5)) 1)) (c (q 2 3 (c 2 ())) ()))
   output: "5"
-  runtime_cost: 460
-  byte_cost: 444000
-  total_cost: 444460
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: three_members_match
   program: (q . 5)
   debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
@@ -187,12 +187,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: nested_call_into_a_lambda
-  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  program: (q . 5)
   debug_program: (a (q 2 (q 2 13 (c (a 9 2) (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 3 (c 2 ()))) ()))
   output: "5"
-  runtime_cost: 460
-  byte_cost: 444000
-  total_cost: 444460
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: hint_from_an_enclosing_call
   program: (a (q 2 (i (l 2) (q . 4) (q 1 . 1)) 1) (c (q 5 . 5) 1))
   debug_program: (a (q 2 (q 2 (q 2 (i (l 2) (q 5 2) (q 1 . 1)) 1) (c (a 13 (c (q . 5) (a 9 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
@@ -208,26 +208,26 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: provisional_expected_type
-  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  program: (q . 5)
   debug_program: (a (q 2 (q 2 13 (c (a 9 2) (c (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))) (q . 5)))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 5 (c 2 ()))) ()))
   output: "5"
-  runtime_cost: 460
-  byte_cost: 444000
-  total_cost: 444460
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: provisional_expected_type_of_a_lambda_body
-  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  program: (q . 5)
   debug_program: (a (q 2 (q 2 13 (c (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 9) (c () ()))) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))) (q . 5)))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 5 (c (a 2 ()) ()))) ()))
   output: "5"
-  runtime_cost: 460
-  byte_cost: 444000
-  total_cost: 444460
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: provisional_expected_type_of_a_pair_element
-  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  program: (q . 5)
   debug_program: (a (q 2 (q 2 13 (c (c (a 9 2) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))) (q . 5)))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 5 (c (f 2) ()))) ()))
   output: "5"
-  runtime_cost: 460
-  byte_cost: 444000
-  total_cost: 444460
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: let_annotation_in_a_provisional_lambda_body
   program: (q . 5)
   debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 ()) (c (a 5 2) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 9) (c () ()))) ()))) ()))) (q . 5))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 2 2 ())) ()))
