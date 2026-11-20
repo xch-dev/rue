@@ -1,5 +1,5 @@
 use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
-use clvmr::{Allocator, NodePtr, SExp};
+use clvmr::{Allocator, NodePtr, SExp, serde::node_to_bytes};
 use id_arena::Arena;
 use num_bigint::BigUint;
 
@@ -24,6 +24,27 @@ pub fn codegen(
     options: CodegenOptions,
 ) -> Result<NodePtr> {
     codegen_node(arena, allocator, lir, options, &mut None)
+}
+
+/// How many bytes the program that the LIR compiles to takes up when it's serialized, optimizing
+/// it first if `optimize` is set, or `None` if it can't be generated. This is for comparing ways
+/// of lowering the same code by what they cost on chain, where each byte costs
+/// [`COST_PER_BYTE`](crate::COST_PER_BYTE). The LIR itself is left as it is.
+pub fn compiled_size(
+    arena: &mut Arena<Lir>,
+    lir: LirId,
+    optimize: bool,
+    options: CodegenOptions,
+) -> Option<usize> {
+    let lir = if optimize {
+        crate::optimize(arena, lir, options.target)
+    } else {
+        lir
+    };
+
+    let mut allocator = Allocator::new();
+    let ptr = codegen(arena, &mut allocator, lir, options).ok()?;
+    Some(node_to_bytes(&allocator, ptr).ok()?.len())
 }
 
 /// Generates CLVM like [`codegen`], and carries the tags of the LIR over to the pairs that each

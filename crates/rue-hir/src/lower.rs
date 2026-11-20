@@ -1,6 +1,8 @@
 #![allow(clippy::needless_pass_by_value)]
 
 mod debug;
+mod measure;
+mod path_binding;
 mod substitution;
 
 pub use debug::*;
@@ -84,6 +86,13 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// Whether each binding or constant that's referenced once can be evaluated where it's
     /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
+    /// Whether each binding that's referenced more than once is evaluated where it's referenced
+    /// anyway, since its value is only a path into the environment, for the let statements being
+    /// lowered (see [`Self::lower_path_bindings`]).
+    path_bindings: RefCell<HashMap<SymbolId, bool>>,
+    /// Whether evaluating each such binding where it's referenced was found to be no larger than
+    /// binding it, which is only measured the first time its let statement is lowered.
+    path_choices: HashMap<SymbolId, bool>,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// Whether the value of each constant may fail, for the ones that can't (see
@@ -169,6 +178,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             dependencies: RefCell::default(),
             rounds: HashMap::new(),
             substitutions: RefCell::default(),
+            path_bindings: RefCell::default(),
+            path_choices: HashMap::new(),
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
@@ -1310,6 +1321,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .collect();
 
         let saved = self.forget_substitutions(&symbols);
+        let saved_paths = self.forget_path_bindings(&symbols);
 
         let effects: Vec<SymbolId> = symbols
             .iter()
@@ -1317,7 +1329,27 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&symbol| self.is_lowered_effect(symbol))
             .collect();
 
-        let binding_groups = self.group_symbols(symbols, false, true);
+        let expr = self.lower_path_bindings(&symbols, |this| {
+            this.lower_let_run(env, &symbols, &effects, stmts.clone(), body.clone())
+        });
+
+        self.restore_substitutions(saved);
+        self.restore_path_bindings(saved_paths);
+
+        expr
+    }
+
+    /// Lowers a run of let statements and the rest of the block, with the bindings that aren't
+    /// substituted bound in groups before it.
+    fn lower_let_run(
+        &mut self,
+        env: &Environment,
+        symbols: &IndexSet<SymbolId>,
+        effects: &[SymbolId],
+        stmts: Vec<Statement>,
+        body: Tail,
+    ) -> LirId {
+        let binding_groups = self.group_symbols(symbols.clone(), false, true);
 
         let mut body_env = env.clone();
 
@@ -1348,8 +1380,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
             expr = self.arena.alloc(Lir::Run(expr, group_env));
         }
-
-        self.restore_substitutions(saved);
 
         expr
     }
@@ -1882,7 +1912,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
+                if !self.options.auto_inline {
+                    return false;
+                }
+
+                if references <= 1 {
+                    return self.can_substitute(symbol);
+                }
+
+                self.is_path_binding(symbol)
             }
         }
     }
