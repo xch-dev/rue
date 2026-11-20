@@ -1,5 +1,7 @@
 export reexported::item;
 
+import enums::ByImportedVariant::A;
+
 mod helpers {
     export fn used_outside() -> Int {
         only_inside() + 1
@@ -186,6 +188,38 @@ mod hidden {
     }
 }
 
+// An enum only needs to be exported if it's used from outside of the module, through its name or
+// through one of its variants
+mod enums {
+    export enum OnlyInside {
+        A,
+        B { value: Int },
+    }
+
+    export enum ByVariant {
+        A,
+    }
+
+    export enum ByImportedVariant {
+        A { value: Int },
+    }
+
+    export enum ByName {
+        A,
+        B,
+    }
+
+    export fn inside() -> Int {
+        let a: OnlyInside = OnlyInside::A;
+        assert a is OnlyInside::A;
+        OnlyInside::B { value: 1 }.value
+    }
+}
+
+fn by_name(value: enums::ByName) -> Bool {
+    value is enums::ByName::A
+}
+
 // Each module is exported from the one it's in, up to the file, so none of these are reported
 export mod deep {
     export mod b {
@@ -218,4 +252,8 @@ fn main() -> Int {
         + reexporting::make().value
         + hidden::inner::used()
         + deep::b::c::calls()
+        + enums::inside()
+        + enums::ByVariant::A as Int
+        + A { value: 1 }.value
+        + by_name(enums::ByName::A) as Int
 }

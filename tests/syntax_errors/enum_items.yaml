@@ -1,0 +1,12 @@
+diagnostics:
+- Expected one of `-`, integer literal, binary literal, octal literal, found `,` at enum_items.rue:2:9
+- Expected one of `-`, integer literal, binary literal, octal literal, found identifier at enum_items.rue:7:9
+- Expected one of `-`, integer literal, binary literal, octal literal, found hex literal at enum_items.rue:12:9
+- Unused enum `MissingComma` at enum_items.rue:15:6
+- Expected one of `=`, `{`, `,`, `}`, found identifier at enum_items.rue:17:5
+- Unused enum `UnclosedFields` at enum_items.rue:21:6
+- Expected one of `:`, `=`, found `,` at enum_items.rue:23:6
+- Expected one of `,`, `}`, found `enum` at enum_items.rue:26:1
+- Expected identifier, found `{` at enum_items.rue:26:6
+- Expected one of `,`, `}`, found `=` at enum_items.rue:31:22
+- Undeclared symbol `C` at enum_items.rue:38:28

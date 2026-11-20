@@ -1,0 +1,48 @@
+enum Duplicates {
+    Same,
+    Same,
+    Zero = 0,
+    One = 1,
+    AlsoTwo,
+    Two = 2,
+    Fields { value: Int, value: Int, ...rest: Any, last: Int },
+}
+
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+}
+
+enum Mode {
+    Off,
+    On,
+}
+
+// The enum's name is taken in the type namespace and as a namespace for its variants
+struct Shape {}
+
+mod Mode {}
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+test fn errors() {
+    let _undeclared = Shape::Square;
+    let _unknown_field = Shape::Circle { radius: 1, diameter: 2 };
+    let _missing_field = Shape::Circle {};
+    let _not_a_struct = Shape::Empty {};
+    let _not_a_value = Shape::Circle;
+    let _not_a_type: Shape::Square = Shape::Empty;
+    let _enum_as_value = Shape;
+    let _int_as_enum: Mode = 1;
+    let _wrong_variant: Shape::Circle = Shape::Empty;
+    let _missing_generics = Option::Some { value: 1 };
+    let _nested_path = Shape::Circle::Inner;
+    let _discriminant = Shape::Circle { radius: 1 }.kind;
+}
+
+fn wrong_return(shape: Shape) -> Int {
+    shape
+}

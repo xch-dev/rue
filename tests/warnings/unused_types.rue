@@ -32,6 +32,26 @@ struct Outer {
     value = OUTER,
 }
 
+enum UnusedEnum {
+    Variant,
+}
+
+// Using a variant uses its enum, even if the enum isn't named
+enum UsedThroughVariant {
+    First,
+    Second { value: Int },
+}
+
+enum UsedThroughConstant {
+    Only,
+}
+
+// Variants that are never used aren't reported, only enums
+enum UsedByName {
+    Never,
+    Ever,
+}
+
 type RecursiveWithBaseCase<T> = nil | (T, RecursiveWithBaseCase<T>);
 
 fn main() -> (A, Used) {
@@ -44,6 +64,20 @@ test fn alias() -> Int {
 
 test fn nested() -> Outer {
     Outer {}
+}
+
+test fn variants() -> Int {
+    let second = UsedThroughVariant::Second { value: 1 };
+    assert UsedThroughConstant::Only as Int == 0;
+    second.value
+}
+
+fn is_ever(value: UsedByName) -> Bool {
+    value is UsedByName::Ever
+}
+
+test fn enum_name() -> Bool {
+    is_ever(UsedByName::Ever)
 }
 
 test fn recursive() -> RecursiveWithBaseCase<Int> {

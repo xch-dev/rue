@@ -149,6 +149,7 @@ impl Parser {
                 TokenKind::Const => T![const],
                 TokenKind::Type => T![type],
                 TokenKind::Struct => T![struct],
+                TokenKind::Enum => T![enum],
                 TokenKind::Let => T![let],
                 TokenKind::If => T![if],
                 TokenKind::Else => T![else],

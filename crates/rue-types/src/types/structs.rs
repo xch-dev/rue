@@ -4,6 +4,11 @@ use rue_diagnostic::Name;
 
 use crate::{BuiltinTypes, Comparison, Type, TypeId, compare};
 
+/// The name of the field at the start of an enum variant that holds its discriminant. It can't be
+/// written in source code, so it's never named by a field access, initializer or binding, and is
+/// left out wherever a struct's fields are shown.
+pub const DISCRIMINANT_FIELD: &str = "{discriminant}";
+
 #[derive(Debug, Clone)]
 pub struct Struct {
     pub name: Option<Name>,

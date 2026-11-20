@@ -150,6 +150,12 @@ pub enum DiagnosticKind {
     #[error("Duplicate field `{0}` specified")]
     DuplicateField(String),
 
+    #[error("Duplicate variant `{0}` in enum")]
+    DuplicateVariant(String),
+
+    #[error("Variant `{0}` has the same discriminant as `{1}`, which is {2}")]
+    DuplicateDiscriminant(String, String, String),
+
     #[error("Undeclared field `{0}` used in generic parameter")]
     UndeclaredSubtypeField(String),
 

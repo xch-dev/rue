@@ -543,3 +543,110 @@ fn main(value: Point | Int) -> Int {
         "#]],
     );
 }
+
+const SHAPE: &str = r#"
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect = 10 { width: Int, ...rest: Any },
+}
+"#;
+
+#[test]
+fn test_hover_enum() {
+    check(
+        &format!("{SHAPE}\nfn main(shape: Sh$0ape) -> Shape {{\n    shape\n}}\n"),
+        expect![[r#"
+            enum Shape {
+                Empty = 0,
+                Circle = 1 { radius: Int },
+                Rect = 10 { width: Int, ...rest: Any },
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_enum_declaration() {
+    check(
+        r#"
+enum Mo$0de {
+    Off,
+    On = 5,
+}
+
+fn main() -> Mode {
+    Mode::On
+}
+"#,
+        expect![[r#"
+            enum Mode {
+                Off = 0,
+                On = 5,
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_enum_through_its_variant() {
+    check(
+        &format!("{SHAPE}\nfn main() -> Shape {{\n    Sha$0pe::Empty\n}}\n"),
+        expect![[r#"
+            enum Shape {
+                Empty = 0,
+                Circle = 1 { radius: Int },
+                Rect = 10 { width: Int, ...rest: Any },
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_variant() {
+    check(
+        &format!("{SHAPE}\nfn main() -> Shape {{\n    Shape::Cir$0cle {{ radius: 1 }}\n}}\n"),
+        expect![[r#"
+            Shape::Circle = 1 { radius: Int }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_variant_with_spread() {
+    check(
+        &format!("{SHAPE}\nfn main(rect: Shape::Re$0ct) -> Any {{\n    rect.rest\n}}\n"),
+        expect![[r#"
+            Shape::Rect = 10 { width: Int, ...rest: Any }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_variant_without_fields() {
+    check(
+        &format!("{SHAPE}\nfn main() -> Shape {{\n    Shape::Emp$0ty\n}}\n"),
+        expect![[r#"
+            Shape::Empty = 0
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_variant() {
+    check(
+        r#"
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+fn main(option: Option::So$0me<Int>) -> Int {
+    option.value
+}
+"#,
+        expect![[r#"
+            Option::Some<T> = 1 { value: T }
+        "#]],
+    );
+}

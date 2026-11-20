@@ -104,6 +104,10 @@ ast_nodes!(
     TypeAliasItem,
     StructItem,
     StructField,
+    EnumItem,
+    EnumVariant,
+    EnumVariantFields,
+    EnumDiscriminant,
     ImportItem,
     ImportPath,
     ImportPathSegment,
@@ -155,7 +159,7 @@ ast_nodes!(
 );
 
 ast_enum!(Item, TypeItem, SymbolItem, ImportItem);
-ast_enum!(TypeItem, TypeAliasItem, StructItem);
+ast_enum!(TypeItem, TypeAliasItem, StructItem, EnumItem);
 ast_enum!(SymbolItem, ModuleItem, FunctionItem, ConstantItem);
 ast_enum!(
     Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt, DebugStmt
@@ -465,6 +469,80 @@ impl AstStructField {
 
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstEnumItem {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![export])
+    }
+
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_parameters(&self) -> Option<AstGenericParameters> {
+        self.syntax()
+            .children()
+            .find_map(AstGenericParameters::cast)
+    }
+
+    pub fn variants(&self) -> impl Iterator<Item = AstEnumVariant> {
+        self.syntax().children().filter_map(AstEnumVariant::cast)
+    }
+}
+
+impl AstEnumVariant {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn discriminant(&self) -> Option<AstEnumDiscriminant> {
+        self.syntax().children().find_map(AstEnumDiscriminant::cast)
+    }
+
+    /// The braces with the variant's fields, which a variant without fields doesn't have.
+    pub fn fields(&self) -> Option<AstEnumVariantFields> {
+        self.syntax()
+            .children()
+            .find_map(AstEnumVariantFields::cast)
+    }
+}
+
+impl AstEnumVariantFields {
+    pub fn fields(&self) -> impl Iterator<Item = AstStructField> {
+        self.syntax().children().filter_map(AstStructField::cast)
+    }
+}
+
+impl AstEnumDiscriminant {
+    pub fn minus(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![-])
+    }
+
+    /// The integer literal token, if it was written.
+    pub fn value(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| {
+                matches!(
+                    token.kind(),
+                    SyntaxKind::Integer | SyntaxKind::Binary | SyntaxKind::Octal
+                )
+            })
     }
 }
 

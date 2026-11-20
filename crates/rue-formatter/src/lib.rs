@@ -251,6 +251,8 @@ fn is_optional_trailing_comma(token: &rue_parser::SyntaxToken) -> bool {
                 | SyntaxKind::ListType
                 | SyntaxKind::ListBinding
                 | SyntaxKind::StructItem
+                | SyntaxKind::EnumItem
+                | SyntaxKind::EnumVariantFields
                 | SyntaxKind::StructInitializerExpr
                 | SyntaxKind::StructBinding
                 | SyntaxKind::ImportPathSegment

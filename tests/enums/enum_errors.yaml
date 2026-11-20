@@ -1,0 +1,26 @@
+diagnostics:
+- Unused enum `Duplicates` at enum_errors.rue:1:6
+- Duplicate variant `Same` in enum at enum_errors.rue:3:5
+- Variant `Zero` has the same discriminant as `Same`, which is 0 at enum_errors.rue:4:12
+- Variant `Two` has the same discriminant as `AlsoTwo`, which is 2 at enum_errors.rue:7:11
+- Duplicate field `value` specified at enum_errors.rue:8:26
+- Can only spread the last field at enum_errors.rue:8:38
+- Duplicate symbol `Mode` found in scope at enum_errors.rue:16:6
+- Duplicate type `Shape` found in scope at enum_errors.rue:22:8
+- Unused struct `Shape` at enum_errors.rue:22:8
+- |-
+  Module `Mode` should be named in snake_case at enum_errors.rue:24:5
+    note: Consider renaming it to `mode`
+- Undeclared symbol `Square` at enum_errors.rue:32:30
+- Unknown field `diameter` on type `Shape::Circle` at enum_errors.rue:33:53
+- "Struct `Shape::Circle` is missing required fields: radius at enum_errors.rue:34:26"
+- Expected symbol, but found type `Circle` at enum_errors.rue:36:24
+- Undeclared type `Square` at enum_errors.rue:37:29
+- Expected symbol, but found type `Shape` at enum_errors.rue:38:26
+- Cannot assign `1` to `Mode` without a cast, since they are semantically different at enum_errors.rue:39:30
+- Cannot assign `Shape::Empty` to `Shape::Circle`, since they are incompatible at enum_errors.rue:40:41
+- Expected 1 generic arguments, but found 0 at enum_errors.rue:41:37
+- Cannot subpath non-module symbol `Circle` at enum_errors.rue:42:31
+- Unknown field `kind` on type `Shape::Circle` at enum_errors.rue:43:53
+- Unused function `wrong_return` at enum_errors.rue:46:4
+- Cannot assign `Shape` to `Int`, since they are incompatible at enum_errors.rue:46:38

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use indexmap::IndexSet;
 use log::debug;
-use rue_ast::{AstNode, AstStructItem, AstTypeItem};
+use rue_ast::{AstNode, AstStructField, AstStructItem, AstTypeItem};
 use rue_diagnostic::{DiagnosticKind, Name, SpreadTarget};
 use rue_hir::{Declaration, Hir, ScopeId};
 use rue_types::{Generic, Pair, Struct, Type, TypeId};
@@ -33,36 +33,11 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
 
     let inner = ctx.alloc_type(Type::Unresolved);
 
-    let mut fields = IndexSet::new();
-    let mut nil_terminated = true;
-
-    let len = struct_item.fields().count();
-
-    for (i, field) in struct_item.fields().enumerate() {
-        let is_spread = if let Some(spread) = field.spread() {
-            if i == len - 1 {
-                true
-            } else {
-                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread(SpreadTarget::Field));
-                false
-            }
-        } else {
-            false
-        };
-
-        if is_spread {
-            nil_terminated = false;
-        }
-
-        if let Some(name) = field.name()
-            && !fields.insert(name.text().to_string())
-        {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::DuplicateField(name.text().to_string()),
-            );
-        }
-    }
+    let (fields, nil_terminated) = declare_fields(
+        ctx,
+        IndexSet::new(),
+        &struct_item.fields().collect::<Vec<_>>(),
+    );
 
     let name = struct_item.name().map(|name| ctx.local_name(&name));
 
@@ -98,6 +73,38 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
     (ty, scope)
 }
 
+/// Checks the fields of a struct (or enum variant) for duplicate names and spreads that aren't
+/// last, and returns their names after the given ones, and whether the struct is nil terminated
+/// (which it isn't if the last field is a spread).
+pub(crate) fn declare_fields(
+    ctx: &mut Compiler,
+    mut names: IndexSet<String>,
+    fields: &[AstStructField],
+) -> (IndexSet<String>, bool) {
+    let mut nil_terminated = true;
+
+    for (i, field) in fields.iter().enumerate() {
+        if let Some(spread) = field.spread() {
+            if i == fields.len() - 1 {
+                nil_terminated = false;
+            } else {
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread(SpreadTarget::Field));
+            }
+        }
+
+        if let Some(name) = field.name()
+            && !names.insert(name.text().to_string())
+        {
+            ctx.diagnostic(
+                &name,
+                DiagnosticKind::DuplicateField(name.text().to_string()),
+            );
+        }
+    }
+
+    (names, nil_terminated)
+}
+
 pub fn compile_struct_item(
     ctx: &mut Compiler,
     struct_item: &AstStructItem,
@@ -115,11 +122,36 @@ pub fn compile_struct_item(
     let range = struct_item.syntax().text_range();
     ctx.push_scope(scope, range.start());
 
+    let types = compile_fields(ctx, struct_type, struct_item.fields());
+
+    ctx.pop_scope(range.end());
+
+    let resolved_inner = fields_inner(ctx, types, nil_terminated);
+
+    let Type::Struct(Struct { inner, .. }) = ctx.ty(struct_type) else {
+        unreachable!()
+    };
+
+    let inner = *inner;
+
+    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
+
+    ctx.pop_declaration();
+}
+
+/// Compiles the types of the fields of a struct (or enum variant), and returns the type of each
+/// field that isn't a duplicate. The types of every field are stored for compiling their default
+/// values later (see `compile_field_defaults`).
+pub(crate) fn compile_fields(
+    ctx: &mut Compiler,
+    struct_type: TypeId,
+    fields: impl Iterator<Item = AstStructField>,
+) -> Vec<TypeId> {
     let mut types = Vec::new();
     let mut names = IndexSet::new();
     let mut field_types = Vec::new();
 
-    for field in struct_item.fields() {
+    for field in fields {
         let field_type = if let Some(ty) = field.ty() {
             compile_type(ctx, &ty)
         } else if field.expr().is_some() {
@@ -162,29 +194,25 @@ pub fn compile_struct_item(
         );
     }
 
-    ctx.pop_scope(range.end());
-
     ctx.insert_field_types(struct_type, field_types);
 
-    let mut resolved_inner = ctx.builtins().nil.ty;
+    types
+}
+
+/// The type that a struct with fields of the given types is made of: a list of them, whose last
+/// field is the rest of the list if it isn't nil terminated.
+pub(crate) fn fields_inner(ctx: &mut Compiler, types: Vec<TypeId>, nil_terminated: bool) -> TypeId {
+    let mut inner = ctx.builtins().nil.ty;
 
     for (i, ty) in types.into_iter().rev().enumerate() {
         if !nil_terminated && i == 0 {
-            resolved_inner = ty;
+            inner = ty;
         } else {
-            resolved_inner = ctx.alloc_type(Type::Pair(Pair::new(ty, resolved_inner)));
+            inner = ctx.alloc_type(Type::Pair(Pair::new(ty, inner)));
         }
     }
 
-    let Type::Struct(Struct { inner, .. }) = ctx.ty(struct_type) else {
-        unreachable!()
-    };
-
-    let inner = *inner;
-
-    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
-
-    ctx.pop_declaration();
+    inner
 }
 
 /// Compiles the default values of a struct's fields. This happens after all types have been
@@ -201,9 +229,29 @@ pub fn compile_struct_defaults(
     let range = struct_item.syntax().text_range();
     ctx.push_scope(scope, range.start());
 
+    compile_field_defaults(
+        ctx,
+        &AstTypeItem::StructItem(struct_item.clone()),
+        struct_type,
+        struct_item.fields(),
+    );
+
+    ctx.pop_scope(range.end());
+
+    ctx.pop_declaration();
+}
+
+/// Compiles the default values of the fields of a struct (or enum variant) in the item, in the
+/// item's scope.
+pub(crate) fn compile_field_defaults(
+    ctx: &mut Compiler,
+    item: &AstTypeItem,
+    struct_type: TypeId,
+    fields: impl Iterator<Item = AstStructField>,
+) {
     let field_types = ctx.field_types(struct_type);
 
-    for (field, field_type) in struct_item.fields().zip(field_types) {
+    for (field, field_type) in fields.zip(field_types) {
         let Some(expr) = field.expr() else {
             continue;
         };
@@ -236,12 +284,10 @@ pub fn compile_struct_defaults(
 
             // Like any other type item, the struct must be checked for cycles that would prevent
             // it from being substituted or compared, now that its field type is known.
-            let item = AstTypeItem::StructItem(struct_item.clone());
-
-            if check_regular(ctx, &item, struct_type)
+            if check_regular(ctx, item, struct_type)
                 && rue_types::is_non_contractive(ctx.types_mut(), field_type)
             {
-                report_and_break_cycle(ctx, &item, struct_type, DiagnosticKind::NonContractiveType);
+                report_and_break_cycle(ctx, item, struct_type, DiagnosticKind::NonContractiveType);
                 *ctx.ty_mut(field_type) = Type::Ref(ctx.unresolved().ty);
             }
         }
@@ -250,10 +296,6 @@ pub fn compile_struct_defaults(
             ctx.insert_default_field(struct_type, name.text().to_string(), value);
         }
     }
-
-    ctx.pop_scope(range.end());
-
-    ctx.pop_declaration();
 }
 
 /// Fills in the fields of struct initializers in default values whose own defaults hadn't been

@@ -869,3 +869,99 @@ fn main(value: Point | nil) -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_complete_enum_variants() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+}
+
+fn main() -> Shape {
+    Shape::$0
+}
+"#,
+        expect![[r#"
+            Empty [EnumMember] Shape::Empty
+            Circle [EnumMember]
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_enum_variant_fields() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+}
+
+fn main(shape: Shape::Circle) -> Int {
+    shape.$0
+}
+"#,
+        expect![[r#"
+            radius [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_enum_variant_initializer_fields() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Circle { radius: Int, diameter: Int },
+}
+
+fn main() -> Shape {
+    Shape::Circle { radius: 1, $0 }
+}
+"#,
+        expect![[r#"
+            diameter [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_enum_in_a_type() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+}
+
+fn main(shape: Sha$0) -> Int {
+    0
+}
+"#,
+        expect![[r#"
+            Shape [Enum] Shape::Empty
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_enum_variant_types() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+}
+
+fn main(shape: Shape::$0) -> Int {
+    0
+}
+"#,
+        expect![[r#"
+            Empty [EnumMember]
+            Circle [EnumMember]
+        "#]],
+    );
+}

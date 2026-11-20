@@ -77,6 +77,9 @@ pub enum SyntaxKind {
     #[display("`struct`")]
     Struct,
 
+    #[display("`enum`")]
+    Enum,
+
     #[display("`let`")]
     Let,
 
@@ -261,6 +264,18 @@ pub enum SyntaxKind {
     #[display("struct field")]
     StructField,
 
+    #[display("enum item")]
+    EnumItem,
+
+    #[display("enum variant")]
+    EnumVariant,
+
+    #[display("enum variant fields")]
+    EnumVariantFields,
+
+    #[display("enum discriminant")]
+    EnumDiscriminant,
+
     #[display("import item")]
     ImportItem,
 
@@ -429,6 +444,7 @@ macro_rules! T {
     [const] => { $crate::SyntaxKind::Const };
     [type] => { $crate::SyntaxKind::Type };
     [struct] => { $crate::SyntaxKind::Struct };
+    [enum] => { $crate::SyntaxKind::Enum };
     [let] => { $crate::SyntaxKind::Let };
     [if] => { $crate::SyntaxKind::If };
     [else] => { $crate::SyntaxKind::Else };
@@ -563,6 +579,7 @@ impl SyntaxKind {
             T![const] => &[T![const]],
             T![type] => &[T![type]],
             T![struct] => &[T![struct]],
+            T![enum] => &[T![enum]],
             T![let] => &[T![let]],
             T![if] => &[T![if]],
             T![else] => &[T![else]],
@@ -622,6 +639,10 @@ impl SyntaxKind {
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::StructItem => &[SyntaxKind::StructItem],
             SyntaxKind::StructField => &[SyntaxKind::StructField],
+            SyntaxKind::EnumItem => &[SyntaxKind::EnumItem],
+            SyntaxKind::EnumVariant => &[SyntaxKind::EnumVariant],
+            SyntaxKind::EnumVariantFields => &[SyntaxKind::EnumVariantFields],
+            SyntaxKind::EnumDiscriminant => &[SyntaxKind::EnumDiscriminant],
             SyntaxKind::ImportItem => &[SyntaxKind::ImportItem],
             SyntaxKind::ImportPath => &[SyntaxKind::ImportPath],
             SyntaxKind::ImportPathSegment => &[SyntaxKind::ImportPathSegment],

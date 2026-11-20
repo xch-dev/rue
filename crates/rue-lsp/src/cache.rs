@@ -6,10 +6,10 @@ use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::AstNode;
 use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{Source, SourceKind};
-use rue_hir::{FunctionKind, Item, Namespace, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, FunctionKind, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind};
 use rue_parser::{SyntaxKind, SyntaxToken, T};
-use rue_types::{Type, TypeId, Union};
+use rue_types::{DISCRIMINANT_FIELD, Type, TypeId, Union};
 use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position,
 };
@@ -26,6 +26,8 @@ pub enum HoverInfo {
     Module(ModuleHoverInfo),
     Type(TypeHoverInfo),
     Struct(StructHoverInfo),
+    Enum(EnumHoverInfo),
+    Variant(VariantHoverInfo),
     Field(FieldHoverInfo),
 }
 
@@ -69,6 +71,21 @@ pub struct StructHoverInfo {
     pub name: String,
     pub fields: Vec<FieldHoverInfo>,
     pub nil_terminated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumHoverInfo {
+    pub name: String,
+    /// Each variant, as it would be declared in the enum.
+    pub variants: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantHoverInfo {
+    /// The variant's path, such as `Json::Bool`.
+    pub name: String,
+    /// The variant as it would be declared in its enum, without its name.
+    pub declaration: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -492,14 +509,16 @@ impl Cache<Compiler> {
 
                 if let Some(score) = fuzzy_match(&partial, &name)
                     && (matches!(subcontext, CompletionContext::Expression)
-                        || (is_module && matches!(subcontext, CompletionContext::Type)))
+                        || (is_module
+                            && matches!(subcontext, CompletionContext::Type)
+                            && !self.is_enum_namespace(symbol)))
                 {
                     // A module has no type to show
                     let detail = (!is_module).then(|| {
                         let ty = self.ctx.symbol_type_in(scope, symbol);
                         self.symbol_detail(scopes, symbol, ty)
                     });
-                    let kind = symbol_kind(self.ctx.symbol(symbol));
+                    let kind = self.symbol_kind(symbol);
                     scored_items.push((score, create_completion_item(name, kind, detail)));
                 }
             }
@@ -525,16 +544,21 @@ impl Cache<Compiler> {
                             Type::Struct(_) => {}
                             _ => continue,
                         }
+
+                        // A variant without fields is completed as its constant instead
+                        if self.ctx.enum_of(Declaration::Type(ty)).is_some()
+                            && symbol_names.contains(&(name.clone(), false))
+                        {
+                            continue;
+                        }
                     }
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
                     let type_name = self.inner_type(ty).map(|ty| self.type_name(scopes, ty));
+                    let kind = self.type_kind(ty);
 
-                    scored_items.push((
-                        score,
-                        create_completion_item(name, Some(CompletionItemKind::STRUCT), type_name),
-                    ));
+                    scored_items.push((score, create_completion_item(name, Some(kind), type_name)));
                 }
             }
         }
@@ -581,7 +605,9 @@ impl Cache<Compiler> {
 
                 if let Some(score) = fuzzy_match(&partial, &name)
                     && (matches!(context, CompletionContext::Expression)
-                        || (is_module && matches!(context, CompletionContext::Type)))
+                        || (is_module
+                            && matches!(context, CompletionContext::Type)
+                            && !self.is_enum_namespace(symbol)))
                 {
                     // The type is looked up from the cursor's scopes, like on hover, so that it's
                     // narrowed by the conditions the cursor is inside of
@@ -589,7 +615,7 @@ impl Cache<Compiler> {
                         let ty = self.symbol_type(scopes, symbol);
                         self.symbol_detail(scopes, symbol, ty)
                     });
-                    let kind = symbol_kind(self.ctx.symbol(symbol));
+                    let kind = self.symbol_kind(symbol);
                     scored_items.push((score, create_completion_item(name, kind, detail)));
                 }
             }
@@ -615,16 +641,21 @@ impl Cache<Compiler> {
                             Type::Struct(_) => {}
                             _ => continue,
                         }
+
+                        // A variant without fields is completed as its constant instead
+                        if self.ctx.enum_of(Declaration::Type(ty)).is_some()
+                            && symbol_names.contains(&(name.clone(), false))
+                        {
+                            continue;
+                        }
                     }
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
                     let type_name = self.inner_type(ty).map(|ty| self.type_name(scopes, ty));
+                    let kind = self.type_kind(ty);
 
-                    scored_items.push((
-                        score,
-                        create_completion_item(name, Some(CompletionItemKind::STRUCT), type_name),
-                    ));
+                    scored_items.push((score, create_completion_item(name, Some(kind), type_name)));
                 }
             }
         }
@@ -653,7 +684,9 @@ impl Cache<Compiler> {
                         continue;
                     };
 
-                    if let Symbol::Module(_) = self.ctx.symbol(symbol) {
+                    if let Some(info) = self.enum_member_hover(scopes, symbol) {
+                        infos.push(info);
+                    } else if let Symbol::Module(_) = self.ctx.symbol(symbol) {
                         infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
                     } else {
                         let kind = self.symbol_hover_kind(scopes, symbol);
@@ -661,6 +694,17 @@ impl Cache<Compiler> {
                     }
                 }
                 SyntaxItemKind::TypeDeclaration(ty) | SyntaxItemKind::TypeReference(ty) => {
+                    if self.ctx.enum_variants(ty).is_some() {
+                        let info = self.enum_hover(scopes, ty);
+                        infos.push(HoverInfo::Enum(info));
+                        continue;
+                    }
+
+                    if let Some(info) = self.variant_hover(scopes, ty) {
+                        infos.push(HoverInfo::Variant(info));
+                        continue;
+                    }
+
                     let fields = self.struct_fields(scopes, ty);
 
                     if let Some((fields, nil_terminated)) = fields {
@@ -979,6 +1023,130 @@ impl Cache<Compiler> {
         }
     }
 
+    fn is_enum_namespace(&self, symbol: SymbolId) -> bool {
+        matches!(self.ctx.symbol(symbol), Symbol::Module(_))
+            && self.ctx.enum_of(Declaration::Symbol(symbol)).is_some()
+    }
+
+    fn symbol_kind(&self, symbol: SymbolId) -> Option<CompletionItemKind> {
+        if self.is_enum_namespace(symbol) {
+            Some(CompletionItemKind::ENUM)
+        } else if self.ctx.enum_of(Declaration::Symbol(symbol)).is_some() {
+            Some(CompletionItemKind::ENUM_MEMBER)
+        } else {
+            base_symbol_kind(self.ctx.symbol(symbol))
+        }
+    }
+
+    fn type_kind(&self, ty: TypeId) -> CompletionItemKind {
+        if self.ctx.enum_variants(ty).is_some() {
+            CompletionItemKind::ENUM
+        } else if self.ctx.enum_of(Declaration::Type(ty)).is_some() {
+            CompletionItemKind::ENUM_MEMBER
+        } else {
+            CompletionItemKind::STRUCT
+        }
+    }
+
+    /// The hover for the namespace of an enum's variants (which is the enum), or for the constant
+    /// of a variant without fields (which is the variant).
+    fn enum_member_hover(&mut self, scopes: &Scopes, symbol: SymbolId) -> Option<HoverInfo> {
+        let ty = self.ctx.enum_of(Declaration::Symbol(symbol))?;
+
+        Some(match self.ctx.symbol(symbol).clone() {
+            Symbol::Module(_) => HoverInfo::Enum(self.enum_hover(scopes, ty)),
+            Symbol::Constant(constant) => {
+                HoverInfo::Variant(self.variant_hover(scopes, constant.value.ty)?)
+            }
+            _ => return None,
+        })
+    }
+
+    fn enum_hover(&mut self, scopes: &Scopes, ty: TypeId) -> EnumHoverInfo {
+        let name = self.declared_type_name(scopes, ty);
+
+        let variants = self
+            .ctx
+            .enum_variants(ty)
+            .unwrap_or_default()
+            .to_vec()
+            .into_iter()
+            .filter_map(|variant| {
+                let Type::Struct(ty) = self.ctx.ty(variant) else {
+                    return None;
+                };
+
+                // The variant is named by its path, which ends with its own name
+                let name = ty.name.as_ref()?.text();
+                let name = name.rsplit("::").next().unwrap_or(name).to_string();
+
+                Some(format!(
+                    "{name}{}",
+                    self.variant_declaration(scopes, variant)
+                ))
+            })
+            .collect();
+
+        EnumHoverInfo { name, variants }
+    }
+
+    fn variant_hover(&mut self, scopes: &Scopes, ty: TypeId) -> Option<VariantHoverInfo> {
+        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+
+        let Type::Struct(variant) = self.ctx.ty(semantic) else {
+            return None;
+        };
+
+        let variant = variant.semantic;
+
+        self.ctx.enum_of(Declaration::Type(variant))?;
+
+        Some(VariantHoverInfo {
+            name: self.declared_type_name(scopes, ty),
+            declaration: self.variant_declaration(scopes, ty),
+        })
+    }
+
+    /// A variant as it's declared in its enum, after its name, such as ` = 1 { value: Bool }`.
+    fn variant_declaration(&mut self, scopes: &Scopes, ty: TypeId) -> String {
+        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+
+        let discriminant = if let Type::Struct(variant) = self.ctx.ty(semantic)
+            && let Some(value) = self.ctx.default_field(variant.semantic, DISCRIMINANT_FIELD)
+        {
+            format!(
+                " = {}",
+                rue_types::stringify(self.ctx.types_mut(), value.ty)
+            )
+        } else {
+            String::new()
+        };
+
+        let Some((fields, nil_terminated)) = self.struct_fields(scopes, ty) else {
+            return discriminant;
+        };
+
+        if fields.is_empty() {
+            return discriminant;
+        }
+
+        let fields = fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| {
+                let spread = if !nil_terminated && i == fields.len() - 1 {
+                    "..."
+                } else {
+                    ""
+                };
+                format!("{spread}{}: {}", field.name, field.type_name)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("{discriminant} {{ {fields} }}")
+    }
+
     fn struct_fields(
         &mut self,
         scopes: &Scopes,
@@ -1019,6 +1187,11 @@ impl Cache<Compiler> {
 
                 firsts
             };
+
+            // The discriminant of an enum variant isn't a field that can be named
+            if name == DISCRIMINANT_FIELD {
+                continue;
+            }
 
             fields.push(FieldHoverInfo {
                 name: name.clone(),
@@ -1112,7 +1285,7 @@ fn create_completion_item(
     }
 }
 
-fn symbol_kind(symbol: &Symbol) -> Option<CompletionItemKind> {
+fn base_symbol_kind(symbol: &Symbol) -> Option<CompletionItemKind> {
     match symbol {
         Symbol::Binding(_) => Some(CompletionItemKind::VARIABLE),
         Symbol::Constant(_) => Some(CompletionItemKind::CONSTANT),

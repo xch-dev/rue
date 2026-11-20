@@ -1,10 +1,12 @@
 mod constant;
+mod enum_item;
 mod function;
 mod module;
 mod struct_item;
 mod type_alias;
 
 pub use constant::*;
+pub use enum_item::*;
 pub use function::*;
 pub use module::*;
 pub use struct_item::*;
@@ -24,6 +26,7 @@ pub fn declare_type_item(ctx: &mut Compiler, item: &AstTypeItem) -> (TypeId, Sco
     match item {
         AstTypeItem::TypeAliasItem(type_alias) => declare_type_alias(ctx, type_alias),
         AstTypeItem::StructItem(struct_item) => declare_struct_item(ctx, struct_item),
+        AstTypeItem::EnumItem(enum_item) => declare_enum_item(ctx, enum_item),
     }
 }
 
@@ -98,6 +101,7 @@ pub fn compile_type_item(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId, sco
     match item {
         AstTypeItem::TypeAliasItem(type_alias) => compile_type_alias(ctx, type_alias, ty, scope),
         AstTypeItem::StructItem(struct_item) => compile_struct_item(ctx, struct_item, ty, scope),
+        AstTypeItem::EnumItem(enum_item) => compile_enum_item(ctx, enum_item, ty, scope),
     }
 
     if !check_regular(ctx, item, ty) {
@@ -115,8 +119,12 @@ pub fn compile_type_item_defaults(
     ty: TypeId,
     scope: ScopeId,
 ) {
-    if let AstTypeItem::StructItem(struct_item) = item {
-        compile_struct_defaults(ctx, struct_item, ty, scope);
+    match item {
+        AstTypeItem::TypeAliasItem(_) => {}
+        AstTypeItem::StructItem(struct_item) => {
+            compile_struct_defaults(ctx, struct_item, ty, scope);
+        }
+        AstTypeItem::EnumItem(enum_item) => compile_enum_defaults(ctx, enum_item, ty, scope),
     }
 }
 
@@ -207,6 +215,7 @@ fn report_and_break_cycle(
     let name = match item {
         AstTypeItem::TypeAliasItem(type_alias) => type_alias.name(),
         AstTypeItem::StructItem(struct_item) => struct_item.name(),
+        AstTypeItem::EnumItem(enum_item) => enum_item.name(),
     };
 
     let text = name

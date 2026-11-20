@@ -506,6 +506,22 @@ fn hover(cache: &mut Cache<Compiler>, position: Position) -> Option<Hover> {
                             .collect::<Vec<String>>()
                             .join("\n")
                     ),
+                    HoverInfo::Enum(info) => {
+                        if info.variants.is_empty() {
+                            format!("enum {} {{}}", info.name)
+                        } else {
+                            format!(
+                                "enum {} {{\n{}\n}}",
+                                info.name,
+                                info.variants
+                                    .iter()
+                                    .map(|variant| format!("    {variant},"))
+                                    .collect::<Vec<String>>()
+                                    .join("\n")
+                            )
+                        }
+                    }
+                    HoverInfo::Variant(info) => format!("{}{}", info.name, info.declaration),
                     HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
                 },
             })

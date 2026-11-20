@@ -1,0 +1,164 @@
+import shapes::Direction;
+
+// Without fields, each variant is only its discriminant
+enum Mode {
+    Locked,
+    Unlocked,
+    Open = 5,
+    Closed,
+}
+
+// With fields, each variant is a list that starts with its discriminant
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect = 10 { width: Int, height: Int },
+}
+
+// Discriminants can be negative, and any integer literal
+enum Signed {
+    Negative = -2,
+    MinusOne,
+    Zero,
+    Binary = 0b100,
+    Octal = 0o10,
+}
+
+// The same shape as Chialisp conditions, with a constant field and a spread
+enum Condition {
+    CreateCoin = 51 { puzzle_hash: Bytes32, amount: Int, ...memos: List<Bytes> },
+    ReserveFee = 52 { amount: Int },
+    Remark = 1 { kind = "remark", ...rest: Any },
+}
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+enum Empty {}
+
+test fn unit_discriminants() {
+    assert Mode::Locked as Int == 0;
+    assert Mode::Unlocked as Int == 1;
+    assert Mode::Open as Int == 5;
+    assert Mode::Closed as Int == 6;
+    assert Signed::Negative as Int == -2;
+    assert Signed::MinusOne as Int == -1;
+    assert Signed::Zero as Int == 0;
+    assert Signed::Binary as Int == 4;
+    assert Signed::Octal as Int == 8;
+}
+
+test fn layout() {
+    assert tree_hash(Mode::Open) == tree_hash(5);
+    assert tree_hash(Shape::Empty) == tree_hash([0]);
+    assert tree_hash(Shape::Circle { radius: 3 }) == tree_hash([1, 3]);
+    assert tree_hash(Shape::Rect { width: 2, height: 4 }) == tree_hash([10, 2, 4]);
+    assert tree_hash(Condition::ReserveFee { amount: 7 }) == tree_hash([52, 7]);
+}
+
+fn area(shape: Shape) -> Int {
+    if shape is Shape::Empty {
+        0
+    } else if shape is Shape::Circle {
+        3 * shape.radius * shape.radius
+    } else {
+        shape.width * shape.height
+    }
+}
+
+test fn narrowing() -> Int {
+    area(Shape::Empty)
+        + area(Shape::Circle { radius: 2 })
+        + area(Shape::Rect { width: 2, height: 3 })
+}
+
+fn is_open(mode: Mode) -> Bool {
+    mode is Mode::Open || mode is Mode::Unlocked
+}
+
+test fn unit_narrowing() {
+    assert is_open(Mode::Open);
+    assert !is_open(Mode::Locked);
+}
+
+test fn variants_are_types() -> Int {
+    let circle: Shape::Circle = Shape::Circle { radius: 4 };
+    let shape: Shape = circle;
+    let { radius } = circle;
+    assert shape is Shape::Circle;
+    radius + circle.radius
+}
+
+test fn spread_and_constant_fields() -> List<Bytes> {
+    let coin = Condition::CreateCoin { puzzle_hash: sha256("puzzle"), amount: 1, memos: ["memo"] };
+    let remark = Condition::Remark { rest: 42 };
+    assert remark.kind == "remark";
+    assert tree_hash(remark) == tree_hash((1, ("remark", 42)));
+    coin.memos
+}
+
+fn unwrap_or<T>(option: Option<T>, default: T) -> T {
+    if option is Option::Some<T> {
+        option.value
+    } else {
+        default
+    }
+}
+
+test fn generic() -> Int {
+    let some = Option::Some::<Int> { value: 5 };
+    let none: Option<Int> = Option::None;
+    assert tree_hash(none) == tree_hash([0]);
+    unwrap_or(some, 0) + unwrap_or(none, 10)
+}
+
+// An enum without variants has no values, so it can be used as any type
+fn _absurd(value: Empty) -> Int {
+    value
+}
+
+test fn empty() -> List<Empty> {
+    let values: List<Empty> = nil;
+    assert values is nil;
+    values
+}
+
+mod shapes {
+    export enum Direction {
+        Up,
+        Down,
+    }
+
+    export fn flip(direction: Direction) -> Direction {
+        if direction is Direction::Up {
+            Direction::Down
+        } else {
+            Direction::Up
+        }
+    }
+}
+
+test fn through_modules() {
+    assert shapes::flip(shapes::Direction::Up) is Direction::Down;
+    assert shapes::flip(Direction::Down) is shapes::Direction::Up;
+}
+
+mod imported {
+    import super::Shape::{Circle, Empty};
+
+    export fn circle() -> Circle {
+        Circle { radius: 9 }
+    }
+
+    export fn empty() -> Empty {
+        Empty
+    }
+}
+
+test fn importing_variants() -> Int {
+    let empty: Shape = imported::empty();
+    assert empty is Shape::Empty;
+    imported::circle().radius
+}

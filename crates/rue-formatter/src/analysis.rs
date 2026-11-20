@@ -189,10 +189,10 @@ fn analyze_nodes(
                     );
                 }
             }
-            AstNodeKind::ModuleItem | AstNodeKind::StructItem => {
+            AstNodeKind::ModuleItem | AstNodeKind::StructItem | AstNodeKind::EnumItem => {
                 if let Some(id) = direct_or_descendant_token(&node, T!['{'], stream)? {
                     facts[id.index()].delimiter_style = Some(DelimiterStyle::Block);
-                    if kind == AstNodeKind::StructItem {
+                    if kind != AstNodeKind::ModuleItem {
                         facts[id.index()].flags.insert(TokenFlags::TRAILING_COMMA);
                     }
                 }
@@ -243,7 +243,9 @@ fn analyze_nodes(
                     facts[id.index()].flags.insert(TokenFlags::OMITTED_COMMA);
                 }
             }
-            AstNodeKind::StructInitializerExpr | AstNodeKind::StructBinding => {
+            AstNodeKind::StructInitializerExpr
+            | AstNodeKind::StructBinding
+            | AstNodeKind::EnumVariantFields => {
                 if let Some(id) = direct_or_descendant_token(&node, T!['{'], stream)? {
                     facts[id.index()].delimiter_style = Some(DelimiterStyle::Braced);
                     facts[id.index()].flags.insert(TokenFlags::TRAILING_COMMA);
@@ -303,7 +305,7 @@ fn analyze_nodes(
                     facts[open.index()].pair = Some(close);
                 }
             }
-            AstNodeKind::PrefixExpr => {
+            AstNodeKind::PrefixExpr | AstNodeKind::EnumDiscriminant => {
                 if let Some(token) = significant_tokens(&node)
                     .find(|token| SyntaxKind::PREFIX_OPS.contains(&token.kind()))
                 {
@@ -353,6 +355,7 @@ fn analyze_nodes(
             | AstNodeKind::ConstantItem
             | AstNodeKind::TypeAliasItem
             | AstNodeKind::StructField
+            | AstNodeKind::EnumVariant
             | AstNodeKind::ImportItem
             | AstNodeKind::LiteralType
             | AstNodeKind::UnionType

@@ -28,6 +28,7 @@ const ITEM_KEYWORDS: &[SyntaxKind] = &[
     T![mod],
     T![type],
     T![struct],
+    T![enum],
 ];
 
 /// Whether the parser is at the start of an item, as opposed to something that could be an
