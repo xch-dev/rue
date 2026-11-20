@@ -157,9 +157,7 @@ pub fn compile_match_expr(
         // Nothing is left after an arm that doesn't need to check anything, so there's nothing
         // to subtract, which can be slow for large unions
         let else_type = match pattern {
-            Some(ty) if check != Check::None => {
-                ctx.subtract_type(pattern_srcloc.clone(), remaining, ty)
-            }
+            Some(ty) if check != Check::None => ctx.subtract_type(&pattern_srcloc, remaining, ty),
             _ => builtins.never,
         };
 

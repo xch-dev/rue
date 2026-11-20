@@ -246,6 +246,36 @@ fn at_limit(value: Seven) -> Int {
     2
 }
 
+// The other part of the pair isn't narrowed, so the pair is left as it was, and nothing is merged
+fn part_left_as_is(value: (Eight, Int)) -> Int {
+    if value is (EvenEight, 5) {
+        return 1;
+    }
+    2
+}
+
+enum Many<T> {
+    None,
+    Eight { f0: T, f1: T, f2: T, f3: T, f4: T, f5: T, f6: T, f7: T },
+}
+
+// An enum variant with fields is a struct, so it's merged the same way
+fn enum_variant(value: Many<A | B>) -> Int {
+    match value {
+        Many::None<A | B> => 0,
+        (1, EvenEight) => 1,
+        _ => 2,
+    }
+}
+
+#[expect(imprecise_narrowing)]
+fn expected(value: Eight) -> Int {
+    if value is EvenEight {
+        return 1;
+    }
+    2
+}
+
 #[allow(imprecise_narrowing)]
 fn allowed(value: Eight) -> Int {
     if value is EvenEight {
@@ -259,5 +289,11 @@ fn main() -> Int {
     let b = B { kind: 2 };
     let even = Eight { f0: a, f1: a, f2: a, f3: a, f4: a, f5: a, f6: b, f7: b };
     let odd = Seven { f0: a, f1: a, f2: a, f3: a, f4: a, f5: a, f6: b };
-    guard(even) + match_arm(even) + at_limit(odd) + allowed(even)
+    guard(even)
+        + match_arm(even)
+        + at_limit(odd)
+        + part_left_as_is((even, 5))
+        + enum_variant(Many::None)
+        + expected(even)
+        + allowed(even)
 }

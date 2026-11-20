@@ -5,7 +5,8 @@ use log::{Level, log_enabled, trace};
 use crate::{
     Alias, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet, IntersectContext,
     Pair, Type, TypeId, Union, compare_impl, extract_pairs_substituted, grow_stack,
-    intersect_substituted, reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    intersect_substituted, reachable, reaches_non_contractive_cycle, step, stringify_impl,
+    substitute,
 };
 
 pub fn subtract(
@@ -83,8 +84,27 @@ fn subtract_impl(
 
     Subtracted {
         type_id,
-        merged_structs: cx.merged_structs,
+        merged_structs: merged_structs_in(arena, type_id, &cx.merged_structs),
     }
+}
+
+/// The structs that were merged in the result. A part of a pair can be merged and then thrown away,
+/// such as when the other part is left as it was, so the pair is kept whole.
+fn merged_structs_in(arena: &Arena<Type>, type_id: TypeId, merged: &[MergedStruct]) -> Vec<TypeId> {
+    if merged.is_empty() {
+        return Vec::new();
+    }
+
+    let reachable = reachable(arena, type_id);
+    let mut structs = Vec::new();
+
+    for merged in merged {
+        if reachable.contains(&merged.merged) && !structs.contains(&merged.semantic) {
+            structs.push(merged.semantic);
+        }
+    }
+
+    structs
 }
 
 /// The state of one subtraction, which is shared by the subtractions of the parts of its pairs.
@@ -101,7 +121,7 @@ struct Subtraction {
     /// of a nested split would compare the whole of the types it's given again.
     comparison: ComparisonContext<'static>,
     /// The structs whose pairs were merged rather than split (see `Subtracted::merged_structs`).
-    merged_structs: Vec<TypeId>,
+    merged_structs: Vec<MergedStruct>,
     /// Shared by every intersection, for the same reason.
     intersection: IntersectContext,
 }
@@ -124,6 +144,15 @@ fn covered(
         None,
         None,
     ) <= Comparison::Cast
+}
+
+/// A struct whose pairs were merged rather than split.
+#[derive(Debug, Clone, Copy)]
+struct MergedStruct {
+    /// The struct that was merged.
+    semantic: TypeId,
+    /// The merged copy of it.
+    merged: TypeId,
 }
 
 /// What's left of a variant once a target is subtracted from it.
@@ -354,7 +383,7 @@ fn subtract_part(
 fn repackage(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    merged_structs: &mut Vec<TypeId>,
+    merged_structs: &mut Vec<MergedStruct>,
     variants: Vec<Variant>,
 ) -> TypeId {
     grow_stack(|| repackage_inner(arena, builtins, merged_structs, variants))
@@ -363,7 +392,7 @@ fn repackage(
 fn repackage_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    merged_structs: &mut Vec<TypeId>,
+    merged_structs: &mut Vec<MergedStruct>,
     variants: Vec<Variant>,
 ) -> TypeId {
     let mut collected = vec![];
@@ -443,13 +472,16 @@ fn repackage_inner(
                     arena.alloc(Type::Union(Union::new(copies)))
                 }
                 None => {
-                    if !merged_structs.contains(&semantic_type_id) {
-                        merged_structs.push(semantic_type_id);
-                    }
-
                     let inner = merge_spine(arena, inner, levels);
                     let ty = ty.narrow(arena, builtins, inner);
-                    arena.alloc(Type::Struct(ty))
+                    let merged = arena.alloc(Type::Struct(ty));
+
+                    merged_structs.push(MergedStruct {
+                        semantic: semantic_type_id,
+                        merged,
+                    });
+
+                    merged
                 }
             }
         }

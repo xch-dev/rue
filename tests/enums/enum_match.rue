@@ -132,6 +132,7 @@ test fn match_variant_fields() {
     assert direction(Option::None) == 0;
     assert direction(Option::Some::<Dir> { value: Dir::Up }) == 1;
     assert direction(Option::Some::<Dir> { value: Dir::Down }) == 2;
+    assert direction_guard(Option::Some::<Dir> { value: Dir::Up }) == 1;
     assert direction_guard(Option::Some::<Dir> { value: Dir::Down }) == 2;
 }
 
@@ -146,8 +147,20 @@ fn directions(value: Both<Dir, Dir>) -> Int {
     }
 }
 
+// The fields of what's left after some of the combinations can still be read
+fn first_direction(value: Both<Dir, Dir>) -> Int {
+    match value {
+        Both::Neither<Dir, Dir> => 0,
+        Both::Two<Dir::Up, Dir::Up> => 10,
+        _ => value.x as Int * 10 + value.y as Int,
+    }
+}
+
 test fn match_every_combination_of_fields() {
     assert directions(Both::Neither) == 0;
+    assert directions(Both::Two::<Dir, Dir> { x: Dir::Up, y: Dir::Up }) == 1;
+    assert first_direction(Both::Two::<Dir, Dir> { x: Dir::Up, y: Dir::Up }) == 10;
+    assert first_direction(Both::Two::<Dir, Dir> { x: Dir::Down, y: Dir::Up }) == 21;
     assert directions(Both::Two::<Dir, Dir> { x: Dir::Up, y: Dir::Down }) == 2;
     assert directions(Both::Two::<Dir, Dir> { x: Dir::Down, y: Dir::Up }) == 3;
     assert directions(Both::Two::<Dir, Dir> { x: Dir::Down, y: Dir::Down }) == 4;

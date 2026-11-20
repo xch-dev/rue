@@ -1156,7 +1156,7 @@ impl Compiler {
         }
 
         let srcloc = self.srcloc(node);
-        let else_id = self.subtract_type(srcloc, from, to);
+        let else_id = self.subtract_type(&srcloc, from, to);
 
         Constraint::new(check).with_else(else_id)
     }
@@ -1164,7 +1164,7 @@ impl Compiler {
     /// The values of `from` that aren't a `to`, which is what's left after a type guard or `match`
     /// arm at the given location fails. A struct with too many combinations of its fields left to
     /// narrow it by is merged instead, which is recorded for the `imprecise_narrowing` lint.
-    pub fn subtract_type(&mut self, srcloc: SrcLoc, from: TypeId, to: TypeId) -> TypeId {
+    pub fn subtract_type(&mut self, srcloc: &SrcLoc, from: TypeId, to: TypeId) -> TypeId {
         let subtracted =
             rue_types::subtract_detailed(self.db.types_mut(), &self.builtins.types, from, to);
 
