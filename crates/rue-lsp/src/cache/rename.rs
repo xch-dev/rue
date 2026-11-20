@@ -258,12 +258,13 @@ impl Cache<Compiler> {
         }
     }
 
-    /// A place in a file as it's shown in a message, like the notes of diagnostics are: relative
-    /// to the file that the query is about.
+    /// A place in a file as it's shown in a message: in the directory that the project is
+    /// compiled from, or if it isn't compiled from one, next to the file that the query is about.
     fn place(&self, file: &File, offset: TextSize) -> String {
-        let directory = match &self.source.kind {
-            SourceKind::File(path) => Path::new(path).parent().unwrap_or(Path::new("")),
-            SourceKind::Std(_) => Path::new(""),
+        let directory = match (&self.root, &self.source.kind) {
+            (Some(root), _) => root.as_path(),
+            (None, SourceKind::File(path)) => Path::new(path).parent().unwrap_or(Path::new("")),
+            (None, SourceKind::Std(_)) => Path::new(""),
         };
 
         format!(

@@ -1099,6 +1099,54 @@ fn test_rename_module_that_is_a_symlink() {
 }
 
 #[test]
+fn test_rename_refused_from_a_file_in_a_directory() {
+    // The place that's in the way is shown in the project, wherever the rename is asked for
+    let files = [
+        (
+            "main.rue",
+            "extern fn run(value: Any) -> Any from \"lib/run.hex\";\n\nfn main(other: Int) -> Int {\n    lib::a::go(other)\n}\n",
+        ),
+        (
+            "lib/a.rue",
+            "export fn go(value: Int) -> Int {\n    let other = super::l$0ib::b::ONE;\n    value + other\n}\n",
+        ),
+        ("lib/b.rue", "export const ONE: Int = 1;\n"),
+        ("lib/run.hex", "01"),
+    ];
+
+    check(
+        &files,
+        "core",
+        expect![[r#"
+        error: `lib` can't be renamed, since the path of the external function at main.rue:1:39 names it
+    "#]],
+    );
+
+    let files = [
+        (
+            "main.rue",
+            "fn main(other: Int) -> Int {\n    lib::a::go(other) + lib::b::go(other)\n}\n",
+        ),
+        (
+            "lib/a.rue",
+            "export fn go(value: Int) -> Int {\n    let oth$0er = 1;\n    value + other\n}\n",
+        ),
+        (
+            "lib/b.rue",
+            "export fn go(value: Int) -> Int {\n    value\n}\n",
+        ),
+    ];
+
+    check(
+        &files,
+        "value",
+        expect![[r#"
+        error: Renaming `other` to `value` would change what `value` refers to at lib/a.rue:3:5
+    "#]],
+    );
+}
+
+#[test]
 fn test_rename_directory_without_source_files() {
     // A directory is a module even if none of the files in it are
     check(
