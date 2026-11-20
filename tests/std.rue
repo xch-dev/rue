@@ -52,7 +52,7 @@ test fn condition_type_guards() {
     assert Softfork { cost: 42, args: [] } as Condition is Softfork;
 }
 
-// A condition is a list that starts with its opcode
+// The opcode is the variant's discriminant, which is read by casting the condition to its layout
 fn opcode(condition: Condition) -> Int {
     let (opcode, _) = condition as (Int, Any);
     opcode

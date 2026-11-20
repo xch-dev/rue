@@ -148,7 +148,7 @@ fn main(condition: Condi$0tion) -> Bool {
                 AssertMyAmount = 73 { amount: Int },
                 AssertMyBirthSeconds = 74 { seconds: Int },
                 AssertMyBirthHeight = 75 { height: Int },
-                AssertEphemeral = 76,
+                AssertEphemeral = 76 {},
                 AssertSecondsRelative = 80 { seconds: Int },
                 AssertSecondsAbsolute = 81 { seconds: Int },
                 AssertHeightRelative = 82 { height: Int },

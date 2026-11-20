@@ -1,7 +1,8 @@
+// The variants are also exported by their own names, such as `CreateCoin`
 export Condition::*;
 
-// The conditions that a puzzle can output, each a list that starts with its opcode. The variants
-// are also exported by their own names, such as `CreateCoin`.
+// The conditions that a puzzle can output, each a list that starts with its opcode. A condition
+// without fields is written with braces, like the others (`AssertEphemeral {}`).
 export enum Condition {
     Remark = 1 { ...rest: Any = nil },
     AggSigParent = 43 { public_key: PublicKey, message: Bytes },
