@@ -610,11 +610,11 @@ impl Choices {
 
     /// Whether the bounds collected under the union member can decide anything, as far as the
     /// choices opened in the range do: no union it's nested in from there on (nor its own) is held
-    /// by another member, one that gave `Assign` without collecting bounds. Such a union is
-    /// `Assign` whatever fails under its other members (see `Choices::attributed`), so what's
-    /// under them is never needed, not even to rule out a member of another union. It's `Assign`
-    /// rather than the union's best result, so that a result getting worse can only make a union
-    /// not held, which keeps the result monotone.
+    /// by another member, one that gave `Assign` without collecting bounds. Picking that member
+    /// gives `Assign` with nothing to rule it out, so no best pick of members needs what's under
+    /// the others (see `Choices::attributed`), and pairs with it can be left out, which only saves
+    /// picking. It has to be `Assign`: a member that gave the union's best result, `Cast`, wouldn't
+    /// make a best pick when another member gives `Assign`.
     pub(crate) fn needed_in(&self, mut branch: BranchId, range: &std::ops::Range<usize>) -> bool {
         loop {
             if !range.contains(&branch.choice) {
@@ -887,8 +887,8 @@ impl Choices {
     /// which are checked once the function comparison that bound it finishes, which can be in the
     /// middle of comparing an enclosing union's member. Since #362's step 13g, it only decides
     /// pairs with a bound collected under a union outside of that function comparison, and which
-    /// candidates checking a pair collects: a failed pair under a union inside of it is charged
-    /// to the members it was collected under instead (see `Choices::attributed`).
+    /// candidates checking a pair collects: a failed pair under a union inside of it rules out
+    /// picks of the members it was collected under instead (see `Choices::attributed`).
     pub(crate) fn matched_so_far(&self, branch: BranchId) -> bool {
         self.matched_since(branch, 0)
     }

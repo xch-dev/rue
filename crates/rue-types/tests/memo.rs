@@ -1898,10 +1898,10 @@ fn alike_members(db: &mut Types) -> (TypeId, TypeId) {
 
 /// A summary leaves out a member of a union that's alike another (see `Summary::canonicalize`),
 /// and it's left out of the union too: kept as a member with nothing under it, it would be one
-/// that nothing could be charged to, which hid what failed under the other, so the memo accepted
+/// that nothing could rule out, which hid what failed under the other, so the memo accepted
 /// these as a cast where computing them again rejects them, as without the duplicate members.
 #[test]
-fn test_alike_members_stay_charged() {
+fn test_alike_members_stay_ruled_out() {
     with_large_stack(|| {
         assert_eq!(in_every_mode(alike_members), [Comparison::Invalid; 3]);
     });
@@ -2290,9 +2290,9 @@ fn many_bounded_unions(db: &mut Types, count: usize) -> (TypeId, TypeId) {
 }
 
 /// Picking a member of each of many unions whose members all bound the instance takes as many
-/// steps as main did before #362's step 13g, which charged every member that matched (44 steps for
-/// 4 parameters, up to 144 for 24): each parameter's union is reached again from the memo, and a
-/// pair that fails rules a pick out early (see `Choices::attributed`).
+/// steps as main did before #362's step 13g, when every member that matched had to hold (44 steps
+/// for 4 parameters, up to 144 for 24): each parameter's union is reached again from the memo, and
+/// a pair that fails rules a pick out early (see `Choices::attributed`).
 #[test]
 fn test_many_bounded_unions() {
     with_large_stack(|| {

@@ -145,7 +145,7 @@ impl ChoiceRecord {
     }
 
     /// Whether a member (or the fallback) that gave `Assign` has nothing under it that a failed
-    /// pair could be charged to wherever the summary is applied: it collected no bounds, like
+    /// pair could rule it out by wherever the summary is applied: it collected no bounds, like
     /// `Choices::needed_in`, or nothing in the summary is under it (`used` are the members that
     /// something is), such as a member whose bounds were all on the comparison's own instances,
     /// which were checked inside of it. Picking it then gives `Assign` (see
@@ -495,8 +495,7 @@ impl Summary {
     ///
     /// (What's under a member that gave `Invalid` isn't under a union at all, see
     /// `Constraint::unmatched`.) Each of them but the last decides the same as the summary without
-    /// it, under how a failed pair of bounds is charged to the members it was collected under
-    /// (see `Choices::attributed`).
+    /// it, under the best pick of members (see `Choices::attributed`).
     fn without_single_members(&self) -> (Vec<ChoiceRecord>, Vec<Constraint>, bool) {
         let mut choices = self.choices.clone();
         let mut constraints = self.constraints.clone();
@@ -578,7 +577,7 @@ impl Summary {
                     .collect();
 
                 // The member is left out of its union as well, rather than kept as a member that
-                // nothing is under, which nothing could be charged to (see `Choices::attributed`)
+                // nothing is under, which nothing could rule out (see `Choices::attributed`)
                 if let Some(record) = kept.iter_mut().find(|record| record.choice == choice) {
                     if member == FALLBACK {
                         record.fallback = None;
@@ -689,7 +688,7 @@ impl Summary {
 /// A member of a union in the summary that's alike another member of it, which can be left out
 /// along with what's under it: both gave the same result and collected bounds alike, and what's
 /// under them is the same up to renaming the local binders that only it refers to. Picking either
-/// is then the same, since they're alternatives (see `Choices::exclusive`). Leaving out the others
+/// is then the same, since they're alternatives (see `Choices::attributed`). Leaving out the others
 /// keeps a union whose members each reach the same comparison again (such as `T | T` in a
 /// recursive type) from doubling the summary each time it's computed again, which would keep
 /// iterating from settling.
@@ -1694,8 +1693,8 @@ mod tests {
         assert_eq!(summary.constraints().len(), 1);
         assert!(!summary.is_approximate());
 
-        // The merged member is left out of the union, so nothing that fails under the one kept
-        // is hidden by it, a member with nothing under it to charge
+        // The merged member is left out of the union, so it doesn't hide what fails under the one
+        // kept, as a member with nothing under it to rule it out
         assert_eq!(
             summary.choices()[0].members,
             [Some(Comparison::Assign), None]
@@ -1770,7 +1769,7 @@ mod tests {
     }
 
     /// A union held by a member that gave `Assign` and collected bounds, none of which are in the
-    /// summary, is left out too, since nothing can be charged to that member where the summary is
+    /// summary, is left out too, since nothing can rule that member out where the summary is
     /// applied. One whose member with nothing under it gave `Cast`, or was left out as alike
     /// another (so it has no result), is kept.
     #[test]
