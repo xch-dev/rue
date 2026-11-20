@@ -9,9 +9,35 @@
 //! progress applies the summary to the binders it's reached with (see `StackFrame` in
 //! `compare.rs`).
 
-use std::mem;
+use std::{cell::Cell, rc::Rc};
 
-use crate::{FxHashMap, TypeId};
+use crate::{Comparison, FALLBACK, FxHashMap, TypeId};
+
+std::thread_local! {
+    /// The work that canonicalizing summaries has done on this thread since it was last taken (see
+    /// `take_work`).
+    static WORK: Cell<usize> = const { Cell::new(0) };
+}
+
+/// How many items canonicalizing goes through per step of comparing that it counts as. It's only
+/// there so that a summary that grows large makes the comparison give up rather than take ever
+/// longer, so it's coarse enough not to count for the small summaries that most comparisons have.
+const ITEMS_PER_STEP: usize = 6;
+
+/// Counts work that canonicalizing a summary does, going through that many items, in steps of
+/// comparing, so that a comparison whose summaries grow large gives up rather than taking ever
+/// longer (see `take_work`).
+fn work(items: usize) {
+    let steps = items / ITEMS_PER_STEP;
+    WORK.with(|work| work.set(work.get() + steps));
+    crate::steps::step_many(steps);
+}
+
+/// Takes the work that canonicalizing summaries has done on this thread since it was last taken,
+/// which the comparison in progress counts towards its step limit.
+pub(crate) fn take_work() -> usize {
+    WORK.with(|work| work.replace(0))
+}
 
 /// A binder in a summary's coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -41,9 +67,90 @@ pub(crate) struct Constraint {
     pub(crate) ty: TypeId,
     /// What the generics that `ty` references are bound to.
     pub(crate) env: Env,
-    /// Whether it was collected under a union member inside of the comparison that didn't match
-    /// the value, so it doesn't decide whether the instance's bounds hold.
+    /// The union member inside of the comparison that it was collected under, if any. Where the
+    /// summary is applied, it's collected under that member again, so whether it decides the
+    /// result depends on the union's members as it did in the comparison (#360).
+    pub(crate) branch: Option<Branch>,
+    /// Whether it was collected under a union member inside of the comparison that didn't match the
+    /// value (or one nested in such a member), so it doesn't decide whether the instance's bounds
+    /// hold wherever the summary is applied either. Its union isn't kept (`branch` is `None`):
+    /// whichever members it was under, it only matters that it didn't match.
     pub(crate) unmatched: bool,
+}
+
+/// A member of a union compared inside of the comparison: the union's local binder (see
+/// `ChoiceRecord`), and the member's index (`FALLBACK` for the fallback).
+pub(crate) type Branch = (Var, usize);
+
+/// A union that a value was compared with inside of the comparison, which a constraint was
+/// collected under a member of (see `Choices` in `infer.rs`). It's numbered like a local binder,
+/// so that canonicalizing the summary renumbers it along with the binders its constraints refer
+/// to, and it's a new union each time the summary is applied.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct ChoiceRecord {
+    /// The union, as a local binder.
+    pub(crate) choice: Var,
+    /// The member of a union inside of the comparison that it was compared under, if any.
+    pub(crate) parent: Option<Branch>,
+    /// What comparing the value with each member gave, if it was compared.
+    pub(crate) members: Vec<Option<Comparison>>,
+    /// What the fallback gave, if it was compared.
+    pub(crate) fallback: Option<Comparison>,
+    /// The members (with the fallback last) that collected bounds for a generic being
+    /// instantiated.
+    pub(crate) bounded: Vec<bool>,
+}
+
+impl ChoiceRecord {
+    /// Returns the record with each local binder it refers to replaced.
+    fn map_locals(&self, mut f: impl FnMut(usize) -> usize) -> Self {
+        let mut map = |var: Var| match var {
+            Var::Key(_) => var,
+            Var::Local(local) => Var::Local(f(local)),
+        };
+
+        Self {
+            choice: map(self.choice),
+            parent: self.parent.map(|(choice, member)| (map(choice), member)),
+            ..self.clone()
+        }
+    }
+
+    /// Whether the member is the only one that can hold the value: every other member that was
+    /// compared, and the fallback if it was, gave `Invalid`. Then the union holds exactly when the
+    /// member does, along with what's under it, so leaving the union out and putting what's under
+    /// the member under the member the union is nested in decides the same (see
+    /// `Choices::attributed`).
+    fn alone(&self, member: usize) -> bool {
+        self.members
+            .iter()
+            .enumerate()
+            .chain([(FALLBACK, &self.fallback)])
+            .all(|(other, result)| {
+                other == member || result.is_none_or(|r| r == Comparison::Invalid)
+            })
+    }
+
+    /// Whether a member that collected no bounds gave the best result of any member or the
+    /// fallback, like `Choices::needed_in`.
+    fn held(&self) -> bool {
+        let results = || self.members.iter().chain([&self.fallback]);
+
+        let Some(best) = results().flatten().copied().min() else {
+            return false;
+        };
+
+        results()
+            .zip(&self.bounded)
+            .any(|(&result, &bounded)| result == Some(best) && !bounded)
+    }
+
+    /// The binders that the record refers to: the union, then the one it's nested in.
+    fn vars(&self) -> impl Iterator<Item = Var> + '_ {
+        [self.choice]
+            .into_iter()
+            .chain(self.parent.map(|(choice, _)| choice))
+    }
 }
 
 impl Constraint {
@@ -53,6 +160,7 @@ impl Constraint {
             var: f(self.var),
             upper: self.upper,
             ty: self.ty,
+            branch: self.branch.map(|(choice, member)| (f(choice), member)),
             unmatched: self.unmatched,
             env: self
                 .env
@@ -71,33 +179,90 @@ impl Constraint {
     }
 
     /// The binders that the constraint refers to: the one it bounds, then those of its
-    /// environment.
+    /// environment, then the union it was collected under a member of.
     fn vars(&self) -> impl Iterator<Item = Var> + '_ {
         [self.var]
             .into_iter()
             .chain(self.env.iter().map(|&(_, var)| var))
+            .chain(self.branch.map(|(choice, _)| choice))
+    }
+}
+
+/// A constraint or a union, which canonicalizing a summary treats alike, since both refer to local
+/// binders (see `Summary::canonicalize`).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Item {
+    Choice(ChoiceRecord),
+    Constraint(Constraint),
+}
+
+impl Item {
+    /// Returns the item with each local binder it refers to replaced.
+    fn map_locals(&self, f: impl FnMut(usize) -> usize) -> Self {
+        match self {
+            Self::Choice(choice) => Self::Choice(choice.map_locals(f)),
+            Self::Constraint(constraint) => Self::Constraint(constraint.map_locals(f)),
+        }
     }
 
-    /// The local binders that the constraint refers to.
-    fn locals(&self) -> impl Iterator<Item = usize> + '_ {
-        self.vars().filter_map(|var| match var {
-            Var::Key(_) => None,
-            Var::Local(local) => Some(local),
-        })
+    /// The binders that the item refers to, in order.
+    fn vars(&self) -> Vec<Var> {
+        match self {
+            Self::Choice(choice) => choice.vars().collect(),
+            Self::Constraint(constraint) => constraint.vars().collect(),
+        }
+    }
+
+    /// The local binders that the item refers to, in order.
+    fn locals(&self) -> Vec<usize> {
+        self.vars()
+            .into_iter()
+            .filter_map(|var| match var {
+                Var::Key(_) => None,
+                Var::Local(local) => Some(local),
+            })
+            .collect()
     }
 }
 
 /// The bounds that a comparison puts on the binders it refers to (see the module documentation).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct Summary {
-    /// The number of local binders.
+    /// The number of local binders, including the unions (see `ChoiceRecord`).
     locals: usize,
     /// The bounds, in the order they were added until the summary is canonicalized.
     constraints: Vec<Constraint>,
+    /// The unions that the bounds were collected under members of, in the order they were added
+    /// until the summary is canonicalized, which puts a union before those nested in it.
+    choices: Vec<ChoiceRecord>,
+    /// Whether unions nested too deeply were left out of it (see `MAX_UNION_DEPTH`), so that
+    /// applying it can reject more than computing the comparison again would.
+    approximate: bool,
+    /// Whether it's canonical (see `Summary::canonicalize`), so that joining it with another
+    /// doesn't need to leave out the unions that decide nothing again.
+    canonical: bool,
+    /// Its items that refer to no local binder and the shapes of its components, once it's
+    /// canonical, which joining it with another starts from rather than working them out again.
+    components: Option<Rc<Components>>,
 }
 
+/// The items of a summary that refer to no local binder, and the shape of each of its components
+/// (see `Summary::canonicalize`).
+type Components = (Vec<Item>, Vec<(Vec<Item>, usize)>);
+
+impl PartialEq for Summary {
+    fn eq(&self, other: &Self) -> bool {
+        self.locals == other.locals
+            && self.constraints == other.constraints
+            && self.choices == other.choices
+            && self.approximate == other.approximate
+    }
+}
+
+impl Eq for Summary {}
+
 impl Summary {
-    /// The number of local binders.
+    /// The number of local binders, including the unions (see `ChoiceRecord`).
     pub(crate) fn locals(&self) -> usize {
         self.locals
     }
@@ -113,9 +278,28 @@ impl Summary {
         Var::Local(self.locals - 1)
     }
 
+    /// Whether unions nested too deeply were left out of it (see `MAX_UNION_DEPTH`).
+    pub(crate) fn is_approximate(&self) -> bool {
+        self.approximate
+    }
+
+    /// The unions that the bounds were collected under members of (see `ChoiceRecord`).
+    pub(crate) fn choices(&self) -> &[ChoiceRecord] {
+        &self.choices
+    }
+
     /// Adds a bound, such as one that a comparison collects for an instance it refers to.
     pub(crate) fn add(&mut self, constraint: Constraint) {
+        self.canonical = false;
+        self.components = None;
         self.constraints.push(constraint);
+    }
+
+    /// Adds a union that bounds are collected under members of, whose local binder is new.
+    pub(crate) fn add_choice(&mut self, choice: ChoiceRecord) {
+        self.canonical = false;
+        self.components = None;
+        self.choices.push(choice);
     }
 
     /// Adds the constraints of a comparison that this one reached, where `args` are what the
@@ -124,6 +308,8 @@ impl Summary {
     /// `compare.rs`), so this is only used by the tests of canonical forms.
     #[cfg(test)]
     pub(crate) fn apply(&mut self, other: &Self, args: &[Var]) {
+        self.canonical = false;
+        self.components = None;
         let offset = self.locals;
         self.locals += other.locals;
 
@@ -134,26 +320,57 @@ impl Summary {
             });
             self.constraints.push(constraint);
         }
-    }
 
-    /// Adds the constraints of another summary in the same coordinates, with new local binders.
-    pub(crate) fn extend(&mut self, other: &Self) {
-        let offset = self.locals;
-        self.locals += other.locals;
-        self.constraints.extend(
+        self.choices.extend(
             other
-                .constraints
+                .choices
                 .iter()
-                .map(|constraint| constraint.map_locals(|local| offset + local)),
+                .map(|choice| choice.map_locals(|local| offset + local)),
         );
     }
 
-    /// The least summary that has the constraints of both (with new local binders for the other's),
-    /// in a canonical form.
+    /// The least summary that has the constraints of both, in a canonical form: each component (see
+    /// `Summary::canonicalize`) is there as many times as in the one that has it more often, rather
+    /// than as many times as in both. A component that's there twice isn't the same as one that's
+    /// there once: two copies of a union that bound the same key binder are two unions, whose
+    /// members' bounds are checked against each other across them (see `check_bounds` in
+    /// `compare.rs`), which a single one doesn't have. So adding up the copies would make a summary
+    /// joined with itself (the same bounds from another round) put more on the instances than it
+    /// does, and a comparison computed in rounds would put more on its revisits than the same
+    /// comparison reused from the memo.
     pub(crate) fn join(&self, other: &Self) -> Self {
-        let mut joined = self.clone();
-        joined.extend(other);
-        joined.canonicalize();
+        let (mut ground, lhs, approximate) = self.components();
+        let (other_ground, rhs, other_approximate) = other.components();
+        ground.extend(other_ground);
+        ground.sort();
+        ground.dedup();
+
+        // Both are sorted by shape, so each shape's copies are next to each other in each
+        let mut shapes = Vec::with_capacity(lhs.len().max(rhs.len()));
+        let (mut lhs, mut rhs) = (lhs.into_iter().peekable(), rhs.into_iter().peekable());
+
+        loop {
+            let next = match (lhs.peek(), rhs.peek()) {
+                (None, None) => break,
+                (Some(_), None) => lhs.next(),
+                (None, Some(_)) => rhs.next(),
+                (Some(a), Some(b)) => match a.cmp(b) {
+                    std::cmp::Ordering::Less => lhs.next(),
+                    std::cmp::Ordering::Greater => rhs.next(),
+                    // A copy that both have is kept once
+                    std::cmp::Ordering::Equal => {
+                        rhs.next();
+                        lhs.next()
+                    }
+                },
+            };
+            shapes.extend(next);
+        }
+
+        let mut joined = Self::default();
+        joined.rebuild(ground, &shapes);
+        joined.approximate = approximate || other_approximate;
+        joined.canonical = true;
         joined
     }
 
@@ -180,15 +397,43 @@ impl Summary {
     /// A component that's too alike to be renumbered exactly (see `shape`) can be renumbered
     /// another way when it's canonicalized again.
     pub(crate) fn canonicalize(&mut self) {
+        let (ground, shapes, approximate) = self.components();
+        self.rebuild(ground, &shapes);
+        self.approximate = approximate;
+        self.canonical = true;
+    }
+
+    /// The items that refer to no local binder, sorted and without duplicates, and the shape of
+    /// each component (see `shape`), sorted (see `Summary::canonicalize`).
+    #[allow(clippy::type_complexity)]
+    fn components(&self) -> (Vec<Item>, Vec<(Vec<Item>, usize)>, bool) {
+        if let (true, Some(components)) = (self.canonical, &self.components) {
+            let (ground, shapes) = components.as_ref().clone();
+            return (ground, shapes, self.approximate);
+        }
+
+        let (choices, constraints, approximate) = if self.canonical {
+            (
+                self.choices.clone(),
+                self.constraints.clone(),
+                self.approximate,
+            )
+        } else {
+            self.without_single_members()
+        };
+        let items: Vec<Item> = choices
+            .into_iter()
+            .map(Item::Choice)
+            .chain(constraints.into_iter().map(Item::Constraint))
+            .collect();
+
         let mut parents: Vec<usize> = (0..self.locals).collect();
 
-        for constraint in &self.constraints {
-            let mut locals = constraint.locals();
-
-            if let Some(first) = locals.next() {
+        for item in &items {
+            if let Some((&first, others)) = item.locals().split_first() {
                 let first = find(&mut parents, first);
 
-                for other in locals {
+                for &other in others {
                     let other = find(&mut parents, other);
                     parents[other] = first;
                 }
@@ -196,57 +441,517 @@ impl Summary {
         }
 
         let mut ground = Vec::new();
-        let mut components: FxHashMap<usize, Vec<Constraint>> = FxHashMap::default();
+        let mut components: FxHashMap<usize, Vec<Item>> = FxHashMap::default();
 
-        for constraint in mem::take(&mut self.constraints) {
-            let local = constraint.locals().next();
-
-            match local {
-                Some(local) => {
+        for item in items {
+            match item.locals().first() {
+                Some(&local) => {
                     let root = find(&mut parents, local);
-                    components.entry(root).or_default().push(constraint);
+                    components.entry(root).or_default().push(item);
                 }
-                None => ground.push(constraint),
+                // Only a constraint can refer to no local binder, since a union is one
+                None => ground.push(item),
             }
         }
 
         ground.sort();
         ground.dedup();
 
-        let mut shapes: Vec<(Vec<Constraint>, usize)> = components
-            .values()
-            .map(|constraints| shape(constraints))
-            .collect();
+        let mut shapes: Vec<(Vec<Item>, usize)> =
+            components.values().map(|items| shape(items)).collect();
         shapes.sort();
+        (ground, shapes, approximate)
+    }
 
-        self.constraints = ground;
-        self.locals = 0;
+    /// The summary's unions and constraints, with each union that has something under only one of
+    /// its members, which matched (see `ChoiceRecord::matched`), left out, and what's under that
+    /// member put under the member that the union is nested in instead. (What's under a member
+    /// that didn't match isn't under a union at all, see `Constraint::unmatched`.) Such a union
+    /// doesn't decide anything: what's under the member holds exactly when what's under the one
+    /// it's nested in holds, and since nothing is under its other members, it doesn't make any two
+    /// bounds alternatives (see `Choices::exclusive`). Leaving it out keeps a summary that's
+    /// applied under a union member of a comparison that's then summarized itself from nesting
+    /// its unions one level deeper each time, without bound.
+    fn without_single_members(&self) -> (Vec<ChoiceRecord>, Vec<Constraint>, bool) {
+        let mut choices = self.choices.clone();
+        let mut constraints = self.constraints.clone();
+        let mut approximate = self.approximate;
 
-        for (index, (constraints, locals)) in shapes.iter().enumerate() {
-            // A component that bounds a local binder (an instance) keeps a third copy
-            let copies = if constraints
+        loop {
+            let mut used: FxHashMap<Var, Vec<usize>> = FxHashMap::default();
+
+            for (choice, member) in constraints
                 .iter()
-                .any(|constraint| matches!(constraint.var, Var::Local(_)))
+                .filter_map(|constraint| constraint.branch)
+                .chain(choices.iter().filter_map(|choice| choice.parent))
             {
+                let members = used.entry(choice).or_default();
+
+                if !members.contains(&member) {
+                    members.push(member);
+                }
+            }
+
+            // A union that a member with nothing under it holds for its best result gives that
+            // result whatever is under its other members, since what fails under them only
+            // makes those members worse (see `Choices::attributed`). So it decides nothing beyond
+            // its result, which the member it's nested in already has, and it's left out along
+            // with what's under it, like a member that holds the value whatever the generics are
+            // (#360)
+            let held = choices
+                .iter()
+                .find(|choice| choice.held())
+                .map(|choice| choice.choice);
+
+            if let Some(extra) = held.or_else(|| extra_copy(&choices, &constraints)) {
+                let under = |mut branch: Option<Branch>, choices: &[ChoiceRecord]| {
+                    while let Some((current, _)) = branch {
+                        if current == extra {
+                            return true;
+                        }
+
+                        branch = choices
+                            .iter()
+                            .find(|other| other.choice == current)
+                            .and_then(|other| other.parent);
+                    }
+
+                    false
+                };
+
+                constraints.retain(|constraint| !under(constraint.branch, &choices));
+                let kept: Vec<ChoiceRecord> = choices
+                    .iter()
+                    .filter(|other| other.choice != extra && !under(other.parent, &choices))
+                    .cloned()
+                    .collect();
+                choices = kept;
+                continue;
+            }
+
+            if let Some((choice, member)) = alike_member(&choices, &constraints, &used) {
+                let under = |mut branch: Option<Branch>, choices: &[ChoiceRecord]| {
+                    while let Some(current) = branch {
+                        if current == (choice, member) {
+                            return true;
+                        }
+
+                        branch = choices
+                            .iter()
+                            .find(|other| other.choice == current.0)
+                            .and_then(|other| other.parent);
+                    }
+
+                    false
+                };
+
+                constraints.retain(|constraint| !under(constraint.branch, &choices));
+                let kept: Vec<ChoiceRecord> = choices
+                    .iter()
+                    .filter(|other| !under(other.parent, &choices))
+                    .cloned()
+                    .collect();
+                choices = kept;
+                continue;
+            }
+
+            let depth = |choice: &ChoiceRecord| {
+                let mut depth = 0;
+                let mut parent = choice.parent;
+
+                while let Some((var, _)) = parent {
+                    depth += 1;
+                    parent = choices
+                        .iter()
+                        .find(|other| other.choice == var)
+                        .and_then(|other| other.parent);
+                }
+
+                depth
+            };
+
+            let alone = |choice: &ChoiceRecord| {
+                used.get(&choice.choice)
+                    .is_none_or(|members| members.len() == 1 && choice.alone(members[0]))
+            };
+
+            let Some(index) = choices
+                .iter()
+                .position(|choice| alone(choice) || depth(choice) > MAX_UNION_DEPTH)
+            else {
+                break;
+            };
+
+            approximate |= !alone(&choices[index]);
+
+            let removed = choices.remove(index);
+            let lift = |branch: &mut Option<Branch>| {
+                if branch.is_some_and(|(choice, _)| choice == removed.choice) {
+                    *branch = removed.parent;
+                }
+            };
+
+            for constraint in &mut constraints {
+                lift(&mut constraint.branch);
+            }
+
+            for choice in &mut choices {
+                lift(&mut choice.parent);
+            }
+        }
+
+        (choices, constraints, approximate)
+    }
+
+    /// Replaces the summary's items with `ground` and the components of `shapes`, which are
+    /// sorted, keeping at most as many copies of each shape as `Summary::canonicalize` says.
+    fn rebuild(&mut self, ground: Vec<Item>, shapes: &[(Vec<Item>, usize)]) {
+        self.constraints.clear();
+        self.choices.clear();
+        self.locals = 0;
+        let mut kept_shapes = Vec::new();
+        let mut kept = ground.clone();
+
+        for (index, (items, locals)) in shapes.iter().enumerate() {
+            // A component that bounds a local binder (an instance) keeps a third copy
+            let copies = if items.iter().any(|item| {
+                matches!(item, Item::Constraint(constraint) if matches!(constraint.var, Var::Local(_)))
+            }) {
                 3
             } else {
                 2
             };
 
-            if index >= copies && shapes[index - copies].0 == *constraints {
+            if index >= copies && shapes[index - copies].0 == *items {
                 continue;
             }
 
             let offset = self.locals;
             self.locals += locals;
-            self.constraints.extend(
-                constraints
+            kept.extend(
+                items
                     .iter()
-                    .map(|constraint| constraint.map_locals(|local| offset + local)),
+                    .map(|item| item.map_locals(|local| offset + local)),
             );
+            kept_shapes.push((items.clone(), *locals));
+        }
+
+        self.components = Some(Rc::new((ground, kept_shapes)));
+
+        for item in kept {
+            match item {
+                Item::Choice(choice) => self.choices.push(choice),
+                Item::Constraint(constraint) => self.constraints.push(constraint),
+            }
         }
     }
 }
+
+/// A member of a union in the summary that's alike another member of it, which can be left out
+/// along with what's under it: both gave the same result and collected bounds alike, and what's
+/// under them is the same up to renaming the local binders that only it refers to. Picking either
+/// is then the same, since they're alternatives (see `Choices::exclusive`). Leaving out the others
+/// keeps a union whose members each reach the same comparison again (such as `T | T` in a
+/// recursive type) from doubling the summary each time it's computed again, which would keep
+/// iterating from settling.
+fn alike_member(
+    choices: &[ChoiceRecord],
+    constraints: &[Constraint],
+    used: &FxHashMap<Var, Vec<usize>>,
+) -> Option<Branch> {
+    let parent_of = |choice: Var| {
+        choices
+            .iter()
+            .find(|other| other.choice == choice)
+            .and_then(|other| other.parent)
+    };
+
+    // The member of a union that a branch is directly or indirectly under
+    let ancestors = |mut branch: Option<Branch>| {
+        let mut ancestors = Vec::new();
+
+        while let Some(current) = branch {
+            ancestors.push(current);
+            branch = parent_of(current.0);
+        }
+
+        ancestors
+    };
+
+    let items: Vec<(Item, Vec<Branch>)> = choices
+        .iter()
+        .map(|choice| (Item::Choice(choice.clone()), ancestors(choice.parent)))
+        .chain(constraints.iter().map(|constraint| {
+            (
+                Item::Constraint(constraint.clone()),
+                ancestors(constraint.branch),
+            )
+        }))
+        .collect();
+    let (item_locals, total) = local_counts(items.iter().map(|(item, _)| item));
+
+    for choice in choices {
+        let Some(members) = used.get(&choice.choice) else {
+            continue;
+        };
+
+        if members.len() < 2 {
+            continue;
+        }
+
+        let index = |member: usize| member.min(choice.members.len());
+        let result = |member: usize| {
+            if member == FALLBACK {
+                choice.fallback
+            } else {
+                choice.members[member]
+            }
+        };
+
+        // Only members that gave the same result and collected bounds alike can be alike, which is
+        // cheap to tell, so the shapes are only worked out for those
+        let signature = |member: usize| (result(member), choice.bounded[index(member)]);
+        let candidates: Vec<usize> = members
+            .iter()
+            .copied()
+            .filter(|&member| {
+                members
+                    .iter()
+                    .filter(|&&other| signature(other) == signature(member))
+                    .count()
+                    > 1
+            })
+            .collect();
+
+        if candidates.is_empty() {
+            continue;
+        }
+
+        // What's under each member, with the member itself numbered alike, and the local binders
+        // that something outside of it refers to kept apart from the others
+        let shapes: Vec<(usize, Vec<Item>)> = candidates
+            .iter()
+            .map(|&member| {
+                let under: Vec<&Item> = items
+                    .iter()
+                    .filter(|(_, ancestors)| ancestors.contains(&(choice.choice, member)))
+                    .map(|(item, _)| item)
+                    .collect();
+                let mut outside = outside_of(
+                    &item_locals,
+                    &total,
+                    items
+                        .iter()
+                        .map(|(_, ancestors)| ancestors.contains(&(choice.choice, member))),
+                );
+
+                if let Var::Local(local) = choice.choice {
+                    outside[local] = true;
+                }
+                let normalized: Vec<Item> = under
+                    .into_iter()
+                    .map(|item| normalize(item, (choice.choice, member), &outside))
+                    .collect();
+                (member, shape(&normalized).0)
+            })
+            .collect();
+
+        for (position, (member, items)) in shapes.iter().enumerate() {
+            let alike = shapes[..position].iter().any(|(other, other_items)| {
+                result(*other) == result(*member)
+                    && choice.bounded[index(*other)] == choice.bounded[index(*member)]
+                    && other_items == items
+            });
+
+            if alike {
+                return Some((choice.choice, *member));
+            }
+        }
+    }
+
+    None
+}
+
+/// A union in the summary that's the third copy of another under the same member (or of none):
+/// what's under it, along with the union itself, is the same as what's under each of two others
+/// up to renaming the local binders that only it refers to. Like a third copy of a component (see
+/// `Summary::canonicalize`), it only adds pairs of bounds like those the two others give, so it
+/// can be left out, which keeps a union that's reached again and again from piling up copies.
+fn extra_copy(choices: &[ChoiceRecord], constraints: &[Constraint]) -> Option<Var> {
+    let parent_of = |choice: Var| {
+        choices
+            .iter()
+            .find(|other| other.choice == choice)
+            .and_then(|other| other.parent)
+    };
+    let unions_above = |mut branch: Option<Branch>| {
+        let mut unions = Vec::new();
+
+        while let Some((choice, _)) = branch {
+            unions.push(choice);
+            branch = parent_of(choice);
+        }
+
+        unions
+    };
+
+    let items: Vec<(Item, Vec<Var>)> = choices
+        .iter()
+        .map(|choice| {
+            let mut unions = unions_above(choice.parent);
+            unions.push(choice.choice);
+            (Item::Choice(choice.clone()), unions)
+        })
+        .chain(constraints.iter().map(|constraint| {
+            (
+                Item::Constraint(constraint.clone()),
+                unions_above(constraint.branch),
+            )
+        }))
+        .collect();
+
+    let (item_locals, total) = local_counts(items.iter().map(|(item, _)| item));
+    let mut seen: Vec<(Option<Branch>, Vec<Item>, usize)> = Vec::new();
+
+    for choice in choices {
+        // Only a union with two others alike under the same member can be a third copy, which is
+        // cheap to tell, so the shape is only worked out then
+        let siblings = choices
+            .iter()
+            .filter(|other| other.parent == choice.parent && other.members == choice.members)
+            .count();
+
+        if siblings < 3 {
+            continue;
+        }
+
+        let inside = |unions: &[Var]| unions.contains(&choice.choice);
+        let outside = outside_of(
+            &item_locals,
+            &total,
+            items.iter().map(|(_, unions)| inside(unions)),
+        );
+        let normalized: Vec<Item> = items
+            .iter()
+            .filter(|(_, unions)| inside(unions))
+            .map(|(item, _)| normalize(item, (choice.choice, usize::MAX), &outside))
+            .collect();
+        work(normalized.len());
+        let (shape, _) = shape(&normalized);
+
+        match seen
+            .iter_mut()
+            .find(|(parent, other, _)| *parent == choice.parent && *other == shape)
+        {
+            Some((_, _, count)) if *count >= 2 => return Some(choice.choice),
+            Some((_, _, count)) => *count += 1,
+            None => seen.push((choice.parent, shape, 1)),
+        }
+    }
+
+    None
+}
+
+/// The local binders that each item refers to, and how many times each local binder is referred
+/// to in all of them.
+fn local_counts<'a>(items: impl Iterator<Item = &'a Item>) -> (Vec<Vec<usize>>, Vec<usize>) {
+    let item_locals: Vec<Vec<usize>> = items.map(Item::locals).collect();
+    let size = item_locals
+        .iter()
+        .flatten()
+        .max()
+        .map_or(0, |&local| local + 1);
+    let mut total = vec![0; size];
+
+    for &local in item_locals.iter().flatten() {
+        total[local] += 1;
+    }
+
+    (item_locals, total)
+}
+
+/// Which local binders something other than the items that `inside` picks out refers to (see
+/// `local_counts`).
+fn outside_of(
+    item_locals: &[Vec<usize>],
+    total: &[usize],
+    inside: impl Iterator<Item = bool>,
+) -> Vec<bool> {
+    let mut within = vec![0; total.len()];
+
+    for (locals, inside) in item_locals.iter().zip(inside) {
+        if inside {
+            for &local in locals {
+                within[local] += 1;
+            }
+        }
+    }
+
+    total
+        .iter()
+        .zip(within)
+        .map(|(&total, within)| total > within)
+        .collect()
+}
+
+/// The item with the member that it's directly under numbered 0, and each local binder in
+/// `outside` made a key binder past any real one, so that `shape` only renumbers the others.
+fn normalize(item: &Item, member: Branch, outside: &[bool]) -> Item {
+    let fixed = |var: Var| match var {
+        Var::Local(local) if outside[local] => Var::Key(usize::MAX / 2 + local),
+        var => var,
+    };
+    let branch = |branch: Option<Branch>| {
+        branch.map(|branch| {
+            let (choice, index) = if branch == member {
+                (branch.0, 0)
+            } else {
+                branch
+            };
+            (fixed(choice), index)
+        })
+    };
+
+    match item {
+        Item::Choice(choice) => Item::Choice(ChoiceRecord {
+            choice: fixed(choice.choice),
+            parent: branch(choice.parent),
+            ..choice.clone()
+        }),
+        Item::Constraint(constraint) => Item::Constraint(Constraint {
+            var: fixed(constraint.var),
+            env: constraint
+                .env
+                .iter()
+                .map(|&(generic, var)| (generic, fixed(var)))
+                .collect(),
+            branch: branch(constraint.branch),
+            ..constraint.clone()
+        }),
+    }
+}
+
+/// How deeply a summary's unions are nested in each other at most, a deliberate bound on how much
+/// of them a summary keeps (#362's step 13g).
+///
+/// A comparison that's reached again inside of a union member, such as a recursive type compared
+/// through a union, nests its summary's unions one level deeper each time it's computed again, so
+/// a summary that kept them all would have no fixed point to iterate to: each round has a union
+/// whose members each hold a copy of the previous round's (seed 1532 of
+/// `test_memo_differential_large` doubled to 458,752 items by round 18). Those levels aren't
+/// redundant, since picking a different member at each level is a different set of bounds, and
+/// while there are only finitely many such sets, keeping them as sets instead (one per way of
+/// picking a member of each union) is exponential in the number of unions.
+///
+/// So a union nested deeper is left out, and what's under its members is put under the member
+/// it's nested in, which then needs what's under every one of them to hold, rather than one.
+/// That's what a summary did before it kept unions, so it can only reject more than computing the
+/// comparison again would, and a summary that left any out is marked approximate and never
+/// reused from the memo, which keeps reusing exact. It's 2 since that's the least that keeps the
+/// slowest comparisons of `nested_baseline.txt` (11.3, and 31451.1, .2 and .5) within the steps
+/// they took before #362's step 13f: with 1, more summaries are approximate and aren't reused,
+/// and 31451.5 takes 20 times as many.
+const MAX_UNION_DEPTH: usize = 2;
 
 /// Returns the representative of the local binder's component.
 fn find(parents: &mut [usize], mut local: usize) -> usize {
@@ -269,13 +974,13 @@ fn find(parents: &mut [usize], mut local: usize) -> usize {
 /// many ways that trying them takes more than `SHAPE_SEARCH_LIMIT` numberings keeps the least one
 /// found by then. Its shape can then depend on how it was numbered, and canonicalizing it again can
 /// give another one, which keeps more copies than needed but loses nothing.
-fn shape(constraints: &[Constraint]) -> (Vec<Constraint>, usize) {
-    let mut locals: Vec<usize> = constraints.iter().flat_map(Constraint::locals).collect();
+fn shape(constraints: &[Item]) -> (Vec<Item>, usize) {
+    let mut locals: Vec<usize> = constraints.iter().flat_map(Item::locals).collect();
     locals.sort_unstable();
     locals.dedup();
 
     // A constraint that's there twice would tell its binders apart from the same ones without it
-    let mut constraints: Vec<Constraint> = constraints
+    let mut constraints: Vec<Item> = constraints
         .iter()
         .map(|constraint| constraint.map_locals(|local| locals.binary_search(&local).unwrap()))
         .collect();
@@ -285,7 +990,7 @@ fn shape(constraints: &[Constraint]) -> (Vec<Constraint>, usize) {
     let mut uses: Vec<Vec<(usize, Vec<usize>)>> = vec![Vec::new(); locals.len()];
 
     for (index, constraint) in constraints.iter().enumerate() {
-        for (position, var) in constraint.vars().enumerate() {
+        for (position, var) in constraint.vars().into_iter().enumerate() {
             if let Var::Local(local) = var {
                 match uses[local].last_mut() {
                     Some((last, positions)) if *last == index => positions.push(position),
@@ -310,13 +1015,13 @@ const SHAPE_SEARCH_LIMIT: usize = 64;
 
 /// The numberings of a component's local binders that `shape` tries.
 struct ShapeSearch<'a> {
-    /// The component's constraints, with its local binders numbered from 0.
-    constraints: &'a [Constraint],
+    /// The component's constraints and unions, with its local binders numbered from 0.
+    constraints: &'a [Item],
     /// The constraints that each local binder is in, by index, and its positions in each: 0 for
     /// the binder that the constraint bounds, and 1 onward for its environment.
     uses: &'a [Vec<(usize, Vec<usize>)>],
-    /// The least sorted constraints found so far.
-    best: Vec<Constraint>,
+    /// The least sorted constraints and unions found so far.
+    best: Vec<Item>,
     /// The numberings tried so far.
     numberings: usize,
 }
@@ -324,6 +1029,7 @@ struct ShapeSearch<'a> {
 impl ShapeSearch<'_> {
     /// Tries each numbering that the colours of the local binders allow, after refining them.
     fn search(&mut self, colours: Vec<usize>) {
+        work(self.constraints.len());
         let colours = self.refine(colours);
 
         // The least colour that more than one binder has, if any (the colours are numbered from 0)
@@ -334,7 +1040,7 @@ impl ShapeSearch<'_> {
         }
 
         let Some(tied) = counts.iter().position(|&count| count > 1) else {
-            let mut constraints: Vec<Constraint> = self
+            let mut constraints: Vec<Item> = self
                 .constraints
                 .iter()
                 .map(|constraint| constraint.map_locals(|local| colours[local]))
@@ -377,13 +1083,15 @@ impl ShapeSearch<'_> {
         };
 
         loop {
+            work(self.constraints.len());
+
             // Each constraint is replaced by its rank among the recoloured constraints
-            let recoloured: Vec<Constraint> = self
+            let recoloured: Vec<Item> = self
                 .constraints
                 .iter()
                 .map(|constraint| constraint.map_locals(|local| colours[local]))
                 .collect();
-            let mut sorted: Vec<&Constraint> = recoloured.iter().collect();
+            let mut sorted: Vec<&Item> = recoloured.iter().collect();
             sorted.sort();
             sorted.dedup();
             let ranks: Vec<usize> = recoloured
@@ -456,6 +1164,7 @@ mod tests {
             upper,
             ty,
             env,
+            branch: None,
             unmatched: false,
         }
     }
@@ -588,7 +1297,12 @@ mod tests {
         assert_eq!(summary.constraints().len(), 9);
 
         for constraint in summary.constraints() {
-            assert!(constraint.locals().all(|local| local < 6));
+            assert!(
+                Item::Constraint(constraint.clone())
+                    .locals()
+                    .iter()
+                    .all(|&local| local < 6)
+            );
         }
 
         // Without a bound on a local binder, a component keeps two
@@ -886,5 +1600,182 @@ mod tests {
         let canonical = first.clone();
         first.canonicalize();
         assert_eq!(first, canonical);
+    }
+
+    /// A union with something under one member that matched is left out, and what's under it is
+    /// put under the member it's nested in.
+    #[test]
+    fn test_canonicalize_leaves_out_single_member_unions() {
+        let mut types = Types::new();
+        let a = types.generic();
+        let mut summary = Summary::default();
+        let (outer, inner) = (summary.local(), summary.local());
+        let record = |choice, parent, members: Vec<Option<Comparison>>| ChoiceRecord {
+            choice,
+            parent,
+            bounded: vec![true; members.len() + 1],
+            members,
+            fallback: None,
+        };
+        summary.add_choice(record(
+            outer,
+            None,
+            vec![Some(Comparison::Assign), Some(Comparison::Assign)],
+        ));
+        summary.add_choice(record(
+            inner,
+            Some((outer, 1)),
+            vec![Some(Comparison::Invalid), Some(Comparison::Assign)],
+        ));
+        summary.add(Constraint {
+            branch: Some((outer, 0)),
+            ..bound(Var::Key(0), false, a, vec![])
+        });
+        summary.add(Constraint {
+            branch: Some((inner, 1)),
+            ..bound(Var::Key(0), true, a, vec![])
+        });
+        summary.canonicalize();
+
+        // The inner union is left out, but the outer one has something under both of its members
+        assert_eq!(summary.choices().len(), 1);
+        assert_eq!(summary.locals, 1);
+        let branches: Vec<Option<Branch>> = summary
+            .constraints()
+            .iter()
+            .map(|constraint| constraint.branch)
+            .collect();
+        assert_eq!(
+            branches,
+            [Some((Var::Local(0), 0)), Some((Var::Local(0), 1))]
+        );
+    }
+
+    /// Unions nested more deeply than `MAX_UNION_DEPTH` are left out, with what's under them put
+    /// under the member they're nested in, which then needs all of it to hold, and the summary is
+    /// approximate (see `Summary::is_approximate`), so it's never reused from the memo. Each union
+    /// here has a bound under both of its members, the second of which the next union is nested
+    /// in, so the fourth, three deep, is past the cap.
+    #[test]
+    fn test_canonicalize_caps_union_depth() {
+        let mut types = Types::new();
+        let generics: Vec<TypeId> = (0..8).map(|_| types.generic()).collect();
+        let mut summary = Summary::default();
+        let unions: Vec<Var> = (0..4).map(|_| summary.local()).collect();
+
+        for (depth, &union) in unions.iter().enumerate() {
+            summary.add_choice(ChoiceRecord {
+                choice: union,
+                parent: depth.checked_sub(1).map(|outer| (unions[outer], 1)),
+                members: vec![Some(Comparison::Assign), Some(Comparison::Assign)],
+                fallback: None,
+                bounded: vec![true, true, false],
+            });
+
+            for member in 0..2 {
+                summary.add(Constraint {
+                    branch: Some((union, member)),
+                    ..bound(
+                        Var::Key(0),
+                        member == 1,
+                        generics[2 * depth + member],
+                        vec![],
+                    )
+                });
+            }
+        }
+
+        summary.canonicalize();
+        assert!(summary.is_approximate());
+        assert_eq!(summary.choices().len(), 3);
+
+        // The fourth union's bounds are both under the third union's second member now, along
+        // with its own
+        let parent = |union: Var| {
+            summary
+                .choices()
+                .iter()
+                .find(|choice| choice.choice == union)
+                .and_then(|choice| choice.parent)
+        };
+        let deepest = summary
+            .choices()
+            .iter()
+            .map(|choice| choice.choice)
+            .find(|&union| parent(union).and_then(|(outer, _)| parent(outer)).is_some())
+            .unwrap();
+        let under_deepest = summary
+            .constraints()
+            .iter()
+            .filter(|constraint| constraint.branch == Some((deepest, 1)))
+            .count();
+        assert_eq!(under_deepest, 3);
+
+        // Three deep, nothing is left out
+        let mut shallow = Summary::default();
+        let unions: Vec<Var> = (0..3).map(|_| shallow.local()).collect();
+
+        for (depth, &union) in unions.iter().enumerate() {
+            shallow.add_choice(ChoiceRecord {
+                choice: union,
+                parent: depth.checked_sub(1).map(|outer| (unions[outer], 1)),
+                members: vec![Some(Comparison::Assign), Some(Comparison::Assign)],
+                fallback: None,
+                bounded: vec![true, true, false],
+            });
+
+            for member in 0..2 {
+                shallow.add(Constraint {
+                    branch: Some((union, member)),
+                    ..bound(
+                        Var::Key(0),
+                        member == 1,
+                        generics[2 * depth + member],
+                        vec![],
+                    )
+                });
+            }
+        }
+
+        shallow.canonicalize();
+        assert!(!shallow.is_approximate());
+        assert_eq!(shallow.choices().len(), 3);
+    }
+
+    /// Joining a summary with itself gives it back, even when it has unions, two copies of which
+    /// would have more bounds to check against each other than one.
+    #[test]
+    fn test_join_is_idempotent() {
+        let mut types = Types::new();
+        let [a, b] = [types.generic(), types.generic()];
+        let mut summary = Summary::default();
+        let choice = summary.local();
+        summary.add_choice(ChoiceRecord {
+            choice,
+            parent: None,
+            members: vec![Some(Comparison::Assign), Some(Comparison::Assign)],
+            fallback: None,
+            bounded: vec![true, true, false],
+        });
+        summary.add(Constraint {
+            branch: Some((choice, 0)),
+            ..bound(Var::Key(0), true, a, vec![])
+        });
+        summary.add(Constraint {
+            branch: Some((choice, 1)),
+            ..bound(Var::Key(0), false, b, vec![])
+        });
+        summary.canonicalize();
+
+        assert_eq!(summary.join(&summary), summary);
+        assert_eq!(summary.join(&Summary::default()), summary);
+
+        // Applying it twice is two unions
+        let mut twice = Summary::default();
+        twice.apply(&summary, &[Var::Key(0)]);
+        twice.apply(&summary, &[Var::Key(0)]);
+        twice.canonicalize();
+        assert_eq!(twice.choices().len(), 2);
+        assert_eq!(twice.join(&summary), twice);
     }
 }

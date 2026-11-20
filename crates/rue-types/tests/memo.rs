@@ -888,16 +888,17 @@ fn held_by_revisit(db: &mut Types) -> (TypeId, TypeId) {
 
 /// Both members of `(T, WR) | (Int, WL)` hold `(Int, WR)` if comparing `FL` with `FR` again is
 /// `Assign`, and only the first bounds `T`, so its `Int ≤ T` is left out (see `Choices::is_held`),
-/// and the result is `Cast` (from the second parameters). But that makes the second member only
-/// `Cast`, so `Int ≤ T ≤ (nil, nil)` is checked after all, and the result is `Invalid`, which is
-/// its least fixed point. Exact mode used to stop after one round, so it gave `Cast`, while
-/// iterating in fixpoint mode gave `Invalid`. A revisit is given the previous round's result too
-/// in exact mode for types like these, so it gives `Invalid` as well.
+/// and the result is `Cast` (from the second parameters). That makes the second member only
+/// `Cast`, so `Int ≤ T ≤ (nil, nil)` is checked after all, but it's attributed to the first member
+/// (see `Choices::attributed`), which makes that one `Invalid`, so the union is the second's
+/// `Cast`, and so is the result, which is its least fixed point. Exact mode used to stop after one
+/// round, which could differ from iterating in fixpoint mode, so a revisit is given the previous
+/// round's result too in exact mode for types like these.
 #[test]
 fn test_held_by_revisit() {
     with_large_stack(|| {
         let results = in_every_mode(held_by_revisit);
-        assert_eq!(results, [Comparison::Invalid; 3]);
+        assert_eq!(results, [Comparison::Cast; 3]);
 
         // Inferring always compares in exact mode, which gives it the same result
         let mut db = Types::new();
@@ -905,7 +906,7 @@ fn test_held_by_revisit() {
         let mut infer = Inference::new([]);
         let result =
             compare_with_inference(&mut db.arena, &db.builtins, lhs, rhs, Some(&mut infer));
-        assert_eq!(result, Comparison::Invalid);
+        assert_eq!(result, Comparison::Cast);
     });
 }
 
@@ -1864,6 +1865,19 @@ fn test_memo_differential_nested_large() {
     println!("{summary:?}");
 }
 
+/// A module whose summaries used to grow without bound once they kept the unions their bounds were
+/// collected under (#362's step 13g): a union whose members each reached the same comparison again
+/// doubled the summary each round, to 458,752 items by round 18, and canonicalizing them, which
+/// didn't count as steps, ran for hours. Copies of a union and unions nested too deeply are left
+/// out now (see `Summary::canonicalize`), and canonicalizing counts towards the step limit.
+#[test]
+fn test_memo_differential_bounded_summaries() {
+    let summary = with_large_stack(|| count_steps(|| differential([1532], 8, true, NESTING)));
+    let (summary, steps) = summary;
+    assert!(summary.cases > 0, "{summary:?}");
+    assert!(steps < 2_000_000, "{steps}");
+}
+
 /// A larger run of `test_memo_differential`, which takes a few minutes in release builds:
 /// `cargo test --release -p rue-types --test memo -- --ignored --nocapture`
 #[test]
@@ -2168,12 +2182,11 @@ fn test_union_member_differential() {
 /// A larger run of `test_union_member_differential`, which takes about six minutes in release
 /// builds: `cargo test --release -p rue-types --test memo -- --ignored`
 ///
-/// This records known disagreements as well: three modules whose `FL`, `FR` or `WL` is compared
-/// with a copy of it are still `Invalid` with the memo, in both modes, and `Assign` without it or
-/// while inferring. A pair of bounds from members of different unions still only counts while
-/// both members match, which isn't monotone in their results, and iterating keeps an `Invalid`
-/// that exact mode drops. Before #362's step 13f, 20 of these seeds disagreed (6 compared with
-/// the same type and 14 with a copy), including these three.
+/// None of them disagree. Before #362's step 13f, 20 of these seeds disagreed (6 compared with the
+/// same type and 14 with a copy), and 3 compared with a copy did after it, since a pair of bounds
+/// from members of different unions only counted while both members matched, which isn't monotone
+/// in their results. Step 13g attributes such a pair to the members instead (see
+/// `Choices::attributed`).
 #[test]
 #[ignore = "slow"]
 fn test_union_member_differential_large() {
@@ -2183,12 +2196,10 @@ fn test_union_member_differential_large() {
             Vec::<String>::new()
         );
 
-        let disagreements = union_member_differential(0..200_000, true);
-        let seeds: Vec<&str> = disagreements
-            .iter()
-            .map(|line| line.split(':').next().unwrap())
-            .collect();
-        assert_eq!(seeds, ["7526", "13394", "127930"]);
+        assert_eq!(
+            union_member_differential(0..200_000, true),
+            Vec::<String>::new()
+        );
     });
 }
 
@@ -2197,13 +2208,10 @@ fn test_union_member_differential_large() {
 /// `type WR = fn(p0: Bytes | FL) -> Bytes;`, from `union_member_module`'s seed 62040 (whose `WL`
 /// isn't used).
 ///
-/// `FL` is assignable to itself, without comparing any further, in every mode. But it isn't to a
-/// copy of it: inside `FR` against itself, `(WR, U)` matches both `(WR, U')` and `U'`, and
-/// `fn(p0: U) -> WR` matches both `fn(p0: U') -> WR` and `U'`. Picking the first of each works
-/// (with `U'` as `U`), but every member that matches is kept, and bounds from members of different
-/// unions are checked against each other, such as `U' ≥ (WR, U)`, from `(WR, U)` against `U'`,
-/// and `U' ≤ U`, from the functions. Picking a member of each union so that they hold together
-/// would mean backtracking (#362, §5, question 2).
+/// `FL` is assignable to itself, without comparing any further, in every mode, and isn't to a copy
+/// of it, in every mode either: the copy has its own free `T`, which `FL` and `FR` both refer to,
+/// so `(T, Bytes)` isn't assignable to the copy's, and no bounds are checked at all. (This used to
+/// be read as the union members of `FR` failing against each other.)
 #[test]
 fn test_compared_with_itself() {
     with_large_stack(|| {

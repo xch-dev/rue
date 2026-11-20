@@ -87,6 +87,11 @@ pub(crate) struct BranchId {
     pub(crate) member: usize,
 }
 
+/// A pair of bounds on an instance that didn't hold (and what comparing them gave), with the
+/// union member each was collected under, if it's one of a union compared inside of the function
+/// comparison whose bounds are being checked (see `Choices::attributed`).
+pub(crate) type FailedPair = (Option<BranchId>, Option<BranchId>, Comparison);
+
 /// The `BranchId::member` of a union comparison's fallback, such as comparing a function's runtime
 /// structure with the union when no member holds the function (#349).
 pub(crate) const FALLBACK: usize = usize::MAX;
@@ -403,6 +408,17 @@ impl Inference {
         self.choices.open(parent, members)
     }
 
+    /// Opens a choice that's already been compared (see `Choices::reopen`).
+    pub(crate) fn reopen_choice(
+        &mut self,
+        parent: Option<BranchId>,
+        members: &[Option<Comparison>],
+        fallback: Option<Comparison>,
+        bounded: &[bool],
+    ) -> usize {
+        self.choices.reopen(parent, members, fallback, bounded)
+    }
+
     /// Records what comparing the value with a union's member (or its fallback) gave.
     pub(crate) fn record(&mut self, branch: BranchId, result: Comparison) {
         self.choices.record(branch, result);
@@ -569,6 +585,232 @@ impl Choices {
                 .is_none_or(|parent| self.matched_since(parent, from))
     }
 
+    /// Whether the union member, and every member it's nested in from the choice opened at index
+    /// `from` on, either gave a result other than `Invalid` or hasn't given one yet. A member that
+    /// gave `Invalid` never holds the value, whatever the bounds collected under it are, so they
+    /// can't decide anything (see `Choices::attributed`).
+    pub(crate) fn can_hold_since(&self, branch: BranchId, from: usize) -> bool {
+        if branch.choice < from {
+            return true;
+        }
+
+        let choice = &self.0[branch.choice];
+
+        let result = if branch.member == FALLBACK {
+            choice.fallback
+        } else {
+            choice.members[branch.member]
+        };
+
+        result != Some(Comparison::Invalid)
+            && choice
+                .parent
+                .is_none_or(|parent| self.can_hold_since(parent, from))
+    }
+
+    /// Whether the bounds collected under the union member can decide anything, as far as the
+    /// choices opened in the range do: no union it's nested in from there on (nor its own) is held
+    /// by another member, one that gave the union's best result without collecting bounds. Such a
+    /// union gives that result whatever fails under its other members (see `Choices::attributed`),
+    /// so what's under them is never needed, not even to rule out a member of another union.
+    pub(crate) fn needed_in(&self, mut branch: BranchId, range: &std::ops::Range<usize>) -> bool {
+        loop {
+            if !range.contains(&branch.choice) {
+                return true;
+            }
+
+            let choice = &self.0[branch.choice];
+            let best = best_of(choice);
+            let index = branch.member.min(choice.members.len());
+
+            let held = choice
+                .members
+                .iter()
+                .chain([&choice.fallback])
+                .zip(&choice.bounded)
+                .enumerate()
+                .any(|(other, (&result, &bounded))| {
+                    other != index && result == Some(best) && !bounded
+                });
+
+            if held {
+                return false;
+            }
+
+            match choice.parent {
+                Some(parent) => branch = parent,
+                None => return true,
+            }
+        }
+    }
+
+    /// The worst result of the unions opened in the range that aren't nested in another of them,
+    /// given the pairs of bounds that failed (see `FailedPair`). A union's result is the best of
+    /// its members' (and the fallback's), and a member's is its own result joined with what the
+    /// pairs charge it and with what the unions nested in it give. So a member whose bounds don't
+    /// hold stops counting, and the union holds if another member does: its members are
+    /// alternatives (#360). Only the unions that a failed pair's bound was collected under, and
+    /// those they're nested in, are worked out, since the others' results are already in the
+    /// comparison's.
+    ///
+    /// A pair whose bounds are both under members of unions, neither nested in the other's, rules
+    /// out picking both members. Picking them together would need backtracking (#362, §5,
+    /// question 2), so instead each member is charged what the pair gave only as far as the
+    /// other's union can't avoid the other member: what its best other member gives
+    /// (`Choices::alternative`). That's never less than picking the two members together would be,
+    /// so it never accepts more, and a member that's never needed (another member of its union
+    /// holds as well) charges nothing. The charges depend on the members' results, which depend on
+    /// the charges, so they're worked out again until they stop growing, from none, which takes
+    /// as many rounds as there are results at most. It's built from `max` and `min`, so it's
+    /// monotone in the members' results and the pairs'.
+    pub(crate) fn attributed(
+        &self,
+        range: std::ops::Range<usize>,
+        pairs: &[FailedPair],
+    ) -> Comparison {
+        if pairs.is_empty() {
+            return Comparison::Assign;
+        }
+
+        let mut touched: Vec<bool> = vec![false; range.len()];
+
+        for &(lhs, rhs, _) in pairs {
+            for mut branch in [lhs, rhs].into_iter().flatten() {
+                while range.contains(&branch.choice) && !touched[branch.choice - range.start] {
+                    touched[branch.choice - range.start] = true;
+
+                    match self.0[branch.choice].parent {
+                        Some(parent) => branch = parent,
+                        None => break,
+                    }
+                }
+            }
+        }
+
+        let mut charged: FxHashMap<BranchId, Comparison> = FxHashMap::default();
+
+        loop {
+            let (members, result) = self.evaluate(&range, &touched, &charged);
+            let mut next: FxHashMap<BranchId, Comparison> = FxHashMap::default();
+            let mut charge = |branch: BranchId, by: Comparison| {
+                let entry = next.entry(branch).or_insert(Comparison::Assign);
+                *entry = (*entry).max(by);
+            };
+
+            for &(lhs, rhs, pair) in pairs {
+                match (lhs, rhs) {
+                    (Some(lhs), Some(rhs)) if self.encloses(lhs, rhs) => charge(rhs, pair),
+                    (Some(lhs), Some(rhs)) if self.encloses(rhs, lhs) => charge(lhs, pair),
+                    (Some(lhs), Some(rhs)) => {
+                        charge(lhs, pair.min(self.alternative(rhs, &members)));
+                        charge(rhs, pair.min(self.alternative(lhs, &members)));
+                    }
+                    (Some(branch), None) | (None, Some(branch)) => charge(branch, pair),
+                    (None, None) => {}
+                }
+            }
+
+            if next == charged {
+                return result;
+            }
+
+            charged = next;
+        }
+    }
+
+    /// What each member of the touched unions in the range gives, given what's charged to them
+    /// (see `Choices::attributed`), and the worst result of those that aren't nested in another.
+    fn evaluate(
+        &self,
+        range: &std::ops::Range<usize>,
+        touched: &[bool],
+        charged: &FxHashMap<BranchId, Comparison>,
+    ) -> (FxHashMap<BranchId, Comparison>, Comparison) {
+        let mut nested: FxHashMap<BranchId, Comparison> = charged.clone();
+        let mut members: FxHashMap<BranchId, Comparison> = FxHashMap::default();
+        let mut result = Comparison::Assign;
+
+        for index in range.clone().rev() {
+            if !touched[index - range.start] {
+                continue;
+            }
+
+            let choice = &self.0[index];
+            let mut best = None;
+
+            for (member, &own) in choice
+                .members
+                .iter()
+                .enumerate()
+                .chain([(FALLBACK, &choice.fallback)])
+            {
+                let Some(own) = own else {
+                    continue;
+                };
+
+                let branch = BranchId {
+                    choice: index,
+                    member,
+                };
+                let gives = own.max(nested.get(&branch).copied().unwrap_or(Comparison::Assign));
+                members.insert(branch, gives);
+                best = Some(best.map_or(gives, |best: Comparison| best.min(gives)));
+            }
+
+            let Some(best) = best else {
+                continue;
+            };
+
+            match choice.parent {
+                Some(parent) if range.contains(&parent.choice) => {
+                    let entry = nested.entry(parent).or_insert(Comparison::Assign);
+                    *entry = (*entry).max(best);
+                }
+                _ => result = result.max(best),
+            }
+        }
+
+        (members, result)
+    }
+
+    /// What the best member of the union other than this one gives (see `Choices::evaluate`),
+    /// which is what avoiding the member costs, or `Invalid` if there's none.
+    fn alternative(
+        &self,
+        branch: BranchId,
+        members: &FxHashMap<BranchId, Comparison>,
+    ) -> Comparison {
+        let choice = &self.0[branch.choice];
+
+        (0..choice.members.len())
+            .chain([FALLBACK])
+            .filter(|&member| member != branch.member)
+            .filter_map(|member| {
+                members
+                    .get(&BranchId {
+                        choice: branch.choice,
+                        member,
+                    })
+                    .copied()
+            })
+            .min()
+            .unwrap_or(Comparison::Invalid)
+    }
+
+    /// Whether the union member is the other one or one it's nested in.
+    fn encloses(&self, outer: BranchId, mut inner: BranchId) -> bool {
+        loop {
+            if inner == outer {
+                return true;
+            }
+
+            match self.0[inner.choice].parent {
+                Some(parent) => inner = parent,
+                None => return false,
+            }
+        }
+    }
+
     /// Starts comparing a value with a union's members, under the given member of an enclosing
     /// union if there is one, and returns the index of the new choice.
     pub(crate) fn open(&mut self, parent: Option<BranchId>, members: usize) -> usize {
@@ -577,6 +819,45 @@ impl Choices {
             members: vec![None; members],
             fallback: None,
             bounded: vec![false; members + 1],
+        });
+        self.0.len() - 1
+    }
+
+    /// The union member that the choice is nested in, what each of its members and its fallback
+    /// gave, and which collected bounds (see `ChoiceRecord` in `summary.rs`).
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn record_of(
+        &self,
+        choice: usize,
+    ) -> (
+        Option<BranchId>,
+        Vec<Option<Comparison>>,
+        Option<Comparison>,
+        Vec<bool>,
+    ) {
+        let choice = &self.0[choice];
+        (
+            choice.parent,
+            choice.members.clone(),
+            choice.fallback,
+            choice.bounded.clone(),
+        )
+    }
+
+    /// Opens a choice that's already been compared, with what each of its members and its fallback
+    /// gave and which collected bounds, such as one that a summary recorded, and returns it.
+    pub(crate) fn reopen(
+        &mut self,
+        parent: Option<BranchId>,
+        members: &[Option<Comparison>],
+        fallback: Option<Comparison>,
+        bounded: &[bool],
+    ) -> usize {
+        self.0.push(Choice {
+            parent,
+            members: members.to_vec(),
+            fallback,
+            bounded: bounded.to_vec(),
         });
         self.0.len() - 1
     }

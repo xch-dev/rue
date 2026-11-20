@@ -37,6 +37,26 @@ pub(crate) fn step() {
     }
 }
 
+/// Records several steps at once, such as the work of canonicalizing a summary.
+#[inline]
+pub(crate) fn step_many(steps: usize) {
+    #[cfg(feature = "step-counter")]
+    {
+        let total = STEPS.with(|total| {
+            total.set(total.get() + steps);
+            total.get()
+        });
+
+        assert!(
+            total <= STEP_LIMIT.with(std::cell::Cell::get),
+            "step limit exceeded"
+        );
+    }
+
+    #[cfg(not(feature = "step-counter"))]
+    let _ = steps;
+}
+
 /// Returns the number of steps taken on this thread by the given function.
 #[cfg(feature = "step-counter")]
 pub fn count_steps<T>(f: impl FnOnce() -> T) -> (T, usize) {
