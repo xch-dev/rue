@@ -547,3 +547,86 @@ test fn narrowed_for_a_member_of_the_expected_type() -> Int {
     let _result: (5, nil) | Bytes = wrap(value);
     1
 }
+
+fn wrapped_twice<T>(value: T | (T, T)) -> fn(y: fn(z: T) -> nil) -> nil {
+    unchecked_cast(value)
+}
+
+fn call_with<G>(h: fn(y: G) -> nil, _f: fn(y: G) -> Int) -> G {
+    unchecked_cast(h)
+}
+
+// `call_with`'s `G` is in a parameter of `h`'s type, so `G ≤ fn(z: 5) -> nil` doesn't make
+// `wrapped_twice(value)` required to be a `fn(y: fn(z: 5) -> nil) -> nil`: the
+// `fn(y: fn(z: Int | (5, 5)) -> nil) -> nil` it's solved as makes `G` a
+// `fn(z: Int | (5, 5)) -> nil`, which is one. It isn't narrowed, so the lambda can pass `y` a
+// `(5, 5)`
+test fn nested_call_into_a_contravariant_parameter_isnt_narrowed() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: fn(z: 5) -> nil = call_with(
+        wrapped_twice(value),
+        fn(y) => {
+            y((5, 5));
+            1
+        },
+    );
+    1
+}
+
+fn pair_checked<G>(x: G, _f: fn(y: G) -> Int) -> (G, nil) {
+    (x, nil)
+}
+
+// `G ≤ 5` is only under the expected type's `(5, nil)` member, so it's not what `first_of(value)`
+// is required to be, and `G` stays `Int | (5, 5)`, which the other member takes. The guard on `y`
+// can then be a pair
+test fn no_requirement_from_a_member_of_the_expected_type() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, nil) | (Int | (5, 5), nil) = pair_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            1
+        },
+    );
+    1
+}
+
+fn first_checked<G>(x: G, _f: fn(y: G) -> Int) -> G {
+    x
+}
+
+// `first_of(value)` is an `Int | (5, 5)`, which is what it's required to be, so it isn't narrowed
+// and the guard on `y` can be a pair
+test fn nested_call_that_meets_its_requirement_isnt_narrowed() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: Int | (5, 5) = first_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            1
+        },
+    );
+    1
+}
+
+// The same through parentheses
+test fn nested_call_in_parentheses() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: 5 = identity((first_of(value)));
+    result + 0
+}
+
+fn make_pair<A, B>(value: B | (B, B)) -> fn(a: A) -> (A, B) {
+    unchecked_cast(value)
+}
+
+// A required type that binds generics of its own is only checked after the call's return type is
+// generalized over them, so the call isn't narrowed for it, and is solved as it always was
+test fn generic_function_expected_type_isnt_narrowed_for() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _f: fn<X>(a: X) -> (X, Int | (5, 5)) = make_pair(value);
+    1
+}

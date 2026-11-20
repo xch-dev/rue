@@ -19,3 +19,6 @@ diagnostics:
 - Unused function `alike_members` at generic_inference_matched_members_errors.rue:41:4
 - Unused function `alike_members_stay_ruled_out` at generic_inference_matched_members_errors.rue:49:4
 - "Cannot cast `fn<U>(_x: (U | OrInt<U>, OrNil<U> | U) | Bytes) -> U` to `fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil)`, since they have different runtime representations at generic_inference_matched_members_errors.rue:50:14"
+- Unused function `first_member` at generic_inference_matched_members_errors.rue:54:4
+- Unused function `narrowed_only_if_it_solves_the_call` at generic_inference_matched_members_errors.rue:60:4
+- Cannot assign `Int | (5, 5)` to `(5, 5)` without a type guard, since the value isn't always a valid `(5, 5)` at generic_inference_matched_members_errors.rue:62:27

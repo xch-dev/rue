@@ -280,6 +280,44 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: nested_call_into_a_contravariant_parameter_isnt_narrowed
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: no_requirement_from_a_member_of_the_expected_type
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_that_meets_its_requirement_isnt_narrowed
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_in_parentheses
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (a 9 2)) 1)) (c (q . 5) 1)) (c (c (q . 1) (q . 1)) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: generic_function_expected_type_isnt_narrowed_for
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - Binding `result` is returned directly after it's declared at generic_inference_matched_members.rue:28:5
 - Unused parameter `b` at generic_inference_matched_members.rue:296:36
+- |-
+  Unnecessary parentheses at generic_inference_matched_members.rue:618:30
+    help: Remove the parentheses

@@ -132,11 +132,16 @@ pub(crate) fn infer_call(
     // requires of it whatever it's solved as, if anything (see
     // `Compiler::with_argument_requirement`). The call's generics are narrowed for it when what
     // they're solved as otherwise isn't (see `CallSolver::solve_narrowed`)
+    //
+    // One that binds generics of its own, such as `fn<X>(a: X) -> X`, is left out, since the
+    // call's return type is only generalized over them after it's solved (see `generalize`), so
+    // the check below doesn't tell whether the call is assignable to it
     let required_type = if ctx.is_expected_type_provisional() {
         requirement
     } else {
         final_expected
-    };
+    }
+    .filter(|&ty| expected_generic_depths(ctx, ty).is_empty());
 
     // What the required type infers for the callee's generics, whose upper bounds outside of any
     // union member are what its arguments are required to be assignable to
@@ -341,8 +346,17 @@ pub(crate) fn infer_call(
                     bounds.insert(generic, upper);
                 }
 
+                // A call in parentheses is the argument as much as one without them
+                let mut call = expr.clone();
+
+                while let AstExpr::GroupExpr(group) = &call
+                    && let Some(inner) = group.expr()
+                {
+                    call = inner;
+                }
+
                 let ty = substitute_with_mappings(ctx.types_mut(), param, &bounds);
-                Some((expr.syntax().text_range(), ty))
+                Some((call.syntax().text_range(), ty))
             });
 
         let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
@@ -556,7 +570,8 @@ pub(crate) fn infer_call(
     };
 
     // A call that what its generics are solved as doesn't solve, for a type it's required to be
-    // assignable to, is rejected, so its generics are narrowed (see `CallSolver::solve_narrowed`),
+    // assignable to, is rejected: an argument isn't assignable to its parameter, or the return
+    // type to the required type. So its generics are narrowed (see `CallSolver::solve_narrowed`),
     // and that's used if it solves it. A call that's solved isn't narrowed, so that nothing that
     // compiles changes
     let (mappings, solved_checks) = match required_type {

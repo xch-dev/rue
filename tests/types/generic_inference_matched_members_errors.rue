@@ -50,3 +50,15 @@ fn alike_members_stay_ruled_out() -> Int {
     let _f = alike_members as fn<B>(x: B) -> fn(x: nil) -> (Bytes, nil);
     1
 }
+
+fn first_member<T>(value: T | (T, T)) -> T {
+    unchecked_cast(value)
+}
+
+// Neither `Int | (5, 5)` nor what narrowing makes `T` is a `(5, 5)`, so the call is rejected with
+// what `T` is solved as without narrowing
+fn narrowed_only_if_it_solves_the_call() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, 5) = first_member(value);
+    1
+}
