@@ -601,3 +601,21 @@ test fn element_returns_what_a_waiting_lambda_reads_through_a_mapping() -> List<
     let result = chain_twice([fn(x) => x + 1], (fn(v) => v, 5), (fn(y) => y, 1), 6);
     result
 }
+
+fn apply_boxed<T, U>(function: Box<fn(a: T) -> U>, value: T) -> U {
+    function.inner(value)
+}
+
+// Guard: the type expected of `apply_first(...)` is only a hint, since it's in a lambda's body in
+// `apply_boxed`'s argument, so the call isn't solved again to narrow the lambda's `x`, and the
+// lambda is compiled where it is, as before, so `T` is narrowed to `5` through its return type
+// (infer-fuzz generator 3, seed 408)
+test fn element_under_a_hinted_expected_type() -> Int {
+    let result = apply_boxed(
+        Box::<fn(a: Int) -> (Int, fn(a: List<5>) -> List<5>)> {
+            inner: fn(_x14) => (4, fn(_x15: List<5>) => apply_first((fn(x16) => [x16, x16], 1), 5)),
+        },
+        1,
+    );
+    result.first
+}

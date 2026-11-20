@@ -245,6 +245,7 @@ pub(crate) fn infer_call(
                 order.deferred(
                     i,
                     &expected_returns,
+                    final_expected.is_none(),
                     &depends,
                     &with_dependencies(&waiting_reads(&waiting), &depends),
                 )
@@ -1459,12 +1460,21 @@ impl ArgumentOrder {
     /// the expected type's bound narrows them too, as `5` does `T` in
     /// `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)`, or `5 | nil` does in
     /// `fn(x) => if x is nil { nil } else { x }`. Compiled later, its parameters would be what the
-    /// other arguments infer, `Int`, and the call or guard would give that. Which of the two a lambda needs depends on what its body does with its
-    /// parameters, which isn't known before it's compiled, so it's compiled where it was.
+    /// other arguments infer, `Int`, and the call or guard would give that. Which of the two a
+    /// lambda needs depends on what its body does with its parameters, which isn't known before
+    /// it's compiled, so it's compiled where it was.
+    ///
+    /// Where the type expected of the call is only a hint (`hinted`), as it is for a call in a
+    /// lambda's body in another call's argument, any lambda whose return type it bounds is compiled
+    /// where it is too. The call is only solved again with its lambdas' parameters, to narrow them
+    /// to what the expected type allows, when the expected type is final (see
+    /// `solve_with_lambda_parameters`), so compiled later, `x` in `fn(x) => [x, x]` would stay the
+    /// `Int` that `5` widens to where a `List<5>` is expected (infer-fuzz generator 3, seed 408).
     fn deferred(
         &self,
         i: usize,
         expected: &IndexSet<TypeId>,
+        hinted: bool,
         depends: &HashMap<TypeId, IndexSet<TypeId>>,
         waiting: &IndexSet<TypeId>,
     ) -> HashMap<TextRange, ElementLambda> {
@@ -1480,7 +1490,8 @@ impl ArgumentOrder {
                 // The expected type's bound reaches the generics its parameters read through its
                 // return type only once it's compiled, so it's compiled where it is if its body can
                 // lose them, or if an argument still to be compiled reads them, as `identity(5)`
-                // does in `map_list([fn(x) => x], identity(5))` with `List<5>` expected
+                // does in `map_list([fn(x) => x], identity(5))` with `List<5>` expected, or if the
+                // expected type is only a hint (`hinted`)
                 let read_later = self.pending.iter().any(|&other| {
                     self.arguments[other]
                         .reads
@@ -1488,7 +1499,7 @@ impl ArgumentOrder {
                         .any(|generic| lambda.reads.contains(generic))
                 });
 
-                if bounded_by_expected && (lambda.narrows || read_later) {
+                if bounded_by_expected && (lambda.narrows || read_later || hinted) {
                     return false;
                 }
 
