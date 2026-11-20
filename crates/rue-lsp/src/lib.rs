@@ -375,9 +375,7 @@ impl LanguageServer for Backend {
             Some(prepare_rename(cache, params.position))
         })
         .await
-        .transpose()
-        .map(Option::flatten)
-        .map_err(request_failed)
+        .map_or(Ok(None), |result| result.map_err(request_failed))
     }
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
@@ -395,9 +393,7 @@ impl LanguageServer for Backend {
             Some(rename(cache, &shared, params.position, &new_name))
         })
         .await
-        .transpose()
-        .map(Option::flatten)
-        .map_err(request_failed)
+        .map_or(Ok(None), |result| result.map_err(request_failed))
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
@@ -665,9 +661,13 @@ fn rename(
         return Ok(None);
     };
 
+    // An edit that's left out would rename only some of the places
     let edits = edits
         .into_iter()
-        .filter_map(|(kind, edits)| Some((shared.paths.uri(&kind)?, edits)));
+        .map(|(kind, edits)| Some((shared.paths.uri(&kind)?, edits)))
+        .collect::<Option<Vec<_>>>()
+        .ok_or("A file that would be edited isn't one that the editor can open")?
+        .into_iter();
 
     let Some(moved) = moved else {
         return Ok(Some(WorkspaceEdit::new(edits.collect())));

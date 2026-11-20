@@ -902,6 +902,25 @@ fn test_rename_entrypoint() {
         "#]],
     );
 
+    // A directory that's named `main` isn't what the project is built from
+    check(
+        &[
+            (
+                "other.rue",
+                "export fn go() -> Int {\n    ma$0in::a::ONE\n}\n",
+            ),
+            ("main/a.rue", "export const ONE: Int = 1;\n"),
+        ],
+        "start",
+        expect![[r#"
+            other.rue:
+            export fn go() -> Int {
+                start::a::ONE
+            }
+            renamed: main -> start
+        "#]],
+    );
+
     // A `main` file in another directory is like any other
     check(
         &[
@@ -924,7 +943,8 @@ fn test_rename_entrypoint() {
 
 #[test]
 fn test_rename_module_that_only_differs_in_case() {
-    // The new name is the same file on a file system that ignores case
+    // The new name is the same file on a file system that ignores case, which is the only kind
+    // of file system that this would be refused on
     check(
         &[
             ("main.rue", "fn main() -> Int {\n    uti$0ls::ONE\n}\n"),
@@ -943,52 +963,111 @@ fn test_rename_module_that_only_differs_in_case() {
 
 #[test]
 fn test_rename_directory_with_external_function() {
-    let files = |main: &'static str, a: &'static str| {
-        [
-            ("main.rue", main),
-            ("lib/a.rue", a),
+    // The path of an external function isn't rewritten, so the rename is refused if a part of
+    // the path names the directory, and allowed if the path leads to the same file afterwards
+    let renamed = |path: &str, inside: bool| {
+        let external = format!("extern fn run(value: Any) -> Any from \"{path}\";\n\n");
+        let main = "fn main() -> Any {\n    li$0b::a::go()\n}\n";
+        let go = "export fn go() -> Any {\n    1\n}\n";
+
+        let (main, a) = if inside {
+            (main.to_string(), format!("{external}{go}"))
+        } else {
+            (format!("{external}{main}"), go.to_string())
+        };
+
+        let project = project(&[
+            ("main.rue", &main),
+            ("lib/a.rue", &a),
+            ("lib/sub/b.rue", "export const ONE: Int = 1;\n"),
             ("lib/run.hex", "01"),
             ("run.hex", "01"),
-        ]
+        ]);
+
+        let diagnostics = project.diagnostics();
+        assert!(!diagnostics.contains(" Error"), "{diagnostics}");
+
+        project.rename("core").lines().last().unwrap().to_string()
     };
 
-    let external = "extern fn run(value: Any) -> Any from \"./lib/run.hex\";\n\n";
-    let main = "fn main() -> Any {\n    li$0b::a::go()\n}\n";
-    let go = "export fn go() -> Any {\n    1\n}\n";
+    let refused = |place: &str| {
+        format!(
+            "error: `lib` can't be renamed, since the path of the external function at {place} \
+            names it"
+        )
+    };
 
-    // The path of an external function isn't rewritten, so the rename is refused if it would
-    // stop leading to its file
-    let outside = format!("{external}{main}");
-    check(
-        &files(outside.leak(), go),
-        "core",
-        expect![[r#"
-        error: `lib` can't be renamed, since the path of the external function at main.rue:1:39 would no longer lead to its file
-    "#]],
+    // From outside of the directory, into it
+    assert_eq!(renamed("./lib/run.hex", false), refused("main.rue:1:39"));
+    assert_eq!(renamed("lib/../run.hex", false), refused("main.rue:1:39"));
+
+    // From inside of it, out and back in
+    assert_eq!(renamed("../lib/run.hex", true), refused("lib/a.rue:1:39"));
+
+    // A path that stays inside of the directory, or only leaves it, still leads to its file
+    assert_eq!(renamed("./run.hex", true), "renamed: lib -> core");
+    assert_eq!(renamed("sub/../run.hex", true), "renamed: lib -> core");
+    assert_eq!(renamed("../run.hex", true), "renamed: lib -> core");
+    assert_eq!(renamed("./run.hex", false), "renamed: lib -> core");
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rename_module_that_is_a_symlink() {
+    // The file or directory that a symbolic link leads to isn't where the project has the
+    // module, so neither it nor the link is renamed
+    let elsewhere = super::TempDir::new("rue-lsp-rename-elsewhere");
+    let real = elsewhere.path().canonicalize().unwrap();
+    std::fs::write(real.join("impl.rue"), "export const ONE: Int = 1;\n").unwrap();
+    std::fs::create_dir(real.join("shared")).unwrap();
+    std::fs::write(real.join("shared/a.rue"), "export const TWO: Int = 2;\n").unwrap();
+
+    let main = "fn main() -> Int {\n    utils::ONE + lib::a::TWO + plain::THREE\n}\n";
+
+    let renamed = |cursor: &str, new_name: &str| {
+        let main = main.replacen(cursor, &format!("$0{cursor}"), 1);
+        let files = [
+            ("main.rue", main.as_str()),
+            ("plain.rue", "export const THREE: Int = 3;\n"),
+        ];
+
+        // The links have to be there before the project is compiled
+        let dir = super::TempDir::new("rue-lsp-rename-links");
+        std::fs::write(dir.path().join("Rue.toml"), super::MANIFEST).unwrap();
+        std::os::unix::fs::symlink(real.join("impl.rue"), dir.path().join("utils.rue")).unwrap();
+        std::os::unix::fs::symlink(real.join("shared"), dir.path().join("lib")).unwrap();
+
+        let project = TestProject::in_dir(dir, &files);
+        project
+            .backend()
+            .shared
+            .rename_files
+            .store(true, Ordering::Relaxed);
+
+        let diagnostics = project.diagnostics();
+        assert!(!diagnostics.contains(" Error"), "{diagnostics}");
+
+        project.rename(new_name)
+    };
+
+    assert_eq!(
+        renamed("utils", "helpers"),
+        "error: `utils` is reached through a symbolic link, so it can't be renamed\n"
+    );
+    assert_eq!(
+        renamed("lib", "core"),
+        "error: `lib` is reached through a symbolic link, so it can't be renamed\n"
     );
 
-    let inside = format!("extern fn run(value: Any) -> Any from \"../run.hex\";\n\n{go}");
-    check(
-        &files(main, inside.leak()),
-        "core",
-        expect![[r#"
-        error: `lib` can't be renamed, since the path of the external function at a.rue:1:39 would no longer lead to its file
-    "#]],
-    );
-
-    // A file that's renamed along with the function still leads to it
-    let together = format!("extern fn run(value: Any) -> Any from \"./run.hex\";\n\n{go}");
-    check(
-        &files(main, together.leak()),
-        "core",
-        expect![[r#"
+    // A file that's where it seems to be is still renamed
+    expect![[r#"
         main.rue:
-        fn main() -> Any {
-            core::a::go()
+        fn main() -> Int {
+            utils::ONE + lib::a::TWO + simple::THREE
         }
-        renamed: lib -> core
-    "#]],
-    );
+        renamed: plain.rue -> simple.rue
+    "#]]
+    .assert_eq(&renamed("plain", "simple"));
 }
 
 #[cfg(unix)]
@@ -1543,6 +1622,31 @@ fn test_rename_conflicts_with_an_import() {
         "hello",
         expect![[r#"
             error: `hello` is already used in a scope that has `greet`
+        "#]],
+    );
+
+    // A name that's found through another module isn't looked up where the renamed one is
+    check(
+        &[
+            (
+                "main.rue",
+                "import utils::greet;\n\nfn main() -> Int {\n    greet() + other::hello()\n}\n",
+            ),
+            ("utils.rue", "export fn gre$0et() -> Int {\n    1\n}\n"),
+            ("other.rue", "export fn hello() -> Int {\n    2\n}\n"),
+        ],
+        "hello",
+        expect![[r#"
+            main.rue:
+            import utils::hello;
+
+            fn main() -> Int {
+                hello() + other::hello()
+            }
+            utils.rue:
+            export fn hello() -> Int {
+                1
+            }
         "#]],
     );
 

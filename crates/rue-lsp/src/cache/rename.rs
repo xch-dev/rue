@@ -7,10 +7,10 @@
 
 use std::collections::HashSet;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use indexmap::IndexMap;
-use rowan::TextRange;
+use rowan::{TextRange, TextSize};
 use rue_ast::{
     AstEnumItem, AstFunctionItem, AstGenericParameters, AstNode, AstStructFieldBinding,
     AstStructInitializerField,
@@ -53,7 +53,6 @@ pub struct Moved {
 /// A place that names what's being renamed.
 struct Site<'a> {
     file: &'a File,
-    span: TextRange,
     role: Role,
     token: SyntaxToken,
 }
@@ -69,7 +68,8 @@ struct Plan<'a> {
 
 /// A module that's a file or a directory.
 struct ModulePath {
-    path: PathBuf,
+    /// Where it is, unless it's reached through a symbolic link.
+    path: Option<PathBuf>,
     directory: bool,
     /// The module of the directory it's in, unless it's the directory or file that the project
     /// is compiled from.
@@ -120,7 +120,7 @@ impl Cache<Compiler> {
                 .entry(&site.file.source.kind)
                 .or_insert_with(|| (site.file, Vec::new()))
                 .1
-                .push((site.span, replacement));
+                .push((site.token.text_range(), replacement));
         }
 
         let mut edits = IndexMap::new();
@@ -155,7 +155,13 @@ impl Cache<Compiler> {
 
     /// The file or directory to rename along with the module that it is.
     fn moved(&self, module: &ModulePath, name: &str, new_name: &str) -> Result<Moved, String> {
-        let from = &module.path;
+        // A file or directory that's reached through a symbolic link isn't where the project has
+        // it, so there's nothing that renaming it would be right for
+        let Some(from) = &module.path else {
+            return Err(format!(
+                "`{name}` is reached through a symbolic link, so it can't be renamed"
+            ));
+        };
 
         let to = from.with_file_name(match from.extension() {
             Some(extension) if !module.directory => {
@@ -169,41 +175,52 @@ impl Cache<Compiler> {
             return Err(format!("`{}` already exists", file_name(&to)));
         }
 
-        if !module.directory {
-            return Ok(Moved {
-                from: from.clone(),
-                to,
-            });
-        }
-
         // An external function's file is found from the directory of the file it's declared in,
-        // so the path to it breaks if only one of them is in the directory that's renamed
-        for file in self.tree.all_files() {
-            let SourceKind::File(path) = &file.source.kind else {
-                continue;
-            };
+        // one part of its path at a time, so the path breaks if a part of it names the directory
+        // that's renamed. A path that only leaves the directory with `..` still leads to its file
+        if module.directory {
+            for file in self.tree.all_files() {
+                let SourceKind::File(path) = &file.source.kind else {
+                    continue;
+                };
 
-            let Some(directory) = Path::new(path).parent() else {
-                continue;
-            };
+                let Some(directory) = Path::new(path).parent() else {
+                    continue;
+                };
 
-            for path in file
-                .document
-                .syntax()
-                .descendants()
-                .filter_map(AstFunctionItem::cast)
-                .filter_map(|function| function.source_path())
-            {
-                let external = directory.join(string_value(path.text()));
-                let external = external.canonicalize().unwrap_or(external);
+                for external in file
+                    .document
+                    .syntax()
+                    .descendants()
+                    .filter_map(AstFunctionItem::cast)
+                    .filter_map(|function| function.source_path())
+                {
+                    let mut current = directory.to_path_buf();
 
-                if directory.starts_with(from) != external.starts_with(from) {
-                    return Err(format!(
-                        "`{name}` can't be renamed, since the path of the external function at \
-                        {}:{} would no longer lead to its file",
-                        file_name(Path::new(&file.source.kind.display(Path::new("")))),
-                        file.source.line_col(path.text_range().start().into())
-                    ));
+                    let enters =
+                        Path::new(&string_value(external.text()))
+                            .components()
+                            .any(|component| match component {
+                                Component::ParentDir => {
+                                    current.pop();
+                                    false
+                                }
+                                Component::Normal(part) => {
+                                    current.push(part);
+                                    current == *from
+                                }
+                                Component::Prefix(_) | Component::RootDir | Component::CurDir => {
+                                    false
+                                }
+                            });
+
+                    if enters {
+                        return Err(format!(
+                            "`{name}` can't be renamed, since the path of the external function \
+                            at {} names it",
+                            self.place(file, external.text_range().start())
+                        ));
+                    }
                 }
             }
         }
@@ -212,6 +229,21 @@ impl Cache<Compiler> {
             from: from.clone(),
             to,
         })
+    }
+
+    /// A place in a file as it's shown in a message, like the notes of diagnostics are: relative
+    /// to the file that the query is about.
+    fn place(&self, file: &File, offset: TextSize) -> String {
+        let directory = match &self.source.kind {
+            SourceKind::File(path) => Path::new(path).parent().unwrap_or(Path::new("")),
+            SourceKind::Std(_) => Path::new(""),
+        };
+
+        format!(
+            "{}:{}",
+            file.source.kind.display(directory),
+            file.source.line_col(offset.into())
+        )
     }
 
     fn plan(&self, index: usize) -> Result<Option<Plan<'_>>, String> {
@@ -262,12 +294,7 @@ impl Cache<Compiler> {
 
             declared |= role == Role::Declaration;
 
-            sites.push(Site {
-                file,
-                span: item.span,
-                role,
-                token,
-            });
+            sites.push(Site { file, role, token });
         }
 
         let module = match target {
@@ -320,7 +347,9 @@ impl Cache<Compiler> {
             return Ok(());
         }
 
-        // The other generic parameters and enum variants are declared next to the name
+        // The other enum variants are declared next to the name, in a scope of their own that's
+        // only found from here. The other generic parameters are found by the scopes below too,
+        // and are only checked here to say what's in the way
         for site in plan
             .sites
             .iter()
@@ -392,20 +421,11 @@ impl Cache<Compiler> {
             ));
         }
 
-        // The place is shown like the notes of diagnostics are, relative to the file that the
-        // query is about
-        let directory = match &self.source.kind {
-            SourceKind::File(path) => Path::new(path).parent().unwrap_or(Path::new("")),
-            SourceKind::Std(_) => Path::new(""),
-        };
-
         let conflict = |file: &File, span: TextRange| {
-            let start = file.source.line_col(span.start().into());
-
             format!(
                 "Renaming `{old_name}` to `{new_name}` would change what `{new_name}` refers to \
-                at {}:{start}",
-                file.source.kind.display(directory)
+                at {}",
+                self.place(file, span.start())
             )
         };
 
@@ -417,7 +437,10 @@ impl Cache<Compiler> {
             }
 
             let scopes = self
-                .scopes_in(&site.file.source.kind, site.span.start().into())
+                .scopes_in(
+                    &site.file.source.kind,
+                    site.token.text_range().start().into(),
+                )
                 .0;
 
             let declared = scopes
@@ -429,7 +452,7 @@ impl Cache<Compiler> {
                 .iter()
                 .any(|&scope| has_new(self.ctx.scope(scope), &namespaces))
             {
-                return Err(conflict(site.file, site.span));
+                return Err(conflict(site.file, site.token.text_range()));
             }
         }
 
@@ -591,13 +614,20 @@ fn is_unqualified(token: &SyntaxToken) -> bool {
     }
 }
 
-/// The path of a module that's a file or a directory of the project.
-fn module_path(tree: &FileTree, module: SymbolId, parent: Option<SymbolId>) -> Option<ModulePath> {
+/// A module that's a file or a directory of the project, given the directory that the tree is in.
+fn module_path(tree: &FileTree, module: SymbolId, parent: Option<&FileTree>) -> Option<ModulePath> {
     if tree.module() == module {
+        // The path is worked out from the files, whose paths are the ones that symbolic links
+        // lead to, so it's only where the module is if it's the entry for the module in the
+        // directory that the module is in
+        let entry = parent
+            .and_then(tree_path)
+            .map(|parent| parent.join(entry_name(tree)));
+
         return Some(ModulePath {
-            path: tree_path(tree)?,
+            path: tree_path(tree).filter(|path| Some(path) == entry.as_ref() && !path.is_symlink()),
             directory: matches!(tree, FileTree::Directory(_)),
-            parent,
+            parent: parent.map(FileTree::module),
         });
     }
 
@@ -608,20 +638,38 @@ fn module_path(tree: &FileTree, module: SymbolId, parent: Option<SymbolId>) -> O
     directory
         .children
         .iter()
-        .find_map(|child| module_path(child, module, Some(directory.module)))
+        .find_map(|child| module_path(child, module, Some(tree)))
 }
 
-/// The path of a file, or of a directory, which is worked out from a file in it.
+/// The name of the file or directory that a module is.
+fn entry_name(tree: &FileTree) -> String {
+    match tree {
+        FileTree::File(file) => format!("{}.rue", file.name),
+        FileTree::Directory(directory) => directory.name.clone(),
+    }
+}
+
+/// The path of a file, or of a directory, which is the one that the files and directories in it
+/// are in. Those that are reached through a symbolic link are somewhere else, so they're left
+/// out, and if the rest disagree, the directory isn't known.
 fn tree_path(tree: &FileTree) -> Option<PathBuf> {
     match tree {
         FileTree::File(file) => match &file.source.kind {
             SourceKind::File(path) => Some(PathBuf::from(path)),
             SourceKind::Std(_) => None,
         },
-        FileTree::Directory(directory) => directory
-            .children
-            .iter()
-            .find_map(tree_path)
-            .and_then(|path| path.parent().map(Path::to_path_buf)),
+        FileTree::Directory(directory) => {
+            let mut parents = directory.children.iter().filter_map(|child| {
+                let path = tree_path(child)?;
+                let parent = path.parent()?;
+
+                (parent.join(entry_name(child)) == path && !path.is_symlink())
+                    .then(|| parent.to_path_buf())
+            });
+
+            let path = parents.next()?;
+
+            parents.all(|parent| parent == path).then_some(path)
+        }
     }
 }

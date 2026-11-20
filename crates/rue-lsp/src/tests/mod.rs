@@ -143,11 +143,17 @@ impl TestProject {
 
     pub fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
         let dir = TempDir::new("rue-lsp-test");
-        let root = dir.path().to_path_buf();
 
         if let Some(manifest) = manifest {
-            fs::write(root.join("Rue.toml"), manifest).unwrap();
+            fs::write(dir.path().join("Rue.toml"), manifest).unwrap();
         }
+
+        Self::in_dir(dir, files)
+    }
+
+    /// Creates a project in a directory that may already have files in it, such as a manifest.
+    pub fn in_dir(dir: TempDir, files: &[(&str, &str)]) -> Self {
+        let root = dir.path().to_path_buf();
 
         let mut cursor = None;
         let mut texts = Vec::new();
