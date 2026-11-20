@@ -46,5 +46,6 @@ diagnostics:
 - Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15
 - Unused function `split_pair` at struct_display_errors.rue:116:4
 - "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) | nil } | Pair { left: nil, right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:116:35"
-- Unused binding `left` at struct_display_errors.rue:120:9
-- Unused binding `right` at struct_display_errors.rue:121:9
+- Unused struct `Spread` at struct_display_errors.rue:123:8
+- Unused function `spread_union` at struct_display_errors.rue:128:4
+- "Cannot assign `Spread { ...value: 1 | 2 }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:128:39"

@@ -117,7 +117,17 @@ fn split_pair(p: Pair) -> Bytes32 {
     if p is (nil, (nil, nil)) {
         return 0x0000000000000000000000000000000000000000000000000000000000000000;
     }
-    let left = p.left;
-    let right = p.right;
     p
+}
+
+struct Spread {
+    ...value: 1 | 2 | 3,
+}
+
+// A union in a spread field is read as is, so it doesn't split the struct
+fn spread_union(s: Spread) -> Bytes32 {
+    if s is 3 {
+        return 0x0000000000000000000000000000000000000000000000000000000000000000;
+    }
+    s
 }

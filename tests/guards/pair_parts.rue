@@ -76,6 +76,30 @@ fn split_struct_every_combination(value: Both) -> B {
     value.second
 }
 
+struct Tagged3 {
+    kind = 1,
+    first: A | B,
+    second: A | B,
+}
+
+// A split below the first field also gives each pair its own copy of the struct
+fn split_below_first_field(value: Tagged3) -> A | B {
+    if value is (1, (A, (A, nil))) {
+        return A { kind: 1 };
+    }
+
+    let { first, second } = value;
+    let _ = first;
+    second
+}
+
+fn split_below_first_field_match(value: Tagged3) -> B {
+    match value {
+        (1, (A, (A, nil))) | (1, (A, (B, nil))) | (1, (B, (A, nil))) => B { kind: 2 },
+        _ => value.second,
+    }
+}
+
 // The rest of a list is the list itself, which is covered
 fn list_item(value: List<A | B>) -> (B, List<A | B>) | nil {
     if value is (A, List<A | B>) {
@@ -108,6 +132,9 @@ test fn guard_values() {
     assert split_struct(Both { first: a, second: b }) is B;
     assert split_struct(Both { first: a, second: a }) is A;
     assert split_struct_every_combination(Both { first: b, second: b }).kind == 2;
+    assert split_below_first_field(Tagged3 { first: a, second: b }) is B;
+    assert split_below_first_field(Tagged3 { first: a, second: a }) is A;
+    assert split_below_first_field_match(Tagged3 { first: b, second: b }).kind == 2;
     assert list_item([a, b]) is nil;
     assert list_item([b, a]) is (B, List<A | B>);
     assert list_item(nil) is nil;

@@ -374,28 +374,36 @@ fn repackage_inner(
             arena.alloc(Type::Alias(Alias { inner, ..alias }))
         }
         Type::Struct(ty) => {
-            // A struct's pair can be split into several pairs (see `split_pair`). Each of them gets
-            // its own copy of the struct, since the fields are read from a union of structs rather
-            // than from a struct whose inner type is a union.
-            let mut groups: IndexMap<TypeId, Vec<Variant>> = IndexMap::new();
+            let inner = repackage(arena, builtins, collected);
 
-            for variant in collected {
-                groups.entry(variant.type_id).or_default().push(variant);
-            }
-
-            let copies: Vec<TypeId> = groups
-                .into_values()
-                .map(|variants| {
-                    let inner = repackage(arena, builtins, variants);
-                    let ty = ty.clone().narrow(arena, builtins, inner);
-                    arena.alloc(Type::Struct(ty))
-                })
-                .collect();
-
-            if copies.len() == 1 {
-                copies[0]
+            // A struct's pair can be split into several pairs (see `split_pair`), at any of the
+            // levels that its fields are read through. Its fields are read from a union of
+            // structs, but not through a union in a struct's inner type, so each pair gets its own
+            // copy of the struct. Past the limit, the struct is left as it was, which is only
+            // wider than it could be.
+            let levels = if ty.nil_terminated {
+                ty.fields.len()
             } else {
-                arena.alloc(Type::Union(Union::new(copies)))
+                ty.fields.len().saturating_sub(1)
+            };
+
+            match spine_variants(arena, inner, levels) {
+                Some(inners) if inners.len() == 1 => {
+                    let ty = ty.narrow(arena, builtins, inner);
+                    arena.alloc(Type::Struct(ty))
+                }
+                Some(inners) => {
+                    let copies = inners
+                        .into_iter()
+                        .map(|inner| {
+                            let ty = ty.clone().narrow(arena, builtins, inner);
+                            arena.alloc(Type::Struct(ty))
+                        })
+                        .collect();
+
+                    arena.alloc(Type::Union(Union::new(copies)))
+                }
+                None => semantic_type_id,
             }
         }
         _ => unreachable!(),
@@ -408,6 +416,51 @@ fn repackage_inner(
     let leftover = repackage(arena, builtins, leftover);
 
     arena.alloc(Type::Union(Union::new(vec![result, leftover])))
+}
+
+/// The most copies that a struct can be split into (see `spine_variants`).
+const MAX_STRUCT_COPIES: usize = 64;
+
+/// The alternatives of a struct's inner type with a single pair at each of the first `levels`
+/// levels of pairs (the levels that its fields are read through), or `None` if there are more than
+/// `MAX_STRUCT_COPIES` of them.
+fn spine_variants(arena: &mut Arena<Type>, id: TypeId, levels: usize) -> Option<Vec<TypeId>> {
+    if levels == 0 {
+        return Some(vec![id]);
+    }
+
+    let variants = match arena[id].clone() {
+        Type::Ref(inner) => return spine_variants(arena, inner, levels),
+        Type::Alias(alias) => return spine_variants(arena, alias.inner, levels),
+        Type::Union(union) => {
+            let mut variants = Vec::new();
+
+            for member in union.types {
+                variants.extend(spine_variants(arena, member, levels)?);
+
+                if variants.len() > MAX_STRUCT_COPIES {
+                    return None;
+                }
+            }
+
+            variants
+        }
+        Type::Pair(pair) => {
+            let rests = spine_variants(arena, pair.rest, levels - 1)?;
+
+            if rests.len() == 1 {
+                vec![id]
+            } else {
+                rests
+                    .into_iter()
+                    .map(|rest| arena.alloc(Type::Pair(Pair::new(pair.first, rest))))
+                    .collect()
+            }
+        }
+        _ => vec![id],
+    };
+
+    Some(variants)
 }
 
 struct Variant {
