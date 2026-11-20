@@ -723,6 +723,18 @@ mod tests {
             "#]],
         );
 
+        // `in` and `fold` are only keywords in a `for`, so they're identifiers here
+        check(
+            "for in fold",
+            expect![[r#"
+            For
+            Whitespace
+            Ident
+            Whitespace
+            Ident
+        "#]],
+        );
+
         check(
             "match",
             expect![[r#"

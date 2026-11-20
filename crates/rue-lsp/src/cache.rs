@@ -377,6 +377,10 @@ impl Cache<Compiler> {
             }
             // The message of an `assert` comes after its condition
             T![,] if parent == Some(SyntaxKind::AssertStmt) => Some(CompletionContext::Expression),
+            // The list of a `for` comes after `in`, which is an identifier there
+            SyntaxKind::Ident if parent == Some(SyntaxKind::ForExpr) && token.text() == "in" => {
+                Some(CompletionContext::Expression)
+            }
             _ => None,
         }
     }

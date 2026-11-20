@@ -2020,6 +2020,45 @@ fn assert_message_keeps_its_comments() {
     assert_eq!(
         format_source(&output, &FormatOptions::default()).unwrap(),
         output
+fn for_expressions() {
+    check(
+        r"fn main(conditions: List<Condition>, target_puzzle_hash: Bytes32, xs: List<Int>) -> Any {
+    let a = for c in conditions if c is CreateCoin { c };
+    let b = for   x in xs {x+1};
+    let total = for c in conditions fold sum = 0 { if c is CreateCoin { sum + c.amount } else { sum } };
+    let wrapped = for coin in conditions if coin is CreateCoin { CreateCoin { puzzle_hash: coin.puzzle_hash, amount: coin.amount, memos: coin.memos } };
+    let payments_to_target = for c in conditions if c is CreateCoin && c.puzzle_hash == target_puzzle_hash && c.amount > 0 { c.amount + 100000 };
+    let typed = for x in xs fold rest : List<Int> = nil { [x, ...rest] };
+    for x in xs { assert x > 0; }
+    for x in xs { f(x) };
+    [a, b, ...for x in xs { x }]
+}
+",
+        expect![[r#"
+            fn main(conditions: List<Condition>, target_puzzle_hash: Bytes32, xs: List<Int>) -> Any {
+                let a = for c in conditions if c is CreateCoin { c };
+                let b = for x in xs { x + 1 };
+                let total = for c in conditions fold sum = 0 {
+                    if c is CreateCoin {
+                        sum + c.amount
+                    } else {
+                        sum
+                    }
+                };
+                let wrapped = for coin in conditions if coin is CreateCoin {
+                    CreateCoin { puzzle_hash: coin.puzzle_hash, amount: coin.amount, memos: coin.memos }
+                };
+                let payments_to_target = for c in conditions if c is CreateCoin
+                    && c.puzzle_hash == target_puzzle_hash
+                    && c.amount > 0 { c.amount + 100000 };
+                let typed = for x in xs fold rest: List<Int> = nil { [x, ...rest] };
+                for x in xs {
+                    assert x > 0;
+                }
+                for x in xs { f(x) };
+                [a, b, ...for x in xs { x }]
+            }
+        "#]],
     );
 }
 

@@ -3202,4 +3202,270 @@ mod tests {
             expect![""],
         );
     }
+
+    #[test]
+    fn for_expr() {
+        check(
+            expr,
+            "for x in xs { x }",
+            expect![[r#"
+            ForExpr@0..17
+              For@0..3 "for"
+              Whitespace@3..4 " "
+              NamedBinding@4..5
+                Ident@4..5 "x"
+              Whitespace@5..6 " "
+              Ident@6..8 "in"
+              Whitespace@8..9 " "
+              PathExpr@9..12
+                PathSegment@9..12
+                  Ident@9..11 "xs"
+                  Whitespace@11..12 " "
+              Block@12..17
+                OpenBrace@12..13 "{"
+                Whitespace@13..14 " "
+                PathExpr@14..16
+                  PathSegment@14..16
+                    Ident@14..15 "x"
+                    Whitespace@15..16 " "
+                CloseBrace@16..17 "}"
+        "#]],
+            expect![""],
+        );
+
+        // A filter, and a fold with a type. The list, the filter and the fold's value can't be
+        // struct initializers, since the `{` after them starts the body
+        check(
+            expr,
+            "for (a, b) in xs if a > 0 fold sum: Int = 0 { sum + a }",
+            expect![[r#"
+                ForExpr@0..55
+                  For@0..3 "for"
+                  Whitespace@3..4 " "
+                  PairBinding@4..10
+                    OpenParen@4..5 "("
+                    NamedBinding@5..6
+                      Ident@5..6 "a"
+                    Comma@6..7 ","
+                    Whitespace@7..8 " "
+                    NamedBinding@8..9
+                      Ident@8..9 "b"
+                    CloseParen@9..10 ")"
+                  Whitespace@10..11 " "
+                  Ident@11..13 "in"
+                  Whitespace@13..14 " "
+                  PathExpr@14..17
+                    PathSegment@14..17
+                      Ident@14..16 "xs"
+                      Whitespace@16..17 " "
+                  ForFilter@17..26
+                    If@17..19 "if"
+                    Whitespace@19..20 " "
+                    BinaryExpr@20..26
+                      PathExpr@20..22
+                        PathSegment@20..22
+                          Ident@20..21 "a"
+                          Whitespace@21..22 " "
+                      GreaterThan@22..23 ">"
+                      Whitespace@23..24 " "
+                      LiteralExpr@24..25
+                        Integer@24..25 "0"
+                      Whitespace@25..26 " "
+                  ForFold@26..44
+                    Ident@26..30 "fold"
+                    Whitespace@30..31 " "
+                    NamedBinding@31..34
+                      Ident@31..34 "sum"
+                    Colon@34..35 ":"
+                    Whitespace@35..36 " "
+                    PathType@36..40
+                      PathSegment@36..40
+                        Ident@36..39 "Int"
+                        Whitespace@39..40 " "
+                    Assign@40..41 "="
+                    Whitespace@41..42 " "
+                    LiteralExpr@42..43
+                      Integer@42..43 "0"
+                    Whitespace@43..44 " "
+                  Block@44..55
+                    OpenBrace@44..45 "{"
+                    Whitespace@45..46 " "
+                    BinaryExpr@46..54
+                      PathExpr@46..50
+                        PathSegment@46..50
+                          Ident@46..49 "sum"
+                          Whitespace@49..50 " "
+                      Plus@50..51 "+"
+                      Whitespace@51..52 " "
+                      PathExpr@52..54
+                        PathSegment@52..54
+                          Ident@52..53 "a"
+                          Whitespace@53..54 " "
+                    CloseBrace@54..55 "}"
+            "#]],
+            expect![""],
+        );
+
+        // `in` and `fold` are identifiers anywhere else, including as the list and the names
+        check(
+            expr,
+            "for in in in fold fold = fold { fold }",
+            expect![[r#"
+            ForExpr@0..38
+              For@0..3 "for"
+              Whitespace@3..4 " "
+              NamedBinding@4..6
+                Ident@4..6 "in"
+              Whitespace@6..7 " "
+              Ident@7..9 "in"
+              Whitespace@9..10 " "
+              PathExpr@10..13
+                PathSegment@10..13
+                  Ident@10..12 "in"
+                  Whitespace@12..13 " "
+              ForFold@13..30
+                Ident@13..17 "fold"
+                Whitespace@17..18 " "
+                NamedBinding@18..22
+                  Ident@18..22 "fold"
+                Whitespace@22..23 " "
+                Assign@23..24 "="
+                Whitespace@24..25 " "
+                PathExpr@25..30
+                  PathSegment@25..30
+                    Ident@25..29 "fold"
+                    Whitespace@29..30 " "
+              Block@30..38
+                OpenBrace@30..31 "{"
+                Whitespace@31..32 " "
+                PathExpr@32..37
+                  PathSegment@32..37
+                    Ident@32..36 "fold"
+                    Whitespace@36..37 " "
+                CloseBrace@37..38 "}"
+        "#]],
+            expect![""],
+        );
+
+        // A `for` continues with an operator as an expression, but ends at its closing brace at
+        // the start of a statement
+        check(
+            expr,
+            "for x in xs { x } + 1",
+            expect![[r#"
+            BinaryExpr@0..21
+              ForExpr@0..17
+                For@0..3 "for"
+                Whitespace@3..4 " "
+                NamedBinding@4..5
+                  Ident@4..5 "x"
+                Whitespace@5..6 " "
+                Ident@6..8 "in"
+                Whitespace@8..9 " "
+                PathExpr@9..12
+                  PathSegment@9..12
+                    Ident@9..11 "xs"
+                    Whitespace@11..12 " "
+                Block@12..17
+                  OpenBrace@12..13 "{"
+                  Whitespace@13..14 " "
+                  PathExpr@14..16
+                    PathSegment@14..16
+                      Ident@14..15 "x"
+                      Whitespace@15..16 " "
+                  CloseBrace@16..17 "}"
+              Whitespace@17..18 " "
+              Plus@18..19 "+"
+              Whitespace@19..20 " "
+              LiteralExpr@20..21
+                Integer@20..21 "1"
+        "#]],
+            expect![""],
+        );
+        check(
+            crate::grammar::block::block,
+            "{ for x in xs { x } for y in ys { y }; 1 }",
+            expect![[r#"
+                Block@0..42
+                  OpenBrace@0..1 "{"
+                  Whitespace@1..2 " "
+                  ForExpr@2..19
+                    For@2..5 "for"
+                    Whitespace@5..6 " "
+                    NamedBinding@6..7
+                      Ident@6..7 "x"
+                    Whitespace@7..8 " "
+                    Ident@8..10 "in"
+                    Whitespace@10..11 " "
+                    PathExpr@11..14
+                      PathSegment@11..14
+                        Ident@11..13 "xs"
+                        Whitespace@13..14 " "
+                    Block@14..19
+                      OpenBrace@14..15 "{"
+                      Whitespace@15..16 " "
+                      PathExpr@16..18
+                        PathSegment@16..18
+                          Ident@16..17 "x"
+                          Whitespace@17..18 " "
+                      CloseBrace@18..19 "}"
+                  Whitespace@19..20 " "
+                  ExprStmt@20..38
+                    ForExpr@20..37
+                      For@20..23 "for"
+                      Whitespace@23..24 " "
+                      NamedBinding@24..25
+                        Ident@24..25 "y"
+                      Whitespace@25..26 " "
+                      Ident@26..28 "in"
+                      Whitespace@28..29 " "
+                      PathExpr@29..32
+                        PathSegment@29..32
+                          Ident@29..31 "ys"
+                          Whitespace@31..32 " "
+                      Block@32..37
+                        OpenBrace@32..33 "{"
+                        Whitespace@33..34 " "
+                        PathExpr@34..36
+                          PathSegment@34..36
+                            Ident@34..35 "y"
+                            Whitespace@35..36 " "
+                        CloseBrace@36..37 "}"
+                    Semicolon@37..38 ";"
+                  Whitespace@38..39 " "
+                  LiteralExpr@39..40
+                    Integer@39..40 "1"
+                  Whitespace@40..41 " "
+                  CloseBrace@41..42 "}"
+            "#]],
+            expect![""],
+        );
+
+        // Without `in`
+        check(
+            expr,
+            "for x xs { x }",
+            expect![[r#"
+            ForExpr@0..14
+              For@0..3 "for"
+              Whitespace@3..4 " "
+              NamedBinding@4..5
+                Ident@4..5 "x"
+              Whitespace@5..6 " "
+              PathExpr@6..9
+                PathSegment@6..9
+                  Ident@6..8 "xs"
+                  Whitespace@8..9 " "
+              Block@9..14
+                OpenBrace@9..10 "{"
+                Whitespace@10..11 " "
+                PathExpr@11..13
+                  PathSegment@11..13
+                    Ident@11..12 "x"
+                    Whitespace@12..13 " "
+                CloseBrace@13..14 "}"
+        "#]],
+            expect!["Expected `in`, found identifier at main.rue:1:7"],
+        );
+    }
 }

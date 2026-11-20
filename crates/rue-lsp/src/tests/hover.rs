@@ -863,3 +863,45 @@ fn test_hover_imported_variant_without_fields() {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_for_item() {
+    check(
+        r#"
+fn main(xs: List<Int>) -> List<Int> {
+    for x in xs { x$0 + 1 }
+}
+"#,
+        expect![[r#"
+            let x: Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_for_fold() {
+    check(
+        r#"
+fn main(xs: List<Int>) -> Int {
+    for x in xs fold sum = 0 { su$0m + x }
+}
+"#,
+        expect![[r#"
+            let sum: Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_for_narrowed_item() {
+    check(
+        r#"
+fn main(xs: List<Int | (Int, Int)>) -> List<Int> {
+    for x in xs if x is Int { x$0 }
+}
+"#,
+        expect![[r#"
+            let x: Int
+        "#]],
+    );
+}
