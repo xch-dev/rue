@@ -25,8 +25,14 @@ fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
     // The item is only in the body, and the result for the rest of the list too
     let h = for x in xs fold sum = 0 { sum + x } + x + sum;
 
+    // The fold's value is the result without an item, so the item isn't in scope in it
+    let j = for x in xs fold sum = x { sum + x };
+
+    // A list with no items has nothing to destructure
+    let k = for (a, b) in nil { a + b };
+
     // A list of the body's values isn't an `Int`
     let i: Int = for x in xs { x };
 
-    length(a) + length(b) + length(c) + length(d) + e + length(f) + g + h + i
+    length(a) + length(b) + length(c) + length(d) + e + length(f) + g + h + i + j + length(k)
 }

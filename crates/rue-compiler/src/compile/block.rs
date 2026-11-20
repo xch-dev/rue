@@ -133,9 +133,10 @@ pub fn compile_block(
                 let value = compile_for_expr(ctx, &expr, None, true);
                 let value = ctx.record_value(expr.syntax(), value);
 
+                // A fold still has a value, which isn't used
                 statements.push(Statement::Expr(ExprStatement {
                     hir: value.hir,
-                    always_nil: true,
+                    always_nil: ctx.is_castable(value.ty, ctx.builtins().types.nil),
                     srcloc: ctx.trimmed_srcloc(expr.syntax()),
                 }));
 

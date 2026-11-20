@@ -181,7 +181,19 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
             ty(p);
         }
         p.expect(T![=>]);
-        expr(p);
+        // The body ends where the lambda does, so a `{` after it isn't a struct initializer where
+        // one isn't allowed, such as after the value of a `for` expression's fold
+        let body = p.checkpoint();
+        expr_with(
+            p,
+            body,
+            ExprOptions {
+                minimum_binding_power: 0,
+                allow_statement: false,
+                allow_struct_initializer: options.allow_struct_initializer,
+                inline: false,
+            },
+        );
         p.finish();
     } else {
         // An expression is often followed by a block (such as in the condition of an if

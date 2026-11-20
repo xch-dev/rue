@@ -358,13 +358,19 @@ impl Cache<Compiler> {
                             | SyntaxKind::ConstantItem
                             | SyntaxKind::LetStmt
                             | SyntaxKind::StructField
+                            | SyntaxKind::ForFold
                     )
                 ) =>
             {
                 Some(CompletionContext::Type)
             }
             T![=] if parent == Some(SyntaxKind::TypeAliasItem) => Some(CompletionContext::Type),
-            T![=] if matches!(parent, Some(SyntaxKind::LetStmt | SyntaxKind::ConstantItem)) => {
+            T![=]
+                if matches!(
+                    parent,
+                    Some(SyntaxKind::LetStmt | SyntaxKind::ConstantItem | SyntaxKind::ForFold)
+                ) =>
+            {
                 Some(CompletionContext::Expression)
             }
             // A match arm starts with its pattern, which is a type, and ends with its value

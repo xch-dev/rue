@@ -1963,6 +1963,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
+                // As with a binding (see below), a constant that a loop refers to is only
+                // substituted there if it's a literal
+                if self.graph.is_loop_capture(symbol) && !self.is_literal_hir(constant.value.hir) {
+                    return false;
+                }
+
                 references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
             }
             Symbol::Binding(binding) => {

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use rue_diagnostic::Lint;
-use rue_hir::{Block, Declaration, Hir, HirId, Statement, Symbol, SymbolId};
+use rue_hir::{Block, Declaration, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId};
 
 use crate::LintContext;
 
@@ -175,6 +175,17 @@ impl Walker<'_> {
             Hir::Struct(initializer) => self.visit_all(cx, initializer.written_values()),
             Hir::Block(block) => self.visit_block(cx, block),
             Hir::Lambda(symbol) => self.visit_function(cx, *symbol),
+            // A `for` expression is a call of a function of its own, which its filter and body
+            // are in, so it's visited where it's first referenced, like a lambda. Its calls to
+            // itself come after that
+            Hir::Reference(symbol)
+                if matches!(
+                    cx.db().symbol(*symbol),
+                    Symbol::Function(function) if function.kind == FunctionKind::Loop
+                ) =>
+            {
+                self.visit_function(cx, *symbol);
+            }
             _ => self.visit_all(cx, node.children()),
         }
     }
@@ -210,7 +221,7 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use rue_diagnostic::LintLevels;
-    use rue_hir::{Database, FunctionKind, FunctionSymbol, Scope};
+    use rue_hir::{Database, FunctionSymbol, Scope};
     use rue_types::BuiltinTypes;
 
     use crate::ScopedLintLevels;

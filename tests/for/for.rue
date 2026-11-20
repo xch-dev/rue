@@ -111,14 +111,6 @@ test fn body_without_a_value_fails() -> Int {
     5
 }
 
-// A `for` whose value isn't used is a loop too, with or without a semicolon
-test fn statement() -> Int {
-    let xs = runtime([1, 2]);
-    for x in xs { positive(x) };
-    for x in xs { positive(x) }
-    5
-}
-
 // A function that returns nothing can end with a loop
 fn check_all(xs: List<Int>) {
     for x in xs {
@@ -230,4 +222,170 @@ const SQUARES: List<Int> = for x in [1, 2, 3] { x * x };
 test fn in_a_constant() -> Int {
     let squares = runtime(SQUARES);
     length(squares) + length(SQUARES)
+}
+
+// An item that the filter skips doesn't evaluate the result for the rest of the list before it's
+// skipped, which would go through the rest of the list twice for each one
+test fn fold_with_a_filter_and_two_references() -> Int {
+    let zeros = runtime([
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+    ]);
+    for x in zeros if x > 0 fold max = 0 {
+        if x > max {
+            x
+        } else {
+            max
+        }
+    }
+}
+
+// The result for the rest of the list is evaluated once, before the body, where the body could
+// evaluate it more than once: in another `for`, in a lambda, and in a type guard that uses its
+// value more than once
+test fn fold_referenced_in_a_nested_for() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let ys = runtime([1, 2]);
+    for x in xs fold best = 0 {
+        for y in ys fold m = x {
+            if y > best {
+                y
+            } else {
+                m
+            }
+        }
+    }
+}
+
+test fn fold_referenced_in_a_lambda() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold total = 0 {
+        let add = fn(y: Int) => y + total;
+        add(x) + add(1)
+    }
+}
+
+test fn fold_referenced_in_a_type_guard() -> Any {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold result: Any = nil {
+        if result is (Int, (Int, nil)) {
+            x
+        } else {
+            (x, (x, nil))
+        }
+    }
+}
+
+// The result can be destructured, with a literal in a pair as the type it's a value of
+test fn fold_with_a_pattern() -> (Int, Int) {
+    for x in runtime([1, 2, 3]) fold (count, sum) = (0, 0) { (count + 1, sum + x) }
+}
+
+// Without a type, the result's type is from the fold's value, whatever the expression is
+// expected to be
+test fn fold_with_a_wider_expected_type() -> Int | nil {
+    for x in runtime([1, 2]) fold sum = 0 { sum + x }
+}
+
+test fn fold_as_a_generic_argument() -> Int {
+    same(for x in runtime([1, 2]) fold sum = 0 { sum + x })
+}
+
+fn same<T>(value: T) -> T {
+    value
+}
+
+// The fold's value can be a lambda, whose body ends before the body of the `for`
+test fn fold_of_lambdas() -> Int {
+    let compose = for x in runtime([1, 2]) fold f = fn(y: Int) => y { fn(y: Int) => f(y) + x };
+    compose(10)
+}
+
+// The body is compiled against the item type of what the expression is expected to be, which gives
+// a lambda its parameter type
+test fn expected_item_type() -> Int {
+    let functions: List<fn(y: Int) -> Int> = for x in runtime([1, 2]) { fn(y) => x + y };
+    for f in functions fold sum = 0 { f(10) + sum }
+}
+
+// A value from outside of the body that can't fail is captured too, rather than evaluated for each
+// item where the body refers to it
+test fn captured_value_that_cannot_fail() -> List<Int> {
+    let n = positive(2);
+    let k = n + 1;
+    for x in runtime([1, 2, 3]) { x * k }
+}
+
+test fn captured_hash() -> List<Bytes> {
+    let n = positive(2);
+    let hash = sha256(n as Bytes);
+    for x in runtime(["a", "b"]) { x + hash }
+}
+
+// The result of one `for` used in another is only evaluated once
+test fn captured_fold() -> List<Int> {
+    let ys = runtime([1, 2, 3]);
+    let total = for y in ys fold sum = 0 { sum + y };
+    for x in runtime([1, 2]) { x * total }
+}
+
+inline fn scale_twice(xs: List<Int>, k: Int) -> List<Int> {
+    let twice = k + k;
+    for x in xs { x * twice }
+}
+
+test fn captured_binding_in_an_inline_function() -> (List<Int>, List<Int>) {
+    let seven = positive(7);
+    (scale_twice(runtime([1, 2]), 5), scale_twice(runtime([3]), seven))
+}
+
+// A constant that isn't inline is evaluated once, when the program starts
+const HASH: Bytes32 = sha256(sha256("a"));
+
+test fn captured_constant() -> List<Bytes> {
+    for x in runtime(["a", "b"]) { x + HASH }
+}
+
+// A `for` with a value at the end of a statement's block is a loop too
+test fn at_the_end_of_a_statement_block() -> Int {
+    let xs = runtime([1, 2]);
+    if length(xs) > 1 {
+        for x in xs {
+            assert x > 0;
+        }
+    }
+    5
+}
+
+// A `for` that's a statement can have attributes
+test fn attributes() -> Int {
+    let xs = runtime([1, 2]);
+    #[allow(unused_binding)]
+    for x in xs {
+        assert length(xs) > 1;
+    }
+    5
 }

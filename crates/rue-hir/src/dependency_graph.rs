@@ -154,7 +154,7 @@ impl DependencyGraph {
             assign_destructured_owner(db, &mut graph, symbol);
         }
 
-        graph.find_loop_captures();
+        graph.find_loop_captures(db);
 
         graph
     }
@@ -274,14 +274,16 @@ impl DependencyGraph {
         self.loops.contains(&symbol)
     }
 
-    /// Whether the symbol is referenced inside of a loop that it's defined outside of, such as
-    /// `k` in `for x in xs { x * k }`. What references it is evaluated once for each item, so its
-    /// value isn't substituted there unless that's as cheap as referring to it.
+    /// Whether what references the symbol can be evaluated once for each item of a loop, or more,
+    /// though the symbol is only evaluated once: it's referenced inside of a loop that it's
+    /// defined outside of, such as `k` in `for x in xs { x * k }`, or it's defined in a loop and
+    /// referenced inside of a lambda in it, which can be called any number of times. Its value
+    /// isn't substituted there unless that's as cheap as referring to it.
     pub fn is_loop_capture(&self, symbol: SymbolId) -> bool {
         self.loop_captures.contains(&symbol)
     }
 
-    fn find_loop_captures(&mut self) {
+    fn find_loop_captures(&mut self, db: &Database) {
         if self.loops.is_empty() {
             return;
         }
@@ -289,26 +291,33 @@ impl DependencyGraph {
         let mut captures = HashSet::new();
 
         for (&from, dependencies) in &self.dependencies {
-            // The loops that the reference is inside of
-            let loops: Vec<SymbolId> = iter::once(from)
+            // The loops and lambdas that the reference is inside of
+            let functions: Vec<SymbolId> = iter::once(from)
                 .chain(self.owners(from))
-                .filter(|symbol| self.loops.contains(symbol))
+                .filter(|symbol| self.loops.contains(symbol) || self.closures.contains(symbol))
                 .collect();
 
-            if loops.is_empty() {
+            if !functions.iter().any(|symbol| self.loops.contains(symbol)) {
                 continue;
             }
 
             for &dependency in dependencies {
-                // Only the values defined in a function are evaluated where they're substituted
-                if !self.owners.contains_key(&dependency) || self.loops.contains(&dependency) {
+                // Only values are evaluated where they're substituted
+                if !matches!(
+                    db.symbol(dependency),
+                    Symbol::Binding(_) | Symbol::Parameter(_) | Symbol::Constant(_)
+                ) {
                     continue;
                 }
 
-                if loops
-                    .iter()
-                    .any(|&function| !self.is_defined_in(dependency, function))
-                {
+                let in_loop = self
+                    .owners(dependency)
+                    .any(|owner| self.loops.contains(&owner));
+
+                if functions.iter().any(|&function| {
+                    !self.is_defined_in(dependency, function)
+                        && (in_loop || self.loops.contains(&function))
+                }) {
                     captures.insert(dependency);
                 }
             }

@@ -3,12 +3,12 @@ use rue_ast::{AstBinding, AstForExpr, AstNode, AstStmtOrExpr};
 use rue_diagnostic::Name;
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, FunctionCall, FunctionKind, FunctionSymbol,
-    Hir, ParameterSymbol, Statement, Symbol, SymbolId, UnaryOp, Value,
+    Hir, HirId, ParameterSymbol, Statement, Symbol, SymbolId, UnaryOp, Value,
 };
-use rue_types::{FunctionParameter, FunctionType, Type, TypeId, Union};
+use rue_types::{FunctionParameter, FunctionType, Pair, Type, TypeId};
 
 use super::call_inference::{list_of, pair_parts};
-use super::list::list_item_types;
+use super::list::{list_item_types, union_of};
 use crate::{BlockKind, Compiler, compile_block, compile_expr, compile_type, create_binding};
 
 /// What a `for` expression makes of the items of its list.
@@ -34,9 +34,10 @@ enum ForKind {
 ///   front of the list for the rest of the items.
 /// - With a fold, such as `fold sum = 0`, the body gives the result from the item and the result
 ///   for the rest of the list, which is what the fold's binding is. At the end of the list, the
-///   result is the fold's value. The binding is evaluated where the body refers to it, if it only
-///   does once, so a body that doesn't get to it stops there, as `x == item || found` does once an
-///   item matches. A body that refers to it more than once has it evaluated before the body.
+///   result is the fold's value. The binding is evaluated where the body refers to it, if that's
+///   in one place that's evaluated at most once for the item (see [`is_lazy`]), so a body that
+///   doesn't get to it stops there, as `x == item || found` does once an item matches. Otherwise
+///   it's evaluated once, before the body.
 /// - With a filter, such as `if x > 0`, the items that don't pass it are left out of the list, or
 ///   skipped by the fold.
 /// - If the body has no value, or the expression is a statement, whose value isn't used, the body
@@ -60,8 +61,13 @@ pub fn compile_for_expr(
         ctx.unresolved()
     };
 
+    // A list with no items, such as nil, has no item to give a type
     let item_types = list_item_types(ctx, list.ty);
-    let item_type = union_of(ctx, item_types);
+    let item_type = if item_types.is_empty() {
+        types.never
+    } else {
+        union_of(ctx, item_types)
+    };
 
     let fold = expr.fold();
     let has_value = expr
@@ -77,18 +83,18 @@ pub fn compile_for_expr(
     };
 
     // The fold's value is compiled outside of the body, since it's the result without an item. Its
-    // binding is the type it's annotated with, or what the expression is expected to be, since
-    // that's what the body has to give too. Otherwise it's the type of the value, with a literal
-    // as the type it's a value of, such as `Int` for `0`, since the body gives the next result
+    // binding is the type it's annotated with. Otherwise it's the type of the value, with literals
+    // as the types they're values of, such as `Int` for `0`, since the body gives the next result.
+    // A value that's nil doesn't say what the result is, so then it's the type the expression is
+    // expected to be, if there is one, as with `fold rest = nil` for a list
     let accumulator = fold.as_ref().map(|fold| {
         let annotation = fold.ty().map(|ty| compile_type(ctx, &ty));
-        let expected = annotation.or(expected_type);
 
         let init = if let Some(init) = fold.init() {
-            let value = compile_expr(ctx, &init, expected);
+            let value = compile_expr(ctx, &init, annotation.or(expected_type));
 
-            if let Some(expected) = expected {
-                ctx.assign_type(init.syntax(), value.ty, expected);
+            if let Some(annotation) = annotation {
+                ctx.assign_type(init.syntax(), value.ty, annotation);
             }
 
             value
@@ -97,8 +103,15 @@ pub fn compile_for_expr(
             ctx.unresolved()
         };
 
-        let ty =
-            expected.unwrap_or_else(|| rue_types::widen_literal(ctx.types_mut(), &types, init.ty));
+        let ty = annotation.unwrap_or_else(|| match expected_type {
+            Some(expected)
+                if ctx.is_assignable(init.ty, types.nil)
+                    && ctx.is_assignable(init.ty, expected) =>
+            {
+                expected
+            }
+            _ => widen_literals(ctx, init.ty),
+        });
 
         (init.hir, ty)
     });
@@ -125,8 +138,13 @@ pub fn compile_for_expr(
         }))
     };
 
+    // The item is in scope after the list, in the filter and the body
+    let item_start = expr
+        .list()
+        .map_or(range.start(), |list| list.syntax().text_range().end());
+
     let scope = ctx.alloc_child_scope();
-    ctx.push_scope(scope, range.start());
+    ctx.push_scope(scope, item_start);
 
     let mut statements = Vec::new();
 
@@ -152,11 +170,18 @@ pub fn compile_for_expr(
         }
     });
 
+    // The result for the rest of the list is only in scope in the body. Its let statement is
+    // inside the filter, so that an item that's skipped doesn't evaluate it
+    let mut accumulator_statements = Vec::new();
+    let body_start = expr
+        .body()
+        .map_or(range.end(), |body| body.syntax().text_range().start());
+
     let accumulator = accumulator.map(|(init, ty)| {
         let pattern = fold.as_ref().and_then(rue_ast::AstForFold::binding);
 
         let scope = ctx.alloc_child_scope();
-        ctx.push_scope(scope, range.start());
+        ctx.push_scope(scope, body_start);
 
         let rest = rest_call(ctx);
         let symbol = declare(
@@ -164,7 +189,7 @@ pub fn compile_for_expr(
             pattern.as_ref(),
             Value::new(rest, ty),
             false,
-            &mut statements,
+            &mut accumulator_statements,
         );
 
         (
@@ -204,21 +229,12 @@ pub fn compile_for_expr(
         ctx.unresolved()
     };
 
-    // A fold's binding that the body refers to once is evaluated there, rather than before the
-    // body, so that it's only evaluated if the body gets to it
-    if let Some(&(symbol, _, _, named)) = accumulator.as_ref() {
-        let end_hir = ctx.next_hir_id();
-        let references = ctx
-            .hirs_between(first_hir, end_hir)
-            .filter(|hir| matches!(hir, Hir::Reference(reference) if *reference == symbol))
-            .count();
-
-        if named
-            && references <= 1
-            && let Symbol::Binding(binding) = ctx.symbol_mut(symbol)
-        {
-            binding.inline = true;
-        }
+    if let Some(&(symbol, _, _, named)) = accumulator.as_ref()
+        && named
+        && is_lazy(ctx, symbol, body.hir, first_hir)
+        && let Symbol::Binding(binding) = ctx.symbol_mut(symbol)
+    {
+        binding.inline = true;
     }
 
     if accumulator.is_some() {
@@ -233,11 +249,23 @@ pub fn compile_for_expr(
             let rest = rest_call(ctx);
             ctx.alloc_hir(Hir::Pair(body.hir, rest))
         }
-        ForKind::Fold => body.hir,
+        ForKind::Fold => ctx.alloc_hir(Hir::Block(Block {
+            statements: accumulator_statements,
+            body: Some(body.hir),
+        })),
         ForKind::Loop => {
             let rest = rest_call(ctx);
             let always_nil = ctx.is_castable(body.ty, types.nil);
-            let srcloc = ctx.trimmed_srcloc(expr.syntax());
+
+            // A value that the body ends with isn't used, which is reported there
+            let value = expr.body().and_then(|body| match body.items().last() {
+                Some(AstStmtOrExpr::Expr(value)) => Some(value),
+                _ => None,
+            });
+            let srcloc = match &value {
+                Some(value) => ctx.trimmed_srcloc(value.syntax()),
+                None => ctx.trimmed_srcloc(expr.syntax()),
+            };
 
             ctx.alloc_hir(Hir::Block(Block {
                 statements: vec![Statement::Expr(ExprStatement {
@@ -329,22 +357,75 @@ fn declare(
     symbol
 }
 
-/// A union of the types, with the same type only in it once.
-fn union_of(ctx: &mut Compiler, types: Vec<TypeId>) -> TypeId {
-    let mut members: Vec<TypeId> = Vec::new();
+/// Whether the binding for the result of the rest of the list is evaluated where the body refers
+/// to it, rather than once before the body. That's only if the body refers to it in one place,
+/// which is evaluated at most once for the item: not in a lambda or another `for`, which can be
+/// evaluated any number of times, in the value of an `inline let`, which is evaluated wherever
+/// that's referred to, or in a type guard that uses its value more than once. Otherwise each of
+/// those would go through the rest of the list again, for every item.
+fn is_lazy(ctx: &Compiler, symbol: SymbolId, body: HirId, first_hir: HirId) -> bool {
+    let references = ctx
+        .hirs_between(first_hir, ctx.next_hir_id())
+        .filter(|hir| matches!(hir, Hir::Reference(reference) if *reference == symbol))
+        .count();
 
-    for ty in types {
-        if !members
-            .iter()
-            .any(|&member| ctx.is_assignable(ty, member) && ctx.is_assignable(member, ty))
-        {
-            members.push(ty);
+    references <= 1 && direct_uses(ctx, symbol, body, 1) == references
+}
+
+/// How many times the function that the node is in evaluates a reference to the symbol in the
+/// node at most, where each evaluation of the node counts as `uses`. A reference in a lambda or
+/// another `for` isn't in the function, so it isn't counted.
+fn direct_uses(ctx: &Compiler, symbol: SymbolId, hir: HirId, uses: usize) -> usize {
+    rue_types::grow_stack(|| match ctx.hir(hir) {
+        Hir::Reference(reference) if *reference == symbol => uses,
+        Hir::Guard(guard) => {
+            direct_uses(ctx, symbol, guard.value, uses * guard.value_uses().max(1))
         }
-    }
+        Hir::Block(block) => {
+            let statements: usize = block
+                .statements
+                .iter()
+                .map(|statement| match statement {
+                    Statement::Let(binding, _) => match ctx.symbol(*binding) {
+                        // The value is evaluated wherever the binding is referred to
+                        Symbol::Binding(binding) if binding.inline => {
+                            direct_uses(ctx, symbol, binding.value.hir, uses * 2)
+                        }
+                        Symbol::Binding(binding) => {
+                            direct_uses(ctx, symbol, binding.value.hir, uses)
+                        }
+                        _ => 0,
+                    },
+                    statement => statement
+                        .hirs()
+                        .map(|hir| direct_uses(ctx, symbol, hir, uses))
+                        .sum(),
+                })
+                .sum();
 
-    if members.len() == 1 {
-        members[0]
-    } else {
-        ctx.alloc_type(Type::Union(Union::new(members)))
+            statements
+                + block
+                    .body
+                    .map_or(0, |body| direct_uses(ctx, symbol, body, uses))
+        }
+        node => node
+            .children()
+            .map(|child| direct_uses(ctx, symbol, child, uses))
+            .sum(),
+    })
+}
+
+/// The type with its literals as the types they're values of, such as `Int` for `0`, in the pairs
+/// it's made of too, such as `(Int, Int)` for `(0, 0)`.
+fn widen_literals(ctx: &mut Compiler, ty: TypeId) -> TypeId {
+    let types = ctx.builtins().types;
+
+    match ctx.ty(ty).clone() {
+        Type::Pair(pair) => {
+            let first = widen_literals(ctx, pair.first);
+            let rest = widen_literals(ctx, pair.rest);
+            ctx.alloc_type(Type::Pair(Pair::new(first, rest)))
+        }
+        _ => rue_types::widen_literal(ctx.types_mut(), &types, ty),
     }
 }

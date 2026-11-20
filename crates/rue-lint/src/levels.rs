@@ -399,10 +399,13 @@ fn is_after_failed_item(attribute: &AstAttribute) -> bool {
     }
 }
 
-/// Whether attributes can be attached to the node. An `if` or `match` directly in a block is a
-/// statement (or the block's value), so it can have them too.
+/// Whether attributes can be attached to the node. An `if`, `match` or `for` directly in a block
+/// is a statement (or the block's value), so it can have them too.
 fn accepts_attributes(node: &SyntaxNode) -> bool {
-    if matches!(node.kind(), SyntaxKind::IfExpr | SyntaxKind::MatchExpr) {
+    if matches!(
+        node.kind(),
+        SyntaxKind::IfExpr | SyntaxKind::MatchExpr | SyntaxKind::ForExpr
+    ) {
         return node
             .parent()
             .is_some_and(|parent| parent.kind() == SyntaxKind::Block);
