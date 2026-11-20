@@ -67,7 +67,7 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
         .map(|variant| variant.ty)
         .collect();
     ctx.insert_enum(ty, variant_types);
-    ctx.insert_enum_variants(ty, variants);
+    ctx.insert_declared_variants(ty, variants);
 
     let inner = ctx.alloc_type(Type::Unresolved);
     let name = enum_item.name().map(|name| ctx.local_name(&name));
@@ -88,9 +88,12 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
     }));
 
     ctx.insert_enum_member(Declaration::Symbol(module), ty);
+    ctx.insert_reference_target(Declaration::Symbol(module), Declaration::Type(ty));
 
     if let Some(name) = enum_item.name() {
-        if ctx.last_scope().ty(name.text()).is_some() {
+        let duplicate = ctx.last_scope().ty(name.text()).is_some();
+
+        if duplicate {
             ctx.diagnostic(
                 &name,
                 DiagnosticKind::DuplicateType(name.text().to_string()),
@@ -102,7 +105,11 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
         ctx.last_scope_mut()
             .insert_type(name.text().to_string(), ty, exported);
 
-        insert_local_module(ctx, &name, module, exported);
+        // The namespace can only collide with a module (since modules have their own namespace),
+        // which is only reported if the enum's name isn't already reported as a duplicate type
+        if !duplicate || ctx.last_scope().module(name.text()).is_none() {
+            insert_local_module(ctx, &name, module, exported);
+        }
 
         ctx.declaration_span(Declaration::Type(ty), name.text_range());
     }
@@ -150,10 +157,6 @@ fn declare_variant(
     let ty = ctx.alloc_type(Type::Unresolved);
     let inner = ctx.alloc_type(Type::Unresolved);
 
-    // The variant is declared by the enum, so that its default values are linted like a struct's
-    ctx.push_declaration(Declaration::Type(ty));
-    ctx.pop_declaration();
-
     // The variant is named by its path, since it isn't in scope by its own name
     let text = enum_name.map_or_else(
         || name.text().to_string(),
@@ -184,9 +187,9 @@ fn declare_variant(
 
         ctx.scope_mut(namespace)
             .insert_symbol(name.text().to_string(), constant, true);
-        ctx.declaration_span(Declaration::Symbol(constant), name.text_range());
         ctx.add_reference(Declaration::Symbol(constant), Declaration::Type(ty));
         ctx.insert_enum_member(Declaration::Symbol(constant), enum_type);
+        ctx.insert_reference_target(Declaration::Symbol(constant), Declaration::Type(ty));
 
         constant
     });
@@ -209,7 +212,7 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
     let mut discriminants = HashMap::<BigInt, String>::new();
     let mut previous: Option<BigInt> = None;
 
-    for (variant, info) in enum_item.variants().zip(ctx.enum_variants(ty).to_vec()) {
+    for (variant, info) in enum_item.variants().zip(ctx.declared_variants(ty).to_vec()) {
         let discriminant = discriminant(&variant, previous.as_ref());
         previous = Some(discriminant.clone());
 
@@ -246,14 +249,9 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
         ctx.insert_declared_default(info.ty, DISCRIMINANT_FIELD.to_string());
         ctx.insert_default_field(info.ty, DISCRIMINANT_FIELD.to_string(), discriminant);
 
-        let fields = variant
-            .fields()
-            .map(|fields| fields.fields().collect::<Vec<_>>())
-            .unwrap_or_default();
-
         ctx.push_declaration(Declaration::Type(info.ty));
         let mut field_types = vec![discriminant_type];
-        field_types.extend(compile_fields(ctx, info.ty, fields.into_iter()));
+        field_types.extend(compile_fields(ctx, info.ty, variant.struct_fields()));
         ctx.pop_declaration();
 
         let Type::Struct(Struct {
@@ -351,7 +349,7 @@ pub fn compile_enum_defaults(
 
     let item = AstTypeItem::EnumItem(enum_item.clone());
 
-    for (variant, info) in enum_item.variants().zip(ctx.enum_variants(ty).to_vec()) {
+    for (variant, info) in enum_item.variants().zip(ctx.declared_variants(ty).to_vec()) {
         let (Some(info), Some(fields)) = (info, variant.fields()) else {
             continue;
         };

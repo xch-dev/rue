@@ -24,6 +24,14 @@ enum Signed {
     Octal = 0o10,
 }
 
+// A discriminant that isn't given is one more than the previous variant's, even if that's lower
+// than an earlier one
+enum Order {
+    High = 5,
+    Low = 1,
+    Next,
+}
+
 // The same shape as Chialisp conditions, with a constant field and a spread
 enum Condition {
     CreateCoin = 51 { puzzle_hash: Bytes32, amount: Int, ...memos: List<Bytes> },
@@ -48,6 +56,15 @@ test fn unit_discriminants() {
     assert Signed::Zero as Int == 0;
     assert Signed::Binary as Int == 4;
     assert Signed::Octal as Int == 8;
+    assert Order::High as Int == 5;
+    assert Order::Next as Int == 2;
+}
+
+test fn unit_equality() {
+    let mode: Mode = Mode::Open;
+    assert mode == Mode::Open;
+    assert mode != Mode::Closed;
+    assert Mode::Locked != Mode::Unlocked;
 }
 
 test fn layout() {

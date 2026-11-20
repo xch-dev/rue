@@ -516,6 +516,14 @@ impl AstEnumVariant {
             .children()
             .find_map(AstEnumVariantFields::cast)
     }
+
+    /// The fields in the variant's braces, if it has them.
+    pub fn struct_fields(&self) -> impl Iterator<Item = AstStructField> {
+        self.fields()
+            .into_iter()
+            .flat_map(|fields| fields.syntax().children())
+            .filter_map(AstStructField::cast)
+    }
 }
 
 impl AstEnumVariantFields {

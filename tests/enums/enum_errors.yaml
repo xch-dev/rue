@@ -5,22 +5,34 @@ diagnostics:
 - Variant `Two` has the same discriminant as `AlsoTwo`, which is 2 at enum_errors.rue:7:11
 - Duplicate field `value` specified at enum_errors.rue:8:26
 - Can only spread the last field at enum_errors.rue:8:38
-- Duplicate symbol `Mode` found in scope at enum_errors.rue:16:6
-- Duplicate type `Shape` found in scope at enum_errors.rue:22:8
-- Unused struct `Shape` at enum_errors.rue:22:8
+- Unused enum `Repeats` at enum_errors.rue:12:6
+- Variant `AlsoOne` has the same discriminant as `One`, which is 1 at enum_errors.rue:15:5
+- Unused enum `Duplicated` at enum_errors.rue:23:6
+- Duplicate type `Duplicated` found in scope at enum_errors.rue:27:6
+- Unused enum `Duplicated` at enum_errors.rue:27:6
+- Unused enum `Holder` at enum_errors.rue:31:6
+- Duplicate symbol `Mode` found in scope at enum_errors.rue:36:6
+- Duplicate type `Shape` found in scope at enum_errors.rue:42:8
+- Unused struct `Shape` at enum_errors.rue:42:8
 - |-
-  Module `Mode` should be named in snake_case at enum_errors.rue:24:5
+  Module `Mode` should be named in snake_case at enum_errors.rue:44:5
     note: Consider renaming it to `mode`
-- Undeclared symbol `Square` at enum_errors.rue:32:30
-- Unknown field `diameter` on type `Shape::Circle` at enum_errors.rue:33:53
-- "Struct `Shape::Circle` is missing required fields: radius at enum_errors.rue:34:26"
-- Expected symbol, but found type `Circle` at enum_errors.rue:36:24
-- Undeclared type `Square` at enum_errors.rue:37:29
-- Expected symbol, but found type `Shape` at enum_errors.rue:38:26
-- Cannot assign `1` to `Mode` without a cast, since they are semantically different at enum_errors.rue:39:30
-- Cannot assign `Shape::Empty` to `Shape::Circle`, since they are incompatible at enum_errors.rue:40:41
-- Expected 1 generic arguments, but found 0 at enum_errors.rue:41:37
-- Cannot subpath non-module symbol `Circle` at enum_errors.rue:42:31
-- Unknown field `kind` on type `Shape::Circle` at enum_errors.rue:43:53
-- Unused function `wrong_return` at enum_errors.rue:46:4
-- Cannot assign `Shape` to `Int`, since they are incompatible at enum_errors.rue:46:38
+- Undeclared symbol `Square` at enum_errors.rue:52:30
+- Unknown field `diameter` on type `Shape::Circle` at enum_errors.rue:53:53
+- "Struct `Shape::Circle` is missing required fields: radius at enum_errors.rue:54:26"
+- Expected symbol, but found type `Circle` at enum_errors.rue:56:24
+- Undeclared type `Square` at enum_errors.rue:57:29
+- Expected symbol, but found type `Shape` at enum_errors.rue:58:26
+- Cannot assign `1` to `Mode` without a cast, since they are semantically different at enum_errors.rue:59:30
+- Cannot assign `Shape::Empty` to `Shape::Circle`, since they are incompatible at enum_errors.rue:60:41
+- Expected 1 generic arguments, but found 0 at enum_errors.rue:61:37
+- Cannot subpath non-module symbol `Circle` at enum_errors.rue:62:31
+- Unknown field `kind` on type `Shape::Circle` at enum_errors.rue:63:53
+- Unused function `wrong_return` at enum_errors.rue:66:4
+- Cannot assign `Shape` to `Int`, since they are incompatible at enum_errors.rue:66:38
+- Unused function `narrowed` at enum_errors.rue:71:4
+- Type guard from `Int | Bytes32` to `Int` is always true, since every `Int | Bytes32` value is also a valid `Int` at runtime; use a cast, or guard against a narrower type at enum_errors.rue:72:8
+- "Cannot assign `Holder::Value { value: Int }` to `Bytes32`, since they are incompatible at enum_errors.rue:73:16"
+- Unused function `equality` at enum_errors.rue:79:4
+- Cannot use `==` operator with `Shape` and `Shape::Empty` at enum_errors.rue:80:5
+- Cannot use `==` operator with `Mode` and `Repeats::One` at enum_errors.rue:80:30

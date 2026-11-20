@@ -8,9 +8,29 @@ enum Duplicates {
     Fields { value: Int, value: Int, ...rest: Any, last: Int },
 }
 
+// The previous discriminant plus one can repeat an earlier one
+enum Repeats {
+    One = 1,
+    Zero = 0,
+    AlsoOne,
+}
+
 enum Shape {
     Empty,
     Circle { radius: Int },
+}
+
+enum Duplicated {
+    A,
+}
+
+enum Duplicated {
+    B,
+}
+
+enum Holder {
+    Empty,
+    Value { value: Int | Bytes32 },
 }
 
 enum Mode {
@@ -45,4 +65,17 @@ test fn errors() {
 
 fn wrong_return(shape: Shape) -> Int {
     shape
+}
+
+// The discriminant isn't shown in the type of a variant whose fields are narrowed
+fn narrowed(holder: Holder::Value) -> Bytes32 {
+    if holder.value is Int {
+        return holder;
+    }
+    holder.value
+}
+
+// Only the variants of enums without fields can be compared, and only with the same enum
+fn equality(shape: Shape, mode: Mode) -> Bool {
+    shape == Shape::Empty || mode == Repeats::One
 }

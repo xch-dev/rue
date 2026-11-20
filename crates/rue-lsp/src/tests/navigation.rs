@@ -656,3 +656,111 @@ fn main() -> Int {
         "#]],
     );
 }
+
+const MODE: &str = r#"
+enum Mode { Off, On { level: Int } }
+
+fn flip(mode: Mode) -> Mode {
+    if mode is Mode::Off { Mode::On { level: 1 } } else { Mode::Off }
+}
+"#;
+
+fn mode(cursor: &str, replacement: &str) -> String {
+    MODE.replacen(cursor, replacement, 1)
+}
+
+#[test]
+fn test_definition_enum_through_its_variant() {
+    check_definitions(
+        &[("main.rue", &mode("mode is Mode", "mode is Mo$0de"))],
+        expect![[r#"
+            main.rue:1:5-1:9
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_enum() {
+    check_references(
+        &[("main.rue", &mode("enum Mode", "enum Mo$0de"))],
+        expect![[r#"
+            main.rue:1:5-1:9
+            main.rue:3:14-3:18
+            main.rue:3:23-3:27
+            main.rue:4:15-4:19
+            main.rue:4:27-4:31
+            main.rue:4:58-4:62
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_enum_from_its_variant() {
+    check_references(
+        &[("main.rue", &mode("{ Mode::On", "{ Mo$0de::On"))],
+        expect![[r#"
+            main.rue:1:5-1:9
+            main.rue:3:14-3:18
+            main.rue:3:23-3:27
+            main.rue:4:15-4:19
+            main.rue:4:27-4:31
+            main.rue:4:58-4:62
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_variant_without_fields() {
+    check_definitions(
+        &[("main.rue", &mode("else { Mode::Off", "else { Mode::Of$0f"))],
+        expect![[r#"
+            main.rue:1:12-1:15
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_variant_without_fields() {
+    check_references(
+        &[("main.rue", &mode("{ Off", "{ Of$0f"))],
+        expect![[r#"
+            main.rue:1:12-1:15
+            main.rue:4:21-4:24
+            main.rue:4:64-4:67
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_variant_with_fields() {
+    check_references(
+        &[("main.rue", &mode("On {", "O$0n {"))],
+        expect![[r#"
+            main.rue:1:17-1:19
+            main.rue:4:33-4:35
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_imported_variant() {
+    check_references(
+        &[(
+            "main.rue",
+            r#"
+enum Mode { Off, On }
+
+import Mode::Off;
+
+fn main() -> Mode {
+    O$0ff
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:1:12-1:15
+            main.rue:3:13-3:16
+            main.rue:6:4-6:7
+        "#]],
+    );
+}

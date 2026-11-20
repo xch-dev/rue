@@ -650,3 +650,22 @@ fn main(option: Option::So$0me<Int>) -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_generic_variant_without_fields_declaration() {
+    check(
+        r#"
+enum Option<T> {
+    No$0ne,
+    Some { value: T },
+}
+
+fn main() -> Option<Int> {
+    Option::None
+}
+"#,
+        expect![[r#"
+            Option::None<T> = 0
+        "#]],
+    );
+}

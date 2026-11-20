@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstBinaryExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{BinaryOp, Hir, Mappings, Value};
+use rue_hir::{BinaryOp, Declaration, Hir, Mappings, Value};
 use rue_parser::T;
+use rue_types::{Type, TypeId};
 
 use crate::{Compiler, compile_expr};
 
@@ -454,6 +455,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             if types
                 .iter()
                 .any(|ty| ctx.is_assignable(left.ty, *ty) && ctx.is_assignable(right.ty, *ty))
+                || atom_enum(ctx, left.ty).is_some_and(|ty| atom_enum(ctx, right.ty) == Some(ty))
             {
                 let hir = if op.kind() == T![==] {
                     ctx.alloc_hir(Hir::Binary(BinaryOp::Eq, left.hir, right.hir))
@@ -495,4 +497,32 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         DiagnosticKind::IncompatibleBinaryOp(op.text().to_string(), left_name, right_name),
     );
     ctx.unresolved()
+}
+
+/// The enum that every value of the type is a variant of, if its variants are only their
+/// discriminants. Those are atoms, so they can be compared like the integer literals they are.
+fn atom_enum(ctx: &mut Compiler, ty: TypeId) -> Option<TypeId> {
+    let mut result = None;
+    let mut stack = vec![ty];
+
+    while let Some(ty) = stack.pop() {
+        let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+
+        match ctx.ty(semantic) {
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+            // A variant that's only its discriminant has no other fields, and isn't nil terminated
+            Type::Struct(variant) if !variant.nil_terminated && variant.fields.len() == 1 => {
+                let enum_type = ctx.enum_of(Declaration::Type(variant.semantic))?;
+
+                if result.is_some_and(|result| result != enum_type) {
+                    return None;
+                }
+
+                result = Some(enum_type);
+            }
+            _ => return None,
+        }
+    }
+
+    result
 }

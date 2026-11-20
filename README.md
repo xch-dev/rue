@@ -149,7 +149,7 @@ Variants are named through the enum, such as `Shape::Circle`, both as types and 
 Each variant has a discriminant, which is `0` for the first variant and one more than the previous variant's for the rest, unless it's given as an integer literal like `Rect = 10`. The layout is the same as writing the structs by hand:
 
 - If any variant has fields (even `{}`), every variant is a list that starts with its discriminant, followed by its fields: `Shape::Empty` is `(0)`, `Shape::Circle { radius: 1 }` is `(1 1)`, and `Shape::Rect { width: 2, height: 3 }` is `(10 2 3)`. Fields work like a struct's, so they can have defaults or constant values, and the last one can be a spread (such as `CreateCoin = 51 { puzzle_hash: Bytes32, amount: Int, ...memos: List<Bytes> }`).
-- Otherwise, every variant is only its discriminant, which can be cast to an `Int` (`Mode::Open as Int`).
+- Otherwise, every variant is only its discriminant, which can be cast to an `Int` (`Mode::Open as Int`) and compared with `==` to the enum's other values. A discriminant of `0` is the same value as `nil` (and `false`), so in a type such as `Mode | nil`, the first variant can't be told apart from `nil` unless it's given another discriminant.
 
 An enum can have generic parameters, which every variant shares. They're given to a variant like they are to a struct, as in `Option::Some::<Int> { value: 1 }` and `Option::Some<Int>`. A variant without fields is the same value whatever the generics are, so it can be assigned to any instantiation of the enum.
 

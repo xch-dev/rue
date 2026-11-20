@@ -508,10 +508,7 @@ impl Cache<Compiler> {
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name)
-                    && (matches!(subcontext, CompletionContext::Expression)
-                        || (is_module
-                            && matches!(subcontext, CompletionContext::Type)
-                            && !self.is_enum_namespace(symbol)))
+                    && self.completes_symbol(&subcontext, symbol, is_module)
                 {
                     // A module has no type to show
                     let detail = (!is_module).then(|| {
@@ -545,10 +542,7 @@ impl Cache<Compiler> {
                             _ => continue,
                         }
 
-                        // A variant without fields is completed as its constant instead
-                        if self.ctx.enum_of(Declaration::Type(ty)).is_some()
-                            && symbol_names.contains(&(name.clone(), false))
-                        {
+                        if self.is_completed_as_constant(ty, &name, &symbol_names) {
                             continue;
                         }
                     }
@@ -604,10 +598,7 @@ impl Cache<Compiler> {
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name)
-                    && (matches!(context, CompletionContext::Expression)
-                        || (is_module
-                            && matches!(context, CompletionContext::Type)
-                            && !self.is_enum_namespace(symbol)))
+                    && self.completes_symbol(&context, symbol, is_module)
                 {
                     // The type is looked up from the cursor's scopes, like on hover, so that it's
                     // narrowed by the conditions the cursor is inside of
@@ -642,10 +633,7 @@ impl Cache<Compiler> {
                             _ => continue,
                         }
 
-                        // A variant without fields is completed as its constant instead
-                        if self.ctx.enum_of(Declaration::Type(ty)).is_some()
-                            && symbol_names.contains(&(name.clone(), false))
-                        {
+                        if self.is_completed_as_constant(ty, &name, &symbol_names) {
                             continue;
                         }
                     }
@@ -684,9 +672,7 @@ impl Cache<Compiler> {
                         continue;
                     };
 
-                    if let Some(info) = self.enum_member_hover(scopes, symbol) {
-                        infos.push(info);
-                    } else if let Symbol::Module(_) = self.ctx.symbol(symbol) {
+                    if let Symbol::Module(_) = self.ctx.symbol(symbol) {
                         infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
                     } else {
                         let kind = self.symbol_hover_kind(scopes, symbol);
@@ -1023,6 +1009,38 @@ impl Cache<Compiler> {
         }
     }
 
+    /// Whether a value or module is completed in the context, which is a module in a type (for
+    /// the path to a type in it), or anything in an expression. An enum's namespace isn't
+    /// completed in a type, since the enum itself is.
+    fn completes_symbol(
+        &self,
+        context: &CompletionContext,
+        symbol: SymbolId,
+        is_module: bool,
+    ) -> bool {
+        match context {
+            CompletionContext::Expression => true,
+            CompletionContext::Type => is_module && !self.is_enum_namespace(symbol),
+            CompletionContext::Document
+            | CompletionContext::Item
+            | CompletionContext::Statement
+            | CompletionContext::StructFields { .. }
+            | CompletionContext::ModuleExports { .. } => false,
+        }
+    }
+
+    /// Whether the type is a variant without fields, whose constant with the same name is
+    /// completed instead in an expression.
+    fn is_completed_as_constant(
+        &self,
+        ty: TypeId,
+        name: &str,
+        symbol_names: &HashSet<(String, bool)>,
+    ) -> bool {
+        self.ctx.enum_of(Declaration::Type(ty)).is_some()
+            && symbol_names.contains(&(name.to_string(), false))
+    }
+
     fn is_enum_namespace(&self, symbol: SymbolId) -> bool {
         matches!(self.ctx.symbol(symbol), Symbol::Module(_))
             && self.ctx.enum_of(Declaration::Symbol(symbol)).is_some()
@@ -1048,20 +1066,6 @@ impl Cache<Compiler> {
         }
     }
 
-    /// The hover for the namespace of an enum's variants (which is the enum), or for the constant
-    /// of a variant without fields (which is the variant).
-    fn enum_member_hover(&mut self, scopes: &Scopes, symbol: SymbolId) -> Option<HoverInfo> {
-        let ty = self.ctx.enum_of(Declaration::Symbol(symbol))?;
-
-        Some(match self.ctx.symbol(symbol).clone() {
-            Symbol::Module(_) => HoverInfo::Enum(self.enum_hover(scopes, ty)),
-            Symbol::Constant(constant) => {
-                HoverInfo::Variant(self.variant_hover(scopes, constant.value.ty)?)
-            }
-            _ => return None,
-        })
-    }
-
     fn enum_hover(&mut self, scopes: &Scopes, ty: TypeId) -> EnumHoverInfo {
         let name = self.declared_type_name(scopes, ty);
 
@@ -1082,7 +1086,7 @@ impl Cache<Compiler> {
 
                 Some(format!(
                     "{name}{}",
-                    self.variant_declaration(scopes, variant)
+                    self.variant_declaration(scopes, variant, variant)
                 ))
             })
             .collect();
@@ -1103,16 +1107,14 @@ impl Cache<Compiler> {
 
         Some(VariantHoverInfo {
             name: self.declared_type_name(scopes, ty),
-            declaration: self.variant_declaration(scopes, ty),
+            declaration: self.variant_declaration(scopes, ty, variant),
         })
     }
 
     /// A variant as it's declared in its enum, after its name, such as ` = 1 { value: Bool }`.
-    fn variant_declaration(&mut self, scopes: &Scopes, ty: TypeId) -> String {
-        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
-
-        let discriminant = if let Type::Struct(variant) = self.ctx.ty(semantic)
-            && let Some(value) = self.ctx.default_field(variant.semantic, DISCRIMINANT_FIELD)
+    /// The type is the variant, or an instance of it.
+    fn variant_declaration(&mut self, scopes: &Scopes, ty: TypeId, variant: TypeId) -> String {
+        let discriminant = if let Some(value) = self.ctx.default_field(variant, DISCRIMINANT_FIELD)
         {
             format!(
                 " = {}",

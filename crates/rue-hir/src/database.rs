@@ -62,6 +62,9 @@ pub struct Database {
     /// The enum that each variant, constant of a variant without fields, and namespace of an
     /// enum's variants belongs to.
     enum_members: HashMap<Declaration, TypeId>,
+    /// The declarations that references to others are shown as (see
+    /// [`Database::reference_target`]).
+    reference_targets: HashMap<Declaration, Declaration>,
 }
 
 impl Database {
@@ -214,6 +217,21 @@ impl Database {
     /// namespace of the variants of.
     pub fn enum_of(&self, declaration: Declaration) -> Option<TypeId> {
         self.enum_members.get(&declaration).copied()
+    }
+
+    /// Shows references to the declaration as references to the target instead.
+    pub fn insert_reference_target(&mut self, declaration: Declaration, target: Declaration) {
+        self.reference_targets.insert(declaration, target);
+    }
+
+    /// The declaration that a reference to the declaration is shown as by the language server.
+    /// The namespace of an enum's variants is the enum, and the constant of a variant without
+    /// fields is the variant, so that each of them has one declaration and one set of references.
+    pub fn reference_target(&self, declaration: Declaration) -> Declaration {
+        self.reference_targets
+            .get(&declaration)
+            .copied()
+            .unwrap_or(declaration)
     }
 
     pub fn alloc_scope(&mut self, scope: Scope) -> ScopeId {
