@@ -2,13 +2,15 @@
 //! and the variants of enums inside of them. It's read from the syntax tree of the last compile,
 //! so that a file that has errors still has an outline of what parsed.
 
+use rowan::{NodeOrToken, TextRange};
 use rue_ast::{
     AstConstantItem, AstEnumItem, AstEnumVariant, AstFunctionItem, AstItem, AstModuleItem, AstNode,
     AstStructField, AstStructItem, AstSymbolItem, AstType, AstTypeAliasItem, AstTypeItem,
 };
 use rue_compiler::{Compiler, File};
 use rue_diagnostic::SourceKind;
-use rue_parser::{SyntaxNode, SyntaxToken};
+use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
+use rue_types::ELIDED;
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use super::{Cache, fuzzy_match};
@@ -17,14 +19,14 @@ use crate::position::source_range;
 /// How many characters of a symbol's detail are shown, so that a long signature stays on a line.
 const DETAIL_CHARS: usize = 80;
 
-/// A symbol of a project, for searching all of them by name.
+/// A symbol of a file, for searching all of them by name.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectSymbol {
+pub struct FoundSymbol {
     pub name: String,
     pub kind: SymbolKind,
     /// The name of the symbol that it's inside of, such as a field's struct.
     pub container: Option<String>,
-    pub file: SourceKind,
+    /// Where its name is.
     pub range: Range,
     /// How well the name matches what was searched for.
     pub score: u32,
@@ -39,41 +41,45 @@ impl Cache<Compiler> {
             .unwrap_or_default()
     }
 
-    /// The symbols of every file of the project whose names match the query, which is all of
-    /// them if it's empty.
-    pub fn project_symbols(&self, query: &str) -> Vec<ProjectSymbol> {
-        let mut symbols = Vec::new();
-
-        for file in self.tree.all_files() {
-            matching_symbols(file, &file_symbols(file), None, query, &mut symbols);
-        }
-
-        symbols
+    /// The symbols whose names match the query (which is all of them if it's empty), for each
+    /// of the project's files that are searched.
+    pub fn find_symbols(
+        &self,
+        query: &str,
+        searched: impl Fn(&SourceKind) -> bool,
+    ) -> Vec<(&SourceKind, Vec<FoundSymbol>)> {
+        self.tree
+            .all_files()
+            .into_iter()
+            .filter(|file| searched(&file.source.kind))
+            .map(|file| {
+                let mut symbols = Vec::new();
+                matching_symbols(&file_symbols(file), None, query, &mut symbols);
+                (&file.source.kind, symbols)
+            })
+            .collect()
     }
 }
 
 /// Adds the symbols that match the query, with the symbols inside of them.
 fn matching_symbols(
-    file: &File,
     symbols: &[DocumentSymbol],
     container: Option<&str>,
     query: &str,
-    matching: &mut Vec<ProjectSymbol>,
+    matching: &mut Vec<FoundSymbol>,
 ) {
     for symbol in symbols {
         if let Some(score) = fuzzy_match(query, &symbol.name) {
-            matching.push(ProjectSymbol {
+            matching.push(FoundSymbol {
                 name: symbol.name.clone(),
                 kind: symbol.kind,
                 container: container.map(ToString::to_string),
-                file: file.source.kind.clone(),
                 range: symbol.selection_range,
                 score,
             });
         }
 
         matching_symbols(
-            file,
             symbol.children.as_deref().unwrap_or_default(),
             Some(&symbol.name),
             query,
@@ -121,31 +127,31 @@ fn module_symbol(file: &File, module: &AstModuleItem) -> Option<DocumentSymbol> 
 fn function_symbol(file: &File, function: &AstFunctionItem) -> Option<DocumentSymbol> {
     let name = function.name()?;
 
-    // A function is shown with its signature, as it's written
+    // A function is shown with its signature, as it's written, and a test is told apart from the
+    // functions it tests
+    let test = if function.test().is_some() {
+        "test "
+    } else {
+        ""
+    };
+
     let generics = function
         .generic_parameters()
-        .map(|generics| generics.syntax().text().to_string())
+        .map(|generics| code(generics.syntax()))
         .unwrap_or_default();
 
     let parameters = function
         .parameters()
-        .map(|parameter| one_line(&parameter.syntax().text().to_string()))
+        .map(|parameter| code(parameter.syntax()))
         .collect::<Vec<_>>()
         .join(", ");
 
     let return_type = function
         .return_type()
-        .map(|ty| format!(" -> {}", ty.syntax().text()))
+        .map(|ty| format!(" -> {}", code(ty.syntax())))
         .unwrap_or_default();
 
-    let signature = detail(&format!("{generics}({parameters}){return_type}"));
-
-    // A test is told apart from the functions it tests
-    let signature = if function.test().is_some() {
-        format!("test {signature}")
-    } else {
-        signature
-    };
+    let signature = detail(&format!("{test}{generics}({parameters}){return_type}"));
 
     Some(symbol(
         file,
@@ -239,9 +245,19 @@ fn symbol(
     detail: Option<String>,
     children: Vec<DocumentSymbol>,
 ) -> DocumentSymbol {
-    let range = |range: rowan::TextRange| {
-        source_range(&file.source, range.start().into(), range.end().into())
-    };
+    let range =
+        |range: TextRange| source_range(&file.source, range.start().into(), range.end().into());
+
+    // A node can end with the whitespace and comments after its last token, which aren't part of
+    // the item
+    let end = node
+        .descendants_with_tokens()
+        .filter_map(NodeOrToken::into_token)
+        .filter(|token| !token.kind().is_trivia())
+        .last()
+        .map_or(node.text_range().end(), |token| token.text_range().end());
+
+    let item = TextRange::new(node.text_range().start(), end);
 
     #[allow(deprecated)]
     DocumentSymbol {
@@ -250,30 +266,43 @@ fn symbol(
         kind,
         tags: None,
         deprecated: None,
-        range: range(node.text_range()),
+        range: range(item),
         selection_range: range(name.text_range()),
         children: (!children.is_empty()).then_some(children),
     }
 }
 
 fn type_detail(ty: Option<AstType>) -> Option<String> {
-    ty.map(|ty| detail(&ty.syntax().text().to_string()))
+    ty.map(|ty| detail(&code(ty.syntax())))
 }
 
-/// Source text as it's shown next to a symbol's name: on one line, and not too much of it.
-fn detail(text: &str) -> String {
-    let text = one_line(text);
+/// The text of a node without its comments, on one line.
+fn code(node: &SyntaxNode) -> String {
+    let text = node
+        .descendants_with_tokens()
+        .filter_map(NodeOrToken::into_token)
+        .filter(|token| {
+            !matches!(
+                token.kind(),
+                SyntaxKind::LineComment | SyntaxKind::BlockComment
+            )
+        })
+        .map(|token| token.text().to_string())
+        .collect::<String>();
 
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Text as it's shown next to a symbol's name, which is cut short if it's long.
+fn detail(text: &str) -> String {
     if text.chars().count() <= DETAIL_CHARS {
-        return text;
+        return text.to_string();
     }
 
-    let kept = text.chars().take(DETAIL_CHARS - 3).collect::<String>();
+    let kept = text
+        .chars()
+        .take(DETAIL_CHARS - ELIDED.len())
+        .collect::<String>();
 
-    format!("{}...", kept.trim_end())
-}
-
-/// Source text without its line breaks and indentation.
-fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+    format!("{}{ELIDED}", kept.trim_end())
 }

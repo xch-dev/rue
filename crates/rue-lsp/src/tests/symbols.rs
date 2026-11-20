@@ -73,33 +73,33 @@ fn test_document_symbols() {
     check(
         SOURCE,
         expect![[r#"
-        Constant LIMIT `Int` 3:0-3:22 [3:6-3:11]
-        Constant NAME 5:0-5:26 [5:13-5:17]
-        TypeParameter Amount `Int` 7:0-7:18 [7:5-7:11]
-        TypeParameter Pair `(T, T)` 9:0-9:22 [9:5-9:9]
-        Struct Point 11:0-15:1 [11:7-11:12]
-          Field x `Int` 12:4-12:10 [12:4-12:5]
-          Field y `Int` 13:4-13:14 [13:4-13:5]
-          Field rest `List<Int>` 14:4-14:22 [14:7-14:11]
-        Struct Empty 17:0-17:15 [17:7-17:12]
-        Enum Shape 19:0-26:1 [19:5-19:10]
-          EnumMember Empty 20:4-20:9 [20:4-20:9]
-          EnumMember Circle 21:4-21:30 [21:4-21:10]
-            Field radius `Int` 21:17-21:29 [21:17-21:23]
-          EnumMember Rect 22:4-25:5 [22:4-22:8]
-            Field width `Int` 23:8-23:18 [23:8-23:13]
-            Field height `Int` 24:8-24:19 [24:8-24:14]
-        Function main `(point: Point, shape: Shape) -> Int` 28:0-31:1 [28:10-28:14]
-        Function id `<T>(value: T) -> T` 33:0-35:1 [33:10-33:12]
-        Function run `(value: Any) -> Any` 37:0-37:50 [37:10-37:13]
-        Function adds `test ()` 39:0-41:1 [39:8-39:12]
-        Module math 43:0-55:1 [43:4-43:8]
-          Constant ONE `Int` 44:4-44:30 [44:17-44:20]
-          Function double `(value: Int) -> Int` 46:4-48:5 [46:14-46:20]
-          Module deeper 50:4-54:5 [50:8-50:14]
-            Struct Inner 51:8-53:9 [51:15-51:20]
-              Field value `Int` 52:12-52:22 [52:12-52:17]
-    "#]],
+            Constant LIMIT `Int` 3:0-3:22 [3:6-3:11]
+            Constant NAME 5:0-5:26 [5:13-5:17]
+            TypeParameter Amount `Int` 7:0-7:18 [7:5-7:11]
+            TypeParameter Pair `(T, T)` 9:0-9:22 [9:5-9:9]
+            Struct Point 11:0-15:1 [11:7-11:12]
+              Field x `Int` 12:4-12:10 [12:4-12:5]
+              Field y `Int` 13:4-13:14 [13:4-13:5]
+              Field rest `List<Int>` 14:4-14:22 [14:7-14:11]
+            Struct Empty 17:0-17:15 [17:7-17:12]
+            Enum Shape 19:0-26:1 [19:5-19:10]
+              EnumMember Empty 20:4-20:9 [20:4-20:9]
+              EnumMember Circle 21:4-21:30 [21:4-21:10]
+                Field radius `Int` 21:17-21:28 [21:17-21:23]
+              EnumMember Rect 22:4-25:5 [22:4-22:8]
+                Field width `Int` 23:8-23:18 [23:8-23:13]
+                Field height `Int` 24:8-24:19 [24:8-24:14]
+            Function main `(point: Point, shape: Shape) -> Int` 28:0-31:1 [28:10-28:14]
+            Function id `<T>(value: T) -> T` 33:0-35:1 [33:10-33:12]
+            Function run `(value: Any) -> Any` 37:0-37:50 [37:10-37:13]
+            Function adds `test ()` 39:0-41:1 [39:8-39:12]
+            Module math 43:0-55:1 [43:4-43:8]
+              Constant ONE `Int` 44:4-44:30 [44:17-44:20]
+              Function double `(value: Int) -> Int` 46:4-48:5 [46:14-46:20]
+              Module deeper 50:4-54:5 [50:8-50:14]
+                Struct Inner 51:8-53:9 [51:15-51:20]
+                  Field value `Int` 52:12-52:22 [52:12-52:17]
+        "#]],
     );
 }
 
@@ -137,6 +137,53 @@ fn test_document_symbols_with_long_signature() {
 }
 
 #[test]
+fn test_document_symbols_detail_length() {
+    // A detail of 80 characters is whole, and a longer one is cut to 80 with what's left of it
+    // trimmed
+    let detail_of = |ty: &str| {
+        let project = TestProject::new(&[("main.rue", &format!("type Long = {ty};\n"))]);
+        let symbols = project.document_symbols("main.rue");
+        let detail = symbols.split('`').nth(1).unwrap().to_string();
+        (detail.chars().count(), detail)
+    };
+
+    let exact = format!("({}, Int)", "A".repeat(73));
+    assert_eq!(detail_of(&exact), (80, exact.clone()));
+
+    let longer = format!("({}, Int)", "A".repeat(75));
+    assert_eq!(detail_of(&longer), (80, format!("({},...", "A".repeat(75))));
+
+    // The cut is after a space, which isn't kept
+    let spaced = format!("({}, Int)", "A".repeat(74));
+    assert_eq!(detail_of(&spaced), (79, format!("({},...", "A".repeat(74))));
+
+    // A test's detail is cut with `test` in it
+    let project = TestProject::new(&[(
+        "main.rue",
+        &format!(
+            "test fn long() -> ({}, Int) {{\n    (1, 2)\n}}\n",
+            "A".repeat(74)
+        ),
+    )]);
+    let symbols = project.document_symbols("main.rue");
+    assert_eq!(symbols.split('`').nth(1).unwrap().chars().count(), 80);
+}
+
+#[test]
+fn test_document_symbols_without_comments_in_details() {
+    check(
+        "fn add(first: Int, // the first\n    second: Int /* the second */) -> Int // the sum\n{\n    first + second\n}\n\nconst ONE: Int /* one */ = 1;\n\nstruct Point {\n    x: Int, // across\n    y: /* up */ Int\n}\n",
+        expect![[r#"
+            Function add `(first: Int, second: Int) -> Int` 0:0-4:1 [0:3-0:6]
+            Constant ONE `Int` 6:0-6:29 [6:6-6:9]
+            Struct Point 8:0-11:1 [8:7-8:12]
+              Field x `Int` 9:4-9:10 [9:4-9:5]
+              Field y `Int` 10:4-10:19 [10:4-10:5]
+        "#]],
+    );
+}
+
+#[test]
 fn test_document_symbols_with_attributes_and_comments() {
     // An item starts at its attributes, and the comments before it aren't part of it
     check(
@@ -156,19 +203,19 @@ fn test_document_symbols_with_syntax_errors() {
         expect![[r#"
             Struct Point 0:0-4:1 [0:7-0:12]
               Field x `Int` 1:4-1:10 [1:4-1:5]
-              Field y 3:4-4:0 [3:4-3:5]
-            Function broken `(-> Int)` 10:0-13:0 [10:3-10:9]
-            Enum Shape 13:0-16:0 [13:5-13:10]
+              Field y 3:4-3:5 [3:4-3:5]
+            Function broken `(-> Int)` 10:0-11:17 [10:3-10:9]
+            Enum Shape 13:0-15:8 [13:5-13:10]
               EnumMember Circle 14:4-14:28 [14:4-14:10]
-                Field radius `Int` 14:15-14:27 [14:15-14:21]
+                Field radius `Int` 14:15-14:26 [14:15-14:21]
         "#]],
     );
 
     check(
         "mod {\n    fn inner() {}\n}\n\nmod named {\n    fn inner() {\n",
         expect![[r#"
-            Module named 4:0-6:0 [4:4-4:9]
-              Function inner `()` 5:4-6:0 [5:7-5:12]
+            Module named 4:0-5:16 [4:4-4:9]
+              Function inner `()` 5:4-5:16 [5:7-5:12]
         "#]],
     );
 
@@ -290,7 +337,7 @@ fn test_workspace_symbols_without_a_query() {
 
 #[test]
 fn test_workspace_symbols_of_several_projects() {
-    // Each project that has been compiled is searched, and a file is only listed once
+    // Each project that has been compiled is searched
     let project = workspace();
 
     let other = super::TempDir::new("rue-lsp-symbols-other");
@@ -333,4 +380,57 @@ fn test_workspace_symbols_with_syntax_errors() {
         Function other main.rue:3:3-3:8
     "#]]
     .assert_eq(&project.workspace_symbols(""));
+}
+
+#[test]
+fn test_workspace_symbols_best_match_first() {
+    // A name that starts with the query is before one that only has its letters, whatever
+    // their order by name is
+    let project = TestProject::new(&[(
+        "main.rue",
+        "const amazed: Int = 1;\n\nconst zeta: Int = 2;\n\nconst azure_tide: Int = 3;\n",
+    )]);
+
+    expect![[r#"
+        Constant zeta main.rue:2:6-2:10
+        Constant amazed main.rue:0:6-0:12
+        Constant azure_tide main.rue:4:6-4:16
+    "#]]
+    .assert_eq(&project.workspace_symbols("ze"));
+}
+
+#[test]
+fn test_workspace_symbols_of_a_file_in_two_projects() {
+    // The directory of the second project is inside of the first, so both of them have its
+    // file, which is still only listed once
+    let inner = "struct First {\n    x: Int,\n}\n\nstruct Second {\n    x: Int,\n}\n";
+
+    let project = TestProject::new(&[
+        ("main.rue", "fn main() -> Int {\n    1\n}\n"),
+        ("sub/Rue.toml", super::MANIFEST),
+        ("sub/inner.rue", inner),
+    ]);
+
+    expect![[r#"
+        Struct First sub/inner.rue:0:7-0:12
+        Struct Second sub/inner.rue:4:7-4:13
+        Function main main.rue:0:3-0:7
+        Field x in First sub/inner.rue:1:4-1:5
+        Field x in Second sub/inner.rue:5:4-5:5
+    "#]]
+    .assert_eq(&project.workspace_symbols(""));
+    expect![[r#"
+        Field x in First sub/inner.rue:1:4-1:5
+        Field x in Second sub/inner.rue:5:4-5:5
+    "#]]
+    .assert_eq(&project.workspace_symbols("x"));
+
+    // An edit is only compiled by one of the projects, and the symbols are where they are now
+    project.change("sub/inner.rue", Some(&format!("\n\n\n{inner}")));
+
+    expect![[r#"
+        Field x in First sub/inner.rue:4:4-4:5
+        Field x in Second sub/inner.rue:8:4-8:5
+    "#]]
+    .assert_eq(&project.workspace_symbols("x"));
 }

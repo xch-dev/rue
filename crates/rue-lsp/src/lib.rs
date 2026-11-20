@@ -984,23 +984,34 @@ fn list_symbols(
 fn workspace_symbols(state: &State, query: &str) -> Vec<WorkspaceSymbol> {
     state.shared.inject_panic(Task::WorkspaceSymbols);
 
-    let mut symbols = state
-        .projects
-        .values()
-        .flat_map(|cache| cache.project_symbols(query))
-        .filter_map(|symbol| Some((state.shared.paths.uri(&symbol.file)?, symbol)))
-        .collect::<Vec<_>>();
+    let mut symbols = Vec::new();
 
-    // The projects are in no particular order, and a file can be part of more than one
+    for (key, cache) in &state.projects {
+        // A file that several projects include is searched in the one that answers the other
+        // queries about it, which is the last one that compiled it. The others may have compiled
+        // an older text of it
+        let searched = |kind: &SourceKind| {
+            state
+                .files
+                .get(kind)
+                .is_some_and(|(project, ..)| project == key)
+        };
+
+        for (kind, found) in cache.find_symbols(query, searched) {
+            let Some(uri) = state.shared.paths.uri(kind) else {
+                continue;
+            };
+
+            symbols.extend(found.into_iter().map(|symbol| (uri.clone(), symbol)));
+        }
+    }
+
+    // The projects are in no particular order
     symbols.sort_by(|(a_uri, a), (b_uri, b)| {
-        (b.score, &a.name, a_uri.as_str(), a.range.start).cmp(&(
-            a.score,
-            &b.name,
-            b_uri.as_str(),
-            b.range.start,
-        ))
+        b.score.cmp(&a.score).then_with(|| {
+            (&a.name, a_uri.as_str(), a.range.start).cmp(&(&b.name, b_uri.as_str(), b.range.start))
+        })
     });
-    symbols.dedup_by(|(a_uri, a), (b_uri, b)| a_uri == b_uri && a.range == b.range);
 
     symbols
         .into_iter()

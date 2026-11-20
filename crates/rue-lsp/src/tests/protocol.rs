@@ -970,6 +970,17 @@ async fn test_symbols_session() {
     assert_eq!(response.result().unwrap()[0]["name"], json!("start"));
     assert_eq!(client.compiles(), compiles + 1);
 
+    // And so is the outline, when it's asked for right after an edit
+    client
+        .change(&uri, 3, &[&main.replace("fn main", "fn begin")])
+        .await;
+
+    let response = client
+        .request("textDocument/documentSymbol", Some(symbols.clone()))
+        .await;
+    assert_eq!(response.result().unwrap()[2]["name"], json!("begin"));
+    assert_eq!(client.compiles(), compiles + 2);
+
     // A client that can show them inside of each other gets them that way
     let mut client = Client::new();
     let messages = client
