@@ -764,6 +764,40 @@ async fn test_inlay_hint_session() {
 
     assert!(client.sync().await.is_empty());
 
+    // Each kind of hint has a setting
+    for (settings, expected) in [
+        (
+            json!({ "types": false }),
+            json!([parameter(35, "first"), parameter(38, "second")]),
+        ),
+        (
+            json!({ "types": true, "parameterNames": false }),
+            json!([sum]),
+        ),
+    ] {
+        client
+            .notify(
+                "workspace/didChangeConfiguration",
+                json!({ "settings": { "inlayHints": settings } }),
+            )
+            .await;
+
+        assert_eq!(client.sync().await.len(), 1);
+
+        let response = client
+            .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+            .await;
+        assert_eq!(response.result().unwrap(), &expected);
+    }
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": true } } }),
+        )
+        .await;
+    client.sync().await;
+
     // The hints are for the text as it is when the request is sent, though the server hasn't
     // compiled it yet
     let compiles = client.compiles();
@@ -780,6 +814,51 @@ async fn test_inlay_hint_session() {
         .await;
     assert_eq!(response.result().unwrap(), &json!([sum]));
     assert_eq!(client.compiles(), compiles + 1);
+}
+
+#[tokio::test]
+async fn test_inlay_hint_settings_without_refresh() {
+    let text = "fn id<T>(value: T) -> T {\n    value\n}\n\nfn main() -> Int {\n    id(1)\n}\n";
+    let project = TempProject::new(&[("main.rue", text)]);
+    let uri = project.uri("main.rue");
+
+    // A client that doesn't say it asks for the hints again isn't told to
+    let mut client = Client::initialized().await;
+    client.open(&uri, text).await;
+    client.sync().await;
+
+    let generic = json!({
+        "position": { "line": 5, "character": 6 },
+        "label": "::<Int>",
+        "kind": 1,
+        "paddingRight": false,
+    });
+
+    let parameter = json!({
+        "position": { "line": 5, "character": 7 },
+        "label": "value:",
+        "kind": 2,
+        "paddingRight": true,
+    });
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([generic, parameter]));
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "rue": { "inlayHints": { "genericArguments": false } } } }),
+        )
+        .await;
+
+    assert!(client.sync().await.is_empty());
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([parameter]));
 }
 
 #[tokio::test]

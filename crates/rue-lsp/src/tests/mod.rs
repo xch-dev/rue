@@ -398,8 +398,16 @@ impl TestProject {
         }
 
         for hint in hints {
-            if let Some(InlayHintTooltip::String(tooltip)) = hint.tooltip {
-                writeln!(output, "tooltip: {tooltip}").unwrap();
+            let InlayHintLabel::String(label) = hint.label else {
+                unreachable!();
+            };
+
+            match hint.tooltip {
+                None => {}
+                Some(InlayHintTooltip::String(tooltip)) => {
+                    writeln!(output, "tooltip of «{label}»: {tooltip}").unwrap();
+                }
+                Some(tooltip) => panic!("unexpected tooltip: {tooltip:?}"),
             }
         }
 

@@ -2,10 +2,10 @@
 //! language server never panics on it, whether it's complete or half-typed.
 //!
 //! For each file, it (a) makes every request that's about a position (hover, go to definition,
-//! references, completion, rename, signature help and inlay hints) at many cursor positions, and (b) recompiles
-//! edited versions of the file, as if it were being typed, and makes the same requests where the
-//! edit happened. The edits are: everything after the cursor removed, the rest of the cursor's
-//! line removed, and a chunk removed from the cursor on.
+//! references, completion, rename, signature help and inlay hints) at many cursor positions, and
+//! (b) recompiles edited versions of the file, as if it were being typed, and makes the same
+//! requests where the edit happened. The edits are: everything after the cursor removed, the rest
+//! of the cursor's line removed, and a chunk removed from the cursor on.
 //!
 //! [`crash_sweep_sampled`] runs with `cargo test` on a deterministic sample, so that it takes a few
 //! seconds. [`crash_sweep_exhaustive`] makes requests at every character boundary and edits at

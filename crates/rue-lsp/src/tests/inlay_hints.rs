@@ -7,16 +7,29 @@ use super::TestProject;
 use crate::cache::HintOptions;
 use crate::lock;
 
+/// Shows the hints of code that compiles, so that a test is about the types the code has, rather
+/// than what's left of code that was rejected.
 #[allow(clippy::needless_pass_by_value)]
 fn check(source: &str, expect: Expect) {
-    let project = TestProject::new(&[("main.rue", source)]);
-    expect.assert_eq(&project.inlay_hints("main.rue"));
+    check_with(HintOptions::default(), source, expect);
 }
 
-/// Shows the hints with some of them turned off.
+/// Shows the hints of code that compiles, with some of them turned off.
 #[allow(clippy::needless_pass_by_value)]
 fn check_with(options: HintOptions, source: &str, expect: Expect) {
     let project = TestProject::new(&[("main.rue", source)]);
+    let diagnostics = project.diagnostics();
+    assert!(!diagnostics.contains(" Error"), "{diagnostics}");
+    *lock(&project.backend().shared.hints) = options;
+    expect.assert_eq(&project.inlay_hints("main.rue"));
+}
+
+/// Shows the hints of code that has errors.
+#[allow(clippy::needless_pass_by_value)]
+fn check_with_errors(options: HintOptions, source: &str, expect: Expect) {
+    let project = TestProject::new(&[("main.rue", source)]);
+    let diagnostics = project.diagnostics();
+    assert!(diagnostics.contains(" Error"), "{diagnostics}");
     *lock(&project.backend().shared.hints) = options;
     expect.assert_eq(&project.inlay_hints("main.rue"));
 }
@@ -56,10 +69,13 @@ fn main(point: Point, list: List<Int>) -> Int {
     let items = list;
     let sum = number + point.x;
     let written: Int = 2;
+    let typed: Int = number + point.x;
+    let grouped = (5);
+    let lambda = (fn(value: Int) => value);
     let _ = sum;
     let _unused = sum;
     let made = Point { x: 1, y: 2 };
-    sum + written + text.length + copy.y + made.x
+    sum + written + text.length + copy.y + made.x + typed + grouped + lambda(1)
 }
 "#,
         expect![[r#"
@@ -76,10 +92,13 @@ fn main(point: Point, list: List<Int>) -> Int {
                 let items«: List<Int>» = list;
                 let sum«: Int» = number + point.x;
                 let written: Int = 2;
+                let typed: Int = number + point.x;
+                let grouped = (5);
+                let lambda = (fn(value: Int) => value);
                 let _ = sum;
                 let _unused«: Int» = sum;
                 let made = Point { x: 1, y: 2 };
-                sum + written + text.length + copy.y + made.x
+                sum + written + text.length + copy.y + made.x + typed + grouped + lambda(1)
             }
         "#]],
     );
@@ -102,7 +121,8 @@ fn main(pair: (Int, Bytes), list: [Int, ...List<Bytes>], point: Point) -> Int {
     let [head, ...tail] = list;
     let { x, y: other } = point;
     let (_, (kept, [inner])) = (pair, (pair.rest, [first]));
-    first + head + x + second.length + other.length + kept.length + inner + tail.first.length
+    let _rest = tail;
+    first + head + x + second.length + other.length + kept.length + inner
 }
 "#,
         expect![[r#"
@@ -117,7 +137,8 @@ fn main(pair: (Int, Bytes), list: [Int, ...List<Bytes>], point: Point) -> Int {
                 let [head«: Int», ...tail«: List<Bytes>»] = list;
                 let { x, y: other } = point;
                 let (_, (kept«: Bytes», [inner«: Int»])) = (pair, (pair.rest, [first]));
-                first + head + x + second.length + other.length + kept.length + inner + tail.first.length
+                let _rest«: List<Bytes>» = tail;
+                first + head + x + second.length + other.length + kept.length + inner
             }
         "#]],
     );
@@ -176,12 +197,18 @@ mod inner {
     }
 }
 
-fn main() -> Int {
+struct Circle { kind = 1, radius: Int }
+struct Square { kind = 2, side: Int }
+struct Triangle { kind = 3, base: Int, height: Int }
+
+fn main(shape: Circle | Square | Triangle | nil) -> Int {
     let picked = pick(1, "a");
     let written = pick::<Int, String>(1, "a");
     let nested = inner::id(pick(true, nil));
+    let union = inner::id(shape);
     one() + picked + written + same(2)
 }
+
 "#,
         expect![[r#"
 
@@ -203,19 +230,26 @@ fn main() -> Int {
                 }
             }
 
-            fn main() -> Int {
+            struct Circle { kind = 1, radius: Int }
+            struct Square { kind = 2, side: Int }
+            struct Triangle { kind = 3, base: Int, height: Int }
+
+            fn main(shape: Circle | Square | Triangle | nil) -> Int {
                 let picked = pick«::<Int, String>»(1, "a");
                 let written = pick::<Int, String>(1, "a");
                 let nested = inner::id«::<true | false>»(pick«::<Bool, nil>»(true, nil));
+                let union = inner::id«::<Circle | Square | Triangle | nil>»(shape);
                 one() + picked + written + same«::<Int>»(2)
             }
+
         "#]],
     );
 }
 
 #[test]
 fn test_hints_for_parameter_names() {
-    // An argument that's named like the parameter already says what it's for
+    // An argument that's named like the parameter already says what it's for, and a parameter
+    // that's destructured has no name
     check_with(
         PARAMETER_NAMES,
         r#"
@@ -232,14 +266,24 @@ fn total(first: Int, ...rest: List<Int>) -> Int {
     first
 }
 
+mod inner {
+    export const first: Int = 1;
+    export const other: Int = 2;
+}
+
+fn pair((left, right): (Int, Int), [head]: [Int]) -> Int {
+    left + right + head
+}
+
 fn main(first: Int, point: Point, list: List<Int>) -> Int {
+    let _pair = pair((1, 2), [3]);
     let add_lambda = fn(left: Int, right: Int) => left + right;
     add(1, 2)
         + add(first, point.second)
         + add(point.first, first)
         + add(add(3, 4), 5)
-        + total(1, 2, 3)
         + total(6, ...list)
+        + add(inner::first, inner::other)
         + add_lambda(7, 8)
         + sha256("a").length
 }
@@ -259,14 +303,24 @@ fn main(first: Int, point: Point, list: List<Int>) -> Int {
                 first
             }
 
+            mod inner {
+                export const first: Int = 1;
+                export const other: Int = 2;
+            }
+
+            fn pair((left, right): (Int, Int), [head]: [Int]) -> Int {
+                left + right + head
+            }
+
             fn main(first: Int, point: Point, list: List<Int>) -> Int {
+                let _pair = pair((1, 2), [3]);
                 let add_lambda = fn(left: Int, right: Int) => left + right;
                 add(«first:» 1, «second:» 2)
                     + add(first, point.second)
                     + add(point.first, «second:» first)
                     + add(«first:» add(«first:» 3, «second:» 4), «second:» 5)
-                    + total(«first:» 1, 2, 3)
                     + total(«first:» 6, «rest:» ...list)
+                    + add(inner::first, «second:» inner::other)
                     + add_lambda(«left:» 7, «right:» 8)
                     + sha256("a").length
             }
@@ -284,7 +338,7 @@ fn pick<T, U>(first: T, second: U) -> T {
 
 fn main() -> Int {
     let picked = pick(1, "a");
-    let function = fn(value) => value + picked;
+    let function: fn(value: Int) -> Int = fn(value) => value + picked;
     function(2)
 }
 "#,
@@ -296,7 +350,7 @@ fn main() -> Int {
 
             fn main() -> Int {
                 let picked«: Int» = pick«::<Int, String>»(«first:» 1, «second:» "a");
-                let function = fn(value) => value + picked;
+                let function: fn(value: Int) -> Int = fn(value«: Int») => value + picked;
                 function(«value:» 2)
             }
         "#]],
@@ -320,7 +374,7 @@ fn main(shape: Shape, value: Circle | Square | Triangle | Rectangle | nil | Byte
     let same = shape;
     let other = value;
     let pair = (value, (value, value));
-    let function = fn(first: Int, second: Bytes32, third: PublicKey) => (first, second, third);
+    let many = [value, value];
     1
 }
 "#,
@@ -337,11 +391,12 @@ fn main(shape: Shape, value: Circle | Square | Triangle | Rectangle | nil | Byte
                 let same«: Shape» = shape;
                 let other«: Circle | Square | Triangle | ...» = value;
                 let pair«: (Circle | Square | Triangle |...» = (value, (value, value));
-                let function = fn(first: Int, second: Bytes32, third: PublicKey) => (first, second, third);
+                let many«: (Circle | Square | Triangle |...» = [value, value];
                 1
             }
-            tooltip: Circle | Square | Triangle | Rectangle | nil | Bytes32
-            tooltip: (Circle | Square | Triangle | Rectangle | nil | Bytes32, (Circle | Square | Triangle | Rectangle | nil | Bytes32, Circle | Square | Triangle | Rectangle | nil | Bytes32))
+            tooltip of «: Circle | Square | Triangle | ...»: Circle | Square | Triangle | Rectangle | nil | Bytes32
+            tooltip of «: (Circle | Square | Triangle |...»: (Circle | Square | Triangle | Rectangle | nil | Bytes32, (Circle | Square | Triangle | Rectangle | nil | Bytes32, Circle | Square | Triangle | Rectangle | nil | Bytes32))
+            tooltip of «: (Circle | Square | Triangle |...»: (Circle | Square | Triangle | Rectangle | nil | Bytes32, (Circle | Square | Triangle | Rectangle | nil | Bytes32, nil))
         "#]],
     );
 }
@@ -366,7 +421,7 @@ fn test_hints_for_huge_types() {
                 let big«: ((((((((((((((((((((Int, Int)...» = pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(pair(1))))))))))))))))))));
                 1
             }
-            tooltip: ((((((((((((((((((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (((Int, Int), (Int, Int)), ((Int, Int), (Int, Int)))), ((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (..., ...))), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...)
+            tooltip of «: ((((((((((((((((((((Int, Int)...»: ((((((((((((((((((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (((Int, Int), (Int, Int)), ((Int, Int), (Int, Int)))), ((((Int, Int), (Int, Int)), ((Int, Int), (Int, Int))), (..., ...))), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...), ...)
         "#]],
     );
 }
@@ -477,7 +532,8 @@ fn test_hints_across_files() {
 #[test]
 fn test_hints_with_syntax_errors() {
     // The parts that still parse have hints, and what couldn't be worked out has none
-    check(
+    check_with_errors(
+        HintOptions::default(),
         "fn add(first: Int, second: Int) -> Int {\n    first + second\n}\n\nfn main() -> Int {\n    let value = add(1, ;\n    let other = ;\n    let unknown = missing(1);\n    let last = add(2,\n",
         expect![[r#"
             fn add(first: Int, second: Int) -> Int {
@@ -492,7 +548,8 @@ fn test_hints_with_syntax_errors() {
         "#]],
     );
 
-    check(
+    check_with_errors(
+        HintOptions::default(),
         "fn main() -> Int {\n    let = 1;\n    let (a, = (1, 2);\n",
         expect![[r#"
             fn main() -> Int {
@@ -550,4 +607,187 @@ fn test_hints_in_assert_message() {
             }
         "#]],
     );
+}
+
+#[test]
+fn test_hints_with_errors() {
+    // What couldn't be worked out has no hint: a call that's missing a type for a generic, the
+    // parameters of the lambdas in it, and a value with a part that's unknown
+    check_with_errors(
+        HintOptions::default(),
+        r#"
+fn compose<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C) -> fn(a: A) -> C {
+    fn(a) => second(first(a))
+}
+
+fn add(first: Int, second: Int) -> Int {
+    first + second
+}
+
+fn total(first: Int, ...rest: List<Int>) -> Int {
+    first
+}
+
+fn make<T>() -> List<T> {
+    []
+}
+
+fn main(list: List<Int>) -> Int {
+    let made = make();
+    let composed = compose(fn(a) => a, fn(b) => b);
+    let pair = (missing(1), 1);
+    let unknown = fn(value) => value;
+    add(...list) + total(1, list) + total(1, 2, 3) + add(1, 2, 3)
+}
+"#,
+        expect![[r#"
+
+            fn compose<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C) -> fn(a: A) -> C {
+                fn(a«: A») => second(«b:» first(a))
+            }
+
+            fn add(first: Int, second: Int) -> Int {
+                first + second
+            }
+
+            fn total(first: Int, ...rest: List<Int>) -> Int {
+                first
+            }
+
+            fn make<T>() -> List<T> {
+                []
+            }
+
+            fn main(list: List<Int>) -> Int {
+                let made = make();
+                let composed = compose(«first:» fn(a) => a, «second:» fn(b) => b);
+                let pair = (missing(1), 1);
+                let unknown = fn(value) => value;
+                add(...list) + total(«first:» 1, list) + total(«first:» 1, 2, 3) + add(«first:» 1, «second:» 2, 3)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_very_large_union() {
+    // A union with more members than fit still shows the first of them
+    let members = (1..=40)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    check_with(
+        TYPES,
+        &format!(
+            "fn main(value: {members}) -> Int {{\n    let copy = value;\n    let list = [value];\n    1\n}}\n"
+        ),
+        expect![[r#"
+            fn main(value: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40) -> Int {
+                let copy«: 1 | 2 | 3 | 4 | 5 | 6 | 7 | ...» = value;
+                let list«: (1 | 2 | 3 | 4 | 5 | 6 | 7 |...» = [value];
+                1
+            }
+            tooltip of «: 1 | 2 | 3 | 4 | 5 | 6 | 7 | ...»: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40
+            tooltip of «: (1 | 2 | 3 | 4 | 5 | 6 | 7 |...»: (1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40, nil)
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_with_string_types() {
+    // A `|` or a bracket inside of a string isn't part of the type around it
+    check_with(
+        TYPES,
+        "fn main(value: \"a | b\" | \"((<\" | \"a \\\" | quoted\" | \"another long string\") -> Int {\n    let copy = value;\n    1\n}\n",
+        expect![[r#"
+            fn main(value: "a | b" | "((<" | "a \" | quoted" | "another long string") -> Int {
+                let copy«: "a | b" | "((<" | ...» = value;
+                1
+            }
+            tooltip of «: "a | b" | "((<" | ...»: "a | b" | "((<" | "a \" | quoted" | "another long string"
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_in_lambda_passed_to_generic_function() {
+    // The body of the lambda is compiled again once the type of its parameter is known, and the
+    // hints are for the types it has in the end
+    check(
+        r#"
+fn map<T, U>(value: T, function: fn(item: T) -> U) -> U {
+    function(value)
+}
+
+fn same<T>(value: T) -> T {
+    value
+}
+
+fn main() -> Bytes {
+    map(1, fn(item) => {
+        let copy = item;
+        let text = same("a");
+        text + same("b")
+    })
+}
+"#,
+        expect![[r#"
+
+            fn map<T, U>(value: T, function: fn(item: T) -> U) -> U {
+                function(«item:» value)
+            }
+
+            fn same<T>(value: T) -> T {
+                value
+            }
+
+            fn main() -> Bytes {
+                map«::<Int, Bytes>»(«value:» 1, «function:» fn(item«: Int») => {
+                    let copy«: Int» = item;
+                    let text«: String» = same«::<String>»(«value:» "a");
+                    text + same«::<String>»(«value:» "b")
+                })
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_of_the_file_they_are_for() {
+    // Each file has a binding and a call in the same place
+    let file = |ty: &str, name: &str| {
+        format!(
+            "fn make({name}: {ty}) -> {ty} {{\n    {name}\n}}\n\nfn main(value: {ty}) -> {ty} {{\n    let copy = make(value);\n    copy\n}}\n"
+        )
+    };
+
+    let project = TestProject::new(&[
+        ("main.rue", &file("Int", "aaa")),
+        ("other.rue", &file("Any", "bbb")),
+        ("zzz.rue", &file("nil", "ccc")),
+    ]);
+
+    expect![[r#"
+        fn make(aaa: Int) -> Int {
+            aaa
+        }
+
+        fn main(value: Int) -> Int {
+            let copy«: Int» = make(«aaa:» value);
+            copy
+        }
+    "#]]
+    .assert_eq(&project.inlay_hints("main.rue"));
+    expect![[r#"
+        fn make(bbb: Any) -> Any {
+            bbb
+        }
+
+        fn main(value: Any) -> Any {
+            let copy«: Any» = make(«bbb:» value);
+            copy
+        }
+    "#]]
+    .assert_eq(&project.inlay_hints("other.rue"));
 }

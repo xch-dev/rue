@@ -11,10 +11,10 @@ use rue_ast::{
 };
 use rue_compiler::{Compiler, SyntaxCall, SyntaxItemKind};
 use rue_hir::{ScopeId, SymbolId};
-use rue_types::{ELIDED, Type, TypeId};
+use rue_types::{ELIDED, Type, TypeId, UNRESOLVED};
 use tower_lsp_server::ls_types::Position;
 
-use super::{Cache, Scopes, contains};
+use super::{Cache, Scopes};
 use crate::position::source_range;
 
 /// How many parts of a type are written in a hint, before it's shortened to fit.
@@ -25,9 +25,6 @@ const HINT_CHARS: usize = 32;
 
 /// How many parts of a type are written in the tooltip of a hint that was shortened.
 const TOOLTIP_PARTS: usize = 64;
-
-/// How a type that couldn't be worked out is written.
-const UNRESOLVED: &str = "{unresolved}";
 
 /// Which hints to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,15 +106,11 @@ impl Cache<Compiler> {
                 SyntaxItemKind::Call(call) => {
                     calls.insert(item.span, call);
                 }
-                SyntaxItemKind::Scope(scope) => scopes.push((item.span, *scope)),
-                SyntaxItemKind::FileModule(_)
-                | SyntaxItemKind::SymbolReference(_)
-                | SyntaxItemKind::TypeDeclaration(_)
-                | SyntaxItemKind::TypeReference(_)
-                | SyntaxItemKind::FieldDeclaration(_)
-                | SyntaxItemKind::FieldReference(_)
-                | SyntaxItemKind::FieldInitializer(_)
-                | SyntaxItemKind::CompletionContext(_) => {}
+                // A scope that a hint in the range is in has part of the range in it
+                SyntaxItemKind::Scope(scope) if item.span.intersect(range).is_some() => {
+                    scopes.push((item.span, *scope));
+                }
+                _ => {}
             }
         }
 
@@ -164,19 +157,18 @@ impl Cache<Compiler> {
 
         let mut hints = Vec::new();
 
+        let mut scopes = ScopeSweep::new(scopes);
+
         for (offset, hint) in pending {
             let index = usize::from(offset);
 
             // Types are named as they are where the hint is
-            let innermost = innermost_scope(scopes.iter().copied(), index);
-            let scopes = self.scope_chain(innermost);
+            let innermost = scopes.innermost(offset);
 
             let (label, kind, tooltip) = match hint {
                 Pending::Type(symbol) => {
-                    let ty = match innermost {
-                        Some(scope) => self.ctx.symbol_type_in(scope, symbol),
-                        None => self.ctx.symbol_type(symbol),
-                    };
+                    let scopes = self.scope_chain(innermost);
+                    let ty = self.symbol_type(&scopes, symbol);
 
                     let Some((name, tooltip)) = self.hint_type(&scopes, ty) else {
                         continue;
@@ -185,6 +177,8 @@ impl Cache<Compiler> {
                     (format!(": {name}"), HintKind::Type, tooltip)
                 }
                 Pending::GenericArguments(types) => {
+                    let scopes = self.scope_chain(innermost);
+
                     let Some(names) = types
                         .into_iter()
                         .map(|ty| self.hint_type(&scopes, ty))
@@ -231,7 +225,14 @@ impl Cache<Compiler> {
     fn hint_type(&mut self, scopes: &Scopes, ty: TypeId) -> Option<(String, Option<String>)> {
         let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
-        if matches!(self.ctx.ty(semantic), Type::Unresolved) {
+        // A generic that isn't one of the code's own is another function's, which is left where
+        // a type should be when a call's generics can't be inferred
+        if matches!(self.ctx.ty(semantic), Type::Generic(_))
+            && !scopes.0.iter().any(|&scope| {
+                let scope = self.ctx.scope(scope);
+                scope.type_name(ty).is_some() || scope.type_name(semantic).is_some()
+            })
+        {
             return None;
         }
 
@@ -242,7 +243,8 @@ impl Cache<Compiler> {
             return None;
         }
 
-        if name.chars().count() <= HINT_CHARS {
+        // The tooltip has more of a type that was cut short, whichever of the two cut it
+        if name.chars().count() <= HINT_CHARS && !name.contains(ELIDED) {
             return Some((name, None));
         }
 
@@ -252,15 +254,53 @@ impl Cache<Compiler> {
     }
 }
 
-/// The scope that contains the index and no other scope that does, like [`Cache::scopes`].
-pub(super) fn innermost_scope(
-    scopes: impl Iterator<Item = (TextRange, ScopeId)>,
-    index: usize,
-) -> Option<ScopeId> {
-    scopes
-        .filter(|&(span, _)| contains(span, index))
-        .min_by_key(|&(span, _)| span.len())
-        .map(|(_, scope)| scope)
+/// Finds the innermost scope at each of a series of offsets that only go up, like
+/// [`innermost_scope`] does for one, without looking at every scope for each of them.
+struct ScopeSweep {
+    /// The scopes in the order they start, each with its place in the syntax map.
+    scopes: Vec<(TextRange, usize, ScopeId)>,
+    /// How many of the scopes have started.
+    started: usize,
+    /// The scopes that have started and haven't ended.
+    open: Vec<(TextRange, usize, ScopeId)>,
+}
+
+impl ScopeSweep {
+    fn new(scopes: Vec<(TextRange, ScopeId)>) -> Self {
+        let mut scopes = scopes
+            .into_iter()
+            .enumerate()
+            .map(|(order, (span, scope))| (span, order, scope))
+            .collect::<Vec<_>>();
+
+        scopes.sort_by_key(|(span, ..)| span.start());
+
+        Self {
+            scopes,
+            started: 0,
+            open: Vec::new(),
+        }
+    }
+
+    fn innermost(&mut self, offset: TextSize) -> Option<ScopeId> {
+        while let Some(scope) = self
+            .scopes
+            .get(self.started)
+            .filter(|(span, ..)| span.start() <= offset)
+        {
+            self.open.push(*scope);
+            self.started += 1;
+        }
+
+        self.open.retain(|(span, ..)| offset <= span.end());
+
+        // The narrowest scope is the innermost, and of those with the same span, the first one
+        // in the syntax map is
+        self.open
+            .iter()
+            .min_by_key(|(span, order, _)| (span.len(), *order))
+            .map(|&(.., scope)| scope)
+    }
 }
 
 /// Whether the type of a value is plain from how it's written, so a hint would only repeat it: a
@@ -348,12 +388,9 @@ fn call_hints(
 
     for (i, argument) in call.args().enumerate() {
         // The last parameter of a function that isn't nil terminated is the rest of the
-        // arguments, so only an argument that's spread there is all of it, and the arguments
-        // that are its items have no parameter of their own. A spread anywhere else is an error
-        let spread = argument.spread().is_some();
-        let rest = !function.nil_terminated && i >= last;
-
-        if spread != (rest && i == last) || (rest && !spread) {
+        // arguments, so only an argument that's spread there is all of it. A spread anywhere
+        // else is an error, and the arguments after the last parameter have none
+        if argument.spread().is_some() != (!function.nil_terminated && i == last) {
             continue;
         }
 
@@ -365,8 +402,9 @@ fn call_hints(
             continue;
         };
 
-        // An argument that's named like the parameter already says what it's for
-        if parameter.name.is_empty() || argument_name(&expr).as_deref() == Some(&parameter.name) {
+        // A parameter that's destructured has its pattern in place of a name. An argument that's
+        // named like the parameter already says what it's for
+        if !is_name(&parameter.name) || argument_name(&expr).as_deref() == Some(&parameter.name) {
             continue;
         }
 
@@ -375,6 +413,11 @@ fn call_hints(
             Pending::Parameter(parameter.name.clone()),
         ));
     }
+}
+
+/// Whether the text is a name, rather than nothing or a pattern.
+fn is_name(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// The name that an argument is written with, if it's a name, a path to one or a field.
@@ -433,14 +476,23 @@ fn shorten(name: &str, max: usize) -> String {
 }
 
 /// The members of a union as it's written, which are separated by a `|` that isn't inside of
-/// another type.
+/// another type or a string.
 fn union_members(name: &str) -> Vec<&str> {
     let mut members = Vec::new();
     let mut depth = 0usize;
+    let mut string = false;
+    let mut escaped = false;
     let mut start = 0;
 
     for (i, c) in name.char_indices() {
+        if string {
+            string = escaped || c != '"';
+            escaped = !escaped && c == '\\';
+            continue;
+        }
+
         match c {
+            '"' => string = true,
             '(' | '<' | '[' | '{' => depth += 1,
             // The `>` of a `->` isn't a bracket
             ')' | '>' | ']' | '}' if !name[..i].ends_with('-') => depth = depth.saturating_sub(1),
@@ -454,4 +506,43 @@ fn union_members(name: &str) -> Vec<&str> {
 
     members.push(name[start..].trim());
     members
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_union_members() {
+        assert_eq!(union_members("Int"), ["Int"]);
+        assert_eq!(union_members("Int | Bytes | nil"), ["Int", "Bytes", "nil"]);
+
+        // A `|` inside of another type or a string isn't between the members of the union
+        assert_eq!(
+            union_members("List<A | B> | (C | D, E) | fn(a: A | B) -> C | D"),
+            ["List<A | B>", "(C | D, E)", "fn(a: A | B) -> C", "D"]
+        );
+        assert_eq!(
+            union_members(r#""a | b" | "(" | "\" | c""#),
+            [r#""a | b""#, r#""(""#, r#""\" | c""#]
+        );
+    }
+
+    #[test]
+    fn test_shorten() {
+        // A union is cut after the last member that leaves room to say that there are more
+        assert_eq!(shorten("Int | Bytes | nil", 12), "Int | ...");
+        assert_eq!(shorten("Int | Bytes | nil", 17), "Int | Bytes | ...");
+        assert_eq!(shorten("Int | Bytes | nil", 16), "Int | ...");
+        assert_eq!(shorten("Int | Bytes | ...", 17), "Int | Bytes | ...");
+
+        // Anything else, and a union whose first member doesn't fit, is cut where it has to be
+        assert_eq!(shorten("(Int, Bytes, nil)", 10), "(Int, B...");
+        assert_eq!(shorten("(Int, Bytes, nil)", 9), "(Int,...");
+        assert_eq!(shorten("Bytes32 | Int", 9), "Bytes3...");
+        assert_eq!(
+            shorten("\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}", 5),
+            "\u{e9}\u{e9}..."
+        );
+    }
 }

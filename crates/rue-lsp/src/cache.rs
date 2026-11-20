@@ -27,7 +27,6 @@ pub use signature::Signatures;
 
 use crate::paths::path_to_uri;
 use crate::position::{position_to_offset, source_range};
-use hints::innermost_scope;
 
 #[derive(Debug, Clone)]
 pub struct Scopes(Vec<ScopeId>);
@@ -1313,6 +1312,18 @@ fn field_owner(ctx: &mut Compiler, container: TypeId) -> Option<TypeId> {
 /// first span.
 fn best_span(spans: impl Iterator<Item = TextRange>, index: usize) -> Option<TextRange> {
     spans.min_by_key(|span| (usize::from(span.end()) == index, span.len()))
+}
+
+/// The scope that contains the index and no other scope that does: the narrowest one, and of
+/// those with the same span, the first.
+fn innermost_scope(
+    scopes: impl Iterator<Item = (TextRange, ScopeId)>,
+    index: usize,
+) -> Option<ScopeId> {
+    scopes
+        .filter(|&(span, _)| contains(span, index))
+        .min_by_key(|&(span, _)| span.len())
+        .map(|(_, scope)| scope)
 }
 
 fn contains(range: TextRange, index: usize) -> bool {
