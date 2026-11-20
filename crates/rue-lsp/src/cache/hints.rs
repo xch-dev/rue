@@ -176,12 +176,10 @@ impl Cache<Compiler> {
         for (offset, hint) in pending {
             let index = usize::from(offset);
 
-            // Types are named as they are where the hint is
-            let innermost = scopes.innermost(offset);
-
             let (label, kind, tooltip) = match hint {
+                // Types are named as they are where the hint is
                 Pending::Type(symbol) => {
-                    let scopes = self.scope_chain(innermost);
+                    let scopes = self.scope_chain(scopes.innermost(offset));
                     let ty = self.symbol_type(&scopes, symbol);
 
                     let Some((name, tooltip)) = self.hint_type(&scopes, ty) else {
@@ -191,7 +189,7 @@ impl Cache<Compiler> {
                     (format!(": {name}"), HintKind::Type, tooltip)
                 }
                 Pending::GenericArguments(types) => {
-                    let scopes = self.scope_chain(innermost);
+                    let scopes = self.scope_chain(scopes.innermost(offset));
 
                     let Some(names) = types
                         .into_iter()
@@ -272,14 +270,33 @@ impl Cache<Compiler> {
 
         let (name, cut) = self.bounded_type(scopes, ty, HINT_PARTS);
 
-        // The tooltip has more of a type that was cut short, whichever of the two cut it
-        if !cut && name.chars().count() <= HINT_CHARS {
+        let fits = |name: &str| name.chars().count() <= HINT_CHARS;
+
+        if !cut && fits(&name) {
             return Some((name, None));
         }
 
-        let tooltip = self.bounded_type_name(scopes, ty, TOOLTIP_PARTS);
+        // The tooltip has more of a type that was cut short, by the printer or to fit. With more
+        // parts, the type can turn out to be short enough to show whole, such as a union whose
+        // members are mostly written the same
+        let (more, cut_again) = if cut {
+            self.bounded_type(scopes, ty, TOOLTIP_PARTS)
+        } else {
+            (name.clone(), false)
+        };
 
-        Some((shorten(&name, HINT_CHARS), Some(tooltip)))
+        if !cut_again && fits(&more) {
+            return Some((more, None));
+        }
+
+        // What the printer cut already says so
+        let name = if fits(&name) {
+            name
+        } else {
+            shorten(&name, HINT_CHARS)
+        };
+
+        Some((name, Some(more)))
     }
 }
 
@@ -601,7 +618,7 @@ mod tests {
         assert_eq!(shorten("Int | Bytes | nil", 12), "Int | ...");
         assert_eq!(shorten("Int | Bytes | nil", 17), "Int | Bytes | ...");
         assert_eq!(shorten("Int | Bytes | nil", 16), "Int | ...");
-        assert_eq!(shorten("Int | Bytes | ...", 17), "Int | Bytes | ...");
+        assert_eq!(shorten("Int | Bytes | ...", 30), "Int | Bytes | ...");
 
         // Anything else, and a union whose first member doesn't fit, is cut where it has to be
         assert_eq!(shorten("(Int, Bytes, nil)", 10), "(Int, B...");

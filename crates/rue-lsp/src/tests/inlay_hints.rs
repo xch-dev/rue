@@ -156,7 +156,8 @@ fn apply(value: Int, function: fn(item: Int) -> Int) -> Int {
 fn main() -> Int {
     let add = fn(first: Int, second: Int) => first + second;
     let double: fn(value: Int) -> Int = fn(value) => value * 2;
-    apply(1, fn(item) => item + add(1, 2)) + double(2)
+    let unpack: fn(pair: (Int, Bytes)) -> Int = fn((left, right)) => left + right.length;
+    apply(1, fn(item) => item + add(1, 2)) + double(2) + unpack((1, "a"))
 }
 "#,
         expect![[r#"
@@ -168,7 +169,8 @@ fn main() -> Int {
             fn main() -> Int {
                 let add = fn(first: Int, second: Int) => first + second;
                 let double: fn(value: Int) -> Int = fn(value«: Int») => value * 2;
-                apply(1, fn(item«: Int») => item + add(1, 2)) + double(2)
+                let unpack: fn(pair: (Int, Bytes)) -> Int = fn((left«: Int», right«: Bytes»)) => left + right.length;
+                apply(1, fn(item«: Int») => item + add(1, 2)) + double(2) + unpack((1, "a"))
             }
         "#]],
     );
@@ -853,7 +855,8 @@ fn main() -> Int {
     let first = alias(1, "a");
     let second = pick::<_, String>(2, "b");
     let third = pick::<_, _>(3, "c");
-    first + second + third
+    let fourth = pick(4, "d");
+    first + second + third + fourth
 }
 "#,
         expect![[r#"
@@ -867,7 +870,8 @@ fn main() -> Int {
                 let first = alias(1, "a");
                 let second = pick::<_, String>(2, "b");
                 let third = pick::<_, _>(3, "c");
-                first + second + third
+                let fourth = pick«::<Int, String>»(4, "d");
+                first + second + third + fourth
             }
         "#]],
     );
@@ -893,9 +897,14 @@ fn many<A, B, C, D, E>(a: A, b: B, c: C, d: D, e: E) -> A {
     a
 }
 
+fn same<T>(value: T) -> T {
+    value
+}
+
 fn main(value: Circle | Square | Triangle | Rectangle | nil, key: PublicKey) -> Int {
     let picked = pick(value, value);
     let all = many(key, key, key, key, key);
+    let one = same(value);
     1
 }
 "#,
@@ -914,13 +923,19 @@ fn main(value: Circle | Square | Triangle | Rectangle | nil, key: PublicKey) -> 
                 a
             }
 
+            fn same<T>(value: T) -> T {
+                value
+            }
+
             fn main(value: Circle | Square | Triangle | Rectangle | nil, key: PublicKey) -> Int {
                 let picked = pick«::<Circle | Square | Triangle | ..., ...>»(value, value);
                 let all = many«::<PublicKey, PublicKey, ...>»(key, key, key, key, key);
+                let one = same«::<Circle | Square | Triangle | ...>»(value);
                 1
             }
             tooltip of «::<Circle | Square | Triangle | ..., ...>»: ::<Circle | Square | Triangle | Rectangle | nil, Circle | Square | Triangle | Rectangle | nil>
             tooltip of «::<PublicKey, PublicKey, ...>»: ::<PublicKey, PublicKey, PublicKey, PublicKey, PublicKey>
+            tooltip of «::<Circle | Square | Triangle | ...>»: ::<Circle | Square | Triangle | Rectangle | nil>
         "#]],
     );
 }
@@ -939,6 +954,70 @@ fn test_hints_for_parameters_that_say_nothing() {
 
             fn main(amount: Int) -> Int {
                 pay(1, (amount), «_to:» 3)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_call_that_crosses_the_range() {
+    // Only the hints in the range are given, though the call they're for goes on past it
+    let project = TestProject::new(&[(
+        "main.rue",
+        "fn add(first: Int, second: Int) -> Int {\n    first + second\n}\n\nfn main() -> Int {\n    add(\n        1,\n        2,\n    )\n}\n",
+    )]);
+
+    expect![[r#"
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main() -> Int {
+            add(
+                «first:» 1,
+                2,
+            )
+        }
+    "#]]
+    .assert_eq(&project.inlay_hints_in(
+        "main.rue",
+        Range::new(Position::new(6, 0), Position::new(7, 0)),
+    ));
+}
+
+#[test]
+fn test_hints_without_types_in_lambdas() {
+    // The parameters of a lambda have no types when types are turned off
+    check_with(
+        PARAMETER_NAMES,
+        "fn apply(value: Int, function: fn(item: Int) -> Int) -> Int {\n    function(value)\n}\n\nfn main() -> Int {\n    apply(1, fn(item) => item)\n}\n",
+        expect![[r#"
+            fn apply(value: Int, function: fn(item: Int) -> Int) -> Int {
+                function(«item:» value)
+            }
+
+            fn main() -> Int {
+                apply(«value:» 1, «function:» fn(item) => item)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_union_of_members_written_the_same() {
+    // The members take up the printer's budget, but the type is short once it's written
+    let members = (0..30).map(|_| "5").collect::<Vec<_>>().join(" | ");
+
+    check_with(
+        TYPES,
+        &format!(
+            "fn main(value: {members}) -> Int {{\n    let copy = value;\n    let pair = (value, 1);\n    1\n}}\n"
+        ),
+        expect![[r#"
+            fn main(value: 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5) -> Int {
+                let copy«: 5» = value;
+                let pair«: (5, 1)» = (value, 1);
+                1
             }
         "#]],
     );

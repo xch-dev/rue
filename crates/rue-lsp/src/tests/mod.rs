@@ -362,7 +362,7 @@ impl TestProject {
             work_done_progress_params: WorkDoneProgressParams::default(),
         }))
         .unwrap()
-        .unwrap_or_default();
+        .expect("the server answers for a file that it compiled");
 
         let lines = LineIndex::with_carriage_returns(text);
         let mut output = text.clone();
