@@ -1,0 +1,120 @@
+// A match on an enum handles each of its variants, since each is a member of the union it is
+
+import shapes::Kind::*;
+
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect = 10 { width: Int, height: Int },
+}
+
+enum Mode {
+    Off,
+    On,
+    Auto = 5,
+}
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+fn area(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle => 3 * shape.radius * shape.radius,
+        Shape::Rect => shape.width * shape.height,
+    }
+}
+
+// The same as the `if` chain, which a match compiles to
+fn area_if(shape: Shape) -> Int {
+    if shape is Shape::Empty {
+        0
+    } else if shape is Shape::Circle {
+        3 * shape.radius * shape.radius
+    } else {
+        shape.width * shape.height
+    }
+}
+
+test fn match_variants() {
+    assert area(Shape::Empty) == 0;
+    assert area(Shape::Circle { radius: 2 }) == 12;
+    assert area(Shape::Rect { width: 2, height: 3 }) == 6;
+    assert area_if(Shape::Rect { width: 2, height: 3 }) == 6;
+}
+
+fn is_running(mode: Mode) -> Bool {
+    match mode {
+        Mode::Off => false,
+        Mode::On | Mode::Auto => true,
+    }
+}
+
+test fn match_unit_variants() {
+    assert !is_running(Mode::Off);
+    assert is_running(Mode::On);
+    assert is_running(Mode::Auto);
+}
+
+// The arm that handles the rest is the `else` branch
+fn has_corners(shape: Shape) -> Bool {
+    match shape {
+        Shape::Rect => true,
+        _ => false,
+    }
+}
+
+test fn match_rest() {
+    assert has_corners(Shape::Rect { width: 1, height: 1 });
+    assert !has_corners(Shape::Circle { radius: 1 });
+    assert !has_corners(Shape::Empty);
+}
+
+// A variant of a generic enum is matched with its generic arguments, as with `is`
+fn unwrap_or(option: Option<Int>, default: Int) -> Int {
+    match option {
+        Option::None<Int> => default,
+        Option::Some<Int> => option.value,
+    }
+}
+
+test fn match_generic() {
+    assert unwrap_or(Option::None, 1) == 1;
+    assert unwrap_or(Option::Some::<Int> { value: 2 }, 1) == 2;
+}
+
+fn code(mode: Mode) -> Int {
+    inline match mode {
+        Mode::Off => 1,
+        Mode::On => 2,
+        Mode::Auto => 3,
+    }
+}
+
+test fn inline_match() {
+    assert code(Mode::Off) == 1;
+    assert code(Mode::On) == 2;
+    assert code(Mode::Auto) == 3;
+}
+
+// The variants can be imported, and matched on by their own names
+mod shapes {
+    export enum Kind {
+        Square { side: Int },
+        Line { length: Int },
+    }
+}
+
+fn size(kind: shapes::Kind) -> Int {
+    match kind {
+        Square => kind.side * kind.side,
+        Line => kind.length,
+    }
+}
+
+test fn match_imported_variants() {
+    assert size(Square { side: 3 }) == 9;
+    assert size(Line { length: 4 }) == 4;
+}

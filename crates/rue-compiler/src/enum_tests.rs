@@ -102,3 +102,42 @@ fn main(mode: Mode) -> (Bool, Mode) {
 
     assert_eq!(main_program(enums), main_program(atoms));
 }
+
+#[test]
+fn a_match_on_an_enum_compiles_like_its_if_chain() {
+    let shape = "
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect = 10 { width: Int, height: Int },
+}
+";
+
+    let chain = format!(
+        "{shape}
+fn main(shape: Shape) -> Int {{
+    if shape is Shape::Empty {{
+        0
+    }} else if shape is Shape::Circle {{
+        shape.radius
+    }} else {{
+        shape.width * shape.height
+    }}
+}}
+"
+    );
+
+    let matched = format!(
+        "{shape}
+fn main(shape: Shape) -> Int {{
+    match shape {{
+        Shape::Empty => 0,
+        Shape::Circle => shape.radius,
+        Shape::Rect => shape.width * shape.height,
+    }}
+}}
+"
+    );
+
+    assert_eq!(main_program(&matched), main_program(&chain));
+}
