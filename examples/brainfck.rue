@@ -91,13 +91,13 @@ inline fn update(state: State, tape: Tape) -> State {
 inline fn increment(state: State) -> State {
     inline let { tape } = state;
 
-    update(state, Tape { value: tape.value + 1, left: tape.left, right: tape.right })
+    update(state, Tape { ...tape, value: tape.value + 1 })
 }
 
 inline fn decrement(state: State) -> State {
     inline let { tape } = state;
 
-    update(state, Tape { value: tape.value - 1, left: tape.left, right: tape.right })
+    update(state, Tape { ...tape, value: tape.value - 1 })
 }
 
 inline fn move_left(state: State) -> State {
@@ -136,7 +136,7 @@ inline fn input(state: State) -> State {
     inline let { tape, input, output } = state;
 
     State {
-        tape: Tape { value: input[0] as Int, left: tape.left, right: tape.right },
+        tape: Tape { ...tape, value: input[0] as Int },
         input: input[1..],
         output,
     }
