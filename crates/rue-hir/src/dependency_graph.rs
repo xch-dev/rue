@@ -56,6 +56,15 @@ pub struct DependencyGraph {
     // decided in `visit_effects`, once the rest of the program has been visited
     unvisited_effects: Vec<(Option<SymbolId>, SymbolId)>,
 
+    // Keeps track of the type guards whose checks don't use their values, but whose values are
+    // evaluated for their effect, since they may fail
+    guard_effects: HashSet<HirId>,
+
+    // Keeps track of the type guards whose checks don't use their values that haven't been
+    // decided yet, along with the symbol whose body they're in. They're decided in
+    // `visit_effects`, the same way as unreferenced bindings
+    unvisited_guards: Vec<UnvisitedGuard>,
+
     // Keeps track of the direct calls to each function, so that a binding that calls the value of
     // one of its parameters can find the function values it's passed
     calls: HashMap<SymbolId, Vec<HirId>>,
@@ -65,6 +74,25 @@ pub struct DependencyGraph {
 
     // Finds whether the values of let statements may fail
     failures: FailureAnalysis,
+}
+
+/// A type guard whose check doesn't use its value, along with the symbol whose body it's in, which
+/// hasn't been decided by [`visit_effects`] yet.
+#[derive(Debug, Clone, Copy)]
+struct UnvisitedGuard {
+    current: Option<SymbolId>,
+    guard: HirId,
+    value: HirId,
+}
+
+/// What [`visit_effects`] does with a value that's only evaluated for its effect.
+enum Decision {
+    /// It can't fail, so it's never evaluated.
+    Never,
+    /// It's decided again once more calls are known.
+    Wait,
+    /// It's evaluated for its effect.
+    Evaluate,
 }
 
 impl DependencyGraph {
@@ -83,6 +111,8 @@ impl DependencyGraph {
             lets: HashMap::new(),
             effects: HashSet::new(),
             unvisited_effects: Vec::new(),
+            guard_effects: HashSet::new(),
+            unvisited_guards: Vec::new(),
             calls: HashMap::new(),
             main,
             failures: FailureAnalysis::new(),
@@ -90,8 +120,9 @@ impl DependencyGraph {
 
         // The symbols are visited depth first, in the order they're referenced, like a recursive
         // traversal would, except that each symbol's whole body is visited before the symbols it
-        // references. The bindings that are only evaluated for their effect are visited last.
-        while !graph.pending.is_empty() {
+        // references. The bindings and guard values that are only evaluated for their effect are
+        // visited last, until there are no more of them.
+        loop {
             while let Some(symbol) = graph.pending.pop() {
                 // We've already visited this symbol, so we don't need to track its dependencies
                 // again
@@ -105,7 +136,9 @@ impl DependencyGraph {
                 graph.pending.extend(referenced.into_iter().rev());
             }
 
-            visit_effects(db, &mut graph);
+            if !visit_effects(db, &mut graph) {
+                break;
+            }
         }
 
         // This happens once everything has been visited, since the symbol a binding destructures
@@ -126,6 +159,23 @@ impl DependencyGraph {
     /// effect at its let statement. Unreferenced bindings are otherwise not evaluated at all.
     pub fn is_effect(&self, symbol: SymbolId) -> bool {
         self.effects.contains(&symbol) && self.references(symbol) == 0
+    }
+
+    /// Whether the type guard's check doesn't use its value, but the value may fail, so it's
+    /// evaluated for its effect. Such a guard's value is otherwise not evaluated at all.
+    pub fn is_guard_effect(&self, guard: HirId) -> bool {
+        self.guard_effects.contains(&guard)
+    }
+
+    /// What [`visit_effects`] does with a value that's only evaluated for its effect. A value that
+    /// only fails if a function value that a parameter is passed fails is decided once the calls
+    /// that pass them have been visited.
+    fn decide(&self, db: &Database, effect: Effect) -> Decision {
+        match effect {
+            Effect::Never => Decision::Never,
+            Effect::IfCallsMayFail(calls) if !self.calls_may_fail(db, &calls) => Decision::Wait,
+            Effect::Always | Effect::IfCallsMayFail(_) => Decision::Evaluate,
+        }
     }
 
     /// Whether calling the function value of the parameter may fail, given every call of its
@@ -542,9 +592,21 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         Hir::Cast(value) => {
             visit_hir(db, graph, *value, is_call);
         }
-        // The value is referenced as many times as the check it's lowered to uses it
+        // The value is referenced as many times as the check it's lowered to uses it. If the
+        // check doesn't use it, whether it's evaluated for its effect is decided once the rest of
+        // the program has been visited, like a binding that's never referenced.
         Hir::Guard(guard) => {
-            for _ in 0..guard.value_uses() {
+            let uses = guard.value_uses();
+
+            if uses == 0 {
+                graph.unvisited_guards.push(UnvisitedGuard {
+                    current: graph.current,
+                    guard: hir,
+                    value: guard.value,
+                });
+            }
+
+            for _ in 0..uses {
                 visit_hir(db, graph, guard.value, false);
             }
         }
@@ -780,9 +842,13 @@ fn visit_let(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
 /// A binding that only calls the function values of parameters waits until a call passes one that
 /// may fail. Visiting more of the program can find more calls, so it's checked again each time.
 ///
+/// The values of type guards whose checks don't use them are decided the same way, and visited
+/// where the guard is if they're evaluated for their effect, which counts as a reference.
+///
 /// These are only added at the end, so that the dependencies of a program without any are in the
-/// same order as if they didn't exist.
-fn visit_effects(db: &Database, graph: &mut DependencyGraph) {
+/// same order as if they didn't exist. Returns whether any were added, in which case what they
+/// reach is visited and this runs again.
+fn visit_effects(db: &Database, graph: &mut DependencyGraph) -> bool {
     let evaluated_constants = graph
         .references
         .iter()
@@ -796,24 +862,24 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) {
     graph.failures = FailureAnalysis::with_evaluated_constants(evaluated_constants);
 
     let effects = std::mem::take(&mut graph.unvisited_effects);
+    let mut added = false;
 
     for (current, symbol) in effects.into_iter().rev() {
         if graph.visited.contains(&symbol) || graph.references(symbol) > 0 {
             continue;
         }
 
-        // A value that only fails if a function value that a parameter is passed fails is decided
-        // once the calls that pass them have been visited
-        match graph.failures.effect(db, symbol) {
-            Effect::Never => continue,
-            Effect::IfCallsMayFail(calls) if !graph.calls_may_fail(db, &calls) => {
+        match graph.decide(db, graph.failures.effect(db, symbol)) {
+            Decision::Never => continue,
+            Decision::Wait => {
                 graph.unvisited_effects.push((current, symbol));
                 continue;
             }
-            Effect::Always | Effect::IfCallsMayFail(_) => {}
+            Decision::Evaluate => {}
         }
 
         graph.effects.insert(symbol);
+        added = true;
 
         if let Some(current) = current {
             graph
@@ -828,6 +894,36 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) {
 
     // The ones that are still waiting are kept in the order they were found
     graph.unvisited_effects.reverse();
+
+    let guards = std::mem::take(&mut graph.unvisited_guards);
+    let mut waiting = Vec::new();
+
+    for unvisited in guards {
+        match graph.decide(db, graph.failures.value_effect(db, unvisited.value)) {
+            Decision::Never => continue,
+            Decision::Wait => {
+                waiting.push(unvisited);
+                continue;
+            }
+            Decision::Evaluate => {}
+        }
+
+        graph.guard_effects.insert(unvisited.guard);
+        added = true;
+
+        let outer = std::mem::replace(&mut graph.current, unvisited.current);
+        visit_hir(db, graph, unvisited.value, false);
+        graph.current = outer;
+
+        let referenced = std::mem::take(&mut graph.referenced);
+        graph.pending.extend(referenced.into_iter().rev());
+    }
+
+    // The ones that are still waiting are decided before any found while visiting the values
+    waiting.append(&mut graph.unvisited_guards);
+    graph.unvisited_guards = waiting;
+
+    added
 }
 
 fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId) {

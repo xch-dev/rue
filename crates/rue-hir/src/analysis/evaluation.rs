@@ -104,7 +104,11 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             // The right side of `&&` and `||` is only evaluated some of the time
             Hir::Binary(BinaryOp::And | BinaryOp::Or, left, _) => self.hir(*left),
             Hir::FunctionCall(call) => self.call(call.function, &call.args),
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.hir(guard.value),
+            // A guard whose check doesn't use its value only evaluates it for its effect
+            Hir::Guard(guard) => {
+                (guard.value_uses() > 0 || self.cx.guard_evaluates(hir, guard.value))
+                    && self.hir(guard.value)
+            }
             Hir::Cast(_)
             | Hir::Unary(..)
             | Hir::ClvmOp(..)

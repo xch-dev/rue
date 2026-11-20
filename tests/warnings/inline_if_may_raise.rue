@@ -50,6 +50,23 @@ fn assert_expr_branch(x: Int) -> Int {
     }
 }
 
+test fn guard_expr() -> Int {
+    guard_expr_branch(1)
+}
+
+// A type guard with nothing to check at runtime still evaluates a value that can raise
+fn guard_expr_branch(x: Int) -> Int {
+    inline if x > 5 {
+        if checked(x) is Int {
+            1
+        } else {
+            2
+        }
+    } else {
+        0
+    }
+}
+
 test fn nested_if() -> Int {
     nested_if_branch(20)
 }

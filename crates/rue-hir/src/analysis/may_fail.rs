@@ -219,8 +219,12 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
                 self.visit_statements(&block.statements, in_body)
                     || self.any(block.reachable_body(), in_body)
             }
-            // The value is only evaluated if the check it's lowered to uses it
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit(guard.value, in_body),
+            // The value is evaluated if the check it's lowered to uses it, and otherwise for its
+            // effect, if it may fail
+            Hir::Guard(guard) => {
+                (guard.value_uses() > 0 || self.cx.is_guard_evaluated(hir))
+                    && self.visit(guard.value, in_body)
+            }
             Hir::FunctionCall(call) => {
                 self.visit_call(call.function, &call.args, in_body)
                     || self.visit_arguments(call.function, &call.args, in_body)

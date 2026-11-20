@@ -73,8 +73,8 @@ impl Visitor<'_> {
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
-            // The value is only evaluated if the check it's lowered to uses it
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
+            // The value is lowered if the check uses it, or if it may fail
+            Hir::Guard(guard) => self.visit_hir(guard.value),
             Hir::Block(block) => {
                 for stmt in block.reachable_statements().to_vec() {
                     match stmt {
@@ -123,9 +123,9 @@ impl Visitor<'_> {
 #[cfg(test)]
 mod tests {
     use rue_diagnostic::{Source, SourceKind, SrcLoc};
-    use rue_types::BuiltinTypes;
+    use rue_types::{BuiltinTypes, Check};
 
-    use crate::{BindingSymbol, Block, Builtin, ExprStatement, Value};
+    use crate::{BindingSymbol, Block, Builtin, ExprStatement, Guard, Value};
 
     use super::*;
 
@@ -160,6 +160,18 @@ mod tests {
         let pair = db.alloc_hir(Hir::Pair(one, unresolved));
         let symbol = binding(&mut db, pair);
         assert!(has_reachable_unresolved(&db, symbol));
+    }
+
+    #[test]
+    fn test_unresolved_guard_value() {
+        for check in [Check::None, Check::Impossible] {
+            let mut db = Database::new();
+            let ty = BuiltinTypes::new(db.types_mut()).int;
+            let value = db.alloc_hir(Hir::Unresolved);
+            let guard = db.alloc_hir(Hir::Guard(Guard { value, ty, check }));
+            let symbol = binding(&mut db, guard);
+            assert!(has_reachable_unresolved(&db, symbol));
+        }
     }
 
     #[test]

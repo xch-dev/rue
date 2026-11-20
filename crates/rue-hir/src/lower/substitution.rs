@@ -9,7 +9,8 @@
 //! its effect if it's never referenced.
 //!
 //! A binding that's never referenced is evaluated for its effect if it may fail, which the
-//! dependency graph decides (see [`crate::DependencyGraph::is_effect`]).
+//! dependency graph decides (see [`crate::DependencyGraph::is_effect`]). So is the value of a type
+//! guard whose check doesn't use it (see [`crate::DependencyGraph::is_guard_effect`]).
 //!
 //! This is sound as long as values have the shapes their types say, which the compiler trusts for
 //! some of them (see the [`crate::analysis`] module docs).
@@ -157,6 +158,13 @@ impl Lowerer<'_, '_, '_> {
 
         self.graph.is_effect(binding) && may_fail(self, symbol.value.hir)
     }
+
+    /// Whether the value of the type guard, whose check doesn't use it, is evaluated for its
+    /// effect where it's lowered. Like a binding that's never referenced, the dependency graph
+    /// decides which guards may need to be, and the value must still be able to fail here.
+    pub(super) fn is_lowered_guard_effect(&self, guard: HirId, value: HirId) -> bool {
+        self.graph.is_guard_effect(guard) && may_fail(self, value)
+    }
 }
 
 impl AnalysisContext for Lowerer<'_, '_, '_> {
@@ -219,6 +227,14 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
     // [`Lowerer::is_lowered_effect`])
     fn let_evaluates(&self, binding: SymbolId, _rest: &[Statement], _body: Option<HirId>) -> bool {
         self.graph.references(binding) > 0 || self.is_lowered_effect(binding)
+    }
+
+    fn is_guard_evaluated(&self, guard: HirId) -> bool {
+        self.graph.is_guard_effect(guard)
+    }
+
+    fn guard_evaluates(&self, guard: HirId, value: HirId) -> bool {
+        self.is_lowered_guard_effect(guard, value)
     }
 
     fn is_parameter_used(&self, _function: SymbolId, parameter: SymbolId) -> bool {
