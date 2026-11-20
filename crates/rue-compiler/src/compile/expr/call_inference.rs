@@ -22,8 +22,8 @@ use rue_types::{
 
 use crate::{
     ArgumentFrame, Compiler, LambdaBody, LambdaParameter, MAX_GENERALIZED_LEVELS, ParameterWrap,
-    compile_call_argument, compile_expr, compile_lambda_argument, is_type_in_scope,
-    occurs_contravariantly,
+    compile_call_argument, compile_expr, compile_lambda_argument, generalized_call,
+    is_type_in_scope, occurs_contravariantly,
 };
 
 /// What inferring a call's generics gave.
@@ -57,9 +57,13 @@ pub(crate) fn infer_call(
     // The type expected of the call is used for the generics that the arguments don't
     // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
     // ones they do from being widened past it
+    //
+    // It also gives whether inferring them finished within the step limit: one that gave up
+    // records the union members it didn't compare as ones that can't hold the value, which is
+    // fine for candidates but not for what's required of every solution (see `required`)
     let infer_expected = |ctx: &mut Compiler, ty: TypeId, bound: &HashMap<TypeId, usize>| {
         let mut expected = base.clone();
-        ctx.infer_from_expected(function.ret, ty, &mut expected);
+        let finished = ctx.infer_from_expected(function.ret, ty, &mut expected);
 
         // The generics of an enclosing call that are still being inferred can't be inferred
         // from this call, so they're no help in inferring its generics either
@@ -89,7 +93,7 @@ pub(crate) fn infer_call(
             });
         }
 
-        expected
+        (expected, finished)
     };
     let mut bound = expected_type
         .map(|expected_type| expected_generic_depths(ctx, expected_type))
@@ -100,6 +104,8 @@ pub(crate) fn infer_call(
     bound.retain(|&generic, _| !is_type_in_scope(ctx, generic));
 
     let expected = expected_type.map(|expected_type| infer_expected(ctx, expected_type, &bound));
+    let expected_finished = expected.as_ref().is_none_or(|&(_, finished)| finished);
+    let expected = expected.map(|(expected, _)| expected);
 
     // A narrower expected type is what the generics nothing else gives a type take, when the
     // expected type was widened to an enclosing call's (see `ArgumentOrder::widens_to_expected`).
@@ -114,7 +120,7 @@ pub(crate) fn infer_call(
             }
         }
 
-        infer_expected(ctx, narrower, &bound)
+        infer_expected(ctx, narrower, &bound).0
     });
 
     // A call with arguments in an element that's only refined for a call without arguments in it
@@ -133,29 +139,38 @@ pub(crate) fn infer_call(
     // `Compiler::with_argument_requirement`). The call's generics are narrowed for it when what
     // they're solved as otherwise isn't (see `CallSolver::solve_narrowed`)
     //
-    // One that binds generics of its own, such as `fn<X>(a: X) -> X`, is left out, since the
-    // call's return type is only generalized over them after it's solved (see `generalize`), so
-    // the check below doesn't tell whether the call is assignable to it
+    // One that binds generics of its own, such as `fn<X>(a: X) -> X`, is only checked once the
+    // call's return type is generalized over them, as the compiler does after solving (see
+    // `generalized_call`). That's only what the call is checked with for its own expected type,
+    // so a requirement that binds generics is left out
+    let generic_required =
+        |ctx: &mut Compiler, ty: TypeId| !expected_generic_depths(ctx, ty).is_empty();
     let required_type = if ctx.is_expected_type_provisional() {
-        requirement
+        requirement.filter(|&ty| !generic_required(ctx, ty))
     } else {
         final_expected
-    }
-    .filter(|&ty| expected_generic_depths(ctx, ty).is_empty());
+    };
 
-    // What the required type infers for the callee's generics, whose upper bounds outside of any
-    // union member are what its arguments are required to be assignable to
-    let required = required_type.map(|ty| {
-        if Some(ty) == expected_type
-            && let Some(expected) = &expected
-        {
-            return expected.clone();
-        }
+    // What the required type infers for the callee's generics, whose upper bounds that every
+    // solution has (see `Inference::required_upper_bounds`) are what its arguments are required
+    // to be assignable to.
+    //
+    // A required type that binds generics only gives the generics upper bounds in terms of
+    // them, which aren't in scope for an argument, so it requires nothing of them
+    let required = required_type
+        .filter(|&ty| !generic_required(ctx, ty))
+        .and_then(|ty| {
+            if Some(ty) == expected_type
+                && let Some(expected) = &expected
+            {
+                return expected_finished.then(|| expected.clone());
+            }
 
-        let mut bound = expected_generic_depths(ctx, ty);
-        bound.retain(|&generic, _| !is_type_in_scope(ctx, generic));
-        infer_expected(ctx, ty, &bound)
-    });
+            let mut bound = expected_generic_depths(ctx, ty);
+            bound.retain(|&generic, _| !is_type_in_scope(ctx, generic));
+            let (required, finished) = infer_expected(ctx, ty, &bound);
+            finished.then_some(required)
+        });
 
     // The instances of generic functions passed as arguments are solved with the callee's generics
     base.set_instance_policy(InstancePolicy::Joint);
@@ -324,10 +339,11 @@ pub(crate) fn infer_call(
         };
 
         // What the argument is required to be assignable to however the generics are solved:
-        // the parameter's type with each of them as its upper bound from the required type, if it
-        // has one outside of any union member and only occurs where values flow out of the
-        // argument. Every solution of the call has the generic at most that, so the argument
-        // has to be assignable to it, as in `let result: 5 = identity(first(value));`
+        // the parameter's type with each of them as an upper bound that every solution of the
+        // required type has (see `Inference::required_upper_bounds`), if it has one and only
+        // occurs where values flow out of the argument. Every solution of the call has the
+        // generic at most that, so the argument has to be assignable to it, as in
+        // `let result: 5 = identity(first(value));`
         let requirement = required
             .as_ref()
             .filter(|_| !writes.is_empty())
@@ -340,7 +356,7 @@ pub(crate) fn infer_call(
                     }
 
                     let upper = required
-                        .unconditional_upper(generic)
+                        .required_upper_bounds(ctx.types_mut(), generic)
                         .into_iter()
                         .find(|&ty| !references_generics(ctx, ty, &function.generics))?;
                     bounds.insert(generic, upper);
@@ -576,13 +592,7 @@ pub(crate) fn infer_call(
     // compiles changes
     let (mappings, solved_checks) = match required_type {
         Some(required_type)
-            if !solves_call(
-                ctx,
-                function,
-                &solved_checks,
-                &mappings,
-                Some(required_type),
-            ) =>
+            if !solves_call_as_checked(ctx, function, &solved_checks, &mappings, required_type) =>
         {
             let mut narrowed = ctx.solve_call_narrowed(&solver, order.merged().clone());
             restore_renamed(ctx, &mut narrowed, renamed);
@@ -604,13 +614,7 @@ pub(crate) fn infer_call(
             }
 
             if narrowed != mappings
-                && solves_call(
-                    ctx,
-                    function,
-                    &narrowed_checks,
-                    &narrowed,
-                    Some(required_type),
-                )
+                && solves_call_as_checked(ctx, function, &narrowed_checks, &narrowed, required_type)
             {
                 (narrowed, narrowed_checks)
             } else {
@@ -1343,6 +1347,29 @@ fn solves_call(
         let ret = substitute_with_mappings(ctx.types_mut(), function.ret, mappings);
         ctx.is_assignable(ret, expected_type)
     })
+}
+
+/// Whether the mappings solve the call as the compiler checks it once it's solved, for a type it's
+/// required to be assignable to (see `solves_call`). For one that binds generics of its own, the
+/// mappings are generalized over them first, as for the call's own expected type (see
+/// `generalized_call`), and the arguments are checked with what that gives.
+fn solves_call_as_checked(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    checks: &[Option<(AstExpr, TypeId, TypeId)>],
+    mappings: &HashMap<TypeId, TypeId>,
+    required_type: TypeId,
+) -> bool {
+    if expected_generic_depths(ctx, required_type).is_empty() {
+        return solves_call(ctx, function, checks, mappings, Some(required_type));
+    }
+
+    let (mappings, ret) = generalized_call(ctx, function, required_type, mappings);
+
+    checks.iter().flatten().all(|&(_, ty, param)| {
+        let param = substitute_with_mappings(ctx.types_mut(), param, &mappings);
+        ctx.is_assignable(ty, param)
+    }) && ctx.is_assignable(ret, required_type)
 }
 
 /// Solves the call again with the untyped parameters of its lambda arguments as vars, each at most

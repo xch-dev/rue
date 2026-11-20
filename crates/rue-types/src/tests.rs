@@ -3963,6 +3963,52 @@ mod substitution {
         assert_eq!(db.cmp(list_int, expected), Comparison::Assign);
         assert_eq!(db.cmp(expected, list_int), Comparison::Assign);
     }
+
+    #[test]
+    fn required_upper_bounds_only_from_unions_that_cant_fall_back() {
+        let mut db = Db::new();
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let four = db.literal(AtomSemantic::Int, &[4]);
+        let t = db.generic("T");
+        let held = [Some(Comparison::Assign), Some(Comparison::Assign)];
+
+        // Each member bounds `T`, and the fallback was compared and can't hold the value, so one
+        // of the members holds it, and `T ≤ 5 | 4`
+        let mut compared = Inference::new([t]);
+        let choice = compared.reopen_choice(None, &held, Some(Comparison::Invalid), &[false; 3]);
+        compared.push(
+            t,
+            CandidateKind::Upper,
+            five,
+            vec![BranchId { choice, member: 0 }],
+        );
+        compared.push(
+            t,
+            CandidateKind::Upper,
+            four,
+            vec![BranchId { choice, member: 1 }],
+        );
+        assert_eq!(compared.required_upper_bounds(&mut db.arena, t).len(), 1);
+
+        // A union reopened from a summary without its fallback compared may be one whose
+        // fallback was skipped because a member held the value, which it could hold too, so it
+        // requires nothing
+        let mut reopened = Inference::new([t]);
+        let choice = reopened.reopen_choice(None, &held, None, &[false; 3]);
+        reopened.push(
+            t,
+            CandidateKind::Upper,
+            five,
+            vec![BranchId { choice, member: 0 }],
+        );
+        reopened.push(
+            t,
+            CandidateKind::Upper,
+            four,
+            vec![BranchId { choice, member: 1 }],
+        );
+        assert_eq!(reopened.required_upper_bounds(&mut db.arena, t), vec![]);
+    }
 }
 
 mod subtraction {

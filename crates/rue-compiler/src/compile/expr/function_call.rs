@@ -224,6 +224,26 @@ pub fn compile_function_call_expr(
     Value::new(hir, ty)
 }
 
+/// The mappings and return type that a call with the mappings is checked with for the expected
+/// type, once the functions it returns are generalized over the generics of the function types
+/// expected of them (see `generalize`). The mappings are left as they are.
+pub(crate) fn generalized_call(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    expected_type: TypeId,
+    mappings: &HashMap<TypeId, TypeId>,
+) -> (HashMap<TypeId, TypeId>, TypeId) {
+    let mut mappings = mappings.clone();
+    let generalized = generalize(ctx, function, expected_type, &mut mappings);
+    let mut ty = substitute_with_mappings(ctx.types_mut(), function.ret, &mappings);
+
+    if !generalized.is_empty() {
+        ty = add_generics(ctx, ty, &generalized);
+    }
+
+    (mappings, ty)
+}
+
 /// The name of the function being called, without any generic arguments.
 fn callee_name(call: &AstFunctionCallExpr) -> String {
     match call.expr() {

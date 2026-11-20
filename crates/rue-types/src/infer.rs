@@ -15,7 +15,7 @@ use std::mem;
 use id_arena::Arena;
 use indexmap::IndexMap;
 
-use crate::{BuiltinTypes, Comparison, FxHashMap, Type, TypeId, compare};
+use crate::{BuiltinTypes, Comparison, FxHashMap, Type, TypeId, Union, compare};
 
 /// The constraints collected for a generic type parameter during inference.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -122,6 +122,9 @@ struct Choice {
     /// The members (with the fallback last) that collected bounds for a generic being
     /// instantiated, which are only used by `Choices::matched_so_far`.
     bounded: Vec<bool>,
+    /// Whether the fallback could hold the value without being compared (see
+    /// `Inference::required_upper_bounds`).
+    may_fall_back: bool,
 }
 
 /// The union members that each of a generic's candidates was collected under, in the same order
@@ -265,22 +268,78 @@ impl Inference {
         self.candidates_without(generic, &[])
     }
 
-    /// The upper candidates of the generic that weren't collected under any union member, which
-    /// every solution has to satisfy.
-    pub fn unconditional_upper(&self, generic: TypeId) -> Vec<TypeId> {
+    /// Upper bounds of the generic that every solution has to satisfy, as far as the candidates
+    /// tell: each upper candidate that wasn't collected under any union member, then, for each
+    /// union that wasn't compared under another one, the union of an upper candidate under each
+    /// of its members, if every member that can hold the value has one directly under it, and the
+    /// fallback can't hold it (it gave `Invalid`, or there's none). A solution holds the value by
+    /// one of the members, so the generic is at most that member's bound, which is in the union.
+    /// A member that gave `Invalid` can't hold it, so it doesn't need one. A fallback that wasn't
+    /// compared because a member held the value could hold it without any bound, so such a union
+    /// requires nothing. For example, a return type of `(T, nil)` against an expected
+    /// `(5, nil) | Bytes32` gives `T ≤ 5` under the first member and nothing under the second,
+    /// which can't hold it, so `T ≤ 5`, and against `(5, nil) | (4, nil)`, `T ≤ 5 | 4`.
+    pub fn required_upper_bounds(&self, arena: &mut Arena<Type>, generic: TypeId) -> Vec<TypeId> {
         let (Some(candidates), Some(branches)) =
             (self.generics.get(&generic), self.branches.get(&generic))
         else {
             return Vec::new();
         };
 
-        candidates
+        let mut bounds: Vec<TypeId> = candidates
             .upper
             .iter()
             .zip(&branches.upper)
             .filter(|(_, branches)| branches.is_empty())
             .map(|(&ty, _)| ty)
-            .collect()
+            .collect();
+
+        for (index, choice) in self.choices.0.iter().enumerate() {
+            if choice.parent.is_some()
+                || choice.may_fall_back
+                || choice
+                    .fallback
+                    .is_some_and(|result| result != Comparison::Invalid)
+            {
+                continue;
+            }
+
+            let mut members = Vec::new();
+
+            for (member, result) in choice.members.iter().enumerate() {
+                if *result == Some(Comparison::Invalid) {
+                    continue;
+                }
+
+                let branch = BranchId {
+                    choice: index,
+                    member,
+                };
+
+                let Some(&bound) = candidates
+                    .upper
+                    .iter()
+                    .zip(&branches.upper)
+                    .find(|(_, branches)| branches.as_slice() == [branch])
+                    .map(|(ty, _)| ty)
+                else {
+                    members.clear();
+                    break;
+                };
+
+                if !members.contains(&bound) {
+                    members.push(bound);
+                }
+            }
+
+            match members.as_slice() {
+                [] => {}
+                [bound] => bounds.push(*bound),
+                _ => bounds.push(arena.alloc(Type::Union(Union::new(members)))),
+            }
+        }
+
+        bounds
     }
 
     /// Like `Inference::matched_candidates`, but also leaving out the candidates of each kind in
@@ -712,6 +771,11 @@ impl Inference {
         self.choices.mark_bounded(branch);
     }
 
+    /// Records that the union's fallback wasn't compared, though it could hold the value.
+    pub(crate) fn mark_may_fall_back(&mut self, choice: usize) {
+        self.choices.0[choice].may_fall_back = true;
+    }
+
     /// Whether the candidates collected under the union member hold (see `Choices::matched_with`).
     #[cfg(test)]
     pub(crate) fn matched(&self, branch: BranchId) -> bool {
@@ -1048,6 +1112,7 @@ impl Choices {
             members: vec![None; members],
             fallback: None,
             bounded: vec![false; members + 1],
+            may_fall_back: false,
         });
         self.0.len() - 1
     }
@@ -1087,6 +1152,7 @@ impl Choices {
             members: members.to_vec(),
             fallback,
             bounded: bounded.to_vec(),
+            may_fall_back: fallback.is_none(),
         });
         self.0.len() - 1
     }

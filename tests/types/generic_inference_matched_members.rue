@@ -623,10 +623,118 @@ fn make_pair<A, B>(value: B | (B, B)) -> fn(a: A) -> (A, B) {
     unchecked_cast(value)
 }
 
-// A required type that binds generics of its own is only checked after the call's return type is
-// generalized over them, so the call isn't narrowed for it, and is solved as it always was
+// A required type that binds generics of its own is checked once the call's return type is
+// generalized over them, which `fn(a: X) -> (X, Int | (5, 5))` is assignable to, so the call
+// isn't narrowed, and is solved as it always was
 test fn generic_function_expected_type_isnt_narrowed_for() -> Int {
     let value: 5 | (5, 5) = 5;
     let _f: fn<X>(a: X) -> (X, Int | (5, 5)) = make_pair(value);
+    1
+}
+
+// `fn<X>(a: X) -> (X, Int | (5, 5))` isn't a `fn<X>(a: X) -> (X, 5)`, so the call doesn't solve
+// once its return type is generalized over `X`, and `B` is narrowed to `5`, which does
+test fn generic_function_expected_type_narrowed_for() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _f: fn<X>(a: X) -> (X, 5) = make_pair(value);
+    1
+}
+
+fn with_nil<U>(value: U) -> (U, nil) {
+    (value, nil)
+}
+
+fn with_nil_checked<U>(value: U, _f: fn(y: U) -> Int) -> (U, nil) {
+    (value, nil)
+}
+
+// `with_nil`'s `U` is `≤ 5` under the expected type's `(5, nil)` member and `≤ 4` under `(4, nil)`,
+// one of which holds the value in any solution, so `first_of(value)` is required to be a `5 | 4`,
+// and it's narrowed for it
+test fn requirement_from_every_member_of_the_expected_type() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, nil) | (4, nil) = with_nil(first_of(value));
+    1
+}
+
+// The same with a member that can't hold the value at all, which needs no bound
+test fn requirement_from_every_member_that_can_hold_it() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _result: (5, nil) | Bytes32 = with_nil(first_of(value));
+    1
+}
+
+// `Any` holds the value without bounding `U`, so `U ≤ 5` from `(5, nil)` isn't required, and
+// `first_of(value)` isn't narrowed: `U` stays `Int | (5, 5)`, and the guard on `y` can be a pair
+test fn no_requirement_from_a_member_without_a_bound() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    let _result: (5, nil) | Any = with_nil_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    );
+    1
+}
+
+fn with_nil_twice_checked<U>(value: U, _f: fn(y: U) -> Int) -> ((U, nil), nil) {
+    ((value, nil), nil)
+}
+
+// `U ≤ 5` is only under the nested union's `(5, nil)` member, and the other one holds
+// `Int | (5, 5)`, so the outer `((…), nil)` member has no bound of its own for `U`, and nothing is
+// required of `first_of(value)`: `U` stays `Int | (5, 5)`, and the guard on `y` can be a pair
+test fn no_requirement_from_a_nested_union() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    let _result: ((5, nil) | (Int | (5, 5), nil), nil) | Bytes32 = with_nil_twice_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    );
+    1
+}
+
+fn returning_checked<U>(_value: U, _f: fn(y: U) -> Int) -> fn(a: Int) -> U {
+    unchecked_cast(nil)
+}
+
+type FromBytes = fn(a: Bytes) -> 5;
+
+// `FromBytes` only casts the function, with `U ≤ 5`, so the union falls back to holding its
+// runtime structure, which `Atom | (Any, Any)` does whatever `U` is, and `U ≤ 5` isn't required
+test fn no_requirement_when_the_fallback_holds() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    let _result: FromBytes | Atom | (Any, Any) = returning_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    );
+    1
+}
+
+type ReturnsFive = fn(a: Int) -> 5;
+
+// `ReturnsFive` gives `U ≤ 5`, but a function that isn't one is held by the union's fallback,
+// its runtime structure, which `Atom | (Any, Any)` holds whatever `U` is. That fallback wasn't
+// compared, since `ReturnsFive` held the value, so `U ≤ 5` isn't required of `first_of(value)`,
+// which isn't narrowed, and the guard on `y` can be a pair
+test fn no_requirement_when_an_uncompared_fallback_could_hold() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    let _result: ReturnsFive | Atom | (Any, Any) = returning_checked(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    );
     1
 }

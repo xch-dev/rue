@@ -1231,14 +1231,22 @@ impl Compiler {
     }
 
     /// Collects inference candidates for the generics in `ty` from the type it's expected to be.
-    pub fn infer_from_expected(&mut self, ty: TypeId, expected: TypeId, infer: &mut Inference) {
+    /// Collects candidates for the generics in the type from the type it's expected to be
+    /// assignable to (see `rue_types::infer_from_expected`), and returns whether that finished
+    /// within the step limit.
+    pub fn infer_from_expected(
+        &mut self,
+        ty: TypeId,
+        expected: TypeId,
+        infer: &mut Inference,
+    ) -> bool {
         rue_types::infer_from_expected(
             self.db.types_mut(),
             &self.builtins.types,
             ty,
             expected,
             infer,
-        );
+        )
     }
 
     /// A solver for a call's generics, given what was inferred from the type expected of it, and
