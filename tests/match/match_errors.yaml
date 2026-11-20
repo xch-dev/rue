@@ -18,7 +18,7 @@ diagnostics:
     note: This arm handles every value that's left at match_errors.rue:117:9
 - Undeclared symbol `undefined` at match_errors.rue:118:14
 - Match on `Any` is not exhaustive, since it doesn't handle `((Any, Any), Any)` at match_errors.rue:125:11
-- Match on `Any` is not exhaustive, since it doesn't handle `(Any, Any)` at match_errors.rue:133:11
+- Match on `Any` is not exhaustive, since it doesn't handle `((Any, Any), Any)` and `(Int, Atom | ((Any, Any), Any))` at match_errors.rue:133:11
 - Match on `Optional<Bytes32>` is not exhaustive, since it doesn't handle `Bytes32` and `nil` at match_errors.rue:143:11
 - Undeclared type `Missing` at match_errors.rue:149:10
 - Undeclared type `Missing` at match_errors.rue:159:9

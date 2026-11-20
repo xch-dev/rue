@@ -173,6 +173,16 @@ test fn pair_parts(pair: (Shape, Int)) -> Int {
     }
 }
 
+// A pair whose parts both differ is split in two, so arms for every combination of its parts cover it
+test fn every_combination(pair: (Circle | Square, Circle | Square)) -> Int {
+    match pair {
+        (Circle, Circle) => 1,
+        (Circle, Square) => 2,
+        (Square, Circle) => 3,
+        (Square, Square) => 4,
+    }
+}
+
 // An earlier field-path arm narrows what later arms see
 test fn field_value_later_arm(pair: (Shape, Int)) -> Int {
     match pair.first {

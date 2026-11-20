@@ -126,6 +126,14 @@ tests:
   runtime_cost: 1922
   byte_cost: 780000
   total_cost: 781922
+- name: every_combination
+  program: (a (i (a (i (= 8 (q . 1)) (q 9 10 (q . 1)) (q)) 1) (q 1 . 1) (q 2 (i (= 8 (q . 1)) (q 1 . 2) (q 3 (= 10 (q . 1)) (q . 3) (q . 4))) 1)) 1)
+  debug_program: (a (i (a (i (= (f (f 2)) (q . 1)) (q 2 (i (= (f (r 2)) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 2 (i (= (f (f 2)) (q . 1)) (q 1 . 2) (q 2 (i (= (f (r 2)) (q . 1)) (q 1 . 3) (q 1 . 4)) 1)) 1)) 1)
+  solution: (((2 3) 1 2))
+  output: "3"
+  runtime_cost: 1333
+  byte_cost: 1236000
+  total_cost: 1237333
 - name: field_value_later_arm
   program: (a (i (= 8 (q . 3)) (q . 6) (q 2 (i (= 8 (q . 1)) (q . 20) (q . 20)) 1)) 1)
   debug_program: (a (i (= (f (f 2)) (q . 3)) (q 6 2) (q 2 (i (= (f (f 2)) (q . 1)) (q 5 (r (f 2))) (q 5 (r (f 2)))) 1)) 1)
@@ -160,7 +168,7 @@ tests:
   total_cost: 324457
 - name: no_arms
   program: (a (i 2 (q . 2) (q 3 () (x) (x))) 1)
-  debug_program: (a (i (= 2 ()) (q 3 () (x (q . "raise called at match.rue:216:13") (q . "never")) (x (q . "raise called at match.rue:215:16"))) (q . 2)) 1)
+  debug_program: (a (i (= 2 ()) (q 3 () (x (q . "raise called at match.rue:226:13") (q . "never")) (x (q . "raise called at match.rue:225:16"))) (q . 2)) 1)
   solution: (5)
   output: "5"
   runtime_cost: 305
