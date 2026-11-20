@@ -413,7 +413,8 @@ fn test_hints_in_range() {
             let third = value;
             first + second + third
         }
-    "#]].assert_eq(&project.inlay_hints_in(
+    "#]]
+    .assert_eq(&project.inlay_hints_in(
         "main.rue",
         Range::new(Position::new(1, 0), Position::new(1, 13)),
     ));
@@ -528,6 +529,24 @@ fn test_hints_with_narrowed_binding() {
                     return 0;
                 }
                 copy
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_in_assert_message() {
+    // The message of an `assert` has hints like any other code
+    check(
+        "fn add(first: Int, second: Int) -> Int {\n    first + second\n}\n\nfn main(value: Int) -> Int {\n    assert add(value, 1) > 1, add(2, value);\n    value\n}\n",
+        expect![[r#"
+            fn add(first: Int, second: Int) -> Int {
+                first + second
+            }
+
+            fn main(value: Int) -> Int {
+                assert add(«first:» value, «second:» 1) > 1, add(«first:» 2, «second:» value);
+                value
             }
         "#]],
     );
