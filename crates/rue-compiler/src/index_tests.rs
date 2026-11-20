@@ -1,5 +1,6 @@
-//! An index (`value[index]`) or slice (`value[start..end]`) compiles to the `substr` call that it
-//! stands for, so each one here is compared with the call it should generate.
+//! An index (`value[index]`) is the slice from the index up to the one after it, so each one here
+//! is compared with the slice it should generate (`value[index..index + 1]`), which has its bounds
+//! as they're written.
 
 use std::fmt::Write;
 
@@ -29,11 +30,11 @@ fn program(parameters: &str, body: &str, options: CompilerOptions) -> String {
 }
 
 #[track_caller]
-fn check(parameters: &str, index: &str, substr: &str) {
+fn check(parameters: &str, index: &str, slice: &str) {
     for options in [CompilerOptions::default(), CompilerOptions::debug()] {
         assert_eq!(
             program(parameters, index, options),
-            program(parameters, substr, options),
+            program(parameters, slice, options),
             "{options:?}"
         );
     }
@@ -42,50 +43,50 @@ fn check(parameters: &str, index: &str, substr: &str) {
 /// Compares what the optimizer makes of both, which is the same even if they're written
 /// differently.
 #[track_caller]
-fn check_optimized(parameters: &str, index: &str, substr: &str) {
+fn check_optimized(parameters: &str, index: &str, slice: &str) {
     let options = CompilerOptions::default();
     assert_eq!(
         program(parameters, index, options),
-        program(parameters, substr, options)
+        program(parameters, slice, options)
     );
 }
 
 #[test]
 fn literal_index() {
-    check("a: Bytes", "a[0]", "substr(a, 0, 1)");
-    check("a: Bytes", "a[7]", "substr(a, 7, 8)");
-    check("a: Bytes", "a[-1]", "substr(a, -1, 0)");
-    check("a: Bytes", "a[(2 as Int)]", "substr(a, 2, 3)");
+    check("a: Bytes", "a[0]", "a[..1]");
+    check("a: Bytes", "a[7]", "a[7..8]");
+    check("a: Bytes", "a[-1]", "a[-1..0]");
+    check("a: Bytes", "a[(2 as Int)]", "a[2..3]");
 }
 
-/// A variable, parameter or field is repeated for the end, as it would be written by hand.
+/// A variable, parameter or field is repeated for the end.
 #[test]
 fn variable_index() {
-    check("a: Bytes, i: Int", "a[i]", "substr(a, i, i + 1)");
+    check("a: Bytes, i: Int", "a[i]", "a[i..i + 1]");
     check(
         "c: Cursor",
         "c.data[c.offset]",
-        "substr(c.data, c.offset, c.offset + 1)",
+        "c.data[c.offset..c.offset + 1]",
     );
     check(
         "a: Bytes, i: Int",
         "let j = i * 2; a[j]",
-        "let j = i * 2; substr(a, j, j + 1)",
+        "let j = i * 2; a[j..j + 1]",
     );
 }
 
 /// A literal that's added to or subtracted from a variable is folded into the end.
 #[test]
 fn offset_index() {
-    check("a: Bytes, i: Int", "a[i + 1]", "substr(a, i + 1, i + 2)");
-    check("a: Bytes, i: Int", "a[1 + i]", "substr(a, 1 + i, i + 2)");
-    check("a: Bytes, i: Int", "a[i - 1]", "substr(a, i - 1, i)");
-    check("a: Bytes, i: Int", "a[i - 3]", "substr(a, i - 3, i - 2)");
-    check("a: Bytes, i: Int", "a[i + -1]", "substr(a, i + -1, i)");
+    check("a: Bytes, i: Int", "a[i + 1]", "a[i + 1..i + 2]");
+    check("a: Bytes, i: Int", "a[1 + i]", "a[1 + i..i + 2]");
+    check("a: Bytes, i: Int", "a[i - 1]", "a[i - 1..i]");
+    check("a: Bytes, i: Int", "a[i - 3]", "a[i - 3..i - 2]");
+    check("a: Bytes, i: Int", "a[i + -1]", "a[i + -1..i]");
     check(
         "c: Cursor",
         "c.data[c.offset + 2]",
-        "substr(c.data, c.offset + 2, c.offset + 3)",
+        "c.data[c.offset + 2..c.offset + 3]",
     );
 }
 
@@ -95,22 +96,22 @@ fn computed_index() {
     check(
         "a: Bytes, i: Int",
         "a[double(i)]",
-        "let index = double(i); substr(a, index, index + 1)",
+        "let index = double(i); a[index..index + 1]",
     );
     check(
         "a: Bytes, i: Int",
         "a[i * 2]",
-        "let index = i * 2; substr(a, index, index + 1)",
+        "let index = i * 2; a[index..index + 1]",
     );
     check(
         "a: Bytes",
         "a[a.length - 1]",
-        "let index = a.length - 1; substr(a, index, index + 1)",
+        "let index = a.length - 1; a[index..index + 1]",
     );
     check(
         "a: Bytes, i: Int, j: Int",
         "a[i + j]",
-        "let index = i + j; substr(a, index, index + 1)",
+        "let index = i + j; a[index..index + 1]",
     );
 }
 
@@ -118,58 +119,46 @@ fn computed_index() {
 /// added to it at runtime.
 #[test]
 fn constant_index() {
-    check("a: Bytes", "a[N]", "substr(a, N, 4)");
-    check("a: Bytes", "a[M]", "substr(a, M, 6)");
-    check("a: Bytes", "a[K]", "substr(a, K, 8)");
-    check("a: Bytes", "a[N + 1]", "substr(a, N + 1, 5)");
-    check("a: Bytes", "a[M - N]", "substr(a, M - N, 3)");
-    check("a: Bytes", "a[-N + 4]", "substr(a, -N + 4, 2)");
-    check("a: Bytes", "a[N * 2]", "substr(a, N * 2, 7)");
-    check("a: Bytes", "a[M / 2]", "substr(a, M / 2, 3)");
-    check("a: Bytes", "a[M % 2]", "substr(a, M % 2, 2)");
-    check("a: Bytes", "a[N + 32 / 2]", "substr(a, N + 32 / 2, 20)");
-    check("a: Bytes", "a[32 / 2 + N]", "substr(a, 32 / 2 + N, 20)");
-    check("a: Bytes", "a[32 / 2 - N]", "substr(a, 32 / 2 - N, 14)");
+    check("a: Bytes", "a[N]", "a[N..4]");
+    check("a: Bytes", "a[M]", "a[M..6]");
+    check("a: Bytes", "a[K]", "a[K..8]");
+    check("a: Bytes", "a[N + 1]", "a[N + 1..5]");
+    check("a: Bytes", "a[M - N]", "a[M - N..3]");
+    check("a: Bytes", "a[-N + 4]", "a[-N + 4..2]");
+    check("a: Bytes", "a[N * 2]", "a[N * 2..7]");
+    check("a: Bytes", "a[M / 2]", "a[M / 2..3]");
+    check("a: Bytes", "a[M % 2]", "a[M % 2..2]");
+    check("a: Bytes", "a[N + 32 / 2]", "a[N + 32 / 2..20]");
+    check("a: Bytes", "a[32 / 2 + N]", "a[32 / 2 + N..20]");
+    check("a: Bytes", "a[32 / 2 - N]", "a[32 / 2 - N..14]");
     check(
         "a: Bytes",
         "a[N + \"ab\".length]",
-        "substr(a, N + \"ab\".length, 6)",
+        "a[N + \"ab\".length..6]",
     );
-    check("a: Bytes", "a[{ N }]", "substr(a, { N }, 4)");
+    check("a: Bytes", "a[{ N }]", "a[{ N }..4]");
     check(
         "a: Bytes",
         "a[const { double(N) }]",
-        "substr(a, const { double(N) }, 7)",
+        "a[const { double(N) }..7]",
     );
-    check(
-        "a: Bytes",
-        "a[N] + a[N]",
-        "substr(a, N, 4) + substr(a, N, 4)",
-    );
+    check("a: Bytes", "a[N] + a[N]", "a[N..4] + a[N..4]");
 }
 
 /// The same goes for an index that's made of literals with operators.
 #[test]
 fn literal_operator_index() {
-    check("a: Bytes", "a[2 * 3]", "substr(a, 2 * 3, 7)");
-    check("a: Bytes", "a[32 / 2]", "substr(a, 32 / 2, 17)");
-    check("a: Bytes", "a[1 << 2]", "substr(a, 1 << 2, 5)");
-    check(
-        "a: Bytes",
-        "a[\"ab\".length]",
-        "substr(a, \"ab\".length, 3)",
-    );
-    check("a: Bytes", "a[0x05 as Int]", "substr(a, 0x05 as Int, 6)");
+    check("a: Bytes", "a[2 * 3]", "a[2 * 3..7]");
+    check("a: Bytes", "a[32 / 2]", "a[32 / 2..17]");
+    check("a: Bytes", "a[1 << 2]", "a[1 << 2..5]");
+    check("a: Bytes", "a[\"ab\".length]", "a[\"ab\".length..3]");
+    check("a: Bytes", "a[0x05 as Int]", "a[0x05 as Int..6]");
     // Bytes are a signed integer
-    check("a: Bytes", "a[0xFF as Int]", "substr(a, 0xFF as Int, 0)");
-    check(
-        "a: Bytes",
-        "a[0x0080 as Int]",
-        "substr(a, 0x0080 as Int, 129)",
-    );
+    check("a: Bytes", "a[0xFF as Int]", "a[0xFF as Int..0]");
+    check("a: Bytes", "a[0x0080 as Int]", "a[0x0080 as Int..129]");
 
-    check_optimized("a: Bytes", "a[2 * 3]", "substr(a, 6, 7)");
-    check_optimized("a: Bytes", "a[32 / 2]", "substr(a, 16, 17)");
+    check_optimized("a: Bytes", "a[2 * 3]", "a[6..7]");
+    check_optimized("a: Bytes", "a[32 / 2]", "a[16..17]");
     check_optimized("", "\"hello\"[2 * 2]", "\"o\"");
     check_optimized("", "\"hello\"[8 / 2]", "\"o\"");
 }
@@ -177,31 +166,23 @@ fn literal_operator_index() {
 /// A constant that's added to or subtracted from a variable is folded into the end.
 #[test]
 fn constant_offset_index() {
-    check("a: Bytes, i: Int", "a[i + N]", "substr(a, i + N, i + 4)");
-    check("a: Bytes, i: Int", "a[N + i]", "substr(a, N + i, i + 4)");
-    check("a: Bytes, i: Int", "a[i - N]", "substr(a, i - N, i - 2)");
-    check(
-        "a: Bytes, i: Int",
-        "a[i + M / 2]",
-        "substr(a, i + M / 2, i + 3)",
-    );
-    check(
-        "a: Bytes, i: Int",
-        "a[i + 2 * 3]",
-        "substr(a, i + 2 * 3, i + 7)",
-    );
+    check("a: Bytes, i: Int", "a[i + N]", "a[i + N..i + 4]");
+    check("a: Bytes, i: Int", "a[N + i]", "a[N + i..i + 4]");
+    check("a: Bytes, i: Int", "a[i - N]", "a[i - N..i - 2]");
+    check("a: Bytes, i: Int", "a[i + M / 2]", "a[i + M / 2..i + 3]");
+    check("a: Bytes, i: Int", "a[i + 2 * 3]", "a[i + 2 * 3..i + 7]");
 }
 
 /// A constant index that can't be evaluated when compiling is left to fail at runtime, as it
-/// does in the call, rather than being an error.
+/// does in the slice, rather than being an error.
 #[test]
 fn failing_constant_index() {
-    check("a: Bytes", "a[1 / 0]", "substr(a, 1 / 0, 1 / 0 + 1)");
-    check("a: Bytes", "a[N / 0]", "substr(a, N / 0, N / 0 + 1)");
+    check("a: Bytes", "a[1 / 0]", "a[1 / 0..1 / 0 + 1]");
+    check("a: Bytes", "a[N / 0]", "a[N / 0..N / 0 + 1]");
     check(
         "a: Bytes, i: Int",
         "a[i + N / 0]",
-        "substr(a, i + N / 0, i + (N / 0 + 1))",
+        "a[i + N / 0..i + (N / 0 + 1)]",
     );
 }
 
@@ -223,7 +204,7 @@ fn costly_constant_index() {
         .main_program()
     };
 
-    assert_eq!(program("a[K]"), program("substr(a, K, K + 1)"));
+    assert_eq!(program("a[K]"), program("a[K..K + 1]"));
 }
 
 /// A constant index inside of a const expression or a constant is evaluated with it, and one
@@ -255,7 +236,7 @@ fn constant_index_in_functions() {
 
     assert_eq!(
         compile(&source("a[N * 2]")).main_program(),
-        compile(&source("substr(a, N * 2, 7)")).main_program()
+        compile(&source("a[N * 2..7]")).main_program()
     );
 }
 
@@ -283,38 +264,56 @@ fn long_constant_chain() {
 }
 
 /// An `inline` binding stands for its value wherever it's used, so it's repeated like any other
-/// binding, as it is in the call.
+/// binding.
 #[test]
 fn inline_index() {
     check(
         "a: Bytes, i: Int",
         "inline let j = double(i); a[j]",
-        "inline let j = double(i); substr(a, j, j + 1)",
+        "inline let j = double(i); a[j..j + 1]",
     );
 }
 
+/// A slice is the `substr` operator with its bounds as they're written.
 #[test]
 fn slices() {
-    check("a: Bytes, i: Int, j: Int", "a[i..j]", "substr(a, i, j)");
-    check("a: Bytes, i: Int", "a[i..]", "substr(a, i)");
-    check("a: Bytes, i: Int", "a[..i]", "substr(a, 0, i)");
-    check("a: Bytes", "a[1..3]", "substr(a, 1, 3)");
-    check("a: Bytes", "a[N..M]", "substr(a, N, M)");
-    check(
-        "a: Bytes, i: Int",
-        "a[double(i)..double(i) + 1]",
-        "substr(a, double(i), double(i) + 1)",
+    let optimized = |parameters, body| program(parameters, body, CompilerOptions::default());
+
+    assert_eq!(
+        optimized("a: Bytes, i: Int, j: Int", "a[i..j]"),
+        "(substr 2 5 11)"
     );
+    assert_eq!(optimized("a: Bytes, i: Int", "a[i..]"), "(substr 2 5)");
+    assert_eq!(optimized("a: Bytes, i: Int", "a[..i]"), "(substr 2 () 5)");
+    assert_eq!(
+        optimized("a: Bytes", "a[1..3]"),
+        "(substr 2 (q . 1) (q . 3))"
+    );
+    assert_eq!(
+        optimized("a: Bytes, i: Int", "a[i + 1..i * 2]"),
+        "(substr 2 (+ 5 (q . 1)) (* 5 (q . 2)))"
+    );
+    assert_eq!(
+        optimized("a: Bytes, i: Int", "a[i]"),
+        "(substr 2 5 (+ 5 (q . 1)))"
+    );
+    assert_eq!(optimized("a: Bytes", "a[0]"), "(substr 2 () (q . 1))");
 }
 
+/// Literal operands are folded, unless that would fail.
 #[test]
 fn folded_operands() {
-    check("", "\"hello\"[1]", "substr(\"hello\", 1, 2)");
-    check("", "\"hello\"[1..3]", "substr(\"hello\", 1, 3)");
-    check("", "\"hello\"[..2]", "substr(\"hello\", 0, 2)");
-    check("", "\"hello\"[3..]", "substr(\"hello\", 3)");
-    check("", "\"hello\"[N]", "substr(\"hello\", N, 4)");
-    check("", "\"hello\"[9]", "substr(\"hello\", 9, 10)");
+    check_optimized("", "\"hello\"[1]", "\"e\"");
+    check_optimized("", "\"hello\"[1..3]", "\"el\"");
+    check_optimized("", "\"hello\"[..2]", "\"he\"");
+    check_optimized("", "\"hello\"[3..]", "\"lo\"");
+    check("", "\"hello\"[N]", "\"hello\"[N..4]");
+    check("", "\"hello\"[9]", "\"hello\"[9..10]");
+
+    assert_eq!(
+        program("", "\"hello\"[9]", CompilerOptions::default()),
+        "(substr (q . \"hello\") (q . 9) (q . 10))"
+    );
 }
 
 #[test]
@@ -322,7 +321,7 @@ fn operand_types() {
     check(
         "s: String, h: Bytes32, k: PublicKey, o: Bytes | nil",
         "s[0] + h[..4] + (k as Bytes)[1] + o[2..]",
-        "substr(s, 0, 1) + substr(h, 0, 4) + substr(k as Bytes, 1, 2) + substr(o, 2)",
+        "s[..1] + h[..4] + (k as Bytes)[1..2] + o[2..]",
     );
 }
 
@@ -331,7 +330,7 @@ fn nested() {
     check(
         "a: Bytes, i: Int",
         "a[1..][i] + (a + a)[i..][..2] + a[a[0] as Int]",
-        "substr(substr(a, 1), i, i + 1) + substr(substr(a + a, i), 0, 2) \
-         + { let index = substr(a, 0, 1) as Int; substr(a, index, index + 1) }",
+        "a[1..][i..i + 1] + (a + a)[i..][..2] \
+         + { let index = a[..1] as Int; a[index..index + 1] }",
     );
 }

@@ -37,7 +37,7 @@ fn base64url_encode(blob: Bytes) -> Bytes {
     } else {
         3 - remainder
     };
-    let encoded = encode_triples(blob + substr(0x000000, 0, padding), 0);
+    let encoded = encode_triples(blob + 0x000000[..padding], 0);
     encoded[..encoded.length - padding]
 }
 

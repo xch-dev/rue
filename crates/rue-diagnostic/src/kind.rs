@@ -141,6 +141,11 @@ pub enum DiagnosticKind {
     #[error("Undeclared symbol `{0}`")]
     UndeclaredSymbol(String),
 
+    #[error(
+        "`substr` was removed, since bytes are sliced with brackets instead: `value[start..end]`, `value[start..]`, or `value[index]` for one byte"
+    )]
+    RemovedSubstr,
+
     #[error("Undeclared type `{0}`")]
     UndeclaredType(String),
 

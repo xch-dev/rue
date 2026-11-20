@@ -95,12 +95,6 @@ impl Builtins {
         );
 
         scope.insert_symbol(
-            "substr".to_string(),
-            db.alloc_symbol(Symbol::Builtin(Builtin::Substr)),
-            false,
-        );
-
-        scope.insert_symbol(
             "sum".to_string(),
             db.alloc_symbol(Symbol::Builtin(Builtin::Sum)),
             false,

@@ -91,7 +91,7 @@ fn main(value: String) -> Bytes {
 }
 "#,
         expect![[r#"
-            let first: Bytes
+            let first: String
         "#]],
     );
 }

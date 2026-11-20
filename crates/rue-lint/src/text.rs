@@ -39,7 +39,7 @@ pub(crate) fn position(cx: &LintContext<'_>, hir: HirId) -> Position {
         Hir::Cast(_) | Hir::Guard(_) | Hir::FieldAccess(_) => Position::Postfix,
         Hir::FunctionCall(call) if call.function == hir => Position::Postfix,
         // The value of an index or a slice comes before its brackets
-        Hir::Substr(value, ..) if *value == hir && db.is_hir_indexed(parent) => Position::Postfix,
+        Hir::Substr(value, ..) if *value == hir => Position::Postfix,
         Hir::If(condition, ..) if *condition == hir => Position::Condition,
         Hir::If(..) => Position::Operand,
         Hir::Block(block)

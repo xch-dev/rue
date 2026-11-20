@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use log::debug;
 use num_bigint::BigInt;
 use rue_ast::{AstExpr, AstIndexExpr, AstNode, AstSliceExpr};
@@ -7,10 +9,12 @@ use rue_hir::{
     Value,
 };
 
+use rue_types::{AtomSemantic, Type, TypeId};
+
 use crate::{Compiler, compile_expr};
 
-/// An index (`value[index]`) is the byte at the index, as bytes of length one, which is what
-/// `substr(value, index, index + 1)` gives.
+/// An index (`value[index]`) is the byte at the index, as bytes of length one: the CLVM operator
+/// `substr` from `index` up to `index + 1`.
 pub fn compile_index_expr(ctx: &mut Compiler, expr: &AstIndexExpr) -> Value {
     let value = compile_indexed_value(ctx, expr.expr());
     let index = expr
@@ -18,7 +22,7 @@ pub fn compile_index_expr(ctx: &mut Compiler, expr: &AstIndexExpr) -> Value {
         .map(|index| (compile_bound(ctx, &index), index));
     let bytes = ctx.builtins().types.bytes;
 
-    let (Some(value), Some((start, index))) = (value, index) else {
+    let (Some((value, ty)), Some((start, index))) = (value, index) else {
         debug!("Unresolved index expr");
         return Value::new(ctx.unresolved().hir, bytes);
     };
@@ -26,30 +30,29 @@ pub fn compile_index_expr(ctx: &mut Compiler, expr: &AstIndexExpr) -> Value {
     let srcloc = ctx.trimmed_srcloc(index.syntax());
 
     let hir = if let Some(end) = next_index(ctx, start, &srcloc) {
-        alloc_substr(ctx, value, start, Some(end))
+        ctx.alloc_hir(Hir::Substr(value, start, Some(end)))
     } else {
         alloc_bound_index(ctx, value, start, srcloc)
     };
 
-    Value::new(hir, bytes)
+    Value::new(hir, ty)
 }
 
-/// A slice (`value[start..end]`) is the bytes from `start` up to `end`, which is what
-/// `substr(value, start, end)` gives. Without `start` it's from the first byte, and without `end`
-/// it's up to the last one.
+/// A slice (`value[start..end]`) is the bytes from `start` up to `end`, which is the CLVM
+/// operator `substr`. Without `start` it's from the first byte, and without `end` it's up to the
+/// last one.
 pub fn compile_slice_expr(ctx: &mut Compiler, expr: &AstSliceExpr) -> Value {
     let value = compile_indexed_value(ctx, expr.expr());
     let start = expr.start().map(|start| compile_bound(ctx, &start));
     let end = expr.end().map(|end| compile_bound(ctx, &end));
     let bytes = ctx.builtins().types.bytes;
 
-    let Some(value) = value else {
+    let Some((value, ty)) = value else {
         debug!("Unresolved slice expr");
         return Value::new(ctx.unresolved().hir, bytes);
     };
 
-    // There's no `substr` call for all of the bytes, which would only check that the value is an
-    // atom
+    // All of the bytes would only check that the value is an atom
     if start.is_none() && end.is_none() {
         // Unless a bound failed to parse, which has been reported
         if let Some(range) = expr.range()
@@ -62,27 +65,55 @@ pub fn compile_slice_expr(ctx: &mut Compiler, expr: &AstSliceExpr) -> Value {
 
     let start = start.unwrap_or_else(|| ctx.alloc_hir(Hir::Int(BigInt::ZERO)));
 
-    Value::new(alloc_substr(ctx, value, start, end), bytes)
+    Value::new(ctx.alloc_hir(Hir::Substr(value, start, end)), ty)
 }
 
-/// Compiles the value that's indexed or sliced, which is anything `substr` takes. A list isn't,
-/// since finding an item takes a walk through the list, which an index would hide the cost of.
-fn compile_indexed_value(ctx: &mut Compiler, expr: Option<AstExpr>) -> Option<HirId> {
+/// Compiles the value that's indexed or sliced, which is any bytes. A list isn't, since finding
+/// an item takes a walk through the list, which an index would hide the cost of.
+///
+/// This also gives the type of the result, which is a `String` for part of a string and `Bytes`
+/// otherwise.
+fn compile_indexed_value(ctx: &mut Compiler, expr: Option<AstExpr>) -> Option<(HirId, TypeId)> {
     let expr = expr?;
     let value = compile_expr(ctx, &expr, None);
-    let bytes = ctx.builtins().types.bytes;
+    let types = ctx.builtins().types;
 
     if !ctx.is_unresolved(value.ty)
-        && !ctx.is_assignable(value.ty, bytes)
+        && !ctx.is_assignable(value.ty, types.bytes)
         && !rue_types::extract_pairs(ctx.types_mut(), value.ty, false).is_empty()
     {
         let name = ctx.type_name(value.ty);
         ctx.diagnostic(expr.syntax(), DiagnosticKind::CannotIndexPair(name));
     } else {
-        ctx.assign_type(expr.syntax(), value.ty, bytes);
+        ctx.assign_type(expr.syntax(), value.ty, types.bytes);
     }
 
-    Some(value.hir)
+    let ty = if is_string(ctx, value.ty, &mut HashSet::new()) {
+        types.string
+    } else {
+        types.bytes
+    };
+
+    Some((value.hir, ty))
+}
+
+/// Whether every value of the type is a `String`, rather than only being assignable to one, as
+/// `Bytes` are.
+fn is_string(ctx: &mut Compiler, ty: TypeId, visited: &mut HashSet<TypeId>) -> bool {
+    let ty = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+
+    // A type that only refers to itself has no values
+    if !visited.insert(ty) {
+        return false;
+    }
+
+    match ctx.ty(ty).clone() {
+        Type::Atom(atom) => atom.semantic == AtomSemantic::String,
+        Type::Union(union) => {
+            !union.types.is_empty() && union.types.iter().all(|&ty| is_string(ctx, ty, visited))
+        }
+        _ => false,
+    }
 }
 
 fn compile_bound(ctx: &mut Compiler, expr: &AstExpr) -> HirId {
@@ -91,16 +122,8 @@ fn compile_bound(ctx: &mut Compiler, expr: &AstExpr) -> HirId {
     value.hir
 }
 
-/// Indexing and slicing are `substr` calls, which are marked as written with brackets, since the
-/// value is in a different position in the code than an argument is.
-fn alloc_substr(ctx: &mut Compiler, value: HirId, start: HirId, end: Option<HirId>) -> HirId {
-    let hir = ctx.alloc_hir(Hir::Substr(value, start, end));
-    ctx.set_hir_indexed(hir);
-    hir
-}
-
 /// Binds the index, which is needed twice, rather than evaluating it twice, like the value that a
-/// `match` checks: `{ let index = ...; substr(value, index, index + 1) }`.
+/// `match` checks: `{ let index = ...; value[index..index + 1] }`.
 fn alloc_bound_index(ctx: &mut Compiler, value: HirId, index: HirId, srcloc: SrcLoc) -> HirId {
     let index = Value::new(index, ctx.builtins().types.int);
     let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
@@ -111,7 +134,7 @@ fn alloc_bound_index(ctx: &mut Compiler, value: HirId, index: HirId, srcloc: Src
 
     let start = ctx.alloc_hir(Hir::Reference(symbol));
     let end = alloc_offset(ctx, start, BinaryOp::Add);
-    let body = alloc_substr(ctx, value, start, Some(end));
+    let body = ctx.alloc_hir(Hir::Substr(value, start, Some(end)));
 
     ctx.alloc_hir(Hir::Block(Block {
         statements: vec![Statement::Let(symbol, srcloc)],
@@ -119,14 +142,14 @@ fn alloc_bound_index(ctx: &mut Compiler, value: HirId, index: HirId, srcloc: Src
     }))
 }
 
-/// The index after this one, which is `end` in the `substr(value, index, end)` call that the
-/// index stands for, if it doesn't take evaluating the index again:
+/// The index after this one, which is `end` in the slice `value[index..end]` that the index
+/// stands for, if it doesn't take evaluating the index again:
 ///
-/// - The index is made of constants, so `end` is a constant too: `substr(value, N * 2, 7)`.
+/// - The index is made of constants, so `end` is a constant too: `value[N * 2..7]`.
 /// - It's a binding or a field of one, which costs as much to repeat as it would to bind:
-///   `substr(value, i, i + 1)`.
+///   `value[i..i + 1]`.
 /// - It's one of those with a constant added to or subtracted from it, which one more is added
-///   to in `end`: `substr(value, i + 1, i + 2)` or `substr(value, i - 1, i)`.
+///   to in `end`: `value[i + 1..i + 2]` or `value[i - 1..i]`.
 fn next_index(ctx: &mut Compiler, index: HirId, srcloc: &SrcLoc) -> Option<HirId> {
     if is_constant(ctx, index) {
         return Some(alloc_constant_offset(ctx, index, BinaryOp::Add, srcloc));
@@ -219,7 +242,7 @@ fn is_constant(ctx: &Compiler, hir: HirId) -> bool {
 
 /// Whether the value is a binding or parameter, or a field that's at a path from one, which is
 /// found without computing anything. An `inline` binding or parameter stands for its value
-/// wherever it's used, so it's repeated like the others, as it is in the call.
+/// wherever it's used, so it's repeated like the others.
 fn is_place(ctx: &Compiler, hir: HirId) -> bool {
     match ctx.hir(ctx.without_casts(hir)) {
         Hir::Reference(_) => true,

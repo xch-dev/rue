@@ -53,3 +53,19 @@ const SECOND: Int = FIRST + 1;
 fn recursive_constants(bytes: Bytes) -> Bytes {
     bytes[LOOP] + bytes[FIRST] + bytes[SECOND - 1] + bytes[LOOP..FIRST]
 }
+
+// Part of a string is a string, and part of anything else is bytes
+fn strings(string: String, literal: "hello" | "world", optional: String | nil, bytes: Bytes) {
+    let _: Int = string[0];
+    let _: Int = string[1..];
+    let _: Int = literal[..2];
+    let _: Int = "hello"[1];
+    let _: Int = optional[0];
+    let _: Int = bytes[0];
+    let _: Int = (string + string)[0];
+}
+
+// The builtin that slicing replaced
+fn removed(bytes: Bytes) -> Bytes {
+    substr(bytes, 0, 1)
+}

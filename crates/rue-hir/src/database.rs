@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use id_arena::{Arena, ArenaBehavior, DefaultArenaBehavior};
 use indexmap::{IndexMap, IndexSet};
@@ -32,8 +32,6 @@ pub struct Database {
     reported_types: HashMap<TypeId, TypeId>,
     hir_srclocs: HashMap<HirId, SrcLoc>,
     hir_scopes: HashMap<HirId, ScopeId>,
-    /// The `substr` nodes that were written as an index or a slice (see `set_hir_indexed`).
-    indexed_hirs: HashSet<HirId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
@@ -163,19 +161,6 @@ impl Database {
     /// available for the same nodes as [`hir_type`](Self::hir_type).
     pub fn hir_srcloc(&self, hir: HirId) -> Option<&SrcLoc> {
         self.hir_srclocs.get(&hir)
-    }
-
-    /// Records that a `substr` node was written as an index (`value[index]`) or a slice
-    /// (`value[start..end]`) rather than as a call. It's the same operation, but the value comes
-    /// before the brackets in the code instead of being an argument.
-    pub fn set_hir_indexed(&mut self, hir: HirId) {
-        self.indexed_hirs.insert(hir);
-    }
-
-    /// Whether the node was written as an index or a slice (see
-    /// [`set_hir_indexed`](Self::set_hir_indexed)).
-    pub fn is_hir_indexed(&self, hir: HirId) -> bool {
-        self.indexed_hirs.contains(&hir)
     }
 
     /// Records the scope that the source expression of a HIR node is in, which is used to name
@@ -694,17 +679,13 @@ impl Database {
             Hir::Substr(hir, start, end) => {
                 if let Some(end) = end {
                     format!(
-                        "substr({}, {}, {})",
+                        "{}[{}..{}]",
                         self.debug_hir(*hir),
                         self.debug_hir(*start),
                         self.debug_hir(*end)
                     )
                 } else {
-                    format!(
-                        "substr({}, {})",
-                        self.debug_hir(*hir),
-                        self.debug_hir(*start)
-                    )
+                    format!("{}[{}..]", self.debug_hir(*hir), self.debug_hir(*start))
                 }
             }
             Hir::G1Map(data, dst) => {

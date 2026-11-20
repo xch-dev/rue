@@ -124,7 +124,6 @@ pub enum Builtin {
     Keccak256 { inline: bool },
     Concat,
     CoinId,
-    Substr,
     Sum,
     Difference,
     Product,
@@ -162,10 +161,6 @@ impl Builtin {
             Self::CoinId => {
                 &["(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32"]
             }
-            Self::Substr => &[
-                "(value: Bytes, start: Int) -> Bytes",
-                "(value: Bytes, start: Int, end: Int) -> Bytes",
-            ],
             Self::Sum | Self::Difference | Self::Product => &["(values: List<Int>) -> Int"],
             Self::Divmod => &["(numerator: Int, denominator: Int) -> (Int, Int)"],
             Self::Modpow => &["(base: Int, exponent: Int, modulus: Int) -> Int"],
@@ -220,7 +215,6 @@ impl fmt::Display for Builtin {
                     },
                 Self::Concat => "concat",
                 Self::CoinId => "coinid",
-                Self::Substr => "substr",
                 Self::Sum => "sum",
                 Self::Difference => "difference",
                 Self::Product => "product",

@@ -110,6 +110,15 @@ test fn string(value: String) -> String {
     value[0] + value[1..]
 }
 
+test fn string_parts() {
+    let name: String = "hello";
+    let first: String = name[0];
+    let rest: String = name[1..];
+    assert first == "h";
+    assert rest == "ello";
+    assert first.length + rest.length == name.length;
+}
+
 test fn bytes32(value: Bytes32) -> Bytes {
     value[..4] + value[31]
 }

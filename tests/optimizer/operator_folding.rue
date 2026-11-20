@@ -51,11 +51,11 @@ test fn ash_shift_too_large() -> Int {
 }
 
 test fn substr_num() -> Bytes {
-    substr("hello", 1, 3)
+    "hello"[1..3]
 }
 
 test fn substr_out_of_range() -> Bytes {
-    substr("hello", 2, 10)
+    "hello"[2..10]
 }
 
 test fn coinid_num() -> Bytes32 {

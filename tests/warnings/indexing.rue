@@ -1,26 +1,26 @@
 #![warn(shadowed_binding)]
 
-// Indexing and slicing are `substr` calls, so each lint treats them like the call next to them.
+// An index or slice is the `substr` operator, which can fail, and an index is the slice from it
+// up to the next one.
 
 fn double(value: Int) -> Int {
     value * 2
 }
 
-// Warns: an index or slice can fail, like `substr`
+// Warns: an index or slice can fail
 fn inline_binding(value: Bytes, flag: Bool) -> Bytes {
     inline let index = value[0];
     inline let slice = value[1..];
-    inline let call = substr(value, 0, 1);
     if flag {
-        index + slice + call
+        index + slice
     } else {
         nil
     }
 }
 
-// Warns: an index is the same condition as the `substr` call it stands for
+// Warns: an index is the same condition as the slice it stands for
 fn duplicate_condition(value: Bytes, flag: Bool) -> Bool {
-    (flag && value[0] == "a") || (flag && substr(value, 0, 1) == "a")
+    (flag && value[0] == "a") || (flag && value[..1] == "a")
 }
 
 // Warns: the same on both sides, whether the index is repeated or bound
@@ -28,7 +28,7 @@ fn self_comparison(value: Bytes, index: Int) -> Bool {
     value[index] == value[index]
         && value[double(index)] == value[double(index)]
         && value[index..] == value[index..]
-        && substr(value, index, index + 1) == substr(value, index, index + 1)
+        && value[index] == value[index..index + 1]
 }
 
 // Doesn't warn: different indexes or bounds
@@ -103,7 +103,6 @@ fn plus(value: Bytes, index: Int) -> Bytes {
 fn unused_value(value: Bytes) {
     value[0];
     value[1..];
-    substr(value, 0, 1);
 }
 
 // Doesn't warn: the binding that a computed index is evaluated into isn't one of the code's
@@ -132,9 +131,9 @@ fn constants(value: Bytes, flag: Bool) -> Bytes {
     }
 }
 
-// Doesn't warn: the end of a constant index is written differently than in the call
-fn constant_and_call(value: Bytes) -> Bool {
-    value[OFFSET + 1] == substr(value, OFFSET + 1, OFFSET + 2)
+// Doesn't warn: the end of a constant index is evaluated, unlike the one that's written
+fn constant_and_slice(value: Bytes) -> Bool {
+    value[OFFSET + 1] == value[OFFSET + 1..OFFSET + 2]
 }
 
 fn main(value: Bytes, other: Bytes, index: Int, flag: Bool) -> Bytes {
@@ -151,7 +150,7 @@ fn main(value: Bytes, other: Bytes, index: Int, flag: Bool) -> Bytes {
         constants(value, flag),
     ];
 
-    assert constant_and_call(value);
+    assert constant_and_slice(value);
 
     assert duplicate_condition(value, flag);
     assert self_comparison(value, index);

@@ -1741,7 +1741,6 @@ fn main(a: Int, b: Int) -> Bytes {
         + (if a == b { true } else { false })[N + N]
         + ((a == b) == true)[const { double(N) }]
         + ((a == b) == true)[double(a)]
-        + substr((a == b) == true, 0, 1)
 }
 ";
 
@@ -1761,7 +1760,6 @@ fn main(a: Int, b: Int) -> Bytes {
         + (a == b)[N + N]
         + (a == b)[const { double(N) }]
         + (a == b)[double(a)]
-        + substr(a == b, 0, 1)
 }
 "
     );

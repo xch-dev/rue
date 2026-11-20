@@ -57,7 +57,7 @@ fn positive(value: Int) -> Int {
 
 // An unused binding that may fail is evaluated for its effect, unless optimizing it shows it can't
 test fn unused_values_that_fold(a: Int) -> Int {
-    let _first = substr("abc", 0, 1);
+    let _first = "abc"[0];
     let _quotient = 10 / (3 + 2);
     let _shifted = 1 << (2 + 1);
     a

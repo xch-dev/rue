@@ -38,7 +38,6 @@ fn helper() -> Int {
             keccak256_inline [Function] fn(value: Bytes) -> Bytes32
             concat [Function] fn(values: List<Bytes>) -> Bytes
             coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
-            substr [Function] fn(value: Bytes, start: Int) -> Bytes
             sum [Function] fn(values: List<Int>) -> Int
             difference [Function] fn(values: List<Int>) -> Int
             product [Function] fn(values: List<Int>) -> Int
@@ -282,7 +281,6 @@ fn main(value: Bytes, index: Int) -> Bytes {
             keccak256_inline [Function] fn(value: Bytes) -> Bytes32
             concat [Function] fn(values: List<Bytes>) -> Bytes
             coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
-            substr [Function] fn(value: Bytes, start: Int) -> Bytes
             sum [Function] fn(values: List<Int>) -> Int
             difference [Function] fn(values: List<Int>) -> Int
             product [Function] fn(values: List<Int>) -> Int
@@ -329,7 +327,6 @@ fn main(value: Bytes, index: Int) -> Bytes {
             keccak256_inline [Function] fn(value: Bytes) -> Bytes32
             concat [Function] fn(values: List<Bytes>) -> Bytes
             coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
-            substr [Function] fn(value: Bytes, start: Int) -> Bytes
             sum [Function] fn(values: List<Int>) -> Int
             difference [Function] fn(values: List<Int>) -> Int
             product [Function] fn(values: List<Int>) -> Int
@@ -963,7 +960,6 @@ fn main(value: Int | nil) -> Int {
             keccak256_inline [Function] fn(value: Bytes) -> Bytes32
             concat [Function] fn(values: List<Bytes>) -> Bytes
             coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
-            substr [Function] fn(value: Bytes, start: Int) -> Bytes
             sum [Function] fn(values: List<Int>) -> Int
             difference [Function] fn(values: List<Int>) -> Int
             product [Function] fn(values: List<Int>) -> Int
