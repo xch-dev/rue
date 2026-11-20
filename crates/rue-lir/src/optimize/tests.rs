@@ -177,7 +177,7 @@ fn test_if_in_condition() {
         &mut arena,
         lir,
         ENVS,
-        expect!["(i (a (i 2 (q . 5) (q)) 1) (q . 1) (q . 2))"],
+        expect!["(i (a (i 2 (q . 5) ()) 1) (q . 1) (q . 2))"],
     );
 
     // A branch that fails is kept, and one whose truthiness is known becomes an atom
