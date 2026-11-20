@@ -99,7 +99,7 @@ Then run the quick checks for what you touched (`cargo test -p <crate>`, and `ca
 ## 5. When to stop
 
 - **Clean**: a round with no confirmed findings at major or above. Stop there; never start a round just for minor findings or nits.
-- **Out of rounds**: stop after round 3 even if findings remain, and list them in the report. If round 3's fixes were more than trivial, first run one more round with only the correctness reviewer, to check the fixes; fix what it confirms and report it, without another round. A change that still has major findings after three rounds usually has a design problem that another round won't fix, and the user should look.
+- **Out of rounds**: stop after round 10 (or the limit the user gave) even if findings remain, and list them in the report. If the last round's fixes were more than trivial, first run one more round with only the correctness reviewer, to check the fixes; fix what it confirms and report it, without another round. A change that still has major findings after that many rounds usually has a design problem that another round won't fix, and the user should look.
 
 Whatever the stop, still run the final checks and open or update the PR, so the user has the work in hand.
 
