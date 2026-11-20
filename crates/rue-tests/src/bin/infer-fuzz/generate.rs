@@ -602,8 +602,12 @@ impl Generator {
                 picked.push(template);
             }
         }
+        // Version 3's catalog has two functions named `map_list`, so picking one removes the
+        // other. The earlier catalogs have none with the same name, so it doesn't change them
         for _ in 0..count {
-            picked.push(catalog.remove(self.rng.below(catalog.len())));
+            let template = catalog.remove(self.rng.below(catalog.len()));
+            catalog.retain(|other| other.name != template.name);
+            picked.push(template);
         }
         // Keep the catalog's order, so related functions are declared in a familiar order
         picked.sort_by_key(|template| all.iter().position(|other| other.name == template.name));

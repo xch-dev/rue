@@ -1963,7 +1963,26 @@ fn version_2_programs_never_change() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 3.
-const VERSION_3_HASH: u64 = 0x2c06_b018_2514_9503;
+const VERSION_3_HASH: u64 = 0x1ada_a244_2d98_ab33;
+
+/// No program declares two functions with the same name, as version 3 once did with its catalog's
+/// two `map_list`s (seed 93).
+#[test]
+fn programs_declare_each_function_once() {
+    for version in crate::generate::VERSIONS {
+        for seed in 0..300 {
+            let generated = Generator::versioned(seed, version).generate();
+            let mut names = std::collections::HashSet::new();
+            for function in &generated.program.functions {
+                assert!(
+                    names.insert(function.name.clone()),
+                    "version {version}, seed {seed} declares `{}` twice",
+                    function.name
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn version_3_programs_never_change() {
