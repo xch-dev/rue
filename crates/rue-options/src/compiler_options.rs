@@ -39,9 +39,9 @@ pub struct CompilerOptions {
     /// the debug build does: the failure analysis treats `*`, `/`, `%` and `divmod` as able to fail
     /// unless every operand is a constant short enough to be allowed (and the divisor isn't zero),
     /// so their checks aren't moved, removed or skipped, and no optimization removes or adds a
-    /// failure caused by an operand's length. The test runner and `rue test` then run programs with
-    /// `LIMITS`, so tests fail where mainnet would. `rue debug` doesn't read the option, and runs
-    /// programs with `LIMITS` when it's passed `--operand-limits`.
+    /// failure caused by an operand's length. The test runner, `rue test`, and `rue debug` run in
+    /// the project then run programs with `LIMITS`, so they fail where mainnet would. `rue debug`
+    /// can also be passed `--operand-limits` to run a program with `LIMITS` outside of a project.
     ///
     /// When it's off, the compiler targets CLVM without `LIMITS`, as mainnet will be after hard
     /// fork 2. Operands of any length are treated as allowed, so `*` can't fail, and `/`, `%` and

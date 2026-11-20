@@ -125,7 +125,7 @@ With `operand_limits`:
 
 - A release build fails under `LIMITS` exactly when the debug build does. `*`, `/`, `%` and `divmod` are treated as able to fail unless every operand is a short enough constant (and the divisor isn't zero), so they're never dropped or moved into a branch, and no optimization removes or adds a failure caused by an operand's length. For example, `x % 2 == 1` keeps its `%`, rather than checking the low bit with `logand`, which doesn't limit `x`.
 - Lints that ask whether a value can fail, such as `inline_value_may_fail`, count these operators as able to fail.
-- `rue test` runs tests with `LIMITS`, so a test fails where mainnet would. `rue debug --operand-limits` runs a program with `LIMITS`.
+- `rue test` runs tests with `LIMITS`, so a test fails where mainnet would, and so does `rue debug` when it's run in the project. Outside of a project, `rue debug --operand-limits` runs a program with `LIMITS`.
 
 Without it, operands of any length are treated as allowed, so `*` can't fail and `/`, `%` and `divmod` only fail for a zero divisor. A program compiled this way can pass its tests and succeed in debug builds, yet fail on mainnet today when an operand is longer than a limit. The optimizer can also change whether a release build fails under `LIMITS`, in either direction:
 

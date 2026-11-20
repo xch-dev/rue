@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process,
 };
@@ -288,7 +288,8 @@ pub struct DebugArgs {
     debug_metadata: Vec<PathBuf>,
     /// Run the program with the `LIMITS` flag that mainnet enforces until hard fork 2, which
     /// rejects some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and
-    /// `g2_multiply`. Use it for programs compiled with `operand_limits`
+    /// `g2_multiply`. It's also used when run in a project with `operand_limits = true` in
+    /// `Rue.toml`
     #[clap(long)]
     operand_limits: bool,
     #[clap(flatten)]
@@ -1016,6 +1017,15 @@ fn trace_test(
 
 /// Runs the program, and returns its output.
 fn debug(args: DebugArgs) -> Result<String> {
+    debug_in(args, &env::current_dir()?)
+}
+
+/// Runs the program like [`debug`], with `LIMITS` if it's asked for or the project that the
+/// directory is in is compiled with `operand_limits`.
+fn debug_in(args: DebugArgs, dir: &Path) -> Result<String> {
+    let operand_limits = args.operand_limits
+        || find_project(dir, true)?.is_some_and(|project| project.options.operand_limits);
+
     let mut allocator = Allocator::new();
 
     let program = if args.hex {
@@ -1036,7 +1046,7 @@ fn debug(args: DebugArgs) -> Result<String> {
         NodePtr::NIL
     };
 
-    let dialect = DebugDialect::new(clvm_flags(args.operand_limits), true);
+    let dialect = DebugDialect::new(clvm_flags(operand_limits), true);
 
     if args.debug_metadata.is_empty() {
         let output = run_program(
@@ -1088,8 +1098,8 @@ mod tests {
     use std::{fs, path::Path};
 
     use super::{
-        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_metadata_path, run_and_trace_test,
-        run_test, single_debug_metadata_path, trace_test,
+        Command, CostArgs, DEFAULT_MAX_COST, build, debug, debug_in, debug_metadata_path,
+        run_and_trace_test, run_test, single_debug_metadata_path, trace_test,
     };
     use clap::{CommandFactory, Parser, error::ErrorKind};
     use clvmr::{Allocator, SExp, serde::node_from_bytes};
@@ -1683,6 +1693,26 @@ mod tests {
             run_debug(&["(logand 2 (q . 1))", &solution, "--operand-limits"]).unwrap(),
             "()"
         );
+
+        // In a project with `operand_limits` on, it's used without the flag
+        let project = TempProject::new("debug-operand-limits", "fn main() -> Int {\n    1\n}\n");
+        let parse = |args: &[&str]| {
+            let Ok(Command::Debug(args)) =
+                Command::try_parse_from(["rue", "debug"].iter().chain(args))
+            else {
+                panic!("expected debug command");
+            };
+            args
+        };
+
+        for (manifest, fails) in [
+            ("[compiler]\n", false),
+            ("[compiler]\noperand_limits = true\n", true),
+        ] {
+            fs::write(project.0.join("Rue.toml"), manifest).unwrap();
+            let result = debug_in(parse(&["(% 2 (q . 2))", &solution]), &project.0);
+            assert_eq!(result.is_err(), fails, "{result:?}");
+        }
     }
 
     #[test]
