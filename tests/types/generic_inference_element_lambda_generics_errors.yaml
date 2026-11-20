@@ -18,3 +18,6 @@ diagnostics:
 - Unused function `self_feeding` at generic_inference_element_lambda_generics_errors.rue:80:4
 - Unused function `element_returns_what_its_parameter_reads` at generic_inference_element_lambda_generics_errors.rue:94:4
 - Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:95:44
+- Unused function `map_list_from` at generic_inference_element_lambda_generics_errors.rue:99:4
+- Unused function `element_before_a_spread_that_reads_its_return_type` at generic_inference_element_lambda_generics_errors.rue:107:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:109:29

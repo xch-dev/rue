@@ -1084,6 +1084,8 @@ pub struct ElementLambda {
     ty: TypeId,
     /// The callee's generics in the types its untyped parameters are expected to have.
     reads: IndexSet<TypeId>,
+    /// The callee's generics in the return types of the function types it's expected to be.
+    returns: IndexSet<TypeId>,
 }
 
 /// An element lambda that's compiled once no argument still to be compiled can add to the generics
@@ -1357,12 +1359,22 @@ impl ArgumentOrder {
     }
 
     /// The element lambdas of the argument `next` just gave that wait for the arguments still to be
-    /// compiled (see `DeferredLambda`).
+    /// compiled (see `DeferredLambda`). One whose return type has a generic that an argument still
+    /// to be compiled reads is compiled where it is, since that argument would be compiled before
+    /// it, without what it adds to the generic.
     fn deferred(&self, i: usize) -> HashMap<TextRange, ElementLambda> {
         self.arguments[i]
             .element_lambdas
             .iter()
-            .filter(|(_, lambda)| !self.is_settled(&lambda.reads))
+            .filter(|(_, lambda)| {
+                !self.is_settled(&lambda.reads)
+                    && !self.pending.iter().any(|&other| {
+                        self.arguments[other]
+                            .reads
+                            .iter()
+                            .any(|generic| lambda.returns.contains(generic))
+                    })
+            })
             .map(|(&range, lambda)| (range, lambda.clone()))
             .collect()
     }
@@ -1639,26 +1651,40 @@ fn reads_of(
 /// of, that can wait for later arguments (see `DeferredLambda`), with the types they're expected to
 /// have, found by following the parameter type along those pairs as compiling them does (see
 /// `pair_parts`). Those are the ones whose untyped parameters are expected to have the callee's
-/// generics, and whose return types aren't. A lambda whose type can't be followed there isn't one,
-/// and is compiled where it is.
+/// generics, and whose return types have none that they or the other elements read. Where the
+/// pairs can't be followed, there are none.
 fn element_lambdas(
     ctx: &mut Compiler,
     function: &FunctionType,
     arg: &AstExpr,
     param: TypeId,
 ) -> HashMap<TextRange, ElementLambda> {
+    /// The elements found so far: each lambda that could wait, with the generics its return type
+    /// references, and what each element reads, by where it is: for a lambda, the generics its
+    /// untyped parameters read, and for anything else, every generic in its type
+    #[derive(Default)]
+    struct Walk {
+        lambdas: Vec<(TextRange, ElementLambda)>,
+        reads: Vec<(TextRange, IndexSet<TypeId>)>,
+        /// Whether every element was found, which it isn't where the pairs can't be followed.
+        complete: bool,
+    }
+
     fn add(
         ctx: &mut Compiler,
         function: &FunctionType,
         expr: &AstExpr,
         ty: TypeId,
-        lambdas: &mut HashMap<TextRange, ElementLambda>,
+        walk: &mut Walk,
     ) {
+        let range = expr.syntax().text_range();
+
         match expr {
             AstExpr::LambdaExpr(lambda) => {
                 let untyped = untyped_parameters(lambda);
                 let expected = rue_types::extract_functions(ctx.types_mut(), ty, true);
                 let mut reads = IndexSet::new();
+                let mut returns = IndexSet::new();
 
                 for expected in &expected {
                     for &index in &untyped {
@@ -1666,29 +1692,35 @@ fn element_lambdas(
                             reads.extend(generics_in(ctx, function, parameter.ty));
                         }
                     }
-                }
 
-                let returns_reads = expected.iter().any(|expected| {
-                    generics_in(ctx, function, expected.ret)
-                        .iter()
-                        .any(|generic| reads.contains(generic))
-                });
+                    returns.extend(generics_in(ctx, function, expected.ret));
+                }
 
                 // One whose return type adds to the generics its parameters read is compiled
                 // against them where it is, so that it works for whatever it adds to them: compiled
                 // against what the other arguments infer, its parameters would be narrower than
                 // what it makes them, as in `fn(x) => (x, nil)` for `fn(a: T) -> T` with `T` from
-                // `nil` (infer-fuzz generator 1, seed 1461)
-                if !reads.is_empty() && !returns_reads {
-                    lambdas.insert(expr.syntax().text_range(), ElementLambda { ty, reads });
+                // `nil` (infer-fuzz generator 1, seeds 1461, 2955 and 6784)
+                if !reads.is_empty() && !returns.iter().any(|generic| reads.contains(generic)) {
+                    let lambda = ElementLambda {
+                        ty,
+                        reads: reads.clone(),
+                        returns,
+                    };
+                    walk.lambdas.push((range, lambda));
                 }
+
+                walk.reads.push((range, reads));
             }
             AstExpr::PairExpr(pair) => {
-                if let Some((first, rest)) = pair_parts(ctx, ty) {
-                    for (expr, ty) in [(pair.first(), first), (pair.rest(), rest)] {
-                        if let Some(expr) = expr {
-                            add(ctx, function, &expr, ty, lambdas);
-                        }
+                let Some((first, rest)) = pair_parts(ctx, ty) else {
+                    walk.complete = false;
+                    return;
+                };
+
+                for (expr, ty) in [(pair.first(), first), (pair.rest(), rest)] {
+                    if let Some(expr) = expr {
+                        add(ctx, function, &expr, ty, walk);
                     }
                 }
             }
@@ -1702,29 +1734,49 @@ fn element_lambdas(
 
                     // A spread item is the rest of the list
                     if item.spread().is_some() {
-                        add(ctx, function, &expr, ty, lambdas);
+                        add(ctx, function, &expr, ty, walk);
                         return;
                     }
 
                     let Some((first, rest)) = pair_parts(ctx, ty) else {
+                        walk.complete = false;
                         return;
                     };
 
-                    add(ctx, function, &expr, first, lambdas);
+                    add(ctx, function, &expr, first, walk);
                     ty = rest;
                 }
             }
-            _ => {}
+            _ => walk.reads.push((range, generics_in(ctx, function, ty))),
         }
     }
 
-    let mut lambdas = HashMap::new();
-
-    if matches!(arg, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) {
-        add(ctx, function, arg, param, &mut lambdas);
+    if !matches!(arg, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) {
+        return HashMap::new();
     }
 
-    lambdas
+    let mut walk = Walk {
+        complete: true,
+        ..Walk::default()
+    };
+    add(ctx, function, arg, param, &mut walk);
+
+    if !walk.complete {
+        return HashMap::new();
+    }
+
+    // What a lambda's return type adds to the generics reaches the other elements, which are
+    // compiled before a lambda that waits, so one whose return type has a generic another element
+    // reads is compiled where it is, as in `(fn(_x) => 7, fn(y) => y + 1)` for
+    // `(fn(x: T) -> U, fn(y: U) -> Int)`
+    walk.lambdas
+        .into_iter()
+        .filter(|(range, lambda)| {
+            !walk.reads.iter().any(|(other, reads)| {
+                other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
+            })
+        })
+        .collect()
 }
 
 /// The types of the first and rest of the pairs the type can be, each a union if there are

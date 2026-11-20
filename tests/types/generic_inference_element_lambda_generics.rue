@@ -319,3 +319,40 @@ test fn element_takes_the_expected_bounds_of_its_parameter() -> (List<5>, 5) {
     );
     result
 }
+
+fn two_steps<T, U>(pair: (fn(x: T) -> U, fn(y: U) -> Int), value: T) -> Int {
+    pair.rest(pair.first(value))
+}
+
+// Guard: what a lambda's return type adds to `U` reaches the other elements, which would be
+// compiled without it if the lambda waited for `5`, so it's compiled where it is
+test fn element_returns_what_a_sibling_reads() -> Int {
+    two_steps((fn(_x) => 7, fn(y) => y + 1), 5)
+}
+
+test fn element_returns_a_pair_a_sibling_reads() -> Int {
+    two_steps((fn(x) => (x, 1), fn(y) => y.rest + 1), 5)
+}
+
+fn chain<T, U>(first: (fn(x: T) -> U, nil), second: (fn(y: U) -> Int, nil), value: T) -> Int {
+    second.first(first.first(value))
+}
+
+// Guard: the same with a later argument that reads it
+test fn element_returns_what_a_later_argument_reads() -> Int {
+    chain([fn(x) => (x, 1)], [fn(y) => y.rest + 1], 5)
+}
+
+fn make<V>() -> V {
+    raise;
+}
+
+fn with_made<T, U>(pair: (fn(x: T) -> U, U), value: T) -> U {
+    pair.first(value)
+}
+
+// Guard: the same with a call without arguments, which only what the lambda adds gives a type. It
+// always raises, so this is only compiled
+fn element_returns_what_a_call_without_arguments_reads() -> Int {
+    with_made((fn(_x) => 7, make()), 5)
+}

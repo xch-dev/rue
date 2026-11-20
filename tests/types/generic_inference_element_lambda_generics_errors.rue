@@ -95,3 +95,16 @@ fn element_returns_what_its_parameter_reads() -> Bool {
     let result = self_feeding((1, fn(x) => x + 1), 5);
     result == 6
 }
+
+fn map_list_from<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    map_list(functions, value)
+}
+
+// A lambda before a spread whose type has the generic its return type adds to is compiled where it
+// is, against `T` itself, as before, since the spread is compiled before a lambda that waits, and
+// whether it uses the type it's expected to have (as a generic function's name does, which is
+// instantiated against it) isn't known before it's compiled
+fn element_before_a_spread_that_reads_its_return_type() -> List<Int> {
+    let rest = [fn(x: Int) => x * 2];
+    map_list_from([fn(x) => x + 1, ...rest], 5)
+}
