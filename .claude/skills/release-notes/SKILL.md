@@ -1,45 +1,45 @@
 ---
 name: release-notes
-description: Write or update the GitHub release notes for a Rue release in the format the releases use now (a summary sentence, Highlights grouped by area, an Upgrading section, and the pull request list folded away at the end). Use this whenever the user asks to write, draft, update, refresh or fix release notes or a changelog for Rue, to "add the new PRs to the release notes", to prepare notes for the next version, or to rewrite an older release's notes in the current style, even if they only say "update the release". Not for bumping the version or publishing a release.
+description: Rewrite the description of an existing GitHub release of Rue into the release notes format the releases use now (a summary sentence, Highlights grouped by area, an Upgrading section, and the pull request list folded away at the end). Use this whenever the user asks to write, update, refresh or fix the release notes, release description or changelog of a Rue release they have already created, to "do the release notes for 0.13.0", to "add the new PRs to the release notes", or to redo an older release's notes in the current style, even if they only say "update the release". It only edits the description of a release that exists; it never creates a release, a tag or a changelog file, and never bumps the version.
 ---
 
 # Release notes
 
-Rue's release notes live in the body of each GitHub release; there is no changelog file. Since 0.8.5 they all follow one format, written for someone who uses Rue rather than someone who works on it. This skill writes notes in that format for a new release, or brings existing notes up to date after more pull requests merge.
+Rue's release notes live in the description of each GitHub release; there is no changelog file. The user tags and creates the release themselves, usually with GitHub's generated "What's Changed" list as its description. This skill replaces that description with notes in the format every release since 0.8.5 follows, written for someone who uses Rue rather than someone who works on it. It also brings notes it wrote earlier up to date.
 
-Read the latest release before writing, so the notes match what's published now and not just this description of it: `gh release view --json body --jq .body`. Read 0.12.0 or 0.11.0 for a large release and 0.8.5 for a small one.
+Read the latest release that has written notes before writing, so the result matches what's published now and not just this description of it. 0.12.0 and 0.11.0 are large releases and 0.8.5 is a small one: `gh release view 0.12.0 --json body --jq .body`.
 
 ## What you may and may not do
 
-Pushing a version tag publishes every crate to crates.io (`.github/workflows/build.yml`), and publishing a GitHub release creates its tag. So:
+The only thing this skill changes is the description of a release that already exists, with `gh release edit <tag> --notes-file`.
 
-- **Never publish a release, create a tag or push one.** The user does that. New notes go into a draft release, which has no tag until it's published.
-- **Never pass `--draft=false`, and never run `gh release create` without `--draft`.**
-- **A published release's notes are public.** Editing them is fine when the user asked for that release to be changed. Show what changed afterwards.
+- **Never create a release or a tag, and never publish a draft.** Pushing a version tag publishes every crate to crates.io (`.github/workflows/build.yml`), and that's the user's step. If the release doesn't exist, say so and stop; offer the notes as text if they'd help.
+- **Never change anything else about the release:** not its title, tag, target, draft or prerelease state, or assets. Pass `gh release edit` no flag other than `--notes-file`.
+- **Don't add a changelog file** or put the notes anywhere in the repository.
+
+The user asked for the description to change, so edit it without asking again, and show what changed afterwards.
 
 ## 1. Find the release and collect its pull requests
 
-Work out which release the notes are for:
-
-- the version the user named;
-- otherwise a draft release, if there is one (`gh release list --json tagName,isDraft`);
-- otherwise the next version. The version in `Cargo.toml` on `origin/main` is the next one if it's ahead of the latest release. If it isn't, the version hasn't been bumped yet: use the next minor version (0.12.0 → 0.13.0) and say that you assumed it.
-
-Then run the script, which only reads from GitHub:
+The release is the one the user named, or otherwise the latest one (`gh release view --json tagName,isDraft`; `gh release list` also shows drafts). Then run the script, which only reads from GitHub:
 
 ```bash
 .claude/skills/release-notes/scripts/release-prs.sh <tag> <scratchpad>/release-notes/<tag>
 ```
 
-It takes the previous tag and the target branch as optional third and fourth arguments (the latest published release and `main` by default). It writes:
+The previous tag is an optional third argument; by default it's the published release before this one. The script writes:
 
 - `footer.md`: the end of the notes, ready to append as it is;
 - `prs.tsv`: number, author and title of every pull request in the release;
 - `prs/<n>.md`: each pull request's title and description;
-- `current.md`: the notes the release has now, if it exists;
-- `new.txt`: the pull requests that `current.md` doesn't list yet.
+- `current.md`: the description the release has now;
+- `new.txt`: the pull requests the notes don't cover yet.
 
-When `new.txt` is empty and the user didn't ask for a rewrite, the notes are up to date. Say so and stop.
+Its last line says which of three states the release is in:
+
+- **Not in the notes format yet** (empty, or GitHub's generated list): write the notes from every pull request. Keep anything the user wrote by hand in `current.md` that isn't part of the generated list.
+- **Has written notes:** `new.txt` lists only the pull requests missing from them; see section 4. When it's empty and the user didn't ask for a rewrite, the notes are up to date. Say so and stop.
+- **No release for the tag:** stop, as above.
 
 ## 2. Read the pull requests
 
@@ -101,20 +101,20 @@ Rue <version> <what the release does, in one or two sentences>.
 - **No pull request numbers, links or authors in the highlights.** The footer carries them.
 - **Lists in a sentence** have no comma before "and".
 
-## 4. Updating existing notes
+## 4. Updating notes that are already written
 
-When `current.md` exists, keep what's there and fold the pull requests in `new.txt` into it. The existing wording has usually been read and edited by the user, so don't rewrite bullets that the new pull requests don't touch.
+When the release already has notes in this format, keep what's there and fold the pull requests in `new.txt` into it. The existing wording has usually been read and edited by the user, so don't rewrite bullets that the new pull requests don't touch.
 
 - Add each visible change to the section it belongs in, or add a section in the right place by importance.
 - When a new pull request changes something an existing bullet describes, edit that bullet to say what's true now.
 - Add to Upgrading whatever the new changes need, and revisit the summary sentence if the release's weight has shifted.
 - Replace everything from `<details>` to the end with the new `footer.md`.
 
-Rewriting an older release in the current format (the user asks for this by version) is the same as writing new notes, with that release's tag and the one before it as the previous tag. Keep facts from the old notes that the pull requests don't state.
+When the user asks for an older release to be redone in the current format, write it from scratch like a release with no notes, and keep facts from the old description that the pull requests don't state.
 
 ## 5. Check and save
 
-Write the notes to `<scratchpad>/release-notes/<tag>/notes.md`, then check them:
+Write the notes to `<scratchpad>/release-notes/<tag>/notes.md` (a working copy only; it isn't kept), then check them:
 
 - every pull request in `prs.tsv` is in the footer's list, and the list is in the script's order;
 - every pull request that changes something a user can see is covered by a bullet, and nothing in the highlights is internal only;
@@ -122,24 +122,19 @@ Write the notes to `<scratchpad>/release-notes/<tag>/notes.md`, then check them:
 - the names, flags, counts and examples are right as of the release, not as of the pull request that introduced them;
 - it reads like the latest release beside it.
 
-Then save:
+Then replace the release's description:
 
 ```bash
-# a new release: always a draft, with no tag created
-gh release create <tag> --draft --target main --title <tag> --notes-file <notes.md>
-
-# an existing draft, or a published release the user asked to change
-gh release edit <tag> --notes-file <notes.md>
+gh release edit <tag> --notes-file <scratchpad>/release-notes/<tag>/notes.md
 ```
 
-The title is the bare version, like the tag. Check the result with `gh release view <tag> --json isDraft,url` and confirm a new release is still a draft.
+Check the result with `gh release view <tag> --json isDraft,url,body` and confirm the description is the new one and the release's draft state is what it was.
 
 ## 6. Report
 
 Tell the user:
 
-- the release's URL, and whether it's a draft;
-- which sections you added or changed (for an update, the bullets, not the whole text);
-- anything you assumed, such as the version number;
-- anything you couldn't settle from the pull requests and the code, with what you wrote in the meantime;
-- that publishing the release is theirs to do, and that it creates the tag and publishes the crates, so the version bump has to be merged first.
+- the release's URL;
+- which sections you wrote, or for an update which bullets you added or changed;
+- anything from the old description you kept or dropped;
+- anything you couldn't settle from the pull requests and the code, with what you wrote in the meantime.
