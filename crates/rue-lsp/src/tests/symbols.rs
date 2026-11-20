@@ -10,12 +10,21 @@ fn check(source: &str, expect: Expect) {
     expect.assert_eq(&project.document_symbols("main.rue"));
 }
 
+/// Shows the outline of a file that compiles, next to the files it uses.
+#[allow(clippy::needless_pass_by_value)]
+fn check_compiled(files: &[(&str, &str)], expect: Expect) {
+    let project = TestProject::new(files);
+    let diagnostics = project.diagnostics();
+    assert!(!diagnostics.contains(" Error"), "{diagnostics}");
+    expect.assert_eq(&project.document_symbols(files[0].0));
+}
+
 const SOURCE: &str = r#"
 import utils::helper;
 
 const LIMIT: Int = 10;
 
-inline const NAME = "rue";
+inline const NAME: String = "rue";
 
 type Amount = Int;
 
@@ -70,11 +79,15 @@ mod math {
 
 #[test]
 fn test_document_symbols() {
-    check(
-        SOURCE,
+    check_compiled(
+        &[
+            ("main.rue", SOURCE),
+            ("utils.rue", "export fn helper() -> Int {\n    1\n}\n"),
+            ("run.hex", "01"),
+        ],
         expect![[r#"
             Constant LIMIT `Int` 3:0-3:22 [3:6-3:11]
-            Constant NAME 5:0-5:26 [5:13-5:17]
+            Constant NAME `String` 5:0-5:34 [5:13-5:17]
             TypeParameter Amount `Int` 7:0-7:18 [7:5-7:11]
             TypeParameter Pair `(T, T)` 9:0-9:22 [9:5-9:9]
             Struct Point 11:0-15:1 [11:7-11:12]
@@ -179,6 +192,24 @@ fn test_document_symbols_without_comments_in_details() {
             Struct Point 8:0-11:1 [8:7-8:12]
               Field x `Int` 9:4-9:10 [9:4-9:5]
               Field y `Int` 10:4-10:19 [10:4-10:5]
+        "#]],
+    );
+}
+
+#[test]
+fn test_document_symbols_end_before_comments() {
+    // The comments after a field or a variant aren't part of it
+    check(
+        "struct Point {\n    x: Int /* x */, // more\n    y: Int // last\n}\n\nenum Shape {\n    A /* a */,\n    B = 1 // b\n    ,\n    C { x: Int /* x */ } // c\n}\n",
+        expect![[r#"
+            Struct Point 0:0-3:1 [0:7-0:12]
+              Field x `Int` 1:4-1:10 [1:4-1:5]
+              Field y `Int` 2:4-2:10 [2:4-2:5]
+            Enum Shape 5:0-10:1 [5:5-5:10]
+              EnumMember A 6:4-6:5 [6:4-6:5]
+              EnumMember B 7:4-7:9 [7:4-7:5]
+              EnumMember C 9:4-9:24 [9:4-9:5]
+                Field x `Int` 9:8-9:14 [9:8-9:9]
         "#]],
     );
 }
@@ -433,4 +464,22 @@ fn test_workspace_symbols_of_a_file_in_two_projects() {
         Field x in Second sub/inner.rue:8:4-8:5
     "#]]
     .assert_eq(&project.workspace_symbols("x"));
+}
+
+#[test]
+fn test_workspace_symbols_without_the_standard_library() {
+    // The standard library has no file to open, so its symbols aren't listed
+    let project = TestProject::with_manifest(
+        Some("[compiler]\nentrypoint = \".\"\n"),
+        &[("main.rue", "fn main() -> Bytes32 {\n    sha256(\"a\")\n}\n")],
+    );
+
+    expect![[r#"
+        Function main main.rue:0:3-0:7
+    "#]]
+    .assert_eq(&project.workspace_symbols(""));
+    expect![[r#"
+        <empty>
+    "#]]
+    .assert_eq(&project.workspace_symbols("sha"));
 }

@@ -895,7 +895,7 @@ async fn test_inlay_hint_settings_without_refresh() {
 
 #[tokio::test]
 async fn test_symbols_session() {
-    let main = "struct Point {\n    x: Int,\n}\n\nfn main() -> Int {\n    utils::ONE\n}\n";
+    let main = "struct Point {\n    x: Int,\n}\n\nfn main() -> Int {\n    utils::ONE\n}\n\nenum Shape {\n    Circle { radius: Int },\n}\n";
     let project = TempProject::new(&[
         ("main.rue", main),
         ("utils.rue", "export const ONE: Int = 1;\n"),
@@ -938,6 +938,23 @@ async fn test_symbols_session() {
                 "name": "main",
                 "kind": 12,
                 "location": { "uri": uri, "range": range((4, 0), (6, 1)) },
+            },
+            {
+                "name": "Shape",
+                "kind": 10,
+                "location": { "uri": uri, "range": range((8, 0), (10, 1)) },
+            },
+            {
+                "name": "Circle",
+                "kind": 22,
+                "location": { "uri": uri, "range": range((9, 4), (9, 26)) },
+                "containerName": "Shape",
+            },
+            {
+                "name": "radius",
+                "kind": 8,
+                "location": { "uri": uri, "range": range((9, 13), (9, 24)) },
+                "containerName": "Circle",
             },
         ])
     );
@@ -1021,6 +1038,25 @@ async fn test_symbols_session() {
                 "kind": 12,
                 "range": range((4, 0), (6, 1)),
                 "selectionRange": range((4, 3), (4, 7)),
+            },
+            {
+                "name": "Shape",
+                "kind": 10,
+                "range": range((8, 0), (10, 1)),
+                "selectionRange": range((8, 5), (8, 10)),
+                "children": [{
+                    "name": "Circle",
+                    "kind": 22,
+                    "range": range((9, 4), (9, 26)),
+                    "selectionRange": range((9, 4), (9, 10)),
+                    "children": [{
+                        "name": "radius",
+                        "detail": "Int",
+                        "kind": 8,
+                        "range": range((9, 13), (9, 24)),
+                        "selectionRange": range((9, 13), (9, 19)),
+                    }],
+                }],
             },
         ])
     );
