@@ -300,6 +300,13 @@ tests:
   runtime_cost: 183
   byte_cost: 180000
   total_cost: 180183
+- name: element_before_an_argument_that_reads_its_parameters
+  program: (a (q 4 (a 6 (c 6 (c (c (q . 2) ()) (a 4 (q . 5))))) (a (q . 2) (c (a (c (q . 2) (c (c (q . 1) (q 2 2 (q . 5))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ()))) ()) ()))) (c (c (q . 1) (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) (q)) 1)) ()))
+  debug_program: (a (q 2 (q 4 4 6) (c (c (a 10 (c 10 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()) (a 4 (q . 5))))) (a 14 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1)) (c (q . 2) (c (c (q . 1) (q 2 2 (q . 5))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ())))))) 1)) (c (c (q . 1) (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) (q)) 1) (q 2 (f 2) (c (a 3 ()) ())))) ()))
+  output: ((5) . 5)
+  runtime_cost: 3833
+  byte_cost: 2460000
+  total_cost: 2463833
 diagnostics:
 - |-
   Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5

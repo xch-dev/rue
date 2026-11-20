@@ -1393,13 +1393,23 @@ impl ArgumentOrder {
             .element_lambdas
             .iter()
             .filter(|(_, lambda)| {
-                let narrowed_by_expected = lambda.narrows
-                    && lambda
-                        .returns
-                        .iter()
-                        .any(|generic| expected.contains(generic));
+                let bounded_by_expected = lambda
+                    .returns
+                    .iter()
+                    .any(|generic| expected.contains(generic));
 
-                if narrowed_by_expected {
+                // The expected type's bound reaches the generics its parameters read through its
+                // return type only once it's compiled, so it's compiled where it is if its body can
+                // lose them, or if an argument still to be compiled reads them, as `identity(5)`
+                // does in `map_list([fn(x) => x], identity(5))` with `List<5>` expected
+                let read_later = self.pending.iter().any(|&other| {
+                    self.arguments[other]
+                        .reads
+                        .iter()
+                        .any(|generic| lambda.reads.contains(generic))
+                });
+
+                if bounded_by_expected && (lambda.narrows || read_later) {
                     return false;
                 }
 
