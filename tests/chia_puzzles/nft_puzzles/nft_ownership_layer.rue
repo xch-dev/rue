@@ -135,7 +135,7 @@ fn wrap_conditions(
     assert !(
         condition is CreatePuzzleAnnouncement
             && (condition.message.length == 34)
-            && (substr(condition.message, 0, 2) == ANNOUNCEMENT_PREFIX)
+            && (condition.message[..2] == ANNOUNCEMENT_PREFIX)
     );
 
     [

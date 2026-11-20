@@ -213,6 +213,8 @@ fn is_atomic(expr: &AstExpr) -> bool {
             | AstExpr::LiteralExpr(_)
             | AstExpr::FunctionCallExpr(_)
             | AstExpr::FieldAccessExpr(_)
+            | AstExpr::IndexExpr(_)
+            | AstExpr::SliceExpr(_)
             | AstExpr::ListExpr(_)
             | AstExpr::PairExpr(_)
             | AstExpr::GroupExpr(_)
@@ -221,9 +223,10 @@ fn is_atomic(expr: &AstExpr) -> bool {
     )
 }
 
-/// Whether the node is the condition of the `if` expression or statement.
-fn is_condition_of(if_node: &SyntaxNode, node: &SyntaxNode) -> bool {
-    if_node
+/// Whether the node is the first expression of its parent, such as the condition of an `if`
+/// expression or statement.
+fn is_first_expr_of(parent: &SyntaxNode, node: &SyntaxNode) -> bool {
+    parent
         .children()
         .find_map(AstExpr::cast)
         .is_some_and(|condition| condition.syntax() == node)
@@ -339,7 +342,10 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
         | SyntaxKind::GroupExpr
         | SyntaxKind::LambdaExpr => true,
         // Only the condition of an `if` is a whole expression, since a branch must be a block
-        SyntaxKind::IfStmt | SyntaxKind::IfExpr => is_condition_of(&parent, node),
+        SyntaxKind::IfStmt | SyntaxKind::IfExpr => is_first_expr_of(&parent, node),
+        // The index or a bound is a whole expression inside of the brackets, unlike the value
+        // before them
+        SyntaxKind::IndexExpr | SyntaxKind::SliceExpr => !is_first_expr_of(&parent, node),
         _ => false,
     }
 }

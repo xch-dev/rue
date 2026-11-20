@@ -325,6 +325,14 @@ impl Cache<Compiler> {
         }
     }
 
+    /// Whether the index is directly after the `..` of a slice (`value[start..end]`).
+    fn after_range(&self, index: usize) -> bool {
+        let offset = TextSize::from(index as u32);
+
+        self.tokens_at(offset)
+            .any(|token| token.kind() == T![..] && token.text_range().end() == offset)
+    }
+
     /// Whether the index is inside a string or a comment, where names aren't completed. The end
     /// of a line comment, or of a string or block comment that isn't terminated, is still inside
     /// of it.
@@ -390,7 +398,12 @@ impl Cache<Compiler> {
             return vec![];
         }
 
-        if before.ends_with('.') && !matches!(context, CompletionContext::StructFields { .. }) {
+        // A `.` is followed by a field, unless it's the end of the `..` of a slice, which is
+        // followed by an expression
+        if before.ends_with('.')
+            && !matches!(context, CompletionContext::StructFields { .. })
+            && !self.after_range(index)
+        {
             return vec![];
         }
 

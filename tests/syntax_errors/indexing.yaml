@@ -1,0 +1,8 @@
+diagnostics:
+- Expected one of `..`, expression, found `]` at indexing.rue:2:19
+- Expected one of `..`, `]`, found `,` at indexing.rue:3:20
+- Expected one of `]`, expression, found `;` at indexing.rue:4:21
+- Expected `]`, found `,` at indexing.rue:5:23
+- Expected identifier, found `.` at indexing.rue:6:21
+- Expected `]`, found `.` at indexing.rue:7:23
+- Expected one of `]`, expression, found `.` at indexing.rue:8:21

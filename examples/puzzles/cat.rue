@@ -230,10 +230,7 @@ fn morph_conditions(
         // make sure it's not pretending to be part of the ring.
         assert !(
             condition is CreateCoinAnnouncement
-                && (
-                    (condition.message.length == 33)
-                        & (substr(condition.message, 0, 1) == RING_MORPH_BYTE)
-                )
+                && ((condition.message.length == 33) & (condition.message[0] == RING_MORPH_BYTE))
         ),
             "Created coin announcements must not have the ring morph byte";
 

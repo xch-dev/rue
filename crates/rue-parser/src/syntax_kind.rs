@@ -230,6 +230,9 @@ pub enum SyntaxKind {
     #[display("`::<`")]
     TurboFish,
 
+    #[display("`..`")]
+    Range,
+
     #[display("`...`")]
     Spread,
 
@@ -399,6 +402,12 @@ pub enum SyntaxKind {
     #[display("field access expression")]
     FieldAccessExpr,
 
+    #[display("index expression")]
+    IndexExpr,
+
+    #[display("slice expression")]
+    SliceExpr,
+
     #[display("lambda expression")]
     LambdaExpr,
 
@@ -492,6 +501,7 @@ macro_rules! T {
     [->] => { $crate::SyntaxKind::Arrow };
     [=>] => { $crate::SyntaxKind::FatArrow };
     [::] => { $crate::SyntaxKind::PathSeparator };
+    [..] => { $crate::SyntaxKind::Range };
     [...] => { $crate::SyntaxKind::Spread };
     [#] => { $crate::SyntaxKind::Pound };
 }
@@ -629,6 +639,7 @@ impl SyntaxKind {
             T![->] => &[T![-], T![>]],
             T![=>] => &[T![=], T![>]],
             T![::] => &[T![:], T![:]],
+            T![..] => &[T![.], T![.]],
             T![...] => &[T![.], T![.], T![.]],
             T![#] => &[T![#]],
             SyntaxKind::TurboFish => &[T![:], T![:], T![<]],
@@ -686,6 +697,8 @@ impl SyntaxKind {
             SyntaxKind::GuardExpr => &[SyntaxKind::GuardExpr],
             SyntaxKind::CastExpr => &[SyntaxKind::CastExpr],
             SyntaxKind::FieldAccessExpr => &[SyntaxKind::FieldAccessExpr],
+            SyntaxKind::IndexExpr => &[SyntaxKind::IndexExpr],
+            SyntaxKind::SliceExpr => &[SyntaxKind::SliceExpr],
             SyntaxKind::LambdaExpr => &[SyntaxKind::LambdaExpr],
             SyntaxKind::NamedBinding => &[SyntaxKind::NamedBinding],
             SyntaxKind::PairBinding => &[SyntaxKind::PairBinding],

@@ -40,7 +40,7 @@ fn main(
     generators: (Bytes, Any),
     _reserved: Any,
 ) -> List<List<Any>> {
-    let puzzle_prefix = substr(generators.first, start, end);
+    let puzzle_prefix = generators.first[start..end];
     [decompress_entries(
         decompress_puzzle,
         decompress_coin_spend_entry,

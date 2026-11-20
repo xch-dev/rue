@@ -8,6 +8,7 @@ mod function_call;
 mod group;
 mod guard;
 mod if_expr;
+mod index;
 mod lambda;
 mod list;
 mod literal;
@@ -26,6 +27,7 @@ pub use function_call::*;
 pub use group::*;
 pub use guard::*;
 pub use if_expr::*;
+pub use index::*;
 pub use lambda::*;
 pub use list::*;
 pub use literal::*;
@@ -65,6 +67,8 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
+        AstExpr::IndexExpr(expr) => compile_index_expr(ctx, expr),
+        AstExpr::SliceExpr(expr) => compile_slice_expr(ctx, expr),
         AstExpr::LambdaExpr(expr) => compile_lambda_expr(ctx, expr, expected_type),
         AstExpr::Block(block) => compile_block(ctx, block, BlockKind::Expr, expected_type, true),
     };

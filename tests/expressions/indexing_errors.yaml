@@ -1,0 +1,56 @@
+diagnostics:
+- Unused struct `Wrapper` at indexing_errors.rue:1:8
+- Unused function `lists` at indexing_errors.rue:5:4
+- Cannot index `List<Bytes>`, since only bytes can be indexed. Indexing a list would hide the cost of walking to the item, so destructure it or use `.first` and `.rest` instead at indexing_errors.rue:6:13
+- Cannot index `List<Bytes>`, since only bytes can be indexed. Indexing a list would hide the cost of walking to the item, so destructure it or use `.first` and `.rest` instead at indexing_errors.rue:7:13
+- Cannot index `(Bytes, Int)`, since only bytes can be indexed. Indexing a list would hide the cost of walking to the item, so destructure it or use `.first` and `.rest` instead at indexing_errors.rue:8:13
+- Cannot index `Wrapper`, since only bytes can be indexed. Indexing a list would hide the cost of walking to the item, so destructure it or use `.first` and `.rest` instead at indexing_errors.rue:9:13
+- Cannot index `Bytes | List<Int>`, since only bytes can be indexed. Indexing a list would hide the cost of walking to the item, so destructure it or use `.first` and `.rest` instead at indexing_errors.rue:10:13
+- Cannot index `(1, (2, (3, nil)))`, since only bytes can be indexed. Indexing a list would hide the cost of walking to the item, so destructure it or use `.first` and `.rest` instead at indexing_errors.rue:11:13
+- Unused function `atoms` at indexing_errors.rue:14:4
+- Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at indexing_errors.rue:15:13
+- Cannot assign `Bool` to `Bytes` without a cast, since they are semantically different at indexing_errors.rue:16:13
+- Cannot assign `PublicKey` to `Bytes` without a cast, since they are semantically different at indexing_errors.rue:17:13
+- Cannot assign `Signature` to `Bytes` without a cast, since they are semantically different at indexing_errors.rue:18:13
+- Cannot assign `Atom` to `Bytes` without a cast, since they are semantically different at indexing_errors.rue:19:13
+- Cannot assign `Any` to `Bytes` without a type guard, since the value isn't always a valid `Bytes` at indexing_errors.rue:20:13
+- Unused function `generic` at indexing_errors.rue:23:4
+- Cannot assign `T` to `Bytes` without a type guard, since the value isn't always a valid `Bytes` at indexing_errors.rue:24:5
+- Unused function `bounds` at indexing_errors.rue:27:4
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:28:19
+- Cannot assign `"a"` to `Int` without a cast, since they are semantically different at indexing_errors.rue:29:19
+- Cannot assign `List<Int>` to `Int` without a type guard, since the value isn't always a valid `Int` at indexing_errors.rue:29:24
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:30:21
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at indexing_errors.rue:31:19
+- Cannot assign `true` to `Int` without a cast, since they are semantically different at indexing_errors.rue:32:19
+- Unused function `results` at indexing_errors.rue:35:4
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:35:33
+- Cannot assign `Bytes` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at indexing_errors.rue:36:22
+- Cannot assign `Bytes` to `PublicKey` without a type guard, since the value isn't always a valid `PublicKey` at indexing_errors.rue:37:24
+- Unused function `unbounded` at indexing_errors.rue:41:4
+- A slice needs a start or an end, since `[..]` would be all of the value at indexing_errors.rue:42:11
+- Unused function `undeclared` at indexing_errors.rue:45:4
+- Undeclared symbol `missing` at indexing_errors.rue:46:5
+- Undeclared symbol `missing` at indexing_errors.rue:46:24
+- Undeclared symbol `missing` at indexing_errors.rue:46:41
+- Undeclared symbol `other` at indexing_errors.rue:46:50
+- Constant `LOOP` references itself at indexing_errors.rue:49:7
+- Unused constant `LOOP` at indexing_errors.rue:49:7
+- Constant `FIRST` references itself at indexing_errors.rue:50:7
+- Unused constant `FIRST` at indexing_errors.rue:50:7
+- Constant `SECOND` references itself at indexing_errors.rue:51:7
+- Unused constant `SECOND` at indexing_errors.rue:51:7
+- Unused function `recursive_constants` at indexing_errors.rue:53:4
+- Unused type alias `First` at indexing_errors.rue:57:6
+- Unused type alias `Last` at indexing_errors.rue:58:6
+- Unused function `strings` at indexing_errors.rue:61:4
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:70:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:71:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:72:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:73:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:74:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:75:18
+- Cannot assign `String` to `Int` without a cast, since they are semantically different at indexing_errors.rue:76:18
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:77:18
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:78:18
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at indexing_errors.rue:79:18

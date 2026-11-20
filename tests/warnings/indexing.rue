@@ -1,0 +1,160 @@
+#![warn(shadowed_binding)]
+
+// An index or slice is the `substr` operator, which can fail, and an index is the slice from it
+// up to the next one.
+
+fn double(value: Int) -> Int {
+    value * 2
+}
+
+// Warns: an index or slice can fail
+fn inline_binding(value: Bytes, flag: Bool) -> Bytes {
+    inline let index = value[0];
+    inline let slice = value[1..];
+    if flag {
+        index + slice
+    } else {
+        nil
+    }
+}
+
+// Warns: an index is the same condition as the slice it stands for
+fn duplicate_condition(value: Bytes, flag: Bool) -> Bool {
+    (flag && value[0] == "a") || (flag && value[..1] == "a")
+}
+
+// Warns: the same on both sides, whether the index is repeated or bound
+fn self_comparison(value: Bytes, index: Int) -> Bool {
+    value[index] == value[index]
+        && value[double(index)] == value[double(index)]
+        && value[index..] == value[index..]
+        && value[index] == value[index..index + 1]
+}
+
+// Doesn't warn: different indexes or bounds
+fn different_comparison(value: Bytes, index: Int) -> Bool {
+    value[index] == value[index + 1]
+        && value[double(index)] == value[double(index + 1)]
+        && value[index..] == value[..index]
+        && value[index] == value[index..]
+}
+
+// Warns: the same in both branches
+fn identical_branches(value: Bytes, index: Int, flag: Bool) -> Bytes {
+    let literal = if flag {
+        value[0]
+    } else {
+        value[0]
+    };
+    let computed = if flag {
+        value[double(index)]
+    } else {
+        value[double(index)]
+    };
+    let slice = if flag {
+        value[index..]
+    } else {
+        value[index..]
+    };
+    literal + computed + slice
+}
+
+// Warns: the casts change nothing, and removing them leaves the value before the brackets
+fn casts(value: Bytes, other: Bytes, index: Int) -> Bytes {
+    (value as Bytes)[0]
+        + ((value + other) as Bytes)[0]
+        + value[index as Int]
+        + value[index as Int..(index + 1) as Int]
+        + (value[0] as Bytes)
+        + (value[1..] as Bytes)[0]
+}
+
+// Warns: the parentheses change nothing
+fn parens(value: Bytes, other: Bytes, index: Int) -> Bytes {
+    (value)[0]
+        + value[(index)]
+        + value[(index + 1)]
+        + value[(index)..(index + 1)]
+        + (value[0])
+        + (value[1..])[0]
+        + (value[0]).length as Bytes
+}
+
+// Doesn't warn: the parentheses are needed before the brackets
+fn needed_parens(value: Bytes, other: Bytes, index: Int) -> Bytes {
+    (value + other)[0]
+        + (index as Bytes)[index..]
+        + ("a" + other)[..1]
+        + (
+            if index > 1 {
+                value
+            } else {
+                other
+            }
+        )[0]
+}
+
+// Warns: the `+` has no effect
+fn plus(value: Bytes, index: Int) -> Bytes {
+    value[+index] + value[+index..]
+}
+
+// Warns: the value is discarded
+fn unused_value(value: Bytes) {
+    value[0];
+    value[1..];
+}
+
+// Doesn't warn: the binding that a computed index is evaluated into isn't one of the code's
+fn computed(value: Bytes, index: Int) -> Bytes {
+    let doubled = double(index);
+    value[double(doubled)] + value[index * 2] + value[value.length - 1]
+}
+
+const OFFSET: Int = 2;
+const ONLY_INDEX: Int = 3;
+
+// Warns once each: a constant index is in the end too, which isn't reported a second time
+fn constants(value: Bytes, flag: Bool) -> Bytes {
+    inline let fallible = value[OFFSET];
+    let same = value[OFFSET] == value[OFFSET];
+    let branches = if flag {
+        value[OFFSET * 2]
+    } else {
+        value[OFFSET * 2]
+    };
+    let lints = value[(OFFSET)] + value[OFFSET as Int] + value[+OFFSET] + value[0xFF as Int];
+    if flag && same {
+        fallible + branches + lints
+    } else {
+        value[ONLY_INDEX]
+    }
+}
+
+// Doesn't warn: the end of a constant index is evaluated, unlike the one that's written
+fn constant_and_slice(value: Bytes) -> Bool {
+    value[OFFSET + 1] == value[OFFSET + 1..OFFSET + 2]
+}
+
+fn main(value: Bytes, other: Bytes, index: Int, flag: Bool) -> Bytes {
+    unused_value(value);
+
+    let results = [
+        inline_binding(value, flag),
+        identical_branches(value, index, flag),
+        casts(value, other, index),
+        parens(value, other, index),
+        needed_parens(value, other, index),
+        plus(value, index),
+        computed(value, index),
+        constants(value, flag),
+    ];
+
+    assert constant_and_slice(value);
+
+    assert duplicate_condition(value, flag);
+    assert self_comparison(value, index);
+    assert different_comparison(value, index);
+
+    concat(results)
+}

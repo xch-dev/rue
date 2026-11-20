@@ -23,6 +23,7 @@ pub fn compile_const_expr(
         value: value.hir,
         loc,
         result: None,
+        generated: false,
     }));
 
     value.with_hir(hir)

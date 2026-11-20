@@ -7,17 +7,21 @@ use crate::{
         block::block,
         delimited_list,
         generics::{generic_arguments, generic_parameters},
-        recover, skip_unexpected,
+        recover, skip_unexpected, skip_until_statement_end,
         ty::{at_type_start, ty},
     },
 };
 
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ExprOptions {
     pub minimum_binding_power: u8,
     pub allow_statement: bool,
     pub allow_struct_initializer: bool,
     pub inline: bool,
+    /// Whether the expression is the start of a slice (`value[start..end]`) if `..` follows it,
+    /// which a `.` there would otherwise be a field access without a name.
+    pub allow_range: bool,
 }
 
 impl Default for ExprOptions {
@@ -27,6 +31,7 @@ impl Default for ExprOptions {
             allow_statement: false,
             allow_struct_initializer: true,
             inline: false,
+            allow_range: false,
         }
     }
 }
@@ -66,6 +71,7 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
                 allow_statement: false,
                 allow_struct_initializer: options.allow_struct_initializer,
                 inline: false,
+                allow_range: options.allow_range,
             },
         );
         p.finish();
@@ -191,6 +197,13 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
             (SyntaxKind::GuardExpr, T![is])
         } else if p.at(T![as]) {
             (SyntaxKind::CastExpr, T![as])
+        } else if p.at(T!['[']) {
+            (SyntaxKind::IndexExpr, T!['['])
+        } else if options.allow_range && p.at_quiet(T![..]) && !p.at_quiet(T![...]) {
+            // The `..` of a slice, rather than a field access. Three dots are a field access
+            // whose name is still missing followed by the `..`, as in `value[range...end]` while
+            // `range.start` is being typed.
+            break;
         } else if p.at(T![.]) {
             (SyntaxKind::FieldAccessExpr, T![.])
         } else {
@@ -199,6 +212,11 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
 
         if !p.deepen() {
             return false;
+        }
+
+        if kind == SyntaxKind::IndexExpr {
+            index_or_slice(p, checkpoint);
+            continue;
         }
 
         p.start_at(checkpoint, kind);
@@ -259,10 +277,54 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
                 allow_statement: false,
                 allow_struct_initializer: options.allow_struct_initializer,
                 inline: false,
+                allow_range: options.allow_range,
             },
         );
         p.finish();
     }
+}
+
+/// Parses the brackets of an index (`value[index]`) or a slice (`value[start..end]`, where either
+/// bound can be left out) of the expression that starts at the checkpoint.
+fn index_or_slice(p: &mut Parser, checkpoint: Checkpoint) {
+    p.expect(T!['[']);
+
+    // A `.` that's followed by another one isn't a field access in either bound, so that it's
+    // reported as unexpected rather than as a field without a name
+    let bound = |p: &mut Parser| {
+        let cp = p.checkpoint();
+        expr_with(
+            p,
+            cp,
+            ExprOptions {
+                allow_range: true,
+                ..ExprOptions::default()
+            },
+        );
+    };
+
+    if !p.at(T![..]) {
+        bound(p);
+    }
+
+    let kind = if p.try_eat(T![..]) {
+        if !p.at(T![']']) {
+            bound(p);
+        }
+        SyntaxKind::SliceExpr
+    } else {
+        SyntaxKind::IndexExpr
+    };
+
+    p.start_at(checkpoint, kind);
+    // Unlike in a list, a comma doesn't separate anything here, so it's skipped along with the
+    // rest of what's inside of the brackets
+    if !p.at(T![']']) {
+        p.error_unexpected();
+        skip_until_statement_end(p);
+    }
+    p.expect(T![']']);
+    p.finish();
 }
 
 fn list_item(p: &mut Parser) {
@@ -307,6 +369,7 @@ fn if_expr_with(
             allow_statement: false,
             allow_struct_initializer: false,
             inline: false,
+            allow_range: false,
         },
     );
     block(p);
@@ -352,6 +415,7 @@ fn match_expr(p: &mut Parser, checkpoint: Checkpoint, allow_inline: bool) {
             allow_statement: false,
             allow_struct_initializer: false,
             inline: false,
+            allow_range: false,
         },
     );
     if p.expect(T!['{']) {
@@ -1885,6 +1949,339 @@ mod tests {
                   CloseParen@16..17 ")"
             "#]],
             expect![""],
+        );
+    }
+
+    #[test]
+    fn test_index_expr() {
+        check(
+            expr,
+            "a[0]",
+            expect![[r#"
+            IndexExpr@0..4
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              LiteralExpr@2..3
+                Integer@2..3 "0"
+              CloseBracket@3..4 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_slice_expr() {
+        check(
+            expr,
+            "a[1..b]",
+            expect![[r#"
+            SliceExpr@0..7
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              LiteralExpr@2..3
+                Integer@2..3 "1"
+              Range@3..5 ".."
+              PathExpr@5..6
+                PathSegment@5..6
+                  Ident@5..6 "b"
+              CloseBracket@6..7 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_slice_expr_without_start() {
+        check(
+            expr,
+            "a[..2]",
+            expect![[r#"
+            SliceExpr@0..6
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              Range@2..4 ".."
+              LiteralExpr@4..5
+                Integer@4..5 "2"
+              CloseBracket@5..6 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_slice_expr_without_end() {
+        check(
+            expr,
+            "a[b + 1..]",
+            expect![[r#"
+            SliceExpr@0..10
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              BinaryExpr@2..7
+                PathExpr@2..4
+                  PathSegment@2..4
+                    Ident@2..3 "b"
+                    Whitespace@3..4 " "
+                Plus@4..5 "+"
+                Whitespace@5..6 " "
+                LiteralExpr@6..7
+                  Integer@6..7 "1"
+              Range@7..9 ".."
+              CloseBracket@9..10 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_slice_expr_without_bounds() {
+        check(
+            expr,
+            "a[..]",
+            expect![[r#"
+            SliceExpr@0..5
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              Range@2..4 ".."
+              CloseBracket@4..5 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    /// A `.` that's followed by a name is still a field access in a bound.
+    #[test]
+    fn test_slice_expr_field_bounds() {
+        check(
+            expr,
+            "a[b.c..d.e]",
+            expect![[r#"
+            SliceExpr@0..11
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              FieldAccessExpr@2..5
+                PathExpr@2..3
+                  PathSegment@2..3
+                    Ident@2..3 "b"
+                Dot@3..4 "."
+                Ident@4..5 "c"
+              Range@5..7 ".."
+              FieldAccessExpr@7..10
+                PathExpr@7..8
+                  PathSegment@7..8
+                    Ident@7..8 "d"
+                Dot@8..9 "."
+                Ident@9..10 "e"
+              CloseBracket@10..11 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    /// An index binds like the other postfix operators, more tightly than a prefix operator.
+    #[test]
+    fn test_chained_index_expr() {
+        check(
+            expr,
+            "-a.b[0][1..](2) as Int",
+            expect![[r#"
+            PrefixExpr@0..22
+              Minus@0..1 "-"
+              CastExpr@1..22
+                FunctionCallExpr@1..15
+                  SliceExpr@1..12
+                    IndexExpr@1..7
+                      FieldAccessExpr@1..4
+                        PathExpr@1..2
+                          PathSegment@1..2
+                            Ident@1..2 "a"
+                        Dot@2..3 "."
+                        Ident@3..4 "b"
+                      OpenBracket@4..5 "["
+                      LiteralExpr@5..6
+                        Integer@5..6 "0"
+                      CloseBracket@6..7 "]"
+                    OpenBracket@7..8 "["
+                    LiteralExpr@8..9
+                      Integer@8..9 "1"
+                    Range@9..11 ".."
+                    CloseBracket@11..12 "]"
+                  OpenParen@12..13 "("
+                  ListItem@13..14
+                    LiteralExpr@13..14
+                      Integer@13..14 "2"
+                  CloseParen@14..15 ")"
+                Whitespace@15..16 " "
+                As@16..18 "as"
+                Whitespace@18..19 " "
+                PathType@19..22
+                  PathSegment@19..22
+                    Ident@19..22 "Int"
+        "#]],
+            expect![],
+        );
+    }
+
+    /// Like a call, an index continues the expression before it on the next line too.
+    #[test]
+    fn test_index_expr_on_next_line() {
+        check(
+            expr,
+            "a\n[0]",
+            expect![[r#"
+            IndexExpr@0..5
+              PathExpr@0..2
+                PathSegment@0..2
+                  Ident@0..1 "a"
+                  Whitespace@1..2 "\n"
+              OpenBracket@2..3 "["
+              LiteralExpr@3..4
+                Integer@3..4 "0"
+              CloseBracket@4..5 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    /// The brackets after a cast index the cast value, since a type doesn't end with brackets.
+    #[test]
+    fn test_index_expr_after_cast() {
+        check(
+            expr,
+            "a as Bytes[0]",
+            expect![[r#"
+            IndexExpr@0..13
+              CastExpr@0..10
+                PathExpr@0..2
+                  PathSegment@0..2
+                    Ident@0..1 "a"
+                    Whitespace@1..2 " "
+                As@2..4 "as"
+                Whitespace@4..5 " "
+                PathType@5..10
+                  PathSegment@5..10
+                    Ident@5..10 "Bytes"
+              OpenBracket@10..11 "["
+              LiteralExpr@11..12
+                Integer@11..12 "0"
+              CloseBracket@12..13 "]"
+        "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_index_expr_missing_index() {
+        check(
+            expr,
+            "a[]",
+            expect![[r#"
+            IndexExpr@0..3
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              CloseBracket@2..3 "]"
+        "#]],
+            expect!["Expected one of `..`, expression, found `]` at main.rue:1:3"],
+        );
+    }
+
+    /// Three dots are a field access that's missing its name, followed by the `..` of a slice,
+    /// rather than a spread.
+    #[test]
+    fn test_slice_expr_with_spread() {
+        check(
+            expr,
+            "a[1...2]",
+            expect![[r#"
+                SliceExpr@0..8
+                  PathExpr@0..1
+                    PathSegment@0..1
+                      Ident@0..1 "a"
+                  OpenBracket@1..2 "["
+                  FieldAccessExpr@2..4
+                    LiteralExpr@2..3
+                      Integer@2..3 "1"
+                    Dot@3..4 "."
+                  Range@4..6 ".."
+                  LiteralExpr@6..7
+                    Integer@6..7 "2"
+                  CloseBracket@7..8 "]"
+            "#]],
+            expect!["Expected identifier, found `.` at main.rue:1:5"],
+        );
+    }
+
+    #[test]
+    fn test_slice_expr_with_two_ranges() {
+        check(
+            expr,
+            "a[1..2..3]",
+            expect![[r#"
+                SliceExpr@0..10
+                  PathExpr@0..1
+                    PathSegment@0..1
+                      Ident@0..1 "a"
+                  OpenBracket@1..2 "["
+                  LiteralExpr@2..3
+                    Integer@2..3 "1"
+                  Range@3..5 ".."
+                  LiteralExpr@5..6
+                    Integer@5..6 "2"
+                  Error@6..7 "."
+                  Error@7..8 "."
+                  Error@8..9 "3"
+                  CloseBracket@9..10 "]"
+            "#]],
+            expect!["Expected `]`, found `.` at main.rue:1:7"],
+        );
+    }
+
+    #[test]
+    fn test_index_expr_unclosed() {
+        check(
+            expr,
+            "a[1",
+            expect![[r#"
+            IndexExpr@0..3
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              OpenBracket@1..2 "["
+              LiteralExpr@2..3
+                Integer@2..3 "1"
+        "#]],
+            expect!["Expected one of `..`, `]`, found eof at main.rue:1:4"],
+        );
+    }
+
+    /// Without the brackets of a slice, a `.` is a field access even if another one follows it.
+    #[test]
+    fn test_range_outside_of_index() {
+        check(
+            expr,
+            "a..b",
+            expect![[r#"
+            FieldAccessExpr@0..2
+              PathExpr@0..1
+                PathSegment@0..1
+                  Ident@0..1 "a"
+              Dot@1..2 "."
+        "#]],
+            expect!["Expected identifier, found `.` at main.rue:1:3"],
         );
     }
 

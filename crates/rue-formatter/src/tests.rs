@@ -178,6 +178,68 @@ fn all_expression_families() {
 }
 
 #[test]
+fn indexes_and_slices() {
+    check(
+        "fn f(a:Bytes,i:Int)->Bytes{a [ 0 ]+a[ i .. ]+a[ .. i ]+a[i+1 .. i*2]+a . length[0]+f(a,i) [1..] [ ..2 ]+(a+a) [i]+-a[0]+a[ /* c */ 1 ..2]}",
+        expect![[r#"
+            fn f(a: Bytes, i: Int) -> Bytes {
+                a[0]
+                    + a[i..]
+                    + a[..i]
+                    + a[i + 1..i * 2]
+                    + a.length[0]
+                    + f(a, i)[1..][..2]
+                    + (a + a)[i]
+                    + -a[0]
+                    + a[/* c */ 1..2]
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn brackets_attach_to_the_value_before_them() {
+    check(
+        "fn f(a:Bytes,i:Int)->Bytes{let v=a\n    [i]\n    [..2];v+a // one\n[0]+a /* two */ [1..]}",
+        expect![[r#"
+            fn f(a: Bytes, i: Int) -> Bytes {
+                let v = a[i][..2];
+                v
+                    + a // one
+                    [0]
+                    + a /* two */ [1..]
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn long_index_breaks_inside_brackets() {
+    check(
+        "fn f(a:Bytes,i:Int)->Bytes{let x=some_function_with_a_long_name(a,i)[another_function_with_a_long_name(i,i,i,i)+100000000000000..another_function_with_a_long_name(i,i,i,i)+200000000000000];a[\n// comment\n0]+a[if i>1{2}else{3}]}",
+        expect![[r#"
+            fn f(a: Bytes, i: Int) -> Bytes {
+                let x = some_function_with_a_long_name(a, i)[
+                    another_function_with_a_long_name(i, i, i, i)
+                        + 100000000000000..another_function_with_a_long_name(i, i, i, i) + 200000000000000
+                ];
+                a[
+                    // comment
+                    0
+                ]
+                    + a[
+                        if i > 1 {
+                            2
+                        } else {
+                            3
+                        }
+                    ]
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn standalone_comment_inside_broken_group() {
     check(
         "fn main(){[// explain\n1]}",

@@ -34,9 +34,9 @@ test fn byte_manipulation() {
     assert concat(["hello"]) == "hello";
     assert concat(["hel", "lo"]) == "hello";
 
-    assert substr("hello", 2) == "llo";
-    assert substr("hello", 0, 2) == "he";
-    assert substr("hello", 0, 5) == "hello";
+    assert "hello"[2..] == "llo";
+    assert "hello"[..2] == "he";
+    assert "hello"[..5] == "hello";
 }
 
 test fn arithmetic() {

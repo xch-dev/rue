@@ -1,31 +1,10 @@
 //! Enums: they compile to the same program as the tagged union of structs they stand for.
 
-use std::path::PathBuf;
-
-use clvmr::Allocator;
-use rue_clvm::disassemble_program;
-use rue_diagnostic::SourceKind;
-
 use crate::test_utils::compile;
 
 /// The disassembled `main` of the source, which must compile without errors.
 fn main_program(source: &str) -> String {
-    let mut compiled = compile(source);
-    compiled.assert_no_errors();
-
-    let mut allocator = Allocator::new();
-    let program = compiled
-        .tree
-        .main(
-            &mut compiled.ctx,
-            &mut allocator,
-            &SourceKind::File("main.rue".to_string()),
-            PathBuf::from("."),
-        )
-        .unwrap()
-        .expect("there is a `main` function");
-
-    disassemble_program(&allocator, program)
+    compile(source).main_program()
 }
 
 /// Uses a value of `Value` in every way the program can, so that the comparison covers creating

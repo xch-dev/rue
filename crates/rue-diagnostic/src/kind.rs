@@ -345,6 +345,14 @@ pub enum DiagnosticKind {
     #[error("Cannot destructure type `{0}` into a pair")]
     CannotDestructurePair(String),
 
+    #[error(
+        "Cannot index `{0}`, since only bytes can be indexed. Indexing a list would hide the cost of walking to the item, so destructure it or use `.first` and `.rest` instead"
+    )]
+    CannotIndexPair(String),
+
+    #[error("A slice needs a start or an end, since `[..]` would be all of the value")]
+    SliceWithoutBounds,
+
     #[error("Function `{0}` cannot be inline, since it references itself")]
     RecursiveInlineFunction(String),
 

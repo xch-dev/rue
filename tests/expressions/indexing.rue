@@ -1,0 +1,160 @@
+struct Cursor {
+    data: Bytes,
+    offset: Int,
+}
+
+const FIRST: Int = 0;
+const THIRD: Int = FIRST + 2;
+
+fn offset(value: Int) -> Int {
+    value * 2
+}
+
+test fn index_literal() {
+    assert "hello"[0] == "h";
+    assert "hello"[4] == "o";
+    assert 0x010203[1] == 0x02;
+    assert "hello"[1].length == 1;
+}
+
+test fn slice_literal() {
+    assert "hello"[1..3] == "el";
+    assert "hello"[2..] == "llo";
+    assert "hello"[..2] == "he";
+    assert "hello"[0..5] == "hello";
+    assert "hello"[5..] == "";
+    assert "hello"[3..3] == nil;
+}
+
+test fn chained() {
+    assert "hello"[1..][0] == "e";
+    assert "hello"[1..4][1..] == "ll";
+    assert ("he" + "llo")[4] == "o";
+    assert "hello"[1] + "hello"[0] == "eh";
+    assert "hello"[0] as Int == 104;
+    assert -"hello"[0] as Int == -104;
+}
+
+test fn constants() {
+    assert "hello"[FIRST] == "h";
+    assert "hello"[THIRD] == "l";
+    assert "hello"[THIRD + 1] == "l";
+    assert "hello"[const { offset(2) }] == "o";
+    assert "hello"[FIRST..THIRD] == "he";
+    assert const { "hello"[1] + "hello"[3..] } == "elo";
+}
+
+test fn index_variable(value: Bytes, index: Int) -> Bytes {
+    value[index]
+}
+
+test fn index_after_variable(value: Bytes, index: Int) -> Bytes {
+    value[index + 1]
+}
+
+test fn index_before_variable(value: Bytes, index: Int) -> Bytes {
+    value[index - 1]
+}
+
+test fn index_field(cursor: Cursor) -> Bytes {
+    cursor.data[cursor.offset]
+}
+
+test fn index_constant(value: Bytes) -> Bytes {
+    value[THIRD]
+}
+
+test fn index_const_expr(value: Bytes) -> Bytes {
+    value[const { offset(3) }]
+}
+
+test fn index_constant_operators(value: Bytes) -> Bytes {
+    value[THIRD * 5 / 2] + value[LAST.length - 1]
+}
+
+test fn index_variable_with_constant(value: Bytes, index: Int) -> Bytes {
+    value[index + THIRD] + value[index - LAST.length]
+}
+
+// A constant index that fails is left to fail when it's evaluated
+test fn index_constant_fails(value: Bytes) -> Bytes {
+    value[THIRD / 0]
+}
+
+// An index that isn't a variable is only evaluated once
+test fn index_call(value: Bytes, index: Int) -> Bytes {
+    value[offset(index)]
+}
+
+test fn index_length(value: Bytes) -> Bytes {
+    value[value.length - 1]
+}
+
+test fn slice_variables(value: Bytes, start: Int, end: Int) -> Bytes {
+    value[start..end]
+}
+
+test fn slice_from(value: Bytes, start: Int) -> Bytes {
+    value[start..]
+}
+
+test fn slice_to(value: Bytes, end: Int) -> Bytes {
+    value[..end]
+}
+
+test fn slice_expressions(value: Bytes, start: Int) -> Bytes {
+    value[start + 1..start + offset(start)]
+}
+
+test fn string(value: String) -> String {
+    value[0] + value[1..]
+}
+
+test fn string_parts() {
+    let name: String = "hello";
+    let first: String = name[0];
+    let rest: String = name[1..];
+    assert first == "h";
+    assert rest == "ello";
+    assert first.length + rest.length == name.length;
+}
+
+test fn bytes32(value: Bytes32) -> Bytes {
+    value[..4] + value[31]
+}
+
+test fn public_key(value: PublicKey) -> Bytes {
+    (value as Bytes)[0]
+}
+
+test fn optional(value: Bytes | nil) -> Bytes {
+    value[0]
+}
+
+test fn index_out_of_range() -> Bytes {
+    "hello"[5]
+}
+
+test fn index_negative() -> Bytes {
+    "hello"[-1]
+}
+
+test fn slice_out_of_range() -> Bytes {
+    "hello"[2..10]
+}
+
+test fn slice_backwards() -> Bytes {
+    "hello"[3..2]
+}
+
+test fn index_evaluated_once() -> Bytes {
+    "hello"[
+        {
+            debug "index";
+            1
+        }
+    ]
+}
+
+// Declared after the code that indexes with it
+const LAST: Bytes = "last";

@@ -223,6 +223,10 @@ pub struct ConstExpr {
     pub loc: SrcLoc,
     /// The result of evaluating the expression, once it has been evaluated.
     pub result: Option<HirId>,
+    /// Whether the compiler generated the const expression for a value that's made of constants,
+    /// rather than it being written as `const { ... }`. If it can't be evaluated, the value is
+    /// its result instead, so that it's evaluated at runtime, where it fails the same way.
+    pub generated: bool,
 }
 
 #[derive(Debug, Clone)]

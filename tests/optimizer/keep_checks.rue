@@ -509,7 +509,7 @@ test fn small_constant_shift_is_inlined(x: Int, flag: Bool) -> Int {
 }
 
 test fn substr_moved_into_branch(value: Bytes, start: Int, flag: Bool) -> Bytes {
-    let part = substr(value, start);
+    let part = value[start..];
     if flag {
         part
     } else {

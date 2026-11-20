@@ -41,10 +41,6 @@ fn main(
     let _ = coinid(hash, hash);
     let _ = coinid(hash, hash, bytes);
     let _ = coinid(...[hash, hash, int]);
-    let _ = substr(bytes);
-    let _ = substr(bytes, int, int, int);
-    let _ = substr(int, bytes);
-    let _ = substr(bytes, ...[int]);
     let _ = divmod(int);
     let _ = divmod(int, bytes);
     let _ = modpow(int, int);

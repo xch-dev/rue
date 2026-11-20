@@ -49,8 +49,8 @@ fn count_numbers_and_validate(handle: String | nil) -> Int {
     if handle is nil {
         0
     } else {
-        let ch = substr(handle, 0, 1) as Int;
-        let handle_rest = substr(handle, 1);
+        let ch = handle[0] as Int;
+        let handle_rest = handle[1..];
 
         if (ch > ("a" as Int - 1)) & (ch < ("z" as Int + 1)) {
             count_numbers_and_validate(handle_rest)

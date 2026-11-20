@@ -2,9 +2,11 @@
 //! it: the diagnostics, the symbols it declared, the types of expressions, and the values of
 //! const expressions.
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
+use clvmr::Allocator;
 use num_bigint::BigInt;
+use rue_clvm::disassemble_program;
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{Hir, HirId, ModuleDeclarations, Statement, Symbol, SymbolId};
 use rue_options::CompilerOptions;
@@ -85,6 +87,22 @@ impl Compiled {
     /// Panics with the diagnostics if there are any errors.
     pub fn assert_no_errors(&self) {
         assert_eq!(self.errors(), Vec::<String>::new());
+    }
+
+    /// The disassembled program of the source's `main` function, which must compile without
+    /// errors.
+    pub fn main_program(&mut self) -> String {
+        self.assert_no_errors();
+
+        let mut allocator = Allocator::new();
+        let kind = SourceKind::File("main.rue".to_string());
+        let main = self
+            .tree
+            .main(&mut self.ctx, &mut allocator, &kind, PathBuf::from("."))
+            .unwrap()
+            .expect("the source has a `main` function");
+
+        disassemble_program(&allocator, main)
     }
 
     /// The symbol that a path like `inner::value` names, looked up in the scope of each module

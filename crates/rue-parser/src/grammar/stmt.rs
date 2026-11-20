@@ -53,6 +53,7 @@ pub fn stmt(p: &mut Parser) -> StatementKind {
                 allow_statement: true,
                 allow_struct_initializer: true,
                 inline,
+                allow_range: false,
             },
         ) {
             return StatementKind::Normal;

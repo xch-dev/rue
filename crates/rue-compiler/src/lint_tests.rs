@@ -1722,6 +1722,88 @@ fn early(value: Int) -> Int {
     assert!(!has_errors);
 }
 
+/// The value of an index or slice comes before its brackets, so a suggestion that replaces it
+/// with an operator keeps it in parentheses, however the index is compiled. Only a `Bool` is
+/// replaced like that, which can't be indexed, but the suggestion is still made.
+#[test]
+fn suggestions_keep_parens_before_brackets() {
+    let source = "\
+const N: Int = 1;
+
+fn double(value: Int) -> Int {
+    value * 2
+}
+
+fn main(a: Int, b: Int) -> Bytes {
+    ((a == b) == true)[0]
+        + (if a == b { true } else { false })[1..]
+        + ((a == b) == true)[a]
+        + (if a == b { true } else { false })[N + N]
+        + ((a == b) == true)[const { double(N) }]
+        + ((a == b) == true)[double(a)]
+}
+";
+
+    assert_eq!(
+        fix(source),
+        "\
+const N: Int = 1;
+
+fn double(value: Int) -> Int {
+    value * 2
+}
+
+fn main(a: Int, b: Int) -> Bytes {
+    (a == b)[0]
+        + (a == b)[1..]
+        + (a == b)[a]
+        + (a == b)[N + N]
+        + (a == b)[const { double(N) }]
+        + (a == b)[double(a)]
+}
+"
+    );
+}
+
+/// The index and bounds are whole expressions inside of the brackets, and the value before them
+/// keeps the parentheses that it needs.
+#[test]
+fn suggestions_fix_lints_in_indexes() {
+    let source = "\
+fn main(value: Bytes, other: Bytes, index: Int) -> Bytes {
+    (value as Bytes)[0]
+        + ((value + other) as Bytes)[(index)]
+        + ((value + other) as Bytes)[1..]
+        + (value)[(index + 1)..(index)]
+        + value[index as Int..+index]
+        + (value[0] as Bytes)
+        + (value[..index])[+1]
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(value: Bytes, other: Bytes, index: Int) -> Bytes {
+    value[0]
+        + (value + other)[index]
+        + (value + other)[1..]
+        + value[index + 1..index]
+        + value[index..index]
+        + value[0]
+        + value[..index][1]
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
 #[test]
 fn unreachable_code_is_reported_once_at_its_start() {
     let source = "\

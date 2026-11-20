@@ -679,17 +679,13 @@ impl Database {
             Hir::Substr(hir, start, end) => {
                 if let Some(end) = end {
                     format!(
-                        "substr({}, {}, {})",
+                        "{}[{}..{}]",
                         self.debug_hir(*hir),
                         self.debug_hir(*start),
                         self.debug_hir(*end)
                     )
                 } else {
-                    format!(
-                        "substr({}, {})",
-                        self.debug_hir(*hir),
-                        self.debug_hir(*start)
-                    )
+                    format!("{}[{}..]", self.debug_hir(*hir), self.debug_hir(*start))
                 }
             }
             Hir::G1Map(data, dst) => {

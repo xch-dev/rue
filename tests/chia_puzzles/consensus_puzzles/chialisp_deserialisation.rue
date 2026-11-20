@@ -13,13 +13,13 @@ fn main(input: Bytes) -> Any {
 
 // Deserializes the value at the start of the input, and returns it with the rest of the input.
 fn deserialize(input: Bytes) -> (Any, Bytes) {
-    if substr(input, 0, 1) == 0xff {
-        let first = deserialize(substr(input, 1));
+    if input[0] == 0xff {
+        let first = deserialize(input[1..]);
         let rest = deserialize(first.rest);
         return ((first.first, rest.first), rest.rest);
     }
 
-    deserialize_atom(substr(input, 1), substr(input, 0, 1))
+    deserialize_atom(input[1..], input[0])
 }
 
 fn deserialize_atom(input: Bytes, prefix: Bytes) -> (Any, Bytes) {
@@ -37,13 +37,13 @@ fn deserialize_atom(input: Bytes, prefix: Bytes) -> (Any, Bytes) {
         assert !(prefix > 0xdf);
 
         // The length is the low 5 bits of the prefix, followed by the next byte.
-        (((31 & prefix as Int) as Bytes + substr(input, 0, 1)) as Int, substr(input, 1))
+        (((31 & prefix as Int) as Bytes + input[0]) as Int, input[1..])
     } else {
         // The length is the low 6 bits of the prefix.
         (63 & prefix as Int, input)
     };
 
-    (substr(input, 0, size), substr(input, size))
+    (input[..size], input[size..])
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
@@ -96,7 +96,7 @@ test fn deserializes_the_largest_single_byte() -> Any {
 
 test fn deserializes_the_longest_one_byte_length() -> Any {
     // 63 bytes, the most a one byte length prefix can hold.
-    check([0xbf + sha256("a") + substr(sha256("b"), 0, 31)])
+    check([0xbf + sha256("a") + sha256("b")[..31]])
 }
 
 test fn deserializes_an_empty_two_byte_length() -> Any {
@@ -111,7 +111,7 @@ test fn deserializes_the_longest_two_byte_length() -> Bytes32 {
     let atom = atom + atom + atom + atom;
     let atom = atom + atom + atom + atom;
     let atom = atom + atom;
-    tree_hash(check([0xdfff + substr(atom, 0, 8191)]))
+    tree_hash(check([0xdfff + atom[..8191]]))
 }
 
 test fn rejects_a_truncated_atom() -> Any {

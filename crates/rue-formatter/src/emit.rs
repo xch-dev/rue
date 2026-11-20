@@ -704,7 +704,7 @@ impl<'a> Formatter<'a> {
         {
             return Separator::Soft;
         }
-        if right.kind == T!['('] && self.layout.facts(next).is_attached_opener() {
+        if matches!(right.kind, T!['('] | T!['[']) && self.layout.facts(next).is_attached_opener() {
             return Separator::None;
         }
         if left.kind == T!['}'] && right.kind == T![else] {
@@ -1044,14 +1044,14 @@ fn comment_separator(comment: &Comment, requested: Separator, ignore_trailing: b
 fn no_space_after(kind: SyntaxKind) -> bool {
     matches!(
         kind,
-        T!['('] | T!['['] | T![::] | T![.] | T![...] | T![,] | T![#]
+        T!['('] | T!['['] | T![::] | T![.] | T![..] | T![...] | T![,] | T![#]
     )
 }
 
 fn no_space_before(kind: SyntaxKind) -> bool {
     matches!(
         kind,
-        T![')'] | T![']'] | T![,] | T![;] | T![::] | T![.] | T![:]
+        T![')'] | T![']'] | T![,] | T![;] | T![::] | T![.] | T![..] | T![:]
     )
 }
 

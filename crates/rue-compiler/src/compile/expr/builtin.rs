@@ -71,19 +71,6 @@ pub(crate) fn compile_builtin(
             types.bytes32,
             |[parent, puzzle_hash, amount]| Hir::CoinId(parent, puzzle_hash, amount),
         ),
-        Builtin::Substr => {
-            call.expect_between(ctx, 2, 3);
-            call.reject_spread(ctx);
-
-            let hir = (call.args.len() >= 2).then(|| {
-                let value = call.check(ctx, 0, types.bytes);
-                let start = call.check(ctx, 1, types.int);
-                let end = call.check_arg(ctx, 2, types.int);
-                ctx.alloc_hir(Hir::Substr(value, start, end))
-            });
-
-            value_or_unresolved(ctx, hir, types.bytes)
-        }
         Builtin::Divmod => {
             let pair = ctx.alloc_type(Type::Pair(Pair::new(types.int, types.int)));
             call.fixed(ctx, [types.int, types.int], pair, |[left, right]| {

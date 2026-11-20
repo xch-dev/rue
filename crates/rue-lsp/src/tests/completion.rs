@@ -38,7 +38,6 @@ fn helper() -> Int {
             keccak256_inline [Function] fn(value: Bytes) -> Bytes32
             concat [Function] fn(values: List<Bytes>) -> Bytes
             coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
-            substr [Function] fn(value: Bytes, start: Int) -> Bytes
             sum [Function] fn(values: List<Int>) -> Int
             difference [Function] fn(values: List<Int>) -> Int
             product [Function] fn(values: List<Int>) -> Int
@@ -209,6 +208,146 @@ fn main(value: Bytes) -> Int {
 "#,
         expect![[r#"
             length [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_index_fields() {
+    check(
+        r#"
+fn main(value: Bytes) -> Int {
+    value[0].$0
+}
+"#,
+        expect![[r#"
+            length [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_slice_fields() {
+    check(
+        r#"
+fn main(value: Bytes) -> Int {
+    value[1..].$0
+}
+"#,
+        expect![[r#"
+            length [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_fields_in_slice_start() {
+    check(
+        r#"
+struct Range {
+    start: Int,
+    end: Int,
+}
+
+fn main(value: Bytes, range: Range) -> Bytes {
+    value[range.$0..range.end]
+}
+"#,
+        expect![[r#"
+            start [Field] Int
+            end [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_in_empty_index() {
+    check(
+        r#"
+fn main(value: Bytes, index: Int) -> Bytes {
+    value[$0]
+}
+"#,
+        expect![[r#"
+            super [Module]
+            project [Module]
+            value [Variable] Bytes
+            index [Variable] Int
+            main [Function] fn(value: Bytes, index: Int) -> Bytes
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            sha256 [Function] fn(value: Bytes) -> Bytes32
+            sha256_inline [Function] fn(value: Bytes) -> Bytes32
+            keccak256 [Function] fn(value: Bytes) -> Bytes32
+            keccak256_inline [Function] fn(value: Bytes) -> Bytes32
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
+            sum [Function] fn(values: List<Int>) -> Int
+            difference [Function] fn(values: List<Int>) -> Int
+            product [Function] fn(values: List<Int>) -> Int
+            divmod [Function] fn(numerator: Int, denominator: Int) -> (Int, Int)
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            any [Function] fn(values: List<Bool>) -> Bool
+            all [Function] fn(values: List<Bool>) -> Bool
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
+            g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_map [Function] fn(data: Bytes) -> PublicKey
+            g2_sum [Function] fn(values: List<Signature>) -> Signature
+            g2_difference [Function] fn(values: List<Signature>) -> Signature
+            g2_map [Function] fn(data: Bytes) -> Signature
+            bls_pairing_identity [Function] fn(g1: PublicKey, g2: Signature, ...) -> nil
+            bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
+            secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
+            secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
+            keccak256_verify [Function] fn(value: Bytes, hash: Bytes32) -> nil
+            INFINITY_G1 [Constant] PublicKey
+            INFINITY_G2 [Constant] Signature
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_slice_end() {
+    check(
+        r#"
+fn main(value: Bytes, index: Int) -> Bytes {
+    value[index..$0]
+}
+"#,
+        expect![[r#"
+            super [Module]
+            project [Module]
+            value [Variable] Bytes
+            index [Variable] Int
+            main [Function] fn(value: Bytes, index: Int) -> Bytes
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            sha256 [Function] fn(value: Bytes) -> Bytes32
+            sha256_inline [Function] fn(value: Bytes) -> Bytes32
+            keccak256 [Function] fn(value: Bytes) -> Bytes32
+            keccak256_inline [Function] fn(value: Bytes) -> Bytes32
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
+            sum [Function] fn(values: List<Int>) -> Int
+            difference [Function] fn(values: List<Int>) -> Int
+            product [Function] fn(values: List<Int>) -> Int
+            divmod [Function] fn(numerator: Int, denominator: Int) -> (Int, Int)
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            any [Function] fn(values: List<Bool>) -> Bool
+            all [Function] fn(values: List<Bool>) -> Bool
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
+            g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_map [Function] fn(data: Bytes) -> PublicKey
+            g2_sum [Function] fn(values: List<Signature>) -> Signature
+            g2_difference [Function] fn(values: List<Signature>) -> Signature
+            g2_map [Function] fn(data: Bytes) -> Signature
+            bls_pairing_identity [Function] fn(g1: PublicKey, g2: Signature, ...) -> nil
+            bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
+            secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
+            secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
+            keccak256_verify [Function] fn(value: Bytes, hash: Bytes32) -> nil
+            INFINITY_G1 [Constant] PublicKey
+            INFINITY_G2 [Constant] Signature
         "#]],
     );
 }
@@ -821,7 +960,6 @@ fn main(value: Int | nil) -> Int {
             keccak256_inline [Function] fn(value: Bytes) -> Bytes32
             concat [Function] fn(values: List<Bytes>) -> Bytes
             coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
-            substr [Function] fn(value: Bytes, start: Int) -> Bytes
             sum [Function] fn(values: List<Int>) -> Int
             difference [Function] fn(values: List<Int>) -> Int
             product [Function] fn(values: List<Int>) -> Int
