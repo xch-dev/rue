@@ -211,8 +211,9 @@ fn as_function<T>(value: T | (T, T)) -> fn(x: T) -> nil {
     unchecked_cast(value)
 }
 
-// `T` occurs in a parameter of the function type that's returned, so `T ≥ (5, 5)` is kept, and
-// `T` is wide enough for the result to take a `(5, 5)`. Leaving it out would make `T` `5`
+// What `T` is without leaving out any member's candidates, `Int | (5, 5)`, makes the result a
+// `fn(x: (5, 5)) -> nil`, so it's what the call is solved with. Leaving out `T ≥ (5, 5)` would
+// make `T` `5`, and the result couldn't take a `(5, 5)`
 test fn returns_function_of_both() -> Int {
     let value: 5 | (5, 5) = 5;
     let _call: fn(x: (5, 5)) -> nil = as_function(value);
@@ -223,8 +224,8 @@ fn apply_to_member<T>(value: T | (T, T), f: fn(x: T) -> Int) -> Int {
     f(unchecked_cast(value))
 }
 
-// `T` occurs in the parameter of `f`, so the lambda's `x` keeps the `(5, 5)` that the `T` member
-// gives, and checking it for a pair isn't redundant
+// The call has no expected type to narrow `T` for, so the lambda's `x` keeps the `(5, 5)` that
+// the `T` member gives, and checking it for a pair isn't redundant
 test fn lambda_takes_both() -> Int {
     let value: 5 | (5, 5) = (5, 5);
     apply_to_member(
@@ -303,4 +304,65 @@ test fn same_union_twice() -> Int {
     let value: 5 | (5, 5) = 5;
     let result: 5 = first_of_both(value, value);
     result + 0
+}
+
+fn as_curried<T>(value: T | (T, T)) -> fn() -> fn(x: T) -> nil {
+    unchecked_cast(value)
+}
+
+// The same as `returns_function_of_both`, through a function that the result returns
+test fn returns_curried_function_of_both() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _call: fn() -> fn(x: (5, 5)) -> nil = as_curried(value);
+    1
+}
+
+fn takes_into<U>(value: U) -> fn(y: U) -> nil {
+    unchecked_cast(value)
+}
+
+fn apply_into<U>(value: U, f: fn(y: U) -> Int) -> Int {
+    f(value)
+}
+
+// Without an expected type, `T` is what it always was, `Int | (5, 5)`, so the guard on the result
+// can be a pair. A `T` of `5` would make it redundant, which is an error
+test fn guard_on_the_result() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result = first_of(value);
+    if result is (Int, Int) {
+        return result.first;
+    }
+    1
+}
+
+// The same for a result that flows into a function type's parameter later
+test fn result_flows_into_a_parameter() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result = first_of(value);
+    let call = takes_into(result);
+    let _call: fn(y: (5, 5)) -> nil = call;
+    1
+}
+
+// A call in an argument of another call takes that call's generic as its expected type, which
+// gives `T` no bound, so it's what it always was, and `U` takes the `(5, 5)` the outer expected
+// type needs
+test fn nested_call_into_a_parameter() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let _call: fn(y: (5, 5)) -> nil = takes_into(first_of(value));
+    1
+}
+
+// The same through a lambda's parameter, whose guard isn't redundant
+test fn nested_call_into_a_lambda() -> Int {
+    let value: 5 | (5, 5) = (5, 5);
+    apply_into(
+        first_of(value),
+        fn(y) => if y is (Int, Int) {
+            y.first
+        } else {
+            y
+        },
+    )
 }

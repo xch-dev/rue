@@ -158,6 +158,41 @@ tests:
   runtime_cost: 707
   byte_cost: 252000
   total_cost: 252707
+- name: returns_curried_function_of_both
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: guard_on_the_result
+  program: (a (q 2 (i (l 2) (q . 4) (q 1 . 1)) 1) (c (q . 5) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i (l 2) (q 5 2) (q 1 . 1)) 1) (c (a 5 2) 1)) (c (q . 5) 1)) (c (q . 1) ()))
+  output: "1"
+  runtime_cost: 523
+  byte_cost: 492000
+  total_cost: 492523
+- name: result_flows_into_a_parameter
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_into_a_parameter
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested_call_into_a_lambda
+  program: (a (q 2 (i (l 2) (q . 4) (q . 2)) 1) (q (f . 5)))
+  debug_program: (a (q 2 (q 2 13 (c (a 9 2) (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 5 2) (q . 2)) 1)) (c (q . 1) ()))))) (c (c (q . 5) (q . 5)) 1)) (c (c (q . 1) (q 2 3 (c 2 ()))) ()))
+  output: "5"
+  runtime_cost: 460
+  byte_cost: 444000
+  total_cost: 444460
 diagnostics:
 - Binding `result` is returned directly after it's declared at generic_inference_matched_members.rue:28:5
-- Unused parameter `b` at generic_inference_matched_members.rue:295:36
+- Unused parameter `b` at generic_inference_matched_members.rue:296:36

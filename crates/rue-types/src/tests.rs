@@ -1564,6 +1564,11 @@ mod inference {
         let param = db.union(&[t, pair]);
         let mut infer = Inference::new([t]);
         assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+
+        // Only an inference that's narrow leaves them out (see `CallSolver::solve`)
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert!(db.name(mappings[&t]).contains('('));
+        infer.narrow = true;
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(db.name(mappings[&t]), "Int");
 
@@ -1571,30 +1576,97 @@ mod inference {
         let pair = db.pair(t, nil);
         let param = db.union(&[t, pair]);
         let mut infer = Inference::new([t]);
+        infer.narrow = true;
         let _ = db.infer(value, param, &mut infer);
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         let resolved = db.name(mappings[&t]);
         assert!(resolved.contains('('), "{resolved}");
     }
 
+    /// Resolves the generics after comparing the value with the parameter, without narrowing and
+    /// with it (`Inference::narrow`).
+    fn resolve_both_ways(
+        db: &mut Db,
+        value: TypeId,
+        param: TypeId,
+        generics: &[TypeId],
+    ) -> (Vec<String>, Vec<String>) {
+        let mut infer = Inference::new(generics.iter().copied());
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        let wide = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        infer.narrow = true;
+        let narrow = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        let names = |db: &mut Db, mappings: &HashMap<TypeId, TypeId>| {
+            generics
+                .iter()
+                .map(|generic| db.name(mappings[generic]))
+                .collect()
+        };
+        (names(db, &wide), names(db, &narrow))
+    }
+
     #[test]
-    fn implied_members_keep_a_wide_generic() {
-        // `T` occurs in a function type's parameter, so its candidates are all kept
+    fn implied_members_never_empty_a_generic() {
+        // `((5, 5), ((5, 5), (5, nil)))` against
+        // `((T, T) | (T, U), ((T, T) | (T, U), (T, U | nil)))`: `(T, T)` is implied in both
+        // unions, and each would leave out the other's `U ≥ 5`, since it's outside of it. That
+        // would leave `U` with only the held `nil`, so both are kept
         let mut db = Db::new();
         let nil = db.builtins.nil;
         let five = db.literal(AtomSemantic::Int, &[5]);
         let fives = db.pair(five, five);
-        let value = db.union(&[five, fives]);
+        let last = db.pair(five, nil);
+        let rest = db.pair(fives, last);
+        let value = db.pair(fives, rest);
 
         let t = db.generic("T");
-        let pair = db.pair(t, t);
-        let param = db.union(&[t, pair]);
-        let takes_t = db.function(&[t], nil);
-        let mut infer = Inference::new([t]);
-        infer.keep_wide_in(&mut db.arena, takes_t);
-        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
-        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
-        assert!(db.name(mappings[&t]).contains('('));
+        let u = db.generic("U");
+        let tt = db.pair(t, t);
+        let tu = db.pair(t, u);
+        let union = db.union(&[tt, tu]);
+        let u_or_nil = db.union(&[u, nil]);
+        let last = db.pair(t, u_or_nil);
+        let rest = db.pair(union, last);
+        let param = db.pair(union, rest);
+
+        let (wide, narrow) = resolve_both_ways(&mut db, value, param, &[t, u]);
+        assert_eq!(narrow[1], wide[1]);
+        assert_eq!(narrow[1], "Int");
+    }
+
+    #[test]
+    fn implied_members_keep_held_candidates() {
+        // `((5, nil), (5, 7))` against `((T, U | nil) | (T, nil), (T, U | Int))`: both members
+        // match `(5, nil)` and are implied, `(T, U | nil)` with a held `U ⊒ nil`. `U` has a held
+        // `7` from outside of the union, but held candidates are never left out, so `U` is what
+        // it is without narrowing whichever member comes first. Leaving them out made it
+        // `nil | Int` in one order and `Int` in the other
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let seven = db.literal(AtomSemantic::Int, &[7]);
+        let first = db.pair(five, nil);
+        let second = db.pair(five, seven);
+        let value = db.pair(first, second);
+
+        for reversed in [false, true] {
+            let t = db.generic("T");
+            let u = db.generic("U");
+            let u_or_nil = db.union(&[u, nil]);
+            let held = db.pair(t, u_or_nil);
+            let plain = db.pair(t, nil);
+            let mut members = vec![held, plain];
+            if reversed {
+                members.reverse();
+            }
+            let union = db.union(&members);
+            let u_or_int = db.union(&[u, int]);
+            let second = db.pair(t, u_or_int);
+            let param = db.pair(union, second);
+
+            let (wide, narrow) = resolve_both_ways(&mut db, value, param, &[t, u]);
+            assert_eq!(narrow[1], wide[1], "reversed: {reversed}");
+        }
     }
 
     #[test]
@@ -1620,6 +1692,7 @@ mod inference {
         let second = db.pair(any, takes_t);
         let param = db.union(&[first, second]);
         let mut infer = Inference::new([t]);
+        infer.narrow = true;
         assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(db.name(mappings[&t]), "Int");
@@ -1650,6 +1723,7 @@ mod inference {
         let rest = db.pair(takes_u, rest);
         let param = db.pair(t, rest);
         let mut infer = Inference::new([t, u]);
+        infer.narrow = true;
         assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(db.name(mappings[&t]), "Int");
@@ -1676,6 +1750,7 @@ mod inference {
             }
             let param = db.union(&members);
             let mut infer = Inference::new([t]);
+            infer.narrow = true;
             assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
             let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
             assert_eq!(db.name(mappings[&t]), "Int", "reversed: {reversed}");

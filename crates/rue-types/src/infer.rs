@@ -10,12 +10,12 @@ pub use bounds::*;
 pub use resolve::*;
 pub use solve::*;
 
-use std::{collections::HashSet, mem};
+use std::mem;
 
 use id_arena::Arena;
 use indexmap::IndexMap;
 
-use crate::{BuiltinTypes, Comparison, FxHashMap, Type, TypeId, compare, substitute};
+use crate::{BuiltinTypes, Comparison, FxHashMap, Type, TypeId, compare};
 
 /// The constraints collected for a generic type parameter during inference.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -59,10 +59,11 @@ pub struct Inference {
     policy: InstancePolicy,
     /// The vars added along with the generics (see `Inference::add_var`).
     added: Vec<TypeId>,
-    /// The generics that occur in a parameter of a function type in the signature of the
-    /// function being called, whose candidates are never left out (see
-    /// `Inference::keep_wide_in`).
-    wide: Vec<TypeId>,
+    /// Whether resolving leaves out the candidates of union members that another member's implied
+    /// candidates make unneeded (`Inference::implied_members`). `CallSolver::solve` only does when
+    /// the generics resolved without leaving them out break a bound the type expected of the call
+    /// gives them.
+    pub(crate) narrow: bool,
 }
 
 /// How the vars for passed generic functions' instances are resolved (see
@@ -172,7 +173,7 @@ impl Inference {
             instances: Vec::new(),
             policy: InstancePolicy::Eager,
             added: Vec::new(),
-            wide: Vec::new(),
+            narrow: false,
         }
     }
 
@@ -187,48 +188,7 @@ impl Inference {
             && self.instances == other.instances
             && self.policy == other.policy
             && self.added == other.added
-            && self.wide == other.wide
-    }
-
-    /// Keeps every candidate of the generics being inferred that occur in a parameter of a
-    /// function type in `ty`, a parameter or the return type of the function being called (see
-    /// `Inference::implied_members`). Values flow out of the function type into such a
-    /// parameter, so a narrower generic could reject what the wider one accepts: with
-    /// `fn mk<T>(v: T | (T, T)) -> fn(x: T) -> nil`, `mk(value)` for a `5 | (5, 5)` is only a
-    /// `fn(x: (5, 5)) -> nil` if `T` keeps `(5, 5)`.
-    pub fn keep_wide_in(&mut self, arena: &mut Arena<Type>, ty: TypeId) {
-        let ty = substitute(arena, ty);
-        let mut visited = HashSet::new();
-        let mut stack = vec![(ty, false)];
-
-        while let Some((id, in_params)) = stack.pop() {
-            if !visited.insert((id, in_params)) {
-                continue;
-            }
-
-            if in_params && self.generics.contains_key(&id) && !self.wide.contains(&id) {
-                self.wide.push(id);
-            }
-
-            match &arena[id] {
-                Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
-                Type::Ref(inner) => stack.push((*inner, in_params)),
-                Type::Pair(pair) => stack.extend([(pair.first, in_params), (pair.rest, in_params)]),
-                Type::Alias(alias) => stack.push((alias.inner, in_params)),
-                Type::Struct(ty) => stack.push((ty.inner, in_params)),
-                // What an application's generics stand for isn't known here, so they count as
-                // being in a parameter
-                Type::Apply(apply) => {
-                    stack.push((apply.inner, true));
-                    stack.extend(apply.generics.values().map(|&ty| (ty, true)));
-                }
-                Type::Function(function) => {
-                    stack.push((function.ret, in_params));
-                    stack.extend(function.param_types().map(|ty| (ty, true)));
-                }
-                Type::Union(union) => stack.extend(union.types.iter().map(|&ty| (ty, in_params))),
-            }
-        }
+            && self.narrow == other.narrow
     }
 
     /// Records that a generic being inferred was renamed from another generic. They're compared as
@@ -299,11 +259,31 @@ impl Inference {
     }
 
     /// The candidates collected for the generic that hold, leaving out those collected under a
-    /// union member that didn't match the value (see `Choices::matched_with`). For example, passing a
-    /// function to `T | (T, Int) | nil` matches the `T` member, so what comparing the function's
-    /// runtime structure with `(T, Int)` collected for `T` is left out (#364).
+    /// union member that didn't match the value (see `Choices::matched_with`). For example,
+    /// passing a function to `T | (T, Int) | nil` matches the `T` member, so what comparing the
+    /// function's runtime structure with `(T, Int)` collected for `T` is left out (#364).
     pub fn matched_candidates(&self, generic: TypeId) -> Option<InferenceCandidates> {
         self.candidates_without(generic, &[])
+    }
+
+    /// The candidates that weren't collected under any union member, with the generic and kind
+    /// they're for, which every solution has to satisfy.
+    pub(crate) fn unconditional(&self) -> Vec<(TypeId, CandidateKind, TypeId)> {
+        let mut unconditional = Vec::new();
+
+        for (&generic, candidates) in &self.generics {
+            let branches = &self.branches[&generic];
+
+            for kind in CandidateKind::ALL {
+                for (&ty, branches) in candidates.list(kind).iter().zip(branches.list(kind)) {
+                    if branches.is_empty() {
+                        unconditional.push((generic, kind, ty));
+                    }
+                }
+            }
+        }
+
+        unconditional
     }
 
     /// Like `Inference::matched_candidates`, but also leaving out the candidates of each kind in
@@ -355,15 +335,15 @@ impl Inference {
     ///   several members have candidates, so no union leaves them out. Each union is decided from
     ///   these alone, so the order of the unions doesn't matter.
     /// - **Kept:** the first implied member keeps all of its candidates, so any solution holds the
-    ///   value by it. Implication is what makes keeping it free: its candidates add nothing to
-    ///   those that hold anyway, so which implied member is kept doesn't change the result.
-    /// - **Left out:** the other members' candidates of a generic and kind that has a candidate
-    ///   outside of the union, so that a generic only the union's members constrain keeps what
-    ///   they give it. A generic and kind that would be left with none, because the unions left
-    ///   out each other's, keeps them all.
-    /// - **Never left out:** the candidates of a generic that occurs in a function type's
-    ///   parameter in the callee's signature (`Inference::keep_wide_in`), where a narrower type
-    ///   could reject what a wider one accepts.
+    ///   value by it. Implication is what makes keeping it free: its lower and upper candidates add
+    ///   nothing to those that hold anyway, and no member's held candidates are left out, so which
+    ///   implied member is kept doesn't change the result.
+    /// - **Left out:** the other members' lower and upper candidates of a generic and kind that has
+    ///   a candidate outside of the union, so that a generic only the union's members constrain
+    ///   keeps what they give it. A generic and kind that would be left with none, because the
+    ///   unions left out each other's, keeps them all.
+    ///
+    /// This only runs for an inference that's `narrow` (see `CallSolver::solve`).
     fn implied_members(&self, arena: &mut Arena<Type>, builtins: &BuiltinTypes) -> Vec<LeftOut> {
         let results = self.choices.results();
 
@@ -500,9 +480,7 @@ impl Inference {
             // give it
             let outside: Vec<(TypeId, CandidateKind)> = within
                 .iter()
-                .filter(|((generic, _), unions)| {
-                    !self.wide.contains(generic) && !unions.contains(&choice)
-                })
+                .filter(|(_, unions)| !unions.contains(&choice))
                 .map(|&(pair, _)| pair)
                 .collect();
 
@@ -518,7 +496,12 @@ impl Inference {
                 for &index in &under[&member] {
                     let (generic, kind, _, _) = candidates[index];
 
-                    if outside.contains(&(generic, kind)) && !kinds.contains(&(generic, kind)) {
+                    // Held candidates are only used when nothing else constrains the generic, so
+                    // which member's are kept would decide it
+                    if kind != CandidateKind::Held
+                        && outside.contains(&(generic, kind))
+                        && !kinds.contains(&(generic, kind))
+                    {
                         kinds.push((generic, kind));
                     }
                 }
@@ -578,7 +561,11 @@ impl Inference {
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
     ) -> Inference {
-        let left_out = self.implied_members(arena, builtins);
+        let left_out = if self.narrow {
+            self.implied_members(arena, builtins)
+        } else {
+            Vec::new()
+        };
         let mut kept = self.clone();
 
         for (&generic, candidates) in &mut kept.generics {

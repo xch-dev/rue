@@ -54,13 +54,6 @@ pub(crate) fn infer_call(
         base.rename(copy, generic);
     }
 
-    // A generic that occurs in a function type's parameter keeps every candidate, since values
-    // flow out of that function type into it, so a narrower one could reject what a wider one
-    // accepts (see `Inference::keep_wide_in`)
-    for ty in function.param_types().chain([function.ret]) {
-        base.keep_wide_in(ctx.types_mut(), ty);
-    }
-
     // The type expected of the call is used for the generics that the arguments don't
     // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
     // ones they do from being widened past it
@@ -139,6 +132,8 @@ pub(crate) fn infer_call(
     let solver = ctx.call_solver(expected, narrower.as_ref());
     let solver = Rc::new(if fallback_only {
         solver.fallback_only()
+    } else if final_expected.is_some() {
+        solver.requiring_expected()
     } else {
         solver
     });

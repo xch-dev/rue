@@ -172,10 +172,10 @@ fn dense_pair_chain_unions_stay_flat() {
 
 /// A call with `count` parameters `p{i}: T{i} | (T{i}, T{i + 1})`, each passed a `5 | (5, 5)`, so
 /// that `(5, 5)` matches both members of every union, and a last parameter that gives the last
-/// generic a candidate outside of them. Deciding which members' candidates are left out
-/// (`Inference::implied_members`) is done each time the generics are resolved. It once scanned
-/// every member left out for every candidate, which took 47 seconds in release with 120
-/// parameters (0.3 seconds on main). Steps only count its comparisons, which are memoized, so
+/// generic a candidate outside of them. `T0` is only `5` with the members' candidates left out
+/// (`Inference::implied_members`), which is then done each time the generics are resolved. It
+/// once scanned every member left out for every candidate, which took 47 seconds in release with
+/// 120 parameters (0.3 seconds on main). Steps only count its comparisons, which are memoized, so
 /// this pins those, and that it compiles.
 fn chained_member_unions(count: usize) -> String {
     let generics: Vec<String> = (0..=count).map(|i| format!("T{i}")).collect();
@@ -194,10 +194,10 @@ fn chain<{}>(
 
 fn main() -> Int {{
     let value: 5 | (5, 5) = 5;
-    let _result = chain(
+    let result: 5 = chain(
 {args}        5,
     );
-    0
+    result + 0
 }}
 ",
         generics.join(", "),
@@ -208,5 +208,5 @@ fn main() -> Int {{
 #[test]
 fn chained_member_unions_stay_linear() {
     let steps = steps(&chained_member_unions(60));
-    assert!(steps < 50_000, "took {steps} steps");
+    assert!(steps < 100_000, "took {steps} steps");
 }
