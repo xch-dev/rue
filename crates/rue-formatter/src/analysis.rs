@@ -347,6 +347,17 @@ fn analyze_nodes(
                     }
                 }
             }
+            AstNodeKind::IndexExpr | AstNodeKind::SliceExpr => {
+                // The brackets are attached to the value, like the parentheses of a call
+                if let Some(token) = node
+                    .children_with_tokens()
+                    .filter_map(rowan::NodeOrToken::into_token)
+                    .find(|token| token.kind() == T!['['])
+                {
+                    let id = token_id(&token, stream)?;
+                    facts[id.index()].flags.insert(TokenFlags::ATTACHED_OPENER);
+                }
+            }
             AstNodeKind::PathExpr | AstNodeKind::PathType | AstNodeKind::ImportPath => {
                 if let Some(token) = significant_tokens(&node).next()
                     && token.kind() == T![::]

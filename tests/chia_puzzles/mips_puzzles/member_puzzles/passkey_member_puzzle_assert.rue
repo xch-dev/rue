@@ -22,11 +22,7 @@ fn main(
         + base64url_encode(sha256(delegated_puzzle_hash + puzzle_hash))
         + '"';
 
-    assert substr(
-        client_data_json,
-        challenge_index,
-        challenge_index + challenge.length,
-    ) == challenge;
+    assert client_data_json[challenge_index..challenge_index + challenge.length] == challenge;
 
     secp256r1_verify(public_key, sha256(authenticator_data + sha256(client_data_json)), signature);
 
@@ -42,7 +38,7 @@ fn base64url_encode(blob: Bytes) -> Bytes {
         3 - remainder
     };
     let encoded = encode_triples(blob + substr(0x000000, 0, padding), 0);
-    substr(encoded, 0, encoded.length - padding)
+    encoded[..encoded.length - padding]
 }
 
 // Encodes each group of three bytes, from the index onwards, as four characters.
@@ -64,7 +60,7 @@ fn encode_triples(bytes: Bytes, index: Int) -> Bytes {
 
 // The unsigned value of the byte at the index.
 fn byte_at(bytes: Bytes, index: Int) -> Int {
-    let value = substr(bytes, index, index + 1) as Int;
+    let value = bytes[index] as Int;
     if value > -1 {
         value
     } else {
@@ -73,7 +69,7 @@ fn byte_at(bytes: Bytes, index: Int) -> Int {
 }
 
 fn lookup(sextet: Int) -> Bytes {
-    substr(BASE64URL_CHARSET, sextet, sextet + 1)
+    BASE64URL_CHARSET[sextet]
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

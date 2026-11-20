@@ -1,0 +1,47 @@
+struct Wrapper {
+    value: Bytes,
+}
+
+fn lists(list: List<Bytes>, pair: (Bytes, Int), wrapper: Wrapper, either: Bytes | List<Int>) {
+    let _ = list[0];
+    let _ = list[1..];
+    let _ = pair[0];
+    let _ = wrapper[0];
+    let _ = either[0];
+    let _ = [1, 2, 3][0];
+}
+
+fn atoms(int: Int, bool: Bool, public_key: PublicKey, signature: Signature, atom: Atom, any: Any) {
+    let _ = int[0];
+    let _ = bool[0];
+    let _ = public_key[0];
+    let _ = signature[..48];
+    let _ = atom[0];
+    let _ = any[0];
+}
+
+fn generic<T>(value: T) -> Bytes {
+    value[0]
+}
+
+fn bounds(bytes: Bytes, list: List<Int>) {
+    let _ = bytes[bytes];
+    let _ = bytes["a"..list];
+    let _ = bytes[..bytes];
+    let _ = bytes[nil];
+    let _ = bytes[true..];
+}
+
+fn results(bytes: Bytes) -> Int {
+    let _: Bytes32 = bytes[..32];
+    let _: PublicKey = bytes[0];
+    bytes[0]
+}
+
+fn unbounded(bytes: Bytes) -> Bytes {
+    bytes[..]
+}
+
+fn undeclared(bytes: Bytes) -> Bytes {
+    missing[0] + bytes[missing] + bytes[missing..other]
+}

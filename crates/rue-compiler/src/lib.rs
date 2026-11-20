@@ -34,6 +34,8 @@ mod import_pass_limit_tests;
 #[cfg(test)]
 mod import_tests;
 #[cfg(test)]
+mod index_tests;
+#[cfg(test)]
 mod inference_order_tests;
 #[cfg(test)]
 mod lint_tests;

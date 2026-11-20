@@ -1,0 +1,138 @@
+tests:
+- name: index_literal
+  program: ()
+  debug_program: (a (i (= (substr (q . "hello") () (q . 1)) (q . 104)) (q 2 (i (= (substr (q . "hello") (q . 4) (q . 5)) (q . 111)) (q 2 (i (= (substr (q . 66051) (q . 1) (q . 2)) (q . 2)) (q 2 (i (= (strlen (substr (q . "hello") (q . 1) (q . 2))) (q . 1)) (q) (q 8 (q . "assertion failed at indexing.rue:17:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:16:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:15:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:14:5"))) 1)
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: slice_literal
+  program: ()
+  debug_program: (a (i (= (substr (q . "hello") (q . 1) (q . 3)) (q . 25964)) (q 2 (i (= (substr (q . "hello") (q . 2)) (q . "llo")) (q 2 (i (= (substr (q . "hello") () (q . 2)) (q . 26725)) (q 2 (i (= (substr (q . "hello") () (q . 5)) (q . "hello")) (q 2 (i (= (substr (q . "hello") (q . 5)) ()) (q 2 (i (= (substr (q . "hello") (q . 3) (q . 3)) ()) (q) (q 8 (q . "assertion failed at indexing.rue:26:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:25:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:24:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:23:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:22:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:21:5"))) 1)
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: chained
+  program: ()
+  debug_program: (a (i (= (substr (substr (q . "hello") (q . 1)) () (q . 1)) (q . 101)) (q 2 (i (= (substr (substr (q . "hello") (q . 1) (q . 4)) (q . 1)) (q . 27756)) (q 2 (i (= (substr (concat (q . 26725) (q . "llo")) (q . 4) (q . 5)) (q . 111)) (q 2 (i (= (concat (substr (q . "hello") (q . 1) (q . 2)) (substr (q . "hello") () (q . 1))) (q . 25960)) (q 2 (i (= (substr (q . "hello") () (q . 1)) (q . 104)) (q 2 (i (= (- () (substr (q . "hello") () (q . 1))) (- () (q . 104))) (q) (q 8 (q . "assertion failed at indexing.rue:35:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:34:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:33:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:32:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:31:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:30:5"))) 1)
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: constants
+  program: (a (q 2 (q 2 (i (= (substr (q . "hello") 5 (q . 1)) (q . 104)) (q 2 (i (= (substr (q . "hello") 2 (q . 3)) (q . 108)) (q 2 (i (= (substr (q . "hello") (+ 2 (q . 1)) (q . 4)) (q . 108)) (q 2 (i (= (substr (q . "hello") 5 2) (q . 26725)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (+ 2 (q . 2)) 1)) (q ()))
+  debug_program: (a (q 2 (q 2 (i (= (substr (q . "hello") 5 (q . 1)) (q . 104)) (q 2 (i (= (substr (q . "hello") 2 (q . 3)) (q . 108)) (q 2 (i (= (substr (q . "hello") (+ 2 (q . 1)) (q . 4)) (q . 108)) (q 2 (i (= (substr (q . "hello") (q . 4) (q . 5)) (q . 111)) (q 2 (i (= (substr (q . "hello") 5 2) (q . 26725)) (q 2 (i (= (q . "elo") (q . "elo")) (q) (q 8 (q . "assertion failed at indexing.rue:44:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:43:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:42:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:41:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:40:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:39:5"))) 1) (c (+ 2 (q . 2)) 1)) (c () ()))
+  output: ()
+  runtime_cost: 3772
+  byte_cost: 2676000
+  total_cost: 2679772
+- name: index_variable
+  program: (substr 2 5 (+ 5 (q . 1)))
+  debug_program: (substr 2 5 (+ 5 (q . 1)))
+  byte_cost: 204000
+  clvm_error: path into atom
+- name: index_after_variable
+  program: (substr 2 (+ 5 (q . 1)) (+ 5 (q . 2)))
+  debug_program: (substr 2 (+ 5 (q . 1)) (+ 5 (q . 2)))
+  byte_cost: 300000
+  clvm_error: path into atom
+- name: index_before_variable
+  program: (substr 2 (- 5 (q . 1)) 5)
+  debug_program: (substr 2 (- 5 (q . 1)) 5)
+  byte_cost: 204000
+  clvm_error: path into atom
+- name: index_field
+  program: (substr 4 10 (+ 10 (q . 1)))
+  debug_program: (substr (f 2) (f (r 2)) (+ (f (r 2)) (q . 1)))
+  byte_cost: 204000
+  clvm_error: path into atom
+- name: index_constant
+  program: (substr 2 (q . 2) (q . 3))
+  debug_program: (a (q 2 (q 12 11 2 (q . 3)) (c (+ 2 (q . 2)) 1)) (c () 1))
+  byte_cost: 156000
+  clvm_error: path into atom
+- name: index_const_expr
+  program: (substr 2 (q . 6) (q . 7))
+  debug_program: (substr 2 (q . 6) (q . 7))
+  byte_cost: 156000
+  clvm_error: path into atom
+- name: index_call
+  program: (a (q 12 5 2 (+ 2 (q . 1))) (c (* 5 (q . 2)) 1))
+  debug_program: (a (q 2 (q 12 11 2 (+ 2 (q . 1))) (c (a 2 11) 1)) (c (q 18 1 (q . 2)) 1))
+  byte_cost: 468000
+  clvm_error: path into atom
+- name: index_length
+  program: (a (q 12 5 2 (+ 2 (q . 1))) (c (- (strlen 2) (q . 1)) 1))
+  debug_program: (a (q 12 5 2 (+ 2 (q . 1))) (c (- (strlen 2) (q . 1)) 1))
+  byte_cost: 516000
+  clvm_error: path into atom
+- name: slice_variables
+  program: (substr 2 5 11)
+  debug_program: (substr 2 5 11)
+  byte_cost: 108000
+  clvm_error: path into atom
+- name: slice_from
+  program: (substr 2 5)
+  debug_program: (substr 2 5)
+  byte_cost: 84000
+  clvm_error: path into atom
+- name: slice_to
+  program: (substr 2 () 5)
+  debug_program: (substr 2 () 5)
+  byte_cost: 108000
+  clvm_error: path into atom
+- name: slice_expressions
+  program: (substr 2 (+ 5 (q . 1)) (+ 5 (* 5 (q . 2))))
+  debug_program: (a (q 12 5 (+ 11 (q . 1)) (+ 11 (a 2 11))) (c (q 18 1 (q . 2)) 1))
+  byte_cost: 372000
+  clvm_error: path into atom
+- name: string
+  program: (concat (substr 2 () (q . 1)) (substr 2 (q . 1)))
+  debug_program: (concat (substr 2 () (q . 1)) (substr 2 (q . 1)))
+  byte_cost: 300000
+  clvm_error: path into atom
+- name: bytes32
+  program: (concat (substr 2 () (q . 4)) (substr 2 (q . 31) (q . 32)))
+  debug_program: (concat (substr 2 () (q . 4)) (substr 2 (q . 31) (q . 32)))
+  byte_cost: 348000
+  clvm_error: path into atom
+- name: public_key
+  program: (substr 2 () (q . 1))
+  debug_program: (substr 2 () (q . 1))
+  byte_cost: 132000
+  clvm_error: path into atom
+- name: optional
+  program: (substr 2 () (q . 1))
+  debug_program: (substr 2 () (q . 1))
+  byte_cost: 132000
+  clvm_error: path into atom
+- name: index_out_of_range
+  program: (substr (q . "hello") (q . 5) (q . 6))
+  debug_program: (substr (q . "hello") (q . 5) (q . 6))
+  byte_cost: 240000
+  clvm_error: "InvalidOperatorArg: Invalid Indices for Substring"
+- name: index_negative
+  program: (substr (q . "hello") (q . -1) ())
+  debug_program: (substr (q . "hello") (- () (q . 1)) ())
+  byte_cost: 228000
+  clvm_error: "InvalidOperatorArg: Invalid Indices for Substring"
+- name: slice_out_of_range
+  program: (substr (q . "hello") (q . 2) (q . 10))
+  debug_program: (substr (q . "hello") (q . 2) (q . 10))
+  byte_cost: 240000
+  clvm_error: "InvalidOperatorArg: Invalid Indices for Substring"
+- name: slice_backwards
+  program: (substr (q . "hello") (q . 3) (q . 2))
+  debug_program: (substr (q . "hello") (q . 3) (q . 2))
+  byte_cost: 240000
+  clvm_error: "InvalidOperatorArg: Invalid Indices for Substring"
+- name: index_evaluated_once
+  program: (a (q 12 (q . "hello") 2 (+ 2 (q . 1))) (c (q . 1) 1))
+  debug_program: (a (q 12 (q . "hello") 2 (+ 2 (q . 1))) (c (a (i ("debug_print" (q . "indexing.rue:131:13") (q . "index")) (q) (q 1 . 1)) 1) 1))
+  output: "101"
+  runtime_cost: 1120
+  byte_cost: 480000
+  total_cost: 481120
+  print_messages:
+  - "\"index\""

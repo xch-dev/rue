@@ -149,6 +149,8 @@ ast_nodes!(
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
+    IndexExpr,
+    SliceExpr,
     LambdaExpr,
     NamedBinding,
     PairBinding,
@@ -183,6 +185,8 @@ ast_enum!(
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
+    IndexExpr,
+    SliceExpr,
     LambdaExpr,
 );
 ast_enum!(
@@ -1031,6 +1035,82 @@ impl AstFieldAccessExpr {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+}
+
+impl AstIndexExpr {
+    /// The value that's indexed.
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn index(&self) -> Option<AstExpr> {
+        self.syntax().children().filter_map(AstExpr::cast).nth(1)
+    }
+}
+
+impl AstSliceExpr {
+    /// The value that's sliced.
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn range(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![..])
+    }
+
+    /// Whether the slice parsed without errors, so that a bound that's missing was left out
+    /// rather than failing to parse.
+    pub fn is_complete(&self) -> bool {
+        self.syntax()
+            .children_with_tokens()
+            .all(|element| element.kind() != SyntaxKind::Error)
+            && self
+                .syntax()
+                .last_token()
+                .is_some_and(|token| token.kind() == T![']'])
+    }
+
+    /// The bound before the `..`, if there is one.
+    pub fn start(&self) -> Option<AstExpr> {
+        self.bounds().0
+    }
+
+    /// The bound after the `..`, if there is one.
+    pub fn end(&self) -> Option<AstExpr> {
+        self.bounds().1
+    }
+
+    fn bounds(&self) -> (Option<AstExpr>, Option<AstExpr>) {
+        let mut start = None;
+        let mut end = None;
+        let mut in_brackets = false;
+        let mut after_range = false;
+
+        for element in self.syntax().children_with_tokens() {
+            match element {
+                SyntaxElement::Token(token) => {
+                    in_brackets |= token.kind() == T!['['];
+                    after_range |= token.kind() == T![..];
+                }
+                SyntaxElement::Node(node) => {
+                    // The expression before the brackets is the value that's sliced
+                    let Some(expr) = AstExpr::cast(node).filter(|_| in_brackets) else {
+                        continue;
+                    };
+                    if after_range {
+                        end.get_or_insert(expr);
+                    } else {
+                        start.get_or_insert(expr);
+                    }
+                }
+            }
+        }
+
+        (start, end)
     }
 }
 

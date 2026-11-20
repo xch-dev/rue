@@ -1722,6 +1722,45 @@ fn early(value: Int) -> Int {
     assert!(!has_errors);
 }
 
+/// The value of an index or slice comes before its brackets, so a suggestion that replaces it
+/// keeps the parentheses it needs there, and the index and bounds are whole expressions.
+#[test]
+fn suggestions_fix_lints_in_indexes() {
+    let source = "\
+fn main(value: Bytes, other: Bytes, index: Int) -> Bytes {
+    (value as Bytes)[0]
+        + ((value + other) as Bytes)[(index)]
+        + ((value + other) as Bytes)[1..]
+        + (value)[(index + 1)..(index)]
+        + value[index as Int..+index]
+        + (value[0] as Bytes)
+        + (value[..index])[+1]
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(value: Bytes, other: Bytes, index: Int) -> Bytes {
+    value[0]
+        + (value + other)[index]
+        + (value + other)[1..]
+        + value[index + 1..index]
+        + value[index..index]
+        + value[0]
+        + value[..index][1]
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
 #[test]
 fn unreachable_code_is_reported_once_at_its_start() {
     let source = "\

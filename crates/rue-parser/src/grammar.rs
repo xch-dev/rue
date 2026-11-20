@@ -73,13 +73,18 @@ pub(crate) fn expect_semicolon(p: &mut Parser) {
         return;
     }
 
-    // Unlike other recovery points, commas don't end a statement
+    skip_until_statement_end(p);
+    p.try_eat(T![;]);
+}
+
+/// Skips tokens as errors until the end of the statement or a closing delimiter. Unlike other
+/// recovery points, commas don't end a statement.
+pub(crate) fn skip_until_statement_end(p: &mut Parser) {
     skip_balanced(p, |p| {
         p.at_any_quiet(&[T![;], T![')'], T![']'], T!['}']])
             .is_some()
             || p.at_any_quiet(STATEMENT_KEYWORDS).is_some()
     });
-    p.try_eat(T![;]);
 }
 
 /// Reports an unexpected token error, then skips tokens until the next recovery point.

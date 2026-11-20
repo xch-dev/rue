@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use id_arena::{Arena, ArenaBehavior, DefaultArenaBehavior};
 use indexmap::{IndexMap, IndexSet};
@@ -32,6 +32,8 @@ pub struct Database {
     reported_types: HashMap<TypeId, TypeId>,
     hir_srclocs: HashMap<HirId, SrcLoc>,
     hir_scopes: HashMap<HirId, ScopeId>,
+    /// The `substr` nodes that were written as an index or a slice (see `set_hir_indexed`).
+    indexed_hirs: HashSet<HirId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
@@ -165,6 +167,19 @@ impl Database {
 
     /// Records the scope that the source expression of a HIR node is in, which is used to name
     /// types as they're written there.
+    /// Records that a `substr` node was written as an index (`value[index]`) or a slice
+    /// (`value[start..end]`) rather than as a call. It's the same operation, but the value comes
+    /// before the brackets in the code instead of being an argument.
+    pub fn set_hir_indexed(&mut self, hir: HirId) {
+        self.indexed_hirs.insert(hir);
+    }
+
+    /// Whether the node was written as an index or a slice (see
+    /// [`set_hir_indexed`](Self::set_hir_indexed)).
+    pub fn is_hir_indexed(&self, hir: HirId) -> bool {
+        self.indexed_hirs.contains(&hir)
+    }
+
     pub fn set_hir_scope(&mut self, hir: HirId, scope: ScopeId) {
         self.hir_scopes.insert(hir, scope);
     }

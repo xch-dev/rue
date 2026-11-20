@@ -39,6 +39,64 @@ fn main() -> Int {
 }
 
 #[test]
+fn test_hover_indexed_value() {
+    check(
+        r#"
+fn main(value: String, index: Int) -> Bytes {
+    val$0ue[index]
+}
+"#,
+        expect![[r#"
+            value: String
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_index() {
+    check(
+        r#"
+fn main(value: String, index: Int) -> Bytes {
+    value[ind$0ex]
+}
+"#,
+        expect![[r#"
+            index: Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_slice_bound() {
+    check(
+        r#"
+fn main(value: String, index: Int) -> Bytes {
+    value[1..ind$0ex]
+}
+"#,
+        expect![[r#"
+            index: Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_index_result() {
+    check(
+        r#"
+fn main(value: String) -> Bytes {
+    let first = value[0];
+    let rest = value[1..];
+    fir$0st + rest
+}
+"#,
+        expect![[r#"
+            let first: Bytes
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_parameter() {
     check(
         r#"

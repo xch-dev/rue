@@ -200,7 +200,7 @@ fn morph_conditions(
     assert !(
         condition is CreateCoinAnnouncement
             && condition.message.length == 33
-            && substr(condition.message, 0, 1) == RING_MORPH_BYTE
+            && condition.message[0] == RING_MORPH_BYTE
     );
 
     let rest = morph_conditions(conditions.rest, cat_info, tail_info);

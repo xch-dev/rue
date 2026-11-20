@@ -26,8 +26,8 @@ fn eval(program: Program) -> Program {
 fn step(program: Program) -> Program {
     inline let { state, source } = program;
 
-    let char = substr(source, 0, 1);
-    let source = substr(source, 1);
+    let char = source[0];
+    let source = source[1..];
 
     if char == "+" {
         Program { state: increment(state), source }
@@ -43,8 +43,8 @@ fn step(program: Program) -> Program {
         Program { state: output(state), source }
     } else if char == "[" {
         let length = block_length(source, 1);
-        let block = substr(source, 0, length);
-        let source = substr(source, length);
+        let block = source[..length];
+        let source = source[length..];
 
         Program { state: loop(state, block), source }
     } else {
@@ -65,8 +65,8 @@ fn block_length(source: String, depth: Int) -> Int {
         return 0;
     }
 
-    let char = substr(source, 0, 1);
-    let rest = substr(source, 1);
+    let char = source[0];
+    let rest = source[1..];
 
     1
         + if char == "[" {
@@ -136,8 +136,8 @@ inline fn input(state: State) -> State {
     inline let { tape, input, output } = state;
 
     State {
-        tape: Tape { value: substr(input, 0, 1) as Int, left: tape.left, right: tape.right },
-        input: substr(input, 1),
+        tape: Tape { value: input[0] as Int, left: tape.left, right: tape.right },
+        input: input[1..],
         output,
     }
 }

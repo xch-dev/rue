@@ -811,6 +811,116 @@ fn test_pair_and_group_recovery() {
     );
 }
 
+/// A missing index or bound is one error each, and the statements after it are still parsed.
+#[test]
+fn test_missing_index() {
+    check(
+        "fn main() {\n    let x = value[];\n    let y = value[1, 2];\n    let z = value[..;\n    value\n}",
+        expect![[r#"
+            Document
+              FunctionItem
+                Block
+                  LetStmt
+                    NamedBinding
+                    IndexExpr
+                      PathExpr
+                        PathSegment
+                  LetStmt
+                    NamedBinding
+                    IndexExpr
+                      PathExpr
+                        PathSegment
+                      LiteralExpr
+                      Error ","
+                      Error "2"
+                  LetStmt
+                    NamedBinding
+                    SliceExpr
+                      PathExpr
+                        PathSegment
+                  PathExpr
+                    PathSegment
+        "#]],
+        expect![[r#"
+            Expected one of `..`, expression, found `]` at main.rue:2:19
+            Expected one of `..`, `]`, found `,` at main.rue:3:20
+            Expected one of `]`, expression, found `;` at main.rue:4:21"#]],
+    );
+}
+
+/// A list on the line after a missing semicolon is parsed as an index, like parentheses there are
+/// parsed as a call.
+#[test]
+fn test_list_after_missing_semicolon() {
+    check(
+        "fn main() {\n    let x = value\n    [1, 2]\n}",
+        expect![[r#"
+            Document
+              FunctionItem
+                Block
+                  LetStmt
+                    NamedBinding
+                    IndexExpr
+                      PathExpr
+                        PathSegment
+                      LiteralExpr
+                      Error ","
+                      Error "2"
+        "#]],
+        expect![[r#"
+            Expected one of `..`, `]`, found `,` at main.rue:3:7
+            Expected `;`, found `}` at main.rue:4:1"#]],
+    );
+}
+
+/// An `if` with an `else` or a `match` at the start of a statement ends at its closing brace, so
+/// a list after it isn't an index.
+#[test]
+fn test_list_after_brace_statement() {
+    check(
+        "fn main() {\n    if a { b; } else { c; }\n    [1, 2]\n}\nfn other() {\n    match a { Int => { b; } }\n    [1, 2]\n}",
+        expect![[r#"
+            Document
+              FunctionItem
+                Block
+                  IfExpr
+                    PathExpr
+                      PathSegment
+                    Block
+                      ExprStmt
+                        PathExpr
+                          PathSegment
+                    Block
+                      ExprStmt
+                        PathExpr
+                          PathSegment
+                  ListExpr
+                    ListItem
+                      LiteralExpr
+                    ListItem
+                      LiteralExpr
+              FunctionItem
+                Block
+                  MatchExpr
+                    PathExpr
+                      PathSegment
+                    MatchArm
+                      PathType
+                        PathSegment
+                      Block
+                        ExprStmt
+                          PathExpr
+                            PathSegment
+                  ListExpr
+                    ListItem
+                      LiteralExpr
+                    ListItem
+                      LiteralExpr
+        "#]],
+        expect![],
+    );
+}
+
 #[test]
 fn test_missing_field_name() {
     check(
