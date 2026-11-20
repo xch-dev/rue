@@ -57,9 +57,13 @@ pub(crate) fn infer_call(
     // The type expected of the call is used for the generics that the arguments don't
     // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
     // ones they do from being widened past it
+    //
+    // It also gives whether inferring them finished within the step limit: one that gave up
+    // records the union members it didn't compare as ones that can't hold the value, which is
+    // fine for candidates but not for what's required of every solution (see `required`)
     let infer_expected = |ctx: &mut Compiler, ty: TypeId, bound: &HashMap<TypeId, usize>| {
         let mut expected = base.clone();
-        ctx.infer_from_expected(function.ret, ty, &mut expected);
+        let finished = ctx.infer_from_expected(function.ret, ty, &mut expected);
 
         // The generics of an enclosing call that are still being inferred can't be inferred
         // from this call, so they're no help in inferring its generics either
@@ -89,7 +93,7 @@ pub(crate) fn infer_call(
             });
         }
 
-        expected
+        (expected, finished)
     };
     let mut bound = expected_type
         .map(|expected_type| expected_generic_depths(ctx, expected_type))
@@ -100,6 +104,8 @@ pub(crate) fn infer_call(
     bound.retain(|&generic, _| !is_type_in_scope(ctx, generic));
 
     let expected = expected_type.map(|expected_type| infer_expected(ctx, expected_type, &bound));
+    let expected_finished = expected.as_ref().is_none_or(|&(_, finished)| finished);
+    let expected = expected.map(|(expected, _)| expected);
 
     // A narrower expected type is what the generics nothing else gives a type take, when the
     // expected type was widened to an enclosing call's (see `ArgumentOrder::widens_to_expected`).
@@ -114,7 +120,7 @@ pub(crate) fn infer_call(
             }
         }
 
-        infer_expected(ctx, narrower, &bound)
+        infer_expected(ctx, narrower, &bound).0
     });
 
     // A call with arguments in an element that's only refined for a call without arguments in it
@@ -153,16 +159,17 @@ pub(crate) fn infer_call(
     // them, which aren't in scope for an argument, so it requires nothing of them
     let required = required_type
         .filter(|&ty| !generic_required(ctx, ty))
-        .map(|ty| {
+        .and_then(|ty| {
             if Some(ty) == expected_type
                 && let Some(expected) = &expected
             {
-                return expected.clone();
+                return expected_finished.then(|| expected.clone());
             }
 
             let mut bound = expected_generic_depths(ctx, ty);
             bound.retain(|&generic, _| !is_type_in_scope(ctx, generic));
-            infer_expected(ctx, ty, &bound)
+            let (required, finished) = infer_expected(ctx, ty, &bound);
+            finished.then_some(required)
         });
 
     // The instances of generic functions passed as arguments are solved with the callee's generics

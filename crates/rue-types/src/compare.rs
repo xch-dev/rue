@@ -1651,14 +1651,16 @@ pub fn compare_with_inference_limited(
 }
 
 /// Collects inference candidates for the generics in `ty` from the type it's expected to be
-/// assignable to, such as a function's return type and the type expected of the call.
+/// assignable to, such as a function's return type and the type expected of the call, and returns
+/// whether that finished within the step limit (see `COMPARISON_STEP_LIMIT`). One that gave up
+/// records the union members it didn't compare as `Invalid`.
 pub fn infer_from_expected(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     ty: TypeId,
     expected: TypeId,
     infer: &mut Inference,
-) {
+) -> bool {
     let ty = substitute(arena, ty);
     let expected = substitute(arena, expected);
 
@@ -1671,6 +1673,7 @@ pub fn infer_from_expected(
     };
     compare_impl(arena, builtins, &mut ctx, ty, expected, None, None);
     ctx.finish(arena, builtins);
+    !ctx.take_too_complex()
 }
 
 pub fn compare(
