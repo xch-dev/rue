@@ -1,0 +1,13 @@
+// A function in the program with the same name as one of the standard library's list functions is
+// used instead of it, so programs that already define one keep working, whatever its parameters
+fn main() -> Bool {
+    contains(sha256("b"), [sha256("a"), sha256("b")])
+}
+
+fn contains(item: Bytes32, items: List<Bytes32>) -> Bool {
+    if items is nil {
+        return false;
+    }
+
+    items.first == item || contains(item, items.rest)
+}

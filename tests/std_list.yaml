@@ -1,0 +1,36 @@
+tests:
+- name: length_of_lists
+  program: (a (q 2 (i (a 4 (c 4 (a 6 ()))) (q 8) (q 2 (i (= (a 4 (c 4 (a 6 (q 7)))) (q . 1)) (q 2 (i (= (a 4 (c 4 (a 6 (q 1 2 3 4 5)))) (q . 5)) (q 2 (i (= (a 4 (c 4 (a 6 (q 97 98)))) (q . 2)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1)) 1) (c (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) (q)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (i (= (a 4 (c 4 (a 6 ()))) ()) (q 2 (i (= (a 4 (c 4 (a 6 (c (q . 7) ())))) (q . 1)) (q 2 (i (= (a 4 (c 4 (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) ())))))))) (q . 5)) (q 2 (i (= (a 4 (c 4 (a 6 (c (q . 97) (c (q . 98) ()))))) (q . 2)) (q) (q 8 (q . "assertion failed at std_list.rue:13:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:12:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:11:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:10:5"))) 1) (c (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) (q)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at std_list.rue:5:5"))) 1)) ()))
+  output: ()
+  runtime_cost: 17718
+  byte_cost: 3972000
+  total_cost: 3989718
+- name: reverse_of_lists
+  program: (a (q 2 (i (a 4 (c 4 (c () (a 14 (c 14 (c (a 10 ()) ())))))) (q 2 (i (a 4 (c 4 (c (q 1) (a 14 (c 14 (c (a 10 (q 1)) ())))))) (q 2 (i (a 4 (c 4 (c (q 3 2 1) (a 14 (c 14 (c (a 10 (q 1 2 3)) ())))))) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (c (q 2 (i (l 7) (q 2 (i (l 5) (q 2 (i (a 2 (c 2 (c 9 11))) (q 2 2 (c 2 (c 13 15))) (q)) 1) (q)) 1) (q 2 (i (l 5) (q) (q 9 7 5)) 1)) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1) (q 2 (i 5 (q 2 2 (c 2 (c 13 (c 9 7)))) (q . 7)) 1))) ()))
+  debug_program: (a (q 2 (i (a 4 (c 4 (c () (a 14 (c 14 (c (a 10 ()) ())))))) (q 2 (i (a 4 (c 4 (c (c (q . 1) ()) (a 14 (c 14 (c (a 10 (c (q . 1) ())) ())))))) (q 2 (i (a 4 (c 4 (c (c (q . 3) (c (q . 2) (c (q . 1) ()))) (a 14 (c 14 (c (a 10 (c (q . 1) (c (q . 2) (c (q . 3) ())))) ())))))) (q) (q 8 (q . "assertion failed at std_list.rue:19:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:18:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:17:5"))) 1) (c (c (q 2 (i (not (l 7)) (q 2 (i (not (l 5)) (q 9 7 5) (q)) 1) (q 2 (i (not (l 5)) (q) (q 2 (i (a 2 (c 2 (c (f 5) (f 7)))) (q 2 2 (c 2 (c (r 5) (r 7)))) (q)) 1)) 1)) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at std_list.rue:5:5"))) 1) (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (c (f 5) 7)))) (q . 7)) 1))) ()))
+  output: ()
+  runtime_cost: 21509
+  byte_cost: 5772000
+  total_cost: 5793509
+- name: contains_items
+  program: (a (q 2 (q 2 (i (a 9 (c 9 (c 2 (sha256 (q . 97))))) (q 2 (i (a 9 (c 9 (c 2 (sha256 (q . 99))))) (q 2 (i (a 9 (c 9 (c 2 (sha256 (q . 100))))) (q 8) (q 2 (i (a 9 (c 9 (c (a 13 ()) (q . 97)))) (q 8) (q 2 (i (a 9 (c 9 (c (a 13 (q () 120)) ()))) (q) (q 8)) 1)) 1)) 1) (q 8)) 1) (q 8)) 1) (c (a 6 (c (sha256 (q . 97)) (c (sha256 (q . 98)) (c (sha256 (q . 99)) ())))) 1)) (c (c (q 2 (i 5 (q 2 (i (= 9 7) (q 1 . 1) (q 2 2 (c 2 (c 13 7)))) 1) (q)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 2 (i (a 9 (c 9 (c 2 (sha256 (q . 97))))) (q 2 (i (a 9 (c 9 (c 2 (sha256 (q . 99))))) (q 2 (i (not (a 9 (c 9 (c 2 (sha256 (q . 100)))))) (q 2 (i (not (a 9 (c 9 (c (a 13 ()) (q . 97))))) (q 2 (i (a 9 (c 9 (c (a 13 (c () (c (q . 120) ()))) ()))) (q) (q 8 (q . "assertion failed at std_list.rue:28:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:27:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:26:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:25:5"))) 1) (q 8 (q . "assertion failed at std_list.rue:24:5"))) 1) (c (a 6 (c (sha256 (q . 97)) (c (sha256 (q . 98)) (c (sha256 (q . 99)) ())))) 1)) (c (c (q 2 (i (not (not 5)) (q 2 (i (= (f 5) 7) (q 1 . 1) (q 2 2 (c 2 (c (r 5) 7)))) 1) (q)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at std_list.rue:5:5"))) 1)) ()))
+  output: ()
+  runtime_cost: 18214
+  byte_cost: 5292000
+  total_cost: 5310214
+- name: reverse_as_a_value
+  program: (a (q 2 (i (a 4 (c 4 (c (q 2 1) (a (c (q . 2) (c (q 1 2 2 (c 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 10) (q 1))) ()))) (c (a 14 (q 1 2)) ()))))) (q) (q 8)) 1) (c (c (q 2 (i (l 7) (q 2 (i (l 5) (q 2 (i (a 2 (c 2 (c 9 11))) (q 2 2 (c 2 (c 13 15))) (q)) 1) (q)) 1) (q 2 (i (l 5) (q) (q 9 7 5)) 1)) 1) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c 9 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1))) ()))
+  debug_program: (a (q 2 (q 2 (i (a 9 (c 9 (c (c (q . 2) (c (q . 1) ())) (a 2 (c (a 29 (c (q . 1) (c (q . 2) ()))) ()))))) (q) (q 8 (q . "assertion failed at std_list.rue:34:5"))) 1) (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 2 (c 5 ())))) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) 1)) (c (c (q 2 (i (not (l 7)) (q 2 (i (not (l 5)) (q 9 7 5) (q)) 1) (q 2 (i (not (l 5)) (q) (q 2 (i (a 2 (c 2 (c (f 5) (f 7)))) (q 2 2 (c 2 (c (r 5) (r 7)))) (q)) 1)) 1)) 1) (c (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (c (f 5) 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at std_list.rue:5:5"))) 1))) ()))
+  output: ()
+  runtime_cost: 10299
+  byte_cost: 4884000
+  total_cost: 4894299
+- name: qualified
+  program: (a (q 2 (i (= (a 4 (c 4 (a 6 (q 1 2 3)))) (q . 3)) (q) (q 8)) 1) (c (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) (q)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (i (= (a 4 (c 4 (a 6 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) (q . 3)) (q) (q 8 (q . "assertion failed at std_list.rue:39:5"))) 1) (c (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) (q)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at std_list.rue:5:5"))) 1)) ()))
+  output: ()
+  runtime_cost: 5912
+  byte_cost: 2244000
+  total_cost: 2249912

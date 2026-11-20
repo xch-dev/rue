@@ -3,6 +3,7 @@
 // items with the same names that the prelude's glob imports bring in.
 export conditions;
 export curry_tree_hash;
+export list;
 export merkle;
 export offer;
 export singleton;
