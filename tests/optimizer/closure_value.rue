@@ -1,0 +1,34 @@
+// The code that builds a closure at runtime quotes its constant parts, which builds the same
+// program as before: the function, run with its captures in front of its arguments
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+test fn one_capture() -> fn(value: Int) -> Int {
+    let k = positive(3);
+    fn(value: Int) => value * k
+}
+
+test fn two_captures() -> fn(value: Int) -> Int {
+    let k = positive(3);
+    let x = positive(4);
+    fn(value: Int) => value * k + x
+}
+
+test fn capture_without_parameters() -> fn() -> Int {
+    let k = positive(3);
+    fn() => k + 1
+}
+
+test fn called_with_its_captures() -> Int {
+    let k = positive(3);
+    let x = positive(4);
+    let f = fn(value: Int) => value * k + x;
+    run(f, 5)
+}
+
+fn run(f: fn(value: Int) -> Int, value: Int) -> Int {
+    f(value)
+}

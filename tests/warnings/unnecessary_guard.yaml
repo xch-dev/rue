@@ -29,7 +29,7 @@ tests:
   total_cost: 36020
 - name: narrow_struct
   program: (q . 1)
-  debug_program: (a (i (l (c (q . 42) ())) (q 2 (i (a (i (not (l (f (c (q . 42) ())))) (q 2 (i (a (i (not (l (r (c (q . 42) ())))) (q 2 (i (= (r (c (q . 42) ())) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+  debug_program: (a (i (l (c (q . 42) ())) (q 2 (i (not (l (f (c (q . 42) ())))) (q 2 (i (not (l (r (c (q . 42) ())))) (q 9 (r (c (q . 42) ())) ()) (q)) 1) (q)) 1) (q)) 1)
   output: "1"
   runtime_cost: 20
   byte_cost: 36000

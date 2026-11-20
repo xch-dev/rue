@@ -9,7 +9,7 @@ tests:
   total_cost: 900660
 - name: merge_both_narrowed
   program: (a (i (a (i (l 4) (q) (q 32 (l 9))) 1) (q 2 (q 16 4 10) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
-  debug_program: (a (i (a (i (not (l (f 2))) (q 2 (i (not (l (f 5))) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q 16 (f 2) (f (r 2))) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  debug_program: (a (i (a (i (not (l (f 2))) (q 32 (l (f 5))) (q)) 1) (q 2 (q 16 (f 2) (f (r 2))) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
   solution: ((3 4) (5 6) ())
   output: "11"
   runtime_cost: 2154
@@ -33,7 +33,7 @@ tests:
   total_cost: 1069949
 - name: merge_spread
   program: (a (i (a (i (l 2) (q) (q 32 (l 5))) 1) (q 2 (i 11 (q . 2) (q . 5)) 1) (q)) 1)
-  debug_program: (a (i (a (i (not (l 2)) (q 2 (i (not (l 5)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q . 2) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  debug_program: (a (i (a (i (not (l 2)) (q 32 (l 5)) (q)) 1) (q 2 (q . 2) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
   solution: (3 5 ())
   output: "5"
   runtime_cost: 1076

@@ -29,7 +29,7 @@ tests:
   total_cost: 1458517
 - name: unit_narrowing
   program: (a (q 2 (i (a 2 (q . 5)) (q 2 (i (a 2 ()) (q 8) (q)) 1) (q 8)) 1) (c (q 2 (i (= 1 (q . 5)) (q 1 . 1) (q 9 1 (q . 1))) 1) ()))
-  debug_program: (a (q 2 (i (a 2 (q . 5)) (q 2 (i (not (a 2 ())) (q) (q 8 (q . "assertion failed at enums.rue:118:5"))) 1) (q 8 (q . "assertion failed at enums.rue:117:5"))) 1) (c (q 2 (i (= 1 (q . 5)) (q 1 . 1) (q 2 (i (= 1 (q . 1)) (q 1 . 1) (q)) 1)) 1) ()))
+  debug_program: (a (q 2 (i (a 2 (q . 5)) (q 2 (i (not (a 2 ())) (q) (q 8 (q . "assertion failed at enums.rue:118:5"))) 1) (q 8 (q . "assertion failed at enums.rue:117:5"))) 1) (c (q 2 (i (= 1 (q . 5)) (q 1 . 1) (q 9 1 (q . 1))) 1) ()))
   output: ()
   runtime_cost: 2018
   byte_cost: 1284000

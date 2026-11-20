@@ -628,6 +628,20 @@ pub fn opt_if(
                 return opt_not(arena, condition);
             }
 
+            // Turning an `if` into a bool is pushed into its branches when one of them already
+            // is one, such as `(i (i a 1 b) 1 ())` from `a || b` to `(i a 1 (i b 1 ()))`, which
+            // only turns the other branch into a bool
+            if is_atom(arena, then, &[1])
+                && is_nil(arena, otherwise)
+                && let Lir::If(inner, inner_then, inner_otherwise, inner_inline) =
+                    arena[condition].clone()
+                && (is_boolean(arena, inner_then) || is_boolean(arena, inner_otherwise))
+            {
+                let inner_then = opt_if(arena, inner_then, then, otherwise, false);
+                let inner_otherwise = opt_if(arena, inner_otherwise, then, otherwise, false);
+                return opt_if(arena, inner, inner_then, inner_otherwise, inner_inline);
+            }
+
             let (condition, then, otherwise) =
                 if let Lir::Not(opposite) = arena[replacement].clone() {
                     (opposite, otherwise, then)

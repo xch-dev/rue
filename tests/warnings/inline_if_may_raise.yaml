@@ -66,9 +66,9 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:123:5"
 - name: inline_closure
-  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) (a 2 3)) (c (q . 1) ()))) ()))) (q 1)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (c (q . 2) (c (q 1 16 5 2) (c (c (q . 4) (c (c (q . 1) (a 2 3)) (q 1))) ()))) (q 1)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
   debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (a 6 (a 4 3)) (c (q . 1) ())) ()) (c (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:123:5"))) 1) (q 4 (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
-  byte_cost: 1980000
+  byte_cost: 1860000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:123:5"
 - name: pure_branches
@@ -86,12 +86,12 @@ tests:
   byte_cost: 684000
   total_cost: 686870
 - name: lambda_branch
-  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 2 (i (> 3 (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q . 2)) (c 3 ())) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 2 (i (> 3 (q . 5)) (c (q . 2) (c (q 1 2 2 5) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q . 2)) (c 3 ())) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
   debug_program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 2 (q 2 2 (c 7 ())) (c (i (> 3 (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) 1)) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:123:5"))) 1)) ()))
   output: "1"
-  runtime_cost: 2134
-  byte_cost: 1956000
-  total_cost: 1958134
+  runtime_cost: 1968
+  byte_cost: 1836000
+  total_cost: 1837968
 - name: outer_binding
   program: (a (q 2 4 (c 6 (q . 20))) (c (c (q 3 (> 3 (q . 5)) (a 2 3) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
   debug_program: (a (q 2 4 (c 6 (q . 20))) (c (c (q 2 (q 3 (> 7 (q . 5)) 2 ()) (c (a 2 3) 1)) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:123:5"))) 1)) ()))

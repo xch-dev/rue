@@ -621,20 +621,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                         let eq = self.arena.alloc(Lir::Eq(left, right));
                         self.arena.alloc(Lir::Not(eq))
                     }
+                    // The right operand is a `Bool`, so it's the result as it is, without
+                    // being turned into `1` or `()` again
                     BinaryOp::And => {
-                        let true_atom = self.arena.alloc(Lir::Atom(vec![1]));
                         let false_atom = self.arena.alloc(Lir::Atom(vec![]));
-                        let right = self
-                            .arena
-                            .alloc(Lir::If(right, true_atom, false_atom, false));
                         self.arena.alloc(Lir::If(left, right, false_atom, false))
                     }
                     BinaryOp::Or => {
                         let true_atom = self.arena.alloc(Lir::Atom(vec![1]));
-                        let false_atom = self.arena.alloc(Lir::Atom(vec![]));
-                        let right = self
-                            .arena
-                            .alloc(Lir::If(right, true_atom, false_atom, false));
                         self.arena.alloc(Lir::If(left, true_atom, right, false))
                     }
                     BinaryOp::All => self.arena.alloc(Lir::All(vec![left, right])),

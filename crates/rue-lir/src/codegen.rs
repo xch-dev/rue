@@ -142,6 +142,7 @@ fn codegen_step(
         }
         Lir::Closure(function, captures, has_parameters) => {
             let function = codegen(arena, allocator, *function)?;
+            let fold = options.optimize_static_pairs;
 
             let mut args = if *has_parameters {
                 clvm_quote!(1).to_clvm(allocator)?
@@ -149,30 +150,14 @@ fn codegen_step(
                 NodePtr::NIL
             };
 
+            // Builds `(a (q . FUNCTION) (c (q . CAPTURE) ... 1))` at runtime, so the closure is
+            // a program that runs the function with the captures in front of its arguments
             for capture in captures.iter().rev() {
                 let capture = codegen(arena, allocator, *capture)?;
-                args = clvm_list!(
-                    ClvmOp::Cons,
-                    clvm_quote!(ClvmOp::Cons),
-                    clvm_list!(
-                        ClvmOp::Cons,
-                        clvm_list!(ClvmOp::Cons, clvm_quote!(ClvmOp::Quote), capture),
-                        clvm_list!(ClvmOp::Cons, args, ())
-                    )
-                )
-                .to_clvm(allocator)?;
+                args = operator_code(allocator, ClvmOp::Cons, capture, args, fold)?;
             }
 
-            Ok(clvm_list!(
-                ClvmOp::Cons,
-                clvm_quote!(ClvmOp::Apply),
-                clvm_list!(
-                    ClvmOp::Cons,
-                    clvm_list!(ClvmOp::Cons, clvm_quote!(ClvmOp::Quote), function),
-                    clvm_list!(ClvmOp::Cons, args, ())
-                )
-            )
-            .to_clvm(allocator)?)
+            operator_code(allocator, ClvmOp::Apply, function, args, fold)
         }
         Lir::First(arg) => {
             let arg = codegen(arena, allocator, *arg)?;
@@ -502,6 +487,58 @@ fn codegen_step(
     }
 }
 
+/// Generates code that builds `(OPERATOR (q . VALUE) ARGS)` at runtime from the code for `VALUE`
+/// and `ARGS`, which is `(c (q . OPERATOR) (c (c (q . 1) VALUE) (c ARGS ())))` with its constant
+/// parts quoted if `fold` is set.
+fn operator_code(
+    allocator: &mut Allocator,
+    operator: ClvmOp,
+    value: NodePtr,
+    args: NodePtr,
+    fold: bool,
+) -> Result<NodePtr> {
+    let quote = clvm_quote!(ClvmOp::Quote).to_clvm(allocator)?;
+    let quoted_value = cons_code(allocator, quote, value, fold)?;
+    let rest = cons_code(allocator, args, NodePtr::NIL, fold)?;
+    let rest = cons_code(allocator, quoted_value, rest, fold)?;
+    let operator = clvm_quote!(operator).to_clvm(allocator)?;
+    cons_code(allocator, operator, rest, fold)
+}
+
+/// Generates `(c FIRST REST)`, or the quoted pair if both are constant and `fold` is set.
+fn cons_code(
+    allocator: &mut Allocator,
+    first: NodePtr,
+    rest: NodePtr,
+    fold: bool,
+) -> Result<NodePtr> {
+    if fold
+        && let Some(first) = constant_code(allocator, first)
+        && let Some(rest) = constant_code(allocator, rest)
+    {
+        let pair = allocator.new_pair(first, rest)?;
+        return Ok(clvm_quote!(pair).to_clvm(allocator)?);
+    }
+
+    Ok(clvm_list!(ClvmOp::Cons, first, rest).to_clvm(allocator)?)
+}
+
+/// The value of generated code that's constant: nil, or a quoted value `(q . VALUE)`. Any other
+/// atom is a path into the environment.
+fn constant_code(allocator: &Allocator, code: NodePtr) -> Option<NodePtr> {
+    match allocator.sexp(code) {
+        SExp::Atom => allocator
+            .atom(code)
+            .as_ref()
+            .is_empty()
+            .then_some(NodePtr::NIL),
+        SExp::Pair(first, rest) => match allocator.sexp(first) {
+            SExp::Atom if allocator.atom(first).as_ref() == ClvmOp::Quote.to_atom() => Some(rest),
+            _ => None,
+        },
+    }
+}
+
 fn is_static_value(arena: &Arena<Lir>, lir: LirId) -> bool {
     match &arena[lir] {
         Lir::Atom(_) => true,
@@ -791,6 +828,80 @@ mod tests {
                 "(c (q . 2) (c (c (q . 1) (q 16 2 2)) (c (c (q . 4) (c (c (q . 1) (q . 16)) (c (q . 1) ()))) ())))"
             ],
         );
+    }
+
+    /// The code that builds a closure quotes its constant parts when static pairs are optimized,
+    /// and builds the same closure either way.
+    #[test]
+    fn closure_with_constant_parts() {
+        use clvmr::{ChiaDialect, ClvmFlags, run_program};
+
+        let mut arena = Arena::new();
+        let path = arena.alloc(Lir::Path(2u8.into()));
+        let add = arena.alloc(Lir::Add(vec![path, path]));
+        let function = arena.alloc(Lir::Quote(add));
+        let constant = arena.alloc(Lir::Atom(vec![0x10]));
+        let nil = arena.alloc(Lir::Atom(vec![]));
+        let env_capture = arena.alloc(Lir::Path(5u8.into()));
+        let env_function = arena.alloc(Lir::Path(2u8.into()));
+
+        let closures = [
+            (
+                arena.alloc(Lir::Closure(function, vec![constant], true)),
+                expect!["(q 2 (q 16 2 2) (c (q . 16) 1))"],
+            ),
+            (
+                arena.alloc(Lir::Closure(function, vec![constant, nil], false)),
+                expect!["(q 2 (q 16 2 2) (c (q . 16) (c (q) ())))"],
+            ),
+            (
+                arena.alloc(Lir::Closure(function, vec![env_capture, constant], true)),
+                expect![
+                    "(c (q . 2) (c (q 1 16 2 2) (c (c (q . 4) (c (c (q . 1) 5) (q (c (q . 16) 1)))) ())))"
+                ],
+            ),
+            (
+                arena.alloc(Lir::Closure(env_function, vec![env_capture], false)),
+                expect![
+                    "(c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (q ()))) ())))"
+                ],
+            ),
+        ];
+
+        for (closure, expect) in closures {
+            check_with_options(&arena, closure, true, expect);
+
+            let mut built = Vec::new();
+
+            for optimize_static_pairs in [false, true] {
+                let mut allocator = Allocator::new();
+                let program = codegen(
+                    &arena,
+                    &mut allocator,
+                    closure,
+                    CodegenOptions {
+                        optimize_static_pairs,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let env = clvm_list!(clvm_quote!(1u8), 7u8)
+                    .to_clvm(&mut allocator)
+                    .unwrap();
+                let value = run_program(
+                    &mut allocator,
+                    &ChiaDialect::new(ClvmFlags::empty()),
+                    program,
+                    env,
+                    u64::MAX,
+                )
+                .unwrap()
+                .1;
+                built.push(disassemble_program(&allocator, value));
+            }
+
+            assert_eq!(built[0], built[1]);
+        }
     }
 
     #[test]

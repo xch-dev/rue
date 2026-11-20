@@ -96,7 +96,7 @@ tests:
   total_cost: 324465
 - name: generic
   program: (a (q 2 2 5) (c (q 32 (a (i (l 1) (q) (q 32 1)) 1)) 1))
-  debug_program: (a (q 2 2 5) (c (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 2 2 5) (c (q 2 (i (a (i (not (l 1)) (q 9 1 ()) (q)) 1) (q) (q 1 . 1)) 1) 1))
   solution: (5)
   output: "1"
   runtime_cost: 1136
@@ -216,7 +216,7 @@ tests:
   total_cost: 228305
 - name: inline_match_checks_whole_type
   program: (i 2 (i (a (i 2 (q 9 4 (q . 1)) (q)) 1) (q . 1) (q . 2)) ())
-  debug_program: (i (not 2) () (i (a (i (not (not 2)) (q 2 (i (= (f 2) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1) (q . 1) (q . 2)))
+  debug_program: (i (not 2) () (i (a (i (not (not 2)) (q 9 (f 2) (q . 1)) (q)) 1) (q . 1) (q . 2)))
   solution: (())
   output: ()
   runtime_cost: 501

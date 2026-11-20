@@ -42,26 +42,26 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: generic_function_instantiated_two_levels_in
-  program: (a (q 2 (q 16 8 14) (c (a (c (q . 2) (c (c (q . 1) (q 2 5 (c 2 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())) 1)) (c (q 4 2 2) ()))
+  program: (a (q 2 (q 16 8 14) (c (a (c (q . 2) (c (q 1 2 5 (c 2 ())) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())) 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 2 (q 16 (f (f 2)) (r (r 2))) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) 1)) (c (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) 1)) (c (c (q 2 5 (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ())) (q 4 2 2)) ()))
   output: "3"
-  runtime_cost: 3345
-  byte_cost: 1860000
-  total_cost: 1863345
+  runtime_cost: 3179
+  byte_cost: 1740000
+  total_cost: 1743179
 - name: inferred_through_a_generic_function_two_levels_in
-  program: (a (q 16 (r (r (a (c (q . 2) (c (c (q . 1) (q 2 5 (c 2 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())))) (q . 1)) (c (q 4 2 2) ()))
+  program: (a (q 16 (r (r (a (c (q . 2) (c (q 1 2 5 (c 2 ())) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())))) (q . 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 16 (a 14 (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ())))) (q . 1)) (c (c (q 2 5 (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ())) (c (q 4 2 2) (q 2 (q 6 (r 2)) (c (a 1 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) 1)))) ()))
   output: "3"
-  runtime_cost: 3109
-  byte_cost: 1812000
-  total_cost: 1815109
+  runtime_cost: 2943
+  byte_cost: 1692000
+  total_cost: 1694943
 - name: generic_function_kept_rigid_where_that_is_enough
-  program: (a (q 3 () (a (c (q . 2) (c (c (q . 1) (q 2 5 (c 2 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())) (q . 1)) (c (q 4 2 2) ()))
+  program: (a (q 3 () (a (c (q . 2) (c (q 1 2 5 (c 2 ())) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())) (q . 1)) (c (q 4 2 2) ()))
   debug_program: (a (q 2 (q 3 () (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) (q . 1)) (c (c (q . 2) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) 1)) (c (c (q 2 5 (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ())) (q 4 2 2)) ()))
   output: "1"
-  runtime_cost: 2369
-  byte_cost: 1740000
-  total_cost: 1742369
+  runtime_cost: 2203
+  byte_cost: 1620000
+  total_cost: 1622203
 diagnostics:
 - |-
   Field `second` of struct `Two` is never read at generic_inference_instantiated_through_candidate.rue:25:5
