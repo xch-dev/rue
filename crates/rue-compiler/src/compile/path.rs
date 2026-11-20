@@ -366,10 +366,6 @@ where
             (None, Some((ty, _, type_import))) => PathResult::Type(ty, type_import),
             (None, None) => {
                 match kind {
-                    // The builtin that slicing replaced, which older code still calls by its name
-                    PathKind::Symbol if name.text() == "substr" && segments.len() == 1 => {
-                        ctx.diagnostic(&name, DiagnosticKind::RemovedSubstr);
-                    }
                     PathKind::Symbol => ctx.diagnostic(
                         &name,
                         DiagnosticKind::UndeclaredSymbol(name.text().to_string()),

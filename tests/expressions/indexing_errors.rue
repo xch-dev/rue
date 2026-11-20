@@ -57,8 +57,6 @@ fn recursive_constants(bytes: Bytes) -> Bytes {
 type First = String;
 type Last = String;
 
-mod util {}
-
 // Part of a string is a string, and part of anything else is bytes
 fn strings(
     string: String,
@@ -79,9 +77,4 @@ fn strings(
     let _: Int = optional[0];
     let _: Int = bytes[0];
     let _: Int = (string + string)[0];
-}
-
-// The builtin that slicing replaced
-fn removed(bytes: Bytes) -> Bytes {
-    substr(bytes, 0, 1) + util::substr(bytes, 0, 1)
 }
