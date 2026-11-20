@@ -42,6 +42,17 @@ enum Switch {
     On,
 }
 
+// A variant that refers to itself with growing generic arguments can't be substituted, even
+// where it's used on its own
+enum Growing<T> {
+    Nil,
+    Cons { head: T, tail: Growing::Cons<(T, T)> },
+}
+
+fn growing(list: Growing::Cons<Int>) -> Int {
+    list.head
+}
+
 enum Mode {
     Off,
     On,
@@ -61,7 +72,6 @@ test fn errors() {
     let _undeclared = Shape::Square;
     let _unknown_field = Shape::Circle { radius: 1, diameter: 2 };
     let _missing_field = Shape::Circle {};
-    let _unit_with_braces = Shape::Empty {};
     let _not_a_value = Shape::Circle;
     let _not_a_type: Shape::Square = Shape::Empty;
     let _enum_as_value = Shape;
@@ -70,6 +80,7 @@ test fn errors() {
     let _missing_generics = Option::Some { value: 1 };
     let _nested_path = Shape::Circle::Inner;
     let _discriminant = Shape::Circle { radius: 1 }.kind;
+    let _none_as_int: Int = Option::None;
 }
 
 fn wrong_return(shape: Shape) -> Int {

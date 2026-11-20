@@ -133,12 +133,28 @@ pub fn compile_type_item_defaults(
 /// generic arguments, so it can't be substituted into a finite type. The cycle is broken after
 /// reporting it, and this must happen before anything substitutes the type (including the
 /// contractivity check). Returns `false` if the type was rejected.
+///
+/// An enum's variants can refer to themselves directly (such as with a field of type
+/// `L::Cons<(T, T)>`), so each of them is checked along with the enum, and every one of them that
+/// has such a cycle has it broken, although it's only reported once.
 fn check_regular(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) -> bool {
-    if !rue_types::is_non_regular(ctx.types(), ty) {
-        return true;
-    }
+    let mut types = vec![ty];
+    types.extend(ctx.enum_variants(ty).unwrap_or_default());
 
-    report_and_break_cycle(ctx, item, ty, DiagnosticKind::NonRegularType);
+    let non_regular = types
+        .into_iter()
+        .filter(|&ty| rue_types::is_non_regular(ctx.types(), ty))
+        .collect::<Vec<_>>();
+
+    let Some((&first, rest)) = non_regular.split_first() else {
+        return true;
+    };
+
+    report_and_break_cycle(ctx, item, first, DiagnosticKind::NonRegularType);
+
+    for &ty in rest {
+        break_cycle(ctx, ty);
+    }
 
     false
 }

@@ -526,12 +526,6 @@ impl AstEnumVariant {
     }
 }
 
-impl AstEnumVariantFields {
-    pub fn fields(&self) -> impl Iterator<Item = AstStructField> {
-        self.syntax().children().filter_map(AstStructField::cast)
-    }
-}
-
 impl AstEnumDiscriminant {
     pub fn minus(&self) -> Option<SyntaxToken> {
         self.syntax()

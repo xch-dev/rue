@@ -36,6 +36,11 @@ enum UnusedEnum {
     Variant,
 }
 
+#[allow(unused_enum)]
+enum AllowedUnusedEnum {
+    Variant,
+}
+
 // Using a variant uses its enum, even if the enum isn't named
 enum UsedThroughVariant {
     First,

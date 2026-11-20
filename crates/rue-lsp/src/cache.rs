@@ -1118,13 +1118,12 @@ impl Cache<Compiler> {
             String::new()
         };
 
-        let Some((fields, nil_terminated)) = self.struct_fields(scopes, ty) else {
+        let Some((fields, nil_terminated)) = self
+            .struct_fields(scopes, ty)
+            .filter(|(fields, _)| !fields.is_empty())
+        else {
             return discriminant;
         };
-
-        if fields.is_empty() {
-            return discriminant;
-        }
 
         let fields = field_declarations(&fields, nil_terminated).join(", ");
 

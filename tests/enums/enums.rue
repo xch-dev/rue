@@ -73,6 +73,10 @@ test fn layout() {
     assert tree_hash(Shape::Circle { radius: 3 }) == tree_hash([1, 3]);
     assert tree_hash(Shape::Rect { width: 2, height: 4 }) == tree_hash([10, 2, 4]);
     assert tree_hash(Condition::ReserveFee { amount: 7 }) == tree_hash([52, 7]);
+
+    // A variant without fields can also be written with braces
+    assert tree_hash(Shape::Empty {}) == tree_hash(Shape::Empty);
+    assert Mode::Open {} as Int == 5;
 }
 
 fn area(shape: Shape) -> Int {

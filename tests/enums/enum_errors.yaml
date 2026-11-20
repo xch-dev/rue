@@ -13,30 +13,34 @@ diagnostics:
 - Unused enum `Holder` at enum_errors.rue:31:6
 - Unused enum `Rest` at enum_errors.rue:36:6
 - Unused enum `Switch` at enum_errors.rue:40:6
-- Duplicate symbol `Mode` found in scope at enum_errors.rue:45:6
-- Duplicate type `Shape` found in scope at enum_errors.rue:51:8
-- Unused struct `Shape` at enum_errors.rue:51:8
+- Type `Growing` refers to itself with generic arguments built from its own generic parameters at enum_errors.rue:47:6
+- Unused enum `Growing` at enum_errors.rue:47:6
+- Unused function `growing` at enum_errors.rue:52:4
+- Duplicate symbol `Mode` found in scope at enum_errors.rue:56:6
+- Duplicate type `Shape` found in scope at enum_errors.rue:62:8
+- Unused struct `Shape` at enum_errors.rue:62:8
 - |-
-  Module `Mode` should be named in snake_case at enum_errors.rue:53:5
+  Module `Mode` should be named in snake_case at enum_errors.rue:64:5
     note: Consider renaming it to `mode`
-- Undeclared symbol `Square` at enum_errors.rue:61:30
-- Unknown field `diameter` on type `Shape::Circle` at enum_errors.rue:62:53
-- "Struct `Shape::Circle` is missing required fields: radius at enum_errors.rue:63:26"
-- Expected symbol, but found type `Circle` at enum_errors.rue:65:24
-- Undeclared type `Square` at enum_errors.rue:66:29
-- Expected symbol, but found type `Shape` at enum_errors.rue:67:26
-- Cannot assign `1` to `Mode` without a cast, since they are semantically different at enum_errors.rue:68:30
-- Cannot assign `Shape::Empty` to `Shape::Circle`, since they are incompatible at enum_errors.rue:69:41
-- Expected 1 generic arguments, but found 0 at enum_errors.rue:70:37
-- Cannot subpath non-module symbol `Circle` at enum_errors.rue:71:31
-- Unknown field `kind` on type `Shape::Circle` at enum_errors.rue:72:53
-- Unused function `wrong_return` at enum_errors.rue:75:4
-- Cannot assign `Shape` to `Int`, since they are incompatible at enum_errors.rue:75:38
-- Unused function `narrowed` at enum_errors.rue:80:4
-- "Cannot assign `Holder::Value { value: nil }` to `Bytes32`, since they are incompatible at enum_errors.rue:82:16"
-- Unused function `equality` at enum_errors.rue:88:4
-- Cannot use `==` operator with `Shape` and `Shape::Empty` at enum_errors.rue:89:5
-- Cannot use `==` operator with `Shape::Empty` and `Shape::Empty` at enum_errors.rue:90:12
-- Cannot use `==` operator with `Rest` and `Rest::Only` at enum_errors.rue:91:12
-- Cannot use `==` operator with `Mode` and `Repeats::One` at enum_errors.rue:92:12
-- Cannot use `==` operator with `Switch | Repeats` and `Switch::On` at enum_errors.rue:93:12
+- Undeclared symbol `Square` at enum_errors.rue:72:30
+- Unknown field `diameter` on type `Shape::Circle` at enum_errors.rue:73:53
+- "Struct `Shape::Circle` is missing required fields: radius at enum_errors.rue:74:26"
+- Expected symbol, but found type `Circle` at enum_errors.rue:75:24
+- Undeclared type `Square` at enum_errors.rue:76:29
+- Expected symbol, but found type `Shape` at enum_errors.rue:77:26
+- Cannot assign `1` to `Mode` without a cast, since they are semantically different at enum_errors.rue:78:30
+- Cannot assign `Shape::Empty` to `Shape::Circle`, since they are incompatible at enum_errors.rue:79:41
+- Expected 1 generic arguments, but found 0 at enum_errors.rue:80:37
+- Cannot subpath non-module symbol `Circle` at enum_errors.rue:81:31
+- Unknown field `kind` on type `Shape::Circle` at enum_errors.rue:82:53
+- Cannot assign `Option::None<Never>` to `Int`, since they are incompatible at enum_errors.rue:83:29
+- Unused function `wrong_return` at enum_errors.rue:86:4
+- Cannot assign `Shape` to `Int`, since they are incompatible at enum_errors.rue:86:38
+- Unused function `narrowed` at enum_errors.rue:91:4
+- "Cannot assign `Holder::Value { value: nil }` to `Bytes32`, since they are incompatible at enum_errors.rue:93:16"
+- Unused function `equality` at enum_errors.rue:99:4
+- Cannot use `==` operator with `Shape` and `Shape::Empty` at enum_errors.rue:100:5
+- Cannot use `==` operator with `Shape::Empty` and `Shape::Empty` at enum_errors.rue:101:12
+- Cannot use `==` operator with `Rest` and `Rest::Only` at enum_errors.rue:102:12
+- Cannot use `==` operator with `Mode` and `Repeats::One` at enum_errors.rue:103:12
+- Cannot use `==` operator with `Switch | Repeats` and `Switch::On` at enum_errors.rue:104:12

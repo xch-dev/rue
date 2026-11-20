@@ -202,7 +202,6 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
         _ => unreachable!(),
     };
 
-    let mut types = Vec::new();
     let mut discriminants = HashMap::<BigInt, String>::new();
     let mut previous: Option<BigInt> = None;
 
@@ -283,16 +282,17 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
                 inline: true,
             });
         }
-
-        types.push(info.ty);
     }
 
     ctx.pop_scope(range.end());
 
-    let resolved_inner = match types.as_slice() {
+    let resolved_inner = match ctx.enum_variants(ty).unwrap_or_default() {
         [] => ctx.builtins().types.never,
         &[ty] => ty,
-        _ => ctx.alloc_type(Type::Union(Union::new(types))),
+        types => {
+            let types = types.to_vec();
+            ctx.alloc_type(Type::Union(Union::new(types)))
+        }
     };
 
     let Type::Alias(Alias { inner, .. }) = ctx.ty(ty) else {
@@ -338,12 +338,12 @@ pub fn compile_enum_defaults(
     let item = AstTypeItem::EnumItem(enum_item.clone());
 
     for (variant, info) in enum_item.variants().zip(ctx.declared_variants(ty).to_vec()) {
-        let (Some(info), Some(fields)) = (info, variant.fields()) else {
+        let Some(info) = info else {
             continue;
         };
 
         ctx.push_declaration(Declaration::Type(info.ty));
-        compile_field_defaults(ctx, &item, info.ty, fields.fields());
+        compile_field_defaults(ctx, &item, info.ty, variant.struct_fields());
         ctx.pop_declaration();
     }
 
