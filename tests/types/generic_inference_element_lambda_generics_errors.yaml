@@ -21,3 +21,6 @@ diagnostics:
 - Unused function `map_list_from` at generic_inference_element_lambda_generics_errors.rue:99:4
 - Unused function `element_before_a_spread_that_reads_its_return_type` at generic_inference_element_lambda_generics_errors.rue:107:4
 - Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:109:29
+- Unused function `with_value_of_return` at generic_inference_element_lambda_generics_errors.rue:112:4
+- Unused function `element_before_a_value_of_its_return_type` at generic_inference_element_lambda_generics_errors.rue:120:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:121:36

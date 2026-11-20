@@ -1714,7 +1714,20 @@ fn element_lambdas(
                     walk.lambdas.push((range, lambda));
                 }
 
-                walk.reads.push((range, reads));
+                // As for a lambda that's the whole argument (see `reads_of`), a call in its body can
+                // be inferred from the type its return type is expected to have, as `make()` is in
+                // `fn() => make()` for `fn() -> U`
+                let mut element_reads = reads;
+
+                if lambda.ty().is_none()
+                    && lambda.body().is_some_and(|body| has_call_or_lambda(&body))
+                {
+                    for expected in &expected {
+                        element_reads.extend(generics_in(ctx, function, expected.ret));
+                    }
+                }
+
+                walk.reads.push((range, element_reads));
             }
             AstExpr::PairExpr(pair) => {
                 let Some((first, rest)) = pair_parts(ctx, ty) else {
