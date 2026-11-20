@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     mem,
 };
 
@@ -155,9 +155,9 @@ impl InferenceResolver<'_> {
 
         for &generic in &component {
             let candidates = InferenceCandidates {
-                lower: self.expand(arena, &component, generic, |c| &c.lower),
-                upper: self.expand(arena, &component, generic, |c| &c.upper),
-                held: self.expand(arena, &component, generic, |c| &c.held),
+                lower: self.expand(arena, &component, generic, true, |c| &c.lower),
+                upper: self.expand(arena, &component, generic, false, |c| &c.upper),
+                held: self.expand(arena, &component, generic, false, |c| &c.held),
             };
 
             if candidates == InferenceCandidates::default()
@@ -261,11 +261,18 @@ impl InferenceResolver<'_> {
     /// that it's directly bounded by in place of them, and the generics that were already resolved
     /// substituted. A candidate that references a generic in the component in any other way would
     /// be an infinite type, so it's left as is.
+    ///
+    /// A lower candidate that's a union is a lower candidate of each of its members (`T ≥ X | Y` is
+    /// `T ≥ X` and `T ≥ Y`), so one with a generic of the component as a member is split into them,
+    /// and the generic is followed as a candidate of its own. That's what passing a generic function
+    /// for one of the callee's function types gives, as `T ≥ Int | T` from
+    /// `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T`, which only says `T ≥ Int`.
     fn expand(
         &self,
         arena: &mut Arena<Type>,
         component: &IndexSet<TypeId>,
         generic: TypeId,
+        lower: bool,
         kind: impl Fn(&InferenceCandidates) -> &Vec<TypeId>,
     ) -> Vec<TypeId> {
         let mut visited = HashSet::from([generic]);
@@ -273,7 +280,23 @@ impl InferenceResolver<'_> {
         let mut result = IndexSet::new();
 
         while let Some(generic) = stack.pop() {
-            for &ty in kind(&self.infer.generics[&generic]) {
+            // In the order they were found, with a split union's members in its place
+            let mut candidates: VecDeque<TypeId> = kind(&self.infer.generics[&generic])
+                .iter()
+                .copied()
+                .collect();
+
+            while let Some(ty) = candidates.pop_front() {
+                if lower
+                    && let Type::Union(union) = &arena[ty]
+                    && union.types.iter().any(|member| component.contains(member))
+                {
+                    for &member in union.types.iter().rev() {
+                        candidates.push_front(member);
+                    }
+                    continue;
+                }
+
                 if component.contains(&ty) {
                     if visited.insert(ty) {
                         stack.push(ty);

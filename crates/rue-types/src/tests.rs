@@ -1367,6 +1367,43 @@ mod inference {
         assert_eq!(mappings[&t], int);
     }
 
+    /// A lower candidate that's a union with the generic in it only bounds the generic by the
+    /// other members, as passing `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T` gives (#362, 13k4).
+    #[test]
+    fn union_lower_candidate_with_the_generic_in_it() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let t = db.generic("T");
+        let union = db.union(&[int, t]);
+
+        let mut infer = Inference::new([t]);
+        infer.push(t, CandidateKind::Lower, union, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+
+        // Through another generic in the cycle too, as `T ≥ V ≥ T`
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let union = db.union(&[int, v]);
+        let mut infer = Inference::new([t, v]);
+        infer.push(t, CandidateKind::Lower, union, Vec::new());
+        infer.push(v, CandidateKind::Lower, t, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "Int");
+        assert_eq!(db.name(mappings[&v]), "Int");
+
+        // An upper candidate isn't split, since `T ≤ Int | V` doesn't say `T ≤ Int`
+        let (t, v) = (db.generic("T"), db.generic("V"));
+        let union = db.union(&[int, v]);
+        let mut infer = Inference::new([t, v]);
+        infer.push(t, CandidateKind::Upper, union, Vec::new());
+        infer.push(v, CandidateKind::Upper, t, Vec::new());
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_ne!(
+            mappings.get(&t).map(|&ty| db.name(ty)).as_deref(),
+            Some("Int")
+        );
+    }
+
     /// A type compared with itself is `Assign` without comparing it, unless it references a
     /// generic being inferred, which comparing it collects candidates for.
     #[test]

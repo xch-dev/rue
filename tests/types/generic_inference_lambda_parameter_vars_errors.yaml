@@ -1,7 +1,6 @@
 diagnostics:
 - Unused function `apply_to` at generic_inference_lambda_parameter_vars_errors.rue:16:4
-- "Cannot assign `(fn(x: T) -> T | Int, \"hi\")` to `(fn(value: T | Int | String) -> T | Int | String, T | Int | String)`, since they are incompatible at generic_inference_lambda_parameter_vars_errors.rue:25:14"
-- "Cannot assign `(fn(y: T) -> T, 1)` to `(fn(value: T | Int) -> T | Int, T | Int)`, since they are incompatible at generic_inference_lambda_parameter_vars_errors.rue:26:27"
+- "Cannot assign `(fn(y: T) -> T, 1)` to `(fn(value: Int) -> Int, Int)`, since they are incompatible at generic_inference_lambda_parameter_vars_errors.rue:26:27"
 - Condition always evaluates to `false` at generic_inference_lambda_parameter_vars_errors.rue:27:25
 - Unused function `call_back` at generic_inference_lambda_parameter_vars_errors.rue:38:4
 - Unused function `five_only` at generic_inference_lambda_parameter_vars_errors.rue:44:4

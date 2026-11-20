@@ -1,0 +1,120 @@
+// A generic lambda passed next to an untyped lambda, where the generics they link are inferred
+// through each other. A lower candidate that's a union with the generic in it is split, so no
+// callee's generic is left in the call's type (#362, 13k4; infer-fuzz generator 1, seed 2807, and
+// generator 3, seed 5981)
+
+fn cycle<A, B>(forward: fn(a: A) -> B, backward: fn(a: B) -> A, value: A) -> B {
+    forward(backward(forward(value)))
+}
+
+fn cycle_pair<A, B>(forward: (fn(a: A) -> B, Int), backward: fn(a: B) -> A, value: A) -> B {
+    forward.first(backward(forward.first(value)))
+}
+
+fn cycle_list<A, B>(forward: List<fn(a: A) -> B>, backward: fn(a: B) -> A, value: A) -> B {
+    if forward is nil {
+        return unchecked_cast::<B>(nil);
+    }
+
+    forward.first(backward(forward.first(value)))
+}
+
+fn cycle_late<A, B>(backward: fn(a: B) -> A, forward: (fn(a: A) -> B, Int), value: A) -> B {
+    forward.first(backward(forward.first(value)))
+}
+
+fn pass<A>(value: A) -> A {
+    value
+}
+
+fn head_or<T>(list: List<T>, default: T) -> T {
+    let _ = list;
+    default
+}
+
+fn same<T>(function: fn(a: T) -> T, produce: fn() -> T) -> T {
+    function(produce())
+}
+
+fn same_again<T>(function: fn(a: T) -> T, produce: fn() -> T, depth: Int) -> T {
+    if depth > 0 {
+        let inner = same_again(
+            head_or(
+                [fn<V>(value: V) => value],
+                fn(x) => head_or(unchecked_cast::<List<5>>(nil), x),
+            ),
+            fn() => 5,
+            depth - 1,
+        );
+        let check: Int = inner;
+        let _ = check;
+        return function(produce());
+    }
+
+    function(produce())
+}
+
+// The generic lambda is compiled before the call that gives `A` its type, so `A` was only bounded
+// by `B`, which nothing gave a type yet, and `x` was `Int | B`, so `B ≥ Int | B` through the
+// lambda's return type, which `B` was inferred as
+test fn generic_lambda_beside_an_untyped_lambda() -> Int {
+    let value = cycle(fn(x) => x, fn<V>(value: V) => value, pass(5));
+    let check: Int = value;
+    check + 0
+}
+
+// The same with the untyped lambda as an element of a pair or list, before or after the generic
+// lambda, and calling a generic function
+test fn generic_lambda_beside_an_untyped_element_lambda() -> (Int, (Int, (Int, Int))) {
+    let pair = cycle_pair((fn(x) => x, 1), fn<V>(value: V) => value, pass(5));
+    let list = cycle_list([fn(x) => x], fn<V>(value: V) => value, pass(5));
+    let late = cycle_late(fn<V>(value: V) => value, (fn(x) => x, 1), pass(5));
+    let call = cycle_pair((fn(x) => pass(x), 1), fn<V>(value: V) => value, pass(5));
+    let checks: (Int, (Int, (Int, Int))) = (pair, (list, (late, call)));
+    (checks.first, checks.rest)
+}
+
+// The same call compiled before the fix: with the generic arguments written out, with a value that
+// isn't a call, which is compiled first, and with the lambda's parameter typed
+test fn generic_lambda_beside_an_untyped_lambda_that_compiled() -> (Int, (Int, Int)) {
+    let explicit = cycle::<5, 5>(fn(x) => x, fn<V>(value: V) => value, pass(5));
+    let literal = cycle(fn(x) => x, fn<V>(value: V) => value, 5);
+    let typed = cycle(fn(x: Int) => x, fn<V>(value: V) => value, pass(5));
+    let checks: (Int, (Int, Int)) = (explicit, (literal, typed));
+    (checks.first, checks.rest)
+}
+
+// `head_or` makes the untyped lambda generic over `V` from the generic lambda next to it, and
+// passing `fn<V>(x: V) -> Int | V` for `fn(a: T) -> T` gave `T ≥ Int | T`, which `T` was inferred as
+test fn generic_lambda_through_a_call_beside_an_untyped_lambda() -> Int {
+    let value = same(
+        head_or([fn<V>(value: V) => value], fn(x) => head_or(unchecked_cast::<List<5>>(nil), x)),
+        fn() => 5,
+    );
+    let check: Int = value;
+    check + 0
+}
+
+test fn generic_lambda_through_a_call_beside_an_untyped_lambda_that_compiled() -> (Int, Int) {
+    let explicit = same::<Int>(
+        head_or::<fn(a: Int) -> Int>(
+            [fn<V>(value: V) => value],
+            fn(x) => head_or(unchecked_cast::<List<5>>(nil), x),
+        ),
+        fn() => 5,
+    );
+    let typed = same(
+        head_or(
+            [fn<V>(value: V) => value],
+            fn(x: Int) => head_or(unchecked_cast::<List<5>>(nil), x),
+        ),
+        fn() => 5,
+    );
+    let checks: (Int, Int) = (explicit, typed);
+    (checks.first, checks.rest)
+}
+
+// The same in a recursive call, as the fuzzer found it
+test fn generic_lambda_beside_an_untyped_lambda_in_a_recursive_call() -> Int {
+    same_again(fn(x: Int) => x, fn() => 1, 1)
+}
