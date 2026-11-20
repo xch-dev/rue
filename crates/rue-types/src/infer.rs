@@ -1067,6 +1067,23 @@ mod tests {
         assert!(choices.needed_in(branch(held, 0), &(1..3)));
     }
 
+    /// A union whose member without bounds gave `Cast`, though that's its best result, isn't
+    /// held, so a result getting worse can't make it held.
+    #[test]
+    fn needed_in_not_held_by_a_best_cast() {
+        use Comparison::Cast;
+
+        let mut choices = Choices::default();
+        let union = choices.reopen(None, &[Some(Cast), Some(Cast)], None, &[true, false, false]);
+        assert!(choices.needed_in(
+            BranchId {
+                choice: union,
+                member: 0
+            },
+            &(0..1)
+        ));
+    }
+
     #[test]
     fn exclusive_members() {
         let mut choices = Choices::default();
