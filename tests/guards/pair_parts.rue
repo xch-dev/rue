@@ -1,0 +1,80 @@
+struct A {
+    kind: 1,
+}
+
+struct B {
+    kind: 2,
+}
+
+struct Tagged<T> {
+    tag: Int,
+    value: T,
+}
+
+// A pair is split by the part that differs from the guard's type, when the other part is covered
+fn first_part(value: (A | B, Int)) -> B {
+    if value is (A, Int) {
+        return B { kind: 2 };
+    }
+
+    value.first
+}
+
+fn rest_part(value: (Int, A | B)) -> B {
+    if value is (Int, A) {
+        return B { kind: 2 };
+    }
+
+    value.rest
+}
+
+fn nested_part(value: (Int, (A | B, nil))) -> B {
+    if value is (Int, (A, nil)) {
+        return B { kind: 2 };
+    }
+
+    value.rest.first
+}
+
+// Each pair in a union is subtracted in turn
+fn union_of_pairs(value: (A | B | nil, Int)) -> nil {
+    if value is (A, Int) | (B, Int) {
+        return nil;
+    }
+
+    value.first
+}
+
+// The rest of a list is the list itself, which is covered
+fn list_item(value: List<A | B>) -> (B, List<A | B>) | nil {
+    if value is (A, List<A | B>) {
+        return nil;
+    }
+
+    value
+}
+
+// Struct fields follow from the struct's inner pairs
+fn struct_field(value: Tagged<A | B>) -> Tagged<B> {
+    if value is Tagged<A> {
+        return Tagged::<B> { tag: 0, value: B { kind: 2 } };
+    }
+
+    value
+}
+
+test fn guard_values() {
+    let a = A { kind: 1 };
+    let b = B { kind: 2 };
+
+    assert first_part((a, 5)).kind == 2;
+    assert first_part((b, 5)).kind == 2;
+    assert rest_part((5, b)).kind == 2;
+    assert nested_part((5, (b, nil))).kind == 2;
+    assert union_of_pairs((nil, 5)) == nil;
+    assert list_item([a, b]) is nil;
+    assert list_item([b, a]) is (B, List<A | B>);
+    assert list_item(nil) is nil;
+    assert struct_field(Tagged::<A | B> { tag: 1, value: b }).tag == 1;
+    assert struct_field(Tagged::<A | B> { tag: 1, value: a }).tag == 0;
+}

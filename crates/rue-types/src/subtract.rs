@@ -1,9 +1,11 @@
+use std::collections::HashSet;
+
 use id_arena::Arena;
 use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, Type, TypeId, Union, compare, grow_stack,
+    Alias, BuiltinTypes, Comparison, Pair, Type, TypeId, Union, compare, grow_stack, pairs_of,
     reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
@@ -48,14 +50,130 @@ fn subtract_impl(
     lhs_id: TypeId,
     rhs_id: TypeId,
 ) -> TypeId {
+    let variants = remaining_variants(arena, builtins, lhs_id, rhs_id, &mut HashSet::new())
+        .unwrap_or_else(|| variants_of(arena, builtins, lhs_id));
+
+    repackage(arena, builtins, variants)
+}
+
+/// The variants of `lhs_id` that aren't covered by `rhs_id`, or `None` if none of them changed.
+///
+/// A pair variant whose parts aren't all covered is split by the one part that differs, if the
+/// other is covered: `(X, Y) - (P, Y) = (X - P, Y)`. The values that fail the check against
+/// `(P, Y)` are exactly the ones whose first value isn't a `P`. When both parts differ, the
+/// remainder isn't a single pair, so the variant is kept whole.
+///
+/// The parts of a recursive type can lead back to a subtraction that's already in progress, such
+/// as `L - R` with `type L = Bytes | (Int, L)` and `type R = Int | (Int, R)`. That subtraction
+/// keeps its part whole, so the result is only wider than it could be.
+fn remaining_variants(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+    stack: &mut HashSet<(TypeId, TypeId)>,
+) -> Option<Vec<Variant>> {
+    grow_stack(|| remaining_variants_inner(arena, builtins, lhs_id, rhs_id, stack))
+}
+
+fn remaining_variants_inner(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+    stack: &mut HashSet<(TypeId, TypeId)>,
+) -> Option<Vec<Variant>> {
     step();
 
-    let mut lhs_variants = variants_of(arena, builtins, lhs_id);
+    if !stack.insert((lhs_id, rhs_id)) {
+        return None;
+    }
 
-    lhs_variants
-        .retain(|variant| compare(arena, builtins, variant.type_id, rhs_id) > Comparison::Cast);
+    let variants = variants_of(arena, builtins, lhs_id);
+    let mut rhs_pairs = None;
+    let mut changed = false;
+    let mut remaining = Vec::with_capacity(variants.len());
 
-    repackage(arena, builtins, lhs_variants)
+    for mut variant in variants {
+        if compare(arena, builtins, variant.type_id, rhs_id) <= Comparison::Cast {
+            changed = true;
+            continue;
+        }
+
+        let Type::Pair(pair) = arena[variant.type_id] else {
+            remaining.push(variant);
+            continue;
+        };
+
+        let rhs_pairs = rhs_pairs.get_or_insert_with(|| pairs_of(arena, rhs_id));
+
+        match split_pair(arena, builtins, pair, rhs_pairs, stack) {
+            Split::Unchanged => {}
+            Split::Removed => {
+                changed = true;
+                continue;
+            }
+            Split::Narrowed(type_id) => {
+                changed = true;
+                variant.type_id = type_id;
+            }
+        }
+
+        remaining.push(variant);
+    }
+
+    stack.remove(&(lhs_id, rhs_id));
+
+    changed.then_some(remaining)
+}
+
+enum Split {
+    Unchanged,
+    Removed,
+    Narrowed(TypeId),
+}
+
+/// Subtracts each of the pairs in the target from the pair, one at a time, where only one of the
+/// parts differs.
+fn split_pair(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    pair: Pair,
+    rhs_pairs: &[Pair],
+    stack: &mut HashSet<(TypeId, TypeId)>,
+) -> Split {
+    let mut first = pair.first;
+    let mut rest = pair.rest;
+    let mut changed = false;
+
+    for rhs in rhs_pairs {
+        let first_covered = compare(arena, builtins, first, rhs.first) <= Comparison::Cast;
+        let rest_covered = compare(arena, builtins, rest, rhs.rest) <= Comparison::Cast;
+
+        let (part, rhs_part) = match (first_covered, rest_covered) {
+            (true, true) => return Split::Removed,
+            (false, true) => (&mut first, rhs.first),
+            (true, false) => (&mut rest, rhs.rest),
+            (false, false) => continue,
+        };
+
+        let Some(variants) = remaining_variants(arena, builtins, *part, rhs_part, stack) else {
+            continue;
+        };
+
+        if variants.is_empty() {
+            return Split::Removed;
+        }
+
+        *part = repackage(arena, builtins, variants);
+        changed = true;
+    }
+
+    if changed {
+        Split::Narrowed(arena.alloc(Type::Pair(Pair::new(first, rest))))
+    } else {
+        Split::Unchanged
+    }
 }
 
 fn repackage(arena: &mut Arena<Type>, builtins: &BuiltinTypes, variants: Vec<Variant>) -> TypeId {

@@ -3957,3 +3957,142 @@ mod substitution {
         assert_eq!(db.cmp(expected, list_int), Comparison::Assign);
     }
 }
+
+mod subtraction {
+    use super::*;
+
+    fn sub(db: &mut Db, lhs: TypeId, rhs: TypeId) -> String {
+        let result = subtract(&mut db.arena, &db.builtins, lhs, rhs);
+        db.name(result)
+    }
+
+    fn literals(db: &mut Db) -> [TypeId; 3] {
+        [1, 2, 3].map(|value| db.literal(AtomSemantic::Int, &[value]))
+    }
+
+    #[test]
+    fn splits_first() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let lhs = db.pair(either, int);
+        let rhs = db.pair(one, int);
+
+        assert_eq!(sub(&mut db, lhs, rhs), "(2, Int)");
+    }
+
+    #[test]
+    fn splits_rest() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let lhs = db.pair(int, either);
+        let rhs = db.pair(int, one);
+
+        assert_eq!(sub(&mut db, lhs, rhs), "(Int, 2)");
+    }
+
+    #[test]
+    fn splits_nested_pairs() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let inner = db.pair(either, nil);
+        let lhs = db.pair(int, inner);
+        let inner = db.pair(one, nil);
+        let rhs = db.pair(int, inner);
+
+        assert_eq!(sub(&mut db, lhs, rhs), "(Int, (2, nil))");
+    }
+
+    #[test]
+    fn removes_pair_once_every_part_is_covered() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let [one, two, three] = literals(&mut db);
+        let all = db.union(&[one, two, three]);
+        let lhs = db.pair(all, int);
+        let first = db.pair(one, int);
+        let second = db.pair(two, int);
+        let both = db.union(&[first, second]);
+        let third = db.pair(three, int);
+        let every = db.union(&[first, second, third]);
+
+        assert_eq!(sub(&mut db, lhs, both), "(3, Int)");
+        assert_eq!(sub(&mut db, lhs, every), "Never");
+    }
+
+    #[test]
+    fn keeps_pair_when_both_parts_differ() {
+        let mut db = Db::new();
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let lhs = db.pair(either, either);
+        let rhs = db.pair(one, one);
+
+        assert_eq!(sub(&mut db, lhs, rhs), "(1 | 2, 1 | 2)");
+    }
+
+    #[test]
+    fn splits_list() {
+        let mut db = Db::new();
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let list = db.list(either);
+        let rhs = db.pair(one, list);
+        let nil = db.builtins.nil;
+        let pair = db.pair(two, list);
+        let expected = db.union(&[nil, pair]);
+
+        // The alias keeps its name, so the narrowing is only visible by comparing the result
+        let result = subtract(&mut db.arena, &db.builtins, list, rhs);
+        assert_eq!(db.cmp(result, expected), Comparison::Assign);
+        assert_eq!(db.cmp(list, result), Comparison::Invalid);
+    }
+
+    #[test]
+    fn narrows_struct() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let inner = db.pair(either, int);
+        let lhs = db.strukt("S", inner);
+        let narrow = db.pair(two, int);
+        let rhs = db.pair(one, int);
+
+        let result = subtract(&mut db.arena, &db.builtins, lhs, rhs);
+        let Type::Struct(ty) = db.arena[result].clone() else {
+            panic!("expected a struct");
+        };
+        assert!(ty.narrowed);
+        assert_eq!(db.cmp(ty.inner, narrow), Comparison::Assign);
+        assert_eq!(db.cmp(result, lhs), Comparison::Assign);
+        assert_eq!(db.cmp(lhs, result), Comparison::Invalid);
+    }
+
+    #[test]
+    fn recursive_parts_terminate() {
+        let mut db = Db::new();
+        let [one, two, _] = literals(&mut db);
+
+        // type L = 2 | (1, L)
+        let l = db.declare_alias("L", &[]);
+        let pair = db.pair(one, l);
+        let inner = db.union(&[two, pair]);
+        db.define(l, inner);
+
+        // type R = 1 | (1, R)
+        let r = db.declare_alias("R", &[]);
+        let pair = db.pair(one, r);
+        let inner = db.union(&[one, pair]);
+        db.define(r, inner);
+
+        // The rest of `(1, L)` leads back to `L - R`, so the pair is kept whole
+        let result = subtract(&mut db.arena, &db.builtins, l, r);
+        assert_eq!(db.cmp(l, result), Comparison::Assign);
+    }
+}

@@ -1,0 +1,16 @@
+struct A {
+    kind: 1,
+}
+
+struct B {
+    kind: 2,
+}
+
+// When both parts differ, the remainder isn't a single pair, so the pair is kept whole
+test fn both_parts_differ(value: (A | B, A | B)) -> (B, B) {
+    if value is (A, A) {
+        return (B { kind: 2 }, B { kind: 2 });
+    }
+
+    value
+}

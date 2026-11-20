@@ -21,7 +21,7 @@ diagnostics:
 - "Cannot assign `Pair { left: nil, right: (Int, Int) | nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:45:16"
 - "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:48:16"
 - Unused function `correlated` at struct_display_errors.rue:54:4
-- Cannot assign `Pair` to `Bytes32`, since they are incompatible at struct_display_errors.rue:54:35
+- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:54:35"
 - "Cannot assign `Pair { left: nil, right: (Int, Int) | nil } | Pair { left: (Int, Int) | nil, right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:56:16"
 - Unused function `spread` at struct_display_errors.rue:62:4
 - "Cannot assign `Wrapper { ...value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:62:34"

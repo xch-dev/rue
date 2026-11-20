@@ -336,6 +336,21 @@ fn test_growth_subtract() {
 }
 
 #[test]
+fn test_growth_subtract_split() {
+    // Each pair is split by the part that differs from the target (#502)
+    assert_linear(|t, ints, ints_copy, _| {
+        let nil = t.builtins.nil;
+        let ints_or_nil = t.union(vec![ints, nil]);
+        let lhs = t.pair(ints_or_nil, ints);
+        let rhs = t.pair(ints_copy, ints_copy);
+        subtract(&mut t.arena, &t.builtins, lhs, rhs);
+        let lhs = t.pair(ints, ints_or_nil);
+        let rhs = t.pair(ints_copy, nil);
+        subtract(&mut t.arena, &t.builtins, lhs, rhs);
+    });
+}
+
+#[test]
 fn test_growth_intersect() {
     assert_linear(|t, ints, _, bytes32| {
         let nil = t.builtins.nil;
