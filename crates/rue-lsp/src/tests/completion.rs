@@ -1276,3 +1276,50 @@ fn main(shape: Shape::$0) -> Int {
         "#]],
     );
 }
+
+/// Which of the names are offered at the cursor, and which of `Int` (a type) and `sha256` (a
+/// value) are, which shows whether types or values are completed there.
+fn offered(source: &str, names: &[&str]) -> String {
+    let project = TestProject::new(&[("main.rue", source)]);
+    let completions = project.completions();
+
+    names
+        .iter()
+        .chain(&["Int", "sha256"])
+        .filter(|name| {
+            completions
+                .lines()
+                .any(|line| line.split_whitespace().next() == Some(**name))
+        })
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The item of a `for` is in scope in the filter and the body, and the result of its fold only in
+/// the body. Neither is in scope in the list or in the fold's value, and the fold's type is a
+/// type.
+#[test]
+fn test_complete_in_for() {
+    let names = ["item", "total", "items"];
+
+    let list = "fn main(items: List<Int>) -> Int { for item in $0 fold total = 0 { total } }";
+    assert_eq!(offered(list, &names), "items sha256");
+
+    let filter =
+        "fn main(items: List<Int>) -> Int { for item in items if $0 fold total = 0 { total } }";
+    assert_eq!(offered(filter, &names), "item items sha256");
+
+    let ty = "fn main(items: List<Int>) -> Int { for item in items fold total: $0 = 0 { total } }";
+    assert_eq!(offered(ty, &names), "Int");
+
+    let value = "fn main(items: List<Int>) -> Int { for item in items fold total = $0 { total } }";
+    assert_eq!(offered(value, &names), "items sha256");
+
+    let body = "fn main(items: List<Int>) -> Int { for item in items fold total = 0 { $0 } }";
+    assert_eq!(offered(body, &names), "item total items sha256");
+
+    let after =
+        "fn main(items: List<Int>) -> Int { for item in items fold total = 0 { total } + $0 }";
+    assert_eq!(offered(after, &names), "items sha256");
+}

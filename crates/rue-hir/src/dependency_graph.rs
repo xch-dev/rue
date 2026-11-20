@@ -301,23 +301,38 @@ impl DependencyGraph {
                 continue;
             }
 
-            for &dependency in dependencies {
-                // Only values are evaluated where they're substituted
-                if !matches!(
-                    db.symbol(dependency),
-                    Symbol::Binding(_) | Symbol::Parameter(_) | Symbol::Constant(_)
-                ) {
+            // What an `inline` binding or constant refers to is evaluated wherever it's
+            // referred to, so it's referred to there too
+            let mut pending: Vec<SymbolId> = dependencies.iter().copied().collect();
+            let mut seen = HashSet::new();
+
+            while let Some(dependency) = pending.pop() {
+                if !seen.insert(dependency) {
                     continue;
                 }
+
+                // Only values are evaluated where they're substituted
+                let inline = match db.symbol(dependency) {
+                    Symbol::Binding(binding) => binding.inline,
+                    Symbol::Constant(constant) => constant.inline,
+                    Symbol::Parameter(_) => false,
+                    _ => continue,
+                };
 
                 let in_loop = self
                     .owners(dependency)
                     .any(|owner| self.loops.contains(&owner));
 
-                if functions.iter().any(|&function| {
+                if !functions.iter().any(|&function| {
                     !self.is_defined_in(dependency, function)
                         && (in_loop || self.loops.contains(&function))
                 }) {
+                    continue;
+                }
+
+                if inline {
+                    pending.extend(self.dependencies.get(&dependency).into_iter().flatten());
+                } else {
                     captures.insert(dependency);
                 }
             }

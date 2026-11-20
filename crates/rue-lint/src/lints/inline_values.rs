@@ -57,13 +57,7 @@ impl HirLintPass for InlineValueMayFail<'_> {
 
         // The result of a `for` expression's fold for the rest of the list is only evaluated
         // where the body refers to it, which is what a fold is, rather than an `inline let`
-        if let Hir::FunctionCall(call) = cx.db().hir(binding.value.hir)
-            && let Hir::Reference(function) = cx.db().hir(call.function)
-            && matches!(
-                cx.db().symbol(*function),
-                Symbol::Function(function) if function.kind == FunctionKind::Loop
-            )
-        {
+        if cx.db().is_loop_rest_call(binding.value.hir) {
             return;
         }
 

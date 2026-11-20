@@ -12,8 +12,9 @@ diagnostics:
 - Cannot use builtin `sum` as a value, it can only be called directly at for_errors.rue:26:56
 - Undeclared symbol `x` at for_errors.rue:29:36
 - Cannot destructure type `Never` into a pair at for_errors.rue:32:17
-- Cannot assign `List<Int>` to `Int` without a type guard, since the value isn't always a valid `Int` at for_errors.rue:35:18
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:37:5
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:37:41
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:37:57
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:37:85
+- Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:35:50
+- Cannot assign `List<Int>` to `Int` without a type guard, since the value isn't always a valid `Int` at for_errors.rue:38:18
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:40:5
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:40:41
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:40:57
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:40:85

@@ -7,7 +7,7 @@ use rue_hir::{
 };
 use rue_types::{FunctionParameter, FunctionType, Pair, Type, TypeId};
 
-use super::call_inference::{list_of, pair_parts};
+use super::call_inference::{list_of, pair_parts, references_call_generics};
 use super::list::{list_item_types, union_of};
 use crate::{BlockKind, Compiler, compile_block, compile_expr, compile_type, create_binding};
 
@@ -40,8 +40,8 @@ enum ForKind {
 ///   it's evaluated once, before the body.
 /// - With a filter, such as `if x > 0`, the items that don't pass it are left out of the list, or
 ///   skipped by the fold.
-/// - If the body has no value, or the expression is a statement, whose value isn't used, the body
-///   is only evaluated for each item, and the result is nil.
+/// - If the body has no value, or its value is nil, or the expression is a statement, whose value
+///   isn't used, the body is only evaluated for each item, and the result is nil.
 pub fn compile_for_expr(
     ctx: &mut Compiler,
     expr: &AstForExpr,
@@ -74,14 +74,6 @@ pub fn compile_for_expr(
         .body()
         .is_some_and(|body| matches!(body.items().last(), Some(AstStmtOrExpr::Expr(_))));
 
-    let kind = if fold.is_some() {
-        ForKind::Fold
-    } else if statement || !has_value {
-        ForKind::Loop
-    } else {
-        ForKind::List
-    };
-
     // The fold's value is compiled outside of the body, since it's the result without an item. Its
     // binding is the type it's annotated with. Otherwise it's the type of the value, with literals
     // as the types they're values of, such as `Int` for `0`, since the body gives the next result.
@@ -104,9 +96,13 @@ pub fn compile_for_expr(
         };
 
         let ty = annotation.unwrap_or_else(|| match expected_type {
+            // Not a type that's only a hint, or that still has the generics of a call being
+            // inferred, which the fold can't be
             Some(expected)
                 if ctx.is_assignable(init.ty, types.nil)
-                    && ctx.is_assignable(init.ty, expected) =>
+                    && ctx.is_assignable(init.ty, expected)
+                    && !ctx.is_expected_type_hint()
+                    && !references_call_generics(ctx, expected) =>
             {
                 expected
             }
@@ -177,6 +173,14 @@ pub fn compile_for_expr(
         .body()
         .map_or(range.end(), |body| body.syntax().text_range().start());
 
+    // The item isn't in scope in the fold's value, which is between the filter and the body, so
+    // its scope ends before that. The scopes of the fold and the body are inside of it
+    let item_end = fold
+        .as_ref()
+        .map_or(body_start, |fold| fold.syntax().text_range().start());
+    ctx.pop_scope(item_end);
+    ctx.push_scope(scope, body_start);
+
     let accumulator = accumulator.map(|(init, ty)| {
         let pattern = fold.as_ref().and_then(rue_ast::AstForFold::binding);
 
@@ -200,12 +204,14 @@ pub fn compile_for_expr(
         )
     });
 
-    let expected_body = match kind {
-        ForKind::List => expected_type
+    let expected_body = if let Some(&(_, _, ty, _)) = accumulator.as_ref() {
+        Some(ty)
+    } else if statement || !has_value {
+        None
+    } else {
+        expected_type
             .and_then(|ty| pair_parts(ctx, ty))
-            .map(|(first, _)| first),
-        ForKind::Fold => accumulator.as_ref().map(|&(_, _, ty, _)| ty),
-        ForKind::Loop => None,
+            .map(|(first, _)| first)
     };
 
     let body = if let Some(body) = expr.body() {
@@ -242,6 +248,16 @@ pub fn compile_for_expr(
     }
 
     ctx.pop_scope(range.end());
+
+    // A body whose value is nil has nothing to make a list of, as with a call to a function that
+    // returns nothing, or another loop, so it's a loop too
+    let kind = if fold.is_some() {
+        ForKind::Fold
+    } else if statement || !has_value || ctx.is_assignable(body.ty, types.nil) {
+        ForKind::Loop
+    } else {
+        ForKind::List
+    };
 
     // What the function does with an item: the body, and the call for the rest of the list
     let step = match kind {
@@ -359,10 +375,13 @@ fn declare(
 
 /// Whether the binding for the result of the rest of the list is evaluated where the body refers
 /// to it, rather than once before the body. That's only if the body refers to it in one place,
-/// which is evaluated at most once for the item: not in a lambda or another `for`, which can be
-/// evaluated any number of times, in the value of an `inline let`, which is evaluated wherever
-/// that's referred to, or in a type guard that uses its value more than once. Otherwise each of
-/// those would go through the rest of the list again, for every item.
+/// which is evaluated at most once for the item. So it's not in a lambda or another `for`, which
+/// can be evaluated any number of times, nor in a type guard that uses its value more than once.
+/// It's not in the value of a `let` or an argument of a call either, since a function that's
+/// inlined evaluates its argument wherever it refers to its parameter, and a `let` can be
+/// substituted into one. Otherwise each of those would go through the rest of the list again, for
+/// every item. A binding that isn't evaluated there is never substituted (see
+/// `Database::is_loop_rest_call`).
 fn is_lazy(ctx: &Compiler, symbol: SymbolId, body: HirId, first_hir: HirId) -> bool {
     let references = ctx
         .hirs_between(first_hir, ctx.next_hir_id())
@@ -386,13 +405,10 @@ fn direct_uses(ctx: &Compiler, symbol: SymbolId, hir: HirId, uses: usize) -> usi
                 .statements
                 .iter()
                 .map(|statement| match statement {
+                    // The value is evaluated wherever the binding is substituted
                     Statement::Let(binding, _) => match ctx.symbol(*binding) {
-                        // The value is evaluated wherever the binding is referred to
-                        Symbol::Binding(binding) if binding.inline => {
-                            direct_uses(ctx, symbol, binding.value.hir, uses * 2)
-                        }
                         Symbol::Binding(binding) => {
-                            direct_uses(ctx, symbol, binding.value.hir, uses)
+                            direct_uses(ctx, symbol, binding.value.hir, uses * 2)
                         }
                         _ => 0,
                     },
@@ -407,6 +423,15 @@ fn direct_uses(ctx: &Compiler, symbol: SymbolId, hir: HirId, uses: usize) -> usi
                 + block
                     .body
                     .map_or(0, |body| direct_uses(ctx, symbol, body, uses))
+        }
+        // An argument is evaluated wherever a function that's inlined refers to its parameter
+        Hir::FunctionCall(call) => {
+            direct_uses(ctx, symbol, call.function, uses)
+                + call
+                    .args
+                    .iter()
+                    .map(|&arg| direct_uses(ctx, symbol, arg, uses * 2))
+                    .sum::<usize>()
         }
         node => node
             .children()

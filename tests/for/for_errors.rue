@@ -31,8 +31,19 @@ fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
     // A list with no items has nothing to destructure
     let k = for (a, b) in nil { a + b };
 
+    // A fold from nil in a generic call's argument doesn't take the call's generic as its type
+    let l = first_or(for x in xs fold rest = nil { [x, ...rest] }, 0);
+
     // A list of the body's values isn't an `Int`
     let i: Int = for x in xs { x };
 
-    length(a) + length(b) + length(c) + length(d) + e + length(f) + g + h + i + j + length(k)
+    length(a) + length(b) + length(c) + length(d) + e + length(f) + g + h + i + j + length(k) + l
+}
+
+fn first_or<T>(list: List<T>, default: T) -> T {
+    if list is (T, List<T>) {
+        list.first
+    } else {
+        default
+    }
 }

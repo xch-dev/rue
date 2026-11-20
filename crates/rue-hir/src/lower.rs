@@ -1976,6 +1976,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
+                // The result of a fold for the rest of the list is evaluated once
+                if self.db.is_loop_rest_call(binding.value.hir) {
+                    return false;
+                }
+
                 // A value that a loop refers to from outside of it is only substituted there if
                 // it's a literal, since anything else would be evaluated again for each item.
                 // This can't depend on the arguments of the calls being inlined, since the loop

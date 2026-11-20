@@ -14,6 +14,11 @@ fn increment(x: Int) -> Int {
     x + 1
 }
 
+fn positive(x: Int) -> Int {
+    assert x > 0;
+    x
+}
+
 fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
     // Values in the body that aren't used, and branches that are the same
     let a = for y in xs {
@@ -58,6 +63,16 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
     // though it may fail and isn't always evaluated
     let h = for y in xs fold found = false { y == 1 || increment(y) == 5 || found };
 
+    // An `inline let` whose value is a `for` that may fail is still one
+    inline let i = for y in xs fold sum = 0 { sum + positive(y) };
+
+    // A loop in a loop has no value, so nothing is unused
+    for y in xs {
+        for z in xs {
+            assert y + z > 0;
+        }
+    }
+
     [
         ...a,
         ...b,
@@ -68,6 +83,11 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
         g,
         if h {
             1
+        } else {
+            0
+        },
+        if flag {
+            i
         } else {
             0
         },

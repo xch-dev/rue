@@ -6,7 +6,8 @@ use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{
-    Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value,
+    FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol,
+    SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -117,6 +118,38 @@ impl Database {
     }
 
     /// The value inside of any casts, which is what's evaluated at runtime.
+    /// Whether the node is the call of a loop to itself with the rest of its list (see
+    /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
+    /// list. A binding for it is either `inline`, and evaluated where the body refers to it, or
+    /// evaluated once before the body. It's never substituted like other bindings that are only
+    /// referred to once, since something that evaluates it more than once, such as a function
+    /// that's inlined, would go through the rest of the list again for every item.
+    pub fn is_loop_rest_call(&self, hir: HirId) -> bool {
+        let Hir::FunctionCall(call) = self.hir(hir) else {
+            return false;
+        };
+
+        let Hir::Reference(function) = self.hir(call.function) else {
+            return false;
+        };
+
+        let Symbol::Function(function) = self.symbol(*function) else {
+            return false;
+        };
+
+        function.kind == FunctionKind::Loop
+            && matches!(
+                call.args.as_slice(),
+                [arg] if matches!(
+                    self.hir(*arg),
+                    Hir::Unary(UnaryOp::Rest, list) if matches!(
+                        self.hir(*list),
+                        Hir::Reference(parameter) if function.parameters.first() == Some(parameter)
+                    )
+                )
+            )
+    }
+
     pub fn without_casts(&self, mut hir: HirId) -> HirId {
         while let Hir::Cast(value) = self.hir(hir) {
             hir = *value;

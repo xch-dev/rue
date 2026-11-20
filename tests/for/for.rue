@@ -389,3 +389,73 @@ test fn attributes() -> Int {
     }
     5
 }
+
+// The result for the rest of the list is evaluated once where it's an argument of a call, or the
+// value of a `let`, since a function that's inlined evaluates its argument wherever it refers to
+// its parameter
+inline fn larger(a: Int, b: Int) -> Int {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+test fn fold_as_an_inline_argument() -> Int {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold max = 0 { larger(x, max) }
+}
+
+inline fn twice(a: Int) -> Int {
+    a + a
+}
+
+test fn fold_in_a_let_passed_to_an_inline_function() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold total = 1 {
+        let next = total + x;
+        twice(next) / 2
+    }
+}
+
+// A body whose value is nil makes a loop, such as a call to a function that returns nothing, or
+// another loop, so a function that returns nothing can end with one
+fn check(x: Int) {
+    assert x > 0;
+}
+
+fn check_each(xs: List<Int>) {
+    for x in xs { check(x) }
+}
+
+fn check_nested(lists: List<List<Int>>) {
+    for xs in lists {
+        for x in xs {
+            assert x > 0;
+        }
+    }
+}
+
+test fn body_with_a_nil_value() -> Int {
+    check_each(runtime([1, 2]));
+    check_each(runtime([3]));
+    check_nested(runtime([[1], [2, 3]]));
+    check_nested(runtime([[4]]));
+    5
+}
+
+// A value that an `inline let` outside of the body refers to is captured too
+test fn captured_through_an_inline_let() -> List<Int> {
+    let ys = runtime([1, 2, 3]);
+    let total = for y in ys fold sum = 0 { sum + y };
+    inline let next = total + 1;
+    for x in runtime([1, 2]) { x * next }
+}
+
+// The list and the filter refer to the names outside of the `for`, which the item and the result
+// of the fold shadow in the body
+test fn shadowed_names() -> Int {
+    let x = runtime([1, 2, 3]);
+    let total = length(x) > 2;
+    for x in x if total fold total = 0 { total + x }
+}
