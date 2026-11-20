@@ -212,6 +212,28 @@ mod tests {
     }
 
     #[test]
+    fn test_unresolved_in_assert_message() {
+        let mut db = Database::new();
+        let one = db.alloc_hir(Hir::Int(1.into()));
+        let unresolved = db.alloc_hir(Hir::Unresolved);
+
+        // The message of an `assert` is lowered with debug symbols
+        let block = db.alloc_hir(Hir::Block(Block {
+            statements: vec![Statement::Assert(one, Some(unresolved), srcloc())],
+            body: Some(one),
+        }));
+        let symbol = binding(&mut db, block);
+        assert!(has_reachable_unresolved(&db, symbol));
+
+        let block = db.alloc_hir(Hir::Block(Block {
+            statements: vec![Statement::Assert(one, None, srcloc())],
+            body: Some(one),
+        }));
+        let symbol = binding(&mut db, block);
+        assert!(!has_reachable_unresolved(&db, symbol));
+    }
+
+    #[test]
     fn test_unreachable_after_raise() {
         let mut db = Database::new();
         let one = db.alloc_hir(Hir::Int(1.into()));

@@ -2,3 +2,5 @@ diagnostics:
 - Expected expression, found `;` at assert_message.rue:3:19
 - Expected `;`, found `,` at assert_message.rue:10:26
 - Expected one of `,`, `;`, found string literal at assert_message.rue:16:18
+- Expected expression, found `,` at assert_message.rue:23:12
+- Cannot assign `"text"` to `Int` without a cast, since they are semantically different at assert_message.rue:23:16

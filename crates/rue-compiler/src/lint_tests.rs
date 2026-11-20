@@ -2981,6 +2981,16 @@ fn main(value: Int | nil, other: Int) -> Int {
         raise \"three\";
     }
 
+    if value == 4 {
+        // Four isn't allowed
+        raise;
+    }
+
+    if value == 5 {
+        #[allow(unused_binding)]
+        raise;
+    }
+
     value
 }
 
@@ -3023,6 +3033,16 @@ fn main(value: Int | nil, other: Int) -> Int {
         raise \"three\";
     }
 
+    if value == 4 {
+        // Four isn't allowed
+        raise;
+    }
+
+    if value == 5 {
+        #[allow(unused_binding)]
+        raise;
+    }
+
     value
 }
 
@@ -3037,7 +3057,7 @@ fn none(value: nil) -> nil {
 
     assert_eq!(
         reports,
-        [16, 21, 25].map(|line| format!(
+        [16, 21, 25, 30, 35].map(|line| format!(
             "Warning {line}: This `if` statement only raises, so it can be written as an `assert`"
         ))
     );

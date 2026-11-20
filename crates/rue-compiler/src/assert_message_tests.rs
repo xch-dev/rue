@@ -109,9 +109,10 @@ fn release_program_is_the_same_with_and_without_a_message() {
 /// fail, in which case it's evaluated at its statement in both builds, as it is without a message.
 #[test]
 fn release_program_is_the_same_with_a_binding_only_used_in_the_message() {
-    for binding in ["let sum = a + b;", "let quotient = a / b;"] {
-        let name = binding.split(' ').nth(1).unwrap();
-
+    for (binding, name) in [
+        ("let sum = a + b;", "sum"),
+        ("let quotient = a / b;", "quotient"),
+    ] {
         assert_eq!(
             program(&source(binding, name), false),
             program(&source(binding, ""), false),
@@ -325,6 +326,7 @@ fn message_must_be_an_expression() {
         ("assert a > 0, \"a\", \"b\";", "UnexpectedToken(\"`,`\""),
         ("assert a > 0 \"a\";", "UnexpectedToken(\"string literal\""),
         ("assert a > 0, missing;", "UndeclaredSymbol(\"missing\")"),
+        ("assert , missing;", "UndeclaredSymbol(\"missing\")"),
     ] {
         let compiled = compile(&format!(
             "fn main(a: Int) -> Int {{\n    {source}\n    a\n}}\n"
@@ -332,6 +334,11 @@ fn message_must_be_an_expression() {
         let errors = compiled.errors();
         assert!(
             errors.iter().any(|message| message.contains(error)),
+            "{source}: {errors:?}"
+        );
+        // The message is never mistaken for the condition, which must be a `Bool`
+        assert!(
+            !errors.iter().any(|message| message.contains("Bool")),
             "{source}: {errors:?}"
         );
     }

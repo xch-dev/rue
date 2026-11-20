@@ -17,6 +17,13 @@ test fn missing_comma() -> Int {
     a
 }
 
+// The message isn't the condition
+test fn missing_condition() -> Int {
+    let a = 1;
+    assert , a + "text";
+    a
+}
+
 test fn still_works() -> Int {
     let a = 1;
     assert a > 0, "message";

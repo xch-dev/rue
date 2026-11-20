@@ -456,7 +456,7 @@ impl<'a, 'c> Uses<'a, 'c> {
             let Statement::Let(symbol, _) = *statement else {
                 // Debug statements, and the messages of `raise` and `assert`, aren't lowered in
                 // release builds
-                for hir in statement.release_hirs() {
+                for hir in statement.lowered_hirs(false) {
                     self.hir(hir);
                 }
 
