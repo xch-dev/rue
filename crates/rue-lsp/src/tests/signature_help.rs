@@ -490,6 +490,18 @@ fn test_signature_of_struct_initializer() {
         "#]],
         ),
         (
+            "Point { y: 1$0, x: 2 }",
+            expect![[r#"
+            > Point { x: Int, [y: Int] }
+        "#]],
+        ),
+        (
+            "Point { x: 2, y: 1$0}",
+            expect![[r#"
+            > Point { x: Int, [y: Int] }
+        "#]],
+        ),
+        (
             "Point { x, y$0 }",
             expect![[r#"
             > Point { x: Int, [y: Int] }
@@ -787,6 +799,35 @@ fn test_signature_of_struct_initializer_with_comment() {
         &format!("{POINT}fn main() -> Point {{\n    Point /* here */ {{ x: 1, $0 }}\n}}\n"),
         expect![[r#"
             > Point { x: Int, [y: Int] }
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_of_generic_struct_with_resolved_first_field() {
+    // Every field is looked at to tell whether the generic arguments are missing
+    check(
+        "struct Flags<T> {\n    on: Int,\n    value: T,\n}\n\nfn main() -> Int {\n    let flags = Flags { on: 1, $0 };\n    1\n}\n",
+        expect![[r#"
+            > Flags { on: Int, [value: T] }
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_of_struct_with_large_union() {
+    // The types of a struct's fields are cut short like a function's parameters are
+    let members = (1..=100)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    check(
+        &format!(
+            "struct Big {{\n    value: {members},\n    other: Int,\n}}\n\nfn main() -> Big {{\n    Big {{ $0 }}\n}}\n"
+        ),
+        expect![[r#"
+            > Big { [value: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 | 58 | 59 | 60 | 61 | 62 | 63 | ...], other: Int }
         "#]],
     );
 }

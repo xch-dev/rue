@@ -496,6 +496,7 @@ mod tests {
 
         let same = arena.alloc(Type::Union(Union::new(vec![int; 100])));
         assert_eq!(bounded(&mut arena, same, 3), "Int");
+        assert_eq!(bounded(&mut arena, same, 2), "Int");
 
         // A union with far more members than there's budget for isn't walked to the end
         let mut doubled = union;
