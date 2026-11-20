@@ -13,7 +13,7 @@ pub enum Error {
     Io(#[from] io::Error),
 
     /// The manifest at the given path couldn't be parsed.
-    #[error("TOML error: {error}")]
+    #[error("TOML error in {}: {error}", path.display())]
     Toml {
         path: PathBuf,
         error: toml::de::Error,
@@ -70,6 +70,10 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
 
         if let Some(false) = manifest.compiler.std {
             options.std = false;
+        }
+
+        if let Some(operand_limits) = manifest.compiler.operand_limits {
+            options.operand_limits = operand_limits;
         }
 
         let problems = manifest.apply_lints(&mut options.lints);
@@ -268,6 +272,25 @@ mod tests {
         // Enabling it explicitly is the same as leaving it out
         dir.write("Rue.toml", "[compiler]\nstd = true\n");
         assert!(find(&dir.0, false).options.std);
+    }
+
+    #[test]
+    fn manifest_sets_operand_limits() {
+        let dir = TempDir::new();
+        dir.write("Rue.toml", "[compiler]\n");
+
+        for debug in [false, true] {
+            assert!(!find(&dir.0, debug).options.operand_limits);
+        }
+
+        dir.write("Rue.toml", "[compiler]\noperand_limits = true\n");
+
+        for debug in [false, true] {
+            assert!(find(&dir.0, debug).options.operand_limits);
+        }
+
+        dir.write("Rue.toml", "[compiler]\noperand_limits = false\n");
+        assert!(!find(&dir.0, false).options.operand_limits);
     }
 
     #[test]

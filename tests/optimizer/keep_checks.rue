@@ -1601,8 +1601,10 @@ test fn unused_bindings_are_evaluated_like_used_bindings(x: Int) -> Int {
     x
 }
 
-// Mainnet's `LIMITS` rejects a dividend longer than 256 bytes, so a division of a value that isn't
-// known at compile time may fail, and can't be moved into a branch
+// Without `operand_limits`, operands of any length are allowed, so dividing by a nonzero constant
+// can't fail, and the division can be moved into a branch, even for a dividend longer than the 256
+// bytes that `LIMITS` allows. `tests/operand_limits/keep_checks.rue` has these tests compiled with
+// `operand_limits`, where they're kept.
 test fn conditional_division(x: Int, flag: Bool) -> Int {
     let q = x / 2;
     if flag {
@@ -1612,7 +1614,7 @@ test fn conditional_division(x: Int, flag: Bool) -> Int {
     }
 }
 
-// The same applies to the remainder, and to `divmod` when it's unused
+// The same applies to the remainder, and to `divmod`, which are dropped when they're unused
 test fn unused_remainder(x: Int) -> Int {
     let _r = x % 7;
     1
@@ -1623,7 +1625,7 @@ test fn unused_divmod(x: Int) -> Int {
     1
 }
 
-// `LIMITS` also rejects an operand of a product that's longer than 256 bytes
+// A product can't fail either
 test fn conditional_product(x: Int, flag: Bool) -> Int {
     let p = x * 3;
     if flag {
@@ -1633,13 +1635,12 @@ test fn conditional_product(x: Int, flag: Bool) -> Int {
     }
 }
 
-// The inner product is an operand of the outer one, so it's checked too, and the products can't
-// be flattened into `x * 15`
+// Nested products are flattened into `x * 15`
 test fn nested_product(x: Int) -> Int {
     x * 3 * 5
 }
 
-// A constant that's too long isn't folded, so it still fails at runtime
+// Constants are folded whatever their length
 test fn long_constant_division(flag: Bool) -> Int {
     if flag {
         0x010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101 as Int
@@ -1656,4 +1657,27 @@ test fn long_constant_product(flag: Bool) -> Int {
     } else {
         0
     }
+}
+
+// The `product` builtin can't fail either, so it's moved into the branch
+test fn conditional_builtin_product(x: Int, flag: Bool) -> Int {
+    let p = product([x, 3]);
+    if flag {
+        p
+    } else {
+        0
+    }
+}
+
+// Short constants are folded into one, even if it's longer than `LIMITS` allows, so the release
+// build fails under `LIMITS` where the debug build doesn't (see
+// `tests/operand_limits/keep_checks.rue`)
+test fn folded_constants_can_exceed_limits(x: Int) -> Int {
+    x
+        * (
+            0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 as Int
+        )
+        * (
+            0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 as Int
+        )
 }

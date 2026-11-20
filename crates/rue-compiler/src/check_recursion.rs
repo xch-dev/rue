@@ -108,7 +108,7 @@ impl Components<'_> {
 fn cyclic_declarations(ctx: &Compiler, roots: &[Declaration]) -> HashSet<Declaration> {
     let mut components = Components {
         ctx,
-        failures: FailureAnalysis::new(),
+        failures: FailureAnalysis::new(ctx.options().operand_limits),
         indices: HashMap::new(),
         low: Vec::new(),
         on_stack: Vec::new(),

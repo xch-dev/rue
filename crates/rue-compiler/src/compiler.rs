@@ -974,6 +974,7 @@ impl Compiler {
             documents,
             entrypoints,
             self.has_errors(),
+            self.options.operand_limits,
         );
 
         let diagnostics = rue_lint::run_lints(

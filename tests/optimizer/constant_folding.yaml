@@ -67,13 +67,13 @@ tests:
   byte_cost: 60000
   total_cost: 60020
 - name: mul_ref
-  program: (* (* (q . 10) 2) (q . 30))
+  program: (* 2 (q . 300))
   debug_program: (* (* (q . 10) 2) (q . 30))
   solution: (20)
   output: "6000"
-  runtime_cost: 2114
-  byte_cost: 204000
-  total_cost: 206114
+  runtime_cost: 1084
+  byte_cost: 132000
+  total_cost: 133084
 - name: div_num
   program: (q . 2)
   debug_program: (/ (q . 30) (q . 13))

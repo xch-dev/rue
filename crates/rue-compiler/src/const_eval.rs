@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use clvmr::error::EvalErr;
-use clvmr::{Allocator, ChiaDialect, ClvmFlags, NodePtr, SExp, run_program};
+use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
 use id_arena::Arena;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
     DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol, SymbolId,
     has_reachable_unresolved,
 };
-use rue_lir::{CLVM_FLAGS, CodegenOptions, codegen, optimize};
+use rue_lir::{CodegenOptions, OptimizeOptions, clvm_flags, codegen, optimize};
 use rue_options::CompilerOptions;
 
 use crate::{Compiler, entrypoint::synthetic_function};
@@ -191,6 +191,8 @@ fn const_options(ctx: &Compiler) -> CompilerOptions {
         debug_symbols: false,
         optimize_static_pairs: true,
         const_eval_max_cost: outer_options.const_eval_max_cost,
+        // Const expressions are run without `LIMITS`, since they're never run on chain
+        operand_limits: false,
         lints: outer_options.lints,
     }
 }
@@ -257,7 +259,13 @@ fn evaluate_const_expr(
 
         lir
     };
-    let lir = optimize(&mut arena, lir);
+    let lir = optimize(
+        &mut arena,
+        lir,
+        OptimizeOptions {
+            operand_limits: options.operand_limits,
+        },
+    );
 
     let mut allocator = Allocator::new();
     let program = codegen(
@@ -269,9 +277,7 @@ fn evaluate_const_expr(
         },
     )
     .map_err(|error| ConstEvalError::Failed(error.to_string()))?;
-    // The value is computed at compile time and never on chain, so the operand limits that
-    // `LIMITS` puts on the operators don't apply to it
-    let dialect = ChiaDialect::new(CLVM_FLAGS.difference(ClvmFlags::LIMITS));
+    let dialect = ChiaDialect::new(clvm_flags(options.operand_limits));
 
     let output = run_program(&mut allocator, &dialect, program, NodePtr::NIL, max_cost).map_err(
         |error| match error {

@@ -12,7 +12,7 @@ use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use id_arena::Arena;
 use num_bigint::BigUint;
 use rue_clvm::disassemble_program;
-use rue_lir::{CLVM_FLAGS, CodegenOptions, Lir, LirId, codegen, optimize};
+use rue_lir::{CodegenOptions, Lir, LirId, OptimizeOptions, clvm_flags, codegen, optimize};
 
 struct Rng(u64);
 
@@ -134,7 +134,7 @@ fn gen_value(allocator: &mut Allocator, rng: &mut Rng, depth: u32) -> NodePtr {
 }
 
 fn run(allocator: &mut Allocator, program: NodePtr, env: NodePtr) -> Result<Vec<u8>, String> {
-    let dialect = ChiaDialect::new(CLVM_FLAGS);
+    let dialect = ChiaDialect::new(clvm_flags(false));
     let output = run_program(allocator, &dialect, program, env, 11_000_000_000)
         .map_err(|error| error.to_string())?;
     Ok(node_to_bytes(allocator, output.1).unwrap())
@@ -155,7 +155,7 @@ fn test_optimizer_env_differential() {
     for _ in 0..20_000 {
         let mut arena = Arena::new();
         let lir = gen_lir(&mut arena, &mut rng, 5);
-        let optimized = optimize(&mut arena, lir);
+        let optimized = optimize(&mut arena, lir, OptimizeOptions::default());
 
         let mut allocator = Allocator::new();
 

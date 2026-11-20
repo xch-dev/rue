@@ -87,7 +87,9 @@ mod tests {
     use clvmr::{Allocator, SExp};
 
     use super::*;
-    use crate::{CodegenOptions, codegen, codegen_with_tags, optimize, optimize_with_tags};
+    use crate::{
+        CodegenOptions, OptimizeOptions, codegen, codegen_with_tags, optimize, optimize_with_tags,
+    };
 
     #[test]
     fn codegen_tags_the_pairs_each_node_generates() {
@@ -157,8 +159,8 @@ mod tests {
             labels: HashMap::from([(body, 1)]),
         };
 
-        let plain = optimize(&mut arena, body);
-        let optimized = optimize_with_tags(&mut arena, body, &mut tags);
+        let plain = optimize(&mut arena, body, OptimizeOptions::default());
+        let optimized = optimize_with_tags(&mut arena, body, OptimizeOptions::default(), &mut tags);
 
         // The LIR is the same as without tags
         let mut allocator = Allocator::new();

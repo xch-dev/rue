@@ -18,7 +18,7 @@ use rue_hir::{
     ModuleSymbol, Namespace, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
-use rue_lir::CodegenOptions;
+use rue_lir::{CodegenOptions, OptimizeOptions};
 use rue_parser::Parser;
 use thiserror::Error;
 
@@ -987,10 +987,13 @@ fn codegen(
     let codegen_options = CodegenOptions {
         optimize_static_pairs: options.optimize_static_pairs,
     };
+    let optimize_options = OptimizeOptions {
+        operand_limits: options.operand_limits,
+    };
 
     let Some(mut debug_info) = debug_info else {
         if options.optimize_lir {
-            lir = rue_lir::optimize(&mut arena, lir);
+            lir = rue_lir::optimize(&mut arena, lir, optimize_options);
         }
 
         let ptr = rue_lir::codegen(&arena, allocator, lir, codegen_options)?;
@@ -1003,7 +1006,7 @@ fn codegen(
     let base_path = lowerer.base_path().to_path_buf();
 
     if options.optimize_lir {
-        lir = rue_lir::optimize_with_tags(&mut arena, lir, &mut debug_info.tags);
+        lir = rue_lir::optimize_with_tags(&mut arena, lir, optimize_options, &mut debug_info.tags);
     }
 
     let (ptr, nodes) =
