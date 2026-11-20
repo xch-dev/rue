@@ -1094,10 +1094,13 @@ pub struct ElementLambda {
     reads: IndexSet<TypeId>,
     /// The callee's generics in the return types of the function types it's expected to be.
     returns: IndexSet<TypeId>,
-    /// Whether it has no return type and its body has a call, lambda or type guard in it, so that
-    /// its return type can be what those make of its parameters, which can be a type that no longer
-    /// references the generics they were compiled as, as `identity(x)` and `x is nil` can (see
-    /// `ArgumentOrder::deferred`).
+    /// Whether it has no return type and its body has a call, lambda or type guard in it, or an
+    /// untyped parameter is expected to have a type that has a generic in it without being one, so
+    /// that its return type can be what those make of its parameters, which can be a type that no
+    /// longer references the generics they were compiled as, as `identity(x)`, `x is nil` and
+    /// `p.first` for `p: (T, Int)` can (see `ArgumentOrder::deferred`). A parameter that's the
+    /// generic itself can't be used any other way that loses it: its body either keeps it, as
+    /// `(x, x)` does, or doesn't compile against it, as `x + 1` doesn't.
     narrows: bool,
 }
 
@@ -1721,11 +1724,19 @@ fn element_lambdas(
                 let expected = rue_types::extract_functions(ctx.types_mut(), ty, true);
                 let mut reads = IndexSet::new();
                 let mut returns = IndexSet::new();
+                // Whether an untyped parameter is expected to have a type that has a generic in it
+                // without being one, such as `(T, Int)`, a part of which doesn't reference `T`
+                let mut projected = false;
 
                 for expected in &expected {
                     for &index in &untyped {
                         if let Some(parameter) = expected.params.get(index) {
-                            reads.extend(generics_in(ctx, function, parameter.ty));
+                            let generics = generics_in(ctx, function, parameter.ty);
+                            let semantic =
+                                rue_types::unwrap_semantic(ctx.types_mut(), parameter.ty, true);
+                            projected |=
+                                !generics.is_empty() && !function.generics.contains(&semantic);
+                            reads.extend(generics);
                         }
                     }
 
@@ -1739,13 +1750,14 @@ fn element_lambdas(
                 // `nil` (infer-fuzz generator 1, seeds 1461, 2955 and 6784)
                 let calls = lambda.ty().is_none()
                     && lambda.body().is_some_and(|body| has_call_or_lambda(&body));
-                let narrows = calls
-                    || lambda.ty().is_none()
-                        && lambda.body().is_some_and(|body| {
+                let narrows = lambda.ty().is_none()
+                    && (calls
+                        || projected
+                        || lambda.body().is_some_and(|body| {
                             body.syntax()
                                 .descendants()
                                 .any(|node| AstGuardExpr::cast(node).is_some())
-                        });
+                        }));
 
                 if !reads.is_empty() && !returns.iter().any(|generic| reads.contains(generic)) {
                     let lambda = ElementLambda {

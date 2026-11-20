@@ -482,3 +482,46 @@ test fn element_with_a_guard_narrowed_by_a_hint() -> List<5> {
     ));
     result
 }
+
+fn first_pair<T, U>(functions: (fn(x: (T, Int)) -> U, Int), value: (T, Int)) -> U {
+    functions.first(value)
+}
+
+fn list_pair<T, U>(functions: List<fn(x: (T, Int)) -> U>, value: (T, Int)) -> List<U> {
+    if functions is (fn(x: (T, Int)) -> U, List<fn(x: (T, Int)) -> U>) {
+        [functions.first(value), ...list_pair(functions.rest, value)]
+    } else {
+        nil
+    }
+}
+
+// Guard: the same with a parameter that's expected to have a type with `T` in it without being
+// `T`, a part of which doesn't reference `T`, through a field, a struct's field or destructuring
+test fn element_with_a_part_narrowed_by_the_expected_type() -> (5, (List<5>, 5)) {
+    let field: 5 = first_pair((fn(p) => p.first, 1), (5, 6));
+    let list: List<5> = list_pair([fn(p) => p.first], (5, 6));
+    let destructured: 5 = first_pair(
+        (
+            fn(p) => {
+                let (a, _b) = p;
+                a
+            },
+            1,
+        ),
+        (5, 6),
+    );
+    (field, (list, destructured))
+}
+
+fn apply_box<T, U>(functions: (fn(x: Box<T>) -> U, Int), value: Box<T>) -> U {
+    functions.first(value)
+}
+
+struct Box<T> {
+    inner: T,
+}
+
+test fn element_with_a_struct_field_narrowed_by_the_expected_type() -> 5 {
+    let result: 5 = apply_box((fn(b) => b.inner, 1), Box::<5> { inner: 5 });
+    result
+}
