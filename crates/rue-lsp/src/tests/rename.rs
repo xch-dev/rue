@@ -1800,3 +1800,37 @@ fn test_rename_in_assert_message() {
         "#]],
     );
 }
+
+#[test]
+fn test_rename_in_index_and_slice() {
+    // A name that's indexed or sliced, or is a bound of one, is renamed like any other
+    check(
+        &[(
+            "main.rue",
+            "fn main(bytes: Bytes, start: Int) -> Bytes {\n    let first = bytes[sta$0rt];\n    bytes[start..] + bytes[..start] + first\n}\n",
+        )],
+        "offset",
+        expect![[r#"
+            main.rue:
+            fn main(bytes: Bytes, offset: Int) -> Bytes {
+                let first = bytes[offset];
+                bytes[offset..] + bytes[..offset] + first
+            }
+        "#]],
+    );
+
+    check(
+        &[(
+            "main.rue",
+            "fn main(bytes: Bytes, start: Int) -> Bytes {\n    let first = by$0tes[start];\n    bytes[start..] + bytes[..start] + first\n}\n",
+        )],
+        "data",
+        expect![[r#"
+            main.rue:
+            fn main(data: Bytes, start: Int) -> Bytes {
+                let first = data[start];
+                data[start..] + data[..start] + first
+            }
+        "#]],
+    );
+}
