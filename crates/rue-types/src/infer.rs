@@ -1184,6 +1184,44 @@ mod tests {
         ));
     }
 
+    /// Picking a member of each union is exponential in the number of unions, at worst, but a pick
+    /// that a failed pair already rules out isn't tried further. Here, 20 unions of three members
+    /// each have a failed pair for every two of them that picks the same member, like coloring a
+    /// complete graph with three colors, which no pick does, and few picks are tried. With a limit
+    /// on them, the search stops.
+    #[test]
+    fn attributed_picks_within_a_limit() {
+        use Comparison::{Assign, Invalid};
+
+        let branch = |choice, member| BranchId { choice, member };
+        let mut choices = Choices::default();
+        let unions: Vec<usize> = (0..20)
+            .map(|_| reopened(&mut choices, None, &[Assign, Assign, Assign]))
+            .collect();
+        let mut pairs = Vec::new();
+
+        for (position, &lhs) in unions.iter().enumerate() {
+            for &rhs in &unions[position + 1..] {
+                for member in 0..3 {
+                    pairs.push((
+                        Some(branch(lhs, member)),
+                        Some(branch(rhs, member)),
+                        Invalid,
+                    ));
+                }
+            }
+        }
+
+        let (result, nodes) = choices.attributed(0..20, &pairs, usize::MAX);
+        assert_eq!(result, Invalid);
+        assert!(nodes < 1000, "tried {nodes} picks");
+
+        // Past the limit, each union being picked from returns once for each of its members
+        let (result, nodes) = choices.attributed(0..20, &pairs, 10);
+        assert_eq!(result, Invalid);
+        assert!(nodes <= 10 + 20 * 3, "tried {nodes} picks");
+    }
+
     #[test]
     fn exclusive_members() {
         let mut choices = Choices::default();

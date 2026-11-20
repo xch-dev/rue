@@ -2272,3 +2272,36 @@ fn test_compared_with_itself() {
         }
     });
 }
+
+/// `fn<T>(p0: T | (T, nil), ..) -> T` against `fn(p0: (Int, nil), ..) -> Int | (Int, nil)`, with
+/// `count` parameters: each parameter's union has two members that bound `T` from below, and the
+/// return type's has two that bound it from above, so the pairs that fail are across unions, the
+/// worst case for picking a member of each (see `Choices::attributed` in `rue-types`).
+fn many_bounded_unions(db: &mut Types, count: usize) -> (TypeId, TypeId) {
+    let BuiltinTypes { int, nil, .. } = db.builtins;
+    let t = db.generic();
+    let pair = db.pair(t, nil);
+    let member = db.union(vec![t, pair]);
+    let lhs = db.function(vec![t], vec![member; count], t);
+    let int_pair = db.pair(int, nil);
+    let ret = db.union(vec![int, int_pair]);
+    let rhs = db.function(vec![], vec![int_pair; count], ret);
+    (lhs, rhs)
+}
+
+/// Picking a member of each of many unions whose members all bound the instance takes as many
+/// steps as main did before #362's step 13g, which charged every member that matched (44 steps for
+/// 4 parameters, up to 144 for 24): each parameter's union is reached again from the memo, and a
+/// pair that fails rules a pick out early (see `Choices::attributed`).
+#[test]
+fn test_many_bounded_unions() {
+    with_large_stack(|| {
+        for (count, most) in [(4, 44), (8, 64), (16, 104), (24, 144)] {
+            let mut db = Types::new();
+            let (lhs, rhs) = many_bounded_unions(&mut db, count);
+            let (result, steps) = count_steps(|| compare(&mut db.arena, &db.builtins, lhs, rhs));
+            assert_eq!(result, Comparison::Assign, "{count} parameters");
+            assert!(steps <= most, "{count} parameters took {steps} steps");
+        }
+    });
+}
