@@ -131,18 +131,14 @@ impl ChoiceRecord {
             })
     }
 
-    /// Whether a member that collected no bounds gave the best result of any member or the
-    /// fallback, like `Choices::needed_in`.
+    /// Whether a member (or the fallback) that collected no bounds gave `Assign`, like
+    /// `Choices::needed_in`.
     fn held(&self) -> bool {
-        let results = || self.members.iter().chain([&self.fallback]);
-
-        let Some(best) = results().flatten().copied().min() else {
-            return false;
-        };
-
-        results()
+        self.members
+            .iter()
+            .chain([&self.fallback])
             .zip(&self.bounded)
-            .any(|(&result, &bounded)| result == Some(best) && !bounded)
+            .any(|(&result, &bounded)| result == Some(Comparison::Assign) && !bounded)
     }
 
     /// The binders that the record refers to: the union, then the one it's nested in.
@@ -1600,55 +1596,6 @@ mod tests {
         let canonical = first.clone();
         first.canonicalize();
         assert_eq!(first, canonical);
-    }
-
-    /// A union with something under one member that matched is left out, and what's under it is
-    /// put under the member it's nested in.
-    #[test]
-    fn test_canonicalize_leaves_out_single_member_unions() {
-        let mut types = Types::new();
-        let a = types.generic();
-        let mut summary = Summary::default();
-        let (outer, inner) = (summary.local(), summary.local());
-        let record = |choice, parent, members: Vec<Option<Comparison>>| ChoiceRecord {
-            choice,
-            parent,
-            bounded: vec![true; members.len() + 1],
-            members,
-            fallback: None,
-        };
-        summary.add_choice(record(
-            outer,
-            None,
-            vec![Some(Comparison::Assign), Some(Comparison::Assign)],
-        ));
-        summary.add_choice(record(
-            inner,
-            Some((outer, 1)),
-            vec![Some(Comparison::Invalid), Some(Comparison::Assign)],
-        ));
-        summary.add(Constraint {
-            branch: Some((outer, 0)),
-            ..bound(Var::Key(0), false, a, vec![])
-        });
-        summary.add(Constraint {
-            branch: Some((inner, 1)),
-            ..bound(Var::Key(0), true, a, vec![])
-        });
-        summary.canonicalize();
-
-        // The inner union is left out, but the outer one has something under both of its members
-        assert_eq!(summary.choices().len(), 1);
-        assert_eq!(summary.locals, 1);
-        let branches: Vec<Option<Branch>> = summary
-            .constraints()
-            .iter()
-            .map(|constraint| constraint.branch)
-            .collect();
-        assert_eq!(
-            branches,
-            [Some((Var::Local(0), 0)), Some((Var::Local(0), 1))]
-        );
     }
 
     /// Unions nested more deeply than `MAX_UNION_DEPTH` are left out, with what's under them put

@@ -610,9 +610,11 @@ impl Choices {
 
     /// Whether the bounds collected under the union member can decide anything, as far as the
     /// choices opened in the range do: no union it's nested in from there on (nor its own) is held
-    /// by another member, one that gave the union's best result without collecting bounds. Such a
-    /// union gives that result whatever fails under its other members (see `Choices::attributed`),
-    /// so what's under them is never needed, not even to rule out a member of another union.
+    /// by another member, one that gave `Assign` without collecting bounds. Such a union is
+    /// `Assign` whatever fails under its other members (see `Choices::attributed`), so what's
+    /// under them is never needed, not even to rule out a member of another union. It's `Assign`
+    /// rather than the union's best result, so that a result getting worse can only make a union
+    /// not held, which keeps the result monotone.
     pub(crate) fn needed_in(&self, mut branch: BranchId, range: &std::ops::Range<usize>) -> bool {
         loop {
             if !range.contains(&branch.choice) {
@@ -620,7 +622,6 @@ impl Choices {
             }
 
             let choice = &self.0[branch.choice];
-            let best = best_of(choice);
             let index = branch.member.min(choice.members.len());
 
             let held = choice
@@ -630,7 +631,7 @@ impl Choices {
                 .zip(&choice.bounded)
                 .enumerate()
                 .any(|(other, (&result, &bounded))| {
-                    other != index && result == Some(best) && !bounded
+                    other != index && result == Some(Comparison::Assign) && !bounded
                 });
 
             if held {
@@ -654,15 +655,12 @@ impl Choices {
     /// comparison's.
     ///
     /// A pair whose bounds are both under members of unions, neither nested in the other's, rules
-    /// out picking both members. Picking them together would need backtracking (#362, §5,
-    /// question 2), so instead each member is charged what the pair gave only as far as the
-    /// other's union can't avoid the other member: what its best other member gives
-    /// (`Choices::alternative`). That's never less than picking the two members together would be,
-    /// so it never accepts more, and a member that's never needed (another member of its union
-    /// holds as well) charges nothing. The charges depend on the members' results, which depend on
-    /// the charges, so they're worked out again until they stop growing, from none, which takes
-    /// as many rounds as there are results at most. It's built from `max` and `min`, so it's
-    /// monotone in the members' results and the pairs'.
+    /// out picking both members. Which of them to give up would need backtracking (#362, §5,
+    /// question 2), so both members are charged what the pair gave, whatever the members' results
+    /// are. That's sound, since any pick of both pays for the pair, and charging one of them by
+    /// what the other's union can do instead isn't: a member that conflicts with every member of
+    /// another union could be charged nothing. Everything here is built from `max` and `min` over
+    /// the members' results and the pairs', so it's monotone in them.
     pub(crate) fn attributed(
         &self,
         range: std::ops::Range<usize>,
@@ -688,34 +686,27 @@ impl Choices {
         }
 
         let mut charged: FxHashMap<BranchId, Comparison> = FxHashMap::default();
+        let mut charge = |branch: BranchId, by: Comparison| {
+            let entry = charged.entry(branch).or_insert(Comparison::Assign);
+            *entry = (*entry).max(by);
+        };
 
-        loop {
-            let (members, result) = self.evaluate(&range, &touched, &charged);
-            let mut next: FxHashMap<BranchId, Comparison> = FxHashMap::default();
-            let mut charge = |branch: BranchId, by: Comparison| {
-                let entry = next.entry(branch).or_insert(Comparison::Assign);
-                *entry = (*entry).max(by);
-            };
-
-            for &(lhs, rhs, pair) in pairs {
-                match (lhs, rhs) {
-                    (Some(lhs), Some(rhs)) if self.encloses(lhs, rhs) => charge(rhs, pair),
-                    (Some(lhs), Some(rhs)) if self.encloses(rhs, lhs) => charge(lhs, pair),
-                    (Some(lhs), Some(rhs)) => {
-                        charge(lhs, pair.min(self.alternative(rhs, &members)));
-                        charge(rhs, pair.min(self.alternative(lhs, &members)));
-                    }
-                    (Some(branch), None) | (None, Some(branch)) => charge(branch, pair),
-                    (None, None) => {}
+        for &(lhs, rhs, pair) in pairs {
+            match (lhs, rhs) {
+                (Some(lhs), Some(rhs)) if self.encloses(lhs, rhs) => charge(rhs, pair),
+                (Some(lhs), Some(rhs)) if self.encloses(rhs, lhs) => charge(lhs, pair),
+                // Both members are charged in full: which of them to give up would need
+                // backtracking
+                (Some(lhs), Some(rhs)) => {
+                    charge(lhs, pair);
+                    charge(rhs, pair);
                 }
+                (Some(branch), None) | (None, Some(branch)) => charge(branch, pair),
+                (None, None) => {}
             }
-
-            if next == charged {
-                return result;
-            }
-
-            charged = next;
         }
+
+        self.evaluate(&range, &touched, &charged).1
     }
 
     /// What each member of the touched unions in the range gives, given what's charged to them
@@ -771,30 +762,6 @@ impl Choices {
         }
 
         (members, result)
-    }
-
-    /// What the best member of the union other than this one gives (see `Choices::evaluate`),
-    /// which is what avoiding the member costs, or `Invalid` if there's none.
-    fn alternative(
-        &self,
-        branch: BranchId,
-        members: &FxHashMap<BranchId, Comparison>,
-    ) -> Comparison {
-        let choice = &self.0[branch.choice];
-
-        (0..choice.members.len())
-            .chain([FALLBACK])
-            .filter(|&member| member != branch.member)
-            .filter_map(|member| {
-                members
-                    .get(&BranchId {
-                        choice: branch.choice,
-                        member,
-                    })
-                    .copied()
-            })
-            .min()
-            .unwrap_or(Comparison::Invalid)
     }
 
     /// Whether the union member is the other one or one it's nested in.
