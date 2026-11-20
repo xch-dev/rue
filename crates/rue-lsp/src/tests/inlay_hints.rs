@@ -474,6 +474,18 @@ fn test_hints_in_range() {
         Range::new(Position::new(1, 0), Position::new(1, 13)),
     ));
 
+    // A range that ends before it starts has nothing in it
+    assert_eq!(
+        project.inlay_hints_in(
+            "main.rue",
+            Range::new(Position::new(3, 0), Position::new(1, 0)),
+        ),
+        project.inlay_hints_in(
+            "main.rue",
+            Range::new(Position::new(0, 0), Position::new(0, 0)),
+        )
+    );
+
     expect![[r#"
         fn main(value: Int) -> Int {
             let first = value;
@@ -712,8 +724,7 @@ fn test_hints_with_string_types() {
 
 #[test]
 fn test_hints_in_lambda_passed_to_generic_function() {
-    // The body of the lambda is compiled again once the type of its parameter is known, and the
-    // hints are for the types it has in the end
+    // The types in the body of the lambda are the ones that the call gives its parameter
     check(
         r#"
 fn map<T, U>(value: T, function: fn(item: T) -> U) -> U {
@@ -806,6 +817,128 @@ fn test_hints_in_index_and_slice() {
                 let byte«: Bytes» = bytes[add(«first:» 1, «second:» 2)];
                 let rest«: Bytes» = bytes[add(«first:» 1, «second:» 2)..];
                 byte + rest
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_function_type_with_spread() {
+    // A type that's written with `...` in it isn't one that was cut short
+    check_with(
+        TYPES,
+        "fn main(function: fn(...solution: Any) -> Int) -> Int {\n    let copy = function;\n    copy(...1)\n}\n",
+        expect![[r#"
+            fn main(function: fn(...solution: Any) -> Int) -> Int {
+                let copy«: fn(...solution: Any) -> Int» = function;
+                copy(...1)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_generic_arguments_that_cannot_be_written() {
+    // Generic arguments are only written for a function that's called by its name, and a `_`
+    // for one of them is already written
+    check_with(
+        GENERIC_ARGUMENTS,
+        r#"
+fn pick<T, U>(first: T, second: U) -> T {
+    first
+}
+
+fn main() -> Int {
+    let alias = pick;
+    let first = alias(1, "a");
+    let second = pick::<_, String>(2, "b");
+    let third = pick::<_, _>(3, "c");
+    first + second + third
+}
+"#,
+        expect![[r#"
+
+            fn pick<T, U>(first: T, second: U) -> T {
+                first
+            }
+
+            fn main() -> Int {
+                let alias = pick;
+                let first = alias(1, "a");
+                let second = pick::<_, String>(2, "b");
+                let third = pick::<_, _>(3, "c");
+                first + second + third
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_long_generic_arguments() {
+    // Each argument is cut short like any type, and so is the list of them, with all of them in
+    // the tooltip
+    check_with(
+        GENERIC_ARGUMENTS,
+        r#"
+struct Circle { kind = 1, radius: Int }
+struct Square { kind = 2, side: Int }
+struct Triangle { kind = 3, base: Int, height: Int }
+struct Rectangle { kind = 4, width: Int, height: Int }
+
+fn pick<T, U>(first: T, second: U) -> T {
+    first
+}
+
+fn many<A, B, C, D, E>(a: A, b: B, c: C, d: D, e: E) -> A {
+    a
+}
+
+fn main(value: Circle | Square | Triangle | Rectangle | nil, key: PublicKey) -> Int {
+    let picked = pick(value, value);
+    let all = many(key, key, key, key, key);
+    1
+}
+"#,
+        expect![[r#"
+
+            struct Circle { kind = 1, radius: Int }
+            struct Square { kind = 2, side: Int }
+            struct Triangle { kind = 3, base: Int, height: Int }
+            struct Rectangle { kind = 4, width: Int, height: Int }
+
+            fn pick<T, U>(first: T, second: U) -> T {
+                first
+            }
+
+            fn many<A, B, C, D, E>(a: A, b: B, c: C, d: D, e: E) -> A {
+                a
+            }
+
+            fn main(value: Circle | Square | Triangle | Rectangle | nil, key: PublicKey) -> Int {
+                let picked = pick«::<Circle | Square | Triangle | ..., ...>»(value, value);
+                let all = many«::<PublicKey, PublicKey, ...>»(key, key, key, key, key);
+                1
+            }
+            tooltip of «::<Circle | Square | Triangle | ..., ...>»: ::<Circle | Square | Triangle | Rectangle | nil, Circle | Square | Triangle | Rectangle | nil>
+            tooltip of «::<PublicKey, PublicKey, ...>»: ::<PublicKey, PublicKey, PublicKey, PublicKey, PublicKey>
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_parameters_that_say_nothing() {
+    // A parameter that's discarded has no name worth showing, and an argument in parentheses is
+    // still named like its parameter
+    check_with(
+        PARAMETER_NAMES,
+        "fn pay(_: Int, amount: Int, _to: Int) -> Int {\n    amount\n}\n\nfn main(amount: Int) -> Int {\n    pay(1, (amount), 3)\n}\n",
+        expect![[r#"
+            fn pay(_: Int, amount: Int, _to: Int) -> Int {
+                amount
+            }
+
+            fn main(amount: Int) -> Int {
+                pay(1, (amount), «_to:» 3)
             }
         "#]],
     );

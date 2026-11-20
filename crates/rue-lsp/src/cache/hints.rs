@@ -10,7 +10,7 @@ use rue_ast::{
     AstBinding, AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt, AstNode, AstPathSegment,
 };
 use rue_compiler::{Compiler, SyntaxCall, SyntaxItemKind};
-use rue_hir::SymbolId;
+use rue_hir::{Symbol, SymbolId};
 use rue_types::{ELIDED, Type, TypeId};
 use tower_lsp_server::ls_types::Position;
 
@@ -89,9 +89,9 @@ impl Cache<Compiler> {
 
         let range = TextRange::new(TextSize::from(start), TextSize::from(end.max(start)));
 
-        // The same code can be compiled more than once (such as a lambda's body, until the types
-        // of its parameters are known), and the last time is the one that was kept
+        // If the same code was compiled more than once, the last time is the one that was kept
         let mut declarations = HashMap::new();
+        let mut references = HashMap::new();
         let mut calls = HashMap::new();
         let mut scopes = Vec::new();
 
@@ -107,6 +107,9 @@ impl Cache<Compiler> {
             match &item.kind {
                 SyntaxItemKind::SymbolDeclaration(symbol) => {
                     declarations.insert(item.span, *symbol);
+                }
+                SyntaxItemKind::SymbolReference(symbol) => {
+                    references.insert(item.span, *symbol);
                 }
                 SyntaxItemKind::Call(call) => {
                     calls.insert(item.span, call);
@@ -150,7 +153,16 @@ impl Cache<Compiler> {
             } else if let Some(call) = AstFunctionCallExpr::cast(node.clone())
                 && let Some(recorded) = calls.get(&node.text_range())
             {
-                call_hints(&call, recorded, options, &mut pending);
+                // Generic arguments can only be written for a function that's called by its
+                // name, rather than for a binding that holds one
+                let named = matches!(call.expr(), Some(AstExpr::PathExpr(path)) if path
+                    .segments()
+                    .last()
+                    .and_then(|segment| segment.name())
+                    .and_then(|name| references.get(&name.text_range()))
+                    .is_some_and(|&symbol| matches!(self.ctx.symbol(symbol), Symbol::Function(_))));
+
+                call_hints(&call, recorded, options, named, &mut pending);
             }
         }
 
@@ -189,21 +201,36 @@ impl Cache<Compiler> {
                         continue;
                     };
 
-                    let shortened = names.iter().any(|(_, tooltip)| tooltip.is_some());
+                    // The arguments that fit are shown, so that the hint stays short however
+                    // many generics there are, and the tooltip has all of them
+                    let mut shown = Vec::new();
+                    let mut length = 0;
 
-                    let join = |names: Vec<String>| format!("::<{}>", names.join(", "));
+                    for (name, _) in &names {
+                        length += name.chars().count() + ", ".len();
+
+                        if !shown.is_empty() && length > HINT_CHARS {
+                            shown.push(ELIDED);
+                            break;
+                        }
+
+                        shown.push(name.as_str());
+                    }
+
+                    let shortened = shown.last() == Some(&ELIDED)
+                        || names.iter().any(|(_, more)| more.is_some());
 
                     let tooltip = shortened.then(|| {
-                        join(
-                            names
-                                .iter()
-                                .map(|(name, tooltip)| tooltip.clone().unwrap_or(name.clone()))
-                                .collect(),
-                        )
+                        let names = names
+                            .iter()
+                            .map(|(name, more)| more.as_deref().unwrap_or(name))
+                            .collect::<Vec<_>>();
+
+                        format!("::<{}>", names.join(", "))
                     });
 
                     (
-                        join(names.into_iter().map(|(name, _)| name).collect()),
+                        format!("::<{}>", shown.join(", ")),
                         HintKind::GenericArguments,
                         tooltip,
                     )
@@ -243,10 +270,10 @@ impl Cache<Compiler> {
             return None;
         }
 
-        let name = self.bounded_type_name(scopes, ty, HINT_PARTS);
+        let (name, cut) = self.bounded_type(scopes, ty, HINT_PARTS);
 
         // The tooltip has more of a type that was cut short, whichever of the two cut it
-        if name.chars().count() <= HINT_CHARS && !name.contains(ELIDED) {
+        if !cut && name.chars().count() <= HINT_CHARS {
             return Some((name, None));
         }
 
@@ -355,6 +382,7 @@ fn call_hints(
     call: &AstFunctionCallExpr,
     recorded: &SyntaxCall,
     options: HintOptions,
+    named: bool,
     pending: &mut Vec<(TextSize, Pending)>,
 ) {
     let function = &recorded.function;
@@ -362,6 +390,7 @@ fn call_hints(
     // Generic arguments are written after the name of a function, so there's nowhere to show
     // them for a function that isn't called by its name, and nothing to show if they're written
     if options.generic_arguments
+        && named
         && !function.generics.is_empty()
         && let Some(AstExpr::PathExpr(path)) = call.expr()
         && let Some(segment) = path.segments().last()
@@ -407,6 +436,7 @@ fn call_hints(
         // A parameter that's destructured has its pattern in place of a name. An argument that's
         // named like the parameter already says what it's for
         if !is_identifier(&parameter.name)
+            || parameter.name == "_"
             || argument_name(&expr).as_deref() == Some(&parameter.name)
         {
             continue;
@@ -422,6 +452,7 @@ fn call_hints(
 /// The name that an argument is written with, if it's a name, a path to one or a field.
 fn argument_name(expr: &AstExpr) -> Option<String> {
     match expr {
+        AstExpr::GroupExpr(group) => argument_name(&group.expr()?),
         AstExpr::PathExpr(path) => path
             .segments()
             .last()
@@ -553,6 +584,10 @@ mod tests {
         assert_eq!(
             union_members("List<A | B> | (C | D, E) | fn(a: A | B) -> C | D"),
             ["List<A | B>", "(C | D, E)", "fn(a: A | B) -> C", "D"]
+        );
+        assert_eq!(
+            union_members("(fn(a: A) -> B | C, D) | E"),
+            ["(fn(a: A) -> B | C, D)", "E"]
         );
         assert_eq!(
             union_members(r#""a | b" | "(" | "\" | c""#),

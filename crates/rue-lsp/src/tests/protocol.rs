@@ -764,6 +764,36 @@ async fn test_inlay_hint_session() {
 
     assert!(client.sync().await.is_empty());
 
+    // A setting that isn't true or false is left as it was
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": false } } }),
+        )
+        .await;
+    assert_eq!(client.sync().await.len(), 1);
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": "yes" } } }),
+        )
+        .await;
+    assert!(client.sync().await.is_empty());
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([sum]));
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": true } } }),
+        )
+        .await;
+    assert_eq!(client.sync().await.len(), 1);
+
     // Each kind of hint has a setting
     for (settings, expected) in [
         (
