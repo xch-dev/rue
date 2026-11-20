@@ -2,6 +2,10 @@ export reexported::item;
 
 import enums::ByImportedVariant::A;
 
+// The glob's path names the enum, even though none of its variants are used
+#[allow(unused_import)]
+import enums::ByUnusedGlob::*;
+
 mod helpers {
     export fn used_outside() -> Int {
         only_inside() + 1
@@ -209,6 +213,10 @@ mod enums {
         B,
     }
 
+    export enum ByUnusedGlob {
+        A,
+    }
+
     // Only one of its variants is in the signature of an export used from outside
     export enum InSignature {
         A { value: Int },
@@ -222,7 +230,7 @@ mod enums {
     export fn inside() -> Int {
         let a: OnlyInside = OnlyInside::A;
         assert a is OnlyInside::A;
-        OnlyInside::B { value: 1 }.value
+        OnlyInside::B { value: 1 }.value + ByUnusedGlob::A as Int
     }
 }
 

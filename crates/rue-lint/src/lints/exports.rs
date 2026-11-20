@@ -228,7 +228,30 @@ fn imported(db: &Database) -> HashMap<Declaration, Vec<SrcLoc>> {
         let import = db.import(id);
 
         let (item, declarations) = match &import.items {
-            Items::All(star) if !import.exported => (star, db.import_references(id)),
+            // The path of a glob over an enum's variants names the enum, even if none of them are
+            // used, so the enum has to stay exported for the import to resolve
+            Items::All(star) if !import.exported => (
+                star,
+                db.import_references(id)
+                    .into_iter()
+                    .chain(
+                        import
+                            .declarations
+                            .iter()
+                            // A glob over a module can import an enum's namespace, which doesn't
+                            // need the enum to be exported if it isn't used
+                            .filter(|&&(_, declaration)| {
+                                !matches!(
+                                    declaration,
+                                    Declaration::Symbol(symbol)
+                                        if matches!(db.symbol(symbol), Symbol::Module(_))
+                                )
+                            })
+                            .filter_map(|&(_, declaration)| db.enum_of(declaration))
+                            .map(Declaration::Type),
+                    )
+                    .collect::<Vec<_>>(),
+            ),
             Items::All(item) | Items::Named(item) => (
                 item,
                 import
