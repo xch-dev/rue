@@ -2,8 +2,8 @@ use rue_diagnostic::Name;
 use rue_types::{BuiltinTypes, FunctionParameter, FunctionType, Generic, Type, TypeId};
 
 use crate::{
-    Builtin, ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, HirId, ParameterSymbol,
-    Scope, ScopeId, Symbol, SymbolId, Value,
+    Builtin, ConstantSymbol, Database, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId,
+    ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone)]
@@ -14,6 +14,10 @@ pub struct Builtins {
     pub nil: Value,
     pub true_value: Value,
     pub false_value: Value,
+    /// The function that a spread in a list before its last item is compiled to a call of (see
+    /// [`spread_list`]). It isn't in any scope, so it can't be named, and it's only compiled into
+    /// programs that spread a list there.
+    pub spread_list: SymbolId,
 }
 
 impl Builtins {
@@ -234,10 +238,12 @@ impl Builtins {
         );
 
         let scope = db.alloc_scope(scope);
+        let spread_list = spread_list(db, &types);
 
         Self {
             types,
             scope,
+            spread_list,
             unresolved: Value::new(unresolved_hir, types.unresolved),
             nil: Value::new(nil_hir, types.nil),
             true_value: Value::new(true_hir, types.bool_true),
@@ -256,6 +262,85 @@ impl Builtins {
         ]
         .contains(&hir)
     }
+}
+
+/// `fn spread(items: Any, rest: Any) -> Any`, which puts the items of a list in front of the
+/// rest, so that `[...items, last]` is `spread(items, [last])`. The items are copied, since the
+/// last pair of the list has to point to the rest rather than nil:
+///
+/// ```text
+/// if items { (first(items), spread(rest(items), rest)) } else { rest }
+/// ```
+///
+/// It's one function that every such spread calls, so a program that spreads lists before their
+/// last item more than once only has the code once.
+fn spread_list(db: &mut Database, types: &BuiltinTypes) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new(None));
+    let any = types.permissive_any;
+
+    let parameter = |db: &mut Database, name: &str| {
+        let symbol = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+            name: Some(Name::new(name, None)),
+            ty: any,
+        }));
+        db.scope_mut(scope)
+            .insert_symbol(name.to_string(), symbol, false);
+        symbol
+    };
+
+    let items = parameter(db, "items");
+    let rest = parameter(db, "rest");
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        generics: vec![],
+        params: vec![
+            FunctionParameter::new("items", any),
+            FunctionParameter::new("rest", any),
+        ],
+        nil_terminated: true,
+        ret: any,
+    }));
+
+    let placeholder = db.alloc_hir(Hir::Nil);
+
+    let function = db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: Some(Name::new("spread", None)),
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![items, rest],
+        nil_terminated: true,
+        return_type: any,
+        body: placeholder,
+        kind: FunctionKind::BinaryTree,
+    }));
+
+    let items_ref = |db: &mut Database| db.alloc_hir(Hir::Reference(items));
+    let rest_ref = db.alloc_hir(Hir::Reference(rest));
+
+    // The items are a list, so they're a pair unless they're nil
+    let condition = items_ref(db);
+
+    let first = items_ref(db);
+    let first = db.alloc_hir(Hir::Unary(UnaryOp::First, first));
+    let remaining = items_ref(db);
+    let remaining = db.alloc_hir(Hir::Unary(UnaryOp::Rest, remaining));
+    let callee = db.alloc_hir(Hir::Reference(function));
+    let recursive_rest = db.alloc_hir(Hir::Reference(rest));
+    let call = db.alloc_hir(Hir::FunctionCall(FunctionCall {
+        function: callee,
+        args: vec![remaining, recursive_rest],
+        nil_terminated: true,
+    }));
+    let pair = db.alloc_hir(Hir::Pair(first, call));
+
+    let body = db.alloc_hir(Hir::If(condition, pair, rest_ref, false));
+
+    if let Symbol::Function(symbol) = db.symbol_mut(function) {
+        symbol.body = body;
+    }
+
+    function
 }
 
 fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {

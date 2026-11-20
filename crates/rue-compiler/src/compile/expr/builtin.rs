@@ -8,6 +8,7 @@ use rue_lir::ClvmOp;
 use rue_parser::SyntaxToken;
 use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
 
+use super::call_inference::list_of;
 use crate::{Compiler, compile_expr};
 
 /// Builtins don't have a function type, since some of them accept more than one shape of
@@ -367,12 +368,6 @@ impl<'a> BuiltinCall<'a> {
 fn value_or_unresolved(ctx: &mut Compiler, hir: Option<HirId>, ty: TypeId) -> Value {
     let hir = hir.unwrap_or_else(|| ctx.unresolved().hir);
     Value::new(hir, ty)
-}
-
-fn list_of(ctx: &mut Compiler, item: TypeId) -> TypeId {
-    let types = ctx.builtins().types;
-    let mappings = HashMap::from([(types.list_generic, item)]);
-    substitute_with_mappings(ctx.types_mut(), types.list, &mappings)
 }
 
 fn alternating_list_of(ctx: &mut Compiler, a: TypeId, b: TypeId) -> TypeId {

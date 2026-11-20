@@ -1,0 +1,23 @@
+// What's spread before the last item must be a list, and so must the last item if it's spread too,
+// since the list's type is a `List` of their items
+
+fn main(value: Int, pair: (Int, Int), list: List<Int>) -> List<Int> {
+    let a = [...value, 1];
+    let b = [...list, ...pair];
+    [...a, ...b]
+}
+
+// The spread lists' item types are part of the list's type
+export fn names(names: List<Bytes>) -> List<Int> {
+    [...names, 1]
+}
+
+// The list's type is a pair for each item before the first spread, and a `List` from there
+export fn leading(numbers: List<Int>) -> List<Int> {
+    ["name", true, ...numbers, 3]
+}
+
+// Every spread's item types are part of the list's type, not only the first one's
+export fn later(a: List<Int>, b: List<Bytes>, c: List<Bool>) -> List<Int> {
+    [...a, ...b, ...c]
+}

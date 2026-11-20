@@ -58,7 +58,7 @@ fn hash_and_run(tree: (Any, Any), delegated_puzzle_hash: Bytes32) -> Proven {
 
     Proven {
         root: tree_hash_pair(left.root, right.root),
-        conditions: merge_list(left.conditions, right.conditions),
+        conditions: [...left.conditions, ...right.conditions],
         total: left.total + right.total,
     }
 }

@@ -1,0 +1,163 @@
+// A list can spread items before its last one, which puts the spread list's items in front of the
+// rest. Each list goes through `runtime`, which the compiler can't fold, so the spreads are run.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+test fn two_lists() {
+    let a = runtime([1, 2]);
+    let b = runtime([3, 4]);
+    assert deep_equal([...a, ...b], [1, 2, 3, 4]);
+}
+
+test fn items_between() {
+    let a = runtime([1, 2]);
+    let b = runtime([5]);
+    assert deep_equal([0, ...a, 3, 4, ...b], [0, 1, 2, 3, 4, 5]);
+}
+
+test fn ending_in_nil() {
+    let a = runtime([1, 2]);
+    assert deep_equal([...a, 3], [1, 2, 3]);
+}
+
+test fn empty_lists() {
+    let empty = runtime([] as List<Int>);
+    assert deep_equal([...empty, 1, ...empty], [1]);
+    assert deep_equal([...empty, ...empty], nil);
+}
+
+test fn three_lists() {
+    let a = runtime([1]);
+    let b = runtime([2, 3]);
+    let c = runtime([4]);
+    assert deep_equal([...a, ...b, ...c], [1, 2, 3, 4]);
+}
+
+// Every spread before the last item calls the same function, which is in the program once
+test fn shared() -> List<Int> {
+    let a = runtime([1]);
+    let b = runtime([2]);
+    let first = [...a, ...b];
+    let second = [...b, ...a];
+    [...first, ...second]
+}
+
+// A list literal's items are put in the list directly
+test fn literal() -> List<Int> {
+    let a = runtime([3]);
+    [...[1, 2], ...a]
+}
+
+// The list is a `List` of every item's type
+test fn item_types() -> List<Int | Bytes> {
+    let numbers = runtime([1, 2]);
+    let names = runtime(["a"]);
+    [...numbers, "b", ...names]
+}
+
+// With an expected type, the items are compiled against its item type, which gives an untyped
+// lambda its parameter type
+test fn expected_type() -> Int {
+    let increments: List<fn(value: Int) -> Int> = runtime([fn(value: Int) => value + 1]);
+    let functions: List<fn(value: Int) -> Int> = [...increments, fn(value) => value * 2];
+    apply_all(functions, 5)
+}
+
+fn apply_all(functions: List<fn(value: Int) -> Int>, value: Int) -> Int {
+    if functions is (fn(value: Int) -> Int, List<fn(value: Int) -> Int>) {
+        apply_all(functions.rest, functions.first(value))
+    } else {
+        value
+    }
+}
+
+// In a generic call's argument, the spread list's items infer the call's generic, which gives a
+// later lambda its parameter type, as they would in a list without the spread
+test fn lambda_after_a_spread_in_a_generic_call() -> Int {
+    let increments: List<fn(value: Int) -> Int> = runtime([fn(value: Int) => value + 1]);
+    let f = first_or([...increments, fn(value) => value * 2], fn(value: Int) => value);
+    f(5)
+}
+
+fn first_or<T>(list: List<T>, default: T) -> T {
+    if list is (T, List<T>) {
+        list.first
+    } else {
+        default
+    }
+}
+
+// A spread tuple adds each of its items' types
+test fn tuple_item_types() -> List<Int | Bytes> {
+    let tuple: (Int, (Bytes, nil)) = runtime((1, ("a", nil)));
+    [...tuple, 3]
+}
+
+// A spread list literal that ends in a spread itself puts its items in the list, and spreads its
+// last one
+test fn literal_ending_in_a_spread() {
+    let a = runtime([1, 2]);
+    assert deep_equal([...[0, ...a], 3], [0, 1, 2, 3]);
+}
+
+// An item before a spread infers the generic for a later lambda, too
+test fn lambda_after_an_item_and_a_spread() -> Int {
+    let empty: List<fn(value: Int) -> Int> = runtime(nil);
+    let functions = same_list([fn(value: Int) => value + 1, ...empty, fn(value) => value * 2]);
+    apply_all(functions, 5)
+}
+
+fn same_list<T>(list: List<T>) -> List<T> {
+    list
+}
+
+// A spread is compiled against the list's expected type, which infers a generic call's generic
+test fn spread_with_the_expected_type() -> List<Int> {
+    [...same_list(nil), 1]
+}
+
+// The item types of a list whose pairs alternate are found, with or without a pair before them
+type Alternating = nil | (Int, (Bytes, Alternating));
+
+test fn alternating_item_types() -> List<Int | Bytes | Bool> {
+    let alternating: Alternating = runtime([1, "a"]);
+    let prefixed: (Bool, Alternating) = runtime((true, [2, "b"]));
+    [...alternating, ...prefixed, 3]
+}
+
+// The items before the first spread keep their own types, as they do in a list that only spreads
+// its last item, so the first item here is `Bytes` rather than `Bytes | Int`
+test fn items_before_the_first_spread() -> Bytes {
+    let numbers = runtime([1, 2]);
+    let list = ["name", ...numbers, 3];
+    assert deep_equal(list.rest, [1, 2, 3]);
+    list.first
+}
+
+// An item after a spread that gives the generic nothing infers it for a later lambda
+test fn lambda_after_an_item_in_the_tail() -> Int {
+    let functions = same_list([...[], fn(value: Int) => value + 1, fn(value) => value * 2]);
+    apply_all(functions, 5)
+}
+
+// A lambda after the spread is expected to be what's left of the expected type after the items
+// before the spread, rather than its first item
+test fn expected_type_after_leading_items() -> Int {
+    let increments: List<fn(value: Int) -> Int> = runtime([fn(value: Int) => value + 1]);
+    let list: (Bytes, List<fn(value: Int) -> Int>) = ["a", ...increments, fn(value) => value * 2];
+    apply_all(list.rest, 5)
+}
+
+// A spread call with nothing to infer its generic from gets it from the items before it
+test fn spread_call_inferred_from_earlier_items() {
+    let names = runtime(["a"]);
+    let list = same_list([...names, ...empty_list()]);
+    assert deep_equal(list, ["a"]);
+}
+
+fn empty_list<T>() -> List<T> {
+    nil
+}

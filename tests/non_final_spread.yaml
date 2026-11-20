@@ -5,8 +5,8 @@ diagnostics:
     note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Can only spread the last parameter at non_final_spread.rue:6:11
 - Unused parameter `first` at non_final_spread.rue:6:14
-- Can only spread the last item in a list at non_final_spread.rue:11:17
 - Can only spread the last item in a list at non_final_spread.rue:12:17
+- Cannot assign `List<1 | 2>` to `(List<Int>, (Int, nil))`, since they are incompatible at non_final_spread.rue:12:38
 - Can only spread the last item in a list at non_final_spread.rue:13:10
 - Unused binding `items` at non_final_spread.rue:13:13
 - Can only spread the last field at non_final_spread.rue:14:11
