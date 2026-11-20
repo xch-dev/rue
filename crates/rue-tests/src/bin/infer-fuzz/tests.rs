@@ -1014,8 +1014,7 @@ fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
     let inferable = (0..200)
         .map(|seed| Generator::versioned(seed, 3).generate())
         .find_map(|generated| {
-            let uninferable =
-                crate::generate::uninferable_probes(&generated.program, &Variant::default());
+            let uninferable = crate::generate::uninferable_probes(&generated.program);
             let site = generated
                 .program
                 .probes
@@ -2044,10 +2043,10 @@ fn version_2_programs_never_change() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 3.
-const VERSION_3_HASH: u64 = 0x1ada_a244_2d98_ab33;
+const VERSION_3_HASH: u64 = 0x37ab_bacb_1f9c_c771;
 
-/// No program declares two functions with the same name, as version 3 once did with its catalog's
-/// two `map_list`s (seed 93).
+/// No program declares two functions with the same name, as version 3 once did when its catalog
+/// had two `map_list`s (seed 93).
 #[test]
 fn programs_declare_each_function_once() {
     for version in crate::generate::VERSIONS {
@@ -2063,6 +2062,56 @@ fn programs_declare_each_function_once() {
             }
         }
     }
+}
+
+/// Only a probe variant removes the generic arguments of a probe whose arguments don't give them a
+/// type, and each removes one. The other variants remove a probe's generic arguments only where
+/// something else gives them a type, and not along with it, as `identity` in
+/// `make_from_lambda(identity, 1)`. A probe whose generics only give each other a type is one
+/// whose arguments don't, as `compose(fn<V>(value: V) => value)` (seed 197).
+#[test]
+fn version_3_variants_remove_probes_only_where_something_gives_them_a_type() {
+    let mut compose = false;
+    for seed in 0..1000 {
+        let generated = Generator::versioned(seed, 3).generate();
+        let program = &generated.program;
+        let uninferable = crate::generate::uninferable_probes(program);
+        for (name, variant) in &generated.variants {
+            let removed = uninferable
+                .iter()
+                .filter(|site| variant.stripped.contains_key(site))
+                .count();
+            assert_eq!(
+                removed,
+                usize::from(name == "probe"),
+                "seed {seed}, variant `{name}`"
+            );
+            if name == "probe" {
+                compose |= seed == 197 && program.probe_callees(variant).contains("compose");
+                continue;
+            }
+            let removable = crate::generate::removable_sites(program, variant);
+            for (site, strip) in &variant.stripped {
+                if !program.probes.contains(site) {
+                    continue;
+                }
+                let mask = &removable[site];
+                let removed = match strip {
+                    Strip::All => vec![true; mask.len()],
+                    Strip::Placeholders(removed) => removed.clone(),
+                };
+                assert!(
+                    removed
+                        .iter()
+                        .zip(mask)
+                        .all(|(&removed, &mask)| !removed || mask),
+                    "seed {seed}, variant `{name}` removes a probe's generic arguments that \
+                     nothing gives a type"
+                );
+            }
+        }
+    }
+    assert!(compose, "seed 197 has a probe variant for `compose`");
 }
 
 #[test]
@@ -2085,26 +2134,6 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
             Compiled::Ok { leak: None, .. }
         ) {
             valid += 1;
-        }
-        // Only a probe variant removes the generic arguments of a probe whose arguments don't
-        // give them a type, and each removes one
-        // Nor does any other variant remove a probe's arguments along with what gives them a type,
-        // as `identity` in `make_from_lambda(identity, 1)`
-        let uninferable = crate::generate::uninferable_probes(&first.program, &Variant::default());
-        for (name, variant) in &first.variants {
-            let removed = uninferable
-                .iter()
-                .filter(|site| variant.stripped.contains_key(site))
-                .count();
-            let expected = usize::from(name == "probe");
-            assert_eq!(removed, expected, "seed {seed}, variant `{name}`");
-            if name != "probe" {
-                let left = crate::generate::uninferable_probes(&first.program, variant);
-                assert!(
-                    left.iter().all(|site| !variant.stripped.contains_key(site)),
-                    "seed {seed}, variant `{name}` removes a probe that nothing gives a type"
-                );
-            }
         }
         probes += usize::from(!first.program.probes.is_empty());
     }
@@ -2183,6 +2212,16 @@ fn leak_oracle_finds_unbound_generics() {
         [(own, int)].into_iter().collect(),
     )));
     assert_eq!(free_in(&mut ctx, alone), Vec::new());
+
+    // A generic function's type with its generic applied binds it only in the function type, as
+    // `wrap_maybe::<Int>`'s does, and not beside it
+    let applied_function = ctx.alloc_type(Type::Apply(rue_types::Apply::new(
+        unbound,
+        [(generic, int)].into_iter().collect(),
+    )));
+    assert_eq!(free_in(&mut ctx, applied_function), Vec::new());
+    let beside_applied = ctx.alloc_type(Type::Pair(Pair::new(applied_function, generic)));
+    assert_eq!(free_in(&mut ctx, beside_applied), vec![generic]);
 }
 
 #[test]

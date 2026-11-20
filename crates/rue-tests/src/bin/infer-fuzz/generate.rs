@@ -216,7 +216,7 @@ pub const VERSIONS: [u32; 3] = [1, 2, 3];
 /// functions, or return a function from one (#485, #489, #490).
 const CATALOG_V3: &[Template] = &[
     template(
-        "map_list",
+        "apply_each",
         &["T", "U"],
         &[("functions", "List<fn(a: T) -> U>"), ("value", "T")],
         "List<U>",
@@ -602,12 +602,8 @@ impl Generator {
                 picked.push(template);
             }
         }
-        // Version 3's catalog has two functions named `map_list`, so picking one removes the
-        // other. The earlier catalogs have none with the same name, so it doesn't change them
         for _ in 0..count {
-            let template = catalog.remove(self.rng.below(catalog.len()));
-            catalog.retain(|other| other.name != template.name);
-            picked.push(template);
+            picked.push(catalog.remove(self.rng.below(catalog.len())));
         }
         // Keep the catalog's order, so related functions are declared in a familiar order
         picked.sort_by_key(|template| all.iter().position(|other| other.name == template.name));
@@ -1683,9 +1679,7 @@ impl Removable<'_> {
                     // any other call is, which keeps it when the variant also removes what gives
                     // its generics a type, as `identity` in `make_from_lambda(identity, 1)`
                     // (see `Generator::probe`)
-                    let generics = if probe
-                        && !inferable(self.program, &Variant::default(), function, *site, args)
-                    {
+                    let generics = if probe && !inferable(self.program, function, *site, args) {
                         vec![self.variant.stripped.contains_key(site); witnessed.generics.len()]
                     } else {
                         witnessed.generics
@@ -2144,7 +2138,7 @@ fn variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)
     // generic arguments removed and nothing else, so that one probe's rejection can't hide
     // another's. Only a variant that removes a probe's arguments counts them as removable, so the
     // other variants keep them, and each of these is legal as it is (see `Generator::probe`)
-    for site in uninferable_probes(program, &Variant::default()) {
+    for site in uninferable_probes(program) {
         let probe = Variant {
             stripped: [(site, Strip::All)].into(),
         };
@@ -2154,23 +2148,23 @@ fn variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)
     variants
 }
 
-/// Whether a call's arguments give each of its generics a type, without the expected type.
-fn inferable(
-    program: &Program,
-    variant: &Variant,
-    function: &Function,
-    site: SiteId,
-    args: &[Expr],
-) -> bool {
-    Witnessed::new(program, variant, function, site, args, false, true)
+/// Whether a call's arguments give each of its generics a type in the explicit program, without
+/// the expected type and with all of the call's generic arguments removed, so that generics that
+/// only give each other a type, as `compose`'s do in `compose(fn<V>(value: V) => value)`, don't
+/// count (infer-fuzz generator 3, seed 197).
+fn inferable(program: &Program, function: &Function, site: SiteId, args: &[Expr]) -> bool {
+    let stripped = Variant {
+        stripped: [(site, Strip::All)].into(),
+    };
+    Witnessed::new(program, &stripped, function, site, args, false, true)
         .generics
         .iter()
         .all(|&generic| generic)
 }
 
-/// The probes whose generics their arguments don't all give a type, with the variant's generic
-/// arguments removed (see `Generator::probe`).
-pub fn uninferable_probes(program: &Program, variant: &Variant) -> BTreeSet<SiteId> {
+/// The probes whose generics their arguments don't all give a type (see `inferable` and
+/// `Generator::probe`).
+pub fn uninferable_probes(program: &Program) -> BTreeSet<SiteId> {
     let mut sites = BTreeSet::new();
     for expr in program.exprs() {
         expr.walk(&mut |expr| {
@@ -2182,7 +2176,7 @@ pub fn uninferable_probes(program: &Program, variant: &Variant) -> BTreeSet<Site
             } = &expr.kind
                 && program.probes.contains(site)
                 && let Some(function) = program.function(function)
-                && !inferable(program, variant, function, *site, args)
+                && !inferable(program, function, *site, args)
             {
                 sites.insert(*site);
             }
