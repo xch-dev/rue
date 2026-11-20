@@ -55,3 +55,11 @@ tests:
   runtime_cost: 3826
   byte_cost: 1140000
   total_cost: 1143826
+- name: shadowed
+  program: (a (q 3 () (a 2 (c 5 11)) ()) (c (q 3 () (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 2 (c 3 ()))) (a (i (= (sha256 2) 3) (q 8) (q)) 1)) 1))
+  debug_program: (a (q 3 (q . 1) () (a 4 (c 6 (c 5 11)))) (c (c (q 3 (q . 1) (a (i (not (= (a 2 5) 7)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:57:9"))) 1) (a (q 36 (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) (q) (q 8)) 1) 1) (c 5 (c 7 ())))) (q 11 1)) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 5507
+  byte_cost: 1932000
+  total_cost: 1937507

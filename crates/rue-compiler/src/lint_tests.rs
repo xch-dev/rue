@@ -2784,4 +2784,27 @@ fn tail(value: Bytes, hash: Bytes32) {
 
     let compiled = compile(&fixed);
     assert!(!compiled.has_errors(), "{:?}", compiled.diagnostics);
+
+    // Where `keccak256` names something else, an `assert` of it would call that instead, so
+    // there's no suggestion
+    let shadowed = "\
+fn main(value: Bytes, hash: Bytes32) -> Int {
+    keccak256_verify(value, hash);
+    1
+}
+
+fn keccak256(value: Bytes) -> Bytes32 {
+    sha256(value)
+}
+";
+    let compiled = compile(shadowed);
+    assert!(
+        compiled
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.lint() == Some(Lint::NeedlessKeccak256Verify))
+            .all(|diagnostic| diagnostic.suggestions.is_empty()),
+        "{:?}",
+        compiled.diagnostics
+    );
 }

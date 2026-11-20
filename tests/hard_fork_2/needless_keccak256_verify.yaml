@@ -56,6 +56,14 @@ tests:
   runtime_cost: 4072
   byte_cost: 468000
   total_cost: 472072
+- name: shadowed
+  program: (a (q 3 () (a 2 (c 5 11)) ()) (c (q 3 () (a (i (= (keccak256 2) 3) (q) (q 8)) 1) (a (i (= (sha256 2) 3) (q 8) (q)) 1)) 1))
+  debug_program: (a (q 3 (q . 1) () (a 4 (c 6 (c 5 11)))) (c (c (q 3 (q . 1) (a (i (not (= (a 2 5) 7)) (q) (q 8 (q . "assertion failed at needless_keccak256_verify.rue:57:9"))) 1) (a (i (= (keccak256 5) 7) (q) (q 8)) 1)) (q 11 1)) 1))
+  solution: ("hello" 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8)
+  output: ()
+  runtime_cost: 7306
+  byte_cost: 1260000
+  total_cost: 1267306
 diagnostics:
 - |-
   This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:5:5
@@ -66,3 +74,4 @@ diagnostics:
 - This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:25:5
 - This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:30:6
 - This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:35:5
+- This `keccak256_verify` can be written as an `assert` of `keccak256` after hard fork 2 at needless_keccak256_verify.rue:56:9

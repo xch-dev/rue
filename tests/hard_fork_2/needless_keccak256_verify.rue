@@ -40,3 +40,20 @@ test fn with_comment(value: Bytes, hash: Bytes32) {
 test fn allowed(value: Bytes, hash: Bytes32) {
     keccak256_verify(value, hash);
 }
+
+// `keccak256` doesn't name the builtin here, so an `assert` of it would call something else, and
+// there's no suggestion
+test fn shadowed(value: Bytes, hash: Bytes32) {
+    shadowing::check(value, hash);
+}
+
+mod shadowing {
+    fn keccak256(value: Bytes) -> Bytes32 {
+        sha256(value)
+    }
+
+    export fn check(value: Bytes, hash: Bytes32) {
+        keccak256_verify(value, hash);
+        assert keccak256(value) != hash;
+    }
+}

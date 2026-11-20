@@ -1,5 +1,5 @@
 use rue_diagnostic::{Applicability, Lint, Suggestion};
-use rue_hir::{Hir, HirId, Statement};
+use rue_hir::{Builtin, Database, Hir, HirId, Statement, Symbol};
 
 use crate::{
     HirLintPass, LintContext, LintInput,
@@ -42,8 +42,9 @@ impl HirLintPass for NeedlessKeccak256Verify {
         // The call can only be replaced with an `assert` statement where it's a statement. As the
         // final expression of a block, removing it would leave the block without a value, which
         // most blocks must have
-        let replaced = self
-            .hard_fork_2
+        // `keccak256` must also name the builtin where the call is, rather than an item that shadows
+        // it, which the `assert` would call instead
+        let replaced = (self.hard_fork_2 && names_builtin(db, hir))
             .then(|| cx.parent())
             .flatten()
             .and_then(|parent| match db.hir(parent) {
@@ -94,4 +95,24 @@ impl HirLintPass for NeedlessKeccak256Verify {
             ));
         }
     }
+}
+
+/// Whether `keccak256` names the builtin in the scope of the node, looking it up in that scope and
+/// each enclosing one, as the compiler does. A scope whose enclosing scopes aren't known, or a name
+/// that refers to anything else, means it doesn't.
+fn names_builtin(db: &Database, hir: HirId) -> bool {
+    let mut scope = db.hir_scope(hir);
+
+    while let Some(id) = scope {
+        if let Some(symbol) = db.scope(id).symbol("keccak256") {
+            return matches!(
+                db.symbol(symbol),
+                Symbol::Builtin(Builtin::Keccak256 { inline: false })
+            );
+        }
+
+        scope = db.scope(id).parent();
+    }
+
+    false
 }
