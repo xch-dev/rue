@@ -45,6 +45,15 @@ fn union_of_pairs(value: (A | B | nil, Int)) -> nil {
     value.first
 }
 
+// When both parts differ, the pair is split in two, so every combination can be handled
+fn every_combination(value: (A | B, A | B)) -> (B, B) {
+    if value is (A, A) | (A, B) | (B, A) {
+        return (B { kind: 2 }, B { kind: 2 });
+    }
+
+    value
+}
+
 // The rest of a list is the list itself, which is covered
 fn list_item(value: List<A | B>) -> (B, List<A | B>) | nil {
     if value is (A, List<A | B>) {
@@ -72,6 +81,8 @@ test fn guard_values() {
     assert rest_part((5, b)).kind == 2;
     assert nested_part((5, (b, nil))).kind == 2;
     assert union_of_pairs((nil, 5)) == nil;
+    assert every_combination((a, b)).first.kind == 2;
+    assert every_combination((b, b)).rest.kind == 2;
     assert list_item([a, b]) is nil;
     assert list_item([b, a]) is (B, List<A | B>);
     assert list_item(nil) is nil;

@@ -1,2 +1,2 @@
 diagnostics:
-- Cannot assign `(A | B, A | B)` to `(B, B)` without a type guard, since the value isn't always a valid `(B, B)` at pair_parts_errors.rue:10:60
+- Cannot assign `(B, A | B) | (A, B)` to `(B, B)` without a type guard, since the value isn't always a valid `(B, B)` at pair_parts_errors.rue:10:60

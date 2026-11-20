@@ -354,8 +354,8 @@ fn test_growth_subtract_split() {
 /// `type R0 = true; type R1 = (T0, R0) | (R0, T0); ...`
 ///
 /// Subtracting `R_n` from `T_n` splits both parts of the pair by `T_{n-1} - R_{n-1}`, so it's
-/// exponential unless that's only worked out once. It's still quadratic, since each level compares
-/// its parts with the target's, and those comparisons don't share a memo.
+/// exponential unless that's only worked out once, and quadratic unless the comparisons of each
+/// level's parts share a memo.
 fn split_both_ways(depth: usize) -> usize {
     let mut t = Types::new();
     let (yes, no) = (t.builtins.bool_true, t.builtins.bool_false);
@@ -376,12 +376,11 @@ fn split_both_ways(depth: usize) -> usize {
 
 #[test]
 fn test_growth_subtract_split_both_ways() {
-    // Doubling the depth quadruples the steps if they're quadratic, but multiplies them by about
-    // `2^8` if they're exponential
+    // Doubling the depth at most doubles the steps if they're linear, as in `assert_linear`
     let small = split_both_ways(8);
     let large = split_both_ways(16);
     assert!(
-        large <= small * 6,
+        large <= small * 3,
         "{small} steps at depth 8, but {large} at depth 16"
     );
 }

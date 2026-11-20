@@ -28,7 +28,7 @@ diagnostics:
 - "Cannot assign `Wrapper { ...value: Int }` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at struct_display_errors.rue:64:16"
 - Unused struct `Triple` at struct_display_errors.rue:69:8
 - Unused function `correlated_rest` at struct_display_errors.rue:76:4
-- Cannot assign `Triple` to `Bytes32`, since they are incompatible at struct_display_errors.rue:76:42
+- "Cannot assign `Triple { first: Int, second: (Int, Int), ...rest: (Int, Int) } | Triple { first: Int, second: nil, ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:76:42"
 - "Cannot assign `Triple { first: Int, second: nil, ...rest: (Int, Int) } | Triple { first: Int, second: (Int, Int), ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:78:16"
 - Unused struct `Node` at struct_display_errors.rue:83:8
 - Unused function `unchanged` at struct_display_errors.rue:89:4

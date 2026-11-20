@@ -3,9 +3,9 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, FxHashMap, FxHashSet, Pair, Type, TypeId, Union, compare,
-    extract_pairs_substituted, grow_stack, reaches_non_contractive_cycle, step, stringify_impl,
-    substitute,
+    Alias, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet, IntersectContext,
+    Pair, Type, TypeId, Union, compare_impl, extract_pairs_substituted, grow_stack,
+    intersect_substituted, reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 pub fn subtract(
@@ -18,7 +18,8 @@ pub fn subtract(
     let rhs_id = substitute(arena, rhs_id);
 
     // These should be rejected before reaching this point, but they would recurse forever
-    if reaches_non_contractive_cycle(arena, lhs_id) {
+    if reaches_non_contractive_cycle(arena, lhs_id) || reaches_non_contractive_cycle(arena, rhs_id)
+    {
         return lhs_id;
     }
 
@@ -67,21 +68,59 @@ struct Subtraction {
     /// copy should be narrowed to the same type. The same subtraction can also be reached through
     /// either part of the pairs in a target, so this keeps nested splits from being exponential.
     variants: FxHashMap<(TypeId, TypeId), Outcome>,
+    /// Shared by every comparison, since they all start from an empty stack. Otherwise each part
+    /// of a nested split would compare the whole of the types it's given again.
+    comparison: ComparisonContext<'static>,
+    /// Shared by every intersection, for the same reason.
+    intersection: IntersectContext,
 }
 
-#[derive(Debug, Clone, Copy)]
+/// Whether every value of `lhs_id` passes a check against `rhs_id`. The types have already been
+/// substituted, so they can be compared directly.
+fn covered(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    cx: &mut Subtraction,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+) -> bool {
+    compare_impl(
+        arena,
+        builtins,
+        &mut cx.comparison,
+        lhs_id,
+        rhs_id,
+        None,
+        None,
+    ) <= Comparison::Cast
+}
+
+/// What's left of a variant once a target is subtracted from it.
+#[derive(Debug, Clone)]
 enum Outcome {
+    Unchanged,
+    Removed,
+    /// The variant is replaced by these types, each with the same semantic types as the variant.
+    Narrowed(Vec<TypeId>),
+}
+
+/// What's left of a part of a pair once a part of a target pair is subtracted from it.
+#[derive(Debug, Clone, Copy)]
+enum Part {
     Unchanged,
     Removed,
     Narrowed(TypeId),
 }
 
+/// The most pairs that a pair variant can be split into. Splitting by a target pair whose parts
+/// both differ adds a pair, so a target with many such pairs would otherwise multiply the variants
+/// of the type. Past this, the remaining pairs are kept whole, which is only wider than it could be.
+const MAX_SPLIT_PAIRS: usize = 16;
+
 /// The variants of `lhs_id` that aren't covered by `rhs_id`, or `None` if none of them changed.
 ///
-/// A pair variant whose parts aren't all covered is split by the one part that differs, if the
-/// other is covered: `(X, Y) - (P, Y) = (X - P, Y)`. The values that fail the check against
-/// `(P, Y)` are exactly the ones whose first value isn't a `P`. When both parts differ, the
-/// remainder isn't a single pair, so the variant is kept whole.
+/// A pair variant that isn't covered as a whole is split by the pairs in the target (see
+/// `split_pair`).
 fn remaining_variants(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -108,13 +147,13 @@ fn remaining_variants_inner(
     let mut changed = false;
     let mut remaining = Vec::with_capacity(variants.len());
 
-    for mut variant in variants {
+    for variant in variants {
         let key = (variant.type_id, rhs_id);
 
         let outcome = if let Some(outcome) = cx.variants.get(&key) {
-            *outcome
+            outcome.clone()
         } else {
-            let outcome = if compare(arena, builtins, variant.type_id, rhs_id) <= Comparison::Cast {
+            let outcome = if covered(arena, builtins, cx, variant.type_id, rhs_id) {
                 Outcome::Removed
             } else if let Type::Pair(pair) = arena[variant.type_id] {
                 let rhs_pairs =
@@ -124,23 +163,24 @@ fn remaining_variants_inner(
                 Outcome::Unchanged
             };
 
-            cx.variants.insert(key, outcome);
+            cx.variants.insert(key, outcome.clone());
             outcome
         };
 
         match outcome {
-            Outcome::Unchanged => {}
-            Outcome::Removed => {
+            Outcome::Unchanged => remaining.push(variant),
+            Outcome::Removed => changed = true,
+            Outcome::Narrowed(type_ids) => {
                 changed = true;
-                continue;
-            }
-            Outcome::Narrowed(type_id) => {
-                changed = true;
-                variant.type_id = type_id;
+
+                for type_id in type_ids {
+                    remaining.push(Variant {
+                        semantic_type_ids: variant.semantic_type_ids.clone(),
+                        type_id,
+                    });
+                }
             }
         }
-
-        remaining.push(variant);
     }
 
     cx.stack.remove(&(lhs_id, rhs_id));
@@ -148,8 +188,13 @@ fn remaining_variants_inner(
     changed.then_some(remaining)
 }
 
-/// Subtracts each of the pairs in the target from the pair, one at a time, where only one of the
-/// parts differs.
+/// Subtracts each of the pairs in the target from the pair, one at a time.
+///
+/// If one part of a target pair covers that part of the pair, only the other part is split:
+/// `(X, Y) - (P, Y) = (X - P, Y)`, since the values that fail the check against `(P, Y)` are
+/// exactly the ones whose first value isn't a `P`. If neither part is covered, the pair is split in
+/// two: `(X, Y) - (P, Q) = (X - P, Y) | (X & P, Y - Q)`, where `X & P` is the intersection. A value
+/// fails the check if its first value isn't a `P`, or if it is but its rest isn't a `Q`.
 fn split_pair(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -157,33 +202,90 @@ fn split_pair(
     pair: Pair,
     rhs_pairs: &[Pair],
 ) -> Outcome {
-    let mut first = pair.first;
-    let mut rest = pair.rest;
+    let mut pairs = vec![(pair.first, pair.rest)];
     let mut changed = false;
 
     for rhs in rhs_pairs {
-        let first_covered = compare(arena, builtins, first, rhs.first) <= Comparison::Cast;
-        let rest_covered = compare(arena, builtins, rest, rhs.rest) <= Comparison::Cast;
+        let mut next = Vec::with_capacity(pairs.len());
 
-        let (part, rhs_part) = match (first_covered, rest_covered) {
-            (true, true) => return Outcome::Removed,
-            (false, true) => (&mut first, rhs.first),
-            (true, false) => (&mut rest, rhs.rest),
-            (false, false) => continue,
-        };
+        for (index, &(first, rest)) in pairs.iter().enumerate() {
+            let first_covered = covered(arena, builtins, cx, first, rhs.first);
+            let rest_covered = covered(arena, builtins, cx, rest, rhs.rest);
 
-        match subtract_part(arena, builtins, cx, *part, rhs_part) {
-            Outcome::Unchanged => {}
-            Outcome::Removed => return Outcome::Removed,
-            Outcome::Narrowed(type_id) => {
-                *part = type_id;
-                changed = true;
+            match (first_covered, rest_covered) {
+                (true, true) => changed = true,
+                (false, true) => match subtract_part(arena, builtins, cx, first, rhs.first) {
+                    Part::Unchanged => next.push((first, rest)),
+                    Part::Removed => changed = true,
+                    Part::Narrowed(first) => {
+                        changed = true;
+                        next.push((first, rest));
+                    }
+                },
+                (true, false) => match subtract_part(arena, builtins, cx, rest, rhs.rest) {
+                    Part::Unchanged => next.push((first, rest)),
+                    Part::Removed => changed = true,
+                    Part::Narrowed(rest) => {
+                        changed = true;
+                        next.push((first, rest));
+                    }
+                },
+                (false, false) => {
+                    // Each pair that's left to split may still be split in two
+                    if next.len() + (pairs.len() - index) >= MAX_SPLIT_PAIRS {
+                        next.push((first, rest));
+                        continue;
+                    }
+
+                    let first_left = subtract_part(arena, builtins, cx, first, rhs.first);
+                    let rest_left = subtract_part(arena, builtins, cx, rest, rhs.rest);
+
+                    // If either part is unchanged by its subtraction, the two pairs would cover
+                    // the whole pair again
+                    if matches!(first_left, Part::Unchanged) || matches!(rest_left, Part::Unchanged)
+                    {
+                        next.push((first, rest));
+                        continue;
+                    }
+
+                    changed = true;
+
+                    if let Part::Narrowed(first_left) = first_left {
+                        next.push((first_left, rest));
+                    }
+
+                    if let Part::Narrowed(rest_left) = rest_left {
+                        // If every first value is a `P`, the intersection is the first part itself
+                        let both = if matches!(first_left, Part::Removed) {
+                            first
+                        } else {
+                            intersect_substituted(
+                                arena,
+                                builtins,
+                                &mut cx.intersection,
+                                first,
+                                rhs.first,
+                            )
+                        };
+
+                        next.push((both, rest_left));
+                    }
+                }
             }
         }
+
+        pairs = next;
     }
 
-    if changed {
-        Outcome::Narrowed(arena.alloc(Type::Pair(Pair::new(first, rest))))
+    if pairs.is_empty() {
+        Outcome::Removed
+    } else if changed {
+        Outcome::Narrowed(
+            pairs
+                .into_iter()
+                .map(|(first, rest)| arena.alloc(Type::Pair(Pair::new(first, rest))))
+                .collect(),
+        )
     } else {
         Outcome::Unchanged
     }
@@ -200,15 +302,15 @@ fn subtract_part(
     cx: &mut Subtraction,
     lhs_id: TypeId,
     rhs_id: TypeId,
-) -> Outcome {
+) -> Part {
     if cx.stack.contains(&(lhs_id, rhs_id)) {
-        return Outcome::Unchanged;
+        return Part::Unchanged;
     }
 
     match remaining_variants(arena, builtins, cx, lhs_id, rhs_id) {
-        None => Outcome::Unchanged,
-        Some(variants) if variants.is_empty() => Outcome::Removed,
-        Some(variants) => Outcome::Narrowed(repackage(arena, builtins, variants)),
+        None => Part::Unchanged,
+        Some(variants) if variants.is_empty() => Part::Removed,
+        Some(variants) => Part::Narrowed(repackage(arena, builtins, variants)),
     }
 }
 

@@ -4056,14 +4056,71 @@ mod subtraction {
     }
 
     #[test]
-    fn keeps_pair_when_both_parts_differ() {
+    fn splits_both_parts() {
         let mut db = Db::new();
         let [one, two, _] = literals(&mut db);
         let either = db.union(&[one, two]);
         let lhs = db.pair(either, either);
         let rhs = db.pair(one, one);
 
+        assert_eq!(sub(&mut db, lhs, rhs), "(2, 1 | 2) | (1, 2)");
+    }
+
+    #[test]
+    fn splits_every_combination() {
+        let mut db = Db::new();
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let lhs = db.pair(either, either);
+        let pairs = [(one, one), (one, two), (two, one)].map(|(a, b)| db.pair(a, b));
+        let rhs = db.union(&pairs);
+        let all = db.pair(two, two);
+        let every = db.union(&[rhs, all]);
+
+        assert_eq!(sub(&mut db, lhs, rhs), "(2, 2)");
+        assert_eq!(sub(&mut db, lhs, every), "Never");
+    }
+
+    #[test]
+    fn keeps_pair_when_a_part_is_disjoint() {
+        let mut db = Db::new();
+        let [one, two, three] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let lhs = db.pair(either, either);
+        let rhs = db.pair(three, one);
+
         assert_eq!(sub(&mut db, lhs, rhs), "(1 | 2, 1 | 2)");
+    }
+
+    #[test]
+    fn limits_split_pairs() {
+        let mut db = Db::new();
+        let values = (1..=24)
+            .map(|value| db.literal(AtomSemantic::Int, &[value]))
+            .collect::<Vec<_>>();
+        let any_value = db.union(&values);
+        let lhs = db.pair(any_value, any_value);
+        let diagonal = values
+            .iter()
+            .map(|&value| db.pair(value, value))
+            .collect::<Vec<_>>();
+        let rhs = db.union(&diagonal);
+
+        let result = subtract(&mut db.arena, &db.builtins, lhs, rhs);
+        let Type::Union(union) = db.arena[result].clone() else {
+            panic!("expected a union");
+        };
+        assert!(union.types.len() <= 16, "{} pairs", union.types.len());
+
+        // Every value that fails the check is still in the result
+        for &a in &values {
+            for &b in &values {
+                if a != b {
+                    let pair = db.pair(a, b);
+                    assert_eq!(db.cmp(pair, result), Comparison::Assign);
+                }
+            }
+        }
     }
 
     #[test]
