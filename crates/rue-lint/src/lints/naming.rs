@@ -153,17 +153,12 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 {
                     check_name(cx, source, Some(name), Case::Parameter, "Parameter");
                 }
-            } else if let Some(stmt) = AstLetStmt::cast(node.clone()) {
-                for name in stmt
-                    .binding()
-                    .iter()
-                    .flat_map(|binding| binding_names(binding, false))
-                {
-                    check_name(cx, source, Some(name), Case::Snake, "Binding");
-                }
-            } else if let Some(arm) = AstMatchArm::cast(node.clone()) {
-                for name in arm
-                    .binding()
+            } else if let Some(binding) = AstLetStmt::cast(node.clone())
+                .map(|stmt| stmt.binding())
+                .or_else(|| AstMatchArm::cast(node.clone()).map(|arm| arm.binding()))
+            {
+                // A match arm's binding is named like a `let` binding
+                for name in binding
                     .iter()
                     .flat_map(|binding| binding_names(binding, false))
                 {

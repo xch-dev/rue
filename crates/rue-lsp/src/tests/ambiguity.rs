@@ -610,6 +610,99 @@ fn main(value: Point | nil) -> Int {
     );
 }
 
+const OPTION: &str = r#"
+enum Dir {
+    Up = 1,
+    Down,
+}
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+"#;
+
+#[test]
+fn test_match_arm_binding_generic_variant_field() {
+    check(
+        &format!(
+            "{OPTION}{}",
+            r#"
+fn main(option: Option<Int>) -> Int {
+    match option {
+        Option::None<Int> => 0,
+        Option::Some<Int> { val$0ue: inner } => inner,
+    }
+}
+"#
+        ),
+        expect![[r#"
+            hover:
+            value: Int
+            definitions:
+            main.rue:8:11-8:16
+            references:
+            main.rue:8:11-8:16
+            main.rue:14:28-14:33
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_union_of_copies_field() {
+    check(
+        &format!(
+            "{OPTION}{}",
+            r#"
+fn main(option: Option<Dir>) -> Int {
+    match option {
+        Option::None<Dir> => 0,
+        Option::Some<Dir::Up> | Option::Some<Dir::Down> { val$0ue: inner } => inner as Int,
+    }
+}
+"#
+        ),
+        expect![[r#"
+            hover:
+            value: Dir::Up | Dir::Down
+            definitions:
+            main.rue:8:11-8:16
+            references:
+            main.rue:8:11-8:16
+            main.rue:14:58-14:63
+        "#]],
+    );
+}
+
+#[test]
+fn test_field_access_on_narrowed_generic_variant() {
+    check(
+        &format!(
+            "{OPTION}{}",
+            r#"
+fn main(option: Option<Dir>) -> Int {
+    match option {
+        Option::Some<Dir::Up> => 1,
+        _ => match option {
+            Option::None<Dir> => 0,
+            _ => option.val$0ue as Int,
+        }
+    }
+}
+"#
+        ),
+        expect![[r#"
+            hover:
+            value: Dir::Down
+            definitions:
+            main.rue:8:11-8:16
+            references:
+            main.rue:8:11-8:16
+            main.rue:16:24-16:29
+        "#]],
+    );
+}
+
 #[test]
 fn test_generic_function_body() {
     check(

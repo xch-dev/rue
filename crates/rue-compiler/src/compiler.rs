@@ -12,7 +12,7 @@ use std::{
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Note, Source, SourceKind, SrcLoc,
+    Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
     Builtins, Constraint, Database, Declaration, HirId, ImportId, ImportUser, Item, Items,
@@ -402,16 +402,18 @@ impl Compiler {
         diagnostics
     }
 
-    /// The number of diagnostics reported so far, which [`Self::note_diagnostics_since`] takes.
+    /// The number of diagnostics reported so far, which [`Self::diagnostics_since`] takes.
     pub fn diagnostic_count(&self) -> usize {
         self.diagnostics.len()
     }
 
-    /// Adds a note to each diagnostic that's been reported since there were `count` of them.
-    pub fn note_diagnostics_since(&mut self, count: usize, note: &Note) {
-        for diagnostic in self.diagnostics.iter_mut().skip(count) {
-            diagnostic.notes.push(note.clone());
-        }
+    /// The diagnostics that have been reported since there were `count` of them.
+    pub fn diagnostics_since(&self, count: usize) -> &[Diagnostic] {
+        &self.diagnostics[count..]
+    }
+
+    pub fn diagnostics_since_mut(&mut self, count: usize) -> &mut [Diagnostic] {
+        &mut self.diagnostics[count..]
     }
 
     pub fn has_errors(&self) -> bool {

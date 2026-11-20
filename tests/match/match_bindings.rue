@@ -122,6 +122,15 @@ fn total(values: List<Int>) -> Int {
     }
 }
 
+// A list type is destructured once the arms before it have handled `nil`, since a list that
+// might be empty has no first item
+fn total_list(values: List<Int>) -> Int {
+    match values {
+        nil => 0,
+        List<Int> [first, ...rest] => first + total_list(rest),
+    }
+}
+
 fn first_two(values: List<Int>) -> Int {
     match values {
         (Int, (Int, List<Int>)) [first, second, ..._rest] => first + second,
@@ -149,6 +158,7 @@ test fn pair_and_list_bindings() -> List<Int> {
         sum((1, 2)),
         sum(5),
         total([1, 2, 3]),
+        total_list([1, 2, 3]),
         first_two([1, 2, 3]),
         first_two([1]),
         nested(((1, 2), [3, 4])),
@@ -257,6 +267,37 @@ test fn computed_and_field_values() -> List<Int> {
         field(Holder { shape: Circle { radius: 2 }, scale: 3 }),
         field(Holder { shape: Point {}, scale: 3 }),
     ]
+}
+
+struct Renamed {
+    width: Int,
+    height: Int,
+}
+
+// A cast is matched on as the type it casts to, which is what a binding destructures, although the
+// arms narrow the value that was cast as its own type
+fn cast(pair: (Int, (Int, nil)) | nil) -> Int {
+    match pair as Renamed | nil {
+        Renamed { width, height } => width * height,
+        nil => 0,
+    }
+}
+
+fn cast_wildcard(pair: (Int, (Int, nil)) | nil) -> Int {
+    match pair as Renamed | nil {
+        nil => 0,
+        _ { width, height } => width + height,
+    }
+}
+
+fn cast_inline(pair: (Int, (Int, nil))) -> Int {
+    inline match pair as Renamed {
+        Renamed { width, ...whole } => width - whole.height,
+    }
+}
+
+test fn casts() -> List<Int> {
+    [cast((2, (3, nil))), cast(nil), cast_wildcard((2, (3, nil))), cast_inline((5, (3, nil)))]
 }
 
 // A binding can shadow the value being matched on, like a `let` can, and is only in scope in its

@@ -19,6 +19,7 @@ pub fn create_struct_binding(
     let reference = Value::new(ctx.alloc_hir(Hir::Reference(symbol)), ty)
         .with_reference(SymbolPath::new(symbol, vec![]));
 
+    let container = field_container(ctx, ty);
     let mut specified_fields = HashSet::new();
 
     let len = struct_binding.fields().count();
@@ -94,7 +95,6 @@ pub fn create_struct_binding(
 
         // Without a binding of its own, the name is the field and the binding that's declared for
         // it. The binding is recorded first, so that it's what navigation is about
-        let container = field_container(ctx, ty);
         ctx.add_syntax(
             SyntaxItemKind::FieldReference(SyntaxField {
                 name: name.text().to_string(),

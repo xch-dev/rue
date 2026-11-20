@@ -1667,6 +1667,47 @@ fn fix(source: &str) -> String {
 }
 
 #[test]
+fn suggestions_fix_match_arm_bindings() {
+    let source = "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point | nil) -> Int {
+    match point {
+        Point { x: x, y: other } => x + other,
+        nil => 0,
+    }
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point | nil) -> Int {
+    match point {
+        Point { x, y: other } => x + other,
+        nil => 0,
+    }
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
 fn suggestions_fix_lints() {
     let source = "\
 fn main() -> Int {

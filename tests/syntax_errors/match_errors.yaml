@@ -13,32 +13,27 @@ diagnostics:
 - Undeclared symbol `foo` at match_errors.rue:64:14
 - Expected one of `,`, `)`, found `=` at match_errors.rue:65:11
 - Expected one of `)`, `...`, expression, found `}` at match_errors.rue:66:5
-- Unused struct `Pair` at match_errors.rue:77:8
-- Unused function `binding_errors` at match_errors.rue:84:4
 - Expected `=>`, found identifier at match_errors.rue:86:14
 - Undeclared symbol `whole` at match_errors.rue:86:14
 - Expected one of `,`, `}`, found `=` at match_errors.rue:86:20
 - Expected binding, found integer literal at match_errors.rue:87:21
-- Unused function `binding_after_arrow` at match_errors.rue:92:4
 - Undeclared symbol `first` at match_errors.rue:94:19
 - Expected one of `;`, `}`, found `,` at match_errors.rue:94:24
 - Undeclared type `first` at match_errors.rue:94:33
 - Expected `=>`, found `+` at match_errors.rue:94:39
 - Undeclared symbol `rest` at match_errors.rue:94:41
-- Unused function `missing_arrow_before_block` at match_errors.rue:100:4
 - Expected `=>`, found `{` at match_errors.rue:102:14
-- Unused function `unclosed_binding` at match_errors.rue:107:4
-- Unused binding `first` at match_errors.rue:109:16
-- Unused binding `rest` at match_errors.rue:109:23
-- Expected one of `:`, `,`, `}`, found `=` at match_errors.rue:109:28
-- Expected one of `}`, `...`, identifier, found `nil` at match_errors.rue:110:9
-- Expected `=>`, found `}` at match_errors.rue:112:1
-- Expected `}`, found `fn` at match_errors.rue:114:1
-- Unused function `typed_binding` at match_errors.rue:114:4
-- Unused binding `Int` at match_errors.rue:116:23
+- Unused binding `List` at match_errors.rue:109:23
 - |-
-  Binding `Int` should be named in snake_case at match_errors.rue:116:23
-    note: Consider renaming it to `int`
-- Unused binding `rest` at match_errors.rue:116:28
-- Expected binding, found integer literal at match_errors.rue:116:34
-- Undeclared symbol `first` at match_errors.rue:116:41
+  Binding `List` should be named in snake_case at match_errors.rue:109:23
+    note: Consider renaming it to `list`
+- Expected one of `,`, `}`, found `<` at match_errors.rue:109:27
+- Unused binding `rest` at match_errors.rue:109:34
+- Expected binding, found integer literal at match_errors.rue:109:40
+- Undeclared symbol `first` at match_errors.rue:109:47
+- Unused binding `first` at match_errors.rue:116:16
+- Unused binding `rest` at match_errors.rue:116:23
+- Expected one of `:`, `,`, `}`, found `=` at match_errors.rue:116:28
+- Expected one of `}`, `...`, identifier, found `nil` at match_errors.rue:117:9
+- Expected `=>`, found `}` at match_errors.rue:119:1
+- Expected `}`, found eof at match_errors.rue:120:1

@@ -1,18 +1,19 @@
 use std::collections::HashSet;
 
 use log::debug;
-use rowan::{TextRange, TextSize};
+use rowan::TextRange;
 use rue_ast::{AstBinding, AstMatchArm, AstMatchExpr, AstNode};
-use rue_diagnostic::{DiagnosticKind, Note, SrcLoc};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Note, SrcLoc};
 use rue_hir::{
     BindingSymbol, Block, Declaration, Guard, Hir, HirId, Mappings, Statement, Symbol, SymbolPath,
-    TypePath, Value, control_fallthroughs,
+    Value, control_fallthroughs,
 };
 use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
     Branches, Compiler, compile_branching_expr, compile_expr, compile_type, create_binding,
+    type_at_path,
 };
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
@@ -77,9 +78,21 @@ pub fn compile_match_expr(
 
     let checkpoint = ctx.mapping_checkpoint();
 
+    // A cast keeps the reference of what it casts, which the arms narrow, but a binding
+    // destructures the value as the type it was cast to. Comparing the types can be slow for a
+    // large union, so it's only done if there's a binding.
+    let recast = expr.arms().any(|arm| arm.binding().is_some()) && {
+        let own = type_at_path(ctx, ctx.symbol_type(reference.symbol), &reference.path);
+        own.is_none_or(|own| {
+            own != scrutinee.ty
+                && !(ctx.is_assignable(own, scrutinee.ty) && ctx.is_assignable(scrutinee.ty, own))
+        })
+    };
+
     let matched = Matched {
         scrutinee: &scrutinee,
         reference: &reference,
+        recast,
         inline,
         expected_type,
         branches: arm_kind,
@@ -114,7 +127,7 @@ pub fn compile_match_expr(
                     .map_or(UnreachableReason::Handled, UnreachableReason::CatchAll);
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
             }
-            compile_unreachable_arm(ctx, &matched, &arm, pattern);
+            compile_unreachable_arm(ctx, &matched, &arm, pattern, remaining);
             continue;
         }
 
@@ -129,7 +142,7 @@ pub fn compile_match_expr(
             if ctx.is_assignable(ty, earlier) {
                 let reason = UnreachableReason::Handled;
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
-                compile_unreachable_arm(ctx, &matched, &arm, pattern);
+                compile_unreachable_arm(ctx, &matched, &arm, pattern, remaining);
                 continue;
             }
         }
@@ -166,7 +179,7 @@ pub fn compile_match_expr(
                     has_error = true;
                 }
             }
-            compile_unreachable_arm(ctx, &matched, &arm, pattern);
+            compile_unreachable_arm(ctx, &matched, &arm, pattern, remaining);
             continue;
         }
 
@@ -193,13 +206,8 @@ pub fn compile_match_expr(
         let else_members = members(ctx, else_type);
 
         // A wildcard arm sees the value as the earlier arms left it, which is already in scope
-        let body = compile_arm(
-            ctx,
-            &matched,
-            &arm,
-            pattern.filter(|_| !inline),
-            pattern.filter(|_| inline),
-        );
+        let narrowed = pattern.filter(|_| !inline);
+        let body = compile_arm(ctx, &matched, &arm, pattern, narrowed, remaining);
         types.push(body.ty);
 
         let catches_all = check == Check::None || else_members.is_empty();
@@ -354,50 +362,57 @@ struct Matched<'a> {
     scrutinee: &'a Value,
     /// What the arms narrow, which is the binding of a value that isn't a reference.
     reference: &'a SymbolPath,
+    /// Whether the value's type isn't the type of what the arms narrow, such as `value as T`.
+    recast: bool,
     inline: bool,
     expected_type: Option<TypeId>,
     branches: Option<Branches>,
 }
 
-/// Compiles an arm's body, with the value narrowed to the arm's type, if it has one. If the arms
+/// Compiles an arm's body, with the value narrowed to a type, if the arm narrows it. If the arms
 /// are blocks of a given kind, such as in a statement (see [`compile_branching_expr`]), so is a
 /// body that's a block, `if` or `match`, and in a statement any other body is an error, since its
 /// value isn't used.
 ///
-/// An arm's binding destructures the value as the body sees it, so it's in scope there. The arms
-/// of an `inline match` don't narrow the value, so `unnarrowed` is the arm's type there instead,
-/// which the errors about the binding point out.
+/// An arm's binding destructures the value as the body sees it, so it's in scope there.
+/// `remaining` is the type of the values that the arms before this one didn't handle.
 fn compile_arm(
     ctx: &mut Compiler,
     matched: &Matched<'_>,
     arm: &AstMatchArm,
-    ty: Option<TypeId>,
-    unnarrowed: Option<TypeId>,
+    pattern: Option<TypeId>,
+    narrowed: Option<TypeId>,
+    remaining: TypeId,
 ) -> Value {
+    let body = arm.expr();
+
     // An arm without a body still declares its bindings, so that they can be looked up
-    let range = arm.expr().map_or_else(
+    let range = body.as_ref().map_or_else(
         || TextRange::empty(arm.syntax().text_range().end()),
         |body| body.syntax().text_range(),
     );
-    let mappings = ty
+    let mappings = narrowed
         .map(|ty| matched.reference.narrowed_to(ty))
         .unwrap_or_default();
+
+    // The bindings are declared in the scope that the mappings are in, which is the arm's own,
+    // so a name that's bound twice is reported, and one that's already in scope is shadowed
     let index = ctx.push_mappings(mappings, range.start());
 
     if let Some(binding) = arm.binding() {
         let count = ctx.diagnostic_count();
-        compile_arm_binding(ctx, matched, &binding, range.start());
+        compile_arm_binding(ctx, matched, &binding, narrowed, remaining);
 
-        if let Some(ty) = unnarrowed {
-            let name = ctx.type_name(ty);
-            let note = Note::new(format!(
-                "Every arm of an `inline match` is evaluated, so the value isn't narrowed to `{name}` before it's destructured"
-            ));
-            ctx.note_diagnostics_since(count, &note);
+        // The arms of an `inline match` don't narrow the value, which is the most likely reason
+        // that it can't be destructured like the arm's type
+        if matched.inline
+            && let Some(ty) = pattern
+        {
+            note_unnarrowed(ctx, count, ty);
         }
     }
 
-    let Some(body) = arm.expr() else {
+    let Some(body) = body else {
         debug!("Unresolved match arm body");
         ctx.revert_mappings(index, range.end());
         return ctx.unresolved();
@@ -428,10 +443,10 @@ fn compile_unreachable_arm(
     matched: &Matched<'_>,
     arm: &AstMatchArm,
     pattern: Option<TypeId>,
+    remaining: TypeId,
 ) {
-    let ty = (!matched.inline).then(|| pattern.unwrap_or(ctx.builtins().types.never));
-    let unnarrowed = pattern.filter(|_| matched.inline);
-    let _ = compile_arm(ctx, matched, arm, ty, unnarrowed);
+    let narrowed = (!matched.inline).then(|| pattern.unwrap_or(ctx.builtins().types.never));
+    let _ = compile_arm(ctx, matched, arm, pattern, narrowed, remaining);
 }
 
 /// Declares the bindings of an arm, such as `x` and `y` in `Point { x, y } => x + y`, which
@@ -445,7 +460,8 @@ fn compile_arm_binding(
     ctx: &mut Compiler,
     matched: &Matched<'_>,
     binding: &AstBinding,
-    start: TextSize,
+    narrowed: Option<TypeId>,
+    remaining: TypeId,
 ) {
     let Matched {
         scrutinee,
@@ -453,9 +469,23 @@ fn compile_arm_binding(
         ..
     } = *matched;
 
-    // The mappings of the arm are in scope here, so this is the value's narrowed type
-    let ty = type_at_path(ctx, ctx.symbol_type(reference.symbol), &reference.path)
-        .unwrap_or(scrutinee.ty);
+    let ty = if matched.recast {
+        // What the arms narrow isn't the type that the value was cast to, so that type is
+        // narrowed the same way instead
+        match narrowed {
+            Some(ty) => {
+                let builtins = ctx.builtins().types;
+                rue_types::intersect(ctx.types_mut(), &builtins, remaining, ty)
+            }
+            None if matched.inline => scrutinee.ty,
+            None => remaining,
+        }
+    } else {
+        // The mappings of the arm are in scope here, so this is the value's narrowed type
+        type_at_path(ctx, ctx.symbol_type(reference.symbol), &reference.path)
+            .unwrap_or(scrutinee.ty)
+    };
+
     let hir = guard_value(ctx, scrutinee, reference);
 
     let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
@@ -465,48 +495,37 @@ fn compile_arm_binding(
     }));
 
     ctx.push_declaration(Declaration::Symbol(symbol));
-    ctx.reference(Declaration::Symbol(reference.symbol), None);
-
-    // The bindings get a scope of their own, like those of a `let`, so that a name that's bound
-    // twice is reported, and one that's already in scope is shadowed
-    let scope = ctx.alloc_child_scope();
-    ctx.push_scope(scope, start);
-
     create_binding(ctx, symbol, binding);
-
     ctx.pop_declaration();
 }
 
-/// The type of the part of a value at the path, which is what a field access that reads it
-/// evaluates to.
-fn type_at_path(ctx: &mut Compiler, ty: TypeId, path: &[TypePath]) -> Option<TypeId> {
-    let mut ty = ty;
+/// Adds a note to the errors about what a binding in an `inline match` arm can't destructure,
+/// out of the diagnostics reported since there were `count` of them, since the value isn't
+/// narrowed to the arm's type there.
+fn note_unnarrowed(ctx: &mut Compiler, count: usize, ty: TypeId) {
+    let is_destructuring = |diagnostic: &Diagnostic| {
+        matches!(
+            diagnostic.kind,
+            DiagnosticKind::UnknownField(..)
+                | DiagnosticKind::MissingField(..)
+                | DiagnosticKind::CannotDestructurePair(..)
+        )
+    };
 
-    for step in path {
-        let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
-        let pairs = rue_types::extract_pairs(ctx.types_mut(), semantic, true);
-
-        let mut parts: Vec<TypeId> = Vec::new();
-
-        for pair in pairs {
-            let part = match step {
-                TypePath::First => pair.first,
-                TypePath::Rest => pair.rest,
-            };
-
-            if !parts.contains(&part) {
-                parts.push(part);
-            }
-        }
-
-        ty = match parts.len() {
-            0 => return None,
-            1 => parts[0],
-            _ => ctx.alloc_type(Type::Union(Union::new(parts))),
-        };
+    if !ctx.diagnostics_since(count).iter().any(is_destructuring) {
+        return;
     }
 
-    Some(ty)
+    let name = ctx.type_name(ty);
+    let note = Note::new(format!(
+        "Every arm of an `inline match` is evaluated, so the value isn't narrowed to `{name}` before it's destructured"
+    ));
+
+    for diagnostic in ctx.diagnostics_since_mut(count) {
+        if is_destructuring(diagnostic) {
+            diagnostic.notes.push(note.clone());
+        }
+    }
 }
 
 /// An arm whose check also lets through members it can't tell apart from its own type.

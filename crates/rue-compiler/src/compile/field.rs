@@ -26,15 +26,41 @@ pub enum FieldResult {
 /// that's been narrowed or given generic arguments is a copy of the one that was declared, and so
 /// is each member of a union of them.
 pub fn field_container(ctx: &mut Compiler, ty: TypeId) -> TypeId {
-    let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+    rue_types::extract_structs(ctx.types_mut(), ty)
+        .and_then(|structs| structs.first().map(|ty| ty.semantic))
+        .unwrap_or(ty)
+}
 
-    match ctx.ty(semantic) {
-        Type::Struct(ty) => ty.semantic,
-        Type::Union(_) => rue_types::extract_structs(ctx.types_mut(), semantic)
-            .and_then(|structs| structs.first().map(|ty| ty.semantic))
-            .unwrap_or(ty),
-        _ => ty,
+/// The type of the part of a value at the path, through its pairs, which is what the field
+/// accesses that read it evaluate to. There isn't one if the value isn't always a pair there.
+pub(crate) fn type_at_path(ctx: &mut Compiler, ty: TypeId, path: &[TypePath]) -> Option<TypeId> {
+    let mut ty = ty;
+
+    for step in path {
+        let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+        let pairs = rue_types::extract_pairs(ctx.types_mut(), semantic, true);
+
+        let mut parts: Vec<TypeId> = Vec::new();
+
+        for pair in pairs {
+            let part = match step {
+                TypePath::First => pair.first,
+                TypePath::Rest => pair.rest,
+            };
+
+            if !parts.contains(&part) {
+                parts.push(part);
+            }
+        }
+
+        ty = match parts.len() {
+            0 => return None,
+            1 => parts[0],
+            _ => ctx.alloc_type(Type::Union(Union::new(parts))),
+        };
     }
+
+    Some(ty)
 }
 
 pub fn compile_pair_fields(

@@ -58,12 +58,20 @@ fn out_of_scope(shape: Shape) -> Int {
     value + radius
 }
 
-// The arm's type is what's destructured, so the members of a union must all have the field at the
-// same place, as they must for a `let`
+// The arm's type is what's destructured, so a field can only be read from a union if its members
+// are copies of one struct, as for a `let`, even if they all have the field
 fn union_arm(shape: Shape) -> Int {
     match shape {
-        Circle | Square { radius } => radius,
+        Circle | Square { kind } => kind,
         Point => 0,
+    }
+}
+
+// A list that might be empty has no first item, so its type can't be destructured before `nil`
+// has been handled
+fn list_before_nil(values: List<Int>) -> Int {
+    match values {
+        List<Int> [first, ...rest] => first + list_before_nil(rest),
     }
 }
 
@@ -82,6 +90,20 @@ fn inline_arm(shape: Shape) -> Int {
         Square (first, rest) => first + rest,
         _ { side } => side,
     }
+}
+
+// The note is only for what can't be destructured, and an arm that's never taken has it too
+fn inline_arm_other_errors(value: (Int, Int), shape: Shape) -> Int {
+    let duplicate = inline match value {
+        (0, Int) (part, part) => part,
+        _ => 0,
+    };
+
+    duplicate
+        + inline match shape {
+            Circle | Square | Point => 0,
+            Circle { radius } => radius,
+        }
 }
 
 // A binding doesn't make an arm match anything else, so it has no effect on which arms are
@@ -134,7 +156,7 @@ fn narrowed_type(shape: Shape) -> Int {
     match shape {
         Circle { kind } => {
             let two: 2 = kind;
-            two
+            two + 1
         }
         _ => 0,
     }
@@ -149,6 +171,8 @@ fn main(shape: Shape, value: (Int, Int) | Int, other: (Int, Int) | Square) -> In
         + union_arm(shape)
         + wildcard(shape)
         + inline_arm(shape)
+        + inline_arm_other_errors((0, 1), shape)
+        + list_before_nil(nil)
         + unreachable(shape)
         + not_exhaustive(shape)
         + incompatible(shape)
