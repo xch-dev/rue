@@ -8,10 +8,23 @@ diagnostics:
 - Unused function `rejected_for_another_reason` at generic_inference_element_lambda_generics_errors.rue:44:4
 - Cannot assign `(List<Int>, String)` to `(List<Int>, 1)` without a type guard, since the value isn't always a valid `(List<Int>, 1)` at generic_inference_element_lambda_generics_errors.rue:44:52
 - Unused function `recursive` at generic_inference_element_lambda_generics_errors.rue:48:4
-- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:53:43
-- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:53:53"
-- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:54:46
-- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:55:13"
-- Unused function `generic_inferred_as_an_uninferred_one` at generic_inference_element_lambda_generics_errors.rue:72:4
-- Cannot assign `List<{unresolved}>` to `Bool` without a type guard, since the value isn't always a valid `Bool` at generic_inference_element_lambda_generics_errors.rue:72:52
-- Cannot infer generic `T` for `map_list`; specify it explicitly, e.g. `map_list::<...>()` at generic_inference_element_lambda_generics_errors.rue:73:5
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:52:43
+- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:52:53"
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:53:46
+- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:54:13"
+- Unused function `generic_inferred_as_an_uninferred_one` at generic_inference_element_lambda_generics_errors.rue:71:4
+- Cannot assign `List<{unresolved}>` to `Bool` without a type guard, since the value isn't always a valid `Bool` at generic_inference_element_lambda_generics_errors.rue:71:52
+- Cannot infer generic `T` for `map_list`; specify it explicitly, e.g. `map_list::<...>()` at generic_inference_element_lambda_generics_errors.rue:72:5
+- Unused function `self_feeding` at generic_inference_element_lambda_generics_errors.rue:80:4
+- Unused function `element_returns_what_its_parameter_reads` at generic_inference_element_lambda_generics_errors.rue:94:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:95:44
+- Unused function `map_list_from` at generic_inference_element_lambda_generics_errors.rue:99:4
+- Unused function `element_before_a_spread_that_reads_its_return_type` at generic_inference_element_lambda_generics_errors.rue:107:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:109:29
+- Unused function `with_value_of_return` at generic_inference_element_lambda_generics_errors.rue:112:4
+- Unused function `element_before_a_value_of_its_return_type` at generic_inference_element_lambda_generics_errors.rue:120:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_element_lambda_generics_errors.rue:121:36
+- Unused function `map_list_of` at generic_inference_element_lambda_generics_errors.rue:124:4
+- Unused function `element_with_a_call_and_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:136:4
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:137:5
+- Cannot assign `T` to `A`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:137:63

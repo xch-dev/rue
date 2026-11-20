@@ -47,9 +47,8 @@ fn rejected_for_another_reason() -> (List<Int>, 1) {
 
 fn recursive<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> List<U> {
     if depth > 0 {
-        // A body that names the caller's `T` has a value of it that doesn't come from its
-        // parameter, so it isn't checked as what the call's renamed `T` is inferred as, and the
-        // call returns `List<T>`
+        // A body that names the caller's `T` needs its parameter to be the caller's `T`, but `5`
+        // makes the call's `T` `Int`, so the parameter is `Int`, as with `recursive::<Int, Int>`
         let _named_in_a_call: List<Int> = recursive([fn(x) => identity::<T>(x)], 5, 0);
         let _named_in_a_binding: List<Int> = recursive(
             [
@@ -76,4 +75,65 @@ fn generic_inferred_as_an_uninferred_one() -> Bool {
             raise;
         },
     )
+}
+
+fn self_feeding<T>(pair: (Int, fn(a: T) -> T), value: T) -> T {
+    pair.rest(value)
+}
+
+// An element lambda whose return type adds to the generic its parameter reads is compiled where it
+// is, against `T` itself, so `x + 1` is rejected, although `self_feeding::<Int>` compiles. Waiting
+// for `5`, as a lambda that's the whole argument does, would make `x` what the other arguments
+// infer, which is narrower than `T` whenever the lambda returns something else, so it would reject
+// `self_feeding((1, fn(_x) => (5, nil)), nil)`, which compiles today (see
+// `element_adds_to_what_it_reads`, and infer-fuzz generator 1, seeds 1461, 2955 and 6784), as
+// `apply_self(fn(_x) => (5, nil), nil)` is rejected for a lambda that's the whole argument. Which
+// of the two a lambda needs depends on what its body returns, which isn't known before it's
+// compiled, and a body is only compiled once. With an expected type, such as `Int`, that's what
+// `T` is, and it compiles
+fn element_returns_what_its_parameter_reads() -> Bool {
+    let result = self_feeding((1, fn(x) => x + 1), 5);
+    result == 6
+}
+
+fn map_list_from<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    map_list(functions, value)
+}
+
+// A lambda before a spread whose type has the generic its return type adds to is compiled where it
+// is, against `T` itself, as before, since the spread is compiled before a lambda that waits, and
+// whether it uses the type it's expected to have (as a generic function's name does, which is
+// instantiated against it) isn't known before it's compiled
+fn element_before_a_spread_that_reads_its_return_type() -> List<Int> {
+    let rest = [fn(x: Int) => x * 2];
+    map_list_from([fn(x) => x + 1, ...rest], 5)
+}
+
+fn with_value_of_return<T, U>(pair: (fn(x: T) -> U, U), value: T) -> U {
+    pair.first(value)
+}
+
+// A lambda next to an element whose expected type has the generic its return type adds to is
+// compiled where it is, against `T` itself, as before: the element is compiled before a lambda that
+// waits, against what the lambda's return type adds to `U` on main, and a literal there is
+// compiled against its expected type, which would then be narrower
+fn element_before_a_value_of_its_return_type() -> Int {
+    with_value_of_return((fn(x) => x + 1, 0), 5)
+}
+
+fn map_list_of<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    map_list(functions, value)
+}
+
+// A lambda whose body has a call that its return type can be is compiled where it is when the
+// call's expected type bounds that return type, against `T` itself, as before, so a body that needs
+// its parameter to be `A` is rejected here, although the same call without an expected type
+// compiles (see `element_names_the_callers_generic` in `generic_inference_element_lambda_generics.rue`).
+// Compiled where it is, the expected type's bound can narrow `T` through the call in its body,
+// which `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)` needs, and which it can't once its
+// parameter is what the other arguments infer. Which of the two a lambda needs depends on what its
+// body does with its parameter, which isn't known before it's compiled
+fn element_with_a_call_and_an_expected_type<A>(value: A) -> List<A> {
+    let result: List<A> = map_list_of([fn(x) => identity::<A>(x)], value);
+    result
 }

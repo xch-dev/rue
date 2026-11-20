@@ -173,3 +173,431 @@ fn recursive_swapped<T, U>(
 test fn element_of_a_recursive_call_with_the_generics_swapped() -> List<Int> {
     recursive_swapped([fn(x: String) => 1], "a", 2, 1)
 }
+
+// An element lambda whose parameter's generic a later argument adds to waits for it, as a lambda
+// that's the whole argument does, and is compiled against what's inferred then, rather than
+// against the callee's generic, which its body can't do anything with (#362, 13k.1)
+test fn element_reads_a_later_argument() -> List<Int> {
+    map_list([fn(x) => x + 1], 5)
+}
+
+test fn element_of_a_pair_reads_a_later_argument() -> Int {
+    apply_first((fn(x) => x + 1, 1), 5)
+}
+
+// The lambdas in a list spread in it too
+test fn element_of_a_spread_list_reads_a_later_argument() -> List<Int> {
+    map_list([fn(x) => x, ...[fn(x) => x + 1]], 5)
+}
+
+fn apply_with<T, U>(functions: (fn(x: T) -> U, Int), values: (T, U)) -> U {
+    functions.first(values.first)
+}
+
+// The later argument adds to `U` too, which the lambda's return type does
+test fn element_returns_what_a_later_argument_adds_to() -> Int {
+    apply_with((fn(x) => x + 1, 0), (5, 7))
+}
+
+// The calls have no expected type (see `element_with_a_call_and_an_expected_type` in
+// `generic_inference_element_lambda_generics_errors.rue`)
+fn with_the_callers_generic<A>(value: A) -> (List<A>, List<A>) {
+    let named_in_a_call = map_list([fn(x) => identity::<A>(x)], value);
+    let named_in_a_binding = map_list(
+        [
+            fn(x) => {
+                let y: A = x;
+                identity(y)
+            },
+        ],
+        value,
+    );
+    (named_in_a_call, named_in_a_binding)
+}
+
+test fn element_names_the_callers_generic() -> (List<Int>, List<Int>) {
+    with_the_callers_generic(5)
+}
+
+fn recursive_naming<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> (
+    List<T>,
+    List<U>,
+) {
+    if depth > 0 {
+        // The call's `T` is the caller's, so a body that names it is valid
+        let results: (List<T>, List<T>) = recursive_naming([fn(x) => identity::<T>(x)], value, 0);
+        return (results.rest, map_list(functions, value));
+    }
+
+    (nil, map_list(functions, value))
+}
+
+test fn element_of_a_recursive_call_names_the_callers_generic() -> (List<Int>, List<Int>) {
+    recursive_naming([fn(x: Int) => x + 1], 5, 1)
+}
+
+fn pair_first<T>(pair: (T, fn(x: T) -> T), value: T) -> T {
+    pair.rest(value)
+}
+
+// The other elements of the pair are compiled where they were, so `1` isn't widened by `2`, and
+// the lambda is compiled against both, as `Int`
+test fn element_next_to_a_value_of_the_generic() -> Int {
+    pair_first((1, fn(x) => x + 1), 2)
+}
+
+fn first_and<T, U>(pair: (fn(x: T) -> U, T), value: T) -> U {
+    pair.first(value)
+}
+
+test fn element_before_a_value_of_the_generic() -> Int {
+    first_and((fn(x) => x + 1, 1), 2)
+}
+
+// Guard: the lambda's parameters join the argument's, so the call is solved again with them when
+// the expected type `5` narrows `U`, as for a lambda that's the whole argument (#335)
+test fn element_takes_the_expected_bounds() -> 5 {
+    let result: 5 = first_and((fn(x) => x, 5), 5);
+    result
+}
+
+fn after_both<T>(pair: (Int, fn(value: T) -> T), make: fn(a: Int) -> T, value: T) -> (T, T) {
+    (pair.rest(make(pair.first)), pair.rest(value))
+}
+
+// Guard: a lambda that waits for a later lambda that adds to `T` isn't compiled against only what
+// the arguments before it infer, which letting the later arguments go ahead of the pair did
+// (infer-fuzz generator 1, seed 115)
+test fn element_waits_for_every_later_argument() -> ((Int, Int), (Int, Int)) {
+    after_both((7, fn(x) => x), fn(a: Int) => (a, 8), (1, 9))
+}
+
+fn later_lambda<T, U>(functions: List<fn(x: T) -> U>, make: fn() -> T) -> List<U> {
+    map_list(functions, make())
+}
+
+test fn element_waits_for_a_later_lambda() -> List<Int> {
+    later_lambda([fn(x) => x + 1], fn() => 5)
+}
+
+// The call's expected type gives `T` its type, as nothing else does, and the lambda is
+// instantiated with it. The call always raises, so this is only compiled
+fn element_waits_for_a_value_that_never_returns() -> List<Int> {
+    map_list(
+        [fn(x) => identity(x)],
+        {
+            raise;
+        },
+    )
+}
+
+fn self_feeding<T>(pair: (Int, fn(a: T) -> T), value: T) -> T {
+    pair.rest(value)
+}
+
+// Guard: a lambda whose return type adds to the generic its parameter reads is compiled against
+// it where it is, so that it works for what it adds, rather than against `nil` (infer-fuzz
+// generator 1, seed 1461)
+test fn element_adds_to_what_it_reads() -> (Int, nil) | nil {
+    self_feeding((1, fn(_x) => (5, nil)), nil)
+}
+
+fn with_value<T, U>(functions: List<fn(x: T) -> U>, value: T) -> (List<U>, T) {
+    (map_list(functions, value), value)
+}
+
+// Guard: the lambda is compiled against the expected type's bounds, which make `T` `5`, rather
+// than the `Int` that `5` widens to
+test fn element_takes_the_expected_bounds_of_its_parameter() -> (List<5>, 5) {
+    let result: (List<5>, 5) = with_value(
+        [
+            fn(x) => {
+                let y: 5 = x;
+                y
+            },
+        ],
+        5,
+    );
+    result
+}
+
+fn two_steps<T, U>(pair: (fn(x: T) -> U, fn(y: U) -> Int), value: T) -> Int {
+    pair.rest(pair.first(value))
+}
+
+// Guard: what a lambda's return type adds to `U` reaches the other elements, which would be
+// compiled without it if the lambda waited for `5`, so it's compiled where it is
+test fn element_returns_what_a_sibling_reads() -> Int {
+    two_steps((fn(_x) => 7, fn(y) => y + 1), 5)
+}
+
+test fn element_returns_a_pair_a_sibling_reads() -> Int {
+    two_steps((fn(x) => (x, 1), fn(y) => y.rest + 1), 5)
+}
+
+fn chain<T, U>(first: (fn(x: T) -> U, nil), second: (fn(y: U) -> Int, nil), value: T) -> Int {
+    second.first(first.first(value))
+}
+
+// Guard: the same with a later argument that reads it
+test fn element_returns_what_a_later_argument_reads() -> Int {
+    chain([fn(x) => (x, 1)], [fn(y) => y.rest + 1], 5)
+}
+
+fn with_made<T, U>(pair: (fn(x: T) -> U, U), value: T) -> U {
+    pair.first(value)
+}
+
+// Guard: the same with a call without arguments, which only what the lambda adds gives a type,
+// since the call has no expected type
+test fn element_returns_what_a_call_without_arguments_reads() -> Int {
+    let result = with_made((fn(_x) => 7, cast_nil()), 5);
+    result + 1
+}
+
+fn generic_pair<T>(functions: (fn(x: T) -> Int, Int), first: T, last: fn(y: Int) -> T) -> T {
+    let _ = functions.first(first);
+    last(1)
+}
+
+// Guard: a generic lambda still adds to `T` (`6`), although it doesn't hold up the other
+// arguments, so the lambda waits for it too, rather than being compiled against `5`, the expected
+// type's bound so far (see `lambda_before_a_generic_lambda_keeps_it_wide` in
+// `generic_inference_expected_mapped.rue`)
+test fn element_waits_for_a_generic_lambda() -> 5 | 6 {
+    generic_pair(
+        (
+            fn(x) => {
+                let z: 5 | 6 = x;
+                z
+            },
+            1,
+        ),
+        5,
+        fn<V>(_y: V) => 6,
+    )
+}
+
+fn list_or_pair<T>(functions: List<fn(x: T) -> Int> | (fn(x: T) -> Int, Int), value: T) -> Int {
+    let _ = functions;
+    let _ = value;
+    0
+}
+
+// The lambdas in a parameter type that's a union of pairs are found as compiling the pair or list
+// finds them, in the union of the pairs' first types
+test fn element_of_a_union_of_pairs() -> Int {
+    list_or_pair([fn(x) => x + 1], 5) + list_or_pair((fn(x) => x + 1, 1), 5)
+}
+
+fn either_first<T>(
+    functions: (fn(x: T) -> Int, Int) | (fn(x: T, y: Int) -> Int, nil),
+    value: T,
+) -> Int {
+    let _ = functions;
+    let _ = value;
+    0
+}
+
+// The union of the pairs' first types, not only the first pair's, so the lambda with two parameters
+// matches the second pair
+test fn element_of_a_union_of_pairs_with_other_first_types() -> Int {
+    either_first((fn(x, y) => x + y, nil), 5)
+}
+
+fn cast_nil<R>() -> R {
+    unchecked_cast(nil)
+}
+
+fn first_then_rest<T, U>(pair: (fn(x: T) -> U, fn() -> U), value: T) -> (U, U) {
+    (pair.first(value), pair.rest())
+}
+
+// Guard: a sibling lambda with no untyped parameters reads what the lambda's return type adds to
+// `U` through the call in its body, which is inferred from the type its return type is expected to
+// have, so the lambda is compiled where it is. The call has no expected type, which would give `U`
+// a type of its own
+test fn element_returns_what_a_sibling_calls_with() -> (Int, Int) {
+    let result = first_then_rest((fn(_x) => 7, fn() => cast_nil()), 5);
+    result
+}
+
+fn first_then_typed<T, U>(pair: (fn(x: T) -> U, fn(y: Int) -> (U, Int)), value: T) -> U {
+    pair.first(value)
+}
+
+test fn element_returns_what_a_typed_sibling_calls_with() -> Int {
+    let result = first_then_typed((fn(_x) => 7, fn(y: Int) => (identity(cast_nil()), y)), 5);
+    result
+}
+
+// Guard: a lambda whose body has a call that its return type can be, in a call whose expected type
+// bounds that return type, is compiled where it is, so its parameter is `T`, which `identity` passes
+// through, and the expected `5` narrows `T` to `5`. Compiled later, `x` would be `Int`, which `5`
+// widens to, and `identity(x)` would be `Int`
+test fn element_with_a_call_narrowed_by_the_expected_type() -> (5, List<5>) {
+    let first: 5 = apply_first((fn(x) => identity(x), 1), 5);
+    let second: List<5> = map_list([fn(x) => identity(x)], 5);
+    (first, second)
+}
+
+// Guard: the same with a type guard on the parameter, which narrows it to a type that no longer
+// references `T`
+test fn element_with_a_guard_narrowed_by_the_expected_type() -> (5 | nil, List<5 | nil>) {
+    let first: 5 | nil = apply_first(
+        (
+            fn(x) => if x is nil {
+                nil
+            } else {
+                x
+            },
+            1,
+        ),
+        5,
+    );
+    let second: List<5 | nil> = map_list(
+        [
+            fn(x) => if x is nil {
+                nil
+            } else {
+                x
+            },
+        ],
+        5,
+    );
+    (first, second)
+}
+
+// Guard: the same with the expected type reaching the call as a hint, through `identity`
+test fn element_with_a_guard_narrowed_by_a_hint() -> List<5> {
+    let result: List<5> = identity(map_list(
+        [
+            fn(x) => if x is nil {
+                5
+            } else {
+                x
+            },
+        ],
+        5,
+    ));
+    result
+}
+
+fn first_pair<T, U>(functions: (fn(x: (T, Int)) -> U, Int), value: (T, Int)) -> U {
+    functions.first(value)
+}
+
+fn list_pair<T, U>(functions: List<fn(x: (T, Int)) -> U>, value: (T, Int)) -> List<U> {
+    if functions is (fn(x: (T, Int)) -> U, List<fn(x: (T, Int)) -> U>) {
+        [functions.first(value), ...list_pair(functions.rest, value)]
+    } else {
+        nil
+    }
+}
+
+// Guard: the same with a parameter that's expected to have a type with `T` in it without being
+// `T`, a part of which doesn't reference `T`, through a field, a struct's field or destructuring
+test fn element_with_a_part_narrowed_by_the_expected_type() -> (5, (List<5>, 5)) {
+    let field: 5 = first_pair((fn(p) => p.first, 1), (5, 6));
+    let list: List<5> = list_pair([fn(p) => p.first], (5, 6));
+    let destructured: 5 = first_pair(
+        (
+            fn(p) => {
+                let (a, _b) = p;
+                a
+            },
+            1,
+        ),
+        (5, 6),
+    );
+    (field, (list, destructured))
+}
+
+fn apply_box<T, U>(functions: (fn(x: Box<T>) -> U, Int), value: Box<T>) -> U {
+    functions.first(value)
+}
+
+struct Box<T> {
+    inner: T,
+}
+
+test fn element_with_a_struct_field_narrowed_by_the_expected_type() -> 5 {
+    let result: 5 = apply_box((fn(b) => b.inner, 1), Box::<5> { inner: 5 });
+    result
+}
+
+fn apply_made<T, U>(functions: (fn(x: T) -> U, Int), make: fn() -> T) -> U {
+    functions.first(make())
+}
+
+// Guard: the expected type's bound reaches `T` through the lambda's return type once it's
+// compiled, and a later argument that reads `T` is compiled against it, so the lambda is compiled
+// where it is, and `identity(5)` is `5` rather than `Int`
+test fn element_before_an_argument_that_reads_its_parameters() -> (List<5>, 5) {
+    let list: List<5> = map_list([fn(x) => x], identity(5));
+    let made: 5 = apply_made((fn(x) => x, 1), fn() => identity(5));
+    (list, made)
+}
+
+fn chain_through<T, U, W>(
+    functions: List<fn(x: T) -> U>,
+    make: (fn(w: W) -> T, T),
+    value: W,
+) -> List<U> {
+    map_list(functions, make.first(value))
+}
+
+// Guard: the lambda waits for what `T` is mapped to so far to be settled too: the lambda next to
+// `5` makes `T` `W | Int`, and `W` is only given a type by `6`, which the lambda waits for
+test fn element_waits_for_what_its_generics_are_mapped_to() -> List<Int> {
+    let result = chain_through([fn(x) => x + 1], (fn(w) => w, 5), 6);
+    result
+}
+
+fn each_other<T, U>(first: (fn(x: T) -> U, Int), second: (fn(y: U) -> T, Int), t: T, u: U) -> (
+    T,
+    U,
+) {
+    (second.first(u), first.first(t))
+}
+
+// Two lambdas that each add to what the other reads are compiled where they are, since the other
+// argument reads what each one's return type adds to
+test fn elements_wait_for_each_other() -> (Int, Int) {
+    let result = each_other((fn(x) => x, 1), (fn(y) => y, 2), 5, 6);
+    result
+}
+
+fn chain_after<T, U, W>(
+    functions: List<fn(x: T) -> U>,
+    make: (fn(w: W) -> T, Int),
+    value: T,
+    other: W,
+) -> List<U> {
+    let _ = value;
+    map_list(functions, make.first(other))
+}
+
+// Guard: the lambda next to `1` returns what the waiting lambda before it reads, so it's compiled
+// where it is, rather than waiting too and being compiled after the first, which would be compiled
+// against `nil` alone
+test fn element_returns_what_a_waiting_lambda_reads() -> Bool {
+    let result = chain_after([fn(x) => x], (fn(w) => w, 1), nil, 6);
+    result is (Int, nil)
+}
+
+fn chain_twice<T, U, V, W>(
+    functions: List<fn(x: T) -> U>,
+    link: (fn(v: V) -> T, T),
+    make: (fn(y: W) -> V, Int),
+    value: W,
+) -> List<U> {
+    map_list(functions, link.first(make.first(value)))
+}
+
+// Guard: the lambda next to `1` returns `V`, which what the waiting lambda reads, `T`, is mapped to
+// so far (`V | Int`), so it's compiled where it is, and the first lambda waits for `6` through it
+test fn element_returns_what_a_waiting_lambda_reads_through_a_mapping() -> List<Int> {
+    let result = chain_twice([fn(x) => x + 1], (fn(v) => v, 5), (fn(y) => y, 1), 6);
+    result
+}

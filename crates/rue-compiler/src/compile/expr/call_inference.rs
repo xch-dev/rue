@@ -9,11 +9,12 @@ use std::rc::Rc;
 use indexmap::IndexSet;
 
 use log::debug;
-use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
-use rue_hir::{HirId, Value};
+use rowan::TextRange;
+use rue_ast::{AstExpr, AstFunctionCallExpr, AstGuardExpr, AstLambdaExpr, AstNode};
+use rue_hir::{Hir, HirId, Value};
 use rue_types::{
-    CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, contained_generics,
-    contains_generic, substitute_with_mappings,
+    CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, Union,
+    contained_generics, contains_generic, substitute_with_mappings,
 };
 
 use crate::{
@@ -156,6 +157,18 @@ pub(crate) fn infer_call(
 
     let mut order = ArgumentOrder::new(ctx, function, args, base.clone());
 
+    // The callee's generics that the type expected of the call can bound (see
+    // `ArgumentOrder::deferred`)
+    let expected_returns = if expected_type.is_some() {
+        generics_in(ctx, function, function.ret)
+    } else {
+        IndexSet::new()
+    };
+
+    // The element lambdas that are waiting for later arguments, with the argument they're in (see
+    // `DeferredLambda`)
+    let mut waiting: Vec<(usize, DeferredLambda)> = Vec::new();
+
     ctx.push_call_frame(function.generics.clone());
 
     while !order.is_done() {
@@ -207,6 +220,13 @@ pub(crate) fn infer_call(
             substitute_with_mappings(ctx.types_mut(), param, &narrower_mappings)
         });
 
+        // Only worked out for an argument with element lambdas, which is all it's used for
+        let depends = if renamed.is_empty() && order.has_element_lambdas(i) {
+            mapping_dependencies(ctx, function, &inferred)
+        } else {
+            HashMap::new()
+        };
+
         ctx.set_argument_frame(Some(ArgumentFrame {
             infer: order.merged().clone(),
             solver: solver.clone(),
@@ -218,6 +238,20 @@ pub(crate) fn infer_call(
             restored,
             wrap_lambdas: matches!(expr, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)),
             lambda_parameters: Vec::new(),
+            // A recursive call's element lambdas are compiled against the caller's generics that
+            // stand for the renamed ones (see `restorable`), which only holds while the argument is
+            // being compiled, so they aren't deferred
+            to_defer: if renamed.is_empty() {
+                order.deferred(
+                    i,
+                    &expected_returns,
+                    &depends,
+                    &with_dependencies(&waiting_reads(&waiting), &depends),
+                )
+            } else {
+                HashMap::new()
+            },
+            deferred: Vec::new(),
         }));
 
         // The parameter's type is only a hint while it references the callee's generics, since
@@ -268,25 +302,66 @@ pub(crate) fn infer_call(
         // The lambdas among the elements of a pair or list argument (see `compile_element`)
         if let Some(argument) = ctx.argument_frame_mut() {
             parameters.append(&mut argument.lambda_parameters);
+            waiting.extend(argument.deferred.drain(..).map(|lambda| (i, lambda)));
         }
 
         ctx.set_argument_frame(None);
         results[i] = value.hir;
 
-        generic_types[i] =
-            generic_parameter_types(ctx, function, shared, &parameters, &restored_here);
-
         lambda_parameters[i] = parameters;
-
-        // Candidates are collected against the unsubstituted parameter type, so that every
-        // argument contributes to the generics rather than only the first one to mention them
-        let mut infer = base.clone();
-        let unrestored = unrestored_lambdas(ctx, &generic_types[i], &HashMap::new());
-        let inferred_ty = substitute_with_mappings(ctx.types_mut(), value.ty, &unrestored);
-        ctx.infer_type(inferred_ty, param, &mut infer);
-        order.add_candidates(i, infer);
+        let candidates;
+        (generic_types[i], candidates) = argument_candidates(
+            ctx,
+            function,
+            shared,
+            &base,
+            (value.ty, param),
+            &lambda_parameters[i],
+            &restored_here,
+        );
+        order.add_candidates(i, candidates);
         checks[i] = Some((expr.clone(), value.ty, param));
+
+        // The element lambdas that were waiting for the arguments compiled so far, once nothing
+        // still to be compiled adds to what they read. They never wait for each other: one only
+        // waits if nothing still to be compiled reads what its return type adds to, neither an
+        // argument (a pair or list with a lambda in it reads every generic in its parameter type,
+        // see `reads_of`) nor a lambda that's already waiting, directly or through what its
+        // generics are mapped to so far (see `ArgumentOrder::deferred`)
+        while !waiting.is_empty() {
+            let inferred = ctx.solve_arguments(&solver, order.merged());
+            let depends = mapping_dependencies(ctx, function, &inferred);
+
+            let Some(index) = (0..waiting.len())
+                .find(|&index| order.is_settled(&waiting[index].1.lambda.reads, &depends))
+            else {
+                break;
+            };
+
+            let (argument, lambda) = waiting.remove(index);
+            let parameters = compile_deferred_lambda(ctx, &solver, &order, &lambda);
+            lambda_parameters[argument].extend(parameters);
+
+            // A recursive call's lambdas aren't deferred, so there's nothing restored
+            let ty = checks[argument]
+                .as_ref()
+                .expect("the argument is compiled")
+                .1;
+            let candidates;
+            (generic_types[argument], candidates) = argument_candidates(
+                ctx,
+                function,
+                shared,
+                &base,
+                (ty, function.params[argument].ty),
+                &lambda_parameters[argument],
+                &HashMap::new(),
+            );
+            order.replace_candidates(argument, candidates);
+        }
     }
+
+    debug_assert!(waiting.is_empty(), "every element lambda is compiled");
 
     ctx.pop_call_frame();
 
@@ -475,6 +550,113 @@ pub(crate) fn holds_other_pairs(ctx: &mut Compiler, ty: TypeId) -> bool {
     }
 
     false
+}
+
+/// The types of an argument's lambda parameters that its lambdas are checked with (see
+/// `generic_parameter_types`), and its candidates for the callee's generics, given its type. They're
+/// collected against the unsubstituted parameter type, so that every argument contributes to the
+/// generics rather than only the first one to mention them.
+fn argument_candidates(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    shared: bool,
+    base: &Inference,
+    (ty, param): (TypeId, TypeId),
+    parameters: &[LambdaParameter],
+    restored: &HashMap<TypeId, TypeId>,
+) -> (GenericTypes, Inference) {
+    let generic_types = generic_parameter_types(ctx, function, shared, parameters, restored);
+    let unrestored = unrestored_lambdas(ctx, &generic_types, &HashMap::new());
+    let ty = substitute_with_mappings(ctx.types_mut(), ty, &unrestored);
+    let mut infer = base.clone();
+    ctx.infer_type(ty, param, &mut infer);
+    (generic_types, infer)
+}
+
+/// The other callee generics that each mapping references (see `ArgumentOrder::is_settled`).
+fn mapping_dependencies(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    mappings: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, IndexSet<TypeId>> {
+    mappings
+        .iter()
+        .map(|(&generic, &ty)| {
+            let mut others = generics_in(ctx, function, ty);
+            others.shift_remove(&generic);
+            (generic, others)
+        })
+        .collect()
+}
+
+/// The generics, and the other callee generics that their mappings so far reference, following
+/// them through each other (see `mapping_dependencies`), such as `W` for `T` when `T` is mapped to
+/// `W | Int`.
+fn with_dependencies(
+    generics: &IndexSet<TypeId>,
+    depends: &HashMap<TypeId, IndexSet<TypeId>>,
+) -> IndexSet<TypeId> {
+    let mut generics = generics.clone();
+    let mut index = 0;
+
+    while let Some(&generic) = generics.get_index(index) {
+        if let Some(others) = depends.get(&generic) {
+            generics.extend(others);
+        }
+
+        index += 1;
+    }
+
+    generics
+}
+
+/// The generics that the untyped parameters of the element lambdas still waiting read.
+fn waiting_reads(waiting: &[(usize, DeferredLambda)]) -> IndexSet<TypeId> {
+    waiting
+        .iter()
+        .flat_map(|(_, lambda)| lambda.lambda.reads.iter().copied())
+        .collect()
+}
+
+/// Compiles an element lambda that waited (see `DeferredLambda`) against what the arguments so far
+/// infer, puts it in place of its placeholder, and gives its untyped parameters. As with a lambda
+/// that's the whole argument, nothing can add to the generics its parameters are expected to have
+/// now, and its return type can't either (see `element_lambdas`), so it's compiled against the
+/// expected type's bounds for them (see `ArgumentOrder::takes_expected_bounds`).
+fn compile_deferred_lambda(
+    ctx: &mut Compiler,
+    solver: &CallSolver,
+    order: &ArgumentOrder,
+    lambda: &DeferredLambda,
+) -> Vec<LambdaParameter> {
+    let inferred = ctx.solve_arguments(solver, order.merged());
+    let mappings = ctx.argument_mappings(solver, order.merged(), &inferred, true);
+    let expected = substitute_with_mappings(ctx.types_mut(), lambda.lambda.ty, &mappings);
+
+    let (value, mut parameters) = ctx.with_expected_type_fallback(false, |ctx| {
+        ctx.with_expected_type_hint(true, |ctx| {
+            compile_lambda_argument(
+                ctx,
+                &AstExpr::LambdaExpr(lambda.expr.clone()),
+                &lambda.expr,
+                Some(expected),
+                &ParameterWrap::Whole,
+            )
+        })
+    });
+
+    // The placeholder becomes the lambda, in the argument's value and type, so the argument's type
+    // keeps the references its parameters were compiled as (see `solve_with_lambda_parameters`)
+    let hir = ctx.hir(value.hir).clone();
+    *ctx.hir_mut(lambda.hir) = hir;
+    let ty = ctx.ty(value.ty).clone();
+    *ctx.ty_mut(lambda.ty) = ty;
+
+    for parameter in &mut parameters {
+        parameter.lambda.ty = lambda.ty;
+    }
+
+    parameters
 }
 
 /// Checks each lambda whose untyped parameters were compiled as the callee's generics that hadn't
@@ -961,6 +1143,43 @@ struct Argument {
     /// For a lambda, the generics among its reads that are its whole parameter type, or members
     /// of it.
     bare: IndexSet<TypeId>,
+    /// For a pair or list, the lambdas among the elements of the pairs and lists it's made of, by
+    /// where they are (see `element_lambdas`).
+    element_lambdas: HashMap<TextRange, ElementLambda>,
+}
+
+/// A lambda that's an element of a pair or list argument, or of one it's made of (see
+/// `compile_element`).
+#[derive(Debug, Clone)]
+pub struct ElementLambda {
+    /// The type it's expected to have, before it's substituted.
+    ty: TypeId,
+    /// The callee's generics in the types its untyped parameters are expected to have.
+    reads: IndexSet<TypeId>,
+    /// The callee's generics in the return types of the function types it's expected to be.
+    returns: IndexSet<TypeId>,
+    /// Whether it has no return type and its body has a call, lambda or type guard in it, or an
+    /// untyped parameter is expected to have a type that has a generic in it without being one, so
+    /// that its return type can be what those make of its parameters, which can be a type that no
+    /// longer references the generics they were compiled as, as `identity(x)`, `x is nil` and
+    /// `p.first` for `p: (T, Int)` can (see `ArgumentOrder::deferred`). A parameter that's the
+    /// generic itself can't be used any other way that loses it: its body either keeps it, as
+    /// `(x, x)` does, or doesn't compile against it, as `x + 1` doesn't.
+    narrows: bool,
+}
+
+/// An element lambda that's compiled once no argument still to be compiled can add to the generics
+/// its untyped parameters are expected to have, as a lambda that's the whole argument waits for
+/// them (#350, #351), rather than against the generics themselves, which its body can't do anything
+/// with, as in `map_list([fn(x) => x + 1], 5)`. The pair or list it's in is compiled where it was,
+/// with a placeholder for it, so its other elements are compiled against what they were.
+#[derive(Debug, Clone)]
+pub struct DeferredLambda {
+    expr: AstLambdaExpr,
+    lambda: ElementLambda,
+    /// The placeholder's type and value.
+    ty: TypeId,
+    hir: HirId,
 }
 
 enum ArgumentKind {
@@ -1060,6 +1279,7 @@ impl ArgumentOrder {
                     } else {
                         IndexSet::new()
                     },
+                    element_lambdas: element_lambdas(ctx, function, arg, param.ty),
                 }
             })
             .collect();
@@ -1205,6 +1425,98 @@ impl ArgumentOrder {
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
     }
 
+    /// Whether no argument still to be compiled can add to any of the generics. A generic lambda
+    /// counts too: it doesn't hold up the order (see `ArgumentKind::Lambda::holds_up`), but it still
+    /// adds to them, and an element lambda that waits is compiled against the expected type's
+    /// bounds, which would be narrower than what it adds (see
+    /// `lambda_before_a_generic_lambda_keeps_it_wide` in `generic_inference_expected_mapped.rue`).
+    ///
+    /// The generics that their mappings so far reference (`depends`, see `mapping_dependencies`)
+    /// count too, as in `ArgumentOrder::reads_now`, such as `W` when `T` is mapped to `W | Int`.
+    fn is_settled(
+        &self,
+        generics: &IndexSet<TypeId>,
+        depends: &HashMap<TypeId, IndexSet<TypeId>>,
+    ) -> bool {
+        let generics = &with_dependencies(generics, depends);
+
+        !self.pending.iter().any(|&other| {
+            self.arguments[other]
+                .writes
+                .iter()
+                .any(|generic| generics.contains(generic))
+        })
+    }
+
+    /// The element lambdas of the argument `next` just gave that wait for the arguments still to be
+    /// compiled (see `DeferredLambda`). One whose return type has a generic that an argument still
+    /// to be compiled reads is compiled where it is, since that argument would be compiled before
+    /// it, without what it adds to the generic.
+    ///
+    /// So is one whose return type can be what a call or type guard in its body makes of its
+    /// parameters, while the type expected of the call bounds a generic in it (`expected`): compiled
+    /// where it is, its parameters are the generics themselves, which the call passes through, so
+    /// the expected type's bound narrows them too, as `5` does `T` in
+    /// `let r: 5 = apply_first((fn(x) => identity(x), 1), 5)`, or `5 | nil` does in
+    /// `fn(x) => if x is nil { nil } else { x }`. Compiled later, its parameters would be what the
+    /// other arguments infer, `Int`, and the call or guard would give that. Which of the two a lambda needs depends on what its body does with its
+    /// parameters, which isn't known before it's compiled, so it's compiled where it was.
+    fn deferred(
+        &self,
+        i: usize,
+        expected: &IndexSet<TypeId>,
+        depends: &HashMap<TypeId, IndexSet<TypeId>>,
+        waiting: &IndexSet<TypeId>,
+    ) -> HashMap<TextRange, ElementLambda> {
+        self.arguments[i]
+            .element_lambdas
+            .iter()
+            .filter(|(_, lambda)| {
+                let bounded_by_expected = lambda
+                    .returns
+                    .iter()
+                    .any(|generic| expected.contains(generic));
+
+                // The expected type's bound reaches the generics its parameters read through its
+                // return type only once it's compiled, so it's compiled where it is if its body can
+                // lose them, or if an argument still to be compiled reads them, as `identity(5)`
+                // does in `map_list([fn(x) => x], identity(5))` with `List<5>` expected
+                let read_later = self.pending.iter().any(|&other| {
+                    self.arguments[other]
+                        .reads
+                        .iter()
+                        .any(|generic| lambda.reads.contains(generic))
+                });
+
+                if bounded_by_expected && (lambda.narrows || read_later) {
+                    return false;
+                }
+
+                // A lambda of an earlier argument that's still waiting reads what its return type
+                // adds to as well, and would be compiled before it otherwise (`waiting`, see
+                // `waiting_reads`)
+                !self.is_settled(&lambda.reads, depends)
+                    && !lambda
+                        .returns
+                        .iter()
+                        .any(|generic| waiting.contains(generic))
+                    && !self.pending.iter().any(|&other| {
+                        self.arguments[other]
+                            .reads
+                            .iter()
+                            .any(|generic| lambda.returns.contains(generic))
+                    })
+            })
+            .map(|(&range, lambda)| (range, lambda.clone()))
+            .collect()
+    }
+
+    /// Whether the argument is a pair or list with element lambdas that could wait (see
+    /// `element_lambdas`).
+    fn has_element_lambdas(&self, i: usize) -> bool {
+        !self.arguments[i].element_lambdas.is_empty()
+    }
+
     /// The callee's generics in the argument's parameter type (see `Argument::writes`).
     fn writes(&self, i: usize) -> &IndexSet<TypeId> {
         &self.arguments[i].writes
@@ -1327,6 +1639,13 @@ impl ArgumentOrder {
             return;
         }
 
+        self.candidates[i] = Some(candidates);
+        self.merged = self.merged_with(&[]);
+    }
+
+    /// Replaces the candidates of an argument that was compiled, once a lambda in it that waited
+    /// was (see `DeferredLambda`).
+    fn replace_candidates(&mut self, i: usize, candidates: Inference) {
         self.candidates[i] = Some(candidates);
         self.merged = self.merged_with(&[]);
     }
@@ -1466,6 +1785,189 @@ fn reads_of(
     }
 }
 
+/// The lambdas among the elements of a pair or list argument, and of the pairs and lists it's made
+/// of, that can wait for later arguments (see `DeferredLambda`), with the types they're expected to
+/// have, found by following the parameter type along those pairs as compiling them does (see
+/// `pair_parts`). Those are the ones whose untyped parameters are expected to have the callee's
+/// generics, and whose return types have none that they or the other elements read. Where the
+/// pairs can't be followed, there are none.
+fn element_lambdas(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    arg: &AstExpr,
+    param: TypeId,
+) -> HashMap<TextRange, ElementLambda> {
+    /// The elements found so far: each lambda that could wait, with the generics its return type
+    /// references, and what each element reads, by where it is: for a lambda, the generics its
+    /// untyped parameters read, and for anything else, every generic in its type
+    #[derive(Default)]
+    struct Walk {
+        lambdas: Vec<(TextRange, ElementLambda)>,
+        reads: Vec<(TextRange, IndexSet<TypeId>)>,
+        /// Whether every element was found, which it isn't where the pairs can't be followed. That's
+        /// defensive: an element there is compiled without an expected type, or, past the end of a
+        /// list's expected pairs, with the type the item before it was expected to have, whose
+        /// generics that item already reads, so no program has been found where it matters.
+        complete: bool,
+    }
+
+    fn add(
+        ctx: &mut Compiler,
+        function: &FunctionType,
+        expr: &AstExpr,
+        ty: TypeId,
+        walk: &mut Walk,
+    ) {
+        let range = expr.syntax().text_range();
+
+        match expr {
+            AstExpr::LambdaExpr(lambda) => {
+                let untyped = untyped_parameters(lambda);
+                let expected = rue_types::extract_functions(ctx.types_mut(), ty, true);
+                let mut reads = IndexSet::new();
+                let mut returns = IndexSet::new();
+                // Whether an untyped parameter is expected to have a type that has a generic in it
+                // without being one, such as `(T, Int)`, a part of which doesn't reference `T`
+                let mut projected = false;
+
+                for expected in &expected {
+                    for &index in &untyped {
+                        if let Some(parameter) = expected.params.get(index) {
+                            let generics = generics_in(ctx, function, parameter.ty);
+                            let semantic =
+                                rue_types::unwrap_semantic(ctx.types_mut(), parameter.ty, true);
+                            projected |=
+                                !generics.is_empty() && !function.generics.contains(&semantic);
+                            reads.extend(generics);
+                        }
+                    }
+
+                    returns.extend(generics_in(ctx, function, expected.ret));
+                }
+
+                // One whose return type adds to the generics its parameters read is compiled
+                // against them where it is, so that it works for whatever it adds to them: compiled
+                // against what the other arguments infer, its parameters would be narrower than
+                // what it makes them, as in `fn(x) => (x, nil)` for `fn(a: T) -> T` with `T` from
+                // `nil` (infer-fuzz generator 1, seeds 1461, 2955 and 6784)
+                let calls = lambda.ty().is_none()
+                    && lambda.body().is_some_and(|body| has_call_or_lambda(&body));
+                let narrows = lambda.ty().is_none()
+                    && (calls
+                        || projected
+                        || lambda.body().is_some_and(|body| {
+                            body.syntax()
+                                .descendants()
+                                .any(|node| AstGuardExpr::cast(node).is_some())
+                        }));
+
+                if !reads.is_empty() && !returns.iter().any(|generic| reads.contains(generic)) {
+                    let lambda = ElementLambda {
+                        ty,
+                        reads: reads.clone(),
+                        returns: returns.clone(),
+                        narrows,
+                    };
+                    walk.lambdas.push((range, lambda));
+                }
+
+                // As for a lambda that's the whole argument (see `reads_of`), a call in its body can
+                // be inferred from the type its return type is expected to have, as `make()` is in
+                // `fn() => make()` for `fn() -> U`
+                let mut element_reads = reads;
+
+                if calls {
+                    element_reads.extend(returns);
+                }
+
+                walk.reads.push((range, element_reads));
+            }
+            AstExpr::PairExpr(pair) => {
+                let Some((first, rest)) = pair_parts(ctx, ty) else {
+                    walk.complete = false;
+                    return;
+                };
+
+                for (expr, ty) in [(pair.first(), first), (pair.rest(), rest)] {
+                    if let Some(expr) = expr {
+                        add(ctx, function, &expr, ty, walk);
+                    }
+                }
+            }
+            AstExpr::ListExpr(list) => {
+                let mut ty = ty;
+
+                for item in list.items() {
+                    let Some(expr) = item.expr() else {
+                        continue;
+                    };
+
+                    // A spread item is the rest of the list
+                    if item.spread().is_some() {
+                        add(ctx, function, &expr, ty, walk);
+                        return;
+                    }
+
+                    let Some((first, rest)) = pair_parts(ctx, ty) else {
+                        walk.complete = false;
+                        return;
+                    };
+
+                    add(ctx, function, &expr, first, walk);
+                    ty = rest;
+                }
+            }
+            _ => walk.reads.push((range, generics_in(ctx, function, ty))),
+        }
+    }
+
+    if !matches!(arg, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) {
+        return HashMap::new();
+    }
+
+    let mut walk = Walk {
+        complete: true,
+        ..Walk::default()
+    };
+    add(ctx, function, arg, param, &mut walk);
+
+    if !walk.complete {
+        return HashMap::new();
+    }
+
+    // What a lambda's return type adds to the generics reaches the other elements, which are
+    // compiled before a lambda that waits, so one whose return type has a generic another element
+    // reads is compiled where it is, as in `(fn(_x) => 7, fn(y) => y + 1)` for
+    // `(fn(x: T) -> U, fn(y: U) -> Int)`
+    walk.lambdas
+        .into_iter()
+        .filter(|(range, lambda)| {
+            !walk.reads.iter().any(|(other, reads)| {
+                other != range && lambda.returns.iter().any(|generic| reads.contains(generic))
+            })
+        })
+        .collect()
+}
+
+/// The types of the first and rest of the pairs the type can be, each a union if there are
+/// several, which a pair or list expected to be the type is compiled against.
+pub(crate) fn pair_parts(ctx: &mut Compiler, ty: TypeId) -> Option<(TypeId, TypeId)> {
+    let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, false);
+
+    match pairs.as_slice() {
+        [] => None,
+        [pair] => Some((pair.first, pair.rest)),
+        pairs => {
+            let first = Union::new(pairs.iter().map(|pair| pair.first).collect());
+            let rest = Union::new(pairs.iter().map(|pair| pair.rest).collect());
+            Some((
+                ctx.alloc_type(Type::Union(first)),
+                ctx.alloc_type(Type::Union(rest)),
+            ))
+        }
+    }
+}
+
 /// The positions of the lambda's parameters that have no type.
 fn untyped_parameters(lambda: &AstLambdaExpr) -> Vec<usize> {
     lambda
@@ -1590,7 +2092,29 @@ pub(crate) fn compile_element(
         })
         .unwrap_or_default();
 
-    let value = if wrap && let AstExpr::LambdaExpr(lambda) = expr {
+    let deferred = ctx
+        .argument_frame_mut()
+        .filter(|_| wrap)
+        .and_then(|argument| argument.to_defer.remove(&expr.syntax().text_range()));
+
+    let value = if let Some(element) = deferred
+        && let AstExpr::LambdaExpr(lambda) = expr
+    {
+        // A placeholder that's replaced once the lambda is compiled (see `DeferredLambda`)
+        let ty = ctx.alloc_type(Type::Unresolved);
+        let hir = ctx.alloc_hir(Hir::Unresolved);
+
+        if let Some(argument) = ctx.argument_frame_mut() {
+            argument.deferred.push(DeferredLambda {
+                expr: lambda.clone(),
+                lambda: element,
+                ty,
+                hir,
+            });
+        }
+
+        Value::new(hir, ty)
+    } else if wrap && let AstExpr::LambdaExpr(lambda) = expr {
         let (value, parameters) =
             compile_lambda_argument(ctx, expr, lambda, expected, &ParameterWrap::Whole);
 
