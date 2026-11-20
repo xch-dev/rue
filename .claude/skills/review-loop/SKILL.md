@@ -92,14 +92,20 @@ Reviewers are sometimes confidently wrong. Before acting on a finding, check it:
 - For a simplification, check that the suggested helper does what the reviewer thinks.
 - For a finding marked "for the user", it's confirmed if the choice really is open: neither the source nor Settled answers it. Handle it as in section 5.
 
-Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list and deferred ones to Out of scope (with where they're recorded), so later rounds don't raise them again. Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
+Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list and deferred ones to Out of scope (with where they're recorded), so later rounds don't raise them again. Before fixing, check the no-progress stop in section 5. Otherwise fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
 
 Then run the quick checks for what you touched (`cargo test -p <crate>`, and `cargo run -p rue-tests --release -- <filter>` while iterating, which checks the matching tests, and always `std_tests.yaml`, without changing them), regenerate every snapshot as in section 2, update the Brief, and commit (section 7).
 
 ## 5. When to stop
 
 - **Clean**: a round with no confirmed findings at major or above. Stop there; never start a round just for minor findings or nits.
-- **Out of rounds**: stop after round 10 (or the limit the user gave) even if findings remain, and list them in the report. If the last round's fixes were more than trivial, first run one more round with only the correctness reviewer, to check the fixes; fix what it confirms and report it, without another round. A change that still has major findings after that many rounds usually has a design problem that another round won't fix, and the user should look.
+- **No progress**: the rounds are going in circles. After triaging a round, stop if any of these holds:
+  - the count of confirmed major-or-above findings hasn't dropped for two rounds in a row (for example 4, 4, 5);
+  - a confirmed finding is one that an earlier round fixed, back in a different form;
+  - for two rounds in a row, every confirmed major-or-above finding is in code that the previous round's fixes wrote.
+
+  Don't fix this round's findings: the round already checked the last fixes, and another fix pass would only feed the circle. List the findings in the report, with which of the three held. This usually means a design problem that another round won't fix, and the user should look.
+- **Out of rounds**: stop after round 10 (or the limit the user gave) even if findings remain, and list them in the report. If the last round's fixes were more than trivial, first run one more round with only the correctness reviewer, to check the fixes; fix what it confirms and report it, without another round.
 
 Whatever the stop, still run the final checks and open or update the PR, so the user has the work in hand.
 
@@ -141,14 +147,14 @@ cargo nextest run --all-features --workspace   # if `cargo nextest --version` wo
 ### Review rounds
 - Round 1: <n> findings, <n> confirmed. Caught: <the substantive ones, one line each>
 - Round 2: ...
-- Stopped because: <clean / out of rounds>
+- Stopped because: <clean / no progress (which signal) / out of rounds>
 
 ### Rejected findings
 - <finding> — <why it was rejected>
 
 ### Left for you
 - <each provisional decision: what you picked and why, the alternatives, and what switching would take>
-- <confirmed findings left unfixed, if the loop ran out of rounds>
+- <confirmed findings left unfixed, if the loop stopped for no progress or ran out of rounds>
 
 ### Checks
 <each final check and whether it passed; note snapshot changes and that they're intended>
