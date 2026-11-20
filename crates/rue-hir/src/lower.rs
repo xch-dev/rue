@@ -61,6 +61,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     arena: &'a mut Arena<Lir>,
     graph: &'g DependencyGraph,
     inline_symbols: Vec<HashMap<SymbolId, HirId>>,
+    /// The functions whose calls are being inlined, from the outermost to the innermost, which
+    /// keeps a lambda from being inlined into a call of a function it depends on (see
+    /// [`Self::known_lambda`]).
+    inline_functions: Vec<SymbolId>,
     options: CompilerOptions,
     main: SymbolId,
     base_path: PathBuf,
@@ -127,6 +131,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             arena,
             graph,
             inline_symbols: Vec::new(),
+            inline_functions: Vec::new(),
             options,
             main,
             base_path,
@@ -731,31 +736,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(call.function)).clone()
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
-            let mut args = HashMap::new();
-            let mut arg_iter = call.args.into_iter();
-
-            for (&parameter, arg) in function.fixed_parameters().iter().zip(&mut arg_iter) {
-                args.insert(parameter, arg);
-            }
-
-            if !function.nil_terminated {
-                let mut last_arg = self.db.alloc_hir(Hir::Nil);
-
-                for (i, arg) in arg_iter.rev().enumerate() {
-                    if i == 0 && !call.nil_terminated {
-                        last_arg = arg;
-                    } else {
-                        last_arg = self.db.alloc_hir(Hir::Pair(arg, last_arg));
-                    }
-                }
-
-                if let Some(last_param) = function.parameters.last() {
-                    args.insert(*last_param, last_arg);
-                }
-            }
+            let args = self.call_arguments(&function, call);
 
             if self.should_inline(symbol) {
-                return self.lower_inline_call(env, &function, args);
+                return self.lower_inline_call(env, symbol, &function, args);
             }
 
             let (capture_groups, param_group) = self.function_groups(symbol, &function);
@@ -795,9 +779,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         if self.options.auto_inline
             && let Some(lambda) = self.known_lambda(call.function)
             && let Symbol::Function(function) = self.db.symbol(lambda).clone()
-            && let Some(args) = self.lambda_arguments(&function, &call)
         {
-            return self.lower_inline_call(env, &function, args);
+            let args = self.call_arguments(&function, call);
+            return self.lower_inline_call(env, lambda, &function, args);
         }
 
         let function = self.lower_hir(env, call.function);
@@ -821,17 +805,59 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         self.arena.alloc(Lir::Run(function, env))
     }
 
+    /// The argument for each of the function's parameters. Type checking ensures that the call
+    /// passes what the parameters take, and the arguments for a spread parameter are put in a
+    /// list.
+    fn call_arguments(
+        &mut self,
+        function: &FunctionSymbol,
+        call: FunctionCall,
+    ) -> HashMap<SymbolId, HirId> {
+        let mut args = HashMap::new();
+        let mut arg_iter = call.args.into_iter();
+
+        for (&parameter, arg) in function.fixed_parameters().iter().zip(&mut arg_iter) {
+            args.insert(parameter, arg);
+        }
+
+        if !function.nil_terminated {
+            let mut last_arg = self.db.alloc_hir(Hir::Nil);
+
+            for (i, arg) in arg_iter.rev().enumerate() {
+                if i == 0 && !call.nil_terminated {
+                    last_arg = arg;
+                } else {
+                    last_arg = self.db.alloc_hir(Hir::Pair(arg, last_arg));
+                }
+            }
+
+            if let Some(last_param) = function.parameters.last() {
+                args.insert(*last_param, last_arg);
+            }
+        }
+
+        args
+    }
+
     /// The lambda that the callee is, if it's a lambda expression, either directly or through
-    /// bindings that are inlined and the arguments of calls that are inlined. Its body can then be
-    /// lowered where it's called, since everything it captures is in scope there: the arguments of
-    /// inlined calls are lowered in the caller's environment, and a function that's lowered within
-    /// an inlined call only keeps the arguments that are static (see [`Self::lower_function`]).
+    /// bindings that are inlined and the arguments of calls that are inlined, and its body can be
+    /// lowered where it's called. Everything it captures is in scope there, since the arguments
+    /// of inlined calls are lowered in the caller's environment, and a function that's lowered
+    /// within an inlined call only keeps the arguments that are static (see
+    /// [`Self::lower_function`]).
+    ///
+    /// Parameters are substituted with the innermost argument for them, which is only the right
+    /// one if no function is inlined inside a call to itself. Calls by name can't be, since inline
+    /// functions aren't recursive, but a lambda can call a function whose call it's passed to, so
+    /// it's not inlined into a call of the lambda itself or of a function it depends on. If it
+    /// were, the parameters of the inner call would hide the outer call's from the lambda, which
+    /// was written where only the outer call's are.
     fn known_lambda(&self, mut hir: HirId) -> Option<SymbolId> {
         let mut seen = HashSet::new();
 
-        loop {
+        let lambda = loop {
             match self.db.hir(self.db.without_casts(hir)) {
-                Hir::Lambda(symbol) => return Some(*symbol),
+                Hir::Lambda(symbol) => break *symbol,
                 Hir::Reference(symbol) if seen.insert(*symbol) => {
                     if let Some(arg) = self.inline_argument(*symbol) {
                         hir = arg;
@@ -845,47 +871,54 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
                 _ => return None,
             }
-        }
-    }
-
-    /// The argument for each parameter of a lambda that's called, if the call passes exactly what
-    /// its parameters take. Otherwise, the call runs the closure, since an argument that no
-    /// parameter takes is still evaluated, and a parameter that's in a spread argument would need
-    /// to be taken apart from it.
-    fn lambda_arguments(
-        &mut self,
-        function: &FunctionSymbol,
-        call: &FunctionCall,
-    ) -> Option<HashMap<SymbolId, HirId>> {
-        let (items, spread) = if call.nil_terminated {
-            (call.args.as_slice(), None)
-        } else {
-            let (spread, items) = call.args.split_last()?;
-            (items, Some(*spread))
         };
 
-        let fixed = function.fixed_parameters();
-
-        if items.len() < fixed.len() {
-            return None;
+        if self.inline_functions.is_empty() {
+            return Some(lambda);
         }
 
-        let mut args: HashMap<SymbolId, HirId> =
-            fixed.iter().copied().zip(items.iter().copied()).collect();
+        let dependencies = self.dependencies(lambda, false);
 
-        if function.nil_terminated {
-            return (spread.is_none() && items.len() == fixed.len()).then_some(args);
+        let reenters = self
+            .inline_functions
+            .iter()
+            .any(|function| *function == lambda || dependencies.contains(function));
+
+        (!reenters).then_some(lambda)
+    }
+
+    /// Whether the argument is no more expensive to evaluate than to look up once it's bound:
+    /// it's static, which the optimizer folds to a constant, a small atom, or a value that's in
+    /// the environment.
+    fn is_trivial_argument(&self, mut hir: HirId) -> bool {
+        let mut seen = HashSet::new();
+
+        loop {
+            if self.is_static_hir(hir) {
+                return true;
+            }
+
+            match self.db.hir(self.db.without_casts(hir)) {
+                Hir::Int(value) => return value.bits() <= 16,
+                Hir::Reference(symbol) if seen.insert(*symbol) => {
+                    let Some(arg) = self.inline_argument(*symbol) else {
+                        return !self.should_inline(*symbol);
+                    };
+                    hir = arg;
+                }
+                // A call to a lambda that's inlined, with a static body, is folded too
+                Hir::FunctionCall(call) => {
+                    return call.args.iter().all(|&arg| self.is_static_hir(arg))
+                        && self.known_lambda(call.function).is_some_and(|lambda| {
+                            let Symbol::Function(function) = self.db.symbol(lambda) else {
+                                return false;
+                            };
+                            self.is_static_hir(function.body)
+                        });
+                }
+                _ => return false,
+            }
         }
-
-        let mut rest = spread.unwrap_or_else(|| self.db.alloc_hir(Hir::Nil));
-
-        for &item in items[fixed.len()..].iter().rev() {
-            rest = self.db.alloc_hir(Hir::Pair(item, rest));
-        }
-
-        args.insert(*function.parameters.last()?, rest);
-
-        Some(args)
     }
 
     /// Lowers a call to a function that's inlined, by substituting the arguments for its
@@ -899,6 +932,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     fn lower_inline_call(
         &mut self,
         env: &Environment,
+        symbol: SymbolId,
         function: &FunctionSymbol,
         mut args: HashMap<SymbolId, HirId>,
     ) -> LirId {
@@ -911,7 +945,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     continue;
                 };
 
-                if !may_fail(self, arg) || self.parameter_always_evaluated(function.body, parameter)
+                // An argument is evaluated where each reference to its parameter is, so one that's
+                // referenced more than once is bound, unless it's as cheap to evaluate again. Only
+                // lambdas get here with such parameters, since functions with them aren't inlined
+                // automatically (see `should_inline`).
+                let repeated =
+                    self.graph.references(parameter) > 1 && !self.is_trivial_argument(arg);
+
+                if !repeated
+                    && (!may_fail(self, arg)
+                        || self.parameter_always_evaluated(function.body, parameter))
                 {
                     continue;
                 }
@@ -947,7 +990,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         });
 
         self.inline_symbols.push(args);
+        self.inline_functions.push(symbol);
         let mut result = self.with_owner(owner, |this| this.lower_hir(&body_env, function.body));
+        self.inline_functions.pop().unwrap();
         self.inline_symbols.pop().unwrap();
 
         if let Some(debug) = &mut self.debug {

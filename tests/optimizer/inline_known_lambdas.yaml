@@ -8,42 +8,84 @@ tests:
   total_cost: 36020
 - name: captured
   program: (a (q 2 (q 18 2 (q . 7)) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) (c (q . 7) ())) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:13:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) (c (q . 7) ())) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
   output: "35"
   runtime_cost: 2501
   byte_cost: 876000
   total_cost: 878501
 - name: spread_argument
   program: (a (q 4 (q . 1) (c (a 2 (q . 2)) (q 3))) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 6 (c (q . 1) 4)) (c (c (c (a 2 (q . 2)) (c (q . 3) ())) (c (q . 2) (c (c (q . 1) (q 4 2 3)) (c (q . 1) ())))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:13:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 6 (c (q . 1) 4)) (c (c (c (a 2 (q . 2)) (c (q . 3) ())) (c (q . 2) (c (c (q . 1) (q 4 2 3)) (c (q . 1) ())))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
   output: (1 2 3)
   runtime_cost: 1369
   byte_cost: 828000
   total_cost: 829369
-- name: parameters_in_spread
-  program: (a (q 2 (q 16 2 5) (c (a 2 (q . 1)) (q 2))) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 6 4) (c (c (c (a 2 (q . 1)) (c (q . 2) ())) (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ())))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:13:5"))) 1) ()))
-  output: "3"
-  runtime_cost: 2265
-  byte_cost: 900000
-  total_cost: 902265
 - name: unused_argument_is_evaluated
   program: (a (q 3 () (a 2 (q . -1)) (q . 42)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 2 (c (a 5 (- () (q . 1))) ())) (c (c (q . 2) (c (c (q . 1) (q 1 . 42)) (c (q . 1) ()))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:13:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 2 (c (a 5 (- () (q . 1))) ())) (c (c (q . 2) (c (c (q . 1) (q 1 . 42)) (c (q . 1) ()))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
   byte_cost: 744000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at inline_known_lambdas.rue:13:5"
+  debug_clvm_error: clvm raise "assertion failed at inline_known_lambdas.rue:24:5"
 - name: returned_closure
   program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ())))) (c (q . 1) ()))) ()))) (q 3)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ())))) (c (q . 1) ()))) ()))) (c (q . 3) ())) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:13:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ())))) (c (q . 1) ()))) ()))) (c (q . 3) ())) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
   output: "12"
   runtime_cost: 6712
   byte_cost: 3036000
   total_cost: 3042712
 - name: used_twice
   program: (a (q 2 (q 16 (a 2 (q 1)) (a 2 (q 2))) (c (c (q . 2) (c (c (q . 1) (q 18 5 (a 2 (q . 2)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 (q 16 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ()))) (c (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:13:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ()))) (c (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
   output: "6"
   runtime_cost: 6728
   byte_cost: 1884000
   total_cost: 1890728
+- name: cast
+  program: (q . 21)
+  debug_program: (a (q 2 (q 2 2 (c (q . 7) ())) (c 2 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 3))) (c (q . 1) ()))) 1))
+  output: "21"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: spread_through_inline_call
+  program: (a (q 4 (q . 1) (c (a 2 (q . 2)) (q 3))) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (c (q . 2) (c (c (q . 1) (q 4 2 3)) (c (q . 1) ()))) (c (q . 1) (c (a 2 (q . 2)) (c (q . 3) ())))) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
+  output: (1 2 3)
+  runtime_cost: 1369
+  byte_cost: 828000
+  total_cost: 829369
+- name: nested_calls_of_the_same_function
+  program: (a (q 2 (q 16 2 2) (c (a 2 (q . 3)) ())) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 2 (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 2 ()))) (c (q . 1) ()))) (c 2 ())) (c (a 2 (q . 3)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
+  output: "6"
+  runtime_cost: 2285
+  byte_cost: 852000
+  total_cost: 854285
+- name: nested_lambda_sees_where_it_was_written
+  program: (a (q 2 (q 2 (q 2 2 (q 1000)) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ())) (c (a 2 (q . 10)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 2 (c (q . 2) (c (c (q . 1) (q 2 2 (c (q . 1000) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 (q . 1) 2)) (c (q . 1) ()))) ()))) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ())) (c (a 2 (q . 10)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
+  output: "1010"
+  runtime_cost: 3557
+  byte_cost: 1884000
+  total_cost: 1887557
+- name: repeated_parameter
+  program: (a (q 2 (q 18 2 2 2) (c (+ (a 2 (q . 2)) (q . 1)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 6 (c (+ 4 (q . 1)) ())) (c (c (a 2 (q . 2)) (c (q . 2) (c (c (q . 1) (q 18 (* 2 2) 2)) (c (q . 1) ())))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
+  output: "27"
+  runtime_cost: 4250
+  byte_cost: 972000
+  total_cost: 976250
+- name: repeated_trivial_parameter
+  program: (a (q 2 (q 16 (* 2 2 2) 2) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 16 (a 6 (c 4 ())) 4) (c (c (a 2 (q . 2)) (c (q . 2) (c (c (q . 1) (q 18 (* 2 2) 2)) (c (q . 1) ())))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:24:5"))) 1) ()))
+  output: "10"
+  runtime_cost: 4278
+  byte_cost: 948000
+  total_cost: 952278
+- name: repeated_static_parameter
+  program: (q . 3)
+  debug_program: (a (q 2 4 (c (a 6 ()) ())) (c (c (c (q . 2) (c (c (q . 1) (q 16 (f 2) (r 2))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 1) (q . 2))) (c () ())))) 1))
+  output: "3"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

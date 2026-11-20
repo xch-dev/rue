@@ -1,8 +1,19 @@
 // A call to a lambda that's known where it's called is inlined, rather than building the closure
-// and running it. Calls that the lambda's parameters don't match exactly still run the closure.
+// and running it.
 
 inline fn apply(f: fn(value: Int) -> Int, value: Int) -> Int {
     f(value)
+}
+
+inline fn apply_rest(
+    f: fn(first: Int, ...rest: List<Int>) -> List<Int>,
+    list: List<Int>,
+) -> List<Int> {
+    f(1, ...list)
+}
+
+inline fn apply_nested(f: fn(g: fn(value: Int) -> Int) -> Int, x: Int) -> Int {
+    f(fn(y: Int) => x + y)
 }
 
 inline fn twice(f: fn(value: Int) -> Int) -> fn(value: Int) -> Int {
@@ -33,15 +44,6 @@ test fn spread_argument() -> List<Int> {
     f(1, ...list)
 }
 
-// Not inlined, since the parameters would be in the spread argument
-test fn parameters_in_spread() -> Int {
-    let list = [positive(1), 2];
-    let f = unchecked_cast::<fn(...args: List<Int>) -> Int>(
-        fn(first: Int, second: Int) => first + second,
-    );
-    f(...list)
-}
-
 // The argument is still evaluated, so the assertion still fails
 test fn unused_argument_is_evaluated() -> Int {
     let f = fn(value: Int) => 42;
@@ -60,4 +62,55 @@ test fn used_twice() -> Int {
     let k = positive(2);
     let f = fn(value: Int) => value * k;
     f(1) + f(2)
+}
+
+// Inlined through a cast to another function type
+test fn cast() -> Any {
+    let f = fn(value: Int) => value * 3;
+    let g = f as fn(value: Int) -> Any;
+    g(7)
+}
+
+// Inlined through an inline function's parameter, with the spread argument as the spread parameter
+test fn spread_through_inline_call() -> List<Int> {
+    apply_rest(fn(first: Int, ...rest: List<Int>) => [first, ...rest], [positive(2), 3])
+}
+
+// The outer lambda isn't inlined into the call of `apply` it's passed to, since it calls `apply`
+// itself, and the inner call's parameters would hide the outer call's from it. Lowering it against
+// the inner call's arguments would never finish. It's run as a closure instead, with the inner
+// lambda inlined in it.
+test fn nested_calls_of_the_same_function() -> Int {
+    let n = positive(3);
+    apply(fn(a: Int) => apply(fn(b: Int) => a + b, a), n)
+}
+
+// The `x` that the outer call's lambda adds is the outer call's (the 10), not the inner one's (1)
+test fn nested_lambda_sees_where_it_was_written() -> Int {
+    let n = positive(10);
+    apply_nested(
+        fn(h: fn(value: Int) -> Int) => apply_nested(fn(h2: fn(value: Int) -> Int) => h(1000), 1),
+        n,
+    )
+}
+
+// An argument whose parameter is referenced more than once is bound, so it's evaluated once
+test fn repeated_parameter() -> Int {
+    let n = positive(2);
+    let f = fn(value: Int) => value * value * value;
+    f(n + 1)
+}
+
+// An argument that's a value in the environment is substituted for each reference
+test fn repeated_trivial_parameter() -> Int {
+    let n = positive(2);
+    let f = fn(value: Int) => value * value * value;
+    f(n) + n
+}
+
+// So is a static argument, which is folded
+test fn repeated_static_parameter() -> Int {
+    let f = fn(value: (Int, Int)) => value.first + value.rest;
+    let make = fn() => (1, 2);
+    f(make())
 }
