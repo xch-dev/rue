@@ -37,6 +37,22 @@ tests:
   byte_cost: 420000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at inline_match_may_raise.rue:83:13" "missing")
+- name: statement_rest_raises
+  program: (a (q 2 2 (q 1)) (c (q 3 3 (a (i (= 2 (q . 1)) (q 8) (q . 2)) 1) ()) ()))
+  debug_program: (a (q 2 2 (c (q . 1) ())) (c (q 3 (= 3 ()) () (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:103:5"))) 1)) ()))
+  byte_cost: 756000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:103:5"
+- name: statement_without_return
+  program: (a (q 2 2 (q 4)) (c (q 3 () (i 3 () ()) (a (i (= 2 (q . 1)) (q 8) (q . 2)) 1)) ()))
+  debug_program: (a (q 2 2 (c (q . 4) ())) (c (q 3 () (i (= 3 ()) (a (i ("debug_print" (q . "inline_match_may_raise.rue:115:13") ()) (q) (q)) 1) ()) (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:120:5"))) 1)) ()))
+  output: "4"
+  runtime_cost: 1078
+  byte_cost: 852000
+  total_cost: 853078
+  print_messages:
+  - ()
 diagnostics:
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:8:5
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:21:5
+- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:96:5

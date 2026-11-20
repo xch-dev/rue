@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use rue_diagnostic::{Lint, SrcLoc};
-use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, may_raise, statements_may_raise};
+use rue_hir::{
+    BinaryOp, Block, ControlStatement, Hir, HirId, Statement, may_raise, statements_may_raise,
+};
 
 use crate::{HirLintPass, LintContext, LintInput};
 
@@ -33,15 +35,46 @@ impl HirLintPass for InlineIfMayRaise {
     }
 
     fn check_statement(&mut self, cx: &mut LintContext<'_>, block: &Block, index: usize) {
-        // The rest of the block is the else branch of an `inline if` statement
-        if let Statement::If(statement) = &block.statements[index]
-            && statement.inline
-            && (may_raise(cx.db(), statement.then)
-                || statements_may_raise(cx.db(), &block.statements[index + 1..], block.body))
-        {
-            report(cx, statement.srcloc.clone());
+        match &block.statements[index] {
+            // The rest of the block is the else branch of an `inline if` statement
+            Statement::If(statement)
+                if statement.inline
+                    && (may_raise(cx.db(), statement.then)
+                        || statements_may_raise(
+                            cx.db(),
+                            &block.statements[index + 1..],
+                            block.body,
+                        )) =>
+            {
+                report(cx, statement.srcloc.clone());
+            }
+            // The branches of an `inline if` chain with a location are checked as an expression,
+            // but an `if` statement without an `else` whose block falls through doesn't have one
+            Statement::Control(statement)
+                if statement.inline
+                    && matches!(cx.db().hir(statement.hir), Hir::If(..))
+                    && ((cx.db().hir_srcloc(statement.hir).is_none()
+                        && may_raise(cx.db(), statement.hir))
+                        || rest_may_raise(cx, statement, block, index)) =>
+            {
+                report(cx, statement.srcloc.clone());
+            }
+            _ => {}
         }
     }
+}
+
+/// Whether the rest of the block after an `inline` statement can raise when a branch of the
+/// statement returns, since the branch that falls through to it is evaluated too.
+fn rest_may_raise(
+    cx: &LintContext<'_>,
+    statement: &ControlStatement,
+    block: &Block,
+    index: usize,
+) -> bool {
+    statement.may_return
+        && statement.fallthroughs > 0
+        && statements_may_raise(cx.db(), &block.statements[index + 1..], block.body)
 }
 
 /// Every arm of an `inline match` is evaluated eagerly, like the branches of an `inline if`, so an
@@ -77,12 +110,28 @@ impl HirLintPass for InlineMatchMayRaise<'_> {
             return;
         };
 
-        cx.report(
-            Lint::InlineMatchMayRaise,
-            srcloc,
-            "An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead",
-        );
+        report_match(cx, srcloc);
     }
+
+    fn check_statement(&mut self, cx: &mut LintContext<'_>, block: &Block, index: usize) {
+        // A `match` statement's arms are checked as an expression, but when one returns, the rest
+        // of the block is evaluated too, by the arm that falls through to it
+        if let Statement::Control(statement) = &block.statements[index]
+            && statement.inline
+            && matches!(cx.db().hir(statement.hir), Hir::Block(_))
+            && rest_may_raise(cx, statement, block, index)
+        {
+            report_match(cx, statement.srcloc.clone());
+        }
+    }
+}
+
+fn report_match(cx: &mut LintContext<'_>, srcloc: SrcLoc) {
+    cx.report(
+        Lint::InlineMatchMayRaise,
+        srcloc,
+        "An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead",
+    );
 }
 
 fn report(cx: &mut LintContext<'_>, srcloc: SrcLoc) {

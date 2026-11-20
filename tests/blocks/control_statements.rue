@@ -476,6 +476,51 @@ test fn ends_with_statement_fails() {
     check_value(12);
 }
 
+// A function without a return type can still end with an `if` or `match` whose branches are its
+// value
+fn delegates(value: Int) {
+    if value > 1 {
+        check_value(value)
+    } else {
+        check_value(value + 5)
+    }
+}
+
+fn delegates_match(value: Int) {
+    match value {
+        0 => nil,
+        _ => check_value(value),
+    }
+}
+
+test fn delegates_results() {
+    delegates(7);
+    delegates(1);
+    delegates_match(0);
+    delegates_match(7);
+}
+
+test fn delegates_fails() {
+    delegates(12);
+}
+
+// An `else if` statement can leave out the `else`, even with several of them
+fn three_levels(value: Int) -> Int {
+    if value > 10 {
+        return 1;
+    } else if value > 5 {
+        assert value != 6;
+    } else if value > 2 {
+        assert value != 3;
+    }
+
+    value
+}
+
+test fn three_levels_results() -> List<Int> {
+    [three_levels(20), three_levels(7), three_levels(4), three_levels(1)]
+}
+
 // An `else if` statement can leave out the `else`
 fn else_if_without_else(value: Int) -> Int {
     if value > 10 {
@@ -646,5 +691,50 @@ test fn bindings_before_shared_rest_results() -> List<Int> {
         bindings_before_shared_rest(Circle { radius: 9 }, 0),
         bindings_before_shared_rest(Square { side: 1 }, 2),
         bindings_before_shared_rest(Point {}, 2),
+    ]
+}
+
+// The rest of the block sees what the branch that falls through does, whichever branch that is
+fn narrows_to_then(value: (Int, Int) | nil) -> Int {
+    if value is (Int, Int) {
+        debug value;
+    } else {
+        return 0;
+    }
+
+    value.first + 1
+}
+
+fn narrows_through_else_if(value: (Int, Int) | nil | Bytes32) -> Int {
+    if value is nil {
+        return 0;
+    } else if value is Bytes32 {
+        raise "bytes";
+    } else {
+        debug value;
+    }
+
+    value.first + 1
+}
+
+fn narrows_to_earlier_arm(value: (Int, Int) | nil) -> Int {
+    match value {
+        (Int, Int) => {}
+        nil => {
+            return 0;
+        }
+    }
+
+    value.first + 1
+}
+
+test fn narrows_to_branch_results() -> List<Int> {
+    [
+        narrows_to_then((1, 2)),
+        narrows_to_then(nil),
+        narrows_through_else_if((3, 4)),
+        narrows_through_else_if(nil),
+        narrows_to_earlier_arm((5, 6)),
+        narrows_to_earlier_arm(nil),
     ]
 }

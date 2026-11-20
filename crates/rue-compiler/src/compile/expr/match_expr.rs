@@ -10,7 +10,7 @@ use rue_hir::{
 use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
-use crate::{BlockKind, Compiler, compile_branching_expr, compile_expr, compile_type};
+use crate::{Branches, Compiler, compile_branching_expr, compile_expr, compile_type};
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
 /// equivalent to, so that it's checked, narrowed and generated the same way. Each arm checks the
@@ -21,7 +21,7 @@ pub fn compile_match_expr(
     ctx: &mut Compiler,
     expr: &AstMatchExpr,
     expected_type: Option<TypeId>,
-    arm_kind: Option<BlockKind>,
+    arm_kind: Option<Branches>,
 ) -> (Value, Option<Mappings>) {
     let inline = expr.inline().is_some();
 
@@ -220,7 +220,7 @@ pub fn compile_match_expr(
 
         // An arm that handles everything that's left sees the members that are left, rather
         // than the type they're left in, which can keep the name of an alias that's been narrowed
-        if arm_kind == Some(BlockKind::Statement) && control_fallthroughs(ctx, body.hir) > 0 {
+        if arm_kind.is_some_and(Branches::is_statement) && control_fallthroughs(ctx, body.hir) > 0 {
             match pattern {
                 Some(ty) if !catches_all => fallthrough_types.push(ty),
                 _ => fallthrough_types.extend(remaining_members.iter().copied()),
@@ -274,7 +274,7 @@ pub fn compile_match_expr(
 
     // The rest of the block after a statement only sees the values of the arms that fall through
     // to it, unless the arms are evaluated eagerly
-    let narrowing = (arm_kind == Some(BlockKind::Statement)
+    let narrowing = (arm_kind.is_some_and(Branches::is_statement)
         && !inline
         && !has_error
         && !fallthrough_types.is_empty())
@@ -373,7 +373,7 @@ fn compile_arm(
     reference: &SymbolPath,
     ty: Option<TypeId>,
     expected_type: Option<TypeId>,
-    branches: Option<BlockKind>,
+    branches: Option<Branches>,
 ) -> Value {
     let Some(body) = arm.expr() else {
         debug!("Unresolved match arm body");
@@ -385,10 +385,10 @@ fn compile_arm(
     let index = ctx.push_mappings(mappings, range.start());
 
     let value = match branches {
-        Some(kind) if arm.ends_with_brace() => {
-            compile_branching_expr(ctx, &body, expected_type, kind).0
+        Some(branches) if arm.ends_with_brace() => {
+            compile_branching_expr(ctx, &body, expected_type, branches).0
         }
-        Some(BlockKind::Statement) => {
+        Some(branches) if branches.is_statement() => {
             ctx.diagnostic(body.syntax(), DiagnosticKind::StatementMatchArmValue);
             compile_expr(ctx, &body, expected_type)
         }
@@ -409,7 +409,7 @@ fn compile_unreachable_arm(
     pattern: Option<TypeId>,
     inline: bool,
     expected_type: Option<TypeId>,
-    branches: Option<BlockKind>,
+    branches: Option<Branches>,
 ) {
     let ty = (!inline).then(|| pattern.unwrap_or(ctx.builtins().types.never));
     let _ = compile_arm(ctx, arm, reference, ty, expected_type, branches);

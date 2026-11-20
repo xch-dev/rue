@@ -2,9 +2,10 @@ use log::debug;
 use rue_ast::{AstBlock, AstExpr, AstNode, AstStmt, AstStmtOrExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, Block, ControlStatement, Declaration, ExprStatement, Hir, IfStatement,
+    BindingSymbol, Block, ControlStatement, Declaration, ExprStatement, Hir, HirId, IfStatement,
     Statement, Symbol, Value, control_fallthroughs, control_may_return, statements_terminate,
 };
+use rue_parser::SyntaxNode;
 use rue_types::{Type, TypeId, Union};
 
 use crate::{
@@ -27,6 +28,28 @@ pub enum BlockKind {
     /// in `return` or `raise`, or fall through to the rest of the block after the statement. Its
     /// `return` statements exit to the enclosing return target, if there is one.
     Statement,
+}
+
+/// What the branches of an `if`, `match` or block are when they're blocks rather than values (see
+/// [`compile_branching_expr`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Branches {
+    pub kind: BlockKind,
+    /// Whether a branch needs a value, rather than being able to fall through to the end without
+    /// one, like the body of a function without a return type.
+    pub require_value: bool,
+}
+
+impl Branches {
+    /// The branches of a statement, which don't have values.
+    pub const STATEMENT: Self = Self {
+        kind: BlockKind::Statement,
+        require_value: false,
+    };
+
+    pub fn is_statement(self) -> bool {
+        self.kind == BlockKind::Statement
+    }
 }
 
 pub fn compile_block(
@@ -76,30 +99,27 @@ pub fn compile_block(
                 stmt
             }
             // An `if` and `else` chain or a `match` before the end of the block is a statement, as
-            // is one that ends a block whose value isn't used: a statement block, or the body of a
-            // function without a return type
-            AstStmtOrExpr::Expr(expr)
-                if is_if_or_match(&expr)
-                    && (!is_last || !is_expr || (kind == BlockKind::Body && !require_return)) =>
-            {
+            // is one that ends a statement block, whose value isn't used
+            AstStmtOrExpr::Expr(expr) if expr.is_if_or_match() && (!is_last || !is_expr) => {
                 let (value, narrowing) =
-                    compile_branching_expr(ctx, &expr, None, BlockKind::Statement);
+                    compile_branching_expr(ctx, &expr, None, Branches::STATEMENT);
 
-                let fallthroughs = control_fallthroughs(ctx, value.hir);
+                let inline = match &expr {
+                    AstExpr::IfExpr(expr) => expr.inline().is_some(),
+                    AstExpr::MatchExpr(expr) => expr.inline().is_some(),
+                    _ => false,
+                };
 
-                if fallthroughs == 0 && return_value.is_none() {
+                let statement = control_statement(ctx, expr.syntax(), value.hir, inline);
+
+                if statement.fallthroughs == 0 && return_value.is_none() {
                     return_value = Some(Value::new(
                         ctx.alloc_hir(Hir::Unresolved),
                         ctx.builtins().types.never,
                     ));
                 }
 
-                statements.push(Statement::Control(ControlStatement {
-                    hir: value.hir,
-                    fallthroughs,
-                    may_return: control_may_return(ctx, value.hir),
-                    srcloc: ctx.trimmed_srcloc(expr.syntax()),
-                }));
+                statements.push(Statement::Control(statement));
 
                 if let Some(narrowing) = narrowing {
                     ctx.push_mappings(narrowing, expr.syntax().text_range().end());
@@ -113,9 +133,14 @@ pub fn compile_block(
                 }
 
                 // The value of a function body is what it returns, so the branches of an `if`,
-                // `match` or block that's its value can return from the function too
+                // `match` or block that's its value can return from the function too, and only
+                // need a value if the body does
                 let value = if kind == BlockKind::Body && expr.ends_with_brace() {
-                    compile_branching_expr(ctx, &expr, expected_type, BlockKind::Body).0
+                    let branches = Branches {
+                        kind: BlockKind::Body,
+                        require_value: require_return,
+                    };
+                    compile_branching_expr(ctx, &expr, expected_type, branches).0
                 } else {
                     compile_expr(ctx, &expr, expected_type)
                 };
@@ -259,12 +284,12 @@ pub fn compile_block(
                         stmt.inline().is_some(),
                     ));
 
-                    Statement::Control(ControlStatement {
+                    Statement::Control(control_statement(
+                        ctx,
+                        stmt.syntax(),
                         hir,
-                        fallthroughs: control_fallthroughs(ctx, hir),
-                        may_return: control_may_return(ctx, hir),
-                        srcloc,
-                    })
+                        stmt.inline().is_some(),
+                    ))
                 }
             }
             AstStmt::ReturnStmt(stmt) => {
@@ -416,8 +441,27 @@ pub fn compile_block(
     ctx.record_value(block.syntax(), value)
 }
 
-/// Whether the expression is an `if` and `else` chain or a `match`, which can be a statement whose
-/// branches are statement blocks.
-fn is_if_or_match(expr: &AstExpr) -> bool {
-    matches!(expr, AstExpr::IfExpr(_) | AstExpr::MatchExpr(_))
+/// A statement whose branches are in the node, which is an `if` chain or a `match`.
+fn control_statement(
+    ctx: &mut Compiler,
+    syntax: &SyntaxNode,
+    hir: HirId,
+    inline: bool,
+) -> ControlStatement {
+    let fallthroughs = control_fallthroughs(ctx, hir);
+    let may_return = control_may_return(ctx, hir);
+
+    // Every branch of an `inline` statement is evaluated, so each one that falls through would
+    // evaluate the rest of the block, and each statement after it would double that
+    if inline && may_return && fallthroughs > 1 {
+        ctx.diagnostic(syntax, DiagnosticKind::InlineStatementSharedRest);
+    }
+
+    ControlStatement {
+        hir,
+        fallthroughs,
+        may_return,
+        inline,
+        srcloc: ctx.trimmed_srcloc(syntax),
+    }
 }

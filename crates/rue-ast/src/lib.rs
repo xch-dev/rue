@@ -854,6 +854,12 @@ impl AstExpr {
     pub fn ends_with_brace(&self) -> bool {
         matches!(self, Self::Block(_) | Self::IfExpr(_) | Self::MatchExpr(_))
     }
+
+    /// Whether the expression is an `if` or `match`, which can be a statement whose branches are
+    /// blocks of statements.
+    pub fn is_if_or_match(&self) -> bool {
+        matches!(self, Self::IfExpr(_) | Self::MatchExpr(_))
+    }
 }
 
 impl AstIfExpr {

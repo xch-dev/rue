@@ -8,4 +8,8 @@ diagnostics:
 - Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:68:5
 - Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:77:5
 - Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:89:5
-- Expected an `else` branch, since the value of the `if` is used at control_statement_errors.rue:107:12
+- Cannot use `+` operator with `Int | nil` and `1` at control_statement_errors.rue:98:5
+- Cannot use `inline` on a statement that can return when more than one of its branches continues after it, since each of them would evaluate the rest of the block; remove `inline` at control_statement_errors.rue:104:5
+- Value returned by statement is unused at control_statement_errors.rue:117:5
+- Expected an `else` branch, since the value of the `if` is used at control_statement_errors.rue:119:12
+- Expected an `else` branch, since the value of the `if` is used at control_statement_errors.rue:143:12

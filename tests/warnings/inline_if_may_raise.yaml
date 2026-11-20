@@ -134,6 +134,30 @@ tests:
   runtime_cost: 3257
   byte_cost: 1332000
   total_cost: 1335257
+- name: statement_falls_through
+  program: (a (q 2 2 (q . 1)) (c (q 3 () (i (> 1 (q . 5)) (a (i (> 1 (q . 6)) (q) (q 8)) 1) ()) 1) ()))
+  debug_program: (a (q 2 2 (q . 1)) (c (q 3 () (i (> 1 (q . 5)) (a (i (> 1 (q . 6)) (q) (q 8 (q . "assertion failed at inline_if_may_raise.rue:278:9"))) 1) ()) 1) ()))
+  byte_cost: 924000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:278:9"
+- name: statement_rest_raises
+  program: (a (q 2 2 (q . 1)) (c (q 3 (> 1 (q . 5)) (q . 1) (a (i (> 1 (q . 3)) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 2 (q . 1)) (c (q 3 (> 1 (q . 5)) (q . 1) (a (i ("debug_print" (q . "inline_if_may_raise.rue:294:9") 1) (q) (q 2 (i (> 1 (q . 3)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:297:5"))) 1)) 1)) ()))
+  byte_cost: 852000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:297:5"
+  print_messages:
+  - "1"
+- name: statement_without_return
+  program: (a (q 2 2 (q . 4)) (c (q 3 () (i (> 1 (q . 5)) () ()) (a (i (> 1 (q . 3)) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 2 (q . 4)) (c (q 3 () (i (> 1 (q . 5)) (a (i ("debug_print" (q . "inline_if_may_raise.rue:308:9") 1) (q) (q)) 1) (a (i ("debug_print" (q . "inline_if_may_raise.rue:310:9") ()) (q) (q)) 1)) (a (i (> 1 (q . 3)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:313:5"))) 1)) ()))
+  output: "4"
+  runtime_cost: 1972
+  byte_cost: 924000
+  total_cost: 925972
+  print_messages:
+  - ()
+  - "4"
 diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:8:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:20:5
@@ -160,3 +184,5 @@ diagnostics:
 - |-
   This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_if_may_raise.rue:258:5
     note: Remove `inline` to always evaluate it here
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:277:5
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:291:5

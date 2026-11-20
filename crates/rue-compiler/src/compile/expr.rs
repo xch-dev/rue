@@ -39,7 +39,7 @@ use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
 use rue_hir::{Mappings, Value};
 use rue_types::TypeId;
 
-use crate::{BlockKind, Compiler, CompletionContext, SyntaxItemKind, compile_block};
+use crate::{BlockKind, Branches, Compiler, CompletionContext, SyntaxItemKind, compile_block};
 
 pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<TypeId>) -> Value {
     ctx.add_syntax(
@@ -82,22 +82,26 @@ pub fn compile_branching_expr(
     ctx: &mut Compiler,
     expr: &AstExpr,
     expected_type: Option<TypeId>,
-    kind: BlockKind,
+    branches: Branches,
 ) -> (Value, Option<Mappings>) {
+    if !expr.ends_with_brace() {
+        return (compile_expr(ctx, expr, expected_type), None);
+    }
+
     ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Expression),
         expr.syntax().text_range(),
     );
 
     let (value, narrowing) = match expr {
-        AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type, Some(kind)),
-        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type, Some(kind)),
+        AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type, Some(branches)),
+        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type, Some(branches)),
         AstExpr::Block(block) => {
-            let require_return = kind != BlockKind::Statement;
-            let value = compile_block(ctx, block, kind, expected_type, require_return);
+            let kind = branches.kind;
+            let value = compile_block(ctx, block, kind, expected_type, branches.require_value);
             (value, None)
         }
-        _ => return (compile_expr(ctx, expr, expected_type), None),
+        _ => unreachable!("only a block, `if` or `match` ends with a brace"),
     };
 
     (ctx.record_value(expr.syntax(), value), narrowing)

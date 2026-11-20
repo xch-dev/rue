@@ -351,6 +351,9 @@ pub struct ControlStatement {
     /// Whether a branch can return from the function, so the rest of the block isn't always
     /// evaluated after it, even if the branch doesn't raise (see [`control_may_return`]).
     pub may_return: bool,
+    /// Whether every branch is evaluated, like the branches of an `inline if`. A branch that falls
+    /// through evaluates the rest of the block too, so it's evaluated even if a branch returns.
+    pub inline: bool,
     pub srcloc: SrcLoc,
 }
 
@@ -384,7 +387,11 @@ pub fn control_may_return(db: &Database, hir: HirId) -> bool {
                 Statement::Return(..) => true,
                 Statement::If(statement) => control_may_return(db, statement.then),
                 Statement::Control(statement) => statement.may_return,
-                _ => false,
+                Statement::Expr(_)
+                | Statement::Let(..)
+                | Statement::Assert(..)
+                | Statement::Raise(..)
+                | Statement::Debug(..) => false,
             }) || block.body.is_some_and(|body| control_may_return(db, body))
         }
         _ => false,

@@ -232,6 +232,11 @@ pub enum DiagnosticKind {
     #[error("Expected an `else` branch, since the value of the `if` is used")]
     MissingElse,
 
+    #[error(
+        "Cannot use `inline` on a statement that can return when more than one of its branches continues after it, since each of them would evaluate the rest of the block; remove `inline`"
+    )]
+    InlineStatementSharedRest,
+
     #[error("Cannot use a `return` statement here, end the block with an expression instead")]
     UnexpectedExplicitReturn,
 

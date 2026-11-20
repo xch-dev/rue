@@ -85,3 +85,38 @@ fn allowed_branch(x: Int | nil) -> Int | nil {
         Int => x,
     }
 }
+
+// When an arm of an `inline match` statement returns, the arm that falls through still evaluates
+// the rest of the block
+test fn statement_rest_raises() -> Int {
+    statement_rest_raises_branch(nil, 1)
+}
+
+fn statement_rest_raises_branch(x: Int | nil, y: Int) -> Int {
+    inline match x {
+        nil => {
+            return 0;
+        }
+        Int => {}
+    }
+
+    assert y != 1;
+    y
+}
+
+// No arm returns, so the rest of the block is evaluated whichever arm is taken
+test fn statement_without_return() -> Int {
+    statement_without_return_branch(nil, 4)
+}
+
+fn statement_without_return_branch(x: Int | nil, y: Int) -> Int {
+    inline match x {
+        nil => {
+            debug 0;
+        }
+        Int => {}
+    }
+
+    assert y != 1;
+    y
+}
