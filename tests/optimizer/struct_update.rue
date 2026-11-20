@@ -30,7 +30,7 @@ fn spend(n: Int) -> Spend {
     Spend { puzzle_hash: sha256(n as Bytes), amount: n, memos: nil }
 }
 
-// Each test that updates a struct is followed by the same struct rebuilt by hand, which it's
+// Most tests that update a struct are followed by the same struct rebuilt by hand, which it's
 // never larger than. The fields after the last one that's written are the rest of the value
 // being updated, rather than a copy of each of them
 test fn update_first(p: Point, n: Int) -> Point {
@@ -135,7 +135,7 @@ test fn rebuild_after_constant(s: Spend, puzzle_hash: Bytes32) -> Spend {
     Spend { puzzle_hash, amount: s.amount, memos: s.memos }
 }
 
-// Reading it would be another use of the spread value, which would have to be bound for it
+// The value is bound as it is when the struct is rebuilt, since the rest of it is two fields in
 test fn update_after_constant_of_call(n: Int, puzzle_hash: Bytes32) -> Spend {
     Spend { ...spend(n), puzzle_hash }
 }
@@ -158,7 +158,7 @@ inline fn rebuild_spend(s: Spend, puzzle_hash: Bytes32) -> Spend {
     Spend { puzzle_hash, amount: s.amount, memos: s.memos }
 }
 
-// It would also evaluate the argument of an inline function again
+// Reading the constant would evaluate the argument of an inline function again
 test fn update_after_constant_of_inline_parameter(n: Int, puzzle_hash: Bytes32) -> Spend {
     update_spend(spend(n), puzzle_hash)
 }
@@ -184,12 +184,35 @@ struct Versioned {
 
 // The rest of the spread value isn't used if every field in it is a constant, so the struct
 // doesn't depend on the value at all
+#[allow(unused_struct_spread)]
 test fn update_before_constants(versioned: Versioned, n: Int) -> Versioned {
     Versioned { ...versioned, value: n }
 }
 
-test fn rebuild_before_constants(n: Int) -> Versioned {
+test fn rebuild_before_constants(_versioned: Versioned, n: Int) -> Versioned {
     Versioned { value: n }
+}
+
+struct Operation {
+    opcode = 51,
+    first: Int,
+    second: Int,
+}
+
+fn operation(n: Int) -> Operation {
+    assert n > 0;
+    Operation { first: n, second: n + 1 }
+}
+
+// Reading the constant would be a second use of a value that's otherwise used in place, since
+// only one field is read from the rest of it
+test fn update_after_constant_in_place(n: Int) -> Operation {
+    Operation { ...operation(n), first: 1 }
+}
+
+test fn rebuild_after_constant_in_place(n: Int) -> Operation {
+    let o = operation(n);
+    Operation { first: 1, second: o.second }
 }
 
 // The discriminant of an enum variant is a constant too
@@ -390,6 +413,18 @@ test fn rebuild_deep_tail_of_binding(n: Int) -> (Wide, Int) {
     let q = wide(n);
     let w = sha256(n as Bytes) as Int;
     (Wide { a: n, b: n, c: n, d: q.d, e: q.e }, w + w)
+}
+
+test fn update_deep_tail_two_fields_in(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { ...q, a: n, b: n }, w + w)
+}
+
+test fn rebuild_deep_tail_two_fields_in(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { a: n, b: n, c: q.c, d: q.d, e: q.e }, w + w)
 }
 
 test fn update_deep_tail_of_call(n: Int) -> (Wide, Int) {

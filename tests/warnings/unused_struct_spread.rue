@@ -69,6 +69,16 @@ test fn only_the_discriminant_is_left(square: Shape::Square, n: Int) -> Shape::S
     Shape::Square { ...square, side: n }
 }
 
+struct Marker {
+    opcode = 51,
+    version = 2,
+}
+
+// Every field is a constant, so the value isn't read though no field is written
+test fn only_constants(marker: Marker) -> Marker {
+    Marker { ...marker }
+}
+
 // A constant without a default value would be missing without the spread, so it isn't removed
 test fn constant_without_a_default(tagged: Tagged, n: Int) -> Tagged {
     Tagged { ...tagged, amount: n }

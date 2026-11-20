@@ -59,6 +59,14 @@ tests:
   runtime_cost: 242
   byte_cost: 156000
   total_cost: 156242
+- name: only_constants
+  program: (q 51 2)
+  debug_program: (c (q . 51) (c (q . 2) ()))
+  solution: ((51 2))
+  output: (51 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
 - name: constant_without_a_default
   program: (c (q . 7) (c 5 ()))
   debug_program: (c (q . 7) (c 5 ()))
@@ -130,4 +138,7 @@ diagnostics:
 - |-
   Every other field of `Shape::Square` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:69:21
     help: Remove the spread
-- Every other field of `Tagged` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:74:14
+- |-
+  Every field of `Marker` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:79:14
+    help: Remove the spread
+- Every other field of `Tagged` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:84:14

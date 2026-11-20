@@ -7,7 +7,7 @@ use rue_hir::{
     Block, FieldKind, Hir, Statement, StructField, StructInitializer, StructTail, SymbolPath,
     TypePath, Value,
 };
-use rue_lint::UnusedStructSpread;
+use rue_lint::{UnusedSpreadReason, UnusedStructSpread};
 use rue_types::{Atom, AtomRestriction, Struct, Type, TypeId, Union};
 
 use crate::{
@@ -466,11 +466,13 @@ fn copy_fields(
     // copied is still reported as never read
     let field_reads = ctx.lint_sites_mut().field_reads.len();
 
-    for name in &struct_type.fields {
-        if fields.contains_key(name) {
-            continue;
-        }
+    let unwritten: Vec<&String> = struct_type
+        .fields
+        .iter()
+        .filter(|name| !fields.contains_key(*name))
+        .collect();
 
+    for &name in &unwritten {
         let value = match compile_field(ctx, base.value.clone(), &Field::Named(name)) {
             FieldResult::Value(value) => value,
             FieldResult::Unknown | FieldResult::Error => {
@@ -500,7 +502,7 @@ fn copy_fields(
             }
         }
 
-        let field = match constant_field(ctx, expected_type) {
+        let field = match expected_type.and_then(|ty| constant_field(ctx, ty)) {
             Some(constant) => CopiedField {
                 value: Value::new(ctx.alloc_hir(Hir::Bytes(constant)), value.ty),
                 constant: true,
@@ -519,17 +521,20 @@ fn copy_fields(
     // Nothing is read from the spread value if every field that isn't written is a constant.
     // Removing it leaves the fields to their default values, if they have them, which are the
     // same constants.
-    let mut unwritten = struct_type
-        .fields
+    if unwritten
         .iter()
-        .filter(|name| !fields.contains_key(*name))
-        .peekable();
-    let constants = unwritten.peek().is_some();
-
-    if copied.values().all(|field| field.constant)
-        && unwritten.clone().all(|name| copied.contains_key(name))
+        .all(|name| copied.get(*name).is_some_and(|field| field.constant))
     {
-        let removable = unwritten.all(|name| ctx.has_declared_default(struct_type.semantic, name));
+        let removable = unwritten
+            .iter()
+            .all(|name| ctx.has_declared_default(struct_type.semantic, name));
+        let reason = if unwritten.is_empty() {
+            UnusedSpreadReason::Written
+        } else if fields.is_empty() {
+            UnusedSpreadReason::Constants
+        } else {
+            UnusedSpreadReason::OtherConstants
+        };
         let srcloc = ctx.trimmed_srcloc(base.node.syntax());
         let struct_name = ctx.type_name(struct_type.semantic);
         ctx.lint_sites_mut()
@@ -537,7 +542,7 @@ fn copy_fields(
             .push(UnusedStructSpread {
                 srcloc,
                 struct_name,
-                constants,
+                reason,
                 removable,
                 evaluated: base.statement.is_some(),
             });
@@ -555,12 +560,7 @@ fn copy_fields(
 ///
 /// A field that's only a single value in the spread value, because it has been narrowed, is
 /// read like any other, as it would be by hand.
-fn constant_field(ctx: &mut Compiler, expected_type: Option<TypeId>) -> Option<Vec<u8>> {
-    single_value(ctx, expected_type?)
-}
-
-/// The only value of the type, if it's an atom with one.
-fn single_value(ctx: &mut Compiler, ty: TypeId) -> Option<Vec<u8>> {
+fn constant_field(ctx: &mut Compiler, ty: TypeId) -> Option<Vec<u8>> {
     let ty = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
 
     match ctx.ty(ty) {
