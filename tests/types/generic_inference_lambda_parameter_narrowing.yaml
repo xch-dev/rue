@@ -36,7 +36,7 @@ tests:
   total_cost: 36020
 - name: alias_kept_whole
   program: (q . 1)
-  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 (q . 1)) ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) (q)) 1) (q) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1)) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c (c 3 (q . 1)) ())) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
