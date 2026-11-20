@@ -1,12 +1,11 @@
-use std::collections::{HashMap, HashSet};
-
 use id_arena::Arena;
 use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, Pair, Type, TypeId, Union, compare, extract_pairs_substituted,
-    grow_stack, reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    Alias, BuiltinTypes, Comparison, FxHashMap, FxHashSet, Pair, Type, TypeId, Union, compare,
+    extract_pairs_substituted, grow_stack, reaches_non_contractive_cycle, step, stringify_impl,
+    substitute,
 };
 
 pub fn subtract(
@@ -62,14 +61,12 @@ fn subtract_impl(
 #[derive(Default)]
 struct Subtraction {
     /// The subtractions in progress, to stop at a cycle through the parts of recursive types.
-    stack: HashSet<(TypeId, TypeId)>,
+    stack: FxHashSet<(TypeId, TypeId)>,
     /// What's left of each variant once a target is subtracted from it. The same variant often
     /// appears many times, such as in a union that repeats a type at each level (#496), and each
-    /// copy should be narrowed to the same type.
-    variants: HashMap<(TypeId, TypeId), Outcome>,
-    /// What's left of each part of a pair once a part of a target pair is subtracted from it. The
-    /// same subtraction can be reached through either part of the pairs in a target.
-    parts: HashMap<(TypeId, TypeId), Outcome>,
+    /// copy should be narrowed to the same type. The same subtraction can also be reached through
+    /// either part of the pairs in a target, so this keeps nested splits from being exponential.
+    variants: FxHashMap<(TypeId, TypeId), Outcome>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -204,24 +201,15 @@ fn subtract_part(
     lhs_id: TypeId,
     rhs_id: TypeId,
 ) -> Outcome {
-    let key = (lhs_id, rhs_id);
-
-    if let Some(outcome) = cx.parts.get(&key) {
-        return *outcome;
-    }
-
-    if cx.stack.contains(&key) {
+    if cx.stack.contains(&(lhs_id, rhs_id)) {
         return Outcome::Unchanged;
     }
 
-    let outcome = match remaining_variants(arena, builtins, cx, lhs_id, rhs_id) {
+    match remaining_variants(arena, builtins, cx, lhs_id, rhs_id) {
         None => Outcome::Unchanged,
         Some(variants) if variants.is_empty() => Outcome::Removed,
         Some(variants) => Outcome::Narrowed(repackage(arena, builtins, variants)),
-    };
-
-    cx.parts.insert(key, outcome);
-    outcome
+    }
 }
 
 fn repackage(arena: &mut Arena<Type>, builtins: &BuiltinTypes, variants: Vec<Variant>) -> TypeId {

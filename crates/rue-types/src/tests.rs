@@ -4026,6 +4026,36 @@ mod subtraction {
     }
 
     #[test]
+    fn skips_target_pair_that_differs_in_both_parts() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let [one, two, three] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let lhs = db.pair(either, int);
+        let other = db.pair(three, nil);
+        let first = db.pair(one, int);
+        let rhs = db.union(&[other, first]);
+
+        assert_eq!(sub(&mut db, lhs, rhs), "(2, Int)");
+    }
+
+    #[test]
+    fn removes_pair_when_a_part_is_emptied() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let [one, two, _] = literals(&mut db);
+        let either = db.union(&[one, two]);
+        let inner = db.pair(either, int);
+        let lhs = db.pair(int, inner);
+        let first = db.pair(one, int);
+        let second = db.pair(two, int);
+        let both = db.union(&[first, second]);
+        let rhs = db.pair(int, both);
+
+        assert_eq!(sub(&mut db, lhs, rhs), "Never");
+    }
+
+    #[test]
     fn keeps_pair_when_both_parts_differ() {
         let mut db = Db::new();
         let [one, two, _] = literals(&mut db);
