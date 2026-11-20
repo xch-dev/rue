@@ -462,6 +462,6 @@ fn control_statement(
         fallthroughs,
         may_return,
         inline,
-        srcloc: ctx.trimmed_srcloc(syntax),
+        srcloc: ctx.code_srcloc(syntax),
     }
 }

@@ -73,3 +73,21 @@ fn unfulfilled(value: Int) -> Int {
 test fn unfulfilled_called() -> Int {
     unfulfilled(1)
 }
+
+// A statement's attributes aren't part of its code, so what's reported about it is reported at
+// the statement itself
+fn reported_at_statement(value: Int) -> Int {
+    #[warn(inline_match_may_raise)]
+    inline match value {
+        0 => {
+            assert value == 0;
+        }
+        _ => {}
+    }
+
+    value
+}
+
+test fn reported_at_statement_called() -> Int {
+    reported_at_statement(1)
+}

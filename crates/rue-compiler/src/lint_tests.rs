@@ -2889,3 +2889,52 @@ fn main(c: Bool, x: Int) -> Int {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+/// The attributes on an `if` statement aren't part of its code, so replacing it keeps them, and the
+/// statements of its branch are indented like it was.
+#[test]
+fn identical_statement_branches_keep_attributes() {
+    let source = "\
+fn main(c: Bool, x: Int) -> Int {
+    #[allow(unused_binding)]
+    if x > 1 {
+        let unused = 1;
+        assert c;
+    } else {
+        let unused = 1;
+        assert c;
+    }
+
+    x
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::IdenticalBranches))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(c: Bool, x: Int) -> Int {
+    #[allow(unused_binding)]
+    let unused = 1;
+    assert c;
+
+    x
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}

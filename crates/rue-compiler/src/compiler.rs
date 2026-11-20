@@ -22,7 +22,7 @@ use rue_hir::{
 use rue_lint::{EnclosedPreludeReference, ImpreciseNarrowing, LintInput, LintSites};
 use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
-use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
+use rue_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{
@@ -475,6 +475,25 @@ impl Compiler {
     /// by a suggestion.
     pub fn trimmed_srcloc(&self, node: &SyntaxNode) -> SrcLoc {
         self.srcloc(&trimmed_range(node))
+    }
+
+    /// Like [`Self::trimmed_srcloc`], but without the attributes at the start of the node, which
+    /// an `if` or `match` statement includes, since they aren't part of its code.
+    pub fn code_srcloc(&self, node: &SyntaxNode) -> SrcLoc {
+        let range = trimmed_range(node);
+
+        let start = node
+            .children_with_tokens()
+            .find(|element| !element.kind().is_trivia() && element.kind() != SyntaxKind::Attribute)
+            .map_or(range.start(), |element| match element {
+                SyntaxElement::Node(node) => trimmed_range(&node).start(),
+                SyntaxElement::Token(token) => token.text_range().start(),
+            });
+
+        self.srcloc(&TextRange::new(
+            start.clamp(range.start(), range.end()),
+            range.end(),
+        ))
     }
 
     pub fn local_name(&self, token: &SyntaxToken) -> Name {
@@ -1059,7 +1078,7 @@ impl Compiler {
             value = value.with_hir(self.db.alloc_hir(hir));
         }
 
-        let srcloc = self.trimmed_srcloc(node);
+        let srcloc = self.code_srcloc(node);
         self.db.set_hir_type(value.hir, value.ty);
         self.db.set_hir_srcloc(value.hir, srcloc);
         self.db.set_hir_scope(value.hir, self.last_scope_id());

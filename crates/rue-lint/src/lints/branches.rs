@@ -42,11 +42,22 @@ impl HirLintPass for IdenticalBranches {
         // of another one isn't a statement
         let then_text = if is_statement(cx, hir) {
             let text = then_srcloc.text();
-            text.strip_prefix('{')
+            let statements = text
+                .strip_prefix('{')
                 .and_then(|text| text.strip_suffix('}'))
                 .unwrap_or(text)
-                .trim()
-                .to_string()
+                .trim();
+
+            // The statements after the first are indented one level less, like the `if` was
+            statements
+                .lines()
+                .enumerate()
+                .map(|(index, line)| match line.strip_prefix("    ") {
+                    Some(line) if index > 0 => line,
+                    _ => line,
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
         } else {
             then_srcloc.text().to_string()
         };
