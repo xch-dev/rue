@@ -414,6 +414,7 @@ async fn test_protocol_session() {
     assert_eq!(capabilities["hoverProvider"], json!(true));
     assert_eq!(capabilities["definitionProvider"], json!(true));
     assert_eq!(capabilities["referencesProvider"], json!(true));
+    assert_eq!(capabilities["renameProvider"], json!(true));
     assert_eq!(capabilities["documentFormattingProvider"], json!(true));
     assert_eq!(capabilities["textDocumentSync"], json!(1));
     assert_eq!(
@@ -466,6 +467,12 @@ pub(super) fn position(uri: &Uri, line: u32, character: u32) -> Value {
     })
 }
 
+fn rename(uri: &Uri, line: u32, character: u32, new_name: &str) -> Value {
+    let mut params = position(uri, line, character);
+    params["newName"] = json!(new_name);
+    params
+}
+
 fn formatting(uri: &Uri) -> Value {
     json!({
         "textDocument": { "uri": uri },
@@ -497,6 +504,122 @@ pub(super) async fn assert_hover(client: &mut Client, uri: &Uri) {
     assert_eq!(
         client.hover(uri, 2, 6).await["contents"],
         json!([{ "language": "rue", "value": "let value: Int" }])
+    );
+}
+
+#[tokio::test]
+async fn test_rename_session() {
+    let main = "fn main() -> Int {\n    let value = utils::ONE;\n    value + 1\n}\n";
+    let utils = "export const ONE: Int = 1;\n";
+    let project = TempProject::new(&[("main.rue", main), ("utils.rue", utils)]);
+    let uri = project.uri("main.rue");
+    let utils_uri = project.uri("utils.rue");
+
+    let mut client = Client::new();
+
+    // A client that asks whether a name can be renamed first is told that it can ask
+    let response = client
+        .request(
+            "initialize",
+            Some(json!({
+                "capabilities": {
+                    "textDocument": { "rename": { "prepareSupport": true } },
+                    "workspace": {
+                        "workspaceEdit": {
+                            "resourceOperations": ["create", "rename", "delete"],
+                        },
+                    },
+                },
+            })),
+        )
+        .await;
+    assert_eq!(
+        response.result().unwrap()["capabilities"]["renameProvider"],
+        json!({ "prepareProvider": true })
+    );
+
+    client.notify("initialized", json!({})).await;
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, main).await;
+    client.sync().await;
+
+    let range = |line: u32, start: u32, end: u32| {
+        json!({
+            "start": { "line": line, "character": start },
+            "end": { "line": line, "character": end },
+        })
+    };
+
+    let response = client
+        .request("textDocument/prepareRename", Some(position(&uri, 2, 6)))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({ "range": range(2, 4, 9), "placeholder": "value" })
+    );
+
+    // The edits are for the text as it is when the request is sent, though the server hasn't
+    // compiled it yet
+    let edited = main.replace("fn main", "\nfn main");
+    let compiles = client.compiles();
+    client.change(&uri, 2, &[&edited]).await;
+
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 3, 6, "number")))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({
+            "changes": {
+                uri.as_str(): [
+                    { "range": range(2, 8, 13), "newText": "number" },
+                    { "range": range(3, 4, 9), "newText": "number" },
+                ],
+            },
+        })
+    );
+    assert_eq!(client.compiles(), compiles + 1);
+
+    // A rename that's refused says why
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 3, 6, "1x")))
+        .await;
+    let error = response.error().unwrap();
+    assert_eq!(error.code.code(), -32803);
+    assert_eq!(error.message, "`1x` isn't a valid name");
+
+    let response = client
+        .request("textDocument/prepareRename", Some(position(&uri, 1, 9)))
+        .await;
+    assert_eq!(response.result(), Some(&Value::Null));
+
+    let response = client
+        .request("textDocument/prepareRename", Some(position(&uri, 1, 14)))
+        .await;
+    assert_eq!(
+        response.error().unwrap().message,
+        "`Int` isn't declared in the project, so it can't be renamed"
+    );
+
+    // A module that's a file is renamed with it, after the files are edited
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 2, 17, "helpers")))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({
+            "documentChanges": [
+                {
+                    "textDocument": { "uri": uri, "version": null },
+                    "edits": [{ "range": range(2, 16, 21), "newText": "helpers" }],
+                },
+                {
+                    "kind": "rename",
+                    "oldUri": utils_uri,
+                    "newUri": project.uri("helpers.rue"),
+                },
+            ],
+        })
     );
 }
 
@@ -553,6 +676,16 @@ async fn test_query_panics_are_caught() {
             Task::Completion,
             "textDocument/completion",
             position(&uri, 2, 6),
+        ),
+        (
+            Task::Rename,
+            "textDocument/prepareRename",
+            position(&uri, 2, 6),
+        ),
+        (
+            Task::Rename,
+            "textDocument/rename",
+            rename(&uri, 2, 6, "other"),
         ),
         (
             Task::Formatting,

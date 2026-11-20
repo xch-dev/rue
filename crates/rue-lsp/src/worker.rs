@@ -51,6 +51,9 @@ pub struct Shared {
     /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
     /// added to the message instead. This is assumed until the client says otherwise.
     pub related_information: AtomicBool,
+    /// Whether the client can rename files as part of an edit, which renaming a module that's a
+    /// file or a directory needs.
+    pub rename_files: AtomicBool,
     /// A task that panics on purpose, to test that the server survives panics.
     #[cfg(test)]
     pub injected_panic: Mutex<Option<Task>>,
@@ -105,6 +108,7 @@ impl Shared {
             revision: AtomicU64::new(0),
             paths: Paths::default(),
             related_information: AtomicBool::new(true),
+            rename_files: AtomicBool::new(false),
             #[cfg(test)]
             injected_panic: Mutex::default(),
             #[cfg(test)]

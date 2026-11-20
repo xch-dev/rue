@@ -8,6 +8,7 @@ mod lifecycle;
 mod line_endings;
 mod navigation;
 mod protocol;
+mod rename;
 mod shadowing;
 mod std_library;
 mod sweep;
@@ -26,10 +27,12 @@ use tower_lsp_server::LanguageServer;
 use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
-    Diagnostic, DocumentFormattingParams, FormattingOptions, GotoDefinitionParams,
-    GotoDefinitionResponse, HoverContents, HoverParams, Location, MarkedString, NumberOrString,
-    PartialResultParams, Position, Range, ReferenceContext, ReferenceParams,
+    Diagnostic, DocumentChangeOperation, DocumentChanges, DocumentFormattingParams,
+    FormattingOptions, GotoDefinitionParams, GotoDefinitionResponse, HoverContents, HoverParams,
+    Location, MarkedString, NumberOrString, OneOf, PartialResultParams, Position,
+    PrepareRenameResponse, Range, ReferenceContext, ReferenceParams, RenameParams, ResourceOp,
     TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams,
+    WorkspaceEdit,
 };
 
 use crate::paths::{path_to_uri, uri_to_path};
@@ -127,6 +130,8 @@ pub struct TestProject {
     _dir: TempDir,
     service: LspService<Backend>,
     cursor: Option<(Uri, Position)>,
+    /// The name and text of each file, without the cursor.
+    files: Vec<(String, String)>,
 }
 
 impl TestProject {
@@ -166,6 +171,12 @@ impl TestProject {
             texts.push((path, text));
         }
 
+        let files = files
+            .iter()
+            .zip(&texts)
+            .map(|((name, _), (_, text))| ((*name).to_string(), text.clone()))
+            .collect();
+
         let (service, _) = LspService::new(Backend::new);
 
         let project = Self {
@@ -173,6 +184,7 @@ impl TestProject {
             _dir: dir,
             service,
             cursor,
+            files,
         };
 
         // Opening any file compiles the whole project, but each file is opened to mirror what an
@@ -323,6 +335,122 @@ impl TestProject {
         output
     }
 
+    /// Renders the name at the cursor that would be renamed, or why it can't be.
+    pub fn prepare_rename(&self) -> String {
+        let (uri, position) = self.cursor();
+
+        let response = block_on(
+            self.backend()
+                .prepare_rename(TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    position,
+                )),
+        );
+
+        match response {
+            Ok(None) => "<none>\n".to_string(),
+            Ok(Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder })) => {
+                format!("{} `{placeholder}`\n", self.location(&uri, range))
+            }
+            Ok(Some(response)) => panic!("unexpected response: {response:?}"),
+            Err(error) => format!("error: {}\n", error.message),
+        }
+    }
+
+    /// Renames what's at the cursor, and renders each file that changed with the edits applied to
+    /// it, along with the file that's renamed, or why it can't be renamed.
+    pub fn rename(&self, new_name: &str) -> String {
+        let (uri, position) = self.cursor();
+
+        let response = block_on(self.backend().rename(RenameParams {
+            text_document_position: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri),
+                position,
+            ),
+            new_name: new_name.to_string(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        }));
+
+        match response {
+            Ok(None) => "<none>\n".to_string(),
+            Ok(Some(edit)) => self.render_workspace_edit(edit),
+            Err(error) => format!("error: {}\n", error.message),
+        }
+    }
+
+    fn render_workspace_edit(&self, edit: WorkspaceEdit) -> String {
+        let mut changes = edit.changes.unwrap_or_default();
+        let mut renamed = Vec::new();
+
+        match edit.document_changes {
+            None => {}
+            Some(DocumentChanges::Edits(edits)) => panic!("unexpected edits: {edits:?}"),
+            Some(DocumentChanges::Operations(operations)) => {
+                for operation in operations {
+                    match operation {
+                        DocumentChangeOperation::Edit(edit) => {
+                            assert!(
+                                renamed.is_empty(),
+                                "files are edited before they're renamed"
+                            );
+
+                            changes.entry(edit.text_document.uri).or_default().extend(
+                                edit.edits.into_iter().map(|edit| match edit {
+                                    OneOf::Left(edit) => edit,
+                                    OneOf::Right(edit) => edit.text_edit,
+                                }),
+                            );
+                        }
+                        DocumentChangeOperation::Op(ResourceOp::Rename(rename)) => {
+                            renamed.push(rename);
+                        }
+                        DocumentChangeOperation::Op(operation) => {
+                            panic!("unexpected operation: {operation:?}")
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut output = String::new();
+
+        for (name, text) in &self.files {
+            let Some(edits) = changes.remove(&self.uri(name)) else {
+                continue;
+            };
+
+            // Each edit replaces a name, so the ranges are shown as what they replace
+            for edit in &edits {
+                assert_eq!(edit.range.start.line, edit.range.end.line);
+            }
+
+            writeln!(output, "{name}:\n{}", apply_edits(text, edits).trim_end()).unwrap();
+        }
+
+        assert!(changes.is_empty(), "edits to unexpected files: {changes:?}");
+
+        for rename in renamed {
+            let relative = |uri: &Uri| {
+                let path = uri_to_path(uri).unwrap();
+                path.strip_prefix(&self.root).unwrap().display().to_string()
+            };
+
+            writeln!(
+                output,
+                "renamed: {} -> {}",
+                relative(&rename.old_uri),
+                relative(&rename.new_uri)
+            )
+            .unwrap();
+        }
+
+        if output.is_empty() {
+            output.push_str("<no changes>\n");
+        }
+
+        output
+    }
+
     pub fn formatting(&self, name: &str) -> Result<Vec<TextEdit>, String> {
         self.backend()
             .on_formatting(&DocumentFormattingParams {
@@ -385,22 +513,11 @@ impl TestProject {
             let mut changes = action.edit.unwrap().changes.unwrap();
 
             for (name, text) in files {
-                let Some(mut edits) = changes.remove(&self.uri(name)) else {
+                let Some(edits) = changes.remove(&self.uri(name)) else {
                     continue;
                 };
 
-                // The edits of a file don't overlap, so they're applied from the end of the file,
-                // which keeps the positions of the earlier ones valid.
-                edits.sort_by_key(|edit| edit.range.start);
-
-                let mut fixed = (*text).to_string();
-                let lines = LineIndex::with_carriage_returns(text);
-
-                for edit in edits.into_iter().rev() {
-                    let start = position_to_offset(&lines, text, edit.range.start);
-                    let end = position_to_offset(&lines, text, edit.range.end);
-                    fixed.replace_range(start..end, &edit.new_text);
-                }
+                let fixed = apply_edits(text, edits);
 
                 if files.len() > 1 {
                     writeln!(output, "{name}:").unwrap();
@@ -481,6 +598,27 @@ impl TestProject {
 
         output
     }
+}
+
+/// Applies edits to a text. The edits don't overlap, so they're applied from the end of the text,
+/// which keeps the positions of the earlier ones valid.
+fn apply_edits(text: &str, mut edits: Vec<TextEdit>) -> String {
+    edits.sort_by_key(|edit| edit.range.start);
+
+    for pair in edits.windows(2) {
+        assert!(pair[0].range.end <= pair[1].range.start, "edits overlap");
+    }
+
+    let mut fixed = text.to_string();
+    let lines = LineIndex::with_carriage_returns(text);
+
+    for edit in edits.into_iter().rev() {
+        let start = position_to_offset(&lines, text, edit.range.start);
+        let end = position_to_offset(&lines, text, edit.range.end);
+        fixed.replace_range(start..end, &edit.new_text);
+    }
+
+    fixed
 }
 
 /// Renders the hover at a position, or `<none>`.

@@ -24,27 +24,33 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rue_options::{Project, find_project};
-use tower_lsp_server::jsonrpc::{Error, Result};
+use tower_lsp_server::jsonrpc::{Error, ErrorCode, Result};
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
     CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
-    FileSystemWatcher, GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
-    Position, Range, ReferenceParams, Registration, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Uri, WorkspaceEdit,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChangeOperation, DocumentChanges,
+    DocumentFormattingParams, FileSystemWatcher, GlobPattern, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
+    MessageType, NumberOrString, OneOf, OptionalVersionedTextDocumentIdentifier, Position,
+    PrepareRenameResponse, Range, ReferenceParams, Registration, RenameFile, RenameOptions,
+    RenameParams, ResourceOp, ResourceOperationKind, ServerCapabilities, TextDocumentEdit,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri,
+    WorkDoneProgressOptions, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
-use crate::cache::{HoverInfo, SymbolHoverKind, field_declarations};
-use crate::paths::{Paths, document, uri_to_path};
+use crate::cache::{HoverInfo, Moved, Rename, SymbolHoverKind, field_declarations, file_name};
+use crate::paths::{Paths, document, path_to_uri, uri_to_path};
 use crate::position::{offset_to_position, offsets_to_range, source_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
 use tokio::sync::oneshot;
+
+/// The code of the error for a request that failed for a reason that's shown to the user.
+const REQUEST_FAILED: i64 = -32803;
 
 /// Logged once the client says it's initialized.
 const INITIALIZED: &str = "Rue language server initialized.";
@@ -66,6 +72,7 @@ enum Task {
     Definition,
     References,
     Completion,
+    Rename,
     Formatting,
     CodeAction,
 }
@@ -78,6 +85,7 @@ impl fmt::Display for Task {
             Self::Definition => "finding the definition",
             Self::References => "finding references",
             Self::Completion => "computing completions",
+            Self::Rename => "renaming",
             Self::Formatting => "formatting",
             Self::CodeAction => "computing code actions",
         })
@@ -101,11 +109,37 @@ impl LanguageServer for Backend {
         let watch_files = params
             .capabilities
             .workspace
-            .and_then(|capabilities| capabilities.did_change_watched_files)
+            .as_ref()
+            .and_then(|capabilities| capabilities.did_change_watched_files.as_ref())
             .and_then(|capabilities| capabilities.dynamic_registration)
             .unwrap_or(false);
 
         self.watch_files.store(watch_files, Ordering::Relaxed);
+
+        // A module that's a file or a directory is renamed along with it, which the client has
+        // to be able to do as part of an edit. Files are only renamed by an edit's document
+        // changes, so a client that renames them takes those, whether or not it says so (Neovim
+        // doesn't)
+        let rename_files = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|capabilities| capabilities.workspace_edit.as_ref())
+            .and_then(|capabilities| capabilities.resource_operations.as_ref())
+            .is_some_and(|operations| operations.contains(&ResourceOperationKind::Rename));
+
+        self.shared
+            .rename_files
+            .store(rename_files, Ordering::Relaxed);
+
+        // The options can only be sent to a client that asks whether a name can be renamed first
+        let prepare_rename = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|capabilities| capabilities.rename.as_ref())
+            .and_then(|capabilities| capabilities.prepare_support)
+            .unwrap_or(false);
 
         // Files in the workspace are reported with the paths the client uses for them
         #[allow(deprecated)]
@@ -131,6 +165,14 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(if prepare_rename {
+                    OneOf::Right(RenameOptions {
+                        prepare_provider: Some(true),
+                        work_done_progress_options: WorkDoneProgressOptions::default(),
+                    })
+                } else {
+                    OneOf::Left(true)
+                }),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
@@ -322,6 +364,42 @@ impl LanguageServer for Backend {
                 )
             })
             .await)
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let revision = self.revision(&params.text_document.uri);
+
+        self.query(Task::Rename, move |state| {
+            let cache = state.cache(&params.text_document.uri, revision)?;
+            Some(prepare_rename(cache, params.position))
+        })
+        .await
+        .transpose()
+        .map(Option::flatten)
+        .map_err(request_failed)
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let RenameParams {
+            text_document_position: params,
+            new_name,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        self.query(Task::Rename, move |state| {
+            let shared = state.shared.clone();
+            let cache = state.cache(&params.text_document.uri, revision)?;
+            Some(rename(cache, &shared, params.position, &new_name))
+        })
+        .await
+        .transpose()
+        .map(Option::flatten)
+        .map_err(request_failed)
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
@@ -561,6 +639,105 @@ fn references(
         .collect::<Vec<_>>();
 
     (!locations.is_empty()).then_some(locations)
+}
+
+fn prepare_rename(
+    cache: &Cache<Compiler>,
+    position: Position,
+) -> std::result::Result<Option<PrepareRenameResponse>, String> {
+    let position = cache.position(position);
+
+    Ok(cache
+        .prepare_rename(position)?
+        .map(|name| PrepareRenameResponse::RangeWithPlaceholder {
+            range: cache.range(name.span),
+            placeholder: name.name,
+        }))
+}
+
+fn rename(
+    cache: &Cache<Compiler>,
+    shared: &Shared,
+    position: Position,
+    new_name: &str,
+) -> std::result::Result<Option<WorkspaceEdit>, String> {
+    let position = cache.position(position);
+
+    let Some(Rename { edits, moved }) = cache.rename(position, new_name)? else {
+        return Ok(None);
+    };
+
+    let edits = edits
+        .into_iter()
+        .filter_map(|(kind, edits)| Some((shared.paths.uri(&kind)?, edits)));
+
+    let Some(moved) = moved else {
+        return Ok(Some(WorkspaceEdit::new(edits.collect())));
+    };
+
+    if !shared.rename_files.load(Ordering::Relaxed) {
+        return Err(format!(
+            "`{}` would have to be renamed, which the editor doesn't support",
+            file_name(&moved.from)
+        ));
+    }
+
+    let Some((old_uri, new_uri)) = moved_uris(&moved, &shared.paths) else {
+        return Err(format!("`{}` can't be renamed", file_name(&moved.from)));
+    };
+
+    // The files are edited where they are, and then moved
+    let operations = edits
+        .map(|(uri, edits)| {
+            DocumentChangeOperation::Edit(TextDocumentEdit {
+                text_document: OptionalVersionedTextDocumentIdentifier { uri, version: None },
+                edits: edits.into_iter().map(OneOf::Left).collect(),
+            })
+        })
+        .chain([DocumentChangeOperation::Op(ResourceOp::Rename(
+            RenameFile {
+                old_uri,
+                new_uri,
+                options: None,
+                annotation_id: None,
+            },
+        ))])
+        .collect();
+
+    Ok(Some(WorkspaceEdit {
+        document_changes: Some(DocumentChanges::Operations(operations)),
+        ..WorkspaceEdit::default()
+    }))
+}
+
+/// The URIs that the client uses for a file or directory that's renamed. The compiler has the
+/// canonical paths, so the client's path is worked out from the one it uses for a file that's
+/// renamed or inside of what is.
+fn moved_uris(moved: &Moved, paths: &Paths) -> Option<(Uri, Uri)> {
+    let SourceKind::File(file) = &moved.file else {
+        return None;
+    };
+
+    let inside = Path::new(file).strip_prefix(&moved.from).ok()?;
+
+    let mut from = uri_to_path(&paths.uri(&moved.file)?)?;
+
+    for _ in inside.components() {
+        from.pop();
+    }
+
+    let to = from.with_file_name(moved.to.file_name()?);
+
+    Some((path_to_uri(&from)?, path_to_uri(&to)?))
+}
+
+/// The error for a request that can't be answered, with the reason to show to the user.
+fn request_failed(message: String) -> Error {
+    Error {
+        code: ErrorCode::ServerError(REQUEST_FAILED),
+        message: message.into(),
+        data: None,
+    }
 }
 
 fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {

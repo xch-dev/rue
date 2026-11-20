@@ -868,3 +868,54 @@ fn test_definition_enum_in_an_import_path() {
         "#]],
     );
 }
+
+#[test]
+fn test_references_field_of_generic_struct() {
+    // Every use of the field is found, whichever instance of the struct it's used through, along
+    // with the fields of struct initializers and bindings
+    check_references(
+        &[(
+            "main.rue",
+            r#"
+struct Wrap<T> {
+    val$0ue: T,
+}
+
+fn main(wrap: Wrap<Int>) -> Int {
+    let other = Wrap { value: "a" };
+    let { value } = Wrap { value: 1 };
+    wrap.value + other.value.length + value
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:2:4-2:9
+            main.rue:6:23-6:28
+            main.rue:7:10-7:15
+            main.rue:7:27-7:32
+            main.rue:8:9-8:14
+            main.rue:8:23-8:28
+        "#]],
+    );
+}
+
+#[test]
+fn test_definition_field_in_initializer() {
+    check_definitions(
+        &[(
+            "main.rue",
+            r#"
+struct Point {
+    x: Int,
+}
+
+fn main() -> Point {
+    Point { $0x: 1 }
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:2:4-2:5
+        "#]],
+    );
+}

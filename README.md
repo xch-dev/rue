@@ -223,6 +223,17 @@ Useful `build` flags:
 
 When a test fails, `test` shows where it was in the source: the stack of calls that led to the failure, with the values of their parameters. `debug` does the same for a program built with `--debug-metadata` when it's given the sidecar with `--debug-metadata <path>` (which can be repeated, for programs that run other programs).
 
+## Language Server
+
+`rue-lsp` is a language server for editors that speak the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/). It talks over standard input and output, and compiles the project that each open file belongs to as you type, and provides:
+
+- **Diagnostics:** errors and lint warnings as you type, with quick fixes for the ones that have a suggestion.
+- **Hover:** the type of a binding, the signature of a function, and the fields of a struct or the variants of an enum.
+- **Go to definition and find references:** for functions, constants, bindings, types, struct fields, enum variants, generic parameters and modules, across the files of the project.
+- **Rename:** renames a function, constant, binding, parameter, type, struct field, enum variant, generic parameter or module, everywhere in the project that names it. A field or binding used as a shorthand (`Point { x }` or `let { x } = point;`) is written out, so the other keeps its name. A module that's a file or a directory is renamed with it. A rename is refused if the name is built in or part of the standard library, if the new name isn't a valid one, or if it would be declared twice or change what a name refers to.
+- **Completion:** names in scope, the fields of a struct after a `.`, and the items of a module after `::`.
+- **Formatting:** the same as `rue fmt`, with the options from `Rue.toml`.
+
 ## Hard Fork 2
 
 By default, Rue targets Chia mainnet as it is today, before hard fork 2. Turn on `hard_fork_2` in `Rue.toml`, or pass `--hard-fork-2` to `build`, `test` or `debug`, to target mainnet as it will be once hard fork 2 activates:

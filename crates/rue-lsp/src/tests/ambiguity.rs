@@ -375,6 +375,8 @@ fn main(point: Point) -> Int {
         expect![[r#"
             hover:
             let x: Int
+            ---
+            x: Int
             definitions:
             main.rue:8:4-8:5
             references:

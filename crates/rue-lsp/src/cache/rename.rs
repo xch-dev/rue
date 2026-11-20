@@ -1,0 +1,617 @@
+//! Renaming a declaration and everything that refers to it.
+//!
+//! The places to change are the items of the compile that are about the same thing as the one at
+//! the cursor, like finding references. A rename is refused rather than guessed at: the name has to
+//! be declared in the project's files, the new name has to be a valid one, and it can't be a name
+//! that's already used where it would change what any name refers to.
+
+use std::collections::HashSet;
+use std::ops::Range;
+use std::path::{Path, PathBuf};
+
+use indexmap::IndexMap;
+use rowan::TextRange;
+use rue_ast::{
+    AstEnumItem, AstGenericParameters, AstNode, AstStructFieldBinding, AstStructInitializerField,
+};
+use rue_compiler::{Compiler, File, FileTree};
+use rue_diagnostic::SourceKind;
+use rue_hir::{Declaration, Item, Namespace, Scope, ScopeId, Symbol, SymbolId};
+use rue_lexer::{Lexer, TokenKind};
+use rue_parser::{SyntaxKind, SyntaxToken};
+use rue_types::Type;
+use tower_lsp_server::ls_types::TextEdit;
+
+use super::{Cache, Role, SyntaxItemKind, Target};
+use crate::position::source_range;
+
+/// A name that can be renamed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Renamable {
+    /// The name's byte offsets in the file the query is about.
+    pub span: Range<usize>,
+    pub name: String,
+}
+
+/// The changes that rename something.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Rename {
+    /// The edits to each file, in the order they appear in it.
+    pub edits: IndexMap<SourceKind, Vec<TextEdit>>,
+    /// The file or directory to rename, if a module that's one of them was renamed.
+    pub moved: Option<Moved>,
+}
+
+/// A file or directory that's a module, which is renamed along with the module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Moved {
+    pub from: PathBuf,
+    pub to: PathBuf,
+    /// A file of the project that's the one renamed, or is inside the directory that is.
+    pub file: SourceKind,
+}
+
+/// A place that names what's being renamed.
+struct Site<'a> {
+    file: &'a File,
+    span: TextRange,
+    role: Role,
+    token: SyntaxToken,
+}
+
+/// What's being renamed, and every place that names it.
+struct Plan<'a> {
+    target: Target<'a>,
+    name: String,
+    span: TextRange,
+    sites: Vec<Site<'a>>,
+    module: Option<ModulePath>,
+}
+
+/// A module that's a file or a directory.
+struct ModulePath {
+    path: PathBuf,
+    directory: bool,
+    /// A file that's the module, or is inside of it.
+    file: SourceKind,
+    /// The module of the directory it's in, unless it's the project's entrypoint.
+    parent: Option<SymbolId>,
+}
+
+impl Cache<Compiler> {
+    /// The name at the index, if it can be renamed. There's an error if it names something that
+    /// can't be, and nothing if it isn't a name.
+    pub fn prepare_rename(&self, index: usize) -> Result<Option<Renamable>, String> {
+        Ok(self.plan(index)?.map(|plan| Renamable {
+            span: plan.span.start().into()..plan.span.end().into(),
+            name: plan.name,
+        }))
+    }
+
+    /// The changes that rename what's at the index.
+    pub fn rename(&self, index: usize, new_name: &str) -> Result<Option<Rename>, String> {
+        let Some(plan) = self.plan(index)? else {
+            return Ok(None);
+        };
+
+        check_name(new_name)?;
+
+        if new_name == plan.name {
+            return Ok(Some(Rename::default()));
+        }
+
+        self.check_conflicts(&plan, new_name)?;
+
+        let mut replacements = IndexMap::<&SourceKind, Vec<(TextRange, String)>>::new();
+
+        for site in &plan.sites {
+            let replacement = match (shorthand_field(&site.token), plan.target) {
+                // The binding that the shorthand declares or uses keeps its name
+                (true, Target::Field(..)) => format!("{new_name}: {}", plan.name),
+                (true, Target::Symbol(_) | Target::Type(_)) => {
+                    format!("{}: {new_name}", plan.name)
+                }
+                (false, _) => new_name.to_string(),
+            };
+
+            replacements
+                .entry(&site.file.source.kind)
+                .or_default()
+                .push((site.span, replacement));
+        }
+
+        let mut edits = IndexMap::new();
+
+        for (kind, mut replacements) in replacements {
+            // The same place can be recorded more than once, such as when code is compiled for
+            // each place it's used
+            replacements.sort_by_key(|(span, _)| (span.start(), span.end()));
+            replacements.dedup();
+
+            let Some(file) = self.tree.find(kind) else {
+                continue;
+            };
+
+            edits.insert(
+                kind.clone(),
+                replacements
+                    .into_iter()
+                    .map(|(span, replacement)| {
+                        TextEdit::new(
+                            source_range(&file.source, span.start().into(), span.end().into()),
+                            replacement,
+                        )
+                    })
+                    .collect(),
+            );
+        }
+
+        let moved = match &plan.module {
+            Some(module) => {
+                let to = module.path.with_file_name(match module.path.extension() {
+                    Some(extension) if !module.directory => {
+                        format!("{new_name}.{}", extension.to_string_lossy())
+                    }
+                    _ => new_name.to_string(),
+                });
+
+                if to.exists() {
+                    return Err(format!("`{}` already exists", file_name(&to)));
+                }
+
+                Some(Moved {
+                    from: module.path.clone(),
+                    to,
+                    file: module.file.clone(),
+                })
+            }
+            None => None,
+        };
+
+        Ok(Some(Rename { edits, moved }))
+    }
+
+    fn plan(&self, index: usize) -> Result<Option<Plan<'_>>, String> {
+        let Some((target, span)) = self
+            .items_at(index)
+            .into_iter()
+            .find_map(|item| Some((self.classify(&item.kind)?.0, item.span)))
+        else {
+            return Ok(None);
+        };
+
+        let Some(name) = self.source.text.get(Range::<usize>::from(span)) else {
+            return Ok(None);
+        };
+
+        // `super` and `project` refer to a module without naming it
+        if !is_identifier(name) {
+            return Err(format!("`{name}` is a keyword, so it can't be renamed"));
+        }
+
+        let mut sites = Vec::new();
+        let mut declared = false;
+
+        for item in self.syntax_map.items() {
+            let Some((_, role)) = self
+                .classify(&item.kind)
+                .filter(|(other, _)| *other == target)
+            else {
+                continue;
+            };
+
+            let Some(file) = self.tree.find(&item.source_kind) else {
+                return Err(format!(
+                    "`{name}` is part of the standard library, so it can't be renamed"
+                ));
+            };
+
+            // A file that's a module is renamed itself, rather than a name in it
+            if role == Role::FileModule {
+                continue;
+            }
+
+            // Only the places that are written with the name are changed, which leaves out a
+            // `super` or `project` that refers to a module
+            if file.source.text.get(Range::<usize>::from(item.span)) != Some(name) {
+                continue;
+            }
+
+            let Some(token) = file
+                .document
+                .syntax()
+                .token_at_offset(item.span.start())
+                .right_biased()
+                .filter(|token| token.text_range() == item.span)
+            else {
+                continue;
+            };
+
+            declared |= role == Role::Declaration;
+
+            sites.push(Site {
+                file,
+                span: item.span,
+                role,
+                token,
+            });
+        }
+
+        let module = match target {
+            Target::Symbol(symbol) if matches!(self.ctx.symbol(symbol), Symbol::Module(_)) => {
+                module_path(&self.tree, symbol, None)
+            }
+            _ => None,
+        };
+
+        if let Some(module) = &module
+            && module.parent.is_none()
+        {
+            return Err(format!(
+                "`{name}` is the project's entrypoint, so it can't be renamed"
+            ));
+        }
+
+        if !declared && module.is_none() {
+            return Err(format!(
+                "`{name}` isn't declared in the project, so it can't be renamed"
+            ));
+        }
+
+        Ok(Some(Plan {
+            target,
+            name: name.to_string(),
+            span,
+            sites,
+            module,
+        }))
+    }
+
+    /// Checks that renaming wouldn't declare a name twice, or change what a name refers to.
+    fn check_conflicts(&self, plan: &Plan<'_>, new_name: &str) -> Result<(), String> {
+        let old_name = plan.name.as_str();
+
+        if let Target::Field(owner, _) = plan.target {
+            if let Type::Struct(ty) = self.ctx.ty(owner)
+                && ty.fields.contains(new_name)
+            {
+                return Err(format!("There's already a field named `{new_name}`"));
+            }
+
+            // Fields aren't looked up in scopes
+            return Ok(());
+        }
+
+        // The other generic parameters and enum variants are declared next to the name
+        for site in plan
+            .sites
+            .iter()
+            .filter(|site| site.role == Role::Declaration)
+        {
+            let Some(parent) = site.token.parent() else {
+                continue;
+            };
+
+            if AstGenericParameters::cast(parent.clone())
+                .is_some_and(|generics| generics.names().any(|name| name.text() == new_name))
+            {
+                return Err(format!(
+                    "There's already a generic parameter named `{new_name}`"
+                ));
+            }
+
+            if parent.kind() == SyntaxKind::EnumVariant
+                && parent
+                    .parent()
+                    .and_then(AstEnumItem::cast)
+                    .is_some_and(|item| {
+                        item.variants()
+                            .filter_map(|variant| variant.name())
+                            .any(|name| name.text() == new_name)
+                    })
+            {
+                return Err(format!("There's already a variant named `{new_name}`"));
+            }
+        }
+
+        let namespaces = self.namespaces(plan.target);
+
+        let has_old = |scope: &Scope| {
+            namespaces.iter().any(|&namespace| {
+                scope
+                    .item(namespace, old_name)
+                    .is_some_and(|item| self.item_target(item) == plan.target)
+            })
+        };
+
+        let has_new = |scope: &Scope, namespaces: &[Namespace]| {
+            namespaces
+                .iter()
+                .any(|&namespace| scope.item(namespace, new_name).is_some())
+        };
+
+        // The scopes that the name is declared in or imported into can't have the new name too
+        let mut scopes = self
+            .syntax_map
+            .items()
+            .filter_map(|item| match item.kind {
+                SyntaxItemKind::Scope(scope) => Some(scope),
+                _ => None,
+            })
+            .collect::<HashSet<ScopeId>>();
+
+        // A directory has no file that its scope would be recorded for
+        if let Some(parent) = plan.module.as_ref().and_then(|module| module.parent) {
+            scopes.insert(self.ctx.module(parent).scope);
+        }
+
+        if scopes.into_iter().any(|scope| {
+            let scope = self.ctx.scope(scope);
+            has_old(scope) && has_new(scope, &namespaces)
+        }) {
+            return Err(format!(
+                "`{new_name}` is already used in a scope that has `{old_name}`"
+            ));
+        }
+
+        // The place is shown like the notes of diagnostics are, relative to the file that the
+        // query is about
+        let directory = match &self.source.kind {
+            SourceKind::File(path) => Path::new(path).parent().unwrap_or(Path::new("")),
+            SourceKind::Std(_) => Path::new(""),
+        };
+
+        let conflict = |file: &File, span: TextRange| {
+            let start = file.source.line_col(span.start().into());
+
+            format!(
+                "Renaming `{old_name}` to `{new_name}` would change what `{new_name}` refers to \
+                at {}:{start}",
+                file.source.kind.display(directory)
+            )
+        };
+
+        // A reference that's looked up by its name alone finds the innermost declaration with
+        // that name, which has to stay the one that's renamed
+        for site in &plan.sites {
+            if site.role != Role::Reference || !is_unqualified(&site.token) {
+                continue;
+            }
+
+            let scopes = self
+                .scopes_in(&site.file.source.kind, site.span.start().into())
+                .0;
+
+            let declared = scopes
+                .iter()
+                .position(|&scope| has_old(self.ctx.scope(scope)))
+                .map_or(scopes.len(), |depth| depth + 1);
+
+            if scopes[..declared]
+                .iter()
+                .any(|&scope| has_new(self.ctx.scope(scope), &namespaces))
+            {
+                return Err(conflict(site.file, site.span));
+            }
+        }
+
+        // And a reference to something else with the new name has to keep finding it, rather than
+        // what's renamed
+        for item in self.syntax_map.items() {
+            let Some((other, Role::Reference)) = self.classify(&item.kind) else {
+                continue;
+            };
+
+            if other == plan.target {
+                continue;
+            }
+
+            let shared = self
+                .namespaces(other)
+                .into_iter()
+                .filter(|namespace| namespaces.contains(namespace))
+                .collect::<Vec<_>>();
+
+            if shared.is_empty() {
+                continue;
+            }
+
+            let Some(file) = self.tree.find(&item.source_kind) else {
+                continue;
+            };
+
+            if file.source.text.get(Range::<usize>::from(item.span)) != Some(new_name) {
+                continue;
+            }
+
+            let unqualified = file
+                .document
+                .syntax()
+                .token_at_offset(item.span.start())
+                .right_biased()
+                .is_some_and(|token| token.text_range() == item.span && is_unqualified(&token));
+
+            if !unqualified {
+                continue;
+            }
+
+            let scopes = self
+                .scopes_in(&item.source_kind, item.span.start().into())
+                .0;
+
+            let Some(renamed) = scopes
+                .iter()
+                .position(|&scope| has_old(self.ctx.scope(scope)))
+            else {
+                continue;
+            };
+
+            let found = scopes
+                .iter()
+                .position(|&scope| has_new(self.ctx.scope(scope), &shared));
+
+            if found.is_none_or(|found| renamed <= found) {
+                return Err(conflict(file, item.span));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// The namespaces that a name for the target is looked up in. An enum is also the namespace of
+    /// its variants, and a variant without fields is also a constant.
+    fn namespaces(&self, target: Target<'_>) -> Vec<Namespace> {
+        match target {
+            Target::Symbol(symbol) => match self.ctx.symbol(symbol) {
+                Symbol::Module(_) => vec![Namespace::Module],
+                _ => vec![Namespace::Value],
+            },
+            Target::Type(ty) => {
+                let mut namespaces = vec![Namespace::Type];
+
+                if self.ctx.enum_variants(ty).is_some() {
+                    namespaces.push(Namespace::Module);
+                }
+
+                if self.ctx.is_unit_variant(ty) {
+                    namespaces.push(Namespace::Value);
+                }
+
+                namespaces
+            }
+            Target::Field(..) => Vec::new(),
+        }
+    }
+
+    /// What a reference to an item in a scope is about.
+    fn item_target(&self, item: Item) -> Target<'static> {
+        let declaration = match item {
+            Item::Value(symbol) | Item::Module(symbol) => Declaration::Symbol(symbol),
+            Item::Type(ty) => Declaration::Type(ty),
+        };
+
+        match self.ctx.reference_target(declaration) {
+            Declaration::Symbol(symbol) => Target::Symbol(symbol),
+            Declaration::Type(ty) => Target::Type(ty),
+        }
+    }
+}
+
+/// The last part of a path, which is how a file is shown in a message.
+pub fn file_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Checks that a name can be given to a declaration.
+fn check_name(name: &str) -> Result<(), String> {
+    if name == "_" || !is_identifier(name) {
+        return Err(format!("`{name}` isn't a valid name"));
+    }
+
+    Ok(())
+}
+
+/// Whether the text is one identifier, rather than a keyword or anything else.
+fn is_identifier(text: &str) -> bool {
+    let mut tokens = Lexer::new(text);
+
+    matches!(tokens.next(), Some(token) if token.kind == TokenKind::Ident && token.span.len() == text.len())
+}
+
+/// Whether the name is a field in a struct initializer or a struct binding that's written without
+/// a value or a binding of its own, such as `x` in `Point { x }` or `let { x } = point;`. It's
+/// then both the field and the binding with the same name.
+fn shorthand_field(token: &SyntaxToken) -> bool {
+    let Some(parent) = token.parent() else {
+        return false;
+    };
+
+    if let Some(field) = AstStructInitializerField::cast(parent.clone()) {
+        return field.expr().is_none();
+    }
+
+    AstStructFieldBinding::cast(parent)
+        .is_some_and(|field| field.binding().is_none() && field.spread().is_none())
+}
+
+/// Whether the name is looked up in the scopes around it, rather than in the module that the path
+/// before it names.
+fn is_unqualified(token: &SyntaxToken) -> bool {
+    let Some(parent) = token.parent() else {
+        return false;
+    };
+
+    let first = parent
+        .prev_sibling()
+        .is_none_or(|sibling| sibling.kind() != parent.kind());
+
+    match parent.kind() {
+        SyntaxKind::PathSegment => first,
+        // The paths in the braces of an import continue the path before them
+        SyntaxKind::ImportPathSegment => {
+            first
+                && parent
+                    .parent()
+                    .and_then(|path| path.parent())
+                    .is_some_and(|item| item.kind() == SyntaxKind::ImportItem)
+        }
+        SyntaxKind::StructInitializerField => true,
+        _ => false,
+    }
+}
+
+/// The path of a module that's a file or a directory of the project.
+fn module_path(tree: &FileTree, module: SymbolId, parent: Option<SymbolId>) -> Option<ModulePath> {
+    if tree.module() == module {
+        let file = first_file(tree)?;
+        let SourceKind::File(path) = &file.source.kind else {
+            return None;
+        };
+
+        let path = match tree {
+            FileTree::File(_) => PathBuf::from(path),
+            FileTree::Directory(_) => directory_path(tree)?,
+        };
+
+        return Some(ModulePath {
+            path,
+            directory: matches!(tree, FileTree::Directory(_)),
+            file: file.source.kind.clone(),
+            parent,
+        });
+    }
+
+    let FileTree::Directory(directory) = tree else {
+        return None;
+    };
+
+    directory
+        .children
+        .iter()
+        .find_map(|child| module_path(child, module, Some(directory.module)))
+}
+
+fn first_file(tree: &FileTree) -> Option<&File> {
+    match tree {
+        FileTree::File(file) => Some(file),
+        FileTree::Directory(directory) => directory.children.iter().find_map(first_file),
+    }
+}
+
+/// The path of a directory, which is worked out from a file in it.
+fn directory_path(tree: &FileTree) -> Option<PathBuf> {
+    match tree {
+        FileTree::File(file) => match &file.source.kind {
+            SourceKind::File(path) => Some(PathBuf::from(path)),
+            SourceKind::Std(_) => None,
+        },
+        FileTree::Directory(directory) => directory
+            .children
+            .iter()
+            .find_map(directory_path)
+            .and_then(|path| path.parent().map(Path::to_path_buf)),
+    }
+}

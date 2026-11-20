@@ -1,7 +1,7 @@
 //! Crash sweep: opens every `.rue` file under `examples/` and `tests/` and makes sure the
 //! language server never panics on it, whether it's complete or half-typed.
 //!
-//! For each file, it (a) requests hover, go to definition, references and completion at many
+//! For each file, it (a) requests hover, go to definition, references, completion and rename at many
 //! cursor positions, and (b) recompiles edited versions of the file, as if it were being typed,
 //! and makes the same requests where the edit happened. The edits are: everything after the
 //! cursor removed, the rest of the cursor's line removed, and a chunk removed from the cursor on.
@@ -29,10 +29,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, ThreadId};
 
+use futures::executor::block_on;
+use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
     CompletionParams, GotoDefinitionParams, HoverParams, PartialResultParams, Position,
-    ReferenceContext, ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
-    WorkDoneProgressParams,
+    ReferenceContext, ReferenceParams, RenameParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, Uri, WorkDoneProgressParams,
 };
 
 use super::TestProject;
@@ -186,14 +188,18 @@ enum Request {
     GotoDefinition,
     References,
     Completion,
+    PrepareRename,
+    Rename,
 }
 
 impl Request {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 6] = [
         Self::Hover,
         Self::GotoDefinition,
         Self::References,
         Self::Completion,
+        Self::PrepareRename,
+        Self::Rename,
     ];
 
     fn name(self) -> &'static str {
@@ -202,6 +208,8 @@ impl Request {
             Self::GotoDefinition => "goto definition",
             Self::References => "references",
             Self::Completion => "completion",
+            Self::PrepareRename => "prepare rename",
+            Self::Rename => "rename",
         }
     }
 
@@ -239,6 +247,18 @@ impl Request {
                     partial_result_params: PartialResultParams::default(),
                     context: None,
                 });
+            }
+            // A rename that's refused is an error, which isn't a panic
+            Self::PrepareRename => {
+                block_on(backend.prepare_rename(document)).ok();
+            }
+            Self::Rename => {
+                block_on(backend.rename(RenameParams {
+                    text_document_position: document,
+                    new_name: "renamed_by_the_sweep".to_string(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                }))
+                .ok();
             }
         }
     }
