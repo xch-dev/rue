@@ -52,6 +52,101 @@ test fn condition_type_guards() {
     assert Softfork { cost: 42, args: [] } as Condition is Softfork;
 }
 
+// A condition is a list that starts with its opcode
+fn opcode(condition: Condition) -> Int {
+    let (opcode, _) = condition as (Int, Any);
+    opcode
+}
+
+test fn condition_opcodes() {
+    let id = sha256("id");
+
+    assert opcode(Remark {}) == REMARK;
+    assert opcode(AggSigParent { public_key: INFINITY_G1, message: nil }) == AGG_SIG_PARENT;
+    assert opcode(AggSigPuzzle { public_key: INFINITY_G1, message: nil }) == AGG_SIG_PUZZLE;
+    assert opcode(AggSigAmount { public_key: INFINITY_G1, message: nil }) == AGG_SIG_AMOUNT;
+    assert opcode(AggSigPuzzleAmount {
+        public_key: INFINITY_G1,
+        message: nil,
+    }) == AGG_SIG_PUZZLE_AMOUNT;
+    assert opcode(AggSigParentAmount {
+        public_key: INFINITY_G1,
+        message: nil,
+    }) == AGG_SIG_PARENT_AMOUNT;
+    assert opcode(AggSigParentPuzzle {
+        public_key: INFINITY_G1,
+        message: nil,
+    }) == AGG_SIG_PARENT_PUZZLE;
+    assert opcode(AggSigUnsafe { public_key: INFINITY_G1, message: nil }) == AGG_SIG_UNSAFE;
+    assert opcode(AggSigMe { public_key: INFINITY_G1, message: nil }) == AGG_SIG_ME;
+    assert opcode(CreateCoin { puzzle_hash: id, amount: 42 }) == CREATE_COIN;
+    assert opcode(ReserveFee { amount: 42 }) == RESERVE_FEE;
+    assert opcode(CreateCoinAnnouncement { message: nil }) == CREATE_COIN_ANNOUNCEMENT;
+    assert opcode(AssertCoinAnnouncement { id }) == ASSERT_COIN_ANNOUNCEMENT;
+    assert opcode(CreatePuzzleAnnouncement { message: nil }) == CREATE_PUZZLE_ANNOUNCEMENT;
+    assert opcode(AssertPuzzleAnnouncement { id }) == ASSERT_PUZZLE_ANNOUNCEMENT;
+    assert opcode(AssertConcurrentSpend { coin_id: id }) == ASSERT_CONCURRENT_SPEND;
+    assert opcode(AssertConcurrentPuzzle { puzzle_hash: id }) == ASSERT_CONCURRENT_PUZZLE;
+    assert opcode(SendMessage { mode: 42, message: nil, receiver: [] }) == SEND_MESSAGE;
+    assert opcode(ReceiveMessage { mode: 42, message: nil, sender: [] }) == RECEIVE_MESSAGE;
+    assert opcode(AssertMyCoinId { coin_id: id }) == ASSERT_MY_COIN_ID;
+    assert opcode(AssertMyParentId { parent_id: id }) == ASSERT_MY_PARENT_ID;
+    assert opcode(AssertMyPuzzleHash { puzzle_hash: id }) == ASSERT_MY_PUZZLE_HASH;
+    assert opcode(AssertMyAmount { amount: 42 }) == ASSERT_MY_AMOUNT;
+    assert opcode(AssertMyBirthSeconds { seconds: 42 }) == ASSERT_MY_BIRTH_SECONDS;
+    assert opcode(AssertMyBirthHeight { height: 42 }) == ASSERT_MY_BIRTH_HEIGHT;
+    assert opcode(AssertEphemeral {}) == ASSERT_EPHEMERAL;
+    assert opcode(AssertSecondsRelative { seconds: 42 }) == ASSERT_SECONDS_RELATIVE;
+    assert opcode(AssertSecondsAbsolute { seconds: 42 }) == ASSERT_SECONDS_ABSOLUTE;
+    assert opcode(AssertHeightRelative { height: 42 }) == ASSERT_HEIGHT_RELATIVE;
+    assert opcode(AssertHeightAbsolute { height: 42 }) == ASSERT_HEIGHT_ABSOLUTE;
+    assert opcode(AssertBeforeSecondsRelative { seconds: 42 }) == ASSERT_BEFORE_SECONDS_RELATIVE;
+    assert opcode(AssertBeforeSecondsAbsolute { seconds: 42 }) == ASSERT_BEFORE_SECONDS_ABSOLUTE;
+    assert opcode(AssertBeforeHeightRelative { height: 42 }) == ASSERT_BEFORE_HEIGHT_RELATIVE;
+    assert opcode(AssertBeforeHeightAbsolute { height: 42 }) == ASSERT_BEFORE_HEIGHT_ABSOLUTE;
+    assert opcode(Softfork { cost: 42, args: [] }) == SOFTFORK;
+}
+
+// The conditions are the variants of the `Condition` enum, so they can be named through it and
+// matched on
+fn spent_amount(conditions: List<Condition>) -> Int {
+    if conditions is nil {
+        return 0;
+    }
+
+    let (condition, rest) = conditions;
+
+    let amount = match condition {
+        Condition::CreateCoin => condition.amount,
+        ReserveFee => condition.amount,
+        _ => 0,
+    };
+
+    amount + spent_amount(rest)
+}
+
+test fn condition_enum() {
+    let puzzle_hash = sha256("puzzle_hash");
+
+    let conditions: List<Condition> = [
+        Condition::CreateCoin { puzzle_hash, amount: 3 },
+        CreateCoin { puzzle_hash, amount: 4, memos: Memos { value: [puzzle_hash] } },
+        Condition::ReserveFee { amount: 1 },
+        Condition::AssertEphemeral {},
+        Remark {},
+    ];
+
+    assert spent_amount(conditions) == 8;
+
+    // The layout is the same as the list of the opcode and the fields
+    assert tree_hash(Condition::AssertEphemeral {}) == tree_hash([ASSERT_EPHEMERAL]);
+    assert tree_hash(CreateCoin { puzzle_hash, amount: 3 }) == tree_hash([
+        CREATE_COIN,
+        puzzle_hash,
+        3,
+    ]);
+}
+
 test fn hashing() {
     assert tree_hash("hello") == 0xcceeb7a985ecc3dabcb4c8f666cd637f16f008e3c963db6aa6f83a7b288c54ef;
     assert tree_hash("hello") == tree_hash_atom("hello");

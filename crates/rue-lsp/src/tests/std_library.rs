@@ -74,7 +74,7 @@ fn main() -> Bool {
 }
 
 #[test]
-fn test_std_struct() {
+fn test_std_condition_variant() {
     check(
         r#"
 fn main(puzzle_hash: Bytes32) -> CreateCoin {
@@ -83,12 +83,7 @@ fn main(puzzle_hash: Bytes32) -> CreateCoin {
 "#,
         expect![[r#"
             hover:
-            struct CreateCoin {
-                opcode: 51,
-                puzzle_hash: Bytes32,
-                amount: Int,
-                ...memos: Memos | nil,
-            }
+            CreateCoin = 51 { puzzle_hash: Bytes32, amount: Int, ...memos: Memos | nil }
             definitions:
             <none>
             references:
@@ -118,7 +113,7 @@ fn main(condition: CreateCoin) -> Int {
 }
 
 #[test]
-fn test_std_type_alias() {
+fn test_std_condition_enum() {
     check(
         r#"
 fn main(condition: Condi$0tion) -> Bool {
@@ -127,7 +122,43 @@ fn main(condition: Condi$0tion) -> Bool {
 "#,
         expect![[r#"
             hover:
-            type Condition = Remark | AggSigParent | AggSigPuzzle | AggSigAmount | AggSigPuzzleAmount | AggSigParentAmount | AggSigParentPuzzle | AggSigUnsafe | AggSigMe | CreateCoin | ReserveFee | CreateCoinAnnouncement | AssertCoinAnnouncement | CreatePuzzleAnnouncement | AssertPuzzleAnnouncement | AssertConcurrentSpend | AssertConcurrentPuzzle | SendMessage | ReceiveMessage | AssertMyCoinId | AssertMyParentId | AssertMyPuzzleHash | AssertMyAmount | AssertMyBirthSeconds | AssertMyBirthHeight | AssertEphemeral | AssertSecondsRelative | AssertSecondsAbsolute | AssertHeightRelative | AssertHeightAbsolute | AssertBeforeSecondsRelative | AssertBeforeSecondsAbsolute | AssertBeforeHeightRelative | AssertBeforeHeightAbsolute | Softfork
+            enum Condition {
+                Remark = 1 { ...rest: Any },
+                AggSigParent = 43 { public_key: PublicKey, message: Bytes },
+                AggSigPuzzle = 44 { public_key: PublicKey, message: Bytes },
+                AggSigAmount = 45 { public_key: PublicKey, message: Bytes },
+                AggSigPuzzleAmount = 46 { public_key: PublicKey, message: Bytes },
+                AggSigParentAmount = 47 { public_key: PublicKey, message: Bytes },
+                AggSigParentPuzzle = 48 { public_key: PublicKey, message: Bytes },
+                AggSigUnsafe = 49 { public_key: PublicKey, message: Bytes },
+                AggSigMe = 50 { public_key: PublicKey, message: Bytes },
+                CreateCoin = 51 { puzzle_hash: Bytes32, amount: Int, ...memos: Memos | nil },
+                ReserveFee = 52 { amount: Int },
+                CreateCoinAnnouncement = 60 { message: Bytes },
+                AssertCoinAnnouncement = 61 { id: Bytes32 },
+                CreatePuzzleAnnouncement = 62 { message: Bytes },
+                AssertPuzzleAnnouncement = 63 { id: Bytes32 },
+                AssertConcurrentSpend = 64 { coin_id: Bytes32 },
+                AssertConcurrentPuzzle = 65 { puzzle_hash: Bytes32 },
+                SendMessage = 66 { mode: Int, message: Bytes, ...receiver: List<Bytes | Int> },
+                ReceiveMessage = 67 { mode: Int, message: Bytes, ...sender: List<Bytes | Int> },
+                AssertMyCoinId = 70 { coin_id: Bytes32 },
+                AssertMyParentId = 71 { parent_id: Bytes32 },
+                AssertMyPuzzleHash = 72 { puzzle_hash: Bytes32 },
+                AssertMyAmount = 73 { amount: Int },
+                AssertMyBirthSeconds = 74 { seconds: Int },
+                AssertMyBirthHeight = 75 { height: Int },
+                AssertEphemeral = 76,
+                AssertSecondsRelative = 80 { seconds: Int },
+                AssertSecondsAbsolute = 81 { seconds: Int },
+                AssertHeightRelative = 82 { height: Int },
+                AssertHeightAbsolute = 83 { height: Int },
+                AssertBeforeSecondsRelative = 84 { seconds: Int },
+                AssertBeforeSecondsAbsolute = 85 { seconds: Int },
+                AssertBeforeHeightRelative = 86 { height: Int },
+                AssertBeforeHeightAbsolute = 87 { height: Int },
+                Softfork = 90 { cost: Int, ...args: List<Any> },
+            }
             definitions:
             <none>
             references:

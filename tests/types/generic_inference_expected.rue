@@ -74,8 +74,14 @@ test fn keep_literal_from_return_type() -> 51 {
     identity(51)
 }
 
-test fn keep_literal_from_field_type() -> Condition {
-    CreateCoin { opcode: identity(CREATE_COIN), puzzle_hash: sha256("a"), amount: 1 }
+struct Tagged {
+    opcode = 51,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+test fn keep_literal_from_field_type() -> Tagged {
+    Tagged { opcode: identity(51), puzzle_hash: sha256("a"), amount: 1 }
 }
 
 test fn keep_literal_in_union_from_let_type() -> 1 | 2 {
