@@ -14,6 +14,7 @@ mod shadowing;
 mod signature_help;
 mod std_library;
 mod sweep;
+mod symbols;
 mod syntax_errors;
 mod workspace;
 
@@ -29,13 +30,14 @@ use tower_lsp_server::LanguageServer;
 use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
-    Diagnostic, DocumentChangeOperation, DocumentChanges, DocumentFormattingParams,
-    FormattingOptions, GotoDefinitionParams, GotoDefinitionResponse, HoverContents, HoverParams,
-    InlayHintLabel, InlayHintParams, InlayHintTooltip, Location, MarkedString, NumberOrString,
-    OneOf, ParameterLabel, PartialResultParams, Position, PrepareRenameResponse, Range,
-    ReferenceContext, ReferenceParams, RenameParams, ResourceOp, SignatureHelpParams,
-    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams,
-    WorkspaceEdit,
+    Diagnostic, DocumentChangeOperation, DocumentChanges, DocumentFormattingParams, DocumentSymbol,
+    DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions, GotoDefinitionParams,
+    GotoDefinitionResponse, HoverContents, HoverParams, InlayHintLabel, InlayHintParams,
+    InlayHintTooltip, Location, MarkedString, NumberOrString, OneOf, ParameterLabel,
+    PartialResultParams, Position, PrepareRenameResponse, Range, ReferenceContext, ReferenceParams,
+    RenameParams, ResourceOp, SignatureHelpParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams, WorkspaceEdit,
+    WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
 use crate::paths::{path_to_uri, uri_to_path};
@@ -425,6 +427,77 @@ impl TestProject {
         text.clone()
     }
 
+    /// Renders the outline of a file: each symbol's kind, name and detail, the lines it spans and
+    /// where its name is, with the symbols inside of it indented under it.
+    pub fn document_symbols(&self, name: &str) -> String {
+        self.backend().nested_symbols.store(true, Ordering::Relaxed);
+
+        let response = block_on(self.backend().document_symbol(DocumentSymbolParams {
+            text_document: TextDocumentIdentifier::new(self.uri(name)),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .unwrap();
+
+        let symbols = match response {
+            None => return "<none>\n".to_string(),
+            Some(DocumentSymbolResponse::Nested(symbols)) => symbols,
+            Some(DocumentSymbolResponse::Flat(symbols)) => panic!("unexpected list: {symbols:?}"),
+        };
+
+        if symbols.is_empty() {
+            return "<empty>\n".to_string();
+        }
+
+        let mut output = String::new();
+        render_symbols(&symbols, None, 0, &mut output);
+        output
+    }
+
+    /// Renders the symbols of the workspace that match a query: each symbol's kind and name, the
+    /// symbol it's inside of, and where its name is.
+    pub fn workspace_symbols(&self, query: &str) -> String {
+        let response = block_on(self.backend().symbol(WorkspaceSymbolParams {
+            query: query.to_string(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .unwrap();
+
+        let symbols = match response {
+            None => return "<none>\n".to_string(),
+            Some(WorkspaceSymbolResponse::Nested(symbols)) => symbols,
+            Some(WorkspaceSymbolResponse::Flat(symbols)) => panic!("unexpected list: {symbols:?}"),
+        };
+
+        if symbols.is_empty() {
+            return "<empty>\n".to_string();
+        }
+
+        let mut output = String::new();
+
+        for symbol in symbols {
+            let OneOf::Left(location) = symbol.location else {
+                panic!("unexpected location: {:?}", symbol.location);
+            };
+
+            let container = symbol
+                .container_name
+                .map_or_else(String::new, |container| format!(" in {container}"));
+
+            writeln!(
+                output,
+                "{:?} {}{container} {}",
+                symbol.kind,
+                symbol.name,
+                self.location(&location.uri, location.range)
+            )
+            .unwrap();
+        }
+
+        output
+    }
+
     /// Renders the signatures at the cursor, with the active parameter of each in brackets and
     /// the active signature marked, or `<none>`.
     pub fn signature_help(&self) -> String {
@@ -765,6 +838,50 @@ impl TestProject {
         }
 
         output
+    }
+}
+
+/// Renders symbols and the symbols inside of them, which have to be inside of the range of the
+/// one they're in, as the protocol requires.
+fn render_symbols(
+    symbols: &[DocumentSymbol],
+    parent: Option<Range>,
+    depth: usize,
+    output: &mut String,
+) {
+    for symbol in symbols {
+        let inside =
+            |outer: Range, inner: Range| outer.start <= inner.start && inner.end <= outer.end;
+
+        assert!(inside(symbol.range, symbol.selection_range), "{symbol:?}");
+        assert!(
+            parent.is_none_or(|parent| inside(parent, symbol.range)),
+            "{symbol:?}"
+        );
+        assert!(!symbol.name.is_empty(), "{symbol:?}");
+
+        let detail = symbol
+            .detail
+            .as_ref()
+            .map_or_else(String::new, |detail| format!(" `{detail}`"));
+
+        writeln!(
+            output,
+            "{}{:?} {}{detail} {} [{}]",
+            "  ".repeat(depth),
+            symbol.kind,
+            symbol.name,
+            range_string(symbol.range),
+            range_string(symbol.selection_range)
+        )
+        .unwrap();
+
+        render_symbols(
+            symbol.children.as_deref().unwrap_or_default(),
+            Some(symbol.range),
+            depth + 1,
+            output,
+        );
     }
 }
 

@@ -33,16 +33,18 @@ use tower_lsp_server::ls_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChangeOperation, DocumentChanges,
-    DocumentFormattingParams, FileSystemWatcher, GlobPattern, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintKind,
-    InlayHintLabel, InlayHintParams, InlayHintTooltip, LanguageString, Location, MarkedString,
-    MessageType, NumberOrString, OneOf, OptionalVersionedTextDocumentIdentifier,
-    ParameterInformation, ParameterLabel, Position, PrepareRenameResponse, Range, ReferenceParams,
-    Registration, RenameFile, RenameOptions, RenameParams, ResourceOp, ResourceOperationKind,
-    ServerCapabilities, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
-    SignatureInformation, TextDocumentEdit, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgressOptions, WorkspaceEdit,
+    DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+    FileSystemWatcher, GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip,
+    LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
+    OptionalVersionedTextDocumentIdentifier, ParameterInformation, ParameterLabel, Position,
+    PrepareRenameResponse, Range, ReferenceParams, Registration, RenameFile, RenameOptions,
+    RenameParams, ResourceOp, ResourceOperationKind, ServerCapabilities, SignatureHelp,
+    SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
+    TextDocumentEdit, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextEdit, Uri, WorkDoneProgressOptions, WorkspaceEdit, WorkspaceSymbol, WorkspaceSymbolParams,
+    WorkspaceSymbolResponse,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -66,6 +68,8 @@ pub struct Backend {
     watch_files: AtomicBool,
     /// Whether the client asks for inlay hints again when it's told that they changed.
     refresh_hints: AtomicBool,
+    /// Whether the client can show the symbols of a document inside of each other.
+    nested_symbols: AtomicBool,
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
@@ -79,6 +83,8 @@ enum Task {
     Rename,
     SignatureHelp,
     InlayHints,
+    DocumentSymbols,
+    WorkspaceSymbols,
     Formatting,
     CodeAction,
 }
@@ -94,6 +100,8 @@ impl fmt::Display for Task {
             Self::Rename => "renaming",
             Self::SignatureHelp => "computing signature help",
             Self::InlayHints => "computing inlay hints",
+            Self::DocumentSymbols => "listing the symbols of a document",
+            Self::WorkspaceSymbols => "searching for symbols",
             Self::Formatting => "formatting",
             Self::CodeAction => "computing code actions",
         })
@@ -164,6 +172,17 @@ impl LanguageServer for Backend {
 
         self.refresh_hints.store(refresh_hints, Ordering::Relaxed);
 
+        // A client that can't show symbols inside of each other gets them as a list
+        let nested_symbols = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|capabilities| capabilities.document_symbol.as_ref())
+            .and_then(|capabilities| capabilities.hierarchical_document_symbol_support)
+            .unwrap_or(false);
+
+        self.nested_symbols.store(nested_symbols, Ordering::Relaxed);
+
         // Files in the workspace are reported with the paths the client uses for them
         #[allow(deprecated)]
         let root_uri = params.root_uri.iter();
@@ -205,6 +224,8 @@ impl LanguageServer for Backend {
                     ..Default::default()
                 }),
                 inlay_hint_provider: Some(OneOf::Left(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
@@ -472,6 +493,43 @@ impl LanguageServer for Backend {
         }
     }
 
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri = params.text_document.uri;
+        let revision = self.revision(&uri);
+        let nested = self.nested_symbols.load(Ordering::Relaxed);
+
+        Ok(self
+            .query(Task::DocumentSymbols, move |state| {
+                let symbols = state.cache(&uri, revision)?.document_symbols();
+
+                Some(if nested {
+                    DocumentSymbolResponse::Nested(symbols)
+                } else {
+                    let mut list = Vec::new();
+                    list_symbols(&uri, symbols, None, &mut list);
+                    DocumentSymbolResponse::Flat(list)
+                })
+            })
+            .await)
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<WorkspaceSymbolResponse>> {
+        Ok(self
+            .query(Task::WorkspaceSymbols, move |state| {
+                Some(WorkspaceSymbolResponse::Nested(workspace_symbols(
+                    state,
+                    &params.query,
+                )))
+            })
+            .await)
+    }
+
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         self.catch_panic(Task::Formatting, || self.on_formatting(&params))
             .await
@@ -502,6 +560,7 @@ impl Backend {
             shared,
             watch_files: AtomicBool::new(false),
             refresh_hints: AtomicBool::new(false),
+            nested_symbols: AtomicBool::new(false),
         }
     }
 
@@ -890,6 +949,70 @@ fn set_hint_options(shared: &Shared, settings: &serde_json::Value) -> bool {
     }
 
     *options != previous
+}
+
+/// Adds the symbols of a document and the symbols inside of them to a list, each with the name
+/// of the symbol it's inside of.
+fn list_symbols(
+    uri: &Uri,
+    symbols: Vec<DocumentSymbol>,
+    container: Option<&str>,
+    list: &mut Vec<SymbolInformation>,
+) {
+    for symbol in symbols {
+        #[allow(deprecated)]
+        list.push(SymbolInformation {
+            name: symbol.name.clone(),
+            kind: symbol.kind,
+            tags: None,
+            deprecated: None,
+            location: Location::new(uri.clone(), symbol.range),
+            container_name: container.map(ToString::to_string),
+        });
+
+        list_symbols(
+            uri,
+            symbol.children.unwrap_or_default(),
+            Some(&symbol.name),
+            list,
+        );
+    }
+}
+
+/// The symbols of every project that's been compiled whose names match the query, best match
+/// first.
+fn workspace_symbols(state: &State, query: &str) -> Vec<WorkspaceSymbol> {
+    state.shared.inject_panic(Task::WorkspaceSymbols);
+
+    let mut symbols = state
+        .projects
+        .values()
+        .flat_map(|cache| cache.project_symbols(query))
+        .filter_map(|symbol| Some((state.shared.paths.uri(&symbol.file)?, symbol)))
+        .collect::<Vec<_>>();
+
+    // The projects are in no particular order, and a file can be part of more than one
+    symbols.sort_by(|(a_uri, a), (b_uri, b)| {
+        (b.score, &a.name, a_uri.as_str(), a.range.start).cmp(&(
+            a.score,
+            &b.name,
+            b_uri.as_str(),
+            b.range.start,
+        ))
+    });
+    symbols.dedup_by(|(a_uri, a), (b_uri, b)| a_uri == b_uri && a.range == b.range);
+
+    symbols
+        .into_iter()
+        .map(|(uri, symbol)| WorkspaceSymbol {
+            name: symbol.name,
+            kind: symbol.kind,
+            tags: None,
+            container_name: symbol.container,
+            location: OneOf::Left(Location::new(uri, symbol.range)),
+            data: None,
+        })
+        .collect()
 }
 
 fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {

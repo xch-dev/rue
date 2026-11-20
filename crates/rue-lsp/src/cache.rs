@@ -20,6 +20,7 @@ use tower_lsp_server::ls_types::{
 mod hints;
 mod rename;
 mod signature;
+mod symbols;
 
 pub use hints::{HintKind, HintOptions};
 pub use rename::Rename;

@@ -416,6 +416,8 @@ async fn test_protocol_session() {
     assert_eq!(capabilities["referencesProvider"], json!(true));
     assert_eq!(capabilities["renameProvider"], json!(true));
     assert_eq!(capabilities["inlayHintProvider"], json!(true));
+    assert_eq!(capabilities["documentSymbolProvider"], json!(true));
+    assert_eq!(capabilities["workspaceSymbolProvider"], json!(true));
     assert_eq!(
         capabilities["signatureHelpProvider"],
         json!({ "triggerCharacters": ["(", ",", "{"] })
@@ -892,6 +894,128 @@ async fn test_inlay_hint_settings_without_refresh() {
 }
 
 #[tokio::test]
+async fn test_symbols_session() {
+    let main = "struct Point {\n    x: Int,\n}\n\nfn main() -> Int {\n    utils::ONE\n}\n";
+    let project = TempProject::new(&[
+        ("main.rue", main),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    let uri = project.uri("main.rue");
+
+    let range = |start: (u32, u32), end: (u32, u32)| {
+        json!({
+            "start": { "line": start.0, "character": start.1 },
+            "end": { "line": end.0, "character": end.1 },
+        })
+    };
+
+    // A client that doesn't say it can show symbols inside of each other gets a list of them
+    let mut client = Client::initialized().await;
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, main).await;
+    client.sync().await;
+
+    let symbols = json!({ "textDocument": { "uri": uri } });
+
+    let response = client
+        .request("textDocument/documentSymbol", Some(symbols.clone()))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([
+            {
+                "name": "Point",
+                "kind": 23,
+                "location": { "uri": uri, "range": range((0, 0), (2, 1)) },
+            },
+            {
+                "name": "x",
+                "kind": 8,
+                "location": { "uri": uri, "range": range((1, 4), (1, 10)) },
+                "containerName": "Point",
+            },
+            {
+                "name": "main",
+                "kind": 12,
+                "location": { "uri": uri, "range": range((4, 0), (6, 1)) },
+            },
+        ])
+    );
+
+    let response = client
+        .request("workspace/symbol", Some(json!({ "query": "one" })))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([{
+            "name": "ONE",
+            "kind": 14,
+            "location": {
+                "uri": project.uri("utils.rue"),
+                "range": range((0, 13), (0, 16)),
+            },
+        }])
+    );
+
+    // The symbols are those of the text as it is when the request is sent, though the server
+    // hasn't compiled it yet
+    let compiles = client.compiles();
+    client
+        .change(&uri, 2, &[&main.replace("fn main", "fn start")])
+        .await;
+
+    let response = client
+        .request("workspace/symbol", Some(json!({ "query": "start" })))
+        .await;
+    assert_eq!(response.result().unwrap()[0]["name"], json!("start"));
+    assert_eq!(client.compiles(), compiles + 1);
+
+    // A client that can show them inside of each other gets them that way
+    let mut client = Client::new();
+    let messages = client
+        .initialize_with(json!({
+            "capabilities": {
+                "textDocument": {
+                    "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
+                },
+            },
+        }))
+        .await;
+    assert!(messages.is_empty(), "unexpected messages: {messages:?}");
+
+    client.open(&uri, main).await;
+
+    let response = client
+        .request("textDocument/documentSymbol", Some(symbols))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([
+            {
+                "name": "Point",
+                "kind": 23,
+                "range": range((0, 0), (2, 1)),
+                "selectionRange": range((0, 7), (0, 12)),
+                "children": [{
+                    "name": "x",
+                    "detail": "Int",
+                    "kind": 8,
+                    "range": range((1, 4), (1, 10)),
+                    "selectionRange": range((1, 4), (1, 5)),
+                }],
+            },
+            {
+                "name": "main",
+                "detail": "() -> Int",
+                "kind": 12,
+                "range": range((4, 0), (6, 1)),
+                "selectionRange": range((4, 3), (4, 7)),
+            },
+        ])
+    );
+}
+
+#[tokio::test]
 async fn test_rename_file_without_client_support() {
     let main = "fn main() -> Int {\n    utils::ONE\n}\n";
     let project = TempProject::new(&[
@@ -1012,6 +1136,16 @@ async fn test_query_panics_are_caught() {
             inlay_hints(&uri),
         ),
         (
+            Task::DocumentSymbols,
+            "textDocument/documentSymbol",
+            json!({ "textDocument": { "uri": uri } }),
+        ),
+        (
+            Task::WorkspaceSymbols,
+            "workspace/symbol",
+            json!({ "query": "" }),
+        ),
+        (
             Task::Formatting,
             "textDocument/formatting",
             formatting(&uri),
@@ -1040,7 +1174,10 @@ async fn test_query_panics_are_caught() {
 
         // A query may have left the compile it was using half-changed, so its project is compiled
         // again, without publishing anything
-        let queries_compile = !matches!(task, Task::Formatting | Task::CodeAction);
+        let queries_compile = !matches!(
+            task,
+            Task::Formatting | Task::CodeAction | Task::WorkspaceSymbols
+        );
         assert_eq!(
             client.compiles(),
             compiles + usize::from(queries_compile),
