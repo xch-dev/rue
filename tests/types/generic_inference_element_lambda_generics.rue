@@ -173,3 +173,60 @@ fn recursive_swapped<T, U>(
 test fn element_of_a_recursive_call_with_the_generics_swapped() -> List<Int> {
     recursive_swapped([fn(x: String) => 1], "a", 2, 1)
 }
+
+// An element lambda's parameter whose generic a later argument infers is compiled against what
+// that argument infers, as a lambda that's the whole argument is, rather than against the callee's
+// generic, which its body can't do anything with (#362, 13k.1)
+test fn element_reads_a_later_argument() -> List<Int> {
+    map_list([fn(x) => x + 1], 5)
+}
+
+test fn element_of_a_pair_reads_a_later_argument() -> Int {
+    apply_first((fn(x) => x + 1, 1), 5)
+}
+
+fn with_the_callers_generic<A>(value: A) -> (List<A>, List<A>) {
+    (
+        map_list([fn(x) => identity::<A>(x)], value),
+        map_list(
+            [
+                fn(x) => {
+                    let y: A = x;
+                    identity(y)
+                },
+            ],
+            value,
+        ),
+    )
+}
+
+test fn element_names_the_callers_generic() -> (List<Int>, List<Int>) {
+    with_the_callers_generic(5)
+}
+
+fn recursive_naming<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> (
+    List<T>,
+    List<U>,
+) {
+    if depth > 0 {
+        // The call's `T` is the caller's, so a body that names it is valid
+        let results: (List<T>, List<T>) = recursive_naming([fn(x) => identity::<T>(x)], value, 0);
+        return (results.rest, map_list(functions, value));
+    }
+
+    (nil, map_list(functions, value))
+}
+
+test fn element_of_a_recursive_call_names_the_callers_generic() -> (List<Int>, List<Int>) {
+    recursive_naming([fn(x: Int) => x + 1], 5, 1)
+}
+
+fn pair_first<T>(pair: (T, fn(x: T) -> T), value: T) -> T {
+    pair.rest(value)
+}
+
+// Guard: an element that isn't a lambda can add to the generic too, so the later argument doesn't
+// go ahead of it, which would widen it, and the lambda is compiled against the generic, as before
+test fn element_next_to_a_value_of_the_generic() -> Int {
+    pair_first((1, fn(x) => x), 2)
+}

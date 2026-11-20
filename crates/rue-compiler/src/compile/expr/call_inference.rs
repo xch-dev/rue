@@ -12,8 +12,8 @@ use log::debug;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
 use rue_hir::{HirId, Value};
 use rue_types::{
-    CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, contained_generics,
-    contains_generic, substitute_with_mappings,
+    CallSolver, FunctionType, Generic, Inference, InstancePolicy, Type, TypeId, Union,
+    contained_generics, contains_generic, substitute_with_mappings,
 };
 
 use crate::{
@@ -961,6 +961,122 @@ struct Argument {
     /// For a lambda, the generics among its reads that are its whole parameter type, or members
     /// of it.
     bare: IndexSet<TypeId>,
+    /// For a pair or list with lambdas among its elements, what those elements and the others
+    /// read and write (see `Elements`).
+    elements: Option<Elements>,
+}
+
+/// What the elements of a pair or list argument have to do with the callee's generics, found by
+/// following the parameter type along the pairs the argument is made of, as compiling it does.
+struct Elements {
+    /// The generics in the types expected of the untyped parameters of the lambdas among its
+    /// elements, which are compiled against what those generics are inferred as so far.
+    lambda_reads: IndexSet<TypeId>,
+    /// The generics in the types expected of its other elements, which compiling them can add
+    /// to. Where the pairs can't be followed, every generic in the type expected there.
+    other_writes: IndexSet<TypeId>,
+}
+
+impl Elements {
+    fn of(
+        ctx: &mut Compiler,
+        function: &FunctionType,
+        arg: &AstExpr,
+        param: TypeId,
+    ) -> Option<Self> {
+        if !matches!(arg, AstExpr::PairExpr(_) | AstExpr::ListExpr(_)) || !has_own_lambda(arg) {
+            return None;
+        }
+
+        let mut elements = Self {
+            lambda_reads: IndexSet::new(),
+            other_writes: IndexSet::new(),
+        };
+        elements.add(ctx, function, arg, param);
+        Some(elements)
+    }
+
+    fn add(&mut self, ctx: &mut Compiler, function: &FunctionType, expr: &AstExpr, ty: TypeId) {
+        match expr {
+            AstExpr::LambdaExpr(lambda) => {
+                let untyped = untyped_parameters(lambda);
+                let mut reads = IndexSet::new();
+
+                for expected in rue_types::extract_functions(ctx.types_mut(), ty, true) {
+                    for &index in &untyped {
+                        if let Some(parameter) = expected.params.get(index) {
+                            reads.extend(generics_in(ctx, function, parameter.ty));
+                        }
+                    }
+                }
+
+                // A lambda can write the generics in its return type and in the types expected of
+                // its typed parameters, which those types bound from above, so it counts as
+                // writing every generic other than those its untyped parameters read
+                for generic in generics_in(ctx, function, ty) {
+                    if !reads.contains(&generic) {
+                        self.other_writes.insert(generic);
+                    }
+                }
+
+                self.lambda_reads.extend(reads);
+            }
+            AstExpr::PairExpr(pair) => {
+                let Some((first, rest)) = pair_parts(ctx, ty) else {
+                    self.other_writes.extend(generics_in(ctx, function, ty));
+                    return;
+                };
+
+                for (expr, ty) in [(pair.first(), first), (pair.rest(), rest)] {
+                    if let Some(expr) = expr {
+                        self.add(ctx, function, &expr, ty);
+                    }
+                }
+            }
+            AstExpr::ListExpr(list) => {
+                let mut ty = ty;
+
+                for item in list.items() {
+                    let Some(expr) = item.expr() else {
+                        continue;
+                    };
+
+                    if item.spread().is_some() {
+                        self.other_writes.extend(generics_in(ctx, function, ty));
+                        return;
+                    }
+
+                    let Some((first, rest)) = pair_parts(ctx, ty) else {
+                        self.other_writes.extend(generics_in(ctx, function, ty));
+                        return;
+                    };
+
+                    self.add(ctx, function, &expr, first);
+                    ty = rest;
+                }
+            }
+            _ => self.other_writes.extend(generics_in(ctx, function, ty)),
+        }
+    }
+}
+
+/// The types of the first and rest of the pairs the type can be, each a union if there are
+/// several, as a pair or list expected to be the type is compiled against.
+fn pair_parts(ctx: &mut Compiler, ty: TypeId) -> Option<(TypeId, TypeId)> {
+    let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, false);
+
+    match pairs.as_slice() {
+        [] => None,
+        [pair] => Some((pair.first, pair.rest)),
+        pairs => {
+            let first = Union::new(pairs.iter().map(|pair| pair.first).collect());
+            let rest = Union::new(pairs.iter().map(|pair| pair.rest).collect());
+            Some((
+                ctx.alloc_type(Type::Union(first)),
+                ctx.alloc_type(Type::Union(rest)),
+            ))
+        }
+    }
 }
 
 enum ArgumentKind {
@@ -1060,6 +1176,7 @@ impl ArgumentOrder {
                     } else {
                         IndexSet::new()
                     },
+                    elements: Elements::of(ctx, function, arg, param.ty),
                 }
             })
             .collect();
@@ -1153,11 +1270,32 @@ impl ArgumentOrder {
     /// one either, other than a call with no arguments, which only its expected type can infer
     /// (#352). Any other earlier argument infers its own generics, and going ahead of it can only
     /// widen a literal in its expected type.
+    ///
+    /// The exception is a pair or list whose lambdas' parameters read a generic this argument
+    /// writes, while its other elements write none of the generics this one does, such as the list
+    /// in `map_list([fn(x) => x + 1], 5)`. Its lambdas are then compiled against what this
+    /// argument infers, as a lambda that's the whole argument is, rather than against the generic
+    /// itself, and nothing in it can be widened.
     fn would_go_ahead_of_others(&self, i: usize) -> bool {
-        !self.arguments[i].is_lambda()
-            && self
-                .earlier_others(i)
-                .any(|other| !self.arguments[other].needs_expected())
+        let argument = &self.arguments[i];
+
+        !argument.is_lambda()
+            && self.earlier_others(i).any(|other| {
+                let other = &self.arguments[other];
+
+                let waits_for_this = other.elements.as_ref().is_some_and(|elements| {
+                    argument
+                        .writes
+                        .iter()
+                        .any(|generic| elements.lambda_reads.contains(generic))
+                        && !argument
+                            .writes
+                            .iter()
+                            .any(|generic| elements.other_writes.contains(generic))
+                });
+
+                !other.needs_expected() && !waits_for_this
+            })
     }
 
     /// The arguments that aren't lambdas and are before this one in `pending`.
