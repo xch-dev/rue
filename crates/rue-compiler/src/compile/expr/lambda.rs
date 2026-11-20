@@ -58,6 +58,8 @@ pub struct LambdaBody {
     first_hir: HirId,
     end_hir: HirId,
     first_symbol: usize,
+    first_named_type: usize,
+    end_named_type: usize,
     /// The lambda's type.
     pub(crate) ty: TypeId,
 }
@@ -93,6 +95,20 @@ impl LambdaBody {
             .into_iter()
             .any(|ty| !contained_generics(ctx.types_mut(), ty, generics.iter().copied()).is_empty())
     }
+
+    /// Whether the lambda names any of the types, in an annotation in its parameters, its return
+    /// type or its body, such as `T` in `fn(x) => x as T`. Otherwise, a type it has them in only
+    /// has them through its parameters or a value it captures. As with `captures_generics`, the
+    /// types named while it was compiled are what count, so this errs on the side of finding them.
+    pub(crate) fn names_types(&self, ctx: &mut Compiler, types: &[TypeId]) -> bool {
+        let named = ctx
+            .named_types_between(self.first_named_type, self.end_named_type)
+            .to_vec();
+
+        named
+            .into_iter()
+            .any(|ty| !contained_generics(ctx.types_mut(), ty, types.iter().copied()).is_empty())
+    }
 }
 
 /// Compiles a lambda, with its untyped parameters wrapped as `wrap` says, if it's given. It returns
@@ -105,6 +121,7 @@ pub(crate) fn compile_lambda(
 ) -> (Value, Vec<LambdaParameter>) {
     let first_hir = ctx.next_hir_id();
     let first_symbol = ctx.symbol_count();
+    let first_named_type = ctx.named_type_count();
     let mut wrapped = Vec::new();
 
     // The reference for each of the callee's generics, with `ParameterWrap::Generics`
@@ -302,6 +319,8 @@ pub(crate) fn compile_lambda(
         first_hir,
         end_hir: ctx.next_hir_id(),
         first_symbol,
+        first_named_type,
+        end_named_type: ctx.named_type_count(),
         ty,
     };
 

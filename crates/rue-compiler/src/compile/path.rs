@@ -523,6 +523,7 @@ where
                 value = Some(PathResult::Symbol(symbol, override_type, import));
             }
             PathResult::Type(mut ty, import) => {
+                ctx.name_type(ty);
                 ctx.reference(Declaration::Type(ty), import);
                 ctx.reference_span(Declaration::Type(ty), name.text_range());
 

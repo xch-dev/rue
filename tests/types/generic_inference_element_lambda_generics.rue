@@ -1,0 +1,175 @@
+// A lambda that's an element of a pair or list argument has its untyped parameters compiled as
+// references to the callee's generics, and a call in its body sees through the reference, so its
+// return type can have the generic itself. Those generics are instantiated with what the call
+// infers, as the parameter is, so none of them is left in the lambda's type (#362, 13k)
+
+fn identity<Q>(value: Q) -> Q {
+    value
+}
+
+fn apply<T, U>(function: fn(x: T) -> U, value: T) -> U {
+    function(value)
+}
+
+fn map_list<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    if functions is (fn(x: T) -> U, List<fn(x: T) -> U>) {
+        [functions.first(value), ...map_list(functions.rest, value)]
+    } else {
+        nil
+    }
+}
+
+fn apply_first<T, U>(functions: (fn(x: T) -> U, Int), value: T) -> U {
+    functions.first(value)
+}
+
+test fn element_of_a_list() -> List<Int> {
+    map_list([fn(x) => identity(x)], 5)
+}
+
+test fn element_of_a_list_without_an_expected_type() -> List<Int> {
+    let results = map_list([fn(x) => identity(x)], 5);
+    results
+}
+
+test fn element_of_a_pair() -> Int {
+    apply_first((fn(x) => identity(x), 1), 5)
+}
+
+test fn several_elements() -> List<Int> {
+    map_list([fn(x) => identity(x), fn(x) => x], 5)
+}
+
+test fn element_before_a_spread() -> List<Int> {
+    let rest = [fn(x: Int) => x * 2];
+
+    map_list([fn(x) => identity(x), ...rest], 5)
+}
+
+test fn nested_calls_in_the_body() -> List<Int> {
+    map_list([fn(x) => identity(identity(x))], 5)
+}
+
+test fn nested_lambda_in_the_body() -> List<Int> {
+    map_list([fn(x) => apply(fn(y) => identity(y), x)], 5)
+}
+
+test fn block_body() -> List<Int> {
+    map_list(
+        [
+            fn(x) => {
+                let y = identity(x);
+                y
+            },
+        ],
+        5,
+    )
+}
+
+test fn generic_inside_a_returned_pair() -> List<(Int, Int)> {
+    map_list([fn(x) => (identity(x), x)], 5)
+}
+
+struct Holder<T, U> {
+    function: fn(x: T) -> U,
+}
+
+fn apply_holder<T, U>(holder: Holder<T, U>, value: T) -> U {
+    holder.function(value)
+}
+
+// A struct initializer's generics are written out, so its fields are compiled against those, not
+// the callee's
+test fn struct_field() -> Int {
+    apply_holder(Holder::<Int, Int> { function: fn(x) => identity(x) }, 5)
+}
+
+// A lambda that's the whole argument was already instantiated through its parameters' references
+test fn whole_argument() -> Int {
+    apply(fn(x) => identity(x), 5)
+}
+
+fn pair_any<T, U>(functions: (fn(x: T) -> U, Any), value: T) -> U {
+    functions.first(value)
+}
+
+// In a call nested in a call to the same function, the sibling that captures the outer call's
+// value of the shared generic keeps it in its type, and is held by `Any`, while the first lambda is
+// instantiated, as `pair_any::<Int, Int>` would be. It was rejected before, with the first lambda
+// returning the generic
+test fn sibling_next_to_any_keeps_the_shared_generic() -> Int {
+    pair_any(
+        (
+            fn(a) => {
+                let z: Int = pair_any((fn(x) => identity(x), fn(_y: Int) => a), 5);
+                z + 1
+            },
+            nil,
+        ),
+        "hi",
+    )
+}
+
+fn map_pairs<T, U>(functions: List<fn(x: (T, T)) -> U>, value: (T, T)) -> List<U> {
+    if functions is (fn(x: (T, T)) -> U, List<fn(x: (T, T)) -> U>) {
+        [functions.first(value), ...map_pairs(functions.rest, value)]
+    } else {
+        nil
+    }
+}
+
+// The parameter's type only contains the generic, so the generic in it is instantiated, not only
+// a parameter whose type is the generic
+test fn generic_nested_in_the_parameter_type() -> List<(Int, Int)> {
+    map_pairs([fn(x) => identity(x)], (5, 6))
+}
+
+fn map_and_apply<T, U, A, B>(
+    functions: List<fn(x: T) -> U>,
+    function: fn(a: A) -> B,
+    a: A,
+    value: T,
+) -> (List<U>, B) {
+    (map_list(functions, value), function(a))
+}
+
+// A lambda that's the whole argument is narrowed to the expected `5` (#335), so the call is solved
+// again with the lambdas' parameters, and the element lambda is instantiated in that solve too
+test fn instantiated_in_the_second_solve() -> (List<Int>, 5) {
+    let r: (List<Int>, 5) = map_and_apply([fn(x) => identity(x)], fn(y) => y, 5, 5);
+    r
+}
+
+fn recursive<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> (List<Int>, List<U>) {
+    if depth > 0 {
+        // In a call to the function it's in, the element lambda's parameter is compiled as the
+        // caller's `T`, standing for the call's renamed one, so `identity(x)` returns the caller's
+        // `T`. Its body doesn't name `T`, so there it's the renamed one, which is inferred as `Int`
+        let results: (List<Int>, List<Int>) = recursive([fn(x) => identity(x), fn(x) => x], 5, 0);
+        return (results.rest, map_list(functions, value));
+    }
+
+    (nil, map_list(functions, value))
+}
+
+test fn element_of_a_recursive_call() -> (List<Int>, List<Int>) {
+    recursive([fn(x: Int) => x + 1], 5, 1)
+}
+
+fn recursive_swapped<T, U>(
+    functions: List<fn(x: T) -> U>,
+    value: T,
+    other: U,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        // The same with the caller's `U` as the call's `T`
+        return recursive_swapped([fn(x) => identity(x)], other, other, 0);
+    }
+
+    map_list(functions, value)
+}
+
+test fn element_of_a_recursive_call_with_the_generics_swapped() -> List<Int> {
+    recursive_swapped([fn(x: String) => 1], "a", 2, 1)
+}

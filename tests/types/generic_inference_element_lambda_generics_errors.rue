@@ -1,0 +1,79 @@
+// The callee's generics are only instantiated within the type of the lambda whose parameter has
+// them (see `generic_inference_element_lambda_generics.rue`), not in the rest of the argument. In a
+// call nested in a call to the same function, which shares its generics, a sibling that captures
+// the outer call's value of the generic has the generic itself, and stays rejected
+
+fn identity<Q>(value: Q) -> Q {
+    value
+}
+
+fn pair2<T, U>(functions: (fn(x: T) -> U, fn(x: T) -> U), value: T) -> U {
+    functions.rest(value)
+}
+
+fn sibling_lambda_captures_the_shared_generic() -> Int {
+    pair2(
+        (
+            fn(_b) => 1,
+            fn(a) => {
+                let z: Int = pair2((fn(x) => identity(x), fn(_y) => a), 5);
+                z + 1
+            },
+        ),
+        "hi",
+    )
+}
+
+fn map_list<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    if functions is (fn(x: T) -> U, List<fn(x: T) -> U>) {
+        [functions.first(value), ...map_list(functions.rest, value)]
+    } else {
+        nil
+    }
+}
+
+fn map_and_call<T, U, V>(functions: List<fn(x: T) -> U>, function: fn(y: Int) -> V, value: T) -> (
+    List<U>,
+    V,
+) {
+    (map_list(functions, value), function(1))
+}
+
+// A call rejected for another reason only reports that, and doesn't name the callee's generic in
+// the element lambda's type
+fn rejected_for_another_reason() -> (List<Int>, 1) {
+    map_and_call([fn(x) => identity(x)], fn(_y) => "x", 5)
+}
+
+fn recursive<T, U>(functions: List<fn(x: T) -> U>, value: T, depth: Int) -> List<U> {
+    if depth > 0 {
+        // A body that names the caller's `T` has a value of it that doesn't come from its
+        // parameter, so it isn't checked as what the call's renamed `T` is inferred as, and the
+        // call returns `List<T>`
+        let _named_in_a_call: List<Int> = recursive([fn(x) => identity::<T>(x)], 5, 0);
+        let _named_in_a_binding: List<Int> = recursive(
+            [
+                fn(x) => {
+                    let y: T = x;
+                    identity(y)
+                },
+            ],
+            5,
+            0,
+        );
+        return map_list(functions, value);
+    }
+
+    map_list(functions, value)
+}
+
+// Nothing gives `T` a type, so `U`, inferred as `T`, is unresolved too, rather than leaking
+// `map_list`'s `T` out of the call
+fn generic_inferred_as_an_uninferred_one() -> Bool {
+    map_list(
+        [fn(x) => x],
+        {
+            raise;
+        },
+    )
+}
