@@ -89,3 +89,25 @@ test fn guard_recursive_on_both_sides() -> Int {
     let _function: Recursive = make_loop();
     11
 }
+
+type Branching = (fn(x: Int) -> Branching)
+    | (fn(x: Int, y: Int) -> Branching)
+    | (fn(x: Int, y: Int, z: Int) -> Branching);
+
+fn make_chain<A>() -> fn(a: Int) -> fn(b: Int) -> fn(c: Int) -> fn(d: Int) -> fn(e: Int) -> fn(
+    f: Int,
+) -> fn(g: Int) -> fn(h: Int) -> fn(i: Int) -> fn(j: Int) -> fn(k: Int) -> fn(l: Int) -> fn(
+    m: Int,
+) -> fn(n: Int) -> fn(o: Int) -> fn(p: Int) -> fn(q: Int) -> fn(r: Int) -> fn(s: Int) -> fn(
+    t: Int,
+) -> fn(u: Int) -> fn(v: Int) -> A {
+    unchecked_cast(nil)
+}
+
+test fn guard_recursive_union_of_function_types() -> Int {
+    // Guard: each member returns the same recursive alias, which is walked once per depth rather
+    // than once for each member that returns it, which multiplied at each depth
+    let _expected: Branching = unchecked_cast(nil);
+    let _chain: Branching = make_chain();
+    12
+}

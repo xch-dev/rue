@@ -1,5 +1,6 @@
-// A generic of a nested generic function type expected of a call still leaks where a parameter of
-// a function returned above it depends on the generic it's inferred as (#359)
+// A nested generic function type expected of a call still rejects functions that don't fit it, and
+// its generics aren't inferred for a callee's generic that a parameter of a function returned above
+// it depends on, since they're only in scope inside of it (#359, #362)
 
 fn make_fixed<C>() -> fn(a: C) -> fn(b: C) -> C {
     unchecked_cast(nil)
@@ -17,7 +18,8 @@ fn make_pair_loop<T>() -> PairLoop<T> {
 }
 
 fn main() -> Int {
-    // `C` is a parameter of the outer function, which isn't generic over the inner `U`
+    // `C` is a parameter of the outer function, which isn't generic over the inner `U`, so `C` is
+    // inferred as `Int` from the outer parameter rather than as `U`, which would leak it
     let _fixed: fn(a: Int) -> fn<U>(b: U) -> U = make_fixed();
 
     // The inner function only takes `Int`, which isn't any `U`
