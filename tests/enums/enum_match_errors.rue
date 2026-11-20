@@ -67,6 +67,22 @@ fn missing_combinations(value: Both<Dir, Dir>) -> Int {
     }
 }
 
+// An arm's binding destructures the variant the arm names, so it can only read that variant's
+// fields, and a variant of an enum without fields is only its discriminant
+fn binding_fields(shape: Shape, mode: Mode) -> Int {
+    let area = match shape {
+        Shape::Empty { radius } => radius,
+        Shape::Circle { width } => width,
+        Shape::Rect { width, height } => width * height,
+    };
+
+    area
+        + match mode {
+            Mode::Off { value } => value,
+            _ => 0,
+        }
+}
+
 fn main(shape: Shape, mode: Mode, both: Both<Dir, Dir>) -> Int {
     missing_one(shape)
         + missing_many(mode)
@@ -74,4 +90,5 @@ fn main(shape: Shape, mode: Mode, both: Both<Dir, Dir>) -> Int {
         + indistinguishable(mode)
         + other_enum(mode)
         + missing_combinations(both)
+        + binding_fields(shape, mode)
 }

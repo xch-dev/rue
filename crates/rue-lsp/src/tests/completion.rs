@@ -1009,6 +1009,115 @@ fn main(value: Point | nil) -> Int {
 }
 
 #[test]
+fn test_complete_match_arm_binding_fields() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x, $0 } => x,
+    }
+}
+"#,
+        expect![[r#"
+            y [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_match_arm_binding_fields() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Rect { width: Int, height: Int },
+}
+
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Rect { $0 } => 1,
+    }
+}
+"#,
+        expect![[r#"
+            width [Field] Int
+            height [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_partial_match_arm_binding_field() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Rect { width: Int, height: Int },
+}
+
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Rect { he$0 } => 1,
+    }
+}
+"#,
+        expect![[r#"
+            height [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_match_arm_binding_in_value() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x: horizontal, y } => hor$0,
+    }
+}
+"#,
+        expect![[r#"
+            horizontal [Variable] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_let_binding_fields() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point) -> Int {
+    let { x, $0 } = value;
+    x
+}
+"#,
+        expect![[r#"
+            y [Field] Int
+        "#]],
+    );
+}
+
+#[test]
 fn test_complete_enum_variants() {
     check(
         r#"

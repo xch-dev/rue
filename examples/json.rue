@@ -292,15 +292,15 @@ fn starts_with(input: String, prefix: String) -> Bool {
 fn stringify(json: Json) -> String {
     match json {
         Json::Null => "null",
-        Json::Bool => if json.value {
+        Json::Bool { value } => if value {
             "true"
         } else {
             "false"
         }
-        Json::Number => integer_to_string(json.value),
-        Json::String => '"' + escape(json.value) + '"',
-        Json::Array => "[" + stringify_items(json.items) + "]",
-        Json::Object => "{" + stringify_members(json.members) + "}",
+        Json::Number { value } => integer_to_string(value),
+        Json::String { value } => '"' + escape(value) + '"',
+        Json::Array { items } => "[" + stringify_items(items) + "]",
+        Json::Object { members } => "{" + stringify_members(members) + "}",
     }
 }
 

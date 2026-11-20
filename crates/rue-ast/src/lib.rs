@@ -958,6 +958,13 @@ impl AstMatchArm {
         self.syntax().children().find_map(AstType::cast)
     }
 
+    /// The binding after the type, which destructures the value once it's been narrowed to the
+    /// type, such as `{ x, y }` in `Point { x, y } => x + y`. It doesn't affect which values the
+    /// arm matches.
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }

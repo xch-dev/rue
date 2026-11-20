@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use rue_ast::{
-    AstBlock, AstFunctionItem, AstFunctionParameter, AstLambdaExpr, AstLetStmt, AstNode,
+    AstBlock, AstFunctionItem, AstFunctionParameter, AstLambdaExpr, AstLetStmt, AstMatchArm,
+    AstNode,
 };
 use rue_diagnostic::{Lint, Note, Source, SrcLoc};
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -68,6 +69,20 @@ impl Walker<'_, '_> {
             {
                 self.declare(&name);
             }
+        } else if let Some(arm) = AstMatchArm::cast(node.clone()) {
+            // An arm's bindings are only in scope in its value
+            self.scopes.push(HashMap::new());
+
+            for name in arm
+                .binding()
+                .iter()
+                .flat_map(|binding| binding_names(binding, true))
+            {
+                self.declare(&name);
+            }
+
+            self.walk_children(node);
+            self.scopes.pop();
         } else {
             self.walk_children(node);
         }

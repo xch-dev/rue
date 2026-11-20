@@ -3,7 +3,7 @@ use rowan::Checkpoint;
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
-        binding::binding,
+        binding::{at_struct_binding, binding},
         block::block,
         delimited_list,
         generics::{generic_arguments, generic_parameters},
@@ -397,7 +397,8 @@ fn if_expr_with(
 }
 
 /// A `match` expression, such as `match value { Int => 1, _ => 2 }`, or an `inline match`. Each
-/// arm's pattern is a type.
+/// arm's pattern is a type, which can be followed by a binding that destructures the value, such
+/// as `Point { x, y } => x + y`.
 /// The arms are separated by commas, except that an arm whose value is a block, `if` or `match`
 /// ends at its closing brace, so the comma after it can be left out.
 fn match_expr(p: &mut Parser, checkpoint: Checkpoint, allow_inline: bool) {
@@ -443,6 +444,13 @@ fn match_expr(p: &mut Parser, checkpoint: Checkpoint, allow_inline: bool) {
 fn match_arm(p: &mut Parser) -> bool {
     p.start(SyntaxKind::MatchArm);
     ty(p);
+
+    // The arm's value comes after the `=>`, so a brace here can only start a binding. One that
+    // doesn't look like a binding is most likely a block whose `=>` is missing.
+    if p.at_quiet(T!['(']) || p.at_quiet(T!['[']) || at_struct_binding(p) {
+        binding(p);
+    }
+
     p.expect(T![=>]);
 
     let checkpoint = p.checkpoint();
@@ -1165,6 +1173,379 @@ mod tests {
                   CloseBrace@24..25 "}"
             "#]],
             expect!["Expected one of `,`, `}`, found identifier at main.rue:3:1"],
+        );
+    }
+
+    #[test]
+    fn test_match_arm_bindings() {
+        // A binding comes between the arm's type and its `=>`, so a brace there isn't a block
+        check(
+            expr,
+            "match x { A { a, b: c, ...d } => a, (B, C) (e, f) => { e } [D] [g, ...h] => g }",
+            expect![[r#"
+                MatchExpr@0..79
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 " "
+                  MatchArm@10..34
+                    PathType@10..12
+                      PathSegment@10..12
+                        Ident@10..11 "A"
+                        Whitespace@11..12 " "
+                    StructBinding@12..29
+                      OpenBrace@12..13 "{"
+                      Whitespace@13..14 " "
+                      StructFieldBinding@14..15
+                        Ident@14..15 "a"
+                      Comma@15..16 ","
+                      Whitespace@16..17 " "
+                      StructFieldBinding@17..21
+                        Ident@17..18 "b"
+                        Colon@18..19 ":"
+                        Whitespace@19..20 " "
+                        NamedBinding@20..21
+                          Ident@20..21 "c"
+                      Comma@21..22 ","
+                      Whitespace@22..23 " "
+                      StructFieldBinding@23..28
+                        Spread@23..26 "..."
+                        Ident@26..27 "d"
+                        Whitespace@27..28 " "
+                      CloseBrace@28..29 "}"
+                    Whitespace@29..30 " "
+                    FatArrow@30..32 "=>"
+                    Whitespace@32..33 " "
+                    PathExpr@33..34
+                      PathSegment@33..34
+                        Ident@33..34 "a"
+                  Comma@34..35 ","
+                  Whitespace@35..36 " "
+                  MatchArm@36..58
+                    PairType@36..42
+                      OpenParen@36..37 "("
+                      PathType@37..38
+                        PathSegment@37..38
+                          Ident@37..38 "B"
+                      Comma@38..39 ","
+                      Whitespace@39..40 " "
+                      PathType@40..41
+                        PathSegment@40..41
+                          Ident@40..41 "C"
+                      CloseParen@41..42 ")"
+                    Whitespace@42..43 " "
+                    PairBinding@43..49
+                      OpenParen@43..44 "("
+                      NamedBinding@44..45
+                        Ident@44..45 "e"
+                      Comma@45..46 ","
+                      Whitespace@46..47 " "
+                      NamedBinding@47..48
+                        Ident@47..48 "f"
+                      CloseParen@48..49 ")"
+                    Whitespace@49..50 " "
+                    FatArrow@50..52 "=>"
+                    Whitespace@52..53 " "
+                    Block@53..58
+                      OpenBrace@53..54 "{"
+                      Whitespace@54..55 " "
+                      PathExpr@55..57
+                        PathSegment@55..57
+                          Ident@55..56 "e"
+                          Whitespace@56..57 " "
+                      CloseBrace@57..58 "}"
+                  Whitespace@58..59 " "
+                  MatchArm@59..78
+                    ListType@59..62
+                      OpenBracket@59..60 "["
+                      ListTypeItem@60..61
+                        PathType@60..61
+                          PathSegment@60..61
+                            Ident@60..61 "D"
+                      CloseBracket@61..62 "]"
+                    Whitespace@62..63 " "
+                    ListBinding@63..72
+                      OpenBracket@63..64 "["
+                      ListBindingItem@64..65
+                        NamedBinding@64..65
+                          Ident@64..65 "g"
+                      Comma@65..66 ","
+                      Whitespace@66..67 " "
+                      ListBindingItem@67..71
+                        Spread@67..70 "..."
+                        NamedBinding@70..71
+                          Ident@70..71 "h"
+                      CloseBracket@71..72 "]"
+                    Whitespace@72..73 " "
+                    FatArrow@73..75 "=>"
+                    Whitespace@75..76 " "
+                    PathExpr@76..78
+                      PathSegment@76..78
+                        Ident@76..77 "g"
+                        Whitespace@77..78 " "
+                  CloseBrace@78..79 "}"
+            "#]],
+            expect![],
+        );
+
+        // The binding of a union and of `_`, in an `inline match`
+        check(
+            expr,
+            "inline match x { A | B { a } => a, _ {} => 1 }",
+            expect![[r#"
+                MatchExpr@0..46
+                  Inline@0..6 "inline"
+                  Whitespace@6..7 " "
+                  Match@7..12 "match"
+                  Whitespace@12..13 " "
+                  PathExpr@13..15
+                    PathSegment@13..15
+                      Ident@13..14 "x"
+                      Whitespace@14..15 " "
+                  OpenBrace@15..16 "{"
+                  Whitespace@16..17 " "
+                  MatchArm@17..33
+                    UnionType@17..23
+                      PathType@17..19
+                        PathSegment@17..19
+                          Ident@17..18 "A"
+                          Whitespace@18..19 " "
+                      BitwiseOr@19..20 "|"
+                      Whitespace@20..21 " "
+                      PathType@21..23
+                        PathSegment@21..23
+                          Ident@21..22 "B"
+                          Whitespace@22..23 " "
+                    StructBinding@23..28
+                      OpenBrace@23..24 "{"
+                      Whitespace@24..25 " "
+                      StructFieldBinding@25..27
+                        Ident@25..26 "a"
+                        Whitespace@26..27 " "
+                      CloseBrace@27..28 "}"
+                    Whitespace@28..29 " "
+                    FatArrow@29..31 "=>"
+                    Whitespace@31..32 " "
+                    PathExpr@32..33
+                      PathSegment@32..33
+                        Ident@32..33 "a"
+                  Comma@33..34 ","
+                  Whitespace@34..35 " "
+                  MatchArm@35..45
+                    PathType@35..37
+                      PathSegment@35..37
+                        Ident@35..36 "_"
+                        Whitespace@36..37 " "
+                    StructBinding@37..39
+                      OpenBrace@37..38 "{"
+                      CloseBrace@38..39 "}"
+                    Whitespace@39..40 " "
+                    FatArrow@40..42 "=>"
+                    Whitespace@42..43 " "
+                    LiteralExpr@43..44
+                      Integer@43..44 "1"
+                    Whitespace@44..45 " "
+                  CloseBrace@45..46 "}"
+            "#]],
+            expect![],
+        );
+
+        // In a statement
+        check(
+            block,
+            "{ match x { A { a } => { return a; } _ => {} } x }",
+            expect![[r#"
+                Block@0..50
+                  OpenBrace@0..1 "{"
+                  Whitespace@1..2 " "
+                  MatchExpr@2..46
+                    Match@2..7 "match"
+                    Whitespace@7..8 " "
+                    PathExpr@8..10
+                      PathSegment@8..10
+                        Ident@8..9 "x"
+                        Whitespace@9..10 " "
+                    OpenBrace@10..11 "{"
+                    Whitespace@11..12 " "
+                    MatchArm@12..36
+                      PathType@12..14
+                        PathSegment@12..14
+                          Ident@12..13 "A"
+                          Whitespace@13..14 " "
+                      StructBinding@14..19
+                        OpenBrace@14..15 "{"
+                        Whitespace@15..16 " "
+                        StructFieldBinding@16..18
+                          Ident@16..17 "a"
+                          Whitespace@17..18 " "
+                        CloseBrace@18..19 "}"
+                      Whitespace@19..20 " "
+                      FatArrow@20..22 "=>"
+                      Whitespace@22..23 " "
+                      Block@23..36
+                        OpenBrace@23..24 "{"
+                        Whitespace@24..25 " "
+                        ReturnStmt@25..34
+                          Return@25..31 "return"
+                          Whitespace@31..32 " "
+                          PathExpr@32..33
+                            PathSegment@32..33
+                              Ident@32..33 "a"
+                          Semicolon@33..34 ";"
+                        Whitespace@34..35 " "
+                        CloseBrace@35..36 "}"
+                    Whitespace@36..37 " "
+                    MatchArm@37..44
+                      PathType@37..39
+                        PathSegment@37..39
+                          Ident@37..38 "_"
+                          Whitespace@38..39 " "
+                      FatArrow@39..41 "=>"
+                      Whitespace@41..42 " "
+                      Block@42..44
+                        OpenBrace@42..43 "{"
+                        CloseBrace@43..44 "}"
+                    Whitespace@44..45 " "
+                    CloseBrace@45..46 "}"
+                  Whitespace@46..47 " "
+                  PathExpr@47..49
+                    PathSegment@47..49
+                      Ident@47..48 "x"
+                      Whitespace@48..49 " "
+                  CloseBrace@49..50 "}"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_match_arm_binding_errors() {
+        // Only a destructure can follow the type, so a name isn't a binding
+        check(
+            expr,
+            "match x { A a => a }",
+            expect![[r#"
+                MatchExpr@0..20
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 " "
+                  MatchArm@10..14
+                    PathType@10..12
+                      PathSegment@10..12
+                        Ident@10..11 "A"
+                        Whitespace@11..12 " "
+                    PathExpr@12..14
+                      PathSegment@12..14
+                        Ident@12..13 "a"
+                        Whitespace@13..14 " "
+                  Error@14..15 "="
+                  Error@15..16 ">"
+                  Whitespace@16..17 " "
+                  Error@17..18 "a"
+                  Whitespace@18..19 " "
+                  CloseBrace@19..20 "}"
+            "#]],
+            expect![[r#"
+                Expected `=>`, found identifier at main.rue:1:13
+                Expected one of `,`, `}`, found `=` at main.rue:1:15"#]],
+        );
+
+        // A brace that doesn't look like a binding is a block that's missing its `=>`
+        check(
+            expr,
+            "match x { A { 1 } _ => 2 }",
+            expect![[r#"
+                MatchExpr@0..26
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 " "
+                  MatchArm@10..17
+                    PathType@10..12
+                      PathSegment@10..12
+                        Ident@10..11 "A"
+                        Whitespace@11..12 " "
+                    Block@12..17
+                      OpenBrace@12..13 "{"
+                      Whitespace@13..14 " "
+                      LiteralExpr@14..15
+                        Integer@14..15 "1"
+                      Whitespace@15..16 " "
+                      CloseBrace@16..17 "}"
+                  Whitespace@17..18 " "
+                  MatchArm@18..25
+                    PathType@18..20
+                      PathSegment@18..20
+                        Ident@18..19 "_"
+                        Whitespace@19..20 " "
+                    FatArrow@20..22 "=>"
+                    Whitespace@22..23 " "
+                    LiteralExpr@23..24
+                      Integer@23..24 "2"
+                    Whitespace@24..25 " "
+                  CloseBrace@25..26 "}"
+            "#]],
+            expect!["Expected `=>`, found `{` at main.rue:1:13"],
+        );
+
+        // A binding can't check anything, so it has no literals or types in it
+        check(
+            expr,
+            "match x { (A, B) (1, b) => b }",
+            expect![[r#"
+                MatchExpr@0..30
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 " "
+                  MatchArm@10..29
+                    PairType@10..16
+                      OpenParen@10..11 "("
+                      PathType@11..12
+                        PathSegment@11..12
+                          Ident@11..12 "A"
+                      Comma@12..13 ","
+                      Whitespace@13..14 " "
+                      PathType@14..15
+                        PathSegment@14..15
+                          Ident@14..15 "B"
+                      CloseParen@15..16 ")"
+                    Whitespace@16..17 " "
+                    PairBinding@17..23
+                      OpenParen@17..18 "("
+                      Error@18..19 "1"
+                      Comma@19..20 ","
+                      Whitespace@20..21 " "
+                      NamedBinding@21..22
+                        Ident@21..22 "b"
+                      CloseParen@22..23 ")"
+                    Whitespace@23..24 " "
+                    FatArrow@24..26 "=>"
+                    Whitespace@26..27 " "
+                    PathExpr@27..29
+                      PathSegment@27..29
+                        Ident@27..28 "b"
+                        Whitespace@28..29 " "
+                  CloseBrace@29..30 "}"
+            "#]],
+            expect!["Expected binding, found integer literal at main.rue:1:19"],
         );
     }
 

@@ -1,0 +1,158 @@
+// A binding is checked against the type the arm narrows the value to, like a `let` would be
+
+struct Circle {
+    kind = 1,
+    radius: Int,
+}
+
+struct Square {
+    kind = 2,
+    side: Int,
+}
+
+struct Point {
+    kind = 3,
+}
+
+type Shape = Circle | Square | Point;
+
+fn unknown_field(shape: Shape) -> Int {
+    match shape {
+        Circle { side } => side,
+        Square { side, radius } => side + radius,
+        Point => 0,
+    }
+}
+
+fn not_a_pair(shape: Shape) -> Int {
+    match shape {
+        Circle (first, rest) => first + rest,
+        Square [first, second] => first + second,
+        Point => 0,
+    }
+}
+
+fn not_a_struct(value: (Int, Int) | Int) -> Int {
+    match value {
+        (Int, Int) { side } => side,
+        Int (first, rest) => first + rest,
+    }
+}
+
+// A name can only be bound once in an arm, but each arm has its own bindings
+fn duplicate(value: (Int, Int) | Square) -> Int {
+    match value {
+        (Int, Int) (part, part) => part,
+        Square { side: part } => part,
+    }
+}
+
+// The bindings aren't in scope in the other arms, or after the match
+fn out_of_scope(shape: Shape) -> Int {
+    let value = match shape {
+        Circle { radius } => radius,
+        Square => radius,
+        Point => 0,
+    };
+
+    value + radius
+}
+
+// The arm's type is what's destructured, so the members of a union must all have the field at the
+// same place, as they must for a `let`
+fn union_arm(shape: Shape) -> Int {
+    match shape {
+        Circle | Square { radius } => radius,
+        Point => 0,
+    }
+}
+
+// The wildcard arm destructures what's left, which is two structs here
+fn wildcard(shape: Shape) -> Int {
+    match shape {
+        Point => 0,
+        _ { side } => side,
+    }
+}
+
+// The arms of an `inline match` don't narrow the value, so neither do their bindings
+fn inline_arm(shape: Shape) -> Int {
+    inline match shape {
+        Circle { radius } => radius,
+        Square (first, rest) => first + rest,
+        _ { side } => side,
+    }
+}
+
+// A binding doesn't make an arm match anything else, so it has no effect on which arms are
+// reachable, or on whether the match is exhaustive. An arm that's never taken sees a value that
+// doesn't exist, so its binding is an error like a field access is there.
+fn unreachable(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => radius,
+        Circle { radius: again } => again,
+        Square | Point => 0,
+        _ { kind } => kind,
+    }
+}
+
+fn not_exhaustive(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => radius,
+        Square { side } => side,
+    }
+}
+
+fn incompatible(shape: Shape) -> Int {
+    match shape {
+        Int { length } => length,
+        _ => 0,
+    }
+}
+
+// A binding that isn't used is reported, unless its name starts with an underscore
+fn unused(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => 1,
+        Square { side: _side } => 2,
+        Point => 0,
+    }
+}
+
+// The arms of a statement don't have values, with or without a binding
+fn statement_value(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => radius,
+        _ => {}
+    }
+
+    0
+}
+
+// The type of a binding's field is the narrowed one
+fn narrowed_type(shape: Shape) -> Int {
+    match shape {
+        Circle { kind } => {
+            let two: 2 = kind;
+            two
+        }
+        _ => 0,
+    }
+}
+
+fn main(shape: Shape, value: (Int, Int) | Int, other: (Int, Int) | Square) -> Int {
+    unknown_field(shape)
+        + not_a_pair(shape)
+        + not_a_struct(value)
+        + duplicate(other)
+        + out_of_scope(shape)
+        + union_arm(shape)
+        + wildcard(shape)
+        + inline_arm(shape)
+        + unreachable(shape)
+        + not_exhaustive(shape)
+        + incompatible(shape)
+        + unused(shape)
+        + statement_value(shape)
+        + narrowed_type(shape)
+}

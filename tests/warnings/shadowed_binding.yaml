@@ -18,3 +18,15 @@ diagnostics:
 - |-
   Binding `inner` is returned directly after it's declared at shadowed_binding.rue:17:9
     help: Return the value directly
+- |-
+  `first` shadows an earlier binding with the same name at shadowed_binding.rue:35:25
+    note: The earlier binding is declared here at shadowed_binding.rue:30:41
+- |-
+  `rest` shadows an earlier binding with the same name at shadowed_binding.rue:35:32
+    note: The earlier binding is declared here at shadowed_binding.rue:31:9
+- |-
+  `rest` shadows an earlier binding with the same name at shadowed_binding.rue:37:21
+    note: The earlier binding is declared here at shadowed_binding.rue:31:9
+- |-
+  `value` shadows an earlier binding with the same name at shadowed_binding.rue:45:21
+    note: The earlier binding is declared here at shadowed_binding.rue:43:21

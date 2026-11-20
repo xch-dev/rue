@@ -1,7 +1,7 @@
 use rue_ast::{
     AstBinding, AstConstantItem, AstEnumItem, AstEnumVariant, AstFunctionItem,
-    AstFunctionParameter, AstGenericParameters, AstLetStmt, AstModuleItem, AstNode, AstStructField,
-    AstStructItem, AstTypeAliasItem,
+    AstFunctionParameter, AstGenericParameters, AstLetStmt, AstMatchArm, AstModuleItem, AstNode,
+    AstStructField, AstStructItem, AstTypeAliasItem,
 };
 use rue_diagnostic::{Lint, Note, Source};
 use rue_parser::SyntaxToken;
@@ -155,6 +155,14 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 }
             } else if let Some(stmt) = AstLetStmt::cast(node.clone()) {
                 for name in stmt
+                    .binding()
+                    .iter()
+                    .flat_map(|binding| binding_names(binding, false))
+                {
+                    check_name(cx, source, Some(name), Case::Snake, "Binding");
+                }
+            } else if let Some(arm) = AstMatchArm::cast(node.clone()) {
+                for name in arm
                     .binding()
                     .iter()
                     .flat_map(|binding| binding_names(binding, false))

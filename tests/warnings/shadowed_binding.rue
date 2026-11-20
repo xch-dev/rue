@@ -24,3 +24,33 @@ fn main(value: Int) -> Int {
 
     first + rest + closure(value) + scoped + separate
 }
+
+// An arm's bindings shadow what's in scope where the match is, including the value being matched
+// on, but not the bindings of the other arms
+export fn arms(value: (Int, Int) | Int, first: Int) -> Int {
+    let rest = first;
+
+    rest
+        + match value {
+            (Int, Int) (first, rest) => first + rest,
+            Int => {
+                let rest = value;
+                rest + 1
+            }
+        }
+}
+
+export fn scrutinee(value: (Int, Int) | Int) -> Int {
+    match value {
+        (Int, Int) (value, _rest) => value,
+        Int => value,
+    }
+}
+
+// The bindings of each arm are separate, and a name starting with `_` isn't reported
+export fn separate_arms(value: (Int, Int) | [Int, Int, Int]) -> Int {
+    match value {
+        (Int, Int) (a, _value) => a,
+        [Int, Int, Int] [a, _value, _] => a,
+    }
+}

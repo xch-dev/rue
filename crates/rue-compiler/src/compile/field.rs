@@ -21,6 +21,22 @@ pub enum FieldResult {
     Error,
 }
 
+/// The type that declares the fields of a value of the given type, which is what a reference to
+/// one of its fields is recorded against, so that it's found from the field's declaration. A struct
+/// that's been narrowed or given generic arguments is a copy of the one that was declared, and so
+/// is each member of a union of them.
+pub fn field_container(ctx: &mut Compiler, ty: TypeId) -> TypeId {
+    let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+
+    match ctx.ty(semantic) {
+        Type::Struct(ty) => ty.semantic,
+        Type::Union(_) => rue_types::extract_structs(ctx.types_mut(), semantic)
+            .and_then(|structs| structs.first().map(|ty| ty.semantic))
+            .unwrap_or(ty),
+        _ => ty,
+    }
+}
+
 pub fn compile_pair_fields(
     ctx: &mut Compiler,
     node: &impl GetTextRange,

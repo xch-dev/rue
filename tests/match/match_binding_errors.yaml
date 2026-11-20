@@ -1,0 +1,30 @@
+diagnostics:
+- Unknown field `side` on type `Circle` at match_binding_errors.rue:21:18
+- Unknown field `radius` on type `Square` at match_binding_errors.rue:22:24
+- Cannot destructure type `Circle` into a pair at match_binding_errors.rue:29:16
+- Cannot destructure type `Square` into a pair at match_binding_errors.rue:30:17
+- Unknown field `side` on type `(Int, Int)` at match_binding_errors.rue:37:22
+- Cannot destructure type `Int` into a pair at match_binding_errors.rue:38:13
+- Duplicate symbol `part` found in scope at match_binding_errors.rue:45:27
+- Undeclared symbol `radius` at match_binding_errors.rue:54:19
+- Undeclared symbol `radius` at match_binding_errors.rue:58:13
+- Unknown field `radius` on type `Circle | Square` at match_binding_errors.rue:65:27
+- Unknown field `side` on type `Circle | Square` at match_binding_errors.rue:74:13
+- |-
+  Unknown field `radius` on type `Shape` at match_binding_errors.rue:81:18
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Circle` before it's destructured
+- Cannot assign `(Int, nil) | (Int, nil) | nil` to `Int` without a type guard, since the value isn't always a valid `Int` at match_binding_errors.rue:82:39
+- Unknown field `side` on type `Shape` at match_binding_errors.rue:83:13
+- Unreachable match arm, since the earlier arms handle every value it matches at match_binding_errors.rue:93:9
+- Unknown field `radius` on type `Never` at match_binding_errors.rue:93:18
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at match_binding_errors.rue:95:9
+    note: This arm handles every value that's left at match_binding_errors.rue:94:9
+- Unknown field `kind` on type `Never` at match_binding_errors.rue:95:13
+- Match on `Shape` is not exhaustive, since it doesn't handle `Point` at match_binding_errors.rue:100:11
+- Cannot type guard from `Shape` to `Int`, since they do not overlap at match_binding_errors.rue:108:9
+- Unknown field `length` on type `Never` at match_binding_errors.rue:108:15
+- Unused binding `radius` at match_binding_errors.rue:116:18
+- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_binding_errors.rue:125:30
+- Binding `two` is returned directly after it's declared at match_binding_errors.rue:136:13
+- Cannot assign `1` to `2`, since they are incompatible at match_binding_errors.rue:136:26

@@ -433,6 +433,184 @@ fn main(point: Point) -> Int {
 }
 
 #[test]
+fn test_match_arm_binding_field() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { $0x, y } => x + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let x: Int
+            definitions:
+            main.rue:9:26-9:27
+            references:
+            main.rue:9:16-9:17
+            main.rue:9:26-9:27
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_renamed_field() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x$0: px, y } => px + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            x: Int
+            definitions:
+            main.rue:2:4-2:5
+            references:
+            main.rue:2:4-2:5
+            main.rue:9:16-9:17
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_renamed_binding() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x: px, y } => $0px + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let px: Int
+            definitions:
+            main.rue:9:19-9:21
+            references:
+            main.rue:9:19-9:21
+            main.rue:9:30-9:32
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_type() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Poi$0nt { x, y } => x + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+            definitions:
+            main.rue:1:7-1:12
+            references:
+            main.rue:1:7-1:12
+            main.rue:6:15-6:20
+            main.rue:9:8-9:13
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_pair_and_list_bindings() {
+    check(
+        r#"
+fn main(value: (Int, Int) | List<Bytes>) -> Int {
+    match value {
+        (Int, Int) (first, rest) => first + rest,
+        nil => 0,
+        (Bytes, List<Bytes>) [_head, ...tail] => main($0tail),
+    }
+}
+"#,
+        expect![[r#"
+            hover:
+            let tail: (Bytes, List<Bytes>)
+            definitions:
+            main.rue:5:40-5:44
+            references:
+            main.rue:5:40-5:44
+            main.rue:5:54-5:58
+        "#]],
+    );
+}
+
+#[test]
+fn test_field_access_on_narrowed_value() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point => value.$0x,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            x: Int
+            definitions:
+            main.rue:2:4-2:5
+            references:
+            main.rue:2:4-2:5
+            main.rue:9:23-9:24
+        "#]],
+    );
+}
+
+#[test]
+fn test_struct_destructuring_renamed_field_of_narrowed_value() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    if value is Point {
+        let { x$0: px } = value;
+        px
+    } else { 0 }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            x: Int
+            definitions:
+            main.rue:2:4-2:5
+            references:
+            main.rue:2:4-2:5
+            main.rue:8:14-8:15
+        "#]],
+    );
+}
+
+#[test]
 fn test_generic_function_body() {
     check(
         r#"

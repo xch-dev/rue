@@ -2022,3 +2022,80 @@ fn assert_message_keeps_its_comments() {
         output
     );
 }
+
+#[test]
+fn match_arm_bindings() {
+    check(
+        "fn main(x: A | (Int, Int) | List<Int>) -> Int {\n    match x { A{a,b:c,...rest,}=>a+c, (Int,Int)(first,rest,) => { first }, nil => 0,\n (Int, List<Int>)  [ first , ...rest ]=>first }\n}\n",
+        expect![[r#"
+            fn main(x: A | (Int, Int) | List<Int>) -> Int {
+                match x {
+                    A { a, b: c, ...rest } => a + c,
+                    (Int, Int) (first, rest) => { first }
+                    nil => 0,
+                    (Int, List<Int>) [first, ...rest] => first,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_arm_binding_comments() {
+    check(
+        "fn main(x: A | nil) -> Int {\n    match x {\n        A /* type */ { a, /* field */ b } /* binding */ => a + b, // arm\n        // own line\n        nil {} => 0,\n    }\n}\n",
+        expect![[r#"
+            fn main(x: A | nil) -> Int {
+                match x {
+                    A /* type */ { a, /* field */ b } /* binding */ => a + b, // arm
+                    // own line
+                    nil {} => 0,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn long_match_arm_bindings_are_wrapped() {
+    check(
+        "fn main(x: Shape) -> Int {\n    inline match x { Shape::Rectangle { width_of_the_rectangle, height_of_the_rectangle, depth_of_the_rectangle: renamed_depth } => width_of_the_rectangle, _ => 0 }\n}\n",
+        expect![[r#"
+            fn main(x: Shape) -> Int {
+                inline match x {
+                    Shape::Rectangle {
+                        width_of_the_rectangle,
+                        height_of_the_rectangle,
+                        depth_of_the_rectangle: renamed_depth,
+                    } => width_of_the_rectangle,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_statement_arm_bindings() {
+    check(
+        "fn main(x: A | nil) -> Int {\n    match x { A { a } => { return a; }, nil => {} }\n    match x { A { a } => if a > 1 { 1 } else { 2 }, nil => 0 }\n}\n",
+        expect![[r#"
+            fn main(x: A | nil) -> Int {
+                match x {
+                    A { a } => {
+                        return a;
+                    }
+                    nil => {}
+                }
+                match x {
+                    A { a } => if a > 1 {
+                        1
+                    } else {
+                        2
+                    }
+                    nil => 0,
+                }
+            }
+        "#]],
+    );
+}

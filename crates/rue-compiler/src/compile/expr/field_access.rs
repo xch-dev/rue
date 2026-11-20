@@ -6,7 +6,7 @@ use rue_hir::Value;
 
 use crate::{
     Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItemKind, compile_expr,
-    compile_field,
+    compile_field, field_container,
 };
 
 pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr) -> Value {
@@ -37,10 +37,11 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
 
     match compile_field(ctx, expr.clone(), &Field::Named(name.text())) {
         FieldResult::Value(value) => {
+            let container = field_container(ctx, expr.ty);
             ctx.add_syntax(
                 SyntaxItemKind::FieldReference(SyntaxField {
                     name: name.text().to_string(),
-                    container: expr.ty,
+                    container,
                     ty: value.ty,
                 }),
                 name.text_range(),

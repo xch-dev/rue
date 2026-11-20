@@ -7,7 +7,7 @@ use rue_hir::{BindingSymbol, Declaration, Hir, Symbol, SymbolId, SymbolPath, Val
 
 use crate::{
     Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItemKind, compile_field,
-    create_binding, create_binding_for_identifier,
+    create_binding, create_binding_for_identifier, field_container,
 };
 
 pub fn create_struct_binding(
@@ -94,10 +94,11 @@ pub fn create_struct_binding(
 
         // Without a binding of its own, the name is the field and the binding that's declared for
         // it. The binding is recorded first, so that it's what navigation is about
+        let container = field_container(ctx, ty);
         ctx.add_syntax(
             SyntaxItemKind::FieldReference(SyntaxField {
                 name: name.text().to_string(),
-                container: ty,
+                container,
                 ty: field_type,
             }),
             name.text_range(),
