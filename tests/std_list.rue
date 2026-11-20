@@ -27,3 +27,14 @@ test fn contains_items() {
     assert !contains(runtime([] as List<Bytes>), "a");
     assert contains(runtime(["", "x"]), "");
 }
+
+// `reverse` is an `inline fn`, so as a value it's a closure that calls the function it's inlined to
+test fn reverse_as_a_value() {
+    let f = reverse;
+    assert deep_equal(f(runtime([1, 2])), [2, 1]);
+}
+
+// The functions are also in `std::list`
+test fn qualified() {
+    assert std::list::length(runtime([1, 2, 3])) == 3;
+}
