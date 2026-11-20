@@ -250,11 +250,8 @@ fn symbol(
 
     // A node can end with the whitespace and comments after its last token, which aren't part of
     // the item
-    let end = node
-        .descendants_with_tokens()
-        .filter_map(NodeOrToken::into_token)
-        .filter(|token| !token.kind().is_trivia())
-        .last()
+    let end = std::iter::successors(node.last_token(), SyntaxToken::prev_token)
+        .find(|token| !token.kind().is_trivia())
         .map_or(node.text_range().end(), |token| token.text_range().end());
 
     let item = TextRange::new(node.text_range().start(), end);
@@ -278,17 +275,19 @@ fn type_detail(ty: Option<AstType>) -> Option<String> {
 
 /// The text of a node without its comments, on one line.
 fn code(node: &SyntaxNode) -> String {
-    let text = node
+    let mut text = String::new();
+
+    for token in node
         .descendants_with_tokens()
         .filter_map(NodeOrToken::into_token)
-        .filter(|token| {
-            !matches!(
-                token.kind(),
-                SyntaxKind::LineComment | SyntaxKind::BlockComment
-            )
-        })
-        .map(|token| token.text().to_string())
-        .collect::<String>();
+    {
+        if !matches!(
+            token.kind(),
+            SyntaxKind::LineComment | SyntaxKind::BlockComment
+        ) {
+            text.push_str(token.text());
+        }
+    }
 
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
