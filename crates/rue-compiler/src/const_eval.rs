@@ -6,13 +6,13 @@ use clvmr::{Allocator, ChiaDialect, ClvmFlags, NodePtr, SExp, run_program};
 use id_arena::Arena;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    DependencyGraph, Environment, FunctionKind, FunctionSymbol, Hir, HirId, Lowerer,
-    MAX_LOWERING_DEPTH, Symbol, SymbolId, has_reachable_unresolved,
+    DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol, SymbolId,
+    has_reachable_unresolved,
 };
 use rue_lir::{CLVM_FLAGS, CodegenOptions, codegen, optimize};
 use rue_options::CompilerOptions;
 
-use crate::Compiler;
+use crate::{Compiler, entrypoint::synthetic_function};
 
 pub(crate) fn evaluate_const_exprs(ctx: &mut Compiler) {
     if ctx.has_errors() {
@@ -176,20 +176,8 @@ fn finish_const(
 
 /// A function that returns the value of a const expression, which it's evaluated as.
 fn const_root(ctx: &mut Compiler, value: HirId) -> SymbolId {
-    let unresolved = ctx.builtins().unresolved.clone();
-    let scope = ctx.builtins().scope;
-
-    ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
-        name: None,
-        ty: unresolved.ty,
-        scope,
-        vars: Vec::new(),
-        parameters: Vec::new(),
-        nil_terminated: true,
-        return_type: unresolved.ty,
-        body: value,
-        kind: FunctionKind::Sequential,
-    }))
+    let unresolved = ctx.builtins().unresolved.ty;
+    synthetic_function(ctx, None, unresolved, Vec::new(), true, value)
 }
 
 /// Const expressions are always optimized, regardless of the options they're compiled with.

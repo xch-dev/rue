@@ -1,0 +1,11 @@
+// solution: ()
+
+// A constant `main` is wrapped in a function named after it, which evaluates to its value
+#![allow(naming_convention)]
+
+fn check(x: Int) -> Int {
+    assert x > 1;
+    x
+}
+
+const main: Int = check(1);

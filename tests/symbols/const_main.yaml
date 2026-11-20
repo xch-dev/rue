@@ -1,0 +1,6 @@
+program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 ()) (q 16 1 (q . 1)) (q 8)) 1) ()))
+debug_program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 ()) (q 16 1 (q . 1)) (q 8 (q . "assertion failed at const_main.rue:6:5"))) 1) ()))
+output: "2"
+runtime_cost: 2003
+byte_cost: 708000
+total_cost: 710003

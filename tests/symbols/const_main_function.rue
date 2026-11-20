@@ -1,0 +1,10 @@
+// A constant `main` of a function type behaves like that function as `main`, called with the
+// solution as its arguments, rather than evaluating to the function's code
+#![allow(naming_convention)]
+
+fn f(x: Int) -> Int {
+    assert x > 0;
+    x * x + 1
+}
+
+const main: fn(x: Int) -> Int = f;

@@ -1,0 +1,7 @@
+program: (a (q 16 (a 2 5) 11) (c (q 2 (i (> 1 ()) (q 16 (* 1 1) (q . 1)) (q 8)) 1) 1))
+debug_program: (a (q 16 (a 2 5) 11) (c (q 2 (i (> 1 ()) (q 16 (* 1 1) (q . 1)) (q 8 (q . "assertion failed at const_main_lambda.rue:6:5"))) 1) 1))
+solution: (3 4)
+output: "14"
+runtime_cost: 3891
+byte_cost: 828000
+total_cost: 831891

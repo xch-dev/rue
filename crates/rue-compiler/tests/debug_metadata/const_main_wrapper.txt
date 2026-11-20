@@ -1,0 +1,29 @@
+===== debug =====
+program: (a (q 2 2 (c 5 (c 11 ()))) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q 16 2 5) (q 8 (q . "assertion failed at const_main_wrapper.rue:8:5"))) 1)) (c (q . 1) ()))) 1))
+sidecar: 1787 bytes
+files:
+  const_main_wrapper.rue
+functions:
+  0: main (_ . (x@5: integer . (y@11: integer . _)))
+  1: <lambda> (x@2: integer . (y@5: integer . _))
+nodes:
+  const_main_wrapper.rue:12:41-12:44  (a (q 2 2 (c 5 (c 11 ()))) (c (c (q . 2) (c (c (q . 1) (q...
+    const_main_wrapper.rue:12:41-12:44 fn main  (a 2 (c 5 (c 11 ())))
+    const_main_wrapper.rue:7:40-10:2  (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q 16 2 5) (q 8 ...
+      const_main_wrapper.rue:8:5-8:18 fn <lambda>  (a (i (> 2 5) (q 16 2 5) (q 8 (q . "assertion failed at c...
+        const_main_wrapper.rue:8:12-8:17  (> 2 5)
+        const_main_wrapper.rue:9:5-9:10  (+ 2 5)
+===== release =====
+program: (a (q 2 (i (> 2 5) (q 16 2 5) (q 8)) 1) (c 2 (c 5 ())))
+sidecar: 1205 bytes
+files:
+  const_main_wrapper.rue
+functions:
+  0: main (x@2: integer . (y@5: integer . _))
+  1: <lambda> (x@2: integer . (y@5: integer . _))
+nodes:
+  const_main_wrapper.rue:12:41-12:44 fn main  (a (q 2 (i (> 2 5) (q 16 2 5) (q 8)) 1) (c 2 (c 5 ())))
+    const_main_wrapper.rue:7:40-10:2  (q 2 (i (> 2 5) (q 16 2 5) (q 8)) 1)
+      const_main_wrapper.rue:8:5-8:18 fn <lambda>  (a (i (> 2 5) (q 16 2 5) (q 8)) 1)
+        const_main_wrapper.rue:8:12-8:17  (> 2 5)
+        const_main_wrapper.rue:9:5-9:10  (+ 2 5)

@@ -1,0 +1,10 @@
+// A constant `main` is the program, which evaluates to its value like a `main` function with no
+// parameters, so the functions it calls are bound in the program
+#![allow(naming_convention)]
+
+fn chk(x: Int) -> Int {
+    assert x > 0;
+    x + 1
+}
+
+const main: Int = chk(1);

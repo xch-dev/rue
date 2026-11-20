@@ -15,6 +15,7 @@ use crate::{Compiler, File, FileTree};
 /// A source file that has been compiled, without the standard library.
 pub(crate) struct Compiled {
     pub ctx: Compiler,
+    pub tree: FileTree,
     module: SymbolId,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -39,12 +40,14 @@ pub(crate) fn compile_with(source: &str, configure: impl FnOnce(&mut CompilerOpt
     );
     let module = file.module;
 
-    FileTree::File(file).compile(&mut ctx);
+    let tree = FileTree::File(file);
+    tree.compile(&mut ctx);
 
     let diagnostics = ctx.take_diagnostics();
 
     Compiled {
         ctx,
+        tree,
         module,
         diagnostics,
     }

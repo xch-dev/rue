@@ -3,6 +3,7 @@ mod compile;
 mod compiler;
 mod const_eval;
 pub mod debug_metadata;
+mod entrypoint;
 mod file;
 mod syntax_map;
 
@@ -20,6 +21,8 @@ mod cancel_tests;
 mod comparison_limit_tests;
 #[cfg(test)]
 mod const_eval_tests;
+#[cfg(test)]
+mod entrypoint_tests;
 #[cfg(test)]
 mod hir_type_tests;
 #[cfg(test)]
