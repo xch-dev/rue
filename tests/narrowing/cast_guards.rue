@@ -1,0 +1,52 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// The guard checks the cast value's length, but `x` is still an `Int`, so `+` adds
+test fn int_length(x: Int) -> Int {
+    if (x as Bytes) is Bytes32 {
+        return x + x;
+    }
+    0
+}
+
+// Once the length is known, `x` can be cast to `Bytes32` without another guard
+test fn int_length_cast(x: Int) -> Bytes32 {
+    if (x as Bytes) is Bytes32 {
+        return x as Bytes32;
+    }
+    sha256(x as Bytes)
+}
+
+// Guarding the value directly keeps its semantic as well
+test fn int_length_direct(x: Int) -> Int {
+    if x is Bytes32 {
+        return x + 1;
+    }
+    0
+}
+
+// A pair checked against a struct takes on its structure, but isn't an instance of it
+test fn pair_struct(p: (Int, (Int, nil)) | nil) -> Int {
+    if (p as Point | nil) is Point {
+        return p.first + (p as Point).y;
+    }
+    0
+}
+
+// The rest of a merged guard sees the structure as well
+test fn pair_struct_and(p: (Int, (Int, nil)) | nil) -> Int {
+    if (p as Point | nil) is Point && p.first > 0 {
+        return (p as Point).y;
+    }
+    0
+}
+
+// An `Atom` has no semantic of its own, so like `Any` it takes on the guard's
+test fn atom_bytes32(a: Atom) -> Bytes32 {
+    if a is Bytes32 {
+        return a;
+    }
+    sha256(a as Bytes)
+}

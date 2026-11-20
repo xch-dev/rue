@@ -1,0 +1,49 @@
+tests:
+- name: int_length
+  program: (a (i (= (strlen 2) (q . 32)) (q 16 2 2) (q)) 1)
+  debug_program: (a (i (= (strlen 2) (q . 32)) (q 16 2 2) (q)) 1)
+  solution: (0x0100000000000000000000000000000000000000000000000000000000000000)
+  output: "0x0200000000000000000000000000000000000000000000000000000000000000"
+  runtime_cost: 1961
+  byte_cost: 444000
+  total_cost: 445961
+- name: int_length_cast
+  program: (a (i (= (strlen 2) (q . 32)) (q . 2) (q 11 2)) 1)
+  debug_program: (a (i (= (strlen 2) (q . 32)) (q . 2) (q 11 2)) 1)
+  solution: (0x0100000000000000000000000000000000000000000000000000000000000000)
+  output: "0x0100000000000000000000000000000000000000000000000000000000000000"
+  runtime_cost: 661
+  byte_cost: 420000
+  total_cost: 420661
+- name: int_length_direct
+  program: (a (i (= (strlen 2) (q . 32)) (q 16 2 (q . 1)) (q)) 1)
+  debug_program: (a (i (= (strlen 2) (q . 32)) (q 16 2 (q . 1)) (q)) 1)
+  solution: (0x0100000000000000000000000000000000000000000000000000000000000000)
+  output: "0x0100000000000000000000000000000000000000000000000000000000000001"
+  runtime_cost: 1840
+  byte_cost: 468000
+  total_cost: 469840
+- name: pair_struct
+  program: (a (i 2 (q 16 4 10) (q)) 1)
+  debug_program: (a (i (not (not 2)) (q 16 (f 2) (f (r 2))) (q)) 1)
+  solution: ((1 2))
+  output: "3"
+  runtime_cost: 1121
+  byte_cost: 300000
+  total_cost: 301121
+- name: pair_struct_and
+  program: (a (i (a (i 2 (q 21 4 ()) (q)) 1) (q . 10) (q)) 1)
+  debug_program: (a (i (a (i (not (not 2)) (q 2 (i (> (f 2) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 5 (r 2)) (q)) 1)
+  solution: ((1 2))
+  output: "2"
+  runtime_cost: 1119
+  byte_cost: 516000
+  total_cost: 517119
+- name: atom_bytes32
+  program: (a (i (= (strlen 2) (q . 32)) (q . 2) (q 11 2)) 1)
+  debug_program: (a (i (= (strlen 2) (q . 32)) (q . 2) (q 11 2)) 1)
+  solution: (0x0100000000000000000000000000000000000000000000000000000000000000)
+  output: "0x0100000000000000000000000000000000000000000000000000000000000000"
+  runtime_cost: 661
+  byte_cost: 420000
+  total_cost: 420661

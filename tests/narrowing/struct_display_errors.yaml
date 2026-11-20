@@ -33,7 +33,7 @@ diagnostics:
 - Unused struct `Node` at struct_display_errors.rue:83:8
 - Unused function `unchanged` at struct_display_errors.rue:89:4
 - Cannot assign `Box<Int | nil>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:89:44
-- "Cannot assign `Box { value: Bytes32 }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:91:16"
+- "Cannot assign `Box { value: Int }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:91:16"
 - Unused function `recursive` at struct_display_errors.rue:97:4
 - Cannot assign `Node<Int>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:97:39
 - "Cannot assign `Node { value: Int, next: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:99:16"

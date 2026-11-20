@@ -129,7 +129,16 @@ impl fmt::Display for Atom {
                     let mut allocator = Allocator::new();
                     let ptr = allocator.new_atom(value).unwrap();
                     let bigint = allocator.number(ptr);
-                    write!(f, "{bigint}")
+                    let canonical = allocator.new_number(bigint.clone()).unwrap();
+
+                    // A value that isn't the shortest encoding of its number, such as an `Int`
+                    // checked against `0x0001`, is a different atom from the number, so it's
+                    // displayed as bytes
+                    if allocator.atom(canonical).as_ref() == value.as_ref() {
+                        write!(f, "{bigint}")
+                    } else {
+                        write!(f, "0x{}", hex::encode(value))
+                    }
                 }
             },
             AtomSemantic::PublicKey => write!(f, "PublicKey"),

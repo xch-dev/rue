@@ -255,9 +255,9 @@ mod tests {
         let ty = ctx.replace(from, b.bytes32, &[TypePath::First]);
         assert_eq!(ctx.name(ty), "(Bytes32, Int)");
 
-        // The value at a generic position can be narrowed as well
+        // The value at a generic position can be narrowed as well, keeping its semantic
         let ty = ctx.replace(from, b.nil, &[TypePath::Rest]);
-        assert_eq!(ctx.name(ty), "(Bytes32 | nil, nil)");
+        assert_eq!(ctx.name(ty), "(Bytes32 | nil, 0)");
     }
 
     #[test]
