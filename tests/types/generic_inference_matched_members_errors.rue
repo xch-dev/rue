@@ -26,3 +26,23 @@ fn assign_through_the_revisited_alias(function: Recursive) -> Int {
     let _inline: Inline = function;
     1
 }
+
+fn make_both<T>() -> (fn(x: T) -> nil, fn(x: nil) -> T) {
+    unchecked_cast(nil)
+}
+
+type TakesInt = fn(x: Int) -> nil;
+type TakesBytes32 = fn(x: Bytes32) -> nil;
+type Increment = fn(x: Int) -> Int;
+type Discard = fn(x: Int) -> nil;
+type GivesIncrement = fn(x: nil) -> Increment;
+type GivesDiscard = fn(x: nil) -> Discard;
+
+// The first union gives `T ≥ Int` or `T ≥ Bytes32`, and the second `T ≤ Increment` or
+// `T ≤ Discard`, and every one of the four pairs fails, so no pick of a member of each holds.
+// Each member conflicts with every member of the other union, which a pair across two unions
+// rules out by charging both of its members (#362's step 13g)
+fn members_of_two_unions_conflict() -> Int {
+    let _both: fn() -> (TakesInt | TakesBytes32, GivesIncrement | GivesDiscard) = make_both;
+    1
+}
