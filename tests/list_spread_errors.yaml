@@ -3,3 +3,4 @@ diagnostics:
 - Cannot assign `(Int, Int)` to `List<Any>` without a type guard, since the value isn't always a valid `List<Any>` at list_spread_errors.rue:6:26
 - Cannot assign `List<Bytes | 1>` to `List<Int>` without a cast, since they are semantically different at list_spread_errors.rue:11:50
 - Cannot assign `("name", (true, List<Int | 3>))` to `List<Int>` without a cast, since they are semantically different at list_spread_errors.rue:16:52
+- Cannot assign `List<Int | Bytes | true | false>` to `List<Int>` without a cast, since they are semantically different at list_spread_errors.rue:21:75

@@ -136,3 +136,28 @@ test fn items_before_the_first_spread() -> Bytes {
     assert deep_equal(list.rest, [1, 2, 3]);
     list.first
 }
+
+// An item after a spread that gives the generic nothing infers it for a later lambda
+test fn lambda_after_an_item_in_the_tail() -> Int {
+    let functions = same_list([...[], fn(value: Int) => value + 1, fn(value) => value * 2]);
+    apply_all(functions, 5)
+}
+
+// A lambda after the spread is expected to be what's left of the expected type after the items
+// before the spread, rather than its first item
+test fn expected_type_after_leading_items() -> Int {
+    let increments: List<fn(value: Int) -> Int> = runtime([fn(value: Int) => value + 1]);
+    let list: (Bytes, List<fn(value: Int) -> Int>) = ["a", ...increments, fn(value) => value * 2];
+    apply_all(list.rest, 5)
+}
+
+// A spread call with nothing to infer its generic from gets it from the items before it
+test fn spread_call_inferred_from_earlier_items() {
+    let names = runtime(["a"]);
+    let list = same_list([...names, ...empty_list()]);
+    assert deep_equal(list, ["a"]);
+}
+
+fn empty_list<T>() -> List<T> {
+    nil
+}

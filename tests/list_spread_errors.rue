@@ -16,3 +16,8 @@ export fn names(names: List<Bytes>) -> List<Int> {
 export fn leading(numbers: List<Int>) -> List<Int> {
     ["name", true, ...numbers, 3]
 }
+
+// Every spread's item types are part of the list's type, not only the first one's
+export fn later(a: List<Int>, b: List<Bytes>, c: List<Bool>) -> List<Int> {
+    [...a, ...b, ...c]
+}

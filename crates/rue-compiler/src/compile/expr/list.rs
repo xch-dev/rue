@@ -6,7 +6,7 @@ use rue_types::{Pair, Type, TypeId, Union};
 use super::call_inference::{
     compile_refined_element, holds_other_pairs, list_of, pair_parts, record_element,
 };
-use crate::{Compiler, compile_expr};
+use crate::Compiler;
 
 /// Compiles a list. Its type has a pair for each item, with the type of the last item as the rest
 /// if it's spread, such as `(A, (B, Rest))` for `[a, b, ...rest]`.
@@ -30,8 +30,8 @@ pub fn compile_list_expr(
 
     let len = list.items().count();
 
-    // The first item that's spread before the last one, which the rest of the list is built in
-    // front of at runtime from
+    // The first item that's spread before the last one. From there on, the list is built at
+    // runtime (see `Tail`)
     let tail_start = list
         .items()
         .take(len.saturating_sub(1))
@@ -46,6 +46,8 @@ pub fn compile_list_expr(
         let is_spread = item.spread().is_some();
 
         if tail_start == Some(i) {
+            // The tail's items are expected to be the first of the expected type's pairs, as an
+            // item before it is, so the same applies to them
             hint |= expected_type.is_some_and(|ty| holds_other_pairs(ctx, ty));
             tail = Some(Tail::new(ctx, expected_type));
         }
@@ -171,8 +173,7 @@ impl Tail {
         };
 
         if is_spread {
-            let expected = self.expected;
-            let value = ctx.with_expected_type_hint(hint, |ctx| compile_expr(ctx, expr, expected));
+            let (value, expected) = compile_refined_element(ctx, expr, self.expected, hint);
             record_element(ctx, value.ty, expected);
 
             let any = ctx.builtins().types.permissive_any;

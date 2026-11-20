@@ -111,3 +111,24 @@ tests:
   runtime_cost: 12025
   byte_cost: 4524000
   total_cost: 4536025
+- name: lambda_after_an_item_in_the_tail
+  program: (a (q 2 2 (c 2 (c (c (q 16 2 (q . 1)) (c (q 18 2 (q . 2)) ())) (q . 5)))) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (a 9 (c 7 ()))))) (q . 7)) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 (c 2 (q . 5)))) (c (a 6 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) ()))) 1)) (c (c (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (a (f 5) (c 7 ()))))) (q . 7)) 1) (q . 1)) ()))
+  output: "12"
+  runtime_cost: 4726
+  byte_cost: 1404000
+  total_cost: 1408726
+- name: expected_type_after_leading_items
+  program: (a (q 2 10 (c 10 (c (a 4 (c 4 (c (a 14 (c (q 16 2 (q . 1)) ())) (c (q 18 2 (q . 2)) ())))) (q . 5)))) (c (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (a 9 (c 7 ()))))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 43 (c 43 (c (r 2) (q . 5)))) (c (c (q . 97) (a 9 (c 9 (c 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) ()))))) 1)) (c (a 14 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ())) 1)) (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (c (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (a (f 5) (c 7 ()))))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at list_spreads.rue:5:5"))) 1))) ()))
+  output: "12"
+  runtime_cost: 6996
+  byte_cost: 3228000
+  total_cost: 3234996
+- name: spread_call_inferred_from_earlier_items
+  program: (a (q 2 (i (a 4 (c 4 (c (q 97) (a 10 (c 10 (c (a 14 (q 97)) ())))))) (q) (q 8)) 1) (c (c (q 2 (i (l 7) (q 2 (i (l 5) (q 2 (i (a 2 (c 2 (c 9 11))) (q 2 2 (c 2 (c 13 15))) (q)) 1) (q)) 1) (q 2 (i (l 5) (q) (q 9 7 5)) 1)) 1) (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (l 1) (q) (q 32 1)) 1)) 1) (q . 1) (q 8)) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (a 19 (c 19 (c (c (q . 97) ()) 2))) (q) (q 8 (q . "assertion failed at list_spreads.rue:158:5"))) 1) (c (a 125 (a 21 (c 21 (c 2 (a 45 ()))))) 1)) (c (a 46 (c (q . 97) ())) 1)) (c (c (q 2 (i (not (l 7)) (q 2 (i (not (l 5)) (q 9 7 5) (q)) 1) (q 2 (i (not (l 5)) (q) (q 2 (i (a 2 (c 2 (c (f 5) (f 7)))) (q 2 2 (c 2 (c (r 5) (r 7)))) (q)) 1)) 1)) 1) (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (c (q) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) (q)) 1)) 1) (q . 1) (q 8 (q . "assertion failed at list_spreads.rue:5:5"))) 1) (q . 1))))) ()))
+  output: ()
+  runtime_cost: 6221
+  byte_cost: 4092000
+  total_cost: 4098221
