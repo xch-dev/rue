@@ -216,9 +216,10 @@ fn prepend(ctx: &mut Compiler, pending: &mut Vec<HirId>, rest: HirId) -> HirId {
 }
 
 /// The types of the items of a list type, following its pairs until they end or come back to a
-/// type they've already been, such as `T` for `List<T>`, or `1` and `2` for `[1, 2]`. A type whose
-/// pairs go on for longer than that, such as a very long tuple, has `Any` for the items past the
-/// limit, so the list's type is never narrower than what it holds.
+/// type they've already been, such as `T` for `List<T>`, or `1` and `2` for `[1, 2]`. The pairs of
+/// each member of a union are followed separately. A type whose pairs go on for longer than that,
+/// such as a very long tuple, has `Any` for the items past the limit, so the list's type is never
+/// narrower than what it holds.
 fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
     let mut item_types = Vec::new();
     // The types the pairs have gone through, other than plain pairs: a type the pairs come back to
@@ -227,30 +228,34 @@ fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
     // a tuple, can't be one, so leaving them out keeps a long tuple from being compared with every
     // type before it
     let mut seen = vec![ty];
-    let mut current = ty;
+    let mut pending = vec![ty];
+    let mut steps = 0;
 
-    for _ in 0..MAX_LIST_ITEM_TYPES {
-        let Some((first, rest)) = pair_parts(ctx, current) else {
-            return item_types;
-        };
+    while let Some(current) = pending.pop() {
+        for pair in rue_types::extract_pairs(ctx.types_mut(), current, false) {
+            steps += 1;
 
-        item_types.push(first);
-
-        if !matches!(ctx.ty(rest), Type::Pair(_)) {
-            if seen
-                .iter()
-                .any(|&seen| ctx.is_assignable(rest, seen) && ctx.is_assignable(seen, rest))
-            {
+            if steps > MAX_LIST_ITEM_TYPES {
+                item_types.push(ctx.builtins().types.recursive_any);
                 return item_types;
             }
 
-            seen.push(rest);
-        }
+            item_types.push(pair.first);
 
-        current = rest;
+            if !matches!(ctx.ty(pair.rest), Type::Pair(_)) {
+                if seen.iter().any(|&seen| {
+                    ctx.is_assignable(pair.rest, seen) && ctx.is_assignable(seen, pair.rest)
+                }) {
+                    continue;
+                }
+
+                seen.push(pair.rest);
+            }
+
+            pending.push(pair.rest);
+        }
     }
 
-    item_types.push(ctx.builtins().types.recursive_any);
     item_types
 }
 

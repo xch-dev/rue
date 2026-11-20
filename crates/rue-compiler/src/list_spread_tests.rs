@@ -39,3 +39,21 @@ fn items_of_a_short_tuple() {
         [r#"2:24 UnassignableType("List<0 | \"x\" | 1>", "List<Int>")"#]
     );
 }
+
+/// Each member of a union is followed on its own, so a union with a long tuple in it isn't slow,
+/// and has the item types of both members.
+#[test]
+fn union_with_a_long_tuple() {
+    let names = vec!["\"a\""; 300].join(", ");
+    let source = format!(
+        "fn id<T>(value: T) -> T {{ value }}\n\
+         fn main(c: Bool, list: List<Int>) -> List<Int> {{\n    \
+         let spread = if c {{ list }} else {{ id([{names}]) }};\n    [...spread, 1]\n}}\n"
+    );
+
+    let errors = compile(&source).errors();
+    assert_eq!(
+        errors,
+        [r#"2:48 UnassignableType("List<Int | \"a\" | 1>", "List<Int>")"#]
+    );
+}
