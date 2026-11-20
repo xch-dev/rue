@@ -17,6 +17,7 @@ mod prefix;
 mod struct_initializer;
 
 pub use binary::*;
+pub(crate) use call_inference::{DeferredLambda, ElementLambda};
 pub use cast::*;
 pub use const_expr::*;
 pub use field_access::*;

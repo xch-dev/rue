@@ -174,9 +174,9 @@ test fn element_of_a_recursive_call_with_the_generics_swapped() -> List<Int> {
     recursive_swapped([fn(x: String) => 1], "a", 2, 1)
 }
 
-// An element lambda's parameter whose generic a later argument infers is compiled against what
-// that argument infers, as a lambda that's the whole argument is, rather than against the callee's
-// generic, which its body can't do anything with (#362, 13k.1)
+// An element lambda whose parameter's generic a later argument adds to waits for it, as a lambda
+// that's the whole argument does, and is compiled against what's inferred then, rather than
+// against the callee's generic, which its body can't do anything with (#362, 13k.1)
 test fn element_reads_a_later_argument() -> List<Int> {
     map_list([fn(x) => x + 1], 5)
 }
@@ -194,8 +194,7 @@ fn apply_with<T, U>(functions: (fn(x: T) -> U, Int), values: (T, U)) -> U {
     functions.first(values.first)
 }
 
-// What the lambda's return type adds to `U` isn't widened by the later argument, which adds to it
-// too, so the later argument still goes ahead of the pair
+// The later argument adds to `U` too, which the lambda's return type does
 test fn element_returns_what_a_later_argument_adds_to() -> Int {
     apply_with((fn(x) => x + 1, 0), (5, 7))
 }
@@ -240,8 +239,34 @@ fn pair_first<T>(pair: (T, fn(x: T) -> T), value: T) -> T {
     pair.rest(value)
 }
 
-// Guard: an element that isn't a lambda can add to the generic too, so the later argument doesn't
-// go ahead of it, which would widen it, and the lambda is compiled against the generic, as before
+// The other elements of the pair are compiled where they were, so `1` isn't widened by `2`, and
+// the lambda is compiled against both, as `Int`
 test fn element_next_to_a_value_of_the_generic() -> Int {
-    pair_first((1, fn(x) => x), 2)
+    pair_first((1, fn(x) => x + 1), 2)
+}
+
+fn first_and<T, U>(pair: (fn(x: T) -> U, T), value: T) -> U {
+    pair.first(value)
+}
+
+test fn element_before_a_value_of_the_generic() -> Int {
+    first_and((fn(x) => x + 1, 1), 2)
+}
+
+// Guard: the lambda is compiled against the expected type's bounds once nothing else can add to
+// `T`, as a lambda that's the whole argument is, so `T` stays `5`
+test fn element_takes_the_expected_bounds() -> 5 {
+    let result: 5 = first_and((fn(x) => x, 5), 5);
+    result
+}
+
+fn after_both<T>(pair: (Int, fn(value: T) -> Int), make: fn(a: Int) -> T, value: T) -> Int {
+    pair.rest(make(pair.first)) + pair.rest(value)
+}
+
+// Guard: the lambda waits for every later argument that adds to `T`, including a lambda, which is
+// compiled after the others, or its parameter would be narrower than `T` (infer-fuzz generator 1,
+// seed 115)
+test fn element_waits_for_every_later_argument() -> Int {
+    after_both((7, fn(x) => x.first), fn(a: Int) => (a, 8), (1, 9))
 }

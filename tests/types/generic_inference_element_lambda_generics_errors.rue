@@ -76,13 +76,3 @@ fn generic_inferred_as_an_uninferred_one() -> Bool {
         },
     )
 }
-
-fn first_and<T, U>(pair: (fn(x: T) -> U, T), value: T) -> U {
-    pair.first(value)
-}
-
-// The `1` next to the lambda adds to `T` too, so `2` doesn't go ahead of the pair, which would
-// make the lambda's parameter `2` while `T` is `Int`, and the lambda is compiled against `T`
-fn element_next_to_a_value_of_the_generic() -> Int {
-    first_and((fn(x) => x + 1, 1), 2)
-}

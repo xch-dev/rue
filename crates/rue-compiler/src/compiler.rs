@@ -25,7 +25,8 @@ use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{
-    FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind, SyntaxMap, narrowed_with_references,
+    DeferredLambda, ElementLambda, FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind,
+    SyntaxMap, narrowed_with_references,
 };
 
 #[derive(Debug, Clone)]
@@ -146,6 +147,12 @@ pub struct ArgumentFrame {
     pub wrap_lambdas: bool,
     /// The untyped parameters of those lambdas (see `compile_lambda`).
     pub lambda_parameters: Vec<LambdaParameter>,
+    /// The lambdas among those elements that are only compiled once no argument still to be
+    /// compiled can add to the generics their parameters are expected to have, by where they are,
+    /// with the type expected of each, before it's substituted (see `DeferredLambda`).
+    pub deferred: HashMap<TextRange, ElementLambda>,
+    /// The placeholders left for those lambdas.
+    pub deferred_lambdas: Vec<DeferredLambda>,
 }
 
 /// A field of a struct initializer in a default value, whose own default value hadn't been compiled
