@@ -1695,3 +1695,41 @@ fn nested_generics_and_shift_operators_remain_unambiguous() {
         "#]],
     );
 }
+
+#[test]
+fn match_expressions() {
+    check(
+        "fn main(x:Int|nil)->Int{let y=match x{nil=>0,Int=>{let z=x+1;z}};match {y}{0|1=>y,_=>{y}}}",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                let y = match x {
+                    nil => 0,
+                    Int => {
+                        let z = x + 1;
+                        z
+                    },
+                };
+                match { y } {
+                    0 | 1 => y,
+                    _ => { y },
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_arm_comments() {
+    check(
+        "fn main(x: Int | nil) -> Int {\n    match x {\n        // none\n        nil => 0, // zero\n        /* rest */ _ => x,\n    }\n}\n",
+        expect![[r#"
+            fn main(x: Int | nil) -> Int {
+                match x {
+                    // none
+                    nil => 0, // zero
+                    /* rest */ _ => x,
+                }
+            }
+        "#]],
+    );
+}

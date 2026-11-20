@@ -182,6 +182,19 @@ fn analyze_nodes(
                     }
                 }
             }
+            AstNodeKind::MatchExpr => {
+                // The brace that opens the arms is the match's own, rather than one in the value
+                // being matched on (such as a block)
+                if let Some(token) = node
+                    .children_with_tokens()
+                    .filter_map(rowan::NodeOrToken::into_token)
+                    .find(|token| token.kind() == T!['{'])
+                {
+                    let id = token_id(&token, stream)?;
+                    facts[id.index()].delimiter_style = Some(DelimiterStyle::Block);
+                    facts[id.index()].flags.insert(TokenFlags::TRAILING_COMMA);
+                }
+            }
             AstNodeKind::StructInitializerExpr | AstNodeKind::StructBinding => {
                 if let Some(id) = direct_or_descendant_token(&node, T!['{'], stream)? {
                     facts[id.index()].delimiter_style = Some(DelimiterStyle::Braced);
@@ -316,7 +329,8 @@ fn analyze_nodes(
             | AstNodeKind::FieldAccessExpr
             | AstNodeKind::NamedBinding
             | AstNodeKind::ListBindingItem
-            | AstNodeKind::StructFieldBinding => {}
+            | AstNodeKind::StructFieldBinding
+            | AstNodeKind::MatchArm => {}
             AstNodeKind::Attribute => {
                 for token in node
                     .children_with_tokens()

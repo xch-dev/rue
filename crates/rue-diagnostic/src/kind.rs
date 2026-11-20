@@ -173,6 +173,9 @@ pub enum DiagnosticKind {
     #[error("Cannot type guard from `{0}` to `{1}`, since they do not overlap")]
     IncompatibleGuard(String, String),
 
+    #[error("Match on `{0}` is not exhaustive, since it doesn't handle {1}")]
+    NonExhaustiveMatch(String, String),
+
     #[error(
         "Cannot assign `{0}` to `{1}` without a type guard, since the value isn't always a valid `{1}`"
     )]

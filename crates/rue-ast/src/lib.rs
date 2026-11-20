@@ -140,6 +140,8 @@ ast_nodes!(
     BinaryExpr,
     FunctionCallExpr,
     IfExpr,
+    MatchExpr,
+    MatchArm,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -173,6 +175,7 @@ ast_enum!(
     FunctionCallExpr,
     Block,
     IfExpr,
+    MatchExpr,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -788,6 +791,61 @@ impl AstIfExpr {
 
     pub fn else_expr(&self) -> Option<AstExpr> {
         self.syntax().children().filter_map(AstExpr::cast).nth(2)
+    }
+}
+
+impl AstMatchExpr {
+    /// The value being matched on.
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn arms(&self) -> impl Iterator<Item = AstMatchArm> {
+        self.syntax().children().filter_map(AstMatchArm::cast)
+    }
+
+    /// Whether the arms were parsed without skipping anything, between both braces. Otherwise
+    /// some of them could be missing.
+    pub fn arms_are_complete(&self) -> bool {
+        let mut open = false;
+        let mut close = false;
+
+        for element in self.syntax().children_with_tokens() {
+            match element.kind() {
+                T!['{'] => open = true,
+                T!['}'] => close = true,
+                SyntaxKind::Error => return false,
+                _ => {}
+            }
+        }
+
+        open && close
+    }
+}
+
+impl AstMatchArm {
+    /// The type that the value is checked against, unless the arm is a wildcard (see
+    /// [`Self::is_wildcard`]).
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    /// Whether the arm's pattern is `_`, which matches every value that's left.
+    pub fn is_wildcard(&self) -> bool {
+        let Some(AstType::PathType(ty)) = self.ty() else {
+            return false;
+        };
+        let mut segments = ty.segments();
+        let is_underscore = segments.next().is_some_and(|segment| {
+            segment.separator().is_none()
+                && segment.generic_arguments().is_none()
+                && segment.name().is_some_and(|name| name.text() == "_")
+        });
+        is_underscore && segments.next().is_none()
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 

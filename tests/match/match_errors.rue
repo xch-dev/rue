@@ -1,0 +1,138 @@
+struct A {
+    kind = 1,
+}
+
+struct B {
+    kind = 2,
+}
+
+struct C {
+    kind = 3,
+}
+
+type U = A | B | C;
+
+// Each member that isn't handled is listed
+fn missing_one(value: U) -> Int {
+    match value {
+        A => 1,
+        B => 2,
+    }
+}
+
+fn missing_many(value: U) -> Int {
+    match value {
+        A => 1,
+    }
+}
+
+fn no_arms(value: U) -> Int {
+    match value {}
+}
+
+// Literals never handle every value of a type like `Int`
+fn missing_int(value: Int) -> Int {
+    match value {
+        0 => 1,
+        1 => 2,
+    }
+}
+
+fn missing_any_pair(value: Any) -> Int {
+    match value {
+        Atom => 1,
+    }
+}
+
+fn missing_any_atom(value: Any) -> Int {
+    match value {
+        (Any, Any) => 1,
+    }
+}
+
+fn missing_list_pair(value: List<Int>) -> Int {
+    match value {
+        nil => 0,
+    }
+}
+
+fn missing_generic<T>(value: T | nil) -> Int {
+    match value {
+        nil => 0,
+    }
+}
+
+// A value that isn't a reference is still checked
+fn missing_expression() -> Int {
+    match make() {
+        A => 1,
+    }
+}
+
+fn make() -> U {
+    C {}
+}
+
+// A pattern that doesn't overlap the value at all is an error, as it is for `is`
+fn incompatible(value: U) -> Int {
+    match value {
+        Int => 1,
+        _ => 2,
+    }
+}
+
+// The pattern must be checkable at runtime
+fn generic_pattern<T>(value: T | nil) -> Int {
+    match value {
+        T => 1,
+        nil => 0,
+    }
+}
+
+fn function_pattern(value: nil | fn() -> Int) -> Int {
+    match value {
+        fn() -> Int => 1,
+        nil => 0,
+    }
+}
+
+// An unknown pattern is reported once, without a second error about exhaustiveness
+fn unknown_pattern(value: U) -> Int {
+    match value {
+        Missing => 1,
+    }
+}
+
+// The arms must all have the expected type
+fn wrong_arm_type(value: U) -> Int {
+    match value {
+        A => 1,
+        _ => "no",
+    }
+}
+
+// Errors in arms that are never taken are still reported
+fn error_in_unreachable_arm(value: U) -> Int {
+    match value {
+        _ => 1,
+        A => undefined,
+    }
+}
+
+fn main() -> Int {
+    missing_one(C {})
+        + missing_many(C {})
+        + no_arms(C {})
+        + missing_int(0)
+        + missing_any_pair(1)
+        + missing_any_atom(1)
+        + missing_list_pair(nil)
+        + missing_generic(1)
+        + missing_expression()
+        + incompatible(C {})
+        + generic_pattern(nil)
+        + function_pattern(nil)
+        + unknown_pattern(C {})
+        + wrong_arm_type(C {})
+        + error_in_unreachable_arm(C {})
+}

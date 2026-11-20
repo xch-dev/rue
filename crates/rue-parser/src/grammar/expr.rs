@@ -127,6 +127,8 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
         if if_expr(p, checkpoint, options.allow_statement, !options.inline) {
             return true;
         }
+    } else if !options.inline && p.at_quiet(T![match]) {
+        match_expr(p, checkpoint);
     } else if !options.inline && p.at_quiet(T![fn]) && p.lookahead(1) != SyntaxKind::Ident {
         p.start_at(checkpoint, SyntaxKind::LambdaExpr);
         p.expect(T![fn]);
@@ -289,6 +291,55 @@ fn if_expr(
         p.finish();
         false
     }
+}
+
+/// A `match` expression, such as `match value { Int => 1, _ => 2 }`. Each arm's pattern is a type,
+/// and the arms are separated by commas like the fields of a struct.
+fn match_expr(p: &mut Parser, checkpoint: Checkpoint) {
+    p.start_at(checkpoint, SyntaxKind::MatchExpr);
+    p.expect(T![match]);
+    let child = p.checkpoint();
+    expr_with(
+        p,
+        child,
+        ExprOptions {
+            minimum_binding_power: 0,
+            allow_statement: false,
+            allow_struct_initializer: false,
+            inline: false,
+        },
+    );
+    if p.expect(T!['{']) {
+        delimited_list(p, T!['}'], |p| {
+            p.start(SyntaxKind::MatchArm);
+            ty(p);
+            p.expect(T![=>]);
+            expr(p);
+            p.finish();
+
+            // An arm on the next line most likely only needs the comma, so it's parsed as the next
+            // arm rather than skipped as part of the error
+            while !p.at(T![,]) && !p.at(T!['}']) && p.at_line_start() && at_match_arm_start(p) {
+                p.expect(T![,]);
+                p.start(SyntaxKind::MatchArm);
+                ty(p);
+                p.expect(T![=>]);
+                expr(p);
+                p.finish();
+            }
+        });
+    }
+    p.finish();
+}
+
+/// Whether the next token could start a match arm's pattern.
+fn at_match_arm_start(p: &mut Parser) -> bool {
+    p.at_quiet(SyntaxKind::Ident)
+        || p.at_quiet(T![::])
+        || p.at_quiet(T!['('])
+        || p.at_quiet(T!['['])
+        || p.at_quiet(T![fn])
+        || p.at_any_quiet(SyntaxKind::LITERAL).is_some()
 }
 
 fn path_expr(p: &mut Parser, checkpoint: Checkpoint) {
@@ -678,6 +729,93 @@ mod tests {
                   CloseParen@12..13 ")"
             "#]],
             expect![],
+        );
+    }
+
+    #[test]
+    fn test_match_expr() {
+        check(
+            expr,
+            "match x { A | nil => 1, _ => {} }",
+            expect![[r#"
+                MatchExpr@0..33
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 " "
+                  MatchArm@10..22
+                    UnionType@10..18
+                      PathType@10..12
+                        PathSegment@10..12
+                          Ident@10..11 "A"
+                          Whitespace@11..12 " "
+                      BitwiseOr@12..13 "|"
+                      Whitespace@13..14 " "
+                      LiteralType@14..17
+                        Nil@14..17 "nil"
+                      Whitespace@17..18 " "
+                    FatArrow@18..20 "=>"
+                    Whitespace@20..21 " "
+                    LiteralExpr@21..22
+                      Integer@21..22 "1"
+                  Comma@22..23 ","
+                  Whitespace@23..24 " "
+                  MatchArm@24..32
+                    PathType@24..26
+                      PathSegment@24..26
+                        Ident@24..25 "_"
+                        Whitespace@25..26 " "
+                    FatArrow@26..28 "=>"
+                    Whitespace@28..29 " "
+                    Block@29..31
+                      OpenBrace@29..30 "{"
+                      CloseBrace@30..31 "}"
+                    Whitespace@31..32 " "
+                  CloseBrace@32..33 "}"
+            "#]],
+            expect![],
+        );
+
+        // An arm on the next line is still parsed when only its comma is missing
+        check(
+            expr,
+            "match x {\n1 => 2\n_ => 3\n}",
+            expect![[r#"
+                MatchExpr@0..25
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 "\n"
+                  MatchArm@10..17
+                    LiteralType@10..11
+                      Integer@10..11 "1"
+                    Whitespace@11..12 " "
+                    FatArrow@12..14 "=>"
+                    Whitespace@14..15 " "
+                    LiteralExpr@15..16
+                      Integer@15..16 "2"
+                    Whitespace@16..17 "\n"
+                  MatchArm@17..24
+                    PathType@17..19
+                      PathSegment@17..19
+                        Ident@17..18 "_"
+                        Whitespace@18..19 " "
+                    FatArrow@19..21 "=>"
+                    Whitespace@21..22 " "
+                    LiteralExpr@22..23
+                      Integer@22..23 "3"
+                    Whitespace@23..24 "\n"
+                  CloseBrace@24..25 "}"
+            "#]],
+            expect!["Expected one of `,`, `}`, found identifier at main.rue:3:1"],
         );
     }
 

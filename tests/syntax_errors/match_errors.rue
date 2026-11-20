@@ -1,0 +1,42 @@
+fn missing_arrow(value: Int | nil) -> Int {
+    match value {
+        nil 0,
+        _ => 1,
+    }
+}
+
+fn missing_comma(value: Int | nil) -> Int {
+    match value {
+        nil => 0
+        _ => 1,
+    }
+}
+
+fn missing_body(value: Int | nil) -> Int {
+    match value {
+        nil =>,
+        _ => 1,
+    }
+}
+
+fn missing_pattern(value: Int | nil) -> Int {
+    match value {
+        => 0,
+        _ => 1,
+    }
+}
+
+fn missing_brace(value: Int | nil) -> Int {
+    match value
+}
+
+fn missing_value() -> Int {
+    match {
+        _ => 1,
+    }
+}
+
+fn main() -> Int {
+    missing_arrow(nil) + missing_comma(nil) + missing_body(nil) + missing_pattern(nil)
+        + missing_brace(nil) + missing_value()
+}

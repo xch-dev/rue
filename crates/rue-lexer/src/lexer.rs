@@ -66,6 +66,7 @@ impl<'a> Lexer<'a> {
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
+            "match" => TokenKind::Match,
             "return" => TokenKind::Return,
             "assert" => TokenKind::Assert,
             "raise" => TokenKind::Raise,
@@ -710,6 +711,13 @@ mod tests {
             "else",
             expect![[r#"
                 Else
+            "#]],
+        );
+
+        check(
+            "match",
+            expect![[r#"
+                Match
             "#]],
         );
 

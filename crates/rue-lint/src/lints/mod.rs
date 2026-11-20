@@ -11,6 +11,7 @@ mod guards;
 mod hard_fork;
 mod inline_ifs;
 mod inline_values;
+mod matches;
 mod naming;
 mod operators;
 mod prelude;
@@ -57,6 +58,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
     InputPass {
         lints: prelude::LINTS,
         run: prelude::check,
+    },
+    InputPass {
+        lints: matches::LINTS,
+        run: matches::check,
     },
 ];
 

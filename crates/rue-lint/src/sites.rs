@@ -29,6 +29,10 @@ pub struct LintSites {
     /// namespace. An inline module doesn't see the items of the modules it's in, so the name means
     /// the prelude's item rather than the enclosing one.
     pub enclosed_prelude_references: Vec<EnclosedPreludeReference>,
+    /// The arms of `match` expressions that are never taken, since the arms before them handle
+    /// every value they match. They're left out of the HIR, so they're recorded as they're
+    /// compiled.
+    pub unreachable_match_arms: Vec<UnreachableMatchArm>,
 }
 
 /// A read of a struct's field. The struct is identified by its name, which every copy of it (such
@@ -37,6 +41,16 @@ pub struct LintSites {
 pub struct FieldRead {
     pub struct_name: Name,
     pub field: String,
+}
+
+/// An arm of a `match` expression that's never taken (see [`LintSites::unreachable_match_arms`]).
+#[derive(Debug, Clone)]
+pub struct UnreachableMatchArm {
+    /// The arm's pattern.
+    pub pattern: SrcLoc,
+    /// The earlier arm that handles every value that's left, if there is one, rather than the
+    /// arms before it handling every value the pattern matches between them.
+    pub catch_all: Option<SrcLoc>,
 }
 
 /// A name in an inline module that resolves to the prelude or a builtin, while an enclosing module

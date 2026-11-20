@@ -714,3 +714,157 @@ mod inner {
     "#]]
     .assert_eq(&project.completions());
 }
+
+#[test]
+fn test_complete_match_arm_pattern() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+type Shape = Point | nil;
+
+fn main(value: Shape) -> Int {
+    match value {
+        Po$0
+    }
+}
+"#,
+        expect![[r#"
+            Point [Struct]
+            project [Module]
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_match_arm_pattern() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        $0
+    }
+}
+"#,
+        expect![[r#"
+            super [Module]
+            project [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_match_arm_value() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        Point => val$0,
+        nil => 0,
+    }
+}
+"#,
+        expect![[r#"
+            value [Variable] Point
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_match_arm_value() {
+    check(
+        r#"
+fn main(value: Int | nil) -> Int {
+    let other = 1;
+    match value {
+        Int => $0
+    }
+}
+"#,
+        expect![[r#"
+            super [Module]
+            project [Module]
+            other [Variable] 1
+            value [Variable] Int | nil
+            main [Function] fn(value: Int | nil) -> Int
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            sha256 [Function] fn(value: Bytes) -> Bytes32
+            sha256_inline [Function] fn(value: Bytes) -> Bytes32
+            keccak256 [Function] fn(value: Bytes) -> Bytes32
+            keccak256_inline [Function] fn(value: Bytes) -> Bytes32
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
+            substr [Function] fn(value: Bytes, start: Int) -> Bytes
+            sum [Function] fn(values: List<Int>) -> Int
+            difference [Function] fn(values: List<Int>) -> Int
+            product [Function] fn(values: List<Int>) -> Int
+            divmod [Function] fn(numerator: Int, denominator: Int) -> (Int, Int)
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            any [Function] fn(values: List<Bool>) -> Bool
+            all [Function] fn(values: List<Bool>) -> Bool
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
+            g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_map [Function] fn(data: Bytes) -> PublicKey
+            g2_sum [Function] fn(values: List<Signature>) -> Signature
+            g2_difference [Function] fn(values: List<Signature>) -> Signature
+            g2_map [Function] fn(data: Bytes) -> Signature
+            bls_pairing_identity [Function] fn(g1: PublicKey, g2: Signature, ...) -> nil
+            bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
+            secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
+            secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
+            INFINITY_G1 [Constant] PublicKey
+            INFINITY_G2 [Constant] Signature
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_narrowed_fields_in_match_arm() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point => value.$0,
+    }
+}
+"#,
+        expect![[r#"
+            x [Field] Int
+            y [Field] Int
+        "#]],
+    );
+}

@@ -1,7 +1,8 @@
 // A JSON parser and serializer.
 //
 // Each kind of JSON value is a struct with a constant `kind` field, so a `Json` value can be
-// narrowed with `is`. CLVM only has integers, so numbers with fractions or exponents are rejected.
+// narrowed with `is` or `match`. CLVM only has integers, so numbers with fractions or exponents
+// are rejected.
 
 inline const NULL: 1 = 1;
 inline const BOOL: 2 = 2;
@@ -189,22 +190,17 @@ fn parse_escape(input: String) -> (String, String) {
     let char = substr(input, 0, 1);
     let rest = substr(input, 1);
 
-    if char == '"' || char == "\\" || char == "/" {
-        (char, rest)
-    } else if char == "b" {
-        ("\x08", rest)
-    } else if char == "f" {
-        ("\x0c", rest)
-    } else if char == "n" {
-        ("\n", rest)
-    } else if char == "r" {
-        ("\r", rest)
-    } else if char == "t" {
-        ("\t", rest)
-    } else if char == "u" {
-        parse_unicode(rest)
-    } else {
-        raise "invalid escape sequence";
+    match char {
+        '"' | "\\" | "/" => (char, rest),
+        "b" => ("\x08", rest),
+        "f" => ("\x0c", rest),
+        "n" => ("\n", rest),
+        "r" => ("\r", rest),
+        "t" => ("\t", rest),
+        "u" => parse_unicode(rest),
+        _ => {
+            raise "invalid escape sequence";
+        },
     }
 }
 
@@ -347,22 +343,17 @@ fn starts_with(input: String, prefix: String) -> Bool {
 
 // Serializes a value as compact JSON, with no whitespace between tokens.
 fn stringify(json: Json) -> String {
-    if json is JsonNull {
-        "null"
-    } else if json is JsonBool {
-        if json.value {
+    match json {
+        JsonNull => "null",
+        JsonBool => if json.value {
             "true"
         } else {
             "false"
-        }
-    } else if json is JsonNumber {
-        integer_to_string(json.value)
-    } else if json is JsonString {
-        '"' + escape(json.value) + '"'
-    } else if json is JsonArray {
-        "[" + stringify_items(json.items) + "]"
-    } else {
-        "{" + stringify_members(json.members) + "}"
+        },
+        JsonNumber => integer_to_string(json.value),
+        JsonString => '"' + escape(json.value) + '"',
+        JsonArray => "[" + stringify_items(json.items) + "]",
+        JsonObject => "{" + stringify_members(json.members) + "}",
     }
 }
 

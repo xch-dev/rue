@@ -1,0 +1,164 @@
+struct Circle {
+    kind = 1,
+    radius: Int,
+}
+
+struct Square {
+    kind = 2,
+    side: Int,
+}
+
+struct Point {
+    kind = 3,
+}
+
+type Rounded = Circle;
+type Shape = Rounded | Square | Point;
+type Tree = Int | (Tree, Tree);
+
+fn area(shape: Shape) -> Int {
+    match shape {
+        Circle => 3 * shape.radius * shape.radius,
+        Square => shape.side * shape.side,
+        Point => 0,
+    }
+}
+
+test fn structs() -> List<Int> {
+    [area(Circle { radius: 2 }), area(Square { side: 3 }), area(Point {})]
+}
+
+test fn struct_argument(shape: Shape) -> Int {
+    area(shape)
+}
+
+// An arm can match a union, or a nested union by its alias
+test fn union_arms(shape: Shape) -> Int {
+    match shape {
+        Rounded => 1,
+        Square | Point => 2,
+    }
+}
+
+// The wildcard handles every value that's left, and narrows the value to what's left
+test fn wildcard(shape: Shape) -> Int {
+    match shape {
+        Point => 0,
+        _ => match shape {
+            Circle => shape.radius,
+            Square => shape.side,
+        },
+    }
+}
+
+test fn int_literals(value: Int) -> Int {
+    match value {
+        0 => 10,
+        1 => 20,
+        _ => value,
+    }
+}
+
+test fn string_literals(value: String) -> Int {
+    match value {
+        "yes" => 1,
+        "no" => 0,
+        _ => -1,
+    }
+}
+
+test fn bools(value: Bool) -> Int {
+    match value {
+        true => 1,
+        false => 0,
+    }
+}
+
+test fn lists(values: List<Int>) -> Int {
+    match values {
+        nil => 0,
+        (Int, List<Int>) => values.first + lists(values.rest),
+    }
+}
+
+test fn any(value: Any) -> Int {
+    match value {
+        Bytes => 1,
+        (Any, Any) => 2,
+    }
+}
+
+fn depth(tree: Tree) -> Int {
+    match tree {
+        Int => 0,
+        (Tree, Tree) => 1 + max(depth(tree.first), depth(tree.rest)),
+    }
+}
+
+fn max(a: Int, b: Int) -> Int {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+test fn recursive_alias(tree: Tree) -> Int {
+    depth(tree)
+}
+
+// A value that isn't a reference is only evaluated once
+test fn expression_value(shapes: List<Shape>) -> Int {
+    match first_or_point(shapes) {
+        Circle => 1,
+        Square => 2,
+        Point => 3,
+    }
+}
+
+fn first_or_point(shapes: List<Shape>) -> Shape {
+    if shapes is nil {
+        Point {}
+    } else {
+        shapes.first
+    }
+}
+
+test fn field_value(pair: (Shape, Int)) -> Int {
+    match pair.first {
+        Circle => pair.first.radius,
+        _ => pair.rest,
+    }
+}
+
+test fn generic(value: Int | nil) -> Int {
+    or_zero(value)
+}
+
+fn or_zero<T>(value: T | nil) -> Int {
+    match value {
+        nil => 0,
+        _ => 1,
+    }
+}
+
+// Arms can be blocks, and a block arm can raise
+test fn block_arms(value: Int | nil) -> Int {
+    match value {
+        nil => {
+            raise "missing";
+        },
+        Int => {
+            let doubled = value * 2;
+            doubled + 1
+        },
+    }
+}
+
+// The type of a match is the union of its arms' types
+test fn arm_types(value: Bool) -> Int | String {
+    match value {
+        true => 1,
+        false => "no",
+    }
+}

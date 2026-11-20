@@ -78,6 +78,38 @@ export fn hello() -> String {
 
 The [Modules](https://rue-lang.com/docs/modules) page covers modules, imports and exports in more detail.
 
+## Match Expressions
+
+A `match` checks a value against a list of types in order, like an `if` and `else if` chain of `is` guards, and evaluates to the value of the first arm that matches. Each arm narrows the value to its type, and the arms after it only see the values that it didn't handle:
+
+```rs
+struct Circle { kind = 1, radius: Int }
+struct Square { kind = 2, side: Int }
+struct Point { kind = 3 }
+
+type Shape = Circle | Square | Point;
+
+fn area(shape: Shape) -> Int {
+    match shape {
+        Circle => 3 * shape.radius * shape.radius,
+        Square => shape.side * shape.side,
+        Point => 0,
+    }
+}
+```
+
+A pattern can be any type that `is` can check, including a union (`Circle | Square`) and a literal (`0`, `"yes"`, `nil`, `true`). `_` matches every value that's left, so it's usually the last arm.
+
+A match must handle every value its type allows, so adding a member to a union is an error at every `match` that doesn't handle it, rather than a value that silently falls through to the wrong branch. The error lists the members that aren't handled:
+
+```
+Error: Match on `Shape` is not exhaustive, since it doesn't handle `Point`
+```
+
+An arm that can never be taken, because the arms before it already handle every value it matches, is reported by the `unreachable_match_arm` lint. Literals never cover all of a type like `Int` or `String`, so a match on one needs a `_` arm (or an arm for the whole type).
+
+A match compiles to the same code as the `if` and `else if` chain it's equivalent to. The arm that handles everything that's left is the chain's `else` branch, so it doesn't check anything at runtime.
+
 ## CLI
 
 | Command                         | Description                                                            |

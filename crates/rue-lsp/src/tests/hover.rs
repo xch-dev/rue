@@ -478,3 +478,68 @@ fn main(values: Li$0st<Int>) -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_narrowed_in_match_arm() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Point => val$0ue.x,
+        Int => value,
+    }
+}
+"#,
+        expect![[r#"
+            value: Point
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_narrowed_in_wildcard_match_arm() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(value: Point | Int | nil) -> Int {
+    match value {
+        nil => 0,
+        _ => val$0ue as Int,
+    }
+}
+"#,
+        expect![[r#"
+            value: Point | Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_match_arm_pattern() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Poi$0nt => value.x,
+        Int => value,
+    }
+}
+"#,
+        expect![[r#"
+            struct Point {
+                x: Int,
+            }
+        "#]],
+    );
+}

@@ -86,6 +86,9 @@ pub enum SyntaxKind {
     #[display("`else`")]
     Else,
 
+    #[display("`match`")]
+    Match,
+
     #[display("`return`")]
     Return,
 
@@ -366,6 +369,12 @@ pub enum SyntaxKind {
     #[display("if expression")]
     IfExpr,
 
+    #[display("match expression")]
+    MatchExpr,
+
+    #[display("match arm")]
+    MatchArm,
+
     #[display("guard expression")]
     GuardExpr,
 
@@ -423,6 +432,7 @@ macro_rules! T {
     [let] => { $crate::SyntaxKind::Let };
     [if] => { $crate::SyntaxKind::If };
     [else] => { $crate::SyntaxKind::Else };
+    [match] => { $crate::SyntaxKind::Match };
     [return] => { $crate::SyntaxKind::Return };
     [assert] => { $crate::SyntaxKind::Assert };
     [raise] => { $crate::SyntaxKind::Raise };
@@ -556,6 +566,7 @@ impl SyntaxKind {
             T![let] => &[T![let]],
             T![if] => &[T![if]],
             T![else] => &[T![else]],
+            T![match] => &[T![match]],
             T![return] => &[T![return]],
             T![assert] => &[T![assert]],
             T![raise] => &[T![raise]],
@@ -647,6 +658,8 @@ impl SyntaxKind {
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
             SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],
             SyntaxKind::IfExpr => &[SyntaxKind::IfExpr],
+            SyntaxKind::MatchExpr => &[SyntaxKind::MatchExpr],
+            SyntaxKind::MatchArm => &[SyntaxKind::MatchArm],
             SyntaxKind::GuardExpr => &[SyntaxKind::GuardExpr],
             SyntaxKind::CastExpr => &[SyntaxKind::CastExpr],
             SyntaxKind::FieldAccessExpr => &[SyntaxKind::FieldAccessExpr],
