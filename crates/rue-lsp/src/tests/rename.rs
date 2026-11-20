@@ -1660,3 +1660,39 @@ fn test_rename_recursive_and_test_functions() {
         "#]],
     );
 }
+
+#[test]
+fn test_rename_in_assert_message() {
+    // A name in the message of an `assert` is renamed like any other
+    check(
+        &[(
+            "main.rue",
+            "fn main(value: Int) -> Int {\n    let text = \"too small\";\n    assert value > 1, te$0xt;\n    value\n}\n",
+        )],
+        "message",
+        expect![[r#"
+            main.rue:
+            fn main(value: Int) -> Int {
+                let message = "too small";
+                assert value > 1, message;
+                value
+            }
+        "#]],
+    );
+
+    check(
+        &[(
+            "main.rue",
+            "fn main(value: Int) -> Int {\n    let text = \"too small\";\n    assert val$0ue > 1, text;\n    value\n}\n",
+        )],
+        "number",
+        expect![[r#"
+            main.rue:
+            fn main(number: Int) -> Int {
+                let text = "too small";
+                assert number > 1, text;
+                number
+            }
+        "#]],
+    );
+}
