@@ -13,7 +13,7 @@ pub enum Error {
     Io(#[from] io::Error),
 
     /// The manifest at the given path couldn't be parsed.
-    #[error("TOML error: {error}")]
+    #[error("TOML error in {}: {error}", path.display())]
     Toml {
         path: PathBuf,
         error: toml::de::Error,

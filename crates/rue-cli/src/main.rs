@@ -288,8 +288,8 @@ pub struct DebugArgs {
     debug_metadata: Vec<PathBuf>,
     /// Run the program with the `LIMITS` flag that mainnet enforces until hard fork 2, which
     /// rejects some long operands of `*`, `/`, `%`, `divmod`, `modpow`, `g1_multiply` and
-    /// `g2_multiply`. It's also used when run in a project with `operand_limits = true` in
-    /// `Rue.toml`
+    /// `g2_multiply`. `LIMITS` is also used when run inside a project (found from the current
+    /// directory or its parents) whose `Rue.toml` sets `operand_limits = true`
     #[clap(long)]
     operand_limits: bool,
     #[clap(flatten)]
@@ -1705,14 +1705,37 @@ mod tests {
             args
         };
 
-        for (manifest, fails) in [
-            ("[compiler]\n", false),
-            ("[compiler]\noperand_limits = true\n", true),
+        let sub = project.0.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+
+        // The project is found from any directory inside it, and the flag still turns `LIMITS` on
+        // when the project leaves it off
+        for (manifest, flag, fails) in [
+            ("[compiler]\n", false, false),
+            ("[compiler]\noperand_limits = false\n", true, true),
+            ("[compiler]\noperand_limits = true\n", false, true),
         ] {
             fs::write(project.0.join("Rue.toml"), manifest).unwrap();
-            let result = debug_in(parse(&["(% 2 (q . 2))", &solution]), &project.0);
-            assert_eq!(result.is_err(), fails, "{result:?}");
+            let mut args = vec!["(% 2 (q . 2))", solution.as_str()];
+
+            if flag {
+                args.push("--operand-limits");
+            }
+
+            for dir in [&project.0, &sub] {
+                let result = debug_in(parse(&args), dir);
+                assert_eq!(
+                    result.is_err(),
+                    fails,
+                    "{manifest:?} in {dir:?}: {result:?}"
+                );
+            }
         }
+
+        // A manifest that can't be parsed is reported, along with where it is
+        fs::write(project.0.join("Rue.toml"), "[compiler\n").unwrap();
+        let error = debug_in(parse(&["(q . 1)"]), &sub).unwrap_err().to_string();
+        assert!(error.contains("Rue.toml"), "{error}");
     }
 
     #[test]
