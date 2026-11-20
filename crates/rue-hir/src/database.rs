@@ -165,8 +165,6 @@ impl Database {
         self.hir_srclocs.get(&hir)
     }
 
-    /// Records the scope that the source expression of a HIR node is in, which is used to name
-    /// types as they're written there.
     /// Records that a `substr` node was written as an index (`value[index]`) or a slice
     /// (`value[start..end]`) rather than as a call. It's the same operation, but the value comes
     /// before the brackets in the code instead of being an argument.
@@ -180,6 +178,8 @@ impl Database {
         self.indexed_hirs.contains(&hir)
     }
 
+    /// Records the scope that the source expression of a HIR node is in, which is used to name
+    /// types as they're written there.
     pub fn set_hir_scope(&mut self, hir: HirId, scope: ScopeId) {
         self.hir_scopes.insert(hir, scope);
     }

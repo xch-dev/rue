@@ -45,3 +45,11 @@ fn unbounded(bytes: Bytes) -> Bytes {
 fn undeclared(bytes: Bytes) -> Bytes {
     missing[0] + bytes[missing] + bytes[missing..other]
 }
+
+const LOOP: Int = LOOP;
+const FIRST: Int = SECOND + 1;
+const SECOND: Int = FIRST + 1;
+
+fn recursive_constants(bytes: Bytes) -> Bytes {
+    bytes[LOOP] + bytes[FIRST] + bytes[SECOND - 1] + bytes[LOOP..FIRST]
+}

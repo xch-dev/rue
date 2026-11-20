@@ -34,3 +34,10 @@ diagnostics:
 - Undeclared symbol `missing` at indexing_errors.rue:46:24
 - Undeclared symbol `missing` at indexing_errors.rue:46:41
 - Undeclared symbol `other` at indexing_errors.rue:46:50
+- Constant `LOOP` references itself at indexing_errors.rue:49:7
+- Unused constant `LOOP` at indexing_errors.rue:49:7
+- Constant `FIRST` references itself at indexing_errors.rue:50:7
+- Unused constant `FIRST` at indexing_errors.rue:50:7
+- Constant `SECOND` references itself at indexing_errors.rue:51:7
+- Unused constant `SECOND` at indexing_errors.rue:51:7
+- Unused function `recursive_constants` at indexing_errors.rue:53:4

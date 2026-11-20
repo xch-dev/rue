@@ -34,7 +34,11 @@ pub fn compile_index_expr(ctx: &mut Compiler, expr: &AstIndexExpr) -> Value {
         return Value::new(ctx.unresolved().hir, bytes);
     };
 
-    let is_literal = int_value(ctx, start, None).is_some();
+    // A literal index has a literal end
+    if let Some(index) = int_value(ctx, start, None) {
+        let end = ctx.alloc_hir(Hir::Int(index + 1));
+        return Value::new(alloc_substr(ctx, value, start, Some(end)), bytes);
+    }
 
     let hir = if let Some(end) = next_index(ctx, start) {
         alloc_substr(ctx, value, start, Some(end))
@@ -42,13 +46,12 @@ pub fn compile_index_expr(ctx: &mut Compiler, expr: &AstIndexExpr) -> Value {
         alloc_bound_index(ctx, value, start, &index)
     };
 
-    if !is_literal {
-        ctx.push_pending_index(PendingIndex {
-            hir,
-            value,
-            index: start,
-        });
-    }
+    // It might still be a constant, which isn't known until everything is compiled
+    ctx.push_pending_index(PendingIndex {
+        hir,
+        value,
+        index: start,
+    });
 
     Value::new(hir, bytes)
 }
@@ -75,7 +78,7 @@ fn alloc_bound_index(ctx: &mut Compiler, value: HirId, start: HirId, index: &Ast
     }))
 }
 
-/// Gives each index that turned out to be a constant, such as `value[N]` or `value[N + 1]`, the
+/// Gives each index that turned out to be a constant, such as `value[N]` or `value[N * 2]`, the
 /// index after it as a literal, like a literal index has, rather than adding one to it at
 /// runtime. This is done once everything is compiled, since a constant can be declared after the
 /// code that uses it, and after the const expressions are evaluated, since it can be one.
@@ -91,10 +94,10 @@ pub(crate) fn fold_constant_indexes(ctx: &mut Compiler) {
     }
 }
 
-/// The value of an integer expression that's made of literals with `+` and `-`, and of constants
-/// and const expressions if `constants` is given, which is the constants being followed. The
-/// expression is known to be an `Int`, so the result of a const expression, which is an atom, is
-/// its integer value.
+/// The value of an integer expression that's made of literals with `+`, `-` and `*`, and of
+/// constants and const expressions if `constants` is given, which is the constants being
+/// followed. The expression is known to be an `Int`, so bytes (such as the result of a const
+/// expression) are their integer value.
 fn int_value(
     ctx: &Compiler,
     hir: HirId,
@@ -102,10 +105,12 @@ fn int_value(
 ) -> Option<BigInt> {
     match ctx.hir(ctx.without_casts(hir)) {
         Hir::Int(value) => Some(value.clone()),
-        Hir::Const(expr) if constants.is_some() => match ctx.hir(expr.result?) {
-            Hir::Bytes(value) => Some(BigInt::from_signed_bytes_be(value)),
-            _ => None,
-        },
+        Hir::Bytes(value) => Some(BigInt::from_signed_bytes_be(value)),
+        Hir::Const(expr) if constants.is_some() => int_value(ctx, expr.result?, constants),
+        Hir::Block(Block {
+            statements,
+            body: Some(body),
+        }) if statements.is_empty() => int_value(ctx, *body, constants),
         Hir::Reference(symbol) => {
             let constants = constants?;
 
@@ -118,23 +123,44 @@ fn int_value(
                 return None;
             }
 
-            let value = int_value(ctx, constant.value.hir, Some(constants));
+            // A chain of constants that each refer to the next can be as long as the file
+            let value =
+                rue_types::grow_stack(|| int_value(ctx, constant.value.hir, Some(constants)));
             constants.remove(symbol);
             value
         }
         Hir::Unary(UnaryOp::Plus, value) => int_value(ctx, *value, constants),
         Hir::Unary(UnaryOp::Neg, value) => Some(-int_value(ctx, *value, constants)?),
-        Hir::Binary(op @ (BinaryOp::Add | BinaryOp::Sub), left, right) => {
+        Hir::Binary(op @ (BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul), left, right) => {
             let left = int_value(ctx, *left, constants.as_deref_mut())?;
             let right = int_value(ctx, *right, constants)?;
 
-            Some(if *op == BinaryOp::Add {
-                left + right
-            } else {
-                left - right
+            Some(match op {
+                BinaryOp::Add => left + right,
+                BinaryOp::Sub => left - right,
+                _ => left * right,
             })
         }
         _ => None,
+    }
+}
+
+/// Whether the value only depends on literals and constants, so the optimizer folds it wherever
+/// it's repeated, such as `32 / 2` or `N.length`.
+fn is_constant(ctx: &Compiler, hir: HirId) -> bool {
+    match ctx.hir(hir) {
+        Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bytes(_) | Hir::Bool(_) | Hir::Const(_) => {
+            true
+        }
+        Hir::Reference(symbol) => matches!(ctx.symbol(*symbol), Symbol::Constant(_)),
+        Hir::Cast(value) | Hir::Unary(_, value) => is_constant(ctx, *value),
+        Hir::Binary(_, left, right) => is_constant(ctx, *left) && is_constant(ctx, *right),
+        Hir::FieldAccess(access) => is_constant(ctx, access.value),
+        Hir::Block(Block {
+            statements,
+            body: Some(body),
+        }) => statements.is_empty() && is_constant(ctx, *body),
+        _ => false,
     }
 }
 
@@ -204,15 +230,12 @@ fn alloc_substr(ctx: &mut Compiler, value: HirId, start: HirId, end: Option<HirI
 }
 
 /// The index after this one, if it's as cheap to compute from the index as it would be to bind
-/// the index and add one to it: a literal, or a binding or a field of one, with or without a
-/// literal added to or subtracted from it. This is what `end` would be in the `substr(value,
-/// index, end)` call that the index would otherwise be written as, such as `substr(value, 2, 3)`,
-/// `substr(value, i + 1, i + 2)` or `substr(value, i - 1, i)`.
+/// the index and add one to it: a binding or a field of one, with or without a literal added to
+/// or subtracted from it, or an expression that's made of constants, which the optimizer folds.
+/// This is what `end` would be in the `substr(value, index, end)` call that the index would
+/// otherwise be written as, such as `substr(value, i + 1, i + 2)`, `substr(value, i - 1, i)` or
+/// `substr(value, 32 / 2, 32 / 2 + 1)`.
 fn next_index(ctx: &mut Compiler, index: HirId) -> Option<HirId> {
-    if let Some(value) = int_value(ctx, index, None) {
-        return Some(ctx.alloc_hir(Hir::Int(value + 1)));
-    }
-
     let (place, offset) = match *ctx.hir(ctx.without_casts(index)) {
         Hir::Binary(BinaryOp::Add, left, right) if is_place(ctx, left) => {
             (left, int_value(ctx, right, None)?)
@@ -223,7 +246,7 @@ fn next_index(ctx: &mut Compiler, index: HirId) -> Option<HirId> {
         Hir::Binary(BinaryOp::Sub, left, right) if is_place(ctx, left) => {
             (left, -int_value(ctx, right, None)?)
         }
-        _ if is_place(ctx, index) => (index, BigInt::ZERO),
+        _ if is_place(ctx, index) || is_constant(ctx, index) => (index, BigInt::ZERO),
         _ => return None,
     };
 

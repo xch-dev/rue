@@ -1,7 +1,7 @@
 //! An index (`value[index]`) or slice (`value[start..end]`) compiles to the `substr` call that it
 //! stands for, so each one here is compared with the call it should generate.
 
-use std::path::PathBuf;
+use std::{fmt::Write, path::PathBuf};
 
 use clvmr::Allocator;
 use rue_clvm::disassemble_program;
@@ -47,6 +47,17 @@ fn check(parameters: &str, index: &str, substr: &str) {
             "{options:?}"
         );
     }
+}
+
+/// Compares what the optimizer makes of both, which is the same even if they're written
+/// differently.
+#[track_caller]
+fn check_optimized(parameters: &str, index: &str, substr: &str) {
+    let options = CompilerOptions::default();
+    assert_eq!(
+        program(parameters, index, options),
+        program(parameters, substr, options)
+    );
 }
 
 #[test]
@@ -130,6 +141,55 @@ fn constant_index() {
         "a: Bytes",
         "a[N] + a[N]",
         "substr(a, N, 4) + substr(a, N, 4)",
+    );
+}
+
+/// A constant index that's made of other operators is repeated, since the optimizer folds it in
+/// both places, as it does in the call.
+#[test]
+fn constant_operator_index() {
+    check("a: Bytes", "a[2 * 3]", "substr(a, 2 * 3, 7)");
+    check("a: Bytes", "a[32 / 2]", "substr(a, 32 / 2, 32 / 2 + 1)");
+    check("a: Bytes", "a[1 << 2]", "substr(a, 1 << 2, (1 << 2) + 1)");
+    check(
+        "a: Bytes",
+        "a[\"ab\".length]",
+        "substr(a, \"ab\".length, \"ab\".length + 1)",
+    );
+    check("a: Bytes", "a[0x05 as Int]", "substr(a, 0x05 as Int, 6)");
+    check("a: Bytes", "a[N * 2]", "substr(a, N * 2, 7)");
+    check("a: Bytes", "a[{ N }]", "substr(a, { N }, 4)");
+    check("a: Bytes", "a[M / 2]", "substr(a, M / 2, M / 2 + 1)");
+
+    check_optimized("a: Bytes", "a[2 * 3]", "substr(a, 6, 7)");
+    check_optimized("a: Bytes", "a[32 / 2]", "substr(a, 16, 17)");
+    check_optimized("a: Bytes", "a[1 << 2]", "substr(a, 4, 5)");
+    check_optimized("a: Bytes", "a[\"ab\".length]", "substr(a, 2, 3)");
+    check_optimized("", "\"hello\"[2 * 2]", "\"o\"");
+    check_optimized("", "\"hello\"[8 / 2]", "\"o\"");
+}
+
+/// A long chain of constants is followed without overflowing the stack.
+#[test]
+fn long_constant_chain() {
+    let mut source = String::from("const C0: Int = 1;\n");
+    for i in 1..20_000 {
+        writeln!(source, "const C{i}: Int = C{};", i - 1).unwrap();
+    }
+    source.push_str("fn main(a: Bytes) -> Bytes { a[C19999] }\n");
+
+    let compiled = compile_with(&source, |o| o.std = false);
+    compiled.assert_no_errors();
+}
+
+/// An `inline` binding stands for its value wherever it's used, so it's repeated like any other
+/// binding, as it is in the call.
+#[test]
+fn inline_index() {
+    check(
+        "a: Bytes, i: Int",
+        "inline let j = double(i); a[j]",
+        "inline let j = double(i); substr(a, j, j + 1)",
     );
 }
 

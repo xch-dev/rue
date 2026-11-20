@@ -1723,7 +1723,52 @@ fn early(value: Int) -> Int {
 }
 
 /// The value of an index or slice comes before its brackets, so a suggestion that replaces it
-/// keeps the parentheses it needs there, and the index and bounds are whole expressions.
+/// with an operator keeps it in parentheses, however the index is compiled. Only a `Bool` is
+/// replaced like that, which can't be indexed, but the suggestion is still made.
+#[test]
+fn suggestions_keep_parens_before_brackets() {
+    let source = "\
+const N: Int = 1;
+
+fn double(value: Int) -> Int {
+    value * 2
+}
+
+fn main(a: Int, b: Int) -> Bytes {
+    ((a == b) == true)[0]
+        + (if a == b { true } else { false })[1..]
+        + ((a == b) == true)[a]
+        + (if a == b { true } else { false })[N + N]
+        + ((a == b) == true)[const { double(N) }]
+        + ((a == b) == true)[double(a)]
+        + substr((a == b) == true, 0, 1)
+}
+";
+
+    assert_eq!(
+        fix(source),
+        "\
+const N: Int = 1;
+
+fn double(value: Int) -> Int {
+    value * 2
+}
+
+fn main(a: Int, b: Int) -> Bytes {
+    (a == b)[0]
+        + (a == b)[1..]
+        + (a == b)[a]
+        + (a == b)[N + N]
+        + (a == b)[const { double(N) }]
+        + (a == b)[double(a)]
+        + substr(a == b, 0, 1)
+}
+"
+    );
+}
+
+/// The index and bounds are whole expressions inside of the brackets, and the value before them
+/// keeps the parentheses that it needs.
 #[test]
 fn suggestions_fix_lints_in_indexes() {
     let source = "\
