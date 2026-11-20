@@ -604,6 +604,25 @@ impl Program {
         self.functions.iter().chain([&self.main])
     }
 
+    /// The functions that the probe calls call (see `Generator::probe`).
+    pub fn probe_callees(&self) -> BTreeSet<&str> {
+        let mut callees = BTreeSet::new();
+        for expr in self.exprs() {
+            expr.walk(&mut |expr| {
+                if let ExprKind::Call {
+                    site: Some(site),
+                    function,
+                    ..
+                } = &expr.kind
+                    && self.probes.contains(site)
+                {
+                    callees.insert(function.as_str());
+                }
+            });
+        }
+        callees
+    }
+
     pub fn function(&self, name: &str) -> Option<&Function> {
         self.functions.iter().find(|function| function.name == name)
     }

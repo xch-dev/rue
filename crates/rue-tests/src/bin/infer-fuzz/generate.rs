@@ -203,9 +203,10 @@ const HELPERS: &[Template] = &[
 ///   which removes only the generic arguments that the expected type alone gives.
 /// - **3**: adds the shapes that the generics campaign's bugs had and the earlier versions don't
 ///   make (#362): lists, pairs and boxes of untyped lambdas (#485, #489), recursive functions that
-///   pass them to themselves, lambdas whose bodies call generic functions, nested generic calls
-///   in arguments that take the expected bounds (#455, #468), bindings whose annotation is a union
-///   of a generic function type and `Any` (#490), and wider unions in expected types. Each of
+///   pass them to themselves, lambdas whose bodies call generic functions (so that calls nest in
+///   the lambdas of other calls' arguments, as well as in their arguments, as earlier versions'
+///   do), bindings whose annotation is a union of a generic function type and `Any` (#490), and
+///   wider unions in expected types. Each of
 ///   those bindings is a probe that nothing gives its call's generics a type, which the `probe`
 ///   variant removes: rejecting it is right, and compiling it must not leak a generic (see
 ///   `leak.rs`).
@@ -2141,6 +2142,7 @@ fn variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)
     variants
 }
 
+/// The variants other than `probe`: `all`, `some`, `one` and, from version 2, `expected`.
 fn other_variants(rng: &mut Rng, program: &Program, v2: bool) -> Vec<(String, Variant)> {
     let removable = &removable_sites(program, &Variant::default());
     let sites: Vec<SiteId> = program

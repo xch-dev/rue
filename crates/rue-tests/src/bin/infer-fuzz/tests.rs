@@ -912,6 +912,153 @@ fn tags_and_shapes_describe_the_calls_whose_arguments_are_removed() {
     );
 }
 
+/// A compile that leaked a generic is `Leaked` when it runs the same as the explicit program, and
+/// `Unsound` when it doesn't, which is the worse failure. A shrunk candidate fails like a leak only
+/// if it still leaks and runs the same.
+#[test]
+fn leaks_are_classified_and_shrunk_as_leaks() {
+    let leaked = |output: &str| Compiled::Ok {
+        clvm: "(q . 1)".to_string(),
+        run: Run::Output(output.to_string()),
+        time: Duration::from_millis(1),
+        fingerprint: String::new(),
+        leak: Some("`x: T` names `T` outside of where it's bound".to_string()),
+    };
+    let explicit = ok("(q . 1)", 1);
+    let unchanged = || (ok("(q . 1)", 1), ok("(q . 1)", 1));
+
+    let outcome = classify(&explicit, &leaked("1"), unchanged);
+    assert_eq!(outcome.category, Category::Leaked);
+    assert!(
+        outcome
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("`x: T`"))
+    );
+    assert_eq!(
+        classify(&explicit, &leaked("2"), unchanged).category,
+        Category::Unsound
+    );
+
+    let expected = Run::Output("1".to_string());
+    assert!(worker::same_failure(&outcome, &expected, &leaked("1")));
+    assert!(!worker::same_failure(&outcome, &expected, &leaked("2")));
+    assert!(!worker::same_failure(
+        &outcome,
+        &expected,
+        &ok("(q . 1)", 1)
+    ));
+}
+
+/// A probe's rejection counts as inferred only in the `probe` variant, and only when it's that the
+/// probe's own generic can't be inferred. Any other rejection, or a leak, stays a failure.
+#[test]
+fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
+    let generated = (0..40)
+        .map(|seed| Generator::versioned(seed, 3).generate())
+        .find(|generated| !generated.program.probes.is_empty())
+        .unwrap();
+    let program = &generated.program;
+    let callee = *program.probe_callees().iter().next().unwrap();
+
+    let rejected = |kind: &str, message: String| {
+        let mut outcome = Outcome::failed(Category::Rejected, String::new(), 1.0);
+        outcome.detail = None;
+        outcome.diag = Some(Diag {
+            kind: kind.to_string(),
+            message,
+            line_col: "1:1".to_string(),
+        });
+        outcome
+    };
+    let cannot_infer = || {
+        rejected(
+            "CannotInferGeneric",
+            format!("Cannot infer generic `A` for `{callee}`; specify it explicitly"),
+        )
+    };
+
+    let probe = worker::probe_outcome(program, "probe", cannot_infer());
+    assert_eq!(probe.category, Category::Inferred);
+    assert!(probe.diag.is_none());
+    assert!(
+        probe
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.starts_with("rejected: "))
+    );
+
+    let other = worker::probe_outcome(program, "some", cannot_infer());
+    assert_eq!(other.category, Category::Rejected);
+
+    let incompatible = rejected("IncompatibleType", "Cannot assign `_` to `_`".to_string());
+    let incompatible = worker::probe_outcome(program, "probe", incompatible);
+    assert_eq!(incompatible.category, Category::Rejected);
+
+    let elsewhere = rejected(
+        "CannotInferGeneric",
+        "Cannot infer generic `A` for `not_a_probe`; specify it explicitly".to_string(),
+    );
+    assert_eq!(
+        worker::probe_outcome(program, "probe", elsewhere).category,
+        Category::Rejected
+    );
+
+    let leaked = Outcome::failed(Category::Leaked, "leak".to_string(), 1.0);
+    assert_eq!(
+        worker::probe_outcome(program, "probe", leaked).category,
+        Category::Leaked
+    );
+}
+
+/// The counts table has a row for each variant, the `probe` one too.
+#[test]
+fn the_report_counts_probe_variants() {
+    let records = vec![record(
+        0,
+        &[
+            ("all", Category::Inferred, &[]),
+            ("probe", Category::Inferred, &[]),
+        ],
+    )];
+    let clusters = report::clusters(&records);
+    assert!(report::report(&records, &clusters).contains("| probe | 1 |"));
+}
+
+/// The variants other than `probe` of generator version 3's programs don't leak on the compiler
+/// as it is, so the leak oracle's exceptions, a function's own generics and a lambda parameter
+/// compiled as a callee's generic, are what they need to be.
+#[test]
+fn version_3_variants_dont_leak() {
+    for seed in 0..60 {
+        let generated = Generator::versioned(seed, 3).generate();
+        let std = generated.program.uses_std();
+        for (name, variant) in &generated.variants {
+            if name == "probe" {
+                continue;
+            }
+            let source = generated.program.print(variant);
+            if let Compiled::Ok {
+                leak: Some(leak), ..
+            } = oracle::compile_with(&source, std)
+            {
+                panic!("seed {seed}, variant `{name}`: {leak}");
+            }
+        }
+    }
+}
+
+/// A binding in a generic function can have its generics, and a binding outside of it can't.
+#[test]
+fn leak_oracle_allows_a_functions_own_generics() {
+    let inside =
+        "fn f<T>(x: T) -> T {\n    let y: T = x;\n    y\n}\n\nfn main() -> Int {\n    f(1)\n}\n";
+    assert!(matches!(
+        oracle::compile(inside),
+        Compiled::Ok { leak: None, .. }
+    ));
+}
+
 fn record(seed: u64, outcomes: &[(&str, Category, &[&str])]) -> report::SeedRecord {
     report::SeedRecord {
         seed,
@@ -1194,6 +1341,7 @@ fn comparisons_report_variants_that_are_no_longer_inferred() {
     for worse in [
         Category::Rejected,
         Category::Unsound,
+        Category::Leaked,
         Category::Slow,
         Category::Crashed,
     ] {
@@ -1218,8 +1366,19 @@ fn comparisons_report_variants_that_are_no_longer_inferred() {
         [Status]
     );
 
-    // Staying unsound, slow or crashed isn't a regression in itself
-    for bad in [Category::Unsound, Category::Slow, Category::Crashed] {
+    // A rejection that becomes a leak is worse too
+    assert_eq!(
+        kinds(&compared(Category::Rejected, Category::Leaked)),
+        [Regression]
+    );
+
+    // Staying unsound, leaked, slow or crashed isn't a regression in itself
+    for bad in [
+        Category::Unsound,
+        Category::Leaked,
+        Category::Slow,
+        Category::Crashed,
+    ] {
         assert_eq!(kinds(&compared(bad, bad)), [], "{bad:?}");
     }
 
@@ -1748,6 +1907,35 @@ fn leak_oracle_finds_unbound_generics() {
     assert_eq!(free_in(&mut ctx, bound), Vec::new());
     let unbound = ctx.alloc_type(function(Vec::new()));
     assert_eq!(free_in(&mut ctx, unbound), vec![generic]);
+
+    // Bound in the function type and free beside it, in a pair and in a union
+    let beside = ctx.alloc_type(Type::Pair(Pair::new(bound, generic)));
+    assert_eq!(free_in(&mut ctx, beside), vec![generic]);
+    let either = ctx.alloc_type(Type::Union(rue_types::Union::new(vec![bound, generic])));
+    assert_eq!(free_in(&mut ctx, either), vec![generic]);
+
+    // A generic struct's own generic is bound by it, and its argument is free
+    let own = ctx.alloc_type(Type::Generic(Generic { name: None }));
+    let inner = ctx.alloc_type(Type::Pair(Pair::new(own, int)));
+    let structure = ctx.alloc_type(Type::Struct(rue_types::Struct {
+        name: None,
+        semantic: inner,
+        inner,
+        generics: vec![own],
+        fields: ["value".to_string()].into_iter().collect(),
+        nil_terminated: true,
+        narrowed: false,
+    }));
+    let applied = ctx.alloc_type(Type::Apply(rue_types::Apply::new(
+        structure,
+        [(own, generic)].into_iter().collect(),
+    )));
+    assert_eq!(free_in(&mut ctx, applied), vec![generic]);
+    let alone = ctx.alloc_type(Type::Apply(rue_types::Apply::new(
+        structure,
+        [(own, int)].into_iter().collect(),
+    )));
+    assert_eq!(free_in(&mut ctx, alone), Vec::new());
 }
 
 #[test]

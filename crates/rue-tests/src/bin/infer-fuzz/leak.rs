@@ -8,11 +8,20 @@
 //! scope binds. The explicit program writes every generic argument out, so it never has one, and a
 //! variant that does compiled through a type that doesn't mean anything where it's used, even when
 //! its output is the same.
+//!
+//! Only the types of bindings and parameters are checked, since the compiler doesn't keep the
+//! type of every expression. So a leak is only seen where it reaches one, as `x: T` in
+//! `let f: (fn<T>(a: T) -> T) | Any = make_from_lambda(fn(x) => x);` before #490, and not where
+//! a call's inferred type goes straight into an annotated binding, as `make_list(nil)` in
+//! `let f: (fn<T>(a: T) -> List<T>) | Any = make_list(nil);` did, whose binding has the
+//! annotation's type.
 
 use std::collections::{HashMap, HashSet};
 
 use rowan::TextRange;
-use rue_ast::{AstDocument, AstFunctionItem, AstGenericParameters, AstLambdaExpr, AstNode};
+use std::ops::Range;
+
+use rue_ast::{AstDocument, AstFunctionItem, AstLambdaExpr, AstNode};
 use rue_compiler::{Compiler, SyntaxItemKind};
 use rue_diagnostic::SourceKind;
 use rue_hir::{Hir, HirId, Symbol, SymbolId};
@@ -41,13 +50,21 @@ pub fn leak(
         }
     }
 
-    // Each function and lambda, by where it is, with the generics it binds
+    // Each function and lambda, by where it is, with the generics it binds, and where each named
+    // function's generics are declared
     let mut binders: Vec<(TextRange, Vec<TypeId>)> = Vec::new();
+    let mut declared: HashSet<Range<usize>> = HashSet::new();
 
     for &symbol in &order {
         if let Symbol::Function(function) = ctx.symbol(symbol)
             && let Some(range) = enclosing::<AstFunctionItem>(document, declarations[&symbol])
         {
+            declared.extend(
+                function
+                    .vars
+                    .iter()
+                    .filter_map(|&var| declaration(ctx, kind, var)),
+            );
             binders.push((range, function.vars.clone()));
         }
     }
@@ -94,12 +111,14 @@ pub fn leak(
         free_generics(ctx, ty, &mut Vec::new(), &mut HashSet::new(), &mut free);
 
         // A lambda's untyped parameter can be compiled as a callee's generic, or a renamed copy of
-        // one, which the lambda's type is instantiated from once the call is solved, as an
-        // element lambda that's compiled where it is is (#485). Those are declared by a function,
-        // unlike the generic of an expected generic function type that #490 named outside of it
-        let leaked = free.iter().copied().find(|generic| {
-            let in_scope = allowed.contains(generic)
-                || parameter && declared_by_function(ctx, document, kind, *generic);
+        // one, which keeps its name and where it's declared, and the lambda's type is
+        // instantiated from it once the call is solved, as an element lambda that's compiled where
+        // it is (#485). Those are declared by a function, unlike the generic of an expected generic
+        // function type that #490 named outside of it
+        let leaked = free.iter().copied().find(|&generic| {
+            let in_scope = allowed.contains(&generic)
+                || parameter
+                    && declaration(ctx, kind, generic).is_some_and(|span| declared.contains(&span));
             !in_scope
         });
 
@@ -116,38 +135,13 @@ pub fn leak(
     None
 }
 
-/// Whether the generic was declared, or copied from one that was, in a function's generics in the
-/// source, as `T` in `fn map<T>(...)`.
-fn declared_by_function(
-    ctx: &Compiler,
-    document: &AstDocument,
-    kind: &SourceKind,
-    generic: TypeId,
-) -> bool {
+/// Where the generic's name is declared in the source, if it's named there.
+fn declaration(ctx: &Compiler, kind: &SourceKind, generic: TypeId) -> Option<Range<usize>> {
     let Type::Generic(generic) = ctx.ty(generic) else {
-        return false;
+        return None;
     };
-    let Some(srcloc) = generic.name.as_ref().and_then(|name| name.srcloc()) else {
-        return false;
-    };
-    if srcloc.source.kind != *kind {
-        return false;
-    }
-    let (Ok(start), Ok(end)) = (
-        u32::try_from(srcloc.span.start),
-        u32::try_from(srcloc.span.end),
-    ) else {
-        return false;
-    };
-    let span = TextRange::new(start.into(), end.into());
-
-    document
-        .syntax()
-        .covering_element(span)
-        .ancestors()
-        .find_map(AstGenericParameters::cast)
-        .and_then(|parameters| parameters.syntax().parent())
-        .is_some_and(|parent| AstFunctionItem::cast(parent).is_some())
+    let srcloc = generic.name.as_ref()?.srcloc()?;
+    (srcloc.source.kind == *kind).then(|| srcloc.span.clone())
 }
 
 /// The range of the innermost node of the kind around the span.
@@ -169,6 +163,15 @@ pub(crate) fn free_generics(
     visited: &mut HashSet<TypeId>,
     free: &mut Vec<TypeId>,
 ) {
+    // A generic is a leaf, which is free wherever it isn't bound, so it's checked each time it's
+    // reached, as in `(fn<T>(a: T) -> T, T)`
+    if let Type::Generic(_) = ctx.ty(ty) {
+        if !bound.contains(&ty) && !free.contains(&ty) {
+            free.push(ty);
+        }
+        return;
+    }
+
     if !visited.insert(ty) {
         return;
     }
@@ -177,11 +180,7 @@ pub(crate) fn free_generics(
     // declaration they're applied to, rather than substituted, which makes new types each time a
     // recursive alias such as `Tree<T>` is expanded
     match ctx.ty(ty).clone() {
-        Type::Generic(_) => {
-            if !bound.contains(&ty) && !free.contains(&ty) {
-                free.push(ty);
-            }
-        }
+        Type::Generic(_) => unreachable!("checked above"),
         Type::Ref(inner) => free_generics(ctx, inner, bound, visited, free),
         Type::Pair(pair) => {
             free_generics(ctx, pair.first, bound, visited, free);

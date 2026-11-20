@@ -143,21 +143,13 @@ pub fn run_command(out: &mut impl Write, version: u32, seed: u64, start: usize) 
             // Each compile of the recheck gets its own time limit too. An error writing the
             // progress shows up when the outcome is sent.
             let stage = index.to_string();
-            let mut outcome = classify(&explicit, &stripped, || {
+            let outcome = classify(&explicit, &stripped, || {
                 let _ = progress(out, &stage);
                 let explicit = compile(&explicit_source);
                 let _ = progress(out, &stage);
                 (explicit, compile(&source))
             });
-            // Nothing gives a probe's generics a type, so rejecting it is right (see
-            // `Generator::probe`)
-            if name == "probe" && outcome.category == Category::Rejected {
-                outcome.category = Category::Inferred;
-                outcome.detail = outcome
-                    .diag
-                    .take()
-                    .map(|diag| format!("rejected: {}", diag.located()));
-            }
+            let outcome = probe_outcome(&generated.program, name, outcome);
             send(out, "variant", &(index, outcome))?;
         }
     }
@@ -242,6 +234,30 @@ fn shrink_command(
     };
     send(out, "shrunk", &shrunk)?;
     Ok(())
+}
+
+/// The outcome of a variant, counting the `probe` variant's rejection as inferred when it's that
+/// a probe's generic can't be inferred, which is right where nothing gives it a type (see
+/// `Generator::probe`). Any other rejection is a failure, as it is for any other variant, since a
+/// probe whose arguments give its generics a type must compile.
+pub fn probe_outcome(program: &Program, name: &str, mut outcome: Outcome) -> Outcome {
+    let callees = program.probe_callees();
+    let expected = outcome.diag.as_ref().is_some_and(|diag| {
+        diag.kind == "CannotInferGeneric"
+            && callees
+                .iter()
+                .any(|callee| diag.message.contains(&format!(" for `{callee}`")))
+    });
+
+    if name == "probe" && outcome.category == Category::Rejected && expected {
+        outcome.category = Category::Inferred;
+        outcome.detail = outcome
+            .diag
+            .take()
+            .map(|diag| format!("rejected: {}", diag.located()));
+    }
+
+    outcome
 }
 
 /// Whether a shrunk candidate fails like the original: the same diagnostic for a rejection, a
