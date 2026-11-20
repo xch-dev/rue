@@ -236,11 +236,13 @@ When a test fails, `test` shows where it was in the source: the stack of calls t
 - **Completion:** names in scope, the fields of a struct after a `.`, and the items of a module after `::`.
 - **Formatting:** the same as `rue fmt`, with the options from `Rue.toml`.
 
-Each kind of inlay hint is on unless it's turned off, either in the `initializationOptions` that the editor starts the server with, or in the settings it sends later (under `rue`):
+Each kind of inlay hint is on unless it's turned off in the `initializationOptions` that the editor starts the server with. This turns the names of parameters off, and leaves the other two on:
 
 ```json
 { "inlayHints": { "types": true, "genericArguments": true, "parameterNames": false } }
 ```
+
+The settings that the editor sends later change them too, as the same object, on its own or under `rue`.
 
 ## Hard Fork 2
 

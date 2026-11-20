@@ -1316,13 +1316,10 @@ fn best_span(spans: impl Iterator<Item = TextRange>, index: usize) -> Option<Tex
 
 /// The scope that contains the index and no other scope that does: the narrowest one, and of
 /// those with the same span, the first.
-fn innermost_scope(
-    scopes: impl Iterator<Item = (TextRange, ScopeId)>,
-    index: usize,
-) -> Option<ScopeId> {
+fn innermost_scope<T>(scopes: impl Iterator<Item = (TextRange, T)>, index: usize) -> Option<T> {
     scopes
-        .filter(|&(span, _)| contains(span, index))
-        .min_by_key(|&(span, _)| span.len())
+        .filter(|(span, _)| contains(*span, index))
+        .min_by_key(|(span, _)| span.len())
         .map(|(_, scope)| scope)
 }
 

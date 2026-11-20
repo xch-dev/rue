@@ -10,10 +10,11 @@ use rue_ast::{
     AstBinding, AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt, AstNode, AstPathSegment,
 };
 use rue_compiler::{Compiler, SyntaxCall, SyntaxItemKind};
-use rue_hir::{ScopeId, SymbolId};
-use rue_types::{ELIDED, Type, TypeId, UNRESOLVED};
+use rue_hir::SymbolId;
+use rue_types::{ELIDED, Type, TypeId};
 use tower_lsp_server::ls_types::Position;
 
+use super::rename::is_identifier;
 use super::{Cache, Scopes};
 use crate::position::source_range;
 
@@ -97,7 +98,11 @@ impl Cache<Compiler> {
         for item in self
             .syntax_map
             .items()
-            .filter(|item| item.source_kind == self.source.kind)
+            // Only what's in the range is looked at, and a scope that a hint in the range is in
+            // has part of the range in it
+            .filter(|item| {
+                item.source_kind == self.source.kind && item.span.intersect(range).is_some()
+            })
         {
             match &item.kind {
                 SyntaxItemKind::SymbolDeclaration(symbol) => {
@@ -106,10 +111,7 @@ impl Cache<Compiler> {
                 SyntaxItemKind::Call(call) => {
                     calls.insert(item.span, call);
                 }
-                // A scope that a hint in the range is in has part of the range in it
-                SyntaxItemKind::Scope(scope) if item.span.intersect(range).is_some() => {
-                    scopes.push((item.span, *scope));
-                }
+                SyntaxItemKind::Scope(scope) => scopes.push((item.span, *scope)),
                 _ => {}
             }
         }
@@ -236,12 +238,12 @@ impl Cache<Compiler> {
             return None;
         }
 
-        let name = self.bounded_type_name(scopes, ty, HINT_PARTS);
-
         // A part of the type that couldn't be worked out is an error that's already reported
-        if name.contains(UNRESOLVED) {
+        if rue_types::contains_unresolved(self.ctx.types(), ty) {
             return None;
         }
+
+        let name = self.bounded_type_name(scopes, ty, HINT_PARTS);
 
         // The tooltip has more of a type that was cut short, whichever of the two cut it
         if name.chars().count() <= HINT_CHARS && !name.contains(ELIDED) {
@@ -255,18 +257,18 @@ impl Cache<Compiler> {
 }
 
 /// Finds the innermost scope at each of a series of offsets that only go up, like
-/// [`innermost_scope`] does for one, without looking at every scope for each of them.
-struct ScopeSweep {
+/// [`super::innermost_scope`] does for one, without looking at every scope for each of them.
+struct ScopeSweep<T> {
     /// The scopes in the order they start, each with its place in the syntax map.
-    scopes: Vec<(TextRange, usize, ScopeId)>,
+    scopes: Vec<(TextRange, usize, T)>,
     /// How many of the scopes have started.
     started: usize,
     /// The scopes that have started and haven't ended.
-    open: Vec<(TextRange, usize, ScopeId)>,
+    open: Vec<(TextRange, usize, T)>,
 }
 
-impl ScopeSweep {
-    fn new(scopes: Vec<(TextRange, ScopeId)>) -> Self {
+impl<T: Copy> ScopeSweep<T> {
+    fn new(scopes: Vec<(TextRange, T)>) -> Self {
         let mut scopes = scopes
             .into_iter()
             .enumerate()
@@ -282,7 +284,7 @@ impl ScopeSweep {
         }
     }
 
-    fn innermost(&mut self, offset: TextSize) -> Option<ScopeId> {
+    fn innermost(&mut self, offset: TextSize) -> Option<T> {
         while let Some(scope) = self
             .scopes
             .get(self.started)
@@ -404,7 +406,9 @@ fn call_hints(
 
         // A parameter that's destructured has its pattern in place of a name. An argument that's
         // named like the parameter already says what it's for
-        if !is_name(&parameter.name) || argument_name(&expr).as_deref() == Some(&parameter.name) {
+        if !is_identifier(&parameter.name)
+            || argument_name(&expr).as_deref() == Some(&parameter.name)
+        {
             continue;
         }
 
@@ -413,11 +417,6 @@ fn call_hints(
             Pending::Parameter(parameter.name.clone()),
         ));
     }
-}
-
-/// Whether the text is a name, rather than nothing or a pattern.
-fn is_name(text: &str) -> bool {
-    !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// The name that an argument is written with, if it's a name, a path to one or a field.
@@ -511,6 +510,39 @@ fn union_members(name: &str) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_scope_sweep() {
+        // The sweep gives what looking at every scope gives, at every offset, for scopes that
+        // are nested, have the same span, touch each other, or have nothing in them
+        let scopes = [
+            (0, 20),
+            (0, 20),
+            (2, 10),
+            (2, 5),
+            (5, 10),
+            (5, 5),
+            (10, 12),
+            (12, 20),
+            (30, 31),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(id, (start, end))| (TextRange::new(start.into(), end.into()), id))
+        .collect::<Vec<_>>();
+
+        for first in 0..=32 {
+            let mut sweep = ScopeSweep::new(scopes.clone());
+
+            for offset in first..=32u32 {
+                assert_eq!(
+                    sweep.innermost(offset.into()),
+                    super::super::innermost_scope(scopes.iter().copied(), offset as usize),
+                    "from {first} at {offset}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_union_members() {

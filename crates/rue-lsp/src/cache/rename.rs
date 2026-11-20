@@ -637,7 +637,7 @@ fn check_name(name: &str) -> Result<(), String> {
 }
 
 /// Whether the text is one identifier, rather than a keyword or anything else.
-fn is_identifier(text: &str) -> bool {
+pub(super) fn is_identifier(text: &str) -> bool {
     let mut tokens = Lexer::new(text);
 
     matches!(tokens.next(), Some(token) if token.kind == TokenKind::Ident && token.span.len() == text.len())
