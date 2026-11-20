@@ -346,5 +346,5 @@ diagnostics:
   Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:553:5
     help: Return the value directly
 - |-
-  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:566:5
+  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:567:5
     help: Return the value directly

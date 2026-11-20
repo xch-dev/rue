@@ -237,12 +237,7 @@ pub(crate) fn infer_call(
             // stand for the renamed ones (see `restorable`), which only holds while the argument is
             // being compiled, so they aren't deferred
             to_defer: if renamed.is_empty() {
-                order.deferred(
-                    i,
-                    &expected_returns,
-                    &waiting_returns(&waiting, None),
-                    &depends,
-                )
+                order.deferred(i, &expected_returns, &depends)
             } else {
                 HashMap::new()
             },
@@ -317,19 +312,17 @@ pub(crate) fn infer_call(
         order.add_candidates(i, candidates);
         checks[i] = Some((expr.clone(), value.ty, param));
 
-        // The element lambdas that were waiting for the arguments compiled so far, and for each
-        // other, once nothing still to be compiled adds to what they read. Once every argument is
-        // compiled, those that wait for each other are compiled in order
+        // The element lambdas that were waiting for the arguments compiled so far, once nothing
+        // still to be compiled adds to what they read. They never wait for each other: one only
+        // waits if no argument still to be compiled reads what its return type adds to (see
+        // `ArgumentOrder::deferred`), and a pair or list with a lambda in it reads every generic
+        // in its parameter type (see `reads_of`)
         loop {
             let inferred = ctx.solve_arguments(&solver, order.merged());
             let depends = mapping_dependencies(ctx, function, &inferred);
 
             let Some(index) = (0..waiting.len())
-                .find(|&index| {
-                    let others = waiting_returns(&waiting, Some(index));
-                    order.is_settled(&waiting[index].1.lambda.reads, &others, &depends)
-                })
-                .or_else(|| (order.is_done() && !waiting.is_empty()).then_some(0))
+                .find(|&index| order.is_settled(&waiting[index].1.lambda.reads, &depends))
             else {
                 break;
             };
@@ -582,17 +575,6 @@ fn mapping_dependencies(
             others.shift_remove(&generic);
             (generic, others)
         })
-        .collect()
-}
-
-/// The generics that the return types of the element lambdas still waiting add to, other than the
-/// one at `except`.
-fn waiting_returns(waiting: &[(usize, DeferredLambda)], except: Option<usize>) -> IndexSet<TypeId> {
-    waiting
-        .iter()
-        .enumerate()
-        .filter(|&(index, _)| Some(index) != except)
-        .flat_map(|(_, (_, lambda))| lambda.lambda.returns.iter().copied())
         .collect()
 }
 
@@ -1403,20 +1385,17 @@ impl ArgumentOrder {
         argument.is_lambda() && self.last_settled && !argument.returns_reads()
     }
 
-    /// Whether no argument still to be compiled can add to any of the generics, and no element
-    /// lambda that's still waiting can either, through its return type (`waiting`, see
-    /// `waiting_returns`). A generic lambda counts too: it doesn't hold up the order (see
-    /// `ArgumentKind::Lambda::holds_up`), but it still adds to them, and an element lambda that
-    /// waits is compiled against the expected type's bounds, which would be narrower than what it
-    /// adds (see `lambda_before_a_generic_lambda_keeps_it_wide` in
-    /// `generic_inference_expected_mapped.rue`).
+    /// Whether no argument still to be compiled can add to any of the generics. A generic lambda
+    /// counts too: it doesn't hold up the order (see `ArgumentKind::Lambda::holds_up`), but it still
+    /// adds to them, and an element lambda that waits is compiled against the expected type's
+    /// bounds, which would be narrower than what it adds (see
+    /// `lambda_before_a_generic_lambda_keeps_it_wide` in `generic_inference_expected_mapped.rue`).
     ///
     /// The generics that their mappings so far reference (`depends`, see `mapping_dependencies`)
     /// count too, as in `ArgumentOrder::reads_now`, such as `W` when `T` is mapped to `W | Int`.
     fn is_settled(
         &self,
         generics: &IndexSet<TypeId>,
-        waiting: &IndexSet<TypeId>,
         depends: &HashMap<TypeId, IndexSet<TypeId>>,
     ) -> bool {
         let mut generics = generics.clone();
@@ -1432,13 +1411,12 @@ impl ArgumentOrder {
 
         let generics = &generics;
 
-        !waiting.iter().any(|generic| generics.contains(generic))
-            && !self.pending.iter().any(|&other| {
-                self.arguments[other]
-                    .writes
-                    .iter()
-                    .any(|generic| generics.contains(generic))
-            })
+        !self.pending.iter().any(|&other| {
+            self.arguments[other]
+                .writes
+                .iter()
+                .any(|generic| generics.contains(generic))
+        })
     }
 
     /// The element lambdas of the argument `next` just gave that wait for the arguments still to be
@@ -1458,7 +1436,6 @@ impl ArgumentOrder {
         &self,
         i: usize,
         expected: &IndexSet<TypeId>,
-        waiting: &IndexSet<TypeId>,
         depends: &HashMap<TypeId, IndexSet<TypeId>>,
     ) -> HashMap<TextRange, ElementLambda> {
         self.arguments[i]
@@ -1485,7 +1462,7 @@ impl ArgumentOrder {
                     return false;
                 }
 
-                !self.is_settled(&lambda.reads, waiting, depends)
+                !self.is_settled(&lambda.reads, depends)
                     && !self.pending.iter().any(|&other| {
                         self.arguments[other]
                             .reads

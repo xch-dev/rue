@@ -561,7 +561,8 @@ fn each_other<T, U>(first: (fn(x: T) -> U, Int), second: (fn(y: U) -> T, Int), t
     (second.first(u), first.first(t))
 }
 
-// Two lambdas that wait for what each other adds are compiled in order once every argument is
+// Two lambdas that each add to what the other reads are compiled where they are, since the other
+// argument reads what each one's return type adds to
 test fn elements_wait_for_each_other() -> (Int, Int) {
     let result = each_other((fn(x) => x, 1), (fn(y) => y, 2), 5, 6);
     result
