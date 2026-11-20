@@ -9,9 +9,11 @@ use std::time::{Duration, Instant};
 
 use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
+use rue_ast::AstDocument;
 use rue_clvm::{disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, File, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
+use rue_hir::HirId;
 use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
@@ -199,7 +201,18 @@ pub fn fingerprint(diagnostics: &[Diagnostic], clvm: Option<&str>) -> String {
 /// The compile's result, its `fingerprint`, and the first leaked generic (see `leak.rs`).
 type Inner = (Result<(String, Run), Diag>, String, Option<String>);
 
-fn compile_inner(source: &str, std: bool) -> Inner {
+/// A compiled program, with what the leak oracle needs of it (see `leak::leak`).
+pub struct Compilation {
+    pub ctx: Compiler,
+    pub tree: FileTree,
+    pub document: AstDocument,
+    pub kind: SourceKind,
+    /// Where the program's nodes start.
+    pub first_hir: HirId,
+}
+
+/// Compiles the source as `main.rue`, with the standard library if `std` is true.
+pub fn compilation(source: &str, std: bool) -> Compilation {
     let mut ctx = Compiler::new(CompilerOptions {
         std,
         ..CompilerOptions::default()
@@ -215,6 +228,24 @@ fn compile_inner(source: &str, std: bool) -> Inner {
     let first_hir = ctx.next_hir_id();
     let tree = FileTree::File(file);
     tree.compile(&mut ctx);
+
+    Compilation {
+        ctx,
+        tree,
+        document,
+        kind,
+        first_hir,
+    }
+}
+
+fn compile_inner(source: &str, std: bool) -> Inner {
+    let Compilation {
+        mut ctx,
+        tree,
+        document,
+        kind,
+        first_hir,
+    } = compilation(source, std);
 
     let diagnostics = ctx.take_diagnostics();
 

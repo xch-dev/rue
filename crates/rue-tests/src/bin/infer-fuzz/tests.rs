@@ -1093,6 +1093,87 @@ fn version_3_variants_dont_leak() {
     }
 }
 
+/// The leak oracle flags a binding whose type names a function's generic outside of that
+/// function, which is what a callee's generic left in an inferred type looks like, and allows the
+/// same generic in a lambda's parameter, which is how an element lambda compiled where it is gets
+/// it (#485). A generic that no function declares is flagged in a parameter too. The types are
+/// put in by hand, since the compiler doesn't leak any more.
+#[test]
+fn leak_oracle_flags_a_generic_outside_of_its_function() {
+    use rue_compiler::SyntaxItemKind;
+    use rue_hir::Symbol;
+    use rue_types::{Generic, Type};
+
+    let source = "fn f<T>(x: T) -> T {\n    x\n}\n\nfn main() -> Int {\n    let y = 1;\n    let g = fn(z: Int) => z;\n    f(g(y))\n}\n";
+    let mut compilation = oracle::compilation(source, false);
+    let check = |compilation: &mut oracle::Compilation| {
+        crate::leak::leak(
+            &mut compilation.ctx,
+            &compilation.document,
+            &compilation.kind,
+            compilation.first_hir,
+        )
+    };
+    assert_eq!(check(&mut compilation), None);
+
+    let symbols: Vec<_> = compilation
+        .ctx
+        .syntax_map()
+        .items()
+        .filter_map(|item| match item.kind {
+            SyntaxItemKind::SymbolDeclaration(symbol) => Some(symbol),
+            _ => None,
+        })
+        .collect();
+    let named = |compilation: &oracle::Compilation, name: &str| {
+        symbols
+            .iter()
+            .copied()
+            .find(|&symbol| {
+                compilation
+                    .ctx
+                    .symbol(symbol)
+                    .name()
+                    .is_some_and(|symbol_name| symbol_name.text() == name)
+            })
+            .unwrap()
+    };
+    let f = named(&compilation, "f");
+    let Symbol::Function(function) = compilation.ctx.symbol(f) else {
+        panic!("`f` is a function");
+    };
+    let generic = function.vars[0];
+
+    // A binding outside of `f` with `f`'s `T`
+    let y = named(&compilation, "y");
+    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
+        panic!("`y` is a binding");
+    };
+    let int = std::mem::replace(&mut binding.value.ty, generic);
+    let leak = check(&mut compilation).unwrap();
+    assert!(leak.contains("`y: T` names `T`"), "{leak}");
+    let Symbol::Binding(binding) = compilation.ctx.symbol_mut(y) else {
+        unreachable!();
+    };
+    binding.value.ty = int;
+
+    // A lambda's parameter with it is allowed, and with a generic that no function declares isn't
+    let z = named(&compilation, "z");
+    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
+        panic!("`z` is a parameter");
+    };
+    parameter.ty = generic;
+    assert_eq!(check(&mut compilation), None);
+    let unnamed = compilation
+        .ctx
+        .alloc_type(Type::Generic(Generic { name: None }));
+    let Symbol::Parameter(parameter) = compilation.ctx.symbol_mut(z) else {
+        unreachable!();
+    };
+    parameter.ty = unnamed;
+    assert!(check(&mut compilation).is_some_and(|leak| leak.contains("`z: ")));
+}
+
 /// A binding in a generic function can have its generics, and a binding outside of it can't.
 #[test]
 fn leak_oracle_allows_a_functions_own_generics() {
@@ -1937,6 +2018,10 @@ fn leak_oracle_finds_unbound_generics() {
 
     let pair = ctx.alloc_type(Type::Pair(Pair::new(generic, int)));
     assert_eq!(free_in(&mut ctx, pair), vec![generic]);
+
+    // Behind a reference too
+    let reference = ctx.alloc_type(Type::Ref(generic));
+    assert_eq!(free_in(&mut ctx, reference), vec![generic]);
 
     let function = |generics: Vec<_>| {
         Type::Function(FunctionType {

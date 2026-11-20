@@ -135,7 +135,9 @@ pub fn leak(
     None
 }
 
-/// Where the generic's name is declared in the source, if it's named there.
+/// Where the generic's name is declared in the source, if it's named there. Only the main file's
+/// declarations count, since a generic of the standard library can have the same span as one of
+/// the main file's, which no test program can arrange.
 fn declaration(ctx: &Compiler, kind: &SourceKind, generic: TypeId) -> Option<Range<usize>> {
     let Type::Generic(generic) = ctx.ty(generic) else {
         return None;
