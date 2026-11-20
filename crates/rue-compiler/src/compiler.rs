@@ -942,8 +942,9 @@ impl Compiler {
     /// argument can widen. Even when the value has to be assignable to it (it isn't a hint), a
     /// call in it isn't narrowed to satisfy it (see `CallSolver::requiring_expected`), since the
     /// wider type could be what the program needs. It's inherited like a hint, until an
-    /// expression is compiled with an expected type of its own, such as a `let` annotation, or
-    /// the argument of a parameter that doesn't reference the call's generics.
+    /// expression is compiled with an expected type of its own: a `let` annotation, a lambda's
+    /// return type, a struct's field, or the argument of a parameter that doesn't reference the
+    /// call's generics.
     pub fn with_expected_type_provisional<T>(
         &mut self,
         provisional: bool,

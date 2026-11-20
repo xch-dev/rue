@@ -453,3 +453,55 @@ test fn provisional_expected_type_of_a_pair_element() -> Int {
         },
     )
 }
+
+fn keep_first<U>(a: U, _b: U) -> U {
+    a
+}
+
+fn thunk_after<U>(_start: U, value: fn() -> U) -> U {
+    value()
+}
+
+fn only_five(value: 5) -> 5 {
+    value
+}
+
+// A `let` annotation is a type of its own, which the value is checked against as it is, so a call
+// in it is narrowed for it even in a lambda body whose expected type is provisional
+test fn let_annotation_in_a_provisional_lambda_body() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Int = thunk_after(
+        5,
+        fn() => {
+            let inner: 5 = first_of(value);
+            inner + 0
+        },
+    );
+    result + 0
+}
+
+// The same for a lambda's return type
+test fn return_type_of_a_lambda_with_a_provisional_type() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Int = thunk_after(5, fn(): 5 => first_of(value));
+    result + 0
+}
+
+// The same for the argument of a parameter that doesn't reference its call's generics, though that
+// call is in an argument whose expected type is provisional
+test fn argument_of_a_concrete_parameter_in_a_provisional_argument() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Int = keep_first(5, only_five(first_of(value)));
+    result + 0
+}
+
+struct Five {
+    value: 5,
+}
+
+// The same for a struct's field, which its value is checked against as it is
+test fn field_in_a_provisional_argument() -> Int {
+    let value: 5 | (5, 5) = 5;
+    let result: Five = keep_both(Five { value: 5 }, Five { value: first_of(value) });
+    result.value + 0
+}

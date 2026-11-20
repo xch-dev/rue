@@ -228,6 +228,32 @@ tests:
   runtime_cost: 460
   byte_cost: 444000
   total_cost: 444460
+- name: let_annotation_in_a_provisional_lambda_body
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 ()) (c (a 5 2) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 9) (c () ()))) ()))) ()))) (q . 5))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 2 2 ())) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: return_type_of_a_lambda_with_a_provisional_type
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 9) (c () ()))) ()))) ()))) (q . 5))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 2 2 ())) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: argument_of_a_concrete_parameter_in_a_provisional_argument
+  program: (q . 5)
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 29 (c (q . 5) (a 21 (a 9 2)))) 1)) (c (q . 5) 1)) (c (c (q . 1) (c (q . 1) (q . 2))) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: field_in_a_provisional_argument
+  program: (+ (q 5))
+  debug_program: (a (q 2 (q 2 (q 16 (f 2) ()) (c (a 13 (c (c (q . 5) ()) (c (a 9 2) ()))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
+  byte_cost: 108000
+  clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
 diagnostics:
 - Binding `result` is returned directly after it's declared at generic_inference_matched_members.rue:28:5
 - Unused parameter `b` at generic_inference_matched_members.rue:296:36
