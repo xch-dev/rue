@@ -567,3 +567,21 @@ test fn elements_wait_for_each_other() -> (Int, Int) {
     let result = each_other((fn(x) => x, 1), (fn(y) => y, 2), 5, 6);
     result
 }
+
+fn chain_after<T, U, W>(
+    functions: List<fn(x: T) -> U>,
+    make: (fn(w: W) -> T, Int),
+    value: T,
+    other: W,
+) -> List<U> {
+    let _ = value;
+    map_list(functions, make.first(other))
+}
+
+// Guard: the lambda next to `1` returns what the waiting lambda before it reads, so it's compiled
+// where it is, rather than waiting too and being compiled after the first, which would be compiled
+// against `nil` alone
+test fn element_returns_what_a_waiting_lambda_reads() -> Bool {
+    let result = chain_after([fn(x) => x], (fn(w) => w, 1), nil, 6);
+    result is (Int, nil)
+}

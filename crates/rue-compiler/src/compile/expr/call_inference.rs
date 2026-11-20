@@ -242,7 +242,7 @@ pub(crate) fn infer_call(
             // stand for the renamed ones (see `restorable`), which only holds while the argument is
             // being compiled, so they aren't deferred
             to_defer: if renamed.is_empty() {
-                order.deferred(i, &expected_returns, &depends)
+                order.deferred(i, &expected_returns, &depends, &waiting_reads(&waiting))
             } else {
                 HashMap::new()
             },
@@ -319,9 +319,9 @@ pub(crate) fn infer_call(
 
         // The element lambdas that were waiting for the arguments compiled so far, once nothing
         // still to be compiled adds to what they read. They never wait for each other: one only
-        // waits if no argument still to be compiled reads what its return type adds to (see
-        // `ArgumentOrder::deferred`), and a pair or list with a lambda in it reads every generic
-        // in its parameter type (see `reads_of`)
+        // waits if nothing still to be compiled reads what its return type adds to, neither an
+        // argument (a pair or list with a lambda in it reads every generic in its parameter type,
+        // see `reads_of`) nor a lambda that's already waiting (see `ArgumentOrder::deferred`)
         while !waiting.is_empty() {
             let inferred = ctx.solve_arguments(&solver, order.merged());
             let depends = mapping_dependencies(ctx, function, &inferred);
@@ -580,6 +580,14 @@ fn mapping_dependencies(
             others.shift_remove(&generic);
             (generic, others)
         })
+        .collect()
+}
+
+/// The generics that the untyped parameters of the element lambdas still waiting read.
+fn waiting_reads(waiting: &[(usize, DeferredLambda)]) -> IndexSet<TypeId> {
+    waiting
+        .iter()
+        .flat_map(|(_, lambda)| lambda.lambda.reads.iter().copied())
         .collect()
 }
 
@@ -1442,6 +1450,7 @@ impl ArgumentOrder {
         i: usize,
         expected: &IndexSet<TypeId>,
         depends: &HashMap<TypeId, IndexSet<TypeId>>,
+        waiting: &IndexSet<TypeId>,
     ) -> HashMap<TextRange, ElementLambda> {
         self.arguments[i]
             .element_lambdas
@@ -1467,7 +1476,14 @@ impl ArgumentOrder {
                     return false;
                 }
 
+                // A lambda of an earlier argument that's still waiting reads what its return type
+                // adds to as well, and would be compiled before it otherwise (`waiting`, see
+                // `waiting_reads`)
                 !self.is_settled(&lambda.reads, depends)
+                    && !lambda
+                        .returns
+                        .iter()
+                        .any(|generic| waiting.contains(generic))
                     && !self.pending.iter().any(|&other| {
                         self.arguments[other]
                             .reads
