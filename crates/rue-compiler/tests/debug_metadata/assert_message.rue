@@ -1,0 +1,10 @@
+// solution: (10 20)
+
+fn main(amount: Int, minimum: Int) -> Int {
+    assert amount >= minimum, ["amount is too small", shortfall(amount, minimum)];
+    amount - minimum
+}
+
+fn shortfall(amount: Int, minimum: Int) -> Int {
+    minimum - amount
+}

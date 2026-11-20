@@ -648,32 +648,17 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 
                         visit_let(db, graph, *stmt);
                     }
-                    Statement::Assert(stmt, _) => {
-                        visit_hir(db, graph, *stmt, false);
-                    }
-                    Statement::Raise(stmt, _) => {
-                        if graph.options.debug_symbols
-                            && let Some(stmt) = stmt
-                        {
-                            visit_hir(db, graph, *stmt, false);
-                        }
-                    }
-                    Statement::If(stmt) => {
-                        visit_hir(db, graph, stmt.condition, false);
-                        visit_hir(db, graph, stmt.then, false);
-                    }
-                    Statement::Return(expr, _) => {
-                        visit_hir(db, graph, *expr, false);
-                    }
-                    Statement::Expr(expr) => {
-                        visit_hir(db, graph, expr.hir, false);
-                    }
-                    Statement::Control(stmt) => {
-                        visit_hir(db, graph, stmt.hir, false);
-                    }
-                    Statement::Debug(expr, _) => {
-                        if graph.options.debug_symbols {
-                            visit_hir(db, graph, *expr, false);
+                    // A `debug` statement, the value of a `raise` and the message of an
+                    // `assert` are only lowered with debug symbols
+                    Statement::Assert(..)
+                    | Statement::Raise(..)
+                    | Statement::If(_)
+                    | Statement::Return(..)
+                    | Statement::Expr(_)
+                    | Statement::Control(_)
+                    | Statement::Debug(..) => {
+                        for hir in stmt.lowered_hirs(graph.options.debug_symbols) {
+                            visit_hir(db, graph, hir, false);
                         }
                     }
                 }

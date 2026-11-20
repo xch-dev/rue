@@ -16,6 +16,8 @@ pub use file::*;
 pub use syntax_map::*;
 
 #[cfg(test)]
+mod assert_message_tests;
+#[cfg(test)]
 mod cancel_tests;
 #[cfg(test)]
 mod comparison_limit_tests;

@@ -319,6 +319,8 @@ impl Cache<Compiler> {
             T![return] | T![assert] | T![raise] | T![if] | T![match] => {
                 Some(CompletionContext::Expression)
             }
+            // The message of an `assert` comes after its condition
+            T![,] if parent == Some(SyntaxKind::AssertStmt) => Some(CompletionContext::Expression),
             _ => None,
         }
     }

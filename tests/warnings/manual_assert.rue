@@ -11,9 +11,15 @@ fn main(value: Int | nil, flag: Bool) -> Int {
         raise;
     }
 
-    // A `raise` with a value can't be an `assert`
+    // The value of a `raise` is the message of the `assert`
     if value > 100 {
         raise "Too large";
+    }
+
+    // A comment would be dropped, so there's no suggestion
+    if value > 90 {
+        // Too large
+        raise ["Too large", value];
     }
 
     // Both branches of an `inline if` are evaluated

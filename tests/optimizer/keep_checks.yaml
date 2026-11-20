@@ -1011,8 +1011,14 @@ tests:
   total_cost: 3713838
 diagnostics:
 - |-
+  This `if` statement only raises, so it can be written as an `assert` at keep_checks.rue:6:5
+    help: Replace it with an `assert`
+- |-
   This argument can fail, but `ignore_inline` is an `inline fn` that doesn't always evaluate its parameter `_a`, so its check can be skipped at keep_checks.rue:294:19
     note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at keep_checks.rue:701:5
+    help: Replace it with an `assert`
 - Value returned by statement is unused at keep_checks.rue:716:5
 - Unnecessary `return` statement, since the function body can end in an expression instead at keep_checks.rue:814:5
 - |-

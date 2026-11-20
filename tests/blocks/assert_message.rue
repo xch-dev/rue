@@ -1,0 +1,136 @@
+struct Coin {
+    amount: Int,
+}
+
+fn main(a: Int, b: Int) -> Int {
+    assert a > b, "a must be larger";
+    a - b
+}
+
+// The same function without the message, which is the same program in a release build
+fn without_message(a: Int, b: Int) -> Int {
+    assert a > b;
+    a - b
+}
+
+fn with_message(a: Int, b: Int) -> Int {
+    assert a > b, "a must be larger";
+    a - b
+}
+
+test fn passes() -> List<Int> {
+    [with_message(5, 2), without_message(5, 2)]
+}
+
+test fn fails_without_message() -> Int {
+    without_message(2, 5)
+}
+
+test fn fails_with_message() -> Int {
+    with_message(2, 5)
+}
+
+// The message can be any value, which is only evaluated if the assertion fails
+fn with_values(a: Int, b: Int) -> Int {
+    assert a > b, ["a must be larger", a, b, a - b];
+    a - b
+}
+
+test fn fails_with_values() -> Int {
+    with_values(2, 5)
+}
+
+// A binding or function that's only used in a message isn't in the release build
+fn describe(coin: Coin) -> (String, Int) {
+    ("amount", coin.amount)
+}
+
+fn with_call(coin: Coin, minimum: Int) -> Int {
+    let difference = minimum - coin.amount;
+    assert coin.amount >= minimum, [describe(coin), ("short by", difference)];
+    coin.amount
+}
+
+test fn fails_with_call() -> Int {
+    with_call(Coin { amount: 10 }, 25)
+}
+
+test fn passes_with_call() -> Int {
+    with_call(Coin { amount: 30 }, 25)
+}
+
+// The message sees the values that the condition is false for
+fn with_narrowing(value: Int | nil) -> Int {
+    assert !(value is nil), ["missing", nil_only(value)];
+    value + 1
+}
+
+fn nil_only(value: nil) -> nil {
+    value
+}
+
+test fn fails_with_narrowing() -> Int {
+    with_narrowing(nil)
+}
+
+test fn passes_with_narrowing() -> Int {
+    with_narrowing(41)
+}
+
+// A message that would fail isn't evaluated unless the assertion fails, and never in a release
+// build
+fn with_failing_message(a: Int, b: Int) -> Int {
+    assert a >= b, a / 0;
+    a - b
+}
+
+test fn passes_with_failing_message() -> Int {
+    with_failing_message(5, 5)
+}
+
+test fn fails_with_failing_message() -> Int {
+    with_failing_message(2, 5)
+}
+
+// Each assertion keeps its own location and message
+fn several(a: Int, b: Int) -> Int {
+    assert a > 0, "a must be positive";
+    assert b > 0;
+    assert a > b, ["a must be larger than b", a, b];
+    a - b
+}
+
+test fn several_fails_first() -> Int {
+    several(0, 0)
+}
+
+test fn several_fails_second() -> Int {
+    several(1, 0)
+}
+
+test fn several_fails_third() -> Int {
+    several(1, 1)
+}
+
+// An assertion in a branch, and in an inline function
+inline fn positive(value: Int) -> Int {
+    assert value > 0, ["not positive", value];
+    value
+}
+
+fn in_branch(value: Int | nil, optional: Bool) -> Int {
+    if value is nil {
+        assert optional, "no value";
+        return 0;
+    }
+
+    positive(value)
+}
+
+test fn in_branch_fails_inline() -> Int {
+    in_branch(-3, false)
+}
+
+test fn in_branch_fails() -> Int {
+    in_branch(nil, false)
+}

@@ -5,6 +5,7 @@ fn main(n: Int) -> Int {
 }
 
 fn countdown(n: Int, acc: Int) -> Int {
+    #[allow(manual_assert)]
     if n == 0 {
         raise "hit zero";
     }

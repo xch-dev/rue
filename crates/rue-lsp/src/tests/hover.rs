@@ -501,6 +501,37 @@ fn main(value: Point | Int) -> Int {
 }
 
 #[test]
+fn test_hover_narrowed_in_assert_message() {
+    // The message is only evaluated if the condition is false
+    check(
+        r#"
+fn main(value: Int | nil) -> Int {
+    assert !(value is nil), val$0ue;
+    value
+}
+"#,
+        expect![[r#"
+            value: nil
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_narrowed_after_assert_with_message() {
+    check(
+        r#"
+fn main(value: Int | nil) -> Int {
+    assert !(value is nil), value;
+    val$0ue
+}
+"#,
+        expect![[r#"
+            value: Int
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_narrowed_in_wildcard_match_arm() {
     check(
         r#"

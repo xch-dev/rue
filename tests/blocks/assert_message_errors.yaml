@@ -1,0 +1,5 @@
+diagnostics:
+- Undeclared symbol `missing` at assert_message_errors.rue:3:19
+- Cannot assign `"text"` to `Int` without a cast, since they are semantically different at assert_message_errors.rue:4:21
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at assert_message_errors.rue:7:32
+- Cannot assign `Int` to `Bool` without a type guard, since the value isn't always a valid `Bool` at assert_message_errors.rue:10:12

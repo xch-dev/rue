@@ -454,11 +454,10 @@ impl<'a, 'c> Uses<'a, 'c> {
 
         for statement in reachable_statements(statements).iter().rev() {
             let Statement::Let(symbol, _) = *statement else {
-                // Debug statements aren't lowered in release builds
-                if !matches!(statement, Statement::Debug(..)) {
-                    for hir in statement.hirs() {
-                        self.hir(hir);
-                    }
+                // Debug statements, and the messages of `raise` and `assert`, aren't lowered in
+                // release builds
+                for hir in statement.lowered_hirs(false) {
+                    self.hir(hir);
                 }
 
                 continue;

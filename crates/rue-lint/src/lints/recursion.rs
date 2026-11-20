@@ -174,8 +174,9 @@ impl Search<'_> {
                 Statement::Control(statement) => return self.expr(statement.hir),
                 Statement::Return(hir, _) => return self.expr(*hir),
                 Statement::Raise(hir, _) => return hir.and_then(|hir| self.expr(hir)),
-                // If the assertion fails, it raises before anything after it
-                Statement::Assert(hir, _) => return self.expr(*hir),
+                // If the assertion fails, it raises before anything after it, and its message is
+                // only evaluated then
+                Statement::Assert(hir, _, _) => return self.expr(*hir),
             }
         }
 

@@ -47,15 +47,7 @@ fn list_types(ctx: &mut Compiler, hir: HirId, depth: usize, lines: &mut Vec<Stri
                     Symbol::Binding(binding) => vec![binding.value.hir],
                     _ => vec![],
                 },
-                Statement::Expr(statement) => vec![statement.hir],
-                Statement::Control(statement) => vec![statement.hir],
-                Statement::If(statement) => vec![statement.condition, statement.then],
-                Statement::Return(hir, _)
-                | Statement::Assert(hir, _)
-                | Statement::Debug(hir, _) => {
-                    vec![*hir]
-                }
-                Statement::Raise(hir, _) => hir.iter().copied().collect(),
+                statement => statement.hirs().collect(),
             })
             .chain(block.body)
             .collect(),

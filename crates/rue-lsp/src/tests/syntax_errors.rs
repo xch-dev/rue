@@ -290,6 +290,27 @@ fn test_assert_without_condition() {
 }
 
 #[test]
+fn test_assert_without_message() {
+    check(
+        "fn main() -> Int {\n    let value = 42;\n    assert value > 1, $0\n}\n",
+        expect![[r#"
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            super [Module]
+            project [Module]
+            value [Variable] 42
+            main [Function] fn() -> Int
+            ...
+        "#]],
+    );
+}
+
+#[test]
 fn test_raise_without_value() {
     check(
         "fn main() -> Int {\n    let value = 42;\n    raise $0\n}\n",

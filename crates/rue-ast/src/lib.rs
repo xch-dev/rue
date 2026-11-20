@@ -684,8 +684,23 @@ impl AstReturnStmt {
 }
 
 impl AstAssertStmt {
+    /// The condition, which is before the `,` if there is one.
     pub fn expr(&self) -> Option<AstExpr> {
-        self.syntax().children().find_map(AstExpr::cast)
+        self.syntax()
+            .children_with_tokens()
+            .take_while(|element| element.kind() != T![,])
+            .filter_map(SyntaxElement::into_node)
+            .find_map(AstExpr::cast)
+    }
+
+    /// The message after the `,`, which a debug build raises along with the location of the
+    /// statement if the condition is false.
+    pub fn message(&self) -> Option<AstExpr> {
+        self.syntax()
+            .children_with_tokens()
+            .skip_while(|element| element.kind() != T![,])
+            .filter_map(SyntaxElement::into_node)
+            .find_map(AstExpr::cast)
     }
 }
 

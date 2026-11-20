@@ -64,6 +64,7 @@ impl TokenFlags {
     const ATTRIBUTE_END: u16 = 1 << 6;
     const OMITTED_COMMA: u16 = 1 << 7;
     const OMIT_TRAILING_COMMA: u16 = 1 << 8;
+    const MESSAGE_COMMA: u16 = 1 << 9;
 
     fn insert(&mut self, flag: u16) {
         self.0 |= flag;
@@ -107,6 +108,12 @@ impl TokenFacts {
     /// after a match arm whose value is a block.
     pub fn is_omitted_comma(&self) -> bool {
         self.flags.contains(TokenFlags::OMITTED_COMMA)
+    }
+
+    /// Whether the token is the comma before the message of an `assert`, which goes on a line of
+    /// its own, indented, if the statement doesn't fit on one line.
+    pub fn is_message_comma(&self) -> bool {
+        self.flags.contains(TokenFlags::MESSAGE_COMMA)
     }
 
     /// Whether the list doesn't end in a comma, even when it's broken over several lines.
@@ -366,7 +373,6 @@ fn analyze_nodes(
             | AstNodeKind::ExprStmt
             | AstNodeKind::IfStmt
             | AstNodeKind::ReturnStmt
-            | AstNodeKind::AssertStmt
             | AstNodeKind::RaiseStmt
             | AstNodeKind::DebugStmt
             | AstNodeKind::PathSegment
@@ -381,6 +387,28 @@ fn analyze_nodes(
             | AstNodeKind::NamedBinding
             | AstNodeKind::ListBindingItem
             | AstNodeKind::StructFieldBinding => {}
+            AstNodeKind::AssertStmt => {
+                // An `assert` with a message is a group from `assert` to the end of the message,
+                // so that the message is only moved to its own line if they don't fit on one
+                let mut tokens = node
+                    .children_with_tokens()
+                    .filter_map(rowan::NodeOrToken::into_token);
+                if let Some(keyword) = tokens.find(|token| token.kind() == T![assert])
+                    && let Some(comma) = tokens.find(|token| token.kind() == T![,])
+                    && let Some(last) = significant_tokens(&node)
+                        .filter(|token| token.kind() != T![;])
+                        .last()
+                    && last != comma
+                {
+                    let start = token_id(&keyword, stream)?;
+                    let comma = token_id(&comma, stream)?;
+                    facts[start.index()].group_end = Some(token_id(&last, stream)?);
+                    facts[start.index()]
+                        .flags
+                        .insert(TokenFlags::CONDITIONAL_GROUP);
+                    facts[comma.index()].flags.insert(TokenFlags::MESSAGE_COMMA);
+                }
+            }
             AstNodeKind::Attribute => {
                 for token in node
                     .children_with_tokens()

@@ -95,8 +95,13 @@ impl Visitor<'_> {
                                 return true;
                             }
                         }
-                        Statement::Assert(hir, _) | Statement::Debug(hir, _) => {
+                        Statement::Debug(hir, _) => {
                             if self.visit_hir(hir) {
+                                return true;
+                            }
+                        }
+                        Statement::Assert(condition, message, _) => {
+                            if self.visit_hir(condition) || self.visit_all(message) {
                                 return true;
                             }
                         }
@@ -204,6 +209,28 @@ mod tests {
         let reference = db.alloc_hir(Hir::Reference(inner));
         let symbol = binding(&mut db, reference);
         assert!(has_reachable_unresolved(&db, symbol));
+    }
+
+    #[test]
+    fn test_unresolved_in_assert_message() {
+        let mut db = Database::new();
+        let one = db.alloc_hir(Hir::Int(1.into()));
+        let unresolved = db.alloc_hir(Hir::Unresolved);
+
+        // The message of an `assert` is lowered with debug symbols
+        let block = db.alloc_hir(Hir::Block(Block {
+            statements: vec![Statement::Assert(one, Some(unresolved), srcloc())],
+            body: Some(one),
+        }));
+        let symbol = binding(&mut db, block);
+        assert!(has_reachable_unresolved(&db, symbol));
+
+        let block = db.alloc_hir(Hir::Block(Block {
+            statements: vec![Statement::Assert(one, None, srcloc())],
+            body: Some(one),
+        }));
+        let symbol = binding(&mut db, block);
+        assert!(!has_reachable_unresolved(&db, symbol));
     }
 
     #[test]

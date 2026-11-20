@@ -1,2 +1,5 @@
 diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at keep_checks_const_eval.rue:5:5
+    help: Replace it with an `assert`
 - "Const expression failed to evaluate: clvm raise at keep_checks_const_eval.rue:16:5"

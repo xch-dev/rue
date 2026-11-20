@@ -136,6 +136,9 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at keep_checks_guards.rue:14:5
+    help: Replace it with an `assert`
 - Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:30:5
 - Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:34:5
 - Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:38:14

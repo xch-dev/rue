@@ -24,9 +24,7 @@ fn main(input: String) -> String {
 fn parse(input: String) -> Json {
     let (value, rest) = parse_value(input);
 
-    if skip_whitespace(rest) != "" {
-        raise "unexpected trailing characters";
-    }
+    assert skip_whitespace(rest) == "", "unexpected trailing characters";
 
     value
 }
@@ -35,9 +33,7 @@ fn parse(input: String) -> Json {
 fn parse_value(input: String) -> (Json, String) {
     let input = skip_whitespace(input);
 
-    if input == "" {
-        raise "unexpected end of input";
-    }
+    assert input != "", "unexpected end of input";
 
     let char = substr(input, 0, 1);
     let rest = substr(input, 1);
@@ -105,16 +101,12 @@ fn parse_object(input: String) -> (List<Member>, String) {
 fn parse_members(input: String) -> (List<Member>, String) {
     let input = skip_whitespace(input);
 
-    if !starts_with(input, '"') {
-        raise "expected a string key";
-    }
+    assert starts_with(input, '"'), "expected a string key";
 
     let (key, rest) = parse_string(substr(input, 1), "");
     let rest = skip_whitespace(rest);
 
-    if !starts_with(rest, ":") {
-        raise "expected ':'";
-    }
+    assert starts_with(rest, ":"), "expected ':'";
 
     let (value, rest) = parse_value(substr(rest, 1));
     let member = Member { key, value };
@@ -132,9 +124,7 @@ fn parse_members(input: String) -> (List<Member>, String) {
 
 // Parses the body of a string after the opening quote, accumulating the decoded value.
 fn parse_string(input: String, value: String) -> (String, String) {
-    if input == "" {
-        raise "unterminated string";
-    }
+    assert input != "", "unterminated string";
 
     let char = substr(input, 0, 1);
     let code = char as Int;
@@ -153,9 +143,7 @@ fn parse_string(input: String, value: String) -> (String, String) {
 }
 
 fn parse_escape(input: String) -> (String, String) {
-    if input == "" {
-        raise "unterminated escape sequence";
-    }
+    assert input != "", "unterminated escape sequence";
 
     let char = substr(input, 0, 1);
     let rest = substr(input, 1);
@@ -181,33 +169,25 @@ fn parse_unicode(input: String) -> (String, String) {
     let rest = substr(input, 4);
 
     // Low surrogates are U+DC00 to U+DFFF
-    if high >= 56320 && high <= 57343 {
-        raise "unexpected low surrogate";
-    }
+    assert !(high >= 56320 && high <= 57343), "unexpected low surrogate";
 
     // High surrogates are U+D800 to U+DBFF
     if high < 55296 || high > 56319 {
         return (utf8(high), rest);
     }
 
-    if !starts_with(rest, "\\u") {
-        raise "expected low surrogate";
-    }
+    assert starts_with(rest, "\\u"), "expected low surrogate";
 
     let low = parse_hex4(substr(rest, 2));
 
-    if low < 56320 || low > 57343 {
-        raise "invalid low surrogate";
-    }
+    assert !(low < 56320 || low > 57343), "invalid low surrogate";
 
     let code_point = 65536 + (high - 55296) * 1024 + (low - 56320);
     (utf8(code_point), substr(rest, 6))
 }
 
 fn parse_hex4(input: String) -> Int {
-    if input.length < 4 {
-        raise "expected four hex digits";
-    }
+    assert input.length >= 4, "expected four hex digits";
 
     hex_digit(substr(input, 0, 1))
             * 4096
@@ -260,9 +240,7 @@ inline fn byte(value: Int) -> String {
 
 // Parses a number with no sign. JSON doesn't allow leading zeros, so a zero ends the number.
 fn parse_natural(input: String) -> (Int, String) {
-    if !is_digit(input) {
-        raise "expected a digit";
-    }
+    assert is_digit(input), "expected a digit";
 
     let (value, rest) = if starts_with(input, "0") {
         (0, substr(input, 1))
@@ -270,9 +248,8 @@ fn parse_natural(input: String) -> (Int, String) {
         parse_digits(input, 0)
     };
 
-    if starts_with(rest, ".") || starts_with(rest, "e") || starts_with(rest, "E") {
-        raise "only integers are supported";
-    }
+    assert !(starts_with(rest, ".") || starts_with(rest, "e") || starts_with(rest, "E")),
+        "only integers are supported";
 
     (value, rest)
 }

@@ -4,7 +4,9 @@ use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, UnaryOp};
 use crate::{
     HirLintPass, LintContext,
     equality::hir_eq,
-    text::{Position, negated_text, negated_text_at, position, text_at, without_parens},
+    text::{
+        Position, comment_count, negated_text, negated_text_at, position, text_at, without_parens,
+    },
 };
 
 /// An `if` whose branches are the same evaluates to the same value whatever the condition is.
@@ -374,14 +376,30 @@ impl HirLintPass for ManualAssert {
             return;
         };
 
-        // A `raise` with a value can't be replaced, since an `assert` doesn't have one
-        if then.body.is_some() || !matches!(then.statements.as_slice(), [Statement::Raise(None, _)])
-        {
+        let (None, [Statement::Raise(_, raise)]) = (then.body, then.statements.as_slice()) else {
             return;
-        }
+        };
 
         let srcloc = statement.srcloc.clone();
-        let replacement = negated_text(db, statement.condition);
+
+        // The value of the `raise` is kept as the message of the `assert`, which sees the same
+        // values as the body of the `if`. Comments would be dropped, and so would the attributes
+        // of the `raise`
+        let replacement = negated_text(db, statement.condition)
+            .filter(|_| comment_count(srcloc.text()) == 0)
+            .and_then(|condition| {
+                let message = raise
+                    .text()
+                    .strip_prefix("raise")?
+                    .strip_suffix(';')?
+                    .trim();
+
+                Some(if message.is_empty() {
+                    format!("assert {condition};")
+                } else {
+                    format!("assert {condition}, {message};")
+                })
+            });
 
         let Some(diagnostic) = cx.report(
             Lint::ManualAssert,
@@ -400,7 +418,7 @@ impl HirLintPass for ManualAssert {
         diagnostic.suggestions.push(Suggestion::replace(
             "Replace it with an `assert`",
             srcloc,
-            format!("assert {replacement};"),
+            replacement,
             Applicability::MachineApplicable,
         ));
     }

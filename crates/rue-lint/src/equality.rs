@@ -127,8 +127,10 @@ fn statement_eq(db: &Database, a: &Statement, b: &Statement) -> bool {
             a.inline == b.inline && all_eq(db, &[a.condition, a.then], &[b.condition, b.then])
         }
         (Statement::Return(a, _), Statement::Return(b, _))
-        | (Statement::Assert(a, _), Statement::Assert(b, _))
         | (Statement::Debug(a, _), Statement::Debug(b, _)) => hir_eq(db, *a, *b),
+        (Statement::Assert(a, a_message, _), Statement::Assert(b, b_message, _)) => {
+            hir_eq(db, *a, *b) && option_eq(db, *a_message, *b_message)
+        }
         (Statement::Raise(a, _), Statement::Raise(b, _)) => option_eq(db, *a, *b),
         _ => false,
     }

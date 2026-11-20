@@ -1279,8 +1279,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         match stmt {
             Statement::Let(..) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir, _) => self.lower_block(env, vec![], Tail::Body(Some(hir))),
-            Statement::Assert(condition, srcloc) => {
-                self.lower_assert(env, stmts, condition, srcloc, body)
+            Statement::Assert(condition, message, srcloc) => {
+                self.lower_assert(env, stmts, condition, message, srcloc, body)
             }
             Statement::Expr(stmt) => self.lower_expr_stmts(env, stmt, stmts, body),
             Statement::Raise(hir, srcloc) => self.lower_raise(env, hir, srcloc),
@@ -1447,6 +1447,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         env: &Environment,
         mut stmts: Vec<Statement>,
         condition: HirId,
+        message: Option<HirId>,
         srcloc: SrcLoc,
         body: Tail,
     ) -> LirId {
@@ -1457,16 +1458,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         // The check and the failure are located at the statement, rather than the condition
         self.with_span(srcloc.clone(), |this| {
-            let raise = if this.options.debug_symbols {
-                let error = this.arena.alloc(Lir::Atom(
-                    format!("assertion failed at {}", srcloc.display(&this.base_path)).into_bytes(),
-                ));
-                vec![error]
-            } else {
-                vec![]
-            };
-
-            let else_branch = this.arena.alloc(Lir::Raise(raise));
+            let else_branch = this.lower_failure(env, "assertion failed at", message, &srcloc);
             this.arena
                 .alloc(Lir::If(condition, then_branch, else_branch, false))
         })
@@ -1474,32 +1466,31 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn lower_raise(&mut self, env: &Environment, hir: Option<HirId>, srcloc: SrcLoc) -> LirId {
         self.with_span(srcloc.clone(), |this| {
-            this.lower_raise_inner(env, hir, srcloc)
+            this.lower_failure(env, "raise called at", hir, &srcloc)
         })
     }
 
-    fn lower_raise_inner(
+    /// Raises the description and location of a failing statement, followed by its value or
+    /// message if it has one. They're only lowered with debug symbols, so a release build is the
+    /// same whatever they are, and never evaluates them.
+    fn lower_failure(
         &mut self,
         env: &Environment,
-        hir: Option<HirId>,
-        srcloc: SrcLoc,
+        description: &str,
+        value: Option<HirId>,
+        srcloc: &SrcLoc,
     ) -> LirId {
         if !self.options.debug_symbols {
             return self.arena.alloc(Lir::Raise(vec![]));
         }
 
         let error = self.arena.alloc(Lir::Atom(
-            format!("raise called at {}", srcloc.display(&self.base_path)).into_bytes(),
+            format!("{description} {}", srcloc.display(&self.base_path)).into_bytes(),
         ));
-        let lir = hir.map(|hir| self.lower_hir(env, hir));
+        let value = value.map(|value| self.lower_hir(env, value));
 
-        let mut args = vec![error];
-
-        if let Some(hir) = lir {
-            args.push(hir);
-        }
-
-        self.arena.alloc(Lir::Raise(args))
+        self.arena
+            .alloc(Lir::Raise(std::iter::once(error).chain(value).collect()))
     }
 
     fn lower_debug(

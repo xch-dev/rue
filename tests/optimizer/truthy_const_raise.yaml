@@ -1,2 +1,5 @@
 diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at truthy_const_raise.rue:2:5
+    help: Replace it with an `assert`
 - "Const expression failed to evaluate: clvm raise at truthy_const_raise.rue:10:5"

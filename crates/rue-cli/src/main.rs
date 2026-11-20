@@ -1516,6 +1516,40 @@ mod tests {
         );
     }
 
+    /// A failing assertion shows its message after its location, and the trace shows the statement.
+    #[test]
+    fn failing_assert_shows_its_message() {
+        let project = TempProject::new(
+            "assert-message-test",
+            "test fn fails() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10, [\"too small\", value];\n    value\n}\n",
+        );
+        let path = project.0.join("main.rue");
+
+        let mut ctx = Compiler::new(CompilerOptions::debug());
+        let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
+        let mut allocator = Allocator::new();
+        let tests = tree
+            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .unwrap();
+        let cost = CostArgs {
+            max_cost: DEFAULT_MAX_COST,
+        };
+
+        let (failure, trace) =
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).unwrap_err();
+        assert_eq!(
+            failure.message,
+            "raise: (\"assertion failed at main.rue:6:5\" (\"too small\" 3))"
+        );
+        assert_eq!(
+            trace,
+            Some(Ok(
+                "  main.rue:2:5, in fails\n    check(3);\n  main.rue:6:5, in check\n    assert value > 10, [\"too small\", value];\n    value = 3"
+                    .to_string()
+            ))
+        );
+    }
+
     const FAILING_SOURCE: &str = "fn main(value: Int) -> Int {\n    check(value)\n}\n\ntest fn fails() {\n    check(30);\n}\n\ntest fn fails_too() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10;\n    value\n}\n\ntest fn divides() {\n    divide(1, 0);\n}\n\nfn divide(a: Int, b: Int) -> Int {\n    a / b\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n";
 
     #[test]

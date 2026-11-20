@@ -353,9 +353,19 @@ pub fn compile_block(
                     ctx.unresolved()
                 };
 
+                // The message is only evaluated if the condition is false, so it sees the values
+                // that it's false for, like the body of an `if` with the negated condition
+                let message = stmt.message().map(|message| {
+                    let range = message.syntax().text_range();
+                    let index = ctx.push_mappings(value.else_map.clone(), range.start());
+                    let message = compile_expr(ctx, &message, None);
+                    ctx.revert_mappings(index, range.end());
+                    message.hir
+                });
+
                 ctx.push_mappings(value.then_map, stmt.syntax().text_range().end());
 
-                Statement::Assert(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
+                Statement::Assert(value.hir, message, ctx.trimmed_srcloc(stmt.syntax()))
             }
             AstStmt::RaiseStmt(stmt) => {
                 let value = stmt.expr().map(|expr| compile_expr(ctx, &expr, None));
