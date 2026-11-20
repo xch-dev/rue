@@ -791,3 +791,22 @@ fn test_hints_of_the_file_they_are_for() {
     "#]]
     .assert_eq(&project.inlay_hints("other.rue"));
 }
+
+#[test]
+fn test_hints_in_index_and_slice() {
+    // What's indexed or sliced, and the bounds of it, have hints like any other code
+    check(
+        "fn add(first: Int, second: Int) -> Int {\n    first + second\n}\n\nfn main(bytes: Bytes) -> Bytes {\n    let byte = bytes[add(1, 2)];\n    let rest = bytes[add(1, 2)..];\n    byte + rest\n}\n",
+        expect![[r#"
+            fn add(first: Int, second: Int) -> Int {
+                first + second
+            }
+
+            fn main(bytes: Bytes) -> Bytes {
+                let byte«: Bytes» = bytes[add(«first:» 1, «second:» 2)];
+                let rest«: Bytes» = bytes[add(«first:» 1, «second:» 2)..];
+                byte + rest
+            }
+        "#]],
+    );
+}
