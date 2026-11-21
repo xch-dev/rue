@@ -633,3 +633,51 @@ tests:
   runtime_cost: 3266
   byte_cost: 1116000
   total_cost: 1119266
+- name: update_item_in_for
+  program: (a (q 2 2 (c (c 2 11) 5)) (c (q 2 (i 3 (q 4 (c 6 13) (a 4 (c 2 7))) ()) 1) 1))
+  debug_program: (a (q 2 2 (c (c 2 11) 5)) (c (q 2 (i 3 (q 4 (c 6 (r (f 3))) (a 4 (c (c 4 6) (r 3)))) ()) 1) 1))
+  solution: (((1 2 . 3) (4 5 . 6)) 9)
+  output: ((9 2 . 3) (9 5 . 6))
+  runtime_cost: 2518
+  byte_cost: 900000
+  total_cost: 902518
+- name: rebuild_item_in_for
+  program: (a (q 2 2 (c (c 2 11) 5)) (c (q 2 (i 3 (q 4 (c 6 13) (a 4 (c 2 7))) ()) 1) 1))
+  debug_program: (a (q 2 2 (c (c 2 11) 5)) (c (q 2 (i 3 (q 4 (c 6 (c (f (r (f 3))) (r (r (f 3))))) (a 4 (c (c 4 6) (r 3)))) ()) 1) 1))
+  solution: (((1 2 . 3) (4 5 . 6)) 9)
+  output: ((9 2 . 3) (9 5 . 6))
+  runtime_cost: 2518
+  byte_cost: 900000
+  total_cost: 902518
+- name: update_outside_for
+  program: (a (q 2 2 (c (c 5 2) 11)) (c (q 2 (i 3 (q 4 (c 5 12) (a 6 (c 2 7))) ()) 1) 1))
+  debug_program: (a (q 2 2 (c (c 5 2) 11)) (c (q 2 (i 3 (q 4 (c (f 3) (r 4)) (a 6 (c (c 4 6) (r 3)))) ()) 1) 1))
+  solution: ((1 2 . 3) (7 8))
+  output: ((7 2 . 3) (8 2 . 3))
+  runtime_cost: 2518
+  byte_cost: 900000
+  total_cost: 902518
+- name: rebuild_outside_for
+  program: (a (q 2 2 (c (c 5 2) 11)) (c (q 2 (i 3 (q 4 (c 5 12) (a 6 (c 2 7))) ()) 1) 1))
+  debug_program: (a (q 2 2 (c (c 5 2) 11)) (c (q 2 (i 3 (q 4 (c (f 3) (c (f (r 4)) (r (r 4)))) (a 6 (c (c 4 6) (r 3)))) ()) 1) 1))
+  solution: ((1 2 . 3) (7 8))
+  output: ((7 2 . 3) (8 2 . 3))
+  runtime_cost: 2518
+  byte_cost: 900000
+  total_cost: 902518
+- name: update_call_in_for
+  program: (a (q 2 4 (c 2 5)) (c (c (q 2 (i 3 (q 4 (a (q 4 18 (c 11 58)) (c (a 6 5) 1)) (a 4 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q 4 1 (c (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2)))) ())) (q 8)) 1)) 1))
+  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i 3 (q 4 (a (q 4 (f (f (r 2))) (c (f 7) (r (r (f (r 2)))))) (c (a 6 (f 3)) 1)) (a 4 (c (c 4 6) (r 3)))) ()) 1) (q 2 (i (> 1 ()) (q 4 1 (c (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2)))) ())) (q 8 (q . "assertion failed at struct_update.rue:485:5"))) 1)) 1))
+  solution: ((7 8))
+  output: ((7 7 . 9) (8 8 . 10))
+  runtime_cost: 9082
+  byte_cost: 2028000
+  total_cost: 2037082
+- name: rebuild_call_in_for
+  program: (a (q 2 4 (c 2 5)) (c (c (q 2 (i 3 (q 4 (a (q 4 18 (c 11 58)) (c (a 6 5) 1)) (a 4 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q 4 1 (c (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2)))) ())) (q 8)) 1)) 1))
+  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i 3 (q 4 (a (q 4 (f (f (r 2))) (c (f 7) (r (r (f (r 2)))))) (c (a 6 (f 3)) 1)) (a 4 (c (c 4 6) (r 3)))) ()) 1) (q 2 (i (> 1 ()) (q 4 1 (c (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2)))) ())) (q 8 (q . "assertion failed at struct_update.rue:485:5"))) 1)) 1))
+  solution: ((7 8))
+  output: ((7 7 . 9) (8 8 . 10))
+  runtime_cost: 9082
+  byte_cost: 2028000
+  total_cost: 2037082
