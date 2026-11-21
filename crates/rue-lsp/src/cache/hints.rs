@@ -7,7 +7,8 @@ use std::ops::Range;
 
 use rowan::{TextRange, TextSize, WalkEvent};
 use rue_ast::{
-    AstBinding, AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt, AstNode, AstPathSegment,
+    AstBinding, AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt, AstMatchArm, AstNode,
+    AstPathSegment,
 };
 use rue_compiler::{Compiler, SyntaxCall, SyntaxItemKind};
 use rue_hir::{Symbol, SymbolId};
@@ -138,6 +139,15 @@ impl Cache<Compiler> {
                     && stmt.ty().is_none()
                     && !stmt.value().is_some_and(|value| is_obvious(&value))
                     && let Some(binding) = stmt.binding()
+                {
+                    binding_types(&binding, &declarations, &mut pending);
+                }
+            } else if let Some(arm) = AstMatchArm::cast(node.clone()) {
+                // An arm's binding destructures a value of the arm's type, which is written right
+                // before it, like the type of a `let` can be. Only `_` leaves the type out.
+                if options.types
+                    && arm.ty().is_some_and(|ty| ty.is_placeholder())
+                    && let Some(binding) = arm.binding()
                 {
                     binding_types(&binding, &declarations, &mut pending);
                 }
