@@ -8,7 +8,9 @@ use rue_diagnostic::Name;
 
 use crate::{
     Alias, Atom, AtomRestriction, AtomSemantic, DISCRIMINANT_FIELD, Struct, Type, TypeId,
-    grow_stack, hash::FxIndexSet, step, substitute,
+    grow_stack,
+    hash::{FxHashMap, FxIndexSet},
+    step, substitute,
 };
 
 pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
@@ -207,10 +209,21 @@ fn stringify_impl_inner(
             let mut members = IndexSet::new();
             let mut elided = !union_variants(arena, id, limit, &mut members);
 
+            // Whether a member was cut short is told apart from whether anything before it was
+            let cut_before = CUT.replace(false);
+
             let members = members
                 .into_iter()
-                .map(|id| (id, stringify_impl(arena, id, stack)))
+                .map(|id| {
+                    let name = stringify_impl(arena, id, stack);
+                    let cut = CUT.replace(false);
+                    Member { id, name, cut }
+                })
                 .collect::<Vec<_>>();
+
+            if cut_before || members.iter().any(|member| member.cut) {
+                CUT.set(true);
+            }
 
             let mut variants = distinct_members(arena, members);
 
@@ -401,22 +414,29 @@ fn union_variants_inner(
     }
 }
 
-/// The names of a union's members as they're displayed, given each member with its name: without
-/// the members that are the same type as an earlier one or that another member includes, and with
-/// `true` and `false` shown together as `Bool`.
-fn distinct_members(arena: &Arena<Type>, members: Vec<(TypeId, String)>) -> Vec<String> {
+/// A member of a union as it was written.
+struct Member {
+    id: TypeId,
+    name: String,
+    /// Whether any part of it was left out, in which case it's only known by its name.
+    cut: bool,
+}
+
+/// The names of a union's members as they're displayed: without the members that are the same
+/// type as an earlier one or that another member includes, and with `true` and `false` shown
+/// together as `Bool`.
+fn distinct_members(arena: &Arena<Type>, members: Vec<Member>) -> Vec<String> {
     let mut members = members
         .into_iter()
-        .map(|(id, name)| {
-            // A member that wasn't written in full is only known by what was written of it
-            let shown = if name.contains(ELIDED) {
+        .map(|member| {
+            let shown = if member.cut {
                 Shown::Name
-            } else if let Some(value) = bool_value(arena, id) {
+            } else if let Some(value) = bool_value(arena, member.id) {
                 Shown::Bool(Some(value))
             } else {
-                Shown::Type(id)
+                Shown::Type(unwrap_refs(arena, member.id))
             };
-            (shown, name)
+            (shown, member.name)
         })
         .collect::<Vec<_>>();
 
@@ -447,30 +467,56 @@ fn distinct_members(arena: &Arena<Type>, members: Vec<(TypeId, String)>) -> Vec<
         });
     }
 
+    let mut matcher = Matcher::default();
+
+    // A member is the same as an earlier one if it's shown the same and is the same type, which
+    // is only looked into for members with the same name, so that this takes no longer than
+    // writing them did unless many of them are alike
     let mut kept: Vec<(Shown, String)> = Vec::new();
+    let mut named: FxHashMap<String, Vec<usize>> = FxHashMap::default();
 
     for (shown, name) in members {
-        // An atom is the same as an earlier one that's shown the same, such as the second `5`
-        // in a union that inference collected `5` into twice
-        let repeated = kept
+        let alike = named.entry(name.clone()).or_default();
+
+        let repeated = alike
             .iter()
-            .any(|(other, other_name)| *other_name == name && shown.same_as(arena, other));
+            .any(|&earlier| shown.same_as(arena, &kept[earlier].0, &mut matcher));
 
         if !repeated {
+            alike.push(kept.len());
             kept.push((shown, name));
         }
     }
 
-    // Of two members that include each other, the first is kept
-    let included = (0..kept.len())
-        .map(|i| {
-            (0..kept.len()).any(|j| {
-                i != j
-                    && kept[j].0.includes(arena, &kept[i].0)
-                    && !(i < j && kept[i].0.includes(arena, &kept[j].0))
-            })
-        })
+    // A member is left out if one that's still shown includes it. They're gone through from the
+    // last, so that the first of two that include each other is the one that's shown, and there's
+    // always a member left: the one that the last to be left out was included in
+    //
+    // Only an atom that isn't a single value includes another atom, and only a pair includes
+    // another pair, so those are the only members that are tried
+    let wide_atoms = (0..kept.len())
+        .filter(|&i| kept[i].0.is_wide_atom(arena))
         .collect::<Vec<_>>();
+    let pairs = (0..kept.len())
+        .filter(|&i| kept[i].0.is_pair(arena))
+        .collect::<Vec<_>>();
+    let mut included = vec![false; kept.len()];
+
+    for i in (0..kept.len()).rev() {
+        if matcher.is_spent() {
+            break;
+        }
+
+        let candidates = if kept[i].0.is_pair(arena) {
+            &pairs
+        } else {
+            &wide_atoms
+        };
+
+        included[i] = candidates.iter().any(|&j| {
+            i != j && !included[j] && kept[j].0.includes(arena, &kept[i].0, &mut matcher)
+        });
+    }
 
     kept.into_iter()
         .zip(included)
@@ -491,28 +537,46 @@ enum Shown {
 
 impl Shown {
     /// Whether two members that are shown the same are the same type.
-    fn same_as(&self, arena: &Arena<Type>, other: &Self) -> bool {
+    fn same_as(&self, arena: &Arena<Type>, other: &Self, matcher: &mut Matcher) -> bool {
         match (self, other) {
             (Self::Name, _) | (_, Self::Name) => false,
-            (Self::Type(lhs), Self::Type(rhs)) => {
-                Matcher::default().matches(arena, *lhs, *rhs, false)
-            }
+            (Self::Type(lhs), Self::Type(rhs)) => matcher.matches(arena, *lhs, *rhs, false),
             _ => self == other,
         }
     }
 
     /// Whether every value of the other member is a value of this one, as far as that can be told
     /// from how the types are written.
-    fn includes(&self, arena: &Arena<Type>, other: &Self) -> bool {
+    fn includes(&self, arena: &Arena<Type>, other: &Self, matcher: &mut Matcher) -> bool {
         match (self, other) {
-            (Self::Type(lhs), Self::Type(rhs)) => {
-                Matcher::default().matches(arena, *lhs, *rhs, true)
-            }
-            (Self::Type(lhs), Self::Bool(_)) => {
-                matches!(unwrap_refs(arena, *lhs), Type::Atom(atom) if atom.semantic == AtomSemantic::Bool && atom.restriction.is_none())
-            }
+            (Self::Type(lhs), Self::Type(rhs)) => matcher.matches(arena, *lhs, *rhs, true),
+            (Self::Type(lhs), Self::Bool(_)) => matches!(
+                &arena[*lhs],
+                Type::Atom(Atom {
+                    semantic: AtomSemantic::Bool,
+                    restriction: None,
+                })
+            ),
             _ => false,
         }
+    }
+
+    /// Whether the member is an atom that has more than one value.
+    fn is_wide_atom(&self, arena: &Arena<Type>) -> bool {
+        matches!(
+            self,
+            Self::Type(id) if matches!(
+                &arena[*id],
+                Type::Atom(Atom {
+                    restriction: None | Some(AtomRestriction::Length(_)),
+                    ..
+                })
+            )
+        )
+    }
+
+    fn is_pair(&self, arena: &Arena<Type>) -> bool {
+        matches!(self, Self::Type(id) if matches!(arena[*id], Type::Pair(_)))
     }
 }
 
@@ -521,7 +585,7 @@ fn bool_value(arena: &Arena<Type>, id: TypeId) -> Option<bool> {
     let Type::Atom(Atom {
         semantic: AtomSemantic::Bool,
         restriction: Some(AtomRestriction::Value(value)),
-    }) = unwrap_refs(arena, id)
+    }) = &arena[unwrap_refs(arena, id)]
     else {
         return None;
     };
@@ -533,17 +597,20 @@ fn bool_value(arena: &Arena<Type>, id: TypeId) -> Option<bool> {
     }
 }
 
-fn unwrap_refs(arena: &Arena<Type>, mut id: TypeId) -> &Type {
+/// The type that a reference is to.
+fn unwrap_refs(arena: &Arena<Type>, mut id: TypeId) -> TypeId {
     while let Type::Ref(inner) = arena[id] {
         id = inner;
     }
 
-    &arena[id]
+    id
 }
 
-/// How many pairs of types [`Matcher`] looks at before it says that two types aren't the same,
-/// which only leaves a member of a union displayed that didn't need to be.
-const MATCH_LIMIT: usize = 4096;
+/// How many pairs of types [`Matcher`] looks at for the members of one union before it says that
+/// the rest aren't the same, which only leaves members displayed that didn't need to be. It
+/// bounds the time that displaying a union takes beyond writing its members, which is otherwise
+/// the square of how many of them are alike.
+const MATCH_LIMIT: usize = 1 << 16;
 
 /// Tells whether two types are the same type written out, or whether one includes the other.
 #[derive(Default)]
@@ -554,13 +621,18 @@ struct Matcher {
 }
 
 impl Matcher {
+    /// Whether it has looked at as many pairs as it does, so nothing matches from now on.
+    fn is_spent(&self) -> bool {
+        self.work > MATCH_LIMIT
+    }
+
     /// Whether the types are the same: made of the same parts in the same places, where a struct
     /// is the same as another instance of its declaration with the same generic arguments.
     ///
     /// With `includes`, whether the first type includes the second instead: an atom includes the
-    /// values and lengths of it, and a pair includes a pair of what its parts include. This is
-    /// only what can be told without comparing the types, so that it's the same whichever type is
-    /// being displayed.
+    /// values and lengths of it, a pair includes a pair of what its parts include, and a union
+    /// includes what one of its members does. This is only what can be told without comparing
+    /// the types, so that it's the same wherever a type is displayed.
     fn matches(&mut self, arena: &Arena<Type>, lhs: TypeId, rhs: TypeId, includes: bool) -> bool {
         grow_stack(|| self.matches_inner(arena, lhs, rhs, includes))
     }
@@ -568,17 +640,12 @@ impl Matcher {
     fn matches_inner(
         &mut self,
         arena: &Arena<Type>,
-        mut lhs: TypeId,
-        mut rhs: TypeId,
+        lhs: TypeId,
+        rhs: TypeId,
         includes: bool,
     ) -> bool {
-        while let Type::Ref(inner) = arena[lhs] {
-            lhs = inner;
-        }
-
-        while let Type::Ref(inner) = arena[rhs] {
-            rhs = inner;
-        }
+        let lhs = unwrap_refs(arena, lhs);
+        let rhs = unwrap_refs(arena, rhs);
 
         if lhs == rhs {
             return true;
@@ -586,7 +653,7 @@ impl Matcher {
 
         self.work += 1;
 
-        if self.work > MATCH_LIMIT {
+        if self.is_spent() {
             return false;
         }
 
@@ -616,31 +683,24 @@ impl Matcher {
             | (Type::Never, Type::Never)
             | (Type::Any, Type::Any) => true,
             (Type::Atom(lhs), Type::Atom(rhs)) => {
-                lhs.to_string() == rhs.to_string() || (includes && atom_includes(lhs, rhs))
+                atom_shown_same(lhs, rhs) || (includes && atom_includes(lhs, rhs))
             }
             (Type::Pair(lhs), Type::Pair(rhs)) => {
                 self.matches(arena, lhs.first, rhs.first, includes)
                     && self.matches(arena, lhs.rest, rhs.rest, includes)
             }
+            // A struct without a name is displayed as what it's made of
             (Type::Struct(lhs), Type::Struct(rhs)) => {
                 lhs.semantic == rhs.semantic
                     && lhs.narrowed == rhs.narrowed
                     && self.all_match(arena, &lhs.generics, &rhs.generics)
-                    && (!lhs.narrowed || self.matches(arena, lhs.inner, rhs.inner, false))
+                    && ((!lhs.narrowed && lhs.name.is_some())
+                        || self.matches(arena, lhs.inner, rhs.inner, false))
             }
             (Type::Alias(lhs), Type::Alias(rhs)) => {
                 lhs.name.as_ref().map(Name::text) == rhs.name.as_ref().map(Name::text)
                     && self.all_match(arena, &lhs.generics, &rhs.generics)
                     && self.matches(arena, lhs.inner, rhs.inner, false)
-            }
-            (Type::Apply(lhs), Type::Apply(rhs)) => {
-                lhs.generics.len() == rhs.generics.len()
-                    && self.matches(arena, lhs.inner, rhs.inner, false)
-                    && lhs.generics.iter().all(|(generic, &lhs)| {
-                        rhs.generics
-                            .get(generic)
-                            .is_some_and(|&rhs| self.matches(arena, lhs, rhs, false))
-                    })
             }
             (Type::Function(lhs), Type::Function(rhs)) => {
                 lhs.generics == rhs.generics
@@ -668,6 +728,8 @@ impl Matcher {
                             .any(|&lhs| self.matches(arena, lhs, rhs, false))
                     })
             }
+            // Generics are the same if they're the same type, which has been ruled out. The types
+            // that are substituted before a type is displayed are never the same
             _ => false,
         };
 
@@ -683,6 +745,20 @@ impl Matcher {
                 .zip(rhs)
                 .all(|(&lhs, &rhs)| self.matches(arena, lhs, rhs, false))
     }
+}
+
+/// Whether two atoms are displayed the same, as an `Int` and an `Int` of some length are.
+fn atom_shown_same(lhs: &Atom, rhs: &Atom) -> bool {
+    if lhs.semantic != rhs.semantic {
+        return false;
+    }
+
+    // Different values are different numbers and bytes, which is told without writing them
+    lhs.restriction == rhs.restriction
+        || (!(matches!(lhs.semantic, AtomSemantic::Int | AtomSemantic::Bytes)
+            && matches!(lhs.restriction, Some(AtomRestriction::Value(_)))
+            && matches!(rhs.restriction, Some(AtomRestriction::Value(_))))
+            && lhs.to_string() == rhs.to_string())
 }
 
 /// The value of an atom that's a value of `Bytes`.
@@ -716,7 +792,7 @@ fn atom_includes(lhs: &Atom, rhs: &Atom) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{FunctionParameter, FunctionType, Pair, Union};
+    use crate::{FunctionParameter, FunctionType, Generic, Pair, Union};
 
     use super::*;
 
@@ -940,8 +1016,230 @@ mod tests {
             }))
         };
         let first = function(arena, int, one_two);
-        let second = function(arena, int, two_one);
+        let second = function(arena, int, one_two);
+        let different = function(arena, bytes, one_two);
         assert_eq!(union(arena, &[first, second]), "fn(x: Int) -> 1 | 2");
+        assert_eq!(
+            union(arena, &[first, different]),
+            "fn(x: Int) -> 1 | 2 | fn(x: Bytes) -> 1 | 2"
+        );
+
+        // But not if they're generic over different types that have the same name
+        let generic = |arena: &mut Arena<Type>| {
+            arena.alloc(Type::Generic(Generic {
+                name: Some(Name::new("T", None)),
+            }))
+        };
+        let generic_function = |arena: &mut Arena<Type>, generic| {
+            arena.alloc(Type::Function(FunctionType {
+                generics: vec![generic],
+                params: vec![FunctionParameter::new("x", int)],
+                nil_terminated: true,
+                ret: int,
+            }))
+        };
+        let (t, other_t) = (generic(arena), generic(arena));
+        let first = generic_function(arena, t);
+        let second = generic_function(arena, t);
+        let different = generic_function(arena, other_t);
+        assert_eq!(union(arena, &[first, second]), "fn<T>(x: Int) -> Int");
+        assert_eq!(
+            union(arena, &[first, different]),
+            "fn<T>(x: Int) -> Int | fn<T>(x: Int) -> Int"
+        );
+        assert_eq!(union(arena, &[t, other_t, t]), "T | T");
+
+        // A function with a spread parameter and a string with dots in it are written in full,
+        // although part of a type that's left out is written the same way
+        let spread = |arena: &mut Arena<Type>| {
+            arena.alloc(Type::Function(FunctionType {
+                generics: Vec::new(),
+                params: vec![FunctionParameter::new("x", int)],
+                nil_terminated: false,
+                ret: int,
+            }))
+        };
+        let (first, second) = (spread(arena), spread(arena));
+        assert_eq!(union(arena, &[first, second]), "fn(...x: Int) -> Int");
+
+        let first = value(arena, AtomSemantic::String, b"wait...");
+        let second = value(arena, AtomSemantic::String, b"wait...");
+        assert_eq!(union(arena, &[first, second, int]), "\"wait...\" | Int");
+        let first = pair(arena, first, int);
+        let second = pair(arena, second, int);
+        assert_eq!(union(arena, &[first, second]), "(\"wait...\", Int)");
+    }
+
+    #[test]
+    fn test_union_structs_shown_once() {
+        let mut arena = Arena::new();
+        let arena = &mut arena;
+
+        let int = arena.alloc(Type::Atom(Atom::INT));
+        let bytes = arena.alloc(Type::Atom(Atom::BYTES));
+        let semantic = arena.alloc(Type::Unresolved);
+
+        let structure = |arena: &mut Arena<Type>, generic| {
+            arena.alloc(Type::Struct(Struct {
+                name: Some(Name::new("Box", None)),
+                semantic,
+                inner: generic,
+                generics: vec![generic],
+                fields: IndexSet::from(["value".to_string()]),
+                nil_terminated: false,
+                narrowed: false,
+            }))
+        };
+
+        // Instances of a declaration with different generic arguments are different types
+        let first = structure(arena, int);
+        let second = structure(arena, int);
+        let different = structure(arena, bytes);
+        assert_eq!(union(arena, &[first, second]), "Box<Int>");
+        assert_eq!(union(arena, &[first, different]), "Box<Int> | Box<Bytes>");
+
+        let first = pair(arena, first, int);
+        let different = pair(arena, different, int);
+        assert_eq!(
+            union(arena, &[first, different]),
+            "(Box<Int>, Int) | (Box<Bytes>, Int)"
+        );
+
+        // A struct that's been narrowed is the same as one that's been narrowed to the same type
+        let zero = value(arena, AtomSemantic::Int, &[]);
+        let one = value(arena, AtomSemantic::Int, &[1]);
+        let narrowed = |arena: &mut Arena<Type>, inner| {
+            arena.alloc(Type::Struct(Struct {
+                name: Some(Name::new("Box", None)),
+                semantic,
+                inner,
+                generics: vec![int],
+                fields: IndexSet::from(["value".to_string()]),
+                nil_terminated: false,
+                narrowed: true,
+            }))
+        };
+        let first = narrowed(arena, zero);
+        let second = narrowed(arena, zero);
+        let different = narrowed(arena, one);
+        assert_eq!(union(arena, &[first, second]), "Box { ...value: 0 }");
+        assert_eq!(
+            union(arena, &[first, different]),
+            "Box { ...value: 0 } | Box { ...value: 1 }"
+        );
+
+        // A struct without a name is displayed as what it's made of, which is what's the same
+        let anonymous = |arena: &mut Arena<Type>, inner| {
+            arena.alloc(Type::Struct(Struct {
+                name: None,
+                semantic,
+                inner,
+                generics: Vec::new(),
+                fields: IndexSet::new(),
+                nil_terminated: true,
+                narrowed: false,
+            }))
+        };
+        let first = anonymous(arena, int);
+        let second = anonymous(arena, int);
+        let different = anonymous(arena, bytes);
+        assert_eq!(union(arena, &[first, second]), "Int");
+        assert_eq!(union(arena, &[first, different]), "Int | Bytes");
+        let first = pair(arena, first, int);
+        let different = pair(arena, different, int);
+        assert_eq!(
+            union(arena, &[first, different]),
+            "(Int, Int) | (Bytes, Int)"
+        );
+    }
+
+    /// Displaying a union takes about as long as writing its members, however many there are.
+    /// Without the limit on the members that are compared, each of these takes minutes.
+    #[test]
+    fn test_union_of_many_members() {
+        let mut arena = Arena::new();
+        let arena = &mut arena;
+
+        let int = arena.alloc(Type::Atom(Atom::INT));
+        let bytes = arena.alloc(Type::Atom(Atom::BYTES));
+
+        let values = (0..20_000u32)
+            .map(|i| value(arena, AtomSemantic::Bytes, &i.to_be_bytes()))
+            .collect::<Vec<_>>();
+        let name = union(arena, &values);
+        assert_eq!(name.split(" | ").count(), values.len());
+
+        // Every value is looked for in the atoms that have more than one, of which there's one
+        let mut with_bytes = values.clone();
+        with_bytes.insert(10_000, bytes);
+        assert_eq!(union(arena, &with_bytes), "Bytes");
+
+        // Pairs are compared with each other until the limit, and the rest are displayed
+        let pairs = values
+            .iter()
+            .map(|&value| pair(arena, value, int))
+            .collect::<Vec<_>>();
+        let name = union(arena, &pairs);
+        assert_eq!(name.split(" | ").count(), pairs.len());
+
+        // The same pair many times over is found by its name each time
+        let same = (0..20_000)
+            .map(|_| pair(arena, int, bytes))
+            .collect::<Vec<_>>();
+        assert_eq!(union(arena, &same), "(Int, Bytes)");
+    }
+
+    /// Types that are too large to compare are displayed as they are, rather than taken to be the
+    /// same, and a union always has a member left to display.
+    #[test]
+    fn test_union_members_too_large_to_compare() {
+        let mut arena = Arena::new();
+        let arena = &mut arena;
+
+        let int = arena.alloc(Type::Atom(Atom::INT));
+
+        // Each of these is a union of all the others' members in another order, so each
+        // includes the others, which takes more comparisons to tell than the limit
+        let values = (1..=400u32)
+            .map(|i| value(arena, AtomSemantic::Int, &i.to_be_bytes()[2..]))
+            .collect::<Vec<_>>();
+        let ascending = arena.alloc(Type::Union(Union::new(
+            [vec![int], values.clone()].concat(),
+        )));
+        let descending = arena.alloc(Type::Union(Union::new(
+            values.iter().rev().copied().chain([int]).collect(),
+        )));
+
+        let first = pair(arena, descending, int);
+        let second = pair(arena, ascending, descending);
+        let third = pair(arena, int, ascending);
+        let name = union(arena, &[first, second, third]);
+        assert!(!name.is_empty());
+        assert!(
+            name.split(" | ").all(|member| member == "(Int, Int)"),
+            "{name}"
+        );
+
+        // Two long lists aren't taken to be the same, whether or not they are
+        let list = |arena: &mut Arena<Type>, end: TypeId| {
+            let mut list = end;
+
+            for _ in 0..=MATCH_LIMIT {
+                list = arena.alloc(Type::Pair(Pair::new(int, list)));
+            }
+
+            list
+        };
+        let nil = arena.alloc(Type::Atom(Atom::NIL));
+        let first = list(arena, nil);
+        let second = list(arena, nil);
+        let third = list(arena, int);
+
+        let mut matcher = Matcher::default();
+        assert!(!matcher.matches(arena, first, second, false));
+        assert!(matcher.is_spent());
+        assert!(!Matcher::default().matches(arena, first, third, false));
+        assert!(!Matcher::default().matches(arena, first, third, true));
     }
 
     #[test]
@@ -963,6 +1261,16 @@ mod tests {
         assert_eq!(union(arena, &[zero, int, one]), "Int");
         assert_eq!(union(arena, &[bytes32, bytes, hash]), "Bytes");
         assert_eq!(union(arena, &[bytes32, hash]), "Bytes32");
+
+        // A value of another length isn't one of the atom's
+        let short = value(arena, AtomSemantic::Bytes, &[7]);
+        assert_eq!(union(arena, &[bytes32, short]), "Bytes32 | 0x07");
+        let first = pair(arena, bytes32, int);
+        let second = pair(arena, short, int);
+        assert_eq!(
+            union(arena, &[first, second]),
+            "(Bytes32, Int) | (0x07, Int)"
+        );
 
         // Other than `nil`, which says that there might be no value
         assert_eq!(union(arena, &[bytes, nil]), "Bytes | nil");

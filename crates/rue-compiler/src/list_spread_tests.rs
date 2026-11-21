@@ -54,6 +54,6 @@ fn union_with_a_long_tuple() {
     let errors = compile(&source).errors();
     assert_eq!(
         errors,
-        [r#"2:48 UnassignableType("List<Int | \"a\" | 1>", "List<Int>")"#]
+        [r#"2:48 UnassignableType("List<Int | \"a\">", "List<Int>")"#]
     );
 }

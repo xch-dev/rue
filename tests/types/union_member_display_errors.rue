@@ -42,6 +42,12 @@ fn same_members(condition: Bool, n: Int) -> nil {
     let lists: Bytes = choose(condition, ints(), ints());
     let boxes: Bytes = choose(condition, Box::<Int> { value: n }, Box::<Int> { value: 1 });
     let functions: Bytes = choose(condition, fn(x: Int) => x, fn(x: Int) => x + 1);
+    let spreads: Bytes = choose(
+        condition,
+        (n, fn(...x: List<Int>) => n),
+        (n, fn(...x: List<Int>) => n),
+    );
+    let dots: Bytes = choose(condition, ("wait...", n), ("wait...", n));
     nil
 }
 

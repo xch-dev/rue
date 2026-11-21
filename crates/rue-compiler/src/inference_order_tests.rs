@@ -31,7 +31,7 @@ fn main() -> Int {
 
     expect![[r#"
         [
-            "10:18 IncompatibleType(\"(Int | 7 | 4, Int | 7 | 4) | (4, 7)\", \"Int\")",
+            "10:18 IncompatibleType(\"(Int, Int)\", \"Int\")",
         ]
     "#]]
     .assert_debug_eq(&first);
