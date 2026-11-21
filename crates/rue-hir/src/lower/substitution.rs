@@ -15,7 +15,10 @@
 //! This is sound as long as values have the shapes their types say, which the compiler trusts for
 //! some of them (see the [`crate::analysis`] module docs).
 
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::{OnceCell, RefCell},
+    collections::{HashMap, HashSet},
+};
 
 use indexmap::IndexSet;
 
@@ -93,10 +96,13 @@ impl Lowerer<'_, '_, '_> {
     fn decide_substitution(&self, symbol: SymbolId) -> bool {
         match self.db.symbol(symbol) {
             Symbol::Binding(binding) => {
-                !may_fail(self, binding.value.hir) || self.binding_always_evaluated(symbol)
+                self.is_evaluated_once(symbol)
+                    && (!may_fail(self, binding.value.hir) || self.binding_always_evaluated(symbol))
             }
             Symbol::Constant(constant) => {
-                !may_fail(self, constant.value.hir) || self.constant_always_evaluated(symbol)
+                self.is_evaluated_once(symbol)
+                    && (!may_fail(self, constant.value.hir)
+                        || self.constant_always_evaluated(symbol))
             }
             Symbol::Function(_)
             | Symbol::Parameter(_)
@@ -104,6 +110,121 @@ impl Lowerer<'_, '_, '_> {
             | Symbol::Module(_)
             | Symbol::Builtin(_) => true,
         }
+    }
+
+    /// Whether evaluating the binding or constant where it's referenced doesn't evaluate anything
+    /// expensive more often than binding it would. Its only reference can be somewhere that's
+    /// evaluated more than once for each time the value is bound, such as a lambda that's called
+    /// for each item of a list (see [`crate::DependencyGraph::is_repeated`]). The value is then
+    /// only substituted if it's compiled to a constant (see [`Self::decide_repeats`]).
+    fn is_evaluated_once(&self, symbol: SymbolId) -> bool {
+        !self.graph.is_repeated(symbol)
+            || self
+                .folded_repeats
+                .as_ref()
+                .is_some_and(|folded| folded.contains(&symbol))
+    }
+
+    /// Decides which of the bindings and constants whose only reference can be evaluated more
+    /// than once are substituted there anyway (see [`Self::is_evaluated_once`]): the ones whose
+    /// value is compiled to a constant, although it isn't written as something that's cheap to
+    /// evaluate, such as a hash of constants. It's then folded with what uses it.
+    ///
+    /// This is decided once, before anything is lowered, rather than each time a let statement
+    /// is. Finding out whether a value is a constant lowers it, and what a function captures
+    /// depends on which values are bound (see [`Self::is_always_bound`]), which is only found
+    /// once for each function. So it doesn't depend on the arguments of the calls being inlined:
+    /// a value that's only a constant with them is bound.
+    pub(super) fn decide_repeats(&mut self) {
+        if self.folded_repeats.is_some() {
+            return;
+        }
+
+        self.folded_repeats = Some(HashSet::new());
+
+        if !self.options.auto_inline {
+            return;
+        }
+
+        let undecided: Vec<(SymbolId, HirId)> = self
+            .dependencies(self.main, false)
+            .iter()
+            .filter(|&&symbol| self.graph.is_repeated(symbol))
+            .filter_map(|&symbol| match self.db.symbol(symbol) {
+                Symbol::Binding(binding) => Some((symbol, binding.value.hir)),
+                Symbol::Constant(constant) => Some((symbol, constant.value.hir)),
+                Symbol::Function(_)
+                | Symbol::Parameter(_)
+                | Symbol::Unresolved
+                | Symbol::Module(_)
+                | Symbol::Builtin(_) => None,
+            })
+            .collect();
+
+        if undecided.is_empty() {
+            return;
+        }
+
+        // A value can be a constant because of another one that is, which is evaluated with it.
+        // That one is only referenced there, so it's found after the value, and checked first
+        for (symbol, value) in undecided.into_iter().rev() {
+            if self.folds_to_constant(symbol, value)
+                && let Some(repeats) = &mut self.folded_repeats
+            {
+                repeats.insert(symbol);
+            }
+        }
+
+        // What was found while the values were lowered took the ones that weren't decided yet
+        // to be bound
+        self.dependencies.borrow_mut().clear();
+        self.substitutions.borrow_mut().clear();
+        self.substitution_failures.borrow_mut().clear();
+        self.function_failures.borrow_mut().clear();
+        self.path_choices.clear();
+        self.constant_roots = OnceCell::new();
+    }
+
+    /// Whether the binding or constant is bound wherever it's lowered, rather than substituted
+    /// where it's referenced, so that a function that refers to it from outside only needs its
+    /// value (see [`crate::DependencyGraph::captures`]). This has to hold whatever the arguments
+    /// of the calls being inlined are, since what a function captures is only found once.
+    ///
+    /// A value that's referenced more than once is only substituted if it's a path (see
+    /// [`Self::is_path_binding`]), which a constant never is, and which a binding can only be if
+    /// it's written as one. A value whose only reference can be evaluated more than once, and
+    /// that isn't cheap to evaluate, is bound unless it's compiled to a constant (see
+    /// [`Self::decide_repeats`]).
+    pub(super) fn is_always_bound(&self, symbol: SymbolId) -> bool {
+        let (value, inline, is_constant) = match self.db.symbol(symbol) {
+            Symbol::Binding(binding) => (binding.value.hir, binding.inline, false),
+            Symbol::Constant(constant) => (constant.value.hir, constant.inline, true),
+            Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Builtin(_) => return false,
+        };
+
+        if inline {
+            return false;
+        }
+
+        // Nothing else is substituted unless values are inlined automatically
+        if !self.options.auto_inline {
+            return true;
+        }
+
+        if self.graph.is_repeated(symbol) {
+            return !self.is_evaluated_once(symbol);
+        }
+
+        self.graph.references(symbol) > 1
+            && (is_constant
+                || !matches!(
+                    self.db.hir(self.db.without_casts(value)),
+                    Hir::Reference(_) | Hir::FieldAccess(_)
+                ))
     }
 
     /// Whether the rest of the block after the binding's let statement always evaluates its
@@ -133,7 +254,8 @@ impl Lowerer<'_, '_, '_> {
     }
 
     /// What's always evaluated when the program is run: the body of `main`, and the values of the
-    /// constants that are referenced more than once, since they're bound before it.
+    /// constants that are bound before it (see [`Self::is_always_bound`]): the ones that are
+    /// referenced more than once, or whose only reference can be evaluated more than once.
     fn find_constant_roots(&self) -> Vec<HirId> {
         let Symbol::Function(main) = self.db.symbol(self.main) else {
             return Vec::new();
@@ -148,7 +270,7 @@ impl Lowerer<'_, '_, '_> {
         for &dependency in self.dependencies(self.main, false).iter() {
             if let Symbol::Constant(constant) = self.db.symbol(dependency)
                 && !constant.inline
-                && self.graph.references(dependency) > 1
+                && self.is_always_bound(dependency)
             {
                 roots.push(constant.value.hir);
             }

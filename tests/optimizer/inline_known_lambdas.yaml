@@ -8,7 +8,7 @@ tests:
   total_cost: 36020
 - name: captured
   program: (a (q 18 2 (q . 7)) (c (q . 5) 1))
-  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) (c (q . 7) ())) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 18 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . 7) ())) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "35"
   runtime_cost: 1294
   byte_cost: 300000
@@ -28,14 +28,14 @@ tests:
   debug_clvm_error: clvm raise "assertion failed at inline_known_lambdas.rue:28:5"
 - name: returned_closure
   program: (a (q 2 (c (q . 2) (c (q 1 2 2 (c (a 2 (c 5 ())) ())) (c (c (q . 4) (c (c (q . 1) (c (q . 2) (c (q 1 18 5 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ())))) (q 1))) ()))) (q 3)) (c (q . 2) 1))
-  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ())))) (c (q . 1) ()))) ()))) (c (q . 3) ())) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (c (q . 2) (c (c (q . 1) (q 2 2 (c (a 2 (c 5 ())) ()))) (c (c (q . 4) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 18 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) (c (q . 1) ()))) ()))) (c (q . 3) ())) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "12"
   runtime_cost: 4683
   byte_cost: 1884000
   total_cost: 1888683
 - name: used_twice
   program: (a (q 16 (a 2 (q 1)) (a 2 (q 2))) (c (q 18 2 (q . 2)) 1))
-  debug_program: (a (q 2 (q 2 (q 16 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ()))) (c (c (q . 2) (c (c (q . 1) (q 18 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ()))) (c (c (q . 2) (c (c (q . 1) (q 18 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "6"
   runtime_cost: 3436
   byte_cost: 612000
@@ -91,7 +91,7 @@ tests:
   total_cost: 36020
 - name: repeated_large_static_parameter
   program: (a (q 11 2 (q . 2) 2) (c (q . "a string that's longer than a few bytes") 1))
-  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "a string that's longer than a few bytes") ())) (c (c (q . 2) (c (c (q . 1) (q 11 (concat (concat 11 2) 11))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "a string that's longer than a few bytes") ())) (c (c (q . 2) (c (c (q . 1) (q 11 (concat (concat 5 2) 5))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "0xe96ddc7d6d3166689c2b5d7b42eeeb2a7a233d4372dfddf5bc6fd96bdd8c1d7f"
   runtime_cost: 1310
   byte_cost: 792000
@@ -105,21 +105,21 @@ tests:
   total_cost: 36020
 - name: repeated_static_at_the_limit
   program: (q . 0x313233343536370231323334353637)
-  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "1234567") ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat 11 2) 11)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "1234567") ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat 5 2) 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "0x313233343536370231323334353637"
   runtime_cost: 20
   byte_cost: 216000
   total_cost: 216020
 - name: repeated_static_over_the_limit
   program: (a (q 14 2 (q . 2) 2) (c (q . "12345678") 1))
-  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "12345678") ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat 11 2) 11)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . "12345678") ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat 5 2) 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "0x3132333435363738023132333435363738"
   runtime_cost: 1111
   byte_cost: 420000
   total_cost: 421111
 - name: repeated_large_int
   program: (a (q 16 (* 2 (q . 2)) 2) (c (q . 0x00ab54a98ceb1f0ad2) 1))
-  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 0x00ab54a98ceb1f0ad2) ())) (c (c (q . 2) (c (c (q . 1) (q 16 (* 11 2) 11)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 0x00ab54a98ceb1f0ad2) ())) (c (c (q . 2) (c (c (q . 1) (q 16 (* 5 2) 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (a 2 (q . 2)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "0x0201fdfca6c15d2076"
   runtime_cost: 2354
   byte_cost: 480000
@@ -161,7 +161,7 @@ tests:
   total_cost: 36020
 - name: repeated_call_duplicating_its_argument
   program: (a (q 14 4 (q . 2) 6 4) (c (q "12345" . "12345") 1))
-  debug_program: (a (q 2 (q 2 (q 2 2 (c (a 13 (c (q . "12345") ())) ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat (concat (f 11) 2) (r 11)) (f 11))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1)) (c (c (a 2 (q . 2)) (c (q . 2) (c (c (q . 1) (q 4 2 2)) (c (q . 1) ())))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (a 13 (c (q . "12345") ())) ())) (c (c (q . 2) (c (c (q . 1) (q 14 (concat (concat (f 5) 2) (r 5)) (f 5))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) 1)) (c (c (a 2 (q . 2)) (c (q . 2) (c (c (q . 1) (q 4 2 2)) (c (q . 1) ())))) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_known_lambdas.rue:28:5"))) 1) ()))
   output: "0x31323334350231323334353132333435"
   runtime_cost: 1293
   byte_cost: 492000

@@ -132,6 +132,15 @@ test fn captured_value() -> List<Int> {
     for x in xs { x * k }
 }
 
+// A value that a lambda outside of the body refers to is evaluated once, before the loop, rather
+// than each time the body calls the lambda
+test fn captured_by_a_lambda_outside_of_the_body() -> List<Int> {
+    let xs = runtime([1, 2, 3, 4]);
+    let k = total(xs);
+    let g = fn(y: Int) => y + k;
+    for x in xs { g(x) }
+}
+
 // A literal is used where it's referred to
 test fn captured_literal() -> List<Int> {
     let limit = 2;
@@ -734,6 +743,51 @@ test fn default_value_with_a_loop_used_in_a_loop() -> Int {
     let xs = runtime([1, 2]);
     Outer { _scale: 1 }.value
         + total(for w in xs { Inner { _scale: w }.value + Outer { _scale: w }.value })
+}
+
+fn up_to(n: Int, limit: Int) -> Int {
+    if n > limit {
+        n
+    } else {
+        up_to(n + 3, limit)
+    }
+}
+
+fn down_to(n: Int, limit: Int) -> Int {
+    if n < limit {
+        n
+    } else {
+        down_to(n - 3, limit)
+    }
+}
+
+struct Stepped {
+    _scale: Int,
+    value: Int = total([1, 2, 3]),
+}
+
+struct Written {
+    _scale: Int,
+    value: Int,
+}
+
+// What a default value refers to is captured where the initializer is, rather than after
+// everything else the body refers to, so the loop is the same as the one with the value written
+// in the initializer
+test fn default_value_is_captured_where_it_is_used() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let n = up_to(total(xs), 10);
+    let m = down_to(n, 0);
+    for x in xs { Stepped { _scale: x }.value + up_to(x, 10) + down_to(x, 0) + m + n }
+}
+
+test fn written_value_is_captured_where_it_is_used() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let n = up_to(total(xs), 10);
+    let m = down_to(n, 0);
+    for x in xs {
+        Written { _scale: x, value: total([1, 2, 3]) }.value + up_to(x, 10) + down_to(x, 0) + m + n
+    }
 }
 
 const SUM: Int = total(for x in runtime([1, 2, 3, 4]) { x * x });

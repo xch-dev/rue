@@ -117,6 +117,13 @@ pub struct Lowerer<'d, 'a, 'g> {
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     /// What's always evaluated when the program is run, which constants are checked against.
     constant_roots: OnceCell<Vec<HirId>>,
+    /// Whether a symbol wasn't found in the environment, while a value is lowered on its own to
+    /// find out whether it's a constant (see [`Self::folds_to_constant`]), or `None` otherwise.
+    missing_paths: Option<bool>,
+    /// The bindings and constants that are substituted although their only reference can be
+    /// evaluated more than once, since they're compiled to constants, or `None` until that's
+    /// been decided (see [`Self::decide_repeats`]).
+    folded_repeats: Option<HashSet<SymbolId>>,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
 }
@@ -204,6 +211,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
+            missing_paths: None,
+            folded_repeats: None,
             debug: None,
         }
     }
@@ -310,12 +319,47 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         // on where it's called from (see `DependencyGraph::loop_captures`)
         let dependencies = match self.graph.loop_captures(symbol) {
             Some(captures) if captures_only => Rc::new(captures.clone()),
-            _ => Rc::new(self.graph.dependencies(symbol, captures_only)),
+            _ if captures_only => Rc::new(self.function_captures(symbol)),
+            _ => Rc::new(self.graph.dependencies(symbol, false)),
         };
         self.dependencies
             .borrow_mut()
             .insert(key, dependencies.clone());
         dependencies
+    }
+
+    /// What the function captures: what it depends on from outside of it, apart from what the
+    /// values that are bound outside of it depend on (see [`DependencyGraph::captures`]).
+    fn function_captures(&self, symbol: SymbolId) -> IndexSet<SymbolId> {
+        // The entrypoint binds the constants, so it needs what their values depend on
+        let mut captures = self.graph.captures(symbol, |capture| {
+            self.is_always_bound(capture)
+                && !(symbol == self.main && matches!(self.db.symbol(capture), Symbol::Constant(_)))
+        });
+
+        // A loop is lowered once, with what it was found to capture when the graph was built,
+        // which includes what the values it captures depend on. Whatever calls it passes all
+        // of that, so it captures the same, apart from what's defined inside of it. A loop
+        // captures the loops inside of it, so they're all found here
+        let mut index = 0;
+
+        while let Some(&capture) = captures.get_index(index) {
+            index += 1;
+
+            let Some(needed) = self.graph.loop_captures(capture) else {
+                continue;
+            };
+
+            captures.extend(needed.iter().copied().filter(|&needed| {
+                self.graph.is_loop(needed)
+                    || self
+                        .graph
+                        .owner(needed)
+                        .is_none_or(|owner| self.graph.is_defined_in(symbol, owner))
+            }));
+        }
+
+        captures
     }
 
     pub fn base_path(&self) -> &Path {
@@ -377,6 +421,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: FunctionSymbol,
     ) -> LirId {
+        if symbol == self.main {
+            self.decide_repeats();
+        }
+
         let (capture_groups, param_group) = self.function_groups(symbol, &function);
 
         let mut function_env = Self::apply_group(
@@ -453,26 +501,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 expr = self.arena.alloc(Lir::Run(reference, entire_env));
             }
 
-            for (i, group) in capture_groups.iter().enumerate().rev() {
-                expr = self.arena.alloc(Lir::Quote(expr));
-
-                let mut bind_env = parent_env.clone();
-
-                for existing_group in capture_groups.iter().take(i) {
-                    bind_env = Self::apply_group(bind_env, existing_group, true);
-                }
-
-                let rest = if i == 0 && param_group.is_empty() {
-                    self.arena.alloc(Lir::Atom(vec![]))
-                } else {
-                    self.arena.alloc(Lir::Path(1u8.into()))
-                };
-
-                let group_env =
-                    self.lower_group_environment(&bind_env, group, rest, false, Some(&map), true);
-
-                expr = self.arena.alloc(Lir::Run(expr, group_env));
-            }
+            expr = self.bind_groups(
+                parent_env,
+                &capture_groups,
+                !param_group.is_empty(),
+                &map,
+                expr,
+            );
 
             if expr != body {
                 self.tag_main_wrapper(expr, function.body);
@@ -484,6 +519,42 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         } else {
             self.arena.alloc(Lir::Quote(expr))
         }
+    }
+
+    /// Runs the code with the groups bound in front of the environment it's evaluated with, each
+    /// group after the ones before it, so that its values can refer to theirs. The first group is
+    /// bound in front of the rest of the environment, if there's any (`has_rest`). A symbol in
+    /// the map has the value that's given for it.
+    fn bind_groups(
+        &mut self,
+        env: &Environment,
+        groups: &[SymbolGroup],
+        has_rest: bool,
+        map: &HashMap<SymbolId, LirId>,
+        mut expr: LirId,
+    ) -> LirId {
+        for (i, group) in groups.iter().enumerate().rev() {
+            expr = self.arena.alloc(Lir::Quote(expr));
+
+            let mut bind_env = env.clone();
+
+            for existing_group in groups.iter().take(i) {
+                bind_env = Self::apply_group(bind_env, existing_group, true);
+            }
+
+            let rest = if i == 0 && !has_rest {
+                self.arena.alloc(Lir::Atom(vec![]))
+            } else {
+                self.arena.alloc(Lir::Path(1u8.into()))
+            };
+
+            let group_env =
+                self.lower_group_environment(&bind_env, group, rest, false, Some(map), true);
+
+            expr = self.arena.alloc(Lir::Run(expr, group_env));
+        }
+
+        expr
     }
 
     /// Tags the setup that binds `main`'s captures with the location of its body, since nothing
@@ -512,7 +583,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// Lowers something one level deeper, unless that's deeper than [`MAX_LOWERING_DEPTH`], in
     /// which case it records where and returns a placeholder instead.
     fn nested(&mut self, frame: Frame, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
-        if self.too_deep.is_some() {
+        // A value that needs the environment isn't a constant, whatever the rest of it is
+        if self.too_deep.is_some() || self.missing_paths == Some(true) {
             return self.arena.alloc(Lir::Atom(vec![]));
         }
 
@@ -1291,14 +1363,20 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_path(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        self.arena.alloc(Lir::Path(env.path(symbol).unwrap_or_else(
-            |error| match error {
-                PathError::SymbolNotFound => panic!(
-                    "clvm path in environment not found for symbol {}",
-                    self.db.debug_symbol(symbol)
-                ),
-            },
-        )))
+        let path = match env.path(symbol) {
+            Ok(path) => path,
+            // A value that's lowered on its own isn't a constant if it needs the environment
+            Err(PathError::SymbolNotFound) if self.missing_paths.is_some() => {
+                self.missing_paths = Some(true);
+                return self.arena.alloc(Lir::Atom(vec![]));
+            }
+            Err(PathError::SymbolNotFound) => panic!(
+                "clvm path in environment not found for symbol {}",
+                self.db.debug_symbol(symbol)
+            ),
+        };
+
+        self.arena.alloc(Lir::Path(path))
     }
 
     fn lower_block(&mut self, env: &Environment, mut stmts: Vec<Statement>, body: Tail) -> LirId {

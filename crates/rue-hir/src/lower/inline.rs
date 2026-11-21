@@ -85,13 +85,16 @@ impl Lowerer<'_, '_, '_> {
         let mut best = self.trial(|this| this.lower_symbol_value(env, main));
 
         for function in candidates {
+            // A value can be a constant with the function inlined, so that's decided again
             self.inlined_functions.insert(function);
+            self.folded_repeats = None;
             let inlined = self.trial(|this| this.lower_symbol_value(env, main));
 
             if inlined.size < best.size {
                 best = inlined;
             } else {
                 self.inlined_functions.remove(&function);
+                self.folded_repeats = None;
             }
         }
 
