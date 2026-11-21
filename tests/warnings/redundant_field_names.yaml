@@ -13,5 +13,5 @@ diagnostics:
   Redundant field name, since `x: x` can be written as `x` at redundant_field_names.rue:10:11
     help: Use the shorthand instead
 - |-
-  Redundant field name, since `x: x` can be written as `x` at redundant_field_names.rue:16:17
+  Redundant field name, since `x: x` can be written as `x` at redundant_field_names.rue:17:17
     help: Use the shorthand instead
