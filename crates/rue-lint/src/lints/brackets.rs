@@ -1,4 +1,4 @@
-use rowan::{NodeOrToken, TextRange, TextSize};
+use rowan::{TextRange, TextSize};
 use rue_ast::AstNode;
 use rue_diagnostic::{Applicability, Lint, SrcLoc, Suggestion};
 use rue_parser::SyntaxKind;
@@ -76,14 +76,10 @@ fn is_operand_list(input: &LintInput<'_>, list: &SrcLoc) -> bool {
         .iter()
         .find(|(source, _)| source.kind == list.source.kind)
         .and_then(|(_, document)| {
-            let element = document
+            document
                 .syntax()
-                .covering_element(TextRange::new(start, end));
-
-            match element {
-                NodeOrToken::Node(node) => Some(node),
-                NodeOrToken::Token(token) => token.parent(),
-            }
+                .covering_element(TextRange::new(start, end))
+                .into_node()
         })
         .is_some_and(|node| node.kind() == SyntaxKind::ListExpr && is_operand(&node))
 }

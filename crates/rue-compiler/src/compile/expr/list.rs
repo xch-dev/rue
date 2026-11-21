@@ -164,13 +164,20 @@ fn record_bracketed_for(
     }
 
     // A list of lists is what's expected, if the `for` is what an item is expected to be, and
-    // that isn't a type that says nothing about the item, such as `Any` or a generic type
-    if let Some(expected) = expected_item
-        && ctx.is_assignable(item_type, expected)
-        && !ctx.is_assignable(types.recursive_any, expected)
-        && !references_call_generics(ctx, expected)
-    {
-        return;
+    // that isn't a type that says nothing about the item, such as `Any`. A type with the generics
+    // of a call that's being inferred isn't known yet, so then it's whether it's a list at all,
+    // which `List<T>` is, and `T` isn't
+    if let Some(expected) = expected_item {
+        let expects_list = if references_call_generics(ctx, expected) {
+            ctx.is_assignable(expected, any_list)
+        } else {
+            ctx.is_assignable(item_type, expected)
+                && !ctx.is_assignable(types.recursive_any, expected)
+        };
+
+        if expects_list {
+            return;
+        }
     }
 
     let site = BracketedFor {

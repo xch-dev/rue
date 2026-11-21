@@ -3549,7 +3549,11 @@ fn main(xs: List<Int>) -> Any {
     let k = match [for x in xs { x }] { _ => 1 };
     let l = for y in [for x in xs { x }] { y };
     let m = \"abc\"[[for x in xs { x }]];
-    [a, b, c, d, e, f, g, h, i, j, k, l, m]
+    let n = \"abc\"[0..[for x in xs { x }]];
+    if a is nil {
+        return [a, b, c, d, e, f, g, h, i, j, k, l, m, n];
+    }
+    [for x in xs { x }] is nil
 }
 ";
 
@@ -3574,13 +3578,18 @@ fn main(xs: List<Int>) -> Any {
     let k = match for x in xs { x } { _ => 1 };
     let l = for y in for x in xs { x } { y };
     let m = \"abc\"[for x in xs { x }];
-    [a, b, c, d, e, f, g, h, i, j, k, l, m]
+    let n = \"abc\"[0..for x in xs { x }];
+    if a is nil {
+        return [a, b, c, d, e, f, g, h, i, j, k, l, m, n];
+    }
+    (for x in xs { x }) is nil
 }
 "
     );
 
     // The types are wrong for most of these with and without the brackets, but each of them
-    // still parses, and none has parentheses it doesn't need
+    // still parses, including the one that a statement would otherwise start with, and none has
+    // parentheses it doesn't need
     let (reports, _) = reports(&fixed, |_| {});
 
     assert!(

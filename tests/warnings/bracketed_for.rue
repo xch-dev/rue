@@ -16,6 +16,14 @@ fn same<T>(xs: List<T>) -> List<T> {
     xs
 }
 
+fn either<T>(xs: List<T | List<Int>>) -> List<T | List<Int>> {
+    xs
+}
+
+fn flatten<T>(lists: List<List<T>>) -> List<T> {
+    for list in lists fold rest: List<T> = nil { [...list, ...rest] }
+}
+
 type Tree = Int | List<Tree>;
 
 fn groups(xs: List<Int>) -> List<List<Int>> {
@@ -57,14 +65,18 @@ fn main(xs: List<Int>) -> Int {
     let t: List<List<Int>> | nil = [for x in xs { x }];
     let u: (List<Int>, nil) = [for x in xs { x }];
 
-    // A generic type doesn't say that the items are lists
+    // A generic type doesn't say that the items are lists, alone or with a list, though a list
+    // of a generic type does
     let v = same([for x in xs { x }]);
+    let y = either([for x in xs { x }]);
+    let z = flatten([for x in xs { x }]);
 
     // Parentheses around the `for` aren't needed, and it's reported without them
     let w = [(for x in xs { x })];
 
     // A fold is a single value, and a loop's value is nil
     let l = [for x in xs fold sum = 0 { sum + x }];
+    let x = [for x in xs fold rest: List<Int> = nil { [x, ...rest] }];
     let m = [for x in xs { check(x) }];
 
     // A `for` that's spread, or that isn't the only item
@@ -99,4 +111,7 @@ fn main(xs: List<Int>) -> Int {
         + length(u)
         + length(v)
         + length(w)
+        + length(x)
+        + length(y)
+        + length(z)
 }

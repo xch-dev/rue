@@ -505,7 +505,7 @@ pub fn compile_for_expr(
 }
 
 /// The note for a body that isn't the type of the fold's result, if that's only nil because the
-/// fold's value is, and nothing else says what it is, as with `fold rest = nil { [x, ...rest] }`.
+/// fold's value is, and it has no type of its own, as with `fold rest = nil { [x, ...rest] }`.
 /// It suggests giving the result a type, which is a list of the body's items if the body is one,
 /// and otherwise the body's type or nil.
 fn untyped_nil_note(
@@ -522,6 +522,8 @@ fn untyped_nil_note(
 
     let binding = fold.binding()?.syntax().text().to_string();
     let binding = binding.trim();
+    let init = fold.init()?.syntax().text().to_string();
+    let init = init.trim();
 
     let any_list = list_of(ctx, types.permissive_any);
     let item_types = list_item_types(ctx, body);
@@ -529,10 +531,10 @@ fn untyped_nil_note(
     // The type is what the body's value is, and nil for the end of the list: a list of the
     // body's items, if the body is one. A body that couldn't be compiled doesn't say what it is
     let example = if rue_types::contains_unresolved(ctx.types(), body) {
-        format!("`fold {binding}: T | nil = nil`, where `T` is the type of the body")
+        format!("`fold {binding}: T | nil = {init}`, where `T` is the type of the body")
     } else if item_types.is_empty() || !ctx.is_assignable(body, any_list) {
         let body = widen_literals(ctx, body);
-        format!("`fold {binding}: {} | nil = nil`", ctx.type_name(body))
+        format!("`fold {binding}: {} | nil = {init}`", ctx.type_name(body))
     } else {
         let item_types = item_types
             .into_iter()
@@ -540,11 +542,11 @@ fn untyped_nil_note(
             .collect();
         let item_type = union_of(ctx, item_types);
         let list = list_of(ctx, item_type);
-        format!("`fold {binding}: {} = nil`", ctx.type_name(list))
+        format!("`fold {binding}: {} = {init}`", ctx.type_name(list))
     };
 
     Some(Note::new(format!(
-        "The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in {example}"
+        "The result of the fold is `nil`, which is the type of its value. Give it a type of its own, as in {example}"
     )))
 }
 
