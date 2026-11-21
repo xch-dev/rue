@@ -87,7 +87,7 @@ test fn negated_guard_narrows_the_right_operand(x: (Int, Int) | nil) -> Bool {
 }
 
 // A guard in the right operand checks its own value, so it doesn't rely on the left one
-test fn guard_in_the_right_operand(flag: Bool, x: Any) -> Bool {
+test fn guard_in_the_right_operand(x: Any, flag: Bool) -> Bool {
     flag || x is nil
 }
 
@@ -290,4 +290,22 @@ test fn large_operand(a: Int) -> Bool {
 // This operator costs as much to run as a hundred bytes do
 test fn expensive_operand(secret_key: Int, public_key: PublicKey) -> Bool {
     public_key == pubkey_for_exp(secret_key) || pubkey_for_exp(secret_key) == public_key
+}
+
+test fn either_is_equal_fails(a: Bytes32, b: Bytes32, c: Bytes32) {
+    assert a == b || a == c;
+}
+
+test fn branches_directly_on_the_right_operand(flag: Bool, x: Any) -> Int | nil {
+    if flag || (x is Int && x > 5) {
+        nil
+    } else {
+        7
+    }
+}
+
+// A guard with nothing to check doesn't read its value, so `b` wasn't read by the left operand
+#[allow(unnecessary_guard)]
+test fn guard_with_nothing_to_check(a: Int, b: Int) -> Bool {
+    (b is Int && a > 0) || b > 5
 }

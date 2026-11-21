@@ -7,9 +7,10 @@
 //!
 //! - It doesn't rely on the left operand. The left operand of `x is Int && x > 5` narrows the
 //!   type that the right one is checked with, so the right one fails on its own for an `x` that
-//!   isn't an atom. The compiler records the expressions whose left operand narrows nothing
-//!   but values that were already atoms (see [`Database::has_independent_operands`](crate::Database)). The checks that a type guard
-//!   is lowered to are never recorded, since each relies on the ones before it.
+//!   isn't an atom. The compiler records the expressions whose left operand narrows nothing but
+//!   values that were already atoms (see
+//!   [`Database::has_independent_operands`](crate::Database)). The checks that a type guard is
+//!   lowered to are never recorded, since each relies on the ones before it.
 //! - It can't fail (see [`may_fail`]), so evaluating it doesn't add a failure.
 //! - It only reads what the left operand already read (see [`Lowerer::reads_are_evaluated`]).
 //!   The failure analysis trusts that a value has the shape its type says, which is enough to
@@ -22,8 +23,6 @@
 //!
 //! The optimizer then turns the operands into the arguments of an `all` or `any` wherever the
 //! result is the same (see `opt_if` in `rue_lir`).
-
-use std::collections::HashSet;
 
 use rue_types::Check;
 
@@ -53,7 +52,7 @@ impl Lowerer<'_, '_, '_> {
             // A left operand that's known decides the result while it's compiled, which only
             // leaves the right operand out if it isn't evaluated either way
             && !self.is_static_hir(left)
-            && self.is_cheap(right, &mut budget, &mut HashSet::new())
+            && self.is_cheap(right, &mut budget)
             && !may_fail(self, right)
             && self.reads_are_evaluated(left, right)
     }
@@ -266,12 +265,8 @@ impl Lowerer<'_, '_, '_> {
     /// Whether the value has no more nodes than the budget, which is reduced by them, and none
     /// of them is a call or anything else that can run code the compiler can't bound. This
     /// follows the values that are substituted, which are evaluated where they're referenced.
-    fn is_cheap(&self, hir: HirId, budget: &mut usize, path: &mut HashSet<SymbolId>) -> bool {
-        // This follows the values that are substituted, which can go as deep as a chain of them
-        rue_types::grow_stack(|| self.is_cheap_inner(hir, budget, path))
-    }
-
-    fn is_cheap_inner(&self, hir: HirId, budget: &mut usize, path: &mut HashSet<SymbolId>) -> bool {
+    /// The budget bounds how far and how deep it goes.
+    fn is_cheap(&self, hir: HirId, budget: &mut usize) -> bool {
         let Some(rest) = budget.checked_sub(1) else {
             return false;
         };
@@ -290,36 +285,25 @@ impl Lowerer<'_, '_, '_> {
             | Hir::InfinityG2 => true,
             Hir::Const(expr) => expr
                 .result
-                .is_some_and(|result| self.is_cheap(result, budget, path)),
-            Hir::Reference(symbol) => {
-                let Some(value) = self.substituted_value(*symbol) else {
-                    return true;
-                };
-
-                // A value is never substituted into itself, but this keeps the walk finite
-                if !path.insert(*symbol) {
-                    return false;
-                }
-
-                let cheap = self.is_cheap(value, budget, path);
-                path.remove(symbol);
-                cheap
-            }
+                .is_some_and(|result| self.is_cheap(result, budget)),
+            Hir::Reference(symbol) => self
+                .substituted_value(*symbol)
+                .is_none_or(|value| self.is_cheap(value, budget)),
             // The check uses the value as many times as it has parts to check, and it's lowered
             // to operators on it
             Hir::Guard(guard) => {
                 let uses = guard.value_uses().max(1);
 
-                (0..uses).all(|_| self.is_cheap(guard.value, budget, path))
+                (0..uses).all(|_| self.is_cheap(guard.value, budget))
                     && budget
                         .checked_sub(uses)
                         .map(|rest| *budget = rest)
                         .is_some()
             }
             // A block that's only a value
-            Hir::Block(block) if block.statements.is_empty() => block
-                .body
-                .is_some_and(|body| self.is_cheap(body, budget, path)),
+            Hir::Block(block) if block.statements.is_empty() => {
+                block.body.is_some_and(|body| self.is_cheap(body, budget))
+            }
             // This costs as much to run as a hundred bytes do
             Hir::Unary(UnaryOp::PubkeyForExp, _) => false,
             Hir::Cast(_)
@@ -330,9 +314,7 @@ impl Lowerer<'_, '_, '_> {
             | Hir::List(_)
             | Hir::Struct(_)
             | Hir::Pair(..)
-            | Hir::If(..) => node
-                .children()
-                .all(|child| self.is_cheap(child, budget, path)),
+            | Hir::If(..) => node.children().all(|child| self.is_cheap(child, budget)),
             // A call can run for as long as it likes, a lambda builds a closure, and the rest
             // may fail, so they're never evaluated early anyway
             Hir::Unresolved

@@ -168,8 +168,9 @@ impl Database {
 
     /// Records that the right operand of an `&&` or `||` expression is type checked the same way
     /// whether or not the left operand was evaluated first, since the left operand doesn't narrow
-    /// any types for it, other than of values that were already atoms. Otherwise the right operand can rely on the left one, as `x.first` does
-    /// in `x is (Int, Int) && x.first == 1`, and evaluating it on its own could fail.
+    /// any types for it, other than of values that were already atoms. Otherwise the right
+    /// operand can rely on the left one, as `x.first` does in `x is (Int, Int) && x.first == 1`,
+    /// and evaluating it on its own could fail.
     pub fn set_independent_operands(&mut self, hir: HirId) {
         self.independent_operands.insert(hir);
     }

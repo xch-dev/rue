@@ -88,13 +88,13 @@ tests:
   byte_cost: 348000
   total_cost: 348277
 - name: guard_in_the_right_operand
-  program: (a (i 2 (q 1 . 1) (q 32 5)) 1)
-  debug_program: (a (i 2 (q 1 . 1) (q 2 (i (not (l 5)) (q 9 5 ()) ()) 1)) 1)
-  solution: (() (1 . 2))
+  program: (any 5 (not 2))
+  debug_program: (a (i 5 (q 1 . 1) (q 2 (i (not (l 2)) (q 9 2 ()) ()) 1)) 1)
+  solution: ((1 . 2) ())
   output: ()
-  runtime_cost: 510
-  byte_cost: 300000
-  total_cost: 300510
+  runtime_cost: 1102
+  byte_cost: 132000
+  total_cost: 133102
 - name: right_operand_may_fail
   program: (a (i 2 (q 21 (/ (q . 10) 2) (q . 2)) ()) 1)
   debug_program: (a (i (not (= 2 ())) (q 21 (/ (q . 10) 2) (q . 2)) ()) 1)
@@ -285,6 +285,29 @@ tests:
   runtime_cost: 1326792
   byte_cost: 492000
   total_cost: 1818792
+- name: either_is_equal_fails
+  program: (a (i (= 2 5) () (q 2 (i (= 2 11) () (q 8)) 1)) 1)
+  debug_program: (a (i (a (i (= 2 5) (q 1 . 1) (q 9 2 11)) 1) () (q 8 (q . "assertion failed at eager_operands.rue:296:5"))) 1)
+  solution: (1 2 3)
+  byte_cost: 564000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at eager_operands.rue:296:5"
+- name: branches_directly_on_the_right_operand
+  program: (a (i 2 () (q 3 (a (i (l 5) () (q 21 5 (q . 5))) 1) () (q . 7))) 1)
+  debug_program: (a (i (a (i 2 (q 1 . 1) (q 2 (i (not (l 5)) (q 21 5 (q . 5)) ()) 1)) 1) () (q 1 . 7)) 1)
+  solution: (() 9)
+  output: ()
+  runtime_cost: 1259
+  byte_cost: 660000
+  total_cost: 661259
+- name: guard_with_nothing_to_check
+  program: (a (i (> 2 ()) (q 1 . 1) (q 21 5 (q . 5))) 1)
+  debug_program: (a (i (a (i (q . 1) (q 21 2 ()) ()) 1) (q 1 . 1) (q 21 5 (q . 5))) 1)
+  solution: (1)
+  output: "1"
+  runtime_cost: 822
+  byte_cost: 420000
+  total_cost: 420822
 diagnostics:
 - |-
   This argument can fail, but `either` is an `inline fn` that doesn't always evaluate its parameter `b`, so its check can be skipped at eager_operands.rue:145:18
