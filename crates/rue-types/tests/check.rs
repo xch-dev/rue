@@ -600,8 +600,18 @@ fn test_check_errors() {
     let function = t.function();
     assert_eq!(t.check(any, function), Err(CheckError::FunctionType));
 
-    // But a value of function type can be checked against other types
-    assert_eq!(t.check(function, int), Ok(IS_ATOM));
+    // Neither can a value that is or could be a function, since how a function is represented
+    // depends on how it's compiled
+    assert_eq!(t.check(function, int), Err(CheckError::FunctionType));
+
+    let nil = t.builtins.nil;
+    let function_or_nil = t.union(vec![function, nil]);
+    assert_eq!(t.check(function_or_nil, nil), Err(CheckError::FunctionType));
+
+    // Unless nothing has to be checked
+    assert_eq!(t.check(function, any), Ok(Check::None));
+    assert_eq!(t.check(function, function_or_nil), Ok(Check::None));
+    assert_eq!(t.check(function, function), Ok(Check::None));
 
     // Checking an arbitrary value against a recursive type would require an infinite check
     let list = t.list(int);

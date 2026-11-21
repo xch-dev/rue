@@ -1,0 +1,67 @@
+// A check that never has to look at a function is allowed
+
+test fn wrapped_function() -> Bool {
+    let present = wrapped((fn() => 5, nil));
+    let missing = wrapped(nil);
+    present == 5 && missing == 0
+}
+
+fn wrapped(f: (fn() -> Int, nil) | nil) -> Int {
+    if f is nil {
+        0
+    } else {
+        f.first()
+    }
+}
+
+test fn match_wrapped_function() -> Int {
+    let f: (fn() -> Int, nil) | nil = (fn() => 7, nil);
+
+    match f {
+        nil => 0,
+        (fn() -> Int, nil) as pair => pair.first(),
+    }
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+test fn list_of_functions() -> Bool {
+    let list: List<fn(value: Int) -> Int> = [increment];
+    !(list is nil)
+}
+
+struct Wrapper {
+    callback: fn() -> Int,
+}
+
+test fn struct_with_function() -> Int {
+    let wrapper: Wrapper | nil = Wrapper { callback: fn() => 3 };
+
+    if wrapper is nil {
+        0
+    } else {
+        wrapper.callback()
+    }
+}
+
+test fn wildcard_arm() -> Int {
+    let f: (fn() -> Int) | nil = nil;
+
+    match f {
+        _ => 1,
+    }
+}
+
+// Casting to `Any` first is the explicit way to look at a function, and its result still depends
+// on how the function is compiled
+test fn cast_to_any() -> Bool {
+    let identity = fn(value: Int): Int => value;
+    (identity as Any) is Bytes
+}
+
+test fn cast_optional_to_any() -> Bool {
+    let f: (fn() -> nil) | nil = fn() => nil;
+    (f as Any) is nil
+}

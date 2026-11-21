@@ -204,7 +204,9 @@ pub enum DiagnosticKind {
     #[error("Cannot check if value is of recursive type at runtime")]
     RecursiveTypeCheck,
 
-    #[error("Cannot check if value is of function type at runtime")]
+    #[error(
+        "Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds"
+    )]
     FunctionTypeCheck,
 
     #[error("Cannot check if value is of generic type at runtime")]

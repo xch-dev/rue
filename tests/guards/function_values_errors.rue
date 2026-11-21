@@ -1,0 +1,82 @@
+// How a function is represented depends on how it's compiled, so a check that has to look at a
+// value that could be a function would differ between debug and release builds
+
+test fn optional(f: (fn() -> nil) | nil) -> Bool {
+    f is nil
+}
+
+test fn negated(f: (fn() -> nil) | nil) -> Bool {
+    !(f is nil)
+}
+
+test fn bare(f: fn(x: Int) -> Int) -> Bool {
+    f is Bytes
+}
+
+type Callback = fn() -> Int;
+
+test fn alias(f: Callback | Int) -> Bool {
+    f is Int
+}
+
+test fn beside_pair(f: (fn() -> nil) | (Int, Int) | nil) -> Bool {
+    f is (Int, Int)
+}
+
+test fn in_pair(pair: ((fn() -> nil) | nil, Int)) -> Bool {
+    pair.first is nil
+}
+
+test fn match_arms(f: (fn() -> nil) | nil) -> Int {
+    match f {
+        nil => 0,
+        _ => 1,
+    }
+}
+
+test fn generic_function(f: (fn<T>(a: T) -> T) | nil) -> Bool {
+    f is nil
+}
+
+test fn beside_generic<T>(f: T | fn() -> Int) -> Bool {
+    f is nil
+}
+
+test fn beside_any(f: Any | fn() -> Int) -> Bool {
+    f is Bytes
+}
+
+test fn whole_pair(pair: (fn() -> nil, Int) | (nil, Int)) -> Bool {
+    pair is (nil, Int)
+}
+
+test fn in_rest(pair: (Int, (fn() -> nil) | nil)) -> Bool {
+    pair.rest is nil
+}
+
+struct Bare {
+    ...callback: fn() -> Int,
+}
+
+test fn spread_struct(bare: Bare | nil) -> Bool {
+    bare is nil
+}
+
+test fn asserted(f: (fn() -> nil) | nil) -> Int {
+    assert !(f is nil);
+    1
+}
+
+// Functions that can be cast to each other can't be told apart either
+test fn other_function(f: (fn(x: Int) -> Int) | (fn(x: Bytes) -> Bytes)) -> Bool {
+    f is fn(x: Int) -> Int
+}
+
+// A cast that would need a check doesn't suggest a type guard
+test fn cast_to_int(f: fn() -> Int) -> Int {
+    f as Int
+}
+
+test fn assign_to_nil(f: (fn() -> Int) | nil) -> nil {
+    f
+}
