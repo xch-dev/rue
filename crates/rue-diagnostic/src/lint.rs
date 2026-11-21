@@ -247,6 +247,7 @@ lints! {
     UnconditionalRecursion("unconditional_recursion", Warn, "Functions that call themselves on every path, so they never return"),
     NeedlessKeccak256Verify("needless_keccak256_verify", Allow, "`keccak256_verify` calls, which can be written as `assert keccak256(value) == hash` after hard fork 2 (warns by default with `hard_fork_2`)"),
     BytesIntConfusion("bytes_int_confusion", Warn, "Casts of byte literals to `Int` whose value is negative or not in canonical form"),
+    FunctionValueObservation("function_value_observation", Warn, "Type guards, `match` arms and casts that observe a function value as data, whose result depends on how the function is compiled, which differs between debug and release builds"),
     UnknownLint("unknown_lint", Warn, "Lint names in attributes or `Rue.toml` that don't refer to a known lint or group"),
     UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
 }
@@ -378,6 +379,7 @@ lint_groups! {
         IndistinguishableMatchArm,
         UnconditionalRecursion,
         BytesIntConfusion,
+        FunctionValueObservation,
         PreludeOverEnclosingItem,
     ]),
 }
@@ -705,6 +707,7 @@ mod tests {
                 Lint::IndistinguishableMatchArm,
                 Lint::UnconditionalRecursion,
                 Lint::BytesIntConfusion,
+                Lint::FunctionValueObservation,
                 Lint::PreludeOverEnclosingItem,
             ]
         );

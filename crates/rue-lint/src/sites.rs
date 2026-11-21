@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use rue_diagnostic::{Name, SrcLoc};
 use rue_hir::{Declaration, HirId, SymbolId};
+use rue_types::TypeId;
 
 /// Facts recorded by the compiler while compiling, for lints that need something that isn't kept
 /// in the HIR. The compiler records every site; the lints decide what to report.
@@ -43,6 +44,19 @@ pub struct LintSites {
     /// narrow it by, so its fields are merged instead. The types are subtracted while compiling,
     /// and not again by the lints.
     pub imprecise_narrowings: Vec<ImpreciseNarrowing>,
+    /// The type guard that each arm of a `match` is generated as, by its node. The guard has no
+    /// type or location of its own, since it isn't written in the source.
+    pub match_arm_guards: HashMap<HirId, MatchArmGuard>,
+}
+
+/// The type guard that checks whether a `match` arm is taken (see
+/// [`LintSites::match_arm_guards`]).
+#[derive(Debug, Clone)]
+pub struct MatchArmGuard {
+    /// The arm's pattern.
+    pub pattern: SrcLoc,
+    /// The type of the value that the guard checks, which is what the arms before it left.
+    pub value: TypeId,
 }
 
 /// A type guard or `match` arm after which a struct is wider than it could be (see

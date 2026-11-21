@@ -11,6 +11,9 @@ diagnostics:
 - Cannot type guard from `U` to `Int`, since they do not overlap at match_errors.rue:79:9
 - Cannot check if value is of generic type at runtime at match_errors.rue:87:9
 - Cannot check if value is of function type at runtime at match_errors.rue:94:9
+- |-
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at match_errors.rue:95:9
+    note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - Undeclared type `Missing` at match_errors.rue:102:9
 - Cannot assign `1 | "no"` to `Int` without a cast, since they are semantically different at match_errors.rue:107:36
 - |-

@@ -8,7 +8,7 @@ use rue_hir::{
     BindingSymbol, Block, Declaration, Guard, Hir, HirId, Mappings, Statement, Symbol, SymbolPath,
     Value, control_fallthroughs,
 };
-use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
+use rue_lint::{IndistinguishableMatchArm, MatchArmGuard, UnreachableMatchArm, UnreachableReason};
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
@@ -196,7 +196,7 @@ pub fn compile_match_expr(
             let members = indistinguishable_members(ctx, &remaining_members, ty);
             if !members.is_empty() {
                 indistinguishable.push(Indistinguishable {
-                    pattern: pattern_srcloc,
+                    pattern: pattern_srcloc.clone(),
                     ty,
                     members,
                 });
@@ -233,22 +233,29 @@ pub fn compile_match_expr(
 
         // Every check of an `inline match` is evaluated, even on the values that the arms before
         // it handle, so it can't rely on them being left out
-        let check = if inline {
+        let (check, checked) = if inline {
             let node = ty_node
                 .as_ref()
                 .expect("only a pattern with a type has a check");
             if let Some(check) = ctx.runtime_check(node.syntax(), substituted, ty) {
-                check
+                (check, substituted)
             } else {
                 has_error = true;
-                check
+                (check, remaining)
             }
         } else {
-            check
+            (check, remaining)
         };
 
         let value = guard_value(ctx, &scrutinee, &reference);
         let condition = ctx.alloc_hir(Hir::Guard(Guard { value, ty, check }));
+        ctx.lint_sites_mut().match_arm_guards.insert(
+            condition,
+            MatchArmGuard {
+                pattern: pattern_srcloc,
+                value: checked,
+            },
+        );
         branches.push((condition, body.hir));
         handled.push(ty);
 

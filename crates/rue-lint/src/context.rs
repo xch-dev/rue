@@ -197,6 +197,11 @@ impl<'a> LintContext<'a> {
         rue_types::contains_unresolved(self.db.types(), ty)
     }
 
+    /// The type with its generic arguments applied, which is what the type checker compares.
+    pub fn substitute(&mut self, ty: TypeId) -> TypeId {
+        rue_types::substitute(self.db.types_mut(), ty)
+    }
+
     /// The name of a type as it would be written in the given scope.
     pub fn type_name(&mut self, scope: ScopeId, ty: TypeId) -> String {
         self.db.type_name_in(scope, ty)

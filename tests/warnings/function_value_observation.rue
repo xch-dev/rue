@@ -1,0 +1,232 @@
+struct Callback {
+    function: fn() -> nil,
+    count: Int,
+}
+
+struct Wrapped {
+    function: fn() -> nil,
+}
+
+type MaybeFunction = (fn() -> nil) | nil;
+
+fn pick(flag: Bool) -> (fn() -> nil) | nil {
+    if flag {
+        fn() => nil
+    } else {
+        nil
+    }
+}
+
+fn identity(x: Int) -> Int {
+    x
+}
+
+fn generic<T>(value: T) -> T {
+    value
+}
+
+fn is_nil(value: Any) -> Bool {
+    value is nil
+}
+
+// The guard has to tell the function apart from `nil`
+test fn guard_on_optional_function() -> Int {
+    let f = pick(true);
+    if f is nil {
+        0
+    } else {
+        1
+    }
+}
+
+test fn negated_guard_on_optional_function() -> Bool {
+    let f = pick(false);
+    !(f is nil)
+}
+
+test fn guard_on_function() -> Bool {
+    let f = identity;
+    f is nil
+}
+
+test fn guard_on_function_in_alias() -> Bool {
+    let f: MaybeFunction = nil;
+    f is nil
+}
+
+test fn guard_on_function_in_pair() -> Bool {
+    let pair: ((fn() -> nil) | nil, Int) = (nil, 1);
+    pair.first is nil
+}
+
+test fn guard_on_generic_function() -> Bool {
+    let f: (fn<T>(value: T) -> T) | nil = generic;
+    f is nil
+}
+
+test fn match_on_optional_function() -> Int {
+    match pick(true) {
+        nil => 0,
+        _ => 1,
+    }
+}
+
+test fn match_on_function_binding() -> Int {
+    let f = pick(false);
+    match f {
+        nil => 0,
+        _ => 1,
+    }
+}
+
+test fn inline_match_on_optional_function() -> Int {
+    let f = pick(false);
+    inline match f {
+        nil => 0,
+        _ => 1,
+    }
+}
+
+test fn cast_to_any() -> Bool {
+    let f = identity;
+    (f as Any) is Bytes
+}
+
+test fn cast_to_any_binding() -> Bool {
+    let value = pick(true) as Any;
+    value is nil
+}
+
+test fn cast_struct_to_any() -> Bool {
+    let callback = Callback { function: fn() => nil, count: 1 };
+    let value = callback as Any;
+    value is (Any, Any)
+}
+
+test fn cast_to_union_covering_any() -> Bool {
+    let f = identity;
+    let value = f as Bytes | (Any, Any);
+    value is Bytes
+}
+
+test fn cast_list_to_any() -> Bool {
+    let list: List<fn() -> nil> = [fn() => nil];
+    let value = list as Any;
+    value is nil
+}
+
+test fn cast_pair_to_partly_any() -> Bool {
+    let pair = (identity, 1);
+    let value = pair as (Any, Int);
+    value.first is nil
+}
+
+// Hashing a function is how the puzzle hash of an inner puzzle is found, so passing it where
+// `Any` is expected isn't reported, with or without a cast
+test fn tree_hash_of_function() -> Bytes32 {
+    tree_hash(identity)
+}
+
+test fn tree_hash_of_cast_function() -> Bytes32 {
+    tree_hash(identity as Any)
+}
+
+test fn tree_hash_of_struct() -> Bytes32 {
+    let callback = Callback { function: fn() => nil, count: 1 };
+    tree_hash(callback)
+}
+
+test fn tree_hash_of_cast_struct() -> Bytes32 {
+    let callback = Callback { function: fn() => nil, count: 1 };
+    tree_hash(callback as Any)
+}
+
+test fn pass_to_any_parameter() -> Bool {
+    is_nil(pick(false))
+}
+
+test fn pass_cast_to_any_parameter() -> Bool {
+    is_nil(pick(false) as Any)
+}
+
+test fn pass_cast_to_generic_parameter() -> Bytes32 {
+    tree_hash(generic(identity as Any))
+}
+
+test fn assign_to_any() -> Bytes32 {
+    let value: Any = identity;
+    tree_hash(value)
+}
+
+// The guards only look at the wrappers, which are the same however the function is compiled
+test fn guard_on_wrapped_function() -> Bool {
+    let wrapped: (fn() -> nil, nil) | nil = (fn() => nil, nil);
+    wrapped is nil
+}
+
+test fn guard_on_list_of_functions() -> Bool {
+    let list: List<fn() -> nil> = [fn() => nil];
+    list is nil
+}
+
+test fn guard_beside_function() -> Bool {
+    let pair: (fn() -> nil, Bytes32 | nil) = (fn() => nil, nil);
+    pair is (fn() -> nil, nil)
+}
+
+test fn guard_on_struct_field() -> Bool {
+    let callback = Callback { function: fn() => nil, count: 1 };
+    let count: Int | nil = callback.count;
+    count is nil
+}
+
+test fn guard_on_struct_with_function() -> Bool {
+    let wrapped: Wrapped | nil = Wrapped { function: fn() => nil };
+    wrapped is nil
+}
+
+test fn match_on_wrapped_function() -> Int {
+    let wrapped: (fn() -> nil, nil) | nil = nil;
+    match wrapped {
+        nil => 0,
+        (fn() -> nil, nil) => 1,
+    }
+}
+
+// There's no function to observe
+test fn guard_without_function() -> Bool {
+    let value: Int | nil = 1;
+    value is nil
+}
+
+test fn guard_on_any() -> Bool {
+    let value: Any = 1;
+    value is Bytes
+}
+
+test fn match_without_function() -> Int {
+    let value: Bytes32 | nil = nil;
+    match value {
+        nil => 0,
+        Bytes32 => 1,
+    }
+}
+
+test fn cast_without_function() -> Bool {
+    let value = (1, 2) as Any;
+    value is nil
+}
+
+// Calling, storing and passing a function use it as a function
+test fn function_as_function() -> Int {
+    let f = identity;
+    let other: fn(x: Int) -> Int = f;
+    let wide = f as fn(x: Bytes) -> Int;
+    f(1) + other(2) + wide(nil) + generic(f)(3)
+}
+
+#[allow(function_value_observation)]
+test fn allowed() -> Bool {
+    let f = pick(true);
+    f is nil
+}

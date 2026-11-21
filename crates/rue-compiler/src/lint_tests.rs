@@ -3204,3 +3204,127 @@ fn none(value: nil) -> nil {
     assert!(!has_errors);
     assert_eq!(fix(&fixed), fixed);
 }
+
+const FUNCTION_GUARD: &str = "This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds";
+
+#[test]
+fn function_value_observation_reports_guards_and_casts() {
+    // Returns 1 in a debug build and 0 in a release build for the solution `(1)`
+    let guard = "\
+fn pick(flag: Bool) -> (fn() -> nil) | nil {
+    if flag { fn() => nil } else { nil }
+}
+fn main(flag: Bool) -> Int {
+    let f = pick(flag);
+    if f is nil { 0 } else { 1 }
+}
+";
+
+    let (guard_reports, has_errors) = reports(guard, |_| {});
+
+    assert_eq!(guard_reports, [format!("Warning 6: {FUNCTION_GUARD}")]);
+    assert!(!has_errors);
+
+    let arm = "\
+fn main(f: (fn() -> nil) | nil) -> Int {
+    match f {
+        nil => 0,
+        _ => 1,
+    }
+}
+";
+
+    let (arm_reports, has_errors) = reports(arm, |_| {});
+
+    assert_eq!(
+        arm_reports,
+        [format!(
+            "Warning 3: {}",
+            FUNCTION_GUARD.replace("type guard", "match arm")
+        )]
+    );
+    assert!(!has_errors);
+
+    // The guard is on an `Any`, so the cast is what's reported
+    let cast = "\
+fn main(f: fn(x: Int) -> Int) -> Bool {
+    (f as Any) is Bytes
+}
+";
+
+    let (cast_reports, has_errors) = reports(cast, |_| {});
+
+    assert_eq!(
+        cast_reports,
+        [
+            "Warning 2: Casting `fn(x: Int) -> Int` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds"
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn function_value_observation_allows_opaque_uses() {
+    // Passing a function on (which is how `tree_hash` takes it), calling it and storing it don't
+    // look at what it is
+    let source = "\
+struct Callback {
+    function: fn(x: Int) -> Int,
+}
+
+fn opaque(value: Any) -> Any {
+    value
+}
+
+fn apply(function: fn(x: Int) -> Int, value: Int) -> Int {
+    function(value)
+}
+
+fn main(f: fn(x: Int) -> Int, list: List<fn(x: Int) -> Int>, value: Int | nil) -> Any {
+    let callback = Callback { function: f };
+    let any: Any = f;
+    let count = if list is nil { 0 } else { 1 };
+    let number = if value is nil { 0 } else { value };
+    [
+        opaque(f),
+        opaque(f as Any),
+        opaque(callback),
+        opaque(callback as Any),
+        opaque(any),
+        apply(callback.function, count + number),
+    ]
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
+fn function_value_observation_levels() {
+    let source = "\
+fn main(f: (fn() -> nil) | nil) -> Bool {
+    #[expect(function_value_observation)]
+    let first = f is nil;
+    #[allow(suspicious)]
+    let second = (f as Any) is Bytes;
+    first && second
+}
+";
+
+    let (allowed, has_errors) = reports(source, |_| {});
+
+    assert_eq!(allowed, Vec::<String>::new());
+    assert!(!has_errors);
+
+    let (denied, has_errors) = reports_with_level(
+        "fn main(f: (fn() -> nil) | nil) -> Bool {\n    f is nil\n}\n",
+        Lint::FunctionValueObservation,
+        LintLevel::Deny,
+    );
+
+    assert_eq!(denied, [format!("Error 2: {FUNCTION_GUARD}")]);
+    assert!(has_errors);
+}

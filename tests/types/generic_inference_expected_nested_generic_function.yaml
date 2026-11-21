@@ -55,3 +55,7 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+diagnostics:
+- |-
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at generic_inference_expected_nested_generic_function.rue:61:8
+    note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself

@@ -70,4 +70,7 @@ tests:
   byte_cost: 2700000
   total_cost: 2707293
 diagnostics:
+- |-
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_binder_identity.rue:60:8
+    note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - Unused generic type `V` at function_binder_identity.rue:81:20

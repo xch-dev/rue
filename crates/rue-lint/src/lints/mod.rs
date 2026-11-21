@@ -7,6 +7,7 @@ mod casts;
 mod comparisons;
 mod conditions;
 mod exports;
+mod functions;
 mod guards;
 mod hard_fork;
 mod inline_ifs;
@@ -95,6 +96,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(statements::DebugStatement),
         Box::new(statements::NeedlessLetReturn),
         Box::new(casts::BytesIntConfusion),
+        Box::new(functions::FunctionValueObservation::new(input)),
         Box::new(recursion::UnconditionalRecursion),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]

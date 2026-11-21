@@ -430,6 +430,28 @@ fn checked() -> Int {
 }
 ```
 
+### Function Values
+
+A function value is a program, and what it's compiled to isn't specified. A release build compiles a function that captures nothing to its bare body, so `fn() => nil` is the atom `nil`, while a debug build always builds a closure, which is a pair. Calling a function, storing it and passing it on work the same either way, but anything that looks at the value as data can give a different answer in each build. The `function_value_observation` lint, which is in the `suspicious` group and warns by default, reports the two ways of looking:
+
+- A type guard or `match` arm whose check inspects a value that can be a function. With `f` of type `(fn() -> nil) | nil`, `f is nil` is true for `fn() => nil` in a release build and false in a debug build.
+- A cast that forgets that a value is a function, such as `f as Any`, after which it can be inspected like any other value. This includes a function inside of the value that's cast, such as a struct with a function field.
+
+```rs
+fn pick(flag: Bool) -> (fn() -> nil) | nil {
+    if flag { fn() => nil } else { nil }
+}
+
+fn main(flag: Bool) -> Int {
+    let f = pick(flag);
+    if f is nil { 0 } else { 1 } // Warning: 1 in a debug build and 0 in a release build when `flag` is true
+}
+```
+
+To tell whether a function is there, wrap it in a pair or a struct, such as `(fn() -> nil, nil) | nil`, so that the check looks at the wrapper rather than the function.
+
+Passing a function where `Any` is expected isn't reported, with or without a cast written on the argument, since that's how a function is given to code that treats it as an opaque tree. `tree_hash(f)` is the puzzle hash of `f`, which also differs between debug and release builds, as the hash of any program does.
+
 ## Testing
 
 Tests are just functions marked with `test`, and they live right alongside your code:
