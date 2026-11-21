@@ -176,16 +176,27 @@ impl Database {
     /// The symbol that a path is read from, if the node is one: a symbol or the fields of one,
     /// through casts, which have no effect. A path can be read any number of times without
     /// evaluating anything again.
-    pub fn path_symbol(&self, mut hir: HirId) -> Option<SymbolId> {
+    pub fn path_symbol(&self, hir: HirId) -> Option<SymbolId> {
+        self.path(hir).map(|(symbol, _)| symbol)
+    }
+
+    /// The symbol that a path is read from (see [`path_symbol`](Self::path_symbol)), and how many
+    /// steps into the symbol's value the path is.
+    pub fn path(&self, mut hir: HirId) -> Option<(SymbolId, usize)> {
+        let mut steps = 0;
+
         loop {
             hir = match self.hir(hir) {
-                Hir::Reference(symbol) => return Some(*symbol),
+                Hir::Reference(symbol) => return Some((*symbol, steps)),
                 Hir::Cast(value) => *value,
                 Hir::FieldAccess(FieldAccess {
                     value,
-                    kind: FieldKind::Path(_),
+                    kind: FieldKind::Path(path),
                     ..
-                }) => *value,
+                }) => {
+                    steps += path.len();
+                    *value
+                }
                 _ => return None,
             };
         }

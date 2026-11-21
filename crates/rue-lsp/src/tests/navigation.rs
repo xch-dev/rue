@@ -1000,6 +1000,15 @@ fn main(point: Point, y: Int) -> Int {
         "#]],
     );
 
+    // A field that's only copied has no reference at either spread
+    check_references(
+        &[("main.rue", &source.replacen("x: Int,", "$0x: Int,", 1))],
+        expect![[r#"
+            main.rue:2:4-2:5
+            main.rue:9:30-9:31
+        "#]],
+    );
+
     // The spread value's references include the spread
     check_references(
         &[(
