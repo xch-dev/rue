@@ -498,3 +498,44 @@ fn test_document_symbols_with_match_arm_bindings() {
         "#]],
     );
 }
+
+#[test]
+fn test_symbols_with_unfinished_struct_update() {
+    // The outline is of what's declared, whatever state the struct update in a body is in
+    let source = |body: &str| {
+        format!(
+            "struct Point {{\n    x: Int,\n    y: Int,\n}}\n\nfn main(point: Point) -> Point {{\n    {body}\n}}\n\nfn after() -> Int {{\n    1\n}}\n"
+        )
+    };
+
+    check(
+        &source("Point { ...point, x: 1 }"),
+        expect![[r#"
+        Struct Point 0:0-3:1 [0:7-0:12]
+          Field x `Int` 1:4-1:10 [1:4-1:5]
+          Field y `Int` 2:4-2:10 [2:4-2:5]
+        Function main `(point: Point) -> Point` 5:0-7:1 [5:3-5:7]
+        Function after `() -> Int` 9:0-11:1 [9:3-9:8]
+    "#]],
+    );
+    check(
+        &source("Point { ...point, "),
+        expect![[r#"
+        Struct Point 0:0-3:1 [0:7-0:12]
+          Field x `Int` 1:4-1:10 [1:4-1:5]
+          Field y `Int` 2:4-2:10 [2:4-2:5]
+        Function main `(point: Point) -> Point` 5:0-7:1 [5:3-5:7]
+        Function after `() -> Int` 9:0-11:1 [9:3-9:8]
+    "#]],
+    );
+    check(
+        &source("Point { ... }"),
+        expect![[r#"
+        Struct Point 0:0-3:1 [0:7-0:12]
+          Field x `Int` 1:4-1:10 [1:4-1:5]
+          Field y `Int` 2:4-2:10 [2:4-2:5]
+        Function main `(point: Point) -> Point` 5:0-7:1 [5:3-5:7]
+        Function after `() -> Int` 9:0-11:1 [9:3-9:8]
+    "#]],
+    );
+}
