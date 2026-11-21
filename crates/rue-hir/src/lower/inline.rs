@@ -1,4 +1,4 @@
-//! Decides which functions that are called more than once are inlined into each call anyway.
+//! Decides which of the functions that aren't always inlined are inlined into each call anyway.
 //!
 //! A function that's called once is always inlined, since its body is only there once either
 //! way, unless one of its parameters is referenced more than once. One that's called more than
@@ -23,7 +23,7 @@
 //! Each candidate takes another pass over the program, so only functions with a small body are
 //! measured (see [`MAX_INLINE_BODY_SIZE`]), and no more than [`MAX_INLINE_CANDIDATES`] of them.
 //! Const expressions aren't measured at all, since the programs they're lowered to are only
-//! run while compiling (see [`Lowerer::without_measured_inlining`]).
+//! run while compiling (see [`Lowerer::lower_main`]).
 
 use rue_lir::LirId;
 
@@ -43,8 +43,8 @@ const MAX_INLINE_BODY_SIZE: usize = 32;
 const MAX_INLINE_CANDIDATES: usize = 8;
 
 impl Lowerer<'_, '_, '_> {
-    /// Whether the function, which is called more than once, was found to make the program
-    /// smaller when it's inlined into each call.
+    /// Whether the function was measured, and found to make the program smaller when it's
+    /// inlined into each call.
     pub(super) fn is_inlined_function(&self, function: SymbolId) -> bool {
         self.inlined_functions.contains(&function)
     }
@@ -68,13 +68,14 @@ impl Lowerer<'_, '_, '_> {
             .any(|&parameter| self.graph.references(parameter) > 1)
     }
 
-    /// Lowers the entrypoint, after deciding which of the functions that are called more than
-    /// once are inlined: each one that makes the program smaller, given the ones before it.
-    pub(super) fn lower_with_inlined_functions(
-        &mut self,
-        env: &Environment,
-        main: SymbolId,
-    ) -> LirId {
+    /// Lowers the entrypoint, after deciding which of the functions that are measured are inlined
+    /// (see [`Self::is_measured_function`]): each one that makes the program smaller, given the
+    /// ones before it. This is how a program that's run on chain is lowered. A program that's
+    /// only run while compiling, such as a const expression, is lowered with
+    /// [`lower_symbol_value`](Self::lower_symbol_value), which doesn't measure anything, since
+    /// its size doesn't matter.
+    pub fn lower_main(&mut self, env: &Environment) -> LirId {
+        let main = self.main;
         let candidates = self.inline_candidates();
 
         if candidates.is_empty() {

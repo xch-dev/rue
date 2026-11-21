@@ -259,8 +259,7 @@ fn evaluate_const_expr(
 
     let mut arena = Arena::new();
     let lir = {
-        let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, root, PathBuf::new())
-            .without_measured_inlining();
+        let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, root, PathBuf::new());
         let lir = lowerer.lower_symbol_value(&Environment::default(), root);
 
         if lowerer.too_deep().is_some() {

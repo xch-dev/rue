@@ -50,7 +50,7 @@ fn first_of(first: Int, _second: Int) -> Int {
     first
 }
 
-// So is one whose parameter is never read
+// An argument that may fail is still evaluated if its parameter is never read
 test fn argument_that_fails_and_is_not_read(a: Int, b: Int) -> Int {
     first_of(a, check_positive(b)) + first_of(b, check_positive(a))
 }
@@ -131,9 +131,10 @@ fn polynomial(x: Int, y: Int) -> Int {
             * (x + y)
 }
 
-// A body that's too large isn't measured, and is only in the program once
+// A body that's too large isn't measured, so it's called although it would be smaller inlined
+// into its only call
 test fn function_that_is_too_large(a: Int, b: Int) -> Int {
-    polynomial(a, b) + polynomial(b, a)
+    polynomial(a, b)
 }
 
 fn checked(value: Int) -> Int {
@@ -238,4 +239,12 @@ fn double_sum(a: Int, b: Int) -> Int {
 // A function that's inlined can call another one that is
 test fn calls_inside_inlined_functions(a: Int, b: Int) -> Int {
     double_sum(a, b) + double_sum(b, a)
+}
+
+test fn argument_that_is_not_read_passes(a: Int, b: Int) -> Int {
+    first_of(a, check_positive(b)) + first_of(b, check_positive(a))
+}
+
+test fn called_once_with_a_parameter_read_twice_fails(a: Int) -> Int {
+    checked(a) * 2
 }

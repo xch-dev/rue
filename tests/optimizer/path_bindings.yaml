@@ -168,26 +168,26 @@ tests:
   byte_cost: 1476000
   total_cost: 1495432
 - name: path_inside_a_call
-  program: (a (q 16 (* 13 (a (q 16 (* 2) 2) (c (r (a 2 11)) 1))) 13) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (+ (* 6 (a (q 16 (* 2) 2) (c (r (a (i (= (sha256 5) (sha256 (q . "hunter2"))) (q 4 5 (strlen 5)) (q 8)) 1)) 1))) 6)
   debug_program: (a (q 2 (q 16 (* 2 (a (q 16 (* 2 (q . 1)) 2) (c (r (a 5 23)) 1))) 2) (c (r 5) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: (("ab" . 2) "hunter2")
   output: "30"
-  runtime_cost: 5378
-  byte_cost: 1392000
-  total_cost: 1397378
+  runtime_cost: 4973
+  byte_cost: 1128000
+  total_cost: 1132973
 - name: call_inside_a_path
-  program: (a (q 2 (q 16 (* 2 (+ (* 27) 27)) 2) (c (r (a 2 11)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (a (q 16 (* 2 (+ (* 13) 13)) 2) (c (r (a (i (= (sha256 5) (sha256 (q . "hunter2"))) (q 4 5 (strlen 5)) (q 8)) 1)) 1))
   debug_program: (a (q 2 (q 16 (* 2 (a (q 16 (* 2 (q . 1)) 2) (c (r 11) 1))) 2) (c (r (a 2 11)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: (("ab" . 2) "hunter2")
   output: "35"
-  runtime_cost: 5386
-  byte_cost: 1392000
-  total_cost: 1397386
+  runtime_cost: 4981
+  byte_cost: 1128000
+  total_cost: 1132981
 - name: call_inside_a_path_that_fails
-  program: (a (q 2 (q 16 (* 2 (+ (* 27) 27)) 2) (c (r (a 2 11)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8)) 1) 1))
+  program: (a (q 16 (* 2 (+ (* 13) 13)) 2) (c (r (a (i (= (sha256 5) (sha256 (q . "hunter2"))) (q 4 5 (strlen 5)) (q 8)) 1)) 1))
   debug_program: (a (q 2 (q 16 (* 2 (a (q 16 (* 2 (q . 1)) 2) (c (r 11) 1))) 2) (c (r (a 2 11)) 1)) (c (q 2 (i (= (sha256 1) (sha256 (q . "hunter2"))) (q 4 1 (strlen 1)) (q 8 (q . "assertion failed at path_bindings.rue:43:5"))) 1) 1))
   solution: (("ab" . 2) "wrong")
-  byte_cost: 1392000
+  byte_cost: 1128000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at path_bindings.rue:43:5"
 - name: more_bindings_than_are_measured

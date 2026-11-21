@@ -963,7 +963,7 @@ fn codegen(
         lowerer = lowerer.with_debug_info();
     }
 
-    let mut lir = lowerer.lower_symbol_value(&Environment::default(), root);
+    let mut lir = lowerer.lower_main(&Environment::default());
 
     if let Some(too_deep) = lowerer.too_deep() {
         let srcloc = too_deep.srcloc.clone();

@@ -107,12 +107,9 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// Whether no binding is read as a path, while a run is lowered the way it was before there
     /// were path bindings.
     paths_disabled: bool,
-    /// The functions that are called more than once and are inlined into each call anyway, since
-    /// the program is smaller that way (see [`Self::lower_with_inlined_functions`]).
+    /// The functions that are only inlined if the program is measured to be smaller that way
+    /// (see [`Self::is_measured_function`]), and were (see [`Self::lower_main`]).
     inlined_functions: HashSet<SymbolId>,
-    /// Whether the functions to inline have been decided, which they are when the entrypoint is
-    /// first lowered.
-    inlining_decided: bool,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// Whether the value of each constant may fail, for the ones that can't (see
@@ -203,21 +200,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             path_run_depth: 0,
             paths_disabled: false,
             inlined_functions: HashSet::new(),
-            inlining_decided: false,
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
             debug: None,
         }
-    }
-
-    /// Lowers without measuring which functions to inline (see
-    /// [`lower_with_inlined_functions`](Self::lower_with_inlined_functions)), for a program
-    /// that's only run while compiling, where its size doesn't matter.
-    #[must_use]
-    pub fn without_measured_inlining(mut self) -> Self {
-        self.inlining_decided = true;
-        self
     }
 
     /// Records where each LIR node comes from in the source, and which nodes are the bodies of
@@ -335,12 +322,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         self.too_deep.as_ref()
     }
 
+    /// Lowers the value of a symbol in the environment. The entrypoint of a program that's
+    /// compiled to be run on chain is lowered with [`lower_main`](Self::lower_main) instead,
+    /// which also decides which functions to inline by measuring.
     pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        if symbol == self.main && !self.inlining_decided {
-            self.inlining_decided = true;
-            return self.lower_with_inlined_functions(env, symbol);
-        }
-
         if let Some((frame, hir)) = self.inline_substitution(symbol) {
             return self.lower_substitution(env, frame, hir);
         }
@@ -1855,11 +1840,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn inline_argument(&self, symbol: SymbolId) -> Option<HirId> {
-        self.inline_symbols
-            .iter()
-            .rev()
-            .find_map(|symbols| symbols.get(&symbol).copied())
-            .flatten()
+        self.inline_substitution(symbol).map(|(_, hir)| hir)
     }
 
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.

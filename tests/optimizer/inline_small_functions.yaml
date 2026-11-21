@@ -76,8 +76,8 @@ tests:
 - name: nested_call_in_a_condition
   program: (i (> (a (q 16 2 2) (c (% 5 11) 1)) (/ 2 5)) (q . 2) (q . 1))
   debug_program: (a (q 2 2 (c (q . 1) (> (a 2 (c (% 11 23) (q . 1))) (/ 5 11)))) (c (q 2 (i 3 (q 16 2 2) (q 1 . 1)) 1) 1))
-  solution: (7 3 2)
-  output: "1"
+  solution: (10 5 3)
+  output: "2"
   runtime_cost: 3857
   byte_cost: 612000
   total_cost: 615857
@@ -98,16 +98,16 @@ tests:
   byte_cost: 1260000
   total_cost: 1280081
 - name: function_that_is_too_large
-  program: (a (q 16 (a 2 (c 5 11)) (a 2 (c 11 5))) (c (q 16 (* 2 2 2 3) (* 2 2 3 3) (* 2 3 3 3) (* 2 2) (* 3 3) (* 2 3) 2 3 (* (+ 2 3) (+ 2 3) (+ 2 3)) (q . 1)) 1))
-  debug_program: (a (q 16 (a 2 (c 5 11)) (a 2 (c 11 5))) (c (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (* (* (* 2 2) 2) 3) (* (* (* 2 2) 3) 3)) (* (* (* 2 3) 3) 3)) (* 2 2)) (* 3 3)) (* 2 3)) 2) 3) (q . 1)) (* (* (+ 2 3) (+ 2 3)) (+ 2 3))) 1))
+  program: (a (q 2 2 (c 5 11)) (c (q 16 (* 2 2 2 3) (* 2 2 3 3) (* 2 3 3 3) (* 2 2) (* 3 3) (* 2 3) 2 3 (* (+ 2 3) (+ 2 3) (+ 2 3)) (q . 1)) 1))
+  debug_program: (a (q 2 2 (c 5 11)) (c (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (* (* (* 2 2) 2) 3) (* (* (* 2 2) 3) 3)) (* (* (* 2 3) 3) 3)) (* 2 2)) (* 3 3)) (* 2 3)) 2) 3) (q . 1)) (* (* (+ 2 3) (+ 2 3)) (+ 2 3))) 1))
   solution: (2 3)
-  output: "528"
-  runtime_cost: 41924
-  byte_cost: 1740000
-  total_cost: 1781924
+  output: "264"
+  runtime_cost: 20689
+  byte_cost: 1524000
+  total_cost: 1544689
 - name: called_once_with_a_parameter_read_twice
   program: (* (a (i (> 2 ()) (q . 2) (q 8)) 1) (q . 2))
-  debug_program: (a (q 18 (a 2 5) (q . 2)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_small_functions.rue:140:5"))) 1) 1))
+  debug_program: (a (q 18 (a 2 5) (q . 2)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_small_functions.rue:141:5"))) 1) 1))
   solution: (4)
   output: "8"
   runtime_cost: 1870
@@ -145,3 +145,18 @@ tests:
   runtime_cost: 3094
   byte_cost: 228000
   total_cost: 231094
+- name: argument_that_is_not_read_passes
+  program: (a (q 16 (i () (a 2 11) 5) (i () (a 2 5) 11)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) 1))
+  debug_program: (a (q 16 (a 6 (c 5 (a 4 11))) (a 6 (c 11 (a 4 5)))) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_small_functions.rue:18:5"))) 1) (q . 2)) 1))
+  solution: (2 3)
+  output: "5"
+  runtime_cost: 3316
+  byte_cost: 924000
+  total_cost: 927316
+- name: called_once_with_a_parameter_read_twice_fails
+  program: (* (a (i (> 2 ()) (q . 2) (q 8)) 1) (q . 2))
+  debug_program: (a (q 18 (a 2 5) (q . 2)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_small_functions.rue:141:5"))) 1) 1))
+  solution: (0)
+  byte_cost: 420000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_small_functions.rue:141:5"
