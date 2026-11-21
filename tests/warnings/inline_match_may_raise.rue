@@ -70,6 +70,38 @@ fn single_arm_branch(x: Int) -> Int {
     }
 }
 
+// The condition of an arm after the first is evaluated for the values that an earlier arm takes
+
+test fn condition_raises() -> Int {
+    condition_raises_branch(0)
+}
+
+fn positive(x: Int) -> Bool {
+    assert x > 0;
+    true
+}
+
+fn condition_raises_branch(x: Int) -> Int {
+    inline match x {
+        0 => 1,
+        _ if positive(x) => 2,
+        _ => 3,
+    }
+}
+
+// The condition of the first arm is evaluated either way, like the condition of an `if`
+
+test fn first_condition_raises() -> Int {
+    first_condition_raises_branch(1)
+}
+
+fn first_condition_raises_branch(x: Int) -> Int {
+    inline match x {
+        _ if positive(x) => 2,
+        _ => 3,
+    }
+}
+
 // The lint can be allowed
 
 test fn allowed() -> Int | nil {

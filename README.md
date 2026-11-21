@@ -160,7 +160,7 @@ Error: Match on `Shape` is not exhaustive, since it doesn't handle `Circle`
   note: This arm has a condition, so it doesn't handle every value it matches
 ```
 
-An arm of an `inline match` can have a condition as well. It's evaluated whatever the value is, like the arms are, so it sees the value as it is outside of the match rather than narrowed to the arm's type.
+An arm of an `inline match` can have a condition as well. It sees the value as the arm does, which is as it is outside of the match rather than narrowed to the arm's type. It's evaluated for the values that an earlier arm takes too, so a condition that can raise is reported by `inline_match_may_raise`, like an arm that can.
 
 A match must handle every value its type allows, so adding a member to a union is an error at every `match` that doesn't handle it, rather than a value that silently falls through to the wrong branch. The error lists the members that aren't handled:
 

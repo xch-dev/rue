@@ -15,4 +15,6 @@ diagnostics:
 - |-
   Negated condition in an `if` with an `else` branch at negated_condition.rue:21:24
     help: Remove the negation and swap the branches
-- Unnecessary parentheses at negated_condition.rue:21:24
+- |-
+  Unnecessary parentheses at negated_condition.rue:21:24
+    help: Remove the parentheses

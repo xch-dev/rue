@@ -255,8 +255,8 @@ pub fn compile_match_expr(
         if let Some(arm_condition) = arm_condition {
             // The condition is only evaluated for the values of the arm's type, like the right
             // operand of `value is T && condition`, and a type that doesn't need to be checked
-            // leaves only the condition. In an `inline match` it's evaluated whatever the value
-            // is, like the arms are, so it doesn't see the value narrowed either.
+            // leaves only the condition. In an `inline match` it sees the value as the arm does,
+            // which isn't narrowed, so it doesn't rely on the check.
             let condition = if check == Check::None {
                 arm_condition
             } else {
@@ -343,11 +343,13 @@ pub fn compile_match_expr(
         }
     }
 
-    // The arms that are evaluated, which are all of them for an `inline match`
+    // What's evaluated whichever arm is taken, which is every arm of an `inline match`, and the
+    // condition of each arm after the first, since it's in the `else` branch of the arm before it
     let arms: Vec<HirId> = branches
         .iter()
         .map(|&(_, then)| then)
         .chain(else_branch)
+        .chain(branches.iter().skip(1).map(|&(condition, _)| condition))
         .collect();
 
     let else_branch = if let Some(else_branch) = else_branch {

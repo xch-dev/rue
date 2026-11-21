@@ -60,8 +60,8 @@ export fn parens(value: Tagged | Plain, flag: Bool) -> Int {
     }
 }
 
-// The parentheses are still reported around a comment, which the fix would remove, so it isn't
-// offered
+// The parentheses are reported around a comment too. The fix would remove the comment, so it's
+// only offered, rather than applied with the others.
 export fn parens_with_comments(value: Tagged | Plain, flag: Bool) -> Int {
     match value {
         Tagged if (/* why */ flag) => 1,

@@ -10,5 +10,9 @@ diagnostics:
 - |-
   Unnecessary parentheses at match_arm_conditions.rue:55:19
     help: Remove the parentheses
-- Unnecessary parentheses at match_arm_conditions.rue:67:19
-- Unnecessary parentheses at match_arm_conditions.rue:68:19
+- |-
+  Unnecessary parentheses at match_arm_conditions.rue:67:19
+    help: Remove the parentheses
+- |-
+  Unnecessary parentheses at match_arm_conditions.rue:68:19
+    help: Remove the parentheses

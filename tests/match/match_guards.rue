@@ -17,8 +17,8 @@ struct Plain {
     value: Int,
 }
 
-// An `inline match` can have conditions as well. Every arm is evaluated, and so is every
-// condition, so they see the value as it is outside of the match.
+// An `inline match` can have conditions as well. They see the value as the arms do, which is as
+// it is outside of the match.
 fn inline_condition(value: Int, limit: Int) -> Int {
     inline match value {
         0 if limit > 0 => 1,
