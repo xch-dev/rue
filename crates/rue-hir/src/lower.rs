@@ -305,7 +305,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             return dependencies.clone();
         }
 
-        let dependencies = Rc::new(self.graph.dependencies(symbol, captures_only));
+        // A loop captures what it's found to need when the graph is built, which doesn't depend
+        // on where it's called from (see `DependencyGraph::loop_captures`)
+        let dependencies = match self.graph.loop_captures(symbol) {
+            Some(captures) if captures_only => Rc::new(captures.clone()),
+            _ => Rc::new(self.graph.dependencies(symbol, captures_only)),
+        };
         self.dependencies
             .borrow_mut()
             .insert(key, dependencies.clone());
@@ -1902,21 +1907,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
     }
 
-    /// Whether the value is made of literals only, so it's static wherever it's lowered.
-    fn is_literal_hir(&self, hir: HirId) -> bool {
-        match self.db.hir(hir) {
-            Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
-            Hir::Pair(first, rest) => self.is_literal_hir(*first) && self.is_literal_hir(*rest),
-            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_literal_hir(*hir),
-            Hir::List(list) => list.items.iter().all(|&item| self.is_literal_hir(item)),
-            Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_literal_hir(field.value)),
-            _ => false,
-        }
-    }
-
     /// Whether a function needs to capture the symbol rather than inlining its value.
     /// Inline arguments are captured by value, unless they are static.
     fn is_capture(&self, symbol: SymbolId) -> bool {
@@ -1965,7 +1955,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
                 // As with a binding (see below), a constant that a loop refers to is only
                 // substituted there if it's a literal
-                if self.graph.is_loop_capture(symbol) && !self.is_literal_hir(constant.value.hir) {
+                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(constant.value.hir)
+                {
                     return false;
                 }
 
@@ -1986,7 +1977,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 // This can't depend on the arguments of the calls being inlined, since the loop
                 // is lowered once (see `group_symbols`), so a value that's only static with them
                 // isn't substituted either
-                if self.graph.is_loop_capture(symbol) && !self.is_literal_hir(binding.value.hir) {
+                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(binding.value.hir)
+                {
                     return false;
                 }
 

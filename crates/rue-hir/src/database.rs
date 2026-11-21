@@ -117,6 +117,21 @@ impl Database {
         self.const_exprs.iter().copied()
     }
 
+    /// Whether the value is made of literals only, so it's static wherever it's lowered.
+    pub fn is_literal_hir(&self, hir: HirId) -> bool {
+        match self.hir(hir) {
+            Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
+            Hir::Pair(first, rest) => self.is_literal_hir(*first) && self.is_literal_hir(*rest),
+            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_literal_hir(*hir),
+            Hir::List(list) => list.items.iter().all(|&item| self.is_literal_hir(item)),
+            Hir::Struct(initializer) => initializer
+                .fields
+                .iter()
+                .all(|field| self.is_literal_hir(field.value)),
+            _ => false,
+        }
+    }
+
     /// Whether the node is the call of a loop to itself with the rest of its list (see
     /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
     /// list. A binding for it is either `inline`, and evaluated where the body refers to it, or

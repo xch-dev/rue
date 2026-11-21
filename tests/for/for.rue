@@ -501,3 +501,63 @@ test fn shadowed_names() -> Int {
     let total = length(x) > 2;
     for x in x if total fold total = 0 { total + x }
 }
+
+// A loop only captures the values it refers to, not what they depend on. So a value that the loop
+// only reaches through one it captures can be read where it's used, as `first` is here, without
+// the loop expecting it too
+fn after_first(pair: (Int, List<Int>)) -> List<Int> {
+    let first = pair.first;
+    let k = first * 3;
+    [first, ...for x in pair.rest { x + k }]
+}
+
+test fn captured_value_that_depends_on_a_path() -> List<Int> {
+    after_first(runtime((5, [1, 2, 3])))
+}
+
+// A lambda in the body captures everything it can reach, which the loop has for it
+test fn lambda_in_the_body_reaching_outside() -> List<Int> {
+    let pair = runtime((5, [1, 2, 3]));
+    let first = pair.first;
+    let total = first + length(pair.rest);
+    [first, ...for x in pair.rest { (fn(y: Int) => y + total)(x) }]
+}
+
+// A function with a loop that's inlined for each of its calls gives the loop the same values,
+// whether or not a call's arguments let a value that the captured one depends on be substituted
+fn offset_by(make: fn(v: Int) -> Int, enabled: Bool, xs: List<Int>) -> List<Int> {
+    let made = make(3);
+    let k = if enabled {
+        made
+    } else {
+        0
+    };
+    for x in xs { x + k }
+}
+
+test fn captured_value_with_arguments_that_differ() -> List<Int> {
+    let xs = runtime([1, 2]);
+    [
+        ...offset_by(fn(v: Int) => v, false, xs),
+        ...offset_by(
+            fn(v: Int) => {
+                assert v > 2;
+                v
+            },
+            true,
+            xs,
+        ),
+    ]
+}
+
+// The argument for a parameter that the loop only reaches through a value it captures isn't
+// evaluated again for the loop
+fn double_all(by: Int, xs: List<Int>) -> List<Int> {
+    let k = by * 2;
+    for x in xs { x + k }
+}
+
+test fn argument_of_an_indirect_capture() -> List<Int> {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    double_all(for x in xs fold sum = 0 { sum + x }, xs)
+}

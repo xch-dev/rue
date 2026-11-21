@@ -31,6 +31,8 @@ pub struct DependencyGraph {
     /// The symbols that are referenced inside of a loop they're defined outside of, which
     /// evaluates what references them once for each item.
     loop_captures: HashSet<SymbolId>,
+    /// What each loop captures (see [`Self::loop_captures`]).
+    loop_dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
 
     // Keeps track of the const expressions that are reachable
     const_exprs: IndexSet<HirId>,
@@ -110,6 +112,7 @@ impl DependencyGraph {
             closures: HashSet::new(),
             loops: HashSet::new(),
             loop_captures: HashSet::new(),
+            loop_dependencies: HashMap::new(),
             const_exprs: IndexSet::new(),
             current: None,
             pending: vec![main],
@@ -155,6 +158,7 @@ impl DependencyGraph {
         }
 
         graph.find_loop_captures(db);
+        graph.find_loop_dependencies(db);
 
         graph
     }
@@ -339,6 +343,135 @@ impl DependencyGraph {
         }
 
         self.loop_captures = captures;
+    }
+
+    /// What the loop captures, if the symbol is one: itself and the other functions and constants
+    /// of the program that it needs, and the values that it refers to from the functions it's
+    /// defined in.
+    ///
+    /// A loop is lowered once, where the program's functions are, but it's called where its
+    /// `for` expression is, which can be inside a call that's inlined, or a run of let statements
+    /// that are substituted. So what it captures can't depend on any of that, unlike what a
+    /// lambda captures, which is lowered where it's written. A value from outside of the loop
+    /// that it refers to is always captured, and never substituted (see
+    /// [`Self::is_loop_capture`]), so the loop doesn't need what the value depends on. Only an
+    /// `inline` value, or one that's made of literals, is lowered in the loop, which then
+    /// captures what that refers to.
+    pub fn loop_captures(&self, symbol: SymbolId) -> Option<&IndexSet<SymbolId>> {
+        self.loop_dependencies.get(&symbol)
+    }
+
+    fn find_loop_dependencies(&mut self, db: &Database) {
+        let mut loops: Vec<SymbolId> = self.loops.iter().copied().collect();
+        loops.sort();
+
+        for function in loops {
+            // The functions that the loop is defined in, whose values it can refer to
+            let enclosing: Vec<SymbolId> = self.owners(function).collect();
+
+            let mut result = IndexSet::new();
+            let mut visited = HashSet::new();
+            // Whether the path to each symbol goes through a function the loop is defined in,
+            // such as a call to it in the body. That function's values are its own from there
+            let mut stack = vec![(function, false)];
+
+            while let Some((current, entered)) = stack.pop() {
+                if !visited.insert((current, entered)) {
+                    continue;
+                }
+
+                for &dependency in self.dependencies.get(&current).into_iter().flatten() {
+                    let entered = entered || enclosing.contains(&dependency);
+
+                    // A loop is a function of the program wherever it's defined, including the
+                    // loop itself and the loops inside of it
+                    if self.loops.contains(&dependency) {
+                        result.insert(dependency);
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    // What's defined in the loop is lowered with it. A lambda there is lowered
+                    // where it's written, and captures everything it can reach, including what
+                    // the values it refers to depend on (see `Self::dependencies`). The loop has
+                    // to have all of that for it, so those values aren't substituted either
+                    if self.is_defined_in(dependency, function) {
+                        if self.closures.contains(&dependency) {
+                            for capture in self.dependencies(dependency, true) {
+                                if self.is_defined_in(capture, function) {
+                                    continue;
+                                }
+
+                                result.insert(capture);
+
+                                let value = match db.symbol(capture) {
+                                    Symbol::Binding(binding) => {
+                                        Some((binding.inline, binding.value.hir))
+                                    }
+                                    Symbol::Constant(constant) => {
+                                        Some((constant.inline, constant.value.hir))
+                                    }
+                                    _ => None,
+                                };
+
+                                if let Some((inline, hir)) = value
+                                    && !inline
+                                    && !db.is_literal_hir(hir)
+                                    && self.owners.contains_key(&capture)
+                                {
+                                    self.loop_captures.insert(capture);
+                                }
+                            }
+                        }
+
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    // A function or constant of the program, which the loop needs what it needs
+                    // of too, or something defined in a function that the loop isn't in
+                    if !enclosing
+                        .iter()
+                        .any(|&scope| self.is_defined_in(dependency, scope))
+                    {
+                        if !self.owners.contains_key(&dependency) {
+                            result.insert(dependency);
+                        }
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    // A value of a function the loop is in, reached through a call to it, is
+                    // that call's own
+                    if entered {
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    result.insert(dependency);
+
+                    // A value that's lowered where it's referred to is lowered in the loop
+                    let substituted = match db.symbol(dependency) {
+                        Symbol::Parameter(_) => false,
+                        Symbol::Binding(binding) => {
+                            binding.inline || db.is_literal_hir(binding.value.hir)
+                        }
+                        Symbol::Constant(constant) => {
+                            constant.inline || db.is_literal_hir(constant.value.hir)
+                        }
+                        _ => true,
+                    };
+
+                    if substituted {
+                        stack.push((dependency, entered));
+                    } else {
+                        self.loop_captures.insert(dependency);
+                    }
+                }
+            }
+
+            self.loop_dependencies.insert(function, result);
+        }
     }
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
