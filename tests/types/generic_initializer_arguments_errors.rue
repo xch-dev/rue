@@ -1,0 +1,85 @@
+struct Box<T> {
+    value: T,
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+mod shapes {
+    export struct Wrapper<T> {
+        inner: T,
+    }
+
+    export enum Maybe<T> {
+        Nothing,
+        Just { value: T },
+    }
+}
+
+type Boxed<T> = Box<T>;
+
+fn unbox<T>(box: Box<T>) -> T {
+    box.value
+}
+
+fn unwrap_or<T>(option: Option<T>, default: T) -> T {
+    match option {
+        Option::Some<T> { value } => value,
+        Option::None<T> => default,
+    }
+}
+
+// An initializer of a generic struct needs its generic arguments, and says which and where
+fn structs(n: Int) -> Int {
+    let argument = unbox(Box { value: 5 });
+    let annotated: Box<Int> = Box { value: 5 };
+    let pair = Pair { first: n, second: "a" };
+    let nested = unbox(unbox(Box { value: Box { value: n } }));
+    let module = shapes::Wrapper { inner: n };
+    let alias = Boxed { value: n };
+    argument + annotated.value + pair.first + nested + module.inner + alias.value
+}
+
+// A mistake in the fields is reported as well, and names the type as it's written
+fn fields(n: Int) -> Int {
+    let unknown = Box { valu: n };
+    let missing = Box {};
+    unknown.value + missing.value
+}
+
+// So does a variant of a generic enum, after the variant
+fn variants(n: Int) -> Int {
+    let argument = unwrap_or(Option::Some { value: n }, 0);
+    let annotated: Option<Int> = Option::Some { value: n };
+    let module = shapes::Maybe::Just { value: n };
+    argument
+        + unwrap_or(annotated, 0)
+        + if module is nil {
+            0
+        } else {
+            1
+        }
+}
+
+// With the wrong number of them, the error is the one for any other type
+fn wrong_count(n: Int) -> Int {
+    let box = Box::<Int, Int> { value: n };
+    let pair = Pair::<Int> { first: n, second: n };
+    let nested = Box::<Box> { value: Box::<Int> { value: n } };
+    box.value + pair.first + nested.value.value
+}
+
+// And with them, there's none
+fn written(n: Int) -> Int {
+    let box = unbox(Box::<Int> { value: n });
+    let option = unwrap_or(Option::Some::<Int> { value: n }, 0);
+    let module = shapes::Wrapper::<Int> { inner: n };
+    box + option + module.inner
+}

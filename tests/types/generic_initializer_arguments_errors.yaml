@@ -1,0 +1,32 @@
+diagnostics:
+- Unused struct `Box` at generic_initializer_arguments_errors.rue:1:8
+- Unused struct `Pair` at generic_initializer_arguments_errors.rue:5:8
+- Unused enum `Option` at generic_initializer_arguments_errors.rue:10:6
+- Unused struct `Wrapper` at generic_initializer_arguments_errors.rue:16:19
+- Unused enum `Maybe` at generic_initializer_arguments_errors.rue:20:17
+- Unused type alias `Boxed` at generic_initializer_arguments_errors.rue:26:6
+- Unused function `unbox` at generic_initializer_arguments_errors.rue:28:4
+- Unused function `unwrap_or` at generic_initializer_arguments_errors.rue:32:4
+- Unused function `structs` at generic_initializer_arguments_errors.rue:40:4
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:41:26
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:42:31
+- Missing generic arguments for `Pair`, which aren't inferred from its fields; specify them explicitly, e.g. `Pair::<...> { ... }` at generic_initializer_arguments_errors.rue:43:16
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:44:30
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:44:43
+- Missing generic arguments for `shapes::Wrapper`, which aren't inferred from its fields; specify them explicitly, e.g. `shapes::Wrapper::<...> { ... }` at generic_initializer_arguments_errors.rue:45:26
+- Missing generic arguments for `Boxed`, which aren't inferred from its fields; specify them explicitly, e.g. `Boxed::<...> { ... }` at generic_initializer_arguments_errors.rue:46:17
+- Unused function `fields` at generic_initializer_arguments_errors.rue:51:4
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:52:19
+- "Struct `Box` is missing required fields: value at generic_initializer_arguments_errors.rue:52:19"
+- Unknown field `valu` on type `Box` at generic_initializer_arguments_errors.rue:52:25
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:53:19
+- "Struct `Box` is missing required fields: value at generic_initializer_arguments_errors.rue:53:19"
+- Unused function `variants` at generic_initializer_arguments_errors.rue:58:4
+- Missing generic arguments for `Option::Some`, which aren't inferred from its fields; specify them explicitly, e.g. `Option::Some::<...> { ... }` at generic_initializer_arguments_errors.rue:59:38
+- Missing generic arguments for `Option::Some`, which aren't inferred from its fields; specify them explicitly, e.g. `Option::Some::<...> { ... }` at generic_initializer_arguments_errors.rue:60:42
+- Missing generic arguments for `shapes::Maybe::Just`, which aren't inferred from its fields; specify them explicitly, e.g. `shapes::Maybe::Just::<...> { ... }` at generic_initializer_arguments_errors.rue:61:33
+- Unused function `wrong_count` at generic_initializer_arguments_errors.rue:72:4
+- Expected 1 generic arguments, but found 2 at generic_initializer_arguments_errors.rue:73:15
+- Expected 2 generic arguments, but found 1 at generic_initializer_arguments_errors.rue:74:16
+- Expected 1 generic arguments, but found 0 at generic_initializer_arguments_errors.rue:75:24
+- Unused function `written` at generic_initializer_arguments_errors.rue:80:4

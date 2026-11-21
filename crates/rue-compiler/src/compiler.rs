@@ -12,7 +12,7 @@ use std::{
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
+    Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Note, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
     Builtins, Constraint, Database, Declaration, HirId, ImportId, ImportUser, Item, Items,
@@ -85,6 +85,14 @@ pub struct Compiler {
     return_count: usize,
     /// The calls whose generics are being inferred from their arguments, innermost last.
     call_frames: Vec<CallFrame>,
+    /// The parameters of the lambdas being compiled whose types weren't inferred, as the generic
+    /// each was left as and its name (see [`Compiler::name_uninferred_generics`]).
+    uninferred_parameters: Vec<(TypeId, String)>,
+    /// The generics that weren't inferred yet in the types that were named for the next error.
+    named_generics: Vec<NamedGeneric>,
+    /// The errors, by where they are in the diagnostics, that show a generic of a call that
+    /// wasn't inferred by then, in order (see [`Compiler::has_errors_since`]).
+    uninferred_errors: Vec<usize>,
     /// How the type expected of the expression being compiled is used.
     expected: ExpectedTypeUse,
     /// A type that the call argument at the range has to be assignable to however the enclosing
@@ -282,6 +290,9 @@ impl Compiler {
             return_stack: Vec::new(),
             return_count: 0,
             call_frames: Vec::new(),
+            uninferred_parameters: Vec::new(),
+            named_generics: Vec::new(),
+            uninferred_errors: Vec::new(),
             expected: ExpectedTypeUse::default(),
             argument_requirement: None,
             lint_sites: LintSites::default(),
@@ -386,6 +397,13 @@ impl Compiler {
     /// the order their first diagnostic was reported.
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
         let mut diagnostics = mem::take(&mut self.diagnostics);
+        self.uninferred_errors.clear();
+
+        // A diagnostic that shows a type with a part that couldn't be compiled only follows from
+        // the error that was reported for that part, as long as there is one that doesn't
+        if diagnostics.iter().any(is_root_error) {
+            diagnostics.retain(|diagnostic| !mentions_unresolved(diagnostic));
+        }
 
         let mut files = HashMap::new();
 
@@ -420,6 +438,38 @@ impl Compiler {
     /// can be added to them.
     pub fn diagnostics_since_mut(&mut self, count: usize) -> &mut [Diagnostic] {
         &mut self.diagnostics[count..]
+    }
+
+    /// The diagnostics that have been reported since there were `count` of them.
+    pub(crate) fn diagnostics_since(&self, count: usize) -> &[Diagnostic] {
+        &self.diagnostics[count..]
+    }
+
+    /// Whether an error has been reported since there were `count` diagnostics that a generic of
+    /// a call might not have been inferred because of. That leaves out the errors that follow
+    /// from another one: those that show a type with a part that couldn't be compiled (see
+    /// [`Self::take_diagnostics`]), and those that show a generic that wasn't inferred, which
+    /// are there because of that rather than the other way around.
+    pub(crate) fn has_errors_since(&self, count: usize) -> bool {
+        self.diagnostics
+            .iter()
+            .enumerate()
+            .skip(count)
+            .any(|(index, diagnostic)| {
+                is_root_error(diagnostic) && self.uninferred_errors.binary_search(&index).is_err()
+            })
+    }
+
+    /// Records that the errors reported since there were `count` diagnostics show a generic of
+    /// a call that wasn't inferred (see [`Self::has_errors_since`]).
+    pub(crate) fn uninferred_errors_since(&mut self, count: usize) {
+        for index in count..self.diagnostics.len() {
+            if self.uninferred_errors.binary_search(&index).is_err() {
+                self.uninferred_errors.push(index);
+            }
+        }
+
+        self.uninferred_errors.sort_unstable();
     }
 
     pub fn has_errors(&self) -> bool {
@@ -480,8 +530,83 @@ impl Compiler {
             "lints must be reported by a lint pass, so that their level is respected"
         );
 
-        self.diagnostics
-            .push(Diagnostic::new(srcloc, kind, DiagnosticSeverity::Error));
+        let mut diagnostic = Diagnostic::new(srcloc, kind, DiagnosticSeverity::Error);
+
+        // A type can be named without an error being reported for it, so the generics that were
+        // named only count for an error that shows them
+        if !self.named_generics.is_empty() {
+            let message = diagnostic.kind.to_string();
+            let mut shown = false;
+
+            for generic in mem::take(&mut self.named_generics) {
+                if shows_type(&message, &generic.name) {
+                    shown = true;
+                    diagnostic.notes.extend(generic.note);
+                }
+            }
+
+            if shown {
+                self.uninferred_errors.push(self.diagnostics.len());
+            }
+        }
+
+        self.diagnostics.push(diagnostic);
+    }
+
+    /// How many parameters there are whose types weren't inferred, which is what
+    /// [`Self::truncate_uninferred_parameters`] takes once the lambda they're of is compiled.
+    pub(crate) fn uninferred_parameter_count(&self) -> usize {
+        self.uninferred_parameters.len()
+    }
+
+    /// Adds a parameter of the lambda being compiled that has no type written and whose type
+    /// wasn't inferred, so it's left as (or as a type with) a generic of the function that the
+    /// lambda is passed to.
+    pub(crate) fn push_uninferred_parameter(&mut self, generic: TypeId, name: String) {
+        self.uninferred_parameters.push((generic, name));
+    }
+
+    pub(crate) fn truncate_uninferred_parameters(&mut self, count: usize) {
+        self.uninferred_parameters.truncate(count);
+        self.named_generics.clear();
+    }
+
+    /// Keeps the generics in a type that's named for the next error that are of a call whose
+    /// generics are still being inferred. Nothing is known about one of those by then, so the
+    /// error follows from it not being inferred where the type is used, as
+    /// ``Cannot use `+` operator with `T` and `1` `` does in the body of a lambda whose parameter
+    /// was left as the `T` of the function that's called. If it's what a parameter was left as,
+    /// the error gets a note that says so, since it otherwise only names a generic that the code
+    /// doesn't.
+    fn name_uninferred_generics(&mut self, ty: TypeId) {
+        let inferred = self.inferred_generics();
+
+        if inferred.is_empty() {
+            return;
+        }
+
+        let scope = self.last_scope_id();
+
+        for generic in rue_types::contained_generics(self.db.types_mut(), ty, inferred) {
+            let name = self.db.type_name_in(scope, generic);
+
+            // One parameter is enough to say where a generic comes from
+            if self.named_generics.iter().any(|other| other.name == name) {
+                continue;
+            }
+
+            let note = self
+                .uninferred_parameters
+                .iter()
+                .find(|(other, _)| *other == generic)
+                .map(|(_, parameter)| {
+                    Note::new(format!(
+                        "`{name}` is a generic of the function that's called, since the type of the parameter `{parameter}` wasn't inferred here; specify the parameter's type explicitly"
+                    ))
+                });
+
+            self.named_generics.push(NamedGeneric { name, note });
+        }
     }
 
     pub fn srcloc(&self, node: &impl GetTextRange) -> SrcLoc {
@@ -797,9 +922,22 @@ impl Compiler {
         None
     }
 
+    /// The name of a type for the error that's reported next, which is taken to follow from a
+    /// generic not being inferred if the type has one that wasn't (see
+    /// [`Self::name_uninferred_generics`]). A name for anything else is [`Self::type_name_in`].
     pub fn type_name(&mut self, ty: TypeId) -> String {
+        self.name_uninferred_generics(ty);
         let current = self.last_scope_id();
         self.type_name_in(current, ty)
+    }
+
+    /// Names types with [`Self::type_name`] for something other than the error that's reported
+    /// next, such as a lint or a note, which the generics in them don't count for.
+    pub(crate) fn naming_aside<T>(&mut self, name: impl FnOnce(&mut Self) -> T) -> T {
+        let named = self.named_generics.len();
+        let result = name(self);
+        self.named_generics.truncate(named);
+        result
     }
 
     pub fn type_name_in(&mut self, scope: ScopeId, ty: TypeId) -> String {
@@ -937,6 +1075,7 @@ impl Compiler {
     }
 
     pub fn pop_call_frame(&mut self) {
+        self.named_generics.clear();
         self.call_frames
             .pop()
             .expect("call frame stack is unbalanced");
@@ -1176,11 +1315,23 @@ impl Compiler {
     }
 
     pub fn assign_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, false);
+        self.compare_type(node, from, to, to, false);
+    }
+
+    /// Like [`Self::assign_type`], but an error names `shown` as the type that the value can't be
+    /// assigned to, which is `to` as it's written before it's substituted with placeholders.
+    pub(crate) fn assign_type_shown_as(
+        &mut self,
+        node: &impl GetTextRange,
+        from: TypeId,
+        to: TypeId,
+        shown: TypeId,
+    ) {
+        self.compare_type(node, from, to, shown, false);
     }
 
     pub fn cast_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, true);
+        self.compare_type(node, from, to, to, true);
     }
 
     pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
@@ -1208,7 +1359,8 @@ impl Compiler {
             rue_types::subtract_detailed(self.db.types_mut(), &self.builtins.types, from, to);
 
         for struct_id in subtracted.merged_structs {
-            let struct_name = self.type_name(struct_id);
+            let current = self.last_scope_id();
+            let struct_name = self.type_name_in(current, struct_id);
             self.lint_sites
                 .imprecise_narrowings
                 .push(ImpreciseNarrowing {
@@ -1361,11 +1513,18 @@ impl Compiler {
         solver.solve_narrowed(self.db.types_mut(), &self.builtins.types, infer)
     }
 
-    fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
+    fn compare_type(
+        &mut self,
+        node: &impl GetTextRange,
+        from: TypeId,
+        to: TypeId,
+        shown: TypeId,
+        cast: bool,
+    ) {
         let Ok(comparison) =
             rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, from, to)
         else {
-            self.too_complex(node, from, to);
+            self.too_complex(node, from, shown);
             return;
         };
 
@@ -1374,7 +1533,7 @@ impl Compiler {
             Comparison::Cast => {
                 if !cast {
                     let from = self.type_name(from);
-                    let to = self.type_name(to);
+                    let to = self.type_name(shown);
                     self.diagnostic(node, DiagnosticKind::UnassignableType(from, to));
                 }
             }
@@ -1394,7 +1553,7 @@ impl Compiler {
                     };
 
                 let from = self.type_name(from);
-                let to = self.type_name(to);
+                let to = self.type_name(shown);
 
                 if can_guard {
                     if cast {
@@ -1581,6 +1740,58 @@ impl Compiler {
         let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
         matches!(self.ty(semantic), Type::Unresolved)
     }
+}
+
+/// A generic of a call that wasn't inferred yet, in a type that was named for an error.
+#[derive(Debug, Clone)]
+struct NamedGeneric {
+    name: String,
+    /// What the error says about it, if it's what a parameter of a lambda was left as.
+    note: Option<Note>,
+}
+
+/// Whether the diagnostic is an error that doesn't only follow from another one. A lint that's
+/// an error isn't one that a type couldn't be compiled because of.
+fn is_root_error(diagnostic: &Diagnostic) -> bool {
+    diagnostic.severity == DiagnosticSeverity::Error
+        && diagnostic.kind.lint().is_none()
+        && !mentions_unresolved(diagnostic)
+}
+
+/// Whether a diagnostic's message shows the type with the given name, on its own or as part of
+/// another type. Types are shown in backticks.
+pub(crate) fn shows_type(message: &str, name: &str) -> bool {
+    let is_part_of_name = |char: char| char.is_alphanumeric() || char == '_';
+
+    message.split('`').skip(1).step_by(2).any(|code| {
+        code.match_indices(name).any(|(start, _)| {
+            !code[..start].ends_with(is_part_of_name)
+                && !code[start + name.len()..].starts_with(is_part_of_name)
+        })
+    })
+}
+
+/// Whether the diagnostic shows a type with a part that couldn't be compiled, which is written as
+/// [`rue_types::UNRESOLVED`]. A string in a type is written in quotes, so it isn't that.
+fn mentions_unresolved(diagnostic: &Diagnostic) -> bool {
+    let message = diagnostic.kind.to_string();
+    let mut in_string = false;
+    let mut chars = message.char_indices();
+
+    while let Some((index, char)) = chars.next() {
+        match char {
+            '\\' if in_string => {
+                chars.next();
+            }
+            '"' => in_string = !in_string,
+            _ if !in_string && message[index..].starts_with(rue_types::UNRESOLVED) => {
+                return true;
+            }
+            _ => {}
+        }
+    }
+
+    false
 }
 
 /// The range of a node without any whitespace or comments at its start or end.

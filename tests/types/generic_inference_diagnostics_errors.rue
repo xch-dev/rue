@@ -1,0 +1,249 @@
+fn map<T, U>(list: List<T>, function: fn(item: T) -> U) -> List<U> {
+    if list is nil {
+        return nil;
+    }
+    [function(list.first), ...map(list.rest, function)]
+}
+
+fn fold<T, A>(list: List<T>, initial: A, function: fn(accumulator: A, item: T) -> A) -> A {
+    if list is nil {
+        return initial;
+    }
+    fold(list.rest, function(initial, list.first), function)
+}
+
+fn apply<T, U>(function: fn(value: T) -> U, value: T) -> U {
+    function(value)
+}
+
+fn empty<T>() -> List<T> {
+    nil
+}
+
+fn default<T>() -> T {
+    unchecked_cast(nil)
+}
+
+fn both<T, U>(first: T) -> (T, List<U>) {
+    (first, nil)
+}
+
+fn takes(function: fn(value: Int) -> Int) -> Int {
+    function(1)
+}
+
+fn takes_two(function: fn(first: Int, second: Int) -> Int) -> Int {
+    function(1, 2)
+}
+
+fn takes_rest(function: fn(first: Int, ...rest: List<Int>) -> Int) -> Int {
+    function(1, ...nil)
+}
+
+fn takes_either(_function: (fn(value: Int) -> Int) | (fn(first: Int, second: Int) -> Int)) -> Int {
+    1
+}
+
+fn make<T>(_count: Int) -> List<T> {
+    nil
+}
+
+fn call<T>(_function: fn(value: T) -> Int) -> Int {
+    1
+}
+
+fn same<T>(first: T, second: T, check: fn(value: T) -> Int) -> T {
+    if check(first) == 0 {
+        first
+    } else {
+        second
+    }
+}
+
+fn self_feeding<T>(pair: (Int, fn(value: T) -> T), value: T) -> T {
+    pair.rest(value)
+}
+
+struct First {
+    value: Int,
+}
+
+struct Second {
+    value: Int,
+}
+
+struct Thing {
+    value: Int,
+}
+
+// An error in the body of a lambda is the only error: `U` isn't inferred because of it
+fn error_in_a_lambda_body() -> nil {
+    let field = map([1, 2, 3], fn(x) => x.first);
+    let undeclared = map([1, 2, 3], fn(x) => x + missing);
+    nil
+}
+
+// A lambda with the wrong number of parameters is reported as that, once
+fn lambda_parameter_count() -> nil {
+    let extra = map([1, 2, 3], fn(x, y) => x);
+    let extra_two = map([1, 2, 3], fn(x, y, z) => x);
+    let extra_typed = map([1, 2, 3], fn(x: Int, y: Int) => x);
+    let none = map([1, 2, 3], fn() => 1);
+    let not_generic = takes(fn(x, y) => x);
+    let not_generic_none = takes(fn() => 1);
+    let annotated: fn(value: Int) -> Int = fn(x, y) => x;
+
+    // A lambda in the body of another is reported for itself, and so is the one it's in
+    let nested = takes_two(fn(x) => takes(fn(p, q) => p));
+    let nested_typed = takes_two(fn(x: Int, y: Int, z: Int) => takes(fn(p, q) => p));
+    let nested_none = map([1, 2, 3], fn() => takes(fn(x, y) => x));
+    nil
+}
+
+// A function type that takes the rest of its arguments, or more than one function type, has no
+// one number of parameters to expect, so these are reported as they were
+fn no_parameter_count() -> nil {
+    let rest_expected = takes_rest(fn(x, y, z) => x);
+    let rest_passed = takes(fn(...a) => 1);
+    let either_extra = takes_either(fn(a, b, c) => a);
+    let either_none = takes_either(fn() => 1);
+    nil
+}
+
+// A lambda that has the parameters it's expected to isn't reported for them
+fn lambda_with_another_error() -> nil {
+    let returns = takes(fn(x) => "text");
+    let parameter = takes(fn(x: Bytes) => 1);
+    nil
+}
+
+// The wrong number of arguments is the only error
+fn argument_count() -> nil {
+    let missing = map([1, 2, 3]);
+    let extra = map([1, 2, 3], fn(x) => x, 5);
+    nil
+}
+
+// An argument of the wrong type is shown against the parameter as it's declared, where a generic
+// isn't inferred because of it
+fn argument_type() -> nil {
+    let list = map(5, fn(x) => x);
+    let function = apply(5, 5);
+    nil
+}
+
+// The call that a generic can't be inferred for is the only one that's reported, not the calls
+// that it's an argument of, or the uses of its value
+fn uninferred_generic(condition: Bool) -> Int {
+    let list = empty();
+    let number: Int = list;
+    let first = if list is nil {
+        0
+    } else {
+        list.first + 1
+    };
+    let nested = map(empty(), fn(x) => x);
+    let value = default();
+    let other = if condition {
+        both(1)
+    } else {
+        both(2)
+    };
+    number
+        + first
+        + value
+        + other.first
+        + if nested is nil {
+            0
+        } else {
+            1
+        }
+}
+
+// It's still reported where nothing else is wrong
+fn only_uninferred_generic() -> nil {
+    let list = empty();
+    let pair = both(1);
+    let mapped = map(empty::<Int>(), fn(x) => default());
+    nil
+}
+
+// And where what's wrong couldn't have inferred it, since it's only in the return type
+fn return_type_generic() -> nil {
+    let list = make("text");
+    let pair = both(missing);
+    nil
+}
+
+// A string in a type is shown as it is, whatever it says
+fn string_type() -> Int {
+    let list = empty();
+    let text: Int = "{unresolved}";
+    text
+}
+
+// A generic that's inferred as a union of what every argument gave it is named in a note
+fn inferred_union(any: Any) -> nil {
+    let text = fold([1, 2], 0, fn(accumulator, item) => "text");
+    let mixed = fold([1, 2], true, fn(accumulator, item) => item);
+
+    // But not one that's shown as a single type, or that's any value
+    let bool = same(true, false, fn(x: true) => 1);
+    let anything = same(any, 1, fn(x: Int) => 1);
+    nil
+}
+
+// An error in a lambda's body about a parameter whose type wasn't inferred says so, since it shows
+// the generic of the function that's called
+fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> nil {
+    let operator = self_feeding((1, fn(x) => x + 1), 5);
+    let compound = self_feeding((1, fn(x) => (x, 1).first + 1), 5);
+
+    // The call says that the generic can't be inferred as well, which is why the body is rejected
+    let argument = call(fn(x) => x + 1);
+    let field = call(fn(x) => x.first);
+    let list = map(nil, fn(x) => x + 1);
+
+    // But not an error about another type, including a generic with the same name
+    let unrelated = self_feeding(
+        (
+            1,
+            fn(x) => {
+                let y: Bytes = 1;
+                x
+            },
+        ),
+        5,
+    );
+    let same_name = self_feeding(
+        (
+            1,
+            fn(x) => {
+                let y: Int = outer;
+                x
+            },
+        ),
+        5,
+    );
+
+    // Or one about a parameter that has a type
+    let typed = self_feeding((1, fn(x: Int) => x.first), 5);
+
+    // Or an error after a lint that names the generic, about a type whose name has the generic's
+    let lint = self_feeding(
+        (
+            1,
+            fn(x) => {
+                let pair = (either, x);
+                let number = match pair {
+                    (First, Any) => 1,
+                    (Second, Any) => 2,
+                };
+                let wrong: Int = thing;
+                x
+            },
+        ),
+        5,
+    );
+    nil
+}

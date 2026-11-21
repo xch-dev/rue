@@ -34,7 +34,6 @@ diagnostics:
     note: This arm handles every value that's left at match_guard_errors.rue:83:9
 - Unknown field `missing` on type `Never` at match_guard_errors.rue:84:25
 - Unused function `inline_condition` at match_guard_errors.rue:90:4
-- Cannot assign `Tagged | Int | {unresolved}` to `Int` without a type guard, since the value isn't always a valid `Int` at match_guard_errors.rue:90:49
 - |-
   Unknown field `value` on type `Tagged | Int` at match_guard_errors.rue:93:18
     note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Tagged` before it's destructured

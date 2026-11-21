@@ -28,6 +28,10 @@ thread_local! {
     static CUT: Cell<bool> = const { Cell::new(false) };
 }
 
+/// What's written for a type, or a part of one, that couldn't be compiled. An error has been
+/// reported for whatever it was, so a diagnostic that would show this is left out instead.
+pub const UNRESOLVED: &str = "{unresolved}";
+
 /// What's written in place of the parts of a type that [`stringify_bounded`] leaves out.
 pub const ELIDED: &str = "...";
 
@@ -154,7 +158,7 @@ fn stringify_impl_inner(
 
     let result = match arena[id].clone() {
         Type::Ref(id) => stringify_impl(arena, id, stack),
-        Type::Unresolved => "{unresolved}".to_string(),
+        Type::Unresolved => UNRESOLVED.to_string(),
         Type::Generic(generic) => {
             if let Some(name) = generic.name {
                 name.text().to_string()

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use log::debug;
-use rue_ast::{AstNode, AstStructInitializerExpr, AstStructInitializerSpread};
+use rue_ast::{AstNode, AstPathExpr, AstStructInitializerExpr, AstStructInitializerSpread};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
     Block, FieldAccess, FieldKind, Hir, Statement, StructField, StructInitializer, StructTail,
@@ -16,10 +16,56 @@ use crate::{
     check_symbol_value, compile_expr, compile_field, compile_path,
 };
 
+/// Says which type an initializer's path is missing the generic arguments of, and how to write
+/// them, in the errors for it among the diagnostics since there were `count` of them. They're
+/// reported for the segment that names the type, which in an initializer are written after `::`.
+/// Returns the type as it's written, if its generic arguments are missing.
+fn name_missing_generic_arguments(
+    ctx: &mut Compiler,
+    path: &AstPathExpr,
+    count: usize,
+) -> Option<String> {
+    // The path up to each segment, which is what the segment names
+    let mut prefix = String::new();
+    let mut missing = None;
+
+    for segment in path.segments() {
+        let Some(name) = segment.name() else {
+            continue;
+        };
+
+        if !prefix.is_empty() {
+            prefix.push_str("::");
+        }
+
+        prefix.push_str(name.text());
+
+        let srcloc = ctx.srcloc(&name);
+
+        for diagnostic in ctx.diagnostics_since_mut(count) {
+            if matches!(
+                diagnostic.kind,
+                DiagnosticKind::ExpectedGenericArguments(_, 0)
+            ) && diagnostic.srcloc.span == srcloc.span
+            {
+                diagnostic.kind = DiagnosticKind::MissingInitializerGenericArguments(
+                    prefix.clone(),
+                    format!("{prefix}::<...> {{ ... }}"),
+                );
+                missing = Some(prefix.clone());
+            }
+        }
+    }
+
+    missing
+}
+
 pub fn compile_struct_initializer_expr(
     ctx: &mut Compiler,
     expr: &AstStructInitializerExpr,
 ) -> Value {
+    let count = ctx.diagnostic_count();
+
     let ty = if let Some(path) = expr.path()
         && let PathResult::Type(ty, _) =
             compile_path(ctx, path.syntax(), path.segments(), PathKind::Type, true)
@@ -29,6 +75,12 @@ pub fn compile_struct_initializer_expr(
         debug!("Unresolved struct initializer path");
         ctx.unresolved().ty
     };
+
+    // The type is named as it's written if its generic arguments are missing, since an error
+    // for one of its fields isn't about them
+    let written = expr
+        .path()
+        .and_then(|path| name_missing_generic_arguments(ctx, &path, count));
 
     let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
 
@@ -174,7 +226,7 @@ pub fn compile_struct_initializer_expr(
                 }
             }
         } else {
-            let type_name = ctx.type_name(ty);
+            let type_name = written.clone().unwrap_or_else(|| ctx.type_name(ty));
             ctx.diagnostic(
                 &name,
                 DiagnosticKind::UnknownField(name.text().to_string(), type_name),
@@ -284,7 +336,7 @@ pub fn compile_struct_initializer_expr(
     // Missing fields are reported before they're filled in with placeholders, so that every
     // placeholder comes after the error that explains it
     if !missing_fields.is_empty() {
-        let type_name = ctx.type_name(ty);
+        let type_name = written.unwrap_or_else(|| ctx.type_name(ty));
         ctx.diagnostic(
             expr.syntax(),
             DiagnosticKind::MissingRequiredFields(type_name, missing_fields.join(", ")),
