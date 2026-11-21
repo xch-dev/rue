@@ -442,7 +442,8 @@ pub fn compile_match_expr(
 /// The value that a `match` is on, and what its arms are compiled with.
 struct Matched<'a> {
     scrutinee: &'a Value,
-    /// What the arms narrow, which is the binding of a value that isn't a reference.
+    /// What the arms narrow: the path that the value is or that the block it is ends in, and
+    /// otherwise the binding of the value.
     reference: &'a SymbolPath,
     /// Whether the value's type isn't the type of what the arms narrow, such as `value as T`.
     recast: bool,

@@ -470,3 +470,135 @@ test fn rebuild_deep_tail_of_long_binding(n: Int) -> (Long, Int) {
     let w = sha256(n as Bytes) as Int;
     (Long { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: q.g, h: q.h }, w + w)
 }
+
+struct Holder {
+    k: Int,
+    inner: Tail,
+}
+
+struct FirstHolder {
+    inner: Tail,
+    k: Int,
+}
+
+fn holder(n: Int) -> Holder {
+    assert n > 0;
+    Holder { k: n, inner: Tail { x: n, y: n + 1, z: n + 2 } }
+}
+
+fn first_holder(n: Int) -> FirstHolder {
+    assert n > 0;
+    FirstHolder { inner: Tail { x: n, y: n + 1, z: n + 2 }, k: n }
+}
+
+// The value being updated can be a field of a value that's only used for it. The steps to the
+// field count towards how far in the rest is, so the value is bound as it is when the struct is
+// rebuilt
+test fn update_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { ...v.inner, x: n }, w + w)
+}
+
+test fn rebuild_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { x: n, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+test fn update_first_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    (Tail { ...v.inner, x: n }, w + w)
+}
+
+test fn rebuild_first_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    (Tail { x: n, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+test fn update_whole_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { ...v.inner }, w + w)
+}
+
+test fn rebuild_whole_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { x: v.inner.x, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+// A field of a call is read from a binding of the call, rather than being bound itself
+test fn update_field_of_call(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Tail { ...holder(n).inner, x: n }, w + w)
+}
+
+test fn rebuild_field_of_call(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let v = holder(n);
+            Tail { x: n, y: v.inner.y, z: v.inner.z }
+        },
+        w + w,
+    )
+}
+
+test fn rebuild_field_of_call_bound_outside(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { x: n, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+// A binding of a field is one more step to the value that it's a field of
+test fn update_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    let inner = v.inner;
+    (Tail { ...inner, x: n }, w + w)
+}
+
+test fn rebuild_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    let inner = v.inner;
+    (Tail { x: n, y: inner.y, z: inner.z }, w + w)
+}
+
+// Other fields that are copied from a field of a call are paths into the binding of the call
+test fn update_field_of_call_twice(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Tail { ...holder(n).inner, y: n }, w + w)
+}
+
+test fn rebuild_field_of_call_twice(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let v = holder(n);
+            Tail { x: v.inner.x, y: n, z: v.inner.z }
+        },
+        w + w,
+    )
+}
+
+// A call that's only used for the rest of it is used in place further in than a binding is,
+// since binding it on its own costs more, but not this far in
+test fn update_deep_tail_of_long_call(n: Int) -> (Long, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Long { ...long(n), a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 }, w + w)
+}
+
+test fn rebuild_deep_tail_of_long_call(n: Int) -> (Long, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let q = long(n);
+            Long { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: q.g, h: q.h }
+        },
+        w + w,
+    )
+}

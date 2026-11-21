@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use log::debug;
 use rue_ast::{AstNode, AstStructInitializerExpr, AstStructInitializerSpread};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
-    Block, FieldKind, Hir, Statement, StructField, StructInitializer, StructTail, SymbolPath,
-    TypePath, Value,
+    Block, FieldAccess, FieldKind, Hir, Statement, StructField, StructInitializer, StructTail,
+    SymbolPath, TypePath, Value,
 };
 use rue_lint::{UnusedSpreadReason, UnusedStructSpread};
 use rue_types::{Atom, AtomRestriction, Struct, Type, TypeId, Union};
@@ -228,7 +228,6 @@ pub fn compile_struct_initializer_expr(
         StructTail {
             value,
             reads: rest_reads,
-            depth: prefix,
         }
     });
 
@@ -414,9 +413,7 @@ fn compile_spreads(
             || ctx.trimmed_srcloc(node.syntax()),
             |expr| ctx.trimmed_srcloc(expr.syntax()),
         );
-        let BoundValue {
-            value, statement, ..
-        } = bind_unless_path(ctx, value, srcloc);
+        let (value, statement) = bind_base(ctx, value, srcloc);
 
         base = Some(Base {
             node,
@@ -427,6 +424,56 @@ fn compile_spreads(
     }
 
     base
+}
+
+/// Makes the value being updated safe to read for each field that's copied from it (see
+/// [`bind_unless_path`]). When it's the field of a value that isn't a path, such as `f().inner`,
+/// what's bound is the value that the field is read from rather than the field, which is what a
+/// struct that's rebuilt by hand binds. The fields being copied are paths into the binding then,
+/// where a binding of the field would leave reading it as operations around the value.
+fn bind_base(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> (Value, Option<Statement>) {
+    let mut inner = value.hir;
+    let mut outer = Vec::new();
+
+    if ctx.path_symbol(value.hir).is_none() {
+        loop {
+            let hir = ctx.hir(inner).clone();
+
+            inner = match &hir {
+                Hir::Cast(value) => *value,
+                Hir::FieldAccess(FieldAccess {
+                    value,
+                    kind: FieldKind::Path(_),
+                    ..
+                }) => *value,
+                _ => break,
+            };
+
+            outer.push(hir);
+        }
+    }
+
+    // The value that the field is read from has a type if it was written as an expression
+    let Some(ty) = ctx.hir_type(inner).filter(|_| inner != value.hir) else {
+        let BoundValue {
+            value, statement, ..
+        } = bind_unless_path(ctx, value, srcloc);
+        return (value, statement);
+    };
+
+    let bound = bind_unless_path(ctx, Value::new(inner, ty), srcloc);
+
+    let hir = outer.into_iter().rev().fold(bound.value.hir, |inner, hir| {
+        ctx.alloc_hir(match hir {
+            Hir::FieldAccess(access) => Hir::FieldAccess(FieldAccess {
+                value: inner,
+                ..access
+            }),
+            _ => Hir::Cast(inner),
+        })
+    });
+
+    (Value::new(hir, value.ty), bound.statement)
 }
 
 /// Whether every value of the type is an instance of the struct, whatever its generic arguments

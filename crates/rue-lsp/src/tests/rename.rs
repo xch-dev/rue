@@ -2649,6 +2649,33 @@ fn test_rename_field_in_struct_update() {
 }
 
 #[test]
+fn test_rename_copied_field_in_struct_update() {
+    // A field that's only copied from the spread value isn't written anywhere in the update, so
+    // neither spread is edited
+    let source = with_point(
+        "\nfn main(point: Point, y: Int) -> Int {\n    let moved = Point { ...point, y };\n    let other = Point { ...moved, y: 2 };\n    moved.x + other.x\n}\n",
+    );
+
+    check(
+        &[("main.rue", &source.replacen("x: Int,", "$0x: Int,", 1))],
+        "left",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                left: Int,
+                y: Int,
+            }
+
+            fn main(point: Point, y: Int) -> Int {
+                let moved = Point { ...point, y };
+                let other = Point { ...moved, y: 2 };
+                moved.left + other.left
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn test_rename_binding_in_struct_update() {
     // The field keeps its name when the binding that a shorthand after a spread uses is renamed
     let source = with_point(

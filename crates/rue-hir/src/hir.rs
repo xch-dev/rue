@@ -208,8 +208,6 @@ pub struct StructTail {
     /// treated as if it was referenced this often where that keeps the struct from being larger
     /// than one that's rebuilt (see `DependencyGraph::layout_references`).
     pub reads: usize,
-    /// The number of fields before the tail, which is how many steps into the value it is.
-    pub depth: usize,
 }
 
 #[derive(Debug, Clone)]
