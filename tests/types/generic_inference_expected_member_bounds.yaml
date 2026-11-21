@@ -1,0 +1,64 @@
+tests:
+- name: generic_of_the_other_member
+  program: (a (q 2 (i 4 () (q . 10)) 1) (c (q () 5) 1))
+  debug_program: (a (q 2 (q 2 (i (= (f 2) ()) (q 5 (r 2)) ()) 1) (c (a 2 (q . 5)) 1)) (c (q 4 () (c 1 ())) ()))
+  output: "5"
+  runtime_cost: 567
+  byte_cost: 444000
+  total_cost: 444567
+- name: generic_of_the_first_member
+  program: (a (q 2 (i (= 4 (q . 1)) (q . 10) ()) 1) (c (q 1 5) 1))
+  debug_program: (a (q 2 (q 2 (i (= (f 2) (q . 1)) (q 5 (r 2)) ()) 1) (c (a 2 (q . 5)) 1)) (c (q 4 (q . 1) (c 1 ())) ()))
+  output: "5"
+  runtime_cost: 707
+  byte_cost: 540000
+  total_cost: 540707
+- name: generic_of_the_other_variant
+  program: (a (q 2 (i 4 () (q . 10)) 1) (c (q () 5) 1))
+  debug_program: (a (q 2 (q 2 (i (= (f 2) ()) (q 5 (r 2)) ()) 1) (c (a 2 (q . 5)) 1)) (c (q 4 () (c 1 ())) ()))
+  output: "5"
+  runtime_cost: 567
+  byte_cost: 444000
+  total_cost: 444567
+- name: bound_from_the_member_that_holds_it
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: bounds_for_each_member_of_the_return_type
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: bound_from_the_same_struct
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: first_of_the_members_that_hold_it
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: member_that_the_arguments_allow
+  program: (f (a (q 4 (a 2 (q 5)) (a 2 (q 5))) (c (q . 2) 1)))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5))) 1)) (c (c (q . 2) (q 4 (a 2 (c 3 ())) (a 2 (c 3 ())))) ()))
+  output: "5"
+  runtime_cost: 722
+  byte_cost: 564000
+  total_cost: 564722
+- name: result_in_each_branch
+  program: (+ (a (q 2 (i 4 () (q . 6)) 1) (c (q () . 1) 1)) (a (q 2 (i 4 () (q . 6)) 1) (c (q 1 . 120) 1)))
+  debug_program: (a (q 16 (a 4 (c (c 10 14) (q . 1))) (a 4 (c (c 10 14) ()))) (c (c (q 2 (q 2 (i (= (f 2) ()) (q 6 2) ()) 1) (c (a (i 3 (q 2 6 (q . 1)) (q 2 4 (q . 120))) 1) 1)) (c (q 4 (q . 1) 1) (q 4 () 1))) ()))
+  output: "1"
+  runtime_cost: 1871
+  byte_cost: 900000
+  total_cost: 901871
