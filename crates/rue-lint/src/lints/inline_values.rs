@@ -125,15 +125,10 @@ impl InlineValueMayFail<'_> {
             return;
         }
 
-        let fixed = symbol.fixed_parameters();
-
-        // The arguments after the fixed parameters are passed to the rest parameter as a list
-        let rest = symbol.parameters.get(fixed.len()).copied();
-
         let mut skipped = Vec::new();
 
         for (index, &arg) in call.args.iter().enumerate() {
-            let Some(parameter) = fixed.get(index).copied().or(rest) else {
+            let Some(parameter) = symbol.argument_parameter(index) else {
                 continue;
             };
 

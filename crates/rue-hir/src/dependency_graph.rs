@@ -39,8 +39,7 @@ pub struct DependencyGraph {
 
     // The places that are lowered once for each read of something else, and the place that each
     // one is in, if that's repeated too
-    repeats: Vec<(Repeat, Option<RepeatId>)>,
-    repeat_ids: HashMap<(Repeat, Option<RepeatId>), RepeatId>,
+    repeats: IndexSet<(Repeat, Option<RepeatId>)>,
 
     // Keeps track of the place being visited, if it's repeated
     repeat: Option<RepeatId>,
@@ -148,8 +147,7 @@ impl DependencyGraph {
             owners: HashMap::new(),
             references: HashMap::new(),
             reads: HashMap::new(),
-            repeats: Vec::new(),
-            repeat_ids: HashMap::new(),
+            repeats: IndexSet::new(),
             repeat: None,
             definitions: HashMap::new(),
             closures: HashSet::new(),
@@ -204,13 +202,7 @@ impl DependencyGraph {
 
     /// Enters a place that's inside the one being visited.
     fn enter(&mut self, repeat: Repeat) -> RepeatId {
-        let key = (repeat, self.repeat);
-
-        let id = *self.repeat_ids.entry(key).or_insert_with(|| {
-            self.repeats.push(key);
-            self.repeats.len() - 1
-        });
-
+        let (id, _) = self.repeats.insert_full((repeat, self.repeat));
         self.repeat = Some(id);
         id
     }

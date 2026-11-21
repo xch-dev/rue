@@ -72,6 +72,11 @@ fn check(x: Int) -> Int {
     x
 }
 
+struct Hashed {
+    fee: Int,
+    _hash: Bytes32,
+}
+
 struct Config {
     fee: Int,
     _limit: Int,
@@ -85,6 +90,19 @@ const LONG: Bytes = 0x0102030405060708090a0b0c;
 const TEXT: String = "abc";
 const FLAG: Bool = true;
 const CAST: Int = 5 as Int;
+const ITEMS: [Int, Int] = [3, 4];
+const EVALUATED: Int = const { 2 + 3 };
+const BIG: Int = 4722366482869645213696;
+const WIDE: (Int, Int) = (16909060, 84281096);
+const HALF: Int = 4328719365;
+const HALVES: (Int, Int) = (HALF, HALF);
+const PRODUCT: Int = 100 * 2;
+
+const HASHED: Hashed = Hashed {
+    fee: 100,
+    _hash: 0x0101010101010101010101010101010101010101010101010101010101010101,
+};
+
 const CONFIG: Config = Config { fee: 100, _limit: 7 };
 const WHOLE: (Int, Int) = pair(7);
 inline const PART: Int = WHOLE.first;
@@ -352,9 +370,51 @@ test fn static_cast(r: Int) -> Int {
     double(CAST) + r
 }
 
+test fn static_list_part(r: Int) -> Int {
+    let [a, _b] = ITEMS;
+    a * a + r
+}
+
+test fn static_const_expr(r: Int) -> Int {
+    double(EVALUATED) + r
+}
+
+test fn static_block_binding(r: Int) -> Int {
+    let five = { 5 };
+    double(five) + r
+}
+
 // A static value that's too large to repeat is read as often as it's lowered, and bound
 test fn large_static_bytes(r: Bytes) -> Bytes {
     twice(LONG) + r
+}
+
+test fn large_static_int(r: Int) -> Int {
+    double(BIG) + r
+}
+
+// Each part is small enough, but the value isn't
+test fn large_static_pair_part(r: Int) -> Int {
+    let (a, _) = WIDE;
+    a * a + r
+}
+
+// The size of a constant that's referenced counts towards the value
+test fn large_static_references(r: Int) -> Int {
+    let (a, _) = HALVES;
+    a * a + r
+}
+
+// A value that's only static once it's folded isn't static as it's written, so it's bound when
+// it's read more than once, as it is when it's referenced more than once
+test fn folded_constant_is_bound(r: Int) -> Int {
+    double(PRODUCT) + r
+}
+
+// A small field of a static value that's too large to repeat is bound with the rest of the value
+test fn field_of_large_static_is_bound(r: Int) -> Int {
+    let { fee } = HASHED;
+    fee * fee + r
 }
 
 // More parts than are measured in one run of let statements are still read as paths

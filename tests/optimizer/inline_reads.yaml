@@ -177,7 +177,7 @@ tests:
   total_cost: 1606932
 - name: binding_of_inline_block
   program: (a (q 16 (r (a 2 5)) (f (a 2 5)) (f (a (i (> (f (a 2 (+ 5 (q . 1)))) ()) (q 2 2 5) (q 8)) 1))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (q 16 (+ (r (a (q . 2) (c (a 11 23) 1))) (f (a (q . 2) (c (a 11 23) 1)))) (f 2)) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:241:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (r (a (q . 2) (c (a 11 23) 1))) (f (a (q . 2) (c (a 11 23) 1)))) (f 2)) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:259:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
   solution: (7)
   output: "28"
   runtime_cost: 11463
@@ -185,7 +185,7 @@ tests:
   total_cost: 1847463
 - name: binding_of_inline_block_read_first
   program: (a (q 16 (f (a (i (> (f (a 2 (+ 5 (q . 1)))) ()) (q 2 2 5) (q 8)) 1)) (r (a 2 5)) (f (a 2 5))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (q 16 (+ (f 2) (r (a (q . 2) (c (a 11 23) 1)))) (f (a (q . 2) (c (a 11 23) 1)))) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:254:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (f 2) (r (a (q . 2) (c (a 11 23) 1)))) (f (a (q . 2) (c (a 11 23) 1)))) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:272:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
   solution: (7)
   output: "28"
   runtime_cost: 11463
@@ -311,6 +311,30 @@ tests:
   runtime_cost: 824
   byte_cost: 108000
   total_cost: 108824
+- name: static_list_part
+  program: (+ 2 (q . 9))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 3) (c (q . 4) ())) 1))
+  solution: (7)
+  output: "16"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: static_const_expr
+  program: (+ 2 (q . 10))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 5) 1))
+  solution: (7)
+  output: "17"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: static_block_binding
+  program: (+ 2 (q . 10))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 5) 1))
+  solution: (7)
+  output: "17"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
 - name: large_static_bytes
   program: (a (q 14 2 2 5) (c (q . 0x0102030405060708090a0b0c) 1))
   debug_program: (a (q 14 (concat 2 2) 5) (c (q . 0x0102030405060708090a0b0c) 1))
@@ -319,6 +343,46 @@ tests:
   runtime_cost: 1247
   byte_cost: 444000
   total_cost: 445247
+- name: large_static_int
+  program: (a (q 16 2 2 5) (c (q . 0x01000000000000000000) 1))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 0x01000000000000000000) 1))
+  solution: (7)
+  output: "0x02000000000000000007"
+  runtime_cost: 1597
+  byte_cost: 420000
+  total_cost: 421597
+- name: large_static_pair_part
+  program: (a (q 16 (* 4 4) 5) (c (q 16909060 . 84281096) 1))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 16909060) (q . 84281096)) 1))
+  solution: (7)
+  output: "285916310083607"
+  runtime_cost: 2312
+  byte_cost: 468000
+  total_cost: 470312
+- name: large_static_references
+  program: (a (q 2 (q 16 (* 4 4) 11) (c (c 2 2) 1)) (c (q . 4328719365) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (* (f 2) (f 2)) 23) (c 2 1)) (c (c 2 2) 1)) (c (q . 4328719365) 1))
+  solution: (7)
+  output: "0x01040a14232c2e2820"
+  runtime_cost: 2727
+  byte_cost: 648000
+  total_cost: 650727
+- name: folded_constant_is_bound
+  program: (a (q 16 2 2 5) (c (q . 200) 1))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (* (q . 100) (q . 2)) 1))
+  solution: (7)
+  output: "407"
+  runtime_cost: 1469
+  byte_cost: 324000
+  total_cost: 325469
+- name: field_of_large_static_is_bound
+  program: (a (q 16 (* 4 4) 5) (c (q 100 0x0101010101010101010101010101010101010101010101010101010101010101) 1))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 100) (c (q . 0x0101010101010101010101010101010101010101010101010101010101010101) ())) 1))
+  solution: (7)
+  output: "10007"
+  runtime_cost: 2161
+  byte_cost: 780000
+  total_cost: 782161
 - name: many_parts
   program: (+ (* 4 4) (* 9 9) (* 19 19) (* 39 39) (* 79 79) (* -97 -97) (* 319 319) (* 639 639) (* 1279 1279) (* 2559 2559))
   debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (* (f 16) (f 16)) (* (f 24) (f 24))) (* (f 20) (f 20))) (* (f 44) (f 44))) (* (f 60) (f 60))) (* (f 18) (f 18))) (* (f 26) (f 26))) (* (f 22) (f 22))) (* (f 46) (f 46))) (* (f 62) (f 62))) (c (c (c (c 2 5) (c 11 (c 23 47))) (c (c 95 -65) (c 383 (c 767 1535)))) 1))
@@ -335,10 +399,10 @@ diagnostics:
   This `if` statement only raises, so it can be written as an `assert` at inline_reads.rue:69:5
     help: Replace it with an `assert`
 - |-
-  Binding `whole` is returned directly after it's declared at inline_reads.rue:236:9
+  Binding `whole` is returned directly after it's declared at inline_reads.rue:254:9
     help: Return the value directly
 - |-
-  Binding `whole` is returned directly after it's declared at inline_reads.rue:249:9
+  Binding `whole` is returned directly after it's declared at inline_reads.rue:267:9
     help: Return the value directly
-- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:263:24
-- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:278:12
+- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:281:24
+- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:296:12

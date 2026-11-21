@@ -372,15 +372,20 @@ fn long_chains_of_inline_constants_are_counted() {
 }
 
 /// Whether a constant is static is found through the whole chain of constants that are each the
-/// one before, once for the chain rather than once for each link.
+/// one before. The last constant is declared first, so it has the lowest symbol and is counted
+/// first, before the ones its value is found through.
 #[test]
 fn long_chains_of_static_constants_are_counted() {
     const LINKS: usize = 20_000;
 
     on_stack(2, || {
         let source = format!(
-            "inline fn double(a: Int) -> Int {{ a + a }}\nfn main(a: Int) -> Int {{ double(C{LINKS}) + a }}\nconst C0: Int = 1;\n{}",
-            links(LINKS, |i| format!("const C{}: Int = C{i};\n", i + 1))
+            "inline fn double(a: Int) -> Int {{ a + a }}\nfn main(a: Int) -> Int {{ double(C{LINKS}) + a }}\n{}const C0: Int = 1;\n",
+            links(LINKS, |i| format!(
+                "const C{}: Int = C{};\n",
+                LINKS - i,
+                LINKS - i - 1
+            ))
         );
 
         let (mut ctx, tree, kind) = compile_tree(&source);
