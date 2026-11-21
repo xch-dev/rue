@@ -13,7 +13,7 @@ diagnostics:
 - Unused binding `boxes` at union_member_display_errors.rue:43:9
 - Cannot assign `Box<Int>` to `Bytes`, since they are incompatible at union_member_display_errors.rue:43:24
 - Unused binding `functions` at union_member_display_errors.rue:44:9
-- "Cannot assign `fn(x: Int) -> Int` to `Bytes`, since they are incompatible at union_member_display_errors.rue:44:28"
+- "Cannot assign `(Int, fn(x: Int) -> Int)` to `Bytes`, since they are incompatible at union_member_display_errors.rue:44:28"
 - Unused binding `spreads` at union_member_display_errors.rue:45:9
 - "Cannot assign `(Int, fn(...x: List<Int>) -> Int)` to `Bytes`, since they are incompatible at union_member_display_errors.rue:45:26"
 - Unused binding `dots` at union_member_display_errors.rue:50:9
@@ -23,17 +23,15 @@ diagnostics:
 - Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at union_member_display_errors.rue:56:24
 - Unused binding `found` at union_member_display_errors.rue:57:9
 - Cannot assign `(Bytes32, Int)` to `Bytes`, since they are incompatible at union_member_display_errors.rue:57:24
-- Unused binding `hash` at union_member_display_errors.rue:58:9
-- Cannot assign `Bytes32` to `Int` without a cast, since they are semantically different at union_member_display_errors.rue:58:21
-- Unused function `separate_members` at union_member_display_errors.rue:67:4
-- Unused binding `overlapping` at union_member_display_errors.rue:68:9
-- Cannot assign `(Int, 1) | (0, Int)` to `Bytes`, since they are incompatible at union_member_display_errors.rue:68:30
-- Unused binding `kinds` at union_member_display_errors.rue:69:9
-- Cannot assign `Bytes | ""` to `Int` without a cast, since they are semantically different at union_member_display_errors.rue:69:22
-- Unused function `bools` at union_member_display_errors.rue:74:4
-- Unused binding `both` at union_member_display_errors.rue:75:9
-- Cannot assign `List<Bool>` to `Int` without a type guard, since the value isn't always a valid `Int` at union_member_display_errors.rue:75:21
-- Unused binding `mixed` at union_member_display_errors.rue:76:9
-- Cannot assign `Bool | Int` to `Bytes` without a cast, since they are semantically different at union_member_display_errors.rue:76:24
-- Unused function `match_members` at union_member_display_errors.rue:81:4
-- Match on `(Bool, Int) | Bytes` is not exhaustive, since it doesn't handle `(Bool, Int)` at union_member_display_errors.rue:82:11
+- Unused function `separate_members` at union_member_display_errors.rue:62:4
+- Unused binding `overlapping` at union_member_display_errors.rue:63:9
+- Cannot assign `(Int, 1) | (0, Int)` to `Bytes`, since they are incompatible at union_member_display_errors.rue:63:30
+- Unused binding `kinds` at union_member_display_errors.rue:64:9
+- Cannot assign `Bytes | ""` to `Int` without a cast, since they are semantically different at union_member_display_errors.rue:64:22
+- Unused function `bools` at union_member_display_errors.rue:69:4
+- Unused binding `both` at union_member_display_errors.rue:70:9
+- Cannot assign `List<Bool>` to `Int` without a type guard, since the value isn't always a valid `Int` at union_member_display_errors.rue:70:21
+- Unused binding `mixed` at union_member_display_errors.rue:71:9
+- Cannot assign `Bool | Int` to `Bytes` without a cast, since they are semantically different at union_member_display_errors.rue:71:24
+- Unused function `match_members` at union_member_display_errors.rue:76:4
+- Match on `(Bool, Int) | Bytes` is not exhaustive, since it doesn't handle `(Bool, Int)` at union_member_display_errors.rue:77:11

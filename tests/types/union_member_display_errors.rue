@@ -41,7 +41,7 @@ fn same_members(condition: Bool, n: Int) -> nil {
     let pairs: Bytes = choose(condition, (n, n), (n, n));
     let lists: Bytes = choose(condition, ints(), ints());
     let boxes: Bytes = choose(condition, Box::<Int> { value: n }, Box::<Int> { value: 1 });
-    let functions: Bytes = choose(condition, fn(x: Int) => x, fn(x: Int) => x + 1);
+    let functions: Bytes = choose(condition, (n, fn(x: Int) => x), (n, fn(x: Int) => x + 1));
     let spreads: Bytes = choose(
         condition,
         (n, fn(...x: List<Int>) => n),
@@ -55,11 +55,6 @@ fn same_members(condition: Bool, n: Int) -> nil {
 fn included_members(n: Int, s: Bytes, target: Bytes32, pairs: List<(Bytes32, Int)>) -> nil {
     let first: Bytes = head_or([(n, s)], (0, "")).first;
     let found: Bytes = find(pairs, fn(pair) => pair.first == target, (target, 0));
-    let hash: Int = choose(
-        true,
-        target,
-        0x0000000000000000000000000000000000000000000000000000000000000000,
-    );
     nil
 }
 

@@ -239,7 +239,7 @@ fn main(shape: Circle | Square | Triangle | nil) -> Int {
             fn main(shape: Circle | Square | Triangle | nil) -> Int {
                 let picked = pick«::<Int, String>»(1, "a");
                 let written = pick::<Int, String>(1, "a");
-                let nested = inner::id«::<true | false>»(pick«::<Bool, nil>»(true, nil));
+                let nested = inner::id«::<Bool>»(pick«::<Bool, nil>»(true, nil));
                 let union = inner::id«::<Circle | Square | Triangle | nil>»(shape);
                 one() + picked + written + same«::<Int>»(2)
             }
@@ -1068,13 +1068,13 @@ fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
             }
 
             fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
-                let size«: Int | 0» = match value {
+                let size«: Int» = match value {
                     Point { x, y: other } => x + other.length,
                     (Int, Bytes) as (first, rest) => first + rest.length,
                     nil => 0,
                 };
 
-                let rest«: 0 | Int» = match value {
+                let rest«: Int» = match value {
                     Point | nil => 0,
                     _ as (first«: Int», _) => first,
                 };

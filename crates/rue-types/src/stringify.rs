@@ -528,9 +528,10 @@ fn distinct_members(arena: &Arena<Type>, members: Vec<Member>) -> Vec<String> {
     for (shown, name) in members {
         let alike = named.entry(name.clone()).or_default();
 
-        let repeated = alike.iter().any(|&earlier| {
-            !matcher.is_spent() && shown.same_as(arena, &kept[earlier].0, &mut matcher)
-        });
+        let repeated = !matcher.is_spent()
+            && alike
+                .iter()
+                .any(|&earlier| shown.same_as(arena, &kept[earlier].0, &mut matcher));
 
         if !repeated {
             alike.push(kept.len());
@@ -787,21 +788,11 @@ impl Matcher {
                     })
                     && self.matches(arena, lhs.ret, rhs.ret, false)
             }
-            (Type::Union(_), Type::Union(_)) => {
-                match (self.members(arena, lhs), self.members(arena, rhs)) {
-                    (Some(lhs_members), Some(rhs_members)) => {
-                        lhs_members.iter().all(|&lhs| {
-                            rhs_members
-                                .iter()
-                                .any(|&rhs| self.matches(arena, lhs, rhs, false))
-                        }) && rhs_members.iter().all(|&rhs| {
-                            lhs_members
-                                .iter()
-                                .any(|&lhs| self.matches(arena, lhs, rhs, false))
-                        })
-                    }
-                    _ => false,
-                }
+            // A union is displayed without the members that others include, so it's the same as
+            // a type that it includes and that includes it, such as `Int | 0` and `Int`, or a
+            // union of the same members in another order
+            (Type::Union(_), _) | (_, Type::Union(_)) => {
+                self.matches(arena, lhs, rhs, true) && self.matches(arena, rhs, lhs, true)
             }
             // Generics are the same if they're the same type, which has been ruled out. The types
             // that are substituted before a type is displayed are never the same
@@ -824,16 +815,27 @@ impl Matcher {
 
 /// Whether two atoms are displayed the same, as an `Int` and an `Int` of some length are.
 fn atom_shown_same(lhs: &Atom, rhs: &Atom) -> bool {
-    if lhs.semantic != rhs.semantic {
-        return false;
-    }
+    // A value of an `Int` or of `Bytes` is written as the value, which is only written the same
+    // for the same bytes, and never the same as an atom of another kind is. This is told
+    // without writing it, which takes far longer for a number
+    let written_as_value = |atom: &Atom| {
+        matches!(atom.semantic, AtomSemantic::Int | AtomSemantic::Bytes)
+            && matches!(atom.restriction, Some(AtomRestriction::Value(_)))
+    };
 
-    // Different values are different numbers and bytes, which is told without writing them
-    lhs.restriction == rhs.restriction
-        || (!(matches!(lhs.semantic, AtomSemantic::Int | AtomSemantic::Bytes)
-            && matches!(lhs.restriction, Some(AtomRestriction::Value(_)))
-            && matches!(rhs.restriction, Some(AtomRestriction::Value(_))))
-            && lhs.to_string() == rhs.to_string())
+    let written_the_same = || lhs.to_string() == rhs.to_string();
+
+    match (written_as_value(lhs), written_as_value(rhs)) {
+        (true, true) => {
+            lhs.restriction == rhs.restriction
+                && (lhs.semantic == rhs.semantic || written_the_same())
+        }
+        (false, false) => {
+            lhs.semantic == rhs.semantic
+                && (lhs.restriction == rhs.restriction || written_the_same())
+        }
+        _ => false,
+    }
 }
 
 /// The value of an atom that's a value of `Bytes`.
@@ -1222,6 +1224,19 @@ mod tests {
         let in_second = pair(arena, second, zero);
         assert_eq!(union(arena, &[in_first, in_second]), "(Box<Int>, Int)");
 
+        // A generic argument that's a union is the same as one that's displayed the same, since
+        // the members that others include aren't displayed
+        let int_or_zero = arena.alloc(Type::Union(Union::new(vec![int, zero])));
+        let zero_or_one = arena.alloc(Type::Union(Union::new(vec![zero, one])));
+        let with_union = structure(arena, int_or_zero);
+        let other_union = structure(arena, zero_or_one);
+        assert_eq!(union(arena, &[first, with_union]), "Box<Int>");
+        assert_eq!(union(arena, &[with_union, first]), "Box<Int>");
+        assert_eq!(union(arena, &[first, other_union]), "Box<Int> | Box<0 | 1>");
+        let in_first = pair(arena, zero, first);
+        let in_second = pair(arena, int, with_union);
+        assert_eq!(union(arena, &[in_first, in_second]), "(Int, Box<Int>)");
+
         // A struct without a name is displayed as what it's made of, which is what's the same
         let anonymous = |arena: &mut Arena<Type>, inner| {
             arena.alloc(Type::Struct(Struct {
@@ -1411,6 +1426,12 @@ mod tests {
         let second = pair(arena, nil, nil);
         assert_eq!(union(arena, &[first, second]), "(Bytes, nil) | (nil, nil)");
 
+        // Atoms that are written the same are shown once, even if they're of different kinds,
+        // as an `Int` that isn't the shortest form of its number is written like `Bytes`
+        let long_int = value(arena, AtomSemantic::Int, &[0, 1]);
+        let long_bytes = value(arena, AtomSemantic::Bytes, &[0, 1]);
+        assert_eq!(union(arena, &[long_int, long_bytes, one]), "0x0001 | 1");
+
         // But not in an atom of another kind, which it can't be assigned to without a cast
         assert_eq!(union(arena, &[bytes, text, zero]), "Bytes | \"a\" | 0");
         assert_eq!(union(arena, &[zero, one]), "0 | 1");
@@ -1470,6 +1491,37 @@ mod tests {
         assert_eq!(
             union(arena, &[in_first, in_third]),
             "(fn(x: Int) -> Int, Int) | (fn(x: Int) -> 0, Int)"
+        );
+
+        // A function that returns a union isn't the same as one that returns more of them
+        let one = value(arena, AtomSemantic::Int, &[1]);
+        let two = value(arena, AtomSemantic::Int, &[2]);
+        let fewer = arena.alloc(Type::Union(Union::new(vec![zero, one])));
+        let more = arena.alloc(Type::Union(Union::new(vec![zero, one, two])));
+        let returns_fewer = function(arena, int, fewer);
+        let returns_more = function(arena, int, more);
+        let in_fewer = pair(arena, returns_fewer, int);
+        let in_more = pair(arena, returns_more, zero);
+        assert_eq!(
+            union(arena, &[in_fewer, in_more]),
+            "(fn(x: Int) -> 0 | 1, Int) | (fn(x: Int) -> 0 | 1 | 2, 0)"
+        );
+        assert_eq!(
+            union(arena, &[in_more, in_fewer]),
+            "(fn(x: Int) -> 0 | 1 | 2, 0) | (fn(x: Int) -> 0 | 1, Int)"
+        );
+
+        // Nor is a function that takes the rest of its arguments the same as one that doesn't
+        let spread = arena.alloc(Type::Function(FunctionType {
+            generics: Vec::new(),
+            params: vec![FunctionParameter::new("x", int)],
+            nil_terminated: false,
+            ret: int,
+        }));
+        let in_spread = pair(arena, spread, zero);
+        assert_eq!(
+            union(arena, &[in_first, in_spread]),
+            "(fn(x: Int) -> Int, Int) | (fn(...x: Int) -> Int, 0)"
         );
     }
 
