@@ -1180,6 +1180,76 @@ fn visit_repeated(db: &Database, graph: &mut DependencyGraph, repeat: Repeat, hi
 /// value, and a binding that nothing else shares costs about as much as four of them.
 const UNNAMED_TAIL_STEPS: usize = 3;
 
+/// The value that the tail of a struct update is a part of.
+struct TailBase {
+    symbol: SymbolId,
+    /// How many steps into the symbol's value the tail is.
+    steps: usize,
+    /// Whether the symbol is what the compiler binds a value that isn't a path to for the update,
+    /// rather than a binding that's written.
+    bound_for_update: bool,
+}
+
+/// The symbol that the tail of a struct update is read from, through the inline bindings and
+/// constants whose values are paths themselves, such as the parts of a destructured value. Those
+/// are substituted, so the tail is as many steps further into what they're paths into. There
+/// isn't one if the tail isn't a path, or it's a path into an inline value that isn't, which is
+/// evaluated where the tail is.
+fn tail_base(db: &Database, tail: HirId) -> Option<TailBase> {
+    let (mut symbol, mut steps) = db.path(tail)?;
+    let mut substituted = false;
+
+    loop {
+        let value = match db.symbol(symbol) {
+            Symbol::Binding(BindingSymbol {
+                value,
+                inline: true,
+                ..
+            })
+            | Symbol::Constant(ConstantSymbol {
+                value,
+                inline: true,
+                ..
+            }) => value.hir,
+            Symbol::Binding(binding) => {
+                return Some(TailBase {
+                    symbol,
+                    steps,
+                    bound_for_update: binding.name.is_none() && !substituted,
+                });
+            }
+            _ => {
+                return Some(TailBase {
+                    symbol,
+                    steps,
+                    bound_for_update: false,
+                });
+            }
+        };
+
+        let (inner, inner_steps) = db.path(value)?;
+        symbol = inner;
+        steps += inner_steps;
+        substituted = true;
+    }
+}
+
+/// Whether the symbol is a parameter of an `inline fn` that's being visited, whose arguments are
+/// lowered wherever it's referenced.
+fn is_inline_parameter(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -> bool {
+    matches!(db.symbol(symbol), Symbol::Parameter(_))
+        && std::iter::successors(graph.current, |current| graph.owners.get(current).copied()).any(
+            |function| {
+                matches!(
+                    db.symbol(function),
+                    Symbol::Function(function)
+                        if function.kind == FunctionKind::Inline
+                            && function.parameters.contains(&symbol)
+                )
+            },
+        )
+}
+
 fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bool) {
     match db.hir(hir) {
         Hir::Unresolved
@@ -1208,7 +1278,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if let Some(tail) = initializer.tail
                 && tail.reads > 1
                 && graph.current.is_some()
-                && let Some((symbol, steps)) = db.path(tail.value)
+                && let Some(base) = tail_base(db, tail.value)
             {
                 // A value that's only referenced once is used in place rather than being bound,
                 // which is smaller for the whole value or one step into it, such as the rest
@@ -1219,16 +1289,19 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 // reads. A value that the compiler binds for the update is bound on its own,
                 // which costs more than a binding next to others, so it's used in place further
                 // in.
-                let limit = match db.symbol(symbol) {
-                    Symbol::Binding(binding) if binding.name.is_none() => UNNAMED_TAIL_STEPS,
-                    _ => 1,
+                let limit = if base.bound_for_update {
+                    UNNAMED_TAIL_STEPS
+                } else {
+                    1
                 };
 
                 let extra = tail.reads - 1;
-                let place = (graph.repeat, symbol);
+                let place = (graph.repeat, base.symbol);
 
-                if steps > limit {
-                    *graph.references.entry(symbol).or_insert(0) += extra;
+                // How far in the argument for the parameter of an `inline fn` is isn't known
+                // here, so it's read as often as it is when the struct is rebuilt
+                if base.steps > limit || is_inline_parameter(db, graph, base.symbol) {
+                    *graph.references.entry(base.symbol).or_insert(0) += extra;
                     *graph.reads.entry(place).or_insert(0) += extra;
                 } else {
                     *graph.tail_reads.entry(place).or_insert(0) += extra;
