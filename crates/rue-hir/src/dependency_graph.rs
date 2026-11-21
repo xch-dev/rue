@@ -157,6 +157,7 @@ impl DependencyGraph {
             assign_destructured_owner(db, &mut graph, symbol);
         }
 
+        graph.count_default_references(db);
         graph.find_loop_captures(db);
         graph.find_loop_dependencies(db);
 
@@ -287,6 +288,56 @@ impl DependencyGraph {
         self.loop_captures.contains(&symbol)
     }
 
+    /// The default value of a struct's field is evaluated in every initializer that leaves the
+    /// field out, but the constant they refer to for it is only visited once. So what the value
+    /// references is counted again for each of the other initializers, as if the value were
+    /// written in each of them. Otherwise a function or constant that only the default value
+    /// referenced would be substituted into every one of them, as something that's only used
+    /// once is.
+    ///
+    /// What's defined inside of the value, such as a let statement, is defined again in each
+    /// place, so it isn't counted again itself, but what it references is.
+    fn count_default_references(&mut self, db: &Database) {
+        let constants: Vec<(SymbolId, usize)> = self
+            .references
+            .iter()
+            .filter(|&(&symbol, &references)| references > 1 && db.is_default_constant(symbol))
+            .map(|(&symbol, &references)| (symbol, references - 1))
+            .collect();
+
+        for (constant, extra) in constants {
+            let mut seen = HashSet::new();
+            let mut pending = vec![constant];
+
+            // This default value, and those of the other fields that it uses
+            let mut defaults = vec![constant];
+
+            while let Some(symbol) = pending.pop() {
+                for &dependency in self.dependencies.get(&symbol).into_iter().flatten() {
+                    if !seen.insert(dependency) {
+                        continue;
+                    }
+
+                    if defaults
+                        .iter()
+                        .any(|&default| self.is_defined_in(dependency, default))
+                    {
+                        pending.push(dependency);
+                        continue;
+                    }
+
+                    *self.references.entry(dependency).or_insert(0) += extra;
+
+                    // Another default value that this one uses is evaluated here as well
+                    if db.is_default_constant(dependency) {
+                        pending.push(dependency);
+                        defaults.push(dependency);
+                    }
+                }
+            }
+        }
+    }
+
     fn find_loop_captures(&mut self, db: &Database) {
         if self.loops.is_empty() {
             return;
@@ -309,9 +360,20 @@ impl DependencyGraph {
             // referred to, so it's referred to there too
             let mut pending: Vec<SymbolId> = dependencies.iter().copied().collect();
             let mut seen = HashSet::new();
+            let mut inlined = HashSet::new();
 
             while let Some(dependency) = pending.pop() {
                 if !seen.insert(dependency) {
+                    continue;
+                }
+
+                // What's defined inside of a value that's evaluated here is defined here too,
+                // such as a let statement in a block, so only what it refers to is from outside
+                if self
+                    .owners(dependency)
+                    .any(|owner| inlined.contains(&owner))
+                {
+                    pending.extend(self.dependencies.get(&dependency).into_iter().flatten());
                     continue;
                 }
 
@@ -335,6 +397,7 @@ impl DependencyGraph {
                 }
 
                 if inline {
+                    inlined.insert(dependency);
                     pending.extend(self.dependencies.get(&dependency).into_iter().flatten());
                 } else {
                     captures.insert(dependency);
@@ -878,17 +941,13 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 graph.closures.insert(*symbol);
             }
 
-            // A loop is defined where it's called from outside of it, which is in the function
-            // that the `for` expression is in, like a lambda is. Its calls to itself, and those
-            // from inside of it, don't define it. Code that's visited more than once, such as the
-            // default value of a struct's field, which each initializer that leaves the field out
-            // has, defines the loop each time, as it does the let statements around it, so that
-            // the loop stays in the same place as they are
+            // A loop is defined where it's first called, which is in the function that the `for`
+            // expression is in, like a lambda is. Its calls to itself come after that
             if let Symbol::Function(function) = db.symbol(*symbol)
                 && function.kind == FunctionKind::Loop
                 && let Some(current) = graph.current
                 && current != *symbol
-                && (graph.loops.insert(*symbol) || !graph.is_defined_in(current, *symbol))
+                && graph.loops.insert(*symbol)
             {
                 graph.owners.insert(*symbol, current);
             }

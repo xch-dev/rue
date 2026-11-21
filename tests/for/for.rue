@@ -654,3 +654,101 @@ test fn in_a_default_value_used_twice() -> List<Int> {
     let second = Schedule { scale: n + 1 };
     [first.scale, second.scale, ...first.steps, ...second.steps]
 }
+
+// The default value of a struct's field is only defined once, however many initializers leave the
+// field out, so that a let statement in it is found by each of them, whether they're in a loop, a
+// condition, an inline binding or another default value
+fn total(xs: List<Int>) -> Int {
+    if xs is nil {
+        0
+    } else {
+        xs.first + total(xs.rest)
+    }
+}
+
+const THREE: Int = total([1, 2]);
+
+struct Doubled {
+    _scale: Int,
+    value: Int = {
+        let sum = positive(total([1, 2, 3]));
+        sum + sum
+    },
+}
+
+struct Checked {
+    _scale: Int,
+    value: Int = {
+        let _checked = positive(THREE);
+        5
+    },
+}
+
+struct Inner {
+    _scale: Int,
+    value: Int = {
+        let four = THREE + 1;
+        four * 2
+    },
+}
+
+struct Outer {
+    _scale: Int,
+    value: Int = for x in [1, 2] fold acc = 0 { acc + Inner { _scale: x }.value },
+}
+
+test fn default_value_in_a_loop_and_a_condition() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let result = for x in xs { Doubled { _scale: x }.value + x };
+
+    if (Doubled { _scale: positive(total(xs)) }.value) is Int {
+        result
+    } else {
+        []
+    }
+}
+
+test fn default_value_in_a_loop_and_after_it() -> Int {
+    let xs = runtime([1, 2]);
+    let _checked = positive(for x in xs fold sum = 0 { sum + Checked { _scale: x }.value });
+    Checked { _scale: 1 }.value
+}
+
+test fn default_value_in_an_inline_binding_and_a_loop() -> Int {
+    let xs = runtime([1, 2]);
+    inline let value = Inner { _scale: 1 }.value;
+    value
+        + for x in xs fold sum = 0 {
+            sum + total(for y in xs { value + y }) + Inner { _scale: x }.value
+        }
+}
+
+test fn default_value_in_another_default_value() -> Int {
+    let xs = runtime([1, 2]);
+    let first = Outer { _scale: 1 }.value;
+    let second = Inner { _scale: 2 }.value + Outer { _scale: 3 }.value;
+    first + second + total(xs)
+}
+
+test fn default_value_with_a_loop_used_in_a_loop() -> Int {
+    let xs = runtime([1, 2]);
+    Outer { _scale: 1 }.value
+        + total(for w in xs { Inner { _scale: w }.value + Outer { _scale: w }.value })
+}
+
+const SUM: Int = total(for x in runtime([1, 2, 3, 4]) { x * x });
+
+struct Squared {
+    _scale: Int,
+    value: Int = {
+        let sum = SUM;
+        sum * sum
+    },
+}
+
+// A constant that a default value reads through a let statement is evaluated once before the
+// loop, rather than for each item
+test fn constant_in_a_default_value_is_evaluated_before_the_loop() -> List<Int> {
+    let xs = runtime([1, 2, 3, 4]);
+    for x in xs if x < (Squared { _scale: x }).value { x }
+}
