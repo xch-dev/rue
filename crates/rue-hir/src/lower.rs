@@ -1960,9 +1960,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return self.can_substitute(symbol);
                 }
 
-                // The result of a fold is a call, rather than a path that could be read where
-                // it's referenced more than once
-                !self.db.is_loop_rest_call(binding.value.hir) && self.is_path_binding(symbol)
+                self.is_path_binding(symbol)
             }
         }
     }

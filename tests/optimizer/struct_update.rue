@@ -780,6 +780,18 @@ test fn rebuild_literal_outside_for(t: Point, items: List<Int>) -> List<Point> {
     for i in items { Point { x: s.x, y: i, z: s.z } }
 }
 
+// A few fields in, the result is used where the struct is updated, since binding it on its own
+// costs more than the steps to the rest of it
+test fn update_fold_third(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) { LongRest { ...acc, a: i, b: i, c: i } }
+}
+
+test fn rebuild_fold_third(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) {
+        LongRest { a: i, b: i, c: i, d: acc.d, e: acc.e, f: acc.f, g: acc.g, h: acc.h }
+    }
+}
+
 test fn update_fold_first(n: Int) -> Point {
     for i in ints(n) fold acc = (Point { x: n, y: n, z: n }) { Point { ...acc, x: i } }
 }

@@ -777,6 +777,22 @@ tests:
   runtime_cost: 3493
   byte_cost: 1452000
   total_cost: 1455493
+- name: update_fold_third
+  program: (a (q 2 2 (c (c 5 2) (a (i (> 5 ()) (q 4 5 (c (+ 5 (q . 1)) ())) (q 8)) 1))) (c (q 2 (i 3 (q 4 5 (c 5 (c 5 (r (r (r (a 6 (c 2 7)))))))) (q 2 (i (> 4 ()) (q 4 4 (c 4 (c 4 (c 4 (c 4 (c 4 (c (+ 4 (q . 1)) (+ 4 (q . 2))))))))) (q 8)) 1)) 1) 1))
+  debug_program: (a (q 2 4 (c (c 5 (c 4 14)) (a 10 5))) (c (c (q 2 (i 3 (q 4 (f 3) (c (f 3) (c (f 3) (r (r (r (a 10 (c (c 4 (c 10 14)) (r 3))))))))) (q 2 14 4)) 1) (c (q 2 (i (> 1 ()) (q 4 1 (c (+ 1 (q . 1)) ())) (q 8 (q . "assertion failed at struct_update.rue:728:5"))) 1) (q 2 (i (> 1 ()) (q 4 1 (c 1 (c 1 (c 1 (c 1 (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2))))))))) (q 8 (q . "assertion failed at struct_update.rue:723:5"))) 1))) 1))
+  solution: (4)
+  output: (4 4 4 4 4 4 5 . 6)
+  runtime_cost: 7693
+  byte_cost: 2700000
+  total_cost: 2707693
+- name: rebuild_fold_third
+  program: (a (q 2 2 (c (c 5 2) (a (i (> 5 ()) (q 4 5 (c (+ 5 (q . 1)) ())) (q 8)) 1))) (c (q 2 (i 3 (q 2 (q 4 11 (c 11 (c 11 30))) (c (a 6 (c 2 7)) 1)) (q 2 (i (> 4 ()) (q 4 4 (c 4 (c 4 (c 4 (c 4 (c 4 (c (+ 4 (q . 1)) (+ 4 (q . 2))))))))) (q 8)) 1)) 1) 1))
+  debug_program: (a (q 2 4 (c (c 5 (c 4 14)) (a 10 5))) (c (c (q 2 (i 3 (q 2 (q 4 (f 7) (c (f 7) (c (f 7) (c (f (r (r (r 2)))) (c (f (r (r (r (r 2))))) (c (f (r (r (r (r (r 2)))))) (c (f (r (r (r (r (r (r 2))))))) (r (r (r (r (r (r (r 2)))))))))))))) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) (q 2 14 4)) 1) (c (q 2 (i (> 1 ()) (q 4 1 (c (+ 1 (q . 1)) ())) (q 8 (q . "assertion failed at struct_update.rue:728:5"))) 1) (q 2 (i (> 1 ()) (q 4 1 (c 1 (c 1 (c 1 (c 1 (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2))))))))) (q 8 (q . "assertion failed at struct_update.rue:723:5"))) 1))) 1))
+  solution: (4)
+  output: (4 4 4 4 4 4 5 . 6)
+  runtime_cost: 8063
+  byte_cost: 2724000
+  total_cost: 2732063
 - name: update_fold_first
   program: (a (q 2 2 (c (c 5 2) (a (i (> 5 ()) (q 4 5 (c (+ 5 (q . 1)) ())) (q 8)) 1))) (c (q 2 (i 3 (q 4 5 (r (a 6 (c 2 7)))) (q 4 4 (c 4 (c 4 ())))) 1) 1))
   debug_program: (a (q 2 4 (c (c 5 4) (a 6 5))) (c (c (q 2 (i 3 (q 4 (f 3) (r (a 6 (c (c 4 6) (r 3))))) (q 4 4 (c 4 (c 4 ())))) 1) (q 2 (i (> 1 ()) (q 4 1 (c (+ 1 (q . 1)) ())) (q 8 (q . "assertion failed at struct_update.rue:728:5"))) 1)) 1))
@@ -795,18 +811,18 @@ tests:
   total_cost: 1937261
 - name: update_fold_skipped
   program: (a (q 2 4 (c 2 5)) (c (c (q 2 (i 3 (q 2 (q 2 (i 11 (q 4 (a 13 11) 6) (q 1 1 1 1)) 1) (c (a 4 (c 2 7)) 1)) (q 1 () () ())) 1) (q 2 (i (> (q . 5) 1) (q . 1) (q 8)) 1)) 1))
-  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i 3 (q 2 (q 2 (i (= (f 7) ()) (q 4 (q . 1) (c (q . 1) (c (q . 1) ()))) (q 4 (a 13 (f 7)) (r 2))) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) (q 4 () (c () (c () ())))) 1) (q 2 (i (> (q . 5) 1) (q . 1) (q 8 (q . "assertion failed at struct_update.rue:792:5"))) 1)) 1))
+  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i 3 (q 2 (q 2 (i (= (f 7) ()) (q 4 (q . 1) (c (q . 1) (c (q . 1) ()))) (q 4 (a 13 (f 7)) (r 2))) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) (q 4 () (c () (c () ())))) 1) (q 2 (i (> (q . 5) 1) (q . 1) (q 8 (q . "assertion failed at struct_update.rue:804:5"))) 1)) 1))
   solution: ((2 0 9))
   byte_cost: 1860000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:792:5"
+  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:804:5"
 - name: rebuild_fold_skipped
   program: (a (q 2 4 (c 2 5)) (c (c (q 2 (i 3 (q 2 (q 2 (i 11 (q 4 (a 13 11) (c 10 (c 22 ()))) (q 1 1 1 1)) 1) (c (a 4 (c 2 7)) 1)) (q 1 () () ())) 1) (q 2 (i (> (q . 5) 1) (q . 1) (q 8)) 1)) 1))
-  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i 3 (q 2 (q 2 (i (= (f 7) ()) (q 4 (q . 1) (c (q . 1) (c (q . 1) ()))) (q 4 (a 13 (f 7)) (c (f (r 2)) (c (f (r (r 2))) ())))) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) (q 4 () (c () (c () ())))) 1) (q 2 (i (> (q . 5) 1) (q . 1) (q 8 (q . "assertion failed at struct_update.rue:792:5"))) 1)) 1))
+  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i 3 (q 2 (q 2 (i (= (f 7) ()) (q 4 (q . 1) (c (q . 1) (c (q . 1) ()))) (q 4 (a 13 (f 7)) (c (f (r 2)) (c (f (r (r 2))) ())))) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) (q 4 () (c () (c () ())))) 1) (q 2 (i (> (q . 5) 1) (q . 1) (q 8 (q . "assertion failed at struct_update.rue:804:5"))) 1)) 1))
   solution: ((2 0 9))
   byte_cost: 2004000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:792:5"
+  debug_clvm_error: clvm raise "assertion failed at struct_update.rue:804:5"
 - name: update_field_of_constant
   program: (c 2 (q 4 . 5))
   debug_program: (a (q 4 5 (r (f (r 2)))) (c (c (q . 3) (c (c (q . 3) (c (q . 4) (q . 5))) ())) 1))
