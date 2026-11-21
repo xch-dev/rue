@@ -233,18 +233,18 @@ pub fn compile_match_expr(
 
         // Every check of an `inline match` is evaluated, even on the values that the arms before
         // it handle, so it can't rely on them being left out
-        let (check, checked) = if inline {
+        let check = if inline {
             let node = ty_node
                 .as_ref()
                 .expect("only a pattern with a type has a check");
             if let Some(check) = ctx.runtime_check(node.syntax(), substituted, ty) {
-                (check, substituted)
+                check
             } else {
                 has_error = true;
-                (check, remaining)
+                check
             }
         } else {
-            (check, remaining)
+            check
         };
 
         let value = guard_value(ctx, &scrutinee, &reference);
@@ -253,7 +253,7 @@ pub fn compile_match_expr(
             condition,
             MatchArmGuard {
                 pattern: pattern_srcloc,
-                value: checked,
+                value: substituted,
             },
         );
         branches.push((condition, body.hir));

@@ -55,7 +55,8 @@ pub struct LintSites {
 pub struct MatchArmGuard {
     /// The arm's pattern.
     pub pattern: SrcLoc,
-    /// The type of the value that the guard checks, which is what the arms before it left.
+    /// The type of the value being matched, before the arms before this one narrow it. Narrowing
+    /// can turn a function into the atoms and pairs it could be, which this type still names.
     pub value: TypeId,
 }
 

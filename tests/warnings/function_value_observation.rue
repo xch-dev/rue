@@ -9,6 +9,10 @@ struct Wrapped {
 
 type MaybeFunction = (fn() -> nil) | nil;
 
+type Maybe<T> = T | nil;
+
+type Action = ("call", fn() -> nil) | ("value", Int | nil);
+
 fn pick(flag: Bool) -> (fn() -> nil) | nil {
     if flag {
         fn() => nil
@@ -62,6 +66,42 @@ test fn guard_on_function_in_pair() -> Bool {
 test fn guard_on_generic_function() -> Bool {
     let f: (fn<T>(value: T) -> T) | nil = generic;
     f is nil
+}
+
+test fn guard_on_function_in_generic_alias() -> Bool {
+    let f: Maybe<fn() -> nil> = nil;
+    f is nil
+}
+
+// An earlier guard narrows the function to the atoms and pairs it could be, but it's still one
+test fn guard_after_guard() -> Int {
+    let f: (fn() -> nil) | nil | (Int, Int) = fn() => nil;
+    if f is (Int, Int) {
+        return 2;
+    }
+    if f is nil {
+        0
+    } else {
+        1
+    }
+}
+
+test fn match_second_arm() -> Int {
+    let f: (fn() -> nil) | nil | (Int, Int) = fn() => nil;
+    match f {
+        (Int, Int) => 2,
+        nil => 0,
+        _ => 1,
+    }
+}
+
+test fn inline_match_second_arm() -> Int {
+    let f: (fn() -> nil) | nil | (Int, Int) = fn() => nil;
+    inline match f {
+        (Int, Int) => 2,
+        nil => 0,
+        _ => 1,
+    }
 }
 
 test fn match_on_optional_function() -> Int {
@@ -121,6 +161,24 @@ test fn cast_pair_to_partly_any() -> Bool {
     value.first is nil
 }
 
+// The second pair is erased, whichever order the members of the union are in
+test fn cast_to_union_in_pair() -> Bool {
+    let pairs = ((fn() => nil, 1), (fn() => nil, 1));
+    let value = pairs as ((fn() -> nil, 1) | (Any, 1), Any);
+    value.rest is nil
+}
+
+#[allow(function_value_observation)]
+test fn allowed() -> Bool {
+    let f = pick(true);
+    f is nil
+}
+
+// Only a cast that's the argument itself is passed on as it is
+test fn cast_inside_argument() -> Bool {
+    is_nil((identity as Any, 1))
+}
+
 // Hashing a function is how the puzzle hash of an inner puzzle is found, so passing it where
 // `Any` is expected isn't reported, with or without a cast
 test fn tree_hash_of_function() -> Bytes32 {
@@ -174,6 +232,21 @@ test fn guard_beside_function() -> Bool {
     pair is (fn() -> nil, nil)
 }
 
+// The function is only looked at after its tag matches, which it never does for these checks
+test fn guard_on_tagged_union() -> Bool {
+    let action: Action = ("value", nil);
+    action is ("value", nil)
+}
+
+test fn match_on_tagged_union() -> Int {
+    let action: Action = ("call", fn() => nil);
+    match action {
+        ("value", nil) => 0,
+        ("value", Int) => 1,
+        ("call", fn() -> nil) => 2,
+    }
+}
+
 test fn guard_on_struct_field() -> Bool {
     let callback = Callback { function: fn() => nil, count: 1 };
     let count: Int | nil = callback.count;
@@ -225,8 +298,11 @@ test fn function_as_function() -> Int {
     f(1) + other(2) + wide(nil) + generic(f)(3)
 }
 
-#[allow(function_value_observation)]
-test fn allowed() -> Bool {
-    let f = pick(true);
-    f is nil
+// The target still says where the function is
+test fn cast_keeping_function() -> Int {
+    let callback = Callback { function: fn() => nil, count: 1 };
+    let pair = (identity, 1) as (fn(x: Int) -> Int, Int);
+    let fields = callback as (fn() -> nil, (Int, nil));
+    let either = (identity, 2) as (fn(x: Int) -> Int, Int) | (Any, Int);
+    pair.first(pair.rest) + fields.rest.first + either.rest
 }

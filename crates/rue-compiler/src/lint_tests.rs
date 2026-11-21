@@ -3302,6 +3302,25 @@ fn main(f: fn(x: Int) -> Int, list: List<fn(x: Int) -> Int>, value: Int | nil) -
     assert!(!has_errors);
 }
 
+/// The lint only looks at whether the guarded value itself can be a function, which relies on the
+/// type checker rejecting a guard that would have to check a function inside of a pair.
+#[test]
+fn function_value_observation_relies_on_nested_checks_being_errors() {
+    for guard in [
+        "fn main(p: ((fn() -> nil) | nil, Int)) -> Bool {\n    p is (nil, Int)\n}\n",
+        "fn main(p: (Int, fn() -> nil) | (Int, nil)) -> Bool {\n    p is (Int, nil)\n}\n",
+        "fn main(p: List<(fn() -> nil) | nil>) -> Bool {\n    p is (nil, nil)\n}\n",
+    ] {
+        let (reports, has_errors) = reports(guard, |_| {});
+
+        assert_eq!(
+            reports,
+            ["Error 2: Cannot check if value is of function type at runtime"]
+        );
+        assert!(has_errors);
+    }
+}
+
 #[test]
 fn function_value_observation_levels() {
     let source = "\
