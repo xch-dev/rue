@@ -33,15 +33,16 @@ diagnostics:
   Unreachable match arm, since an earlier arm handles every value that's left at match_guard_errors.rue:84:9
     note: This arm handles every value that's left at match_guard_errors.rue:83:9
 - Unknown field `missing` on type `Never` at match_guard_errors.rue:84:25
-- Unused function `inline_condition` at match_guard_errors.rue:89:4
-- Cannot use a condition on an arm of an `inline match`, since every arm is evaluated and the value isn't narrowed to the arm's type at match_guard_errors.rue:91:13
-- Cannot use `>` operator with `Int | (Int, Int)` and `10` at match_guard_errors.rue:91:16
-- Unused function `inline_only_condition` at match_guard_errors.rue:97:4
-- Cannot use a condition on an arm of an `inline match`, since every arm is evaluated and the value isn't narrowed to the arm's type at match_guard_errors.rue:99:13
-- Unused function `statement` at match_guard_errors.rue:105:4
-- Unused binding `rest` at match_guard_errors.rue:117:9
-- Cannot assign `Tagged | nil` to `nil` without a type guard, since the value isn't always a valid `nil` at match_guard_errors.rue:117:21
-- Unused function `statement_narrowing` at match_guard_errors.rue:127:4
-- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at match_guard_errors.rue:135:22
-- Unused function `statement_condition` at match_guard_errors.rue:140:4
-- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_guard_errors.rue:145:43
+- Unused function `inline_condition` at match_guard_errors.rue:90:4
+- Cannot use `>` operator with `Int | (Int, Int)` and `10` at match_guard_errors.rue:92:16
+- Unused function `inline_only_condition` at match_guard_errors.rue:98:4
+- |-
+  Match on `Int | (Int, Int)` is not exhaustive, since it doesn't handle `Int` and `(Int, Int)` at match_guard_errors.rue:99:18
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:100:9
+- Unused function `statement` at match_guard_errors.rue:106:4
+- Unused binding `rest` at match_guard_errors.rue:118:9
+- Cannot assign `Tagged | nil` to `nil` without a type guard, since the value isn't always a valid `nil` at match_guard_errors.rue:118:21
+- Unused function `statement_narrowing` at match_guard_errors.rue:128:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at match_guard_errors.rue:136:22
+- Unused function `statement_condition` at match_guard_errors.rue:141:4
+- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_guard_errors.rue:146:43

@@ -114,13 +114,6 @@ pub fn compile_match_expr(
 
         let guard = arm.guard();
 
-        // Every arm of an `inline match` is evaluated and none of them narrow the value, so a
-        // condition could only choose between values that it can't rely on the arm's type for
-        if inline && let Some(guard) = &guard {
-            ctx.diagnostic(guard.syntax(), DiagnosticKind::InlineMatchArmCondition);
-            has_error = true;
-        }
-
         let pattern = match &ty_node {
             Some(ty) if ty.is_placeholder() => None,
             Some(ty) => {
@@ -245,10 +238,25 @@ pub fn compile_match_expr(
             }
         }
 
+        // Every check of an `inline match` is evaluated, even on the values that the arms before
+        // it handle, so it can't rely on them being left out
+        let check = match (pattern, &ty_node) {
+            (Some(ty), Some(node)) if inline && (arm_condition.is_some() || !catches_all) => {
+                if let Some(check) = ctx.runtime_check(node.syntax(), substituted, ty) {
+                    check
+                } else {
+                    has_error = true;
+                    check
+                }
+            }
+            _ => check,
+        };
+
         if let Some(arm_condition) = arm_condition {
             // The condition is only evaluated for the values of the arm's type, like the right
             // operand of `value is T && condition`, and a type that doesn't need to be checked
-            // leaves only the condition
+            // leaves only the condition. In an `inline match` it's evaluated whatever the value
+            // is, like the arms are, so it doesn't see the value narrowed either.
             let condition = if check == Check::None {
                 arm_condition
             } else {
@@ -259,7 +267,7 @@ pub fn compile_match_expr(
 
                 // Whether the condition can be evaluated without checking the arm's type
                 // first, as for the operands of `&&`
-                if narrows_only_atoms(ctx, &reference.narrowed_to(ty)) {
+                if inline || narrows_only_atoms(ctx, &reference.narrowed_to(ty)) {
                     ctx.set_independent_operands(hir);
                 }
 
@@ -282,22 +290,6 @@ pub fn compile_match_expr(
         let ty = pattern.expect("only a pattern with a type has a check");
         let (else_type, else_members) =
             rest.expect("only an arm with a condition leaves everything");
-
-        // Every check of an `inline match` is evaluated, even on the values that the arms before
-        // it handle, so it can't rely on them being left out
-        let check = if inline {
-            let node = ty_node
-                .as_ref()
-                .expect("only a pattern with a type has a check");
-            if let Some(check) = ctx.runtime_check(node.syntax(), substituted, ty) {
-                check
-            } else {
-                has_error = true;
-                check
-            }
-        } else {
-            check
-        };
 
         let value = guard_value(ctx, &scrutinee, &reference);
         let condition = ctx.alloc_hir(Hir::Guard(Guard { value, ty, check }));

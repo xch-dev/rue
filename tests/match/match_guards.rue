@@ -17,6 +17,21 @@ struct Plain {
     value: Int,
 }
 
+// An `inline match` can have conditions as well. Every arm is evaluated, and so is every
+// condition, so they see the value as it is outside of the match.
+fn inline_condition(value: Int, limit: Int) -> Int {
+    inline match value {
+        0 if limit > 0 => 1,
+        0 => 2,
+        _ if value > limit => 3,
+        _ => 4,
+    }
+}
+
+test fn inline_conditions() -> List<Int> {
+    [inline_condition(0, 1), inline_condition(0, 0), inline_condition(5, 1), inline_condition(5, 9)]
+}
+
 // These two compile to the same program
 test fn size_match(shape: Shape) -> Int {
     match shape {

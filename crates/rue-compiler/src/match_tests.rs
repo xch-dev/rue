@@ -261,6 +261,25 @@ fn arm_condition_expression_scrutinee() {
     );
 }
 
+/// An arm of an `inline match` with a condition is an `inline if` on both.
+#[test]
+fn inline_arm_condition() {
+    check(
+        "fn main(n: Int, c: Bool) -> Int { inline match n { 0 if c => 1, 1 if !c => 2, _ => n } }",
+        "fn main(n: Int, c: Bool) -> Int { inline if n is 0 && c { 1 } else { inline if n is 1 && !c { 2 } else { n } } }",
+    );
+}
+
+/// An arm with a condition doesn't handle its type in an `inline match` either, and each check is
+/// still of the value's whole type.
+#[test]
+fn inline_arm_condition_on_a_union() {
+    check(
+        "fn main(u: U, c: Bool) -> Int { inline match u { A if c => 1, A => 2, B => 3, C => 4 } }",
+        "fn main(u: U, c: Bool) -> Int { inline if u is A && c { 1 } else { inline if u is A { 2 } else { inline if u is B { 3 } else { 4 } } } }",
+    );
+}
+
 /// A statement whose arm with a condition returns is an `if` statement that returns early.
 #[test]
 fn statement_with_arm_condition() {

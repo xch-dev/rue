@@ -85,7 +85,8 @@ fn unreachable(value: Tagged | Plain) -> Int {
     }
 }
 
-// Every arm of an `inline match` is evaluated, so a condition can't be used there
+// Every arm of an `inline match` is evaluated, and so is its condition, so it doesn't see the
+// value narrowed to the arm's type either
 fn inline_condition(value: Int | (Int, Int)) -> Int {
     inline match value {
         Int if value > 10 => 1,
@@ -93,7 +94,7 @@ fn inline_condition(value: Int | (Int, Int)) -> Int {
     }
 }
 
-// Nothing else is reported about which values an `inline match` with a condition handles
+// An arm of an `inline match` with a condition doesn't handle its type either
 fn inline_only_condition(value: Int | (Int, Int)) -> Int {
     inline match value {
         Int if true => 1,
