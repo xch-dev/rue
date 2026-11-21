@@ -56,6 +56,16 @@ fn fields(n: Int) -> Int {
     unknown.value + missing.value
 }
 
+// A struct that's updated needs them like any other initializer, and its other errors name it
+// as it's written as well
+fn updates(n: Int, other: Box<Int>, pair: Pair<Int, Int>) -> Int {
+    let copy = Box { ...other };
+    let argument = unbox(Box { ...other });
+    let undeclared = Box { ...missing };
+    let after_a_field = Pair { first: n, ...pair };
+    copy.value + argument + undeclared.value + after_a_field.first
+}
+
 // So does a variant of a generic enum, after the variant
 fn variants(n: Int) -> Int {
     let argument = unwrap_or(Option::Some { value: n }, 0);

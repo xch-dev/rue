@@ -138,3 +138,38 @@ fn string_that_says_unresolved_is_shown() {
 
     assert_eq!(taken(diagnostics), expected);
 }
+
+/// An error is about a generic that wasn't inferred if it shows the generic, as a type or as
+/// part of one, rather than a type or a word that only has the generic's name in it.
+#[test]
+fn error_shows_a_generic_by_its_whole_name() {
+    use crate::{names_type, shows_type};
+
+    assert!(names_type("T", "T"));
+    assert!(names_type("(T, Int)", "T"));
+    assert!(names_type("fn(value: T) -> List<T>", "T"));
+    assert!(names_type("Int | T", "T"));
+    assert!(!names_type("Thing", "T"));
+    assert!(!names_type("(Thing, Int)", "T"));
+    assert!(!names_type("List<Item>", "T"));
+    assert!(!names_type("T2 | _T | TT", "T"));
+    assert!(names_type("T2 | T", "T"));
+    assert!(names_type("Key | Value", "Value"));
+    assert!(!names_type("Values", "Value"));
+
+    // Only where a type is shown, which is in backticks
+    assert!(shows_type("Cannot use `+` operator with `T` and `1`", "T"));
+    assert!(shows_type(
+        "Cannot assign `(T, Int)` to `Bytes`, since they are incompatible",
+        "T"
+    ));
+    assert!(!shows_type(
+        "Cannot assign `Thing` to `Int`, since they are incompatible",
+        "T"
+    ));
+    assert!(!shows_type(
+        "Type of parameter cannot be inferred, it must be specified explicitly",
+        "T"
+    ));
+    assert!(!shows_type("Undeclared symbol `Thing`, not T", "T"));
+}

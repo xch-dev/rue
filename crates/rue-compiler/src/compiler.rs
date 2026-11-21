@@ -90,9 +90,12 @@ pub struct Compiler {
     uninferred_parameters: Vec<(TypeId, String)>,
     /// The generics that weren't inferred yet in the types that were named for the next error.
     named_generics: Vec<NamedGeneric>,
-    /// The errors, by where they are in the diagnostics, that show a generic of a call that
-    /// wasn't inferred by then, in order (see [`Compiler::has_errors_since`]).
-    uninferred_errors: Vec<usize>,
+    /// The errors, by where they are in the diagnostics, that show generics of a call that
+    /// weren't inferred by then, with those generics, in order (see [`Compiler::errors_since`]).
+    uninferred_errors: Vec<(usize, Vec<TypeId>)>,
+    /// The diagnostics, by where they are, that follow from an error that's reported, and so
+    /// aren't themselves (see [`Compiler::suppress_uninferred_errors_since`]).
+    suppressed: Vec<usize>,
     /// How the type expected of the expression being compiled is used.
     expected: ExpectedTypeUse,
     /// A type that the call argument at the range has to be assignable to however the enclosing
@@ -293,6 +296,7 @@ impl Compiler {
             uninferred_parameters: Vec::new(),
             named_generics: Vec::new(),
             uninferred_errors: Vec::new(),
+            suppressed: Vec::new(),
             expected: ExpectedTypeUse::default(),
             argument_requirement: None,
             lint_sites: LintSites::default(),
@@ -399,6 +403,18 @@ impl Compiler {
         let mut diagnostics = mem::take(&mut self.diagnostics);
         self.uninferred_errors.clear();
 
+        // The errors that follow from one that a generic wasn't inferred because of
+        let suppressed = mem::take(&mut self.suppressed);
+
+        if !suppressed.is_empty() {
+            let mut index = 0;
+
+            diagnostics.retain(|_| {
+                index += 1;
+                !suppressed.contains(&(index - 1))
+            });
+        }
+
         // A diagnostic that shows a type with a part that couldn't be compiled only follows from
         // the error that was reported for that part, as long as there is one that doesn't
         if diagnostics.iter().any(is_root_error) {
@@ -456,17 +472,45 @@ impl Compiler {
             .enumerate()
             .skip(count)
             .filter(|(index, diagnostic)| {
-                is_root_error(diagnostic) && self.uninferred_errors.binary_search(index).is_err()
+                is_root_error(diagnostic) && self.uninferred_error(*index).is_err()
             })
             .map(|(_, diagnostic)| diagnostic.srcloc.span.clone())
             .collect()
     }
 
-    /// Records that the errors reported since there were `count` diagnostics show a generic of
-    /// a call that wasn't inferred (see [`Self::errors_since`]).
-    pub(crate) fn uninferred_errors_since(&mut self, count: usize) {
-        self.uninferred_errors.retain(|&index| index < count);
-        self.uninferred_errors.extend(count..self.diagnostics.len());
+    /// Where the error at the index is among the ones that show a generic that wasn't inferred,
+    /// or where it would be.
+    fn uninferred_error(&self, index: usize) -> Result<usize, usize> {
+        self.uninferred_errors
+            .binary_search_by_key(&index, |(index, _)| *index)
+    }
+
+    /// Records that the errors reported since there were `count` diagnostics show the generics
+    /// of a call, which weren't inferred (see [`Self::errors_since`]).
+    pub(crate) fn mark_uninferred_errors_since(&mut self, count: usize, generics: &[TypeId]) {
+        for index in count..self.diagnostics.len() {
+            match self.uninferred_error(index) {
+                Ok(position) => self.uninferred_errors[position].1.extend(generics),
+                Err(position) => self
+                    .uninferred_errors
+                    .insert(position, (index, generics.to_vec())),
+            }
+        }
+    }
+
+    /// Leaves out the errors reported since there were `count` diagnostics that only show
+    /// generics which weren't inferred because of another error that's reported, given those
+    /// generics. They're there because the generics weren't inferred, so that error is the one
+    /// to fix, as `map(missing, fn(x) => x + 1)` only needs `missing` declared, rather than a
+    /// type for `x`.
+    pub(crate) fn suppress_uninferred_errors_since(&mut self, count: usize, generics: &[TypeId]) {
+        let start = self.uninferred_error(count).unwrap_or_else(|start| start);
+
+        for (index, shown) in &self.uninferred_errors[start..] {
+            if shown.iter().all(|generic| generics.contains(generic)) {
+                self.suppressed.push(*index);
+            }
+        }
     }
 
     pub fn has_errors(&self) -> bool {
@@ -533,17 +577,17 @@ impl Compiler {
         // named only count for an error that shows them
         if !self.named_generics.is_empty() {
             let message = diagnostic.kind.to_string();
-            let mut shown = false;
+            let mut shown = Vec::new();
 
             for generic in mem::take(&mut self.named_generics) {
                 if shows_type(&message, &generic.name) {
-                    shown = true;
+                    shown.push(generic.id);
                     diagnostic.notes.extend(generic.note);
                 }
             }
 
-            if shown {
-                self.uninferred_errors.push(self.diagnostics.len());
+            if !shown.is_empty() {
+                self.uninferred_errors.push((self.diagnostics.len(), shown));
             }
         }
 
@@ -559,8 +603,15 @@ impl Compiler {
     /// Adds a parameter of the lambda being compiled that has no type written and whose type
     /// wasn't inferred, so it's left as (or as a type with) a generic of the function that the
     /// lambda is passed to.
-    pub(crate) fn push_uninferred_parameter(&mut self, generic: TypeId, name: String) {
-        self.uninferred_parameters.push((generic, name));
+    pub(crate) fn push_uninferred_parameter(&mut self, generic: TypeId, name: &str) {
+        let known = self
+            .uninferred_parameters
+            .iter()
+            .any(|(other, parameter)| *other == generic && parameter == name);
+
+        if !known {
+            self.uninferred_parameters.push((generic, name.to_string()));
+        }
     }
 
     /// Leaves as many of the parameters whose types weren't inferred as there were before a
@@ -594,19 +645,31 @@ impl Compiler {
                 continue;
             }
 
-            // The parameter of the innermost lambda, since a call in a lambda that's passed to
-            // the same function has the same generics
-            let note = self
+            // A call in a lambda that's passed to the same function has the same generics, so
+            // more than one lambda's parameter can have been left as one
+            let parameters = self
                 .uninferred_parameters
                 .iter()
-                .rfind(|(other, _)| *other == generic)
-                .map(|(_, parameter)| {
-                    Note::new(format!(
-                        "`{name}` is a generic of the function that's called, since the type of the parameter `{parameter}` wasn't inferred here; specify the parameter's type explicitly"
-                    ))
-                });
+                .filter(|(other, _)| *other == generic)
+                .map(|(_, parameter)| format!("`{parameter}`"))
+                .collect::<Vec<_>>();
 
-            self.named_generics.push(NamedGeneric { name, note });
+            let note = match parameters.split_last() {
+                None => None,
+                Some((parameter, [])) => Some(format!(
+                    "`{name}` is a generic of the function that's called, since the type of the parameter {parameter} wasn't inferred here; specify the parameter's type explicitly"
+                )),
+                Some((last, rest)) => Some(format!(
+                    "`{name}` is a generic of the function that's called, since the types of the parameters {} and {last} weren't inferred here; specify their types explicitly",
+                    rest.join(", ")
+                )),
+            };
+
+            self.named_generics.push(NamedGeneric {
+                id: generic,
+                name,
+                note: note.map(Note::new),
+            });
         }
     }
 
@@ -930,15 +993,6 @@ impl Compiler {
         self.name_uninferred_generics(ty);
         let current = self.last_scope_id();
         self.type_name_in(current, ty)
-    }
-
-    /// Names types with [`Self::type_name`] for something other than the error that's reported
-    /// next, such as a lint or a note, which the generics in them don't count for.
-    pub(crate) fn naming_aside<T>(&mut self, name: impl FnOnce(&mut Self) -> T) -> T {
-        let named = self.named_generics.len();
-        let result = name(self);
-        self.named_generics.truncate(named);
-        result
     }
 
     pub fn type_name_in(&mut self, scope: ScopeId, ty: TypeId) -> String {
@@ -1521,7 +1575,8 @@ impl Compiler {
         if shown == to {
             self.type_name(to)
         } else {
-            self.naming_aside(|ctx| ctx.type_name(shown))
+            let scope = self.last_scope_id();
+            self.type_name_in(scope, shown)
         }
     }
 
@@ -1757,6 +1812,7 @@ impl Compiler {
 /// A generic of a call that wasn't inferred yet, in a type that was named for an error.
 #[derive(Debug, Clone)]
 struct NamedGeneric {
+    id: TypeId,
     name: String,
     /// What the error says about it, if it's what a parameter of a lambda was left as.
     note: Option<Note>,
@@ -1772,7 +1828,7 @@ fn is_root_error(diagnostic: &Diagnostic) -> bool {
 
 /// Whether a diagnostic's message shows the type with the given name, on its own or as part of
 /// another type. Types are shown in backticks.
-fn shows_type(message: &str, name: &str) -> bool {
+pub(crate) fn shows_type(message: &str, name: &str) -> bool {
     message
         .split('`')
         .skip(1)

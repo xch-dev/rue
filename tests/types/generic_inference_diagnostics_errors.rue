@@ -113,6 +113,11 @@ fn lambda_parameter_count() -> nil {
     let not_generic_none = takes(fn() => 1);
     let annotated: fn(value: Int) -> Int = fn(x, y) => x;
 
+    // Outside of a call, a lambda whose parameters all have types, or that has too few, is shown
+    // against the type that's expected of it
+    let annotated_typed: fn(value: Int) -> Int = fn(x: Int, y: Int) => x;
+    let annotated_none: fn(value: Int) -> Int = fn() => 1;
+
     // A lambda in the body of another is reported for itself, and so is the one it's in
     let nested = takes_two(fn(x) => takes(fn(p, q) => p));
     let nested_typed = takes_two(fn(x: Int, y: Int, z: Int) => takes(fn(p, q) => p));
@@ -163,6 +168,13 @@ fn argument_count() -> nil {
 fn argument_type() -> nil {
     let list = map(5, fn(x) => x);
     let function = apply(5, 5);
+
+    // It's the only error where the body of a lambda uses a parameter that it left without a
+    // type, and so is one in an argument that the parameter's type would have come from
+    let used = map(5, fn(x) => x + 1);
+    let used_bool = map(5, fn(x) => x * 2 > 5);
+    let undeclared = map(missing, fn(x) => x + 1);
+    let undeclared_value = apply(fn(x) => x + 1, missing);
     nil
 }
 
@@ -209,6 +221,11 @@ fn unrelated_generic() -> nil {
     let pair = both(missing);
     let other_argument = two([missing], fn(x) => 1);
 
+    // The wrong number of arguments isn't why a generic that no parameter has isn't inferred
+    let none = make();
+    let extra = make(1, 2);
+    let one_of_two = both();
+
     // An argument that a type couldn't be compiled for isn't why either, once it's reported
     let unresolved = empty();
     let function = apply(unresolved, 5);
@@ -223,6 +240,7 @@ fn nested_calls_of_one_function() -> nil {
     let inner_generic = map(map(nil, fn(x) => x), fn(y) => y);
     let inner_parameter = call(fn(x) => call(fn(y) => y + 1));
     let inner_call = call(fn(x) => call(fn(y) => 1));
+    let outer_parameter = call(fn(x) => call(fn(y) => x + 1));
     let declared = self_feeding((1, fn(list) => self_feeding(7, list)), 5);
     nil
 }
@@ -284,8 +302,7 @@ fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> ni
     // An argument with the generic in its type isn't why the generic isn't inferred
     let leaked = with_number((fn(x) => x, "text"));
 
-    // Or an error after a lint that names the generic, about a type whose name has the generic's
-    // in it, or about a generic with the same name
+    // Or an error after a lint that names the generic, about a generic with the same name
     let lint = self_feeding(
         (
             1,
@@ -295,12 +312,31 @@ fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> ni
                     (First, Any) => 1,
                     (Second, Any) => 2,
                 };
-                let wrong: Int = thing;
                 let other: Int = outer;
                 x
             },
         ),
         5,
     );
+
+    // Or about a type whose name has the generic's in it
+    let longer_name = self_feeding(
+        (
+            1,
+            fn(x) => {
+                let wrong: Int = thing;
+                x
+            },
+        ),
+        5,
+    );
+
+    // A parameter that's destructured is one that an error is about, too
+    let destructured = self_feeding((1, fn((a, b)) => (a, b)), 5);
+    let destructured_argument = call(fn((a, b)) => 1);
+
+    // Lambdas that are passed to the same function, one in the other, can both have parameters
+    // that were left as the generic, which is the same one
+    let both_parameters = self_feeding((1, fn(x) => self_feeding((1, fn(y) => x + 1), 5)), 5);
     nil
 }

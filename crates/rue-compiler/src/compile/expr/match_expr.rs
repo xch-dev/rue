@@ -345,8 +345,9 @@ pub fn compile_match_expr(
             .into_iter()
             .filter(|arm| !arm.members.is_empty())
         {
-            let (ty, members) =
-                ctx.naming_aside(|ctx| (ctx.type_name(arm.ty), format_members(ctx, arm.members)));
+            let scope = ctx.last_scope_id();
+            let ty = ctx.type_name_in(scope, arm.ty);
+            let members = format_members(ctx, arm.members);
             ctx.lint_sites_mut()
                 .indistinguishable_match_arms
                 .push(IndistinguishableMatchArm {
@@ -634,7 +635,8 @@ fn compile_arm_binding(
 /// out of the diagnostics reported since there were `count` of them, since the value isn't
 /// narrowed to the arm's type there.
 fn note_unnarrowed(ctx: &mut Compiler, count: usize, ty: TypeId) {
-    let name = ctx.naming_aside(|ctx| ctx.type_name(ty));
+    let scope = ctx.last_scope_id();
+    let name = ctx.type_name_in(scope, ty);
     let note = Note::new(format!(
         "Every arm of an `inline match` is evaluated, so the value isn't narrowed to `{name}` before it's destructured"
     ));
@@ -688,7 +690,7 @@ fn report_unreachable(
                 arm.members = unnamed;
                 reason = UnreachableReason::Indistinguishable {
                     arm: arm.pattern.clone(),
-                    members: ctx.naming_aside(|ctx| format_members(ctx, named)),
+                    members: format_members(ctx, named),
                 };
                 break;
             }
@@ -783,9 +785,13 @@ fn member_name_impl(
         return "Any".to_string();
     }
 
+    // The members are named for lints as well as errors, and an error names the type that's
+    // matched on, so a member isn't named as a type that the error is about
+    let scope = ctx.last_scope_id();
+
     // The parts of a recursive type lead back to it, and are named as a whole there
     if !visited.insert(ty) {
-        return ctx.type_name(ty);
+        return ctx.type_name_in(scope, ty);
     }
 
     let name = match ctx.ty(ty).clone() {
@@ -806,7 +812,7 @@ fn member_name_impl(
 
             rue_types::distinct_member_names(ctx.types(), members).join(" | ")
         }
-        _ => ctx.type_name(ty),
+        _ => ctx.type_name_in(scope, ty),
     };
 
     visited.remove(&ty);

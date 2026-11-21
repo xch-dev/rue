@@ -22,22 +22,29 @@ diagnostics:
 - Unknown field `valu` on type `Box` at generic_initializer_arguments_errors.rue:54:25
 - Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:55:19
 - "Struct `Box` is missing required fields: value at generic_initializer_arguments_errors.rue:55:19"
-- Unused function `variants` at generic_initializer_arguments_errors.rue:60:4
-- Missing generic arguments for `Option::Some`, which aren't inferred from its fields; specify them explicitly, e.g. `Option::Some::<...> { ... }` at generic_initializer_arguments_errors.rue:61:38
-- Missing generic arguments for `Option::Some`, which aren't inferred from its fields; specify them explicitly, e.g. `Option::Some::<...> { ... }` at generic_initializer_arguments_errors.rue:62:42
-- Missing generic arguments for `shapes::Maybe::Just`, which aren't inferred from its fields; specify them explicitly, e.g. `shapes::Maybe::Just::<...> { ... }` at generic_initializer_arguments_errors.rue:63:33
-- Unused function `not_structs` at generic_initializer_arguments_errors.rue:74:4
-- Unused parameter `n` at generic_initializer_arguments_errors.rue:74:16
-- Unused binding `alias` at generic_initializer_arguments_errors.rue:75:9
-- Expected 1 generic arguments, but found 0 at generic_initializer_arguments_errors.rue:75:17
-- Cannot initialize non-struct type `Maybe` at generic_initializer_arguments_errors.rue:75:17
-- Unused binding `enumeration` at generic_initializer_arguments_errors.rue:76:9
-- Expected 1 generic arguments, but found 0 at generic_initializer_arguments_errors.rue:76:23
-- Cannot initialize non-struct type `Option` at generic_initializer_arguments_errors.rue:76:23
-- Unused binding `with_arguments` at generic_initializer_arguments_errors.rue:77:9
-- Cannot initialize non-struct type `Maybe<Int>` at generic_initializer_arguments_errors.rue:77:26
-- Unused function `wrong_count` at generic_initializer_arguments_errors.rue:82:4
-- Expected 1 generic arguments, but found 2 at generic_initializer_arguments_errors.rue:83:15
-- Expected 2 generic arguments, but found 1 at generic_initializer_arguments_errors.rue:84:16
-- Expected 1 generic arguments, but found 0 at generic_initializer_arguments_errors.rue:85:24
-- Unused function `written` at generic_initializer_arguments_errors.rue:90:4
+- Unused function `updates` at generic_initializer_arguments_errors.rue:61:4
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:62:16
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:63:26
+- Missing generic arguments for `Box`, which aren't inferred from its fields; specify them explicitly, e.g. `Box::<...> { ... }` at generic_initializer_arguments_errors.rue:64:22
+- Undeclared symbol `missing` at generic_initializer_arguments_errors.rue:64:31
+- Missing generic arguments for `Pair`, which aren't inferred from its fields; specify them explicitly, e.g. `Pair::<...> { ... }` at generic_initializer_arguments_errors.rue:65:25
+- A struct can only be spread at the start of an initializer, before its fields at generic_initializer_arguments_errors.rue:65:42
+- Unused function `variants` at generic_initializer_arguments_errors.rue:70:4
+- Missing generic arguments for `Option::Some`, which aren't inferred from its fields; specify them explicitly, e.g. `Option::Some::<...> { ... }` at generic_initializer_arguments_errors.rue:71:38
+- Missing generic arguments for `Option::Some`, which aren't inferred from its fields; specify them explicitly, e.g. `Option::Some::<...> { ... }` at generic_initializer_arguments_errors.rue:72:42
+- Missing generic arguments for `shapes::Maybe::Just`, which aren't inferred from its fields; specify them explicitly, e.g. `shapes::Maybe::Just::<...> { ... }` at generic_initializer_arguments_errors.rue:73:33
+- Unused function `not_structs` at generic_initializer_arguments_errors.rue:84:4
+- Unused parameter `n` at generic_initializer_arguments_errors.rue:84:16
+- Unused binding `alias` at generic_initializer_arguments_errors.rue:85:9
+- Expected 1 generic arguments, but found 0 at generic_initializer_arguments_errors.rue:85:17
+- Cannot initialize non-struct type `Maybe` at generic_initializer_arguments_errors.rue:85:17
+- Unused binding `enumeration` at generic_initializer_arguments_errors.rue:86:9
+- Expected 1 generic arguments, but found 0 at generic_initializer_arguments_errors.rue:86:23
+- Cannot initialize non-struct type `Option` at generic_initializer_arguments_errors.rue:86:23
+- Unused binding `with_arguments` at generic_initializer_arguments_errors.rue:87:9
+- Cannot initialize non-struct type `Maybe<Int>` at generic_initializer_arguments_errors.rue:87:26
+- Unused function `wrong_count` at generic_initializer_arguments_errors.rue:92:4
+- Expected 1 generic arguments, but found 2 at generic_initializer_arguments_errors.rue:93:15
+- Expected 2 generic arguments, but found 1 at generic_initializer_arguments_errors.rue:94:16
+- Expected 1 generic arguments, but found 0 at generic_initializer_arguments_errors.rue:95:24
+- Unused function `written` at generic_initializer_arguments_errors.rue:100:4

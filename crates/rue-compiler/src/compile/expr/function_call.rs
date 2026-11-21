@@ -11,7 +11,7 @@ use rue_types::{
 
 use super::builtin::compile_builtin;
 use super::call_inference::{InferredCall, infer_call};
-use super::lambda::{expected_parameter_count, has_rest_parameter};
+use super::lambda::{expected_parameter_count, has_rest_parameter, parameter_count_site};
 use crate::{
     Compiler, CompletionContext, SyntaxCall, SyntaxItemKind, compile_expr, compile_path_value,
     names_type, occurs_contravariantly,
@@ -276,47 +276,32 @@ pub fn compile_function_call_expr(
             // that returns its parameter, which was left as the generic, is rejected because
             // the generic wasn't inferred for it, rather than the other way around
             let generics = function.generics.iter().copied();
+            let generics = contained_generics(ctx.types_mut(), ty, generics);
 
-            if !contained_generics(ctx.types_mut(), ty, generics).is_empty() {
-                ctx.uninferred_errors_since(count);
+            if !generics.is_empty() {
+                ctx.mark_uninferred_errors_since(count, &generics);
             }
         }
 
         // A generic often isn't inferred because of an error that's already been reported: one
-        // in an argument whose parameter has the generic in its type, such as in the body of the
-        // lambda that it's the return type of, or one for the arguments as a whole, such as one
-        // that's missing. That error is what to fix, which specifying the generic wouldn't. An
-        // error in another argument isn't why, and neither is any error for a generic that's
-        // only in the return type
-        let errors = if unreported.is_empty() {
+        // in an argument whose parameter has the generic in its type, such as an argument of the
+        // wrong type, or one for the arguments as a whole, such as one that's missing. That error
+        // is what to fix, which specifying the generic wouldn't. An error in another argument
+        // isn't why, and neither is any error for a generic that's only in the return type
+        let deferred = if uninferred.is_empty() {
             Vec::new()
         } else {
-            ctx.errors_since(reported)
+            deferred_generics(ctx, function, &args, &uninferred, reported)
         };
 
-        let arguments: Vec<_> = args
-            .iter()
-            .map(|arg| ctx.srcloc(arg.syntax()).span)
-            .collect();
+        // The errors that only show those generics, such as one in the body of a lambda whose
+        // parameter was left as one, follow from that error as well
+        if !deferred.is_empty() {
+            ctx.suppress_uninferred_errors_since(reported, &deferred);
+        }
 
         for generic in unreported {
-            let follows_from_an_error = errors.iter().any(|error| {
-                let argument = arguments
-                    .iter()
-                    .position(|arg| arg.start <= error.start && error.end <= arg.end);
-
-                match argument {
-                    Some(index) => function
-                        .params
-                        .get(index)
-                        .is_some_and(|param| contains_generic(ctx.types_mut(), param.ty, generic)),
-                    None => function
-                        .param_types()
-                        .any(|ty| contains_generic(ctx.types_mut(), ty, generic)),
-                }
-            });
-
-            if follows_from_an_error {
+            if deferred.contains(&generic) {
                 continue;
             }
 
@@ -489,6 +474,77 @@ fn from_unresolved_argument(
     })
 }
 
+/// The generics that weren't inferred because of an error that's been reported since there were
+/// `reported` diagnostics, out of the ones that weren't inferred, in the order they're declared.
+///
+/// A generic isn't inferred because of an error that's in an argument whose parameter has the
+/// generic in its type, or that isn't in any argument, such as the wrong number of them, if a
+/// parameter has it at all. The generics that aren't inferred and that a parameter's type has
+/// together aren't inferred for the same reason: in `map(5, fn(x) => x + 1)`, `U` is what the
+/// lambda returns for a `T`, which the `5` isn't a list of.
+fn deferred_generics(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    args: &[AstExpr],
+    uninferred: &HashMap<TypeId, TypeId>,
+    reported: usize,
+) -> Vec<TypeId> {
+    let errors = ctx.errors_since(reported);
+
+    if errors.is_empty() {
+        return Vec::new();
+    }
+
+    let arguments: Vec<_> = args
+        .iter()
+        .map(|arg| ctx.srcloc(arg.syntax()).span)
+        .collect();
+
+    // The generics that weren't inferred in each parameter's type
+    let parameters: Vec<Vec<TypeId>> = function
+        .param_types()
+        .map(|ty| {
+            let generics = uninferred.keys().copied();
+            contained_generics(ctx.types_mut(), ty, generics)
+        })
+        .collect();
+
+    let mut deferred: HashSet<TypeId> = HashSet::new();
+
+    for error in errors {
+        let argument = arguments
+            .iter()
+            .position(|arg| arg.start <= error.start && error.end <= arg.end);
+
+        match argument {
+            Some(index) => deferred.extend(parameters.get(index).into_iter().flatten()),
+            None => deferred.extend(parameters.iter().flatten()),
+        }
+    }
+
+    // Until no parameter has one that is and one that isn't
+    loop {
+        let before = deferred.len();
+
+        for generics in &parameters {
+            if generics.iter().any(|generic| deferred.contains(generic)) {
+                deferred.extend(generics);
+            }
+        }
+
+        if deferred.len() == before {
+            break;
+        }
+    }
+
+    function
+        .generics
+        .iter()
+        .copied()
+        .filter(|generic| deferred.contains(generic))
+        .collect()
+}
+
 /// Reports a lambda that's passed for a function type with a different number of parameters, if
 /// that hasn't been reported while it was compiled (among the diagnostics since there were
 /// `reported` of them), and returns whether that's why it can't be assigned to the type.
@@ -513,16 +569,11 @@ fn check_lambda_parameter_count(
         return false;
     }
 
-    // The first parameter that's one too many, which is where it's reported while the lambda is
-    // compiled, or the lambda if it has too few
-    let srcloc = match lambda.parameters().nth(expected) {
-        Some(param) => ctx.srcloc(param.syntax()),
-        None => ctx.srcloc(lambda.syntax()),
-    };
+    // Where it's reported while the lambda is compiled, too
+    let srcloc = parameter_count_site(ctx, lambda, expected);
 
     let already_reported = ctx.diagnostics_since(reported).iter().any(|diagnostic| {
         matches!(diagnostic.kind, DiagnosticKind::LambdaParameterCount(..))
-            && diagnostic.srcloc.source.kind == srcloc.source.kind
             && diagnostic.srcloc.span == srcloc.span
     });
 
