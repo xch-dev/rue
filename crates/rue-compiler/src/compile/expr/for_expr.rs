@@ -69,8 +69,9 @@ enum ForKind {
 ///   isn't used, the body is only evaluated for each item, and the result is nil. So it is if the
 ///   body's value is nil, unless the expression is expected to be a list.
 /// - With several lists, such as `for a in xs, b in ys`, the function takes what's left of each,
-///   and ends when the first one does. If another list runs out before that, getting its item or
-///   its rest fails, as `first` and `rest` do for nil.
+///   and ends when the first one does. If another list runs out before that, the call with the
+///   rest of the lists fails, as `rest` does for nil. Every kind of `for` gets to that call for
+///   each item: a fold too, since its result can then fail, so it isn't left to the body.
 /// - With a name after the item, such as `for x, rest in xs`, the name is bound to what's left of
 ///   the list after the item, which is the rest of the parameter that the item is the first of.
 ///   It's a list of the item's type, in scope where the item is.
@@ -196,7 +197,11 @@ pub fn compile_for_expr(
     let first_hir = ctx.next_hir_id();
 
     // Each use of what's left of the lists is a node of its own. The loop ends when the first
-    // list does, so another one can run out before it. It has no rest then, so the call fails
+    // list does, so another one can run out before it. It has no rest then, so the call fails,
+    // which is what makes a `for` over several lists fail for a list that's too short. That's
+    // recorded for the rest of each of them, so that the call is known to be able to fail: it's
+    // never left out, and the result of a fold, which is this call, is only evaluated where the
+    // body refers to it if the body always gets there
     let rest_call = |ctx: &mut Compiler| {
         let args = parameters
             .iter()
@@ -243,18 +248,12 @@ pub fn compile_for_expr(
 
     // The item is the first of what's left of its list, and what's after it is the rest, which
     // are cheap to get wherever they're used. A list other than the first that has run out has
-    // neither. Without a fold, the call for the rest of the lists always fails then, whatever
-    // the body does. A fold only gets to that call where its body refers to the result, so there
-    // it's getting the item, or the rest, that fails, where the body refers to it
-    for (index, clause) in clauses.iter().enumerate() {
-        let unchecked = index > 0 && fold.is_some();
-
+    // neither, but the call for the rest of the lists has failed for it by then, or will: a list
+    // and a loop always get to that call, and so does a fold that's over several lists (see
+    // `rest_call`)
+    for clause in &clauses {
         let reference = ctx.alloc_hir(Hir::Reference(clause.parameter));
         let first = ctx.alloc_hir(Hir::Unary(UnaryOp::First, reference));
-
-        if unchecked {
-            ctx.insert_unchecked_list_read(first);
-        }
 
         declare(
             ctx,
@@ -267,10 +266,6 @@ pub fn compile_for_expr(
         if let Some(pattern) = clause.ast.rest() {
             let reference = ctx.alloc_hir(Hir::Reference(clause.parameter));
             let rest = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
-
-            if unchecked {
-                ctx.insert_unchecked_list_read(rest);
-            }
 
             let ty = if ctx.is_unresolved(clause.item_type) {
                 clause.item_type

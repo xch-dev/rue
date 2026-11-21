@@ -39,7 +39,7 @@ pub struct Database {
     single_use_loop_rests: HashSet<SymbolId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     default_field_uses: HashMap<(TypeId, String), HirId>,
-    /// The nodes that take the item, or the rest, of a list that can have run out (see
+    /// The nodes that take the rest of a list that can have run out (see
     /// `Database::insert_unchecked_list_read`).
     unchecked_list_reads: HashSet<HirId>,
     scopes: Arena<Scope>,
@@ -154,15 +154,15 @@ impl Database {
         self.single_use_loop_rests.contains(&symbol)
     }
 
-    /// Records that the node takes the item, or the rest, of a list other than the first of a
-    /// `for` expression over several lists, such as `ys` in `for a in xs, b in ys`. The loop ends
-    /// when the first list does, so nothing checks that this one still has an item before the
-    /// loop takes it.
+    /// Records that the node takes the rest of a list other than the first of a `for` expression
+    /// over several lists, such as `ys` in `for a in xs, b in ys`, for the loop's call to itself.
+    /// The loop ends when the first list does, so nothing checks that this one still has an item
+    /// before that.
     pub fn insert_unchecked_list_read(&mut self, hir: HirId) {
         self.unchecked_list_reads.insert(hir);
     }
 
-    /// Whether the node takes the item, or the rest, of a list that can have run out (see
+    /// Whether the node takes the rest of a list that can have run out (see
     /// [`Self::insert_unchecked_list_read`]). That fails if it has, unlike reading any other
     /// value, whose shape is what its type says.
     pub fn is_unchecked_list_read(&self, hir: HirId) -> bool {

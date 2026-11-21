@@ -37,8 +37,8 @@ fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int, flag: Bool) -> List<Int
     let i = for x in (xs), other in (ys) { x + other };
     let j = for x in xs, other in (Wrapper { list: ys }).list { x + other };
 
-    // The result of a fold over several lists that's evaluated where the body refers to it isn't
-    // an `inline let`, though it may fail and isn't always evaluated
+    // The result of a fold over several lists isn't an `inline let`: it can fail, so it's
+    // evaluated before the body, which doesn't always get to it
     let k = for x in xs, other in ys fold found = false { x == 1 || positive(other) == 5 || found };
 
     // An `inline let` whose value is a `for` over several lists can fail, since a list can run
@@ -46,8 +46,8 @@ fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int, flag: Bool) -> List<Int
     inline let l = for x in xs, other in ys { x + other };
     inline let m = for x in xs, other in ys fold sum = 0 { sum + x + other };
 
-    // An `inline let` in the body that reads the item of a list that can run out is only
-    // skipped with its failure in a fold. Without one, the loop fails for that item anyway
+    // An `inline let` in the body that reads the item of a list that can run out isn't reported,
+    // with or without a fold: the loop fails for that item anyway, whether the body reads it
     let o = for x in xs, other in ys {
         inline let next = other + 1;
         if x == 1 {

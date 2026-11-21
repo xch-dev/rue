@@ -106,14 +106,20 @@ test fn two_lists_with_a_filter_and_a_fold() -> Int {
     for a in runtime([1, 2, 3]), b in runtime([10, 20, 30]) if a != 2 fold sum = 0 { sum + a * b }
 }
 
-// A fold that doesn't get to the result for the rest of the lists stops there, so it doesn't
-// fail for a list that runs out after that
-test fn fold_stops_before_a_list_runs_out() -> Bool {
+// A fold over several lists goes through all of them, since the result for the rest of the lists
+// can fail, so it isn't left to whether the body gets to it. It fails for a list that runs out,
+// whether or not the body would have stopped before that
+test fn fold_fails_when_a_list_runs_out_after_a_match() -> Bool {
     for a in runtime([1, 2, 3]), b in runtime([1]) fold found = false { a == b || found }
 }
 
 test fn fold_fails_when_a_list_runs_out() -> Bool {
     for a in runtime([1, 2, 3]), b in runtime([5]) fold found = false { a == b || found }
+}
+
+// With lists that are long enough, the result is the same as if it stopped at the match
+test fn fold_with_a_match() -> Bool {
+    for a in runtime([1, 2, 3]), b in runtime([1, 5, 5]) fold found = false { a == b || found }
 }
 
 // A loop over several lists
@@ -325,9 +331,9 @@ test fn two_lists_with_a_fold_spread_into_a_list() -> List<(Int, Int)> {
     ]) fold pairs: List<(Int, Int)> = nil { [...for z in rest { (x + y, z) }, ...pairs] }
 }
 
-// A fold that reads the item of a list that has run out fails there, also where the value isn't
-// used: in a `let` that only another branch refers to, and as the argument of a function that
-// doesn't use its parameter
+// A fold fails for a list that has run out however its body uses the item of that list, or
+// what's left of it: in a `let` that only another branch refers to, as the argument of a function
+// that doesn't use its parameter, or not at all in the branch that's taken
 fn ignore(_value: Int) -> Int {
     7
 }
@@ -367,7 +373,6 @@ test fn fold_reads_the_rest_in_an_argument() -> Int {
     }
 }
 
-// A fold that doesn't refer to the item of the list that has run out doesn't fail
 test fn fold_does_not_read_an_item() -> Int {
     for a in runtime([1]), b in runtime([] as List<Int>) fold sum = 0 {
         if a == 1 {
