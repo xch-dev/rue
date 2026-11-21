@@ -76,3 +76,10 @@ fn bools(condition: Bool, n: Int) -> nil {
     let mixed: Bytes = choose(condition, choose(condition, true, n), false);
     nil
 }
+
+// The members that a match doesn't handle are shown the same way as the type that's matched on
+fn match_members(condition: Bool, n: Int) -> Int {
+    match choose(condition, (choose(condition, true, false), n), n as Bytes) {
+        Bytes => 1,
+    }
+}

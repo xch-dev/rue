@@ -13,7 +13,7 @@ diagnostics:
 - Unused binding `boxes` at union_member_display_errors.rue:43:9
 - Cannot assign `Box<Int>` to `Bytes`, since they are incompatible at union_member_display_errors.rue:43:24
 - Unused binding `functions` at union_member_display_errors.rue:44:9
-- "Cannot assign `fn(x: Int) -> Int` to `Bytes` without a type guard, since the value isn't always a valid `Bytes` at union_member_display_errors.rue:44:28"
+- "Cannot assign `fn(x: Int) -> Int` to `Bytes`, since they are incompatible at union_member_display_errors.rue:44:28"
 - Unused binding `spreads` at union_member_display_errors.rue:45:9
 - "Cannot assign `(Int, fn(...x: List<Int>) -> Int)` to `Bytes`, since they are incompatible at union_member_display_errors.rue:45:26"
 - Unused binding `dots` at union_member_display_errors.rue:50:9
@@ -35,3 +35,5 @@ diagnostics:
 - Cannot assign `List<Bool>` to `Int` without a type guard, since the value isn't always a valid `Int` at union_member_display_errors.rue:75:21
 - Unused binding `mixed` at union_member_display_errors.rue:76:9
 - Cannot assign `Bool | Int` to `Bytes` without a cast, since they are semantically different at union_member_display_errors.rue:76:24
+- Unused function `match_members` at union_member_display_errors.rue:81:4
+- Match on `(Bool, Int) | Bytes` is not exhaustive, since it doesn't handle `(Bool, Int)` at union_member_display_errors.rue:82:11
