@@ -561,3 +561,17 @@ test fn argument_of_an_indirect_capture() -> List<Int> {
     let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     double_all(for x in xs fold sum = 0 { sum + x }, xs)
 }
+
+// What's defined inside the value of an `inline let` outside of the loop is lowered in the loop
+// with it, rather than captured: a lambda's parameter, a block's binding, and another `for`
+test fn inline_values_with_their_own_bindings() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let total = for x in xs fold sum = 0 { sum + x };
+    inline let add_one = fn(y: Int) => y + 1;
+    inline let squared = {
+        let next = total + 1;
+        next * next
+    };
+    inline let folded = for y in [total, 2] fold sum = 0 { sum + y };
+    for x in xs { add_one(x) + squared + folded }
+}

@@ -391,14 +391,29 @@ impl DependencyGraph {
                         continue;
                     }
 
-                    // What's defined in the loop is lowered with it. A lambda there is lowered
-                    // where it's written, and captures everything it can reach, including what
-                    // the values it refers to depend on (see `Self::dependencies`). The loop has
-                    // to have all of that for it, so those values aren't substituted either
-                    if self.is_defined_in(dependency, function) {
+                    // A value of a function the loop is in is one that the function itself
+                    // defines. Anything else that's defined somewhere is defined in the loop, or
+                    // inside of something that's lowered in it, such as the block of an `inline
+                    // let` outside of the loop, so it's lowered with the loop
+                    let enclosed = self
+                        .owners
+                        .get(&dependency)
+                        .is_some_and(|owner| enclosing.contains(owner));
+
+                    // A lambda that's lowered in the loop is lowered where it's written, and
+                    // captures everything it can reach, including what the values it refers to
+                    // depend on (see `Self::dependencies`). The loop has to have all of that for
+                    // it, so those values aren't substituted either
+                    if self.is_defined_in(dependency, function)
+                        || (self.owners.contains_key(&dependency) && !enclosed)
+                    {
                         if self.closures.contains(&dependency) {
                             for capture in self.dependencies(dependency, true) {
-                                if self.is_defined_in(capture, function) {
+                                if self.is_defined_in(capture, function)
+                                    || self.owners.get(&capture).is_some_and(|owner| {
+                                        !enclosing.contains(owner) && !self.loops.contains(&capture)
+                                    })
+                                {
                                     continue;
                                 }
 
@@ -429,14 +444,9 @@ impl DependencyGraph {
                     }
 
                     // A function or constant of the program, which the loop needs what it needs
-                    // of too, or something defined in a function that the loop isn't in
-                    if !enclosing
-                        .iter()
-                        .any(|&scope| self.is_defined_in(dependency, scope))
-                    {
-                        if !self.owners.contains_key(&dependency) {
-                            result.insert(dependency);
-                        }
+                    // of too
+                    if !enclosed {
+                        result.insert(dependency);
                         stack.push((dependency, entered));
                         continue;
                     }
