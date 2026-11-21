@@ -67,6 +67,7 @@ impl Visitor<'_> {
                 false
             }
             Hir::Const(expr) => self.visit_hir(expr.result.unwrap_or(expr.value)),
+            Hir::Power(power) => self.visit_all(power.evaluated()),
             Hir::List(list) => self.visit_all(list.items),
             Hir::Struct(initializer) => {
                 self.visit_all(initializer.fields.into_iter().map(|field| field.value))

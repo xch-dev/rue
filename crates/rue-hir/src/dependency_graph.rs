@@ -634,6 +634,19 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 visit_hir(db, graph, expr.value, false);
             }
         }
+        // Once the exponent has been evaluated, only the expansion is used
+        Hir::Power(power) => {
+            // A power whose exponent failed is only a placeholder, so what contains it still
+            // depends on the exponent, and isn't evaluated with the placeholder, which would
+            // report an error about a value that isn't in the source
+            if db.is_failed_exponent(power.exponent) {
+                graph.const_exprs.insert(power.exponent);
+            }
+
+            for child in power.evaluated() {
+                visit_hir(db, graph, child, false);
+            }
+        }
         Hir::Reference(symbol) => {
             if !is_call {
                 graph.closures.insert(*symbol);

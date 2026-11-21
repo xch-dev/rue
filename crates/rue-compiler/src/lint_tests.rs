@@ -1862,6 +1862,55 @@ fn main(value: Bytes, other: Bytes, index: Int) -> Bytes {
     assert!(!has_errors);
 }
 
+/// `**` binds more tightly than a prefix operator before its base, so the parentheses around a
+/// negated base are the only ones here that change what's computed.
+#[test]
+fn suggestions_keep_the_meaning_of_powers() {
+    let source = "\
+fn main(value: Int) -> Int {
+    (value) ** (2) + -(value) ** 2 + (-value) ** 2 + (+value) ** 2 + (value ** 2) as Int
+}
+
+fn unnecessary_plus(value: Int) -> Int {
+    (+-value) ** 2 + (+value ** 2) ** 3 + (+(-value)) ** 2 + +-value ** 2 + 2 ** +-(-2)
+}
+
+fn other_operands(value: Int) -> Int {
+    ((+-value) as Bytes) as Int + (1 - +value ** 2) + (+(value + 1)) * 2
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(value: Int) -> Int {
+    value ** 2 + -value ** 2 + (-value) ** 2 + value ** 2 + (value ** 2)
+}
+
+fn unnecessary_plus(value: Int) -> Int {
+    (-value) ** 2 + (value ** 2) ** 3 + (-value) ** 2 + -value ** 2 + 2 ** -(-2)
+}
+
+fn other_operands(value: Int) -> Int {
+    ((-value) as Bytes) as Int + (1 - value ** 2) + (value + 1) * 2
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 5: Unused function `unnecessary_plus`",
+            "Warning 9: Unused function `other_operands`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
 #[test]
 fn unreachable_code_is_reported_once_at_its_start() {
     let source = "\

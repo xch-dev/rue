@@ -46,6 +46,7 @@ pub(crate) fn hir_eq(db: &Database, a: HirId, b: HirId) -> bool {
         }
         (Hir::Guard(a), Hir::Guard(b)) => a.ty == b.ty && hir_eq(db, a.value, b.value),
         (Hir::Const(a), Hir::Const(b)) => hir_eq(db, a.value, b.value),
+        (Hir::Power(a), Hir::Power(b)) => all_eq(db, &[a.base, a.exponent], &[b.base, b.exponent]),
         (Hir::Reference(a), Hir::Reference(b)) => symbol_eq(db, *a, *b),
         (Hir::Block(a), Hir::Block(b)) => {
             a.statements.len() == b.statements.len()

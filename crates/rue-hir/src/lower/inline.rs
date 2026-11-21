@@ -153,6 +153,11 @@ impl Lowerer<'_, '_, '_> {
             }
         }
 
+        // A power is as large as the multiplications that it's expanded into
+        if let Hir::Power(power) = node {
+            return power.evaluated().all(|child| self.fits(child, budget));
+        }
+
         node.children().all(|child| self.fits(child, budget))
     }
 }

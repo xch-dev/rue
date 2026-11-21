@@ -220,6 +220,8 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
                 self.visit_statements(&block.statements, in_body)
                     || self.any(block.reachable_body(), in_body)
             }
+            // The multiplications it's expanded into may fail like any others
+            Hir::Power(power) => self.any(power.evaluated(), in_body),
             // The value is evaluated if the check it's lowered to uses it, and otherwise for its
             // effect, if it may fail
             Hir::Guard(guard) => {
@@ -664,12 +666,46 @@ fn clvm_op_may_fail(op: ClvmOp, operand_limits: bool) -> bool {
 /// The atom the integer is compiled to, if it's known at compile time. CLVM reads some operands
 /// differently depending on their length, so this keeps the bytes of a value such as
 /// `0x0001 as Int` rather than its numeric value. `LIMITS` also counts any leading zeros.
+///
+/// A power is the atom it was expanded into, if it's a power of a constant that can't fail, so
+/// that dividing by `10 ** 3` is known not to fail like dividing by `1000` is.
 fn constant_atom(db: &Database, hir: HirId) -> Option<Vec<u8>> {
     match db.hir(db.without_casts(hir)) {
         Hir::Int(value) => Some(bigint_atom(value.clone())),
         Hir::Bytes(bytes) => Some(bytes.clone()),
         Hir::Nil => Some(Vec::new()),
         Hir::Const(expr) => expr.result.and_then(|result| constant_atom(db, result)),
+        Hir::Power(power) => power
+            .expansion
+            .and_then(|expansion| constant_atom(db, expansion)),
         _ => None,
+    }
+}
+
+/// The atom that a power is, if its base is a constant and none of its multiplications can fail,
+/// whatever the program is compiled for: every operand is one that `LIMITS` allows. Such a power
+/// is the same as the number it evaluates to (see [`expand_power`](crate::expand_power)).
+pub(crate) fn infallible_power_atom(db: &Database, base: HirId, exponent: u32) -> Option<Vec<u8>> {
+    let base = constant_atom(db, base)?;
+
+    match exponent {
+        0 => Some(vec![1]),
+        // The base isn't multiplied, so it's still the atom it's written as
+        1 => Some(base),
+        // The operands are the base and each product before the last, which only get longer,
+        // and the product of two operands that fit is within `MAX_PRODUCT_BYTES`
+        _ if base.len() > MAX_MUL_OPERAND_BYTES => None,
+        // A product this long has an operand that's too long, and isn't worth computing
+        _ if base.len().saturating_mul(exponent as usize) > MAX_DIVISOR_BYTES => None,
+        _ => {
+            let value = atom_bigint(&base);
+            let previous = value.pow(exponent - 1);
+
+            if bigint_atom(previous.clone()).len() > MAX_MUL_OPERAND_BYTES {
+                return None;
+            }
+
+            Some(bigint_atom(previous * value))
+        }
     }
 }

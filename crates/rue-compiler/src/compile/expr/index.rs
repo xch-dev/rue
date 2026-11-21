@@ -234,6 +234,8 @@ fn is_constant(ctx: &Compiler, hir: HirId) -> bool {
         Hir::Reference(symbol) => matches!(ctx.symbol(*symbol), Symbol::Constant(_)),
         Hir::Cast(value) | Hir::Unary(_, value) => is_constant(ctx, *value),
         Hir::Binary(_, left, right) => is_constant(ctx, *left) && is_constant(ctx, *right),
+        // The exponent of a power is always a constant
+        Hir::Power(power) => is_constant(ctx, power.base),
         Hir::FieldAccess(access) => is_constant(ctx, access.value),
         Hir::Block(Block {
             statements,

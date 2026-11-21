@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstBinaryExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{BinaryOp, Declaration, Hir, Mappings, Value};
+use rue_hir::{BinaryOp, ConstExpr, Declaration, Hir, Mappings, Power, Value};
 use rue_parser::T;
 use rue_types::{Type, TypeId};
 
@@ -131,6 +131,41 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::G2Multiply, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().types.signature);
+            }
+
+            (left, right)
+        }
+        T![**] => {
+            let left = left(ctx);
+            let right = right(ctx, None);
+
+            if ctx.is_unresolved(left.ty) || ctx.is_unresolved(right.ty) {
+                debug!("Unresolved binary expr operands");
+                return ctx.unresolved();
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
+
+                // CLVM has no power operator, so the exponent is evaluated at compile time like
+                // a const expression, and the power is expanded once it has been (see
+                // `expand_power`)
+                let loc = binary.right().map_or_else(
+                    || ctx.srcloc(&op),
+                    |right| ctx.trimmed_srcloc(right.syntax()),
+                );
+                let exponent = ctx.alloc_hir(Hir::Const(ConstExpr {
+                    value: right.hir,
+                    loc,
+                    result: None,
+                    generated: false,
+                }));
+                let hir = ctx.alloc_hir(Hir::Power(Power {
+                    base: left.hir,
+                    exponent,
+                    expansion: None,
+                }));
+                return Value::new(hir, ctx.builtins().types.int);
             }
 
             (left, right)

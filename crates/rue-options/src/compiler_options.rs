@@ -42,7 +42,9 @@ pub struct CompilerOptions {
     /// bytes:
     ///
     /// - `*` fails if an operand is longer than 256 bytes, or if the running product is longer
-    ///   than 1024 bytes after any operand after the first.
+    ///   than 1024 bytes after any operand after the first. A power (`**`) is compiled to the
+    ///   product of that many copies of its base (`x ** 3` is `x * x * x`), so it fails when that
+    ///   product does.
     /// - `/`, `%` and `divmod` fail if the dividend is longer than 256 bytes, or the divisor is
     ///   longer than 1024 bytes.
     /// - `modpow` fails if the base, exponent or modulus is longer than 256 bytes.

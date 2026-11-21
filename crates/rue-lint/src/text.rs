@@ -40,6 +40,8 @@ pub(crate) fn position(cx: &LintContext<'_>, hir: HirId) -> Position {
         Hir::FunctionCall(call) if call.function == hir => Position::Postfix,
         // The value of an index or a slice comes before its brackets
         Hir::Substr(value, ..) if *value == hir => Position::Postfix,
+        // `**` binds more tightly than a prefix operator on its base, so `-a ** 2` is `-(a ** 2)`
+        Hir::Power(power) if power.base == hir => Position::Postfix,
         Hir::If(condition, ..) if *condition == hir => Position::Condition,
         Hir::If(..) => Position::Operand,
         Hir::Block(block)

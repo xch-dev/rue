@@ -139,6 +139,7 @@ impl<'a> Visitor<'a> {
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
+            Hir::Power(power) => self.visit_all(power.evaluated()),
             // A guard evaluates its value if it may fail, even if its check doesn't use it
             Hir::Guard(guard) => self.visit_hir(guard.value),
             Hir::FunctionCall(call) => {

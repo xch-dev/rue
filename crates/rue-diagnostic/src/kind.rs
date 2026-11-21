@@ -371,6 +371,19 @@ pub enum DiagnosticKind {
     #[error("Const expression depends on itself")]
     RecursiveConstExpr,
 
+    #[error(
+        "The exponent of `**` must be known at compile time, but it depends on `{0}`, which isn't a `const`. CLVM has no power operator, so `x ** 3` is compiled to `x * x * x`, and an exponent that's only known at runtime needs a function that multiplies in a loop"
+    )]
+    RuntimeExponent(String),
+
+    #[error("Cannot raise to the negative power `{0}`, since the result wouldn't be an integer")]
+    NegativeExponent(String),
+
+    #[error(
+        "The exponent `{0}` is larger than the maximum of {1}, since a power is compiled to the product of that many copies of its base"
+    )]
+    ExponentTooLarge(String, u32),
+
     #[error("Generated code is nested too deeply, since the limit is {0} levels")]
     LoweringTooDeep(usize),
 
