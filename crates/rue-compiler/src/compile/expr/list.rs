@@ -1,6 +1,8 @@
 use log::debug;
 use rue_ast::{AstExpr, AstListExpr, AstNode};
 use rue_hir::{FunctionCall, Hir, HirId, List, Value};
+use rue_lint::BracketedFor;
+use rue_parser::SyntaxKind;
 use rue_types::{Pair, Type, TypeId, Union};
 
 use super::call_inference::{
@@ -109,6 +111,10 @@ pub fn compile_list_expr(
         nil_terminated = false;
     }
 
+    if nil_terminated && let [value] = values.as_slice() {
+        record_bracketed_for(ctx, list, value.ty, last_item_type);
+    }
+
     let mut ty = ctx.builtins().nil.ty;
 
     for (i, value) in values.iter().rev().enumerate() {
@@ -125,6 +131,60 @@ pub fn compile_list_expr(
     }));
 
     Value::new(hir, ty)
+}
+
+/// Records a list whose only item is a `for` that makes a list, such as `[for x in xs { x }]`, for
+/// the `bracketed_for` lint: the `for` is a list already, so this is a list with one list in it.
+/// It isn't recorded if that's what the list is expected to be, as with a `List<List<Int>>`.
+fn record_bracketed_for(
+    ctx: &mut Compiler,
+    list: &AstListExpr,
+    item_type: TypeId,
+    expected_item: Option<TypeId>,
+) {
+    let Some(item) = list.items().next() else {
+        return;
+    };
+
+    let Some(AstExpr::ForExpr(for_expr)) = item.expr() else {
+        return;
+    };
+
+    let types = ctx.builtins().types;
+    let any_list = list_of(ctx, types.permissive_any);
+
+    // A fold's value isn't a list of the body's values, and a loop's value is nil
+    if for_expr.fold().is_some()
+        || ctx.is_unresolved(item_type)
+        || ctx.is_assignable(item_type, types.nil)
+        || !ctx.is_assignable(item_type, any_list)
+        || expected_item.is_some_and(|expected| ctx.is_assignable(expected, any_list))
+    {
+        return;
+    }
+
+    // Without the brackets, the `for` is where the list was, where an operator would otherwise
+    // take the end of its body as its operand, or end a statement that the `for` starts
+    let parenthesize = list.syntax().parent().is_some_and(|parent| {
+        matches!(
+            parent.kind(),
+            SyntaxKind::PrefixExpr
+                | SyntaxKind::BinaryExpr
+                | SyntaxKind::FunctionCallExpr
+                | SyntaxKind::GuardExpr
+                | SyntaxKind::CastExpr
+                | SyntaxKind::FieldAccessExpr
+                | SyntaxKind::IndexExpr
+                | SyntaxKind::SliceExpr
+        )
+    });
+
+    let site = BracketedFor {
+        list: ctx.trimmed_srcloc(list.syntax()),
+        for_expr: ctx.trimmed_srcloc(for_expr.syntax()),
+        parenthesize,
+    };
+    ctx.lint_sites_mut().bracketed_fors.push(site);
 }
 
 /// The part of a list from the first item that's spread before the last one. Each such spread is

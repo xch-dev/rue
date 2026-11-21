@@ -1,7 +1,7 @@
 use log::debug;
 use rowan::TextRange;
-use rue_ast::{AstBinding, AstForClause, AstForExpr, AstNode, AstStmtOrExpr};
-use rue_diagnostic::Name;
+use rue_ast::{AstBinding, AstForClause, AstForExpr, AstForFold, AstNode, AstStmtOrExpr};
+use rue_diagnostic::{Name, Note};
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, FunctionCall, FunctionKind, FunctionSymbol,
     Hir, HirId, ParameterSymbol, Statement, Symbol, SymbolId, UnaryOp, Value,
@@ -344,14 +344,30 @@ pub fn compile_for_expr(
             ctx.push_mappings(filter.then_map.clone(), body.syntax().text_range().start())
         });
 
-        let value = compile_block(ctx, &body, BlockKind::Expr, expected_body, false);
+        // The value of the body of a statement isn't used, unless it's the result of a fold
+        let kind = if statement && fold.is_none() {
+            BlockKind::Discarded
+        } else {
+            BlockKind::Expr
+        };
+
+        let value = compile_block(ctx, &body, kind, expected_body, false);
 
         if let Some(index) = mappings {
             ctx.revert_mappings(index, body.syntax().text_range().end());
         }
 
         if let Some(accumulator) = &accumulator {
+            let count = ctx.diagnostic_count();
             ctx.assign_type(body.syntax(), value.ty, accumulator.ty);
+
+            if ctx.diagnostic_count() > count
+                && let Some(note) = untyped_nil_note(ctx, fold.as_ref(), accumulator.ty, value.ty)
+            {
+                for diagnostic in ctx.diagnostics_since_mut(count) {
+                    diagnostic.notes.push(note.clone());
+                }
+            }
         }
 
         value
@@ -485,6 +501,49 @@ pub fn compile_for_expr(
     }));
 
     Value::new(hir, return_type)
+}
+
+/// The note for a body that isn't the type of the fold's result, if that's only nil because the
+/// fold's value is, and nothing else says what it is, as with `fold rest = nil { [x, ...rest] }`.
+/// It suggests giving the result a type, which is a list of the body's items if the body is one.
+fn untyped_nil_note(
+    ctx: &mut Compiler,
+    fold: Option<&AstForFold>,
+    result: TypeId,
+    body: TypeId,
+) -> Option<Note> {
+    let fold = fold?;
+    let types = ctx.builtins().types;
+
+    if fold.ty().is_some() || ctx.is_unresolved(result) || !ctx.is_assignable(result, types.nil) {
+        return None;
+    }
+
+    let binding = fold.binding()?.syntax().text().to_string();
+    let binding = binding.trim();
+
+    let any_list = list_of(ctx, types.permissive_any);
+    let item_types = list_item_types(ctx, body);
+
+    // A body that isn't a list, or whose items couldn't be compiled, doesn't say what the type is
+    let example = if item_types.is_empty()
+        || rue_types::contains_unresolved(ctx.types(), body)
+        || !ctx.is_assignable(body, any_list)
+    {
+        format!("`fold {binding}: T = nil`, where `T` is the type of the body")
+    } else {
+        let item_types = item_types
+            .into_iter()
+            .map(|ty| widen_literals(ctx, ty))
+            .collect();
+        let item_type = union_of(ctx, item_types);
+        let list = list_of(ctx, item_type);
+        format!("`fold {binding}: {} = nil`", ctx.type_name(list))
+    };
+
+    Some(Note::new(format!(
+        "The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in {example}"
+    )))
 }
 
 /// Declares the binding of a pattern for the value, with a let statement for it in the body of the

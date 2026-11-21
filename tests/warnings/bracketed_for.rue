@@ -1,0 +1,69 @@
+// A `for` is a list already, so brackets around it make a list with one list in it
+
+fn check(x: Int) {
+    assert x > 0;
+}
+
+fn length(xs: List<Any>) -> Int {
+    for _x in xs fold count = 0 { count + 1 }
+}
+
+fn groups(xs: List<Int>) -> List<List<Int>> {
+    // A list of lists is expected here
+    [for x in xs { x }]
+}
+
+fn main(xs: List<Int>) -> Int {
+    let a = [for x in xs { x * 2 }];
+    let b = [for x in xs if x > 0 { x }];
+
+    // With a comma after it, and over several lines
+    let c = [for x in xs { x }];
+    let d = [for x in xs { x + 1 }];
+
+    // Where the list is an operand, the `for` needs parentheses in its place
+    let e = length([for x in xs { x }]) + length([for x in xs { x }].first);
+    let f = [for x in xs { x }] as Any;
+
+    // A comment in the brackets would be removed with them
+    let g = [/* doubled */ for x in xs { x * 2 }];
+
+    // The type the list is given isn't a list of lists
+    let h: Any = [for x in xs { x }];
+
+    // A list of lists is expected, or it's cast to one
+    let i: List<List<Int>> = [for x in xs { x }];
+    let j = [for x in xs { x }] as List<List<Int>>;
+    let k = groups(xs);
+
+    // A fold is a single value, and a loop's value is nil
+    let l = [for x in xs fold sum = 0 { sum + x }];
+    let m = [for x in xs { check(x) }];
+
+    // A `for` that's spread, or that isn't the only item
+    let n = [...for x in xs { x }];
+    let o = [for x in xs { x }, 1];
+    let p = [0, ...for x in xs { x }];
+
+    // The lint can be allowed
+    #[allow(bracketed_for)]
+    let q = [for x in xs { x }];
+
+    length(a)
+        + length(b)
+        + length(c)
+        + length(d)
+        + e
+        + length([f])
+        + length(g)
+        + length([h])
+        + length(i)
+        + length(j)
+        + length(k)
+        + length(l)
+        + length(m)
+        + length(n)
+        + length(o)
+        + length(p)
+        + length(q)
+}

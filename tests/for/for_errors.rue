@@ -19,6 +19,9 @@ fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
     // A fold from nil needs a type to build a list, or an expected type
     let f = for x in xs fold rest = nil { [x, ...rest] };
 
+    // A body that isn't a list doesn't say what the type would be
+    let p = for x in xs fold last = nil { x };
+
     // The fold's value must be its type
     let g = for x in xs fold sum: Int = "text" { sum + x };
 

@@ -3422,3 +3422,156 @@ fn main(point: Point | nil, flag: Bool) -> Int {
     // Only the parentheses with a comment are left to report
     assert_eq!(compile_source(&fixed, |_| {}).0.len(), 1);
 }
+
+/// Applies the suggestions with the message of every report of the lint.
+fn apply_suggestions(source: &str, lint: Lint, message: &str) -> String {
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(lint))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .filter(|suggestion| suggestion.message == message)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    apply_edits(source, &edits)
+}
+
+const BRACKETED_FORS: &str = "\
+fn length(xs: List<Any>) -> Int {
+    for _x in xs fold count = 0 { count + 1 }
+}
+
+fn doubled(xs: List<Int>) -> List<Int> {
+    if xs is nil {
+        return[for x in xs { x * 2 }];
+    }
+    xs
+}
+
+fn main(xs: List<Int>) -> Int {
+    let a: List<Int> = [for x in xs { x * 2 }];
+    let b: List<Int> = [ for x in xs if x > 0 { x }, ];
+    let c: List<Int> = [
+        for x in xs {
+            x + 1
+        },
+    ];
+    let d = [for x in xs { x }] is nil;
+    let e = length([for x in xs { x }]);
+    let f: List<Int> = [/* kept */ for x in xs { x }];
+    length(a) + length(b) + length(c) + e + length(f) + length(doubled(xs)) + if d { 1 } else { 0 }
+}
+";
+
+#[test]
+fn bracketed_for_suggestions_remove_the_brackets() {
+    let (diagnostics, has_errors) = compile_source(BRACKETED_FORS, |_| {});
+
+    // A list of one list isn't a list of the items
+    assert!(has_errors);
+
+    // Neither suggestion is applied automatically, since each changes the type of the value
+    let suggestions = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.lint() == Some(Lint::BracketedFor))
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .collect::<Vec<_>>();
+
+    assert_eq!(suggestions.len(), 13);
+    assert!(
+        suggestions
+            .iter()
+            .all(|suggestion| suggestion.applicability == Applicability::MaybeIncorrect)
+    );
+    assert_eq!(fix(BRACKETED_FORS), BRACKETED_FORS);
+
+    let fixed = apply_suggestions(BRACKETED_FORS, Lint::BracketedFor, "Remove the brackets");
+
+    // The `for` is in parentheses where the list was an operand, and the brackets with a comment
+    // in them are left
+    assert_eq!(
+        fixed,
+        "\
+fn length(xs: List<Any>) -> Int {
+    for _x in xs fold count = 0 { count + 1 }
+}
+
+fn doubled(xs: List<Int>) -> List<Int> {
+    if xs is nil {
+        return for x in xs { x * 2 };
+    }
+    xs
+}
+
+fn main(xs: List<Int>) -> Int {
+    let a: List<Int> = for x in xs { x * 2 };
+    let b: List<Int> = for x in xs if x > 0 { x };
+    let c: List<Int> = for x in xs {
+            x + 1
+        };
+    let d = (for x in xs { x }) is nil;
+    let e = length(for x in xs { x });
+    let f: List<Int> = [/* kept */ for x in xs { x }];
+    length(a) + length(b) + length(c) + e + length(f) + length(doubled(xs)) + if d { 1 } else { 0 }
+}
+"
+    );
+
+    // Only the list with the comment is left, with the error for it
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 20: Cannot assign `(List<Int>, nil)` to `List<Int>` without a type guard, since the value isn't always a valid `List<Int>`",
+            "Warning 20: A `for` expression is a list already, so the brackets around it make a list with one list in it",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn bracketed_for_suggestions_spread_the_for() {
+    let fixed = apply_suggestions(
+        BRACKETED_FORS,
+        Lint::BracketedFor,
+        "Spread the `for` into the list with `...`",
+    );
+
+    assert_eq!(
+        fixed,
+        "\
+fn length(xs: List<Any>) -> Int {
+    for _x in xs fold count = 0 { count + 1 }
+}
+
+fn doubled(xs: List<Int>) -> List<Int> {
+    if xs is nil {
+        return[...for x in xs { x * 2 }];
+    }
+    xs
+}
+
+fn main(xs: List<Int>) -> Int {
+    let a: List<Int> = [...for x in xs { x * 2 }];
+    let b: List<Int> = [ ...for x in xs if x > 0 { x }, ];
+    let c: List<Int> = [
+        ...for x in xs {
+            x + 1
+        },
+    ];
+    let d = [...for x in xs { x }] is nil;
+    let e = length([...for x in xs { x }]);
+    let f: List<Int> = [/* kept */ ...for x in xs { x }];
+    length(a) + length(b) + length(c) + e + length(f) + length(doubled(xs)) + if d { 1 } else { 0 }
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}

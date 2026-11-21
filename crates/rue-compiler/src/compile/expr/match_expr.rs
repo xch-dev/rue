@@ -12,9 +12,9 @@ use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
-    BoundValue, Branches, Compiler, CompletionContext, SyntaxItemKind, bind_unless_path,
-    compile_branching_expr, compile_expr, compile_type, create_binding, narrows_only_atoms,
-    type_at_path,
+    BlockKind, BoundValue, Branches, Compiler, CompletionContext, SyntaxItemKind,
+    bind_unless_path, compile_branching_expr, compile_expr, compile_type, create_binding,
+    narrows_only_atoms, type_at_path,
 };
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
@@ -542,7 +542,9 @@ fn compile_arm(
             debug!("Unresolved match arm body");
             ctx.unresolved()
         }
-        (Some(body), Some(branches)) if arm.ends_with_brace() => {
+        (Some(body), Some(branches))
+            if arm.ends_with_brace() || branches.kind == BlockKind::Discarded =>
+        {
             compile_branching_expr(ctx, &body, expected_type, branches).0
         }
         (Some(body), Some(branches)) if branches.is_statement() => {

@@ -28,6 +28,11 @@ pub enum BlockKind {
     /// in `return` or `raise`, or fall through to the rest of the block after the statement. Its
     /// `return` statements exit to the enclosing return target, if there is one.
     Statement,
+    /// A block whose value isn't used, such as the body of a `for` that's a statement, or a
+    /// branch of the `if`, `match` or block that it ends with. It's an [`Expr`](Self::Expr),
+    /// except that a `for` that it ends with is only a loop too, as a `for` that's a statement
+    /// is, rather than a list that's built and dropped.
+    Discarded,
 }
 
 /// What the branches of an `if`, `match` or block are when they're blocks rather than values (see
@@ -47,6 +52,13 @@ impl Branches {
         require_value: false,
     };
 
+    /// The branches of an expression whose value isn't used. They still end in a value, as
+    /// those of any other expression do.
+    pub const DISCARDED: Self = Self {
+        kind: BlockKind::Discarded,
+        require_value: true,
+    };
+
     pub fn is_statement(self) -> bool {
         self.kind == BlockKind::Statement
     }
@@ -61,7 +73,9 @@ pub fn compile_block(
 ) -> Value {
     let is_expr = kind != BlockKind::Statement;
 
-    if kind == BlockKind::Expr {
+    let discarded = kind == BlockKind::Discarded;
+
+    if matches!(kind, BlockKind::Expr | BlockKind::Discarded) {
         ctx.push_return_target(None);
     }
 
@@ -156,6 +170,10 @@ pub fn compile_block(
                         require_value: require_return,
                     };
                     compile_branching_expr(ctx, &expr, expected_type, branches).0
+                } else if discarded {
+                    // The value of the block isn't used, so neither are those of the branches of
+                    // an `if`, `match` or block that it ends with
+                    compile_discarded_expr(ctx, &expr)
                 } else {
                     compile_expr(ctx, &expr, expected_type)
                 };
@@ -178,17 +196,12 @@ pub fn compile_block(
 
         let compiled = match stmt {
             AstStmt::ExprStmt(stmt) => {
-                let value = match stmt.expr() {
-                    // The value of a `for` that's a statement isn't used, so it's only a loop
-                    Some(AstExpr::ForExpr(expr)) => {
-                        let value = compile_for_expr(ctx, &expr, None, true);
-                        ctx.record_value(expr.syntax(), value)
-                    }
-                    Some(expr) => compile_expr(ctx, &expr, None),
-                    None => {
-                        debug!("Unresolved expr stmt expr");
-                        ctx.unresolved()
-                    }
+                // A `for` that's a statement is only a loop, since its value isn't used
+                let value = if let Some(expr) = stmt.expr() {
+                    compile_discarded_expr(ctx, &expr)
+                } else {
+                    debug!("Unresolved expr stmt expr");
+                    ctx.unresolved()
                 };
 
                 Statement::Expr(ExprStatement {
@@ -457,7 +470,7 @@ pub fn compile_block(
     // block's value if nothing else (such as a `return` statement) could have produced it.
     let definitely_trailing = implicit_return && ctx.return_count() == return_count;
 
-    if kind == BlockKind::Expr {
+    if matches!(kind, BlockKind::Expr | BlockKind::Discarded) {
         ctx.pop_return_target();
     }
 
@@ -470,6 +483,13 @@ pub fn compile_block(
     // Blocks aren't always compiled with `compile_expr` (such as function bodies), so their type is
     // recorded here
     ctx.record_value(block.syntax(), value)
+}
+
+/// Compiles an expression whose value isn't used, such as that of an expression statement. A
+/// `for` is then only a loop, as is one that a block, or a branch of an `if` or `match`, ends
+/// with, rather than a list that's built and dropped.
+pub fn compile_discarded_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
+    compile_branching_expr(ctx, expr, None, Branches::DISCARDED).0
 }
 
 /// A statement whose branches are in the node, which is an `if` chain or a `match`.

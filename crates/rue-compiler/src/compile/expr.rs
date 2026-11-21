@@ -83,7 +83,8 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
 
 /// Compiles an `if`, `match` or block whose branches are blocks of the given kind, rather than
 /// values: the branches of a statement, or those of a function body's value, which can `return`
-/// from the function. Any other expression is compiled as usual.
+/// from the function, or those of an expression whose value isn't used. Any other expression is
+/// compiled as usual, except for a `for` whose value isn't used, which is then only a loop.
 ///
 /// For a statement, this also gives what the rest of the block after it sees its values narrowed
 /// to, by the branches that fall through to it.
@@ -93,6 +94,14 @@ pub fn compile_branching_expr(
     expected_type: Option<TypeId>,
     branches: Branches,
 ) -> (Value, Option<Mappings>) {
+    // A `for` whose value isn't used is only a loop, as one that's a statement is
+    if branches.kind == BlockKind::Discarded
+        && let AstExpr::ForExpr(for_expr) = expr
+    {
+        let value = compile_for_expr(ctx, for_expr, None, true);
+        return (ctx.record_value(expr.syntax(), value), None);
+    }
+
     if !expr.ends_with_brace() {
         return (compile_expr(ctx, expr, expected_type), None);
     }

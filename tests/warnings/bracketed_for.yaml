@@ -1,0 +1,40 @@
+program: (a (q 16 (a 54 (c 54 (c (a 126 (c 126 5)) ()))) (a 54 (c 54 (c (a 32 (c 32 5)) ()))) (a 54 (c 54 (c (a 94 (c 94 5)) ()))) (a 54 (c 54 (c (a 46 (c 46 5)) ()))) (a 54 (c 54 (c (a 38 (c 38 5)) ()))) (a 54 (c 54 (a 122 (c 122 5)))) (a 54 (c 54 (c (c (a 90 (c 90 5)) ()) ()))) (a 54 (c 54 (c (a 42 (c 42 5)) ()))) (a 54 (c 54 (c (c (a 50 (c 50 5)) ()) ()))) (a 54 (c 54 (c (a 34 (c 34 5)) ()))) (a 54 (c 54 (c (a 124 (c 124 5)) ()))) (a 54 (c 54 (c (a 92 (c 92 5)) ()))) (a 54 (c 54 (c (a 44 (c 44 5)) ()))) (a 54 (c 54 (c (a 52 (c 52 5)) ()))) (a 54 (c 54 (a 36 (c 36 5)))) (a 54 (c 54 (c (a 56 (c 56 5)) (q 1)))) (a 54 (c 54 (c () (a 40 (c 40 5))))) (a 54 (c 54 (c (a 48 (c 48 5)) ())))) (c (c (c (c (c (q 2 (i 3 (q 2 (i (> 5 ()) (q 4 5 (a 2 (c 2 7))) (q 2 2 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1)) (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1))) (c (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1)) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) 5) ()) 1) (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1))))) (c (c (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1)) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) ()) 1) (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1)))) (c (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1)) (c (q 2 (i 3 (q 4 (+ 5 (q . 1)) (a 2 (c 2 7))) ()) 1) (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) ()) 1)))))) 1))
+debug_program: (a (q 2 (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 17 (c -19 32)) (a 17 (c -19 48))) (a 17 (c -19 40))) (a 17 (c -19 56))) 36) (a 17 (c -19 (c 52 ())))) (a 17 (c -19 44))) (a 17 (c -19 (c 60 ())))) (a 17 (c -19 34))) (a 17 (c -19 50))) (a 17 (c -19 42))) (a 17 (c -19 58))) (a 17 (c -19 38))) (a 17 (c -19 54))) (a 17 (c -19 46))) (a 17 (c -19 94))) (a 17 (c -19 126))) (c (c (c (c (c (c (a 94 (c 94 5)) ()) (c (a 36 (c 36 5)) ())) (c (c (a 110 (c 110 5)) ()) (c (a 78 (c 78 5)) ()))) (c (c (+ (a 8 (c 118 (c (a 86 (c 86 5)) ()))) (a 8 (c 118 (f (c (a 102 (c 102 5)) ()))))) (c (a 70 (c 70 5)) ())) (c (c (a 122 (c 122 5)) ()) (c (a 90 (c 90 5)) ())))) (c (c (c (c (a 106 (c 106 5)) ()) (c (a 74 (c 74 5)) ())) (c (a -2 (c 114 5)) (c (a 82 (c 82 5)) ()))) (c (c (c (a 34 (c (c 34 -66) 5)) ()) (a 124 (c 124 5))) (c (c (a 92 (c 92 5)) (c (q . 1) ())) (c (c () (a 44 (c 44 5))) (c (a 52 (c 52 5)) ())))))) 1)) (c (c (c (q 2 2 (c 2 3)) (c (c (q 2 (i 3 (q 2 (i (> (f 3) ()) (q 4 (f 3) (a 2 (c 2 (r 3)))) (q 2 2 (c 2 (r 3)))) 1) ()) 1) (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1)) (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1))))) (c (c (c (q 2 (i 3 (q 3 (q . 1) (a 4 (c (c 4 6) (r 3))) (a 6 (f 3))) ()) 1) (c (q 2 (i 3 (q 16 (a 2 (c 2 (r 3))) (f 3)) ()) 1) (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1))) (c (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1)) (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) ()) 1)))) (c (c (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1)) (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 3 (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1))) (c (c (q 2 (i 3 (q 4 (+ (f 3) (q . 1)) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1)) (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) ()) 1) (c (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at bracketed_for.rue:4:5"))) 1) (q 4 (a 2 (c 2 3)) ()))))))) 1))
+byte_cost: 17724000
+clvm_error: path into atom
+diagnostics:
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:17:13
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:18:13
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:21:13
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:22:13
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:25:20
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:25:50
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:26:13
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:29:13
+    help: Spread the `for` into the list with `...`
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for.rue:32:18
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
