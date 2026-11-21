@@ -358,13 +358,19 @@ impl Cache<Compiler> {
                             | SyntaxKind::ConstantItem
                             | SyntaxKind::LetStmt
                             | SyntaxKind::StructField
+                            | SyntaxKind::ForFold
                     )
                 ) =>
             {
                 Some(CompletionContext::Type)
             }
             T![=] if parent == Some(SyntaxKind::TypeAliasItem) => Some(CompletionContext::Type),
-            T![=] if matches!(parent, Some(SyntaxKind::LetStmt | SyntaxKind::ConstantItem)) => {
+            T![=]
+                if matches!(
+                    parent,
+                    Some(SyntaxKind::LetStmt | SyntaxKind::ConstantItem | SyntaxKind::ForFold)
+                ) =>
+            {
                 Some(CompletionContext::Expression)
             }
             // A match arm starts with its pattern, which is a type, and ends with its value
@@ -377,6 +383,10 @@ impl Cache<Compiler> {
             }
             // The message of an `assert` comes after its condition
             T![,] if parent == Some(SyntaxKind::AssertStmt) => Some(CompletionContext::Expression),
+            // The list of a `for` comes after `in`, which is an identifier there
+            SyntaxKind::Ident if parent == Some(SyntaxKind::ForExpr) && token.text() == "in" => {
+                Some(CompletionContext::Expression)
+            }
             _ => None,
         }
     }

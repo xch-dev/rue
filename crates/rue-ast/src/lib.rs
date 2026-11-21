@@ -144,8 +144,12 @@ ast_nodes!(
     BinaryExpr,
     FunctionCallExpr,
     IfExpr,
+    ForExpr,
+    ForFilter,
+    ForFold,
     MatchExpr,
     MatchArm,
+    MatchArmGuard,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -181,6 +185,7 @@ ast_enum!(
     FunctionCallExpr,
     Block,
     IfExpr,
+    ForExpr,
     MatchExpr,
     GuardExpr,
     CastExpr,
@@ -881,6 +886,56 @@ impl AstExpr {
     }
 }
 
+impl AstForExpr {
+    /// The pattern each item of the list is bound to.
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+
+    /// The list whose items are gone through. The body is an expression too, since it's a block,
+    /// so the list is only there if there's another expression before it.
+    pub fn list(&self) -> Option<AstExpr> {
+        let mut exprs = self.syntax().children().filter_map(AstExpr::cast);
+        let first = exprs.next()?;
+        exprs.next().map(|_| first)
+    }
+
+    pub fn filter(&self) -> Option<AstForFilter> {
+        self.syntax().children().find_map(AstForFilter::cast)
+    }
+
+    pub fn fold(&self) -> Option<AstForFold> {
+        self.syntax().children().find_map(AstForFold::cast)
+    }
+
+    /// The body, which is the last block, since the list can be a block too.
+    pub fn body(&self) -> Option<AstBlock> {
+        self.syntax().children().filter_map(AstBlock::cast).last()
+    }
+}
+
+impl AstForFilter {
+    pub fn condition(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstForFold {
+    /// The pattern the result for the rest of the list is bound to.
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    /// The result at the end of the list.
+    pub fn init(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
 impl AstIfExpr {
     /// The `else` keyword, which an `else if` statement can leave out.
     pub fn else_token(&self) -> Option<SyntaxToken> {
@@ -973,6 +1028,14 @@ impl AstMatchArm {
         self.syntax().children().find_map(AstBinding::cast)
     }
 
+    /// The condition after the type and binding, such as `if radius > 10` in
+    /// `Circle { radius } if radius > 10 => 1`. The arm is only taken if it's true, so the arm
+    /// doesn't handle every value of its type.
+    pub fn guard(&self) -> Option<AstMatchArmGuard> {
+        self.syntax().children().find_map(AstMatchArmGuard::cast)
+    }
+
+    /// The arm's value, which comes after the `=>`.
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }
@@ -1010,6 +1073,12 @@ impl AstMatchArm {
             next = element.next_sibling_or_token();
         }
         (None, has_comments)
+    }
+}
+
+impl AstMatchArmGuard {
+    pub fn condition(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 

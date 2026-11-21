@@ -194,7 +194,7 @@ pub fn compile_struct_initializer_expr(
     for name in struct_type.fields.into_iter().rev() {
         let value = if let Some(value) = fields.remove(&name) {
             FieldValue::Given(value)
-        } else if let Some(value) = ctx.default_field(struct_type.semantic, &name) {
+        } else if let Some(value) = ctx.default_field_use(struct_type.semantic, &name) {
             // Defaults are checked against the declared field type, but check them against the
             // field type of this instantiation as well, in case generics were substituted.
             if let Some(expected_type) = expected_field_types.get(&name) {

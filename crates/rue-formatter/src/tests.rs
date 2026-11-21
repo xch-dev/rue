@@ -2024,6 +2024,49 @@ fn assert_message_keeps_its_comments() {
 }
 
 #[test]
+fn for_expressions() {
+    check(
+        r"fn main(conditions: List<Condition>, target_puzzle_hash: Bytes32, xs: List<Int>) -> Any {
+    let a = for c in conditions if c is CreateCoin { c };
+    let b = for   x in xs {x+1};
+    let total = for c in conditions fold sum = 0 { if c is CreateCoin { sum + c.amount } else { sum } };
+    let wrapped = for coin in conditions if coin is CreateCoin { CreateCoin { puzzle_hash: coin.puzzle_hash, amount: coin.amount, memos: coin.memos } };
+    let payments_to_target = for c in conditions if c is CreateCoin && c.puzzle_hash == target_puzzle_hash && c.amount > 0 { c.amount + 100000 };
+    let typed = for x in xs fold rest : List<Int> = nil { [x, ...rest] };
+    for x in xs { assert x > 0; }
+    for x in xs { f(x) };
+    [a, b, ...for x in xs { x }]
+}
+",
+        expect![[r#"
+            fn main(conditions: List<Condition>, target_puzzle_hash: Bytes32, xs: List<Int>) -> Any {
+                let a = for c in conditions if c is CreateCoin { c };
+                let b = for x in xs { x + 1 };
+                let total = for c in conditions fold sum = 0 {
+                    if c is CreateCoin {
+                        sum + c.amount
+                    } else {
+                        sum
+                    }
+                };
+                let wrapped = for coin in conditions if coin is CreateCoin {
+                    CreateCoin { puzzle_hash: coin.puzzle_hash, amount: coin.amount, memos: coin.memos }
+                };
+                let payments_to_target = for c in conditions if c is CreateCoin
+                    && c.puzzle_hash == target_puzzle_hash
+                    && c.amount > 0 { c.amount + 100000 };
+                let typed = for x in xs fold rest: List<Int> = nil { [x, ...rest] };
+                for x in xs {
+                    assert x > 0;
+                }
+                for x in xs { f(x) };
+                [a, b, ...for x in xs { x }]
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn match_arm_bindings() {
     check(
         "fn main(x: A | (Int, Int) | List<Int>) -> Int {\n    match x { A{a,b:c,...rest,}=>a+c, (Int,Int)as(first,rest,) => { first }, nil   as   empty => 0,\n (Int, List<Int>)  as  [ first , ...rest ]=>first, A as{a}=>a }\n}\n",
@@ -2069,6 +2112,72 @@ fn long_match_arm_bindings_are_wrapped() {
                         height_of_the_rectangle,
                         depth_of_the_rectangle: renamed_depth,
                     } => width_of_the_rectangle,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_arm_conditions() {
+    check(
+        "fn main(x: A | (Int, Int) | Int) -> Int {\n    match x { A{a}if   a>1=>a, A  if(x.a<0) => { 1 }, (Int,Int)as(first,rest)if first>rest&&rest>0=>if first > 1 { 1 } else { 2 }, Int   if  x  is  0=>match x { _ => 2 } _ if!true => 3,\n _=>4 }\n}\n",
+        expect![[r#"
+            fn main(x: A | (Int, Int) | Int) -> Int {
+                match x {
+                    A { a } if a > 1 => a,
+                    A if (x.a < 0) => { 1 }
+                    (Int, Int) as (first, rest) if first > rest && rest > 0 => if first > 1 {
+                        1
+                    } else {
+                        2
+                    }
+                    Int if x is 0 => match x {
+                        _ => 2,
+                    }
+                    _ if !true => 3,
+                    _ => 4,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_arm_condition_comments() {
+    check(
+        "fn main(x: A | nil) -> Int {\n    match x {\n        A { a } /* binding */ if /* keyword */ a > 1 /* condition */ => a, // arm\n        // own line\n        A if x.a > 0 // trailing\n            => 1,\n        _ => 0,\n    }\n}\n",
+        expect![[r#"
+            fn main(x: A | nil) -> Int {
+                match x {
+                    A { a } /* binding */ if /* keyword */ a > 1 /* condition */ => a, // arm
+                    // own line
+                    A if x.a > 0 // trailing
+                    => 1,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn long_match_arm_conditions_are_wrapped() {
+    check(
+        "fn main(x: Shape) -> Int {\n    match x { Shape::Rectangle { width_of_the_rectangle, height_of_the_rectangle } if width_of_the_rectangle > height_of_the_rectangle && height_of_the_rectangle > 1000000 => width_of_the_rectangle, Shape::Circle { radius } if is_a_very_large_radius_for_a_circle(radius, 100000000000000000000000000000) => 1, _ => 0 }\n}\n",
+        expect![[r#"
+            fn main(x: Shape) -> Int {
+                match x {
+                    Shape::Rectangle {
+                        width_of_the_rectangle,
+                        height_of_the_rectangle,
+                    } if width_of_the_rectangle > height_of_the_rectangle
+                        && height_of_the_rectangle > 1000000 => width_of_the_rectangle,
+                    Shape::Circle { radius } if is_a_very_large_radius_for_a_circle(
+                        radius,
+                        100000000000000000000000000000,
+                    ) => 1,
                     _ => 0,
                 }
             }

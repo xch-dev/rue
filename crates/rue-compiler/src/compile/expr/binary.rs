@@ -545,7 +545,7 @@ fn atom_enum(ctx: &mut Compiler, ty: TypeId) -> Option<TypeId> {
 /// operand does can rely on the left one for whether a value is an atom or a pair, so it can be
 /// evaluated on its own (see `Database::set_independent_operands`). Narrowing a field, or a value
 /// that could be a pair, lets the right operand read what's only there if the left one says so.
-fn narrows_only_atoms(ctx: &mut Compiler, mappings: &Mappings) -> bool {
+pub(crate) fn narrows_only_atoms(ctx: &mut Compiler, mappings: &Mappings) -> bool {
     let atom = ctx.builtins().types.atom;
 
     for (&symbol, paths) in mappings {

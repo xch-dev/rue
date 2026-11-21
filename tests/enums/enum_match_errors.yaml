@@ -12,3 +12,10 @@ diagnostics:
 - Unknown field `radius` on type `Shape::Empty` at enum_match_errors.rue:74:24
 - Unknown field `width` on type `Shape::Circle` at enum_match_errors.rue:75:25
 - Unknown field `value` on type `Mode::Off` at enum_match_errors.rue:81:25
+- |-
+  Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Circle` at enum_match_errors.rue:88:22
+    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:90:9
+- |-
+  Match on `Mode` is not exhaustive, since it doesn't handle `Mode::On` at enum_match_errors.rue:95:17
+    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:97:13
+    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:98:13

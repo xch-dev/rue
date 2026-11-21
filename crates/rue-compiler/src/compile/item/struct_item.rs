@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 use log::debug;
 use rue_ast::{AstNode, AstStructField, AstStructItem, AstTypeItem};
 use rue_diagnostic::{DiagnosticKind, Name, SpreadTarget};
-use rue_hir::{Declaration, Hir, ScopeId};
+use rue_hir::{ConstantSymbol, Declaration, Hir, ScopeId, Symbol};
 use rue_types::{Generic, Pair, Struct, Type, TypeId};
 
 use super::{check_regular, report_and_break_cycle};
@@ -287,9 +287,26 @@ pub(crate) fn compile_field_defaults(
             }
         }
 
-        if let Some(name) = field.name() {
-            ctx.insert_default_field(struct_type, name.text().to_string(), value);
+        let Some(name) = field.name() else {
+            continue;
+        };
+
+        let name = name.text().to_string();
+
+        // Every initializer that leaves the field out uses the same default value, so it refers
+        // to a constant with that value. Otherwise what's defined inside of it, such as a let
+        // statement, would be defined wherever each of those initializers is, rather than once.
+        // A literal has nothing defined in it, so it's used as it is.
+        if !ctx.is_literal_hir(value.hir) {
+            let symbol = ctx.alloc_symbol(Symbol::Constant(ConstantSymbol {
+                name: None,
+                value: value.clone(),
+                inline: true,
+            }));
+            ctx.insert_default_field_use(struct_type, name.clone(), symbol);
         }
+
+        ctx.insert_default_field(struct_type, name, value);
     }
 }
 
@@ -312,7 +329,7 @@ pub fn resolve_pending_defaults(ctx: &mut Compiler) {
             continue;
         }
 
-        let Some(value) = ctx.default_field(pending.ty, &pending.name) else {
+        let Some(value) = ctx.default_field_use(pending.ty, &pending.name) else {
             // The default value wasn't compiled, which only happens if the struct has errors, but
             // the field is still reported rather than left unresolved without an error
             let type_name = ctx.type_name_in(pending.scope, pending.ty);

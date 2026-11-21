@@ -1,0 +1,95 @@
+#![warn(shadowed_binding)]
+#![warn(naming_convention)]
+#![warn(unnecessary_parens)]
+#![warn(self_comparison)]
+#![warn(constant_condition)]
+#![warn(identical_branches)]
+#![warn(needless_let_return)]
+#![warn(unnecessary_plus)]
+#![warn(unreachable_code)]
+
+// The lints see the list, filter, fold and body of a `for` expression, and its bindings
+
+fn increment(x: Int) -> Int {
+    x + 1
+}
+
+fn positive(x: Int) -> Int {
+    assert x > 0;
+    x
+}
+
+fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
+    // Values in the body that aren't used, and branches that are the same
+    let a = for y in xs {
+        increment(y);
+        y + 1;
+        if flag {
+            y
+        } else {
+            y
+        }
+    };
+
+    // In the filter and the body
+    let b = for y in xs if y == y {
+        let z = y + 1;
+        z
+    };
+
+    // The names of the item and of the fold's result, and parentheses around the filter
+    let c = for yItem in xs if (yItem > x) { +yItem };
+    let d = for x in xs fold Acc = 0 { Acc + x };
+    let e = for y in xs if true { y };
+
+    // A `for` that's a statement is a loop, so the value its body ends with isn't used
+    for y in xs { increment(y) }
+    for y in xs { increment(y) };
+
+    // Neither is the value of a fold
+    for y in xs fold sum = 0 { sum + y }
+
+    // Code after a `raise` in the body
+    for y in xs {
+        raise "no";
+        assert y > 0;
+    }
+
+    // The item and the result that the body doesn't use
+    let f = for y in xs { 1 };
+    let g = for y in xs fold sum = 0 { y };
+
+    // The result of a fold that's evaluated where the body refers to it isn't an `inline let`,
+    // though it may fail and isn't always evaluated
+    let h = for y in xs fold found = false { y == 1 || positive(y) == 5 || found };
+
+    // An `inline let` whose value is a `for` that may fail is still one
+    inline let i = for y in xs fold sum = 0 { sum + positive(y) };
+
+    // A loop in a loop has no value, so nothing is unused
+    for y in xs {
+        for z in xs {
+            assert y + z > 0;
+        }
+    }
+
+    [
+        ...a,
+        ...b,
+        ...c,
+        d,
+        ...e,
+        ...f,
+        g,
+        if h {
+            1
+        } else {
+            0
+        },
+        if flag {
+            i
+        } else {
+            0
+        },
+    ]
+}

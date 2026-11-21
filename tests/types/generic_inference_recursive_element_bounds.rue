@@ -1005,8 +1005,9 @@ test fn arguments_after_own_generics_are_as_without_them() -> List<Int> {
 }
 
 // An untyped lambda that's the first element of a pair after one whose typed lambda gives the
-// renamed `T` a type: the call's inference counts its `x7` as the renamed `T` it stands for, not the
-// caller's own `T`, so the result is `Int` rather than `Int | T` (#362, 13k6)
+// renamed `T` a type: the result is `Int` rather than `Int | T` (#362, 13k6). The call's inference
+// counted its `x7` as the renamed `T` it stands for, not the caller's own `T`; now `x7` is held and
+// refined to `Int` (see `HeldLambda`), and that counting is what a lambda compiled where it is gets
 fn pairs_of_a_lambda_and_a_value<T, U>(p: List<(fn(a: T) -> U, Int)>, value: T, depth: Int) -> U {
     if depth > 0 {
         let listed = pairs_of_a_lambda_and_a_value(
@@ -1092,4 +1093,1050 @@ fn pick_one<T>(functions: List<fn(a: T, b: T) -> T>, x: T, y: T, depth: Int) -> 
 
 test fn parameters_returned_on_both_branches() -> Int {
     pick_one([fn(a: Int, b: Int) => a + b], 1, 2, 2)
+}
+
+// An untyped lambda that's the first element of a pair is held until every argument of the call is
+// compiled (see `HeldLambda`), and refined then against what the call is solved with, as any other
+// element is, so `x7` is the `Int` that `x6: Int` gives the renamed `T` (or, in
+// `first_element_of_a_pair`, the `1` after it, or in `first_element_with_a_later_value`, the `5`
+// in the next argument), and `x7 + 1` compiles, where it was the caller's `T` (#362, 13k7 and 13k8)
+fn first_element_lambda_body<T, U>(p: List<(fn(a: T) -> U, Int)>, depth: Int) -> U {
+    if depth > 0 {
+        let listed = first_element_lambda_body(
+            [(fn(x6: Int) => x6, 1), (fn(x7) => x7 + 1, 1)],
+            depth - 1,
+        );
+        let _listed: Int = listed;
+        return unchecked_cast::<U>(nil);
+    }
+
+    unchecked_cast::<U>(nil)
+}
+
+fn first_element_with_a_later_value<T, U>(
+    p: List<(fn(a: T) -> U, Int)>,
+    value: T,
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let listed = first_element_with_a_later_value(
+            [(fn(x6: Int) => x6, 1), (fn(x7) => x7 + 1, 1)],
+            5,
+            depth - 1,
+        );
+        let _listed: Int = listed;
+        return unchecked_cast::<U>(nil);
+    }
+
+    if p is ((fn(a: T) -> U, Int), List<(fn(a: T) -> U, Int)>) {
+        p.first.first(value)
+    } else {
+        unchecked_cast::<U>(nil)
+    }
+}
+
+fn first_element_of_a_pair<T, U>(p: (fn(a: T) -> U, T), depth: Int) -> U {
+    if depth > 0 {
+        let paired = first_element_of_a_pair((fn(x7) => x7 + 1, 1), depth - 1);
+        let _paired: Int = paired;
+        return unchecked_cast::<U>(nil);
+    }
+
+    p.first(p.rest)
+}
+
+// A lambda is refined against what an argument after its own adds to what it reads too, as `[5]`
+// does to `T` here, so `x1` is `(5, (5, nil)) | (5, nil)` rather than the `(5, (5, nil))` that the
+// rest of its pair alone gives, which the call's `T` wouldn't be assignable to (infer-fuzz
+// generator 3, seed 3993, reduced, where `x1` was the caller's `T`), and `second_element_added_to_later`
+// for a second element, which was refined from `[5, 5]` alone and rejected
+fn added_to_by_a_later_argument<T, U>(pair: (fn(a: T) -> U, T), value: T, depth: Int) -> U {
+    if depth > 0 {
+        let _inner = added_to_by_a_later_argument((fn(x1) => x1.first, [5, 5]), [5], depth - 1);
+        return unchecked_cast::<U>(nil);
+    }
+
+    pair.first(value)
+}
+
+fn second_element_added_to_later<T, U>(pair: (T, fn(a: T) -> U), value: T, depth: Int) -> U {
+    if depth > 0 {
+        let _inner = second_element_added_to_later(([5, 5], fn(x1) => x1.first), [5], depth - 1);
+        return unchecked_cast::<U>(nil);
+    }
+
+    pair.rest(value)
+}
+
+// A lambda isn't narrower than what the elements after it add, since it's refined once all of them
+// are compiled: `x6` is `(U, 3) | (U, 4)` here, so `x6.rest` compiles, where it was the caller's `U`
+// as the first element of its pair, or `(U, 3) | (U, 5)` from the elements before it in
+// `nested_after_the_lambda`'s `((u, 3), (((u, 5), fn(x6) => ...), (u, 4)))` (#362, 13k7). Where
+// the call's expected type isn't final, as in an argument of `same` with an `Any` required of it,
+// it's compiled as before, since the call can be solved again without the caller's generics that
+// are its own (`expected_type_not_final`, a guard)
+fn widened_after_the_lambda<U>(p: (U, (fn(a: U) -> Int, U)), depth: Int) -> Int {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        return widened_after_the_lambda(((u, 3), (fn(x6) => x6.rest, (u, 4))), depth - 1);
+    }
+
+    p.rest.first(p.first)
+}
+
+fn nested_after_the_lambda<U>(p: (U, ((U, fn(a: U) -> Int), U)), depth: Int) -> Int {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        return nested_after_the_lambda(((u, 3), (((u, 5), fn(x6) => x6.rest), (u, 4))), depth - 1);
+    }
+
+    p.rest.first.rest(p.first)
+}
+
+fn expected_type_not_final<U>(p: (U, (fn(a: U) -> Int, U)), depth: Int) -> Int {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r: Any = same(expected_type_not_final(((u, 3), (fn(_x6) => 1, (u, 3))), depth - 1));
+        return unchecked_cast::<Int>(r);
+    }
+
+    p.rest.first(p.first)
+}
+
+fn widened_in_a_list<U>(p: List<(U, fn(a: U) -> Int)>, depth: Int) -> Int {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        return widened_in_a_list(
+            [
+                ((u, 3), fn(_x4: (U, Int)) => 1),
+                ((u, 4), fn(_x6) => 2),
+                ((u, 5), fn(_x7: (U, Int)) => 3),
+            ],
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+test fn held_lambdas_are_refined_against_the_call() -> (Int, (Int, Int)) {
+    (
+        first_element_of_a_pair((fn(x: Int) => x + 1, 1), 1),
+        (
+            widened_after_the_lambda((1, (fn(x: Int) => x, 2)), 1),
+            widened_in_a_list([(1, fn(x: Int) => x)], 1),
+        ),
+    )
+}
+
+fn make_any<M>() -> M {
+    unchecked_cast::<M>(nil)
+}
+
+// Guards on held lambdas (see `HeldLambda`), each compiled as on main:
+// - the list a held lambda is in is recorded once the lambda is compiled, where the other element
+//   makes it not assignable, so `fn(_c)` gets `U | 7`
+// - a body with a call in it, `same(x)`, is compiled as it would have been where it is
+// - so is one whose own return type can add to its parameter's, as `nil` does to `T` in
+//   `fn(a: T) -> T`, where `x0` would be `Int` from the `1` and `2`, as a first or second element
+// - and a first element that's compiled as it would have been where it is keeps its expected
+//   type as it is, with the caller's `U` for `_x3`, where only a union member that didn't match
+//   the value, `(U, Int)` for `(1, [v])`, gives `U` a type
+fn records_held_lambdas<U>(pair: (List<fn(a: Int) -> U>, fn(b: U) -> Int), depth: Int) -> List<U> {
+    if depth > 0 {
+        let inner = records_held_lambdas(
+            ([fn(_a) => make_any(), fn(_b) => 7], fn(_c) => 1),
+            depth - 1,
+        );
+        let _inner: List<U | Int> = inner;
+        return nil;
+    }
+
+    nil
+}
+
+fn widened_by_a_later_lambda<T, U>(p: (fn(a: T) -> U, ((T, U), fn(a: U) -> T)), depth: Int) -> (
+    T,
+    U,
+) {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = widened_by_a_later_lambda((fn(x) => x, ((1, u), fn(x) => same(x))), depth - 1);
+        let _r: (Int | U, Int | U) = r;
+        return unchecked_cast::<(T, U)>(nil);
+    }
+
+    unchecked_cast::<(T, U)>(nil)
+}
+
+fn widened_by_its_own_return<T>(p: (fn(a: T) -> T, T), depth: Int) -> T {
+    if depth > 0 {
+        let r = widened_by_its_own_return((fn(_x0) => nil, 1), depth - 1);
+        return unchecked_cast::<T>(r);
+    }
+
+    p.first(p.rest)
+}
+
+fn widened_by_its_own_return_second<T>(p: (T, (fn(a: T) -> T, T)), depth: Int) -> T {
+    if depth > 0 {
+        let r = widened_by_its_own_return_second((1, (fn(_x0) => nil, 2)), depth - 1);
+        return unchecked_cast::<T>(r);
+    }
+
+    p.first
+}
+
+fn given_by_an_unmatched_member<T, U, V>(
+    p: ((U, Int) | (Int, T), (fn(a: U) -> V, (U, T))),
+    depth: Int,
+) -> V {
+    if depth > 0 {
+        let v = unchecked_cast::<V>(nil);
+        let _r = given_by_an_unmatched_member(
+            ((1, [v]), (fn(_x3) => unchecked_cast::<T>(nil), make_any())),
+            depth - 1,
+        );
+        return unchecked_cast::<V>(nil);
+    }
+
+    unchecked_cast::<V>(nil)
+}
+
+// Guards on held lambdas that are compiled as they would have been where they are, as on main: one
+// whose body writes the caller's `V`, which its parameter is there, and one whose body has a call in
+// it, which takes what a held lambda before it infers there, as `x1: Int` does for `x99`
+fn writes_the_callers_generic<T, U, V>(p: List<List<fn(a0: V) -> U>>, depth: Int) -> U {
+    if depth > 0 {
+        let r = writes_the_callers_generic(
+            [[
+                fn(x69) => {
+                    let _c: V = x69;
+                    0
+                },
+                fn(_x45: (5, V)) => make_any(),
+                fn(_x72) => unchecked_cast::<U>(nil),
+            ]],
+            depth - 1,
+        );
+        let _r: Int | U = r;
+        return unchecked_cast::<U>(nil);
+    }
+
+    unchecked_cast::<U>(nil)
+}
+
+fn after_an_earlier_held_lambda<T, U>(p: List<fn(a0: T, a1: U) -> T>, depth: Int) -> (U, T) {
+    if depth > 0 {
+        let t = unchecked_cast::<T>(nil);
+        let r = after_an_earlier_held_lambda(
+            [fn(x0, _x1: Int) => same(x0), fn(_x31, _x99) => same(t)],
+            depth - 1,
+        );
+        let _r: (Int, T) = r;
+        return unchecked_cast::<(U, T)>(nil);
+    }
+
+    unchecked_cast::<(U, T)>(nil)
+}
+
+// Guard: the pair a held lambda is in is recorded once the lambda is compiled, as before, so the
+// `u` before `fn(x4, y2) => y2` gives the renamed `U` a type even though the pair isn't assignable
+// to what's expected, and `x0` is `U | T` (infer-fuzz generator 3 review, reduced)
+fn with_the_pair_its_in<T, U>(p: List<(U, fn(a: U, b: T) -> U)>, depth: Int) -> List<U> {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = with_the_pair_its_in(
+            [(u, fn(_x4, y2) => y2), (same(u), fn(x0, _y2) => x0)],
+            depth - 1,
+        );
+        let _r: List<U> = r;
+        return nil;
+    }
+
+    nil
+}
+
+// Guards from 13k7's reviews, each compiled as on main (generated review sweeps, reduced):
+// - an element that's the caller's `T` itself after the lambda (a regression check from 13k7's
+//   first design, which nothing in the final one tells apart)
+// - an argument after this one for a list item, as `1` adds to `T` after `nil`
+// - a union member that a pair with a held lambda in it matches, as `'x'` makes the pair match
+//   `(fn(a: T) -> Int, T)`, which is only recorded once the lambda is compiled, so the lambdas are
+//   compiled as they would have been where they are
+// - an argument after this one that reads the generic the lambda returns, as `fn(_z) => 1` reads
+//   `V`, where `u` is the caller's `U` in `T`'s slot
+// - a body with a call in it, which can bring in the caller's generics, as the recursive call
+//   returns `(U, V)` here
+// - a generic that only a union member that already holds the value gives a type, as `2` does `T`
+//   in `T | Int`, which the call's expected type can replace, so `x` isn't refined to `Int`
+// - and a call without arguments after the lambda, `make_any()`
+fn caller_value_after_the_lambda<T>(p: [T, fn(a: T) -> Int, T], depth: Int) -> Int {
+    if depth > 0 {
+        let t = unchecked_cast::<T>(nil);
+        return caller_value_after_the_lambda([t, fn(_x) => 0, 1], depth - 1);
+    }
+
+    0
+}
+
+fn later_argument_for_a_list_item<T>(p: [fn(a: T) -> Int, T], e: T, depth: Int) -> Int {
+    if depth > 0 {
+        return later_argument_for_a_list_item([fn(_x) => 0, nil], 1, depth - 1);
+    }
+
+    p.first(e)
+}
+
+fn matched_through_a_union<T>(
+    p: (T, (fn(a: T) -> Int, T) | (fn(a: T) -> Bytes, Bytes)),
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let r = matched_through_a_union((1, (fn(_x) => 5, "x")), depth - 1);
+        return unchecked_cast::<T>(r);
+    }
+
+    p.first
+}
+
+fn matched_through_a_union_later<T>(
+    p: (fn(a: T) -> Int, (T, (fn(b: Int) -> Int, T) | (fn(b: Int) -> Bytes, Bytes))),
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let r = matched_through_a_union_later((fn(_x) => 5, (1, (fn(_y) => 1, "x"))), depth - 1);
+        return unchecked_cast::<T>(r);
+    }
+
+    p.rest.first
+}
+
+fn call_without_arguments_after<T, U>(
+    p: ((U, fn(a: T) -> U), (U, Int) | (Int, T)),
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = call_without_arguments_after(((u, fn(_x) => u), (make_any(), 1)), depth - 1);
+        return r;
+    }
+
+    unchecked_cast::<T>(nil)
+}
+
+fn later_argument_reads_its_return<T, U, V>(
+    p: (fn(a: T) -> V, (U, T)),
+    e: fn(d: V) -> Int,
+    depth: Int,
+) -> (U, V) {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = later_argument_reads_its_return((fn(x) => x, (nil, u)), fn(_z) => 1, depth - 1);
+        return unchecked_cast::<(U, V)>(r);
+    }
+
+    unchecked_cast::<(U, V)>(nil)
+}
+
+fn call_in_the_body<T, U, V>(p: (fn(a: U, b: V) -> T, U), depth: Int) -> (U, V) {
+    if depth > 0 {
+        let r = call_in_the_body((fn(_x, _y) => call_in_the_body(make_any(), 0), 1), depth - 1);
+        return unchecked_cast::<(U, V)>(r);
+    }
+
+    unchecked_cast::<(U, V)>(nil)
+}
+
+fn held_by_a_union_member<T, U>(p: (T | Int, fn(a: T) -> U), depth: Int) -> U {
+    if depth > 0 {
+        return held_by_a_union_member((2, fn(x) => x), depth - 1);
+    }
+
+    p.rest(unchecked_cast(p.first))
+}
+
+// Guards on held lambdas that are compiled as before, where what the call is solved with once
+// every argument is compiled isn't all that the lambda's parameters end up as (see `HeldLambda`),
+// each compiled as before (generated review sweeps and infer-fuzz generator 4, reduced):
+// - a call without arguments in a later argument, `make_any()`, whose type comes from what `x20`
+//   returns, which it's compiled against before the lambda otherwise
+// - a call whose result is required to be a type (`List<5 | 7> | nil`), so that it can be narrowed
+//   for it (see `CallSolver::solve_narrowed`) through what the lambda returns
+// - a lambda whose parameter only a union member that already holds a value gives a type, as
+//   `nil` does `V` in `V | nil`, where the call's expected type makes `V` the caller's
+// - a solution with another of the caller's generics in it, as the later `(1, t)` gives the renamed
+//   `T`, which the lambda would take as the generic `T` stands for
+// - a later argument with a lambda in it, `between(...)`, whose lambda's parameter is `T`, which the
+//   call is solved with as well (see `solve_with_lambda_parameters`)
+// - a held lambda after it that returns what it reads, as `fn(x6a) => (x6a, x6a)` returns `V`,
+//   which `x8b` reads
+// - a caller's generic standing for the renamed one it's solved as, where the call's expected type
+//   isn't final, as for an argument of `same` with an `Any` required of it, where the call can be
+//   solved again without the caller's generics that are its own, which would take `(t, 1)`'s `T`
+//   as the renamed `T`
+fn later_call_without_arguments<T, U>(
+    pair: (fn(a: T) -> U, T),
+    then: fn(a: U) -> Int,
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        let _inner: Int = later_call_without_arguments(
+            (fn(x20) => x20, pair.rest),
+            make_any(),
+            depth - 1,
+        );
+        return 0;
+    }
+
+    depth
+}
+
+fn required_through_the_return<T, U>(
+    entries: List<(fn(a: T) -> U, Int)>,
+    value: T,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        let _inner: List<5 | 7> | nil = required_through_the_return(
+            [(fn(x5) => x5, same::<Int>(1))],
+            same(7),
+            depth - 1,
+        );
+        return nil;
+    }
+
+    nil
+}
+
+fn held_by_nil<T, V>(p: (fn(a: V) -> T, (V | nil, nil)), depth: Int) -> V {
+    if depth > 0 {
+        let t = unchecked_cast::<T>(nil);
+        let r = held_by_nil([fn(_x) => t, nil], depth - 1);
+        let w: V = r;
+        return w;
+    }
+
+    unchecked_cast::<V>(nil)
+}
+
+fn another_callers_generic<T, U, V>(
+    e1: (U, V),
+    p: List<(fn(a0: U) -> V, fn(a0: T, a1: T) -> U)>,
+    e0: T,
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let t = unchecked_cast::<T>(nil);
+        let u = unchecked_cast::<U>(nil);
+        let v = unchecked_cast::<V>(nil);
+        let _r = another_callers_generic(
+            (u, v),
+            [(fn(_x0a) => "x", fn(_x3a, _x8b) => u), (fn(_x0a) => t, fn(_x7a, _x2b) => u)],
+            (1, t),
+            depth - 1,
+        );
+        return unchecked_cast::<U>(nil);
+    }
+
+    unchecked_cast::<U>(nil)
+}
+
+fn between<T>(items: (T, (fn(a: T) -> Int, (T, nil))), n: Int) -> T {
+    if n > 0 {
+        return items.first;
+    }
+
+    items.rest.rest.first
+}
+
+fn later_argument_with_a_lambda<T, U>(
+    pair: ((U, fn(a: T) -> U), (U, Int) | (Int, T)),
+    value: T,
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let _inner: T | (T | nil) = later_argument_with_a_lambda(
+            ((value, fn(_x11) => nil), (value, 3)),
+            between((value, (fn(_x12) => depth, (value, nil))), 1),
+            depth - 1,
+        );
+        return value;
+    }
+
+    value
+}
+
+fn later_lambda_returns_what_it_reads<T, U, V>(
+    p: (fn(a0: U, a1: V) -> U, (fn(a0: U) -> V, nil)),
+    e0: V,
+    e1: fn(a0: T) -> U,
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        return later_lambda_returns_what_it_reads(
+            [fn(x1a, _x8b) => (x1a, 1).first, fn(x6a) => (x6a, x6a)],
+            "x",
+            fn(x7a) => [x7a],
+            depth - 1,
+        );
+    }
+
+    unchecked_cast::<T>(nil)
+}
+
+fn caller_value_not_final<T>(p: (fn(a: T) -> Int, T), depth: Int) -> Int {
+    if depth > 0 {
+        let t = unchecked_cast::<T>(nil);
+        let r: Any = same(caller_value_not_final((fn(_x) => 1, (t, 1)), depth - 1));
+        return unchecked_cast::<Int>(r);
+    }
+
+    p.first(p.rest)
+}
+
+// More held lambdas (see `HeldLambda`), from the last review round:
+// - guard, kept as before by design: a pair's first element whose body is compiled with the
+//   caller's generic where it is, since it only passes its parameter on, is compiled there, so
+//   the call's `V` is a type that holds anything, which a guard for a pair on it overlaps, and
+//   which `nil` is assignable to where the call's type takes one. Compiled against what the call
+//   is solved with, `V` would be `Int`, and both would be rejected
+// - guards, each compiled as before: a held lambda before one that reads what it returns, where
+//   the call is solved again for the second; a lambda in a typed lambda's body, which isn't held,
+//   so it's compiled in its scope; a body with a call in it whose expected type isn't a fallback;
+//   a lambda that's the rest of its pair, in a list, which is recorded once, with its pair, so
+//   that `x3.first` is widened to `Int`, which `7` is assignable to; and a pair's rest before a
+//   lambda, `(1, 2)` in `(5, (1, 2))`, which is only recorded with its pair, so that
+//   `same(x.first)` is widened to `Int` too
+fn passes_its_parameter_on<U, V>(p: (fn(a: U) -> (V, Int), U), depth: Int) -> V {
+    if depth > 0 {
+        let r = passes_its_parameter_on((fn(x) => x, (1, 2)), depth - 1);
+        if r is (Any, Any) {
+            return unchecked_cast::<V>(r.first);
+        }
+        return unchecked_cast::<V>(nil);
+    }
+
+    p.first(p.rest).first
+}
+
+fn passes_its_parameter_on_takes_any<U, V>(p: (fn(a: U) -> (V, Int), U), depth: Int) -> fn(
+    c: V,
+) -> Int {
+    if depth > 0 {
+        let r = passes_its_parameter_on_takes_any((fn(x) => x, (1, 2)), depth - 1);
+        let n = r(nil);
+        return fn(_c) => n;
+    }
+
+    fn(_c) => 1
+}
+
+type Itself<T> = T;
+
+fn passes_on_through_an_alias<U, V>(p: (fn(a: Itself<U>) -> V, U), depth: Int) -> V {
+    if depth > 0 {
+        let r = passes_on_through_an_alias((fn(x) => x, 2), depth - 1);
+        let _k: 2 = r;
+    }
+
+    p.first(p.rest)
+}
+
+fn passes_on_beside_one_that_sees_through<U, V, W>(
+    p: (fn(a: U) -> V, (U, fn(a: U) -> W)),
+    q: U,
+    depth: Int,
+) -> V {
+    if depth > 0 {
+        let un: U | nil = unchecked_cast(nil);
+        let r = passes_on_beside_one_that_sees_through(
+            (fn(x) => x, (un, fn(_y) => nil)),
+            1,
+            depth - 1,
+        );
+        let _k: U | nil | 1 = r;
+    }
+
+    p.first(q)
+}
+
+fn solved_again_for_the_second<T, V>(
+    p: (fn(a: T) -> V, (fn(b: V) -> Int, (T, V))),
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        return solved_again_for_the_second((fn(x) => (x, x), (fn(_y) => 2, (1, 5))), depth - 1);
+    }
+
+    0
+}
+
+fn lambda_in_a_typed_lambdas_body<T>(
+    p: (fn(a: Int) -> (fn(b: Int) -> Int, Int), T),
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let r = lambda_in_a_typed_lambdas_body((fn(a: Int) => (fn(y) => y + a, 1), 5), depth - 1);
+        return unchecked_cast::<T>(r);
+    }
+
+    p.rest
+}
+
+fn call_in_a_held_body<B>(p: (fn(a: 5) -> 5, B), depth: Int) -> Int {
+    if depth > 0 {
+        return call_in_a_held_body((fn(_x) => same(5), 5), depth - 1);
+    }
+
+    0
+}
+
+fn rest_of_a_pair_in_a_list<U, V>(
+    p0: [(List<V>, fn(a: List<V>) -> U), fn(a: U) -> V],
+    depth: Int,
+) -> fn(a: V) -> Int {
+    if depth > 0 {
+        let r = rest_of_a_pair_in_a_list(
+            [([[5]], fn(x1) => (1, x1)), fn(x3) => x3.first],
+            depth - 1,
+        );
+        let _n: Int = r(7);
+        return unchecked_cast::<fn(a: V) -> Int>(nil);
+    }
+
+    unchecked_cast::<fn(a: V) -> Int>(nil)
+}
+
+fn rest_before_the_lambda<U, V>(p: ((Int, U), fn(a: U) -> V), depth: Int) -> fn(a: V) -> Int {
+    if depth > 0 {
+        let r = rest_before_the_lambda(((5, (1, 2)), fn(x) => same(x.first)), depth - 1);
+        let _n: Int = r(7);
+        return unchecked_cast::<fn(a: V) -> Int>(nil);
+    }
+
+    unchecked_cast::<fn(a: V) -> Int>(nil)
+}
+
+// From the pass after the last review round:
+// - guard: a held lambda with a call in its body is compiled with its argument's expected type
+//   still provisional, as it is where it is, so that `first_of(value)` isn't narrowed to the
+//   call's `Int`, and `y` is `5 | (5, 5)`, which the guard on it holds for
+// - guard, kept as before by design: a held lambda that's refined where it is, with a bare `u`
+//   among the elements before it, has one of the caller's generics that stand for renamed ones
+//   as its parameter's type, or a member of it, so the parameter takes whatever the renamed
+//   generic is solved as, and the call is accepted whatever comes after it. It's compiled as it
+//   would have been there: the call is `(1, 2) | U | 1`, with the later argument's `1`, where the
+//   same lambda with its parameter's type written gives `(1, 2) | U | Int`, and `r` takes
+//   `(1, 3)` with `(u, 3)` before the lambda. Compiling it against what the call is solved with
+//   would give the written lambda's type, and reject both
+fn first_of_either<T>(value: T | (T, T)) -> T {
+    unchecked_cast(value)
+}
+
+fn provisional_in_a_held_body<S, W>(
+    _s: S,
+    p: (W, fn(a: Int) -> S),
+    g: fn(y: S) -> Int,
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        let value: 5 | (5, 5) = (5, 5);
+        let r: Int = provisional_in_a_held_body(
+            5,
+            (1, fn(_x) => first_of_either(value)),
+            fn(y) => if y is (Int, Int) {
+                y.first + 100
+            } else {
+                y
+            },
+            depth - 1,
+        );
+        return r;
+    }
+
+    g(p.rest(1))
+}
+
+test fn held_lambda_body_with_a_provisional_expected_type() -> Int {
+    provisional_in_a_held_body(5, (1, fn(_x) => 5), fn(y) => y, 1)
+}
+
+fn sees_through_to_the_generic<U, V>(p: ((U, U), fn(a: U) -> V), q: U, depth: Int) -> V {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = sees_through_to_the_generic((((1, 2), u), fn(x) => x), 1, depth - 1);
+        let _r: (1, 2) | U | 1 = r;
+        let typed = sees_through_to_the_generic(
+            (((1, 2), u), fn(x: (1, 2) | U | Int) => x),
+            1,
+            depth - 1,
+        );
+        let _typed: (1, 2) | U | Int = typed;
+        return unchecked_cast::<V>(nil);
+    }
+
+    p.rest(q)
+}
+
+fn sees_through_in_a_pair<U, V>(p: ((U, U), fn(a: U) -> V), q: U, depth: Int) -> fn(c: V) -> Int {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let n: Int = depth;
+        let r = sees_through_in_a_pair((((u, 3), u), fn(x) => x), n, depth - 1);
+        let k = r((1, 3));
+        return fn(_c) => k;
+    }
+
+    let _unused = (p, q);
+    fn(_c) => 0
+}
+
+// - guard: a held lambda that's a list's item, compiled as it would have been where it is, is
+//   recorded against the type it was refined to there (the call in the first one's body has
+//   them compiled there), `fn(a: 5 | 7) -> S`, and not against
+//   `fn(a: W) -> S`, which would keep the later `5` from widening `W` for the lambda after it, so
+//   that `x` is `5 | 7 | Int`, which `9` is assignable to
+fn list_item_recorded_as_refined<S, W>(
+    p: (W, (fn(a: W) -> S, (W, (fn(b: W) -> S, nil)))),
+    g: fn(c: Int) -> Int,
+    depth: Int,
+) -> fn(a: S) -> Int {
+    if depth > 0 {
+        let v: 5 | 7 = 5;
+        let r = list_item_recorded_as_refined(
+            [v, fn(_x) => same(nil), 5, fn(x) => x],
+            fn(c) => c,
+            depth - 1,
+        );
+        return fn(_a) => r(9);
+    }
+
+    fn(_a) => g(1)
+}
+
+// - guards, each compiled as before:
+//   - held lambdas compiled as they would have been where they are see the elements recorded in
+//     the order they come in, so that `T` takes the first of its upper bounds, `Bytes | nil`
+//     from what `fn(_x1) => h` returns, and not `Int | nil` from the typed lambda after it, for
+//     `x3`
+//   - a later argument that's compiled against a generic a held lambda takes as a parameter, as
+//     `make_any()` is for `T`, has the lambda's parameter type as its upper bound, `5 | 7`, with
+//     the lambda as a second element, where the first one's generic has nothing else to give it
+//     a type, and in a pair before a later value
+fn recorded_in_order<U, T>(
+    p: (fn(a: U) -> fn(b: T) -> Int, (fn(a: T) -> Int, (fn(a: T) -> Int, (T, nil)))),
+    h: fn(b: Bytes | nil) -> Int,
+    u: U,
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        return recorded_in_order(
+            [
+                fn(_x1) => h,
+                fn(_x2: Int | nil) => 1,
+                fn(x3) => {
+                    let _y: Bytes | nil = x3;
+                    1
+                },
+                nil,
+            ],
+            h,
+            u,
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+fn bounds_a_later_argument<T, U>(e: T, p: (U, (fn(a: T) -> Int, T)), q: T, depth: Int) -> T {
+    if depth > 0 {
+        let v: 5 | 7 = 5;
+        let r = bounds_a_later_argument(v, (nil, (fn(x) => x + 1, 5)), make_any(), depth - 1);
+        let _s: 5 | 7 = r;
+    }
+
+    make_any()
+}
+
+fn bounds_a_later_argument_after_another<T, X>(
+    p: (fn(a: X) -> Int, ((T, fn(a: T) -> Int), T)),
+    q: T,
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let v: 5 | 7 = 5;
+        let r = bounds_a_later_argument_after_another(
+            (fn(_w) => 1, ((v, fn(x) => x + 1), 5)),
+            make_any(),
+            depth - 1,
+        );
+        let _s: 5 | 7 = r;
+    }
+
+    make_any()
+}
+
+fn bounds_a_later_argument_in_a_pair<T>(p: ((T, fn(a: T) -> Int), T), q: T, depth: Int) -> T {
+    if depth > 0 {
+        let v: 5 | 7 = 5;
+        let r = bounds_a_later_argument_in_a_pair(((v, fn(x) => x + 1), 5), make_any(), depth - 1);
+        let _s: 5 | 7 = r;
+    }
+
+    make_any()
+}
+
+// - guards, each compiled as before:
+//   - a later argument with a call in a `match` is compiled against the generic a held lambda
+//     takes as well, as `bounds_a_later_argument` is
+//   - an element recorded inside another element, as `(u, 5)` is in the block, where the caller's
+//     generics don't stand for renamed ones, adds nothing for the held lambdas compiled as they
+//     would have been where they are either, so `y` is `Int` and not `Int | U`
+fn bounds_a_later_match<T, U>(e: T, p: (U, (fn(a: T) -> Int, T)), q: T, depth: Int) -> T {
+    if depth > 0 {
+        let v: 5 | 7 = 5;
+        let m: 1 | 2 = 1;
+        let r = bounds_a_later_match(
+            v,
+            (nil, (fn(x) => x + 1, 5)),
+            match m {
+                1 => make_any(),
+                2 => make_any(),
+            },
+            depth - 1,
+        );
+        let _s: 5 | 7 = r;
+    }
+
+    make_any()
+}
+
+fn recorded_inside_an_element<U>(p: (U, (Int, (fn(b: U) -> Int, nil))), u: U, depth: Int) -> Int {
+    if depth > 0 {
+        return recorded_inside_an_element(
+            [
+                5,
+                {
+                    let _z = [(u, 5)] as ((U, Bytes), nil);
+                    7
+                },
+                fn(y) => same(y) + 1,
+            ],
+            5,
+            depth - 1,
+        );
+    }
+
+    p.rest.rest.first(u)
+}
+
+// - guard: a lambda that stands for a generic itself, as `fn(x) => nil` does for `T`, which `g`
+//   gave a function type, isn't held past an argument that's compiled against that generic, so
+//   that `takes()` is compiled against both functions, as before
+fn takes<A>() -> fn(a: A) -> Int {
+    fn(_a: A) => 1
+}
+
+fn stands_for_a_generic<T, U>(e: T, p: (Int, T), q: fn(a: T) -> Int, u: U, depth: Int) -> Int {
+    if depth > 0 {
+        let g: fn(a: Int) -> Int = fn(a: Int) => a;
+        return stands_for_a_generic(g, (1, fn(x) => nil), takes(), u, depth - 1);
+    }
+
+    q(e) + q(p.rest)
+}
+
+// - guards, each compiled as before: held lambdas whose parameters would take what the call is
+//   solved with as the elements before them give it are compiled as they would have been where
+//   they are, so that what comes after one doesn't make its parameter a union of the same type
+//   again, or of a narrower one:
+//   - the function in `x.first` can be called, and the `1` in it is widened to `Int`, which `5` is
+//     assignable to, with the same value again after the lambda
+//   - `x.rest` is widened to `Int` with a narrower pair after it, and `x.first` can be called
+//     with a function that takes more after it
+//   - two of the same value before the lambda keep `x.first` a `1`, as before
+//   - a pair with a held lambda in it counts as any type for that, so that `x` is either pair
+fn same_type_twice<U, V>(p: (U, fn(a: U) -> V), q: U, depth: Int) -> V {
+    if depth > 0 {
+        let g: fn(a: Int) -> Int = fn(a) => a + 1;
+        let r = same_type_twice(((g, 1), fn(x) => x.first), (g, 1), depth - 1);
+        return unchecked_cast::<V>(r(1));
+    }
+
+    p.rest(q)
+}
+
+fn same_type_twice_in_a_list<U, V>(p: (U, (fn(a: U) -> V, (U, nil))), depth: Int) -> fn(
+    c: V,
+) -> Int {
+    if depth > 0 {
+        let r = same_type_twice_in_a_list([(1, 2), fn(x) => x.first, (1, 2)], depth - 1);
+        let n = r(5);
+        return fn(_c) => n;
+    }
+
+    fn(_c) => 0
+}
+
+fn narrower_after_the_lambda<U, V>(p: (U, (fn(a: U) -> V, (U, nil))), depth: Int) -> fn(
+    c: V,
+) -> Int {
+    if depth > 0 {
+        let n: Int = depth;
+        let r = narrower_after_the_lambda([(n, 1), fn(x) => x.rest, (2, 1)], depth - 1);
+        let k = r(5);
+        return fn(_c) => k;
+    }
+
+    fn(_c) => 0
+}
+
+fn function_that_takes_more_after<U, V>(p: (U, fn(a: U) -> V), q: U, depth: Int) -> V {
+    if depth > 0 {
+        let g: fn(a: Int) -> Int = fn(a) => a + 1;
+        let g1: fn(a: 1) -> Int = fn(_a) => 2;
+        let r = function_that_takes_more_after(((g1, 1), fn(x) => x.first), (g, 1), depth - 1);
+        let _k: Int = r(1);
+    }
+
+    unchecked_cast(nil)
+}
+
+fn same_type_twice_before<U, V>(p: (U, (U, (fn(a: U) -> V, nil))), depth: Int) -> V {
+    if depth > 0 {
+        let r = same_type_twice_before([(1, 2), (1, 2), fn(x) => x.first], depth - 1);
+        let _k: 1 = r;
+    }
+
+    unchecked_cast(nil)
+}
+
+fn held_lambdas_in_both<T, U, V>(
+    p: (((T, fn(a: Int) -> Any) | U, (T, fn(a: Int) -> Any) | U), fn(a: U) -> V),
+    depth: Int,
+) -> V {
+    if depth > 0 {
+        let _r = held_lambdas_in_both(
+            (((1, fn(z) => (z, z)), (1, fn(y) => y)), fn(x) => x.rest),
+            depth - 1,
+        );
+    }
+
+    unchecked_cast(nil)
+}
+
+// - guards, each compiled as before, since that's decided for each held lambda, with the held
+//   lambdas before it in place:
+//   - `y` is what `fn(x) => (x, 1)` returns, `(Int, 1)`, which the later `(n, 1)` adds nothing
+//     to, so `y.rest` is widened to `Int`
+//   - `x` is `((Int, Int), 1)` beside a lambda that's compiled against what the call is solved
+//     with, since a later argument adds to what it takes
+fn earlier_lambda_returns_it<U, V>(p: (fn(a: Int) -> U, fn(a: U) -> V), q: U, depth: Int) -> fn(
+    c: V,
+) -> Int {
+    if depth > 0 {
+        let n: Int = depth;
+        let r = earlier_lambda_returns_it((fn(x) => (x, 1), fn(y) => y.rest), (n, 1), depth - 1);
+        let k = r(5);
+        return fn(_c) => k + 40;
+    }
+
+    let _unused = (p, q);
+    fn(_c) => 2
+}
+
+fn beside_one_that_takes_more<U, V, W, X>(
+    p: ((W, fn(a: W) -> V), ((U, U), fn(a: U) -> X)),
+    q: W,
+    q2: U,
+    depth: Int,
+) -> fn(c: V) -> Int {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let pr: (Int, Int) = (8, 9);
+        let r = beside_one_that_takes_more(
+            (((pr, 1), fn(x) => x.rest), (((1, 2), u), fn(_y) => 5)),
+            ((1, 2), 1),
+            1,
+            depth - 1,
+        );
+        let k = r(5);
+        return fn(_c) => k + 40;
+    }
+
+    fn(_c) => 2
+}
+
+// - guard, compiled as before: a pair's first element whose parameter is shadowed where its body
+//   uses an operator, as `x` is by the field of `Shadow`, whatever kind of binding shadows it,
+//   only passes its parameter on, so it's compiled with the caller's generic where it is
+struct Shadow {
+    x: Int,
+}
+
+fn shadowed_by_a_field<U, V>(p: (fn(a: U) -> (V, Int), U), depth: Int) -> V {
+    if depth > 0 {
+        let r = shadowed_by_a_field(
+            (
+                fn(x) => {
+                    let y = x;
+                    let { x } = Shadow { x: 1 };
+                    let _z = x + 1;
+                    y
+                },
+                (1, 2),
+            ),
+            depth - 1,
+        );
+        if r is (Any, Any) {
+            return unchecked_cast::<V>(r.first);
+        }
+        return unchecked_cast::<V>(nil);
+    }
+
+    p.first(p.rest).first
+}
+
+// - a pair's first element whose body has its parameter as a prefix operator's operand can't be
+//   compiled with the caller's generic either, so it's compiled against what the call is solved
+//   with, where the call was rejected
+fn negated_first_element<T, U>(p: (fn(a: T) -> U, T), depth: Int) -> U {
+    if depth > 0 {
+        let r = negated_first_element((fn(x) => -x, 1), depth - 1);
+        let _n: Int = r;
+    }
+
+    p.first(p.rest)
+}
+
+// - a pair's first element in a later argument is compiled against what the call is solved with,
+//   with the rest of its pair recorded while it's held, so that `v` is the caller's own there and
+//   `x` is `(V, 1)`, where the call was rejected
+fn rest_recorded_while_held<T, U, V, W>(
+    functions: List<fn(a: List<U>, b: T) -> List<U>>,
+    value: T,
+    p: (fn(a: V) -> W, V),
+    depth: Int,
+) -> W {
+    if depth > 0 {
+        let v = unchecked_cast::<V>(nil);
+        let guarded = rest_recorded_while_held(
+            [
+                fn(x: List<(5, U)>, _x1: List<(6, U)>) => x,
+                fn(y, y1) => {
+                    let _guard = y1 is nil;
+                    same(y)
+                },
+            ],
+            nil,
+            (fn(x) => x.rest, (v, 1)),
+            depth - 1,
+        );
+        let _r: Int = guarded;
+        return unchecked_cast::<W>(nil);
+    }
+
+    unchecked_cast::<W>(nil)
 }

@@ -66,3 +66,14 @@ export fn ignored_arm_bindings(value: Span | (Int, Int)) -> Int {
         (Int, Int) as (first, _rest) => first,
     }
 }
+
+// A binding that's only used in the arm's condition is used, and one that isn't used in the
+// condition or the value is reported
+export fn arm_conditions(value: Span | (Int, Int)) -> Int {
+    match value {
+        Span { start, end } if start > end => 1,
+        Span { start, end } if start > 0 => start,
+        (Int, Int) as (first, rest) if true => 2,
+        _ => 0,
+    }
+}

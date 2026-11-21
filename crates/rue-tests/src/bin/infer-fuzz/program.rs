@@ -335,7 +335,12 @@ pub enum ExprKind {
     Bool,
     Nil,
     Pair(Box<Expr>, Box<Expr>),
+    /// A list literal. Generator version 4 also writes one for a type of nested pairs that ends
+    /// in `nil`, such as `[fn(x) => x, 5]` for `(fn(a: Int) -> Int, (Int, nil))`.
     List(Vec<Expr>),
+    /// A list literal whose last item is spread, as `[x, ...rest]`, which is the pair
+    /// `(x, rest)`, for a list or a type of nested pairs (generator version 4).
+    ListSpread(Vec<Expr>, Box<Expr>),
     First(Box<Expr>),
     Rest(Box<Expr>),
     Field(Box<Expr>),
@@ -408,6 +413,7 @@ impl Expr {
         match &self.kind {
             ExprKind::Pair(first, rest) => vec![first, rest],
             ExprKind::List(items) => items.iter().collect(),
+            ExprKind::ListSpread(items, rest) => items.iter().chain([&**rest]).collect(),
             ExprKind::First(inner) | ExprKind::Rest(inner) | ExprKind::Field(inner) => {
                 vec![inner]
             }
@@ -426,6 +432,11 @@ impl Expr {
         match &mut self.kind {
             ExprKind::Pair(first, rest) => vec![first, rest],
             ExprKind::List(items) => items.iter_mut().collect(),
+            ExprKind::ListSpread(items, rest) => {
+                let mut children: Vec<&mut Expr> = items.iter_mut().collect();
+                children.push(rest);
+                children
+            }
             ExprKind::First(inner) | ExprKind::Rest(inner) | ExprKind::Field(inner) => {
                 vec![inner]
             }
@@ -484,6 +495,9 @@ pub struct Let {
 pub struct Recursion {
     /// A recursive call with other generic arguments, whose result is unused.
     pub inner: Option<Expr>,
+    /// The annotation of `inner`'s binding, such as `let _inner: Int | nil = ...`, which gives
+    /// the call an expected type (generator version 4).
+    pub annotation: Option<Ty>,
     /// A recursive call with the function's own generics, whose result is returned.
     pub returned: Expr,
 }
@@ -503,8 +517,8 @@ pub struct Function {
 /// Where a function's top-level expression is, which says whether it has an expected type.
 #[derive(Debug, Clone, Copy)]
 pub enum Root<'a> {
-    /// `let _inner = ...;` in the recursion guard, which has no expected type.
-    GuardLet,
+    /// `let _inner = ...;` in the recursion guard, with its annotation if it has one.
+    GuardLet(Option<&'a Ty>),
     /// `return ...;` in the recursion guard.
     GuardReturn,
     /// A binding, with its annotation if it has one.
@@ -516,9 +530,8 @@ pub enum Root<'a> {
 impl Root<'_> {
     pub fn has_expected_type(self) -> bool {
         match self {
-            Root::GuardLet => false,
             Root::GuardReturn | Root::Return => true,
-            Root::Let(annotation) => annotation.is_some(),
+            Root::GuardLet(annotation) | Root::Let(annotation) => annotation.is_some(),
         }
     }
 }
@@ -530,7 +543,7 @@ impl Function {
         let mut roots = Vec::new();
         if let Some(recursion) = &self.recursion {
             if let Some(inner) = &recursion.inner {
-                roots.push((inner, Root::GuardLet));
+                roots.push((inner, Root::GuardLet(recursion.annotation.as_ref())));
             }
             roots.push((&recursion.returned, Root::GuardReturn));
         }
@@ -651,6 +664,11 @@ impl Program {
             function.params.iter().any(|(_, ty)| any(ty))
                 || any(&function.ret)
                 || function
+                    .recursion
+                    .as_ref()
+                    .and_then(|recursion| recursion.annotation.as_ref())
+                    .is_some_and(any)
+                || function
                     .lets
                     .iter()
                     .any(|binding| binding.annotation.as_ref().is_some_and(any))
@@ -738,7 +756,11 @@ fn print_function(out: &mut String, function: &Function, variant: &Variant) {
     if let Some(recursion) = &function.recursion {
         out.push_str("    if depth > 0 {\n");
         if let Some(inner) = &recursion.inner {
-            writeln!(out, "        let _inner = {};", printer.expr(inner)).unwrap();
+            out.push_str("        let _inner");
+            if let Some(annotation) = &recursion.annotation {
+                write!(out, ": {}", annotation.print(generics)).unwrap();
+            }
+            writeln!(out, " = {};", printer.expr(inner)).unwrap();
         }
         writeln!(out, "        return {};", printer.expr(&recursion.returned)).unwrap();
         out.push_str("    }\n\n");
@@ -784,6 +806,11 @@ impl Printer<'_> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            ExprKind::ListSpread(items, rest) => {
+                let mut items: Vec<String> = items.iter().map(|item| self.expr(item)).collect();
+                items.push(format!("...{}", self.expr(rest)));
+                format!("[{}]", items.join(", "))
+            }
             ExprKind::First(inner) => format!("{}.first", self.operand(inner)),
             ExprKind::Rest(inner) => format!("{}.rest", self.operand(inner)),
             ExprKind::Field(inner) => format!("{}.value", self.operand(inner)),

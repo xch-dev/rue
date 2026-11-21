@@ -392,12 +392,16 @@ fn analyze_nodes(
             | AstNodeKind::ConstExpr
             | AstNodeKind::ListItem
             | AstNodeKind::BinaryExpr
+            | AstNodeKind::MatchArmGuard
             | AstNodeKind::GuardExpr
             | AstNodeKind::CastExpr
             | AstNodeKind::FieldAccessExpr
             | AstNodeKind::NamedBinding
             | AstNodeKind::ListBindingItem
-            | AstNodeKind::StructFieldBinding => {}
+            | AstNodeKind::StructFieldBinding
+            | AstNodeKind::ForExpr
+            | AstNodeKind::ForFilter
+            | AstNodeKind::ForFold => {}
             AstNodeKind::AssertStmt => {
                 // An `assert` with a message is a group from `assert` to the end of the message,
                 // so that the message is only moved to its own line if they don't fit on one
@@ -538,6 +542,14 @@ fn expression_block_style(
         .is_some_and(|parent| parent.kind() == SyntaxKind::IfExpr)
     {
         return Some(DelimiterStyle::ConditionalBraced);
+    }
+    // The body of a `for` is on one line with it, or on lines of its own, rather than starting
+    // on the line of the `for` and ending on another
+    if node
+        .parent()
+        .is_some_and(|parent| parent.kind() == SyntaxKind::ForExpr)
+    {
+        return Some(DelimiterStyle::Braced);
     }
     Some(if is_transparent_expression_wrapper(kind) {
         DelimiterStyle::FillBraced

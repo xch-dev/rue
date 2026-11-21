@@ -34,3 +34,157 @@ test fn generic_with_default() -> Int {
     let box = Box::<Int> { value: 5 };
     box.value + box.count
 }
+
+// A default value is only defined once, however many initializers leave the field out, so that a
+// let statement in it is found by each of them, whether they're in a lambda, a condition, a
+// recursive function or an inline binding. The list goes through `runtime`, which the compiler
+// can't fold.
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+fn total(xs: List<Int>) -> Int {
+    if xs is nil {
+        0
+    } else {
+        xs.first + total(xs.rest)
+    }
+}
+
+fn apply(function: fn(value: Int) -> Int, value: Int) -> Int {
+    function(value)
+}
+
+const THREE: Int = total([1, 2]);
+
+struct Doubled {
+    _scale: Int,
+    value: Int = {
+        let sum = positive(total([1, 2, 3]));
+        sum + sum
+    },
+}
+
+struct Checked {
+    _scale: Int,
+    value: Int = {
+        let _checked = positive(THREE);
+        5
+    },
+}
+
+struct Scaled {
+    _scale: Int,
+    value: Int = {
+        let four = THREE + 1;
+        four * 2
+    },
+}
+
+fn total_defaults(xs: List<Int>) -> Int {
+    if xs is nil {
+        0
+    } else {
+        Checked { _scale: xs.first }.value + total_defaults(xs.rest)
+    }
+}
+
+test fn default_in_a_lambda_and_a_condition() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let add = fn(x: Int) => Doubled { _scale: x }.value + x;
+
+    if (Doubled { _scale: positive(total(xs)) }.value) is Int {
+        [apply(add, 1), apply(add, 2)]
+    } else {
+        []
+    }
+}
+
+test fn default_in_a_recursive_function_and_after_it() -> Int {
+    let xs = runtime([1, 2]);
+    let _checked = positive(total_defaults(xs));
+    Checked { _scale: 1 }.value
+}
+
+test fn default_in_an_inline_binding_and_a_lambda() -> Int {
+    let xs = runtime([1, 2]);
+    inline let value = Scaled { _scale: 1 }.value;
+    let outer = fn(x: Int) => {
+        let inner = fn(y: Int) => value + y;
+        apply(inner, x) + Scaled { _scale: x }.value
+    };
+    value + apply(outer, 1) + total(xs)
+}
+
+fn range(n: Int) -> List<Int> {
+    if n > 0 {
+        [n, ...range(n - 1)]
+    } else {
+        []
+    }
+}
+
+fn hash_three_times(value: Int) -> Int {
+    sha256(
+        sha256(sha256(value as Bytes + "abcdefghijklmnopqrstuvwxyz") + "abcdefghijklmnopqrstuvwxyz")
+            + "abcdefghijklmnopqrstuvwxyz",
+    ) as Int
+}
+
+const EXPENSIVE: Int = total(range(50));
+
+struct ReadsConstant {
+    _scale: Int,
+    value: Int = EXPENSIVE,
+}
+
+struct CallsFunction {
+    _scale: Int,
+    value: Int = hash_three_times(11),
+}
+
+// What a default value refers to is used by every initializer that leaves the field out, so a
+// constant or function that's only in the default value isn't put in each of them
+test fn constant_in_a_default_is_evaluated_once() -> Int {
+    let n = total(runtime([1, 2]));
+    ReadsConstant { _scale: n }.value
+        + ReadsConstant { _scale: n + 1 }.value
+        + ReadsConstant { _scale: n + 2 }.value
+        + ReadsConstant { _scale: n + 3 }.value
+}
+
+test fn function_in_a_default_is_only_in_the_program_once() -> Bool {
+    let n = total(runtime([1, 2]));
+    CallsFunction { _scale: n }.value
+            + CallsFunction { _scale: n + 1 }.value
+            + CallsFunction { _scale: n + 2 }.value
+        == CallsFunction { _scale: n + 3 }.value
+            * 3
+}
+
+struct ReadsThroughLet {
+    _scale: Int,
+    value: Int = {
+        let sum = EXPENSIVE;
+        sum + sum
+    },
+}
+
+struct UsesAnotherDefault {
+    _scale: Int,
+    value: Int = ReadsThroughLet { _scale: 1 }.value + 1,
+}
+
+// The same goes for what a default value refers to through the default value of another struct
+test fn constant_in_a_nested_default_is_evaluated_once() -> Int {
+    let n = total(runtime([1, 2]));
+    UsesAnotherDefault { _scale: n }.value
+        + UsesAnotherDefault { _scale: n + 1 }.value
+        + UsesAnotherDefault { _scale: n + 2 }.value
+}

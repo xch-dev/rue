@@ -145,3 +145,17 @@ fn main() -> Int {
             0
         }
 }
+
+// An arm with a condition doesn't handle its type, so it doesn't make a later arm for the same type
+// unreachable, but it's unreachable itself after an arm that does handle its type
+export fn conditions(value: Int | (Int, Int)) -> Int {
+    match value {
+        Int if value > 10 => 1,
+        Int if value > 10 => 2,
+        Int => 3,
+        Int if value > 5 => 4,
+        _ if value.first > 0 => 5,
+        _ => 6,
+        _ if true => 7,
+    }
+}

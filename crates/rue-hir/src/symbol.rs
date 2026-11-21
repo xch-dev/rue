@@ -102,6 +102,10 @@ impl FunctionSymbol {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FunctionKind {
+    /// The function a `for` expression is compiled to, which goes through a list by calling
+    /// itself. It's defined where it's called, inside the function the expression is in, whose
+    /// values it captures.
+    Loop,
     BinaryTree,
     Sequential,
     External,

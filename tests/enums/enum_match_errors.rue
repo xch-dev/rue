@@ -83,6 +83,22 @@ fn binding_fields(shape: Shape, mode: Mode) -> Int {
         }
 }
 
+// A variant whose only arm has a condition isn't handled
+fn conditional_variant(shape: Shape, mode: Mode) -> Int {
+    let area = match shape {
+        Shape::Empty => 0,
+        Shape::Circle { radius } if radius > 10 => radius,
+        Shape::Rect { width, height } => width * height,
+    };
+
+    area
+        + match mode {
+            Mode::Off => 0,
+            Mode::On if area > 0 => 1,
+            _ if area > 1 => 2,
+        }
+}
+
 fn main(shape: Shape, mode: Mode, both: Both<Dir, Dir>) -> Int {
     missing_one(shape)
         + missing_many(mode)
@@ -91,4 +107,5 @@ fn main(shape: Shape, mode: Mode, both: Both<Dir, Dir>) -> Int {
         + other_enum(mode)
         + missing_combinations(both)
         + binding_fields(shape, mode)
+        + conditional_variant(shape, mode)
 }

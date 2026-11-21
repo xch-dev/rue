@@ -1,0 +1,754 @@
+// A `for` expression goes through the items of a list. Each list goes through `runtime`, which the
+// compiler can't fold, so the loops are run.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// Without a fold, the result is a list of the body's value for each item
+test fn list() -> List<Int> {
+    for x in runtime([1, 2, 3]) { x + 1 }
+}
+
+test fn empty_list() -> List<Int> {
+    for x in runtime([] as List<Int>) { x + 1 }
+}
+
+// The body is a block, which can have statements
+test fn body_with_statements() -> List<Int> {
+    for x in runtime([1, 2, 3]) {
+        let doubled = x * 2;
+        assert doubled > 0;
+        doubled + 1
+    }
+}
+
+// A filter leaves out the items that don't pass it
+test fn filter() -> List<Int> {
+    for x in runtime([1, 5, 2, 7]) if x > 2 { x }
+}
+
+// The body sees what the filter narrows the item to, and so does the list's type
+test fn filter_narrows() -> List<Int> {
+    let values: List<Int | (Int, Int)> = runtime([1, (2, 3), 4]);
+    for value in values if value is Int { value + 1 }
+}
+
+// The item can be destructured
+test fn patterns() -> List<Int> {
+    let points = runtime([Point { x: 1, y: 2 }, Point { x: 3, y: 4 }]);
+    let pairs = runtime([(1, 2), (3, 4)]);
+    [...for { x, y } in points { x + y }, ...for (a, b) in pairs { a * b }]
+}
+
+// A fold gives one value: the body's value from the item and the result for the rest of the list
+test fn fold() -> Int {
+    for x in runtime([1, 2, 3, 4]) fold sum = 0 { sum + x }
+}
+
+// At the end of the list, the result is the fold's value
+test fn fold_of_an_empty_list() -> Int {
+    for x in runtime([] as List<Int>) fold sum = 100 { sum + x }
+}
+
+// A body that refers to the result for the rest of the list once only evaluates it if it gets to
+// it, so this stops at the first item that matches: the second item would fail
+test fn fold_stops_early() -> Bool {
+    for x in runtime([1, 0]) fold found = false { x == 1 || positive(x) == 5 || found }
+}
+
+// A body that refers to it more than once has it evaluated before the body
+test fn fold_with_two_references() -> Int {
+    for x in runtime([1, 2, 3, 4]) fold sum = 0 {
+        if x > 2 {
+            sum + x
+        } else {
+            sum
+        }
+    }
+}
+
+// A filter skips the items that don't pass it, which leaves the result for the rest of the list
+test fn fold_with_a_filter() -> Int {
+    for x in runtime([1, 2, 3, 4]) if x > 2 fold sum = 0 { sum + x }
+}
+
+// A fold can build a list, with a type for the result
+test fn fold_building_a_list() -> List<Int> {
+    for x in runtime([1, 2]) fold rest: List<Int> = [9] { [x, x, ...rest] }
+}
+
+// Without a type, the result is what the expression is expected to be
+test fn fold_with_an_expected_type() -> List<Int> {
+    for x in runtime([1, 2]) fold rest = nil { [x + 1, ...rest] }
+}
+
+// A body without a value is only evaluated for each item
+test fn body_without_a_value() -> Int {
+    let xs = runtime([1, 2]);
+    for x in xs {
+        assert x > 0;
+    }
+    5
+}
+
+test fn body_without_a_value_fails() -> Int {
+    let xs = runtime([1, 0]);
+    for x in xs {
+        assert x > 0;
+    }
+    5
+}
+
+// A function that returns nothing can end with a loop
+fn check_all(xs: List<Int>) {
+    for x in xs {
+        assert x > 0;
+    }
+}
+
+test fn loop_at_the_end_of_a_function() -> Int {
+    let xs = runtime([1, 2]);
+    check_all(xs);
+    check_all(xs);
+    5
+}
+
+// A value from outside of the body is captured, rather than evaluated again for each item
+test fn captured_value() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(10);
+    for x in xs { x * k }
+}
+
+// A literal is used where it's referred to
+test fn captured_literal() -> List<Int> {
+    let limit = 2;
+    for x in runtime([1, 2, 3]) if x > limit { x }
+}
+
+// A `for` can be in another one, and refer to its item
+test fn nested() -> List<List<Int>> {
+    let xs = runtime([1, 2]);
+    let ys = runtime([10, 20]);
+    for x in xs { for y in ys { x + y } }
+}
+
+// A fold in a fold, which builds one list
+test fn nested_folds() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let ys = runtime([10, 20]);
+    for x in xs fold rest: List<Int> = nil {
+        for y in ys fold inner: List<Int> = rest { [x + y, ...inner] }
+    }
+}
+
+// A `for` in a lambda captures the lambda's parameter and what the lambda captures
+test fn in_a_lambda() -> List<Int> {
+    let k = positive(2);
+    let f = fn(xs: List<Int>, offset: Int) => for x in xs { x + k + offset };
+    [...f(runtime([1]), 10), ...f(runtime([2]), 20)]
+}
+
+// A lambda in a `for` captures the item
+test fn lambda_in_the_body() -> Int {
+    let functions = for x in runtime([1, 2, 3]) { fn(y: Int) => x + y };
+    for f in functions fold sum = 0 { f(10) + sum }
+}
+
+// A `for` in a function that's inlined gets the arguments of each call, whether they're static or
+// not, though it's only in the program once
+inline fn scale(xs: List<Int>, k: Int) -> List<Int> {
+    for x in xs { x * k }
+}
+
+test fn in_an_inline_function() -> (List<Int>, List<Int>) {
+    let seven = positive(7);
+    (scale(runtime([1, 2]), 5), scale(runtime([3]), seven))
+}
+
+fn scale_once(xs: List<Int>, k: Int) -> List<Int> {
+    for x in xs { x * k }
+}
+
+test fn in_a_function_inlined_automatically() -> List<Int> {
+    scale_once(runtime([1, 2]), positive(4) + 1)
+}
+
+// A binding that's only static with the arguments of an inlined call is captured too
+inline fn offset_all(xs: List<Int>, k: Int) -> List<Int> {
+    let pair = (k, 1);
+    for x in xs { x + pair.first + pair.rest }
+}
+
+test fn binding_of_an_inline_argument() -> (List<Int>, List<Int>) {
+    let seven = positive(7);
+    (offset_all(runtime([1, 2]), 5), offset_all(runtime([3]), seven))
+}
+
+// The list can be a list literal
+test fn static_list() -> List<Int> {
+    for x in [1, 2, 3] { x + 1 }
+}
+
+// `in` and `fold` are only keywords in a `for`
+test fn names() -> Int {
+    let in = runtime([1, 2]);
+    let fold = 10;
+    for x in in fold fold = fold { fold + x }
+}
+
+// A `for` can be spread into a list, and be an argument
+test fn in_expressions() -> Int {
+    let xs = runtime([1, 2]);
+    let list = [0, ...for x in xs { x + 1 }];
+    length(list) + length(for x in xs if x > 1 { x })
+}
+
+// A constant can be a `for`, which is evaluated when the program starts
+const SQUARES: List<Int> = for x in [1, 2, 3] { x * x };
+
+test fn in_a_constant() -> Int {
+    let squares = runtime(SQUARES);
+    length(squares) + length(SQUARES)
+}
+
+// An item that the filter skips doesn't evaluate the result for the rest of the list before it's
+// skipped, which would go through the rest of the list twice for each one
+test fn fold_with_a_filter_and_two_references() -> Int {
+    let zeros = runtime([
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+    ]);
+    for x in zeros if x > 0 fold max = 0 {
+        if x > max {
+            x
+        } else {
+            max
+        }
+    }
+}
+
+// The result for the rest of the list is evaluated once, before the body, where the body could
+// evaluate it more than once: in another `for`, in a lambda, and in a type guard that uses its
+// value more than once
+test fn fold_referenced_in_a_nested_for() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let ys = runtime([1, 2]);
+    for x in xs fold best = 0 {
+        for y in ys fold m = x {
+            if y > best {
+                y
+            } else {
+                m
+            }
+        }
+    }
+}
+
+test fn fold_referenced_in_a_lambda() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold total = 0 {
+        let add = fn(y: Int) => y + total;
+        add(x) + add(1)
+    }
+}
+
+test fn fold_referenced_in_a_type_guard() -> Any {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold result: Any = nil {
+        if result is (Int, (Int, nil)) {
+            x
+        } else {
+            (x, (x, nil))
+        }
+    }
+}
+
+// The result can be destructured, with a literal in a pair as the type it's a value of
+test fn fold_with_a_pattern() -> (Int, Int) {
+    for x in runtime([1, 2, 3]) fold (count, sum) = (0, 0) { (count + 1, sum + x) }
+}
+
+// Without a type, the result's type is from the fold's value, whatever the expression is
+// expected to be
+test fn fold_with_a_wider_expected_type() -> Int | nil {
+    for x in runtime([1, 2]) fold sum = 0 { sum + x }
+}
+
+test fn fold_as_a_generic_argument() -> Int {
+    same(for x in runtime([1, 2]) fold sum = 0 { sum + x })
+}
+
+fn same<T>(value: T) -> T {
+    value
+}
+
+// The fold's value can be a lambda, whose body ends before the body of the `for`
+test fn fold_of_lambdas() -> Int {
+    let compose = for x in runtime([1, 2]) fold f = fn(y: Int) => y { fn(y: Int) => f(y) + x };
+    compose(10)
+}
+
+// The body is compiled against the item type of what the expression is expected to be, which gives
+// a lambda its parameter type
+test fn expected_item_type() -> Int {
+    let functions: List<fn(y: Int) -> Int> = for x in runtime([1, 2]) { fn(y) => x + y };
+    for f in functions fold sum = 0 { f(10) + sum }
+}
+
+// A value from outside of the body that can't fail is captured too, rather than evaluated for each
+// item where the body refers to it
+test fn captured_value_that_cannot_fail() -> List<Int> {
+    let n = positive(2);
+    let k = n + 1;
+    for x in runtime([1, 2, 3]) { x * k }
+}
+
+test fn captured_hash() -> List<Bytes> {
+    let n = positive(2);
+    let hash = sha256(n as Bytes);
+    for x in runtime(["a", "b"]) { x + hash }
+}
+
+// The result of one `for` used in another is only evaluated once
+test fn captured_fold() -> List<Int> {
+    let ys = runtime([1, 2, 3]);
+    let total = for y in ys fold sum = 0 { sum + y };
+    for x in runtime([1, 2]) { x * total }
+}
+
+inline fn scale_twice(xs: List<Int>, k: Int) -> List<Int> {
+    let twice = k + k;
+    for x in xs { x * twice }
+}
+
+test fn captured_binding_in_an_inline_function() -> (List<Int>, List<Int>) {
+    let seven = positive(7);
+    (scale_twice(runtime([1, 2]), 5), scale_twice(runtime([3]), seven))
+}
+
+// A constant that isn't inline is evaluated once, when the program starts
+const HASH: Bytes32 = sha256(sha256("a"));
+
+test fn captured_constant() -> List<Bytes> {
+    for x in runtime(["a", "b"]) { x + HASH }
+}
+
+// A `for` with a value at the end of a statement's block is a loop too
+test fn at_the_end_of_a_statement_block() -> Int {
+    let xs = runtime([1, 2]);
+    if length(xs) > 1 {
+        for x in xs {
+            assert x > 0;
+        }
+    }
+    5
+}
+
+// A `for` that's a statement can have attributes
+test fn attributes() -> Int {
+    let xs = runtime([1, 2]);
+    #[allow(unused_binding)]
+    for x in xs {
+        assert length(xs) > 1;
+    }
+    5
+}
+
+// The result for the rest of the list is evaluated once where it's an argument of a call, or the
+// value of a `let`, since a function that's inlined evaluates its argument wherever it refers to
+// its parameter
+inline fn larger(a: Int, b: Int) -> Int {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+test fn fold_as_an_inline_argument() -> Int {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold max = 0 { larger(x, max) }
+}
+
+inline fn twice(a: Int) -> Int {
+    a + a
+}
+
+test fn fold_in_a_let_passed_to_an_inline_function() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold total = 1 {
+        let next = total + x;
+        twice(next) / 2
+    }
+}
+
+// A body whose value is nil makes a loop, such as a call to a function that returns nothing, or
+// another loop, so a function that returns nothing can end with one
+fn check(x: Int) {
+    assert x > 0;
+}
+
+fn check_each(xs: List<Int>) {
+    for x in xs { check(x) }
+}
+
+fn check_nested(lists: List<List<Int>>) {
+    for xs in lists {
+        for x in xs {
+            assert x > 0;
+        }
+    }
+}
+
+test fn body_with_a_nil_value() -> Int {
+    check_each(runtime([1, 2]));
+    check_each(runtime([3]));
+    check_nested(runtime([[1], [2, 3]]));
+    check_nested(runtime([[4]]));
+    5
+}
+
+// A value that an `inline let` outside of the body refers to is captured too
+test fn captured_through_an_inline_let() -> List<Int> {
+    let n = positive(2);
+    let cube = n * n * n;
+    inline let next = cube + 1;
+    for x in runtime([1, 2]) { x * next }
+}
+
+// A fold from nil keeps its type where it's an argument for a generic parameter
+fn or_default<T>(value: T | nil, default: Int) -> Int {
+    if value is nil {
+        default
+    } else {
+        1
+    }
+}
+
+test fn nil_fold_as_a_generic_argument() -> Int {
+    or_default(
+        for x in runtime([1, 2]) fold done = nil {
+            check(x);
+            done
+        },
+        2,
+    )
+}
+
+// A loop is still a loop where a pair or struct that can also be nil is expected, since that
+// isn't a list
+fn checked_pair(xs: List<Int>) -> (Int, Int) | nil {
+    for x in xs { check(x) }
+}
+
+fn checked_point(xs: List<Int>) -> Point | nil {
+    for x in xs { check(x) }
+}
+
+test fn loop_with_an_optional_expected_type() -> Bool {
+    checked_pair(runtime([1, 2])) is nil && checked_point(runtime([3])) is nil
+}
+
+// A body whose value is nil still makes a list where one is expected
+fn empty_lists(xs: List<Int>) -> List<List<Int>> {
+    for _x in xs { [] }
+}
+
+test fn list_of_nils() -> Int {
+    length(empty_lists(runtime([1, 2, 3]))) + length(empty_lists(runtime([4])))
+}
+
+// The list and the filter refer to the names outside of the `for`, which the item and the result
+// of the fold shadow in the body
+test fn shadowed_names() -> Int {
+    let x = runtime([1, 2, 3]);
+    let total = length(x) > 2;
+    for x in x if total fold total = 0 { total + x }
+}
+
+// A loop only captures the values it refers to, not what they depend on. So a value that the loop
+// only reaches through one it captures can be read where it's used, as `first` is here, without
+// the loop expecting it too
+fn after_first(pair: (Int, List<Int>)) -> List<Int> {
+    let first = pair.first;
+    let k = first * 3;
+    [first, ...for x in pair.rest { x + k }]
+}
+
+test fn captured_value_that_depends_on_a_path() -> List<Int> {
+    after_first(runtime((5, [1, 2, 3])))
+}
+
+// A lambda in the body captures everything it can reach, which the loop has for it
+test fn lambda_in_the_body_reaching_outside() -> List<Int> {
+    let pair = runtime((5, [1, 2, 3]));
+    let first = pair.first;
+    let total = first + length(pair.rest);
+    [first, ...for x in pair.rest { (fn(y: Int) => y + total)(x) }]
+}
+
+// A function with a loop that's inlined for each of its calls gives the loop the same values,
+// whether or not a call's arguments let a value that the captured one depends on be substituted
+fn offset_by(make: fn(v: Int) -> Int, enabled: Bool, xs: List<Int>) -> List<Int> {
+    let made = make(3);
+    let k = if enabled {
+        made
+    } else {
+        0
+    };
+    for x in xs { x + k }
+}
+
+test fn captured_value_with_arguments_that_differ() -> List<Int> {
+    let xs = runtime([1, 2]);
+    [
+        ...offset_by(fn(v: Int) => v, false, xs),
+        ...offset_by(
+            fn(v: Int) => {
+                assert v > 2;
+                v
+            },
+            true,
+            xs,
+        ),
+    ]
+}
+
+// The argument for a parameter that the loop only reaches through a value it captures isn't
+// evaluated again for the loop
+fn double_all(by: Int, xs: List<Int>) -> List<Int> {
+    let k = by * 2;
+    for x in xs { x + k }
+}
+
+test fn argument_of_an_indirect_capture() -> List<Int> {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    double_all(for x in xs fold sum = 0 { sum + x }, xs)
+}
+
+// What's defined inside the value of an `inline let` outside of the loop is lowered in the loop
+// with it, rather than captured: a lambda's parameter, a block's binding, and another `for`
+test fn inline_values_with_their_own_bindings() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let total = for x in xs fold sum = 0 { sum + x };
+    inline let add_one = fn(y: Int) => y + 1;
+    inline let squared = {
+        let next = total + 1;
+        next * next
+    };
+    inline let folded = for y in [total, 2] fold sum = 0 { sum + y };
+    for x in xs { add_one(x) + squared + folded }
+}
+
+// A function whose loop calls it again has values of its own in each call, which the loop
+// doesn't capture from the call it's in: here the loop gives `counted`, which the block after it
+// uses
+fn count_nested(xs: List<Int>, depth: Int) -> Int {
+    if depth == 0 {
+        return 1;
+    }
+
+    let counted = for x in xs fold total = 0 { total + count_nested([x], depth - 1) };
+    let squared = {
+        let next = counted + 1;
+        next * next
+    };
+    squared + depth
+}
+
+test fn recursive_function_with_a_block_after_the_loop() -> Int {
+    count_nested(runtime([1, 2, 3]), 2)
+}
+
+// The same with another loop over the first one's result, and with a lambda
+fn count_twice(xs: List<Int>, depth: Int) -> Int {
+    if depth == 0 {
+        return 1;
+    }
+
+    let counted = for x in xs fold total = 0 { total + count_twice([x], depth - 1) };
+    for y in xs fold total = counted { total + y }
+}
+
+fn count_with_a_lambda(xs: List<Int>, depth: Int) -> Int {
+    if depth == 0 {
+        return 1;
+    }
+
+    let k = depth * 2;
+    let add = fn(y: Int) => y + k;
+    let counted = for x in xs fold total = 0 { total + count_with_a_lambda([x], depth - 1) };
+    add(counted)
+}
+
+test fn recursive_function_with_more_after_the_loop() -> (Int, Int) {
+    let xs = runtime([1, 2, 3]);
+    (count_twice(xs, 2), count_with_a_lambda(xs, 2))
+}
+
+// A binding in the body doesn't make the loop capture what the values it refers to depend on
+inline fn offset_through_a_binding(xs: List<Int>, by: Int) -> List<Int> {
+    let next = by + 1;
+    let k = next * 2;
+    for x in xs {
+        let moved = x + k;
+        assert moved > 0;
+        moved
+    }
+}
+
+test fn binding_in_the_body() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    offset_through_a_binding(xs, for x in xs fold sum = 0 { sum + x })
+}
+
+// The default value of a struct's field is in each initializer that leaves the field out, so a
+// loop in it is too, along with the bindings around it
+struct Schedule {
+    scale: Int,
+    steps: List<Int> = {
+        let two = 1 + 1;
+        for step in [1, 2, 3] { step * two }
+    },
+}
+
+test fn in_a_default_value_used_twice() -> List<Int> {
+    let n = positive(5);
+    let first = Schedule { scale: n };
+    let second = Schedule { scale: n + 1 };
+    [first.scale, second.scale, ...first.steps, ...second.steps]
+}
+
+// The default value of a struct's field is only defined once, however many initializers leave the
+// field out, so that a let statement in it is found by each of them, whether they're in a loop, a
+// condition, an inline binding or another default value
+fn total(xs: List<Int>) -> Int {
+    if xs is nil {
+        0
+    } else {
+        xs.first + total(xs.rest)
+    }
+}
+
+const THREE: Int = total([1, 2]);
+
+struct Doubled {
+    _scale: Int,
+    value: Int = {
+        let sum = positive(total([1, 2, 3]));
+        sum + sum
+    },
+}
+
+struct Checked {
+    _scale: Int,
+    value: Int = {
+        let _checked = positive(THREE);
+        5
+    },
+}
+
+struct Inner {
+    _scale: Int,
+    value: Int = {
+        let four = THREE + 1;
+        four * 2
+    },
+}
+
+struct Outer {
+    _scale: Int,
+    value: Int = for x in [1, 2] fold acc = 0 { acc + Inner { _scale: x }.value },
+}
+
+test fn default_value_in_a_loop_and_a_condition() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let result = for x in xs { Doubled { _scale: x }.value + x };
+
+    if (Doubled { _scale: positive(total(xs)) }.value) is Int {
+        result
+    } else {
+        []
+    }
+}
+
+test fn default_value_in_a_loop_and_after_it() -> Int {
+    let xs = runtime([1, 2]);
+    let _checked = positive(for x in xs fold sum = 0 { sum + Checked { _scale: x }.value });
+    Checked { _scale: 1 }.value
+}
+
+test fn default_value_in_an_inline_binding_and_a_loop() -> Int {
+    let xs = runtime([1, 2]);
+    inline let value = Inner { _scale: 1 }.value;
+    value
+        + for x in xs fold sum = 0 {
+            sum + total(for y in xs { value + y }) + Inner { _scale: x }.value
+        }
+}
+
+test fn default_value_in_another_default_value() -> Int {
+    let xs = runtime([1, 2]);
+    let first = Outer { _scale: 1 }.value;
+    let second = Inner { _scale: 2 }.value + Outer { _scale: 3 }.value;
+    first + second + total(xs)
+}
+
+test fn default_value_with_a_loop_used_in_a_loop() -> Int {
+    let xs = runtime([1, 2]);
+    Outer { _scale: 1 }.value
+        + total(for w in xs { Inner { _scale: w }.value + Outer { _scale: w }.value })
+}
+
+const SUM: Int = total(for x in runtime([1, 2, 3, 4]) { x * x });
+
+struct Squared {
+    _scale: Int,
+    value: Int = {
+        let sum = SUM;
+        sum * sum
+    },
+}
+
+// A constant that a default value reads through a let statement is evaluated once before the
+// loop, rather than for each item
+test fn constant_in_a_default_value_is_evaluated_before_the_loop() -> List<Int> {
+    let xs = runtime([1, 2, 3, 4]);
+    for x in xs if x < (Squared { _scale: x }).value { x }
+}

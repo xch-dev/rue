@@ -36,3 +36,9 @@ diagnostics:
 - |-
   Binding `Whole` should be named in snake_case at shadowed_binding.rue:62:16
     note: Consider renaming it to `whole`
+- |-
+  `limit` shadows an earlier binding with the same name at shadowed_binding.rue:70:31
+    note: The earlier binding is declared here at shadowed_binding.rue:68:50
+- |-
+  `first` shadows an earlier binding with the same name at shadowed_binding.rue:71:17
+    note: The earlier binding is declared here at shadowed_binding.rue:70:24

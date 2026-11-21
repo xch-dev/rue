@@ -138,6 +138,37 @@ export fn struct_binding_on_the_next_line(value: Pair | nil) -> Int {
     }
 }
 
+// A condition comes before the `=>`, so a block right after it is a missing `=>`, and so is the
+// block of an `if` that was meant to be the arm's value
+export fn condition_without_arrow(value: Int | nil) -> Int {
+    match value {
+        Int if value > 1 { 1 }
+        _ => 0,
+    }
+}
+
+export fn if_value_without_arrow(value: Int | nil) -> Int {
+    match value {
+        Int if value > 1 { 1 } else { 2 }
+        _ => 0,
+    }
+}
+
+export fn missing_condition(value: Int | nil) -> Int {
+    match value {
+        Int if => 1,
+        _ => 0,
+    }
+}
+
+// A struct initializer in a condition needs parentheses, like in the condition of an `if`
+export fn struct_initializer_condition(value: Pair | nil) -> Int {
+    match value {
+        Pair if value == Pair { first: 1, rest: 2 } => 1,
+        _ => 0,
+    }
+}
+
 export fn unclosed_binding(value: Pair | nil) -> Int {
     match value {
         Pair { first, rest => first + rest,

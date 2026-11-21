@@ -5,6 +5,7 @@ use rue_types::{Pair, Type, TypeId};
 
 use super::call_inference::{
     compile_element, compile_refined_element, holds_other_pairs, pair_parts, record_element,
+    record_rest,
 };
 use crate::Compiler;
 
@@ -28,7 +29,11 @@ pub fn compile_pair_expr(
     record_element(ctx, first.ty, expected_first);
 
     let rest = if let Some(rest) = pair.rest() {
-        compile_refined_element(ctx, &rest, expected_rest, hint).0
+        let (value, expected_rest) = compile_refined_element(ctx, &rest, expected_rest, hint);
+
+        record_rest(ctx, value.ty, expected_rest);
+
+        value
     } else {
         debug!("Unresolved pair rest");
         ctx.unresolved()
