@@ -8,6 +8,16 @@ fn length(xs: List<Any>) -> Int {
     for _x in xs fold count = 0 { count + 1 }
 }
 
+fn pairs(xs: List<Int>) -> List<(Int, Int)> {
+    for x in xs { (x, x) }
+}
+
+fn same<T>(xs: List<T>) -> List<T> {
+    xs
+}
+
+type Tree = Int | List<Tree>;
+
 fn groups(xs: List<Int>) -> List<List<Int>> {
     // A list of lists is expected here
     [for x in xs { x }]
@@ -17,9 +27,14 @@ fn main(xs: List<Int>) -> Int {
     let a = [for x in xs { x * 2 }];
     let b = [for x in xs if x > 0 { x }];
 
-    // With a comma after it, and over several lines
-    let c = [for x in xs { x }];
-    let d = [for x in xs { x + 1 }];
+    // Over several lines
+    let c = [
+        for x in xs {
+            assert x > 0;
+            x
+        },
+    ];
+    let d = [for (x, y) in pairs(xs) { x + y }];
 
     // Where the list is an operand, the `for` needs parentheses in its place
     let e = length([for x in xs { x }]) + length([for x in xs { x }].first);
@@ -35,6 +50,18 @@ fn main(xs: List<Int>) -> Int {
     let i: List<List<Int>> = [for x in xs { x }];
     let j = [for x in xs { x }] as List<List<Int>>;
     let k = groups(xs);
+
+    // So is one whose items are each a list or something else, or a pair that starts with a list
+    let r: List<Tree> = [for x in xs { x }];
+    let s: List<List<Int> | Int> = [for x in xs { x }];
+    let t: List<List<Int>> | nil = [for x in xs { x }];
+    let u: (List<Int>, nil) = [for x in xs { x }];
+
+    // A generic type doesn't say that the items are lists
+    let v = same([for x in xs { x }]);
+
+    // Parentheses around the `for` aren't needed, and it's reported without them
+    let w = [(for x in xs { x })];
 
     // A fold is a single value, and a loop's value is nil
     let l = [for x in xs fold sum = 0 { sum + x }];
@@ -66,4 +93,10 @@ fn main(xs: List<Int>) -> Int {
         + length(o)
         + length(p)
         + length(q)
+        + length(r)
+        + length(s)
+        + length(t)
+        + length(u)
+        + length(v)
+        + length(w)
 }

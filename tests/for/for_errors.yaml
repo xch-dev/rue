@@ -9,29 +9,47 @@ diagnostics:
 - |-
   Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:20:41
     note: The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in `fold rest: List<Int> = nil`
-- Unused binding `p` at for_errors.rue:23:9
-- Unused binding `last` at for_errors.rue:23:30
+- Unused binding `p` at for_errors.rue:24:9
+- Unused binding `last` at for_errors.rue:24:30
 - |-
-  Cannot assign `Int` to `nil` without a type guard, since the value isn't always a valid `nil` at for_errors.rue:23:41
-    note: The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in `fold last: T = nil`, where `T` is the type of the body
-- Cannot assign `"text"` to `Int` without a cast, since they are semantically different at for_errors.rue:26:41
-- Undeclared symbol `x` at for_errors.rue:29:52
-- Cannot use builtin `sum` as a value, it can only be called directly at for_errors.rue:29:56
-- Undeclared symbol `x` at for_errors.rue:32:36
-- Cannot destructure type `Never` into a pair at for_errors.rue:35:17
+  Cannot assign `Int` to `nil` without a type guard, since the value isn't always a valid `nil` at for_errors.rue:24:41
+    note: The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in `fold last: Int | nil = nil`
+- Unused binding `q` at for_errors.rue:25:9
 - |-
-  Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:38:50
+  Cannot assign `(1, ("a", (Int, nil)))` to `nil`, since they are incompatible at for_errors.rue:25:41
+    note: The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in `fold rest: List<Int | String> = nil`
+- Unused binding `r` at for_errors.rue:28:9
+- Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:28:46
+- Unused binding `s` at for_errors.rue:29:9
+- Unused binding `x` at for_errors.rue:29:17
+- Cannot assign `("a", List<Int>)` to `List<Int>` without a cast, since they are semantically different at for_errors.rue:29:52
+- Cannot use a `return` statement here, end the block with an expression instead at for_errors.rue:34:9
+- Cannot use a `return` statement here, end the block with an expression instead at for_errors.rue:37:9
+- |-
+  Unreachable code at for_errors.rue:39:5
+    note: Any code after this is never evaluated at for_errors.rue:36:5
+- Cannot use a `return` statement here, end the block with an expression instead at for_errors.rue:40:9
+- Cannot use a `return` statement here, end the block with an expression instead at for_errors.rue:42:9
+- Value returned by statement is unused at for_errors.rue:45:9
+- Cannot use a `return` statement here, end the block with an expression instead at for_errors.rue:46:13
+- Cannot assign `"text"` to `Int` without a cast, since they are semantically different at for_errors.rue:53:41
+- Undeclared symbol `x` at for_errors.rue:56:52
+- Cannot use builtin `sum` as a value, it can only be called directly at for_errors.rue:56:56
+- Undeclared symbol `x` at for_errors.rue:59:36
+- Cannot destructure type `Never` into a pair at for_errors.rue:62:17
+- |-
+  Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:65:50
     note: The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in `fold rest: List<Int> = nil`
-- Cannot infer generic `T` for `count`; specify it explicitly, e.g. `count::<...>()` at for_errors.rue:41:13
+- Cannot infer generic `T` for `count`; specify it explicitly, e.g. `count::<...>()` at for_errors.rue:68:13
 - |-
-  Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:41:47
+  Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:68:47
     note: The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in `fold rest: List<Int> = nil`
 - |-
-  Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:44:42
+  Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:71:42
     note: The result of the fold is `nil`, since that's its value, and nothing else says what type it is. Give it one, as in `fold rest: List<Int> = nil`
-- Cannot assign `List<nil>` to `List<Int>` without a cast, since they are semantically different at for_errors.rue:47:24
-- Cannot assign `List<Int>` to `Int` without a type guard, since the value isn't always a valid `Int` at for_errors.rue:50:18
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:52:5
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:55:11
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:57:11
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:62:11
+- Cannot assign `List<nil>` to `List<Int>` without a cast, since they are semantically different at for_errors.rue:74:24
+- Cannot assign `List<Int>` to `Int` without a type guard, since the value isn't always a valid `Int` at for_errors.rue:77:18
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:79:5
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:82:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:84:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:89:11

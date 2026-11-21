@@ -122,6 +122,17 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
         }
     }
 
+    // The body of a fold that's a statement is its result too, so a `for` it ends with is a list,
+    // and only the fold's value isn't used
+    for y in xs fold last: List<Int> = nil { for z in last { increment(y + z) } }
+    for y in xs fold last: List<Int> = nil {
+        if flag {
+            for z in last { increment(z) }
+        } else {
+            [y]
+        }
+    }
+
     // The body of a fold is its result, so a `for` it ends with is a list
     let j = for y in xs fold lists: List<List<Int>> = nil { [for z in xs { y + z }, ...lists] };
     let k = for y in xs fold last: List<Int> = nil {

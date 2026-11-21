@@ -10,7 +10,7 @@ use rue_types::{Type, TypeId, Union};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItemKind, compile_branching_expr, compile_expr,
-    compile_for_expr, compile_type, create_binding,
+    compile_type, create_binding,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +64,14 @@ impl Branches {
     }
 }
 
+impl BlockKind {
+    /// Whether the block is an expression of its own, rather than the body of a function or a
+    /// branch of a statement, so a `return` statement can't be in it.
+    pub fn is_expr(self) -> bool {
+        matches!(self, Self::Expr | Self::Discarded)
+    }
+}
+
 pub fn compile_block(
     ctx: &mut Compiler,
     block: &AstBlock,
@@ -71,11 +79,9 @@ pub fn compile_block(
     expected_type: Option<TypeId>,
     require_return: bool,
 ) -> Value {
-    let is_expr = kind != BlockKind::Statement;
+    let has_value = kind != BlockKind::Statement;
 
-    let discarded = kind == BlockKind::Discarded;
-
-    if matches!(kind, BlockKind::Expr | BlockKind::Discarded) {
+    if kind.is_expr() {
         ctx.push_return_target(None);
     }
 
@@ -114,7 +120,7 @@ pub fn compile_block(
             }
             // An `if` and `else` chain or a `match` before the end of the block is a statement, as
             // is one that ends a statement block, whose value isn't used
-            AstStmtOrExpr::Expr(expr) if expr.is_if_or_match() && (!is_last || !is_expr) => {
+            AstStmtOrExpr::Expr(expr) if expr.is_if_or_match() && (!is_last || !has_value) => {
                 let (value, narrowing) =
                     compile_branching_expr(ctx, &expr, None, Branches::STATEMENT);
 
@@ -143,9 +149,8 @@ pub fn compile_block(
             }
             // A `for` before the end of the block is a statement too, as is one that ends a
             // statement block. Its value isn't used, so it's only a loop
-            AstStmtOrExpr::Expr(AstExpr::ForExpr(expr)) if !is_last || !is_expr => {
-                let value = compile_for_expr(ctx, &expr, None, true);
-                let value = ctx.record_value(expr.syntax(), value);
+            AstStmtOrExpr::Expr(expr @ AstExpr::ForExpr(_)) if !is_last || !has_value => {
+                let value = compile_discarded_expr(ctx, &expr);
 
                 // A fold still has a value, which isn't used
                 statements.push(Statement::Expr(ExprStatement {
@@ -157,7 +162,7 @@ pub fn compile_block(
                 continue;
             }
             AstStmtOrExpr::Expr(expr) => {
-                if !is_expr {
+                if !has_value {
                     ctx.diagnostic(expr.syntax(), DiagnosticKind::UnexpectedImplicitReturn);
                 }
 
@@ -170,7 +175,7 @@ pub fn compile_block(
                         require_value: require_return,
                     };
                     compile_branching_expr(ctx, &expr, expected_type, branches).0
-                } else if discarded {
+                } else if kind == BlockKind::Discarded {
                     // The value of the block isn't used, so neither are those of the branches of
                     // an `if`, `match` or block that it ends with
                     compile_discarded_expr(ctx, &expr)
@@ -351,7 +356,7 @@ pub fn compile_block(
 
                 // A `return` at the top level of a function body is allowed, but it's reported by
                 // the `unnecessary_return` lint, since the body can end in an expression instead
-                if kind == BlockKind::Expr {
+                if kind.is_expr() {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedExplicitReturn);
                 } else if !has_target {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::ReturnInExpressionBlock);
@@ -470,7 +475,7 @@ pub fn compile_block(
     // block's value if nothing else (such as a `return` statement) could have produced it.
     let definitely_trailing = implicit_return && ctx.return_count() == return_count;
 
-    if matches!(kind, BlockKind::Expr | BlockKind::Discarded) {
+    if kind.is_expr() {
         ctx.pop_return_target();
     }
 

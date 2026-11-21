@@ -2,11 +2,11 @@ use log::debug;
 use rue_ast::{AstExpr, AstListExpr, AstNode};
 use rue_hir::{FunctionCall, Hir, HirId, List, Value};
 use rue_lint::BracketedFor;
-use rue_parser::SyntaxKind;
 use rue_types::{Pair, Type, TypeId, Union};
 
 use super::call_inference::{
     compile_refined_element, holds_other_pairs, list_of, pair_parts, record_element,
+    references_call_generics,
 };
 use crate::Compiler;
 
@@ -135,7 +135,8 @@ pub fn compile_list_expr(
 
 /// Records a list whose only item is a `for` that makes a list, such as `[for x in xs { x }]`, for
 /// the `bracketed_for` lint: the `for` is a list already, so this is a list with one list in it.
-/// It isn't recorded if that's what the list is expected to be, as with a `List<List<Int>>`.
+/// It isn't recorded if that's what the list is expected to be, as with a `List<List<Int>>`, or
+/// a list of items that are each a list or something else.
 fn record_bracketed_for(
     ctx: &mut Compiler,
     list: &AstListExpr,
@@ -158,31 +159,23 @@ fn record_bracketed_for(
         || ctx.is_unresolved(item_type)
         || ctx.is_assignable(item_type, types.nil)
         || !ctx.is_assignable(item_type, any_list)
-        || expected_item.is_some_and(|expected| ctx.is_assignable(expected, any_list))
     {
         return;
     }
 
-    // Without the brackets, the `for` is where the list was, where an operator would otherwise
-    // take the end of its body as its operand, or end a statement that the `for` starts
-    let parenthesize = list.syntax().parent().is_some_and(|parent| {
-        matches!(
-            parent.kind(),
-            SyntaxKind::PrefixExpr
-                | SyntaxKind::BinaryExpr
-                | SyntaxKind::FunctionCallExpr
-                | SyntaxKind::GuardExpr
-                | SyntaxKind::CastExpr
-                | SyntaxKind::FieldAccessExpr
-                | SyntaxKind::IndexExpr
-                | SyntaxKind::SliceExpr
-        )
-    });
+    // A list of lists is what's expected, if the `for` is what an item is expected to be, and
+    // that isn't a type that says nothing about the item, such as `Any` or a generic type
+    if let Some(expected) = expected_item
+        && ctx.is_assignable(item_type, expected)
+        && !ctx.is_assignable(types.recursive_any, expected)
+        && !references_call_generics(ctx, expected)
+    {
+        return;
+    }
 
     let site = BracketedFor {
         list: ctx.trimmed_srcloc(list.syntax()),
         for_expr: ctx.trimmed_srcloc(for_expr.syntax()),
-        parenthesize,
     };
     ctx.lint_sites_mut().bracketed_fors.push(site);
 }

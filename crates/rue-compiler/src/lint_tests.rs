@@ -3533,6 +3533,65 @@ fn main(xs: List<Int>) -> Int {
 }
 
 #[test]
+fn bracketed_for_suggestions_parenthesize_operands() {
+    let source = "\
+fn main(xs: List<Int>) -> Any {
+    let a = -[for x in xs { x }];
+    let b = [for x in xs { x }] + 1;
+    let c = 1 + [for x in xs { x }];
+    let d = [for x in xs { x }] as Any;
+    let e = [for x in xs { x }] is nil;
+    let f = [for x in xs { x }].first;
+    let g = [for x in xs { x }](1);
+    let h = [for x in xs { x }][0];
+    let i = [for x in xs { x }][0..1];
+    let j = (1, [for x in xs { x }]);
+    let k = match [for x in xs { x }] { _ => 1 };
+    let l = for y in [for x in xs { x }] { y };
+    let m = \"abc\"[[for x in xs { x }]];
+    [a, b, c, d, e, f, g, h, i, j, k, l, m]
+}
+";
+
+    let fixed = apply_suggestions(source, Lint::BracketedFor, "Remove the brackets");
+
+    // The `for` is in parentheses where an operator would otherwise take the end of its body as
+    // its operand, and not where it's a whole expression
+    assert_eq!(
+        fixed,
+        "\
+fn main(xs: List<Int>) -> Any {
+    let a = -(for x in xs { x });
+    let b = (for x in xs { x }) + 1;
+    let c = 1 + (for x in xs { x });
+    let d = (for x in xs { x }) as Any;
+    let e = (for x in xs { x }) is nil;
+    let f = (for x in xs { x }).first;
+    let g = (for x in xs { x })(1);
+    let h = (for x in xs { x })[0];
+    let i = (for x in xs { x })[0..1];
+    let j = (1, for x in xs { x });
+    let k = match for x in xs { x } { _ => 1 };
+    let l = for y in for x in xs { x } { y };
+    let m = \"abc\"[for x in xs { x }];
+    [a, b, c, d, e, f, g, h, i, j, k, l, m]
+}
+"
+    );
+
+    // The types are wrong for most of these with and without the brackets, but each of them
+    // still parses, and none has parentheses it doesn't need
+    let (reports, _) = reports(&fixed, |_| {});
+
+    assert!(
+        !reports
+            .iter()
+            .any(|report| report.contains("Expected") || report.contains("parentheses")),
+        "{reports:#?}"
+    );
+}
+
+#[test]
 fn bracketed_for_suggestions_spread_the_for() {
     let fixed = apply_suggestions(
         BRACKETED_FORS,

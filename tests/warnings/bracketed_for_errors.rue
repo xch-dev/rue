@@ -6,7 +6,10 @@ fn main(xs: List<Int>) -> List<Int> {
     // As an operand, the `for` needs parentheses in place of the list
     let b = [for x in xs { x }] is nil;
 
-    if b {
+    // A list that's an item isn't nil, though nil is a list
+    let c: List<nil> = [for x in xs { x }];
+
+    if b && c is nil {
         a
     } else {
         xs

@@ -503,6 +503,22 @@ test fn loop_at_the_end_of_a_loop_fails() -> Int {
     5
 }
 
+// The body of a fold that's a statement is still its result, so a `for` it ends with builds its
+// list for the items before it: here each item goes down by one for every item before it
+#[allow(unused_value)]
+fn falling(xs: List<Int>) -> Int {
+    for x in xs fold rest: List<Int> = nil { for y in [x, ...rest] { positive(y - 1) } };
+    5
+}
+
+test fn list_at_the_end_of_a_fold_statement() -> Int {
+    falling(runtime([6, 5, 4]))
+}
+
+test fn list_at_the_end_of_a_fold_statement_fails() -> Int {
+    falling(runtime([3, 3, 3]))
+}
+
 test fn loop_at_the_end_of_a_branch_fails() -> Int {
     positive_in_branches(runtime([1, 6]), runtime([1, 0]));
     positive_in_branches(runtime([2]), runtime([3]));

@@ -19,8 +19,35 @@ fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
     // A fold from nil needs a type to build a list, or an expected type
     let f = for x in xs fold rest = nil { [x, ...rest] };
 
-    // A body that isn't a list doesn't say what the type would be
+    // A body that isn't a list is the type along with nil, and literals are the types they're
+    // values of
     let p = for x in xs fold last = nil { x };
+    let q = for x in xs fold rest = nil { [1, "a", x, ...rest] };
+
+    // A fold with a type has said what it is, so it only has the error
+    let r = for x in xs fold rest: nil = nil { [x, ...rest] };
+    let s = for x in xs fold rest: List<Int> = nil { ["a", ...rest] };
+
+    // Nor can the body of a `for` that's a statement return, or a block or branch whose value
+    // isn't used
+    for x in xs {
+        return x;
+    }
+    {
+        return 1;
+    };
+    if value > 0 {
+        return 2;
+    } else {
+        return 3;
+    };
+    for x in xs {
+        if x > 0 {
+            return 4;
+        } else {
+            x
+        }
+    }
 
     // The fold's value must be its type
     let g = for x in xs fold sum: Int = "text" { sum + x };

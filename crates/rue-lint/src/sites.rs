@@ -92,8 +92,6 @@ pub struct BracketedFor {
     pub list: SrcLoc,
     /// The `for` inside of it.
     pub for_expr: SrcLoc,
-    /// Whether the `for` needs parentheses where the list is, if it replaces it.
-    pub parenthesize: bool,
 }
 
 /// A type guard or `match` arm after which a struct is wider than it could be (see

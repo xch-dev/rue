@@ -9,3 +9,8 @@ diagnostics:
     help: Remove the brackets
     help: Spread the `for` into the list with `...`
 - Cannot type guard from `(List<Int>, nil)` to `nil`, since they do not overlap at bracketed_for_errors.rue:7:13
+- Cannot assign `(List<Int>, nil)` to `List<nil>` without a type guard, since the value isn't always a valid `List<nil>` at bracketed_for_errors.rue:10:24
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at bracketed_for_errors.rue:10:24
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`

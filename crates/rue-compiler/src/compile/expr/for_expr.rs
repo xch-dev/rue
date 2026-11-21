@@ -362,7 +362,8 @@ pub fn compile_for_expr(
             ctx.assign_type(body.syntax(), value.ty, accumulator.ty);
 
             if ctx.diagnostic_count() > count
-                && let Some(note) = untyped_nil_note(ctx, fold.as_ref(), accumulator.ty, value.ty)
+                && let Some(fold) = &fold
+                && let Some(note) = untyped_nil_note(ctx, fold, accumulator.ty, value.ty)
             {
                 for diagnostic in ctx.diagnostics_since_mut(count) {
                     diagnostic.notes.push(note.clone());
@@ -505,14 +506,14 @@ pub fn compile_for_expr(
 
 /// The note for a body that isn't the type of the fold's result, if that's only nil because the
 /// fold's value is, and nothing else says what it is, as with `fold rest = nil { [x, ...rest] }`.
-/// It suggests giving the result a type, which is a list of the body's items if the body is one.
+/// It suggests giving the result a type, which is a list of the body's items if the body is one,
+/// and otherwise the body's type or nil.
 fn untyped_nil_note(
     ctx: &mut Compiler,
-    fold: Option<&AstForFold>,
+    fold: &AstForFold,
     result: TypeId,
     body: TypeId,
 ) -> Option<Note> {
-    let fold = fold?;
     let types = ctx.builtins().types;
 
     if fold.ty().is_some() || ctx.is_unresolved(result) || !ctx.is_assignable(result, types.nil) {
@@ -525,12 +526,13 @@ fn untyped_nil_note(
     let any_list = list_of(ctx, types.permissive_any);
     let item_types = list_item_types(ctx, body);
 
-    // A body that isn't a list, or whose items couldn't be compiled, doesn't say what the type is
-    let example = if item_types.is_empty()
-        || rue_types::contains_unresolved(ctx.types(), body)
-        || !ctx.is_assignable(body, any_list)
-    {
-        format!("`fold {binding}: T = nil`, where `T` is the type of the body")
+    // The type is what the body's value is, and nil for the end of the list: a list of the
+    // body's items, if the body is one. A body that couldn't be compiled doesn't say what it is
+    let example = if rue_types::contains_unresolved(ctx.types(), body) {
+        format!("`fold {binding}: T | nil = nil`, where `T` is the type of the body")
+    } else if item_types.is_empty() || !ctx.is_assignable(body, any_list) {
+        let body = widen_literals(ctx, body);
+        format!("`fold {binding}: {} | nil = nil`", ctx.type_name(body))
     } else {
         let item_types = item_types
             .into_iter()
