@@ -4,6 +4,7 @@ mod call_inference;
 mod cast;
 mod const_expr;
 mod field_access;
+mod for_expr;
 mod function_call;
 mod group;
 mod guard;
@@ -23,6 +24,7 @@ pub(crate) use call_inference::{DeferredLambda, ElementLambda, HeldLambda, HeldS
 pub use cast::*;
 pub use const_expr::*;
 pub use field_access::*;
+pub use for_expr::*;
 pub use function_call::*;
 pub use group::*;
 pub use guard::*;
@@ -63,6 +65,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
             compile_function_call_expr(ctx, expr, expected_type, None)
         }
         AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type, None).0,
+        AstExpr::ForExpr(expr) => compile_for_expr(ctx, expr, expected_type, false),
         AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type, None).0,
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),

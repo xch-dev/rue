@@ -7,7 +7,7 @@ use indexmap::{IndexSet, set::Slice};
 use rue_options::CompilerOptions;
 
 use crate::{
-    Database, FailureAnalysis, Hir, HirId, Statement, Symbol, SymbolId,
+    Database, FailureAnalysis, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
     analysis::{Callee, Effect, resolve_callee},
 };
 
@@ -26,6 +26,13 @@ pub struct DependencyGraph {
 
     // Keeps track of whether a symbol is ever used as a closure
     closures: HashSet<SymbolId>,
+    /// The functions that `for` expressions are compiled to (see `FunctionKind::Loop`).
+    loops: HashSet<SymbolId>,
+    /// The symbols that are referenced inside of a loop they're defined outside of, which
+    /// evaluates what references them once for each item.
+    loop_captures: HashSet<SymbolId>,
+    /// What each loop captures (see [`Self::loop_captures`]).
+    loop_dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
 
     // Keeps track of the const expressions that are reachable
     const_exprs: IndexSet<HirId>,
@@ -103,6 +110,9 @@ impl DependencyGraph {
             owners: HashMap::new(),
             references: HashMap::new(),
             closures: HashSet::new(),
+            loops: HashSet::new(),
+            loop_captures: HashSet::new(),
+            loop_dependencies: HashMap::new(),
             const_exprs: IndexSet::new(),
             current: None,
             pending: vec![main],
@@ -146,6 +156,10 @@ impl DependencyGraph {
         for symbol in std::mem::take(&mut graph.visited) {
             assign_destructured_owner(db, &mut graph, symbol);
         }
+
+        graph.count_default_references(db);
+        graph.find_loop_captures(db);
+        graph.find_loop_dependencies(db);
 
         graph
     }
@@ -260,6 +274,285 @@ impl DependencyGraph {
         self.closures.contains(&symbol)
     }
 
+    /// Whether the symbol is the function a `for` expression is compiled to.
+    pub fn is_loop(&self, symbol: SymbolId) -> bool {
+        self.loops.contains(&symbol)
+    }
+
+    /// Whether what references the symbol can be evaluated once for each item of a loop, or more,
+    /// though the symbol is only evaluated once: it's referenced inside of a loop that it's
+    /// defined outside of, such as `k` in `for x in xs { x * k }`, or it's defined in a loop and
+    /// referenced inside of a lambda in it, which can be called any number of times. Its value
+    /// isn't substituted there unless that's as cheap as referring to it.
+    pub fn is_loop_capture(&self, symbol: SymbolId) -> bool {
+        self.loop_captures.contains(&symbol)
+    }
+
+    /// The default value of a struct's field is evaluated in every initializer that leaves the
+    /// field out, but the constant they refer to for it is only visited once. So what the value
+    /// references is counted again for each of the other initializers, as if the value were
+    /// written in each of them. Otherwise a function or constant that only the default value
+    /// referenced would be substituted into every one of them, as something that's only used
+    /// once is.
+    ///
+    /// What's defined inside of the value, such as a let statement, is defined again in each
+    /// place, so it isn't counted again itself, but what it references is.
+    fn count_default_references(&mut self, db: &Database) {
+        let constants: Vec<(SymbolId, usize)> = self
+            .references
+            .iter()
+            .filter(|&(&symbol, &references)| references > 1 && db.is_default_constant(symbol))
+            .map(|(&symbol, &references)| (symbol, references - 1))
+            .collect();
+
+        for (constant, extra) in constants {
+            let mut seen = HashSet::new();
+            let mut pending = vec![constant];
+
+            // This default value, and those of the other fields that it uses
+            let mut defaults = vec![constant];
+
+            while let Some(symbol) = pending.pop() {
+                for &dependency in self.dependencies.get(&symbol).into_iter().flatten() {
+                    if !seen.insert(dependency) {
+                        continue;
+                    }
+
+                    if defaults
+                        .iter()
+                        .any(|&default| self.is_defined_in(dependency, default))
+                    {
+                        pending.push(dependency);
+                        continue;
+                    }
+
+                    *self.references.entry(dependency).or_insert(0) += extra;
+
+                    // Another default value that this one uses is evaluated here as well
+                    if db.is_default_constant(dependency) {
+                        pending.push(dependency);
+                        defaults.push(dependency);
+                    }
+                }
+            }
+        }
+    }
+
+    fn find_loop_captures(&mut self, db: &Database) {
+        if self.loops.is_empty() {
+            return;
+        }
+
+        let mut captures = HashSet::new();
+
+        for (&from, dependencies) in &self.dependencies {
+            // The loops and lambdas that the reference is inside of
+            let functions: Vec<SymbolId> = iter::once(from)
+                .chain(self.owners(from))
+                .filter(|symbol| self.loops.contains(symbol) || self.closures.contains(symbol))
+                .collect();
+
+            if !functions.iter().any(|symbol| self.loops.contains(symbol)) {
+                continue;
+            }
+
+            // What an `inline` binding or constant refers to is evaluated wherever it's
+            // referred to, so it's referred to there too
+            let mut pending: Vec<SymbolId> = dependencies.iter().copied().collect();
+            let mut seen = HashSet::new();
+            let mut inlined = HashSet::new();
+
+            while let Some(dependency) = pending.pop() {
+                if !seen.insert(dependency) {
+                    continue;
+                }
+
+                // What's defined inside of a value that's evaluated here is defined here too,
+                // such as a let statement in a block, so only what it refers to is from outside
+                if self
+                    .owners(dependency)
+                    .any(|owner| inlined.contains(&owner))
+                {
+                    pending.extend(self.dependencies.get(&dependency).into_iter().flatten());
+                    continue;
+                }
+
+                // Only values are evaluated where they're substituted
+                let inline = match db.symbol(dependency) {
+                    Symbol::Binding(binding) => binding.inline,
+                    Symbol::Constant(constant) => constant.inline,
+                    Symbol::Parameter(_) => false,
+                    _ => continue,
+                };
+
+                let in_loop = self
+                    .owners(dependency)
+                    .any(|owner| self.loops.contains(&owner));
+
+                if !functions.iter().any(|&function| {
+                    !self.is_defined_in(dependency, function)
+                        && (in_loop || self.loops.contains(&function))
+                }) {
+                    continue;
+                }
+
+                if inline {
+                    inlined.insert(dependency);
+                    pending.extend(self.dependencies.get(&dependency).into_iter().flatten());
+                } else {
+                    captures.insert(dependency);
+                }
+            }
+        }
+
+        self.loop_captures = captures;
+    }
+
+    /// What the loop captures, if the symbol is one: itself and the other functions and constants
+    /// of the program that it needs, and the values that it refers to from the functions it's
+    /// defined in.
+    ///
+    /// A loop is lowered once, where the program's functions are, but it's called where its
+    /// `for` expression is, which can be inside a call that's inlined, or a run of let statements
+    /// that are substituted. So what it captures can't depend on any of that, unlike what a
+    /// lambda captures, which is lowered where it's written. A value from outside of the loop
+    /// that it refers to is always captured, and never substituted (see
+    /// [`Self::is_loop_capture`]), so the loop doesn't need what the value depends on. Only an
+    /// `inline` value, or one that's made of literals, is lowered in the loop, which then
+    /// captures what that refers to.
+    pub fn loop_captures(&self, symbol: SymbolId) -> Option<&IndexSet<SymbolId>> {
+        self.loop_dependencies.get(&symbol)
+    }
+
+    fn find_loop_dependencies(&mut self, db: &Database) {
+        let mut loops: Vec<SymbolId> = self.loops.iter().copied().collect();
+        loops.sort();
+
+        for function in loops {
+            // The functions that the loop is defined in, whose values it can refer to
+            let enclosing: Vec<SymbolId> = self.owners(function).collect();
+
+            let mut result = IndexSet::new();
+            let mut visited = HashSet::new();
+            // Whether the path to each symbol goes through a function the loop is defined in,
+            // such as a call to it in the body. That function's values are its own from there
+            let mut stack = vec![(function, false)];
+
+            while let Some((current, entered)) = stack.pop() {
+                if !visited.insert((current, entered)) {
+                    continue;
+                }
+
+                for &dependency in self.dependencies.get(&current).into_iter().flatten() {
+                    let entered = entered || enclosing.contains(&dependency);
+
+                    // A loop is a function of the program wherever it's defined, including the
+                    // loop itself and the loops inside of it
+                    if self.loops.contains(&dependency) {
+                        result.insert(dependency);
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    // A value of a function the loop is in is one that the function itself
+                    // defines. Anything else that's defined somewhere is defined in the loop, or
+                    // inside of something that's lowered in it, such as the block of an `inline
+                    // let` outside of the loop, so it's lowered with the loop
+                    let enclosed = self
+                        .owners
+                        .get(&dependency)
+                        .is_some_and(|owner| enclosing.contains(owner));
+
+                    // A lambda that's lowered in the loop is lowered where it's written, and
+                    // captures everything it can reach, including what the values it refers to
+                    // depend on (see `Self::dependencies`). The loop has to have all of that for
+                    // it, so those values aren't substituted either
+                    if self.is_defined_in(dependency, function)
+                        || (self.owners.contains_key(&dependency) && !enclosed)
+                    {
+                        // Only a lambda is one, though any symbol that's used as a value is
+                        // among the closures. One that's reached through a call to a function the
+                        // loop is in is that call's own, as its values are
+                        if !entered
+                            && self.closures.contains(&dependency)
+                            && matches!(db.symbol(dependency), Symbol::Function(_))
+                        {
+                            for capture in self.dependencies(dependency, true) {
+                                if self.is_defined_in(capture, function)
+                                    || self.owners.get(&capture).is_some_and(|owner| {
+                                        !enclosing.contains(owner) && !self.loops.contains(&capture)
+                                    })
+                                {
+                                    continue;
+                                }
+
+                                result.insert(capture);
+
+                                let value = match db.symbol(capture) {
+                                    Symbol::Binding(binding) => {
+                                        Some((binding.inline, binding.value.hir))
+                                    }
+                                    Symbol::Constant(constant) => {
+                                        Some((constant.inline, constant.value.hir))
+                                    }
+                                    _ => None,
+                                };
+
+                                if let Some((inline, hir)) = value
+                                    && !inline
+                                    && !db.is_literal_hir(hir)
+                                    && self.owners.contains_key(&capture)
+                                {
+                                    self.loop_captures.insert(capture);
+                                }
+                            }
+                        }
+
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    // A function or constant of the program, which the loop needs what it needs
+                    // of too
+                    if !enclosed {
+                        result.insert(dependency);
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    // A value of a function the loop is in, reached through a call to it, is
+                    // that call's own
+                    if entered {
+                        stack.push((dependency, entered));
+                        continue;
+                    }
+
+                    result.insert(dependency);
+
+                    // A value that's lowered where it's referred to is lowered in the loop
+                    let substituted = match db.symbol(dependency) {
+                        Symbol::Parameter(_) => false,
+                        Symbol::Binding(binding) => {
+                            binding.inline || db.is_literal_hir(binding.value.hir)
+                        }
+                        Symbol::Constant(constant) => {
+                            constant.inline || db.is_literal_hir(constant.value.hir)
+                        }
+                        _ => true,
+                    };
+
+                    if substituted {
+                        stack.push((dependency, entered));
+                    } else {
+                        self.loop_captures.insert(dependency);
+                    }
+                }
+            }
+
+            self.loop_dependencies.insert(function, result);
+        }
+    }
+
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
         self.const_exprs.iter().copied()
     }
@@ -306,13 +599,16 @@ impl DependencyGraph {
             }
 
             for dependency in self.dependencies.get(&current).cloned().unwrap_or_default() {
-                // Any other local can only be reached through the scope it's defined in
-                let is_local = self.owners.get(&dependency).is_some_and(|owner| {
-                    scopes
-                        .iter()
-                        .position(|scope| scope == owner)
-                        .is_none_or(|index| entered[index])
-                });
+                // Any other local can only be reached through the scope it's defined in. A loop is
+                // defined in a function, so that it captures the function's values, but it's a
+                // function of the program like one that's declared, which anything can capture
+                let is_local = !self.loops.contains(&dependency)
+                    && self.owners.get(&dependency).is_some_and(|owner| {
+                        scopes
+                            .iter()
+                            .position(|scope| scope == owner)
+                            .is_none_or(|index| entered[index])
+                    });
 
                 stack.push((dependency, !captures_only || !is_local, entered.clone()));
             }
@@ -338,16 +634,22 @@ impl DependencyGraph {
         symbols: &IndexSet<SymbolId>,
         bound_after: impl Fn(SymbolId) -> bool,
     ) -> Vec<Option<usize>> {
+        // A loop is defined in the function its `for` expression is in, but it's captured like
+        // the functions that are declared (see `Self::dependencies`), so the symbols main captures
+        // aren't in one scope if there's a loop among them
+        let has_loop = symbols.iter().any(|symbol| self.loops.contains(symbol));
+
         let owner = symbols
             .first()
             .and_then(|symbol| self.owners.get(symbol).copied());
 
-        let same_owner = symbols
-            .iter()
-            .all(|symbol| self.owners.get(symbol).copied() == owner);
+        let same_owner = !has_loop
+            && symbols
+                .iter()
+                .all(|symbol| self.owners.get(symbol).copied() == owner);
 
         debug_assert!(
-            same_owner,
+            same_owner || has_loop,
             "grouped symbols are defined in different scopes"
         );
 
@@ -638,6 +940,18 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if !is_call {
                 graph.closures.insert(*symbol);
             }
+
+            // A loop is defined where it's first called, which is in the function that the `for`
+            // expression is in, like a lambda is. Its calls to itself come after that
+            if let Symbol::Function(function) = db.symbol(*symbol)
+                && function.kind == FunctionKind::Loop
+                && let Some(current) = graph.current
+                && current != *symbol
+                && graph.loops.insert(*symbol)
+            {
+                graph.owners.insert(*symbol, current);
+            }
+
             visit_symbol_reference(graph, *symbol);
         }
         Hir::Block(block) => {

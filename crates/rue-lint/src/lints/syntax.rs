@@ -402,8 +402,12 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
         | SyntaxKind::Block
         | SyntaxKind::GroupExpr
         | SyntaxKind::LambdaExpr => true,
-        // Only the condition of an `if` is a whole expression, since a branch must be a block
-        SyntaxKind::IfStmt | SyntaxKind::IfExpr => is_first_expr_of(&parent, node),
+        // Only the condition of an `if` is a whole expression, since a branch must be a block,
+        // and so is the list of a `for`
+        SyntaxKind::IfStmt | SyntaxKind::IfExpr | SyntaxKind::ForExpr => {
+            is_first_expr_of(&parent, node)
+        }
+        SyntaxKind::ForFilter | SyntaxKind::ForFold => true,
         // The index or a bound is a whole expression inside of the brackets, unlike the value
         // before them
         SyntaxKind::IndexExpr | SyntaxKind::SliceExpr => !is_first_expr_of(&parent, node),

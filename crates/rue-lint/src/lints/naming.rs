@@ -1,7 +1,7 @@
 use rue_ast::{
-    AstBinding, AstConstantItem, AstEnumItem, AstEnumVariant, AstFunctionItem,
-    AstFunctionParameter, AstGenericParameters, AstLetStmt, AstMatchArm, AstModuleItem, AstNode,
-    AstStructField, AstStructItem, AstTypeAliasItem,
+    AstBinding, AstConstantItem, AstEnumItem, AstEnumVariant, AstForExpr, AstForFold,
+    AstFunctionItem, AstFunctionParameter, AstGenericParameters, AstLetStmt, AstMatchArm,
+    AstModuleItem, AstNode, AstStructField, AstStructItem, AstTypeAliasItem,
 };
 use rue_diagnostic::{Lint, Note, Source};
 use rue_parser::SyntaxToken;
@@ -162,6 +162,14 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                     .iter()
                     .flat_map(|binding| binding_names(binding, false))
                 {
+                    check_name(cx, source, Some(name), Case::Snake, "Binding");
+                }
+            } else if let Some(binding) = AstForExpr::cast(node.clone())
+                .and_then(|expr| expr.binding())
+                .or_else(|| AstForFold::cast(node.clone()).and_then(|fold| fold.binding()))
+            {
+                // The item of a `for` and the result of its fold
+                for name in binding_names(&binding, false) {
                     check_name(cx, source, Some(name), Case::Snake, "Binding");
                 }
             }

@@ -67,6 +67,7 @@ impl<'a> Lexer<'a> {
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
+            "for" => TokenKind::For,
             "match" => TokenKind::Match,
             "return" => TokenKind::Return,
             "assert" => TokenKind::Assert,
@@ -720,6 +721,18 @@ mod tests {
             expect![[r#"
                 Else
             "#]],
+        );
+
+        // `in` and `fold` are only keywords in a `for`, so they're identifiers here
+        check(
+            "for in fold",
+            expect![[r#"
+            For
+            Whitespace
+            Ident
+            Whitespace
+            Ident
+        "#]],
         );
 
         check(

@@ -27,3 +27,47 @@ tests:
   runtime_cost: 1090
   byte_cost: 324000
   total_cost: 325090
+- name: default_in_a_lambda_and_a_condition
+  program: (a (q 2 (q 2 (i (any (q . 1) (f (r (c (a 13 (a 9 (c 9 (q 1 2)))) (c (a (q 16 2 2) (c (a 13 (a 9 (c 9 (q 1 2 3)))) 1)) ()))))) (q 4 (a 2 (q 1)) (c (a 2 (q 2)) ())) ()) 1) (c (c (q . 2) (c (q 1 16 (f (r (c 11 (c (a (q 16 2 2) (c (a 5 (a 2 (c 2 (q 1 2 3)))) 1)) ())))) 11) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (q 1))) ()))) ()))) 1)) (c (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 2 (i (i () (f (r (c (a 21 (a 9 (c 9 6))) (c (a (q 16 2 2) (c (a 21 (a 9 (c 9 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) 1)) ())))) (q . 1)) (q 4 (a 45 (c 4 (q . 1))) (c (a 45 (c 4 (q . 2))) ())) ()) 1) (c (c (c (q . 2) (c (c (q . 1) (q 16 (f (r (c 11 (c (a (q 16 2 2) (c (a 5 (a 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) 1)) ())))) 11)) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) ()))) (a 30 (c (q . 1) (c (q . 2) ())))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:48:5"))) 1) (c (q 2 2 (c 3 ())) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:43:5"))) 1)))) ()))
+  output: (13 14)
+  runtime_cost: 30460
+  byte_cost: 4740000
+  total_cost: 4770460
+- name: default_in_a_recursive_function_and_after_it
+  program: (a (q 2 (q 3 () (a 9 (a 21 (c (c (c 9 21) (c 2 29)) (q 1 2)))) (i () (a 9 2) (q . 5))) (c (a 14 (c 14 (q 1 2))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) (c (q 2 (i 3 (q 16 (f (r (c 5 (c (i () (a 8 10) (q . 5)) ())))) (a 12 (c 2 7))) ()) 1) (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 3 () (a 19 (a 43 (c (c (c 19 43) (c 5 91)) 2))) (f (r (c (q . 1) (c (i () (a 19 5) (q . 5)) ()))))) (c (a 61 (c (q . 1) (c (q . 2) ()))) 1)) (c (a 22 (c 22 (c (q . 1) (c (q . 2) ())))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:48:5"))) 1) (c (q 2 (i (not 3) () (q 16 (f (r (c (f 3) (c (i () (a 8 10) (q . 5)) ())))) (a 12 (c (c (c 8 12) (c 10 14)) (r 3))))) 1) (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:43:5"))) 1)))) ()))
+  output: "5"
+  runtime_cost: 12527
+  byte_cost: 3132000
+  total_cost: 3144527
+- name: default_in_an_inline_binding_and_a_lambda
+  program: (a (q 2 (q 16 (* (+ 2 (q . 1)) (q . 2)) (a (c (q . 2) (c (q 1 16 (* (+ 2 (q . 1)) (q . 2)) 11 (f (r (c 11 (c (* (+ 2 (q . 1)) (q . 2)) ()))))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (q 1))) ()))) ()))) (q 1)) (a 5 (c 5 (q 1 2)))) (c (a 2 (c 2 (q 1 2))) 1)) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (q 16 (+ (f (r (c (q . 1) (c (a (q 18 2 (q . 2)) (c (+ 11 (q . 1)) 1)) ())))) (a 87 (c 2 (q . 1)))) (a 39 (c 39 5))) (c (c (q . 2) (c (c (q . 1) (q 2 (q 16 (a 23 (c 2 47)) (f (r (c 47 (c (a (q 18 2 (q . 2)) (c (+ 5 (q . 1)) 1)) ()))))) (c (c (q . 2) (c (c (q . 1) (q 16 (f (r (c (q . 1) (c (a (q 18 2 (q . 2)) (c (+ 2 (q . 1)) 1)) ())))) 11)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) 1))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 19) (c (c (q . 4) (c (c (q . 1) 43) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (a 29 (c (q . 1) (c (q . 2) ()))) 1)) (c (a 4 (c 4 (c (q . 1) (c (q . 2) ())))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 2 (c 3 ())) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:43:5"))) 1))) ()))
+  output: "28"
+  runtime_cost: 16372
+  byte_cost: 3276000
+  total_cost: 3292372
+- name: constant_in_a_default_is_evaluated_once
+  program: (a (q 2 (q 2 (q 16 (f (r (c 2 (c 5 ())))) (f (r (c (+ 2 (q . 1)) (c 5 ())))) (f (r (c (+ 2 (q . 2)) (c 5 ())))) (f (r (c (+ 2 (q . 3)) (c 5 ()))))) (c (a 9 (c 9 (q 1 2))) 1)) (c (a 4 (c 4 (a 6 (c 6 (q . 50))))) 1)) (c (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (q 2 (i (> 3 ()) (q 4 3 (a 2 (c 2 (- 3 (q . 1))))) ()) 1)) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (+ (f (r (c 2 (c 5 ())))) (f (r (c (+ 2 (q . 1)) (c 5 ()))))) (f (r (c (+ 2 (q . 2)) (c 5 ()))))) (f (r (c (+ 2 (q . 3)) (c 5 ()))))) (c (a 9 (c 9 (a 29 (c (q . 1) (c (q . 2) ()))))) 1)) (c (a 4 (c 4 (a 10 (c 10 (q . 50))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (> 3 ()) (q 4 3 (a 2 (c 2 (- 3 (q . 1))))) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:43:5"))) 1))) ()))
+  output: "5100"
+  runtime_cost: 179491
+  byte_cost: 3516000
+  total_cost: 3695491
+- name: function_in_a_default_is_only_in_the_program_once
+  program: (a (q 2 (q 9 (+ (f (r (c 2 (c (a 9 (q . 11)) ())))) (f (r (c (+ 2 (q . 1)) (c (a 9 (q . 11)) ())))) (f (r (c (+ 2 (q . 2)) (c (a 9 (q . 11)) ()))))) (* (f (r (c (+ 2 (q . 3)) (c (a 9 (q . 11)) ())))) (q . 3))) (c (a 6 (c 6 (q 1 2))) 1)) (c (c (q 11 (sha256 (sha256 1 (q . "abcdefghijklmnopqrstuvwxyz")) (q . "abcdefghijklmnopqrstuvwxyz")) (q . "abcdefghijklmnopqrstuvwxyz")) (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1)) ()))
+  debug_program: (a (q 2 (q 9 (+ (+ (f (r (c 2 (c (a 9 (q . 11)) ())))) (f (r (c (+ 2 (q . 1)) (c (a 9 (q . 11)) ()))))) (f (r (c (+ 2 (q . 2)) (c (a 9 (q . 11)) ()))))) (* (f (r (c (+ 2 (q . 3)) (c (a 9 (q . 11)) ())))) (q . 3))) (c (a 10 (c 10 (a 14 (c (q . 1) (c (q . 2) ()))))) 1)) (c (c (q 11 (concat (sha256 (concat (sha256 (concat 1 (q . "abcdefghijklmnopqrstuvwxyz"))) (q . "abcdefghijklmnopqrstuvwxyz"))) (q . "abcdefghijklmnopqrstuvwxyz"))) (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:43:5"))) 1))) ()))
+  output: "1"
+  runtime_cost: 20929
+  byte_cost: 4212000
+  total_cost: 4232929
+- name: constant_in_a_nested_default_is_evaluated_once
+  program: (a (q 2 (q 2 (q 16 (f (r (c 2 (c (+ 5 5 (q . 1)) ())))) (f (r (c (+ 2 (q . 1)) (c (+ 5 5 (q . 1)) ())))) (f (r (c (+ 2 (q . 2)) (c (+ 5 5 (q . 1)) ()))))) (c (a 9 (c 9 (q 1 2))) 1)) (c (a 4 (c 4 (a 6 (c 6 (q . 50))))) 1)) (c (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (q 2 (i (> 3 ()) (q 4 3 (a 2 (c 2 (- 3 (q . 1))))) ()) 1)) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (f (r (c 2 (c (+ (f (r (c (q . 1) (c (a (q 16 2 2) (c 5 1)) ())))) (q . 1)) ())))) (f (r (c (+ 2 (q . 1)) (c (+ (f (r (c (q . 1) (c (a (q 16 2 2) (c 5 1)) ())))) (q . 1)) ()))))) (f (r (c (+ 2 (q . 2)) (c (+ (f (r (c (q . 1) (c (a (q 16 2 2) (c 5 1)) ())))) (q . 1)) ()))))) (c (a 9 (c 9 (a 29 (c (q . 1) (c (q . 2) ()))))) 1)) (c (a 4 (c 4 (a 10 (c 10 (q . 50))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (> 3 ()) (q 4 3 (a 2 (c 2 (- 3 (q . 1))))) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at struct_defaults.rue:43:5"))) 1))) ()))
+  output: "7653"
+  runtime_cost: 181582
+  byte_cost: 3516000
+  total_cost: 3697582
+diagnostics:
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_defaults.rue:102:8

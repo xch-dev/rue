@@ -895,7 +895,7 @@ fn same_structure(arena: &Arena<Type>, lhs: TypeId, rhs: TypeId) -> bool {
 }
 
 /// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`.
-fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -> TypeId {
+pub fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -> TypeId {
     let Type::Atom(atom) = &arena[ty] else {
         return ty;
     };
