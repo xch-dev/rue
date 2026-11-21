@@ -433,28 +433,23 @@ fn compile_spreads(
 /// where a binding of the field would leave reading it as operations around the value.
 fn bind_base(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> (Value, Option<Statement>) {
     let mut inner = value.hir;
-    let mut outer = Vec::new();
+    let mut parent = None;
 
     if ctx.path_symbol(value.hir).is_none() {
-        loop {
-            let hir = ctx.hir(inner).clone();
-
-            inner = match &hir {
-                Hir::Cast(value) => *value,
-                Hir::FieldAccess(FieldAccess {
-                    value,
-                    kind: FieldKind::Path(_),
-                    ..
-                }) => *value,
-                _ => break,
-            };
-
-            outer.push(hir);
+        while let Hir::Cast(next)
+        | Hir::FieldAccess(FieldAccess {
+            value: next,
+            kind: FieldKind::Path(_),
+            ..
+        }) = ctx.hir(inner)
+        {
+            parent = Some(inner);
+            inner = *next;
         }
     }
 
     // The value that the field is read from has a type if it was written as an expression
-    let Some(ty) = ctx.hir_type(inner).filter(|_| inner != value.hir) else {
+    let Some((parent, ty)) = parent.zip(ctx.hir_type(inner)) else {
         let BoundValue {
             value, statement, ..
         } = bind_unless_path(ctx, value, srcloc);
@@ -462,18 +457,26 @@ fn bind_base(ctx: &mut Compiler, value: Value, srcloc: SrcLoc) -> (Value, Option
     };
 
     let bound = bind_unless_path(ctx, Value::new(inner, ty), srcloc);
+    let reference = bound.value.hir;
 
-    let hir = outer.into_iter().rev().fold(bound.value.hir, |inner, hir| {
-        ctx.alloc_hir(match hir {
-            Hir::FieldAccess(access) => Hir::FieldAccess(FieldAccess {
-                value: inner,
-                ..access
-            }),
-            _ => Hir::Cast(inner),
-        })
-    });
+    // The reference to the binding stands in for the expression that's bound, so it's recorded
+    // like it, and the nodes around it are kept as they are, for the lints that check them
+    ctx.set_hir_type(reference, ty);
 
-    (Value::new(hir, value.ty), bound.statement)
+    if let Some(srcloc) = ctx.hir_srcloc(inner).cloned() {
+        ctx.set_hir_srcloc(reference, srcloc);
+    }
+
+    if let Some(scope) = ctx.hir_scope(inner) {
+        ctx.set_hir_scope(reference, scope);
+    }
+
+    match ctx.hir_mut(parent) {
+        Hir::Cast(value) | Hir::FieldAccess(FieldAccess { value, .. }) => *value = reference,
+        _ => unreachable!("only casts and field accesses are around the bound value"),
+    }
+
+    (Value::new(value.hir, value.ty), bound.statement)
 }
 
 /// Whether every value of the type is an instance of the struct, whatever its generic arguments

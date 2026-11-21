@@ -602,3 +602,24 @@ test fn rebuild_deep_tail_of_long_call(n: Int) -> (Long, Int) {
         w + w,
     )
 }
+
+struct LastHolder {
+    k: Int,
+    j: Int,
+    inner: Tail,
+}
+
+fn last_holder(n: Int) -> LastHolder {
+    assert n > 0;
+    LastHolder { k: n, j: n, inner: Tail { x: n, y: n + 1, z: n + 2 } }
+}
+
+// Four steps into a call is the first that's bound rather than being used in place
+test fn update_four_steps_into_call(n: Int) -> Tail {
+    Tail { ...last_holder(n).inner, x: n }
+}
+
+test fn rebuild_four_steps_into_call(n: Int) -> Tail {
+    let v = last_holder(n);
+    Tail { x: n, y: v.inner.y, z: v.inner.z }
+}
