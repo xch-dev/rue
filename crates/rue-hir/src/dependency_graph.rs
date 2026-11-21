@@ -407,7 +407,13 @@ impl DependencyGraph {
                     if self.is_defined_in(dependency, function)
                         || (self.owners.contains_key(&dependency) && !enclosed)
                     {
-                        if self.closures.contains(&dependency) {
+                        // Only a lambda is one, though any symbol that's used as a value is
+                        // among the closures. One that's reached through a call to a function the
+                        // loop is in is that call's own, as its values are
+                        if !entered
+                            && self.closures.contains(&dependency)
+                            && matches!(db.symbol(dependency), Symbol::Function(_))
+                        {
                             for capture in self.dependencies(dependency, true) {
                                 if self.is_defined_in(capture, function)
                                     || self.owners.get(&capture).is_some_and(|owner| {

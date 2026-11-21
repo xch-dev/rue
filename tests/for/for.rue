@@ -575,3 +575,65 @@ test fn inline_values_with_their_own_bindings() -> List<Int> {
     inline let folded = for y in [total, 2] fold sum = 0 { sum + y };
     for x in xs { add_one(x) + squared + folded }
 }
+
+// A function whose loop calls it again has values of its own in each call, which the loop
+// doesn't capture from the call it's in: here the loop gives `counted`, which the block after it
+// uses
+fn count_nested(xs: List<Int>, depth: Int) -> Int {
+    if depth == 0 {
+        return 1;
+    }
+
+    let counted = for x in xs fold total = 0 { total + count_nested([x], depth - 1) };
+    let squared = {
+        let next = counted + 1;
+        next * next
+    };
+    squared + depth
+}
+
+test fn recursive_function_with_a_block_after_the_loop() -> Int {
+    count_nested(runtime([1, 2, 3]), 2)
+}
+
+// The same with another loop over the first one's result, and with a lambda
+fn count_twice(xs: List<Int>, depth: Int) -> Int {
+    if depth == 0 {
+        return 1;
+    }
+
+    let counted = for x in xs fold total = 0 { total + count_twice([x], depth - 1) };
+    for y in xs fold total = counted { total + y }
+}
+
+fn count_with_a_lambda(xs: List<Int>, depth: Int) -> Int {
+    if depth == 0 {
+        return 1;
+    }
+
+    let k = depth * 2;
+    let add = fn(y: Int) => y + k;
+    let counted = for x in xs fold total = 0 { total + count_with_a_lambda([x], depth - 1) };
+    add(counted)
+}
+
+test fn recursive_function_with_more_after_the_loop() -> (Int, Int) {
+    let xs = runtime([1, 2, 3]);
+    (count_twice(xs, 2), count_with_a_lambda(xs, 2))
+}
+
+// A binding in the body doesn't make the loop capture what the values it refers to depend on
+inline fn offset_through_a_binding(xs: List<Int>, by: Int) -> List<Int> {
+    let next = by + 1;
+    let k = next * 2;
+    for x in xs {
+        let moved = x + k;
+        assert moved > 0;
+        moved
+    }
+}
+
+test fn binding_in_the_body() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    offset_through_a_binding(xs, for x in xs fold sum = 0 { sum + x })
+}
