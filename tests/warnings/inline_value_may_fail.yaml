@@ -82,7 +82,7 @@ diagnostics:
   This argument can fail, but `only_after_return` is an `inline fn` that doesn't always evaluate its parameter `value`, so its check can be skipped at inline_value_may_fail.rue:262:31
     note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function
 - |-
-  Unnecessary cast from `fn(value: Int, flag: true | false) -> Int` to `fn(value: Int, flag: true | false) -> Int`, since they are compatible with each other at inline_value_may_fail.rue:265:13
+  Unnecessary cast from `fn(value: Int, flag: Bool) -> Int` to `fn(value: Int, flag: Bool) -> Int`, since they are compatible with each other at inline_value_may_fail.rue:265:13
     help: Remove the cast
 - |-
   This argument can fail, but `pick` is an `inline fn` that doesn't always evaluate its parameter `value`, so its check can be skipped at inline_value_may_fail.rue:265:57

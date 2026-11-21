@@ -224,6 +224,19 @@ impl Compiled {
             .collect()
     }
 
+    /// Like [`reference_types`](Self::reference_types), but with every member of each union as
+    /// inference built it (see [`rue_types::stringify_exact`]), rather than as it's displayed.
+    pub fn reference_types_exact(&mut self, function: &str, name: &str) -> Vec<String> {
+        self.references(function, name)
+            .into_iter()
+            .map(|(hir, text)| {
+                let ty = self.ctx.hir_type(hir).expect("references have a type");
+                let name = rue_types::stringify_exact(self.ctx.types_mut(), ty);
+                format!("`{text}`: {name}")
+            })
+            .collect()
+    }
+
     /// The declaration that each reference to a symbol named `name` in the body of the function
     /// that `function` names resolved to, in source order, as `` `text`: origin `` pairs. The
     /// origin is the path of the module that declares the item (see

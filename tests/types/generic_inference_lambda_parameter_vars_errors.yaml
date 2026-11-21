@@ -8,7 +8,7 @@ diagnostics:
 - Unused function `callback_map` at generic_inference_lambda_parameter_vars_errors.rue:62:4
 - Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars_errors.rue:70:5
 - Cannot assign `Int` to `7` without a type guard, since the value isn't always a valid `7` at generic_inference_lambda_parameter_vars_errors.rue:70:21
-- Cannot assign `Int | Bytes | 0` to `Int` without a cast, since they are semantically different at generic_inference_lambda_parameter_vars_errors.rue:100:22
+- Cannot assign `Int | Bytes` to `Int` without a cast, since they are semantically different at generic_inference_lambda_parameter_vars_errors.rue:100:22
 - Cannot assign `Bytes | nil` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_lambda_parameter_vars_errors.rue:112:25
 - Cannot assign `Int` to `1` without a type guard, since the value isn't always a valid `1` at generic_inference_lambda_parameter_vars_errors.rue:122:20
 - Cannot assign `Int` to `5` without a type guard, since the value isn't always a valid `5` at generic_inference_lambda_parameter_vars_errors.rue:125:23

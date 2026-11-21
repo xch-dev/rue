@@ -795,12 +795,17 @@ fn member_name_impl(
             let rest = member_name_impl(ctx, builtins, pair.rest, visited);
             format!("({first}, {rest})")
         }
-        Type::Union(union) => union
-            .types
-            .iter()
-            .map(|&member| member_name_impl(ctx, builtins, member, visited))
-            .collect::<Vec<_>>()
-            .join(" | "),
+        // The members are displayed as they are in any other union: each of them once, and
+        // `true | false` as `Bool`
+        Type::Union(union) => {
+            let members = union
+                .types
+                .iter()
+                .map(|&member| (member, member_name_impl(ctx, builtins, member, visited)))
+                .collect();
+
+            rue_types::distinct_member_names(ctx.types(), members).join(" | ")
+        }
         _ => ctx.type_name(ty),
     };
 

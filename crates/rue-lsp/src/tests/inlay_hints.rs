@@ -239,7 +239,7 @@ fn main(shape: Circle | Square | Triangle | nil) -> Int {
             fn main(shape: Circle | Square | Triangle | nil) -> Int {
                 let picked = pick«::<Int, String>»(1, "a");
                 let written = pick::<Int, String>(1, "a");
-                let nested = inner::id«::<true | false>»(pick«::<Bool, nil>»(true, nil));
+                let nested = inner::id«::<Bool>»(pick«::<Bool, nil>»(true, nil));
                 let union = inner::id«::<Circle | Square | Triangle | nil>»(shape);
                 one() + picked + written + same«::<Int>»(2)
             }
@@ -1068,13 +1068,13 @@ fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
             }
 
             fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
-                let size«: Int | 0» = match value {
+                let size«: Int» = match value {
                     Point { x, y: other } => x + other.length,
                     (Int, Bytes) as (first, rest) => first + rest.length,
                     nil => 0,
                 };
 
-                let rest«: 0 | Int» = match value {
+                let rest«: Int» = match value {
                     Point | nil => 0,
                     _ as (first«: Int», _) => first,
                 };
@@ -1193,6 +1193,40 @@ fn test_hints_for_unfinished_struct_updates() {
                 let x«: Int» = point.x;
                 let moved = Point { ... };
                 x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_show_union_members_once() {
+    check_with(
+        TYPES,
+        r#"
+fn choose<T>(condition: Bool, first: T, second: T) -> T {
+    if condition { first } else { second }
+}
+
+fn main(condition: Bool, n: Int) -> Int {
+    let same = choose(condition, (n, n), (n, n));
+    let included = choose(condition, (n, n), (n, 0));
+    let overlapping = choose(condition, (n, 1), (0, n));
+    let flags = [choose(condition, true, false)];
+    same.first + included.first + overlapping.first + if flags.first { 1 } else { 0 }
+}
+"#,
+        expect![[r#"
+
+            fn choose<T>(condition: Bool, first: T, second: T) -> T {
+                if condition { first } else { second }
+            }
+
+            fn main(condition: Bool, n: Int) -> Int {
+                let same«: (Int, Int)» = choose(condition, (n, n), (n, n));
+                let included«: (Int, Int)» = choose(condition, (n, n), (n, 0));
+                let overlapping«: (Int, 1) | (0, Int)» = choose(condition, (n, 1), (0, n));
+                let flags«: (Bool, nil)» = [choose(condition, true, false)];
+                same.first + included.first + overlapping.first + if flags.first { 1 } else { 0 }
             }
         "#]],
     );

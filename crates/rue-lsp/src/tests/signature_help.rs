@@ -308,7 +308,7 @@ fn test_signature_of_generic_function_with_lambda() {
     check(
         "fn map<T, U>(list: List<T>, function: fn(item: T) -> U) -> List<U> {\n    []\n}\n\nfn main(list: List<Int>) -> List<Bool> {\n    map(list, $0fn(item) => item > 1)\n}\n",
         expect![[r#"
-            > fn map<T = Int, U = true | false>(list: List<T>, [function: fn(item: T) -> U]) -> List<U>
+            > fn map<T = Int, U = Bool>(list: List<T>, [function: fn(item: T) -> U]) -> List<U>
         "#]],
     );
 }
@@ -787,7 +787,7 @@ fn test_signature_with_bool() {
     check(
         "fn check(flag: Bool, other: Bool | nil) -> Bool {\n    flag\n}\n\nfn main() -> Bool {\n    check($0true, nil)\n}\n",
         expect![[r#"
-            > fn check([flag: Bool], other: true | false | nil) -> Bool
+            > fn check([flag: Bool], other: Bool | nil) -> Bool
         "#]],
     );
 }
