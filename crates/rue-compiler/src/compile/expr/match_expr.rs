@@ -255,8 +255,7 @@ pub fn compile_match_expr(
         if let Some(arm_condition) = arm_condition {
             // The condition is only evaluated for the values of the arm's type, like the right
             // operand of `value is T && condition`, and a type that doesn't need to be checked
-            // leaves only the condition. In an `inline match` it sees the value as the arm does,
-            // which isn't narrowed, so it doesn't rely on the check.
+            // leaves only the condition
             let condition = if check == Check::None {
                 arm_condition
             } else {
@@ -267,7 +266,7 @@ pub fn compile_match_expr(
 
                 // Whether the condition can be evaluated without checking the arm's type
                 // first, as for the operands of `&&`
-                if inline || narrows_only_atoms(ctx, &reference.narrowed_to(ty)) {
+                if narrows_only_atoms(ctx, &reference.narrowed_to(ty)) {
                     ctx.set_independent_operands(hir);
                 }
 
@@ -488,6 +487,15 @@ fn compile_arm(
     }
 
     let condition = guard.map(|guard| {
+        // The condition is only evaluated once the arm's type has been checked, even in an
+        // `inline match`, whose arms don't see the value narrowed since they're always evaluated
+        let narrowing = pattern.filter(|_| matched.inline).map(|ty| {
+            ctx.push_mappings(
+                matched.reference.narrowed_to(ty),
+                guard.syntax().text_range().start(),
+            )
+        });
+
         let value = if let Some(condition) = guard.condition() {
             let value = compile_expr(ctx, &condition, None);
             ctx.check_condition(condition.syntax(), value.ty);
@@ -498,7 +506,9 @@ fn compile_arm(
         };
 
         // The arms of an `inline match` are evaluated whether or not the condition is true
-        if !matched.inline {
+        if let Some(index) = narrowing {
+            ctx.revert_mappings(index, guard.syntax().text_range().end());
+        } else {
             ctx.push_mappings(value.then_map, range.start());
         }
 

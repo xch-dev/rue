@@ -280,6 +280,15 @@ fn inline_arm_condition_on_a_union() {
     );
 }
 
+/// The condition of an `inline match` arm sees the value narrowed, like the right side of `&&`.
+#[test]
+fn inline_arm_condition_is_narrowed() {
+    check(
+        "fn main(u: U) -> Int { inline match u { A if u.value > 10 => 1, B if u.value.length > 1 => 2, _ => 3 } }",
+        "fn main(u: U) -> Int { inline if u is A && u.value > 10 { 1 } else { inline if u is B && u.value.length > 1 { 2 } else { 3 } } }",
+    );
+}
+
 /// A statement whose arm with a condition returns is an `if` statement that returns early.
 #[test]
 fn statement_with_arm_condition() {

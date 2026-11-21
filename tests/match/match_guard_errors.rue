@@ -85,11 +85,13 @@ fn unreachable(value: Tagged | Plain) -> Int {
     }
 }
 
-// The condition of an `inline match` arm sees the value as the arm does, which isn't narrowed to
-// the arm's type
-fn inline_condition(value: Int | (Int, Int)) -> Int {
+// The condition of an `inline match` arm sees the value narrowed to the arm's type, but the arm's
+// value and binding don't, and neither sees what the condition narrows
+fn inline_condition(value: Tagged | Int) -> Int {
     inline match value {
-        Int if value > 10 => 1,
+        Int if value > 10 => value,
+        Tagged { value: inner } if inner is Int => 1,
+        Tagged if value.value is Int => value.value,
         _ => 2,
     }
 }

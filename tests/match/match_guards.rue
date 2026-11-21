@@ -17,8 +17,8 @@ struct Plain {
     value: Int,
 }
 
-// An `inline match` can have conditions as well. They see the value as the arms do, which is as
-// it is outside of the match.
+// An `inline match` can have conditions as well, which see the value narrowed to the arm's type,
+// although the arm's value doesn't
 fn inline_condition(value: Int, limit: Int) -> Int {
     inline match value {
         0 if limit > 0 => 1,
@@ -28,8 +28,25 @@ fn inline_condition(value: Int, limit: Int) -> Int {
     }
 }
 
+fn inline_narrowed(value: Tagged | Plain) -> Int {
+    inline match value {
+        Tagged if value.value is Int => 1,
+        Plain if value.value > 10 => 2,
+        _ => 3,
+    }
+}
+
 test fn inline_conditions() -> List<Int> {
-    [inline_condition(0, 1), inline_condition(0, 0), inline_condition(5, 1), inline_condition(5, 9)]
+    [
+        inline_condition(0, 1),
+        inline_condition(0, 0),
+        inline_condition(5, 1),
+        inline_condition(5, 9),
+        inline_narrowed(Tagged { value: 1 }),
+        inline_narrowed(Tagged { value: (1, 2) }),
+        inline_narrowed(Plain { value: 11 }),
+        inline_narrowed(Plain { value: 1 }),
+    ]
 }
 
 // These two compile to the same program
