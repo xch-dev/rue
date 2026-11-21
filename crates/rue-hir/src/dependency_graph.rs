@@ -878,13 +878,17 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 graph.closures.insert(*symbol);
             }
 
-            // A loop is defined where it's first called, which is in the function that the `for`
-            // expression is in, like a lambda is. Its calls to itself come after that
+            // A loop is defined where it's called from outside of it, which is in the function
+            // that the `for` expression is in, like a lambda is. Its calls to itself, and those
+            // from inside of it, don't define it. Code that's visited more than once, such as the
+            // default value of a struct's field, which each initializer that leaves the field out
+            // has, defines the loop each time, as it does the let statements around it, so that
+            // the loop stays in the same place as they are
             if let Symbol::Function(function) = db.symbol(*symbol)
                 && function.kind == FunctionKind::Loop
                 && let Some(current) = graph.current
                 && current != *symbol
-                && graph.loops.insert(*symbol)
+                && (graph.loops.insert(*symbol) || !graph.is_defined_in(current, *symbol))
             {
                 graph.owners.insert(*symbol, current);
             }

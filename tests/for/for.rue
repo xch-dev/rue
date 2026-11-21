@@ -637,3 +637,20 @@ test fn binding_in_the_body() -> List<Int> {
     let xs = runtime([1, 2, 3]);
     offset_through_a_binding(xs, for x in xs fold sum = 0 { sum + x })
 }
+
+// The default value of a struct's field is in each initializer that leaves the field out, so a
+// loop in it is too, along with the bindings around it
+struct Schedule {
+    scale: Int,
+    steps: List<Int> = {
+        let two = 1 + 1;
+        for step in [1, 2, 3] { step * two }
+    },
+}
+
+test fn in_a_default_value_used_twice() -> List<Int> {
+    let n = positive(5);
+    let first = Schedule { scale: n };
+    let second = Schedule { scale: n + 1 };
+    [first.scale, second.scale, ...first.steps, ...second.steps]
+}
