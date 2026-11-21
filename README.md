@@ -100,6 +100,43 @@ fn area(shape: Shape) -> Int {
 
 Arms are separated by commas, which can be left out after an arm whose value is a block, `if` or `match`, since it ends at its closing brace (the formatter leaves them out there). A pattern can be any type that `is` can check, including a union (`Circle | Square`) and a literal (`0`, `"yes"`, `nil`, `true`). `_` matches every value that's left, so it's usually the last arm.
 
+An arm's type can be followed by a binding, which destructures the value once it's been narrowed to the type, the same way a `let` does:
+
+```rs
+fn area(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => 3 * radius * radius,
+        Square { side } => side * side,
+        Point => 0,
+    }
+}
+```
+
+This is the same as writing `let { radius } = shape;` at the start of the arm. It isn't a pattern: the arm still matches by its type alone, so a binding never checks anything at runtime or changes which arm is taken, and there are no literals or types inside of it. The generated code is the same as reading the fields from the narrowed value.
+
+Every other binding that a `let` allows comes after `as`: a name for the whole value, a pair, and a list, nested as needed:
+
+```rs
+fn total(value: (Int, Int) | List<Int>) -> Int {
+    match value {
+        (Int, Int) as (first, rest) => first + rest,
+        nil => 0,
+        _ as [first, ...rest] => first + total(rest),
+    }
+}
+
+fn describe(radius: Int) -> Int {
+    match make_shape(radius) {
+        Circle as circle => circle.radius,
+        _ as other => other.kind,
+    }
+}
+```
+
+A name is the way to use a value that isn't a variable, such as the result of a call, as the arm's type. A list is destructured after an arm for `nil`, since a list that might be empty has no first item. A struct binding can come after `as` too (`Circle as { radius }`), which the `redundant_match_arm_as` lint reports, since it isn't needed there.
+
+A binding is checked against the type the arm narrows the value to, which is the union for an arm such as `A | B as (first, rest)`, and what's left for `_`, so it's an error if a `let` couldn't destructure that type the same way: a field can only be read from a union if its members are copies of one struct, such as an enum's variant with different generic arguments. The bindings are only in scope in their own arm, can shadow the value being matched on, and are reported by `unused_binding` if they aren't used.
+
 A match must handle every value its type allows, so adding a member to a union is an error at every `match` that doesn't handle it, rather than a value that silently falls through to the wrong branch. The error lists the members that aren't handled:
 
 ```
@@ -112,7 +149,7 @@ Members that are the same at runtime can't be told apart, such as two structs wi
 
 A match compiles to the same code as the `if` and `else if` chain it's equivalent to. The arm that handles everything that's left is the chain's `else` branch, so it doesn't check anything at runtime.
 
-An `inline match` is to `match` what `inline if` is to `if`: every arm that can match is evaluated, and the value of the one that matches is picked, which avoids the cost of branching at the cost of evaluating every arm. Since they're evaluated whatever the value is, the arms don't narrow it, and an arm that can raise always does, which the `inline_match_may_raise` lint reports. It still has to handle every value:
+An `inline match` is to `match` what `inline if` is to `if`: every arm that can match is evaluated, and the value of the one that matches is picked, which avoids the cost of branching at the cost of evaluating every arm. Since they're evaluated whatever the value is, the arms don't narrow it, and an arm that can raise always does, which the `inline_match_may_raise` lint reports. An arm's binding destructures the value as it is outside of the match for the same reason, so `Circle { radius }` is an error there, like `shape.radius` is. It still has to handle every value:
 
 ```rs
 fn code(shape: Shape) -> Int {
@@ -138,11 +175,13 @@ enum Shape {
 fn area(shape: Shape) -> Int {
     match shape {
         Shape::Empty => 0,
-        Shape::Circle => 3 * shape.radius * shape.radius,
-        Shape::Rect => shape.width * shape.height,
+        Shape::Circle { radius } => 3 * radius * radius,
+        Shape::Rect { width, height } => width * height,
     }
 }
 ```
+
+An arm narrows the value to its variant, so its fields can also be read from the value (`shape.radius` in the `Shape::Circle` arm), which compiles to the same code as the binding.
 
 Variants are named through the enum, such as `Shape::Circle`, both as types and as values. A variant with fields is created like a struct (`Shape::Circle { radius: 1 }`), and one without fields is a constant (`Shape::Empty`). The variants can also be imported, such as with `import Shape::*`, and an exported enum exports its variants.
 
@@ -166,8 +205,8 @@ fn perimeter(shape: Shape) -> Int {
         Shape::Circle => {
             raise "a circle has no sides";
         }
-        Shape::Rect => {
-            assert shape.width > 0;
+        Shape::Rect { width } => {
+            assert width > 0;
         }
     }
 
@@ -232,7 +271,7 @@ When a test fails, `test` shows where it was in the source: the stack of calls t
 - **Go to definition and find references:** for functions, constants, bindings, types, struct fields, enum variants, generic parameters and modules, across the files of the project.
 - **Rename:** renames a function, constant, binding, type, struct field, enum variant, generic parameter or module everywhere in the project, along with the file or directory of a module that's one. A shorthand field (`Point { x }`) is written out, so the field or the binding keeps its name. Names that are built in or from the standard library can't be renamed, and a new name that's invalid, already used, or would change what a name refers to is refused.
 - **Signature help:** the parameters of the function that's being called, with the one that the argument at the cursor is for, and what the function's generics were inferred as. It works for functions, lambdas, builtins and the fields of a struct initializer.
-- **Inlay hints:** the types that were inferred for `let` bindings and lambda parameters, the generic arguments that were inferred for a call, and the names of the parameters that a call's arguments are for (unless an argument is named like its parameter). Long types are cut short, with the rest in the hint's tooltip.
+- **Inlay hints:** the types that were inferred for `let` bindings, lambda parameters and the bindings of a `_` match arm, the generic arguments that were inferred for a call, and the names of the parameters that a call's arguments are for (unless an argument is named like its parameter). Long types are cut short, with the rest in the hint's tooltip.
 - **Document and workspace symbols:** the outline of a file (its functions, tests, constants, type aliases and modules, structs with their fields, and enums with their variants), and a search for a symbol by name in every project that has a file open.
 - **Completion:** names in scope, the fields of a struct after a `.`, and the items of a module after `::`.
 - **Formatting:** the same as `rue fmt`, with the options from `Rue.toml`.

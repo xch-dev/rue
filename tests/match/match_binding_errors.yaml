@@ -1,0 +1,51 @@
+diagnostics:
+- Unknown field `side` on type `Circle` at match_binding_errors.rue:21:18
+- Unknown field `radius` on type `Square` at match_binding_errors.rue:22:24
+- Cannot destructure type `Circle` into a pair at match_binding_errors.rue:29:19
+- Cannot destructure type `Square` into a pair at match_binding_errors.rue:30:20
+- Unknown field `side` on type `(Int, Int)` at match_binding_errors.rue:37:22
+- Cannot destructure type `Int` into a pair at match_binding_errors.rue:38:16
+- Duplicate symbol `part` found in scope at match_binding_errors.rue:45:30
+- Undeclared symbol `radius` at match_binding_errors.rue:54:19
+- Undeclared symbol `radius` at match_binding_errors.rue:58:13
+- Unknown field `kind` on type `Circle | Square` at match_binding_errors.rue:65:27
+- Cannot destructure type `List<Int>` into a pair at match_binding_errors.rue:74:23
+- Unknown field `side` on type `Circle | Square` at match_binding_errors.rue:82:13
+- |-
+  Unknown field `radius` on type `Shape` at match_binding_errors.rue:89:18
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Circle` before it's destructured
+- |-
+  Unknown field `side` on type `Shape` at match_binding_errors.rue:90:18
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Square` before it's destructured
+- Unknown field `side` on type `Shape` at match_binding_errors.rue:91:13
+- |-
+  Cannot destructure type `(Int, Int) | Int` into a pair at match_binding_errors.rue:97:23
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `(Int, Int)` before it's destructured
+- Unknown field `width` on type `Renamed | nil` at match_binding_errors.rue:112:13
+- |-
+  Unknown field `width` on type `Renamed | nil` at match_binding_errors.rue:118:23
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Renamed` before it's destructured
+- Unknown field `side` on type `Circle` at match_binding_errors.rue:125:18
+- Duplicate symbol `part` found in scope at match_binding_errors.rue:132:28
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at match_binding_errors.rue:139:13
+    note: This arm handles every value that's left at match_binding_errors.rue:138:13
+- |-
+  Unknown field `radius` on type `Shape` at match_binding_errors.rue:139:22
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Circle` before it's destructured
+- Unreachable match arm, since the earlier arms handle every value it matches at match_binding_errors.rue:149:9
+- Unknown field `radius` on type `Never` at match_binding_errors.rue:149:18
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at match_binding_errors.rue:151:9
+    note: This arm handles every value that's left at match_binding_errors.rue:150:9
+- Unknown field `kind` on type `Never` at match_binding_errors.rue:151:13
+- Match on `Shape` is not exhaustive, since it doesn't handle `Point` at match_binding_errors.rue:156:11
+- Cannot type guard from `Shape` to `Int`, since they do not overlap at match_binding_errors.rue:164:9
+- Unknown field `length` on type `Never` at match_binding_errors.rue:164:15
+- Unknown field `radius` on type `Shape` at match_binding_errors.rue:173:36
+- Unknown field `side` on type `Circle` at match_binding_errors.rue:179:40
+- Undeclared symbol `circle` at match_binding_errors.rue:180:33
+- Unused binding `unused` at match_binding_errors.rue:181:22
+- Unused binding `radius` at match_binding_errors.rue:188:18
+- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_binding_errors.rue:197:30
+- Cannot assign `1` to `2`, since they are incompatible at match_binding_errors.rue:208:26

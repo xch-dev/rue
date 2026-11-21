@@ -49,3 +49,19 @@ struct Truths {
 fn truths(Truth: Truths) -> Int {
     Truth.Ephemeral_State
 }
+
+// The bindings of a match arm are named like those of a `let`, and a field that's only read by
+// its name is named by the struct
+export fn arm_bindings(value: Truths | (Int, Int)) -> Int {
+    match value {
+        Truths { Ephemeral_State } => Ephemeral_State,
+        (Int, Int) as (firstPart, RestPart) => firstPart + RestPart,
+    }
+}
+
+export fn renamed_arm_binding(value: Truths | nil) -> Int {
+    match value {
+        Truths { Ephemeral_State: EphemeralState } => EphemeralState,
+        nil => 0,
+    }
+}

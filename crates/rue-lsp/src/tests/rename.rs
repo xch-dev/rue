@@ -2038,3 +2038,475 @@ fn test_rename_in_index_and_slice() {
         "#]],
     );
 }
+
+const SHAPE: &str = r#"
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect { width: Int, height: Int },
+}
+"#;
+
+fn with_shape(source: &str) -> String {
+    format!("{SHAPE}{source}")
+}
+
+#[test]
+fn test_rename_field_in_match_arm_binding() {
+    // The arm's shorthand keeps the binding's name, so the body is untouched, and a field that's
+    // named for its own binding is only renamed
+    let source = with_shape(
+        r#"
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle { radius } => radius * radius,
+        Shape::Rect { width: w, height } => w * height + shape.width,
+    }
+}
+"#,
+    );
+
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("radius: Int", "rad$0ius: Int", 1),
+        )],
+        "size",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { size: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Empty => 0,
+                    Shape::Circle { size: radius } => radius * radius,
+                    Shape::Rect { width: w, height } => w * height + shape.width,
+                }
+            }
+        "#]],
+    );
+
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("width: Int", "wid$0th: Int", 1),
+        )],
+        "across",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { across: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Empty => 0,
+                    Shape::Circle { radius } => radius * radius,
+                    Shape::Rect { across: w, height } => w * height + shape.across,
+                }
+            }
+        "#]],
+    );
+
+    // From the field's name in the arm
+    check(
+        &[("main.rue", &source.replacen("width: w", "wid$0th: w", 1))],
+        "across",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { across: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Empty => 0,
+                    Shape::Circle { radius } => radius * radius,
+                    Shape::Rect { across: w, height } => w * height + shape.across,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_binding_in_match_arm() {
+    let source = with_shape(
+        r#"
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle { radius } => radius * radius,
+        Shape::Rect { width: w, height } => w * height,
+    }
+}
+"#,
+    );
+
+    // From a use in the arm's value, the shorthand is expanded to keep the field's name
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("radius * radius", "rad$0ius * radius", 1),
+        )],
+        "size",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Empty => 0,
+                    Shape::Circle { radius: size } => size * size,
+                    Shape::Rect { width: w, height } => w * height,
+                }
+            }
+        "#]],
+    );
+
+    // A binding with a name of its own is only renamed, from its use or where it's declared
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("w * height", "$0w * height", 1),
+        )],
+        "across",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Empty => 0,
+                    Shape::Circle { radius } => radius * radius,
+                    Shape::Rect { width: across, height } => across * height,
+                }
+            }
+        "#]],
+    );
+
+    check(
+        &[("main.rue", &source.replacen("width: w", "width: $0w", 1))],
+        "across",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Empty => 0,
+                    Shape::Circle { radius } => radius * radius,
+                    Shape::Rect { width: across, height } => across * height,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_pair_and_list_bindings_in_match_arms() {
+    let source = r#"
+fn main(value: (Int, Int) | List<Bytes>) -> Int {
+    match value {
+        (Int, Int) as (first, rest) => first + rest,
+        nil => 0,
+        (Bytes, List<Bytes>) as [head, ...tail] => head.length + main(tail),
+    }
+}
+"#;
+
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("first + rest", "first + re$0st", 1),
+        )],
+        "second",
+        expect![[r#"
+            main.rue:
+
+            fn main(value: (Int, Int) | List<Bytes>) -> Int {
+                match value {
+                    (Int, Int) as (first, second) => first + second,
+                    nil => 0,
+                    (Bytes, List<Bytes>) as [head, ...tail] => head.length + main(tail),
+                }
+            }
+        "#]],
+    );
+
+    check(
+        &[("main.rue", &source.replacen("...tail", "...ta$0il", 1))],
+        "others",
+        expect![[r#"
+            main.rue:
+
+            fn main(value: (Int, Int) | List<Bytes>) -> Int {
+                match value {
+                    (Int, Int) as (first, rest) => first + rest,
+                    nil => 0,
+                    (Bytes, List<Bytes>) as [head, ...others] => head.length + main(others),
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_match_arm_binding_conflicts() {
+    let source = with_shape(
+        r#"
+fn main(shape: Shape, scale: Int) -> Int {
+    match shape {
+        Shape::Empty => scale,
+        Shape::Circle { radius } => radius * scale,
+        Shape::Rect { width, height } => width * height * scale,
+    }
+}
+"#,
+    );
+
+    // A name that the arm's value uses for something else
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("radius * scale", "rad$0ius * scale", 1),
+        )],
+        "scale",
+        expect![[r#"
+            error: Renaming `radius` to `scale` would change what `scale` refers to at main.rue:11:46
+        "#]],
+    );
+
+    // A name that's bound in the same arm
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("width * height", "wid$0th * height", 1),
+        )],
+        "height",
+        expect![[r#"
+            error: `height` is already used in a scope that has `width`
+        "#]],
+    );
+
+    // A name that's only bound in another arm is free
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("radius * scale", "rad$0ius * scale", 1),
+        )],
+        "width",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape, scale: Int) -> Int {
+                match shape {
+                    Shape::Empty => scale,
+                    Shape::Circle { radius: width } => width * scale,
+                    Shape::Rect { width, height } => width * height * scale,
+                }
+            }
+        "#]],
+    );
+
+    // The value being matched on can be shadowed if the arm doesn't use it
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("radius * scale", "rad$0ius * scale", 1),
+        )],
+        "shape",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape, scale: Int) -> Int {
+                match shape {
+                    Shape::Empty => scale,
+                    Shape::Circle { radius: shape } => shape * scale,
+                    Shape::Rect { width, height } => width * height * scale,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_with_unfinished_match_arm_binding() {
+    check_with_errors(
+        &[(
+            "main.rue",
+            &with_shape(
+                "\nfn main(shape: Shape, scale: Int) -> Int {\n    match shape {\n        Shape::Circle { radius } => radius * sca$0le,\n        Shape::Rect { width =>\n",
+            ),
+        )],
+        "factor",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape, factor: Int) -> Int {
+                match shape {
+                    Shape::Circle { radius } => radius * factor,
+                    Shape::Rect { width =>
+        "#]],
+    );
+
+    check_with_errors(
+        &[(
+            "main.rue",
+            &with_shape(
+                "\nfn main(shape: Shape) -> Int {\n    match shape {\n        Shape::Rect { wid$0th =>\n",
+            ),
+        )],
+        "across",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Rect { width: across =>
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_named_match_arm_binding() {
+    let source = with_shape(
+        r#"
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Circle as circle => circle.radius,
+        Shape::Rect as rect => rect.width * rect.height,
+        _ => 0,
+    }
+}
+"#,
+    );
+
+    // From where it's declared, and from a use
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("Shape::Circle as circle", "Shape::Circle as cir$0cle", 1),
+        )],
+        "round",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Circle as round => round.radius,
+                    Shape::Rect as rect => rect.width * rect.height,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("rect.width", "re$0ct.width", 1),
+        )],
+        "sides",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Circle as circle => circle.radius,
+                    Shape::Rect as sides => sides.width * sides.height,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+
+    // The type before the name is renamed on its own
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("Shape::Rect as rect", "Shape::Re$0ct as rect", 1),
+        )],
+        "Box",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Box { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Circle as circle => circle.radius,
+                    Shape::Box as rect => rect.width * rect.height,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+}

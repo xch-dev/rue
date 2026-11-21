@@ -73,3 +73,74 @@ fn main() -> Int {
         + missing_comma_same_line(nil)
         + continued_block_arm(nil)
 }
+
+struct Pair {
+    first: Int,
+    rest: Int,
+}
+
+// An arm's binding comes before the `=>`, and only names or destructures the value, so it can't
+// be a literal or a type. A name, a pair or a list comes after `as`, which takes one binding.
+export fn binding_errors(value: Pair | (Int, Int) | nil) -> Int {
+    match value {
+        Pair whole => whole.first,
+        (Int, Int) as (0, rest) => rest,
+        nil => 0,
+    }
+}
+
+export fn binding_after_arrow(value: Pair | nil) -> Int {
+    match value {
+        Pair => { first, rest } first + rest,
+        nil => 0,
+    }
+}
+
+// A brace that doesn't start a binding is a block whose `=>` is missing
+export fn missing_arrow_before_block(value: Pair | nil) -> Int {
+    match value {
+        Pair { 1 }
+        nil => 0,
+    }
+}
+
+export fn typed_binding(value: Pair | nil) -> Int {
+    match value {
+        Pair { first: List<Int>, rest: 2 } => first,
+        nil => 0,
+    }
+}
+
+// Without `as`, a pair or a list after the type isn't a binding, and `as` needs a binding after it
+export fn missing_as(value: (Int, Int) | List<Int>) -> Int {
+    match value {
+        (Int, Int) (first, rest) => first + rest,
+        nil as => 0,
+        _ [first] => first,
+    }
+}
+
+// An arm that's missing its `=>` and value doesn't take the type of the next arm for its binding,
+// and neither does a block on the next line
+export fn missing_arrow_and_value(value: Pair | (Int, Int) | nil) -> Int {
+    match value {
+        Pair
+        nil => 0,
+        _ => 1,
+    }
+}
+
+export fn struct_binding_on_the_next_line(value: Pair | nil) -> Int {
+    match value {
+        Pair
+        { first, rest } => first + rest,
+        nil => 0,
+    }
+}
+
+export fn unclosed_binding(value: Pair | nil) -> Int {
+    match value {
+        Pair { first, rest => first + rest,
+        nil => 0,
+    }
+}

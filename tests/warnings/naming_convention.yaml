@@ -42,3 +42,12 @@ diagnostics:
 - |-
   Module `InnerModule` should be named in snake_case at naming_convention.rue:25:5
     note: Consider renaming it to `inner_module`
+- |-
+  Binding `firstPart` should be named in snake_case at naming_convention.rue:58:24
+    note: Consider renaming it to `first_part`
+- |-
+  Binding `RestPart` should be named in snake_case at naming_convention.rue:58:35
+    note: Consider renaming it to `rest_part`
+- |-
+  Binding `EphemeralState` should be named in snake_case at naming_convention.rue:64:35
+    note: Consider renaming it to `ephemeral_state`

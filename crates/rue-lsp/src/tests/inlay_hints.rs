@@ -1022,3 +1022,93 @@ fn test_hints_for_union_of_members_written_the_same() {
         "#]],
     );
 }
+
+#[test]
+fn test_hints_for_match_arm_bindings() {
+    // An arm's type is written right before its binding, so only the bindings of a `_` arm get
+    // their types, like those of a `let` without a type. The fields of a struct binding are left
+    // out there too.
+    check_with(
+        TYPES,
+        r#"
+struct Point {
+    x: Int,
+    y: Bytes,
+}
+
+fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
+    let size = match value {
+        Point { x, y: other } => x + other.length,
+        (Int, Bytes) as (first, rest) => first + rest.length,
+        nil => 0,
+    };
+
+    let rest = match value {
+        Point | nil => 0,
+        _ as (first, _) => first,
+    };
+
+    size + rest + match list {
+        nil => 0,
+        _ as [head, ...tail] => head + main(nil, tail),
+    } + match value {
+        (Int, Bytes) | nil => 0,
+        _ { x, y: other } => x + other.length,
+    } + match value {
+        Point as point => point.x,
+        _ as rest => if rest is nil { 0 } else { rest.first },
+    }
+}
+"#,
+        expect![[r#"
+
+            struct Point {
+                x: Int,
+                y: Bytes,
+            }
+
+            fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
+                let size«: Int | 0» = match value {
+                    Point { x, y: other } => x + other.length,
+                    (Int, Bytes) as (first, rest) => first + rest.length,
+                    nil => 0,
+                };
+
+                let rest«: 0 | Int» = match value {
+                    Point | nil => 0,
+                    _ as (first«: Int», _) => first,
+                };
+
+                size + rest + match list {
+                    nil => 0,
+                    _ as [head«: Int», ...tail«: List<Int>»] => head + main(nil, tail),
+                } + match value {
+                    (Int, Bytes) | nil => 0,
+                    _ { x, y: other } => x + other.length,
+                } + match value {
+                    Point as point => point.x,
+                    _ as rest«: (Int, Bytes) | nil» => if rest is nil { 0 } else { rest.first },
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_with_unfinished_match_arm_binding() {
+    check_with_errors(
+        TYPES,
+        "struct Point {\n    x: Int,\n}\n\nfn main(value: Point | (Int, Int)) -> Int {\n    let (a, b) = (1, 2);\n    match value {\n        Point { x =>\n        _ as (first, rest\n",
+        expect![[r#"
+            struct Point {
+                x: Int,
+            }
+
+            fn main(value: Point | (Int, Int)) -> Int {
+                let (a«: 1», b«: 2») = (1, 2);
+                match value {
+                    Point { x =>
+                    _ as (first, rest
+        "#]],
+    );
+}

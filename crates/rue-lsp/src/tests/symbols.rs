@@ -483,3 +483,18 @@ fn test_workspace_symbols_without_the_standard_library() {
     "#]]
     .assert_eq(&project.workspace_symbols("sha"));
 }
+
+#[test]
+fn test_document_symbols_with_match_arm_bindings() {
+    // Bindings aren't in the outline, and an arm's binding that isn't finished doesn't hide the
+    // function it's in, or move what comes before it
+    check(
+        "struct Point {\n    x: Int,\n}\n\nfn area(point: Point | nil) -> Int {\n    match point {\n        Point { x } => x,\n        nil => 0,\n    }\n}\n\nfn broken(point: Point | (Int, Int)) -> Int {\n    match point {\n        Point { x =>\n        (Int, Int) as (first, rest\n",
+        expect![[r#"
+            Struct Point 0:0-2:1 [0:7-0:12]
+              Field x `Int` 1:4-1:10 [1:4-1:5]
+            Function area `(point: Point | nil) -> Int` 4:0-9:1 [4:3-4:7]
+            Function broken `(point: Point | (Int, Int)) -> Int` 11:0-13:17 [11:3-11:9]
+        "#]],
+    );
+}

@@ -38,14 +38,7 @@ fn binding_inner(p: &mut Parser) {
             p.finish();
         });
         p.finish();
-    } else if p.at_quiet(T!['{'])
-        && matches!(
-            p.lookahead(1),
-            SyntaxKind::Ident | T!['}'] | T![.] | SyntaxKind::Eof
-        )
-    {
-        // Only treat this as a struct binding if it looks like one, since a missing closing
-        // parenthesis in a function's parameters would otherwise treat its body as a binding
+    } else if at_struct_binding(p) {
         p.start(SyntaxKind::StructBinding);
         p.expect(T!['{']);
         delimited_list(p, T!['}'], |p| {
@@ -61,6 +54,17 @@ fn binding_inner(p: &mut Parser) {
     } else {
         recover(p, "binding", &[T![=], T![:], T!['{']]);
     }
+}
+
+/// Whether the next tokens look like the start of a struct binding, rather than a block. A missing
+/// closing parenthesis in a function's parameters would otherwise treat its body as a binding, as
+/// would a missing `=>` in a match arm.
+pub(crate) fn at_struct_binding(p: &mut Parser) -> bool {
+    p.at_quiet(T!['{'])
+        && matches!(
+            p.lookahead(1),
+            SyntaxKind::Ident | T!['}'] | T![.] | SyntaxKind::Eof
+        )
 }
 
 #[cfg(test)]

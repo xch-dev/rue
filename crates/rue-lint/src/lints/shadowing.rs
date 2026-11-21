@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use rue_ast::{
-    AstBlock, AstFunctionItem, AstFunctionParameter, AstLambdaExpr, AstLetStmt, AstNode,
+    AstBinding, AstBlock, AstFunctionItem, AstFunctionParameter, AstLambdaExpr, AstLetStmt,
+    AstMatchArm, AstNode,
 };
 use rue_diagnostic::{Lint, Note, Source, SrcLoc};
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -61,13 +62,15 @@ impl Walker<'_, '_> {
                 self.scopes.push(HashMap::new());
             }
 
-            for name in stmt
-                .binding()
-                .iter()
-                .flat_map(|binding| binding_names(binding, true))
-            {
-                self.declare(&name);
-            }
+            self.declare_binding(stmt.binding().as_ref());
+        } else if let Some(arm) = AstMatchArm::cast(node.clone()) {
+            // An arm's bindings are only in scope in its value
+            self.scopes.push(HashMap::new());
+
+            self.declare_binding(arm.binding().as_ref());
+
+            self.walk_children(node);
+            self.scopes.pop();
         } else {
             self.walk_children(node);
         }
@@ -87,13 +90,7 @@ impl Walker<'_, '_> {
         self.scopes.push(HashMap::new());
 
         for parameter in parameters {
-            for name in parameter
-                .binding()
-                .iter()
-                .flat_map(|binding| binding_names(binding, true))
-            {
-                self.declare(&name);
-            }
+            self.declare_binding(parameter.binding().as_ref());
         }
 
         if let Some(body) = body {
@@ -101,6 +98,16 @@ impl Walker<'_, '_> {
         }
 
         self.scopes.pop();
+    }
+
+    /// Declares each of the names that a binding declares, if there is one.
+    fn declare_binding(&mut self, binding: Option<&AstBinding>) {
+        for name in binding
+            .into_iter()
+            .flat_map(|binding| binding_names(binding, true))
+        {
+            self.declare(&name);
+        }
     }
 
     fn declare(&mut self, name: &SyntaxToken) {

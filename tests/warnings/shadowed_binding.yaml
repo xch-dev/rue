@@ -18,3 +18,21 @@ diagnostics:
 - |-
   Binding `inner` is returned directly after it's declared at shadowed_binding.rue:17:9
     help: Return the value directly
+- |-
+  `first` shadows an earlier binding with the same name at shadowed_binding.rue:35:28
+    note: The earlier binding is declared here at shadowed_binding.rue:30:41
+- |-
+  `rest` shadows an earlier binding with the same name at shadowed_binding.rue:35:35
+    note: The earlier binding is declared here at shadowed_binding.rue:31:9
+- |-
+  `rest` shadows an earlier binding with the same name at shadowed_binding.rue:37:21
+    note: The earlier binding is declared here at shadowed_binding.rue:31:9
+- |-
+  `value` shadows an earlier binding with the same name at shadowed_binding.rue:45:24
+    note: The earlier binding is declared here at shadowed_binding.rue:43:21
+- |-
+  `value` shadows an earlier binding with the same name at shadowed_binding.rue:61:23
+    note: The earlier binding is declared here at shadowed_binding.rue:59:21
+- |-
+  Binding `Whole` should be named in snake_case at shadowed_binding.rue:62:16
+    note: Consider renaming it to `whole`

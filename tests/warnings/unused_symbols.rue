@@ -43,3 +43,26 @@ fn used_by_unused_binding(value: Int) -> Int {
     assert value > 0;
     value
 }
+
+struct Span {
+    start: Int,
+    end: Int,
+}
+
+// The bindings of a match arm that aren't used are reported, like those of a `let`, each on its
+// own, and the value being matched on is used by the match
+export fn arm_bindings(value: Span | (Int, Int) | nil) -> Int {
+    match value {
+        Span { start, end } => start,
+        (Int, Int) as (first, rest) => 0,
+        nil => 0,
+    }
+}
+
+// A binding that's only named to bind the rest isn't reported if its name starts with `_`
+export fn ignored_arm_bindings(value: Span | (Int, Int)) -> Int {
+    match value {
+        Span { start: _, ...rest } => rest.end,
+        (Int, Int) as (first, _rest) => first,
+    }
+}

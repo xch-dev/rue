@@ -433,6 +433,306 @@ fn main(point: Point) -> Int {
 }
 
 #[test]
+fn test_match_arm_binding_field() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { $0x, y } => x + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let x: Int
+            ---
+            x: Int
+            definitions:
+            main.rue:9:26-9:27
+            references:
+            main.rue:9:16-9:17
+            main.rue:9:26-9:27
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_renamed_field() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x$0: px, y } => px + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            x: Int
+            definitions:
+            main.rue:2:4-2:5
+            references:
+            main.rue:2:4-2:5
+            main.rue:9:16-9:17
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_renamed_binding() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x: px, y } => $0px + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let px: Int
+            definitions:
+            main.rue:9:19-9:21
+            references:
+            main.rue:9:19-9:21
+            main.rue:9:30-9:32
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_type() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Poi$0nt { x, y } => x + y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+            definitions:
+            main.rue:1:7-1:12
+            references:
+            main.rue:1:7-1:12
+            main.rue:6:15-6:20
+            main.rue:9:8-9:13
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_named_binding() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point as $0point => point.x + point.y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let point: Point
+            definitions:
+            main.rue:9:26-9:31
+            main.rue:9:36-9:41
+            references:
+            main.rue:9:17-9:22
+            main.rue:9:26-9:31
+            main.rue:9:36-9:41
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_pair_and_list_bindings() {
+    check(
+        r#"
+fn main(value: (Int, Int) | List<Bytes>) -> Int {
+    match value {
+        (Int, Int) as (first, rest) => first + rest,
+        nil => 0,
+        (Bytes, List<Bytes>) as [_head, ...tail] => main($0tail),
+    }
+}
+"#,
+        expect![[r#"
+            hover:
+            let tail: (Bytes, List<Bytes>)
+            definitions:
+            main.rue:5:43-5:47
+            references:
+            main.rue:5:43-5:47
+            main.rue:5:57-5:61
+        "#]],
+    );
+}
+
+#[test]
+fn test_field_access_on_narrowed_value() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point => value.$0x,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            x: Int
+            definitions:
+            main.rue:2:4-2:5
+            references:
+            main.rue:2:4-2:5
+            main.rue:9:23-9:24
+        "#]],
+    );
+}
+
+#[test]
+fn test_struct_destructuring_renamed_field_of_narrowed_value() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    if value is Point {
+        let { x$0: px } = value;
+        px
+    } else { 0 }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            x: Int
+            definitions:
+            main.rue:2:4-2:5
+            references:
+            main.rue:2:4-2:5
+            main.rue:8:14-8:15
+        "#]],
+    );
+}
+
+const OPTION: &str = r#"
+enum Dir {
+    Up = 1,
+    Down,
+}
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+"#;
+
+#[test]
+fn test_match_arm_binding_generic_variant_field() {
+    check(
+        &format!(
+            "{OPTION}{}",
+            r#"
+fn main(option: Option<Int>) -> Int {
+    match option {
+        Option::None<Int> => 0,
+        Option::Some<Int> { val$0ue: inner } => inner,
+    }
+}
+"#
+        ),
+        expect![[r#"
+            hover:
+            value: Int
+            definitions:
+            main.rue:8:11-8:16
+            references:
+            main.rue:8:11-8:16
+            main.rue:14:28-14:33
+        "#]],
+    );
+}
+
+#[test]
+fn test_match_arm_binding_union_of_copies_field() {
+    check(
+        &format!(
+            "{OPTION}{}",
+            r#"
+fn main(option: Option<Dir>) -> Int {
+    match option {
+        Option::None<Dir> => 0,
+        Option::Some<Dir::Up> | Option::Some<Dir::Down> { val$0ue: inner } => inner as Int,
+    }
+}
+"#
+        ),
+        expect![[r#"
+            hover:
+            value: Dir::Up | Dir::Down
+            definitions:
+            main.rue:8:11-8:16
+            references:
+            main.rue:8:11-8:16
+            main.rue:14:58-14:63
+        "#]],
+    );
+}
+
+#[test]
+fn test_field_access_on_narrowed_generic_variant() {
+    check(
+        &format!(
+            "{OPTION}{}",
+            r#"
+fn main(option: Option<Dir>) -> Int {
+    match option {
+        Option::Some<Dir::Up> => 1,
+        _ => match option {
+            Option::None<Dir> => 0,
+            _ => option.val$0ue as Int,
+        }
+    }
+}
+"#
+        ),
+        expect![[r#"
+            hover:
+            value: Dir::Down
+            definitions:
+            main.rue:8:11-8:16
+            references:
+            main.rue:8:11-8:16
+            main.rue:16:24-16:29
+        "#]],
+    );
+}
+
+#[test]
 fn test_generic_function_body() {
     check(
         r#"

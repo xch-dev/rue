@@ -2,21 +2,26 @@
 
 use std::{ops::Range, sync::Arc};
 
-use rowan::{NodeOrToken, TextRange};
+use rowan::{NodeOrToken, TextRange, TextSize};
 use rue_ast::{
     AstBinding, AstExpr, AstGenericArguments, AstGenericParameters, AstGroupExpr, AstIfExpr,
-    AstNode, AstPrefixExpr, AstStmtOrExpr, AstStructFieldBinding, AstStructInitializerField,
+    AstMatchArm, AstNode, AstPrefixExpr, AstStmtOrExpr, AstStructFieldBinding,
+    AstStructInitializerField,
 };
 use rue_diagnostic::{Applicability, Lint, Source, Suggestion};
 use rue_lexer::Lexer;
 use rue_parser::{Parser, SyntaxKind, SyntaxNode, T};
 
-use crate::{LintContext, LintInput, srcloc, text::separate_words};
+use crate::{
+    LintContext, LintInput, srcloc,
+    text::{comment_count, separate_words},
+};
 
 pub(crate) const LINTS: &[Lint] = &[
     Lint::EmptyGenerics,
     Lint::DoubleNegation,
     Lint::RedundantFieldNames,
+    Lint::RedundantMatchArmAs,
     Lint::UnnecessaryParens,
     Lint::CollapsibleIf,
 ];
@@ -56,6 +61,8 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 check_initializer_field(cx, source, &field);
             } else if let Some(field) = AstStructFieldBinding::cast(node.clone()) {
                 check_field_binding(cx, source, &field);
+            } else if let Some(arm) = AstMatchArm::cast(node.clone()) {
+                check_match_arm_as(cx, source, &arm);
             } else if let Some(group) = AstGroupExpr::cast(node.clone()) {
                 check_parens(cx, source, &group);
             } else if let Some(if_expr) = AstIfExpr::cast(node.clone()) {
@@ -109,6 +116,60 @@ fn check_field_binding(cx: &mut LintContext<'_>, source: &Source, field: &AstStr
     }
 
     report_redundant_field_name(cx, source, field.syntax(), name.text());
+}
+
+/// A struct binding comes right after an arm's type, like a struct initializer's fields do, so
+/// the `as` that a name, pair or list binding needs is redundant before it.
+fn check_match_arm_as(cx: &mut LintContext<'_>, source: &Source, arm: &AstMatchArm) {
+    let (Some(as_token), Some(AstBinding::StructBinding(binding))) =
+        (arm.as_token(), arm.binding())
+    else {
+        return;
+    };
+
+    // The `as` and the whitespace after it, up to the binding. A struct binding without `as`
+    // starts on the line that the type ends on, so a line break before the `as` goes too.
+    let previous = std::iter::successors(as_token.prev_token(), rowan::SyntaxToken::prev_token)
+        .find(|token| !token.kind().is_trivia());
+    let before = previous.map_or(as_token.text_range().start(), |token| {
+        token.text_range().end()
+    });
+    let text_between =
+        |start: TextSize, end: TextSize| &source.text[usize::from(start)..usize::from(end)];
+
+    let leading = text_between(before, as_token.text_range().start());
+    let trailing = text_between(
+        as_token.text_range().start(),
+        binding.syntax().text_range().start(),
+    );
+    let joins_lines = leading.contains('\n');
+
+    // A comment would be removed with the `as`, or would be left between the type and a binding
+    // that has to be on its line
+    let has_comment = comment_count(trailing) > 0 || (joins_lines && comment_count(leading) > 0);
+
+    let (start, replacement) = if joins_lines {
+        (before, " ")
+    } else {
+        (as_token.text_range().start(), "")
+    };
+
+    if let Some(diagnostic) = cx.report(
+        Lint::RedundantMatchArmAs,
+        srcloc(source, as_token.text_range()),
+        "Redundant `as`, since a struct binding can follow the type of a match arm directly",
+    ) && !has_comment
+    {
+        diagnostic.suggestions.push(Suggestion::replace(
+            "Remove the `as`",
+            srcloc(
+                source,
+                TextRange::new(start, binding.syntax().text_range().start()),
+            ),
+            replacement,
+            Applicability::MachineApplicable,
+        ));
+    }
 }
 
 fn report_redundant_field_name(

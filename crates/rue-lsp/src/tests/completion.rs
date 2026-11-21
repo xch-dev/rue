@@ -1009,6 +1009,179 @@ fn main(value: Point | nil) -> Int {
 }
 
 #[test]
+fn test_complete_match_arm_binding_fields() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x, $0 } => x,
+    }
+}
+"#,
+        expect![[r#"
+            y [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_match_arm_binding_fields() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Rect { width: Int, height: Int },
+}
+
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Rect { $0 } => 1,
+    }
+}
+"#,
+        expect![[r#"
+            width [Field] Int
+            height [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_partial_match_arm_binding_field() {
+    check(
+        r#"
+enum Shape {
+    Empty,
+    Rect { width: Int, height: Int },
+}
+
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Rect { he$0 } => 1,
+    }
+}
+"#,
+        expect![[r#"
+            height [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_match_arm_binding_in_value() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x: horizontal, y } => hor$0,
+    }
+}
+"#,
+        expect![[r#"
+            horizontal [Variable] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_nothing_for_match_arm_binding_names() {
+    // The names in an arm's binding are new, so nothing is offered for them, like for the names
+    // in a `let`
+    let source = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | (Int, Int) | nil, count: Int) -> Int {
+    match value {
+        Point as point => point.x,
+        (Int, Int) as (first, rest) => first + rest,
+        nil => count,
+    }
+}
+"#;
+
+    check(
+        &source.replacen("Point as point", "Point as p$0", 1),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    check(
+        &source.replacen("(first, rest)", "(c$0, rest)", 1),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    check(
+        &source.replacen("(first, rest)", "(first, $0)", 1),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    check(
+        "fn main(list: List<Int>, count: Int) -> Int {\n    match list {\n        nil => count,\n        _ as [c$0, ...rest] => 1,\n    }\n}\n",
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    // Right after the `as`, before there's a binding
+    check(
+        "fn main(list: List<Int>, count: Int) -> Int {\n    match list {\n        nil => count,\n        _ as $0 => 1,\n    }\n}\n",
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    check(
+        "fn main(list: List<Int>, count: Int) -> Int {\n    match list {\n        nil => count,\n        _ as $0\n",
+        expect![[r#"
+            <none>
+        "#]],
+    );
+    check(
+        "fn main(value: Int, count: Int) -> Int {\n    let c$0 = value;\n    count\n}\n",
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_let_binding_fields() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point) -> Int {
+    let { x, $0 } = value;
+    x
+}
+"#,
+        expect![[r#"
+            y [Field] Int
+        "#]],
+    );
+}
+
+#[test]
 fn test_complete_enum_variants() {
     check(
         r#"

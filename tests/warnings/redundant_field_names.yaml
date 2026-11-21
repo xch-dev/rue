@@ -9,3 +9,6 @@ diagnostics:
 - |-
   Redundant field name, since `x: x` can be written as `x` at redundant_field_names.rue:9:11
     help: Use the shorthand instead
+- |-
+  Redundant field name, since `x: x` can be written as `x` at redundant_field_names.rue:16:17
+    help: Use the shorthand instead

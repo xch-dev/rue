@@ -7,7 +7,7 @@ use rue_hir::{BindingSymbol, Declaration, Hir, Symbol, SymbolId, SymbolPath, Val
 
 use crate::{
     Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItemKind, compile_field,
-    create_binding, create_binding_for_identifier,
+    create_binding, create_binding_for_identifier, field_container,
 };
 
 pub fn create_struct_binding(
@@ -19,6 +19,7 @@ pub fn create_struct_binding(
     let reference = Value::new(ctx.alloc_hir(Hir::Reference(symbol)), ty)
         .with_reference(SymbolPath::new(symbol, vec![]));
 
+    let container = field_container(ctx, ty);
     let mut specified_fields = HashSet::new();
 
     let len = struct_binding.fields().count();
@@ -97,7 +98,7 @@ pub fn create_struct_binding(
         ctx.add_syntax(
             SyntaxItemKind::FieldReference(SyntaxField {
                 name: name.text().to_string(),
-                container: ty,
+                container,
                 ty: field_type,
             }),
             name.text_range(),

@@ -958,6 +958,21 @@ impl AstMatchArm {
         self.syntax().children().find_map(AstType::cast)
     }
 
+    /// The `as` before the arm's binding, which a struct binding can leave out.
+    pub fn as_token(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![as])
+    }
+
+    /// The binding after the type, which names or destructures the value once it's been narrowed
+    /// to the type, such as `{ x, y }` in `Point { x, y } => x + y` and `point` in
+    /// `Point as point => point.x`. It doesn't affect which values the arm matches.
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }

@@ -1,0 +1,512 @@
+// An arm's type can be followed by a binding, which destructures the value once it's been narrowed
+// to the type. It's the same as a `let` with the binding at the start of the arm, so the arm still
+// matches by its type alone.
+
+struct Circle {
+    kind = 1,
+    radius: Int,
+}
+
+struct Square {
+    kind = 2,
+    side: Int,
+}
+
+struct Point {
+    kind = 3,
+}
+
+struct Line {
+    start: (Int, Int),
+    end: (Int, Int),
+}
+
+struct Holder {
+    shape: Shape,
+    scale: Int,
+}
+
+type Rounded = Circle;
+type Shape = Rounded | Square | Point;
+
+enum Option<T> {
+    None,
+    Some { value: T },
+}
+
+enum Dir {
+    Up = 1,
+    Down,
+}
+
+// These three compile to the same program
+test fn area_bindings(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => 3 * radius * radius,
+        Square { side } => side * side,
+        Point => 0,
+    }
+}
+
+test fn area_fields(shape: Shape) -> Int {
+    match shape {
+        Circle => 3 * shape.radius * shape.radius,
+        Square => shape.side * shape.side,
+        Point => 0,
+    }
+}
+
+test fn area_lets(shape: Shape) -> Int {
+    match shape {
+        Circle => {
+            let { radius } = shape;
+            3 * radius * radius
+        }
+        Square => {
+            let { side } = shape;
+            side * side
+        }
+        Point => 0,
+    }
+}
+
+test fn structs() -> List<Int> {
+    [
+        area_bindings(Circle { radius: 2 }),
+        area_bindings(Square { side: 3 }),
+        area_bindings(Point {}),
+    ]
+}
+
+// A field can be renamed, destructured further, or left out, and the rest of the value can be
+// bound as a whole
+fn length(value: Line | Point) -> Int {
+    match value {
+        Line { start: (x1, y1), end: { first: x2, rest: y2 } } => x2 - x1 + y2 - y1,
+        Point {} => 0,
+    }
+}
+
+fn start(value: Line | nil) -> Int {
+    match value {
+        Line { start: origin, ...line } => origin.first + line.end.first,
+        nil => 0,
+    }
+}
+
+test fn struct_bindings() -> List<Int> {
+    let line = Line { start: (1, 2), end: (4, 6) };
+    [length(line), length(Point {}), start(line), start(nil)]
+}
+
+// The type can be an alias, which is destructured as the type it stands for
+test fn alias_binding(shape: Shape) -> Int {
+    match shape {
+        Rounded { radius } => radius,
+        _ => 0,
+    }
+}
+
+// A pair or a list is destructured by a binding after its type
+fn sum(value: (Int, Int) | Int) -> Int {
+    match value {
+        (Int, Int) as (first, rest) => first + rest,
+        Int => value,
+    }
+}
+
+fn total(values: List<Int>) -> Int {
+    match values {
+        nil => 0,
+        (Int, List<Int>) as [first, ...rest] => first + total(rest),
+    }
+}
+
+// A list type is destructured once the arms before it have handled `nil`, since a list that
+// might be empty has no first item
+fn total_list(values: List<Int>) -> Int {
+    match values {
+        nil => 0,
+        List<Int> as [first, ...rest] => first + total_list(rest),
+    }
+}
+
+fn first_two(values: List<Int>) -> Int {
+    match values {
+        (Int, (Int, List<Int>)) as [first, second, ..._rest] => first + second,
+        _ => 0,
+    }
+}
+
+fn nested(value: ((Int, Int), [Int, Int]) | nil) -> Int {
+    match value {
+        ((Int, Int), [Int, Int]) as ((a, b), [c, d]) => a + b + c + d,
+        nil => 0,
+    }
+}
+
+// An atom's length is a field, so it can be destructured too
+fn size(value: Bytes | (Bytes, Bytes)) -> Int {
+    match value {
+        Bytes { length } => length,
+        (Bytes, Bytes) as ({ length: first }, { length: rest }) => first + rest,
+    }
+}
+
+test fn pair_and_list_bindings() -> List<Int> {
+    [
+        sum((1, 2)),
+        sum(5),
+        total([1, 2, 3]),
+        total_list([1, 2, 3]),
+        first_two([1, 2, 3]),
+        first_two([1]),
+        nested(((1, 2), [3, 4])),
+        nested(nil),
+        size(0x010203),
+        size((0x01, 0x0203)),
+    ]
+}
+
+// A variant of an enum is destructured like a struct, with its generic arguments if it has any
+fn unwrap_or(option: Option<Int>, default: Int) -> Int {
+    match option {
+        Option::None<Int> => default,
+        Option::Some<Int> { value } => value,
+    }
+}
+
+// The binding sees the fields as the arm's type narrows them
+fn down(option: Option<Dir>) -> Int {
+    match option {
+        Option::None<Dir> => 0,
+        Option::Some<Dir::Up> => 1,
+        Option::Some<Dir::Down> { value } => {
+            let down: Dir::Down = value;
+            down as Int
+        }
+    }
+}
+
+test fn variant_bindings() -> List<Int> {
+    [
+        unwrap_or(Option::None, 1),
+        unwrap_or(Option::Some::<Int> { value: 2 }, 1),
+        down(Option::None),
+        down(Option::Some::<Dir> { value: Dir::Up }),
+        down(Option::Some::<Dir> { value: Dir::Down }),
+    ]
+}
+
+// An arm for a union destructures the union, which works if a `let` could do the same: every
+// member is a pair here, and a copy of the same struct below
+fn union_arm(value: (Int, Int) | (Int, nil) | nil) -> Int {
+    match value {
+        (Int, Int) | (Int, nil) as (first, _) => first,
+        nil => 0,
+    }
+}
+
+fn union_of_copies(option: Option<Dir>) -> Int {
+    match option {
+        Option::Some<Dir::Up> | Option::Some<Dir::Down> { value } => value as Int,
+        Option::None<Dir> => 0,
+    }
+}
+
+// The wildcard arm destructures what's left
+fn wildcard(shape: Shape) -> Int {
+    match shape {
+        Circle | Point => 0,
+        _ { side } => side,
+    }
+}
+
+test fn union_and_wildcard_bindings() -> List<Int> {
+    [
+        union_arm((1, 2)),
+        union_arm((3, nil)),
+        union_arm(nil),
+        union_of_copies(Option::Some::<Dir> { value: Dir::Down }),
+        union_of_copies(Option::None),
+        wildcard(Square { side: 4 }),
+        wildcard(Point {}),
+    ]
+}
+
+fn make(radius: Int) -> Shape {
+    if radius > 0 {
+        Circle { radius }
+    } else {
+        Point {}
+    }
+}
+
+// A value that isn't a reference is evaluated once, and destructured in the arms
+fn computed(radius: Int) -> Int {
+    match make(radius) {
+        Circle { radius: made } => made + 1,
+        Square { side } => side,
+        Point => 0,
+    }
+}
+
+// A field of a value is narrowed in the arms, and the rest of the value is still in scope
+fn field(holder: Holder) -> Int {
+    match holder.shape {
+        Circle { radius } => radius * holder.scale,
+        Square { side } => side * holder.scale,
+        Point => holder.scale,
+    }
+}
+
+test fn computed_and_field_values() -> List<Int> {
+    [
+        computed(2),
+        computed(0),
+        field(Holder { shape: Circle { radius: 2 }, scale: 3 }),
+        field(Holder { shape: Point {}, scale: 3 }),
+    ]
+}
+
+struct Renamed {
+    width: Int,
+    height: Int,
+}
+
+// A cast is matched on as the type it casts to, which is what a binding destructures, although the
+// arms narrow the value that was cast as its own type
+fn cast(pair: (Int, (Int, nil)) | nil) -> Int {
+    match pair as Renamed | nil {
+        Renamed { width, height } => width * height,
+        nil => 0,
+    }
+}
+
+fn cast_wildcard(pair: (Int, (Int, nil)) | nil) -> Int {
+    match pair as Renamed | nil {
+        nil => 0,
+        _ { width, height } => width + height,
+    }
+}
+
+fn cast_inline(pair: (Int, (Int, nil))) -> Int {
+    inline match pair as Renamed {
+        Renamed { width, ...whole } => width - whole.height,
+    }
+}
+
+test fn casts() -> List<Int> {
+    [cast((2, (3, nil))), cast(nil), cast_wildcard((2, (3, nil))), cast_inline((5, (3, nil)))]
+}
+
+// A binding works with the type parameters of a generic function
+fn unwrap_generic<T>(option: Option<T>, default: T) -> T {
+    match option {
+        Option::None<T> => default,
+        Option::Some<T> { value } => value,
+    }
+}
+
+// A binding can be matched on in turn, as can a field of one
+fn nested_match(option: Option<Shape>) -> Int {
+    match option {
+        Option::None<Shape> => 0,
+        Option::Some<Shape> { value } => match value {
+            Circle { radius } => radius,
+            Square { side } => side,
+            Point => 1,
+        }
+    }
+}
+
+fn nested_rest(option: Option<Shape>) -> Int {
+    match option {
+        Option::None<Shape> => 0,
+        Option::Some<Shape> { ...some } => match some.value {
+            Circle { radius } => radius,
+            _ => 1,
+        }
+    }
+}
+
+test fn generic_and_nested_matches() -> List<Int> {
+    [
+        unwrap_generic(Option::Some::<Int> { value: 2 }, 1),
+        unwrap_generic(Option::None, 1),
+        nested_match(Option::Some::<Shape> { value: Square { side: 4 } }),
+        nested_match(Option::None),
+        nested_rest(Option::Some::<Shape> { value: Circle { radius: 6 } }),
+        nested_rest(Option::Some::<Shape> { value: Point {} }),
+    ]
+}
+
+fn first_of<A, B>(function: fn(list: List<A>) -> B, value: A) -> B {
+    function([value])
+}
+
+// The type of an untyped lambda parameter is inferred from how it's used, which a binding
+// keeps track of like a field access does: both of these are a `5`, rather than an `Int`
+test fn untyped_lambda_parameter() -> Int {
+    let field: 5 = first_of(
+        fn(list) => match list {
+            nil => 5,
+            _ => list.first,
+        },
+        5,
+    );
+    let bound: 5 = first_of(
+        fn(list) => match list {
+            nil => 5,
+            _ as [first, ..._rest] => first,
+        },
+        5,
+    );
+    field + bound
+}
+
+// A name after the type binds the whole value as the arm's type, which is the only way to name a
+// value that isn't a reference. These compile to the same program as reading the fields of `shape`.
+test fn named_bindings(shape: Shape) -> Int {
+    match shape {
+        Circle as circle => 3 * circle.radius * circle.radius,
+        Square as square => square.side * square.side,
+        Point as _point => 0,
+    }
+}
+
+fn named_computed(radius: Int) -> Int {
+    match make(radius) {
+        Circle as circle => circle.radius + 1,
+        _ as rest => match rest {
+            Square as square => square.side,
+            Point => 0,
+        }
+    }
+}
+
+// The name is the value as the arm sees it: the union, what's left, or all of it in an
+// `inline match`
+fn named_union(value: (Int, Int) | Int | nil) -> Int {
+    match value {
+        (Int, Int) | Int as either => if either is Int {
+            either
+        } else {
+            either.first
+        }
+        nil => 0,
+    }
+}
+
+fn named_inline(value: Int | nil) -> Int {
+    inline match value {
+        nil => 0,
+        Int as whole => whole as Int,
+    }
+}
+
+test fn names() -> List<Int> {
+    [
+        named_bindings(Circle { radius: 2 }),
+        named_computed(4),
+        named_computed(0),
+        named_union((1, 2)),
+        named_union(3),
+        named_union(nil),
+        named_inline(5),
+    ]
+}
+
+// A binding can shadow the value being matched on, like a `let` can, and is only in scope in its
+// own arm
+fn shadow(shape: Shape) -> Int {
+    match shape {
+        Circle { radius: shape } => shape,
+        Square => shape.side,
+        Point => 0,
+    }
+}
+
+// The bindings can be captured by a lambda
+fn capture(shape: Shape) -> fn(by: Int) -> Int {
+    match shape {
+        Circle { radius } => fn(by: Int) => radius * by,
+        Square { side } => fn(by: Int) => side * by,
+        Point => fn(by: Int) => by,
+    }
+}
+
+test fn shadowing_and_captures() -> List<Int> {
+    [shadow(Circle { radius: 7 }), shadow(Square { side: 8 }), capture(Square { side: 2 })(5)]
+}
+
+// The arms of a statement are blocks, which see the bindings too, and the value is still narrowed
+// after the statement by the arms that fall through
+fn statement(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => {
+            return radius;
+        }
+        Square { side } => {
+            assert side > 0;
+        }
+        Point => {
+            raise "a point has no side";
+        }
+    }
+
+    shape.side * 4
+}
+
+// The arms of a function body's value can return from it
+fn body(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } => {
+            if radius > 10 {
+                return 10;
+            }
+
+            radius
+        }
+        Square { side } => if side > 10 {
+            10
+        } else {
+            side
+        }
+        Point => match shape {
+            Point {} => 0,
+        }
+    }
+}
+
+test fn statements() -> List<Int> {
+    [
+        statement(Circle { radius: 2 }),
+        statement(Square { side: 3 }),
+        body(Circle { radius: 20 }),
+        body(Circle { radius: 5 }),
+        body(Square { side: 20 }),
+        body(Point {}),
+    ]
+}
+
+// The arms of an `inline match` are all evaluated, so they don't narrow the value, and a binding
+// destructures the value as it is outside of the match
+fn inline_pair(pair: (Int, Int)) -> Int {
+    inline match pair {
+        (0, Int) as (_, rest) => rest,
+        _ as (first, rest) => first + rest,
+    }
+}
+
+test fn inline_bindings() -> List<Int> {
+    [inline_pair((0, 5)), inline_pair((1, 5))]
+}
+
+// A binding doesn't check anything, so the arm that handles everything that's left is still the
+// `else` branch, and this is only a field access
+test fn no_check(circle: Circle) -> Int {
+    match circle {
+        Circle { radius } => radius,
+    }
+}

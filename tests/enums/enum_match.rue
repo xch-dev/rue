@@ -185,3 +185,75 @@ test fn match_imported_variants() {
     assert size(Square { side: 3 }) == 9;
     assert size(Line { length: 4 }) == 4;
 }
+
+// An arm's binding destructures the variant it narrows the value to. These three compile to the
+// same program, since the binding is only another way to read the fields.
+test fn variant_bindings(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle { radius } => 3 * radius * radius,
+        Shape::Rect { width, height } => width * height,
+    }
+}
+
+test fn variant_fields(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle => 3 * shape.radius * shape.radius,
+        Shape::Rect => shape.width * shape.height,
+    }
+}
+
+test fn variant_lets(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle => {
+            let { radius } = shape;
+            3 * radius * radius
+        }
+        Shape::Rect => {
+            inline let { width, height } = shape;
+            width * height
+        }
+    }
+}
+
+test fn match_variant_bindings() {
+    assert variant_bindings(Shape::Empty) == 0;
+    assert variant_bindings(Shape::Circle { radius: 2 }) == 12;
+    assert variant_bindings(Shape::Rect { width: 2, height: 3 }) == 6;
+    assert variant_lets(Shape::Rect { width: 2, height: 3 }) == 6;
+}
+
+// A variant of a generic enum is destructured after its generic arguments, and an imported
+// variant by its own name
+fn unwrap_binding(option: Option<Int>, default: Int) -> Int {
+    match option {
+        Option::None<Int> => default,
+        Option::Some<Int> { value } => value,
+    }
+}
+
+fn size_binding(kind: shapes::Kind) -> Int {
+    match kind {
+        Square { side } => side * side,
+        Line { length } => length,
+    }
+}
+
+// The rest of a variant's fields can be bound as a whole, which is the variant itself
+fn perimeter(shape: Shape) -> Int {
+    match shape {
+        Shape::Rect { width, ...rect } => 2 * width + 2 * rect.height,
+        _ => 0,
+    }
+}
+
+test fn match_generic_and_imported_bindings() {
+    assert unwrap_binding(Option::None, 1) == 1;
+    assert unwrap_binding(Option::Some::<Int> { value: 2 }, 1) == 2;
+    assert size_binding(Square { side: 3 }) == 9;
+    assert size_binding(Line { length: 4 }) == 4;
+    assert perimeter(Shape::Rect { width: 2, height: 3 }) == 10;
+    assert perimeter(Shape::Empty) == 0;
+}

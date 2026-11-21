@@ -831,3 +831,42 @@ fn test_signature_of_struct_with_large_union() {
         "#]],
     );
 }
+
+#[test]
+fn test_signature_in_match_arm_with_binding() {
+    // A call in an arm's value, with an argument that the arm's binding declares
+    check(
+        &with_add(
+            "fn main(pair: (Int, Int) | nil) -> Int {\n    match pair {\n        (Int, Int) as (first, rest) => add(first, $0rest),\n        nil => 0,\n    }\n}\n",
+        ),
+        expect![[r#"
+            > fn add(first: Int, [second: Int]) -> Int
+        "#]],
+    );
+
+    // The struct binding of an arm isn't a struct initializer
+    check(
+        "struct Point {\n    x: Int,\n    y: Int,\n}\n\nfn main(point: Point | nil) -> Int {\n    match point {\n        Point { x, $0y } => x + y,\n        nil => 0,\n    }\n}\n",
+        expect![[r#"
+            <none>
+        "#]],
+    );
+
+    // A binding that isn't finished, before a call that's being typed
+    check(
+        &with_add(
+            "struct Point {\n    x: Int,\n}\n\nfn main(point: Point | nil) -> Int {\n    match point {\n        nil => add(1, $0\n        Point { x =>\n",
+        ),
+        expect![[r#"
+            > fn add(first: Int, [second: Int]) -> Int
+        "#]],
+    );
+    check(
+        &with_add(
+            "struct Point {\n    x: Int,\n}\n\nfn main(point: Point | nil) -> Int {\n    match point {\n        Point { x$0 =>\n",
+        ),
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
