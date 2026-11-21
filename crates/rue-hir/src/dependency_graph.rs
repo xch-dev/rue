@@ -1299,8 +1299,13 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 let place = (graph.repeat, base.symbol);
 
                 // How far in the argument for the parameter of an `inline fn` is isn't known
-                // here, so it's read as often as it is when the struct is rebuilt
-                if base.steps > limit || is_inline_parameter(db, graph, base.symbol) {
+                // here, so it's read as often as it is when the struct is rebuilt. A constant
+                // isn't bound where it's used, and reading it more often would only keep it
+                // from being folded there
+                let bound = !matches!(db.symbol(base.symbol), Symbol::Constant(_))
+                    && (base.steps > limit || is_inline_parameter(db, graph, base.symbol));
+
+                if bound {
                     *graph.references.entry(base.symbol).or_insert(0) += extra;
                     *graph.reads.entry(place).or_insert(0) += extra;
                 } else {

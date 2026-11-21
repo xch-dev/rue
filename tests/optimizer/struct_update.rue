@@ -729,8 +729,8 @@ fn ints(n: Int) -> List<Int> {
     [n, n + 1]
 }
 
-// The result of the rest of a `for` is evaluated before the body when the rest of it that's
-// reused is this far in, as it is when the struct is rebuilt
+// The result of the rest of a `for` is evaluated before the body when more than one field is
+// copied from it, as it is when the struct is rebuilt
 test fn update_fold(n: Int) -> LongRest {
     for i in ints(n) fold acc: LongRest = long_rest(n) {
         LongRest { ...acc, a: i, b: i, c: i, d: i, e: i, f: i }
@@ -778,4 +778,59 @@ test fn update_literal_outside_for(t: Point, items: List<Int>) -> List<Point> {
 test fn rebuild_literal_outside_for(t: Point, items: List<Int>) -> List<Point> {
     let s = Point { x: 1, y: t.y, z: t.z };
     for i in items { Point { x: s.x, y: i, z: s.z } }
+}
+
+test fn update_fold_first(n: Int) -> Point {
+    for i in ints(n) fold acc = (Point { x: n, y: n, z: n }) { Point { ...acc, x: i } }
+}
+
+test fn rebuild_fold_first(n: Int) -> Point {
+    for i in ints(n) fold acc = (Point { x: n, y: n, z: n }) { Point { x: i, y: acc.y, z: acc.z } }
+}
+
+fn below_five(i: Int) -> Int {
+    assert i < 5;
+    i
+}
+
+// So a branch that doesn't use the result still goes through the rest of the list, which fails
+// here for both
+test fn update_fold_skipped(items: List<Int>) -> Point {
+    for i in items fold acc = (Point { x: 0, y: 0, z: 0 }) {
+        if i == 0 {
+            Point { x: 1, y: 1, z: 1 }
+        } else {
+            Point { ...acc, x: below_five(i) }
+        }
+    }
+}
+
+test fn rebuild_fold_skipped(items: List<Int>) -> Point {
+    for i in items fold acc = (Point { x: 0, y: 0, z: 0 }) {
+        if i == 0 {
+            Point { x: 1, y: 1, z: 1 }
+        } else {
+            Point { x: below_five(i), y: acc.y, z: acc.z }
+        }
+    }
+}
+
+const HELD: Holder = Holder { k: 3, inner: Tail { x: 3, y: 4, z: 5 } };
+inline const HELD_INNER: Tail = HELD.inner;
+
+// A field of a constant is folded where it's used, however far in the rest is
+test fn update_field_of_constant(n: Int) -> Tail {
+    Tail { ...HELD.inner, x: n }
+}
+
+test fn rebuild_field_of_constant(n: Int) -> Tail {
+    Tail { x: n, y: HELD.inner.y, z: HELD.inner.z }
+}
+
+test fn update_inline_constant_of_field(n: Int) -> Tail {
+    Tail { ...HELD_INNER, x: n }
+}
+
+test fn rebuild_inline_constant_of_field(n: Int) -> Tail {
+    Tail { x: n, y: HELD_INNER.y, z: HELD_INNER.z }
 }
