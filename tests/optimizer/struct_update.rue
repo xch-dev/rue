@@ -652,3 +652,130 @@ test fn rebuild_call_in_for(items: List<Int>) -> List<Tail> {
         Tail { x: v.inner.x, y: i, z: v.inner.z }
     }
 }
+
+// A part of a destructured value, an inline binding and the parameter of an inline function are
+// each replaced by what they stand for, so the rest is as many steps further into that, and it's
+// bound as it is when the struct is rebuilt
+test fn update_destructured(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let { inner } = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (Tail { ...inner, x: n }, n + w + w + u + u)
+}
+
+test fn rebuild_destructured(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let { inner } = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (Tail { x: n, y: inner.y, z: inner.z }, n + w + w + u + u)
+}
+
+test fn update_inline_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    inline let i = v.inner;
+    let u = sha256(w as Bytes) as Int;
+    (Tail { ...i, x: n }, n + w + w + u + u)
+}
+
+test fn rebuild_inline_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    inline let i = v.inner;
+    let u = sha256(w as Bytes) as Int;
+    (Tail { x: n, y: i.y, z: i.z }, n + w + w + u + u)
+}
+
+inline fn update_inline_tail(p: Tail, n: Int) -> Tail {
+    Tail { ...p, x: n }
+}
+
+inline fn rebuild_inline_tail(p: Tail, n: Int) -> Tail {
+    Tail { x: n, y: p.y, z: p.z }
+}
+
+test fn update_inline_argument_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (update_inline_tail(v.inner, n), n + w + w + u + u)
+}
+
+test fn rebuild_inline_argument_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (rebuild_inline_tail(v.inner, n), n + w + w + u + u)
+}
+
+struct LongRest {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    ...h: Int,
+}
+
+fn long_rest(n: Int) -> LongRest {
+    assert n > 0;
+    LongRest { a: n, b: n, c: n, d: n, e: n, f: n, g: n + 1, h: n + 2 }
+}
+
+fn ints(n: Int) -> List<Int> {
+    assert n > 0;
+    [n, n + 1]
+}
+
+// The result of the rest of a `for` is evaluated before the body when the rest of it that's
+// reused is this far in, as it is when the struct is rebuilt
+test fn update_fold(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) {
+        LongRest { ...acc, a: i, b: i, c: i, d: i, e: i, f: i }
+    }
+}
+
+test fn rebuild_fold(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) {
+        LongRest { a: i, b: i, c: i, d: i, e: i, f: i, g: acc.g, h: acc.h }
+    }
+}
+
+// An update in an inline value counts for where its value goes in the environment as often as
+// the inline value is read
+fn update_walk_inline(a: Int, b: Int, t: Point, n: Int) -> (Int, List<Point>) {
+    if n > 9 {
+        return update_walk_inline(a + b, b, t, n - 1);
+    }
+    inline let s = Point { ...t, x: n };
+    (a + a + a + a + b + b, [s, s, s])
+}
+
+fn rebuild_walk_inline(a: Int, b: Int, t: Point, n: Int) -> (Int, List<Point>) {
+    if n > 9 {
+        return rebuild_walk_inline(a + b, b, t, n - 1);
+    }
+    inline let s = Point { x: n, y: t.y, z: t.z };
+    (a + a + a + a + b + b, [s, s, s])
+}
+
+test fn update_layout_inline(t: Point, n: Int) -> (Int, List<Point>) {
+    update_walk_inline(1, 2, t, n)
+}
+
+test fn rebuild_layout_inline(t: Point, n: Int) -> (Int, List<Point>) {
+    rebuild_walk_inline(1, 2, t, n)
+}
+
+// A struct that's updated with a literal isn't one itself, since the rest of it isn't
+test fn update_literal_outside_for(t: Point, items: List<Int>) -> List<Point> {
+    let s = Point { ...t, x: 1 };
+    for i in items { Point { ...s, y: i } }
+}
+
+test fn rebuild_literal_outside_for(t: Point, items: List<Int>) -> List<Point> {
+    let s = Point { x: 1, y: t.y, z: t.z };
+    for i in items { Point { x: s.x, y: i, z: s.z } }
+}
