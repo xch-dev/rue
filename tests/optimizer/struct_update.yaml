@@ -778,13 +778,13 @@ tests:
   byte_cost: 1452000
   total_cost: 1455493
 - name: update_fold_first
-  program: (a (q 2 2 (c (c 5 2) (a (i (> 5 ()) (q 4 5 (c (+ 5 (q . 1)) ())) (q 8)) 1))) (c (q 2 (i 3 (q 2 (q 4 11 6) (c (a 6 (c 2 7)) 1)) (q 4 4 (c 4 (c 4 ())))) 1) 1))
-  debug_program: (a (q 2 4 (c (c 5 4) (a 6 5))) (c (c (q 2 (i 3 (q 2 (q 4 (f 7) (r 2)) (c (a 6 (c (c 4 6) (r 3))) 1)) (q 4 4 (c 4 (c 4 ())))) 1) (q 2 (i (> 1 ()) (q 4 1 (c (+ 1 (q . 1)) ())) (q 8 (q . "assertion failed at struct_update.rue:728:5"))) 1)) 1))
+  program: (a (q 2 2 (c (c 5 2) (a (i (> 5 ()) (q 4 5 (c (+ 5 (q . 1)) ())) (q 8)) 1))) (c (q 2 (i 3 (q 4 5 (r (a 6 (c 2 7)))) (q 4 4 (c 4 (c 4 ())))) 1) 1))
+  debug_program: (a (q 2 4 (c (c 5 4) (a 6 5))) (c (c (q 2 (i 3 (q 4 (f 3) (r (a 6 (c (c 4 6) (r 3))))) (q 4 4 (c 4 (c 4 ())))) 1) (q 2 (i (> 1 ()) (q 4 1 (c (+ 1 (q . 1)) ())) (q 8 (q . "assertion failed at struct_update.rue:728:5"))) 1)) 1))
   solution: (4)
   output: (4 4 4)
-  runtime_cost: 4841
-  byte_cost: 1788000
-  total_cost: 1792841
+  runtime_cost: 4379
+  byte_cost: 1668000
+  total_cost: 1672379
 - name: rebuild_fold_first
   program: (a (q 2 2 (c (c 5 2) (a (i (> 5 ()) (q 4 5 (c (+ 5 (q . 1)) ())) (q 8)) 1))) (c (q 2 (i 3 (q 2 (q 4 11 (c 10 (c 22 ()))) (c (a 6 (c 2 7)) 1)) (q 4 4 (c 4 (c 4 ())))) 1) 1))
   debug_program: (a (q 2 4 (c (c 5 4) (a 6 5))) (c (c (q 2 (i 3 (q 2 (q 4 (f 7) (c (f (r 2)) (c (f (r (r 2))) ()))) (c (a 6 (c (c 4 6) (r 3))) 1)) (q 4 4 (c 4 (c 4 ())))) 1) (q 2 (i (> 1 ()) (q 4 1 (c (+ 1 (q . 1)) ())) (q 8 (q . "assertion failed at struct_update.rue:728:5"))) 1)) 1))

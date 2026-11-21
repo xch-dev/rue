@@ -184,6 +184,30 @@ impl Lowerer<'_, '_, '_> {
     }
 }
 
+impl Lowerer<'_, '_, '_> {
+    /// Whether a binding or constant that isn't `inline` is evaluated where it's referenced, as
+    /// long as that's only once and it can't keep it from failing (see
+    /// [`Self::can_substitute`]).
+    pub(super) fn is_substitution_candidate(&self, symbol: SymbolId, value: HirId) -> bool {
+        // The result of a fold for the rest of the list is evaluated once, before the body,
+        // unless the body only gets to it in one place, at most once. It's evaluated there then,
+        // so that a body that doesn't get to it stops
+        if self.db.is_loop_rest_call(value) {
+            return self.db.is_single_use_loop_rest(symbol);
+        }
+
+        // A value that a loop refers to from outside of it is only substituted there if it's a
+        // literal, since anything else would be evaluated again for each item. This can't depend
+        // on the arguments of the calls being inlined, since the loop is lowered once (see
+        // `group_symbols`), so a value that's only static with them isn't substituted either
+        if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(value) {
+            return false;
+        }
+
+        self.options.auto_inline
+    }
+}
+
 impl AnalysisContext for Lowerer<'_, '_, '_> {
     fn db(&self) -> &Database {
         self.db
@@ -213,7 +237,7 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
         // A binding or constant whose single reference hasn't been decided yet might be
         // substituted, so its value is checked where it's referenced
         let substituted = inline
-            || (self.options.auto_inline
+            || (self.is_substitution_candidate(symbol, value)
                 && self.graph.references(symbol) <= 1
                 && self
                     .substitutions

@@ -1942,40 +1942,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 !self.is_measured_function(symbol) || self.is_inlined_function(symbol)
             }
             Symbol::Constant(constant) => {
-                if constant.inline {
-                    return true;
-                }
-
-                // As with a binding (see below), a constant that a loop refers to is only
-                // substituted there if it's a literal
-                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(constant.value.hir)
-                {
-                    return false;
-                }
-
-                references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
+                constant.inline
+                    || (self.is_substitution_candidate(symbol, constant.value.hir)
+                        && references <= 1
+                        && self.can_substitute(symbol))
             }
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;
                 }
 
-                // The result of a fold for the rest of the list is evaluated once
-                if self.db.is_loop_rest_call(binding.value.hir) {
-                    return false;
-                }
-
-                // A value that a loop refers to from outside of it is only substituted there if
-                // it's a literal, since anything else would be evaluated again for each item.
-                // This can't depend on the arguments of the calls being inlined, since the loop
-                // is lowered once (see `group_symbols`), so a value that's only static with them
-                // isn't substituted either
-                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(binding.value.hir)
-                {
-                    return false;
-                }
-
-                if !self.options.auto_inline {
+                if !self.is_substitution_candidate(symbol, binding.value.hir) {
                     return false;
                 }
 
@@ -1983,7 +1960,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return self.can_substitute(symbol);
                 }
 
-                self.is_path_binding(symbol)
+                // The result of a fold is a call, rather than a path that could be read where
+                // it's referenced more than once
+                !self.db.is_loop_rest_call(binding.value.hir) && self.is_path_binding(symbol)
             }
         }
     }

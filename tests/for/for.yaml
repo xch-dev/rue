@@ -55,13 +55,38 @@ tests:
   runtime_cost: 785
   byte_cost: 804000
   total_cost: 804785
+- name: fold_fails_after_a_match
+  program: (a (q 2 4 (c 2 (q 1 ()))) (c (c (q 2 (i 3 (q 2 (q 3 (a (i (= 11 (q . 1)) (q 1 . 1) (q 9 (a 13 11) (q . 5))) 1) (q . 1) 2) (c (a 4 (c 2 7)) 1)) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 14) (a 10 (c (q . 1) (c () ()))))) (c (c (q 2 (i 3 (q 2 (q 2 (i (a (i (= (f 7) (q . 1)) (q 1 . 1) (q 9 (a 13 (f 7)) (q . 5))) 1) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for.rue:10:5"))) 1))) ()))
+  byte_cost: 1956000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for.rue:10:5"
+- name: fold_fails_after_a_match_with_two_references
+  program: (a (q 2 4 (c 2 (q 1 ()))) (c (c (q 2 (i 3 (q 2 (q 3 (any (a (i (= 11 (q . 1)) (q 1 . 1) (q 9 (a 13 11) (q . 5))) 1) 2) (q . 1) 2) (c (a 4 (c 2 7)) 1)) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 14) (a 10 (c (q . 1) (c () ()))))) (c (c (q 2 (i 3 (q 2 (q 2 (i (a (i (a (i (= (f 7) (q . 1)) (q 1 . 1) (q 9 (a 13 (f 7)) (q . 5))) 1) (q 1 . 1) (q . 2)) 1) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for.rue:10:5"))) 1))) ()))
+  byte_cost: 2028000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for.rue:10:5"
+- name: fold_fails_without_a_reference
+  program: (a (q 2 4 (c 2 (q 1 ()))) (c (c (q 2 (i 3 (q 3 () (a 4 (c 2 7)) (a 6 5)) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 14) (a 10 (c (q . 1) (c () ()))))) (c (c (q 2 (i 3 (q 3 () (a 4 (c (c 4 6) (r 3))) (a 6 (f 3))) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for.rue:10:5"))) 1))) ()))
+  byte_cost: 1332000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for.rue:10:5"
 - name: fold_stops_early
-  program: (a (q 2 4 (c 2 (q 1 ()))) (c (c (q 2 (i 3 (q 2 (i (= 5 (q . 1)) (q 1 . 1) (q 2 (i (= (a 6 5) (q . 5)) (q 1 . 1) (q 2 4 (c 2 7))) 1)) 1) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
-  debug_program: (a (q 2 4 (c (c 4 14) (a 10 (c (q . 1) (c () ()))))) (c (c (q 2 (i 3 (q 2 (i (a (i (= (f 3) (q . 1)) (q 1 . 1) (q 9 (a 6 (f 3)) (q . 5))) 1) (q 1 . 1) (q 2 4 (c (c 4 6) (r 3)))) 1) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for.rue:10:5"))) 1))) ()))
+  program: (a (q 2 4 (c 4 (a 6 (q () 1 () () () () () () () () () () () () () ())))) (c (c (q 2 (i 3 (q 2 (i (= 5 (q . 1)) (q 1 . 1) (q 2 2 (c 2 7))) 1) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1)) ()))
+  debug_program: (a (q 2 4 (c 4 (a 6 (c () (c (q . 1) (c () (c () (c () (c () (c () (c () (c () (c () (c () (c () (c () (c () (c () (c () ()))))))))))))))))))) (c (c (q 2 (i 3 (q 2 (i (= (f 3) (q . 1)) (q 1 . 1) (q 2 2 (c 2 (r 3)))) 1) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1)) ()))
   output: "1"
-  runtime_cost: 1261
-  byte_cost: 1908000
-  total_cost: 1909261
+  runtime_cost: 2696
+  byte_cost: 2100000
+  total_cost: 2102696
+- name: fold_that_always_gets_to_the_result
+  program: (a (q 2 4 (c 2 (q 1 2 3))) (c (c (q 2 (i 3 (q 16 (a 6 5) (a 4 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 14) (a 10 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) (c (c (q 2 (i 3 (q 16 (a 6 (f 3)) (a 4 (c (c 4 6) (r 3)))) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for.rue:10:5"))) 1))) ()))
+  output: "6"
+  runtime_cost: 7985
+  byte_cost: 1332000
+  total_cost: 1339985
 - name: fold_with_two_references
   program: (a (q 2 2 (c 2 (q 1 2 3 4))) (c (q 2 (i 3 (q 2 (q 2 (i (> 11 (q . 2)) (q 16 2 11) (q . 2)) 1) (c (a 2 (c 2 7)) 1)) ()) 1) ()))
   debug_program: (a (q 2 4 (c 4 (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))))) (c (c (q 2 (i 3 (q 2 (q 2 (i (> (f 7) (q . 2)) (q 16 2 (f 7)) (q . 2)) 1) (c (a 2 (c 2 (r 3))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1)) ()))
@@ -92,20 +117,20 @@ tests:
   total_cost: 927709
 - name: body_without_a_value
   program: (a (q 3 () (a 2 (c 2 (q 1 2))) (q . 5)) (c (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1) ()))
-  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:101:9"))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1)) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:125:9"))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1)) ()))
   output: "5"
   runtime_cost: 3953
   byte_cost: 1260000
   total_cost: 1263953
 - name: body_without_a_value_fails
   program: (a (q 3 () (a 2 (c 2 (q 1 ()))) (q . 5)) (c (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1) ()))
-  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c () ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:109:9"))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1)) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c () ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:133:9"))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1)) ()))
   byte_cost: 1260000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at for.rue:109:9"
+  debug_clvm_error: clvm raise "assertion failed at for.rue:133:9"
 - name: loop_at_the_end_of_a_function
   program: (a (q 2 (q 3 (a 5 (c 5 2)) (a 5 (c 5 2)) (q . 5)) (c (q 1 2) 1)) (c (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1) ()))
-  debug_program: (a (q 2 (q 3 (q . 1) (i (q . 1) (q . 5) (a 9 (c 21 2))) (a 9 (c 21 2))) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 2 (c 2 3)) (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:117:9"))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (i (q . 1) (q . 5) (a 9 (c 21 2))) (a 9 (c 21 2))) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 2 (c 2 3)) (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:141:9"))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
   output: "5"
   runtime_cost: 7836
   byte_cost: 1572000
@@ -301,14 +326,14 @@ tests:
   total_cost: 1097178
 - name: at_the_end_of_a_statement_block
   program: (a (q 2 (q 3 () (a (i (> (a 13 (c 13 2)) (q . 1)) (q 3 () (a 9 (c 9 2)) ()) ()) 1) (q . 5)) (c (q 1 2) 1)) (c (c (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1)) ()))
-  debug_program: (a (q 2 (q 3 () (a (i (> (a 21 (c 21 2)) (q . 1)) (q 3 (q . 1) () (a 9 (c 9 2))) ()) 1) (q . 5)) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:377:13"))) 1)) ()) 1) (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
+  debug_program: (a (q 2 (q 3 () (a (i (> (a 21 (c 21 2)) (q . 1)) (q 3 (q . 1) () (a 9 (c 9 2))) ()) 1) (q . 5)) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:401:13"))) 1)) ()) 1) (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
   output: "5"
   runtime_cost: 8490
   byte_cost: 2484000
   total_cost: 2492490
 - name: attributes
   program: (a (q 2 (q 3 () (a 9 (c (c 13 (c 2 9)) 2)) (q . 5)) (c (q 1 2) 1)) (c (c (q 2 (i 3 (q 3 () (a (i (> (a 4 (c 4 10)) (q . 1)) () (q 8)) 1) (a 14 (c 2 7))) ()) 1) (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1)) ()))
-  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c (c 21 (c 2 9)) 2))) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 14 (c (c 4 (c 10 14)) (r 3))) (a (i (> (a 4 (c 4 10)) (q . 1)) () (q 8 (q . "assertion failed at for.rue:388:9"))) 1)) ()) 1) (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c (c 21 (c 2 9)) 2))) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 (i 3 (q 3 (q . 1) (a 14 (c (c 4 (c 10 14)) (r 3))) (a (i (> (a 4 (c 4 10)) (q . 1)) () (q 8 (q . "assertion failed at for.rue:412:9"))) 1)) ()) 1) (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
   output: "5"
   runtime_cost: 11004
   byte_cost: 2268000
@@ -329,7 +354,7 @@ tests:
   total_cost: 2559200
 - name: body_with_a_nil_value
   program: (a (q 3 (a 14 (c 14 (q 1 2))) (all (a 14 (c 14 (q 3))) (a 4 (c (c 10 4) (q (q) (a 3)))) (a 4 (c (c 10 4) (q (c))))) (q . 5)) (c (c (q 2 (i 3 (q 3 () (a 4 (c 4 5)) (a 6 (c 2 7))) ()) 1) (c (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1))) ()))
-  debug_program: (a (q 3 (q . 1) (i (q . 1) (i (q . 1) (i (q . 1) (q . 5) (a 20 (c (c 28 18) (a 8 (c (c (q . 4) ()) ()))))) (a 20 (c (c 28 18) (a 8 (c (c (q . 1) ()) (c (c (q . 2) (c (q . 3) ())) ())))))) (a 26 (c (c 22 30) (a 8 (c (q . 3) ()))))) (a 26 (c (c 22 30) (a 8 (c (q . 1) (c (q . 2) ())))))) (c (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 2 4 (c (c 6 4) 3)) (q 2 (i 3 (q 3 (q . 1) (a 6 (c (c 4 6) (r 3))) (a 4 (c 4 (f 3)))) ()) 1))) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:434:13"))) 1)) ()) 1) (q 2 4 (c (c 4 6) 3))) (c (q 2 (i 3 (q 3 (q . 1) (a 4 (c (c 4 6) (r 3))) (a 6 (f 3))) ()) 1) (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at for.rue:424:5"))) 1)))) ()))
+  debug_program: (a (q 3 (q . 1) (i (q . 1) (i (q . 1) (i (q . 1) (q . 5) (a 20 (c (c 28 18) (a 8 (c (c (q . 4) ()) ()))))) (a 20 (c (c 28 18) (a 8 (c (c (q . 1) ()) (c (c (q . 2) (c (q . 3) ())) ())))))) (a 26 (c (c 22 30) (a 8 (c (q . 3) ()))))) (a 26 (c (c 22 30) (a 8 (c (q . 1) (c (q . 2) ())))))) (c (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 2 4 (c (c 6 4) 3)) (q 2 (i 3 (q 3 (q . 1) (a 6 (c (c 4 6) (r 3))) (a 4 (c 4 (f 3)))) ()) 1))) (c (c (q 2 (i 3 (q 3 (q . 1) (a 2 (c 2 (r 3))) (a (i (> (f 3) ()) () (q 8 (q . "assertion failed at for.rue:458:13"))) 1)) ()) 1) (q 2 4 (c (c 4 6) 3))) (c (q 2 (i 3 (q 3 (q . 1) (a 4 (c (c 4 6) (r 3))) (a 6 (f 3))) ()) 1) (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at for.rue:448:5"))) 1)))) ()))
   output: "5"
   runtime_cost: 18606
   byte_cost: 3684000
@@ -343,14 +368,14 @@ tests:
   total_cost: 1532409
 - name: nil_fold_as_a_generic_argument
   program: (a (q 2 (q 3 2 (q . 1) (q . 2)) (c (a 2 (c 2 (q 1 2))) 1)) (c (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1) ()))
-  debug_program: (a (q 2 30 (c (a 4 (c (c 4 22) (a 10 (c (q . 1) (c (q . 2) ()))))) (q . 2))) (c (c (q 2 (i 3 (q 3 (q . 1) (a 4 (c (c 4 6) (r 3))) (a 6 (f 3))) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at for.rue:424:5"))) 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) ()) 1) (q . 3) (q 1 . 1)) 1)))) ()))
+  debug_program: (a (q 2 30 (c (a 4 (c (c 4 22) (a 10 (c (q . 1) (c (q . 2) ()))))) (q . 2))) (c (c (q 2 (i 3 (q 3 (q . 1) (a 4 (c (c 4 6) (r 3))) (a 6 (f 3))) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at for.rue:448:5"))) 1) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) ()) 1) (q . 3) (q 1 . 1)) 1)))) ()))
   output: "2"
   runtime_cost: 4183
   byte_cost: 1452000
   total_cost: 1456183
 - name: loop_with_an_optional_expected_type
   program: (a (q 2 (i (a 6 (c 6 (q 1 2))) () (q 32 (a 4 (c 4 (q 3))))) 1) (c (c (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 3 () (a (i (> 5 ()) () (q 8)) 1) (a 2 (c 2 7))) ()) 1)) ()))
-  debug_program: (a (q 2 (i (not (a 62 (c (c 22 12) (a 10 (c (q . 1) (c (q . 2) ())))))) (q 32 (a 46 (c (c 8 12) (a 10 (c (q . 3) ()))))) ()) 1) (c (c (c (q 2 (i 3 (q 3 (q . 1) (a 6 (c (c 4 6) (r 3))) (a 4 (f 3))) ()) 1) (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at for.rue:424:5"))) 1)) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 2 (i 3 (q 3 (q . 1) (a 6 (c (c 4 6) (r 3))) (a 4 (f 3))) ()) 1) (c (q 2 4 (c (c 6 4) 3)) (q 2 4 (c (c 6 4) 3)))))) ()))
+  debug_program: (a (q 2 (i (not (a 62 (c (c 22 12) (a 10 (c (q . 1) (c (q . 2) ())))))) (q 32 (a 46 (c (c 8 12) (a 10 (c (q . 3) ()))))) ()) 1) (c (c (c (q 2 (i 3 (q 3 (q . 1) (a 6 (c (c 4 6) (r 3))) (a 4 (f 3))) ()) 1) (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at for.rue:448:5"))) 1)) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 2 (i 3 (q 3 (q . 1) (a 6 (c (c 4 6) (r 3))) (a 4 (f 3))) ()) 1) (c (q 2 4 (c (c 6 4) 3)) (q 2 4 (c (c 6 4) 3)))))) ()))
   output: "1"
   runtime_cost: 6482
   byte_cost: 2388000
@@ -385,7 +410,7 @@ tests:
   total_cost: 2568160
 - name: captured_value_with_arguments_that_differ
   program: (a (q 2 (q 2 13 (c 13 (c (a (q 2 19 (c (c 19 2) 5)) (c () 1)) (a (q 2 (q 2 39 (c (c 39 2) 11)) (c 2 1)) (c (q . 3) 1))))) (c (q 1 2) 1)) (c (c (q 2 (i 3 (q 4 (+ 5 6) (a 4 (c 2 7))) ()) 1) (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1)) ()))
-  debug_program: (a (q 2 (q 2 21 (c 21 (c (a 17 (c 25 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c () 2)))) (a 17 (c 25 (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at for.rue:544:17"))) 1)) (c (q . 1) ()))) (c (q . 1) 2))))))) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (c (q 2 (q 2 (q 2 11 (c (c 11 2) 63)) (c (a (i 23 (q . 2) ()) 1) 1)) (c (a 5 (c (q . 3) ())) 1)) (q 2 (i 3 (q 4 (+ (f 3) 6) (a 4 (c (c 4 6) (r 3)))) ()) 1)) (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
+  debug_program: (a (q 2 (q 2 21 (c 21 (c (a 17 (c 25 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c () 2)))) (a 17 (c 25 (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at for.rue:568:17"))) 1)) (c (q . 1) ()))) (c (q . 1) 2))))))) (c (a 14 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (c (q 2 (q 2 (q 2 11 (c (c 11 2) 63)) (c (a (i 23 (q . 2) ()) 1) 1)) (c (a 5 (c (q . 3) ())) 1)) (q 2 (i 3 (q 4 (+ (f 3) 6) (a 4 (c (c 4 6) (r 3)))) ()) 1)) (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
   output: (1 2 4 5)
   runtime_cost: 10827
   byte_cost: 2700000
@@ -420,7 +445,7 @@ tests:
   total_cost: 5597164
 - name: binding_in_the_body
   program: (a (q 2 (q 2 (q 2 27 (c (c 27 2) 5)) (c (* (+ (a 9 (c 9 2)) (q . 1)) (q . 2)) 1)) (c (q 1 2 3) 1)) (c (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) 5) ()) 1) (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c (+ 5 6) 1)) (a 4 (c 2 7))) ()) 1)) ()))
-  debug_program: (a (q 2 (q 2 (q 2 (q 2 87 (c (c 87 2) 11)) (c (* 2 (q . 2)) 1)) (c (+ (a 9 (c 9 2)) (q . 1)) 1)) (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 16 (a 2 (c 2 (r 3))) (f 3)) ()) 1) (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at for.rue:631:9"))) 1) (c (+ (f 3) 6) 1)) (a 4 (c (c 4 6) (r 3)))) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (q 2 87 (c (c 87 2) 11)) (c (* 2 (q . 2)) 1)) (c (+ (a 9 (c 9 2)) (q . 1)) 1)) (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 16 (a 2 (c 2 (r 3))) (f 3)) ()) 1) (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8 (q . "assertion failed at for.rue:655:9"))) 1) (c (+ (f 3) 6) 1)) (a 4 (c (c 4 6) (r 3)))) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1))) ()))
   output: (15 16 17)
   runtime_cost: 15650
   byte_cost: 2652000
@@ -475,4 +500,8 @@ tests:
   byte_cost: 3492000
   total_cost: 3518425
 diagnostics:
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at for.rue:704:8
+- |-
+  This operand of `||` is the same as an earlier one, so it has no effect at for.rue:73:90
+    note: The same condition is checked here first at for.rue:73:81
+- Unused binding `last` at for.rue:78:35
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at for.rue:728:8
