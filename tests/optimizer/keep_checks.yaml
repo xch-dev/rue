@@ -847,7 +847,7 @@ tests:
   runtime_cost: 2222
   byte_cost: 228000
   total_cost: 230222
-- name: constant_followed_in_argument_and_branch_is_inlined
+- name: constant_followed_in_argument_and_branch_is_bound
   program: (a (q 2 (i (> 5 (q . 5)) (q 16 2 (q . 1)) (q 18 (+ 2 (q . 1)) (q . 2))) 1) (c (q . 2) 1))
   debug_program: (a (q 2 (q 2 (i (> 11 (q . 5)) (q 16 2 (q . 1)) (q 18 (+ 2 (q . 1)) (q . 2))) 1) (c (a 2 (q . 2)) 1)) (c (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1418:5"))) 1) 1))
   solution: (1)

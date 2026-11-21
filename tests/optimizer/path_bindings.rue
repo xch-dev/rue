@@ -341,7 +341,7 @@ struct Many {
     j: Int,
 }
 
-// Only eight bindings of a run are measured, and the rest are bound
+// Only eight bindings of a run are measured, and the rest are decided by the size of their paths
 test fn more_bindings_than_are_measured(many: Many) -> Int {
     let a = many.a;
     let b = many.b;

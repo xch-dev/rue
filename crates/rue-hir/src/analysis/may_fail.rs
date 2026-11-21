@@ -383,14 +383,9 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             && let Symbol::Function(symbol) = db.symbol(*function)
             && symbol.kind == FunctionKind::Inline
         {
-            let fixed = symbol.fixed_parameters();
-            let rest = symbol.parameters.get(fixed.len()).copied();
-
             return args.iter().enumerate().any(|(index, &arg)| {
-                fixed
-                    .get(index)
-                    .copied()
-                    .or(rest)
+                symbol
+                    .argument_parameter(index)
                     .is_none_or(|parameter| self.cx.is_parameter_used(*function, parameter))
                     && self.visit(arg, in_body)
             });

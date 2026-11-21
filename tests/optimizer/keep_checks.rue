@@ -1456,7 +1456,7 @@ inline fn picks_or_doubles(c: Bool, a: Int) -> Int {
 
 // The inline constant is lowered in the argument, and again in the other branch, so the constant
 // it reads is read twice, and bound like one that's referenced twice
-test fn constant_followed_in_argument_and_branch_is_inlined(n: Int) -> Int {
+test fn constant_followed_in_argument_and_branch_is_bound(n: Int) -> Int {
     picks_or_doubles(n > 5, READS_FOLLOWED_TWICE)
 }
 

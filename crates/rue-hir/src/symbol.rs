@@ -88,6 +88,16 @@ impl FunctionSymbol {
             &self.parameters[..self.parameters.len().saturating_sub(1)]
         }
     }
+
+    /// The parameter that the argument at the index of a call is passed for. The arguments after
+    /// the fixed parameters are all put in a list for the last one.
+    pub fn argument_parameter(&self, index: usize) -> Option<SymbolId> {
+        let fixed = self.fixed_parameters();
+        fixed
+            .get(index)
+            .or_else(|| self.parameters.get(fixed.len()))
+            .copied()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
