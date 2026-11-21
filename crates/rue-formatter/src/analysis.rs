@@ -45,10 +45,10 @@ pub struct ContinuationOperator {
 /// The parts of the header of a `for` that go on lines of their own if it doesn't fit on one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForHeader {
-    /// The first token of each part after the first list: the item of each further list, then
-    /// the `if` of the filter and the `fold`, if they're there.
+    /// The first token of each part: the item of each list, then the `if` of the filter and the
+    /// `fold`, if they're there.
     pub parts: Vec<TokenId>,
-    /// How many of the parts are further lists.
+    /// How many of the parts are lists.
     pub lists: usize,
     /// The `{` of the body.
     pub body: TokenId,
@@ -512,8 +512,8 @@ fn analyze_nodes(
     Ok(())
 }
 
-/// The `for` token of the expression and the parts of its header that can go on lines of their
-/// own, if there are any after the first list: further lists, a filter or a fold.
+/// The `for` token of the expression and the parts of its header, if there's one after the
+/// first list that can go on a line of its own: another list, a filter or a fold.
 fn for_header(
     expr: &AstForExpr,
     stream: &TokenStream,
@@ -526,7 +526,7 @@ fn for_header(
     };
     let mut parts = Vec::new();
 
-    for clause in expr.clauses().skip(1) {
+    for clause in expr.clauses() {
         parts.extend(first_token(clause.syntax())?);
     }
 
@@ -540,7 +540,7 @@ fn for_header(
         parts.extend(first_token(fold.syntax())?);
     }
 
-    if parts.is_empty() {
+    if parts.len() < 2 {
         return Ok(None);
     }
 

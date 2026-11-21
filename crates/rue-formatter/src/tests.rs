@@ -2675,6 +2675,28 @@ fn for_header_comments_that_break_it() {
     );
 }
 
+/// Blank lines before the comments in a header, and between them, aren't kept either.
+#[test]
+fn for_header_comments_after_blank_lines() {
+    check(
+        "fn main() { let a = for\n\n// item\n\nx in xs\n\n// filter\n\n// more\n\nif x > 0\n\n// body\n\n{ x }; }",
+        expect![[r#"
+            fn main() {
+                let a = for
+                    // item
+                    x in xs
+                    // filter
+                    // more
+                    if x > 0
+                    // body
+                {
+                    x
+                };
+            }
+        "#]],
+    );
+}
+
 /// Line breaks and blank lines after the `for` and between the parts of a header don't change
 /// how it's formatted, with or without a comment that doesn't end its line.
 #[test]

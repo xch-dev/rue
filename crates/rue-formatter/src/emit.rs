@@ -368,25 +368,15 @@ impl<'a> Formatter<'a> {
         header: &ForHeader,
         close: TokenId,
     ) -> Result<Doc, FormatError> {
-        let first = self
-            .stream
-            .next_token(keyword)
-            .ok_or_else(|| FormatError::Internal("`for` has no following token".to_string()))?;
         let keyword_doc = self.token(keyword);
 
         let mut lists = Vec::new();
         let mut rest = Vec::new();
 
-        for position in 0..=header.parts.len() {
-            let start = if position == 0 {
-                first
-            } else {
-                header.parts[position - 1]
-            };
-            let end = self
-                .stream
-                .boundary_before(header.parts.get(position).copied().unwrap_or(header.body));
-            let docs = if position <= header.lists {
+        for (position, &start) in header.parts.iter().enumerate() {
+            let next = header.parts.get(position + 1).copied();
+            let end = self.stream.boundary_before(next.unwrap_or(header.body));
+            let docs = if position < header.lists {
                 &mut lists
             } else {
                 &mut rest
@@ -430,7 +420,8 @@ impl<'a> Formatter<'a> {
     }
 
     /// The comments before a part of the header of a `for`, or before its body, and whether
-    /// what's after them starts a line, which the line break for isn't included.
+    /// what's after them has to start a line. That line break isn't in the document that's
+    /// returned, since the caller emits it, at the indentation of what's after them.
     ///
     /// The comments on the line of what's before them stay on it, and each one that starts a
     /// line is on a line of its own. What's after them starts a line if a comment starts one, or

@@ -453,6 +453,33 @@ mod tests {
     }
 
     #[test]
+    fn group_with_tail_lays_out_a_tail_that_is_not_a_group_as_what_is_around_it() {
+        // The tail's soft lines are those of the group around it, which fits
+        let inner = Doc::group_with_tail(
+            Doc::concat([Doc::text("head"), Doc::space()]),
+            Doc::concat([
+                Doc::text("{"),
+                Doc::concat([Doc::soft_line(), Doc::text("tail")]).indent(),
+                Doc::soft_line(),
+                Doc::text("}"),
+            ]),
+        );
+        let doc = Doc::concat([Doc::text("["), Doc::soft_line(), inner, Doc::text("]")]).group();
+
+        assert_eq!(
+            render(
+                &doc,
+                &FormatOptions {
+                    max_width: 80,
+                    indent_width: 4,
+                    single_quote: false,
+                },
+            ),
+            "[ head { tail }]\n"
+        );
+    }
+
+    #[test]
     fn group_with_tail_is_measured_flat_by_the_group_around_it() {
         let inner = Doc::group_with_tail(
             Doc::concat([Doc::text("head"), Doc::space()]),
