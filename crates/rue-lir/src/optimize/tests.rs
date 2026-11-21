@@ -610,7 +610,12 @@ fn test_checks_are_kept_apart() {
     let results = arena.alloc(Lir::If(b, result, one, false));
     let second = arena.alloc(Lir::If(c, results, fail, false));
     let lir = arena.alloc(Lir::If(a, second, fail, false));
-    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(a (i (all 2 11) (q 2 (i 5 (q 16 2 5) (q 1 . 1)) 1) (q 8)) 1)"]);
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect!["(a (i (all 2 11) (q 2 (i 5 (q 16 2 5) (q 1 . 1)) 1) (q 8)) 1)"],
+    );
 
     // Checks that raise differently fail differently
     let message = arena.alloc(Lir::Raise(vec![one]));
