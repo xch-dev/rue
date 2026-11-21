@@ -159,3 +159,61 @@ fn pick_result(condition: Bool) -> Int {
 test fn result_in_each_branch() -> Int {
     pick_result(true) + pick_result(false)
 }
+
+fn swapped_through<A, B>(function: fn(a: A) -> Int) -> (A, B) {
+    unchecked_cast((function, nil))
+}
+
+// The first member's bound is the one that reaches an argument too: the lambda's `a` is an
+// `Int`, from `(Int, Bytes)`, which it couldn't add to as a `Bytes`
+test fn first_member_reaches_a_lambda() -> Int {
+    let _value: (Int, Bytes) | (Bytes, Int) = swapped_through(fn(a) => a + 1);
+    1
+}
+
+fn tagged_through<B>(function: fn(b: B) -> Int) -> (1, B) {
+    unchecked_cast((1, function))
+}
+
+fn only_five(value: 5) -> Int {
+    value
+}
+
+// `(1, Int)` and `(1, 5)` both hold `(1, B)`, with `(2, Bytes)` between them, which doesn't, so
+// `B` is at most `Int` and at most `5`, and the lambda's `b` is the narrower `5`
+test fn narrowest_of_the_members_that_hold_it() -> Int {
+    let _value: (1, Int) | (2, Bytes) | (1, 5) = tagged_through(fn(b) => only_five(b));
+    1
+}
+
+fn either<T>(first: T, _second: T) -> T {
+    first
+}
+
+fn tagged_from<B>(_seed: Int) -> (1, B) {
+    unchecked_cast(nil)
+}
+
+// The nested call is expected to be what the annotation allows `T` to be, which is wider than
+// the `(0, Int) | (1, Bytes)` that `held` makes it, and that narrower type is what bounds its
+// `B`, through the `(1, Bytes)` member again
+fn pick_either(held: (0, Int) | (1, Bytes)) -> Int {
+    let _value: (0, Int) | (1, Bytes) | nil = either(held, tagged_from(1));
+    1
+}
+
+test fn bound_from_the_member_of_a_narrower_type() -> Int {
+    pick_either((0, 5))
+}
+
+fn outer<U>(value: (1, U) | (2, Int)) -> (1, U) | (2, Int) {
+    value
+}
+
+// `U` is still being inferred when `tagged()` is compiled, so `(1, U)`, the member that holds
+// `(1, B)`, gives `B` nothing, and `B` keeps the `Int` of `(2, Int)` rather than being left
+// without a type
+test fn bound_kept_where_no_member_that_holds_it_has_one() -> Int {
+    let _value = outer(tagged());
+    1
+}

@@ -62,3 +62,31 @@ tests:
   runtime_cost: 1871
   byte_cost: 900000
   total_cost: 901871
+- name: first_member_reaches_a_lambda
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: narrowest_of_the_members_that_hold_it
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: bound_from_the_member_of_a_narrower_type
+  program: (q . 1)
+  debug_program: (a (q 2 2 (c () (q . 5))) (c (q 1 . 1) ()))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: bound_kept_where_no_member_that_holds_it_has_one
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
