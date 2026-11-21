@@ -6,8 +6,8 @@ use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{
-    FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol,
-    SymbolId, UnaryOp, Value,
+    FieldAccess, FieldKind, FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol,
+    Scope, ScopeId, Symbol, SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -125,10 +125,9 @@ impl Database {
             Hir::Pair(first, rest) => self.is_literal_hir(*first) && self.is_literal_hir(*rest),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_literal_hir(*hir),
             Hir::List(list) => list.items.iter().all(|&item| self.is_literal_hir(item)),
-            Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_literal_hir(field.value)),
+            Hir::Struct(initializer) => {
+                initializer.values().all(|value| self.is_literal_hir(value))
+            }
             _ => false,
         }
     }
@@ -171,6 +170,35 @@ impl Database {
             hir = *value;
         }
         hir
+    }
+
+    /// The symbol that a path is read from, if the node is one: a symbol or the fields of one,
+    /// through casts, which have no effect. A path can be read any number of times without
+    /// evaluating anything again.
+    pub fn path_symbol(&self, hir: HirId) -> Option<SymbolId> {
+        self.path(hir).map(|(symbol, _)| symbol)
+    }
+
+    /// The symbol that a path is read from (see [`path_symbol`](Self::path_symbol)), and how many
+    /// steps into the symbol's value the path is.
+    pub fn path(&self, mut hir: HirId) -> Option<(SymbolId, usize)> {
+        let mut steps = 0;
+
+        loop {
+            hir = match self.hir(hir) {
+                Hir::Reference(symbol) => return Some((*symbol, steps)),
+                Hir::Cast(value) => *value,
+                Hir::FieldAccess(FieldAccess {
+                    value,
+                    kind: FieldKind::Path(path),
+                    ..
+                }) => {
+                    steps += path.len();
+                    *value
+                }
+                _ => return None,
+            };
+        }
     }
 
     /// Records the static type of a HIR node. Each expression compiles to a node of its own,
@@ -708,6 +736,11 @@ impl Database {
                     .fields
                     .iter()
                     .map(|field| format!("{}: {}", field.name, self.debug_hir(field.value)))
+                    .chain(
+                        initializer
+                            .tail_value()
+                            .map(|tail| format!("...{}", self.debug_hir(tail)))
+                    )
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

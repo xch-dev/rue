@@ -12,9 +12,8 @@ fn main(
 ) -> (XchandlesStateTruth, List<Condition>) {
     let spent_slot_value_hash = tree_hash(slot_value);
     let created_slot_value_hash = tree_hash(XchandlesHandleSlotValue {
+        ...slot_value,
         counter: slot_value.counter + 1,
-        a: slot_value.a,
-        b: slot_value.b,
     });
 
     (

@@ -49,6 +49,15 @@ pub struct DependencyGraph {
     // lambda for its parameters. There's a copy of the symbol in each copy of that place
     definitions: HashMap<SymbolId, RepeatId>,
 
+    // Keeps track of the reads that a symbol would have on top of those in each place, if each
+    // struct that reuses the rest of it from its first or second field on copied the fields one
+    // at a time instead. These only count for where the symbol is in the environment
+    tail_reads: HashMap<(Option<RepeatId>, SymbolId), usize>,
+
+    // The number of those reads of each symbol, once the graph is built, counted as many times
+    // as they're lowered, like `references`
+    tail_references: HashMap<SymbolId, usize>,
+
     // Keeps track of whether a symbol is ever used as a closure
     closures: HashSet<SymbolId>,
     /// The functions that `for` expressions are compiled to (see `FunctionKind::Loop`).
@@ -154,6 +163,8 @@ impl DependencyGraph {
             owners: HashMap::new(),
             references: HashMap::new(),
             reads: HashMap::new(),
+            tail_reads: HashMap::new(),
+            tail_references: HashMap::new(),
             repeats: IndexSet::new(),
             repeat: None,
             definitions: HashMap::new(),
@@ -292,7 +303,32 @@ impl DependencyGraph {
             counter.reads(symbol);
         }
 
+        // The reads that only count for the environment are multiplied the same way
+        let mut tail_reads: Vec<_> = self
+            .tail_reads
+            .iter()
+            .map(|(&key, &count)| (key, count))
+            .collect();
+        tail_reads.sort_unstable();
+
+        let mut tail_references: HashMap<SymbolId, usize> = HashMap::new();
+
+        for ((repeat, symbol), count) in tail_reads {
+            let times = if counter.static_size(symbol).is_none() {
+                let definition = self.definition(db, symbol);
+                counter.times_lowered(repeat, definition)
+            } else {
+                1
+            };
+
+            let total = tail_references.entry(symbol).or_insert(0);
+            *total = total
+                .saturating_add(count.saturating_mul(times))
+                .min(MAX_READS);
+        }
+
         self.references = counter.counts;
+        self.tail_references = tail_references;
     }
 
     /// The block that the binding's let statement is in, and its index in the block's statements.
@@ -399,6 +435,17 @@ impl DependencyGraph {
 
     pub fn references(&self, symbol: SymbolId) -> usize {
         *self.references.get(&symbol).unwrap_or(&0)
+    }
+
+    /// The number of times a symbol is referenced for deciding where it goes in the environment,
+    /// where the most referenced symbols have the shortest paths. A struct that's updated from a
+    /// value reuses the rest of it with one reference, where a struct that's rebuilt by hand has
+    /// one for each field, so the value counts as being referenced that often here. Otherwise
+    /// updating a struct could move its value further from the root than rebuilding it would,
+    /// which makes every path to it longer.
+    pub fn layout_references(&self, symbol: SymbolId) -> usize {
+        self.references(symbol)
+            .saturating_add(*self.tail_references.get(&symbol).unwrap_or(&0))
     }
 
     pub fn is_closure(&self, symbol: SymbolId) -> bool {
@@ -1097,9 +1144,8 @@ impl ReadCounter<'_> {
                 .iter()
                 .all(|&item| self.is_small_static(item, budget)),
             Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_small_static(field.value, budget)),
+                .values()
+                .all(|value| self.is_small_static(value, budget)),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_small_static(*hir, budget),
             // A field of a static value is folded, and is no larger than the value
             Hir::FieldAccess(FieldAccess {
@@ -1128,6 +1174,82 @@ fn visit_repeated(db: &Database, graph: &mut DependencyGraph, repeat: Repeat, hi
     graph.repeat = outer;
 }
 
+/// How many steps into a value that's only referenced once the tail of a struct update can be
+/// before the value is bound instead of being used in place, when the value is one that the
+/// compiler binds for the update, such as a call. Each step in place is an operation around the
+/// value, and a binding that nothing else shares costs about as much as four of them.
+const UNNAMED_TAIL_STEPS: usize = 3;
+
+/// The value that the tail of a struct update is a part of.
+struct TailBase {
+    symbol: SymbolId,
+    /// How many steps into the symbol's value the tail is.
+    steps: usize,
+    /// Whether the symbol is what the compiler binds a value that isn't a path to for the update,
+    /// rather than a binding that's written.
+    bound_for_update: bool,
+}
+
+/// The symbol that the tail of a struct update is read from, through the inline bindings and
+/// constants whose values are paths themselves, such as the parts of a destructured value. Those
+/// are substituted, so the tail is as many steps further into what they're paths into. There
+/// isn't one if the tail isn't a path, or it's a path into an inline value that isn't, which is
+/// evaluated where the tail is.
+fn tail_base(db: &Database, tail: HirId) -> Option<TailBase> {
+    let (mut symbol, mut steps) = db.path(tail)?;
+    let mut substituted = false;
+
+    loop {
+        let value = match db.symbol(symbol) {
+            Symbol::Binding(BindingSymbol {
+                value,
+                inline: true,
+                ..
+            })
+            | Symbol::Constant(ConstantSymbol {
+                value,
+                inline: true,
+                ..
+            }) => value.hir,
+            Symbol::Binding(binding) => {
+                return Some(TailBase {
+                    symbol,
+                    steps,
+                    bound_for_update: binding.name.is_none() && !substituted,
+                });
+            }
+            _ => {
+                return Some(TailBase {
+                    symbol,
+                    steps,
+                    bound_for_update: false,
+                });
+            }
+        };
+
+        let (inner, inner_steps) = db.path(value)?;
+        symbol = inner;
+        steps += inner_steps;
+        substituted = true;
+    }
+}
+
+/// Whether the symbol is a parameter of an `inline fn` that's being visited, whose arguments are
+/// lowered wherever it's referenced.
+fn is_inline_parameter(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -> bool {
+    matches!(db.symbol(symbol), Symbol::Parameter(_))
+        && std::iter::successors(graph.current, |current| graph.owners.get(current).copied()).any(
+            |function| {
+                matches!(
+                    db.symbol(function),
+                    Symbol::Function(function)
+                        if function.kind == FunctionKind::Inline
+                            && function.parameters.contains(&symbol)
+                )
+            },
+        )
+}
+
 fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bool) {
     match db.hir(hir) {
         Hir::Unresolved
@@ -1146,8 +1268,44 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             }
         }
         Hir::Struct(initializer) => {
-            for field in &initializer.fields {
-                visit_hir(db, graph, field.value, false);
+            for value in initializer.values() {
+                visit_hir(db, graph, value, false);
+            }
+
+            // The tail is one reference to the value being updated, but a struct that's rebuilt
+            // by hand has one for each field that's read from it, and the difference could make
+            // the update larger than the rebuild
+            if let Some(tail) = initializer.tail
+                && tail.reads > 1
+                && graph.current.is_some()
+                && let Some(base) = tail_base(db, tail.value)
+            {
+                // A value that's only referenced once is used in place rather than being bound,
+                // which is smaller for the whole value or one step into it, such as the rest
+                // after its first field. Any further in, whether that's past more fields or
+                // because the value being updated is a field itself, each step to the tail is an
+                // operation around the value where a bound value would only have a longer path,
+                // so it's bound like it is when the struct is rebuilt, by counting as many
+                // reads. A value that the compiler binds for the update is bound on its own,
+                // which costs more than a binding next to others, so it's used in place further
+                // in.
+                let limit = if base.bound_for_update {
+                    UNNAMED_TAIL_STEPS
+                } else {
+                    1
+                };
+
+                let extra = tail.reads - 1;
+                let place = (graph.repeat, base.symbol);
+
+                // How far in the argument for the parameter of an `inline fn` is isn't known
+                // here, so it's read as often as it is when the struct is rebuilt
+                if base.steps > limit || is_inline_parameter(db, graph, base.symbol) {
+                    *graph.references.entry(base.symbol).or_insert(0) += extra;
+                    *graph.reads.entry(place).or_insert(0) += extra;
+                } else {
+                    *graph.tail_reads.entry(place).or_insert(0) += extra;
+                }
             }
         }
         Hir::FieldAccess(access) => {

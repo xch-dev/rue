@@ -43,10 +43,7 @@ fn wrap_create_coins(
                 tree_hash_atom(condition.puzzle_hash),
             ],
         );
-        return [
-            CreateCoin { puzzle_hash, amount: condition.amount, memos: condition.memos },
-            ...rest,
-        ];
+        return [CreateCoin { ...condition, puzzle_hash }, ...rest];
     }
 
     [condition, ...rest]

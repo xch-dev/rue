@@ -2209,3 +2209,26 @@ fn match_statement_arm_bindings() {
         "#]],
     );
 }
+
+#[test]
+fn struct_initializer_spread() {
+    check(
+        "fn main(){let a=Point{...point,x:1};let b=Point{... point . inner ,};let c=Point{...make_a_point_with_a_long_name(first_argument,second_argument),x:first_argument+second_argument,y};let d=Point{// before\n...point,// after\nx:1};}",
+        expect![[r#"
+            fn main() {
+                let a = Point { ...point, x: 1 };
+                let b = Point { ...point.inner };
+                let c = Point {
+                    ...make_a_point_with_a_long_name(first_argument, second_argument),
+                    x: first_argument + second_argument,
+                    y,
+                };
+                let d = Point {
+                    // before
+                    ...point, // after
+                    x: 1,
+                };
+            }
+        "#]],
+    );
+}

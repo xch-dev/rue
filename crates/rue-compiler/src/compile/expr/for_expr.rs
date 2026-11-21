@@ -413,7 +413,23 @@ fn is_lazy(ctx: &Compiler, symbol: SymbolId, body: HirId, first_hir: HirId) -> b
         .filter(|hir| matches!(hir, Hir::Reference(reference) if *reference == symbol))
         .count();
 
-    references <= 1 && direct_uses(ctx, symbol, body, 1) == references
+    // A struct that's updated from the binding reuses the rest of it with one reference. When
+    // the rest is more than a step in, a binding that's evaluated before the body is smaller, as
+    // it is for a struct that's rebuilt, which refers to it for each field (see the tail of a
+    // struct in `DependencyGraph`)
+    let deep_tail = ctx
+        .hirs_between(first_hir, ctx.next_hir_id())
+        .any(|hir| match hir {
+            Hir::Struct(initializer) => initializer.tail.is_some_and(|tail| {
+                tail.reads > 1
+                    && ctx
+                        .path(tail.value)
+                        .is_some_and(|(base, steps)| base == symbol && steps > 1)
+            }),
+            _ => false,
+        });
+
+    references <= 1 && !deep_tail && direct_uses(ctx, symbol, body, 1) == references
 }
 
 /// How many times the function that the node is in evaluates a reference to the symbol in the

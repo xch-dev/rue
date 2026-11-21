@@ -34,9 +34,8 @@ fn main(
     conditions: List<Condition>,
 ) -> List<Condition> {
     let proposal_struct = SingletonStruct {
-        mod_hash: singleton_struct.mod_hash,
+        ...singleton_struct,
         launcher_id: solution.proposal_id,
-        launcher_puzzle_hash: singleton_struct.launcher_puzzle_hash,
     };
     // This validates the yes and total votes.
     let proposal_inner_puzzle_hash = curry_tree_hash(

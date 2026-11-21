@@ -1,0 +1,13 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// A spread field of a declaration isn't written with `...` in an initializer
+test fn spread_with_name(point: Point) -> Point {
+    Point { ...z: 1 }
+}
+
+test fn spread_without_value(point: Point) -> Point {
+    Point { ..., x: 1 }
+}

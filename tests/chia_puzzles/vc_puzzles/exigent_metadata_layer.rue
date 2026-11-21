@@ -92,35 +92,23 @@ fn process_conditions(
             ],
         );
 
-        return [
-            first,
-            CreateCoin { puzzle_hash, amount: odd_output.amount, memos: odd_output.memos } as Any,
-            ...output.conditions,
-        ];
+        return [first, CreateCoin { ...odd_output, puzzle_hash } as Any, ...output.conditions];
     }
 
     let condition = conditions.first;
 
     let next_state = if condition is CreateCoin && condition.amount & 1 != 0 {
         assert state.odd_output is nil;
-        State {
-            odd_output: condition,
-            transfer_program_output: state.transfer_program_output,
-            pending: nil,
-        }
+        State { ...state, odd_output: condition, pending: nil }
     } else if condition is RunTransferProgram {
         assert state.transfer_program_output is nil;
         State {
-            odd_output: state.odd_output,
+            ...state,
             transfer_program_output: transfer_program(metadata, all_conditions, condition.solution),
             pending: nil,
         }
     } else {
-        State {
-            odd_output: state.odd_output,
-            transfer_program_output: state.transfer_program_output,
-            pending: condition,
-        }
+        State { ...state, pending: condition }
     };
 
     [

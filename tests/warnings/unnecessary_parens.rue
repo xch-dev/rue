@@ -5,6 +5,7 @@ fn main(value: Int, flag: Bool) -> Int {
     assert (value > 0);
     let call = add((value * 2), 1);
     let list = [(value + 1), 2];
+    let spread = Point { ...(origin()), x: (value) };
 
     if (flag) {
         return (grouped);
@@ -27,7 +28,7 @@ fn main(value: Int, flag: Bool) -> Int {
         return 0;
     }
 
-    atomic + nested + call + list.first + needed + negated
+    atomic + nested + call + list.first + needed + negated + spread.y
 }
 
 struct Point {
@@ -37,6 +38,10 @@ struct Point {
 
 struct Wrapper {
     f: fn(value: Int) -> Int,
+}
+
+fn origin() -> Point {
+    Point { x: 0, y: 0 }
 }
 
 fn add(a: Int, b: Int) -> Int {

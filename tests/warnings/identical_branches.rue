@@ -1,4 +1,4 @@
-fn main(condition: Bool, value: Int) -> Int {
+fn main(condition: Bool, value: Int, first: Point, second: Point) -> Int {
     let same = if condition {
         value + 1
     } else {
@@ -20,5 +20,24 @@ fn main(condition: Bool, value: Int) -> Int {
         value + 1
     };
 
-    same + blocks + different
+    // Structs updated from the same value are the same, but not ones updated from different
+    // values, though the fields that are written are the same
+    let same_update = if condition {
+        Point { ...first, x: 1 }
+    } else {
+        Point { ...first, x: 1 }
+    };
+
+    let different_update = if condition {
+        Point { ...first, x: 1 }
+    } else {
+        Point { ...second, x: 1 }
+    };
+
+    same + blocks + different + same_update.y + different_update.y
+}
+
+struct Point {
+    x: Int,
+    y: Int,
 }

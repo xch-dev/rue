@@ -6,8 +6,9 @@ struct Point {
 fn main(x: Int, y: Int) -> Int {
     let point = Point { x: x, y: y + 1 };
     let shorthand = Point { x, y };
+    let updated = Point { ...point, y: y };
     let { x: x, y: other } = point;
-    x + other + shorthand.x + shorthand.y
+    x + other + shorthand.x + shorthand.y + updated.y
 }
 
 // A match arm's binding is a struct binding too

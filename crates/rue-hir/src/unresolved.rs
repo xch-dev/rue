@@ -68,9 +68,7 @@ impl Visitor<'_> {
             }
             Hir::Const(expr) => self.visit_hir(expr.result.unwrap_or(expr.value)),
             Hir::List(list) => self.visit_all(list.items),
-            Hir::Struct(initializer) => {
-                self.visit_all(initializer.fields.into_iter().map(|field| field.value))
-            }
+            Hir::Struct(initializer) => self.visit_all(initializer.values()),
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
             // The value is lowered if the check uses it, or if it may fail

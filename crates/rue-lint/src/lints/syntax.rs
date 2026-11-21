@@ -398,6 +398,7 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
         | SyntaxKind::ConstantItem
         | SyntaxKind::StructField
         | SyntaxKind::StructInitializerField
+        | SyntaxKind::StructInitializerSpread
         | SyntaxKind::ListItem
         | SyntaxKind::Block
         | SyntaxKind::GroupExpr

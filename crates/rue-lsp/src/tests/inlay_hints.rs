@@ -1112,3 +1112,88 @@ fn test_hints_with_unfinished_match_arm_binding() {
         "#]],
     );
 }
+
+#[test]
+fn test_hints_for_struct_updates() {
+    // A struct update names its type like any other initializer, so its binding has no hint, but
+    // the values in it have theirs
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn make(x: Int, y: Int) -> Point {
+    Point { x, y }
+}
+
+fn main(point: Point, y: Int) -> Int {
+    let moved = Point { ...point, y };
+    let other = Point { ...make(1, y), x: moved.x };
+    let x = other.x;
+    x
+}
+"#,
+        expect![[r#"
+
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn make(x: Int, y: Int) -> Point {
+                Point { x, y }
+            }
+
+            fn main(point: Point, y: Int) -> Int {
+                let moved = Point { ...point, y };
+                let other = Point { ...make(«x:» 1, y), x: moved.x };
+                let x«: Int» = other.x;
+                x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hints_for_unfinished_struct_updates() {
+    let source = |body: &str| {
+        format!(
+            "struct Point {{\n    x: Int,\n    y: Int,\n}}\n\nfn main(point: Point) -> Int {{\n    let x = point.x;\n    let moved = {body}\n    x\n}}\n"
+        )
+    };
+
+    check_with_errors(
+        HintOptions::default(),
+        &source("Point { ...point, "),
+        expect![[r#"
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(point: Point) -> Int {
+                let x«: Int» = point.x;
+                let moved = Point { ...point, 
+                x
+            }
+        "#]],
+    );
+    check_with_errors(
+        HintOptions::default(),
+        &source("Point { ... };"),
+        expect![[r#"
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(point: Point) -> Int {
+                let x«: Int» = point.x;
+                let moved = Point { ... };
+                x
+            }
+        "#]],
+    );
+}

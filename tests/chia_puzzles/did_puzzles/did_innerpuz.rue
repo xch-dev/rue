@@ -85,11 +85,7 @@ fn check_approvals(
     assert coin is RecoveryCoin;
 
     // The coin id of the recovery DID's singleton, hashed with `sha256` rather than `coinid`.
-    let did_struct = SingletonStruct {
-        mod_hash: singleton_struct.mod_hash,
-        launcher_id: identities.first,
-        launcher_puzzle_hash: singleton_struct.launcher_puzzle_hash,
-    };
+    let did_struct = SingletonStruct { ...singleton_struct, launcher_id: identities.first };
     let did_puzzle_hash = curry_tree_hash(
         singleton_struct.mod_hash,
         [tree_hash(did_struct), coin.inner_puzzle_hash],
