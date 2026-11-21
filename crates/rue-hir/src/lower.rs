@@ -305,7 +305,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             return dependencies.clone();
         }
 
-        let dependencies = Rc::new(self.graph.dependencies(symbol, captures_only));
+        // A loop captures what it's found to need when the graph is built, which doesn't depend
+        // on where it's called from (see `DependencyGraph::loop_captures`)
+        let dependencies = match self.graph.loop_captures(symbol) {
+            Some(captures) if captures_only => Rc::new(captures.clone()),
+            _ => Rc::new(self.graph.dependencies(symbol, captures_only)),
+        };
         self.dependencies
             .borrow_mut()
             .insert(key, dependencies.clone());
@@ -345,22 +350,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
-        let captures: Vec<SymbolId> = self
-            .dependencies(symbol, true)
-            .iter()
-            .copied()
-            .filter(|&symbol| self.is_capture(symbol))
-            .collect();
+        let captures: IndexSet<SymbolId> =
+            self.dependencies(symbol, true).iter().copied().collect();
 
         let capture_groups = self.group_symbols(
-            captures.into_iter().collect(),
+            captures,
             symbol != self.main,
             !self.graph.is_closure(symbol),
+            self.graph.is_loop(symbol),
         );
 
         let param_group = self.create_group(
             function.parameters.clone(),
-            function.kind == FunctionKind::BinaryTree
+            matches!(function.kind, FunctionKind::BinaryTree | FunctionKind::Loop)
                 && !self.graph.is_closure(symbol)
                 && symbol != self.main,
         );
@@ -1140,8 +1142,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     continue;
                 };
 
-                let repeated =
-                    self.graph.references(parameter) > 1 && !self.is_trivial_argument(arg);
+                // An argument for a parameter that a loop refers to is evaluated for each item
+                let repeated = (self.graph.references(parameter) > 1
+                    || self.graph.is_loop_capture(parameter))
+                    && !self.is_trivial_argument(arg);
 
                 if !repeated
                     && (!may_fail(self, arg)
@@ -1385,7 +1389,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         stmts: Vec<Statement>,
         body: Tail,
     ) -> LirId {
-        let binding_groups = self.group_symbols(symbols.clone(), false, true);
+        let binding_groups = self.group_symbols(symbols.clone(), false, true, false);
 
         let mut body_env = env.clone();
 
@@ -1760,6 +1764,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbols: IndexSet<SymbolId>,
         by_reference: bool,
         is_tree: bool,
+        for_loop: bool,
     ) -> Vec<SymbolGroup> {
         let rounds = if by_reference {
             Rc::new(vec![Some(0); symbols.len()])
@@ -1774,7 +1779,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut groups = vec![Vec::new(); last_round + 1];
 
         for (&symbol, round) in symbols.iter().zip(rounds.iter()) {
-            if self.is_capture(symbol) && self.graph.references(symbol) > 0 {
+            // A loop is lowered once, where the program's functions are, but it's called where
+            // its `for` expression is, which can be inside an inlined call. So what it captures
+            // can't depend on the arguments of the calls being inlined: it always captures a
+            // parameter, and a call inside an inlined call passes it the parameter's argument
+            let is_capture = if for_loop && matches!(self.db.symbol(symbol), Symbol::Parameter(_)) {
+                true
+            } else {
+                self.is_capture(symbol)
+            };
+
+            if is_capture && self.graph.references(symbol) > 0 {
                 groups[round.unwrap_or(last_round)].push(symbol);
             }
         }
@@ -1938,11 +1953,33 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
+                // As with a binding (see below), a constant that a loop refers to is only
+                // substituted there if it's a literal
+                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(constant.value.hir)
+                {
+                    return false;
+                }
+
                 references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
             }
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;
+                }
+
+                // The result of a fold for the rest of the list is evaluated once
+                if self.db.is_loop_rest_call(binding.value.hir) {
+                    return false;
+                }
+
+                // A value that a loop refers to from outside of it is only substituted there if
+                // it's a literal, since anything else would be evaluated again for each item.
+                // This can't depend on the arguments of the calls being inlined, since the loop
+                // is lowered once (see `group_symbols`), so a value that's only static with them
+                // isn't substituted either
+                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(binding.value.hir)
+                {
+                    return false;
                 }
 
                 if !self.options.auto_inline {

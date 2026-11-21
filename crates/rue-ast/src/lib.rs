@@ -144,6 +144,9 @@ ast_nodes!(
     BinaryExpr,
     FunctionCallExpr,
     IfExpr,
+    ForExpr,
+    ForFilter,
+    ForFold,
     MatchExpr,
     MatchArm,
     MatchArmGuard,
@@ -182,6 +185,7 @@ ast_enum!(
     FunctionCallExpr,
     Block,
     IfExpr,
+    ForExpr,
     MatchExpr,
     GuardExpr,
     CastExpr,
@@ -879,6 +883,56 @@ impl AstExpr {
     /// blocks of statements.
     pub fn is_if_or_match(&self) -> bool {
         matches!(self, Self::IfExpr(_) | Self::MatchExpr(_))
+    }
+}
+
+impl AstForExpr {
+    /// The pattern each item of the list is bound to.
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+
+    /// The list whose items are gone through. The body is an expression too, since it's a block,
+    /// so the list is only there if there's another expression before it.
+    pub fn list(&self) -> Option<AstExpr> {
+        let mut exprs = self.syntax().children().filter_map(AstExpr::cast);
+        let first = exprs.next()?;
+        exprs.next().map(|_| first)
+    }
+
+    pub fn filter(&self) -> Option<AstForFilter> {
+        self.syntax().children().find_map(AstForFilter::cast)
+    }
+
+    pub fn fold(&self) -> Option<AstForFold> {
+        self.syntax().children().find_map(AstForFold::cast)
+    }
+
+    /// The body, which is the last block, since the list can be a block too.
+    pub fn body(&self) -> Option<AstBlock> {
+        self.syntax().children().filter_map(AstBlock::cast).last()
+    }
+}
+
+impl AstForFilter {
+    pub fn condition(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstForFold {
+    /// The pattern the result for the rest of the list is bound to.
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    /// The result at the end of the list.
+    pub fn init(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 

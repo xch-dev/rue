@@ -247,7 +247,8 @@ pub fn shape(program: &Program, variant: &Variant) -> String {
         let recursive = function.recursion.is_some();
         for (expr, root) in function.roots() {
             let context = match root {
-                Root::GuardLet => "unannotated let in recursion guard".to_string(),
+                Root::GuardLet(Some(ty)) => format!("let in recursion guard: {}", ty_kind(ty)),
+                Root::GuardLet(None) => "unannotated let in recursion guard".to_string(),
                 Root::GuardReturn => "return in recursion guard".to_string(),
                 Root::Let(Some(ty)) => format!("let: {}", ty_kind(ty)),
                 Root::Let(None) => "unannotated let".to_string(),
@@ -341,7 +342,7 @@ fn describe(program: &Program, expr: &Expr, variant: &Variant) -> String {
         ExprKind::Bool => "bool".to_string(),
         ExprKind::Nil => "nil".to_string(),
         ExprKind::Pair(..) => "pair".to_string(),
-        ExprKind::List(_) => "list".to_string(),
+        ExprKind::List(_) | ExprKind::ListSpread(..) => "list".to_string(),
         ExprKind::First(_) | ExprKind::Rest(_) | ExprKind::Field(_) => "projection".to_string(),
         ExprKind::BoxLit { value, .. } => {
             format!("Box {{ {} }}", describe(program, value, variant))
@@ -408,7 +409,7 @@ pub fn tags(program: &Program, variant: &Variant) -> Vec<String> {
 
     for function in program.functions_and_main() {
         for (expr, root) in function.roots() {
-            if let Root::Let(Some(ty)) = root
+            if let Root::Let(Some(ty)) | Root::GuardLet(Some(ty)) = root
                 && stripped(expr)
             {
                 if ty.contains_lit() {

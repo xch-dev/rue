@@ -152,6 +152,7 @@ impl Parser {
                 TokenKind::Enum => T![enum],
                 TokenKind::Let => T![let],
                 TokenKind::If => T![if],
+                TokenKind::For => T![for],
                 TokenKind::Else => T![else],
                 TokenKind::Match => T![match],
                 TokenKind::Return => T![return],
@@ -451,6 +452,31 @@ impl Parser {
     pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
         if self.at(kind) {
             self.bump(kind);
+            true
+        } else {
+            self.error_unexpected();
+            false
+        }
+    }
+
+    /// Whether the current token is an identifier with the given text, which is a word that's only
+    /// a keyword where it's expected, such as `in` and `fold` in a `for` expression.
+    pub(crate) fn at_word(&mut self, word: &str) -> bool {
+        self.eat_trivia();
+        self.expected.insert(format!("`{word}`"));
+
+        self.nth(0) == SyntaxKind::Ident
+            && self
+                .parse_tokens
+                .get(self.pos)
+                .is_some_and(|token| &self.source.text[token.span.clone()] == word)
+    }
+
+    /// Consumes the word if it's present (see [`Self::at_word`]), and otherwise reports an error
+    /// without consuming anything.
+    pub(crate) fn expect_word(&mut self, word: &str) -> bool {
+        if self.at_word(word) {
+            self.bump(SyntaxKind::Ident);
             true
         } else {
             self.error_unexpected();

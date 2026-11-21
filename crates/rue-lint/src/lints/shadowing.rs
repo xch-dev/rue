@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use rue_ast::{
-    AstBinding, AstBlock, AstFunctionItem, AstFunctionParameter, AstLambdaExpr, AstLetStmt,
-    AstMatchArm, AstNode,
+    AstBinding, AstBlock, AstForExpr, AstForFold, AstFunctionItem, AstFunctionParameter,
+    AstLambdaExpr, AstLetStmt, AstMatchArm, AstNode,
 };
 use rue_diagnostic::{Lint, Note, Source, SrcLoc};
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -48,6 +48,47 @@ impl Walker<'_, '_> {
                 lambda.parameters(),
                 lambda.body().map(|body| body.syntax().clone()),
             );
+        } else if let Some(expr) = AstForExpr::cast(node.clone()) {
+            // The list is evaluated before the item is in scope, and the fold's value outside of
+            // it. The item is in scope in the filter and the body, and the result of the fold in
+            // the body
+            if let Some(list) = expr.list() {
+                self.walk(list.syntax());
+            }
+
+            let fold = expr.fold();
+
+            if let Some(init) = fold.as_ref().and_then(AstForFold::init) {
+                self.walk(init.syntax());
+            }
+
+            self.scopes.push(HashMap::new());
+
+            for name in expr
+                .binding()
+                .iter()
+                .flat_map(|binding| binding_names(binding, true))
+            {
+                self.declare(&name);
+            }
+
+            if let Some(condition) = expr.filter().and_then(|filter| filter.condition()) {
+                self.walk(condition.syntax());
+            }
+
+            for name in fold
+                .and_then(|fold| fold.binding())
+                .iter()
+                .flat_map(|binding| binding_names(binding, true))
+            {
+                self.declare(&name);
+            }
+
+            if let Some(body) = expr.body() {
+                self.walk(body.syntax());
+            }
+
+            self.scopes.pop();
         } else if AstBlock::cast(node.clone()).is_some() {
             self.scopes.push(HashMap::new());
             self.walk_children(node);

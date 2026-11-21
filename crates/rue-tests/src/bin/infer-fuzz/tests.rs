@@ -2134,6 +2134,143 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
     assert!(probes >= 10, "only {probes} of 40 programs have a probe");
 }
 
+/// The same as `VERSION_1_HASH`, for generator version 4.
+const VERSION_4_HASH: u64 = 0xefd9_3f50_fed1_8316;
+
+#[test]
+fn version_4_programs_never_change() {
+    assert_eq!(programs_hash(4), VERSION_4_HASH, "{:#x}", programs_hash(4));
+}
+
+/// Whether the expression is a pair or list literal with an untyped lambda as one of its items,
+/// or has one inside it.
+fn holds_untyped_lambda(expr: &Expr) -> bool {
+    let mut found = false;
+    expr.walk(&mut |expr| {
+        if matches!(
+            expr.kind,
+            ExprKind::Pair(..) | ExprKind::List(_) | ExprKind::ListSpread(..)
+        ) && expr
+            .children()
+            .iter()
+            .any(|child| matches!(child.kind, ExprKind::Lambda { typed: false, .. }))
+        {
+            found = true;
+        }
+    });
+    found
+}
+
+#[test]
+fn version_4_is_deterministic_and_its_explicit_programs_compile() {
+    let mut valid = 0;
+    let mut shaped = 0;
+    for seed in 0..40 {
+        let first = Generator::versioned(seed, 4).generate();
+        let second = Generator::versioned(seed, 4).generate();
+        let explicit = first.program.print(&Variant::default());
+        assert_eq!(explicit, second.program.print(&Variant::default()));
+        assert_eq!(first.variants, second.variants);
+        if matches!(
+            oracle::compile_with(&explicit, first.program.uses_std()),
+            Compiled::Ok { leak: None, .. }
+        ) {
+            valid += 1;
+        }
+        // A recursive call that passes an untyped lambda in a pair or list literal
+        shaped += usize::from(first.program.functions.iter().any(|function| {
+            function.recursion.as_ref().is_some_and(|recursion| {
+                recursion
+                    .inner
+                    .iter()
+                    .chain([&recursion.returned])
+                    .any(|call| call.children().into_iter().any(holds_untyped_lambda))
+            })
+        }));
+    }
+    assert!(valid >= 38, "only {valid} of 40 explicit programs compile");
+    assert!(
+        shaped >= 30,
+        "only {shaped} of 40 programs pass untyped lambdas in pairs or lists to themselves"
+    );
+}
+
+/// A list literal for pairs passes the types of its items on as a pair literal does, and a
+/// spread item passes on those of the pairs that are left: in `f([fn(x) => x, ...(5, nil)])`
+/// for `f<T>(tuple: (fn(a: T) -> T, (T, nil)))`, `5` gives `T` a type, so its argument is
+/// removable, and in `f([fn(x) => x, nil])` nothing does.
+#[test]
+fn list_literals_for_pairs_give_their_items_types() {
+    let tuple = parse_ty("(fn(a: T) -> T, (T, nil))", &["T"]);
+    let function = Function {
+        name: "f".to_string(),
+        generics: vec!["T".to_string()],
+        params: vec![("tuple".to_string(), tuple.clone())],
+        ret: Ty::Int,
+        recursion: None,
+        lets: Vec::new(),
+        body: int(1, Ty::Int),
+    };
+    let lambda = || {
+        Expr::new(
+            ExprKind::Lambda {
+                params: vec![("x".to_string(), Ty::Int)],
+                typed: false,
+                body: Box::new(Expr::new(ExprKind::Var("x".to_string()), Ty::Int)),
+            },
+            Ty::func(vec![Ty::Int], Ty::Int),
+        )
+    };
+    let arg_ty = tuple.subst(&[Ty::Int]);
+    let rest_ty = Ty::pair(Ty::Int, Ty::Nil);
+    let call = |arg: Expr| {
+        let main = Function {
+            name: "main".to_string(),
+            generics: Vec::new(),
+            params: Vec::new(),
+            ret: Ty::Int,
+            recursion: None,
+            lets: Vec::new(),
+            body: Expr::new(
+                ExprKind::Call {
+                    site: Some(0),
+                    function: "f".to_string(),
+                    generic_args: vec![Ty::Int],
+                    args: vec![arg],
+                },
+                Ty::Int,
+            ),
+        };
+        let program = Program {
+            functions: vec![function.clone()],
+            main,
+            probes: std::collections::BTreeSet::new(),
+        };
+        removable_sites(&program, &Variant::default())[&0].clone()
+    };
+
+    let spread = Expr::new(
+        ExprKind::ListSpread(
+            vec![lambda()],
+            Box::new(Expr::new(
+                ExprKind::Pair(Box::new(int(5, Ty::Int)), Box::new(nil(Ty::Nil))),
+                rest_ty,
+            )),
+        ),
+        arg_ty.clone(),
+    );
+    assert_eq!(call(spread), vec![true]);
+
+    let listed = Expr::new(
+        ExprKind::List(vec![lambda(), int(5, Ty::Int)]),
+        arg_ty.clone(),
+    );
+    assert_eq!(call(listed), vec![true]);
+
+    let nothing = Expr::new(ExprKind::List(vec![lambda(), nil(Ty::Int)]), arg_ty);
+    assert_eq!(call(nothing), vec![false]);
+}
+
 /// The leak oracle's walk over a type finds a generic that no function type binds, and none that
 /// one does, as `T` in `fn<T>(a: T) -> T`.
 #[test]

@@ -26,8 +26,8 @@ use rue_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{
-    DeferredLambda, ElementLambda, FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind,
-    SyntaxMap, narrowed_with_references,
+    DeferredLambda, ElementLambda, FileTree, HeldLambda, HeldStep, LambdaParameter, SyntaxItem,
+    SyntaxItemKind, SyntaxMap, narrowed_with_references,
 };
 
 /// How the type expected of the expression being compiled is used, which the expressions it's
@@ -186,6 +186,15 @@ pub struct ArgumentFrame {
     pub to_defer: HashMap<TextRange, ElementLambda>,
     /// The placeholders left for those lambdas, as they're compiled.
     pub deferred: Vec<DeferredLambda>,
+    /// In a recursive call, the lambdas among those elements that are only compiled once every
+    /// argument of the call is, so that they're refined against what the call is solved with (see
+    /// `HeldLambda`). It's `None` where they aren't held.
+    pub held: Option<Vec<HeldLambda>>,
+    /// While lambdas are held, each of them and each element that's recorded, in the order they
+    /// come in, and what `infer` and `own_infer` were before the first, for compiling the held
+    /// lambdas as they would have been where they are (see `compile_held_where_they_are`).
+    pub held_steps: Vec<HeldStep>,
+    pub held_start: Option<(Inference, Inference)>,
 }
 
 /// A variant of an enum, as it was declared.

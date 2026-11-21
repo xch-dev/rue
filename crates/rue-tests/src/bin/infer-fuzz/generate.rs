@@ -192,8 +192,8 @@ const HELPERS: &[Template] = &[
 /// The generator versions. A version's programs for a seed never change once it's released, so
 /// `--compare` can compare runs of the same version: a new version's shapes are behind
 /// `self.version` checks that draw nothing from the random number generator in older versions,
-/// and `version_1_programs_never_change` and `version_2_programs_never_change` pin each version.
-/// The same seed is a different program in each version.
+/// and `version_1_programs_never_change`, `version_2_programs_never_change` and so on pin each
+/// version. The same seed is a different program in each version.
 ///
 /// - **1**: the shapes of the first run (#341).
 /// - **2**: adds generic structs and aliases, including a recursive one (`Entry<K, V>`,
@@ -210,7 +210,144 @@ const HELPERS: &[Template] = &[
 ///   don't give its call's generics a type is only removed by a `probe` variant of its own,
 ///   where rejecting it is right and compiling it must not leak a generic (see `leak.rs`), and
 ///   one whose arguments do is removed as any other call is.
-pub const VERSIONS: [u32; 3] = [1, 2, 3];
+/// - **4**: adds the shapes of recursive calls (#334) that hand-written review generators found
+///   inference bugs with, and version 3 doesn't make: functions that take pairs, nested
+///   pairs and lists of functions next to values of their generics, including pairs that end in
+///   `nil` written as list literals (`[fn(x) => x, 5]` for `(fn(a: T) -> Int, (T, nil))`),
+///   unions next to the functions (`T | Int`, `T | nil`, `(U, Int) | (Int, T)`), two-parameter
+///   functions and functions that feed each other, and that call themselves (`CATALOG_V4`). Each
+///   recursive call passes literals for such parameters, with untyped lambdas at every function
+///   type and the caller's values, literals, `nil`, calls such as `any_value()` and spread items
+///   beside them (`element_value`). Lambdas whose parameter is an `Int` sometimes return
+///   `x - 1`, and the recursion guard's call with other generic arguments is sometimes bound
+///   with an annotation, which gives it an expected type.
+pub const VERSIONS: [u32; 4] = [1, 2, 3, 4];
+
+/// Functions that generator version 4 adds to the catalog, which take pairs, nested pairs and
+/// lists that hold functions next to values of their generics, as the recursive functions of the
+/// review generators that found bugs in recursive calls do. Version 4 makes most of them
+/// recursive.
+const CATALOG_V4: &[Template] = &[
+    template(
+        "feed_pair",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, T)")],
+        "U",
+    ),
+    template(
+        "feed_nested",
+        &["T", "U"],
+        &[("pair", "(T, (fn(a: T) -> U, T))")],
+        "U",
+    ),
+    template(
+        "feed_tuple",
+        &["T"],
+        &[("tuple", "(fn(a: T) -> Int, (T, nil))"), ("value", "T")],
+        "Int",
+    ),
+    template(
+        "tuple_between",
+        &["T"],
+        &[("tuple", "(T, (fn(a: T) -> Int, (T, nil)))")],
+        "T",
+    ),
+    template(
+        "map_entries",
+        &["T", "U"],
+        &[("entries", "List<(fn(a: T) -> U, Int)>"), ("value", "T")],
+        "List<U>",
+    ),
+    template(
+        "back_entries",
+        &["T", "U"],
+        &[("entries", "List<(U, fn(a: U) -> T)>")],
+        "List<T>",
+    ),
+    template(
+        "feed_then",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, T)"), ("then", "fn(b: U) -> Int")],
+        "Int",
+    ),
+    template(
+        "feed_values",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, Int)"), ("values", "List<T>")],
+        "List<U>",
+    ),
+    template(
+        "round_trip",
+        &["T", "U"],
+        &[("functions", "(fn(a: T) -> U, (fn(b: U) -> T, T))")],
+        "T",
+    ),
+    template(
+        "feed_both",
+        &["T", "U"],
+        &[("pair", "(fn(a: T, b: U) -> U, (T, U))")],
+        "U",
+    ),
+    template(
+        "feed_or_int",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, T | Int)"), ("value", "T")],
+        "U",
+    ),
+    template(
+        "feed_or_nil",
+        &["T"],
+        &[("pair", "(fn(a: T) -> Int, T | nil)"), ("value", "T")],
+        "T",
+    ),
+    template(
+        "feed_either",
+        &["T", "U"],
+        &[
+            ("pair", "((U, fn(a: T) -> U), (U, Int) | (Int, T))"),
+            ("value", "T"),
+        ],
+        "T",
+    ),
+    template(
+        "feed_alternatives",
+        &["T"],
+        &[(
+            "pair",
+            "(T, (fn(a: T) -> Int, T) | (fn(a: T) -> Bytes, Bytes))",
+        )],
+        "T",
+    ),
+    template(
+        "feed_boxed",
+        &["T", "U"],
+        &[("pair", "(Box<fn(a: T) -> U>, T)")],
+        "U",
+    ),
+    template(
+        "feed_entry",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, Entry<T, U>)")],
+        "U",
+    ),
+    template(
+        "feed_maybe",
+        &["T", "U"],
+        &[("pair", "(fn(a: T) -> U, Maybe<T>)"), ("value", "T")],
+        "U | nil",
+    ),
+    template(
+        "first_of_each",
+        &["T", "U"],
+        &[("entries", "List<(fn(a: (T, U)) -> T, U)>"), ("value", "T")],
+        "T",
+    ),
+];
+
+/// A function that generator version 4 sometimes adds before the others, which makes a value of
+/// any type without arguments, as `make()` does in the review generators. Its name isn't one of a
+/// catalog function's parameters, such as `same`'s `produce`, which would hide it.
+const ANY_VALUE: Template = template("any_value", &["T"], &[], "T");
 
 /// Functions that generator version 3 adds to the catalog, which take lists, pairs and boxes of
 /// functions, or return a function from one (#485, #489, #490).
@@ -576,7 +713,15 @@ impl Generator {
     pub fn generate(mut self) -> Generated {
         let v2 = self.version >= 2;
         let v3 = self.version >= 3;
-        let all: Vec<&Template> = if v3 {
+        let v4 = self.version >= 4;
+        let all: Vec<&Template> = if v4 {
+            CATALOG
+                .iter()
+                .chain(CATALOG_V2)
+                .chain(CATALOG_V3)
+                .chain(CATALOG_V4)
+                .collect()
+        } else if v3 {
             CATALOG.iter().chain(CATALOG_V2).chain(CATALOG_V3).collect()
         } else if v2 {
             CATALOG.iter().chain(CATALOG_V2).collect()
@@ -585,8 +730,10 @@ impl Generator {
         };
         let mut catalog = all.clone();
         // Version 2's catalog is larger, so it picks more, for related functions to still meet,
-        // and version 3 always picks some of its own
-        let count = if v3 {
+        // and versions 3 and 4 always pick some of their own
+        let count = if v4 {
+            self.rng.range(4, 8)
+        } else if v3 {
             self.rng.range(5, 10)
         } else if v2 {
             self.rng.range(5, 11)
@@ -594,8 +741,15 @@ impl Generator {
             self.rng.range(4, 9)
         };
         let mut picked = Vec::new();
-        if v3 {
-            let mut own: Vec<&Template> = CATALOG_V3.iter().collect();
+        let own = if v4 {
+            Some(CATALOG_V4)
+        } else if v3 {
+            Some(CATALOG_V3)
+        } else {
+            None
+        };
+        if let Some(own) = own {
+            let mut own: Vec<&Template> = own.iter().collect();
             for _ in 0..self.rng.range(2, 4) {
                 let template = own.remove(self.rng.below(own.len()));
                 catalog.retain(|other| other.name != template.name);
@@ -607,6 +761,12 @@ impl Generator {
         }
         // Keep the catalog's order, so related functions are declared in a familiar order
         picked.sort_by_key(|template| all.iter().position(|other| other.name == template.name));
+
+        // First, so that every other function can call it
+        if v4 && self.rng.chance(60) {
+            let function = self.template_function(&ANY_VALUE);
+            self.functions.push(function);
+        }
 
         for template in picked {
             let function = self.template_function(template);
@@ -662,16 +822,20 @@ impl Generator {
             .collect();
         let ret = parse_ty(template.ret, template.generics);
         // Some higher-order functions call themselves, as `map` does in #334, and in version 3
-        // those that take lists, pairs and boxes of functions too, more often
-        let recursive = if self.version >= 3 {
-            !generics.is_empty()
-                && params.iter().any(|(_, ty)| ty.contains_fn())
-                && self.rng.chance(35)
-        } else {
-            !generics.is_empty()
-                && params.iter().any(|(_, ty)| matches!(ty, Ty::Fn(..)))
-                && self.rng.chance(15)
-        };
+        // those that take lists, pairs and boxes of functions too, more often. Version 4's own
+        // functions mostly do
+        let recursive =
+            if self.version >= 4 && CATALOG_V4.iter().any(|own| own.name == template.name) {
+                self.rng.chance(85)
+            } else if self.version >= 3 {
+                !generics.is_empty()
+                    && params.iter().any(|(_, ty)| ty.contains_fn())
+                    && self.rng.chance(35)
+            } else {
+                !generics.is_empty()
+                    && params.iter().any(|(_, ty)| matches!(ty, Ty::Fn(..)))
+                    && self.rng.chance(15)
+            };
         if recursive {
             params.push(("depth".to_string(), Ty::Int));
         }
@@ -1032,6 +1196,8 @@ impl Generator {
 
     /// The recursion guard of a function that calls itself: an optional call with other generic
     /// arguments (`map(duplicate, 1)` inside `map`, #334), and a call with its own generics.
+    /// Version 4 makes the first more often, and sometimes gives it an expected type: the call's
+    /// own type, or a union of it with `nil` or another type.
     fn recursion(&mut self, function: &Function, scope: &Scope) -> Recursion {
         let own: Vec<Ty> = function
             .generics
@@ -1041,14 +1207,35 @@ impl Generator {
 
         let returned = self.self_call(function, scope, own);
 
-        let inner = self.rng.chance(60).then(|| {
+        let chance = if self.version >= 4 { 85 } else { 60 };
+        let inner = self.rng.chance(chance).then(|| {
             let args = self.instantiate(function, vec![None; function.generics.len()], scope);
             self.self_call(function, scope, args)
         });
 
-        Recursion { inner, returned }
+        let annotation = match &inner {
+            Some(inner) if self.version >= 4 && self.rng.chance(40) => {
+                Some(match self.rng.below(3) {
+                    0 => inner.ty.clone(),
+                    1 => union_of(vec![inner.ty.clone(), Ty::Nil]),
+                    _ => {
+                        let other = self.ty(scope, 1);
+                        union_of(vec![inner.ty.clone(), other])
+                    }
+                })
+            }
+            _ => None,
+        };
+
+        Recursion {
+            inner,
+            annotation,
+            returned,
+        }
     }
 
+    /// A call of the function from its own body. In version 4, most arguments for parameters
+    /// with function types in them are literals with lambdas in them (see `element_value`).
     fn self_call(&mut self, function: &Function, scope: &Scope, generic_args: Vec<Ty>) -> Expr {
         let args: Vec<Expr> = function
             .params
@@ -1056,6 +1243,8 @@ impl Generator {
             .map(|(name, ty)| {
                 if name == "depth" {
                     Expr::new(ExprKind::Decrement(name.clone()), Ty::Int)
+                } else if self.version >= 4 && ty.contains_fn() && self.rng.chance(85) {
+                    self.element_value(&ty.subst(&generic_args), scope)
                 } else {
                     self.expr(&ty.subst(&generic_args), scope, 1, true)
                 }
@@ -1532,6 +1721,21 @@ impl Generator {
 
         // An untyped lambda needs an expected type for its parameters
         let typed = !expected || self.rng.chance(40);
+        self.lambda(goal, params, ret, scope, depth, typed)
+    }
+
+    /// A lambda of the function type, with its parameters' types written out if `typed`. In
+    /// version 4, one that returns an `Int` and has an `Int` parameter `x` sometimes returns
+    /// `x - 1`.
+    fn lambda(
+        &mut self,
+        goal: &Ty,
+        params: &[Ty],
+        ret: &Ty,
+        scope: &Scope,
+        depth: u32,
+        typed: bool,
+    ) -> Expr {
         let mut inner = scope.clone();
         let params: Vec<(String, Ty)> = params
             .iter()
@@ -1548,9 +1752,21 @@ impl Generator {
         } else {
             depth.saturating_sub(1)
         };
-        self.lambdas += 1;
-        let body = self.expr(ret, &inner, body_depth, false);
-        self.lambdas -= 1;
+        let int_param = params
+            .iter()
+            .find(|(_, ty)| *ty == Ty::Int)
+            .map(|(name, _)| name.clone());
+        let body = match int_param {
+            Some(name) if self.version >= 4 && *ret == Ty::Int && self.rng.chance(25) => {
+                Expr::new(ExprKind::Decrement(name), Ty::Int)
+            }
+            _ => {
+                self.lambdas += 1;
+                let body = self.expr(ret, &inner, body_depth, false);
+                self.lambdas -= 1;
+                body
+            }
+        };
 
         Expr::new(
             ExprKind::Lambda {
@@ -1560,6 +1776,108 @@ impl Generator {
             },
             goal.clone(),
         )
+    }
+
+    /// A value of a parameter's type for a recursive call (generator version 4), written as a
+    /// literal down to its function types, so that untyped lambdas sit at each of them, in
+    /// pairs and lists beside the caller's values, as in `f((fn(x) => x, t), depth - 1)`. A pair
+    /// is sometimes written as a list literal, which it must be for a pair that ends in `nil`
+    /// most of the time, and sometimes as one whose last item is spread, as `[x, ...rest]`. A
+    /// list has one or two items, and sometimes a spread one after them. Some functions are
+    /// typed lambdas or values of other kinds instead (see `function_value`), and unions and
+    /// types without functions in them are built as any other expression is.
+    fn element_value(&mut self, goal: &Ty, scope: &Scope) -> Expr {
+        if !goal.contains_fn() {
+            return self.expr(goal, scope, 1, true);
+        }
+        let kind = match goal {
+            Ty::Pair(first, rest) => {
+                let tuple = ends_in_nil(goal);
+                if tuple && self.rng.chance(70) || !ends_in_fn(goal) && self.rng.chance(15) {
+                    return self.list_literal(goal, scope);
+                }
+                ExprKind::Pair(
+                    Box::new(self.element_value(first, scope)),
+                    Box::new(self.element_value(rest, scope)),
+                )
+            }
+            Ty::List(inner) => {
+                let items = (0..self.rng.range(1, 2))
+                    .map(|_| self.element_value(inner, scope))
+                    .collect();
+                if self.rng.chance(15) {
+                    let rest = self.expr(goal, scope, 1, true);
+                    ExprKind::ListSpread(items, Box::new(rest))
+                } else {
+                    ExprKind::List(items)
+                }
+            }
+            Ty::Fn(params, ret) => {
+                if self.rng.chance(15) {
+                    return self.function_value(goal, params, ret, scope, 1, true);
+                }
+                let typed = self.rng.chance(20);
+                return self.lambda(goal, params, ret, scope, 1, typed);
+            }
+            Ty::Boxed(inner) => {
+                let value = self.element_value(inner, scope);
+                ExprKind::BoxLit {
+                    site: self.site(),
+                    arg: (**inner).clone(),
+                    value: Box::new(value),
+                }
+            }
+            Ty::Named(Named::Entry, args) => {
+                let key = self.element_value(&args[0], scope);
+                let value = self.element_value(&args[1], scope);
+                ExprKind::EntryLit {
+                    site: self.site(),
+                    args: args.clone(),
+                    key: Box::new(key),
+                    value: Box::new(value),
+                }
+            }
+            _ => return self.expr(goal, scope, 1, true),
+        };
+        Expr::new(kind, goal.clone())
+    }
+
+    /// A pair written as a list literal, with an item for each pair's first value until the
+    /// pairs end in `nil`, or until the rest, which is sometimes spread before they do.
+    fn list_literal(&mut self, goal: &Ty, scope: &Scope) -> Expr {
+        let mut items = Vec::new();
+        let mut ty = goal;
+        loop {
+            match ty {
+                Ty::Nil => return Expr::new(ExprKind::List(items), goal.clone()),
+                Ty::Pair(first, rest) if items.is_empty() || !self.rng.chance(15) => {
+                    items.push(self.element_value(first, scope));
+                    ty = rest;
+                }
+                _ => {
+                    let rest = self.element_value(ty, scope);
+                    return Expr::new(ExprKind::ListSpread(items, Box::new(rest)), goal.clone());
+                }
+            }
+        }
+    }
+}
+
+/// Whether the type is pairs that end in `nil`, such as `(Int, (T, nil))`, which a list literal
+/// is.
+fn ends_in_nil(ty: &Ty) -> bool {
+    match ty {
+        Ty::Pair(_, rest) => **rest == Ty::Nil || ends_in_nil(rest),
+        _ => false,
+    }
+}
+
+/// Whether the type is pairs whose last rest is a function type, which a list literal could only
+/// end with as a spread lambda, as in `[1, ...fn(x) => x]`.
+fn ends_in_fn(ty: &Ty) -> bool {
+    match ty {
+        Ty::Pair(_, rest) => ends_in_fn(rest),
+        _ => matches!(ty, Ty::Fn(..)),
     }
 }
 
@@ -1969,6 +2287,21 @@ fn witness<'a>(
                 witness(program, variant, inner, item, witnessed, facts);
             }
         }
+        // A list literal for pairs, and one with a spread item (generator version 4)
+        (Ty::Pair(..), ExprKind::List(items)) => {
+            witness_items(program, variant, pattern, items, None, witnessed, facts);
+        }
+        (Ty::Pair(..) | Ty::List(_), ExprKind::ListSpread(items, rest)) => {
+            witness_items(
+                program,
+                variant,
+                pattern,
+                items,
+                Some(rest),
+                witnessed,
+                facts,
+            );
+        }
         // A value passed for `T | nil` is one of `T`'s, and the same for `Maybe<T>`
         (Ty::Opt(inner), _) => witness(program, variant, inner, arg, witnessed, facts),
         (Ty::Named(Named::Maybe, args), _) => {
@@ -2046,6 +2379,47 @@ fn witness<'a>(
     }
 }
 
+/// What the items of a list literal give the generics in the parameter's type: each item those
+/// of the first value of a pair, or of a list's items, and the spread item, if there is one,
+/// those of what's left. Where items are left for a generic, it gets a type if they're all
+/// [`known`], and elsewhere, they give nothing.
+fn witness_items<'a>(
+    program: &Program,
+    variant: &Variant,
+    pattern: &Ty,
+    items: &'a [Expr],
+    rest: Option<&'a Expr>,
+    witnessed: &mut BTreeSet<usize>,
+    facts: &mut Facts<'a>,
+) {
+    match (pattern, items.split_first()) {
+        (_, None) => {
+            if let Some(rest) = rest {
+                witness(program, variant, pattern, rest, witnessed, facts);
+            }
+        }
+        (Ty::Pair(first, others), Some((item, items))) => {
+            witness(program, variant, first, item, witnessed, facts);
+            witness_items(program, variant, others, items, rest, witnessed, facts);
+        }
+        (Ty::List(inner), Some(_)) => {
+            for item in items {
+                witness(program, variant, inner, item, witnessed, facts);
+            }
+            if let Some(rest) = rest {
+                witness(program, variant, pattern, rest, witnessed, facts);
+            }
+        }
+        (Ty::Var(_), Some(_)) => {
+            let known = |expr: &Expr| known(program, variant, expr);
+            if items.iter().all(known) && rest.is_none_or(known) {
+                witnessed.extend(pattern.vars());
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Whether an expression's type is known without inferring it from where it's used: not `nil` or
 /// an untyped lambda, and not a call whose removed generic arguments its own arguments don't give
 /// a type to (as in `first_of(pairs())`), not counting typed lambdas' parameter annotations.
@@ -2073,6 +2447,7 @@ fn known(program: &Program, variant: &Variant, expr: &Expr) -> bool {
         | ExprKind::Key(inner) => known(inner),
         ExprKind::Pair(first, rest) => known(first) && known(rest),
         ExprKind::List(items) => !items.is_empty() && items.iter().all(known),
+        ExprKind::ListSpread(items, rest) => items.iter().all(known) && known(rest),
         ExprKind::Lambda { body, .. } => known(body),
         ExprKind::FnRef { site, .. } => {
             site.is_none_or(|site| !variant.stripped.contains_key(&site))

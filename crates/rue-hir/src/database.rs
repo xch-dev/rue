@@ -6,7 +6,8 @@ use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{
-    Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value,
+    FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol,
+    SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -36,6 +37,8 @@ pub struct Database {
     independent_operands: HashSet<HirId>,
     hir_scopes: HashMap<HirId, ScopeId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
+    default_field_uses: HashMap<(TypeId, String), HirId>,
+    default_constants: HashSet<SymbolId>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -114,6 +117,53 @@ impl Database {
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
         self.const_exprs.iter().copied()
+    }
+
+    /// Whether the value is made of literals only, so it's static wherever it's lowered.
+    pub fn is_literal_hir(&self, hir: HirId) -> bool {
+        match self.hir(hir) {
+            Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
+            Hir::Pair(first, rest) => self.is_literal_hir(*first) && self.is_literal_hir(*rest),
+            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_literal_hir(*hir),
+            Hir::List(list) => list.items.iter().all(|&item| self.is_literal_hir(item)),
+            Hir::Struct(initializer) => initializer
+                .fields
+                .iter()
+                .all(|field| self.is_literal_hir(field.value)),
+            _ => false,
+        }
+    }
+
+    /// Whether the node is the call of a loop to itself with the rest of its list (see
+    /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
+    /// list. A binding for it is either `inline`, and evaluated where the body refers to it, or
+    /// evaluated once before the body. It's never substituted like other bindings that are only
+    /// referred to once, since something that evaluates it more than once, such as a function
+    /// that's inlined, would go through the rest of the list again for every item.
+    pub fn is_loop_rest_call(&self, hir: HirId) -> bool {
+        let Hir::FunctionCall(call) = self.hir(hir) else {
+            return false;
+        };
+
+        let Hir::Reference(function) = self.hir(call.function) else {
+            return false;
+        };
+
+        let Symbol::Function(function) = self.symbol(*function) else {
+            return false;
+        };
+
+        function.kind == FunctionKind::Loop
+            && matches!(
+                call.args.as_slice(),
+                [arg] if matches!(
+                    self.hir(*arg),
+                    Hir::Unary(UnaryOp::Rest, list) if matches!(
+                        self.hir(*list),
+                        Hir::Reference(parameter) if function.parameters.first() == Some(parameter)
+                    )
+                )
+            )
     }
 
     /// The value inside of any casts, which is what's evaluated at runtime.
@@ -204,6 +254,32 @@ impl Database {
         self.default_fields
             .get(&ty)
             .and_then(|fields| fields.get(name).cloned())
+    }
+
+    /// Records the constant that an initializer refers to for a field it leaves out, when it
+    /// doesn't use the default value itself.
+    pub fn insert_default_field_use(&mut self, ty: TypeId, name: String, constant: SymbolId) {
+        let hir = self.alloc_hir(Hir::Reference(constant));
+        self.default_field_uses.insert((ty, name), hir);
+        self.default_constants.insert(constant);
+    }
+
+    /// Whether the symbol is the constant that initializers refer to for the default value of a
+    /// struct's field.
+    pub fn is_default_constant(&self, symbol: SymbolId) -> bool {
+        self.default_constants.contains(&symbol)
+    }
+
+    /// The value an initializer uses for a field it leaves out, which refers to the default
+    /// value rather than repeating it, unless it's a literal.
+    pub fn default_field_use(&self, ty: TypeId, name: &str) -> Option<Value> {
+        let mut value = self.default_field(ty, name)?;
+
+        if let Some(&hir) = self.default_field_uses.get(&(ty, name.to_string())) {
+            value.hir = hir;
+        }
+
+        Some(value)
     }
 
     /// The default values of a struct's fields, in the order they were compiled.

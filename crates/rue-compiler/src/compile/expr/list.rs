@@ -228,23 +228,31 @@ impl Tail {
 
         let hir = prepend(ctx, &mut pending, rest);
 
-        // The same type is only in the union once, so that a union of the same function type,
-        // which can't be called, isn't made from a list of functions
-        let mut members: Vec<TypeId> = Vec::new();
-
-        for ty in self.item_types {
-            if !members
-                .iter()
-                .any(|&member| ctx.is_assignable(ty, member) && ctx.is_assignable(member, ty))
-            {
-                members.push(ty);
-            }
-        }
-
-        let item_type = ctx.alloc_type(Type::Union(Union::new(members)));
+        let item_type = union_of(ctx, self.item_types);
         let ty = list_of(ctx, item_type);
 
         Value::new(hir, ty)
+    }
+}
+
+/// A union of the types, with the same type only in it once, so that a union of the same function
+/// type, which can't be called, isn't made from a list of functions.
+pub(crate) fn union_of(ctx: &mut Compiler, types: Vec<TypeId>) -> TypeId {
+    let mut members: Vec<TypeId> = Vec::new();
+
+    for ty in types {
+        if !members
+            .iter()
+            .any(|&member| ctx.is_assignable(ty, member) && ctx.is_assignable(member, ty))
+        {
+            members.push(ty);
+        }
+    }
+
+    if members.len() == 1 {
+        members[0]
+    } else {
+        ctx.alloc_type(Type::Union(Union::new(members)))
     }
 }
 
@@ -268,7 +276,7 @@ fn prepend(ctx: &mut Compiler, pending: &mut Vec<HirId>, rest: HirId) -> HirId {
 /// each member of a union are followed separately. A type whose pairs go on for longer than that,
 /// such as a very long tuple, has `Any` for the items past the limit, so the list's type is never
 /// narrower than what it holds.
-fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
+pub(crate) fn list_item_types(ctx: &mut Compiler, ty: TypeId) -> Vec<TypeId> {
     let mut item_types = Vec::new();
     // The types the pairs have gone through, other than plain pairs: a type the pairs come back to
     // is an alias or other type with pairs inside of it, such as `List<T>`, whose rest is itself,
