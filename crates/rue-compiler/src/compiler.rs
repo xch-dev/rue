@@ -90,12 +90,12 @@ pub struct Compiler {
     uninferred_parameters: Vec<(TypeId, String)>,
     /// The generics that weren't inferred yet in the types that were named for the next error.
     named_generics: Vec<NamedGeneric>,
-    /// The errors, by where they are in the diagnostics, that show generics of a call that
-    /// weren't inferred by then, with those generics, in order (see [`Compiler::errors_since`]).
-    uninferred_errors: Vec<(usize, Vec<TypeId>)>,
+    /// The errors that show generics of a call that weren't inferred by then, in the order
+    /// they're in the diagnostics (see [`Compiler::errors_since`]).
+    uninferred_errors: Vec<UninferredError>,
     /// The diagnostics, by where they are, that follow from an error that's reported, and so
     /// aren't themselves (see [`Compiler::suppress_uninferred_errors_since`]).
-    suppressed: Vec<usize>,
+    suppressed: HashSet<usize>,
     /// How the type expected of the expression being compiled is used.
     expected: ExpectedTypeUse,
     /// A type that the call argument at the range has to be assignable to however the enclosing
@@ -296,7 +296,7 @@ impl Compiler {
             uninferred_parameters: Vec::new(),
             named_generics: Vec::new(),
             uninferred_errors: Vec::new(),
-            suppressed: Vec::new(),
+            suppressed: HashSet::new(),
             expected: ExpectedTypeUse::default(),
             argument_requirement: None,
             lint_sites: LintSites::default(),
@@ -482,7 +482,7 @@ impl Compiler {
     /// or where it would be.
     fn uninferred_error(&self, index: usize) -> Result<usize, usize> {
         self.uninferred_errors
-            .binary_search_by_key(&index, |(index, _)| *index)
+            .binary_search_by_key(&index, |error| error.index)
     }
 
     /// Records that the errors reported since there were `count` diagnostics show the generics
@@ -490,10 +490,15 @@ impl Compiler {
     pub(crate) fn mark_uninferred_errors_since(&mut self, count: usize, generics: &[TypeId]) {
         for index in count..self.diagnostics.len() {
             match self.uninferred_error(index) {
-                Ok(position) => self.uninferred_errors[position].1.extend(generics),
-                Err(position) => self
-                    .uninferred_errors
-                    .insert(position, (index, generics.to_vec())),
+                Ok(position) => self.uninferred_errors[position].generics.extend(generics),
+                Err(position) => self.uninferred_errors.insert(
+                    position,
+                    UninferredError {
+                        index,
+                        generics: generics.to_vec(),
+                        settled: false,
+                    },
+                ),
             }
         }
     }
@@ -503,12 +508,39 @@ impl Compiler {
     /// generics. They're there because the generics weren't inferred, so that error is the one
     /// to fix, as `map(missing, fn(x) => x + 1)` only needs `missing` declared, rather than a
     /// type for `x`.
+    ///
+    /// An error that a call in the arguments left as it is stays, if it shows that call's
+    /// generics (see [`Self::settle_uninferred_errors_since`]).
     pub(crate) fn suppress_uninferred_errors_since(&mut self, count: usize, generics: &[TypeId]) {
         let start = self.uninferred_error(count).unwrap_or_else(|start| start);
 
-        for (index, shown) in &self.uninferred_errors[start..] {
-            if shown.iter().all(|generic| generics.contains(generic)) {
-                self.suppressed.push(*index);
+        for error in &self.uninferred_errors[start..] {
+            if !error.settled
+                && error
+                    .generics
+                    .iter()
+                    .all(|generic| generics.contains(generic))
+            {
+                self.suppressed.insert(error.index);
+            }
+        }
+    }
+
+    /// Records that the call whose generics are given is done with the errors reported since
+    /// there were `count` diagnostics that show any of them: it reported that a generic couldn't
+    /// be inferred, or left them out with another error. Every call of a function has the same
+    /// generics, so a call that this one is an argument of, or is in a lambda that's passed to,
+    /// would otherwise take an error about this call's generic to be about its own.
+    pub(crate) fn settle_uninferred_errors_since(&mut self, count: usize, generics: &[TypeId]) {
+        let start = self.uninferred_error(count).unwrap_or_else(|start| start);
+
+        for error in &mut self.uninferred_errors[start..] {
+            if error
+                .generics
+                .iter()
+                .any(|generic| generics.contains(generic))
+            {
+                error.settled = true;
             }
         }
     }
@@ -587,7 +619,11 @@ impl Compiler {
             }
 
             if !shown.is_empty() {
-                self.uninferred_errors.push((self.diagnostics.len(), shown));
+                self.uninferred_errors.push(UninferredError {
+                    index: self.diagnostics.len(),
+                    generics: shown,
+                    settled: false,
+                });
             }
         }
 
@@ -1807,6 +1843,16 @@ impl Compiler {
         let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
         matches!(self.ty(semantic), Type::Unresolved)
     }
+}
+
+/// An error that shows generics of a call that weren't inferred by the time it was reported.
+#[derive(Debug, Clone)]
+struct UninferredError {
+    /// Where the error is in the diagnostics.
+    index: usize,
+    generics: Vec<TypeId>,
+    /// Whether the call that the generics are of is done with it.
+    settled: bool,
 }
 
 /// A generic of a call that wasn't inferred yet, in a type that was named for an error.

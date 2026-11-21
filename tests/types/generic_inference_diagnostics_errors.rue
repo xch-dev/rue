@@ -175,6 +175,11 @@ fn argument_type() -> nil {
     let used_bool = map(5, fn(x) => x * 2 > 5);
     let undeclared = map(missing, fn(x) => x + 1);
     let undeclared_value = apply(fn(x) => x + 1, missing);
+
+    // As is the error for a value that's passed, which is before the call
+    let value = missing;
+    let bound = map(value, fn(x) => x + 1);
+    let bound_value = apply(fn(x) => x.first, value);
     nil
 }
 
@@ -241,6 +246,10 @@ fn nested_calls_of_one_function() -> nil {
     let inner_parameter = call(fn(x) => call(fn(y) => y + 1));
     let inner_call = call(fn(x) => call(fn(y) => 1));
     let outer_parameter = call(fn(x) => call(fn(y) => x + 1));
+
+    // An error of a call that's done with it isn't left out by the call that it's in, which is
+    // missing an argument
+    let inner_error = self_feeding((1, fn(a) => self_feeding((1, fn(x) => x + 1), a)));
     let declared = self_feeding((1, fn(list) => self_feeding(7, list)), 5);
     nil
 }

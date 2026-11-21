@@ -164,6 +164,7 @@ pub fn compile_function_call_expr(
 
         let mut uninferred = HashMap::new();
         let mut unreported = Vec::new();
+        let mut from_unresolved = Vec::new();
 
         if let Some(with_never) = unconstrained_as_never(ctx, function, &checks, &mappings) {
             mappings = with_never;
@@ -184,7 +185,9 @@ pub fn compile_function_call_expr(
             }
 
             // An argument that it would have been inferred from has already failed to compile
-            if !from_unresolved_argument(ctx, &checks, generic) {
+            if from_unresolved_argument(ctx, &checks, generic) {
+                from_unresolved.push(generic);
+            } else {
                 unreported.push(generic);
             }
 
@@ -291,7 +294,13 @@ pub fn compile_function_call_expr(
         let deferred = if uninferred.is_empty() {
             Vec::new()
         } else {
-            deferred_generics(ctx, function, &args, &uninferred, reported)
+            deferred_generics(
+                ctx,
+                function,
+                &args,
+                (&uninferred, &from_unresolved),
+                reported,
+            )
         };
 
         // The errors that only show those generics, such as one in the body of a lambda whose
@@ -314,6 +323,13 @@ pub fn compile_function_call_expr(
                 call.syntax(),
                 DiagnosticKind::CannotInferGeneric(generic_name, function_name),
             );
+        }
+
+        // The errors that show this call's generics are its own to report or leave out, rather
+        // than a call's that it's an argument of, which has the same generics if it's a call of
+        // the same function
+        if !function.generics.is_empty() {
+            ctx.settle_uninferred_errors_since(reported, &function.generics);
         }
 
         (results, mappings)
@@ -486,12 +502,20 @@ fn deferred_generics(
     ctx: &mut Compiler,
     function: &FunctionType,
     args: &[AstExpr],
-    uninferred: &HashMap<TypeId, TypeId>,
+    (uninferred, from_unresolved): (&HashMap<TypeId, TypeId>, &[TypeId]),
     reported: usize,
 ) -> Vec<TypeId> {
     let errors = ctx.errors_since(reported);
 
-    if errors.is_empty() {
+    // An argument that couldn't be compiled, such as a binding whose value couldn't be, is one
+    // that an error has been reported for, which can be before the call
+    let from_unresolved = if ctx.has_errors() {
+        from_unresolved
+    } else {
+        &[]
+    };
+
+    if errors.is_empty() && from_unresolved.is_empty() {
         return Vec::new();
     }
 
@@ -509,7 +533,7 @@ fn deferred_generics(
         })
         .collect();
 
-    let mut deferred: HashSet<TypeId> = HashSet::new();
+    let mut deferred: HashSet<TypeId> = from_unresolved.iter().copied().collect();
 
     for error in errors {
         let argument = arguments
