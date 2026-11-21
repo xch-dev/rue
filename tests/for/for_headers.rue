@@ -265,6 +265,12 @@ test fn rest_of_the_second_list() -> List<Int> {
     for a in runtime([1, 2]), b, right in runtime([10, 20, 30]) { a + b + length(right) }
 }
 
+// A struct binding for the item of the second list, with a name for what's left of it
+test fn struct_binding_with_rest_for_the_second_list() -> List<Int> {
+    let points = runtime([Point { x: 1, y: 2 }, Point { x: 3, y: 4 }]);
+    for a in runtime([10, 20]), { x, y }, others in points { a + x + y + length(others) }
+}
+
 // `in` and `fold` are still only keywords where the header expects them
 test fn names() -> Int {
     let in = runtime([1, 2]);
@@ -284,12 +290,22 @@ test fn two_lists_with_two_references() -> Int {
     }
 }
 
-// The result of a fold over several lists is evaluated once, before the body, where it's an
-// argument of a call, or spread into a list, rather than where a function that's inlined refers
-// to its parameter, which would go through the rest of the lists again
+// The result of a fold over several lists is bound before the body where it's an argument of a
+// call, or spread into a list, as it is over one list, rather than substituted into them
 fn positive(value: Int) -> Int {
     assert value > 0;
     value
+}
+
+// So a function that's inlined, and refers to its parameter twice, doesn't go through the rest
+// of the lists twice for each item
+inline fn twice(value: Int) -> Int {
+    value + value
+}
+
+test fn two_lists_with_a_fold_as_an_inline_argument() -> Int {
+    let xs = runtime([1, 1, 1, 1, 1, 1, 1, 1]);
+    for a in xs, b in xs fold sum = 0 { twice(sum) + a + b }
 }
 
 test fn two_lists_with_a_fold_as_an_argument() -> Int {
@@ -307,6 +323,81 @@ test fn two_lists_with_a_fold_spread_into_a_list() -> List<(Int, Int)> {
         20,
         30,
     ]) fold pairs: List<(Int, Int)> = nil { [...for z in rest { (x + y, z) }, ...pairs] }
+}
+
+// A fold that reads the item of a list that has run out fails there, also where the value isn't
+// used: in a `let` that only another branch refers to, and as the argument of a function that
+// doesn't use its parameter
+fn ignore(_value: Int) -> Int {
+    7
+}
+
+fn ignore_list(_value: List<Int>) -> Int {
+    7
+}
+
+test fn fold_reads_an_item_in_a_let() -> Int {
+    for a in runtime([1]), b in runtime([] as List<Int>) fold sum = 0 {
+        let other = b;
+        if a == 1 {
+            a
+        } else {
+            other + sum
+        }
+    }
+}
+
+test fn fold_reads_an_item_in_an_argument() -> Int {
+    for a in runtime([1]), b in runtime([] as List<Int>) fold sum = 0 {
+        if a == 1 {
+            ignore(b)
+        } else {
+            sum
+        }
+    }
+}
+
+test fn fold_reads_the_rest_in_an_argument() -> Int {
+    for a in runtime([1]), _, others in runtime([] as List<Int>) fold sum = 0 {
+        if a == 1 {
+            ignore_list(others)
+        } else {
+            sum
+        }
+    }
+}
+
+// A fold that doesn't refer to the item of the list that has run out doesn't fail
+test fn fold_does_not_read_an_item() -> Int {
+    for a in runtime([1]), b in runtime([] as List<Int>) fold sum = 0 {
+        if a == 1 {
+            a
+        } else {
+            b + sum
+        }
+    }
+}
+
+// A `for` over several lists fails where it's written if a list runs out, whether or not its
+// value is used after that
+test fn unused_list_of_two_lists() -> Int {
+    let _sums = for a in runtime([1, 2]), b in runtime([10]) { a + b };
+    5
+}
+
+test fn unused_fold_of_two_lists() -> Int {
+    let _sum = for a in runtime([1, 2]), b in runtime([10]) fold sum = 0 { sum + a + b };
+    5
+}
+
+test fn two_lists_used_in_a_branch_that_is_not_taken() -> Int {
+    let flag = runtime([] as List<Int>);
+    let sums = for a in runtime([1, 2]), b in runtime([10]) { a + b };
+    if flag is nil {
+        7
+    } else {
+        length(sums)
+    }
 }
 
 // A constant can be a `for` over several lists

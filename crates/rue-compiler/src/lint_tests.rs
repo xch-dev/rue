@@ -2458,6 +2458,58 @@ fn main(a: Int) -> Int {
     );
 }
 
+/// The parentheses around each list in the header of a `for` are removed, without joining the
+/// list to the `in` before it. A struct initializer keeps them, since its `{` would start the
+/// body.
+#[test]
+fn suggestions_fix_parentheses_in_for_headers() {
+    let source = "\
+struct Wrapper {
+    list: List<Int>,
+}
+
+fn count(_list: List<Int>) -> Int {
+    1
+}
+
+fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    let sums = for x in (xs), y in(ys) { x + y };
+    let total = for x, rest in(xs), y in (Wrapper { list: ys }).list if (x > y) fold sum = (0) {
+        sum + x + y + count(rest)
+    };
+    [...sums, total]
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+struct Wrapper {
+    list: List<Int>,
+}
+
+fn count(_list: List<Int>) -> Int {
+    1
+}
+
+fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    let sums = for x in xs, y in ys { x + y };
+    let total = for x, rest in xs, y in (Wrapper { list: ys }).list if x > y fold sum = 0 {
+        sum + x + y + count(rest)
+    };
+    [...sums, total]
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
 #[test]
 fn imports_are_used_if_any_namespace_is_used() {
     let source = |main: &str| {

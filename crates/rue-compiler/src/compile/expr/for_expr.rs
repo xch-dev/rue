@@ -193,6 +193,11 @@ pub fn compile_for_expr(
     let function = ctx.alloc_symbol(Symbol::Unresolved);
     let parameters: Vec<SymbolId> = clauses.iter().map(|clause| clause.parameter).collect();
 
+    // The loop ends when the first list does, so the others can run out before it
+    for &parameter in parameters.iter().skip(1) {
+        ctx.insert_unchecked_list(parameter);
+    }
+
     let first_hir = ctx.next_hir_id();
 
     // Each use of what's left of the lists is a node of its own. A list other than the first

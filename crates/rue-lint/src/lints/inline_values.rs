@@ -55,6 +55,12 @@ impl HirLintPass for InlineValueMayFail<'_> {
             return;
         }
 
+        // The item of a list that can run out before its loop ends, or what's left of the list,
+        // isn't an `inline let`: it fails where the body refers to it
+        if cx.db().is_unchecked_list_read(binding.value.hir) {
+            return;
+        }
+
         if self.failures.always_evaluated_in_block(
             cx.db(),
             symbol,

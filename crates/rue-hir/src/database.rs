@@ -39,6 +39,9 @@ pub struct Database {
     single_use_loop_rests: HashSet<SymbolId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     default_field_uses: HashMap<(TypeId, String), HirId>,
+    /// The parameters of loops for lists that can run out before the loop ends (see
+    /// `Database::insert_unchecked_list`).
+    unchecked_lists: HashSet<SymbolId>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -149,6 +152,27 @@ impl Database {
     /// function that's inlined, would go through the rest of the list again for every item.
     pub fn is_single_use_loop_rest(&self, symbol: SymbolId) -> bool {
         self.single_use_loop_rests.contains(&symbol)
+    }
+
+    /// Records that the parameter of a loop (see `FunctionKind::Loop`) is for a list other than
+    /// the first of a `for` expression over several lists, such as `ys` in `for a in xs, b in
+    /// ys`. The loop ends when the first list does, so nothing checks that this one still has an
+    /// item before the loop takes it.
+    pub fn insert_unchecked_list(&mut self, parameter: SymbolId) {
+        self.unchecked_lists.insert(parameter);
+    }
+
+    /// Whether the node takes the item of a list that can run out before its loop ends, or what's
+    /// left of the list after the item (see [`Self::insert_unchecked_list`]). That fails if the
+    /// list has run out, unlike reading any other value, whose shape is what its type says.
+    pub fn is_unchecked_list_read(&self, hir: HirId) -> bool {
+        matches!(
+            self.hir(hir),
+            Hir::Unary(UnaryOp::First | UnaryOp::Rest, list) if matches!(
+                self.hir(*list),
+                Hir::Reference(parameter) if self.unchecked_lists.contains(parameter)
+            )
+        )
     }
 
     /// Whether the node is the call of a loop to itself with the rest of its lists (see

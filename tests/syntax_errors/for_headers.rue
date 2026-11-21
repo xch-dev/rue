@@ -8,6 +8,10 @@ fn main(xs: List<Int>, ys: List<Int>) -> Int {
         doubled
     };
 
+    // The body can be followed by a name, which isn't the `in` after a struct binding
+    let a3 = for x in xs, { x + 1 }
+    length(a3);
+
     // A `,` after the item is followed by a name for what's left of the list
     let b = for x, in xs { x };
 

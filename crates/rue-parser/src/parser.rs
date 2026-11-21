@@ -381,25 +381,20 @@ impl Parser {
 
     /// Returns the kind of the `n`th non-trivia token after the current position.
     pub(crate) fn lookahead(&self, n: usize) -> SyntaxKind {
-        let mut remaining = n;
-        let mut i = 0;
+        self.lookahead_token(n)
+            .map_or(SyntaxKind::Eof, |token| token.kind)
+    }
 
-        loop {
-            let kind = self.nth(i);
-
-            if kind == SyntaxKind::Eof {
-                return kind;
-            }
-
-            if !kind.is_trivia() {
-                if remaining == 0 {
-                    return kind;
-                }
-                remaining -= 1;
-            }
-
-            i += 1;
+    /// The `n`th non-trivia token after the current position, if there is one.
+    fn lookahead_token(&self, n: usize) -> Option<&ParseToken> {
+        if self.too_deep {
+            return None;
         }
+
+        self.parse_tokens[self.pos.min(self.parse_tokens.len())..]
+            .iter()
+            .filter(|token| !token.kind.is_trivia())
+            .nth(n)
     }
 
     /// Whether the current token is the first one on its line (ignoring trivia).
@@ -416,23 +411,37 @@ impl Parser {
     /// Returns the kind of the first non-trivia token after the delimited group (such as `{...}`)
     /// that starts at the current token, or the current token's kind if it doesn't start a group.
     pub(crate) fn lookahead_past_group(&self) -> SyntaxKind {
+        self.token_past_group()
+            .map_or(SyntaxKind::Eof, |token| token.kind)
+    }
+
+    /// Whether the first non-trivia token after the delimited group that starts at the current
+    /// token (see [`Self::lookahead_past_group`]) is an identifier with the given text, which is
+    /// a word that's only a keyword where it's expected (see [`Self::at_word`]).
+    pub(crate) fn word_past_group(&self, word: &str) -> bool {
+        self.token_past_group().is_some_and(|token| {
+            token.kind == SyntaxKind::Ident && &self.source.text[token.span.clone()] == word
+        })
+    }
+
+    /// The first non-trivia token after the delimited group that starts at the current token, if
+    /// the group is closed and there's a token after it.
+    fn token_past_group(&self) -> Option<&ParseToken> {
         let mut depth = 0usize;
         let mut n = 0;
 
         loop {
-            let kind = self.lookahead(n);
-
-            match kind {
+            match self.lookahead(n) {
                 T!['('] | T!['['] | T!['{'] => depth += 1,
                 T![')'] | T![']'] | T!['}'] => depth = depth.saturating_sub(1),
-                SyntaxKind::Eof => return kind,
+                SyntaxKind::Eof => return None,
                 _ => {}
             }
 
             n += 1;
 
             if depth == 0 {
-                return self.lookahead(n);
+                return self.lookahead_token(n);
             }
         }
     }
