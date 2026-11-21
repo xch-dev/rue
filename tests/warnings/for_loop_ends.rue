@@ -68,8 +68,82 @@ fn after_a_for_in_a_branch(xs: List<Int>) -> List<Int> {
     }
 }
 
+// A loop in the body of another one: the inner `for` ends with the outer fold's result, and the
+// outer fold's value is where the lists end
+fn nested_inline_values(
+    lists: List<List<Int>>,
+    groups: List<List<List<Int>>>,
+    k: Int,
+) -> List<Any> {
+    // Always evaluated
+    inline let outer_value = check(k);
+    inline let outermost_value = check(k + 1);
+
+    // Not always evaluated, since there may be no list to go through
+    inline let after_the_inner_for = check(k + 2);
+
+    [
+        for xs in lists fold rest: List<Int> = [outer_value] { [...for x in xs { x }, ...rest] },
+        for lists in groups fold outer: List<Int> = [outermost_value] {
+            for xs in lists fold rest: List<Int> = outer { [k, ...for x in xs { x + k }, ...rest] }
+        },
+        for xs in lists fold rest: List<Int> = nil {
+            [...for x in xs { x }, after_the_inner_for, ...rest]
+        },
+    ]
+}
+
+fn in_an_outer_fold_value(lists: List<List<Int>>) -> List<Int> {
+    for xs in lists fold rest: List<Int> = in_an_outer_fold_value(lists) {
+        [...for x in xs { x }, ...rest]
+    }
+}
+
+fn after_an_inner_for(lists: List<List<Int>>) -> List<Int> {
+    for xs in lists fold rest: List<Int> = nil {
+        [...for x in xs { x }, ...after_an_inner_for(lists), ...rest]
+    }
+}
+
+// The `for` can be reached again from what its loop ends with, through a function that calls
+// itself or an `inline fn` that's called in its own argument. That isn't the loop getting to the
+// end of its list, so a value that only the other branch refers to isn't always evaluated
+fn through_a_function_that_recurses(xs: List<Int>, k: Int) -> Int {
+    inline let checked = check(k);
+
+    if k > 5 {
+        for x in xs fold sum = through_a_function_that_recurses(xs, k - 1) { sum + x }
+    } else {
+        checked
+    }
+}
+
+inline fn joined(xs: List<Int>, rest: List<Int>) -> List<Int> {
+    [...for x in xs { x }, ...rest]
+}
+
+fn through_its_own_argument(xs: List<Int>, k: Int) -> List<Int> {
+    inline let checked = [check(k)];
+    joined(
+        xs,
+        joined(
+            xs,
+            if k > 5 {
+                checked
+            } else {
+                nil
+            },
+        ),
+    )
+}
+
 fn main(xs: List<Int>, k: Int) -> List<Any> {
     [
+        through_a_function_that_recurses(xs, k),
+        through_its_own_argument(xs, k),
+        nested_inline_values([xs], [[xs]], k),
+        in_an_outer_fold_value([xs]),
+        after_an_inner_for([xs]),
         inline_values(xs, k),
         after_a_for(xs),
         after_a_filtered_for(xs, k),

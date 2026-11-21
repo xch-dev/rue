@@ -107,6 +107,20 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             }
             // The right side of `&&` and `||` is only evaluated some of the time
             Hir::Binary(BinaryOp::And | BinaryOp::Or, left, _) => self.hir(*left),
+            // A loop calls itself with the rest of its list until there's nothing left of it,
+            // so its call of itself evaluates what the loop does at the end of its list, such as
+            // the items after a `for` that's spread in a list, or the value of a fold. That's
+            // only if every item gets to the call, which the body being followed decides: an
+            // item that a fold stops at doesn't. Only the loop's own call with the rest of its
+            // list counts, and not the call of the `for` expression, which can be reached again
+            // from inside the loop through a function that calls itself, or an `inline fn`
+            Hir::FunctionCall(call)
+                if self.db().is_loop_rest_call(hir)
+                    && resolve_function(self.db(), call.function)
+                        .is_some_and(|function| self.loops.contains(&function)) =>
+            {
+                true
+            }
             Hir::FunctionCall(call) => self.call(call.function, &call.args),
             // A guard whose check doesn't use its value only evaluates it for its effect
             Hir::Guard(guard) => {
@@ -357,15 +371,8 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
                     return self.follow(function) && self.hir(symbol.body);
                 }
 
-                // A loop calls itself with the rest of its list until there's nothing left of
-                // it, so its call of itself evaluates what the loop does at the end of its list,
-                // such as the items after a `for` that's spread in a list, or the value of a
-                // fold. That's only if every item gets to the call, which the body being
-                // followed decides: an item that a fold stops at doesn't
-                if self.loops.contains(&function) {
-                    return true;
-                }
-
+                // The loop's calls of itself in its body get to the end of its list (see
+                // `hir_inner`)
                 if !self.follow(function) {
                     return false;
                 }

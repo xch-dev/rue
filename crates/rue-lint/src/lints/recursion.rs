@@ -153,9 +153,11 @@ impl Search<'_> {
     fn loop_call(&mut self, call: HirId, callee: HirId) -> Option<HirId> {
         let (function, body) = self.loop_function(callee)?;
 
-        // The loop's call of itself gets to the end of its list, which is being searched
+        // The loop's call of itself with the rest of its list gets to the end of the list, which
+        // is being searched. Any other call of it is the `for` expression's, which nothing here
+        // gets to again
         if self.loops.contains(&function) {
-            return Some(call);
+            return self.db.is_loop_rest_call(call).then_some(call);
         }
 
         let Hir::If(condition, step, end, _) = *self.db.hir(body) else {

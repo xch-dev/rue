@@ -12,9 +12,15 @@ fn positive(value: Int) -> Int {
     value
 }
 
+// Fails by dividing by zero, which isn't the failure of an assertion in a release build either,
+// so the tests show which of the two comes first
 fn small(value: Int) -> Int {
-    assert value < 100;
     value
+        / if value < 100 {
+            1
+        } else {
+            0
+        }
 }
 
 // The items after the `for` are the end of its list
@@ -331,6 +337,106 @@ test fn evaluated_more_than_once() -> List<List<Int>> {
     let xs = runtime([1, 2]);
     let make = fn(last: Int) => [...for x in xs { x + last }, positive(last)];
     [make(1), make(2), ...for y in xs { make(y * 10) }]
+}
+
+// A value that may fail is evaluated where it's defined unless every path refers to it. What a
+// loop ends with is on every path through the loop, but the `for` can be reached again from
+// there, through a function that calls itself or an `inline fn` that's called in its own
+// argument, and that isn't the loop getting to the end of its list. So the checks below still
+// fail, though only the branch that isn't taken refers to them
+fn not_seven(x: Int) -> Int {
+    assert x != 7;
+    x
+}
+
+fn sum_down(xs: List<Int>, k: Int) -> Int {
+    let checked = not_seven(k);
+
+    if k > 5 {
+        for x in xs fold sum = sum_down(xs, k - 1) { sum + x }
+    } else {
+        checked
+    }
+}
+
+fn spread_down(xs: List<Int>, k: Int) -> List<Int> {
+    let checked = not_seven(k);
+
+    if k > 5 {
+        [...for x in xs { x }, ...spread_down(xs, k - 1)]
+    } else {
+        [checked]
+    }
+}
+
+test fn value_checked_before_a_fold_that_recurses() -> Int {
+    sum_down(runtime([1, 2]), 9)
+}
+
+test fn value_checked_before_a_spread_that_recurses() -> List<Int> {
+    spread_down(runtime([1, 2]), 9)
+}
+
+test fn value_before_a_spread_that_recurses() -> List<Int> {
+    spread_down(runtime([1, 2]), 6)
+}
+
+fn positive_list(x: Int) -> List<Int> {
+    assert x > 0;
+    [x]
+}
+
+inline fn joined(xs: List<Int>, rest: List<Int>) -> List<Int> {
+    [...for x in xs { x }, ...rest]
+}
+
+inline fn summed(xs: List<Int>, start: Int) -> Int {
+    for x in xs fold total = start { total + x }
+}
+
+fn joined_twice(xs: List<Int>, ys: List<Int>, k: Int) -> List<Int> {
+    let checked = positive_list(k);
+    joined(
+        xs,
+        joined(
+            ys,
+            if k > 5 {
+                checked
+            } else {
+                nil
+            },
+        ),
+    )
+}
+
+fn summed_twice(xs: List<Int>, ys: List<Int>, k: Int) -> Int {
+    let checked = positive(k);
+    summed(
+        xs,
+        summed(
+            ys,
+            if k > 5 {
+                checked
+            } else {
+                0
+            },
+        ),
+    )
+}
+
+test fn value_checked_before_an_inline_spread_in_its_own_argument() -> List<Int> {
+    joined_twice(runtime([1, 2]), runtime([3, 4]), 0)
+}
+
+test fn value_checked_before_an_inline_fold_in_its_own_argument() -> Int {
+    summed_twice(runtime([1, 2]), runtime([3, 4]), 0)
+}
+
+test fn value_before_an_inline_spread_in_its_own_argument() -> (List<Int>, Int) {
+    (
+        joined_twice(runtime([1, 2]), runtime([3, 4]), 6),
+        summed_twice(runtime([1, 2]), runtime([3, 4]), 6),
+    )
 }
 
 // The settlement payments puzzle's shape: each payment's coins in front of the rest
