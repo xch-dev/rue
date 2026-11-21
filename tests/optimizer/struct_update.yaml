@@ -617,3 +617,19 @@ tests:
   runtime_cost: 6357
   byte_cost: 2388000
   total_cost: 2394357
+- name: update_four_steps_into_call
+  program: (a (q 4 5 54) (c (a (i (> 2 ()) (q 4 2 (c 2 (c (c 2 (c (+ 2 (q . 1)) (+ 2 (q . 2)))) ()))) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 4 11 (r (f (r (r 2))))) (c (a 2 5) 1)) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 (c (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2)))) ()))) (q 8 (q . "assertion failed at struct_update.rue:613:5"))) 1) 1))
+  solution: (4)
+  output: (4 5 . 6)
+  runtime_cost: 3266
+  byte_cost: 1116000
+  total_cost: 1119266
+- name: rebuild_four_steps_into_call
+  program: (a (q 4 5 54) (c (a (i (> 2 ()) (q 4 2 (c 2 (c (c 2 (c (+ 2 (q . 1)) (+ 2 (q . 2)))) ()))) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 4 11 (c (f (r (f (r (r 2))))) (r (r (f (r (r 2))))))) (c (a 2 5) 1)) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 (c (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2)))) ()))) (q 8 (q . "assertion failed at struct_update.rue:613:5"))) 1) 1))
+  solution: (4)
+  output: (4 5 . 6)
+  runtime_cost: 3266
+  byte_cost: 1116000
+  total_cost: 1119266

@@ -48,6 +48,22 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: unnecessary_in_spread
+  program: (f (f (r (a (i (> 2 ()) (q 4 2 (c (c 2 ()) ())) (q 8)) 1))))
+  debug_program: (a (q 5 (a (q 5 (r 2)) (c (a 2 5) 1))) (c (q 2 (i (> 1 ()) (q 4 1 (c (c 1 ()) ())) (q 8 (q . "assertion failed at unnecessary_cast.rue:45:5"))) 1) 1))
+  solution: (4)
+  output: "4"
+  runtime_cost: 1232
+  byte_cost: 684000
+  total_cost: 685232
+- name: unnecessary_around_spread
+  program: (f (f (r (a (i (> 2 ()) (q 4 2 (c (c 2 ()) ())) (q 8)) 1))))
+  debug_program: (a (q 5 (a (q 5 (r 2)) (c (a 2 5) 1))) (c (q 2 (i (> 1 ()) (q 4 1 (c (c 1 ()) ())) (q 8 (q . "assertion failed at unnecessary_cast.rue:45:5"))) 1) 1))
+  solution: (4)
+  output: "4"
+  runtime_cost: 1232
+  byte_cost: 684000
+  total_cost: 685232
 diagnostics:
 - |-
   Unnecessary cast from `42` to `42`, since they are compatible with each other at unnecessary_cast.rue:2:5
@@ -61,3 +77,12 @@ diagnostics:
 - |-
   Unnecessary cast from `Alias` to `A`, since they are compatible with each other at unnecessary_cast.rue:26:5
     help: Remove the cast
+- |-
+  Unnecessary cast from `Outer` to `Outer`, since they are compatible with each other at unnecessary_cast.rue:32:12
+    help: Remove the cast
+- |-
+  Unnecessary cast from `A` to `A`, since they are compatible with each other at unnecessary_cast.rue:36:12
+    help: Remove the cast
+- |-
+  Unnecessary parentheses at unnecessary_cast.rue:36:12
+    help: Remove the parentheses

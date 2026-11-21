@@ -26,6 +26,26 @@ test fn alias_to_struct() -> Int {
     Alias {} as A.value
 }
 
+// A cast in the value that a struct update copies from is checked like any other, though the
+// value that the field is read from is bound
+test fn unnecessary_in_spread(n: Int) -> Int {
+    A { ...(outer(n) as Outer).inner }.value
+}
+
+test fn unnecessary_around_spread(n: Int) -> Int {
+    A { ...(outer(n).inner as A) }.value
+}
+
+struct Outer {
+    count: Int,
+    inner: A,
+}
+
+fn outer(n: Int) -> Outer {
+    assert n > 0;
+    Outer { count: n, inner: A { value: n } }
+}
+
 struct A {
     value: Int = 42,
 }
