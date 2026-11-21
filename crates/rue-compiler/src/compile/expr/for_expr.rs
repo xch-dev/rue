@@ -73,7 +73,10 @@ pub fn compile_for_expr(
 
     // A list with no items, such as nil, has no item to give a type
     let item_types = list_item_types(ctx, list.ty);
-    let item_type = if item_types.is_empty() {
+    let item_type = if ctx.is_unresolved(list.ty) {
+        // A list that isn't there, or that couldn't be compiled, doesn't say what the item is
+        list.ty
+    } else if item_types.is_empty() {
         types.never
     } else {
         union_of(ctx, item_types)
@@ -106,6 +109,9 @@ pub fn compile_for_expr(
         };
 
         let ty = annotation.unwrap_or_else(|| match expected_type {
+            // A value that isn't there, or that couldn't be compiled, doesn't say what the
+            // result is
+            _ if ctx.is_unresolved(init.ty) => init.ty,
             // Not a type that's only a hint, or that still has the generics of a call being
             // inferred, which the fold can't be: a parameter's type is expected of its argument
             // as it is while no other argument has given its generics a type

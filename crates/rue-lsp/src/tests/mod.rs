@@ -2,6 +2,7 @@ mod ambiguity;
 mod background;
 mod completion;
 mod diagnostics;
+mod for_expressions;
 mod formatting;
 mod hover;
 mod inlay_hints;

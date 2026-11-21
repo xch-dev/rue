@@ -7,8 +7,8 @@ use std::ops::Range;
 
 use rowan::{TextRange, TextSize, WalkEvent};
 use rue_ast::{
-    AstBinding, AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt, AstMatchArm, AstNode,
-    AstPathSegment,
+    AstBinding, AstExpr, AstForExpr, AstForFold, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt,
+    AstMatchArm, AstNode, AstPathSegment,
 };
 use rue_compiler::{Compiler, SyntaxCall, SyntaxItemKind};
 use rue_hir::{Symbol, SymbolId};
@@ -139,6 +139,27 @@ impl Cache<Compiler> {
                     && stmt.ty().is_none()
                     && !stmt.value().is_some_and(|value| is_obvious(&value))
                     && let Some(binding) = stmt.binding()
+                {
+                    binding_types(&binding, &declarations, &mut pending);
+                }
+            } else if let Some(expr) = AstForExpr::cast(node.clone()) {
+                // The item of a `for` has the type of the list's items, which isn't written
+                // anywhere, like the type of a lambda's parameter that's left out
+                if options.types
+                    && let Some(binding) = expr.binding()
+                {
+                    binding_types(&binding, &declarations, &mut pending);
+                }
+            } else if let Some(fold) = AstForFold::cast(node.clone()) {
+                // The result of a fold is the type of its value, as a `let` binding is, except
+                // that a value of nil doesn't say what it is, since the type is then what the
+                // `for` is expected to be
+                if options.types
+                    && fold.ty().is_none()
+                    && !fold
+                        .init()
+                        .is_some_and(|value| is_obvious(&value) && value.syntax().text() != "nil")
+                    && let Some(binding) = fold.binding()
                 {
                     binding_types(&binding, &declarations, &mut pending);
                 }
