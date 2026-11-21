@@ -2,7 +2,7 @@
 
 use std::{ops::Range, sync::Arc};
 
-use rowan::{NodeOrToken, TextRange};
+use rowan::{NodeOrToken, TextRange, TextSize};
 use rue_ast::{
     AstBinding, AstExpr, AstGenericArguments, AstGenericParameters, AstGroupExpr, AstIfExpr,
     AstMatchArm, AstNode, AstPrefixExpr, AstStmtOrExpr, AstStructFieldBinding,
@@ -127,15 +127,32 @@ fn check_match_arm_as(cx: &mut LintContext<'_>, source: &Source, arm: &AstMatchA
         return;
     };
 
-    // The `as` and the whitespace after it, up to the binding
-    let range = TextRange::new(
+    // The `as` and the whitespace after it, up to the binding. A struct binding without `as`
+    // starts on the line that the type ends on, so a line break before the `as` goes too.
+    let previous = std::iter::successors(as_token.prev_token(), rowan::SyntaxToken::prev_token)
+        .find(|token| !token.kind().is_trivia());
+    let before = previous.map_or(as_token.text_range().start(), |token| {
+        token.text_range().end()
+    });
+    let text_between =
+        |start: TextSize, end: TextSize| &source.text[usize::from(start)..usize::from(end)];
+
+    let leading = text_between(before, as_token.text_range().start());
+    let trailing = text_between(
         as_token.text_range().start(),
         binding.syntax().text_range().start(),
     );
+    let joins_lines = leading.contains('\n');
 
-    // A comment between them would be removed with the `as`
-    let text = &source.text[usize::from(range.start())..usize::from(range.end())];
-    let has_comment = comment_count(text) > 0;
+    // A comment would be removed with the `as`, or would be left between the type and a binding
+    // that has to be on its line
+    let has_comment = comment_count(trailing) > 0 || (joins_lines && comment_count(leading) > 0);
+
+    let (start, replacement) = if joins_lines {
+        (before, " ")
+    } else {
+        (as_token.text_range().start(), "")
+    };
 
     if let Some(diagnostic) = cx.report(
         Lint::RedundantMatchArmAs,
@@ -145,8 +162,11 @@ fn check_match_arm_as(cx: &mut LintContext<'_>, source: &Source, arm: &AstMatchA
     {
         diagnostic.suggestions.push(Suggestion::replace(
             "Remove the `as`",
-            srcloc(source, range),
-            "",
+            srcloc(
+                source,
+                TextRange::new(start, binding.syntax().text_range().start()),
+            ),
+            replacement,
             Applicability::MachineApplicable,
         ));
     }

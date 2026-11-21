@@ -9,3 +9,4 @@ diagnostics:
 - |-
   Redundant `as`, since a struct binding can follow the type of a match arm directly at redundant_match_arm_as.rue:36:15
     help: Remove the `as`
+- Redundant `as`, since a struct binding can follow the type of a match arm directly at redundant_match_arm_as.rue:46:9

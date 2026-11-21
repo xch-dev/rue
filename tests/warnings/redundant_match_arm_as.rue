@@ -37,6 +37,17 @@ export fn comments(value: Point | nil, other: Point | nil) -> Int {
         }
 }
 
+// A struct binding without `as` has to start on the line of its type, so there's no fix when a
+// comment keeps the `as` on the next line. Without the comment the fix joins the lines, which is
+// tested in `lint_tests.rs`, since the formatter joins them here.
+export fn lines(value: Point | nil) -> Int {
+    match value {
+        Point // the point
+        as { y } => y,
+        nil => 0,
+    }
+}
+
 #[allow(redundant_match_arm_as)]
 export fn allowed(value: Point | nil) -> Int {
     match value {

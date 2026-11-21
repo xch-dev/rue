@@ -1680,6 +1680,16 @@ fn main(point: Point | nil) -> Int {
         nil => 0,
     }
 }
+
+fn lines(point: Point | nil) -> Int {
+    match point {
+        Point
+            as { x } => x,
+        nil
+            as
+            {} => 0,
+    }
+}
 ";
 
     let fixed = fix(source);
@@ -1698,12 +1708,19 @@ fn main(point: Point | nil) -> Int {
         nil => 0,
     }
 }
+
+fn lines(point: Point | nil) -> Int {
+    match point {
+        Point { x } => x,
+        nil {} => 0,
+    }
+}
 "
     );
 
     let (reports, has_errors) = reports(&fixed, |_| {});
 
-    assert_eq!(reports, Vec::<String>::new());
+    assert_eq!(reports, vec!["Warning 13: Unused function `lines`"]);
     assert!(!has_errors);
 }
 
