@@ -17,7 +17,7 @@ use std::collections::HashSet;
 
 use crate::{
     BinaryOp, Database, DependencyGraph, FieldKind, FunctionKind, Hir, HirId, Statement, Symbol,
-    SymbolId, UnaryOp,
+    SymbolId, UnaryOp, analysis::resolve_function,
 };
 
 /// How many operators and calls a value can take to evaluate and still be evaluated again for
@@ -123,8 +123,7 @@ impl RepeatCost<'_> {
             Hir::FunctionCall(call) => {
                 self.take()
                     && self.all(call.args.iter().copied())
-                    && self
-                        .callee(call.function)
+                    && resolve_function(self.db, call.function)
                         .is_some_and(|function| self.body(function))
             }
             Hir::Unary(op, value) => {
@@ -243,28 +242,6 @@ impl RepeatCost<'_> {
         }
 
         self.follow(symbol, value)
-    }
-
-    /// The function that's called, if it's known: one that's called by name, or a lambda,
-    /// through any bindings that it's the value of.
-    fn callee(&self, mut hir: HirId) -> Option<SymbolId> {
-        let mut seen = HashSet::new();
-
-        loop {
-            match self.db.hir(self.db.without_casts(hir)) {
-                Hir::Lambda(lambda) => return Some(*lambda),
-                Hir::Reference(symbol) if seen.insert(*symbol) => match self.db.symbol(*symbol) {
-                    Symbol::Function(_) => return Some(*symbol),
-                    Symbol::Binding(binding) => hir = binding.value.hir,
-                    Symbol::Constant(constant) => hir = constant.value.hir,
-                    Symbol::Parameter(_)
-                    | Symbol::Builtin(_)
-                    | Symbol::Module(_)
-                    | Symbol::Unresolved => return None,
-                },
-                _ => return None,
-            }
-        }
     }
 
     /// Counts the body of a function that's called. Its parameters are bound to the arguments,

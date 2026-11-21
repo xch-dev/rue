@@ -2,7 +2,8 @@
 // that can be evaluated more than once for each time the value would be if it were bound: in a
 // lambda that's called for each item of a list, or in a function that calls itself. Then it's
 // bound, and evaluated once, unless evaluating it again is cheaper than the bytes that binding it
-// takes. Each list goes through `runtime`, which the compiler can't fold, so the functions are run.
+// takes. The lists are constants, but `total` calls itself, so it's still called when the program
+// is run, and so are the functions that call their lambda for each item.
 
 fn runtime<T>(value: T) -> T {
     assert value is (Any, Any) || value is nil;
@@ -53,6 +54,15 @@ fn apply_twice(f: fn(x: Int) -> Int, x: Int) -> Int {
 
 fn seconds(days: Int) -> Int {
     days * 86400
+}
+
+fn scale(a: Int) -> Int {
+    ((a + 2) * (a + 4) + (a + 6) * (a + 8)) * ((a + 10) * (a + 12) + 13)
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
 }
 
 // The lambda is called for each item, so the total is found once, before the loop. The lambda
@@ -194,29 +204,31 @@ test fn captured_large_value() -> List<Int> {
     map(xs, fn(y) => y + k)
 }
 
-// A value that's compiled to a constant is folded with what uses it, however it's written
+test fn captured_small_constant() -> List<Int> {
+    let xs = runtime([1, 2, 3, 4]);
+    let k = 100 * 2;
+    map(xs, fn(y) => y + k)
+}
+
+test fn captured_small_call() -> List<Int> {
+    let xs = runtime([1, 2, 3, 4]);
+    let days = 2 * 7;
+    let k = seconds(days);
+    map(xs, fn(y) => y + k)
+}
+
+// A value that takes more than a few operators, but is compiled to a constant, is folded with
+// what uses it
 test fn captured_large_value_that_folds() -> List<Int> {
     let xs = runtime([1, 2, 3, 4]);
     let k = ((1 + 2) * (3 + 4) + (5 + 6) * (7 + 8)) * ((9 + 10) * (11 + 12) + 13);
     map(xs, fn(y) => y + k)
 }
 
-test fn captured_value_that_folds() -> List<Int> {
+// The call is only a constant once the function is inlined, which is decided by measuring
+test fn captured_large_call_that_folds() -> List<Int> {
     let xs = runtime([1, 2, 3, 4]);
-    let k = 100 * 2;
-    map(xs, fn(y) => y + k)
-}
-
-test fn captured_call_that_folds() -> List<Int> {
-    let xs = runtime([1, 2, 3, 4]);
-    let k = seconds(14);
-    map(xs, fn(y) => y + k)
-}
-
-test fn captured_value_that_folds_with_another() -> List<Int> {
-    let xs = runtime([1, 2, 3, 4]);
-    let days = 2 * 7;
-    let k = seconds(days);
+    let k = scale(3);
     map(xs, fn(y) => y + k)
 }
 
@@ -229,6 +241,10 @@ const ONCE: Int = total(LIST);
 const PRODUCT: Int = 100 * 2;
 const FORTNIGHT: Int = seconds(14);
 const LARGE: Int = ((1 + 2) * (3 + 4) + (5 + 6) * (7 + 8)) * ((9 + 10) * (11 + 12) + 13);
+const SCALED: Int = scale(3);
+const RESCALED: Int = scale(4);
+const CHECKED: Int = positive(total(LIST) - 36);
+const OFFSET: Int = CHECKED + total(LIST);
 
 fn add_total(xs: List<Int>) -> List<Int> {
     if xs is nil {
@@ -270,4 +286,32 @@ test fn constant_in_a_function_called_once() -> Int {
 
 test fn constant_that_folds_in_a_recursive_function() -> List<Int> {
     add_folded(runtime([1, 2, 3, 4]))
+}
+
+fn add_scaled(xs: List<Int>) -> List<Int> {
+    if xs is nil {
+        nil
+    } else {
+        [xs.first + SCALED, ...add_scaled(xs.rest)]
+    }
+}
+
+// Two constants that are only constants once the function they call is inlined, one in a
+// function that calls itself and one in a lambda
+test fn constants_that_fold_once_a_function_is_inlined() -> List<Int> {
+    map(add_scaled(runtime([1, 2, 3, 4])), fn(y) => y + RESCALED)
+}
+
+fn add_offset(xs: List<Int>) -> List<Int> {
+    if xs is nil {
+        nil
+    } else {
+        [xs.first + OFFSET, ...add_offset(xs.rest)]
+    }
+}
+
+// A constant that's bound is evaluated when the program starts, so a constant that its value
+// refers to is always evaluated there too. This one fails, although the list is empty
+test fn constant_of_a_bound_constant_fails_at_the_start() -> List<Int> {
+    add_offset(runtime([] as List<Int>))
 }

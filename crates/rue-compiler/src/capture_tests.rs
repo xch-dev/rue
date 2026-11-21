@@ -1,7 +1,9 @@
 //! Tests for when a value that's only referenced once is bound rather than substituted, since the
 //! reference can be evaluated more than once, and for the order that inline values are captured in.
 
-use crate::test_utils::compile;
+use rue_options::CompilerOptions;
+
+use crate::test_utils::{compile, compile_with};
 
 const HELPERS: &str = "
 fn total(xs: List<Int>) -> Int {
@@ -85,48 +87,43 @@ fn cheap_value_is_evaluated_again() {
         "const K: Int = (fn(y: Int) => y + 1)(2);",
         "const K: Int = { let add = fn(y: Int) => y + 1; add(2) };",
         "const ONE: Int = 2 - 1;\nconst K: Int = ONE + 1;",
-        "const K: Bytes32 = sha256(0x0102 + 0x03);",
+        "const K: Int = sha256(0x0102 + 0x03) as Int;",
         // A value that's bound costs nothing to read
         "const BOUND: Int = total([1, 2, 3]);\nconst K: Int = BOUND + BOUND;",
+        // As many operators as are worth evaluating again
+        "const K: Int = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9;",
     ] {
-        let items = items.replace(
-            "Bytes32 = sha256(0x0102 + 0x03)",
-            "Int = sha256(0x0102 + 0x03) as Int",
-        );
-        assert!(!is_value_repeated(&items), "{items}");
+        assert!(!is_value_repeated(items), "{items}");
     }
 }
 
 #[test]
 fn value_that_can_take_long_is_bound() {
+    let key = "0x0000000000000000000000000000000000000000000000000000000000000001";
+
     for items in [
         // A function that calls itself, directly or through another one
-        "const K: Int = total([1, 2, 3]);",
-        "fn even(n: Int) -> Int { if n > 0 { odd(n - 1) } else { 1 } }\nfn odd(n: Int) -> Int { if n > 0 { even(n - 1) } else { 0 } }\nconst K: Int = even(4);",
+        "const K: Int = total([1, 2, 3]);".to_string(),
+        "fn even(n: Int) -> Int { if n > 0 { odd(n - 1) } else { 1 } }\nfn odd(n: Int) -> Int { if n > 0 { even(n - 1) } else { 0 } }\nconst K: Int = even(4);".to_string(),
         // Through a function that's called, and through a value that's substituted
-        "fn sum() -> Int { total([1, 2, 3]) }\nconst K: Int = sum() + 1;",
-        "const SUM: Int = total([1, 2, 3]);\nconst K: Int = SUM + 1;",
-        "inline const SUM: Int = total([1, 2, 3]);\nconst K: Int = SUM + 1;",
+        "fn sum() -> Int { total([1, 2, 3]) }\nconst K: Int = sum() + 1;".to_string(),
+        "const SUM: Int = total([1, 2, 3]);\nconst K: Int = SUM + 1;".to_string(),
+        "inline const SUM: Int = total([1, 2, 3]);\nconst K: Int = SUM + 1;".to_string(),
         // A loop
-        "const K: Int = for x in [1, 2, 3] fold sum = 0 { sum + x };",
+        "const K: Int = for x in [1, 2, 3] fold sum = 0 { sum + x };".to_string(),
         // A function value that isn't known where it's called
-        "const K: Int = apply(fn(y) => y + 1, 2);",
+        "const K: Int = apply(fn(y) => y + 1, 2);".to_string(),
         // A type check
-        "fn checked(value: Any) -> Int { if value is Int { value } else { 0 } }\nconst K: Int = checked(5);",
-        // More operators than are worth evaluating again
-        "fn mix(a: Int, b: Int) -> Int { (a + b) * (a - b) + a * b - (a + 1) * (b + 2) }\nconst K: Int = mix(mix(1, 2), 3);",
-        // An operator that's expensive on its own
-        "const K: PublicKey = pubkey_for_exp(0x0000000000000000000000000000000000000000000000000000000000000001);",
+        "fn checked(value: Any) -> Int { if value is Int { value } else { 0 } }\nconst K: Int = checked(5);".to_string(),
+        // One more operator than is worth evaluating again
+        "const K: Int = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;".to_string(),
+        "fn mix(a: Int, b: Int) -> Int { (a + b) * (a - b) + a * b - (a + 1) * (b + 2) }\nconst K: Int = mix(mix(1, 2), 3);".to_string(),
+        // Operators that are expensive on their own
+        format!("const KEY: PublicKey = pubkey_for_exp({key});\nconst K: Int = (KEY as Bytes) as Int;"),
+        format!("const KEY: PublicKey = pubkey_for_exp({key});\nconst SUM: PublicKey = KEY + KEY;\nconst K: Int = (SUM as Bytes) as Int;"),
+        format!("const KEY: PublicKey = pubkey_for_exp({key});\nconst PRODUCT: PublicKey = KEY * 2;\nconst K: Int = (PRODUCT as Bytes) as Int;"),
+        format!("const KEY: PublicKey = pubkey_for_exp({key});\nconst NEGATED: PublicKey = -KEY;\nconst K: Int = (NEGATED as Bytes) as Int;"),
     ] {
-        let items = items.replace(
-            "const K: PublicKey = pubkey_for_exp(",
-            "const KEY: PublicKey = pubkey_for_exp(",
-        );
-        let items = if items.contains("const KEY") {
-            format!("{items}\nconst K: Int = (KEY as Bytes) as Int;")
-        } else {
-            items
-        };
         assert!(is_value_repeated(&items), "{items}");
     }
 }
@@ -182,6 +179,7 @@ fn constant_in_a_lambda_is_repeated_unless_the_lambda_is_called_once() {
     let passed = "fn main(x: Int) -> Int { apply(fn(y) => y + K, x) }";
     let passed_through = "fn main(x: Int) -> Int { apply_through(fn(y) => y + K, x) }";
     let bound_and_passed = "fn main(x: Int) -> Int { let g = fn(y: Int) => y + K; apply(g, x) }";
+    let passed_to_a_lambda = "fn main(x: Int) -> Int { let call = fn(f: fn(y: Int) -> Int, y: Int) => f(y); call(fn(y) => y + K, x) }";
     let before_a_spread = "
 fn call(f: fn(x: Int) -> Int, ...xs: List<Int>) -> Int { if xs is nil { 0 } else { f(xs.first) } }
 fn main(xs: List<Int>) -> Int { call(fn(y) => y + K, ...xs) }";
@@ -194,6 +192,7 @@ fn main(xs: List<Int>) -> Int { call(fn(y) => y + K, ...xs) }";
         passed,
         passed_through,
         bound_and_passed,
+        passed_to_a_lambda,
         before_a_spread,
     ] {
         assert!(!is_repeated(source), "{source}");
@@ -298,12 +297,77 @@ fn value_that_folds_is_substituted() {
     );
     assert_eq!(program(&constant), written);
 
+    // A call that's only a constant once the function is inlined, which is decided by measuring
+    let scale = "fn scale(a: Int) -> Int { ((a + 2) * (a + 4) + (a + 6) * (a + 8)) * ((a + 10) * (a + 12) + 13) }";
+    let call = format!(
+        "{scale}\nfn main(xs: List<Int>) -> List<Int> {{ let k = scale(3); map(xs, fn(x) => x + k) }}"
+    );
+    let written = program("fn main(xs: List<Int>) -> List<Int> { map(xs, fn(x) => x + 27872) }");
+    assert_eq!(program(&call), written);
+
+    // Two of them, which are decided together
+    let add = "fn add(xs: List<Int>) -> List<Int> { if xs is nil { nil } else { [xs.first + FIRST, ...add(xs.rest)] } }";
+    let calls = format!(
+        "{scale}\nconst FIRST: Int = scale(3);\nconst SECOND: Int = scale(4);\n{add}
+fn main(xs: List<Int>) -> List<Int> {{ map(add(xs), fn(x) => x + SECOND) }}"
+    );
+    let written = program(&format!(
+        "{}\nfn main(xs: List<Int>) -> List<Int> {{ map(add(xs), fn(x) => x + 39816) }}",
+        add.replace("FIRST", "27872")
+    ));
+    assert_eq!(program(&calls), written);
+
     // In a lambda that's called twice, which is folded with what's added to it
     let twice = format!(
         "const LARGE: Int = {large};\nfn main(x: Int) -> Int {{ apply_twice(fn(y) => y + LARGE, x) }}"
     );
     let written = program("fn main(x: Int) -> Int { apply_twice(fn(y) => y + 83700, x) }");
     assert_eq!(program(&twice), written);
+}
+
+/// A function that reaches a loop or the entrypoint through a call captures what they capture,
+/// but not the values of the call's own function: `k` is defined after the lambda that calls
+/// `walk` again, and belongs to that call.
+#[test]
+fn function_that_calls_its_way_to_a_loop_or_the_entrypoint_compiles() {
+    let through_a_lambda = "
+fn walk(xs: List<Int>, n: Int) -> Int {
+    if n > 3 { return n; }
+    let g = fn(y: Int) => walk(xs, y + 4);
+    let k = g(n) + g(n + 1);
+    total(for x in xs { x + k })
+}
+fn main(xs: List<Int>, n: Int) -> Int { walk(xs, n) + walk(xs, n + 1) }";
+
+    let through_the_entrypoint = "
+const LIST: List<Int> = [1, 2, 3];
+const SUM: Int = total(LIST);
+fn helper(n: Int) -> Int { if n > 10 { n } else { main(n + 5) } }
+fn main(n: Int) -> Int { helper(n) + SUM + SUM }";
+
+    let lambda_through_the_entrypoint = "
+const LIST: List<Int> = [1, 2, 3];
+const SUM: Int = total(LIST);
+fn main(n: Int) -> Int {
+    let again = fn(m: Int) => if m > 10 { m } else { main(m + 5) };
+    again(n) + again(n + 1) + SUM + SUM
+}";
+
+    for source in [
+        through_a_lambda,
+        through_the_entrypoint,
+        lambda_through_the_entrypoint,
+    ] {
+        assert!(!program(source).is_empty(), "{source}");
+
+        let mut debug = compile_with(&format!("{HELPERS}\n{K}\n{source}"), |options| {
+            *options = CompilerOptions {
+                std: false,
+                ..CompilerOptions::debug()
+            };
+        });
+        assert!(!debug.main_program().is_empty(), "{source}");
+    }
 }
 
 /// A lambda that's called for each item only captures the value that's bound before it, rather

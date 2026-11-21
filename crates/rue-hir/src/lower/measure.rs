@@ -6,12 +6,9 @@
 //! lowering something that behave the same, each is lowered, optimized and generated, and the
 //! smaller one is kept, rather than estimating which one it will be.
 
-use std::collections::HashMap;
-
-use indexmap::IndexSet;
 use rue_lir::{ClvmTarget, CodegenOptions, Lir, LirId, compiled_size, optimize};
 
-use crate::{Environment, HirId, Symbol, SymbolId};
+use crate::{Environment, HirId};
 
 use super::{Lowerer, LoweringDebugInfo, TooDeep};
 
@@ -80,19 +77,17 @@ impl Lowerer<'_, '_, '_> {
         trial.lir
     }
 
-    /// Whether the value of the binding or constant is compiled to a constant, which is the same
-    /// wherever it's evaluated, and can't fail. That's found by lowering and optimizing it, rather
-    /// than guessing what the optimizer folds, and what's lowered is discarded.
+    /// Whether the value is compiled to a constant, which is the same wherever it's evaluated,
+    /// and can't fail. That's found by lowering and optimizing it, rather than guessing what the
+    /// optimizer folds, and what's lowered is discarded.
     ///
-    /// The value is lowered the way the entrypoint is: with the functions and constants of the
-    /// program that it depends on bound around it, so that a call with constant arguments is
-    /// folded as it is in the program. It isn't a constant if lowering it reads anything else
-    /// from the environment, such as a parameter, which ends the lowering there.
-    ///
-    /// A value that's inside another one being checked isn't checked itself, so that values
-    /// nested in each other aren't lowered again at every level.
-    pub(super) fn folds_to_constant(&mut self, symbol: SymbolId, value: HirId) -> bool {
-        if !self.options.optimize_lir || self.missing_paths.is_some() {
+    /// The value is lowered with nothing in the environment. It isn't a constant if lowering it
+    /// reads anything from there, such as a parameter, a value that's bound, or a function that
+    /// isn't inlined, which ends the lowering.
+    pub(super) fn folds_to_constant(&mut self, value: HirId) -> bool {
+        debug_assert!(self.missing_paths.is_none());
+
+        if !self.options.optimize_lir {
             return false;
         }
 
@@ -101,7 +96,7 @@ impl Lowerer<'_, '_, '_> {
         let was_too_deep = self.too_deep.is_some();
 
         self.missing_paths = Some(false);
-        let lir = self.lower_closed_value(symbol, value);
+        let lir = self.lower_hir(&Environment::Nil, value);
         let missing = self.missing_paths.take() == Some(true);
 
         self.debug = debug;
@@ -118,40 +113,6 @@ impl Lowerer<'_, '_, '_> {
 
         let lir = optimize(self.arena, lir, target);
         self.is_constant(lir)
-    }
-
-    /// Lowers the value of the symbol with nothing in the environment but the functions and
-    /// constants of the program that it depends on, which are bound around it.
-    fn lower_closed_value(&mut self, symbol: SymbolId, value: HirId) -> LirId {
-        let globals: IndexSet<SymbolId> = self
-            .dependencies(symbol, false)
-            .iter()
-            .copied()
-            .filter(|&dependency| {
-                dependency != self.main
-                    && self.graph.owner(dependency).is_none()
-                    && matches!(
-                        self.db.symbol(dependency),
-                        Symbol::Function(_) | Symbol::Constant(_)
-                    )
-            })
-            .collect();
-
-        let groups = self.group_symbols(globals, false, true, false);
-        let mut env = Environment::Nil;
-
-        for group in &groups {
-            env = Self::apply_group(env, group, true);
-        }
-
-        let lir = self.lower_hir(&env, value);
-
-        // The functions aren't lowered for a value that isn't a constant either way
-        if self.missing_paths == Some(true) {
-            return lir;
-        }
-
-        self.bind_groups(&Environment::Nil, &groups, false, &HashMap::new(), lir)
     }
 
     /// Whether the LIR is a value that's the same wherever it's evaluated.

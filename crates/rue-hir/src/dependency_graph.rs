@@ -9,7 +9,7 @@ use rue_options::CompilerOptions;
 use crate::{
     BindingSymbol, Block, ConstantSymbol, Database, FailureAnalysis, FieldAccess, FieldKind,
     FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
-    analysis::{Callee, Effect, resolve_callee},
+    analysis::{Callee, Effect, resolve_callee, resolve_function},
     lower::MAX_REPEATED_STATIC_SIZE,
     repeat_cost::is_cheap_to_repeat,
 };
@@ -55,7 +55,7 @@ pub struct DependencyGraph {
     sites: HashMap<SymbolId, Site>,
 
     // Keeps track of how the value of an expression is used, if it's the whole value of a binding
-    // or constant, or an argument of a call to a function that's called by name
+    // or constant, or an argument of a call to a function that's known where it's called
     usages: HashMap<HirId, Usage>,
 
     // Keeps track of the bindings and constants whose only reference can be evaluated more than
@@ -159,7 +159,7 @@ enum Usage {
     Called,
     /// It's the whole value of the binding or constant.
     Bound(SymbolId),
-    /// It's the argument for the parameter, in a call to a function by name.
+    /// It's the argument for the parameter, in a call to a function that's known there.
     Argument(SymbolId),
     /// Anything else, after which it could be called any number of times.
     Other,
@@ -433,15 +433,6 @@ impl DependencyGraph {
             return false;
         }
 
-        let inline = match db.symbol(place) {
-            Symbol::Function(_) => false,
-            Symbol::Binding(binding) => binding.inline,
-            Symbol::Constant(constant) => constant.inline,
-            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
-                return false;
-            }
-        };
-
         // A chain of inline constants, or of calls, is as deep as it's long
         rue_types::grow_stack(|| match db.symbol(place) {
             Symbol::Function(_) => {
@@ -452,17 +443,22 @@ impl DependencyGraph {
                             .is_some_and(|call| self.is_evaluated_once(db, call, scope, visiting))
                     })
             }
-            _ if inline => {
+            Symbol::Binding(BindingSymbol { inline: true, .. })
+            | Symbol::Constant(ConstantSymbol { inline: true, .. }) => {
                 self.references(place) == 1
                     && self
                         .sites
                         .get(&place)
                         .is_some_and(|site| self.is_evaluated_once(db, site.place, scope, visiting))
             }
-            _ => match self.owners.get(&place) {
+            Symbol::Binding(_) | Symbol::Constant(_) => match self.owners.get(&place) {
                 Some(&owner) => self.is_evaluated_once(db, owner, scope, visiting),
-                None => scope.is_none() && matches!(db.symbol(place), Symbol::Constant(_)),
+                // A constant of the program
+                None => scope.is_none(),
             },
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
+                false
+            }
         })
     }
 
@@ -470,9 +466,9 @@ impl DependencyGraph {
     /// called there, given the only reference to it (or the lambda expression, for a lambda).
     ///
     /// The function's value can go through bindings that are only referenced once, as in
-    /// `let g = fn(x) => x + k; g(1)`, and through the parameters of functions it's passed to by
-    /// name, as long as each parameter is only referenced once, and the call it ends up in is
-    /// evaluated once each time that function is. Anything else could call it any number of
+    /// `let g = fn(x) => x + k; g(1)`, and through the parameters of the functions it's passed
+    /// to, if they're known where they're called, as long as each parameter is only referenced
+    /// once, and the call it ends up in is evaluated once each time that function is. Anything else could call it any number of
     /// times, such as `map(xs, g)`, whose parameter is called and passed on.
     fn call_site(
         &self,
@@ -1580,8 +1576,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 
             visit_hir(db, graph, call.function, true);
 
-            // An argument that's passed for a parameter of its own is that parameter's value
-            if let Some(symbol) = function {
+            // An argument that's passed for a parameter of its own is that parameter's value,
+            // if the function that's called is known, which a lambda that's bound to a name is
+            if let Some(callee) = resolve_function(db, call.function)
+                && let Symbol::Function(symbol) = db.symbol(callee)
+            {
                 let spread = usize::from(!call.nil_terminated);
                 let passed = call.args.len().saturating_sub(spread);
 

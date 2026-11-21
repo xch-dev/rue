@@ -121,9 +121,11 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// find out whether it's a constant (see [`Self::folds_to_constant`]), or `None` otherwise.
     missing_paths: Option<bool>,
     /// The bindings and constants that are substituted although their only reference can be
-    /// evaluated more than once, since they're compiled to constants, or `None` until that's
-    /// been decided (see [`Self::decide_repeats`]).
-    folded_repeats: Option<HashSet<SymbolId>>,
+    /// evaluated more than once, since they're compiled to constants (see
+    /// [`Self::decide_repeats`]).
+    folded_repeats: HashSet<SymbolId>,
+    /// Whether that's been decided for the functions that are inlined now.
+    repeats_decided: bool,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
 }
@@ -212,7 +214,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
             missing_paths: None,
-            folded_repeats: None,
+            folded_repeats: HashSet::new(),
+            repeats_decided: false,
             debug: None,
         }
     }
@@ -337,26 +340,35 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 && !(symbol == self.main && matches!(self.db.symbol(capture), Symbol::Constant(_)))
         });
 
-        // A loop is lowered once, with what it was found to capture when the graph was built,
-        // which includes what the values it captures depend on. Whatever calls it passes all
-        // of that, so it captures the same, apart from what's defined inside of it. A loop
-        // captures the loops inside of it, so they're all found here
+        // Two kinds of function capture more than that, and whatever calls one passes it all of
+        // what it captures. A loop is lowered once, with what it was found to capture when the
+        // graph was built, which includes what the values it captures depend on. And the
+        // entrypoint captures what its constants depend on. So a function that can reach either
+        // one captures the same, as far as it would without leaving anything out, which is
+        // what tells its own values apart from the ones of a call that it makes. A loop captures
+        // the loops inside of it, so they're all found here
+        let mut unpruned = None;
         let mut index = 0;
 
         while let Some(&capture) = captures.get_index(index) {
             index += 1;
 
-            let Some(needed) = self.graph.loop_captures(capture) else {
+            let needed = if capture == self.main && symbol != self.main {
+                self.dependencies(capture, true)
+            } else if let Some(needed) = self.graph.loop_captures(capture) {
+                Rc::new(needed.clone())
+            } else {
                 continue;
             };
 
-            captures.extend(needed.iter().copied().filter(|&needed| {
-                self.graph.is_loop(needed)
-                    || self
-                        .graph
-                        .owner(needed)
-                        .is_none_or(|owner| self.graph.is_defined_in(symbol, owner))
-            }));
+            let unpruned = unpruned.get_or_insert_with(|| self.graph.dependencies(symbol, true));
+
+            captures.extend(
+                needed
+                    .iter()
+                    .copied()
+                    .filter(|needed| unpruned.contains(needed)),
+            );
         }
 
         captures
@@ -501,13 +513,26 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 expr = self.arena.alloc(Lir::Run(reference, entire_env));
             }
 
-            expr = self.bind_groups(
-                parent_env,
-                &capture_groups,
-                !param_group.is_empty(),
-                &map,
-                expr,
-            );
+            for (i, group) in capture_groups.iter().enumerate().rev() {
+                expr = self.arena.alloc(Lir::Quote(expr));
+
+                let mut bind_env = parent_env.clone();
+
+                for existing_group in capture_groups.iter().take(i) {
+                    bind_env = Self::apply_group(bind_env, existing_group, true);
+                }
+
+                let rest = if i == 0 && param_group.is_empty() {
+                    self.arena.alloc(Lir::Atom(vec![]))
+                } else {
+                    self.arena.alloc(Lir::Path(1u8.into()))
+                };
+
+                let group_env =
+                    self.lower_group_environment(&bind_env, group, rest, false, Some(&map), true);
+
+                expr = self.arena.alloc(Lir::Run(expr, group_env));
+            }
 
             if expr != body {
                 self.tag_main_wrapper(expr, function.body);
@@ -519,42 +544,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         } else {
             self.arena.alloc(Lir::Quote(expr))
         }
-    }
-
-    /// Runs the code with the groups bound in front of the environment it's evaluated with, each
-    /// group after the ones before it, so that its values can refer to theirs. The first group is
-    /// bound in front of the rest of the environment, if there's any (`has_rest`). A symbol in
-    /// the map has the value that's given for it.
-    fn bind_groups(
-        &mut self,
-        env: &Environment,
-        groups: &[SymbolGroup],
-        has_rest: bool,
-        map: &HashMap<SymbolId, LirId>,
-        mut expr: LirId,
-    ) -> LirId {
-        for (i, group) in groups.iter().enumerate().rev() {
-            expr = self.arena.alloc(Lir::Quote(expr));
-
-            let mut bind_env = env.clone();
-
-            for existing_group in groups.iter().take(i) {
-                bind_env = Self::apply_group(bind_env, existing_group, true);
-            }
-
-            let rest = if i == 0 && !has_rest {
-                self.arena.alloc(Lir::Atom(vec![]))
-            } else {
-                self.arena.alloc(Lir::Path(1u8.into()))
-            };
-
-            let group_env =
-                self.lower_group_environment(&bind_env, group, rest, false, Some(map), true);
-
-            expr = self.arena.alloc(Lir::Run(expr, group_env));
-        }
-
-        expr
     }
 
     /// Tags the setup that binds `main`'s captures with the location of its body, since nothing
