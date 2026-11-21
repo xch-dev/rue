@@ -191,9 +191,9 @@ impl Lowerer<'_, '_, '_> {
     pub(super) fn is_substitution_candidate(&self, symbol: SymbolId, value: HirId) -> bool {
         // The result of a fold for the rest of the list is evaluated once, before the body,
         // unless the body only gets to it in one place, at most once. It's evaluated there then,
-        // so that a body that doesn't get to it stops
-        if self.db.is_loop_rest_call(value) {
-            return self.db.is_single_use_loop_rest(symbol);
+        // like any other binding, so that a body that doesn't get to it stops
+        if self.db.is_loop_rest_call(value) && !self.db.is_single_use_loop_rest(symbol) {
+            return false;
         }
 
         // A value that a loop refers to from outside of it is only substituted there if it's a
