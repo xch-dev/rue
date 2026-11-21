@@ -3204,3 +3204,48 @@ fn none(value: nil) -> nil {
     assert!(!has_errors);
     assert_eq!(fix(&fixed), fixed);
 }
+
+#[test]
+fn suggestions_fix_match_arm_condition_parens() {
+    let source = "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point | nil, flag: Bool) -> Int {
+    match point {
+        Point if (flag) => 1,
+        Point if(point.x > 1)=> 2,
+        Point if (Point { x: 1, y: 2 }).x > point.y => 3,
+        Point if (/* kept */ flag) => 4,
+        _ => 0,
+    }
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point | nil, flag: Bool) -> Int {
+    match point {
+        Point if flag => 1,
+        Point if point.x > 1=> 2,
+        Point if (Point { x: 1, y: 2 }).x > point.y => 3,
+        Point if (/* kept */ flag) => 4,
+        _ => 0,
+    }
+}
+"
+    );
+
+    // Only the parentheses with a comment are left to report
+    assert_eq!(compile_source(&fixed, |_| {}).0.len(), 1);
+}

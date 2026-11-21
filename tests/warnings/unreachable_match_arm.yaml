@@ -18,3 +18,7 @@ diagnostics:
 - Unreachable match arm, since the earlier arms handle every value it matches at unreachable_match_arm.rue:49:9
 - Unreachable match arm, since the earlier arms handle every value it matches at unreachable_match_arm.rue:57:9
 - Expected lint `unreachable_match_arm` to be reported here, but it never was at unreachable_match_arm.rue:89:14
+- Unreachable match arm, since the earlier arms handle every value it matches at unreachable_match_arm.rue:156:9
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at unreachable_match_arm.rue:159:9
+    note: This arm handles every value that's left at unreachable_match_arm.rue:158:9

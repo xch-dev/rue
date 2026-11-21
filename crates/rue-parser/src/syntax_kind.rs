@@ -405,6 +405,9 @@ pub enum SyntaxKind {
     #[display("match arm")]
     MatchArm,
 
+    #[display("match arm condition")]
+    MatchArmGuard,
+
     #[display("guard expression")]
     GuardExpr,
 
@@ -711,6 +714,7 @@ impl SyntaxKind {
             SyntaxKind::ForFold => &[SyntaxKind::ForFold],
             SyntaxKind::MatchExpr => &[SyntaxKind::MatchExpr],
             SyntaxKind::MatchArm => &[SyntaxKind::MatchArm],
+            SyntaxKind::MatchArmGuard => &[SyntaxKind::MatchArmGuard],
             SyntaxKind::GuardExpr => &[SyntaxKind::GuardExpr],
             SyntaxKind::CastExpr => &[SyntaxKind::CastExpr],
             SyntaxKind::FieldAccessExpr => &[SyntaxKind::FieldAccessExpr],

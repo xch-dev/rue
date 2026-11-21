@@ -401,7 +401,8 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
         | SyntaxKind::ListItem
         | SyntaxKind::Block
         | SyntaxKind::GroupExpr
-        | SyntaxKind::LambdaExpr => true,
+        | SyntaxKind::LambdaExpr
+        | SyntaxKind::MatchArmGuard => true,
         // Only the condition of an `if` is a whole expression, since a branch must be a block,
         // and so is the list of a `for`
         SyntaxKind::IfStmt | SyntaxKind::IfExpr | SyntaxKind::ForExpr => {

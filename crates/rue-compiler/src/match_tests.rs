@@ -205,3 +205,95 @@ fn statement_that_returns() {
         "fn main(u: U) -> Int { if u is A { u.value } else if u is B { 1 } else { 2 } }",
     );
 }
+
+/// An arm with a condition is the branch for its type guard and the condition, and the arms after
+/// it check the same values that it does.
+#[test]
+fn arm_condition() {
+    check(
+        "fn main(u: U) -> Int { match u { A if u.value > 10 => 1, A => u.value, B => 2, C => 3 } }",
+        "fn main(u: U) -> Int { if u is A && u.value > 10 { 1 } else if u is A { u.value } else if u is B { 2 } else { 3 } }",
+    );
+}
+
+/// The condition reads what the arm binds from the narrowed value.
+#[test]
+fn arm_condition_with_binding() {
+    check(
+        "fn main(u: U) -> Int { match u { A { value } if value > 10 => value, B as b if b.value.length > 1 => 1, _ => 2 } }",
+        "fn main(u: U) -> Int { if u is A && u.value > 10 { u.value } else if u is B && u.value.length > 1 { 1 } else { 2 } }",
+    );
+}
+
+/// An arm whose type doesn't need to be checked only checks its condition, including `_`.
+#[test]
+fn arm_condition_without_check() {
+    check(
+        "fn main(u: U, c: Bool) -> Int { match u { A => 1, B => 2, C if c => 3, _ if !c => 4, _ => 5 } }",
+        "fn main(u: U, c: Bool) -> Int { if u is A { 1 } else if u is B { 2 } else if c { 3 } else if !c { 4 } else { 5 } }",
+    );
+}
+
+/// A condition on an atom doesn't rely on the check for what it reads, like the right side of `&&`.
+#[test]
+fn arm_condition_on_atoms() {
+    check(
+        "fn main(n: Int, c: Bool) -> Int { match n { 0 if c => 1, 1 | 2 if n + 1 > 2 => 2, _ => n } }",
+        "fn main(n: Int, c: Bool) -> Int { if n is 0 && c { 1 } else if n is 1 | 2 && n + 1 > 2 { 2 } else { n } }",
+    );
+}
+
+/// A condition that's a type guard narrows the arm's value.
+#[test]
+fn arm_condition_type_guard() {
+    check(
+        "fn main(t: Tree) -> Int { match t { (Tree, Tree) if t.first is Int => t.first, (Tree, Tree) => 0, Int => t } }",
+        "fn main(t: Tree) -> Int { if t is (Tree, Tree) && t.first is Int { t.first } else if t is (Tree, Tree) { 0 } else { t } }",
+    );
+}
+
+/// A value that isn't a reference is bound once, and each condition reads the binding.
+#[test]
+fn arm_condition_expression_scrutinee() {
+    check(
+        "fn main(n: Int) -> Int { match make() { A as a if a.value > n => a.value, A => 1, _ => 2 } }",
+        "fn main(n: Int) -> Int { let u = make(); if u is A && u.value > n { u.value } else if u is A { 1 } else { 2 } }",
+    );
+}
+
+/// An arm of an `inline match` with a condition is an `inline if` on both.
+#[test]
+fn inline_arm_condition() {
+    check(
+        "fn main(n: Int, c: Bool) -> Int { inline match n { 0 if c => 1, 1 if !c => 2, _ => n } }",
+        "fn main(n: Int, c: Bool) -> Int { inline if n is 0 && c { 1 } else { inline if n is 1 && !c { 2 } else { n } } }",
+    );
+}
+
+/// An arm with a condition doesn't handle its type in an `inline match` either, and each check is
+/// still of the value's whole type.
+#[test]
+fn inline_arm_condition_on_a_union() {
+    check(
+        "fn main(u: U, c: Bool) -> Int { inline match u { A if c => 1, A => 2, B => 3, C => 4 } }",
+        "fn main(u: U, c: Bool) -> Int { inline if u is A && c { 1 } else { inline if u is A { 2 } else { inline if u is B { 3 } else { 4 } } } }",
+    );
+}
+
+/// The condition of an `inline match` arm sees the value narrowed, like the right side of `&&`.
+#[test]
+fn inline_arm_condition_is_narrowed() {
+    check(
+        "fn main(u: U) -> Int { inline match u { A if u.value > 10 => 1, B if u.value.length > 1 => 2, _ => 3 } }",
+        "fn main(u: U) -> Int { inline if u is A && u.value > 10 { 1 } else { inline if u is B && u.value.length > 1 { 2 } else { 3 } } }",
+    );
+}
+
+/// A statement whose arm with a condition returns is an `if` statement that returns early.
+#[test]
+fn statement_with_arm_condition() {
+    check(
+        "fn main(u: U) -> Int { match u { A if u.value > 10 => { return u.value; } _ => {} } 0 }",
+        "fn main(u: U) -> Int { if u is A && u.value > 10 { return u.value; } 0 }",
+    );
+}

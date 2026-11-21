@@ -865,6 +865,115 @@ fn test_hover_imported_variant_without_fields() {
 }
 
 #[test]
+fn test_hover_narrowed_in_inline_match_arm_condition() {
+    // Only the condition of an `inline match` arm sees the value narrowed
+    check(
+        r#"
+fn main(value: Int | (Int, Int)) -> Int {
+    inline match value {
+        Int if val$0ue > 1 => 1,
+        _ => 0,
+    }
+}
+"#,
+        expect![[r#"
+            value: Int
+        "#]],
+    );
+
+    check(
+        r#"
+fn main(value: Int | (Int, Int), other: Int | nil) -> Int {
+    inline match value {
+        Int if other is Int => if val$0ue is Int { 1 } else { 2 },
+        _ => 0,
+    }
+}
+"#,
+        expect![[r#"
+            value: Int | (Int, Int)
+        "#]],
+    );
+
+    // Nor does the arm's value see what the condition narrows, with or without a type
+    check(
+        r#"
+fn main(value: Int | (Int, Int), other: Int | nil) -> Int {
+    inline match value {
+        _ if other is Int => if oth$0er is Int { 1 } else { 2 },
+        _ => 0,
+    }
+}
+"#,
+        expect![[r#"
+            other: Int | nil
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_narrowed_in_match_arm_condition() {
+    // The condition sees the value narrowed to the arm's type
+    check(
+        r#"
+struct Point {
+    x: Int | nil,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Point if val$0ue.x is Int => value.x,
+        Point => 0,
+        Int => value,
+    }
+}
+"#,
+        expect![[r#"
+            value: Point
+        "#]],
+    );
+
+    // The arm's value sees what the condition narrows as well
+    check(
+        r#"
+struct Point {
+    x: Int | nil,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Point if value.x is Int => val$0ue.x,
+        Point => 0,
+        Int => value,
+    }
+}
+"#,
+        expect![[r#"
+            value: Point { x: Int }
+        "#]],
+    );
+
+    // The arms after it see the value as it was before the arm
+    check(
+        r#"
+struct Point {
+    x: Int | nil,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Point if value.x is Int => value.x,
+        _ => if val$0ue is Int { value } else { 0 },
+    }
+}
+"#,
+        expect![[r#"
+            value: Point | Int
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_for_item() {
     check(
         r#"

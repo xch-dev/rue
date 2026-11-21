@@ -1277,6 +1277,136 @@ fn main(shape: Shape::$0) -> Int {
     );
 }
 
+#[test]
+fn test_complete_match_arm_condition() {
+    // The arm's bindings and what's in scope are completed in its condition
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x: horizontal, y } if hor$0 => y,
+        Point => 1,
+    }
+}
+"#,
+        expect![[r#"
+            horizontal [Variable] Int
+        "#]],
+    );
+
+    // The fields of the value as the arm narrows it
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point if value.$0 => 1,
+        Point => 2,
+    }
+}
+"#,
+        expect![[r#"
+            x [Field] Int
+            y [Field] Int
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_match_arm_condition() {
+    // Right after the `if`, with and without the rest of the arm
+    check(
+        "fn main(value: Int | nil, limit: Int) -> Int {\n    match value {\n        nil => 0,\n        Int as number if $0 => 1,\n        Int => 2,\n    }\n}\n",
+        expect![[r#"
+            super [Module]
+            project [Module]
+            number [Variable] Int
+            value [Variable] Int
+            limit [Variable] Int
+            main [Function] fn(value: Int | nil, limit: Int) -> Int
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            sha256 [Function] fn(value: Bytes) -> Bytes32
+            sha256_inline [Function] fn(value: Bytes) -> Bytes32
+            keccak256 [Function] fn(value: Bytes) -> Bytes32
+            keccak256_inline [Function] fn(value: Bytes) -> Bytes32
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
+            sum [Function] fn(values: List<Int>) -> Int
+            difference [Function] fn(values: List<Int>) -> Int
+            product [Function] fn(values: List<Int>) -> Int
+            divmod [Function] fn(numerator: Int, denominator: Int) -> (Int, Int)
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            any [Function] fn(values: List<Bool>) -> Bool
+            all [Function] fn(values: List<Bool>) -> Bool
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
+            g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_map [Function] fn(data: Bytes) -> PublicKey
+            g2_sum [Function] fn(values: List<Signature>) -> Signature
+            g2_difference [Function] fn(values: List<Signature>) -> Signature
+            g2_map [Function] fn(data: Bytes) -> Signature
+            bls_pairing_identity [Function] fn(g1: PublicKey, g2: Signature, ...) -> nil
+            bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
+            secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
+            secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
+            keccak256_verify [Function] fn(value: Bytes, hash: Bytes32) -> nil
+            INFINITY_G1 [Constant] PublicKey
+            INFINITY_G2 [Constant] Signature
+        "#]],
+    );
+
+    check(
+        "fn main(value: Int | nil, limit: Int) -> Int {\n    match value {\n        nil => 0,\n        Int as number if $0\n",
+        expect![[r#"
+            super [Module]
+            project [Module]
+            number [Variable] Int
+            value [Variable] Int
+            limit [Variable] Int
+            main [Function] fn(value: Int | nil, limit: Int) -> Int
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            sha256 [Function] fn(value: Bytes) -> Bytes32
+            sha256_inline [Function] fn(value: Bytes) -> Bytes32
+            keccak256 [Function] fn(value: Bytes) -> Bytes32
+            keccak256_inline [Function] fn(value: Bytes) -> Bytes32
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
+            sum [Function] fn(values: List<Int>) -> Int
+            difference [Function] fn(values: List<Int>) -> Int
+            product [Function] fn(values: List<Int>) -> Int
+            divmod [Function] fn(numerator: Int, denominator: Int) -> (Int, Int)
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            any [Function] fn(values: List<Bool>) -> Bool
+            all [Function] fn(values: List<Bool>) -> Bool
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
+            g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_map [Function] fn(data: Bytes) -> PublicKey
+            g2_sum [Function] fn(values: List<Signature>) -> Signature
+            g2_difference [Function] fn(values: List<Signature>) -> Signature
+            g2_map [Function] fn(data: Bytes) -> Signature
+            bls_pairing_identity [Function] fn(g1: PublicKey, g2: Signature, ...) -> nil
+            bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
+            secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
+            secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
+            keccak256_verify [Function] fn(value: Bytes, hash: Bytes32) -> nil
+            INFINITY_G1 [Constant] PublicKey
+            INFINITY_G2 [Constant] Signature
+        "#]],
+    );
+}
+
 /// Which of the names are offered at the cursor, and which of `Int` (a type) and `sha256` (a
 /// value) are, which shows whether types or values are completed there.
 fn offered(source: &str, names: &[&str]) -> String {

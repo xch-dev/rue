@@ -2120,6 +2120,72 @@ fn long_match_arm_bindings_are_wrapped() {
 }
 
 #[test]
+fn match_arm_conditions() {
+    check(
+        "fn main(x: A | (Int, Int) | Int) -> Int {\n    match x { A{a}if   a>1=>a, A  if(x.a<0) => { 1 }, (Int,Int)as(first,rest)if first>rest&&rest>0=>if first > 1 { 1 } else { 2 }, Int   if  x  is  0=>match x { _ => 2 } _ if!true => 3,\n _=>4 }\n}\n",
+        expect![[r#"
+            fn main(x: A | (Int, Int) | Int) -> Int {
+                match x {
+                    A { a } if a > 1 => a,
+                    A if (x.a < 0) => { 1 }
+                    (Int, Int) as (first, rest) if first > rest && rest > 0 => if first > 1 {
+                        1
+                    } else {
+                        2
+                    }
+                    Int if x is 0 => match x {
+                        _ => 2,
+                    }
+                    _ if !true => 3,
+                    _ => 4,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn match_arm_condition_comments() {
+    check(
+        "fn main(x: A | nil) -> Int {\n    match x {\n        A { a } /* binding */ if /* keyword */ a > 1 /* condition */ => a, // arm\n        // own line\n        A if x.a > 0 // trailing\n            => 1,\n        _ => 0,\n    }\n}\n",
+        expect![[r#"
+            fn main(x: A | nil) -> Int {
+                match x {
+                    A { a } /* binding */ if /* keyword */ a > 1 /* condition */ => a, // arm
+                    // own line
+                    A if x.a > 0 // trailing
+                    => 1,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn long_match_arm_conditions_are_wrapped() {
+    check(
+        "fn main(x: Shape) -> Int {\n    match x { Shape::Rectangle { width_of_the_rectangle, height_of_the_rectangle } if width_of_the_rectangle > height_of_the_rectangle && height_of_the_rectangle > 1000000 => width_of_the_rectangle, Shape::Circle { radius } if is_a_very_large_radius_for_a_circle(radius, 100000000000000000000000000000) => 1, _ => 0 }\n}\n",
+        expect![[r#"
+            fn main(x: Shape) -> Int {
+                match x {
+                    Shape::Rectangle {
+                        width_of_the_rectangle,
+                        height_of_the_rectangle,
+                    } if width_of_the_rectangle > height_of_the_rectangle
+                        && height_of_the_rectangle > 1000000 => width_of_the_rectangle,
+                    Shape::Circle { radius } if is_a_very_large_radius_for_a_circle(
+                        radius,
+                        100000000000000000000000000000,
+                    ) => 1,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn match_statement_arm_bindings() {
     check(
         "fn main(x: A | nil) -> Int {\n    match x { A { a } => { return a; }, nil => {} }\n    match x { A { a } => if a > 1 { 1 } else { 2 }, nil => 0 }\n}\n",

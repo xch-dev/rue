@@ -392,6 +392,7 @@ fn analyze_nodes(
             | AstNodeKind::ConstExpr
             | AstNodeKind::ListItem
             | AstNodeKind::BinaryExpr
+            | AstNodeKind::MatchArmGuard
             | AstNodeKind::GuardExpr
             | AstNodeKind::CastExpr
             | AstNodeKind::FieldAccessExpr

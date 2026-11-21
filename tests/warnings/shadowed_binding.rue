@@ -62,3 +62,15 @@ export fn named_arm(value: (Int, Int) | Int) -> Int {
         Int as Whole => Whole,
     }
 }
+
+// A binding in an arm's condition shadows the arm's bindings, and the arm's bindings shadow what's
+// in scope in the condition
+export fn arm_condition(value: (Int, Int) | Int, limit: Int) -> Int {
+    match value {
+        (Int, Int) as (first, limit) if {
+            let first = limit;
+            first > 0
+        } => first,
+        _ => limit,
+    }
+}

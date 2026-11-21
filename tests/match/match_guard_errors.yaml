@@ -1,0 +1,54 @@
+diagnostics:
+- Unused enum `Shape` at match_guard_errors.rue:3:6
+- Unused struct `Tagged` at match_guard_errors.rue:9:8
+- Unused struct `Plain` at match_guard_errors.rue:14:8
+- Unused function `not_handled` at match_guard_errors.rue:19:4
+- |-
+  Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Circle` at match_guard_errors.rue:20:11
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:21:9
+- Unused function `handled_later` at match_guard_errors.rue:28:4
+- |-
+  Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Empty` and `Shape::Rect` at match_guard_errors.rue:29:11
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:32:9
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:33:9
+- Unused function `conditional_wildcard` at match_guard_errors.rue:37:4
+- |-
+  Match on `Int | (Int, Int)` is not exhaustive, since it doesn't handle `(Int, Int)` at match_guard_errors.rue:38:11
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:40:9
+- Unused function `only_conditions` at match_guard_errors.rue:44:4
+- |-
+  Match on `Int` is not exhaustive, since it doesn't handle `Int` at match_guard_errors.rue:45:11
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:46:9
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:47:9
+- Unused function `not_a_bool` at match_guard_errors.rue:52:4
+- Cannot assign `Int` to `Bool` without a type guard, since the value isn't always a valid `Bool` at match_guard_errors.rue:54:16
+- Cannot assign `Int` to `Bool` without a type guard, since the value isn't always a valid `Bool` at match_guard_errors.rue:55:37
+- Unused function `other_arm` at match_guard_errors.rue:61:4
+- Undeclared symbol `inner` at match_guard_errors.rue:64:19
+- Undeclared symbol `inner` at match_guard_errors.rue:66:18
+- Unused function `not_narrowed_later` at match_guard_errors.rue:71:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at match_guard_errors.rue:71:53
+- Unused function `unreachable` at match_guard_errors.rue:80:4
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at match_guard_errors.rue:84:9
+    note: This arm handles every value that's left at match_guard_errors.rue:83:9
+- Unknown field `missing` on type `Never` at match_guard_errors.rue:84:25
+- Unused function `inline_condition` at match_guard_errors.rue:90:4
+- Cannot assign `Tagged | Int | 1 | {unresolved} | 2` to `Int` without a type guard, since the value isn't always a valid `Int` at match_guard_errors.rue:90:49
+- |-
+  Unknown field `value` on type `Tagged | Int` at match_guard_errors.rue:93:18
+    note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Tagged` before it's destructured
+- Unknown field `value` on type `Tagged | Int` at match_guard_errors.rue:94:47
+- Unused function `inline_wildcard_condition` at match_guard_errors.rue:100:4
+- Unknown field `first` on type `Int | (Int, Int)` at match_guard_errors.rue:102:43
+- Unused function `inline_only_condition` at match_guard_errors.rue:108:4
+- |-
+  Match on `Int | (Int, Int)` is not exhaustive, since it doesn't handle `Int` and `(Int, Int)` at match_guard_errors.rue:109:18
+    note: This arm has a condition, so it doesn't handle every value it matches at match_guard_errors.rue:110:9
+- Unused function `statement` at match_guard_errors.rue:116:4
+- Unused binding `rest` at match_guard_errors.rue:128:9
+- Cannot assign `Tagged | nil` to `nil` without a type guard, since the value isn't always a valid `nil` at match_guard_errors.rue:128:21
+- Unused function `statement_narrowing` at match_guard_errors.rue:138:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at match_guard_errors.rue:146:22
+- Unused function `statement_condition` at match_guard_errors.rue:151:4
+- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_guard_errors.rue:156:43

@@ -2510,3 +2510,90 @@ fn main(shape: Shape) -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_rename_match_arm_binding_in_condition() {
+    let source = with_shape(
+        r#"
+fn main(shape: Shape, limit: Int) -> Int {
+    match shape {
+        Shape::Circle { radius } if radius > limit => radius,
+        Shape::Circle { radius } => radius + limit,
+        Shape::Rect as rect if rect.width > rect.height => rect.width,
+        _ => 0,
+    }
+}
+"#,
+    );
+
+    // A binding that's renamed from the condition is renamed in its own arm only, and its
+    // shorthand is expanded
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("if radius > limit", "if rad$0ius > limit", 1),
+        )],
+        "size",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape, limit: Int) -> Int {
+                match shape {
+                    Shape::Circle { radius: size } if size > limit => size,
+                    Shape::Circle { radius } => radius + limit,
+                    Shape::Rect as rect if rect.width > rect.height => rect.width,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+
+    // A field that's renamed from the condition keeps the bindings' names
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("rect.width > rect.height", "rect.wid$0th > rect.height", 1),
+        )],
+        "span",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { span: Int, height: Int },
+            }
+
+            fn main(shape: Shape, limit: Int) -> Int {
+                match shape {
+                    Shape::Circle { radius } if radius > limit => radius,
+                    Shape::Circle { radius } => radius + limit,
+                    Shape::Rect as rect if rect.span > rect.height => rect.span,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+
+    // A name that's used in the condition is taken
+    check(
+        &[(
+            "main.rue",
+            &source.replacen(
+                "Shape::Circle { radius } if",
+                "Shape::Circle { rad$0ius } if",
+                1,
+            ),
+        )],
+        "limit",
+        expect![[r#"
+            error: Renaming `radius` to `limit` would change what `limit` refers to at main.rue:10:46
+        "#]],
+    );
+}

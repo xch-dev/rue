@@ -853,3 +853,82 @@ fn main(value: Int | nil) -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_match_arm_binding_in_condition() {
+    // From the binding, from its use in the condition, and from its use in the value
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { $0x, y } if x > y => x,
+        Point => 1,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let x: Int
+            ---
+            x: Int
+            definitions:
+            main.rue:9:26-9:27
+            main.rue:9:35-9:36
+            references:
+            main.rue:9:16-9:17
+            main.rue:9:26-9:27
+            main.rue:9:35-9:36
+        "#]],
+    );
+
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point { x, y } if $0x > y => x,
+        Point => 1,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let x: Int
+            definitions:
+            main.rue:9:16-9:17
+            references:
+            main.rue:9:16-9:17
+            main.rue:9:26-9:27
+            main.rue:9:35-9:36
+        "#]],
+    );
+
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point as point if point.$0x > point.y => point.x,
+        Point => 1,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            x: Int
+            definitions:
+            main.rue:2:4-2:5
+            references:
+            main.rue:2:4-2:5
+            main.rue:9:32-9:33
+            main.rue:9:53-9:54
+        "#]],
+    );
+}

@@ -257,3 +257,51 @@ test fn match_generic_and_imported_bindings() {
     assert perimeter(Shape::Rect { width: 2, height: 3 }) == 10;
     assert perimeter(Shape::Empty) == 0;
 }
+
+// An arm for a variant can have a condition, which can use the fields it binds, and an arm without
+// one still has to handle the variant. These two compile to the same program.
+test fn variant_conditions(shape: Shape) -> Int {
+    match shape {
+        Shape::Circle { radius } if radius > 10 => 2 * radius,
+        Shape::Circle { radius } => radius,
+        Shape::Rect { width, height } if width == height => width,
+        Shape::Rect { width, height } => width * height,
+        Shape::Empty => 0,
+    }
+}
+
+test fn variant_condition_chain(shape: Shape) -> Int {
+    if shape is Shape::Circle && shape.radius > 10 {
+        2 * shape.radius
+    } else if shape is Shape::Circle {
+        shape.radius
+    } else if shape is Shape::Rect && shape.width == shape.height {
+        shape.width
+    } else if shape is Shape::Rect {
+        shape.width * shape.height
+    } else {
+        0
+    }
+}
+
+// A variant without fields is only its discriminant, which the condition doesn't need narrowed
+fn mode_condition(mode: Mode, enabled: Bool) -> Int {
+    match mode {
+        Mode::On if enabled => 1,
+        Mode::Auto if enabled => 2,
+        _ if !enabled => 0,
+        Mode::Off | Mode::On | Mode::Auto => 3,
+    }
+}
+
+test fn match_variant_conditions() {
+    assert variant_conditions(Shape::Circle { radius: 11 }) == 22;
+    assert variant_conditions(Shape::Circle { radius: 10 }) == 10;
+    assert variant_conditions(Shape::Rect { width: 3, height: 3 }) == 3;
+    assert variant_conditions(Shape::Rect { width: 2, height: 3 }) == 6;
+    assert variant_conditions(Shape::Empty) == 0;
+    assert mode_condition(Mode::On, true) == 1;
+    assert mode_condition(Mode::Auto, true) == 2;
+    assert mode_condition(Mode::Off, true) == 3;
+    assert mode_condition(Mode::On, false) == 0;
+}
