@@ -873,7 +873,8 @@ fn test_for_rest_and_several_lists_navigation() {
         ys: List<Int>
 
 
-    "#]].assert_eq(&output);
+    "#]]
+    .assert_eq(&output);
 }
 
 /// What's left of a list gets the type of a list of its items, and the item of each list gets
@@ -921,7 +922,8 @@ fn test_for_several_lists_signature_help() {
         == for a in all(1, 2), b, rest in all(2, $0) { a + b }
         > fn all(count: Int, [more: Int]) -> List<Int>
 
-    "#]].assert_eq(&output);
+    "#]]
+    .assert_eq(&output);
 }
 
 /// Unfinished headers with several lists, or with a name for what's left of a list, don't panic
@@ -1355,5 +1357,6 @@ fn test_unfinished_for_headers() {
             1
         }
 
-    "#]].assert_eq(&output);
+    "#]]
+    .assert_eq(&output);
 }

@@ -4311,7 +4311,10 @@ mod tests {
         );
 
         // A header that ends after a `,`
-        check(expr, "for a,", expect![[r#"
+        check(
+            expr,
+            "for a,",
+            expect![[r#"
             ForExpr@0..6
               For@0..3 "for"
               Whitespace@3..4 " "
@@ -4320,8 +4323,13 @@ mod tests {
                   Ident@4..5 "a"
                 Comma@5..6 ","
               Block@6..6
-        "#]], expect!["Expected binding, found eof at main.rue:1:7"]);
-        check(expr, "for a in xs,", expect![[r#"
+        "#]],
+            expect!["Expected binding, found eof at main.rue:1:7"],
+        );
+        check(
+            expr,
+            "for a in xs,",
+            expect![[r#"
             ForExpr@0..12
               For@0..3 "for"
               Whitespace@3..4 " "
@@ -4337,6 +4345,8 @@ mod tests {
               Comma@11..12 ","
               ForClause@12..12
               Block@12..12
-        "#]], expect!["Expected binding, found eof at main.rue:1:13"]);
+        "#]],
+            expect!["Expected binding, found eof at main.rue:1:13"],
+        );
     }
 }

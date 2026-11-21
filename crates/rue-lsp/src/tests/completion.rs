@@ -1686,8 +1686,7 @@ fn test_complete_in_for_with_several_lists() {
     let no_list = "fn main(items: List<Int>) -> Int { for item, others in items, second in $0 }";
     assert_eq!(offered(no_list, &names), "items sha256");
 
-    let filter =
-        "fn main(items: List<Int>) -> Int { for item, others in items, second in items if $0 { item } }";
+    let filter = "fn main(items: List<Int>) -> Int { for item, others in items, second in items if $0 { item } }";
     assert_eq!(offered(filter, &names), "item others second items sha256");
 
     let body =

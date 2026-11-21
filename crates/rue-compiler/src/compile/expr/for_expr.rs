@@ -1,11 +1,11 @@
 use log::debug;
+use rowan::TextRange;
 use rue_ast::{AstBinding, AstForClause, AstForExpr, AstNode, AstStmtOrExpr};
 use rue_diagnostic::Name;
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, FunctionCall, FunctionKind, FunctionSymbol,
     Hir, HirId, ParameterSymbol, Statement, Symbol, SymbolId, UnaryOp, Value,
 };
-use rowan::TextRange;
 use rue_types::{FunctionParameter, FunctionType, Pair, Type, TypeId};
 
 use super::call_inference::{list_of, pair_parts, references_call_generics};
