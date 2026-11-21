@@ -1667,6 +1667,7 @@ fn main(line: Line) -> Point {
             end [Field] Point
         "#]],
     );
+}
 
 /// The lists of a `for` are all outside of the scope of its items, and of what's left of each
 /// list, which are in scope in the filter and the body.

@@ -16,5 +16,3 @@ diagnostics:
 - Expected one of `,`, `if`, `fold`, `{`, found identifier at for_headers.rue:22:25
 - Unused binding `in` at for_headers.rue:25:26
 - Expected one of `,`, `in`, found identifier at for_headers.rue:25:29
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_headers.rue:27:29
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_headers.rue:27:41
