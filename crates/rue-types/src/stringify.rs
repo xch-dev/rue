@@ -1,3 +1,6 @@
+use std::cell::Cell;
+use std::collections::HashSet;
+
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
@@ -6,6 +9,63 @@ use crate::{Alias, DISCRIMINANT_FIELD, Struct, Type, TypeId, grow_stack, step, s
 pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     let id = substitute(arena, id);
     stringify_impl(arena, id, &mut IndexMap::new())
+}
+
+thread_local! {
+    /// How many more parts of a type [`stringify_bounded`] writes before it leaves the rest out.
+    static BUDGET: Cell<Option<usize>> = const { Cell::new(None) };
+}
+
+thread_local! {
+    /// Whether [`stringify_bounded`] has left any part of the type out.
+    static CUT: Cell<bool> = const { Cell::new(false) };
+}
+
+/// What's written in place of the parts of a type that [`stringify_bounded`] leaves out.
+pub const ELIDED: &str = "...";
+
+/// Like [`stringify`], but only the first `parts` parts of the type are written (each type that it's
+/// made of is one), and the rest are shown as `...`. A type can be far larger written out than it
+/// is in memory, where its parts are shared, so this bounds the time and the length of the result
+/// for types that are shown as they're inferred, such as by the language server.
+///
+/// Returns what was written, and whether anything was left out of it.
+pub fn stringify_bounded(arena: &mut Arena<Type>, id: TypeId, parts: usize) -> (String, bool) {
+    let id = substitute(arena, id);
+
+    // The budget is cleared even if writing the type panics, so that it's only ever this type's
+    let _unbounded = Unbounded;
+
+    BUDGET.set(Some(parts));
+    CUT.set(false);
+
+    let result = stringify_impl(arena, id, &mut IndexMap::new());
+
+    (result, CUT.get())
+}
+
+/// Clears the budget when it's dropped.
+struct Unbounded;
+
+impl Drop for Unbounded {
+    fn drop(&mut self) {
+        BUDGET.set(None);
+    }
+}
+
+/// Counts a part of a type against the budget, and returns whether there was any of it left.
+fn spend() -> bool {
+    match BUDGET.get() {
+        None => true,
+        Some(0) => {
+            CUT.set(true);
+            false
+        }
+        Some(parts) => {
+            BUDGET.set(Some(parts - 1));
+            true
+        }
+    }
 }
 
 pub fn stringify_without_substitution(arena: &Arena<Type>, id: TypeId) -> String {
@@ -26,6 +86,10 @@ fn stringify_impl_inner(
     stack: &mut IndexMap<TypeId, bool>,
 ) -> String {
     step();
+
+    if !spend() {
+        return ELIDED.to_string();
+    }
 
     let len = stack.len();
 
@@ -129,18 +193,37 @@ fn stringify_impl_inner(
         // A member that's shown the same as an earlier one is left out if it's an atom, such as the
         // second `5` in a union that inference collected `5` into twice. Other types are kept apart
         // by their declaration, since two structs can have the same name
-        Type::Union(_) => union_variants(arena, id)
-            .into_iter()
-            .map(|id| {
-                let declaration =
-                    (!matches!(arena[id], Type::Atom(_))).then(|| declaration(arena, id));
-                (declaration, stringify_impl(arena, id, stack))
-            })
-            .collect::<IndexSet<_>>()
-            .into_iter()
-            .map(|(_, name)| name)
-            .collect::<Vec<_>>()
-            .join(" | "),
+        Type::Union(_) => {
+            // Each member takes at least one part to write, so the members that there's no
+            // budget for aren't looked at, however many there are
+            let limit = BUDGET.get().unwrap_or(usize::MAX);
+            let mut members = IndexSet::new();
+            let mut elided = !union_variants(arena, id, limit, &mut members);
+
+            let mut variants = members
+                .into_iter()
+                .map(|id| {
+                    let declaration =
+                        (!matches!(arena[id], Type::Atom(_))).then(|| declaration(arena, id));
+                    (declaration, stringify_impl(arena, id, stack))
+                })
+                .collect::<IndexSet<_>>()
+                .into_iter()
+                .map(|(_, name)| name)
+                .collect::<Vec<_>>();
+
+            // The members that were left out are shown once, after the ones that weren't
+            let written = variants.len();
+            variants.retain(|name| name != ELIDED);
+            elided |= variants.len() < written;
+
+            if elided {
+                CUT.set(true);
+                variants.push(ELIDED.to_string());
+            }
+
+            variants.join(" | ")
+        }
     };
 
     let recursed = stack.pop().unwrap().1;
@@ -269,19 +352,50 @@ fn narrowed_fields_inner(
     }
 }
 
-/// The variants of a union, including those of directly nested unions.
-fn union_variants(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
-    grow_stack(|| union_variants_inner(arena, id))
+/// Adds the variants of a union, including those of directly nested unions, each of them once,
+/// until there are as many as the limit. Returns whether that was all of them, which it can say
+/// it wasn't when the only ones left are written the same as ones that were added.
+fn union_variants(
+    arena: &Arena<Type>,
+    id: TypeId,
+    limit: usize,
+    variants: &mut IndexSet<TypeId>,
+) -> bool {
+    union_variants_impl(arena, id, limit, variants, &mut HashSet::new())
 }
 
-fn union_variants_inner(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
+fn union_variants_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    limit: usize,
+    variants: &mut IndexSet<TypeId>,
+    unions: &mut HashSet<TypeId>,
+) -> bool {
+    grow_stack(|| union_variants_inner(arena, id, limit, variants, unions))
+}
+
+fn union_variants_inner(
+    arena: &Arena<Type>,
+    id: TypeId,
+    limit: usize,
+    variants: &mut IndexSet<TypeId>,
+    unions: &mut HashSet<TypeId>,
+) -> bool {
     match &arena[id] {
+        // A union that's nested in more than one place only adds its members once, and types
+        // that share their parts can have far more places than parts
+        Type::Union(_) if !unions.insert(id) => true,
         Type::Union(union) => union
             .types
             .iter()
-            .flat_map(|&id| union_variants(arena, id))
-            .collect(),
-        _ => vec![id],
+            .all(|&id| union_variants_impl(arena, id, limit, variants, unions)),
+        // A member that's there more than once is only written once
+        _ if variants.contains(&id) => true,
+        _ if variants.len() < limit => {
+            variants.insert(id);
+            true
+        }
+        _ => false,
     }
 }
 
@@ -294,5 +408,122 @@ fn declaration(arena: &Arena<Type>, mut id: TypeId) -> TypeId {
             Type::Struct(ty) => return ty.semantic,
             _ => return id,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Atom, Pair, Union};
+
+    use super::*;
+
+    fn bounded(arena: &mut Arena<Type>, id: TypeId, parts: usize) -> String {
+        let (name, cut) = stringify_bounded(arena, id, parts);
+
+        // Whether anything was left out is what the marks for it say
+        assert_eq!(cut, name.contains(ELIDED), "{name}");
+
+        name
+    }
+
+    #[test]
+    fn test_stringify_bounded() {
+        let mut arena = Arena::new();
+
+        let int = arena.alloc(Type::Atom(Atom::INT));
+        let bytes = arena.alloc(Type::Atom(Atom::BYTES));
+
+        // A type that's small enough is written in full
+        let pair = arena.alloc(Type::Pair(Pair::new(int, bytes)));
+        assert_eq!(bounded(&mut arena, pair, 3), "(Int, Bytes)");
+        assert_eq!(bounded(&mut arena, pair, 2), "(Int, ...)");
+        assert_eq!(bounded(&mut arena, pair, 0), "...");
+
+        // A union says that members were left out only if they were
+        let union = arena.alloc(Type::Union(Union::new(vec![int, bytes, pair])));
+        let full = "Int | Bytes | (Int, Bytes)";
+        assert_eq!(bounded(&mut arena, union, 6), full);
+        assert_eq!(bounded(&mut arena, union, 5), "Int | Bytes | (Int, ...)");
+        assert_eq!(bounded(&mut arena, union, 3), "Int | Bytes | ...");
+        assert_eq!(bounded(&mut arena, union, 2), "Int | ...");
+        assert_eq!(bounded(&mut arena, union, 1), "...");
+
+        // And so does a union inside of another type, which the union's members are part of
+        let nested = arena.alloc(Type::Union(Union::new(vec![union, int])));
+        let list = arena.alloc(Type::Pair(Pair::new(nested, bytes)));
+        assert_eq!(
+            bounded(&mut arena, list, 9),
+            "(Int | Bytes | (Int, Bytes), Bytes)"
+        );
+        assert_eq!(bounded(&mut arena, list, 4), "(Int | Bytes | ..., ...)");
+
+        // A member that there's no budget left for by the time it's written is left out like
+        // the ones that weren't looked at, and they're all shown once
+        let int_bytes = arena.alloc(Type::Pair(Pair::new(int, bytes)));
+        let bytes_int = arena.alloc(Type::Pair(Pair::new(bytes, int)));
+        let bytes_bytes = arena.alloc(Type::Pair(Pair::new(bytes, bytes)));
+        let pairs = arena.alloc(Type::Union(Union::new(vec![
+            int_bytes,
+            bytes_int,
+            bytes_bytes,
+        ])));
+        assert_eq!(bounded(&mut arena, pairs, 4), "(Int, Bytes) | ...");
+        assert_eq!(
+            bounded(&mut arena, pairs, 5),
+            "(Int, Bytes) | (..., ...) | ..."
+        );
+        assert_eq!(
+            bounded(&mut arena, pairs, 7),
+            "(Int, Bytes) | (Bytes, Int) | ..."
+        );
+        assert_eq!(
+            bounded(&mut arena, pairs, 10),
+            "(Int, Bytes) | (Bytes, Int) | (Bytes, Bytes)"
+        );
+
+        let inner = arena.alloc(Type::Union(Union::new(vec![bytes, int_bytes])));
+        let alias = arena.alloc(Type::Alias(Alias {
+            name: None,
+            inner,
+            generics: Vec::new(),
+        }));
+        let mixed = arena.alloc(Type::Union(Union::new(vec![int, alias, bytes_int])));
+        assert_eq!(bounded(&mut arena, mixed, 3), "Int | ...");
+
+        // A member that's in a union more than once doesn't count as left out
+        let repeated = arena.alloc(Type::Union(Union::new(vec![union, union, int])));
+        assert_eq!(bounded(&mut arena, repeated, 7), full);
+
+        let same = arena.alloc(Type::Union(Union::new(vec![int; 100])));
+        assert_eq!(bounded(&mut arena, same, 3), "Int");
+        assert_eq!(bounded(&mut arena, same, 2), "Int");
+
+        // A union with far more members than there's budget for isn't walked to the end
+        let mut doubled = union;
+
+        for _ in 0..40 {
+            doubled = arena.alloc(Type::Union(Union::new(vec![doubled, doubled])));
+        }
+
+        let wide = arena.alloc(Type::Union(Union::new(vec![doubled, int_bytes, bytes_int])));
+        assert_eq!(
+            bounded(&mut arena, wide, 4),
+            "Int | Bytes | (..., ...) | ..."
+        );
+
+        // Each pair is made of the one before it twice, so the type is over a million times as
+        // long written out as it is in memory
+        let mut nested = int;
+
+        for _ in 0..20 {
+            nested = arena.alloc(Type::Pair(Pair::new(nested, nested)));
+        }
+
+        let short = bounded(&mut arena, nested, 8);
+        assert!(short.len() < 200, "{short}");
+        assert!(short.contains(ELIDED), "{short}");
+
+        // The budget is only for the type it was given for
+        assert_eq!(stringify(&mut arena, pair), "(Int, Bytes)");
     }
 }

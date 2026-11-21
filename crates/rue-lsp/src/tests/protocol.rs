@@ -414,6 +414,14 @@ async fn test_protocol_session() {
     assert_eq!(capabilities["hoverProvider"], json!(true));
     assert_eq!(capabilities["definitionProvider"], json!(true));
     assert_eq!(capabilities["referencesProvider"], json!(true));
+    assert_eq!(capabilities["renameProvider"], json!(true));
+    assert_eq!(capabilities["inlayHintProvider"], json!(true));
+    assert_eq!(capabilities["documentSymbolProvider"], json!(true));
+    assert_eq!(capabilities["workspaceSymbolProvider"], json!(true));
+    assert_eq!(
+        capabilities["signatureHelpProvider"],
+        json!({ "triggerCharacters": ["(", ",", "{"] })
+    );
     assert_eq!(capabilities["documentFormattingProvider"], json!(true));
     assert_eq!(capabilities["textDocumentSync"], json!(1));
     assert_eq!(
@@ -466,6 +474,23 @@ pub(super) fn position(uri: &Uri, line: u32, character: u32) -> Value {
     })
 }
 
+fn rename(uri: &Uri, line: u32, character: u32, new_name: &str) -> Value {
+    let mut params = position(uri, line, character);
+    params["newName"] = json!(new_name);
+    params
+}
+
+/// The parameters of a request for the inlay hints of a whole document.
+fn inlay_hints(uri: &Uri) -> Value {
+    json!({
+        "textDocument": { "uri": uri },
+        "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 1000, "character": 0 },
+        },
+    })
+}
+
 fn formatting(uri: &Uri) -> Value {
     json!({
         "textDocument": { "uri": uri },
@@ -497,6 +522,589 @@ pub(super) async fn assert_hover(client: &mut Client, uri: &Uri) {
     assert_eq!(
         client.hover(uri, 2, 6).await["contents"],
         json!([{ "language": "rue", "value": "let value: Int" }])
+    );
+}
+
+#[tokio::test]
+async fn test_rename_session() {
+    let main = "fn main() -> Int {\n    let value = utils::ONE;\n    value + 1\n}\n";
+    let utils = "export const ONE: Int = 1;\n";
+    let project = TempProject::new(&[("main.rue", main), ("utils.rue", utils)]);
+    let uri = project.uri("main.rue");
+    let utils_uri = project.uri("utils.rue");
+
+    let mut client = Client::new();
+
+    // A client that asks whether a name can be renamed first is told that it can ask
+    let response = client
+        .request(
+            "initialize",
+            Some(json!({
+                "capabilities": {
+                    "textDocument": { "rename": { "prepareSupport": true } },
+                    "workspace": {
+                        "workspaceEdit": {
+                            "resourceOperations": ["create", "rename", "delete"],
+                        },
+                    },
+                },
+            })),
+        )
+        .await;
+    assert_eq!(
+        response.result().unwrap()["capabilities"]["renameProvider"],
+        json!({ "prepareProvider": true })
+    );
+
+    client.notify("initialized", json!({})).await;
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, main).await;
+    client.sync().await;
+
+    let range = |line: u32, start: u32, end: u32| {
+        json!({
+            "start": { "line": line, "character": start },
+            "end": { "line": line, "character": end },
+        })
+    };
+
+    let response = client
+        .request("textDocument/prepareRename", Some(position(&uri, 2, 6)))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({ "range": range(2, 4, 9), "placeholder": "value" })
+    );
+
+    // The edits are for the text as it is when the request is sent, though the server hasn't
+    // compiled it yet
+    let edited = main.replace("fn main", "\nfn main");
+    let compiles = client.compiles();
+    client.change(&uri, 2, &[&edited]).await;
+
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 3, 6, "number")))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({
+            "changes": {
+                uri.as_str(): [
+                    { "range": range(2, 8, 13), "newText": "number" },
+                    { "range": range(3, 4, 9), "newText": "number" },
+                ],
+            },
+        })
+    );
+    assert_eq!(client.compiles(), compiles + 1);
+
+    // A rename that's refused says why
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 3, 6, "1x")))
+        .await;
+    let error = response.error().unwrap();
+    assert_eq!(error.code.code(), -32803);
+    assert_eq!(error.message, "`1x` isn't a valid name");
+
+    let response = client
+        .request("textDocument/prepareRename", Some(position(&uri, 1, 9)))
+        .await;
+    assert_eq!(response.result(), Some(&Value::Null));
+
+    let response = client
+        .request("textDocument/prepareRename", Some(position(&uri, 1, 14)))
+        .await;
+    assert_eq!(
+        response.error().unwrap().message,
+        "`Int` isn't declared in the project, so it can't be renamed"
+    );
+
+    // A module that's a file is renamed with it, after the files are edited
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 2, 17, "helpers")))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({
+            "documentChanges": [
+                {
+                    "textDocument": { "uri": uri, "version": null },
+                    "edits": [{ "range": range(2, 16, 21), "newText": "helpers" }],
+                },
+                {
+                    "kind": "rename",
+                    "oldUri": utils_uri,
+                    "newUri": project.uri("helpers.rue"),
+                },
+            ],
+        })
+    );
+}
+
+#[tokio::test]
+async fn test_signature_help_session() {
+    let text = "fn add(first: Int, second: \"\u{1F600}\") -> Int {\n    first\n}\n\nfn main() -> Int {\n    add(1, \"\u{1F600}\")\n}\n";
+    let project = TempProject::new(&[("main.rue", text)]);
+    let uri = project.uri("main.rue");
+
+    let mut client = Client::initialized().await;
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, text).await;
+    client.sync().await;
+
+    let response = client
+        .request("textDocument/signatureHelp", Some(position(&uri, 5, 11)))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!({
+            "signatures": [{
+                "label": "fn add(first: Int, second: \"\u{1F600}\") -> Int",
+                "parameters": [{ "label": [7, 17] }, { "label": [19, 31] }],
+                "activeParameter": 1,
+            }],
+            "activeSignature": 0,
+            "activeParameter": 1,
+        })
+    );
+
+    // The signature is for the text as it is when the request is sent, though the server hasn't
+    // compiled it yet
+    let compiles = client.compiles();
+    client
+        .change(&uri, 2, &[&text.replace("add(1, ", "add(")])
+        .await;
+
+    let response = client
+        .request("textDocument/signatureHelp", Some(position(&uri, 5, 11)))
+        .await;
+    assert_eq!(response.result().unwrap()["activeParameter"], json!(0));
+    assert_eq!(client.compiles(), compiles + 1);
+
+    let response = client
+        .request("textDocument/signatureHelp", Some(position(&uri, 4, 3)))
+        .await;
+    assert_eq!(response.result(), Some(&Value::Null));
+}
+
+#[tokio::test]
+async fn test_inlay_hint_session() {
+    let text = "fn add(first: Int, second: Int) -> Int {\n    first + second\n}\n\nfn main() -> Int {\n    let text = \"\u{1F600}\"; let sum = add(1, 2);\n    sum\n}\n";
+    let project = TempProject::new(&[("main.rue", text)]);
+    let uri = project.uri("main.rue");
+
+    // The client says which hints it wants when it starts the server
+    let mut client = Client::new();
+    let messages = client
+        .initialize_with(json!({
+            "capabilities": { "workspace": { "inlayHint": { "refreshSupport": true } } },
+            "initializationOptions": { "inlayHints": { "parameterNames": false } },
+        }))
+        .await;
+    assert!(messages.is_empty(), "unexpected messages: {messages:?}");
+
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, text).await;
+    client.sync().await;
+
+    // Positions are in UTF-16 code units
+    let sum = json!({
+        "position": { "line": 5, "character": 28 },
+        "label": ": Int",
+        "kind": 1,
+        "paddingRight": false,
+    });
+
+    let parameter = |character: u32, name: &str| {
+        json!({
+            "position": { "line": 5, "character": character },
+            "label": format!("{name}:"),
+            "kind": 2,
+            "paddingRight": true,
+        })
+    };
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([sum]));
+
+    // And when its settings change, after which it's told to ask for the hints again
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "rue": { "inlayHints": { "parameterNames": true } } } }),
+        )
+        .await;
+
+    let messages = client.sync().await;
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert_eq!(messages[0].method(), "workspace/inlayHint/refresh");
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([sum, parameter(35, "first"), parameter(38, "second")])
+    );
+
+    // Settings that change nothing, or that aren't the server's, don't refresh anything
+    for settings in [
+        json!({ "rue": { "inlayHints": { "parameterNames": true } } }),
+        json!({ "rue": { "inlayHints": { "parameterNames": "yes" } } }),
+        json!({ "other": { "inlayHints": { "types": false } } }),
+        Value::Null,
+    ] {
+        client
+            .notify(
+                "workspace/didChangeConfiguration",
+                json!({ "settings": settings }),
+            )
+            .await;
+    }
+
+    assert!(client.sync().await.is_empty());
+
+    // A setting that isn't true or false is left as it was
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": false } } }),
+        )
+        .await;
+    assert_eq!(client.sync().await.len(), 1);
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": "yes" } } }),
+        )
+        .await;
+    assert!(client.sync().await.is_empty());
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([sum]));
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": true } } }),
+        )
+        .await;
+    assert_eq!(client.sync().await.len(), 1);
+
+    // Each kind of hint has a setting
+    for (settings, expected) in [
+        (
+            json!({ "types": false }),
+            json!([parameter(35, "first"), parameter(38, "second")]),
+        ),
+        (
+            json!({ "types": true, "parameterNames": false }),
+            json!([sum]),
+        ),
+    ] {
+        client
+            .notify(
+                "workspace/didChangeConfiguration",
+                json!({ "settings": { "inlayHints": settings } }),
+            )
+            .await;
+
+        assert_eq!(client.sync().await.len(), 1);
+
+        let response = client
+            .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+            .await;
+        assert_eq!(response.result().unwrap(), &expected);
+    }
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "inlayHints": { "parameterNames": true } } }),
+        )
+        .await;
+    client.sync().await;
+
+    // The hints are for the text as it is when the request is sent, though the server hasn't
+    // compiled it yet
+    let compiles = client.compiles();
+    client
+        .change(
+            &uri,
+            2,
+            &[&text.replace("let sum = add(1, 2);", "let sum = 1 + 2;")],
+        )
+        .await;
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([sum]));
+    assert_eq!(client.compiles(), compiles + 1);
+}
+
+#[tokio::test]
+async fn test_inlay_hint_settings_without_refresh() {
+    let text = "fn id<T>(value: T) -> T {\n    value\n}\n\nfn main() -> Int {\n    id(1)\n}\n";
+    let project = TempProject::new(&[("main.rue", text)]);
+    let uri = project.uri("main.rue");
+
+    // A client that doesn't say it asks for the hints again isn't told to
+    let mut client = Client::initialized().await;
+    client.open(&uri, text).await;
+    client.sync().await;
+
+    let generic = json!({
+        "position": { "line": 5, "character": 6 },
+        "label": "::<Int>",
+        "kind": 1,
+        "paddingRight": false,
+    });
+
+    let parameter = json!({
+        "position": { "line": 5, "character": 7 },
+        "label": "value:",
+        "kind": 2,
+        "paddingRight": true,
+    });
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([generic, parameter]));
+
+    client
+        .notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "rue": { "inlayHints": { "genericArguments": false } } } }),
+        )
+        .await;
+
+    assert!(client.sync().await.is_empty());
+
+    let response = client
+        .request("textDocument/inlayHint", Some(inlay_hints(&uri)))
+        .await;
+    assert_eq!(response.result().unwrap(), &json!([parameter]));
+}
+
+#[tokio::test]
+async fn test_symbols_session() {
+    let main = "struct Point {\n    x: Int,\n}\n\nfn main() -> Int {\n    utils::ONE\n}\n\nenum Shape {\n    Circle { radius: Int },\n}\n";
+    let project = TempProject::new(&[
+        ("main.rue", main),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    let uri = project.uri("main.rue");
+
+    let range = |start: (u32, u32), end: (u32, u32)| {
+        json!({
+            "start": { "line": start.0, "character": start.1 },
+            "end": { "line": end.0, "character": end.1 },
+        })
+    };
+
+    // A client that doesn't say it can show symbols inside of each other gets a list of them
+    let mut client = Client::initialized().await;
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, main).await;
+    client.sync().await;
+
+    let symbols = json!({ "textDocument": { "uri": uri } });
+
+    let response = client
+        .request("textDocument/documentSymbol", Some(symbols.clone()))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([
+            {
+                "name": "Point",
+                "kind": 23,
+                "location": { "uri": uri, "range": range((0, 0), (2, 1)) },
+            },
+            {
+                "name": "x",
+                "kind": 8,
+                "location": { "uri": uri, "range": range((1, 4), (1, 10)) },
+                "containerName": "Point",
+            },
+            {
+                "name": "main",
+                "kind": 12,
+                "location": { "uri": uri, "range": range((4, 0), (6, 1)) },
+            },
+            {
+                "name": "Shape",
+                "kind": 10,
+                "location": { "uri": uri, "range": range((8, 0), (10, 1)) },
+            },
+            {
+                "name": "Circle",
+                "kind": 22,
+                "location": { "uri": uri, "range": range((9, 4), (9, 26)) },
+                "containerName": "Shape",
+            },
+            {
+                "name": "radius",
+                "kind": 8,
+                "location": { "uri": uri, "range": range((9, 13), (9, 24)) },
+                "containerName": "Circle",
+            },
+        ])
+    );
+
+    let response = client
+        .request("workspace/symbol", Some(json!({ "query": "one" })))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([{
+            "name": "ONE",
+            "kind": 14,
+            "location": {
+                "uri": project.uri("utils.rue"),
+                "range": range((0, 13), (0, 16)),
+            },
+        }])
+    );
+
+    // The symbols are those of the text as it is when the request is sent, though the server
+    // hasn't compiled it yet
+    let compiles = client.compiles();
+    client
+        .change(&uri, 2, &[&main.replace("fn main", "fn start")])
+        .await;
+
+    let response = client
+        .request("workspace/symbol", Some(json!({ "query": "start" })))
+        .await;
+    assert_eq!(response.result().unwrap()[0]["name"], json!("start"));
+    assert_eq!(client.compiles(), compiles + 1);
+
+    // And so is the outline, when it's asked for right after an edit
+    client
+        .change(&uri, 3, &[&main.replace("fn main", "fn begin")])
+        .await;
+
+    let response = client
+        .request("textDocument/documentSymbol", Some(symbols.clone()))
+        .await;
+    assert_eq!(response.result().unwrap()[2]["name"], json!("begin"));
+    assert_eq!(client.compiles(), compiles + 2);
+
+    // A client that can show them inside of each other gets them that way
+    let mut client = Client::new();
+    let messages = client
+        .initialize_with(json!({
+            "capabilities": {
+                "textDocument": {
+                    "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
+                },
+            },
+        }))
+        .await;
+    assert!(messages.is_empty(), "unexpected messages: {messages:?}");
+
+    client.open(&uri, main).await;
+
+    let response = client
+        .request("textDocument/documentSymbol", Some(symbols))
+        .await;
+    assert_eq!(
+        response.result().unwrap(),
+        &json!([
+            {
+                "name": "Point",
+                "kind": 23,
+                "range": range((0, 0), (2, 1)),
+                "selectionRange": range((0, 7), (0, 12)),
+                "children": [{
+                    "name": "x",
+                    "detail": "Int",
+                    "kind": 8,
+                    "range": range((1, 4), (1, 10)),
+                    "selectionRange": range((1, 4), (1, 5)),
+                }],
+            },
+            {
+                "name": "main",
+                "detail": "() -> Int",
+                "kind": 12,
+                "range": range((4, 0), (6, 1)),
+                "selectionRange": range((4, 3), (4, 7)),
+            },
+            {
+                "name": "Shape",
+                "kind": 10,
+                "range": range((8, 0), (10, 1)),
+                "selectionRange": range((8, 5), (8, 10)),
+                "children": [{
+                    "name": "Circle",
+                    "kind": 22,
+                    "range": range((9, 4), (9, 26)),
+                    "selectionRange": range((9, 4), (9, 10)),
+                    "children": [{
+                        "name": "radius",
+                        "detail": "Int",
+                        "kind": 8,
+                        "range": range((9, 13), (9, 24)),
+                        "selectionRange": range((9, 13), (9, 19)),
+                    }],
+                }],
+            },
+        ])
+    );
+}
+
+#[tokio::test]
+async fn test_rename_file_without_client_support() {
+    let main = "fn main() -> Int {\n    utils::ONE\n}\n";
+    let project = TempProject::new(&[
+        ("main.rue", main),
+        ("utils.rue", "export const ONE: Int = 1;\n"),
+    ]);
+    let uri = project.uri("main.rue");
+
+    // The client can create files as part of an edit, but not rename them, and doesn't ask
+    // whether a name can be renamed first
+    let mut client = Client::new();
+    let response = client
+        .request(
+            "initialize",
+            Some(json!({
+                "capabilities": {
+                    "workspace": {
+                        "workspaceEdit": {
+                            "documentChanges": true,
+                            "resourceOperations": ["create"],
+                        },
+                    },
+                },
+            })),
+        )
+        .await;
+    assert_eq!(
+        response.result().unwrap()["capabilities"]["renameProvider"],
+        json!(true)
+    );
+
+    client.notify("initialized", json!({})).await;
+    client.open(&uri, main).await;
+
+    let response = client
+        .request("textDocument/rename", Some(rename(&uri, 1, 6, "helpers")))
+        .await;
+    let error = response.error().unwrap();
+    assert_eq!(error.code.code(), -32803);
+    assert_eq!(
+        error.message,
+        "`utils.rue` would have to be renamed, which the editor doesn't support"
     );
 }
 
@@ -555,6 +1163,36 @@ async fn test_query_panics_are_caught() {
             position(&uri, 2, 6),
         ),
         (
+            Task::Rename,
+            "textDocument/prepareRename",
+            position(&uri, 2, 6),
+        ),
+        (
+            Task::Rename,
+            "textDocument/rename",
+            rename(&uri, 2, 6, "other"),
+        ),
+        (
+            Task::SignatureHelp,
+            "textDocument/signatureHelp",
+            position(&uri, 2, 6),
+        ),
+        (
+            Task::InlayHints,
+            "textDocument/inlayHint",
+            inlay_hints(&uri),
+        ),
+        (
+            Task::DocumentSymbols,
+            "textDocument/documentSymbol",
+            json!({ "textDocument": { "uri": uri } }),
+        ),
+        (
+            Task::WorkspaceSymbols,
+            "workspace/symbol",
+            json!({ "query": "" }),
+        ),
+        (
             Task::Formatting,
             "textDocument/formatting",
             formatting(&uri),
@@ -583,7 +1221,10 @@ async fn test_query_panics_are_caught() {
 
         // A query may have left the compile it was using half-changed, so its project is compiled
         // again, without publishing anything
-        let queries_compile = !matches!(task, Task::Formatting | Task::CodeAction);
+        let queries_compile = !matches!(
+            task,
+            Task::Formatting | Task::CodeAction | Task::WorkspaceSymbols
+        );
         assert_eq!(
             client.compiles(),
             compiles + usize::from(queries_compile),
@@ -594,8 +1235,12 @@ async fn test_query_panics_are_caught() {
         client.inject_panic(None);
 
         let response = client.request(method, Some(params)).await;
-        assert_ne!(response.result(), Some(&Value::Null), "{method}");
         assert!(response.is_ok(), "{method}");
+
+        // The source has no call for a signature to be shown for
+        if task != Task::SignatureHelp {
+            assert_ne!(response.result(), Some(&Value::Null), "{method}");
+        }
     }
 
     client.assert_no_messages().await;

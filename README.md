@@ -223,6 +223,28 @@ Useful `build` flags:
 
 When a test fails, `test` shows where it was in the source: the stack of calls that led to the failure, with the values of their parameters. `debug` does the same for a program built with `--debug-metadata` when it's given the sidecar with `--debug-metadata <path>` (which can be repeated, for programs that run other programs).
 
+## Language Server
+
+`rue-lsp` is a language server for editors that speak the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/). It talks over standard input and output, and compiles the project that each open file belongs to as you type. It provides:
+
+- **Diagnostics:** errors and lint warnings, with quick fixes for the ones that have a suggestion.
+- **Hover:** the type of a binding or a field, the signature of a function, and the fields of a struct or the variants of an enum.
+- **Go to definition and find references:** for functions, constants, bindings, types, struct fields, enum variants, generic parameters and modules, across the files of the project.
+- **Rename:** renames a function, constant, binding, type, struct field, enum variant, generic parameter or module everywhere in the project, along with the file or directory of a module that's one. A shorthand field (`Point { x }`) is written out, so the field or the binding keeps its name. Names that are built in or from the standard library can't be renamed, and a new name that's invalid, already used, or would change what a name refers to is refused.
+- **Signature help:** the parameters of the function that's being called, with the one that the argument at the cursor is for, and what the function's generics were inferred as. It works for functions, lambdas, builtins and the fields of a struct initializer.
+- **Inlay hints:** the types that were inferred for `let` bindings and lambda parameters, the generic arguments that were inferred for a call, and the names of the parameters that a call's arguments are for (unless an argument is named like its parameter). Long types are cut short, with the rest in the hint's tooltip.
+- **Document and workspace symbols:** the outline of a file (its functions, tests, constants, type aliases and modules, structs with their fields, and enums with their variants), and a search for a symbol by name in every project that has a file open.
+- **Completion:** names in scope, the fields of a struct after a `.`, and the items of a module after `::`.
+- **Formatting:** the same as `rue fmt`, with the options from `Rue.toml`.
+
+Each kind of inlay hint is on unless it's turned off in the `initializationOptions` that the editor starts the server with. This turns the names of parameters off, and leaves the other two on:
+
+```json
+{ "inlayHints": { "types": true, "genericArguments": true, "parameterNames": false } }
+```
+
+The settings that the editor sends later change them too, as the same object, on its own or under `rue`.
+
 ## Hard Fork 2
 
 By default, Rue targets Chia mainnet as it is today, before hard fork 2. Turn on `hard_fork_2` in `Rue.toml`, or pass `--hard-fork-2` to `build`, `test` or `debug`, to target mainnet as it will be once hard fork 2 activates:

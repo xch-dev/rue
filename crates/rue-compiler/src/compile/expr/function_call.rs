@@ -8,7 +8,9 @@ use rue_types::{FunctionType, Type, TypeId, Union, contains_generic, substitute_
 
 use super::builtin::compile_builtin;
 use super::call_inference::{InferredCall, infer_call};
-use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_path_value};
+use crate::{
+    Compiler, CompletionContext, SyntaxCall, SyntaxItemKind, compile_expr, compile_path_value,
+};
 
 pub fn compile_function_call_expr(
     ctx: &mut Compiler,
@@ -55,6 +57,28 @@ pub fn compile_function_call_expr(
         let name = ctx.type_name(expr.ty);
         ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidFunctionCall(name));
     }
+
+    // The function as it's declared, which is what the language server shows, unless the call
+    // is rejected because it could be to more than one function. The type of a function that's
+    // called directly is taken as it is, since its parts are the types that the code names,
+    // which the function that's extracted from it has copies of
+    let declared = match expected_functions.as_slice() {
+        [function] => {
+            let mut ty = expr.ty;
+
+            while let Type::Ref(inner) = ctx.ty(ty) {
+                ty = *inner;
+            }
+
+            match ctx.ty(ty) {
+                Type::Function(declared) if declared.generics.len() == function.generics.len() => {
+                    Some(declared.clone())
+                }
+                _ => Some(function.clone()),
+            }
+        }
+        _ => None,
+    };
 
     // The callee's generics that are also in scope, as in a recursive call, are renamed to fresh
     // ones, so that they aren't confused with the caller's generics with the same ids (#334)
@@ -163,6 +187,27 @@ pub fn compile_function_call_expr(
             let unresolved = ctx.unresolved().ty;
             mappings.insert(generic, unresolved);
             uninferred.insert(generic, unresolved);
+        }
+
+        // The language server shows what the call's generics were inferred as, which leaves out
+        // the ones that weren't. They're the generics as they're declared, which are in the same
+        // order as the ones that were inferred
+        if let Some(declared) = declared {
+            let inferred = function
+                .generics
+                .iter()
+                .zip(&declared.generics)
+                .filter(|(generic, _)| !uninferred.contains_key(*generic))
+                .filter_map(|(generic, declared)| Some((*declared, *mappings.get(generic)?)))
+                .collect();
+
+            ctx.add_syntax(
+                SyntaxItemKind::Call(SyntaxCall {
+                    function: declared,
+                    generics: inferred,
+                }),
+                call.syntax().text_range(),
+            );
         }
 
         // The other generics can be inferred as types with these in them, such as `U` as `T` in

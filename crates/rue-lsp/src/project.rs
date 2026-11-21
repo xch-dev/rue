@@ -313,7 +313,7 @@ impl State {
             }
 
             if let Some(source) = files.first().cloned() {
-                cache = Some((Cache::new(ctx, tree, source), files));
+                cache = Some((Cache::new(ctx, tree, source, &project.entrypoint), files));
             }
         }
 

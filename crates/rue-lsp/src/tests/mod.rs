@@ -4,13 +4,17 @@ mod completion;
 mod diagnostics;
 mod formatting;
 mod hover;
+mod inlay_hints;
 mod lifecycle;
 mod line_endings;
 mod navigation;
 mod protocol;
+mod rename;
 mod shadowing;
+mod signature_help;
 mod std_library;
 mod sweep;
+mod symbols;
 mod syntax_errors;
 mod workspace;
 
@@ -26,10 +30,14 @@ use tower_lsp_server::LanguageServer;
 use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
-    Diagnostic, DocumentFormattingParams, FormattingOptions, GotoDefinitionParams,
-    GotoDefinitionResponse, HoverContents, HoverParams, Location, MarkedString, NumberOrString,
-    PartialResultParams, Position, Range, ReferenceContext, ReferenceParams,
-    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams,
+    Diagnostic, DocumentChangeOperation, DocumentChanges, DocumentFormattingParams, DocumentSymbol,
+    DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions, GotoDefinitionParams,
+    GotoDefinitionResponse, HoverContents, HoverParams, InlayHintLabel, InlayHintParams,
+    InlayHintTooltip, Location, MarkedString, NumberOrString, OneOf, ParameterLabel,
+    PartialResultParams, Position, PrepareRenameResponse, Range, ReferenceContext, ReferenceParams,
+    RenameParams, ResourceOp, SignatureHelpParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams, WorkspaceEdit,
+    WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
 use crate::paths::{path_to_uri, uri_to_path};
@@ -127,6 +135,8 @@ pub struct TestProject {
     _dir: TempDir,
     service: LspService<Backend>,
     cursor: Option<(Uri, Position)>,
+    /// The name and text of each file, without the cursor.
+    files: Vec<(String, String)>,
 }
 
 impl TestProject {
@@ -138,11 +148,17 @@ impl TestProject {
 
     pub fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
         let dir = TempDir::new("rue-lsp-test");
-        let root = dir.path().to_path_buf();
 
         if let Some(manifest) = manifest {
-            fs::write(root.join("Rue.toml"), manifest).unwrap();
+            fs::write(dir.path().join("Rue.toml"), manifest).unwrap();
         }
+
+        Self::in_dir(dir, files)
+    }
+
+    /// Creates a project in a directory that may already have files in it, such as a manifest.
+    pub fn in_dir(dir: TempDir, files: &[(&str, &str)]) -> Self {
+        let root = dir.path().to_path_buf();
 
         let mut cursor = None;
         let mut texts = Vec::new();
@@ -166,6 +182,12 @@ impl TestProject {
             texts.push((path, text));
         }
 
+        let files = files
+            .iter()
+            .zip(&texts)
+            .map(|((name, _), (_, text))| ((*name).to_string(), text.clone()))
+            .collect();
+
         let (service, _) = LspService::new(Backend::new);
 
         let project = Self {
@@ -173,6 +195,7 @@ impl TestProject {
             _dir: dir,
             service,
             cursor,
+            files,
         };
 
         // Opening any file compiles the whole project, but each file is opened to mirror what an
@@ -323,6 +346,352 @@ impl TestProject {
         output
     }
 
+    /// Renders the file with its inlay hints written into it, between `«` and `»`, followed by the
+    /// tooltips of the hints that have one.
+    pub fn inlay_hints(&self, name: &str) -> String {
+        let text = &self.text(name);
+        let end = offset_to_position(&LineIndex::with_carriage_returns(text), text, text.len());
+        self.inlay_hints_in(name, Range::new(Position::new(0, 0), end))
+    }
+
+    /// Renders the file with the inlay hints of a range, like [`Self::inlay_hints`].
+    pub fn inlay_hints_in(&self, name: &str, range: Range) -> String {
+        let text = &self.text(name);
+
+        let hints = block_on(self.backend().inlay_hint(InlayHintParams {
+            text_document: TextDocumentIdentifier::new(self.uri(name)),
+            range,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        }))
+        .unwrap()
+        .expect("the server answers for a file that it compiled");
+
+        let lines = LineIndex::with_carriage_returns(text);
+        let mut output = text.clone();
+        let mut last = None;
+
+        // The hints are in order, so they're written from the end of the text, which keeps the
+        // positions of the earlier ones valid
+        for hint in hints.iter().rev() {
+            assert!(
+                last.is_none_or(|last| hint.position <= last),
+                "hints are in order"
+            );
+            last = Some(hint.position);
+
+            let InlayHintLabel::String(label) = &hint.label else {
+                panic!("unexpected label: {:?}", hint.label);
+            };
+
+            // A hint that's padded is shown with a space, as the editor shows it
+            let label = if hint.padding_right == Some(true) {
+                format!("«{label}» ")
+            } else {
+                format!("«{label}»")
+            };
+
+            let offset = position_to_offset(&lines, text, hint.position);
+            assert_eq!(offset_to_position(&lines, text, offset), hint.position);
+            output.insert_str(offset, &label);
+        }
+
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+
+        for hint in hints {
+            let InlayHintLabel::String(label) = hint.label else {
+                unreachable!();
+            };
+
+            match hint.tooltip {
+                None => {}
+                Some(InlayHintTooltip::String(tooltip)) => {
+                    writeln!(output, "tooltip of «{label}»: {tooltip}").unwrap();
+                }
+                Some(tooltip) => panic!("unexpected tooltip: {tooltip:?}"),
+            }
+        }
+
+        output
+    }
+
+    /// The text of a file, as the project was created with it.
+    fn text(&self, name: &str) -> String {
+        let (_, text) = self
+            .files
+            .iter()
+            .find(|(file, _)| file == name)
+            .expect("missing file");
+
+        text.clone()
+    }
+
+    /// Renders the outline of a file: each symbol's kind, name and detail, the lines it spans and
+    /// where its name is, with the symbols inside of it indented under it.
+    pub fn document_symbols(&self, name: &str) -> String {
+        self.backend().nested_symbols.store(true, Ordering::Relaxed);
+
+        let response = block_on(self.backend().document_symbol(DocumentSymbolParams {
+            text_document: TextDocumentIdentifier::new(self.uri(name)),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .unwrap();
+
+        let symbols = match response {
+            None => return "<none>\n".to_string(),
+            Some(DocumentSymbolResponse::Nested(symbols)) => symbols,
+            Some(DocumentSymbolResponse::Flat(symbols)) => panic!("unexpected list: {symbols:?}"),
+        };
+
+        if symbols.is_empty() {
+            return "<empty>\n".to_string();
+        }
+
+        let mut output = String::new();
+        render_symbols(&symbols, None, 0, &mut output);
+        output
+    }
+
+    /// Renders the symbols of the workspace that match a query: each symbol's kind and name, the
+    /// symbol it's inside of, and where its name is.
+    pub fn workspace_symbols(&self, query: &str) -> String {
+        let response = block_on(self.backend().symbol(WorkspaceSymbolParams {
+            query: query.to_string(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .unwrap();
+
+        let symbols = match response {
+            None => return "<none>\n".to_string(),
+            Some(WorkspaceSymbolResponse::Nested(symbols)) => symbols,
+            Some(WorkspaceSymbolResponse::Flat(symbols)) => panic!("unexpected list: {symbols:?}"),
+        };
+
+        if symbols.is_empty() {
+            return "<empty>\n".to_string();
+        }
+
+        let mut output = String::new();
+
+        for symbol in symbols {
+            let OneOf::Left(location) = symbol.location else {
+                panic!("unexpected location: {:?}", symbol.location);
+            };
+
+            let container = symbol
+                .container_name
+                .map_or_else(String::new, |container| format!(" in {container}"));
+
+            writeln!(
+                output,
+                "{:?} {}{container} {}",
+                symbol.kind,
+                symbol.name,
+                self.location(&location.uri, location.range)
+            )
+            .unwrap();
+        }
+
+        output
+    }
+
+    /// Renders the signatures at the cursor, with the active parameter of each in brackets and
+    /// the active signature marked, or `<none>`.
+    pub fn signature_help(&self) -> String {
+        let (uri, position) = self.cursor();
+
+        let Some(help) = block_on(self.backend().signature_help(SignatureHelpParams {
+            context: None,
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri),
+                position,
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        }))
+        .unwrap() else {
+            return "<none>\n".to_string();
+        };
+
+        // The active parameter is one of the signature's
+        for signature in &help.signatures {
+            assert!(
+                signature.active_parameter.is_none_or(
+                    |active| (active as usize) < signature.parameters.as_ref().unwrap().len()
+                ),
+                "{signature:?}"
+            );
+        }
+
+        let active = help.active_signature.unwrap() as usize;
+        assert_eq!(
+            help.active_parameter,
+            help.signatures[active].active_parameter
+        );
+
+        let mut output = String::new();
+
+        for (i, signature) in help.signatures.into_iter().enumerate() {
+            // The parameters are parts of the label, in UTF-16 code units
+            let units = signature.label.encode_utf16().collect::<Vec<_>>();
+            let text = |range: std::ops::Range<u32>| {
+                String::from_utf16(&units[range.start as usize..range.end as usize]).unwrap()
+            };
+
+            let mut label = String::new();
+            let mut end = 0;
+
+            for (j, parameter) in signature.parameters.unwrap().into_iter().enumerate() {
+                let ParameterLabel::LabelOffsets([start, stop]) = parameter.label else {
+                    panic!("unexpected label: {:?}", parameter.label);
+                };
+
+                assert!(end <= start && start < stop, "parameters are in order");
+
+                label.push_str(&text(end..start));
+
+                if signature.active_parameter == Some(j as u32) {
+                    write!(label, "[{}]", text(start..stop)).unwrap();
+                } else {
+                    label.push_str(&text(start..stop));
+                }
+
+                end = stop;
+            }
+
+            label.push_str(&text(end..units.len() as u32));
+
+            let marker = if i == active { ">" } else { " " };
+            writeln!(output, "{marker} {label}").unwrap();
+        }
+
+        output
+    }
+
+    /// Renders the diagnostics of the project as it was created.
+    pub fn diagnostics(&self) -> String {
+        let (name, text) = &self.files[0];
+        self.change(name, Some(text))
+    }
+
+    /// Renders the name at the cursor that would be renamed, or why it can't be.
+    pub fn prepare_rename(&self) -> String {
+        let (uri, position) = self.cursor();
+
+        let response = block_on(
+            self.backend()
+                .prepare_rename(TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    position,
+                )),
+        );
+
+        match response {
+            Ok(None) => "<none>\n".to_string(),
+            Ok(Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder })) => {
+                format!("{} `{placeholder}`\n", self.location(&uri, range))
+            }
+            Ok(Some(response)) => panic!("unexpected response: {response:?}"),
+            Err(error) => format!("error: {}\n", error.message),
+        }
+    }
+
+    /// Renames what's at the cursor, and renders each file that changed with the edits applied to
+    /// it, along with the file that's renamed, or why it can't be renamed.
+    pub fn rename(&self, new_name: &str) -> String {
+        let (uri, position) = self.cursor();
+
+        let response = block_on(self.backend().rename(RenameParams {
+            text_document_position: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri),
+                position,
+            ),
+            new_name: new_name.to_string(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        }));
+
+        match response {
+            Ok(None) => "<none>\n".to_string(),
+            Ok(Some(edit)) => self.render_workspace_edit(edit),
+            Err(error) => format!("error: {}\n", error.message),
+        }
+    }
+
+    fn render_workspace_edit(&self, edit: WorkspaceEdit) -> String {
+        let mut changes = edit.changes.unwrap_or_default();
+        let mut renamed = Vec::new();
+
+        match edit.document_changes {
+            None => {}
+            Some(DocumentChanges::Edits(edits)) => panic!("unexpected edits: {edits:?}"),
+            Some(DocumentChanges::Operations(operations)) => {
+                for operation in operations {
+                    match operation {
+                        DocumentChangeOperation::Edit(edit) => {
+                            assert!(
+                                renamed.is_empty(),
+                                "files are edited before they're renamed"
+                            );
+
+                            changes.entry(edit.text_document.uri).or_default().extend(
+                                edit.edits.into_iter().map(|edit| match edit {
+                                    OneOf::Left(edit) => edit,
+                                    OneOf::Right(edit) => edit.text_edit,
+                                }),
+                            );
+                        }
+                        DocumentChangeOperation::Op(ResourceOp::Rename(rename)) => {
+                            renamed.push(rename);
+                        }
+                        DocumentChangeOperation::Op(operation) => {
+                            panic!("unexpected operation: {operation:?}")
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut output = String::new();
+
+        for (name, text) in &self.files {
+            let Some(edits) = changes.remove(&self.uri(name)) else {
+                continue;
+            };
+
+            // Each edit replaces a name, so the ranges are shown as what they replace
+            for edit in &edits {
+                assert_eq!(edit.range.start.line, edit.range.end.line);
+            }
+
+            writeln!(output, "{name}:\n{}", apply_edits(text, edits).trim_end()).unwrap();
+        }
+
+        assert!(changes.is_empty(), "edits to unexpected files: {changes:?}");
+
+        for rename in renamed {
+            let relative = |uri: &Uri| {
+                let path = uri_to_path(uri).unwrap();
+                path.strip_prefix(&self.root).unwrap().display().to_string()
+            };
+
+            writeln!(
+                output,
+                "renamed: {} -> {}",
+                relative(&rename.old_uri),
+                relative(&rename.new_uri)
+            )
+            .unwrap();
+        }
+
+        if output.is_empty() {
+            output.push_str("<no changes>\n");
+        }
+
+        output
+    }
+
     pub fn formatting(&self, name: &str) -> Result<Vec<TextEdit>, String> {
         self.backend()
             .on_formatting(&DocumentFormattingParams {
@@ -385,22 +754,11 @@ impl TestProject {
             let mut changes = action.edit.unwrap().changes.unwrap();
 
             for (name, text) in files {
-                let Some(mut edits) = changes.remove(&self.uri(name)) else {
+                let Some(edits) = changes.remove(&self.uri(name)) else {
                     continue;
                 };
 
-                // The edits of a file don't overlap, so they're applied from the end of the file,
-                // which keeps the positions of the earlier ones valid.
-                edits.sort_by_key(|edit| edit.range.start);
-
-                let mut fixed = (*text).to_string();
-                let lines = LineIndex::with_carriage_returns(text);
-
-                for edit in edits.into_iter().rev() {
-                    let start = position_to_offset(&lines, text, edit.range.start);
-                    let end = position_to_offset(&lines, text, edit.range.end);
-                    fixed.replace_range(start..end, &edit.new_text);
-                }
+                let fixed = apply_edits(text, edits);
 
                 if files.len() > 1 {
                     writeln!(output, "{name}:").unwrap();
@@ -481,6 +839,71 @@ impl TestProject {
 
         output
     }
+}
+
+/// Renders symbols and the symbols inside of them, which have to be inside of the range of the
+/// one they're in, as the protocol requires.
+fn render_symbols(
+    symbols: &[DocumentSymbol],
+    parent: Option<Range>,
+    depth: usize,
+    output: &mut String,
+) {
+    for symbol in symbols {
+        let inside =
+            |outer: Range, inner: Range| outer.start <= inner.start && inner.end <= outer.end;
+
+        assert!(inside(symbol.range, symbol.selection_range), "{symbol:?}");
+        assert!(
+            parent.is_none_or(|parent| inside(parent, symbol.range)),
+            "{symbol:?}"
+        );
+        assert!(!symbol.name.is_empty(), "{symbol:?}");
+
+        let detail = symbol
+            .detail
+            .as_ref()
+            .map_or_else(String::new, |detail| format!(" `{detail}`"));
+
+        writeln!(
+            output,
+            "{}{:?} {}{detail} {} [{}]",
+            "  ".repeat(depth),
+            symbol.kind,
+            symbol.name,
+            range_string(symbol.range),
+            range_string(symbol.selection_range)
+        )
+        .unwrap();
+
+        render_symbols(
+            symbol.children.as_deref().unwrap_or_default(),
+            Some(symbol.range),
+            depth + 1,
+            output,
+        );
+    }
+}
+
+/// Applies edits to a text. The edits don't overlap, so they're applied from the end of the text,
+/// which keeps the positions of the earlier ones valid.
+fn apply_edits(text: &str, mut edits: Vec<TextEdit>) -> String {
+    edits.sort_by_key(|edit| edit.range.start);
+
+    for pair in edits.windows(2) {
+        assert!(pair[0].range.end <= pair[1].range.start, "edits overlap");
+    }
+
+    let mut fixed = text.to_string();
+    let lines = LineIndex::with_carriage_returns(text);
+
+    for edit in edits.into_iter().rev() {
+        let start = position_to_offset(&lines, text, edit.range.start);
+        let end = position_to_offset(&lines, text, edit.range.end);
+        fixed.replace_range(start..end, &edit.new_text);
+    }
+
+    fixed
 }
 
 /// Renders the hover at a position, or `<none>`.

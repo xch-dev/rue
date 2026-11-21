@@ -24,24 +24,34 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rue_options::{Project, find_project};
-use tower_lsp_server::jsonrpc::{Error, Result};
+use tower_lsp_server::jsonrpc::{Error, ErrorCode, Result};
+use tower_lsp_server::ls_types::error_codes::REQUEST_FAILED;
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
     CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChangeOperation, DocumentChanges,
+    DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
     FileSystemWatcher, GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
-    Position, Range, ReferenceParams, Registration, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Uri, WorkspaceEdit,
+    InitializedParams, InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip,
+    LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
+    OptionalVersionedTextDocumentIdentifier, ParameterInformation, ParameterLabel, Position,
+    PrepareRenameResponse, Range, ReferenceParams, Registration, RenameFile, RenameOptions,
+    RenameParams, ResourceOp, ResourceOperationKind, ServerCapabilities, SignatureHelp,
+    SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
+    TextDocumentEdit, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextEdit, Uri, WorkDoneProgressOptions, WorkspaceEdit, WorkspaceSymbol, WorkspaceSymbolParams,
+    WorkspaceSymbolResponse,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
-use crate::cache::{HoverInfo, SymbolHoverKind, field_declarations};
-use crate::paths::{Paths, document, uri_to_path};
+use crate::cache::{
+    HintKind, HintOptions, HoverInfo, Rename, Signatures, SymbolHoverKind, field_declarations,
+};
+use crate::paths::{Paths, document, file_name, uri_to_path};
 use crate::position::{offset_to_position, offsets_to_range, source_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
 use tokio::sync::oneshot;
@@ -56,6 +66,10 @@ pub struct Backend {
     worker: Worker,
     /// Whether the client can register file watchers when asked to.
     watch_files: AtomicBool,
+    /// Whether the client asks for inlay hints again when it's told that they changed.
+    refresh_hints: AtomicBool,
+    /// Whether the client can show the symbols of a document inside of each other.
+    nested_symbols: AtomicBool,
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
@@ -66,6 +80,11 @@ enum Task {
     Definition,
     References,
     Completion,
+    Rename,
+    SignatureHelp,
+    InlayHints,
+    DocumentSymbols,
+    WorkspaceSymbols,
     Formatting,
     CodeAction,
 }
@@ -78,6 +97,11 @@ impl fmt::Display for Task {
             Self::Definition => "finding the definition",
             Self::References => "finding references",
             Self::Completion => "computing completions",
+            Self::Rename => "renaming",
+            Self::SignatureHelp => "computing signature help",
+            Self::InlayHints => "computing inlay hints",
+            Self::DocumentSymbols => "listing the symbols of a document",
+            Self::WorkspaceSymbols => "searching for symbols",
             Self::Formatting => "formatting",
             Self::CodeAction => "computing code actions",
         })
@@ -101,11 +125,63 @@ impl LanguageServer for Backend {
         let watch_files = params
             .capabilities
             .workspace
-            .and_then(|capabilities| capabilities.did_change_watched_files)
+            .as_ref()
+            .and_then(|capabilities| capabilities.did_change_watched_files.as_ref())
             .and_then(|capabilities| capabilities.dynamic_registration)
             .unwrap_or(false);
 
         self.watch_files.store(watch_files, Ordering::Relaxed);
+
+        // A module that's a file or a directory is renamed along with it, which the client has
+        // to be able to do as part of an edit. Files are only renamed by an edit's document
+        // changes, so a client that renames them takes those, whether or not it says so (Neovim
+        // doesn't)
+        let rename_files = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|capabilities| capabilities.workspace_edit.as_ref())
+            .and_then(|capabilities| capabilities.resource_operations.as_ref())
+            .is_some_and(|operations| operations.contains(&ResourceOperationKind::Rename));
+
+        self.shared
+            .rename_files
+            .store(rename_files, Ordering::Relaxed);
+
+        // The options can only be sent to a client that asks whether a name can be renamed first
+        let prepare_rename = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|capabilities| capabilities.rename.as_ref())
+            .and_then(|capabilities| capabilities.prepare_support)
+            .unwrap_or(false);
+
+        if let Some(options) = &params.initialization_options {
+            set_hint_options(&self.shared, options);
+        }
+
+        // The hints are asked for again once the client changes which ones it wants
+        let refresh_hints = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|capabilities| capabilities.inlay_hint.as_ref())
+            .and_then(|capabilities| capabilities.refresh_support)
+            .unwrap_or(false);
+
+        self.refresh_hints.store(refresh_hints, Ordering::Relaxed);
+
+        // A client that can't show symbols inside of each other gets them as a list
+        let nested_symbols = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|capabilities| capabilities.document_symbol.as_ref())
+            .and_then(|capabilities| capabilities.hierarchical_document_symbol_support)
+            .unwrap_or(false);
+
+        self.nested_symbols.store(nested_symbols, Ordering::Relaxed);
 
         // Files in the workspace are reported with the paths the client uses for them
         #[allow(deprecated)]
@@ -131,6 +207,25 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(if prepare_rename {
+                    OneOf::Right(RenameOptions {
+                        prepare_provider: Some(true),
+                        work_done_progress_options: WorkDoneProgressOptions::default(),
+                    })
+                } else {
+                    OneOf::Left(true)
+                }),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec![
+                        "(".to_string(),
+                        ",".to_string(),
+                        "{".to_string(),
+                    ]),
+                    ..Default::default()
+                }),
+                inlay_hint_provider: Some(OneOf::Left(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
@@ -324,6 +419,117 @@ impl LanguageServer for Backend {
             .await)
     }
 
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let revision = self.revision(&params.text_document.uri);
+
+        self.query(Task::Rename, move |state| {
+            let cache = state.cache(&params.text_document.uri, revision)?;
+            Some(prepare_rename(cache, params.position))
+        })
+        .await
+        .map_or(Ok(None), |result| result.map_err(request_failed))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let RenameParams {
+            text_document_position: params,
+            new_name,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        self.query(Task::Rename, move |state| {
+            let shared = state.shared.clone();
+            let cache = state.cache(&params.text_document.uri, revision)?;
+            Some(rename(cache, &shared, params.position, &new_name))
+        })
+        .await
+        .map_or(Ok(None), |result| result.map_err(request_failed))
+    }
+
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let SignatureHelpParams {
+            text_document_position_params: params,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        Ok(self
+            .query(Task::SignatureHelp, move |state| {
+                signature_help(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.position,
+                )
+            })
+            .await)
+    }
+
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let revision = self.revision(&params.text_document.uri);
+        let options = *lock(&self.shared.hints);
+
+        Ok(self
+            .query(Task::InlayHints, move |state| {
+                Some(inlay_hints(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.range,
+                    options,
+                ))
+            })
+            .await)
+    }
+
+    /// The client's settings say which inlay hints it wants.
+    async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
+        if set_hint_options(&self.shared, &params.settings)
+            && self.refresh_hints.load(Ordering::Relaxed)
+        {
+            self.shared.client.inlay_hint_refresh().await.ok();
+        }
+    }
+
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri = params.text_document.uri;
+        let revision = self.revision(&uri);
+        let nested = self.nested_symbols.load(Ordering::Relaxed);
+
+        Ok(self
+            .query(Task::DocumentSymbols, move |state| {
+                let symbols = state.cache(&uri, revision)?.document_symbols();
+
+                Some(if nested {
+                    DocumentSymbolResponse::Nested(symbols)
+                } else {
+                    let mut list = Vec::new();
+                    list_symbols(&uri, symbols, None, &mut list);
+                    DocumentSymbolResponse::Flat(list)
+                })
+            })
+            .await)
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<WorkspaceSymbolResponse>> {
+        Ok(self
+            .query(Task::WorkspaceSymbols, move |state| {
+                Some(WorkspaceSymbolResponse::Nested(workspace_symbols(
+                    state,
+                    &params.query,
+                )))
+            })
+            .await)
+    }
+
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         self.catch_panic(Task::Formatting, || self.on_formatting(&params))
             .await
@@ -353,6 +559,8 @@ impl Backend {
             worker: Worker::new(shared.clone()),
             shared,
             watch_files: AtomicBool::new(false),
+            refresh_hints: AtomicBool::new(false),
+            nested_symbols: AtomicBool::new(false),
         }
     }
 
@@ -561,6 +769,261 @@ fn references(
         .collect::<Vec<_>>();
 
     (!locations.is_empty()).then_some(locations)
+}
+
+fn prepare_rename(
+    cache: &Cache<Compiler>,
+    position: Position,
+) -> std::result::Result<Option<PrepareRenameResponse>, String> {
+    let position = cache.position(position);
+
+    Ok(cache
+        .prepare_rename(position)?
+        .map(|name| PrepareRenameResponse::RangeWithPlaceholder {
+            range: name.range,
+            placeholder: name.name,
+        }))
+}
+
+fn rename(
+    cache: &Cache<Compiler>,
+    shared: &Shared,
+    position: Position,
+    new_name: &str,
+) -> std::result::Result<Option<WorkspaceEdit>, String> {
+    let position = cache.position(position);
+
+    let Some(Rename { edits, moved }) = cache.rename(position, new_name)? else {
+        return Ok(None);
+    };
+
+    // An edit that's left out would rename only some of the places
+    let edits = edits
+        .into_iter()
+        .map(|(kind, edits)| Some((shared.paths.uri(&kind)?, edits)))
+        .collect::<Option<Vec<_>>>()
+        .ok_or("A file that would be edited isn't one that the editor can open")?
+        .into_iter();
+
+    let Some(moved) = moved else {
+        return Ok(Some(WorkspaceEdit::new(edits.collect())));
+    };
+
+    if !shared.rename_files.load(Ordering::Relaxed) {
+        return Err(format!(
+            "`{}` would have to be renamed, which the editor doesn't support",
+            file_name(&moved.from)
+        ));
+    }
+
+    let Some((old_uri, new_uri)) = shared.paths.moved(&moved.from, &moved.to) else {
+        return Err(format!(
+            "`{}` can't be renamed, since it isn't a file that the editor can open",
+            file_name(&moved.from)
+        ));
+    };
+
+    // The files are edited where they are, and then moved
+    let operations = edits
+        .map(|(uri, edits)| {
+            DocumentChangeOperation::Edit(TextDocumentEdit {
+                text_document: OptionalVersionedTextDocumentIdentifier { uri, version: None },
+                edits: edits.into_iter().map(OneOf::Left).collect(),
+            })
+        })
+        .chain([DocumentChangeOperation::Op(ResourceOp::Rename(
+            RenameFile {
+                old_uri,
+                new_uri,
+                options: None,
+                annotation_id: None,
+            },
+        ))])
+        .collect();
+
+    Ok(Some(WorkspaceEdit {
+        document_changes: Some(DocumentChanges::Operations(operations)),
+        ..WorkspaceEdit::default()
+    }))
+}
+
+/// The error for a request that can't be answered, with the reason to show to the user.
+fn request_failed(message: String) -> Error {
+    Error {
+        code: ErrorCode::ServerError(REQUEST_FAILED),
+        message: message.into(),
+        data: None,
+    }
+}
+
+fn signature_help(cache: &mut Cache<Compiler>, position: Position) -> Option<SignatureHelp> {
+    let position = cache.position(position);
+
+    let scopes = cache.scopes(position);
+    let Signatures { signatures, active } = cache.signature_help(&scopes, position)?;
+
+    let active_parameter = signatures
+        .get(active)
+        .and_then(|signature| signature.active_parameter)
+        .map(|parameter| parameter as u32);
+
+    let signatures = signatures
+        .into_iter()
+        .map(|signature| {
+            // The parameters are parts of the label, which are counted in UTF-16 code units
+            let offset = |index: usize| signature.label[..index].encode_utf16().count() as u32;
+
+            SignatureInformation {
+                parameters: Some(
+                    signature
+                        .parameters
+                        .iter()
+                        .map(|parameter| ParameterInformation {
+                            label: ParameterLabel::LabelOffsets([
+                                offset(parameter.start),
+                                offset(parameter.end),
+                            ]),
+                            documentation: None,
+                        })
+                        .collect(),
+                ),
+                active_parameter: signature.active_parameter.map(|parameter| parameter as u32),
+                documentation: None,
+                label: signature.label,
+            }
+        })
+        .collect();
+
+    Some(SignatureHelp {
+        signatures,
+        active_signature: Some(active as u32),
+        active_parameter,
+    })
+}
+
+fn inlay_hints(cache: &mut Cache<Compiler>, range: Range, options: HintOptions) -> Vec<InlayHint> {
+    let range = cache.position(range.start)..cache.position(range.end);
+
+    cache
+        .inlay_hints(range, options)
+        .into_iter()
+        .map(|hint| InlayHint {
+            position: hint.position,
+            label: InlayHintLabel::String(hint.label),
+            kind: Some(match hint.kind {
+                HintKind::Type | HintKind::GenericArguments => InlayHintKind::TYPE,
+                HintKind::Parameter => InlayHintKind::PARAMETER,
+            }),
+            text_edits: None,
+            tooltip: hint.tooltip.map(InlayHintTooltip::String),
+            padding_left: None,
+            // A parameter's name is before its argument, and the rest are right after a name
+            padding_right: Some(hint.kind == HintKind::Parameter),
+            data: None,
+        })
+        .collect()
+}
+
+/// Sets which inlay hints the client wants from its settings, which are either the server's own
+/// (`{ "inlayHints": { ... } }`, as the initialization options are) or every setting with the
+/// server's under `rue`. The ones that aren't given stay as they are. Returns whether any changed.
+fn set_hint_options(shared: &Shared, settings: &serde_json::Value) -> bool {
+    let settings = settings.get("rue").unwrap_or(settings);
+
+    let Some(settings) = settings.get("inlayHints") else {
+        return false;
+    };
+
+    let mut options = lock(&shared.hints);
+    let options = &mut *options;
+    let previous = *options;
+
+    for (name, option) in [
+        ("types", &mut options.types),
+        ("genericArguments", &mut options.generic_arguments),
+        ("parameterNames", &mut options.parameter_names),
+    ] {
+        if let Some(value) = settings.get(name).and_then(serde_json::Value::as_bool) {
+            *option = value;
+        }
+    }
+
+    *options != previous
+}
+
+/// Adds the symbols of a document and the symbols inside of them to a list, each with the name
+/// of the symbol it's inside of.
+fn list_symbols(
+    uri: &Uri,
+    symbols: Vec<DocumentSymbol>,
+    container: Option<&str>,
+    list: &mut Vec<SymbolInformation>,
+) {
+    for symbol in symbols {
+        #[allow(deprecated)]
+        list.push(SymbolInformation {
+            name: symbol.name.clone(),
+            kind: symbol.kind,
+            tags: None,
+            deprecated: None,
+            location: Location::new(uri.clone(), symbol.range),
+            container_name: container.map(ToString::to_string),
+        });
+
+        list_symbols(
+            uri,
+            symbol.children.unwrap_or_default(),
+            Some(&symbol.name),
+            list,
+        );
+    }
+}
+
+/// The symbols of every project that's been compiled whose names match the query, best match
+/// first.
+fn workspace_symbols(state: &State, query: &str) -> Vec<WorkspaceSymbol> {
+    state.shared.inject_panic(Task::WorkspaceSymbols);
+
+    let mut symbols = Vec::new();
+
+    for (key, cache) in &state.projects {
+        // A file that several projects include is searched in the one that answers the other
+        // queries about it, which is the last one that compiled it. The others may have compiled
+        // an older text of it
+        let searched = |kind: &SourceKind| {
+            state
+                .files
+                .get(kind)
+                .is_some_and(|(project, ..)| project == key)
+        };
+
+        for (kind, found) in cache.find_symbols(query, searched) {
+            let Some(uri) = state.shared.paths.uri(kind) else {
+                continue;
+            };
+
+            symbols.extend(found.into_iter().map(|symbol| (uri.clone(), symbol)));
+        }
+    }
+
+    // The projects are in no particular order
+    symbols.sort_by(|(a_uri, a), (b_uri, b)| {
+        b.score.cmp(&a.score).then_with(|| {
+            (&a.name, a_uri.as_str(), a.range.start).cmp(&(&b.name, b_uri.as_str(), b.range.start))
+        })
+    });
+
+    symbols
+        .into_iter()
+        .map(|(uri, symbol)| WorkspaceSymbol {
+            name: symbol.name,
+            kind: symbol.kind,
+            tags: None,
+            container_name: symbol.container,
+            location: OneOf::Left(Location::new(uri, symbol.range)),
+            data: None,
+        })
+        .collect()
 }
 
 fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {

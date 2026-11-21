@@ -88,18 +88,20 @@ pub fn create_struct_binding(
 
         if let Some(binding) = field.binding() {
             create_binding(ctx, binding_symbol, &binding);
-
-            ctx.add_syntax(
-                SyntaxItemKind::FieldReference(SyntaxField {
-                    name: name.text().to_string(),
-                    container: ty,
-                    ty: field_type,
-                }),
-                name.text_range(),
-            );
         } else {
             create_binding_for_identifier(ctx, binding_symbol, &name);
         }
+
+        // Without a binding of its own, the name is the field and the binding that's declared for
+        // it. The binding is recorded first, so that it's what navigation is about
+        ctx.add_syntax(
+            SyntaxItemKind::FieldReference(SyntaxField {
+                name: name.text().to_string(),
+                container: ty,
+                ty: field_type,
+            }),
+            name.text_range(),
+        );
 
         ctx.pop_declaration();
     }

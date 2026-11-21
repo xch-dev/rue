@@ -1,10 +1,13 @@
-use std::collections::HashSet;
-use std::path::Path;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::AstNode;
-use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
+use rue_compiler::{
+    Compiler, CompletionContext, FileTree, SyntaxField, SyntaxItem, SyntaxItemKind, SyntaxMap,
+};
 use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{Declaration, FunctionKind, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind};
@@ -13,6 +16,15 @@ use rue_types::{DISCRIMINANT_FIELD, Type, TypeId, Union};
 use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position,
 };
+
+mod hints;
+mod rename;
+mod signature;
+mod symbols;
+
+pub use hints::{HintKind, HintOptions};
+pub use rename::Rename;
+pub use signature::Signatures;
 
 use crate::paths::path_to_uri;
 use crate::position::{position_to_offset, source_range};
@@ -129,29 +141,6 @@ enum Role {
     Reference,
 }
 
-/// What an item is about and its role, for the items that navigation queries can go to.
-fn classify(kind: &SyntaxItemKind) -> Option<(Target<'_>, Role)> {
-    match kind {
-        SyntaxItemKind::SymbolDeclaration(symbol) => {
-            Some((Target::Symbol(*symbol), Role::Declaration))
-        }
-        SyntaxItemKind::FileModule(symbol) => Some((Target::Symbol(*symbol), Role::FileModule)),
-        SyntaxItemKind::SymbolReference(symbol) => Some((Target::Symbol(*symbol), Role::Reference)),
-        SyntaxItemKind::TypeDeclaration(ty) => Some((Target::Type(*ty), Role::Declaration)),
-        SyntaxItemKind::TypeReference(ty) => Some((Target::Type(*ty), Role::Reference)),
-        SyntaxItemKind::FieldDeclaration(field) => Some((
-            Target::Field(field.container, &field.name),
-            Role::Declaration,
-        )),
-        SyntaxItemKind::FieldReference(field) => {
-            Some((Target::Field(field.container, &field.name), Role::Reference))
-        }
-        SyntaxItemKind::FieldInitializer(_)
-        | SyntaxItemKind::Scope(_)
-        | SyntaxItemKind::CompletionContext(_) => None,
-    }
-}
-
 /// A project's compile, which answers queries about one of its files at a time. Queries can
 /// allocate types, so they need the compiler mutably, and they run on the thread that owns it.
 #[derive(Debug)]
@@ -160,17 +149,71 @@ pub struct Cache<T> {
     tree: FileTree,
     source: Source,
     syntax_map: SyntaxMap,
+    /// The struct that declares the fields of each type that a field was used through, such as
+    /// `Wrap` for a `Wrap<Int>`, so that every use of a field is about the same declaration.
+    field_owners: HashMap<TypeId, TypeId>,
+    /// The directory that the project is compiled from, if it's compiled from one, without any
+    /// symbolic links in its path.
+    root: Option<PathBuf>,
 }
 
 impl Cache<Compiler> {
-    pub fn new(ctx: Compiler, tree: FileTree, source: Source) -> Self {
+    pub fn new(mut ctx: Compiler, tree: FileTree, source: Source, entrypoint: &Path) -> Self {
         let syntax_map = ctx.syntax_map().clone();
+
+        let mut field_owners = HashMap::new();
+
+        for item in syntax_map.items() {
+            let (SyntaxItemKind::FieldDeclaration(field)
+            | SyntaxItemKind::FieldReference(field)
+            | SyntaxItemKind::FieldInitializer(field)) = &item.kind
+            else {
+                continue;
+            };
+
+            // A container that isn't a struct, such as a pair, is its own owner, which is also
+            // remembered so that it's only worked out once
+            if let Entry::Vacant(entry) = field_owners.entry(field.container) {
+                entry.insert(field_owner(&mut ctx, field.container).unwrap_or(field.container));
+            }
+        }
 
         Self {
             ctx,
             tree,
             source,
             syntax_map,
+            field_owners,
+            root: entrypoint.canonicalize().ok().filter(|root| root.is_dir()),
+        }
+    }
+
+    /// What an item is about and its role, for the items that navigation queries can go to.
+    fn classify<'a>(&self, kind: &'a SyntaxItemKind) -> Option<(Target<'a>, Role)> {
+        let field = |field: &'a SyntaxField| {
+            let owner = self.field_owners.get(&field.container);
+            Target::Field(*owner.unwrap_or(&field.container), &field.name)
+        };
+
+        match kind {
+            SyntaxItemKind::SymbolDeclaration(symbol) => {
+                Some((Target::Symbol(*symbol), Role::Declaration))
+            }
+            SyntaxItemKind::FileModule(symbol) => Some((Target::Symbol(*symbol), Role::FileModule)),
+            SyntaxItemKind::SymbolReference(symbol) => {
+                Some((Target::Symbol(*symbol), Role::Reference))
+            }
+            SyntaxItemKind::TypeDeclaration(ty) => Some((Target::Type(*ty), Role::Declaration)),
+            SyntaxItemKind::TypeReference(ty) => Some((Target::Type(*ty), Role::Reference)),
+            SyntaxItemKind::FieldDeclaration(declared) => {
+                Some((field(declared), Role::Declaration))
+            }
+            SyntaxItemKind::FieldReference(used) | SyntaxItemKind::FieldInitializer(used) => {
+                Some((field(used), Role::Reference))
+            }
+            SyntaxItemKind::Call(_)
+            | SyntaxItemKind::Scope(_)
+            | SyntaxItemKind::CompletionContext(_) => None,
         }
     }
 
@@ -192,20 +235,30 @@ impl Cache<Compiler> {
     /// it's in. An inline module doesn't see the scopes of the module it's in, though its text is
     /// inside of them.
     pub fn scopes(&self, index: usize) -> Scopes {
+        self.scopes_in(&self.source.kind, index)
+    }
+
+    /// The scopes that are visible at the index of a file, like [`Self::scopes`].
+    fn scopes_in(&self, kind: &SourceKind, index: usize) -> Scopes {
         // Every scope that contains the index is nested in or equal to the others, so the narrower
         // one is the inner one. Of scopes with the same span, the first one exited (which is added
         // to the syntax map first) is the innermost.
-        let innermost = self
-            .syntax_map
-            .items()
-            .filter(|item| item.source_kind == self.source.kind && contains(item.span, index))
-            .filter_map(|item| match item.kind {
-                SyntaxItemKind::Scope(scope) => Some((item.span.len(), scope)),
-                _ => None,
-            })
-            .min_by_key(|&(len, _)| len)
-            .map(|(_, scope)| scope);
+        let innermost = innermost_scope(
+            self.syntax_map
+                .items()
+                .filter(|item| item.source_kind == *kind)
+                .filter_map(|item| match item.kind {
+                    SyntaxItemKind::Scope(scope) => Some((item.span, scope)),
+                    _ => None,
+                }),
+            index,
+        );
 
+        self.scope_chain(innermost)
+    }
+
+    /// A scope and the scopes that it's in, innermost first.
+    fn scope_chain(&self, innermost: Option<ScopeId>) -> Scopes {
         let mut visible = Vec::new();
         let mut current = innermost;
 
@@ -708,7 +761,8 @@ impl Cache<Compiler> {
                         type_name: self.type_name(scopes, field.ty),
                     }));
                 }
-                SyntaxItemKind::Scope(_)
+                SyntaxItemKind::Call(_)
+                | SyntaxItemKind::Scope(_)
                 | SyntaxItemKind::CompletionContext(_)
                 | SyntaxItemKind::FileModule(_) => {}
             }
@@ -775,6 +829,7 @@ impl Cache<Compiler> {
                         | SyntaxItemKind::FieldReference(_)
                         | SyntaxItemKind::FieldInitializer(_) => true,
                         SyntaxItemKind::FileModule(_)
+                        | SyntaxItemKind::Call(_)
                         | SyntaxItemKind::Scope(_)
                         | SyntaxItemKind::CompletionContext(_) => false,
                     }
@@ -792,7 +847,7 @@ impl Cache<Compiler> {
     fn target_at(&self, index: usize) -> Option<(Target<'_>, Role)> {
         self.items_at(index)
             .into_iter()
-            .find_map(|item| classify(&item.kind))
+            .find_map(|item| self.classify(&item.kind))
     }
 
     /// The locations of the items with the target and one of the roles, sorted by file and
@@ -803,7 +858,7 @@ impl Cache<Compiler> {
             .syntax_map
             .items()
             .filter(|item| {
-                classify(&item.kind)
+                self.classify(&item.kind)
                     .is_some_and(|(other, role)| other == target && roles.contains(&role))
             })
             .filter_map(|item| {
@@ -838,6 +893,24 @@ impl Cache<Compiler> {
         }
 
         rue_types::stringify(self.ctx.types_mut(), ty)
+    }
+
+    /// The name of a type like [`Self::type_name`], but if it isn't named by anything in scope,
+    /// only its first `parts` parts are written, and the rest are shown as `...`. A type that
+    /// was inferred can be far too large to write in full.
+    fn bounded_type_name(&mut self, scopes: &Scopes, ty: TypeId, parts: usize) -> String {
+        self.bounded_type(scopes, ty, parts).0
+    }
+
+    /// The name of a type like [`Self::bounded_type_name`], and whether any of it was left out.
+    fn bounded_type(&mut self, scopes: &Scopes, ty: TypeId, parts: usize) -> (String, bool) {
+        for &scope in &scopes.0 {
+            if let Some(name) = self.ctx.scope(scope).type_name(ty) {
+                return (name.to_string(), false);
+            }
+        }
+
+        rue_types::stringify_bounded(self.ctx.types_mut(), ty, parts)
     }
 
     /// The name of a type along with its generic parameters, e.g. `List<T>`.
@@ -1155,6 +1228,21 @@ impl Cache<Compiler> {
         scopes: &Scopes,
         ty: TypeId,
     ) -> Option<(Vec<FieldHoverInfo>, bool)> {
+        let (fields, nil_terminated) = self.struct_field_types(ty)?;
+
+        let fields = fields
+            .into_iter()
+            .map(|(name, ty)| FieldHoverInfo {
+                name,
+                type_name: self.type_name(scopes, ty),
+            })
+            .collect();
+
+        Some((fields, nil_terminated))
+    }
+
+    /// The names and types of a struct's fields, and whether it's nil terminated.
+    fn struct_field_types(&mut self, ty: TypeId) -> Option<(Vec<(String, TypeId)>, bool)> {
         let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
         let mut fields = Vec::new();
@@ -1196,13 +1284,24 @@ impl Cache<Compiler> {
                 continue;
             }
 
-            fields.push(FieldHoverInfo {
-                name: name.clone(),
-                type_name: self.type_name(scopes, next),
-            });
+            fields.push((name.clone(), next));
         }
 
         Some((fields, ty.nil_terminated))
+    }
+}
+
+/// The struct that declares the fields of a type that a field is used through: the struct itself
+/// for an instance of it, or for a union of instances of it (such as narrowed copies).
+fn field_owner(ctx: &mut Compiler, container: TypeId) -> Option<TypeId> {
+    let semantic = rue_types::unwrap_semantic(ctx.types_mut(), container, true);
+
+    match ctx.ty(semantic) {
+        Type::Struct(ty) => Some(ty.semantic),
+        Type::Union(_) => rue_types::extract_structs(ctx.types_mut(), semantic)?
+            .first()
+            .map(|ty| ty.semantic),
+        _ => None,
     }
 }
 
@@ -1214,6 +1313,15 @@ impl Cache<Compiler> {
 /// first span.
 fn best_span(spans: impl Iterator<Item = TextRange>, index: usize) -> Option<TextRange> {
     spans.min_by_key(|span| (usize::from(span.end()) == index, span.len()))
+}
+
+/// The scope that contains the index and no other scope that does: the narrowest one, and of
+/// those with the same span, the first.
+fn innermost_scope<T>(scopes: impl Iterator<Item = (TextRange, T)>, index: usize) -> Option<T> {
+    scopes
+        .filter(|(span, _)| contains(*span, index))
+        .min_by_key(|(span, _)| span.len())
+        .map(|(_, scope)| scope)
 }
 
 fn contains(range: TextRange, index: usize) -> bool {
@@ -1415,6 +1523,40 @@ mod tests {
         assert_eq!(before.2.len(), 3);
         assert_eq!(duplicated, before);
         assert_eq!(widened, before);
+    }
+
+    #[test]
+    fn test_rename_with_duplicate_items() {
+        // Each place is only edited once, even if it's in the syntax map more than once
+        let project = TestProject::new(&[(
+            "main.rue",
+            "struct Point {\n    x: Int,\n}\n\nfn main(point: Point) -> Int {\n    point.$0x + point.x\n}\n",
+        )]);
+
+        let (uri, position) = project.cursor();
+
+        let (before, duplicated) = project
+            .backend()
+            .worker
+            .run(None, move |state| {
+                let cache = state.cache(&uri, None).unwrap();
+                let index = cache.position(position);
+
+                let before = cache.rename(index, "left");
+
+                for item in cache.syntax_map.items().cloned().collect::<Vec<_>>() {
+                    cache.syntax_map.add_item(item);
+                }
+
+                (before, cache.rename(index, "left"))
+            })
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+
+        let edits = before.clone().unwrap().unwrap().edits;
+        assert_eq!(edits.values().map(Vec::len).sum::<usize>(), 3);
+        assert_eq!(duplicated, before);
     }
 
     #[test]

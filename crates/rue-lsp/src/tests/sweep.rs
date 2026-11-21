@@ -1,10 +1,11 @@
 //! Crash sweep: opens every `.rue` file under `examples/` and `tests/` and makes sure the
 //! language server never panics on it, whether it's complete or half-typed.
 //!
-//! For each file, it (a) requests hover, go to definition, references and completion at many
-//! cursor positions, and (b) recompiles edited versions of the file, as if it were being typed,
-//! and makes the same requests where the edit happened. The edits are: everything after the
-//! cursor removed, the rest of the cursor's line removed, and a chunk removed from the cursor on.
+//! For each file, it (a) makes every request (hover, go to definition, references, completion,
+//! rename, signature help, inlay hints and symbols) at many cursor positions, and (b) recompiles
+//! edited versions of the file, as if it were being typed, and makes the same requests where the
+//! edit happened. The edits are: everything after the cursor removed, the rest of the cursor's
+//! line removed, and a chunk removed from the cursor on.
 //!
 //! [`crash_sweep_sampled`] runs with `cargo test` on a deterministic sample, so that it takes a few
 //! seconds. [`crash_sweep_exhaustive`] makes requests at every character boundary and edits at
@@ -29,10 +30,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, ThreadId};
 
+use futures::executor::block_on;
+use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
-    CompletionParams, GotoDefinitionParams, HoverParams, PartialResultParams, Position,
-    ReferenceContext, ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
-    WorkDoneProgressParams,
+    CompletionParams, DocumentSymbolParams, GotoDefinitionParams, HoverParams, InlayHintParams,
+    PartialResultParams, Position, Range, ReferenceContext, ReferenceParams, RenameParams,
+    SignatureHelpParams, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
+    WorkDoneProgressParams, WorkspaceSymbolParams,
 };
 
 use super::TestProject;
@@ -186,14 +190,26 @@ enum Request {
     GotoDefinition,
     References,
     Completion,
+    PrepareRename,
+    Rename,
+    SignatureHelp,
+    InlayHints,
+    DocumentSymbols,
+    WorkspaceSymbols,
 }
 
 impl Request {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 10] = [
         Self::Hover,
         Self::GotoDefinition,
         Self::References,
         Self::Completion,
+        Self::PrepareRename,
+        Self::Rename,
+        Self::SignatureHelp,
+        Self::InlayHints,
+        Self::DocumentSymbols,
+        Self::WorkspaceSymbols,
     ];
 
     fn name(self) -> &'static str {
@@ -202,6 +218,12 @@ impl Request {
             Self::GotoDefinition => "goto definition",
             Self::References => "references",
             Self::Completion => "completion",
+            Self::PrepareRename => "prepare rename",
+            Self::Rename => "rename",
+            Self::SignatureHelp => "signature help",
+            Self::InlayHints => "inlay hints",
+            Self::DocumentSymbols => "document symbols",
+            Self::WorkspaceSymbols => "workspace symbols",
         }
     }
 
@@ -239,6 +261,51 @@ impl Request {
                     partial_result_params: PartialResultParams::default(),
                     context: None,
                 });
+            }
+            Self::SignatureHelp => {
+                block_on(backend.signature_help(SignatureHelpParams {
+                    context: None,
+                    text_document_position_params: document,
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                }))
+                .ok();
+            }
+            // The hints of the whole file, since the edits change code anywhere in it
+            Self::InlayHints => {
+                block_on(backend.inlay_hint(InlayHintParams {
+                    text_document: document.text_document,
+                    range: Range::new(Position::new(0, 0), Position::new(u32::MAX, 0)),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                }))
+                .ok();
+            }
+            Self::DocumentSymbols => {
+                block_on(backend.document_symbol(DocumentSymbolParams {
+                    text_document: document.text_document,
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                }))
+                .ok();
+            }
+            Self::WorkspaceSymbols => {
+                block_on(backend.symbol(WorkspaceSymbolParams {
+                    query: String::new(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                }))
+                .ok();
+            }
+            // A rename that's refused is an error, which isn't a panic
+            Self::PrepareRename => {
+                block_on(backend.prepare_rename(document)).ok();
+            }
+            Self::Rename => {
+                block_on(backend.rename(RenameParams {
+                    text_document_position: document,
+                    new_name: "renamed_by_the_sweep".to_string(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                }))
+                .ok();
             }
         }
     }
