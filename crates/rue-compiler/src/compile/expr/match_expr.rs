@@ -12,8 +12,9 @@ use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
-    Branches, Compiler, CompletionContext, SyntaxItemKind, compile_branching_expr, compile_expr,
-    compile_type, create_binding, narrows_only_atoms, type_at_path,
+    BoundValue, Branches, Compiler, CompletionContext, SyntaxItemKind, bind_unless_path,
+    compile_branching_expr, compile_expr, compile_type, create_binding, narrows_only_atoms,
+    type_at_path,
 };
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
@@ -43,24 +44,19 @@ pub fn compile_match_expr(
 
     let mut statements = Vec::new();
 
-    // The value is checked by each arm, so a value that isn't a reference is bound first, rather
-    // than being evaluated again for each check. A reference is narrowed in the arms, like it is
-    // by an `is` guard.
-    let reference = if let Some(reference) = scrutinee.reference.clone() {
-        reference
-    } else {
-        let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
-            name: None,
-            value: scrutinee.clone(),
-            inline: false,
-        }));
-        let srcloc = expr.expr().map_or_else(
-            || ctx.trimmed_srcloc(expr.syntax()),
-            |scrutinee| ctx.trimmed_srcloc(scrutinee.syntax()),
-        );
-        statements.push(Statement::Let(symbol, srcloc));
-        SymbolPath::new(symbol, vec![])
-    };
+    // The value is checked by each arm, so a value that isn't a path is bound first, rather than
+    // being evaluated again for each check. A path is narrowed in the arms, like it is by an `is`
+    // guard.
+    let srcloc = expr.expr().map_or_else(
+        || ctx.trimmed_srcloc(expr.syntax()),
+        |scrutinee| ctx.trimmed_srcloc(scrutinee.syntax()),
+    );
+    let BoundValue {
+        value: scrutinee,
+        reference,
+        statement,
+    } = bind_unless_path(ctx, scrutinee, srcloc);
+    statements.extend(statement);
 
     // Once there's an error, the arms might not handle what they're meant to, so nothing is
     // reported about which values they handle
@@ -264,7 +260,7 @@ pub fn compile_match_expr(
                 arm_condition
             } else {
                 let ty = pattern.expect("only a pattern with a type has a check");
-                let value = guard_value(ctx, &scrutinee, &reference);
+                let value = guard_value(ctx, &scrutinee);
                 let guard = ctx.alloc_hir(Hir::Guard(Guard { value, ty, check }));
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::And, guard, arm_condition));
 
@@ -308,7 +304,7 @@ pub fn compile_match_expr(
         let (else_type, else_members) =
             rest.expect("only an arm with a condition leaves everything");
 
-        let value = guard_value(ctx, &scrutinee, &reference);
+        let value = guard_value(ctx, &scrutinee);
         let condition = ctx.alloc_hir(Hir::Guard(Guard { value, ty, check }));
         branches.push((condition, body.hir));
         branch_patterns.push(Some(ty));
@@ -614,7 +610,7 @@ fn compile_arm_binding(
             .unwrap_or(scrutinee.ty)
     };
 
-    let hir = guard_value(ctx, scrutinee, reference);
+    let hir = guard_value(ctx, scrutinee);
 
     let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
         name: None,
@@ -728,13 +724,9 @@ fn indistinguishable_members(ctx: &mut Compiler, remaining: &[TypeId], ty: TypeI
 
 /// The value that an arm's type guard checks. Each guard has a node of its own, like the guards of
 /// an `else if` chain would.
-fn guard_value(ctx: &mut Compiler, scrutinee: &Value, reference: &SymbolPath) -> HirId {
-    if scrutinee.reference.is_some() {
-        let hir = ctx.hir(scrutinee.hir).clone();
-        ctx.alloc_hir(hir)
-    } else {
-        ctx.alloc_hir(Hir::Reference(reference.symbol))
-    }
+fn guard_value(ctx: &mut Compiler, scrutinee: &Value) -> HirId {
+    let hir = ctx.hir(scrutinee.hir).clone();
+    ctx.alloc_hir(hir)
 }
 
 /// Whether some value of type `from` could be a `to` at runtime.

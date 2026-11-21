@@ -125,10 +125,9 @@ impl Database {
             Hir::Pair(first, rest) => self.is_literal_hir(*first) && self.is_literal_hir(*rest),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_literal_hir(*hir),
             Hir::List(list) => list.items.iter().all(|&item| self.is_literal_hir(item)),
-            Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_literal_hir(field.value)),
+            Hir::Struct(initializer) => {
+                initializer.values().all(|value| self.is_literal_hir(value))
+            }
             _ => false,
         }
     }
