@@ -120,6 +120,24 @@ tests:
   debug_program: (f (r 2))
   byte_cost: 12000
   clvm_error: path into atom
+- name: block_value_with_bindings
+  program: (a (q 2 (i 2 (q 16 4 10 9) ()) 1) (c (a (i (> 5 ()) (q . 2) (q 8)) 1) 1))
+  debug_program: (a (q 2 (i (not (not 2)) (q 16 (+ (f 2) (f (r 2))) (f 5)) ()) 1) (c (a (i ("debug_print" (q . "match_bindings.rue:523:9") (q . "evaluated")) () (q 2 (i (> 5 ()) (q . 2) (q 8 (q . "assertion failed at match_bindings.rue:524:9"))) 1)) 1) 1))
+  solution: ((3 4) 1)
+  output: "10"
+  runtime_cost: 2584
+  byte_cost: 780000
+  total_cost: 782584
+  print_messages:
+  - "\"evaluated\""
+- name: struct_update_in_arm
+  program: (a (i 2 (q 4 4 (c (+ 4 (q . 1)) ())) (q 1 () ())) 1)
+  debug_program: (a (i (not (not 2)) (q 4 (f 2) (c (+ (f 2) (q . 1)) ())) (q 4 () (c () ()))) 1)
+  solution: ((3 4))
+  output: (3 4)
+  runtime_cost: 1283
+  byte_cost: 540000
+  total_cost: 541283
 diagnostics:
 - |-
   Unreachable match arm, since an earlier arm also handles `nil`, which it can't tell apart from its own type at runtime at match_bindings.rue:397:9
