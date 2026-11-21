@@ -51,8 +51,11 @@
 //!   generic function types in annotations and return types, longer chains and cycles, `std`'s
 //!   `merge_list`, and the `expected` variant. Version 3 adds lists, pairs and boxes of untyped
 //!   lambdas, recursive functions that pass them to themselves, lambdas whose bodies call generic
-//!   functions, wider unions in expected types, and the `probe` variant. The versions are listed
-//!   in `generate.rs`.
+//!   functions, wider unions in expected types, and the `probe` variant. Version 4 adds
+//!   recursive functions that take pairs, nested pairs and lists of functions and values of their
+//!   generics, and pass themselves pair and list literals with untyped lambdas in them, beside
+//!   their own values, literals, `nil` and spread items. The versions are listed in
+//!   `generate.rs`.
 //! - `--print SEED`: print the explicit program and the variants for one seed, and exit.
 //! - `--compare BASELINE NEW`: compare two runs of the same seeds, each a `results.jsonl` or the
 //!   `--out` directory that holds it. It prints how many variants went from each status to each
