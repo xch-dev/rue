@@ -26,8 +26,8 @@ fn unknown_field(shape: Shape) -> Int {
 
 fn not_a_pair(shape: Shape) -> Int {
     match shape {
-        Circle (first, rest) => first + rest,
-        Square [first, second] => first + second,
+        Circle as (first, rest) => first + rest,
+        Square as [first, second] => first + second,
         Point => 0,
     }
 }
@@ -35,14 +35,14 @@ fn not_a_pair(shape: Shape) -> Int {
 fn not_a_struct(value: (Int, Int) | Int) -> Int {
     match value {
         (Int, Int) { side } => side,
-        Int (first, rest) => first + rest,
+        Int as (first, rest) => first + rest,
     }
 }
 
 // A name can only be bound once in an arm, but each arm has its own bindings
 fn duplicate(value: (Int, Int) | Square) -> Int {
     match value {
-        (Int, Int) (part, part) => part,
+        (Int, Int) as (part, part) => part,
         Square { side: part } => part,
     }
 }
@@ -71,7 +71,7 @@ fn union_arm(shape: Shape) -> Int {
 // has been handled
 fn list_before_nil(values: List<Int>) -> Int {
     match values {
-        List<Int> [first, ...rest] => first + list_before_nil(rest),
+        List<Int> as [first, ...rest] => first + list_before_nil(rest),
     }
 }
 
@@ -94,7 +94,7 @@ fn inline_arm(shape: Shape) -> Int {
 
 fn inline_pair(value: (Int, Int) | Int) -> Int {
     inline match value {
-        (Int, Int) (first, rest) => first + rest,
+        (Int, Int) as (first, rest) => first + rest,
         Int => 0,
     }
 }
@@ -129,7 +129,7 @@ fn inline_same_type(circle: Circle) -> Int {
 // The note is only for what can't be destructured, and an arm that's never taken has it too
 fn inline_arm_other_errors(value: (Int, Int), shape: Shape) -> Int {
     let duplicate = inline match value {
-        (0, Int) (part, part) => part,
+        (0, Int) as (part, part) => part,
         _ => 0,
     };
 
@@ -170,15 +170,15 @@ fn incompatible(shape: Shape) -> Int {
 // arm it's only that arm's type
 fn named(shape: Shape) -> Int {
     let inlined = inline match shape {
-        Circle circle => circle.radius,
+        Circle as circle => circle.radius,
         _ => 0,
     };
 
     inlined
         + match shape {
-            Circle circle => circle.side,
-            Square square => circle.radius + square.side,
-            Point unused => 0,
+            Circle as circle => circle.side,
+            Square as square => circle.radius + square.side,
+            Point as unused => 0,
         }
 }
 

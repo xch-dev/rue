@@ -1,0 +1,46 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// A struct binding comes right after the type, so `as` isn't needed before it
+export fn redundant(value: Point | (Int, Int) | nil) -> Int {
+    match value {
+        Point as { x, y } => x + y,
+        (Int, Int) as (first, rest) => first + rest,
+        nil as _empty => 0,
+    }
+}
+
+// A name, a pair and a list need `as`, even if a struct binding is inside of them, and a struct
+// binding without it isn't reported
+export fn needed(value: Point | (Point, Int) | List<Point>) -> Int {
+    match value {
+        Point { x, y } => x + y,
+        (Point, Int) as ({ x }, rest) => x + rest,
+        nil => 0,
+        _ as [{ x, y: _ }, ..._rest] => x,
+    }
+}
+
+// The `as` isn't removed for the user if a comment would go with it
+export fn comments(value: Point | nil, other: Point | nil) -> Int {
+    let first = match value {
+        Point as /* why */ { x } => x,
+        nil => 0,
+    };
+
+    first
+        + match other {
+            Point /* before */ as { y } /* after */ => y,
+            _ as {} => 0,
+        }
+}
+
+#[allow(redundant_match_arm_as)]
+export fn allowed(value: Point | nil) -> Int {
+    match value {
+        Point as { x } => x,
+        nil => 0,
+    }
+}

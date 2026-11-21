@@ -489,7 +489,7 @@ fn test_document_symbols_with_match_arm_bindings() {
     // Bindings aren't in the outline, and an arm's binding that isn't finished doesn't hide the
     // function it's in, or move what comes before it
     check(
-        "struct Point {\n    x: Int,\n}\n\nfn area(point: Point | nil) -> Int {\n    match point {\n        Point { x } => x,\n        nil => 0,\n    }\n}\n\nfn broken(point: Point | (Int, Int)) -> Int {\n    match point {\n        Point { x =>\n        (Int, Int) (first, rest\n",
+        "struct Point {\n    x: Int,\n}\n\nfn area(point: Point | nil) -> Int {\n    match point {\n        Point { x } => x,\n        nil => 0,\n    }\n}\n\nfn broken(point: Point | (Int, Int)) -> Int {\n    match point {\n        Point { x =>\n        (Int, Int) as (first, rest\n",
         expect![[r#"
             Struct Point 0:0-2:1 [0:7-0:12]
               Field x `Int` 1:4-1:10 [1:4-1:5]

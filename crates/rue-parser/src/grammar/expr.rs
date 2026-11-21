@@ -398,7 +398,7 @@ fn if_expr_with(
 
 /// A `match` expression, such as `match value { Int => 1, _ => 2 }`, or an `inline match`. Each
 /// arm's pattern is a type, which can be followed by a binding that names or destructures the
-/// value, such as `Point { x, y } => x + y` or `Point point => point.x`.
+/// value, such as `Point { x, y } => x + y` or `Point as point => point.x`.
 /// The arms are separated by commas, except that an arm whose value is a block, `if` or `match`
 /// ends at its closing brace, so the comma after it can be left out.
 fn match_expr(p: &mut Parser, checkpoint: Checkpoint, allow_inline: bool) {
@@ -445,14 +445,12 @@ fn match_arm(p: &mut Parser) -> bool {
     p.start(SyntaxKind::MatchArm);
     ty(p);
 
-    // The arm's value comes after the `=>`, so a brace here can only start a binding. One that
-    // doesn't look like a binding is most likely a block whose `=>` is missing. A name binds the
-    // whole value, since nothing in a type continues with one.
-    if p.at_quiet(SyntaxKind::Ident)
-        || p.at_quiet(T!['('])
-        || p.at_quiet(T!['['])
-        || at_struct_binding(p)
-    {
+    // A binding comes after `as`, which is how a name, a pair or a list is told from whatever
+    // follows an arm that's missing its `=>`, such as the type of the next arm. A struct binding
+    // doesn't need it, like a struct initializer after its type: the arm's value comes after the
+    // `=>`, so a brace on the type's line can only start a binding, and one that doesn't look
+    // like a binding is most likely a block whose `=>` is missing.
+    if p.try_eat(T![as]) || (!p.at_line_start() && at_struct_binding(p)) {
         binding(p);
     }
 
@@ -1183,12 +1181,13 @@ mod tests {
 
     #[test]
     fn test_match_arm_bindings() {
-        // A binding comes between the arm's type and its `=>`, so a brace there isn't a block
+        // A binding comes between the arm's type and its `=>`, so a brace there isn't a block. A
+        // pair or a list binding comes after `as`
         check(
             expr,
-            "match x { A { a, b: c, ...d } => a, (B, C) (e, f) => { e } [D] [g, ...h] => g }",
+            "match x { A { a, b: c, ...d } => a, (B, C) as (e, f) => { e } [D] as [g, ...h] => g }",
             expect![[r#"
-                MatchExpr@0..79
+                MatchExpr@0..85
                   Match@0..5 "match"
                   Whitespace@5..6 " "
                   PathExpr@6..8
@@ -1230,7 +1229,7 @@ mod tests {
                         Ident@33..34 "a"
                   Comma@34..35 ","
                   Whitespace@35..36 " "
-                  MatchArm@36..58
+                  MatchArm@36..61
                     PairType@36..42
                       OpenParen@36..37 "("
                       PathType@37..38
@@ -1243,66 +1242,71 @@ mod tests {
                           Ident@40..41 "C"
                       CloseParen@41..42 ")"
                     Whitespace@42..43 " "
-                    PairBinding@43..49
-                      OpenParen@43..44 "("
-                      NamedBinding@44..45
-                        Ident@44..45 "e"
-                      Comma@45..46 ","
-                      Whitespace@46..47 " "
+                    As@43..45 "as"
+                    Whitespace@45..46 " "
+                    PairBinding@46..52
+                      OpenParen@46..47 "("
                       NamedBinding@47..48
-                        Ident@47..48 "f"
-                      CloseParen@48..49 ")"
-                    Whitespace@49..50 " "
-                    FatArrow@50..52 "=>"
+                        Ident@47..48 "e"
+                      Comma@48..49 ","
+                      Whitespace@49..50 " "
+                      NamedBinding@50..51
+                        Ident@50..51 "f"
+                      CloseParen@51..52 ")"
                     Whitespace@52..53 " "
-                    Block@53..58
-                      OpenBrace@53..54 "{"
-                      Whitespace@54..55 " "
-                      PathExpr@55..57
-                        PathSegment@55..57
-                          Ident@55..56 "e"
-                          Whitespace@56..57 " "
-                      CloseBrace@57..58 "}"
-                  Whitespace@58..59 " "
-                  MatchArm@59..78
-                    ListType@59..62
-                      OpenBracket@59..60 "["
-                      ListTypeItem@60..61
-                        PathType@60..61
-                          PathSegment@60..61
-                            Ident@60..61 "D"
-                      CloseBracket@61..62 "]"
-                    Whitespace@62..63 " "
-                    ListBinding@63..72
-                      OpenBracket@63..64 "["
-                      ListBindingItem@64..65
-                        NamedBinding@64..65
-                          Ident@64..65 "g"
-                      Comma@65..66 ","
-                      Whitespace@66..67 " "
-                      ListBindingItem@67..71
-                        Spread@67..70 "..."
+                    FatArrow@53..55 "=>"
+                    Whitespace@55..56 " "
+                    Block@56..61
+                      OpenBrace@56..57 "{"
+                      Whitespace@57..58 " "
+                      PathExpr@58..60
+                        PathSegment@58..60
+                          Ident@58..59 "e"
+                          Whitespace@59..60 " "
+                      CloseBrace@60..61 "}"
+                  Whitespace@61..62 " "
+                  MatchArm@62..84
+                    ListType@62..65
+                      OpenBracket@62..63 "["
+                      ListTypeItem@63..64
+                        PathType@63..64
+                          PathSegment@63..64
+                            Ident@63..64 "D"
+                      CloseBracket@64..65 "]"
+                    Whitespace@65..66 " "
+                    As@66..68 "as"
+                    Whitespace@68..69 " "
+                    ListBinding@69..78
+                      OpenBracket@69..70 "["
+                      ListBindingItem@70..71
                         NamedBinding@70..71
-                          Ident@70..71 "h"
-                      CloseBracket@71..72 "]"
-                    Whitespace@72..73 " "
-                    FatArrow@73..75 "=>"
-                    Whitespace@75..76 " "
-                    PathExpr@76..78
-                      PathSegment@76..78
-                        Ident@76..77 "g"
-                        Whitespace@77..78 " "
-                  CloseBrace@78..79 "}"
+                          Ident@70..71 "g"
+                      Comma@71..72 ","
+                      Whitespace@72..73 " "
+                      ListBindingItem@73..77
+                        Spread@73..76 "..."
+                        NamedBinding@76..77
+                          Ident@76..77 "h"
+                      CloseBracket@77..78 "]"
+                    Whitespace@78..79 " "
+                    FatArrow@79..81 "=>"
+                    Whitespace@81..82 " "
+                    PathExpr@82..84
+                      PathSegment@82..84
+                        Ident@82..83 "g"
+                        Whitespace@83..84 " "
+                  CloseBrace@84..85 "}"
             "#]],
             expect![],
         );
 
-        // The binding of a union and of `_`, in an `inline match`
+        // The binding of a union and of `_`, in an `inline match`. A struct binding can come after
+        // `as` too
         check(
             expr,
-            "inline match x { A | B { a } => a, _ {} => 1 }",
+            "inline match x { A | B { a } => a, _ as {} => 1 }",
             expect![[r#"
-                MatchExpr@0..46
+                MatchExpr@0..49
                   Inline@0..6 "inline"
                   Whitespace@6..7 " "
                   Match@7..12 "match"
@@ -1340,31 +1344,33 @@ mod tests {
                         Ident@32..33 "a"
                   Comma@33..34 ","
                   Whitespace@34..35 " "
-                  MatchArm@35..45
+                  MatchArm@35..48
                     PathType@35..37
                       PathSegment@35..37
                         Ident@35..36 "_"
                         Whitespace@36..37 " "
-                    StructBinding@37..39
-                      OpenBrace@37..38 "{"
-                      CloseBrace@38..39 "}"
+                    As@37..39 "as"
                     Whitespace@39..40 " "
-                    FatArrow@40..42 "=>"
+                    StructBinding@40..42
+                      OpenBrace@40..41 "{"
+                      CloseBrace@41..42 "}"
                     Whitespace@42..43 " "
-                    LiteralExpr@43..44
-                      Integer@43..44 "1"
-                    Whitespace@44..45 " "
-                  CloseBrace@45..46 "}"
+                    FatArrow@43..45 "=>"
+                    Whitespace@45..46 " "
+                    LiteralExpr@46..47
+                      Integer@46..47 "1"
+                    Whitespace@47..48 " "
+                  CloseBrace@48..49 "}"
             "#]],
             expect![],
         );
 
-        // A name after the type binds the whole value
+        // A name after `as` binds the whole value
         check(
             expr,
-            "match x { A a => a, _ rest => rest }",
+            "match x { A as a => a, _ as rest => rest }",
             expect![[r#"
-                MatchExpr@0..36
+                MatchExpr@0..42
                   Match@0..5 "match"
                   Whitespace@5..6 " "
                   PathExpr@6..8
@@ -1373,36 +1379,40 @@ mod tests {
                       Whitespace@7..8 " "
                   OpenBrace@8..9 "{"
                   Whitespace@9..10 " "
-                  MatchArm@10..18
+                  MatchArm@10..21
                     PathType@10..12
                       PathSegment@10..12
                         Ident@10..11 "A"
                         Whitespace@11..12 " "
-                    NamedBinding@12..13
-                      Ident@12..13 "a"
-                    Whitespace@13..14 " "
-                    FatArrow@14..16 "=>"
+                    As@12..14 "as"
+                    Whitespace@14..15 " "
+                    NamedBinding@15..16
+                      Ident@15..16 "a"
                     Whitespace@16..17 " "
-                    PathExpr@17..18
-                      PathSegment@17..18
-                        Ident@17..18 "a"
-                  Comma@18..19 ","
-                  Whitespace@19..20 " "
-                  MatchArm@20..35
-                    PathType@20..22
-                      PathSegment@20..22
-                        Ident@20..21 "_"
-                        Whitespace@21..22 " "
-                    NamedBinding@22..26
-                      Ident@22..26 "rest"
-                    Whitespace@26..27 " "
-                    FatArrow@27..29 "=>"
-                    Whitespace@29..30 " "
-                    PathExpr@30..35
-                      PathSegment@30..35
-                        Ident@30..34 "rest"
-                        Whitespace@34..35 " "
-                  CloseBrace@35..36 "}"
+                    FatArrow@17..19 "=>"
+                    Whitespace@19..20 " "
+                    PathExpr@20..21
+                      PathSegment@20..21
+                        Ident@20..21 "a"
+                  Comma@21..22 ","
+                  Whitespace@22..23 " "
+                  MatchArm@23..41
+                    PathType@23..25
+                      PathSegment@23..25
+                        Ident@23..24 "_"
+                        Whitespace@24..25 " "
+                    As@25..27 "as"
+                    Whitespace@27..28 " "
+                    NamedBinding@28..32
+                      Ident@28..32 "rest"
+                    Whitespace@32..33 " "
+                    FatArrow@33..35 "=>"
+                    Whitespace@35..36 " "
+                    PathExpr@36..41
+                      PathSegment@36..41
+                        Ident@36..40 "rest"
+                        Whitespace@40..41 " "
+                  CloseBrace@41..42 "}"
             "#]],
             expect![],
         );
@@ -1477,6 +1487,104 @@ mod tests {
 
     #[test]
     fn test_match_arm_binding_errors() {
+        // Without `as`, the type of the next arm isn't taken for a binding when an arm is missing
+        // its `=>` and value, and neither is a name or a pair on the same line
+        check(
+            expr,
+            "match x {\n    A\n    B => 1,\n    C\n    (D, E) => 2,\n    F f => 3,\n    G\n    { g } => 4,\n}",
+            expect![[r#"
+                MatchExpr@0..88
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..14 "\n    "
+                  MatchArm@14..22
+                    PathType@14..20
+                      PathSegment@14..20
+                        Ident@14..15 "A"
+                        Whitespace@15..20 "\n    "
+                    PathExpr@20..22
+                      PathSegment@20..22
+                        Ident@20..21 "B"
+                        Whitespace@21..22 " "
+                  Error@22..23 "="
+                  Error@23..24 ">"
+                  Whitespace@24..25 " "
+                  Error@25..26 "1"
+                  Comma@26..27 ","
+                  Whitespace@27..32 "\n    "
+                  MatchArm@32..45
+                    PathType@32..38
+                      PathSegment@32..38
+                        Ident@32..33 "C"
+                        Whitespace@33..38 "\n    "
+                    PairExpr@38..44
+                      OpenParen@38..39 "("
+                      PathExpr@39..40
+                        PathSegment@39..40
+                          Ident@39..40 "D"
+                      Comma@40..41 ","
+                      Whitespace@41..42 " "
+                      PathExpr@42..43
+                        PathSegment@42..43
+                          Ident@42..43 "E"
+                      CloseParen@43..44 ")"
+                    Whitespace@44..45 " "
+                  Error@45..46 "="
+                  Error@46..47 ">"
+                  Whitespace@47..48 " "
+                  Error@48..49 "2"
+                  Comma@49..50 ","
+                  Whitespace@50..55 "\n    "
+                  MatchArm@55..59
+                    PathType@55..57
+                      PathSegment@55..57
+                        Ident@55..56 "F"
+                        Whitespace@56..57 " "
+                    PathExpr@57..59
+                      PathSegment@57..59
+                        Ident@57..58 "f"
+                        Whitespace@58..59 " "
+                  Error@59..60 "="
+                  Error@60..61 ">"
+                  Whitespace@61..62 " "
+                  Error@62..63 "3"
+                  Comma@63..64 ","
+                  Whitespace@64..69 "\n    "
+                  MatchArm@69..80
+                    PathType@69..75
+                      PathSegment@69..75
+                        Ident@69..70 "G"
+                        Whitespace@70..75 "\n    "
+                    Block@75..80
+                      OpenBrace@75..76 "{"
+                      Whitespace@76..77 " "
+                      PathExpr@77..79
+                        PathSegment@77..79
+                          Ident@77..78 "g"
+                          Whitespace@78..79 " "
+                      CloseBrace@79..80 "}"
+                  Whitespace@80..81 " "
+                  Error@81..82 "="
+                  Error@82..83 ">"
+                  Whitespace@83..84 " "
+                  Error@84..85 "4"
+                  Comma@85..86 ","
+                  Whitespace@86..87 "\n"
+                  CloseBrace@87..88 "}"
+            "#]],
+            expect![[r#"
+                Expected one of `as`, `=>`, found identifier at main.rue:3:5
+                Expected one of `,`, `}`, found `=` at main.rue:3:7
+                Expected one of `as`, `=>`, found `(` at main.rue:5:5
+                Expected one of `as`, `=>`, found identifier at main.rue:6:7
+                Expected one of `as`, `=>`, found `{` at main.rue:8:5"#]],
+        );
+
         // A brace that doesn't look like a binding is a block that's missing its `=>`
         check(
             expr,
@@ -1516,15 +1624,15 @@ mod tests {
                     Whitespace@24..25 " "
                   CloseBrace@25..26 "}"
             "#]],
-            expect!["Expected `=>`, found `{` at main.rue:1:13"],
+            expect!["Expected one of `as`, `=>`, found `{` at main.rue:1:13"],
         );
 
         // A binding can't check anything, so it has no literals or types in it
         check(
             expr,
-            "match x { (A, B) (1, b) => b }",
+            "match x { (A, B) as (1, b) => b }",
             expect![[r#"
-                MatchExpr@0..30
+                MatchExpr@0..33
                   Match@0..5 "match"
                   Whitespace@5..6 " "
                   PathExpr@6..8
@@ -1533,7 +1641,7 @@ mod tests {
                       Whitespace@7..8 " "
                   OpenBrace@8..9 "{"
                   Whitespace@9..10 " "
-                  MatchArm@10..29
+                  MatchArm@10..32
                     PairType@10..16
                       OpenParen@10..11 "("
                       PathType@11..12
@@ -1546,24 +1654,26 @@ mod tests {
                           Ident@14..15 "B"
                       CloseParen@15..16 ")"
                     Whitespace@16..17 " "
-                    PairBinding@17..23
-                      OpenParen@17..18 "("
-                      Error@18..19 "1"
-                      Comma@19..20 ","
-                      Whitespace@20..21 " "
-                      NamedBinding@21..22
-                        Ident@21..22 "b"
-                      CloseParen@22..23 ")"
-                    Whitespace@23..24 " "
-                    FatArrow@24..26 "=>"
+                    As@17..19 "as"
+                    Whitespace@19..20 " "
+                    PairBinding@20..26
+                      OpenParen@20..21 "("
+                      Error@21..22 "1"
+                      Comma@22..23 ","
+                      Whitespace@23..24 " "
+                      NamedBinding@24..25
+                        Ident@24..25 "b"
+                      CloseParen@25..26 ")"
                     Whitespace@26..27 " "
-                    PathExpr@27..29
-                      PathSegment@27..29
-                        Ident@27..28 "b"
-                        Whitespace@28..29 " "
-                  CloseBrace@29..30 "}"
+                    FatArrow@27..29 "=>"
+                    Whitespace@29..30 " "
+                    PathExpr@30..32
+                      PathSegment@30..32
+                        Ident@30..31 "b"
+                        Whitespace@31..32 " "
+                  CloseBrace@32..33 "}"
             "#]],
-            expect!["Expected binding, found integer literal at main.rue:1:19"],
+            expect!["Expected binding, found integer literal at main.rue:1:22"],
         );
     }
 

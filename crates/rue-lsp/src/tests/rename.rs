@@ -2235,9 +2235,9 @@ fn test_rename_pair_and_list_bindings_in_match_arms() {
     let source = r#"
 fn main(value: (Int, Int) | List<Bytes>) -> Int {
     match value {
-        (Int, Int) (first, rest) => first + rest,
+        (Int, Int) as (first, rest) => first + rest,
         nil => 0,
-        (Bytes, List<Bytes>) [head, ...tail] => head.length + main(tail),
+        (Bytes, List<Bytes>) as [head, ...tail] => head.length + main(tail),
     }
 }
 "#;
@@ -2253,9 +2253,9 @@ fn main(value: (Int, Int) | List<Bytes>) -> Int {
 
             fn main(value: (Int, Int) | List<Bytes>) -> Int {
                 match value {
-                    (Int, Int) (first, second) => first + second,
+                    (Int, Int) as (first, second) => first + second,
                     nil => 0,
-                    (Bytes, List<Bytes>) [head, ...tail] => head.length + main(tail),
+                    (Bytes, List<Bytes>) as [head, ...tail] => head.length + main(tail),
                 }
             }
         "#]],
@@ -2269,9 +2269,9 @@ fn main(value: (Int, Int) | List<Bytes>) -> Int {
 
             fn main(value: (Int, Int) | List<Bytes>) -> Int {
                 match value {
-                    (Int, Int) (first, rest) => first + rest,
+                    (Int, Int) as (first, rest) => first + rest,
                     nil => 0,
-                    (Bytes, List<Bytes>) [head, ...others] => head.length + main(others),
+                    (Bytes, List<Bytes>) as [head, ...others] => head.length + main(others),
                 }
             }
         "#]],
@@ -2425,8 +2425,8 @@ fn test_rename_named_match_arm_binding() {
         r#"
 fn main(shape: Shape) -> Int {
     match shape {
-        Shape::Circle circle => circle.radius,
-        Shape::Rect rect => rect.width * rect.height,
+        Shape::Circle as circle => circle.radius,
+        Shape::Rect as rect => rect.width * rect.height,
         _ => 0,
     }
 }
@@ -2437,7 +2437,7 @@ fn main(shape: Shape) -> Int {
     check(
         &[(
             "main.rue",
-            &source.replacen("Shape::Circle circle", "Shape::Circle cir$0cle", 1),
+            &source.replacen("Shape::Circle as circle", "Shape::Circle as cir$0cle", 1),
         )],
         "round",
         expect![[r#"
@@ -2451,8 +2451,8 @@ fn main(shape: Shape) -> Int {
 
             fn main(shape: Shape) -> Int {
                 match shape {
-                    Shape::Circle round => round.radius,
-                    Shape::Rect rect => rect.width * rect.height,
+                    Shape::Circle as round => round.radius,
+                    Shape::Rect as rect => rect.width * rect.height,
                     _ => 0,
                 }
             }
@@ -2476,8 +2476,8 @@ fn main(shape: Shape) -> Int {
 
             fn main(shape: Shape) -> Int {
                 match shape {
-                    Shape::Circle circle => circle.radius,
-                    Shape::Rect sides => sides.width * sides.height,
+                    Shape::Circle as circle => circle.radius,
+                    Shape::Rect as sides => sides.width * sides.height,
                     _ => 0,
                 }
             }
@@ -2488,7 +2488,7 @@ fn main(shape: Shape) -> Int {
     check(
         &[(
             "main.rue",
-            &source.replacen("Shape::Rect rect", "Shape::Re$0ct rect", 1),
+            &source.replacen("Shape::Rect as rect", "Shape::Re$0ct as rect", 1),
         )],
         "Box",
         expect![[r#"
@@ -2502,8 +2502,8 @@ fn main(shape: Shape) -> Int {
 
             fn main(shape: Shape) -> Int {
                 match shape {
-                    Shape::Circle circle => circle.radius,
-                    Shape::Box rect => rect.width * rect.height,
+                    Shape::Circle as circle => circle.radius,
+                    Shape::Box as rect => rect.width * rect.height,
                     _ => 0,
                 }
             }

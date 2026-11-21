@@ -110,7 +110,7 @@ test fn alias_binding(shape: Shape) -> Int {
 // A pair or a list is destructured by a binding after its type
 fn sum(value: (Int, Int) | Int) -> Int {
     match value {
-        (Int, Int) (first, rest) => first + rest,
+        (Int, Int) as (first, rest) => first + rest,
         Int => value,
     }
 }
@@ -118,7 +118,7 @@ fn sum(value: (Int, Int) | Int) -> Int {
 fn total(values: List<Int>) -> Int {
     match values {
         nil => 0,
-        (Int, List<Int>) [first, ...rest] => first + total(rest),
+        (Int, List<Int>) as [first, ...rest] => first + total(rest),
     }
 }
 
@@ -127,20 +127,20 @@ fn total(values: List<Int>) -> Int {
 fn total_list(values: List<Int>) -> Int {
     match values {
         nil => 0,
-        List<Int> [first, ...rest] => first + total_list(rest),
+        List<Int> as [first, ...rest] => first + total_list(rest),
     }
 }
 
 fn first_two(values: List<Int>) -> Int {
     match values {
-        (Int, (Int, List<Int>)) [first, second, ..._rest] => first + second,
+        (Int, (Int, List<Int>)) as [first, second, ..._rest] => first + second,
         _ => 0,
     }
 }
 
 fn nested(value: ((Int, Int), [Int, Int]) | nil) -> Int {
     match value {
-        ((Int, Int), [Int, Int]) ((a, b), [c, d]) => a + b + c + d,
+        ((Int, Int), [Int, Int]) as ((a, b), [c, d]) => a + b + c + d,
         nil => 0,
     }
 }
@@ -149,7 +149,7 @@ fn nested(value: ((Int, Int), [Int, Int]) | nil) -> Int {
 fn size(value: Bytes | (Bytes, Bytes)) -> Int {
     match value {
         Bytes { length } => length,
-        (Bytes, Bytes) ({ length: first }, { length: rest }) => first + rest,
+        (Bytes, Bytes) as ({ length: first }, { length: rest }) => first + rest,
     }
 }
 
@@ -202,7 +202,7 @@ test fn variant_bindings() -> List<Int> {
 // member is a pair here, and a copy of the same struct below
 fn union_arm(value: (Int, Int) | (Int, nil) | nil) -> Int {
     match value {
-        (Int, Int) | (Int, nil) (first, _) => first,
+        (Int, Int) | (Int, nil) as (first, _) => first,
         nil => 0,
     }
 }
@@ -358,7 +358,7 @@ test fn untyped_lambda_parameter() -> Int {
     let bound: 5 = first_of(
         fn(list) => match list {
             nil => 5,
-            _ [first, ..._rest] => first,
+            _ as [first, ..._rest] => first,
         },
         5,
     );
@@ -369,17 +369,17 @@ test fn untyped_lambda_parameter() -> Int {
 // value that isn't a reference. These compile to the same program as reading the fields of `shape`.
 test fn named_bindings(shape: Shape) -> Int {
     match shape {
-        Circle circle => 3 * circle.radius * circle.radius,
-        Square square => square.side * square.side,
-        Point _point => 0,
+        Circle as circle => 3 * circle.radius * circle.radius,
+        Square as square => square.side * square.side,
+        Point as _point => 0,
     }
 }
 
 fn named_computed(radius: Int) -> Int {
     match make(radius) {
-        Circle circle => circle.radius + 1,
-        _ rest => match rest {
-            Square square => square.side,
+        Circle as circle => circle.radius + 1,
+        _ as rest => match rest {
+            Square as square => square.side,
             Point => 0,
         }
     }
@@ -389,7 +389,7 @@ fn named_computed(radius: Int) -> Int {
 // `inline match`
 fn named_union(value: (Int, Int) | Int | nil) -> Int {
     match value {
-        (Int, Int) | Int either => if either is Int {
+        (Int, Int) | Int as either => if either is Int {
             either
         } else {
             either.first
@@ -401,7 +401,7 @@ fn named_union(value: (Int, Int) | Int | nil) -> Int {
 fn named_inline(value: Int | nil) -> Int {
     inline match value {
         nil => 0,
-        Int whole => whole as Int,
+        Int as whole => whole as Int,
     }
 }
 
@@ -494,8 +494,8 @@ test fn statements() -> List<Int> {
 // destructures the value as it is outside of the match
 fn inline_pair(pair: (Int, Int)) -> Int {
     inline match pair {
-        (0, Int) (_, rest) => rest,
-        _ (first, rest) => first + rest,
+        (0, Int) as (_, rest) => rest,
+        _ as (first, rest) => first + rest,
     }
 }
 

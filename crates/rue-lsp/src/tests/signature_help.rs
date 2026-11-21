@@ -837,7 +837,7 @@ fn test_signature_in_match_arm_with_binding() {
     // A call in an arm's value, with an argument that the arm's binding declares
     check(
         &with_add(
-            "fn main(pair: (Int, Int) | nil) -> Int {\n    match pair {\n        (Int, Int) (first, rest) => add(first, $0rest),\n        nil => 0,\n    }\n}\n",
+            "fn main(pair: (Int, Int) | nil) -> Int {\n    match pair {\n        (Int, Int) as (first, rest) => add(first, $0rest),\n        nil => 0,\n    }\n}\n",
         ),
         expect![[r#"
             > fn add(first: Int, [second: Int]) -> Int

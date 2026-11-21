@@ -32,7 +32,7 @@ export fn arms(value: (Int, Int) | Int, first: Int) -> Int {
 
     rest
         + match value {
-            (Int, Int) (first, rest) => first + rest,
+            (Int, Int) as (first, rest) => first + rest,
             Int => {
                 let rest = value;
                 rest + 1
@@ -42,7 +42,7 @@ export fn arms(value: (Int, Int) | Int, first: Int) -> Int {
 
 export fn scrutinee(value: (Int, Int) | Int) -> Int {
     match value {
-        (Int, Int) (value, _rest) => value,
+        (Int, Int) as (value, _rest) => value,
         Int => value,
     }
 }
@@ -50,15 +50,15 @@ export fn scrutinee(value: (Int, Int) | Int) -> Int {
 // The bindings of each arm are separate, and a name starting with `_` isn't reported
 export fn separate_arms(value: (Int, Int) | [Int, Int, Int]) -> Int {
     match value {
-        (Int, Int) (a, _value) => a,
-        [Int, Int, Int] [a, _value, _] => a,
+        (Int, Int) as (a, _value) => a,
+        [Int, Int, Int] as [a, _value, _] => a,
     }
 }
 
 // A name for the whole value shadows like any other binding
 export fn named_arm(value: (Int, Int) | Int) -> Int {
     match value {
-        (Int, Int) value => value.first,
-        Int Whole => Whole,
+        (Int, Int) as value => value.first,
+        Int as Whole => Whole,
     }
 }

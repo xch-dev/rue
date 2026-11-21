@@ -304,6 +304,7 @@ impl Cache<Compiler> {
             Some(CompletionContext::Type) if !matches!(first, CompletionContext::Type) => {
                 (CompletionContext::Type, first)
             }
+            Some(CompletionContext::Statement) => (CompletionContext::Statement, first),
             Some(CompletionContext::Expression)
                 if matches!(
                     first,
@@ -344,6 +345,8 @@ impl Cache<Compiler> {
         let parent = token.parent().map(|parent| parent.kind());
 
         match token.kind() {
+            // The `as` of a match arm is followed by a binding, whose names are new ones
+            T![as] if parent == Some(SyntaxKind::MatchArm) => Some(CompletionContext::Statement),
             T![->] | T![as] | T![is] => Some(CompletionContext::Type),
             T![:]
                 if matches!(

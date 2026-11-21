@@ -12,8 +12,8 @@ use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
-    Branches, Compiler, compile_branching_expr, compile_expr, compile_type, create_binding,
-    type_at_path,
+    Branches, Compiler, CompletionContext, SyntaxItemKind, compile_branching_expr, compile_expr,
+    compile_type, create_binding, type_at_path,
 };
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
@@ -496,6 +496,13 @@ fn compile_arm_binding(
         value: Value::new(hir, ty).with_reference(reference.clone()),
         inline: true,
     }));
+
+    // The names in a binding are new ones, so nothing is completed for them, like in the binding
+    // of a `let`. The fields of a struct binding are, which it records after this.
+    ctx.add_syntax(
+        SyntaxItemKind::CompletionContext(CompletionContext::Statement),
+        binding.syntax().text_range(),
+    );
 
     ctx.push_declaration(Declaration::Symbol(symbol));
     create_binding(ctx, symbol, binding);

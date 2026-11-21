@@ -546,7 +546,7 @@ fn test_match_arm_named_binding() {
 fn main(value: Point | nil) -> Int {
     match value {
         nil => 0,
-        Point $0point => point.x + point.y,
+        Point as $0point => point.x + point.y,
     }
 }
 "#,
@@ -555,12 +555,12 @@ fn main(value: Point | nil) -> Int {
             hover:
             let point: Point
             definitions:
-            main.rue:9:23-9:28
-            main.rue:9:33-9:38
+            main.rue:9:26-9:31
+            main.rue:9:36-9:41
             references:
-            main.rue:9:14-9:19
-            main.rue:9:23-9:28
-            main.rue:9:33-9:38
+            main.rue:9:17-9:22
+            main.rue:9:26-9:31
+            main.rue:9:36-9:41
         "#]],
     );
 }
@@ -571,9 +571,9 @@ fn test_match_arm_pair_and_list_bindings() {
         r#"
 fn main(value: (Int, Int) | List<Bytes>) -> Int {
     match value {
-        (Int, Int) (first, rest) => first + rest,
+        (Int, Int) as (first, rest) => first + rest,
         nil => 0,
-        (Bytes, List<Bytes>) [_head, ...tail] => main($0tail),
+        (Bytes, List<Bytes>) as [_head, ...tail] => main($0tail),
     }
 }
 "#,
@@ -581,10 +581,10 @@ fn main(value: (Int, Int) | List<Bytes>) -> Int {
             hover:
             let tail: (Bytes, List<Bytes>)
             definitions:
-            main.rue:5:40-5:44
+            main.rue:5:43-5:47
             references:
-            main.rue:5:40-5:44
-            main.rue:5:54-5:58
+            main.rue:5:43-5:47
+            main.rue:5:57-5:61
         "#]],
     );
 }

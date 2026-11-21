@@ -1,0 +1,11 @@
+diagnostics:
+- |-
+  Redundant `as`, since a struct binding can follow the type of a match arm directly at redundant_match_arm_as.rue:9:15
+    help: Remove the `as`
+- Redundant `as`, since a struct binding can follow the type of a match arm directly at redundant_match_arm_as.rue:29:15
+- |-
+  Redundant `as`, since a struct binding can follow the type of a match arm directly at redundant_match_arm_as.rue:35:32
+    help: Remove the `as`
+- |-
+  Redundant `as`, since a struct binding can follow the type of a match arm directly at redundant_match_arm_as.rue:36:15
+    help: Remove the `as`

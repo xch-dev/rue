@@ -54,7 +54,7 @@ struct Span {
 export fn arm_bindings(value: Span | (Int, Int) | nil) -> Int {
     match value {
         Span { start, end } => start,
-        (Int, Int) (first, rest) => 0,
+        (Int, Int) as (first, rest) => 0,
         nil => 0,
     }
 }
@@ -63,6 +63,6 @@ export fn arm_bindings(value: Span | (Int, Int) | nil) -> Int {
 export fn ignored_arm_bindings(value: Span | (Int, Int)) -> Int {
     match value {
         Span { start: _, ...rest } => rest.end,
-        (Int, Int) (first, _rest) => first,
+        (Int, Int) as (first, _rest) => first,
     }
 }

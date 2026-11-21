@@ -1676,7 +1676,7 @@ struct Point {
 
 fn main(point: Point | nil) -> Int {
     match point {
-        Point { x: x, y: other } => x + other,
+        Point as { x: x, y: other } => x + other,
         nil => 0,
     }
 }

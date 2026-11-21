@@ -2026,14 +2026,15 @@ fn assert_message_keeps_its_comments() {
 #[test]
 fn match_arm_bindings() {
     check(
-        "fn main(x: A | (Int, Int) | List<Int>) -> Int {\n    match x { A{a,b:c,...rest,}=>a+c, (Int,Int)(first,rest,) => { first }, nil => 0,\n (Int, List<Int>)  [ first , ...rest ]=>first }\n}\n",
+        "fn main(x: A | (Int, Int) | List<Int>) -> Int {\n    match x { A{a,b:c,...rest,}=>a+c, (Int,Int)as(first,rest,) => { first }, nil   as   empty => 0,\n (Int, List<Int>)  as  [ first , ...rest ]=>first, A as{a}=>a }\n}\n",
         expect![[r#"
             fn main(x: A | (Int, Int) | List<Int>) -> Int {
                 match x {
                     A { a, b: c, ...rest } => a + c,
-                    (Int, Int) (first, rest) => { first }
-                    nil => 0,
-                    (Int, List<Int>) [first, ...rest] => first,
+                    (Int, Int) as (first, rest) => { first }
+                    nil as empty => 0,
+                    (Int, List<Int>) as [first, ...rest] => first,
+                    A as { a } => a,
                 }
             }
         "#]],
@@ -2043,13 +2044,13 @@ fn match_arm_bindings() {
 #[test]
 fn match_arm_binding_comments() {
     check(
-        "fn main(x: A | nil) -> Int {\n    match x {\n        A /* type */ { a, /* field */ b } /* binding */ => a + b, // arm\n        // own line\n        nil {} => 0,\n    }\n}\n",
+        "fn main(x: A | nil) -> Int {\n    match x {\n        A /* type */ { a, /* field */ b } /* binding */ => a + b, // arm\n        // own line\n        nil /* before */ as /* after */ none => 0,\n    }\n}\n",
         expect![[r#"
             fn main(x: A | nil) -> Int {
                 match x {
                     A /* type */ { a, /* field */ b } /* binding */ => a + b, // arm
                     // own line
-                    nil {} => 0,
+                    nil /* before */ as /* after */ none => 0,
                 }
             }
         "#]],

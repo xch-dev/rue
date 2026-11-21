@@ -20,5 +20,5 @@ diagnostics:
 - Unused constant `UNUSED` at unused_symbols.rue:31:7
 - Unused function `unused` at unused_symbols.rue:39:4
 - Unused binding `end` at unused_symbols.rue:56:23
-- Unused binding `first` at unused_symbols.rue:57:21
-- Unused binding `rest` at unused_symbols.rue:57:28
+- Unused binding `first` at unused_symbols.rue:57:24
+- Unused binding `rest` at unused_symbols.rue:57:31
