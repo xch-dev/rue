@@ -1,0 +1,129 @@
+// A generic that nothing gives a type is `Never` when a parameter's type references it and the
+// arguments hold no value of it, as an empty list doesn't, so `length(nil)` and `reverse([])` don't
+// need their generic written out
+
+type Opt<T> = (T, nil) | nil;
+
+fn sum(list: List<Int>) -> Int {
+    if list is nil {
+        0
+    } else {
+        list.first + sum(list.rest)
+    }
+}
+
+test fn not_in_the_return_type() -> Int {
+    length(nil) + length([])
+}
+
+test fn assignable_to_any_list() -> Int {
+    // `List<Never>` is a list of anything
+    let reversed = reverse([]);
+    let ints: List<Int> = reversed;
+    let bytes: List<Bytes> = reversed;
+    length(ints) + length(bytes)
+}
+
+test fn two_arguments() -> Int {
+    let merged = merge_list([], nil);
+    let list: List<Int> = [1, ...merged];
+    sum(list)
+}
+
+test fn passed_on() -> Int {
+    sum(reverse([])) + length(reverse(merge_list([], [])))
+}
+
+fn branch(condition: Bool) -> Int {
+    let list = if condition {
+        [1, 2]
+    } else {
+        reverse([])
+    };
+    sum(list)
+}
+
+test fn in_a_branch() -> Int {
+    branch(true) + branch(false)
+}
+
+test fn iterated() -> Int {
+    sum(for item in reverse([]) { item })
+}
+
+fn count_pairs<A, B>(list: List<(A, B)>) -> Int {
+    length(list)
+}
+
+fn firsts<A, B>(list: List<(A, B)>) -> List<A> {
+    if list is nil {
+        nil
+    } else {
+        [list.first.first, ...firsts(list.rest)]
+    }
+}
+
+test fn several_generics() -> Int {
+    let list: List<Int> = firsts(nil);
+    count_pairs(nil) + sum(list)
+}
+
+fn to_list<T>(value: Opt<T>) -> List<T> {
+    if value is nil {
+        nil
+    } else {
+        [value.first]
+    }
+}
+
+test fn through_an_alias() -> Int {
+    sum(to_list(nil))
+}
+
+fn keep<T, U>(list: List<T>, other: U) -> (List<T>, U) {
+    (list, other)
+}
+
+test fn beside_an_inferred_generic() -> Int {
+    // `U` is `Int` from the argument, and `T` is `Never`
+    let pair = keep(nil, 5);
+    sum(pair.first) + pair.rest
+}
+
+fn again<T>(list: List<T>, times: Int) -> Int {
+    if times == 0 {
+        length(list)
+    } else {
+        again(nil, times - 1)
+    }
+}
+
+test fn recursive_call() -> Int {
+    again([1, 2, 3], 2)
+}
+
+// These compiled before, and are as they were
+
+test fn written_out() -> Int {
+    length::<Int>(nil)
+}
+
+test fn from_the_expected_type() -> Int {
+    // `T` is `Int`, from the annotation, so the list can't be assigned to a list of `Bytes`
+    let list: List<Int> = reverse([]);
+    sum(list)
+}
+
+fn optional<T>(value: T | nil) -> List<T> {
+    if value is nil {
+        nil
+    } else {
+        [value]
+    }
+}
+
+test fn from_the_argument() -> Int {
+    // `T` is `nil`, from the argument
+    let list: List<nil> = optional(nil);
+    length(list) + length([1, 2])
+}

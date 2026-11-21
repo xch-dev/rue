@@ -3661,7 +3661,7 @@ mod inference {
 
 mod substitution {
     use super::*;
-    use crate::{function_type_generics, referenced_generics};
+    use crate::{function_type_generics, is_uninhabited, referenced_generics};
 
     #[test]
     fn apply() {
@@ -3795,6 +3795,58 @@ mod substitution {
         let pair = db.pair(t, function);
 
         assert_eq!(referenced_generics(&mut db.arena, pair), vec![t]);
+    }
+
+    #[test]
+    fn uninhabited_types() {
+        let mut db = Db::new();
+        let (int, nil, never) = (db.builtins.int, db.builtins.nil, db.builtins.never);
+        let t = db.generic("T");
+
+        assert!(is_uninhabited(&mut db.arena, never));
+        assert!(!is_uninhabited(&mut db.arena, int));
+        assert!(!is_uninhabited(&mut db.arena, t));
+
+        // A pair needs both of its parts, and a union any of its members
+        let pair = db.pair(never, int);
+        assert!(is_uninhabited(&mut db.arena, pair));
+        let nested = db.pair(int, pair);
+        assert!(is_uninhabited(&mut db.arena, nested));
+        let union = db.union(&[pair, never]);
+        assert!(is_uninhabited(&mut db.arena, union));
+        let union = db.union(&[pair, nil]);
+        assert!(!is_uninhabited(&mut db.arena, union));
+
+        // A function that returns nothing is still a value
+        let function = db.function_with(&[], &[int], true, never);
+        assert!(!is_uninhabited(&mut db.arena, function));
+
+        // `List<Never>` is only `nil`, and a pair with a `List<Never>` in it has that
+        let list = db.list(never);
+        assert!(!is_uninhabited(&mut db.arena, list));
+        let pair = db.pair(list, int);
+        assert!(!is_uninhabited(&mut db.arena, pair));
+
+        // type Forever<T> = (T, Forever<T>);
+        let alias = db.declare_alias("Forever", &[t]);
+        let rest = db.apply(alias, &[(t, t)]);
+        let pair = db.pair(t, rest);
+        db.define(alias, pair);
+        let forever = db.apply(alias, &[(t, int)]);
+        assert!(is_uninhabited(&mut db.arena, forever));
+
+        // type Chain<T> = (T, Chain<T>) | nil;, whose pair only has values because the union does
+        let alias = db.declare_alias("Chain", &[t]);
+        let rest = db.apply(alias, &[(t, t)]);
+        let pair = db.pair(t, rest);
+        let union = db.union(&[pair, nil]);
+        db.define(alias, union);
+        let chain = db.apply(alias, &[(t, int)]);
+        assert!(!is_uninhabited(&mut db.arena, chain));
+        let pair = db.pair(int, chain);
+        assert!(!is_uninhabited(&mut db.arena, pair));
+        let chain = db.apply(alias, &[(t, never)]);
+        assert!(!is_uninhabited(&mut db.arena, chain));
     }
 
     #[test]

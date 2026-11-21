@@ -416,6 +416,80 @@ pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> FxIndexSet<TypeI
     generics
 }
 
+/// Whether the type has no values: `Never`, a pair or struct with a part that has none, or a union
+/// whose members all have none, such as `(Never, Int)`. A type that only has values through
+/// itself has none either, such as `type Forever = (Int, Forever)`, since a value is finite. A
+/// generic counts as having values, since it can stand for a type that does.
+pub fn is_uninhabited(arena: &mut Arena<Type>, id: TypeId) -> bool {
+    // Substitution expands generic applications, so that their arguments are where they're used
+    let root = substitute(arena, id);
+
+    // The types that the root is made of, in the order they're found
+    let mut types = Vec::new();
+    let mut visited = HashSet::new();
+    let mut stack = vec![root];
+
+    while let Some(id) = stack.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+
+        types.push(id);
+
+        match &arena[id] {
+            Type::Unresolved
+            | Type::Generic(_)
+            | Type::Any
+            | Type::Never
+            | Type::Atom(_)
+            | Type::Function(_)
+            | Type::Apply(_) => {}
+            Type::Ref(id) => stack.push(*id),
+            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
+            Type::Alias(alias) => stack.push(alias.inner),
+            Type::Struct(ty) => stack.push(ty.inner),
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+        }
+    }
+
+    // The types found to have a value so far, which only grows: a type has one once the types
+    // it's made of do, so this ends when a pass over them finds no more
+    let mut inhabited = HashSet::new();
+
+    loop {
+        let before = inhabited.len();
+
+        for &id in &types {
+            let has_values = match &arena[id] {
+                Type::Never => false,
+                Type::Unresolved
+                | Type::Generic(_)
+                | Type::Any
+                | Type::Atom(_)
+                | Type::Function(_)
+                | Type::Apply(_) => true,
+                Type::Ref(id) => inhabited.contains(id),
+                Type::Pair(pair) => {
+                    inhabited.contains(&pair.first) && inhabited.contains(&pair.rest)
+                }
+                Type::Alias(alias) => inhabited.contains(&alias.inner),
+                Type::Struct(ty) => inhabited.contains(&ty.inner),
+                Type::Union(union) => union.types.iter().any(|ty| inhabited.contains(ty)),
+            };
+
+            if has_values {
+                inhabited.insert(id);
+            }
+        }
+
+        if inhabited.len() == before {
+            break;
+        }
+    }
+
+    !inhabited.contains(&root)
+}
+
 pub(crate) fn resolve_refs(arena: &Arena<Type>, mut id: TypeId) -> TypeId {
     while let Type::Ref(inner) = arena[id] {
         id = inner;

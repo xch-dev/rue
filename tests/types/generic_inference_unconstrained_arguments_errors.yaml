@@ -1,0 +1,12 @@
+diagnostics:
+- Cannot infer generic `T` for `empty`; specify it explicitly, e.g. `empty::<...>()` at generic_inference_unconstrained_arguments_errors.rue:44:25
+- Cannot infer generic `T` for `decode`; specify it explicitly, e.g. `decode::<...>()` at generic_inference_unconstrained_arguments_errors.rue:45:26
+- Cannot infer generic `T` for `decode`; specify it explicitly, e.g. `decode::<...>()` at generic_inference_unconstrained_arguments_errors.rue:48:20
+- Cannot infer generic `T` for `first`; specify it explicitly, e.g. `first::<...>()` at generic_inference_unconstrained_arguments_errors.rue:51:25
+- Cannot infer generic `T` for `first_with`; specify it explicitly, e.g. `first_with::<...>()` at generic_inference_unconstrained_arguments_errors.rue:52:27
+- Cannot infer generic `T` for `each`; specify it explicitly, e.g. `each::<...>()` at generic_inference_unconstrained_arguments_errors.rue:55:29
+- Cannot infer generic `T` for `map`; specify it explicitly, e.g. `map::<...>()` at generic_inference_unconstrained_arguments_errors.rue:56:26
+- Cannot infer generic `A` for `same`; specify it explicitly, e.g. `same::<...>()` at generic_inference_unconstrained_arguments_errors.rue:59:22
+- Cannot infer generic `A` for `taker`; specify it explicitly, e.g. `taker::<...>()` at generic_inference_unconstrained_arguments_errors.rue:60:23
+- Cannot assign `List<Never>` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_unconstrained_arguments_errors.rue:63:22
+- Cannot assign `(List<Never>, Int)` to `Int`, since they are incompatible at generic_inference_unconstrained_arguments_errors.rue:64:32

@@ -1,0 +1,67 @@
+// A generic that nothing gives a type is only `Never` when a parameter's type references it, the
+// arguments hold no value of it, and the call still has a value. These are rejected as they were
+
+fn empty<T>() -> List<T> {
+    nil
+}
+
+// The caller picks `T`, and the function returns values that it didn't get from its arguments
+fn decode<T>(value: Any) -> List<T> {
+    unchecked_cast(value)
+}
+
+fn first<T>(list: List<T>) -> T {
+    assert list is (T, List<T>);
+    list.first
+}
+
+fn first_with<T>(list: List<T>) -> (T, Int) {
+    (first(list), 1)
+}
+
+fn each<T>(_list: List<T>, _function: fn(item: T) -> nil) -> nil {
+    nil
+}
+
+fn map<T, U>(list: List<T>, function: fn(item: T) -> U) -> List<U> {
+    if list is nil {
+        nil
+    } else {
+        [function(list.first), ...map(list.rest, function)]
+    }
+}
+
+fn same<A>(_list: List<A>) -> fn(a: A) -> A {
+    fn(a: A) => a
+}
+
+fn taker<A>(_list: List<A>) -> fn(a: A) -> nil {
+    fn(_a: A) => nil
+}
+
+fn main(value: Any) -> Int {
+    // No parameter's type references the generic
+    let _no_arguments = empty();
+    let _only_returned = decode(value);
+
+    // A guard on such a call has nothing to check, so it isn't typed as a list of nothing
+    let _guarded = decode(value) is List<Int>;
+
+    // The call would have no value, and the code after it would be unreachable
+    let _whole_return = first(nil);
+    let _part_of_a_pair = first_with(nil);
+
+    // The lambda's parameter is the generic
+    let _lambda_parameter = each(nil, fn(item) => nil);
+    let _lambda_result = map(nil, fn(item) => item);
+
+    // Values of the generic flow into the function that's returned
+    let _both_ways = same(nil);
+    let _only_taken = taker(nil);
+
+    // What the generic is inferred as is shown as `Never`
+    let shown: Int = reverse([]);
+    let shown_in_a_pair: Int = (merge_list([], []), length(nil));
+
+    shown + shown_in_a_pair
+}

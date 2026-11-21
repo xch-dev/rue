@@ -10,6 +10,7 @@ use super::builtin::compile_builtin;
 use super::call_inference::{InferredCall, infer_call};
 use crate::{
     Compiler, CompletionContext, SyntaxCall, SyntaxItemKind, compile_expr, compile_path_value,
+    occurs_contravariantly,
 };
 
 pub fn compile_function_call_expr(
@@ -155,6 +156,10 @@ pub fn compile_function_call_expr(
 
         let mut uninferred = HashMap::new();
 
+        for (generic, never) in unconstrained_as_never(ctx, function, &checks, &mappings) {
+            mappings.insert(generic, never);
+        }
+
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
@@ -287,6 +292,78 @@ pub(crate) fn generalized_call(
     }
 
     (mappings, ty)
+}
+
+/// The callee's generics that nothing gives a type, which are `Never` where the call has no
+/// values of them to return: those that a parameter's type references, only where values flow out
+/// of the argument, when every argument is assignable to its parameter with them as `Never`. The
+/// arguments then hold no value of the generic, as `nil` doesn't for `List<T>` in `length(nil)`
+/// and `reverse([])`, whose `List<Never>` is assignable to a list of anything. They're each paired
+/// with `Never`.
+///
+/// These are left out, so they're reported as they were:
+///
+/// - A generic that no parameter's type references, such as `T` in `fn empty<T>() -> List<T>` or
+///   in `fn decode<T>(value: Any) -> List<T>`. What it is is up to the caller, and a function can
+///   return values of it that it didn't get from its arguments, by casting them, which a guard on
+///   the call's value would then never check (see `tests/guards/inferred_operand_errors.rue`).
+/// - A generic that's referenced where values flow into the argument, or into what's returned, such
+///   as a lambda's parameter, which was compiled against the generic itself, or `A` in
+///   `fn make<A>(list: List<A>) -> fn(a: A) -> A`, where no type is the most useful one.
+/// - A generic that the call would have no value with, such as `T` in `first(nil)` with
+///   `fn first<T>(list: List<T>) -> T`: the code after the call would be unreachable.
+fn unconstrained_as_never(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    checks: &[(AstExpr, TypeId, TypeId)],
+    mappings: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
+    let never = ctx.builtins().types.never;
+    let params: Vec<TypeId> = function.param_types().collect();
+
+    let unconstrained: HashMap<TypeId, TypeId> = function
+        .generics
+        .iter()
+        .filter(|generic| !mappings.contains_key(generic))
+        .filter(|&&generic| {
+            let in_params = params
+                .iter()
+                .any(|&ty| contains_generic(ctx.types_mut(), ty, generic));
+
+            if !in_params
+                || params
+                    .iter()
+                    .chain([&function.ret])
+                    .any(|&ty| occurs_contravariantly(ctx, ty, generic))
+            {
+                return false;
+            }
+
+            let mut with_never = mappings.clone();
+            with_never.insert(generic, never);
+            let ret = substitute_with_mappings(ctx.types_mut(), function.ret, &with_never);
+            !rue_types::is_uninhabited(ctx.types_mut(), ret)
+        })
+        .map(|&generic| (generic, never))
+        .collect();
+
+    if unconstrained.is_empty() {
+        return unconstrained;
+    }
+
+    let mut with_never = mappings.clone();
+    with_never.extend(&unconstrained);
+
+    let assignable = checks.iter().all(|&(_, ty, param)| {
+        let param = substitute_with_mappings(ctx.types_mut(), param, &with_never);
+        !ctx.is_unresolved(ty) && ctx.is_assignable(ty, param)
+    });
+
+    if assignable {
+        unconstrained
+    } else {
+        HashMap::new()
+    }
 }
 
 /// The name of the function being called, without any generic arguments.
