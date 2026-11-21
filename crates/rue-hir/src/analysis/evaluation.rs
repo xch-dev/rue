@@ -156,11 +156,14 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
                         continue;
                     };
 
-                    // An inline binding is evaluated where it's referenced instead
+                    // An inline binding is evaluated where it's referenced instead. The result
+                    // of a fold for the rest of the list that isn't is always evaluated before
+                    // the body, wherever the body refers to it, such as in another loop
                     let evaluated = !binding.inline
-                        && self
-                            .cx
-                            .let_evaluates(symbol, &statements[index + 1..], body);
+                        && (self.db().is_loop_rest_call(binding.value.hir)
+                            || self
+                                .cx
+                                .let_evaluates(symbol, &statements[index + 1..], body));
 
                     if evaluated && self.hir(binding.value.hir) {
                         return true;

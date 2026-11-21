@@ -93,6 +93,14 @@ fn nested_inline_values(
     ]
 }
 
+// The result of a fold that's only used in another loop is evaluated before the body, so every
+// item gets to the end of the list, and to the argument after the `for` in the fold's value
+inline fn used_in_an_inner_loop(lists: List<List<Int>>, ys: List<Int>, last: Int) -> List<Int> {
+    for xs in lists fold rest: List<Int> = [...for y in ys { y }, last] {
+        for x in xs fold inner = rest { [x + (rest as Any is nil as Int), ...inner] }
+    }
+}
+
 fn in_an_outer_fold_value(lists: List<List<Int>>) -> List<Int> {
     for xs in lists fold rest: List<Int> = in_an_outer_fold_value(lists) {
         [...for x in xs { x }, ...rest]
@@ -142,6 +150,7 @@ fn main(xs: List<Int>, k: Int) -> List<Any> {
         through_a_function_that_recurses(xs, k),
         through_its_own_argument(xs, k),
         nested_inline_values([xs], [[xs]], k),
+        used_in_an_inner_loop([xs], xs, check(k)),
         in_an_outer_fold_value([xs]),
         after_an_inner_for([xs]),
         inline_values(xs, k),
