@@ -51,27 +51,32 @@ struct Plain {
 /// A constant whose value goes through a list, so that it isn't cheap to evaluate again.
 const K: &str = "const K: Int = total([1, 2, 3]);";
 
-/// Whether the constant `K` is bound rather than substituted, since its only reference can be
-/// evaluated more than once each time the program is run, in a program with the helpers and the
-/// items.
-fn is_repeated(items: &str) -> bool {
-    let compiled = compile(&format!("{HELPERS}\n{K}\n{items}"));
+/// A program with the helpers, the constant `K` and the items.
+fn source(items: &str) -> String {
+    format!("{HELPERS}\n{K}\n{items}")
+}
+
+/// Whether the constant `K` of the program is bound rather than substituted, since its only
+/// reference can be evaluated more than once each time the program is run.
+fn is_bound(source: &str) -> bool {
+    let compiled = compile(source);
     compiled.assert_no_errors();
     compiled
         .dependency_graph()
         .is_repeated(compiled.symbol("K"))
 }
 
+/// Whether the constant `K` is bound, in a program with the helpers and the items.
+fn is_repeated(items: &str) -> bool {
+    is_bound(&source(items))
+}
+
 /// Whether the constant `K` is bound when it's only referenced in a lambda that's called for
 /// each item of a list, given the items that declare it.
 fn is_value_repeated(items: &str) -> bool {
-    let compiled = compile(&format!(
+    is_bound(&format!(
         "{HELPERS}\n{items}\nfn main(xs: List<Int>) -> List<Int> {{ map(xs, fn(x) => x + K) }}"
-    ));
-    compiled.assert_no_errors();
-    compiled
-        .dependency_graph()
-        .is_repeated(compiled.symbol("K"))
+    ))
 }
 
 #[test]
@@ -90,6 +95,9 @@ fn cheap_value_is_evaluated_again() {
         "const K: Int = sha256(0x0102 + 0x03) as Int;",
         // A value that's bound costs nothing to read
         "const BOUND: Int = total([1, 2, 3]);\nconst K: Int = BOUND + BOUND;",
+        // Neither does a binding of a let statement in the value, which is counted where it's
+        // bound: this is five operators, rather than nine
+        "const K: Int = { let a = 1 + 2 + 3 + 4 + 5; a * 2 };",
         // As many operators as are worth evaluating again
         "const K: Int = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9;",
     ] {
@@ -102,8 +110,10 @@ fn value_that_can_take_long_is_bound() {
     let key = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
     for items in [
-        // A function that calls itself, directly or through another one
-        "const K: Int = total([1, 2, 3]);".to_string(),
+        // A function that calls itself, directly or through another one, which takes more
+        // than the budget on the way round. `total` also checks a type
+        K.to_string(),
+        "fn count(n: Int) -> Int { if n > 0 { count(n - 1) } else { 0 } }\nconst K: Int = count(4);".to_string(),
         "fn even(n: Int) -> Int { if n > 0 { odd(n - 1) } else { 1 } }\nfn odd(n: Int) -> Int { if n > 0 { even(n - 1) } else { 0 } }\nconst K: Int = even(4);".to_string(),
         // Through a function that's called, and through a value that's substituted
         "fn sum() -> Int { total([1, 2, 3]) }\nconst K: Int = sum() + 1;".to_string(),
@@ -257,7 +267,7 @@ fn main(xs: List<Int>) -> List<Int> { for x in xs { x + NEXT } }";
 
 /// The program of `main`, in a program with the helpers and the items.
 fn program(items: &str) -> String {
-    compile(&format!("{HELPERS}\n{K}\n{items}")).main_program()
+    compile(&source(items)).main_program()
 }
 
 /// A lambda that's only called once evaluates the value once, so the value is substituted, and
@@ -278,6 +288,63 @@ fn value_in_a_lambda_called_once_is_substituted() {
             "{body}"
         );
     }
+}
+
+/// The scope of a `let` is the function it's in: a lambda that's called once each time the
+/// function runs evaluates the value once for each time it would be bound, however often the
+/// function itself is called. So the value is substituted, and only evaluated where it's needed.
+#[test]
+fn value_in_a_lambda_called_once_in_a_function_called_twice_is_substituted() {
+    let outer = |body: &str| {
+        program(&format!(
+            "fn outer(xs: List<Int>, n: Int) -> Int {{ {body} }}
+fn main(xs: List<Int>, n: Int) -> Int {{ outer(xs, n) + outer(xs, n + 1) }}"
+        ))
+    };
+
+    assert_eq!(
+        outer(
+            "let k = total(xs); let g = fn(y: Int) => y + k; if n > 5 { g(n) } else { outer(xs, n + 1) }"
+        ),
+        outer("if n > 5 { n + total(xs) } else { outer(xs, n + 1) }")
+    );
+}
+
+/// A constant that's bound is evaluated when the program starts, so the only reference to
+/// another constant in its value is always evaluated, and that one is substituted into it
+/// although it may fail.
+#[test]
+fn constant_in_a_bound_constant_is_substituted() {
+    let add = "fn positive(value: Int) -> Int { assert value > 0; value }
+fn add(xs: List<Int>) -> List<Int> { if xs is nil { nil } else { [xs.first + OFFSET, ...add(xs.rest)] } }
+fn main(xs: List<Int>) -> List<Int> { add(xs) }";
+
+    assert_eq!(
+        program(&format!(
+            "const CHECKED: Int = positive(total([1, 2, 3]) - 5);\nconst OFFSET: Int = CHECKED + total([4, 5]);\n{add}"
+        )),
+        program(&format!(
+            "const OFFSET: Int = positive(total([1, 2, 3]) - 5) + total([4, 5]);\n{add}"
+        ))
+    );
+}
+
+/// A closure in an `inline fn` still captures the parameters that a bound value it captures
+/// depends on, so that the argument is evaluated when the closure is built, as it was before
+/// values that are bound stopped being followed.
+#[test]
+fn closure_in_an_inline_function_captures_the_parameters_of_a_bound_value() {
+    let program = program(
+        "fn positive(value: Int) -> Int { assert value > 0; value }
+inline fn scaled(p: Int, c: Bool, xs: List<Int>) -> List<Int> { let v = if c { p * 2 } else { 0 }; map(xs, fn(y) => y + v + v) }
+fn main(xs: List<Int>, n: Int) -> List<Int> { scaled(positive(n), n > 5, xs) }",
+    );
+
+    // The closure captures the value, and the arguments for `p` and `c`
+    let start = program
+        .find("(c (q . 2) (c (q 1 ")
+        .expect("the program builds a closure");
+    assert_eq!(program[start..].matches("(q . 4)").count(), 3, "{program}");
 }
 
 /// A value that isn't written as something cheap, but is compiled to a constant, is substituted
@@ -360,7 +427,7 @@ fn main(n: Int) -> Int {
     ] {
         assert!(!program(source).is_empty(), "{source}");
 
-        let mut debug = compile_with(&format!("{HELPERS}\n{K}\n{source}"), |options| {
+        let mut debug = compile_with(&self::source(source), |options| {
             *options = CompilerOptions {
                 std: false,
                 ..CompilerOptions::debug()

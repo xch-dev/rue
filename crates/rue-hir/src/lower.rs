@@ -91,7 +91,8 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// everything the run can reach, so they're only found once per run.
     rounds: HashMap<Box<Slice<SymbolId>>, Rc<Vec<Option<usize>>>>,
     /// Whether each binding or constant that's referenced once can be evaluated where it's
-    /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
+    /// referenced, which isn't the case if it may fail and the reference isn't always evaluated,
+    /// or if the reference can be evaluated more than once and the value isn't cheap.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
     /// Whether each binding that's referenced more than once is evaluated where it's referenced
     /// anyway, since its value is only a path into the environment, for the let statements being
@@ -124,8 +125,6 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// evaluated more than once, since they're compiled to constants (see
     /// [`Self::decide_repeats`]).
     folded_repeats: HashSet<SymbolId>,
-    /// Whether that's been decided for the functions that are inlined now.
-    repeats_decided: bool,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
 }
@@ -215,7 +214,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             constant_roots: OnceCell::new(),
             missing_paths: None,
             folded_repeats: HashSet::new(),
-            repeats_decided: false,
             debug: None,
         }
     }
@@ -340,6 +338,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 && !(symbol == self.main && matches!(self.db.symbol(capture), Symbol::Constant(_)))
         });
 
+        // What the function would capture if nothing were left out, which is only found if
+        // something below needs it
+        let mut unpruned = None;
+
         // Two kinds of function capture more than that, and whatever calls one passes it all of
         // what it captures. A loop is lowered once, with what it was found to capture when the
         // graph was built, which includes what the values it captures depend on. And the
@@ -347,20 +349,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         // one captures the same, as far as it would without leaving anything out, which is
         // what tells its own values apart from the ones of a call that it makes. A loop captures
         // the loops inside of it, so they're all found here
-        let mut unpruned = None;
         let mut index = 0;
 
         while let Some(&capture) = captures.get_index(index) {
             index += 1;
 
-            let needed = if capture == self.main && symbol != self.main {
-                self.dependencies(capture, true)
-            } else if let Some(needed) = self.graph.loop_captures(capture) {
-                Rc::new(needed.clone())
-            } else {
-                continue;
-            };
+            let is_entrypoint = capture == self.main && symbol != self.main;
 
+            if !is_entrypoint && self.graph.loop_captures(capture).is_none() {
+                continue;
+            }
+
+            let needed = self.dependencies(capture, true);
             let unpruned = unpruned.get_or_insert_with(|| self.graph.dependencies(symbol, true));
 
             captures.extend(
@@ -369,6 +369,30 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     .copied()
                     .filter(|needed| unpruned.contains(needed)),
             );
+        }
+
+        // The argument of an `inline fn` is evaluated wherever its parameter is referenced, and
+        // a closure that captures the parameter evaluates the argument when it's built. So a
+        // closure in an `inline fn` still captures the parameters that the values it captures
+        // depend on. Otherwise an argument that may fail, and that's only evaluated some of the
+        // time by what refers to it, would no longer be evaluated where the closure is built
+        let inline_fn = |symbol: SymbolId| {
+            matches!(
+                self.db.symbol(symbol),
+                Symbol::Function(function) if function.kind == FunctionKind::Inline
+            )
+        };
+
+        let mut owners =
+            iter::successors(self.graph.owner(symbol), |&owner| self.graph.owner(owner));
+
+        if owners.any(inline_fn) {
+            let unpruned = unpruned.get_or_insert_with(|| self.graph.dependencies(symbol, true));
+
+            captures.extend(unpruned.iter().copied().filter(|&capture| {
+                matches!(self.db.symbol(capture), Symbol::Parameter(_))
+                    && self.graph.owner(capture).is_some_and(inline_fn)
+            }));
         }
 
         captures
@@ -433,10 +457,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: FunctionSymbol,
     ) -> LirId {
-        if symbol == self.main {
-            self.decide_repeats();
-        }
-
         let (capture_groups, param_group) = self.function_groups(symbol, &function);
 
         let mut function_env = Self::apply_group(

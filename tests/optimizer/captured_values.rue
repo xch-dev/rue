@@ -311,7 +311,25 @@ fn add_offset(xs: List<Int>) -> List<Int> {
 }
 
 // A constant that's bound is evaluated when the program starts, so a constant that its value
-// refers to is always evaluated there too. This one fails, although the list is empty
+// refers to is always evaluated there too, and is substituted into it although it may fail. This
+// one fails, although the list is empty
 test fn constant_of_a_bound_constant_fails_at_the_start() -> List<Int> {
     add_offset(runtime([] as List<Int>))
+}
+
+inline fn add_scaled_value(scale: Int, scaled: Bool, xs: List<Int>) -> List<Int> {
+    let k = if scaled {
+        scale * 2
+    } else {
+        0
+    };
+    map(xs, fn(y) => y + k + k)
+}
+
+// The lambda only refers to a value that's bound, but it still captures the parameter of the
+// `inline fn` that the value depends on, so the argument is evaluated when the closure is built,
+// and fails here, although the value itself doesn't evaluate it
+test fn inline_argument_of_a_captured_value_is_still_evaluated() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    add_scaled_value(positive(total(xs) - 6), total(xs) > 6, xs)
 }

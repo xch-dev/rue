@@ -468,8 +468,9 @@ impl DependencyGraph {
     /// The function's value can go through bindings that are only referenced once, as in
     /// `let g = fn(x) => x + k; g(1)`, and through the parameters of the functions it's passed
     /// to, if they're known where they're called, as long as each parameter is only referenced
-    /// once, and the call it ends up in is evaluated once each time that function is. Anything else could call it any number of
-    /// times, such as `map(xs, g)`, whose parameter is called and passed on.
+    /// once, and the call it ends up in is evaluated once each time that function is. Anything
+    /// else could call it any number of times, such as `map(xs, g)`, whose parameter is called
+    /// and passed on.
     fn call_site(
         &self,
         db: &Database,
@@ -920,6 +921,9 @@ impl DependencyGraph {
         self.dependencies_with(symbol, true, is_bound)
     }
 
+    /// Walks what the symbol depends on, and collects all of it, or only what it captures. What
+    /// a value that's captured depends on is left out if the value `is_bound` outside of the
+    /// symbol, since only the value is needed then (see [`Self::captures`]).
     fn dependencies_with(
         &self,
         symbol: SymbolId,

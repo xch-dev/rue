@@ -6,7 +6,7 @@
 //! lowering something that behave the same, each is lowered, optimized and generated, and the
 //! smaller one is kept, rather than estimating which one it will be.
 
-use rue_lir::{ClvmTarget, CodegenOptions, Lir, LirId, compiled_size, optimize};
+use rue_lir::{ClvmTarget, CodegenOptions, LirId, compiled_size, is_pure, optimize};
 
 use crate::{Environment, HirId};
 
@@ -106,23 +106,16 @@ impl Lowerer<'_, '_, '_> {
             return false;
         }
 
-        let target = ClvmTarget {
-            operand_limits: self.options.operand_limits,
-            hard_fork_2: self.options.hard_fork_2,
-        };
-
-        let lir = optimize(self.arena, lir, target);
-        self.is_constant(lir)
+        // A value that's pure can't fail, and is the same wherever it's evaluated
+        let lir = optimize(self.arena, lir, self.target());
+        is_pure(self.arena, lir)
     }
 
-    /// Whether the LIR is a value that's the same wherever it's evaluated.
-    fn is_constant(&self, mut lir: LirId) -> bool {
-        loop {
-            match &self.arena[lir] {
-                Lir::Atom(_) | Lir::Quote(_) => return true,
-                Lir::Cons(first, rest) if self.is_constant(*first) => lir = *rest,
-                _ => return false,
-            }
+    /// What the program is compiled for.
+    fn target(&self) -> ClvmTarget {
+        ClvmTarget {
+            operand_limits: self.options.operand_limits,
+            hard_fork_2: self.options.hard_fork_2,
         }
     }
 
@@ -132,10 +125,7 @@ impl Lowerer<'_, '_, '_> {
     fn compiled_size(&mut self, lir: LirId) -> usize {
         let options = CodegenOptions {
             optimize_static_pairs: self.options.optimize_static_pairs,
-            target: ClvmTarget {
-                operand_limits: self.options.operand_limits,
-                hard_fork_2: self.options.hard_fork_2,
-            },
+            target: self.target(),
         };
 
         compiled_size(self.arena, lir, self.options.optimize_lir, options).unwrap_or(usize::MAX)

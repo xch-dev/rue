@@ -1,5 +1,6 @@
-//! Decides when a value that may fail can be inlined, so that inlining never drops a check, or
-//! moves it somewhere that's only evaluated some of the time.
+//! Decides when a value that's only referenced once is evaluated where it's referenced, so that
+//! inlining never drops a check, or moves it somewhere that's only evaluated some of the time,
+//! and never evaluates a value over and over.
 //!
 //! A binding, constant or argument that's referenced once is normally evaluated where it's
 //! referenced. That's only done for a value that may fail (see [`may_fail`]) if the reference is
@@ -7,6 +8,12 @@
 //! binding, at the start of the program for a constant, and at the call for an argument.
 //! Otherwise, it's bound like it would be if it were referenced more than once, or evaluated for
 //! its effect if it's never referenced.
+//!
+//! A binding or constant is also bound if its reference can be evaluated more than once for each
+//! time the value would be, such as in a lambda that's called for each item of a list, unless
+//! evaluating it again is cheap, or it's compiled to a constant (see
+//! [`Lowerer::decide_repeats`]). A function that captures a value that's always bound only needs
+//! the value, rather than what it's evaluated from (see [`Lowerer::is_always_bound`]).
 //!
 //! A binding that's never referenced is evaluated for its effect if it may fail, which the
 //! dependency graph decides (see [`crate::DependencyGraph::is_effect`]). So is the value of a type
@@ -131,23 +138,18 @@ impl Lowerer<'_, '_, '_> {
     /// value is compiled to a constant, although it isn't written as something that's cheap to
     /// evaluate, such as a hash of constants. It's then folded with what uses it.
     ///
-    /// This is decided before the entrypoint is lowered, rather than each time a let statement
-    /// is. Finding out whether a value is a constant lowers it, and what a function captures
-    /// depends on which values are bound (see [`Self::is_always_bound`]), which is only found
-    /// once for each function. So it doesn't depend on the arguments of the calls being inlined:
-    /// a value that's only a constant with them is bound.
+    /// This is decided before the entrypoint is lowered (see [`Self::lower_main`]), rather than
+    /// each time a let statement is. Finding out whether a value is a constant lowers it, and
+    /// what a function captures depends on which values are bound (see
+    /// [`Self::is_always_bound`]), which is only found once for each function. So it doesn't
+    /// depend on the arguments of the calls being inlined: a value that's only a constant with
+    /// them is bound. A program that's only run while compiling isn't lowered that way, so all
+    /// of these values are bound in it.
     ///
     /// It does depend on which functions are inlined, since a call that isn't inlined isn't
-    /// folded, so it's decided again when that changes (see [`Self::lower_main`]). What was
-    /// found with the values that were substituted before is only forgotten if the decision
-    /// changed, which it rarely does.
+    /// folded, so it's decided again when that changes. What was found with the values that
+    /// were substituted before is only forgotten if the decision changed, which it rarely does.
     pub(super) fn decide_repeats(&mut self) {
-        if self.repeats_decided {
-            return;
-        }
-
-        self.repeats_decided = true;
-
         if !self.options.auto_inline {
             return;
         }
@@ -185,7 +187,6 @@ impl Lowerer<'_, '_, '_> {
         self.substitutions.borrow_mut().clear();
         self.substitution_failures.borrow_mut().clear();
         self.function_failures.borrow_mut().clear();
-        self.path_choices.clear();
         self.constant_roots = OnceCell::new();
     }
 
@@ -247,8 +248,8 @@ impl Lowerer<'_, '_, '_> {
     }
 
     /// Whether the constant's single reference is always evaluated when the program is run, or
-    /// fails. Constants that are referenced more than once are evaluated at the start of the
-    /// program, so a reference in one of their values counts too.
+    /// fails. Constants that are bound are evaluated at the start of the program, so a reference
+    /// in one of their values counts too (see [`Self::find_constant_roots`]).
     fn constant_always_evaluated(&self, symbol: SymbolId) -> bool {
         let roots = self
             .constant_roots
@@ -402,7 +403,9 @@ impl AnalysisContext for Lowerer<'_, '_, '_> {
     // A constant's value can't reference the arguments of an inlined function, so whether it may
     // fail only depends on which of the bindings and constants it references are substituted.
     // Those are only ever decided not to be, which can't make it fail, so a constant that can't
-    // fail never will. Bindings are decided again in each call to an `inline fn`.
+    // fail never will. Bindings are decided again in each call to an `inline fn`. The exception
+    // is a value that's found to be a constant once another function is inlined, and substituted
+    // from then on, which is why `decide_repeats` forgets all of this when that changes.
     fn shares_substitution(&self, symbol: SymbolId, fails: bool) -> bool {
         !fails && matches!(self.db.symbol(symbol), Symbol::Constant(_))
     }

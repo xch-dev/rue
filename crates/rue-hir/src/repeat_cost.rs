@@ -8,7 +8,8 @@
 //! value isn't free: it's put in the environment and captured by the lambda, which takes a dozen
 //! bytes or more, and each byte of a program costs as much as running a dozen operators. So a
 //! value is only bound if evaluating it can take long: it can go through a list of any length,
-//! or it uses an operator that costs about as much as the bytes would.
+//! it uses an operator that costs about as much as the bytes would, or it takes more than a few
+//! operators (see [`MAX_REPEATED_VALUE_SIZE`]).
 //!
 //! This only looks at how the value is written. A value that's larger than this allows can still
 //! be compiled to a constant, which the lowerer finds out (see `Lowerer::decide_repeats`).
@@ -56,11 +57,13 @@ struct RepeatCost<'a> {
     /// The bindings of the let statements inside the value, whose values are counted there.
     locals: HashSet<SymbolId>,
     /// The functions, bindings and constants that are being counted, so that a function that
-    /// calls itself isn't followed forever.
+    /// calls itself isn't followed again. Each call takes from the budget, so it would run out
+    /// either way, but a value that refers to itself wouldn't, if there could be one.
     following: HashSet<SymbolId>,
 }
 
 impl RepeatCost<'_> {
+    /// Counts an operator or a call, unless there's no budget left for it.
     fn take(&mut self) -> bool {
         match self.budget.checked_sub(1) {
             Some(rest) => {
@@ -71,11 +74,13 @@ impl RepeatCost<'_> {
         }
     }
 
+    /// Whether the value takes no more than what's left of the budget, which is reduced by it.
     fn fits(&mut self, hir: HirId) -> bool {
         // A value can be nested as deeply as the parser allows inside each function it calls
         rue_types::grow_stack(|| self.fits_inner(hir))
     }
 
+    /// Whether all of the values fit in what's left of the budget, one after another.
     fn all(&mut self, hirs: impl IntoIterator<Item = HirId>) -> bool {
         hirs.into_iter().all(|hir| self.fits(hir))
     }
@@ -203,6 +208,8 @@ impl RepeatCost<'_> {
         }
     }
 
+    /// Counts a statement of a block. The value of a let statement is counted where it's bound,
+    /// rather than where the binding is referenced.
     fn statement(&mut self, statement: &Statement) -> bool {
         if let Statement::Let(symbol, _) = statement {
             let Symbol::Binding(binding) = self.db.symbol(*symbol) else {

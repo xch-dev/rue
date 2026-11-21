@@ -13,6 +13,8 @@ use fold::*;
 use ops::*;
 use truthy::*;
 
+pub use truthy::is_pure;
+
 use id_arena::Arena;
 
 use crate::{ClvmTarget, DebugTags, Lir, LirId, SpanScopes, stack::grow_stack};
