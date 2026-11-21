@@ -13,9 +13,10 @@ diagnostics:
 - Undeclared symbol `foo` at match_errors.rue:64:14
 - Expected one of `,`, `)`, found `=` at match_errors.rue:65:11
 - Expected one of `)`, `...`, expression, found `}` at match_errors.rue:66:5
-- Expected `=>`, found identifier at match_errors.rue:86:14
-- Undeclared symbol `whole` at match_errors.rue:86:14
-- Expected one of `,`, `}`, found `=` at match_errors.rue:86:20
+- Unused binding `whole` at match_errors.rue:86:14
+- Expected `=>`, found identifier at match_errors.rue:86:20
+- Undeclared symbol `other` at match_errors.rue:86:20
+- Expected one of `,`, `}`, found `=` at match_errors.rue:86:26
 - Expected binding, found integer literal at match_errors.rue:87:21
 - Undeclared symbol `first` at match_errors.rue:94:19
 - Expected one of `;`, `}`, found `,` at match_errors.rue:94:24

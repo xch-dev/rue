@@ -166,6 +166,22 @@ fn incompatible(shape: Shape) -> Int {
     }
 }
 
+// A name is the value as the arm sees it, so in an `inline match` it isn't narrowed, and in each
+// arm it's only that arm's type
+fn named(shape: Shape) -> Int {
+    let inlined = inline match shape {
+        Circle circle => circle.radius,
+        _ => 0,
+    };
+
+    inlined
+        + match shape {
+            Circle circle => circle.side,
+            Square square => circle.radius + square.side,
+            Point unused => 0,
+        }
+}
+
 // A binding that isn't used is reported, unless its name starts with an underscore
 fn unused(shape: Shape) -> Int {
     match shape {
@@ -214,6 +230,7 @@ fn main(shape: Shape, value: (Int, Int) | Int, other: (Int, Int) | Square) -> In
         + not_exhaustive(shape)
         + incompatible(shape)
         + unused(shape)
+        + named(shape)
         + statement_value(shape)
         + narrowed_type(shape)
 }

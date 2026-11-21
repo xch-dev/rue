@@ -54,3 +54,11 @@ export fn separate_arms(value: (Int, Int) | [Int, Int, Int]) -> Int {
         [Int, Int, Int] [a, _value, _] => a,
     }
 }
+
+// A name for the whole value shadows like any other binding
+export fn named_arm(value: (Int, Int) | Int) -> Int {
+    match value {
+        (Int, Int) value => value.first,
+        Int Whole => Whole,
+    }
+}

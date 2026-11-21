@@ -2418,3 +2418,95 @@ fn test_rename_with_unfinished_match_arm_binding() {
         "#]],
     );
 }
+
+#[test]
+fn test_rename_named_match_arm_binding() {
+    let source = with_shape(
+        r#"
+fn main(shape: Shape) -> Int {
+    match shape {
+        Shape::Circle circle => circle.radius,
+        Shape::Rect rect => rect.width * rect.height,
+        _ => 0,
+    }
+}
+"#,
+    );
+
+    // From where it's declared, and from a use
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("Shape::Circle circle", "Shape::Circle cir$0cle", 1),
+        )],
+        "round",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Circle round => round.radius,
+                    Shape::Rect rect => rect.width * rect.height,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("rect.width", "re$0ct.width", 1),
+        )],
+        "sides",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Rect { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Circle circle => circle.radius,
+                    Shape::Rect sides => sides.width * sides.height,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+
+    // The type before the name is renamed on its own
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("Shape::Rect rect", "Shape::Re$0ct rect", 1),
+        )],
+        "Box",
+        expect![[r#"
+            main.rue:
+
+            enum Shape {
+                Empty,
+                Circle { radius: Int },
+                Box { width: Int, height: Int },
+            }
+
+            fn main(shape: Shape) -> Int {
+                match shape {
+                    Shape::Circle circle => circle.radius,
+                    Shape::Box rect => rect.width * rect.height,
+                    _ => 0,
+                }
+            }
+        "#]],
+    );
+}

@@ -397,8 +397,8 @@ fn if_expr_with(
 }
 
 /// A `match` expression, such as `match value { Int => 1, _ => 2 }`, or an `inline match`. Each
-/// arm's pattern is a type, which can be followed by a binding that destructures the value, such
-/// as `Point { x, y } => x + y`.
+/// arm's pattern is a type, which can be followed by a binding that names or destructures the
+/// value, such as `Point { x, y } => x + y` or `Point point => point.x`.
 /// The arms are separated by commas, except that an arm whose value is a block, `if` or `match`
 /// ends at its closing brace, so the comma after it can be left out.
 fn match_expr(p: &mut Parser, checkpoint: Checkpoint, allow_inline: bool) {
@@ -446,8 +446,13 @@ fn match_arm(p: &mut Parser) -> bool {
     ty(p);
 
     // The arm's value comes after the `=>`, so a brace here can only start a binding. One that
-    // doesn't look like a binding is most likely a block whose `=>` is missing.
-    if p.at_quiet(T!['(']) || p.at_quiet(T!['[']) || at_struct_binding(p) {
+    // doesn't look like a binding is most likely a block whose `=>` is missing. A name binds the
+    // whole value, since nothing in a type continues with one.
+    if p.at_quiet(SyntaxKind::Ident)
+        || p.at_quiet(T!['('])
+        || p.at_quiet(T!['['])
+        || at_struct_binding(p)
+    {
         binding(p);
     }
 
@@ -1354,6 +1359,54 @@ mod tests {
             expect![],
         );
 
+        // A name after the type binds the whole value
+        check(
+            expr,
+            "match x { A a => a, _ rest => rest }",
+            expect![[r#"
+                MatchExpr@0..36
+                  Match@0..5 "match"
+                  Whitespace@5..6 " "
+                  PathExpr@6..8
+                    PathSegment@6..8
+                      Ident@6..7 "x"
+                      Whitespace@7..8 " "
+                  OpenBrace@8..9 "{"
+                  Whitespace@9..10 " "
+                  MatchArm@10..18
+                    PathType@10..12
+                      PathSegment@10..12
+                        Ident@10..11 "A"
+                        Whitespace@11..12 " "
+                    NamedBinding@12..13
+                      Ident@12..13 "a"
+                    Whitespace@13..14 " "
+                    FatArrow@14..16 "=>"
+                    Whitespace@16..17 " "
+                    PathExpr@17..18
+                      PathSegment@17..18
+                        Ident@17..18 "a"
+                  Comma@18..19 ","
+                  Whitespace@19..20 " "
+                  MatchArm@20..35
+                    PathType@20..22
+                      PathSegment@20..22
+                        Ident@20..21 "_"
+                        Whitespace@21..22 " "
+                    NamedBinding@22..26
+                      Ident@22..26 "rest"
+                    Whitespace@26..27 " "
+                    FatArrow@27..29 "=>"
+                    Whitespace@29..30 " "
+                    PathExpr@30..35
+                      PathSegment@30..35
+                        Ident@30..34 "rest"
+                        Whitespace@34..35 " "
+                  CloseBrace@35..36 "}"
+            "#]],
+            expect![],
+        );
+
         // In a statement
         check(
             block,
@@ -1424,41 +1477,6 @@ mod tests {
 
     #[test]
     fn test_match_arm_binding_errors() {
-        // Only a destructure can follow the type, so a name isn't a binding
-        check(
-            expr,
-            "match x { A a => a }",
-            expect![[r#"
-                MatchExpr@0..20
-                  Match@0..5 "match"
-                  Whitespace@5..6 " "
-                  PathExpr@6..8
-                    PathSegment@6..8
-                      Ident@6..7 "x"
-                      Whitespace@7..8 " "
-                  OpenBrace@8..9 "{"
-                  Whitespace@9..10 " "
-                  MatchArm@10..14
-                    PathType@10..12
-                      PathSegment@10..12
-                        Ident@10..11 "A"
-                        Whitespace@11..12 " "
-                    PathExpr@12..14
-                      PathSegment@12..14
-                        Ident@12..13 "a"
-                        Whitespace@13..14 " "
-                  Error@14..15 "="
-                  Error@15..16 ">"
-                  Whitespace@16..17 " "
-                  Error@17..18 "a"
-                  Whitespace@18..19 " "
-                  CloseBrace@19..20 "}"
-            "#]],
-            expect![[r#"
-                Expected `=>`, found identifier at main.rue:1:13
-                Expected one of `,`, `}`, found `=` at main.rue:1:15"#]],
-        );
-
         // A brace that doesn't look like a binding is a block that's missing its `=>`
         check(
             expr,

@@ -539,6 +539,33 @@ fn main(value: Point | nil) -> Int {
 }
 
 #[test]
+fn test_match_arm_named_binding() {
+    check(
+        &with_point(
+            r#"
+fn main(value: Point | nil) -> Int {
+    match value {
+        nil => 0,
+        Point $0point => point.x + point.y,
+    }
+}
+"#,
+        ),
+        expect![[r#"
+            hover:
+            let point: Point
+            definitions:
+            main.rue:9:23-9:28
+            main.rue:9:33-9:38
+            references:
+            main.rue:9:14-9:19
+            main.rue:9:23-9:28
+            main.rue:9:33-9:38
+        "#]],
+    );
+}
+
+#[test]
 fn test_match_arm_pair_and_list_bindings() {
     check(
         r#"

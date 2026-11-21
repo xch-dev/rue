@@ -365,6 +365,58 @@ test fn untyped_lambda_parameter() -> Int {
     field + bound
 }
 
+// A name after the type binds the whole value as the arm's type, which is the only way to name a
+// value that isn't a reference. These compile to the same program as reading the fields of `shape`.
+test fn named_bindings(shape: Shape) -> Int {
+    match shape {
+        Circle circle => 3 * circle.radius * circle.radius,
+        Square square => square.side * square.side,
+        Point _point => 0,
+    }
+}
+
+fn named_computed(radius: Int) -> Int {
+    match make(radius) {
+        Circle circle => circle.radius + 1,
+        _ rest => match rest {
+            Square square => square.side,
+            Point => 0,
+        }
+    }
+}
+
+// The name is the value as the arm sees it: the union, what's left, or all of it in an
+// `inline match`
+fn named_union(value: (Int, Int) | Int | nil) -> Int {
+    match value {
+        (Int, Int) | Int either => if either is Int {
+            either
+        } else {
+            either.first
+        }
+        nil => 0,
+    }
+}
+
+fn named_inline(value: Int | nil) -> Int {
+    inline match value {
+        nil => 0,
+        Int whole => whole as Int,
+    }
+}
+
+test fn names() -> List<Int> {
+    [
+        named_bindings(Circle { radius: 2 }),
+        named_computed(4),
+        named_computed(0),
+        named_union((1, 2)),
+        named_union(3),
+        named_union(nil),
+        named_inline(5),
+    ]
+}
+
 // A binding can shadow the value being matched on, like a `let` can, and is only in scope in its
 // own arm
 fn shadow(shape: Shape) -> Int {

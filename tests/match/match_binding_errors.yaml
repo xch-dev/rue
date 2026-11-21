@@ -42,6 +42,10 @@ diagnostics:
 - Match on `Shape` is not exhaustive, since it doesn't handle `Point` at match_binding_errors.rue:156:11
 - Cannot type guard from `Shape` to `Int`, since they do not overlap at match_binding_errors.rue:164:9
 - Unknown field `length` on type `Never` at match_binding_errors.rue:164:15
-- Unused binding `radius` at match_binding_errors.rue:172:18
-- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_binding_errors.rue:181:30
-- Cannot assign `1` to `2`, since they are incompatible at match_binding_errors.rue:192:26
+- Unknown field `radius` on type `Shape` at match_binding_errors.rue:173:33
+- Unknown field `side` on type `Circle` at match_binding_errors.rue:179:37
+- Undeclared symbol `circle` at match_binding_errors.rue:180:30
+- Unused binding `unused` at match_binding_errors.rue:181:19
+- Unused binding `radius` at match_binding_errors.rue:188:18
+- Cannot use a value as an arm of a `match` statement, since it isn't used; use a block instead at match_binding_errors.rue:197:30
+- Cannot assign `1` to `2`, since they are incompatible at match_binding_errors.rue:208:26

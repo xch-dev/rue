@@ -30,3 +30,9 @@ diagnostics:
 - |-
   `value` shadows an earlier binding with the same name at shadowed_binding.rue:45:21
     note: The earlier binding is declared here at shadowed_binding.rue:43:21
+- |-
+  `value` shadows an earlier binding with the same name at shadowed_binding.rue:61:20
+    note: The earlier binding is declared here at shadowed_binding.rue:59:21
+- |-
+  Binding `Whole` should be named in snake_case at shadowed_binding.rue:62:13
+    note: Consider renaming it to `whole`

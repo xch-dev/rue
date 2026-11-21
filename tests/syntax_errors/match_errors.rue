@@ -79,11 +79,11 @@ struct Pair {
     rest: Int,
 }
 
-// An arm's binding comes before the `=>`, and only destructures the value, so it can't be a name,
-// a literal or a type
+// An arm's binding comes before the `=>`, and only names or destructures the value, so it can't
+// be a literal or a type, and there's only one of it
 export fn binding_errors(value: Pair | (Int, Int) | nil) -> Int {
     match value {
-        Pair whole => whole.first,
+        Pair whole other => whole.first,
         (Int, Int) (0, rest) => rest,
         nil => 0,
     }

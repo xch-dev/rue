@@ -1054,6 +1054,9 @@ fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
     } + match value {
         (Int, Bytes) | nil => 0,
         _ { x, y: other } => x + other.length,
+    } + match value {
+        Point point => point.x,
+        _ rest => if rest is nil { 0 } else { rest.first },
     }
 }
 "#,
@@ -1082,6 +1085,9 @@ fn main(value: Point | (Int, Bytes) | nil, list: List<Int>) -> Int {
                 } + match value {
                     (Int, Bytes) | nil => 0,
                     _ { x, y: other } => x + other.length,
+                } + match value {
+                    Point point => point.x,
+                    _ rest«: (Int, Bytes) | nil» => if rest is nil { 0 } else { rest.first },
                 }
             }
         "#]],
