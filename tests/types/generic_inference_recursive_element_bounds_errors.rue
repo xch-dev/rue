@@ -1,6 +1,8 @@
 // The guards on what a lambda in a pair or list of a recursive call gets (see
-// `generic_inference_recursive_element_bounds.rue`). Each one keeps the type it had before, which
-// the diagnostics show
+// `generic_inference_recursive_element_bounds.rue`). Each one is rejected, as it was before, and the
+// diagnostics show where. A lambda is compiled against what the call is solved with once every
+// argument is (see `HeldLambda`), or as it would have been where it is where that's not all that
+// its parameters end up as
 
 fn make<X>() -> X {
     unchecked_cast(1)
@@ -248,29 +250,10 @@ fn own_and_standing_in_seen_through<T, U, V>(p: (T, fn(a: T, b: U) -> V), u0: U,
     p.rest(p.first, u0)
 }
 
-// Guard: an untyped lambda that's the first element of a pair isn't refined, so its body has the
-// caller's `T` that `x7` stands for, which `+` doesn't take, even where the call's inference counts it
-// as the renamed `T` (see `first_element_lambdas_count_as_the_renamed_generics`)
-fn first_element_lambda_body<T, U>(p: List<(fn(a: T) -> U, Int)>, value: T, depth: Int) -> U {
-    if depth > 0 {
-        let _listed = first_element_lambda_body(
-            [(fn(x6: Int) => x6, 1), (fn(x7) => x7 + 1, 1)],
-            5,
-            depth - 1,
-        );
-        return unchecked_cast::<U>(nil);
-    }
-
-    if p is ((fn(a: T) -> U, Int), List<(fn(a: T) -> U, Int)>) {
-        p.first.first(value)
-    } else {
-        unchecked_cast::<U>(nil)
-    }
-}
-
-// Guard: with both lambdas' parameters counting as the renamed generics, each of those would be a
-// candidate for the other, so the argument's candidates are what they are with the caller's
-// generics they stand for, and only the argument is reported, as without that
+// Each lambda returns what the other reads, so neither waits for what the other infers (see
+// `HeldLambda`), and each is compiled as before: the renamed `T` and `U` would each be a candidate
+// for the other, so the argument's candidates are what they are with the caller's generics they
+// stand for, and only the argument is reported
 fn renamed_generics_naming_each_other<T, U>(
     p: List<((fn(a: T) -> U, Int), (fn(b: U) -> T, Int))>,
     depth: Int,
@@ -282,4 +265,151 @@ fn renamed_generics_naming_each_other<T, U>(
     }
 
     unchecked_cast::<U>(nil)
+}
+
+// A spread item isn't held, since what the rest of the list adds is only known as its type, so `x`
+// is the caller's `T` here, which `+` doesn't take, as before
+fn spread_after_the_lambda<T>(p: List<fn(a: T) -> Int>, depth: Int) -> Int {
+    if depth > 0 {
+        let rest = [fn(z: Int) => z];
+        return spread_after_the_lambda([fn(x) => x + 1, ...rest], depth - 1);
+    }
+
+    0
+}
+
+// What the call is solved with gives `y` the caller's `T` in `(T, 1)`, from `(t, 1)`, which the lambda
+// would take as standing for the renamed `T`, so it's compiled as it would have been where it is,
+// and the argument is rejected, as before
+fn another_callers_generic_rejected<T, V>(
+    p: (fn(a: T) -> V, (fn(a: V) -> Int, (T, (V | Int, nil)))),
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        let t = unchecked_cast::<T>(nil);
+        return another_callers_generic_rejected(
+            [fn(x) => (x, x), fn(_y) => 2, 1, (t, 1)],
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+// A lambda in a call in an element after the lambda, where the call isn't solved, as before, with
+// the same diagnostics: `fn(_x) => u` is compiled as it would have been where it is
+fn make_any<M>() -> M {
+    unchecked_cast::<M>(nil)
+}
+
+fn apply_to<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn lambda_in_a_later_call<T, U>(
+    p: ((U, fn(a: T) -> U), (fn(b: Int) -> U, Int) | (Int, T)),
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = lambda_in_a_later_call(
+            ((u, fn(_x) => u), (apply_to(fn(z) => z, fn(_q) => make_any()), 1)),
+            depth - 1,
+        );
+        return r;
+    }
+
+    unchecked_cast::<T>(nil)
+}
+
+// More rejections that are as before, with the same diagnostics (review, reduced):
+// - a lambda in a block in an element after the held one's, which isn't held for (see `holds_in`)
+// - a parameter that only another lambda's parameter type bounds, `(V, Int)` with the caller's `V`,
+//   which isn't a type for `y`, so it's the caller's `V`
+// - a lambda that returns the caller's `T` from outside, compiled as it would have been where it
+//   is, as is the one after it, whose `_x` stands for the renamed `U`
+fn lambda_in_a_later_block<T, U>(
+    p: ((U, fn(a: T) -> U), ((U, fn(b: U) -> Int), T)),
+    depth: Int,
+) -> T {
+    if depth > 0 {
+        let u = unchecked_cast::<U>(nil);
+        let r = lambda_in_a_later_block(((u, fn(_x) => u), ({ (u, fn(_w) => 1) }, 1)), depth - 1);
+        return unchecked_cast::<T>(r);
+    }
+
+    unchecked_cast::<T>(nil)
+}
+
+fn bounded_by_another_parameter<V, U>(
+    p: ((fn(c: V) -> Int, U), (fn(b: V) -> Int, U)),
+    depth: Int,
+) -> U {
+    if depth > 0 {
+        let v = unchecked_cast::<V>(nil);
+        let r = bounded_by_another_parameter(
+            ((fn(_w: (V, Int)) => 2, 1), (fn(y) => y.rest, v)),
+            depth - 1,
+        );
+        return unchecked_cast::<U>(r);
+    }
+
+    unchecked_cast::<U>(nil)
+}
+
+fn returns_the_callers_value<T, U>(p: (T, (fn(a: T) -> U, fn(b: U) -> Int)), d: Int) -> Int {
+    if d > 0 {
+        let v = p.first;
+        return returns_the_callers_value((1, (fn(_y) => v, fn(_x) => 0)), d - 1);
+    }
+
+    p.rest.rest(p.rest.first(p.first))
+}
+
+// As before, by design: a pair's first element that only passes its parameter on is compiled with
+// the caller's generic where it is, as `fn(x) => (x, v)` is, so what it returns isn't what the
+// lambda after it would need `y` to be for `y.first`
+fn first_element_passes_on_before_a_reader<T, V>(
+    p: (fn(a: T) -> V, (fn(b: V) -> Int, (T, V))),
+    depth: Int,
+) -> Int {
+    if depth > 0 {
+        let v = unchecked_cast::<V>(nil);
+        return first_element_passes_on_before_a_reader(
+            (fn(x) => (x, v), (fn(y) => y.first, (1, (5, 6)))),
+            depth - 1,
+        );
+    }
+
+    0
+}
+
+// As before: held lambdas whose generic is solved with one of the caller's generics that the
+// elements don't own, as `t` and `1` give `T` here, are compiled as they would have been where
+// they are, so the list is rejected as it was
+fn solved_with_a_generic_not_its_own<T>(p: List<(T, fn(a: T) -> Int)>, d: Int) -> Int {
+    if d > 0 {
+        let t = unchecked_cast::<T>(nil);
+        return solved_with_a_generic_not_its_own([(t, fn(_x) => 0), (1, fn(_y) => 0)], d - 1);
+    }
+
+    0
+}
+
+// As before: a held lambda with a call in its body has the held lambdas of its argument compiled
+// as they would have been where they are, so the later `(5, 5)` is rejected for the first one's
+// parameter as it was
+fn call_in_a_body_before_a_wider_value<S, W>(
+    p: (W, (fn(a: W) -> S, (W, (fn(b: W) -> S, nil)))),
+    depth: Int,
+) -> fn(a: S) -> Int {
+    if depth > 0 {
+        let r = call_in_a_body_before_a_wider_value(
+            [1, fn(_x) => ident(nil), (5, 5), fn(x) => x],
+            depth - 1,
+        );
+        let _n: Int = r(9);
+    }
+
+    unchecked_cast::<fn(a: S) -> Int>(nil)
 }

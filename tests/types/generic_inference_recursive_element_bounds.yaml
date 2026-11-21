@@ -244,6 +244,20 @@ tests:
   runtime_cost: 25196
   byte_cost: 4500000
   total_cost: 4525196
+- name: held_lambdas_are_refined_against_the_call
+  program: (a (q 4 (a 14 (c 14 (c (c (q 16 2 (q . 1)) (q . 1)) (q . 1)))) (c (a 10 (c 10 (c (c (q . 1) (c (q . 2) (q . 2))) (q . 1)))) (a 4 (c 4 (c (q . 1) (c (c (q . 1) (q . 2)) ())))))) (c (c (q 2 (i (> 5 ()) (q 2 (q 2 5 (c 5 (c (- 11 (q . 1)) (c (c (c 2 (q . 3)) (q 1 . 1)) (c (c (c 2 (q . 4)) (q 1 . 2)) (c (c (c 2 (q . 5)) (q 1 . 3)) ())))))) (c () 1)) ()) 1) (c (q 2 (i (> 7 ()) (q 2 (q 2 5 (c 5 (c (c (c 2 (q . 3)) (c (q . 6) (c 2 (q . 4)))) (- 15 (q . 1))))) (c () 1)) (q 2 21 (c 9 ()))) 1) (q 2 (i (> 7 ()) (q 3 () (a 2 (c 2 (c (c (q 16 2 (q . 1)) (q . 1)) (- 7 (q . 1))))) ()) (q 2 9 (c 13 ()))) 1))) ()))
+  debug_program: (a (q 4 (a 14 (c 14 (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 1)) (q . 1)))) (c (a 10 (c 10 (c (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 2))) (q . 1)))) (a 4 (c 4 (c (q . 1) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) ())))))) (c (c (q 2 (i (> 5 ()) (q 2 (q 2 5 (c 5 (c (- 11 (q . 1)) (c (c (c 2 (q . 3)) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (c (c (c 2 (q . 4)) (c (q . 2) (c (c (q . 1) (q 1 . 2)) (c (q . 1) ())))) (c (c (c 2 (q . 5)) (c (q . 2) (c (c (q . 1) (q 1 . 3)) (c (q . 1) ())))) ())))))) (c () 1)) ()) 1) (c (q 2 (i (> 7 ()) (q 2 (q 2 5 (c 5 (c (c (c 2 (q . 3)) (c (c (q . 2) (c (c (q . 1) (q 6 2)) (c (q . 1) ()))) (c 2 (q . 4)))) (- 15 (q . 1))))) (c () 1)) (q 2 (f (r 5)) (c (f 5) ()))) 1) (q 2 (i (> 7 ()) (q 3 () (a 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 1)) (- 7 (q . 1))))) ()) (q 2 (f 5) (c (r 5) ()))) 1))) ()))
+  output: (() 3)
+  runtime_cost: 13459
+  byte_cost: 5820000
+  total_cost: 5833459
+- name: held_lambda_body_with_a_provisional_expected_type
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (c (q . 1) (q 1 . 5)) (c (q . 2) (q . 5)))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (c (q . 1) (q 1 5 . 5)) (c (q 2 (i (l 2) (q 16 4 (q . 100)) (q . 2)) 1) (q . 5)))))) (q 2 23 (c (a 27 (q 1)) ()))) 1) ()))
+  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 1) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 5)))))) (c (c (q 2 (i (> 5 ()) (q 2 (q 2 (q . 2) (c (a 9 (c (c 9 13) (c (- 11 (q . 1)) (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 13) (c (q . 1) ()))) ()))) ())))) (c (c (q . 2) (c (c (q . 1) (q 2 (i (l 2) (q 16 (f 2) (q . 100)) (q . 2)) 1)) (c (q . 1) ()))) (q . 5)))))) 1)) (c (c (q . 5) (q . 5)) 1)) (q 2 23 (c (a (r 11) (c (q . 1) ())) ()))) 1) (q . 1)) ()))
+  output: "105"
+  runtime_cost: 5260
+  byte_cost: 2364000
+  total_cost: 2369260
 diagnostics:
 - Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:132:23
 - Unused parameter `function` at generic_inference_recursive_element_bounds.rue:155:35
@@ -267,6 +281,124 @@ diagnostics:
 - Unused parameter `after` at generic_inference_recursive_element_bounds.rue:970:5
 - Unused parameter `later` at generic_inference_recursive_element_bounds.rue:971:5
 - |-
-  Both branches of this `if` are the same, so the condition has no effect at generic_inference_recursive_element_bounds.rue:1072:30
-    note: The `else` branch is the same at generic_inference_recursive_element_bounds.rue:1074:24
+  Both branches of this `if` are the same, so the condition has no effect at generic_inference_recursive_element_bounds.rue:1073:30
+    note: The `else` branch is the same at generic_inference_recursive_element_bounds.rue:1075:24
     help: Replace the `if` with one of its branches
+- Unused function `first_element_lambda_body` at generic_inference_recursive_element_bounds.rue:1103:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1103:36
+- Unused function `first_element_with_a_later_value` at generic_inference_recursive_element_bounds.rue:1116:4
+- Unused function `added_to_by_a_later_argument` at generic_inference_recursive_element_bounds.rue:1153:4
+- Unused function `second_element_added_to_later` at generic_inference_recursive_element_bounds.rue:1162:4
+- Unused function `nested_after_the_lambda` at generic_inference_recursive_element_bounds.rue:1187:4
+- Unused function `expected_type_not_final` at generic_inference_recursive_element_bounds.rue:1196:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1206:25
+- Unused function `make_any` at generic_inference_recursive_element_bounds.rue:1232:4
+- Unused function `records_held_lambdas` at generic_inference_recursive_element_bounds.rue:1245:4
+- Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:1245:28
+- Unused function `widened_by_a_later_lambda` at generic_inference_recursive_element_bounds.rue:1258:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1258:36
+- Unused function `widened_by_its_own_return` at generic_inference_recursive_element_bounds.rue:1272:4
+- Unused function `widened_by_its_own_return_second` at generic_inference_recursive_element_bounds.rue:1281:4
+- Unused function `given_by_an_unmatched_member` at generic_inference_recursive_element_bounds.rue:1290:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1291:5
+- Unused function `writes_the_callers_generic` at generic_inference_recursive_element_bounds.rue:1309:4
+- Unused generic type `T` at generic_inference_recursive_element_bounds.rue:1309:31
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1309:40
+- Unused function `after_an_earlier_held_lambda` at generic_inference_recursive_element_bounds.rue:1329:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1329:39
+- Unused function `with_the_pair_its_in` at generic_inference_recursive_element_bounds.rue:1346:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1346:31
+- Unused function `caller_value_after_the_lambda` at generic_inference_recursive_element_bounds.rue:1374:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1374:37
+- Unused function `later_argument_for_a_list_item` at generic_inference_recursive_element_bounds.rue:1383:4
+- Unused function `matched_through_a_union` at generic_inference_recursive_element_bounds.rue:1391:4
+- Unused function `matched_through_a_union_later` at generic_inference_recursive_element_bounds.rue:1403:4
+- Unused function `call_without_arguments_after` at generic_inference_recursive_element_bounds.rue:1415:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1416:5
+- Unused function `later_argument_reads_its_return` at generic_inference_recursive_element_bounds.rue:1428:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1429:5
+- Unused parameter `e` at generic_inference_recursive_element_bounds.rue:1430:5
+- Unused function `call_in_the_body` at generic_inference_recursive_element_bounds.rue:1442:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1442:30
+- Unused function `held_by_a_union_member` at generic_inference_recursive_element_bounds.rue:1451:4
+- Unused function `later_call_without_arguments` at generic_inference_recursive_element_bounds.rue:1478:4
+- Unused parameter `then` at generic_inference_recursive_element_bounds.rue:1480:5
+- Unused function `required_through_the_return` at generic_inference_recursive_element_bounds.rue:1495:4
+- Unused parameter `entries` at generic_inference_recursive_element_bounds.rue:1496:5
+- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:1497:5
+- Unused function `held_by_nil` at generic_inference_recursive_element_bounds.rue:1512:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1512:22
+- Unused function `another_callers_generic` at generic_inference_recursive_element_bounds.rue:1523:4
+- Unused parameter `e1` at generic_inference_recursive_element_bounds.rue:1524:5
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1525:5
+- Unused parameter `e0` at generic_inference_recursive_element_bounds.rue:1526:5
+- Unused function `between` at generic_inference_recursive_element_bounds.rue:1545:4
+- Unused function `later_argument_with_a_lambda` at generic_inference_recursive_element_bounds.rue:1553:4
+- Unused parameter `pair` at generic_inference_recursive_element_bounds.rue:1554:5
+- Unused function `later_lambda_returns_what_it_reads` at generic_inference_recursive_element_bounds.rue:1570:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1571:5
+- Unused parameter `e0` at generic_inference_recursive_element_bounds.rue:1572:5
+- Unused parameter `e1` at generic_inference_recursive_element_bounds.rue:1573:5
+- Unused function `caller_value_not_final` at generic_inference_recursive_element_bounds.rue:1588:4
+- Unused function `passes_its_parameter_on` at generic_inference_recursive_element_bounds.rue:1611:4
+- Unused function `passes_its_parameter_on_takes_any` at generic_inference_recursive_element_bounds.rue:1623:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1623:44
+- Unused type alias `Itself` at generic_inference_recursive_element_bounds.rue:1635:6
+- Unused function `passes_on_through_an_alias` at generic_inference_recursive_element_bounds.rue:1637:4
+- Unused function `passes_on_beside_one_that_sees_through` at generic_inference_recursive_element_bounds.rue:1646:4
+- Unused function `solved_again_for_the_second` at generic_inference_recursive_element_bounds.rue:1664:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1665:5
+- Unused function `lambda_in_a_typed_lambdas_body` at generic_inference_recursive_element_bounds.rue:1675:4
+- Unused function `call_in_a_held_body` at generic_inference_recursive_element_bounds.rue:1687:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1687:27
+- Unused function `rest_of_a_pair_in_a_list` at generic_inference_recursive_element_bounds.rue:1695:4
+- Unused parameter `p0` at generic_inference_recursive_element_bounds.rue:1696:5
+- Unused function `rest_before_the_lambda` at generic_inference_recursive_element_bounds.rue:1711:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1711:33
+- Unused function `sees_through_to_the_generic` at generic_inference_recursive_element_bounds.rue:1765:4
+- Unused function `sees_through_in_a_pair` at generic_inference_recursive_element_bounds.rue:1782:4
+- Unused function `list_item_recorded_as_refined` at generic_inference_recursive_element_bounds.rue:1800:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1801:5
+- Unused function `recorded_in_order` at generic_inference_recursive_element_bounds.rue:1827:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1828:5
+- Unused function `bounds_a_later_argument` at generic_inference_recursive_element_bounds.rue:1853:4
+- Unused parameter `e` at generic_inference_recursive_element_bounds.rue:1853:34
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1853:40
+- Unused parameter `q` at generic_inference_recursive_element_bounds.rue:1853:70
+- Unused function `bounds_a_later_argument_after_another` at generic_inference_recursive_element_bounds.rue:1863:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1864:5
+- Unused parameter `q` at generic_inference_recursive_element_bounds.rue:1865:5
+- Unused function `bounds_a_later_argument_in_a_pair` at generic_inference_recursive_element_bounds.rue:1881:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1881:41
+- Unused parameter `q` at generic_inference_recursive_element_bounds.rue:1881:71
+- Unused function `bounds_a_later_match` at generic_inference_recursive_element_bounds.rue:1897:4
+- Unused parameter `e` at generic_inference_recursive_element_bounds.rue:1897:31
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1897:37
+- Unused parameter `q` at generic_inference_recursive_element_bounds.rue:1897:67
+- Unused function `recorded_inside_an_element` at generic_inference_recursive_element_bounds.rue:1916:4
+- Unused function `takes` at generic_inference_recursive_element_bounds.rue:1938:4
+- Unused function `stands_for_a_generic` at generic_inference_recursive_element_bounds.rue:1942:4
+- Unused function `same_type_twice` at generic_inference_recursive_element_bounds.rue:1961:4
+- Unused function `same_type_twice_in_a_list` at generic_inference_recursive_element_bounds.rue:1971:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1971:36
+- Unused function `narrower_after_the_lambda` at generic_inference_recursive_element_bounds.rue:1983:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1983:36
+- Unused function `function_that_takes_more_after` at generic_inference_recursive_element_bounds.rue:1996:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:1996:41
+- Unused parameter `q` at generic_inference_recursive_element_bounds.rue:1996:64
+- Unused function `same_type_twice_before` at generic_inference_recursive_element_bounds.rue:2007:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:2007:33
+- Unused function `held_lambdas_in_both` at generic_inference_recursive_element_bounds.rue:2016:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:2017:5
+- Unused function `earlier_lambda_returns_it` at generic_inference_recursive_element_bounds.rue:2036:4
+- Unused function `beside_one_that_takes_more` at generic_inference_recursive_element_bounds.rue:2050:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:2051:5
+- Unused parameter `q` at generic_inference_recursive_element_bounds.rue:2052:5
+- Unused parameter `q2` at generic_inference_recursive_element_bounds.rue:2053:5
+- Unused struct `Shadow` at generic_inference_recursive_element_bounds.rue:2075:8
+- Unused function `shadowed_by_a_field` at generic_inference_recursive_element_bounds.rue:2079:4
+- Unused function `negated_first_element` at generic_inference_recursive_element_bounds.rue:2105:4
+- Unused function `rest_recorded_while_held` at generic_inference_recursive_element_bounds.rue:2117:4
+- Unused parameter `functions` at generic_inference_recursive_element_bounds.rue:2118:5
+- Unused parameter `value` at generic_inference_recursive_element_bounds.rue:2119:5
+- Unused parameter `p` at generic_inference_recursive_element_bounds.rue:2120:5
