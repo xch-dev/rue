@@ -623,3 +623,32 @@ test fn rebuild_four_steps_into_call(n: Int) -> Tail {
     let v = last_holder(n);
     Tail { x: n, y: v.inner.y, z: v.inner.z }
 }
+
+// A struct is updated in the body of a `for` from its item, from a value outside of the loop and
+// from a call, which is evaluated once for each item
+test fn update_item_in_for(points: List<Tail>, n: Int) -> List<Tail> {
+    for p in points { Tail { ...p, x: n } }
+}
+
+test fn rebuild_item_in_for(points: List<Tail>, n: Int) -> List<Tail> {
+    for p in points { Tail { x: n, y: p.y, z: p.z } }
+}
+
+test fn update_outside_for(t: Tail, items: List<Int>) -> List<Tail> {
+    for i in items { Tail { ...t, x: i } }
+}
+
+test fn rebuild_outside_for(t: Tail, items: List<Int>) -> List<Tail> {
+    for i in items { Tail { x: i, y: t.y, z: t.z } }
+}
+
+test fn update_call_in_for(items: List<Int>) -> List<Tail> {
+    for i in items { Tail { ...holder(i).inner, y: i } }
+}
+
+test fn rebuild_call_in_for(items: List<Int>) -> List<Tail> {
+    for i in items {
+        let v = holder(i);
+        Tail { x: v.inner.x, y: i, z: v.inner.z }
+    }
+}
